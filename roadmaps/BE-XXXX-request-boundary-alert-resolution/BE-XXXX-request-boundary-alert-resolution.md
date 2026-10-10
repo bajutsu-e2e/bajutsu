@@ -68,7 +68,7 @@ A later reader can tell the change arrived by three observations:
 that `dismiss_blocking_tip` makes for a showing TipKit tip stays a plain `/elements`. The runner's request log shows both.
 - The gate file no longer contains the native probe or the in-tree dismissal.
 - The showcase scenario that answers the notification request and the "Save Password" sheet together
-  stays green on iOS 18.6, 26.3, 26.4, and 26.5, the four versions BE-0399 measured.
+  (`demos/showcase/scenarios/save_password_browser.yaml`) stays green on iOS 18.6, 26.3, 26.4, and 26.5, the four versions BE-0399 measured.
 
 ## Detailed design
 
@@ -108,9 +108,7 @@ or `inTree`. A plain read stays a pure read. With `true`, the handler runs four 
 
 1. **Check SpringBoard.** The handler checks `springboard.alerts` at most once per
    `pollIntervalSeconds`. The orchestrator pushes that interval from
-   `systemAlertHandling.pollInterval` (one second by default). A recovery read after a failed check
-   (Unit 5) skips this limit. `resolveAlerts=true` accepts a companion flag, `forceCheck`, that this
-   recovery read sets. When an alert is up and
+   `systemAlertHandling.pollInterval` (one second by default). A recovery read after a refused actuation or a failed check (Unit 5) skips this limit. `resolveAlerts=true` accepts a companion flag, `forceCheck`, that both recovery reads set. When an alert is up and
    `InterruptionPolicy.label(for:)` picks a button, the handler taps it and records *answered*. When
    no rule picks one, the handler taps nothing and records *unidentified* on every check. A native
    rule's showing is keyed on the matched rule's identifying labels, so one showing is recorded *answered* once.
@@ -127,18 +125,25 @@ or `inTree`. A plain read stays a pure read. With `true`, the handler runs four 
 The re-check in step 3 keeps an order today's gate enforces. An XCUITest tap made while a
 SpringBoard alert is up would let the monitor answer that alert first.
 
-**Pacing.** Native and in-tree showings share one pacing memo, a small per-rule memo in
+**Pacing.** Native and in-tree showings share one pacing memo, a small per-showing memo in
 `InterruptionPolicyStore`. It holds three values:
 
 - the re-tap delay;
 - the per-showing tap ceiling;
-- the give-up bound.
+- the give-up bound: how long the handler keeps retrying an in-tree button that is present but not
+  yet hittable (a scrim mid-animation) before it records *gave up* for that showing, as
+  `_decline_giveup` bounds it today.
 
 These constants move from `waits/_alert_guard_gate.py` and `waits/_functions.py` into
 `bajutsu/common/orchestrator/types/alert_guard_config.py`, and the orchestrator pushes them. Python
 still derives the give-up bound from `poll_interval`. The in-tree tap keeps today's pacing. A native
-showing that a later check still finds after the re-tap delay is pressed again. The handler stops at
-the per-showing tap ceiling.
+showing that a later check still finds after the re-tap delay is pressed again. The handler stops at the per-showing tap ceiling. The interruption monitor consults and updates the same per-showing key. A monitor press on a showing that already has a key records no new *answered*, so the at-most-one-*answered* rule holds on every path.
+
+An in-tree showing is keyed on the tapped label, as `_tree_dismiss_pending` is today, not on the
+rule. `savePassword`'s nested shapes all tap "Not Now", and a fading sheet read with a subset of its
+buttons matches the narrower sibling. A per-rule key would tap that sibling again inside the re-tap
+delay and record a second *answered*.
+
 
 For an in-tree rule, the memo also keeps the tree's signature at the tap (labels and identifiers), as
 `tree_signature` does today. A label may still match after the re-tap delay on a changed screen. That
@@ -186,7 +191,7 @@ so one change covers both.
 
 ### Unit 3 — A `POST /systemAlert/resolve` endpoint
 
-`POST /systemAlert/resolve` applies the pushed policy to whatever SpringBoard alert is showing. It drains the runner's store into its reply, as `/tap` does, and the driver folds that reply into `_drain_carry`, so the drain that consumes it, `_policy_answered_alert` during the step's wait, reports the answer once. A `handleSystemAlert` step uses it to answer an alert other than its own. `_policy_answered_alert` stays in that branch and runs after `resolve_system_alert`, so an alert of the step's own that the monitor answered between polls still lets the step proceed (BE-0406 Unit 2b). Its selector match counts only native answers:
+`POST /systemAlert/resolve` applies the pushed policy to whatever SpringBoard alert is showing. It drains the runner's store into its reply, as `/tap` does, and the driver folds that reply into `_drain_carry`, so the drain that consumes it, `_policy_answered_alert` during the step's wait, reports the answer once. The reply's records also reach the gate, as `query_resolving`'s do (Unit 4). A `handleSystemAlert` step uses it to answer an alert other than its own. `_policy_answered_alert` stays in that branch and runs after `resolve_system_alert`, so an alert of the step's own that the monitor answered between polls still lets the step proceed (BE-0406 Unit 2b). Its selector match counts only native answers:
 an in-tree *answered* record carries its surface through the drain, so an application-owned button
 that shares the step's label is reported as an unrelated alert and never passes the step.
 
@@ -205,14 +210,16 @@ as it does today.
 
 ### Unit 4 — The thin Python path
 
-The wait loop reaches the new behavior through a narrow driver protocol, `AlertResolvingTarget` in `bajutsu/common/drivers/base/`, beside `InterruptionPolicyTarget`. Its `query_resolving(mode, force_check=False)` takes `true` or `inTree` and returns the elements together with that reply's records. Its `resolve_system_alert(labels)` sends Unit 3's `POST /systemAlert/resolve` with the label set the step last saw and returns `answered`, `changed`, `absent`, `unidentified`, or `pending`. The `RESOLVE_ALERTS` token marks a backend that implements it. The driver also folds both replies' records into `_drain_carry`, so the gate reads the returned records without consuming anything and the drain that consumes the records reports each one once. `Driver.query` and every other backend stay unchanged, and evidence capture keeps calling `Driver.query`.
+The wait loop reaches the new behavior through a narrow driver protocol, `AlertResolvingTarget` in `bajutsu/common/drivers/base/`, beside `InterruptionPolicyTarget`. Its `query_resolving(mode, force_check=False)` takes `true` or `inTree` and returns the elements together with that reply's records. Its `resolve_system_alert(labels)` sends Unit 3's `POST /systemAlert/resolve` with the label set the step last saw. It returns the status (`answered`, `changed`, `absent`, `unidentified`, or `pending`) together with that reply's records. The gate reads those records the same way it reads `query_resolving`'s, so a *gave up* or *unidentified* record from `/systemAlert/resolve` during a `handleSystemAlert` wait reaches the timeout as its note (`uncleared_prompt_note` or `alert_block_note`) instead of a selector-mismatch reason. The `RESOLVE_ALERTS` token marks a backend that implements it. The driver also folds both replies' records into `_drain_carry`, so the gate reads the returned records without consuming anything and the drain that consumes the records reports each one once. `Driver.query` and every other backend stay unchanged, and evidence capture keeps calling `Driver.query`.
 
 On a backend that advertises `RESOLVE_ALERTS`, the wait loop and selector resolution under a governing guard call `query_resolving(true)` (which sends `GET /elements?resolveAlerts=true`), except
-inside a `handleSystemAlert` step.
+inside a `handleSystemAlert` step. This covers every guarded wait, `screenChanged` included, so
+its frozen-screen stop keeps working.
+
 [Evidence](../../docs/glossary.md#evidence-capturepolicy-trace-triage) screenshots and tree dumps
 never set the flag, so evidence shows the real screen. A scenario that turns the guard off keeps calling `Driver.query`, so it sends no resolving read.
 
-The gate shrinks to a few dozen lines plus the kept collapsed-tree proxy. It reads the records that `query_resolving` returns and keeps them in the step's state. It also builds the blocked-screen note: from *unidentified* records through `alert_block_note`, which names the buttons no rule identifies, and from *gave up* records through `uncleared_prompt_note`, which names the button a rule chose but could not clear.
+The gate shrinks to a few dozen lines plus the kept collapsed-tree proxy. It reads the records that `query_resolving` returns and keeps them in the step's state. It also builds the blocked-screen note: from *unidentified* records through `alert_block_note`, which names the buttons no rule identifies, and from *gave up* records through `uncleared_prompt_note`, which names the button a rule chose but could not clear. A note built from either record outranks the collapsed-tree proxy's label-less note, and the proxy never clears it, as the `_native_unhandled` and `_tree_gave_up` latches ensure today (BE-0402). An *unidentified* note holds until a reply's `springboardChecked` is true, and a *gave up* note holds for the rest of the wait.
 
 The gate keeps today's collapsed-tree proxy on top of `springboardChecked`. That flag is a fact of the same request, not a cached licence. Once the tree has stayed collapsed for `frozenScreenTimeout` under a scenario that declares an in-tree rule, a collapsed reply whose `springboardChecked` is true sets the stuck note through `collapsed_tree_note` and stops the wait early. A reply whose flag is false never sets it. The native probe's "absent" does the same today, for the iOS 26.5 Save Password sheet left mid-presentation.
 
@@ -228,18 +235,24 @@ stays valid. Python composes both note texts through the existing `alert_block_n
 
 ### Unit 5 — A narrower retry
 
-After an actuation, the once-per-step alert retry now covers an application-owned alert that the resolving `/elements` did not clear before the `/tap`. That is either one that appears between the two, a gap that includes the plain `/elements` `Driver.tap` sends to mint the element's handle, or one that read left for a later request because a SpringBoard alert was up (Unit 2, step 3). A SpringBoard alert in that gap needs no retry, because
-the monitor answers it during the tap.
+After an actuation, the once-per-step alert retry now covers an application-owned alert that the resolving `/elements` did not clear before the `/tap`. That is either one that appears between the two, a gap that includes the plain `/elements` `Driver.tap` sends to mint the element's handle, or one that read left for a later request because a SpringBoard alert was up (Unit 2, step 3). A SpringBoard alert in that gap usually needs no retry, because the monitor answers it when the
+tap is synthesized. A `not-hittable` refusal returns before `tap()` runs
+(`BajutsuKit/Runner/Sources/XcuitestElementProvider.swift`), so the recovery read below forces
+the SpringBoard check.
 
 On a definite `not-found` or `not-hittable` refusal from the runner, or an `ElementNotFound`
-that `Driver.tap` raises from its own handle read before it sends `/tap`, the step resolves the selector again through `query_resolving(true)`, a resolving `/elements`. When that reply's records show an answer, the step re-issues the actuation once. It never follows a write
+that `Driver.tap` raises from its own handle read before it sends `/tap`, the step resolves the selector again through `query_resolving(true, force_check=True)`, a resolving `/elements` that skips the
+SpringBoard rate limit. When that reply's records show an answer, the step re-issues the actuation once. Either way,
+the reply's records supply the blocked-screen note, so a refused tap under an unnamed alert still
+fails with that note rather than a bare `not-hittable`. It never follows a write
 whose outcome is unknown, because a second delivery could double-actuate (BE-0207).
 
-A failed non-wait read keeps a one-time recovery of the same kind. The `assert` step, the `expect`
-phase, `screenChanged`, `extract`, and `if` keep reading through `Driver.query`, so a read never
-changes the screen in the middle of a check. When such a check fails under a governing guard, the
-step sends one `query_resolving(true)` that skips the SpringBoard rate limit. When that reply shows
+A failed check keeps a one-time recovery of the same kind. The `assert` step, the `expect`
+phase, `extract`, and `if` keep reading through `Driver.query`, so a read never
+changes the screen in the middle of a check. When such a check fails under a governing guard, the step sends one `query_resolving(true, force_check=True)`, which skips the SpringBoard rate limit. When that reply shows
 an answer, the step re-runs the check once. Either way, the reply's records supply the blocked-screen note that `__call__` supplies today.
+An `if` condition never fails, so it takes no recovery: as today, a condition that an alert makes
+false takes the `else` branch.
 The `expect` phase runs after the last end-of-step drain, so it drains once more after its
 recovery read and re-run, as its second drain does today. The recovery's records are then
 reported in this scenario. They never wait in `_drain_carry`, which no policy push clears, for
@@ -282,21 +295,31 @@ A backend without the capability keeps today's gate. The explicit `handleSystemA
 - **Swift.** `FakeElementProvider` in `BajutsuKit/Tests/BajutsuRunnerTests/` drives the
   `resolveAlerts` handler without a Simulator. The tests cover:
   - the handler's step order and the SpringBoard rate limit;
+  - `inTree` skipping step 1, and step 3's SpringBoard re-check withholding the in-tree tap while a SpringBoard alert is up;
+  - the interruption monitor recording no new *answered* for a showing that already has a key;
   - `forceCheck` skipping the SpringBoard rate limit;
-  - exclusion, widest-first matching, *unidentified* recorded on every check, and a native showing tapped and recorded once;
+  - exclusion, matching in the order the rules arrive (Swift never reorders them), *unidentified*
+    recorded on every check, and a native showing tapped and recorded once;
   - the pacing memo and the *gave up* record;
-  - a native showing still up after the re-tap delay re-pressed up to the ceiling, then recorded *gave up*;  - `/systemAlert/resolve` sharing the pacing memo, re-pressing up to the ceiling, and returning `pending` for a withheld call;
+  - a native showing still up after the re-tap delay re-pressed up to the ceiling, then recorded *gave up*;
+  - `/systemAlert/resolve` sharing the pacing memo, re-pressing up to the ceiling, and returning `pending` for a withheld call;
   - `POST /systemAlert/resolve`, including its `answered`, `changed`, `absent`, `unidentified`, and `pending` replies and the label-set guard;
   - the `springboardChecked` fact in the reply;
   - a push inside a scenario keeping the per-showing keys and pacing memo, and a `scenarioStart` push clearing them;
   - an in-tree *answered* recorded at the tap, and a later *gave up* recorded beside it without withdrawing it;
-  - a changed-screen signature declining a re-tap.
+  - a changed-screen signature declining a re-tap;
+  - a fading nested in-tree shape matching a narrower sibling not re-tapped inside the re-tap delay.
 - **Python.** The fake actuator implements the capability. The tests cover:
   - the thin gate, and the report-once rule (each record is reported by the drain that consumes it), with an *unidentified* record that
     leaves the step running;
-  - a `handleSystemAlert` step's in-tree-only polls, and its call to `/systemAlert/resolve`;  - the narrowed retry, which never follows a write whose outcome is unknown;
-  - the retry after a `not-hittable` tap on a target an in-tree sheet still covers because step 3 deferred it;
-- a failed `assert`, `expect`, `screenChanged`, `extract`, or `if` check sending one forced `query_resolving(true)`, re-running once on an answer, and taking its note from that reply;  - a failed `expect` check's recovery records reported by the `expect` phase's own drain, never by the next scenario's;
+  - a `handleSystemAlert` step's in-tree-only polls, and its call to `/systemAlert/resolve`;
+  - a `/systemAlert/resolve` give-up during a `handleSystemAlert` wait reaching the timeout as `uncleared_prompt_note`;
+  - a note from an *unidentified* or *gave up* record surviving the collapsed-tree proxy's later polls;
+  - `push_interruption_policy` raising `ValueError` on a rule that sets both `native` and `in_tree`;
+  - the narrowed retry, which never follows a write whose outcome is unknown;
+  - the retry after a `not-hittable` tap on a target an in-tree sheet still covers because step 3 deferred it, with its recovery read forced;
+  - a failed `assert`, `expect`, or `extract` check sending one `query_resolving(true, force_check=True)`, re-running once on an answer, and taking its note from that reply;
+  - a failed `expect` check's recovery records reported by the `expect` phase's own drain, never by the next scenario's;
   - no call to `AlertGuardConfig.__call__` under the capability, from either the end-of-step retry or the `expect` path;
   - a backend without `HANDLE_SYSTEM_ALERT` still taps no in-tree prompt once `__call__`'s halves are gone;
   - `_is_retry_eligible` refusing to re-send a delivered `resolveAlerts` read, in both the BE-0207 retry and the BE-0287 recovery re-issue;
@@ -305,7 +328,7 @@ A backend without the capability keeps today's gate. The explicit `handleSystemA
   - `query_resolving` returns each reply's records and also folds them into the carry;
   - an in-tree answer whose label matches the step's selector does not pass a `handleSystemAlert` step;
   - under the capability, a step's own alert answered by the monitor between polls still lets the `handleSystemAlert` step proceed.
-- **On device.** `demos/showcase/scenarios/permission.yaml`, BE-0399's two-prompt scenario, and
+- **On device.** `demos/showcase/scenarios/permission.yaml`, `demos/showcase/scenarios/save_password_browser.yaml` (BE-0399's two-prompt scenario), and
   `demos/showcase/scenarios/save_password_interrupts_step.yaml` run green on the four iOS versions
   with Unit 7 applied.
 

@@ -63,7 +63,7 @@ runner はまず方針が名指しするアラートに答え、そのあとで�
 ときに `dismiss_blocking_tip` がハンドルを得るために読み直す `/elements` は、フラグのないままです。runner のリクエストログで、その両方を確認
   できます。
 - ゲートのファイルから、ネイティブのプローブとツリー内の消去がなくなっています。
-- 通知の許可要求と「パスワードを保存」シートに続けて答える showcase のシナリオが、iOS 18.6、26.3、
+- 通知の許可要求と「パスワードを保存」シートに続けて答える showcase のシナリオ（`demos/showcase/scenarios/save_password_browser.yaml`）が、iOS 18.6、26.3、
   26.4、26.5 で成功し続けます。この 4 つは BE-0399 が実測したバージョンです。
 
 ## 詳細設計
@@ -99,8 +99,8 @@ Unit 1 はプロダクトのコードを足しません。使い捨ての runner
 
 1. **SpringBoard を確認します**：`springboard.alerts` の確認は、`pollIntervalSeconds` に 1 回までに
    間引きます。この間隔は、オーケストレータが `systemAlertHandling.pollInterval`（デフォルトは 1
-   秒）から渡します。失敗した判定のあとの立て直しの読み取り（Unit 5）は、この間引きを飛ばします。
-   `resolveAlerts=true` は付随するフラグ `forceCheck` を受け取り、この立て直しの読み取りがそれを使います。アラートが出ていて `InterruptionPolicy.label(for:)` がボタンを選べば、ハンドラ
+   秒）から渡します。拒まれた操作や失敗した判定のあとの立て直しの読み取り（Unit 5）は、この間引きを飛ばします。
+   `resolveAlerts=true` は付随するフラグ `forceCheck` を受け取り、これらの立て直しの読み取りがそれを使います。アラートが出ていて `InterruptionPolicy.label(for:)` がボタンを選べば、ハンドラ
    はそれをタップして *answered*（応答済み）を記録します。どのルールもボタンを選ばなければ、何もタッ
    プせず、確認のたびに *unidentified*（未識別）を記録します。ネイティブのルールの表示は、一致した
    ルールの識別ラベルをキーにするので、1 回の表示は *answered* として 1 回だけ記録します。押し直すのは、あとで述べる間合いの控えに従うときだけです。のちの確認で
@@ -117,17 +117,18 @@ Unit 1 はプロダクトのコードを足しません。使い捨ての runner
 XCUITest でタップすると、割り込み監視がそのアラートへ先に答えてしまうからです。
 
 **間合い**：ネイティブの表示とツリー内の表示は、同じ間合いの控えを使います。控えは
-`InterruptionPolicyStore` の中のルールごとの小さな控えで、次の 3 つの値を持ちます。
+`InterruptionPolicyStore` の中の表示ごとの小さな控えで、次の 3 つの値を持ちます。
 
 - 再タップまでの遅延です。
 - 表示 1 回あたりのタップ回数の上限です。
-- 諦めるまでの上限です。
+- 諦めるまでの上限です。表示されているのにまだ押せない（表示途中の幕に覆われた）ツリー内のボタンを試し続け、その表示に *gave up* を記録するまでの時間で、今の `_decline_giveup` が決めている上限です。
 
 これらの定数は、`waits/_alert_guard_gate.py` と `waits/_functions.py` から
 `bajutsu/common/orchestrator/types/alert_guard_config.py` へ移し、オーケストレータが runner へ渡します。
 諦めるまでの上限は、引き続き Python 側で `poll_interval` から導きます。ツリー内のタップは、今の間合い
-を保ちます。ネイティブの表示も、再タップまでの遅延を過ぎてなお次の確認で見つかれば押し直します。押し
-直しは、表示 1 回あたりのタップ回数の上限で止めます。
+を保ちます。ネイティブの表示も、再タップまでの遅延を過ぎてなお次の確認で見つかれば押し直します。押し直しは、表示 1 回あたりのタップ回数の上限で止めます。割り込み監視も、同じ表示ごとのキーを参照して更新します。すでにキーのある表示を監視が押しても、新しい *answered* は作りません。そのため、1 回の表示に *answered* は最大 1 件という規則は、どの経路でも成り立ちます。
+
+ツリー内の表示は、ルールではなく、今の `_tree_dismiss_pending` と同じくタップしたラベルをキーにします。`savePassword` の入れ子の形はどれも "Not Now" をタップするので、ボタンの一部だけが残った消えかけのシートには狭いほうの兄弟が一致します。ルールをキーにすると、再タップまでの遅延のうちにそれをもう一度タップし、2 件目の *answered* を記録してしまいます。
 
 ツリー内のルールの控えは、タップした時点のツリーの署名（ラベルと identifier の組）も、今の
 `tree_signature` と同じく持ちます。再タップまでの遅延を過ぎても同じラベルが一致し、画面が変わって
@@ -175,7 +176,7 @@ XCUITest でタップすると、割り込み監視がそのアラートへ先�
 
 ### Unit 3：`POST /systemAlert/resolve` エンドポイント
 
-`POST /systemAlert/resolve` は、表示中の SpringBoard のアラートに、渡された方針を当てます。`/tap` と同じく runner の記録を drain して応答に載せ、ドライバはその応答を `_drain_carry` に入れます。そのため、その答えを消費した drain、つまりステップの待機中は `_policy_answered_alert` が、答えを 1 回だけ報告します。`handleSystemAlert` ステップは、自分のもの以外のアラートへ答えるときにこの
+`POST /systemAlert/resolve` は、表示中の SpringBoard のアラートに、渡された方針を当てます。`/tap` と同じく runner の記録を drain して応答に載せ、ドライバはその応答を `_drain_carry` に入れます。そのため、その答えを消費した drain、つまりステップの待機中は `_policy_answered_alert` が、答えを 1 回だけ報告します。応答の記録は、Unit 4 の `query_resolving` の記録と同じく、ゲートにも届きます。`handleSystemAlert` ステップは、自分のもの以外のアラートへ答えるときにこの
 エンドポイントを使います。`_policy_answered_alert` はその分岐に残り、`resolve_system_alert` のあとに動きます。そのため、ステップ自身のアラートをポーリングの合間に監視が答えた場合も、ステップは先へ進めます（BE-0406 の Unit 2b）。ただし、セレクタとの照合に数えるのはネイティブの応答
 だけです。ツリー内の *answered* の記録は drain を通して種類を保つので、ステップと同じラベルを持つ
 アプリ側のボタンは無関係なアラートとして報告され、ステップを通すことはありません。
@@ -197,12 +198,12 @@ XCUITest でタップすると、割り込み監視がそのアラートへ先�
 
 ### Unit 4：Python 側の薄い経路
 
-待機ループは、`bajutsu/common/drivers/base/` に `InterruptionPolicyTarget` と並べて置く狭いドライバのプロトコル `AlertResolvingTarget` を通して、新しい動きを使います。その `query_resolving(mode, force_check=False)` は `true` か `inTree` を受け取り、要素とその応答の記録を一緒に返します。`resolve_system_alert(labels)` は、ステップが直前に見たラベルの組を載せて Unit 3 の `POST /systemAlert/resolve` を送り、`answered`、`changed`、`absent`、`unidentified`、`pending` のいずれかを返します。`RESOLVE_ALERTS` のトークンは、このプロトコルを実装したバックエンドの印です。ドライバはどちらの応答の記録も `_drain_carry` に入れます。そのためゲートは戻り値の記録を読むだけで何も消費せず、各記録の報告は、それを消費した drain が行います。`Driver.query` と他のバックエンドは変わらず、証跡の取得は引き続き `Driver.query` を使います。
+待機ループは、`bajutsu/common/drivers/base/` に `InterruptionPolicyTarget` と並べて置く狭いドライバのプロトコル `AlertResolvingTarget` を通して、新しい動きを使います。その `query_resolving(mode, force_check=False)` は `true` か `inTree` を受け取り、要素とその応答の記録を一緒に返します。`resolve_system_alert(labels)` は、ステップが直前に見たラベルの組を載せて Unit 3 の `POST /systemAlert/resolve` を送ります。返すのは、状態（`answered`、`changed`、`absent`、`unidentified`、`pending` のいずれか）と、その応答の記録です。ゲートはこの記録を `query_resolving` の記録と同じ方法で読みます。そのため、`handleSystemAlert` の待機中に `/systemAlert/resolve` から届いた *gave up* や *unidentified* の記録は、セレクタ不一致の理由ではなく、時間切れの注記（`uncleared_prompt_note` か `alert_block_note`）として届きます。`RESOLVE_ALERTS` のトークンは、このプロトコルを実装したバックエンドの印です。ドライバはどちらの応答の記録も `_drain_carry` に入れます。そのためゲートは戻り値の記録を読むだけで何も消費せず、各記録の報告は、それを消費した drain が行います。`Driver.query` と他のバックエンドは変わらず、証跡の取得は引き続き `Driver.query` を使います。
 
-`RESOLVE_ALERTS` を通知する backend では、ガードが効いているとき、待機ループとセレクタの解決が、`handleSystemAlert` ステップの外で `query_resolving(true)`（`GET /elements?resolveAlerts=true` を送ります）を呼びます。[証跡](../../docs/ja/glossary.md#証跡-capturepolicy-trace-triage)の
+`RESOLVE_ALERTS` を通知する backend では、ガードが効いているとき、待機ループとセレクタの解決が、`handleSystemAlert` ステップの外で `query_resolving(true)`（`GET /elements?resolveAlerts=true` を送ります）を呼びます。これは `screenChanged` を含むガード付きのすべての待機に当てはまるので、画面が固まったときの早めの打ち切りも働き続けます。[証跡](../../docs/ja/glossary.md#証跡-capturepolicy-trace-triage)の
 スクリーンショットとツリーのダンプはフラグを立てないので、証跡には実際の画面が残ります。ガードを切ったシナリオは引き続き `Driver.query` を使うので、片付ける読み取りは送りません。
 
-ゲートは、数十行と、残す折りたたみツリーの代理指標に縮みます。代理指標のほかに、ゲートの仕事は 2 つです。1 つは、`query_resolving` が返す記録を読み、ステップの状態に取り込むことです。もう 1 つは、画面が塞がれていることを伝える注記を組み立てることです。*unidentified* の記録からは、どのルールも識別しなかったボタンを挙げる `alert_block_note` で組み立てます。*gave up* の記録からは、ルールが選んだのに片付けられなかったボタンを挙げる `uncleared_prompt_note` で組み立てます。
+ゲートは、数十行と、残す折りたたみツリーの代理指標に縮みます。代理指標のほかに、ゲートの仕事は 2 つです。1 つは、`query_resolving` が返す記録を読み、ステップの状態に取り込むことです。もう 1 つは、画面が塞がれていることを伝える注記を組み立てることです。*unidentified* の記録からは、どのルールも識別しなかったボタンを挙げる `alert_block_note` で組み立てます。*gave up* の記録からは、ルールが選んだのに片付けられなかったボタンを挙げる `uncleared_prompt_note` で組み立てます。どちらの記録から組み立てた注記も、折りたたみツリーの代理指標が付けるラベルのない注記より優先し、代理指標がそれを消すことはありません。今の `_native_unhandled` と `_tree_gave_up` のラッチと同じ扱いです（BE-0402）。*unidentified* の注記は `springboardChecked` が `true` の応答が来るまで、*gave up* の注記はその待機が終わるまで保ちます。
 
 ゲートは、今の折りたたみツリーの代理指標も `springboardChecked` の上に残します。このフラグは、同じリクエストの中で確かめた事実であり、使い回す許可ではありません。ツリー内のルールを宣言したシナリオでツリーが `frozenScreenTimeout` のあいだ折りたたまれたままのとき、`springboardChecked` が `true` の応答が来た時点で、`collapsed_tree_note` で行き詰まりの注記を付け、待機を早めに打ち切ります。フラグが `false` の応答では、この注記を付けません。今のネイティブ確認の「不在」も、同じ扱いです。iOS 26.5 で「パスワードを保存」シートが表示の途中で残る場合が、その例です。
 
@@ -218,14 +219,15 @@ XCUITest でタップすると、割り込み監視がそのアラートへ先�
 
 ### Unit 5：範囲を狭めたリトライ
 
-操作のあとのステップあたり 1 回のアラートによるリトライは、アラートを片付けた `/elements` が `/tap` の前に片付けられなかったアプリ側のアラートを扱うようになります。1 つは、その 2 つのあいだに出たアラートです。このあいだには、`Driver.tap` が要素のハンドルを得るために送るフラグのない `/elements` も含まれます。もう 1 つは、SpringBoard のアラートが出ていたために、その読み取りがあとのリクエストに任せたアラートです（Unit 2 の手順 3）。そのあいだに出た SpringBoard のアラートには
-リトライが要りません。タップの最中に割り込み監視が答えるからです。
+操作のあとのステップあたり 1 回のアラートによるリトライは、アラートを片付けた `/elements` が `/tap` の前に片付けられなかったアプリ側のアラートを扱うようになります。1 つは、その 2 つのあいだに出たアラートです。このあいだには、`Driver.tap` が要素のハンドルを得るために送るフラグのない `/elements` も含まれます。もう 1 つは、SpringBoard のアラートが出ていたために、その読み取りがあとのリクエストに任せたアラートです（Unit 2 の手順 3）。そのあいだに出た SpringBoard のアラートには、たいていリトライが要りません。タップを合成するときに割り込み監視が答えるからです。ただし `not-hittable` の拒否は `tap()` を呼ぶ前に返る（`BajutsuKit/Runner/Sources/XcuitestElementProvider.swift`）ので、次の立て直しの読み取りは SpringBoard の確認を強制します。
 
 runner に `not-found` か `not-hittable` で確定的に拒まれたとき、または `Driver.tap` が `/tap` を
-送る前の自分のハンドルの読み取りで `ElementNotFound` を送出したときは、アラートを片付ける `query_resolving(true)` でセレクタを解決し直します。その応答の記録に応答済みがあるときに限り、操作を 1 回だけ出し直します。結果のわからない書き込みのあとには
+送る前の自分のハンドルの読み取りで `ElementNotFound` を送出したときは、SpringBoard の確認の間引きを飛ばす `query_resolving(true, force_check=True)` でセレクタを解決し直します。その応答の記録に応答済みがあるときに限り、操作を 1 回だけ出し直します。どちらの場合も、
+画面が塞がれていることを伝える注記はその応答の記録から作るので、名指しされないアラートの下で拒まれた
+タップも、単なる `not-hittable` ではなくその注記を付けて失敗します。結果のわからない書き込みのあとには
 リトライしません。2 回目の配信で操作が二重になりうるからです（BE-0207）。
 
-待機ではない読み取りが失敗したときも、同じ種類の立て直しを 1 回だけ行います。`assert` ステップ、`expect` の段階、`screenChanged`、`extract`、`if` は引き続き `Driver.query` で読むので、判定の途中で読み取りが画面を変えることはありません。ガードが効いている状態でこうした判定が失敗したときは、ステップは SpringBoard の確認の間引きを飛ばす `query_resolving(true)` を 1 回送ります。その応答に応答済みがあれば、判定を 1 回だけやり直します。どちらの場合も、今 `__call__` が与えている、画面が塞がれていることを伝える注記は、その応答の記録から作ります。
+判定が失敗したときも、同じ種類の立て直しを 1 回だけ行います。`assert` ステップ、`expect` の段階、`extract`、`if` は引き続き `Driver.query` で読むので、判定の途中で読み取りが画面を変えることはありません。ガードが効いている状態でこうした判定が失敗したときは、ステップは `query_resolving(true, force_check=True)` を 1 回送り、SpringBoard の確認の間引きを飛ばします。その応答に応答済みがあれば、判定を 1 回だけやり直します。どちらの場合も、今 `__call__` が与えている、画面が塞がれていることを伝える注記は、その応答の記録から作ります。`if` の条件は失敗しないので、立て直しの対象にしません。今と同じく、アラートのせいで偽になった条件は `else` の分岐に進みます。
 `expect` の段階は最後のステップ終了時の drain よりあとに走るので、立て直しの読み取りとやり直しのあとにもう 1 回 drain します。今の 2 回目の drain と同じです。こうして立て直しの記録はこのシナリオの中で報告されます。どの方針の受け渡しでも消えない `_drain_carry` に残って、次のシナリオの最初の drain に回ることはありません。
 
 capability のもとでは、ほかの 2 つの経路を動かしません。`AlertGuardConfig.__call__` のステップ終了時の
@@ -265,8 +267,10 @@ capability のない backend は、今のゲートを使い続けます。明示
 - **Swift**：`BajutsuKit/Tests/BajutsuRunnerTests/` の `FakeElementProvider` で、Simulator なしに
   `resolveAlerts` のハンドラを動かします。テストは次の点を扱います。
   - ハンドラの手順の順序と、SpringBoard の確認の間引きを確かめます。
+  - `inTree` が手順 1 を飛ばすことと、SpringBoard のアラートが出ているあいだは手順 3 の確認し直しがツリー内のタップを控えることを確かめます。
+  - すでにキーのある表示を割り込み監視が押しても、新しい *answered* を記録しないことを確かめます。
   - `forceCheck` が SpringBoard の確認の間引きを飛ばすことを確かめます。
-  - 除外、広いものを先に試す照合、確認のたびの *unidentified* の記録、ネイティブの表示を 1 回だけタップして記録することを確かめます。
+  - 除外、受け取った順のままの照合（Swift 側では並べ替えないこと）、確認のたびの *unidentified* の記録、ネイティブの表示を 1 回だけタップして記録することを確かめます。
   - 間合いの控えと *gave up* の記録を確かめます。
   - 再タップまでの遅延を過ぎても残るネイティブの表示が、上限まで押し直され、そのあと *gave up* として記録されることを確かめます。
   - `/systemAlert/resolve` が間合いの控えを共有し、上限まで押し直し、見送った呼び出しに `pending` を返すことを確かめます。
@@ -275,14 +279,18 @@ capability のない backend は、今のゲートを使い続けます。明示
   - シナリオの途中の受け渡しでは表示ごとのキーと間合いの控えが残り、`scenarioStart` の受け渡しでは消えることを確かめます。
   - ツリー内の *answered* がタップの時点で記録され、あとの *gave up* がその隣に、取り消しなしで記録されることを確かめます。
   - 画面の署名が変わったときに再タップを控えることを確かめます。
+  - 消えかけの入れ子のツリー内の形に狭いほうの兄弟が一致しても、再タップまでの遅延のうちに押し直さないことを確かめます。
 - **Python**：偽の actuator が capability を実装します。テストは次の点を扱います。
   - 薄いゲートと、記録を消費した drain が 1 回だけ報告する規則を確かめます。*unidentified* の記録が注記に使われ、ス
     テップを止めないことも確かめます。
   - `handleSystemAlert` ステップのツリー内だけを片付けるポーリングと、`/systemAlert/resolve` の呼び
     出しを確かめます。
+  - `handleSystemAlert` の待機中の `/systemAlert/resolve` の断念が、時間切れのときに `uncleared_prompt_note` として届くことを確かめます。
+  - *unidentified* や *gave up* の記録から作った注記が、そのあとの折りたたみツリーの代理指標のポーリングで消えないことを確かめます。
+  - `native` と `in_tree` の両方を立てたルールに `push_interruption_policy` が `ValueError` を送出することを確かめます。
   - 範囲を狭めたリトライが、結果のわからない書き込みのあとに発動しないことを確かめます。
-  - 手順 3 が後回しにしたツリー内のシートに対象が覆われたままで `not-hittable` になったタップのあとのリトライを確かめます。
-  - 失敗した `assert`、`expect`、`screenChanged`、`extract`、`if` の判定が、間引きを飛ばす `query_resolving(true)` を 1 回送り、応答済みがあれば 1 回だけやり直し、注記をその応答から作ることを確かめます。
+  - 手順 3 が後回しにしたツリー内のシートに対象が覆われたままで `not-hittable` になったタップのあとのリトライが、立て直しの読み取りを強制して行われることを確かめます。
+  - 失敗した `assert`、`expect`、`extract` の判定が、`query_resolving(true, force_check=True)` を 1 回送り、応答済みがあれば 1 回だけやり直し、注記をその応答から作ることを確かめます。
   - 失敗した `expect` の判定の立て直しの記録が、次のシナリオではなく `expect` の段階の drain で報告されることを確かめます。
   - capability のもとで、ステップ終了時のリトライからも `expect` の経路からも `AlertGuardConfig.__call__` を呼ばないことを確かめます。
   - 配信済みの `resolveAlerts` の読み取りを、BE-0207 のリトライでも BE-0287 の復旧での再送でも、`_is_retry_eligible` が送り直させないことを確かめます。
@@ -293,8 +301,7 @@ capability のない backend は、今のゲートを使い続けます。明示
   - capability のもとで、ステップ自身のアラートをポーリングの合間に監視が答えた場合も、`handleSystemAlert` ステップが先へ進むことを確かめます。
   - `HANDLE_SYSTEM_ALERT` を持たない backend が、`__call__` の両方の半分を削除したあとも、ツリー内のプロンプトをタップしないことを確かめます。
 - **実機**：Unit 7 を適用した状態で、3 つのシナリオが 4 つの iOS バージョンで成功しま
-  す。`demos/showcase/scenarios/permission.yaml`、BE-0399 の 2 つのプロンプトのシナリ
-  オ、`demos/showcase/scenarios/save_password_interrupts_step.yaml` です。
+  す。`demos/showcase/scenarios/permission.yaml`、BE-0399 の 2 つのプロンプトのシナリオ `demos/showcase/scenarios/save_password_browser.yaml`、`demos/showcase/scenarios/save_password_interrupts_step.yaml` です。
 
 ### Unit 9：文書
 
