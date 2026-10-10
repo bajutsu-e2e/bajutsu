@@ -135,6 +135,10 @@ lets a later scheme change the canonical form without a misread on either side.
 
 The collector checks the header first. A missing or malformed header gets a 401 before the collector
 reads the body. A nonce that the collector has already accepted gets a 409, also before the body.
+Both of those answers leave the request body unread, so both set `close_connection`, as today's
+bearer refusal does (`bajutsu/common/evidence/network/_functions.py`). A reply that skips the body
+desynchronizes a reused connection, and the reject path stays safe whatever protocol version the
+handler speaks.
 Then the collector reads the body, recomputes the signature, and compares in constant time
 (`hmac.compare_digest`). A mismatch gets a 401, as a wrong token does today.
 
@@ -204,6 +208,15 @@ The request's nonce binds each answer to one request. A captured answer thus fai
 poll. A 401 or a 409 carries no signature. For a 401, the collector could not authenticate the request to
 bind the answer to. For a 409, the nonce is already spent on another copy.
 
+An unsigned status is forgeable, and two of them are terminal. BajutsuKit's control channel ends
+its poll loop on a 401 or a 404, so a party that rewrites one `/commands` answer into either status
+stops the channel for the rest of the process. The item keeps both statuses unsigned and accepts
+that outcome. The party gains no forged command or exchange, and the host's acknowledgement wait
+fails loudly on its existing timeout. The outcome thus sits under the availability exclusion, as
+*Stolen commands* does. Signing the 401 as well would not close it cleanly: a genuinely wrong token
+also yields an unverifiable 401, and honoring a terminal status only when verified would leave a
+misconfigured app polling for the life of the process.
+
 BajutsuKit verifies an answer before it uses the answer:
 
 - **`GET /commands`.** BajutsuKit discards an answer that fails verification, and the device log
@@ -219,7 +232,11 @@ BajutsuKit verifies an answer before it uses the answer:
 The two mechanisms above turn the probe into a challenge and response, with no new route. The app
 sends each candidate a signed `GET /ping`, and the fresh nonce is the challenge. The real collector
 alone can sign an answer bound to that nonce. A candidate that is not the collector learns a nonce
-and a signature, and neither one reveals the token.
+and a signature, and neither one reveals the token. A candidate that relays the probe to the real
+collector, though, wins the search with the collector's own signed answer, since the canonical form
+leaves out the host and port. The app then reports through that party for the rest of the run. The
+party still cannot forge or alter a signed request or answer, so what it gains is confined to the
+two properties that this item leaves out: it reads the bodies, and it drops or delays a request.
 
 The real-device item recorded a different follow-up for the probe: an unauthenticated `/ping` that
 returns a per-run nonce. That route would send the token to the proven collector alone. The signed
