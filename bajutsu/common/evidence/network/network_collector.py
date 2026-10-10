@@ -287,8 +287,8 @@ class NetworkCollector:
             port: TCP port to bind; `0` requests an ephemeral port.
             host: The address to bind. The loopback, unless the app runs on a real device that does
                 not share it; `"::"` then binds every IPv4 and IPv6 interface, which the per-run token
-                every request must carry keeps closed to anything but this run's app. Beyond the
-                loopback, a request must sign with the token rather than carry it (BE-0459).
+                every request must prove keeps closed to anything but this run's app. Beyond the
+                loopback, a request signs with the token rather than carrying it (BE-0459).
 
         Returns:
             The actual bound port (resolved when `port` is `0`), to inject into the app via

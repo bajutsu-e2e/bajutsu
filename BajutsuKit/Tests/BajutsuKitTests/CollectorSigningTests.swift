@@ -171,6 +171,14 @@ final class CollectorSigningTests: XCTestCase {
         )
     }
 
+    func testASignedCredentialRejectsAnAnswerWhenTheNonceIsMissing() {
+        let credential = CollectorCredential(token: "run-token", signs: true)
+        let signature = CollectorSigning.answerSignature(
+            token: "run-token", nonce: "n1", status: 204, body: Data()
+        )
+        XCTAssertFalse(credential.accepts(answer(204, signature: signature), body: nil, nonce: nil))
+    }
+
     func testABearerProbeTakesAPlain204AsItAlwaysDid() {
         XCTAssertTrue(
             BajutsuNet.probeAnswered(answer(204, signature: nil), body: nil, credential: .bearer("t"), nonce: nil)

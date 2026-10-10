@@ -54,10 +54,12 @@ struct CollectorCredential: Equatable {
 
     /// Whether an answer is one this run's collector wrote for the request that carried `nonce`.
     ///
-    /// A bearer request (nil nonce) has nothing to verify, so its answer is taken as it always was.
+    /// A bearer request has nothing to verify, so its answer is taken as it always was. A signed
+    /// one fails closed, a missing nonce included, so a call site that drops the nonce `authorize`
+    /// returned cannot turn verification off.
     func accepts(_ response: HTTPURLResponse?, body: Data?, nonce: String?) -> Bool {
-        guard let nonce else { return true }
-        guard let response,
+        guard signs else { return true }
+        guard let nonce, let response,
               let presented = response.value(forHTTPHeaderField: CollectorSigning.answerHeader)
         else { return false }
         let expected = CollectorSigning.answerSignature(
