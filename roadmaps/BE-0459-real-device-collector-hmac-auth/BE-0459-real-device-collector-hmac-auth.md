@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0459") |
+| Implementing PR | [#2150](https://github.com/bajutsu-e2e/bajutsu/pull/2150) (units 1–7) |
 | Topic | Security hardening |
 | Related | [BE-0115](../BE-0115-inprocess-collector-auth/BE-0115-inprocess-collector-auth.md), [BE-0365](../BE-0365-in-app-control-channel/BE-0365-in-app-control-channel.md), [BE-0238](../BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md), [BE-0283](../BE-0283-android-network-capture/BE-0283-android-network-capture.md) |
 <!-- /BE-METADATA -->
@@ -411,7 +412,7 @@ The device proof is manual. It checks the three observations from *Motivation*:
 
 Log:
 
-- PR_PENDING — Units 1–7. Added the signed scheme (`_hmac_auth.py`) and the fixed vectors in
+- [#2150](https://github.com/bajutsu-e2e/bajutsu/pull/2150) — Units 1–7. Added the signed scheme (`_hmac_auth.py`) and the fixed vectors in
   `tests/fixtures/be0459/`, which the Python and Swift suites both check. The collector now
   dispatches on the `Authorization` scheme, spools the body while hashing it, and refuses a spent
   nonce with 409. It signs every authenticated answer and refuses the bearer header beyond the

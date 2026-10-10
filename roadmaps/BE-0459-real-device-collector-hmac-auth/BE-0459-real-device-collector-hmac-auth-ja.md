@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0459") |
+| 実装 PR | [#2150](https://github.com/bajutsu-e2e/bajutsu/pull/2150)（単位 1〜7） |
 | トピック | セキュリティ強化 |
 | 関連 | [BE-0115](../BE-0115-inprocess-collector-auth/BE-0115-inprocess-collector-auth-ja.md), [BE-0365](../BE-0365-in-app-control-channel/BE-0365-in-app-control-channel-ja.md), [BE-0238](../BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution-ja.md), [BE-0283](../BE-0283-android-network-capture/BE-0283-android-network-capture-ja.md) |
 <!-- /BE-METADATA -->
@@ -396,7 +397,7 @@ BajutsuKit のユニットテストは、同じベクターを Swift から検�
 
 ログ：
 
-- PR_PENDING — 単位 1〜7。署名方式（`_hmac_auth.py`）と、`tests/fixtures/be0459/` の固定ベクターを
+- [#2150](https://github.com/bajutsu-e2e/bajutsu/pull/2150) — 単位 1〜7。署名方式（`_hmac_auth.py`）と、`tests/fixtures/be0459/` の固定ベクターを
   追加しました。固定ベクターは Python と Swift の両方のテストが確認します。コレクターは
   `Authorization` の方式で処理を振り分け、本文をハッシュしながら退避し、使用済みのノンスを 409 で
   拒否します。認証済みの応答にはすべて署名し、ループバックの外では Bearer ヘッダーを拒否します。
