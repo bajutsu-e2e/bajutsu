@@ -34,7 +34,7 @@ runner はまず方針が名指しするアラートに答え、そのあとで�
 - **ネイティブの SpringBoard プローブ**：`poll_interval`（デフォルトは 1 秒）ごとに間引かれます。
 - **ツリー内の消去**：アプリ自身が出すアラート向けです。50 ms ごとのポーリングで走りますが、直前の
   プローブが SpringBoard のアラートなしと答えたポーリングに限ります（BE-0399）。
-- **崩れたツリーのプロキシ**：毎ポーリング標本を取り、画面が塞がれている理由をあとから説明します。
+- **折りたたみツリーの代理指標**：毎ポーリング標本を取り、画面が塞がれている理由をあとから説明します。
 
 3 つの検知器はそれぞれラッチと注記を持ち、他の検知器が作る競合に合わせて調整されてきました。BE-0418 の
 リトライのような変更は、3 つすべてに照らして考えなければなりません。
@@ -139,8 +139,7 @@ XCUITest でタップすると、割り込み監視がそのアラートへ先�
 - *answered* の記録はルールの種類（`native` か `inTree`）を持ち、`DrainedInterruptions` もそれを
   保ちます。そのため、読む側は SpringBoard での押下とツリー内での押下を区別できます。
 - 同じ表示への押し直しは、ネイティブでもツリー内でも、新しい *answered* を作りません。
-- 諦めたときは、*answered* の隣に *gave up* を記録し、何も取り消しません。この記録は、ルールの識別
-  ラベルと、ルールが選んだボタンを持ちます。`uncleared_prompt_note` はそのボタンを挙げ、押しても
+- 諦めたときは、*answered* の隣に *gave up* を記録し、何も取り消しません。この記録は、ルールの識別ラベルと、ルールの種類と、ルールが選んだボタンを持ちます。`uncleared_prompt_note` はそのボタンを挙げ、押しても
   消えなかったことを作者に伝えます。
 - そのため、1 回の表示に残る記録は、*answered* が最大 1 件、*gave up* が最大 1 件です。
 
@@ -181,7 +180,7 @@ XCUITest でタップすると、割り込み監視がそのアラートへ先�
 側のアラートは、ステップの待機中も片付きます（BE-0406）。手順 3 で SpringBoard を確認し直すとステッ
 プ自身のアラートが見つかるので、ツリー内のタップは控えます。今の `probe_native` の `"reserved"` と同
 じ扱いです。見えたアラートがステップ自身のセレクタと一致するかどうかは、Python が判断します。判断に
-は既存の `selector_names_button`（`bajutsu/common/orchestrator/types/_functions.py`）を使います。一致しないときは、Python が `resolve_system_alert` を呼び、`/systemAlert/resolve` を送ります。こうしてステップが自分のアラートを確保
+は既存の `selector_names_button`（`bajutsu/common/orchestrator/types/_functions.py`）を使います。一致しないときは、Python が `resolve_system_alert` を呼び、`/systemAlert/resolve` を送ります。この呼び出しは、今の `probe_native` と同じく `systemAlertHandling.pollInterval` に 1 回までに間引きます。呼び出しのたびに runner が SpringBoard へ問い合わせるので、0.2 秒ごとの `/systemAlert/query` のポーリングのたびに呼ぶと、ステップが待っていないアラートが画面を塞いでいるあいだ、ステップの問い合わせの頻度が倍になるからです（BE-0315）。呼び出しを省いたポーリングでも、`_policy_answered_alert` は今と同じく動きます。こうしてステップが自分のアラートを確保
 する仕組みは、リクエストごとの選択になり、今の方針の受け渡しを除けば runner に状態を持たせません。`handleSystemAlert` ステップが `_reserve_declared_alert`（`loop/_step_runner.py`、BE-0406 の Unit 2b）を通して行う方針の受け渡しと、ステップ後の復元は、`RESOLVE_ALERTS` のもとでも変わりません。セレクタの照合は Python に
 残るので、Swift へ移植する必要はありません。
 
@@ -198,9 +197,9 @@ XCUITest でタップすると、割り込み監視がそのアラートへ先�
 `RESOLVE_ALERTS` を通知する backend では、ガードが効いているとき、待機ループとセレクタの解決が、`handleSystemAlert` ステップの外で `query_resolving(true)`（`GET /elements?resolveAlerts=true` を送ります）を呼びます。ここでいうセレクタの解決は、操作のハンドラが操作の前に対象を解決するために `Driver.query()` で行う読み取り（`scroll.py` の読み取りと、`gestures.py` で `_do_clear` がフォーカスのタップの前に行う値の読み取り、`_directional_endpoints`）です。ハンドルを使う操作（`tap`、`double_tap`、`long_press`、`pinch`、`rotate`、`set_picker_value`）は、ハンドルを得るためのフラグのない `/elements` の中で対象を解決するので、自分では片付ける読み取りを送りません。ここでいう「ガードが効いている」とは、ステップに `systemAlertHandling` のガードが設定されている（`_LoopConfig.alert_guard` がある）ことで、本体のどの実行にも当てはまります。TipKit のリトライとアラートによるリトライは、今は待機中のゲートなしでステップの本体をやり直しますが、capability のもとではこのやり直しも片付ける読み取りを送ります。片付ける読み取りは、やり直しで再び有効にする状態を持たないからです。これは `screenChanged` を含むガード付きのすべての待機に当てはまるので、画面が固まったときの早めの打ち切りも働き続けます。[証跡](../../docs/ja/glossary.md#証跡-capturepolicy-trace-triage)の
 スクリーンショットとツリーのダンプはフラグを立てないので、証跡には実際の画面が残ります。ガードを切ったシナリオは引き続き `Driver.query` を使うので、片付ける読み取りは送りません。
 
-ゲートは、数十行と、残す折りたたみツリーの代理指標に縮みます。代理指標のほかに、ゲートの仕事は 2 つです。1 つは、`query_resolving` が返す記録を読み、ステップの状態に取り込むことです。もう 1 つは、画面が塞がれていることを伝える注記を組み立てることです。*unidentified* の記録からは、どのルールも識別しなかったボタンを挙げる `alert_block_note` で組み立てます。*gave up* の記録からは、ルールが選んだのに片付けられなかったボタンを挙げる `uncleared_prompt_note` で組み立てます。どちらの記録から組み立てた注記も、折りたたみツリーの代理指標が付けるラベルのない注記より優先し、代理指標がそれを消すことはありません。今の `_native_unhandled` と `_tree_gave_up` のラッチと同じ扱いです（BE-0402）。*unidentified* の注記は、`springboardChecked` が `true` の応答が来るまで、または `handleSystemAlert` の待機中であれば、ステップ自身の `/systemAlert/query` が注記の挙げるボタンを読まなくなるまで保ちます。*gave up* の注記は、その待機が終わるまで保ちます。
+ゲートは、数十行と、残す折りたたみツリーの代理指標に縮みます。代理指標のほかに、ゲートの仕事は 2 つです。1 つは、`query_resolving` が返す記録を読み、ステップの状態に取り込むことです。もう 1 つは、画面が塞がれていることを伝える注記を組み立てることです。*unidentified* の記録からは、どのルールも識別しなかったボタンを挙げる `alert_block_note` で組み立てます。*gave up* の記録からは、ルールが選んだのに片付けられなかったボタンを挙げる `uncleared_prompt_note` で組み立てます。どちらの記録から組み立てた注記も、折りたたみツリーの代理指標が付けるラベルのない注記より優先し、代理指標がそれを消すことはありません。今の `_native_unhandled` と `_tree_gave_up` のラッチと同じ扱いです（BE-0402）。*unidentified* の注記は、`springboardChecked` が `true` の応答が来るまで、または `handleSystemAlert` の待機中であれば、ステップ自身の `/systemAlert/query` が注記の挙げるボタンを読まなくなるまで保ちます。*gave up* の注記は、今の `_tree_gave_up` のラッチが外れるのと同じく、注記の挙げるアラートが消えたとわかるまで保ちます。ツリー内の記録であれば、応答のツリーがアプリを示し、識別ラベルがすべて `tree_buttons` にそろう宣言済みのツリー内の形のうち、記録の識別ラベルと入れ子になる（それを含む、またはそれに含まれる）ものが 1 つもなくなるまでです。今の `_tree_gave_up_shape_matches` と同じ判定なので、狭いほうの兄弟の形だけで出し直されたシートでも注記は残ります。ネイティブの記録であれば、*unidentified* の注記を消すのと同じ条件がそろうまでです。
 
-ゲートは、今の折りたたみツリーの代理指標も `springboardChecked` の上に残します。このフラグは、同じリクエストの中で確かめた事実であり、使い回す許可ではありません。ツリー内のルールを宣言したシナリオでツリーが `frozenScreenTimeout` のあいだ折りたたまれたままのとき、`springboardChecked` が `true` の応答が来た時点で、`collapsed_tree_note` で行き詰まりの注記を付け、待機を早めに打ち切ります。フラグが `false` の応答では、この注記を付けません。今のネイティブ確認の「不在」も、同じ扱いです。iOS 26.5 で「パスワードを保存」シートが表示の途中で残る場合が、その例です。
+ゲートは、今の折りたたみツリーの代理指標も `springboardChecked` の上に残します。このフラグは、同じリクエストの中で確かめた事実であり、使い回す許可ではありません。ツリー内のルールを宣言したシナリオでツリーが `frozenScreenTimeout` のあいだ折りたたまれたままのとき、`springboardChecked` が `true` の応答が来た時点で、`collapsed_tree_note` で行き詰まりの注記を付け、待機を早めに打ち切ります。フラグが `false` の応答では、この注記を付けません。今のネイティブ確認の「不在」も、同じ扱いです。iOS 26.5 で「パスワードを保存」シートが表示の途中で残る場合が、その例です。また `handleSystemAlert` の待機中は、ステップ自身の `/systemAlert/query` がセレクタの名指すボタンを持つアラートを読んでいるあいだ、代理指標を動かしません。今の `probe_native` の `"reserved"` が代理指標を止めているのと同じ扱いです。そのため、自分のアラートが出たまま時間切れになったステップに、ラベルのない注記が付くことはありません。
 
 各記録は、それを消費した drain が 1 回だけ報告します。今の役割を保つ 4 つの drain を除けば、ステップ終了時の drain（`loop/_step_runner.py` の `_drain_step_interruptions`）が唯一の報告元です。4 つとは、`handleSystemAlert` の待機の中の `_policy_answered_alert`（`waits/_functions.py`）、`expect` の段階の drain（`loop/_functions.py`）、`_reserve_declared_alert` が push の前に行う drain、同じステップの `finally` で復元の push の前に行う drain（どちらも `loop/_step_runner.py`）です。ステップ終了時の drain がステップを名指しで失敗させるのは、辞退の記録があるときです。今の扱い
 （BE-0406）のままです。*unidentified* の記録は、画面が塞がれていることを伝える注記に使うだけで、ステ
