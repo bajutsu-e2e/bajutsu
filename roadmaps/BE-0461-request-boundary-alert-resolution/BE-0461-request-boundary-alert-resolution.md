@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0461](BE-0461-request-boundary-alert-resolution.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0461") |
+| Implementing PR | [#2152](https://github.com/bajutsu-e2e/bajutsu/pull/2152) (unit 1) |
 | Topic | Platform support |
 <!-- /BE-METADATA -->
 
@@ -98,6 +99,98 @@ and 26.5:
 
 The thresholds in the fourth item are starting values for review. The spike records them with
 the measured numbers in this item.
+
+#### Unit 1 results
+
+We measured the four facts on 2026-10-11 and 2026-10-12, on one Apple silicon machine. The runner
+build was throwaway and stays out of the repository. Each iOS version ran on its own new Simulator.
+Versions 26.3, 26.4, and 26.5 ran on an iPhone 17 Pro. Version 18.6 ran on an iPhone 16 Pro,
+because the iPhone 17 Pro does not support it. The build gave `GET /elements` two modes:
+
+- **Probe mode** checks SpringBoard before and after the snapshot and presses nothing. It counts
+  the interruption handler's calls in each part of the request. While an alert
+  shows, it takes ten more snapshots and twenty timed SpringBoard checks.
+- **Candidate mode** runs Unit 2's step 1 before the snapshot. That step checks SpringBoard at most
+  once per second. It presses the button that the pushed native policy picks. Candidate mode resolves on
+  every `/elements`, evidence reads included. The Python gate also keeps its own probe. The cost
+  below is thus an upper bound on what Unit 2 adds.
+
+Both modes ran three scenarios on all four versions:
+
+- `permission.yaml`
+- `save_password_browser.yaml`
+- `save_password_interrupts_step.yaml`
+
+1. **`app.snapshot()` never reaches the interruption handler, on any of the four versions**. We
+   took 11 single reads and 110 repeated snapshots while a SpringBoard alert showed. The handler
+   ran zero times, and the alert stayed up after every snapshot. Every version had at least two such reads. The SpringBoard check never
+   reached it either, in 341 checks made while an alert showed. For the notification request these scenarios raise, a plain `/elements` stays a pure
+   read. Unit 2's step 1 stays necessary. The three parts of the design that hinge on this fact need no revision.
+   They are Unit 4's evidence tree dumps, Unit 3's `resolveAlerts=inTree`, and step 1's outputs.
+2. **A SpringBoard check costs more when no alert shows**. To answer "absent",
+   `springboard.alerts.firstMatch.exists` searches the whole SpringBoard tree. A showing alert ends
+   the search at the first match. The absent figures pool two sources: the probe runs and every
+   rate-limited check of the fourth fact's candidate runs. That makes about 3,500 checks per
+   version.
+
+   | iOS | Absent p50 | Absent p95 | Showing p50 | Showing p95 |
+   |---|---|---|---|---|
+   | 18.6 | 68 ms | 156 ms | 40 ms | 68 ms |
+   | 26.3 | 41 ms | 120 ms | 30 ms | 48 ms |
+   | 26.4 | 40 ms | 109 ms | 31 ms | 57 ms |
+   | 26.5 | 36 ms | 95 ms | 38 ms | 66 ms |
+
+   At one check per second, an absent check holds the main thread 4–7 percent of the time at
+   p50. In the fourth fact, this share adds little to a typical step. It costs 0–3 ms at the
+   matched-step median and 28–40 ms on `scroll`. Unit 2 keeps the one-second
+   `pollIntervalSeconds` default.
+3. **A resolving `/elements` that presses a button stays well inside the 30-second window**. The
+   presses took 0.7–2.1 seconds. The longest pressing `/elements` took 3.1 seconds, on iOS 26.5
+   ("Don’t Allow"). One read that pressed nothing took 24.7 seconds. It ran during
+   `save_password_browser.yaml` on iOS 26.5. The SpringBoard check took 154 ms of it. The snapshot
+   took the other 24.6 seconds, SafariViewService read included. The time went into the snapshot itself, which a plain
+   `/elements` takes too. The stall still shows a thinner margin in the
+   30-second actuation window than the press latency suggests. A resolving read gets that
+   window in place of BE-0207's retry.
+4. **Matched-step cost stays near 1 percent, and one candidate run lost its runner**. Each
+   version ran the showcase suite ten times per runner, alternating baseline and candidate.
+   The suite used the tag selection of `make run-swiftui`, minus `select_photos.yaml`. On iOS 18.6,
+   that file's photo seeding (`simctl addmedia`) timed out here and ended the whole run.
+   Scenarios that broke on every baseline run broke the same way on the candidate. One more
+   scenario broke more often on the candidate; the paragraphs after the table cover it.
+
+   | iOS | Median, baseline → candidate | p95, baseline → candidate | Matched-step median difference | Runner lost |
+   |---|---|---|---|---|
+   | 18.6 | 0.346 s → 0.327 s (−5.6 percent) | 2.937 s → 2.894 s (−1.5 percent) | −0.4 ms | 0 / 0 |
+   | 26.3 | 0.351 s → 0.352 s (+0.4 percent) | 3.337 s → 3.373 s (+1.1 percent) | +0.9 ms | 0 / 0 |
+   | 26.4 | 0.333 s → 0.305 s (−8.4 percent) | 3.220 s → 3.204 s (−0.5 percent) | +1.8 ms | 0 / 0 |
+   | 26.5 | 0.243 s → 0.234 s (−3.5 percent) | 3.009 s → 2.966 s (−1.4 percent) | +3.3 ms | 0 / 1 |
+
+   The pooled medians moved by up to 8 percent in the candidate's favor. An added check cannot make
+   a step faster. Those swings reflect which steps each run completed, not the candidate's cost.
+   At this noise level, the 5 percent pooled-median criterion cannot resolve a real change. The
+   verdict rests on the matched-step column instead, and on p95, which stays within 2 percent. The
+   matched-step column pairs the same step of the same scenario in the same iteration. By that
+   measure, the candidate adds 0–3 ms per step, about 1 percent of the median. `scroll` alone
+   shows a steady cost, of 28–40 ms per step. A scroll reads `/elements` more than once.
+
+   The lost runner breaks the criterion that no run may take the runner down. On iOS 26.5, a
+   notification banner interrupted a `swipe`. XCUITest's interruption handling then could not
+   snapshot the banner ("Automation type mismatch"). The test case ended. That path is BE-0416's
+   banner handling, which the baseline runner shares. The candidate's last `/elements` before the
+   loss returned as usual. In 40 runs each, the baseline lost none and the candidate lost
+   one. Review decides whether that single loss holds Unit 2 back. We read it as an existing banner
+   defect the measurement surfaced, not a cost of resolving.
+
+   One scenario broke more often on the candidate on iOS 26: the first scenario of
+   `codegen_android.yaml`. Its first step taps `{ id: search }` without a wait. It broke on 1–2 of
+   10 baseline runs per version and on 3–7 of 10 candidate runs. On iOS 26, the Search tab
+   carries the identifier `Search` in some trees and none in others. The tap passes when its one
+   read lands on a tree that still carries it. On iOS 26 the candidate's SpringBoard check delays
+   the snapshot by about 40 ms at p50, and the tap then tends to lose that race. The scenario is the UI Automator
+   codegen fixture, and its iOS run depends on that race with or without resolving. Unit 2 still
+   moves snapshot timing by the cost of a SpringBoard check. A scenario that races the first
+   rendered tree will feel that shift.
 
 ### Unit 2 — An alert-aware `/elements`
 
@@ -356,7 +449,7 @@ detector. The change that deletes the detector updates them as well (BE-0113).
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — measure snapshot behavior, SpringBoard cost, press latency, and step cost (gate)
+- [x] Unit 1 — measure snapshot behavior, SpringBoard cost, press latency, and step cost (gate)
 - [ ] Unit 2 — alert-aware `/elements` behind `resolveAlerts`
 - [ ] Unit 3 — `POST /systemAlert/resolve` for the `handleSystemAlert` step
 - [ ] Unit 4 — thin Python path behind the `RESOLVE_ALERTS` capability
@@ -365,6 +458,16 @@ detector. The change that deletes the detector updates them as well (BE-0113).
 - [ ] Unit 7 — delete the old Python detection path
 - [ ] Unit 8 — Swift, Python, and on-device verification
 - [ ] Unit 9 — documentation in both languages
+
+Log:
+
+- [#2152](https://github.com/bajutsu-e2e/bajutsu/pull/2152) — the Unit 1 measurement. A throwaway runner
+  build measured the four facts on iOS 18.6, 26.3, 26.4, and 26.5. *Unit 1 results* holds the numbers.
+  `app.snapshot()` never reaches the interruption handler, so Unit 2 keeps its SpringBoard check. The
+  one-second rate limit stays too. One candidate run lost its runner to the BE-0416 banner path.
+  Review weighs that loss before Unit 2 starts. The PR also fixes a BE-0428 regression. `bajutsu
+  run` refused a whole scenarios dir even after `--exclude` had removed its self-declaring files.
+  That refusal kept `make run-swiftui` from running as is during the measurement.
 
 ## References
 
