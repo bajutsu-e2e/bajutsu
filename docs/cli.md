@@ -43,7 +43,7 @@ needs from the config. `--target` then has nothing left to decide. Four rules fo
 |---|---|
 | `--scenario` becomes required in its place | The whole-suite shorthand globs one target's configured scenarios dir. A scenario naming two or more targets belongs to no one such dir, so it names its files explicitly |
 | An explicit `--target` is checked, never ignored | Passed beside a self-declaring scenario, it must name one of that scenario's own declared targets. A stale flag left over from editing the file exits 2, instead of picking a target the file dropped |
-| The scenarios dir refuses a self-declaring file | A file carrying its own `targets` inside a target's configured dir fails at discovery. The error names the file and points at `--scenario` |
+| The scenarios dir refuses a self-declaring file | A file carrying its own `targets` inside a target's configured dir fails before the run starts. The error names the file and points at `--scenario`. The check applies after `--tag` / `--exclude`, so a suite that selects the file away runs the rest |
 | A batch mixing both shapes still needs `--target` | A file declaring no `targets` has nothing but the invocation's `--target` to resolve one from. Omitting the flag with even one such file in the batch fails, naming that file |
 
 Passing `--target` alongside a mix of both shapes keeps working. Each file declaring no targets

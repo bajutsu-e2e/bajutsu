@@ -1096,6 +1096,78 @@ def test_run_tag_filtering_away_a_multi_target_scenario_lets_the_rest_run(
     assert "not yet implemented" not in r.output
 
 
+def _suite_dir_with_a_cross_target_file(tmp_path: Path) -> Path:
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "defaults: { backend: [fake] }\n"
+        "targets:\n"
+        "  demo: { bundleId: com.example.demo, idNamespaces: [home], scenarios: scenarios }\n",
+        encoding="utf-8",
+    )
+    suite = tmp_path / "scenarios"
+    suite.mkdir()
+    (suite / "a.yaml").write_text(
+        "- name: demo\n  steps:\n    - tap: { id: home.title }\n", encoding="utf-8"
+    )
+    (suite / "b_cross.yaml").write_text(
+        "- name: cross-target\n"
+        "  tags: [multi-target]\n"
+        "  targets: [demo, other]\n"
+        "  steps:\n"
+        "    - target: demo\n"
+        "      tap: { id: home.title }\n",
+        encoding="utf-8",
+    )
+    return cfg
+
+
+def test_run_scenarios_dir_excluding_a_cross_target_file_runs_the_rest(tmp_path: Path) -> None:
+    # The showcase lanes run the whole scenarios dir with `--exclude multi-target`; the
+    # self-declaring check runs after that selection, so the excluded file no longer turns the
+    # whole suite away with exit 2.
+    cfg = _suite_dir_with_a_cross_target_file(tmp_path)
+    r = runner.invoke(
+        app,
+        [
+            "run",
+            "--target",
+            "demo",
+            "--backend",
+            "fake",
+            "--exclude",
+            "multi-target",
+            "--config",
+            str(cfg),
+            "--runs-dir",
+            str(tmp_path / "runs"),
+        ],
+    )
+    # The fake driver's deterministic FAIL (`home.title` is absent from its empty screen), not the
+    # scenarios-dir rejection's exit 2.
+    assert r.exit_code == 1
+    assert "declares its own targets" not in r.output
+
+
+def test_run_scenarios_dir_still_refuses_a_selected_cross_target_file(tmp_path: Path) -> None:
+    cfg = _suite_dir_with_a_cross_target_file(tmp_path)
+    r = runner.invoke(
+        app,
+        [
+            "run",
+            "--target",
+            "demo",
+            "--backend",
+            "fake",
+            "--config",
+            str(cfg),
+            "--runs-dir",
+            str(tmp_path / "runs"),
+        ],
+    )
+    assert r.exit_code == 2
+    assert "b_cross.yaml declares its own targets" in r.output
+
+
 def test_codegen_rejects_a_multi_target_scenario(tmp_path: Path) -> None:
     # BE-0428: every generator emits against this run's single --target, so a multi-target
     # scenario's step would silently lose which target it names — refused instead of emitting a

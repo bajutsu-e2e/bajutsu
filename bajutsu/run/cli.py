@@ -195,19 +195,25 @@ def _resolve_primary_target(target_name: str, scenario: list[str]) -> str:
     return primary
 
 
-def _reject_self_declaring_in_dir(files: list[Path], target_name: str) -> None:
+def _reject_self_declaring_in_dir(
+    scenarios: list[Scenario], plan_sources: Mapping[str, ScenarioPlanSource], target_name: str
+) -> None:
     """Refuse a self-declaring scenario reached through the target's scenarios dir (BE-0428).
 
     The directory glob is `run`'s only whole-suite shorthand and it belongs to one target, so a
     file declaring its own `targets` can only ever run through an explicit `--scenario`. Rejecting
-    at discovery keeps the two bad outcomes off the table regardless of where the file sits: a
-    mismatching name would fail every other scenario in the batch alongside it, and a matching one
-    would silently launch every other target that file declares.
+    it keeps the two bad outcomes off the table regardless of where the file sits: a mismatching
+    name would fail every other scenario in the batch alongside it, and a matching one would
+    silently launch every other target that file declares. It runs over the scenarios left after
+    `--tag`/`--exclude`, so a suite that selects such a file away runs the rest unchanged — the
+    showcase's own `--exclude multi-target` lanes depend on that.
     """
-    for path in files:
-        if _declared_targets_in(path):
+    for s in scenarios:
+        if s.target_names:
+            source = plan_sources.get(s.name)
+            where = source.file_name if source is not None else s.name
             typer.echo(
-                f"{path} declares its own targets, so it cannot run through target "
+                f"{where} declares its own targets, so it cannot run through target "
                 f"'{target_name}'s scenarios dir — name it with --scenario instead"
             )
             raise typer.Exit(2)
@@ -244,7 +250,6 @@ def _scenario_files(
     if not files:
         typer.echo(f"no scenarios found in {eff.evidence_dirs.scenarios}")
         raise typer.Exit(2)
-    _reject_self_declaring_in_dir(files, target_name)
     return files, False
 
 
@@ -2487,6 +2492,8 @@ def run(
     # After filtering, so `--tag`/`--exclude` selecting away a self-declaring scenario in a suite
     # leaves the rest of the suite resolving exactly as it did before that file was added (BE-0428)
     # — these checks speak about the scenarios this run will actually attempt.
+    if not scenario:
+        _reject_self_declaring_in_dir(scenarios, plan_sources, target_name)
     _check_target_membership(scenarios, target_name, explicit=explicit_target)
     _reject_legacy_without_target(scenarios, target_name, explicit=explicit_target)
     target_effs = _resolve_target_effs(
