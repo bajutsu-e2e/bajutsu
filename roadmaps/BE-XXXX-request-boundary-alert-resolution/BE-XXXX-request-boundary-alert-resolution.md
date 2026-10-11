@@ -107,7 +107,7 @@ or `inTree`. A plain read stays a pure read. With `true`, the handler runs four 
 
 1. **Check SpringBoard.** The handler checks `springboard.alerts` at most once per
    `pollIntervalSeconds`. The orchestrator pushes that interval from
-   `systemAlertHandling.pollInterval` (one second by default). A recovery read after a refused actuation or a failed check (Unit 5) skips this limit. `resolveAlerts=true` accepts a companion flag, `forceCheck`, that both recovery reads set. When an alert is up and
+   `systemAlertHandling.pollInterval` (one second by default). A recovery read after a refused actuation or a failed check (Unit 5) skips this limit. `resolveAlerts=true` accepts a companion flag, `forceCheck`, that every recovery read in Unit 5 sets. When an alert is up and
    `InterruptionPolicy.label(for:)` picks a button, the handler taps it and records *answered*. When
    no rule picks one, the handler taps nothing and records *unidentified* on every check. A native
    rule's showing is keyed on the matched rule's identifying labels, so one showing is recorded *answered* once.
