@@ -1168,6 +1168,39 @@ def test_run_scenarios_dir_still_refuses_a_selected_cross_target_file(tmp_path: 
     assert "b_cross.yaml declares its own targets" in r.output
 
 
+def test_run_scenarios_dir_names_the_file_of_a_data_driven_cross_target_scenario(
+    tmp_path: Path,
+) -> None:
+    # A data row renames the scenario (`cross-target [row 1: k=a]`), so the refusal names the file
+    # from its source stem rather than from the scenario's name.
+    cfg = _suite_dir_with_a_cross_target_file(tmp_path)
+    (tmp_path / "scenarios" / "b_cross.yaml").write_text(
+        "- name: cross-target\n"
+        "  targets: [demo, other]\n"
+        "  data: [{ k: a }]\n"
+        "  steps:\n"
+        "    - target: demo\n"
+        "      tap: { id: home.title }\n",
+        encoding="utf-8",
+    )
+    r = runner.invoke(
+        app,
+        [
+            "run",
+            "--target",
+            "demo",
+            "--backend",
+            "fake",
+            "--config",
+            str(cfg),
+            "--runs-dir",
+            str(tmp_path / "runs"),
+        ],
+    )
+    assert r.exit_code == 2
+    assert "b_cross.yaml declares its own targets" in r.output
+
+
 def test_codegen_rejects_a_multi_target_scenario(tmp_path: Path) -> None:
     # BE-0428: every generator emits against this run's single --target, so a multi-target
     # scenario's step would silently lose which target it names — refused instead of emitting a

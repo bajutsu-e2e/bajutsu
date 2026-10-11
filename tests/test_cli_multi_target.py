@@ -18,7 +18,6 @@ import typer
 from bajutsu.cli._shared import LoadedConfig
 from bajutsu.common.config import Effective, load_config, resolve
 from bajutsu.common.platform_lifecycle import ProvisionProfile
-from bajutsu.common.report import ScenarioPlanSource
 from bajutsu.common.runner.device_provider import DeviceLease
 from bajutsu.common.runner.types import Lease, LeaseFn
 from bajutsu.common.scenario import Scenario
@@ -146,9 +145,9 @@ def test_the_scenarios_dir_refuses_a_self_declaring_scenario(
             "steps": [{"target": "app", "tap": {"id": "a"}}],
         }
     )
-    sources = {"cross": ScenarioPlanSource(file_name="cross.yaml", text=None, step_lines=[])}
+    cross.set_source_stem("cross")
     with pytest.raises(typer.Exit) as exc:
-        _reject_self_declaring_in_dir([legacy, cross], sources, "app")
+        _reject_self_declaring_in_dir([legacy, cross], "app")
     assert exc.value.exit_code == 2
     out = capsys.readouterr().out
     assert "cross.yaml" in out
@@ -157,7 +156,7 @@ def test_the_scenarios_dir_refuses_a_self_declaring_scenario(
 
 def test_the_scenarios_dir_passes_a_suite_of_legacy_scenarios() -> None:
     scn = Scenario.model_validate({"name": "ok", "steps": [{"tap": {"id": "a"}}]})
-    _reject_self_declaring_in_dir([scn], {}, "app")  # no exception
+    _reject_self_declaring_in_dir([scn], "app")  # no exception
 
 
 # --- resolving every declared name against the config ------------------------------------------
