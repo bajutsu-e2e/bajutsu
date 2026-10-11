@@ -1,14 +1,14 @@
-[English](BE-XXXX-request-boundary-alert-resolution.md) · **日本語**
+[English](BE-0461-request-boundary-alert-resolution.md) · **日本語**
 
-# BE-XXXX — システムアラートを Python から見張らず、runner のリクエストの境目で片付ける
+# BE-0461 — システムアラートを Python から見張らず、runner のリクエストの境目で片付ける
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-request-boundary-alert-resolution-ja.md) |
+| 提案 | [BE-0461](BE-0461-request-boundary-alert-resolution-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **承認済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0461") |
 | トピック | Platform support |
 <!-- /BE-METADATA -->
 
