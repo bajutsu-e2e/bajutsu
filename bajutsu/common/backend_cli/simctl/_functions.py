@@ -464,7 +464,7 @@ def resolve_udid(udid: str, run: RunFn = real_run) -> str:
     except DeviceTimeout as exc:
         _probe_timed_out(exc, "the unresolved handle")
         return udid
-    except (subprocess.CalledProcessError, json.JSONDecodeError):
+    except (subprocess.CalledProcessError, json.JSONDecodeError, OSError):
         return udid
     for devices in (data.get("devices") or {}).values():
         for dev in devices:

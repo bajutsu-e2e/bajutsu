@@ -193,6 +193,12 @@ def test_resolve_udid_walks_a_stubbed_device_list() -> None:
     assert simctl.resolve_udid("booted", run=returning("not json")) == "booted"
     assert simctl.resolve_udid("booted", run=failing) == "booted"
 
+    def missing_xcrun(args: list[str], e: Mapping[str, str] | None = None) -> str:
+        raise FileNotFoundError(2, "No such file or directory", "xcrun")
+
+    # A host without `xcrun` (the Linux gate) folds into the fallback, as every sibling probe does.
+    assert simctl.resolve_udid("booted", run=missing_xcrun) == "booted"
+
 
 def test_device_booted_is_three_valued() -> None:
     import json

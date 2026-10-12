@@ -15,6 +15,11 @@ from bajutsu.common.scenario import Preconditions
 class FakeEnvironment(_DeviceEnvironment):
     """The test/headless backend: no device lifecycle, just the fake driver; otherwise device-style."""
 
+    def resolve_device(self, udid: str) -> str:
+        # The fake driver ignores the udid, so probing `simctl` for a booted device here would only
+        # tie a device-free run to the host's Simulator state (issue #2158).
+        return udid
+
     def captures_video(self) -> bool:
         return False  # no device to record: the fake backend has nothing to capture
 

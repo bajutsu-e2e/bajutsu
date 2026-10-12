@@ -94,8 +94,8 @@ def test_resolve_device_routes_through_the_platform_resolver(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Each platform resolves a device handle its own way behind the seam (BE-0256): the iOS family
-    # via simctl, Android via adb, web (no device) as a passthrough — no actuator string at the call
-    # site.
+    # via simctl, Android via adb, web and fake (no device) as a passthrough — no actuator string at
+    # the call site.
     monkeypatch.setattr(simctl, "resolve_udid", lambda udid, run=None: f"simctl:{udid}")
     from bajutsu.common.backend_cli import adb
 
@@ -105,6 +105,9 @@ def test_resolve_device_routes_through_the_platform_resolver(
     assert environment_for("xcuitest", "UDID").resolve_device("booted") == "simctl:booted"
     assert environment_for("adb", "UDID").resolve_device("emulator-5554") == "adb:emulator-5554"
     assert environment_for("playwright", "UDID").resolve_device("anything") == "anything"
+    # The fake backend never probes simctl, so a fake run is independent of the host's Simulators
+    # (issue #2158).
+    assert environment_for("fake", "UDID").resolve_device("booted") == "booted"
 
 
 def test_web_environment_requires_base_url() -> None:
