@@ -1,14 +1,14 @@
-[English](BE-XXXX-ios-dropped-touch-retry.md) · **日本語**
+[English](BE-0462-ios-dropped-touch-retry.md) · **日本語**
 
-# BE-XXXX — iOS Simulator が取りこぼした合成タッチを検出して打ち直す
+# BE-0462 — iOS Simulator が取りこぼした合成タッチを検出して打ち直す
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-ios-dropped-touch-retry-ja.md) |
+| 提案 | [BE-0462](BE-0462-ios-dropped-touch-retry-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **承認済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0462") |
 | トピック | Platform support |
 <!-- /BE-METADATA -->
 

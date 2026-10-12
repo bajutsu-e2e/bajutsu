@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-ios-dropped-touch-retry-ja.md)
+**English** · [日本語](BE-0462-ios-dropped-touch-retry-ja.md)
 
-# BE-XXXX — Detect and re-issue a synthesized touch the iOS Simulator drops
+# BE-0462 — Detect and re-issue a synthesized touch the iOS Simulator drops
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-ios-dropped-touch-retry.md) |
+| Proposal | [BE-0462](BE-0462-ios-dropped-touch-retry.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0462") |
 | Topic | Platform support |
 <!-- /BE-METADATA -->
 
