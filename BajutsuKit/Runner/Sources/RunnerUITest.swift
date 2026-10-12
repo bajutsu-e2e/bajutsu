@@ -21,7 +21,8 @@ final class RunnerUITest: XCTestCase {
         // would abort the runner regardless. `APIHandler` catches that at every handler boundary
         // (`caught`: actuation → stale, query → empty screen, screenshot → 500), so the two
         // together keep the runner serving; a genuinely failed operation still surfaces to the Python
-        // side through its response status.
+        // side through its response status. XCUIAutomation's own failures interrupt the test
+        // regardless of this flag; `serve` contains that interruption (`ResidentLoop`).
         continueAfterFailure = true
 
         // Take the answer to an out-of-process system prompt away from XCUITest. Before it
@@ -245,9 +246,13 @@ final class RunnerUITest: XCTestCase {
         defer { server.stop() }
 
         // Stay resident: pump the main run loop (servicing the server thread's
-        // DispatchQueue.main work) until Python terminates the process at teardown.
+        // DispatchQueue.main work) until Python terminates the process at teardown. Each turn is
+        // contained, because XCTest raises a deferred test interruption as the turn returns —
+        // outside every handler boundary (`ResidentLoop`).
         while true {
-            RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 1))
+            ResidentLoop.runTurn {
+                RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 1))
+            }
         }
     }
 }
