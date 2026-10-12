@@ -70,6 +70,47 @@ struct AlertResolver {
             return false
         }
         store.rearmNative(keeping: rule)
+        if press(rule, on: alert, labels: labels, matched: matched) == .withheld {
+            outcome.withheld = true
+        }
+        return false
+    }
+
+    /// `POST /systemAlert/resolve` (BE-0461 Unit 3): apply the policy to the SpringBoard alert a
+    /// `handleSystemAlert` step judged not to be its own, but only while that alert still offers
+    /// exactly the buttons the step read (*expected*). The step's own alert, arriving in place of the
+    /// one it judged, is then never answered by policy.
+    ///
+    /// Shares step 1's per-showing key and pacing memo, so a showing step 1 or the monitor already
+    /// answered is re-pressed only after the re-tap delay and up to the ceiling.
+    func resolveSystemAlert(expecting expected: [String]) -> SystemAlertResolution {
+        let policy = store.policy
+        let alert = SpringboardAlert(provider.querySystemAlertButtons())
+        if alert.buttons.isEmpty {
+            store.rearmNative()
+            return .absent
+        }
+        let labels = alert.buttons.map { $0.label ?? "" }
+        // A multiset comparison: a label offered twice is a different alert from one offering it
+        // once. An all-empty read (the alert racing its own dismissal) never equals what the step saw.
+        guard labels.sorted() == expected.sorted() else { return .changed }
+        let matched = labels + alert.titles.map(alertTitleMarker)
+        guard let rule = policy.rule(for: matched, surface: .native) else {
+            store.rearmNative()
+            if policy.governs { store.recordUnidentified(labels) }
+            return .unidentified
+        }
+        store.rearmNative(keeping: rule)
+        // Anything but a landed press reads as `pending`, so the step never mistakes a withheld,
+        // given-up, or refused call for an answer.
+        return press(rule, on: alert, labels: labels, matched: matched) == .pressed
+            ? .answered : .pending
+    }
+
+    /// Press *rule*'s button on *alert* if the pacing memo lets it, recording the outcome in the memo.
+    private func press(
+        _ rule: InterruptionRule, on alert: SpringboardAlert, labels: [String], matched: [String]
+    ) -> PressOutcome {
         switch store.decide(rule) {
         case .press:
             // The tap label must be on the alert exactly once, like every identifying label: two
@@ -78,22 +119,22 @@ struct AlertResolver {
                   let ordinal = labels.firstIndex(of: rule.tap)
             else {
                 store.giveUp(rule)
-                break
+                return .notPressed
             }
             let result = provider.tapSystemAlertButton(
                 backingElement: alert.buttons[ordinal].backingElement
             )
             if result == .ok {
                 store.notePress(rule, alert: matched)
-            } else {
-                store.noteFailedPress(rule)
+                return .pressed
             }
+            store.noteFailedPress(rule)
+            return .notPressed
         case .withhold:
-            outcome.withheld = true
+            return .withheld
         case .stop:
-            break
+            return .notPressed
         }
-        return false
     }
 
     /// Step 3: answer the in-tree prompt the first matching `inTree` rule names, then re-read.
@@ -161,6 +202,27 @@ struct AlertResolver {
             return (label, element)
         }
     }
+}
+
+/// What `POST /systemAlert/resolve` did with the alert showing (BE-0461 Unit 3).
+enum SystemAlertResolution: String, Sendable {
+    /// A native rule identified the alert and the runner pressed its button.
+    case answered
+    /// The alert showing no longer offers the label set the step read, so nothing was pressed.
+    case changed
+    /// No SpringBoard alert is showing.
+    case absent
+    /// An alert is showing and no rule identifies it; recorded *unidentified* when the policy governs.
+    case unidentified
+    /// A rule identified the alert but nothing landed: the pacing memo withheld or stopped the
+    /// press, or the press itself was refused.
+    case pending
+}
+
+private enum PressOutcome {
+    case pressed
+    case withheld
+    case notPressed
 }
 
 /// `querySystemAlertButtons`'s reply split into the tappable buttons and the titles of the alerts

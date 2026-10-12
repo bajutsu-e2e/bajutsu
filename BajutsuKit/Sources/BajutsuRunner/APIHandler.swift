@@ -353,6 +353,33 @@ final class APIHandler: APIProtocol {
         })))
     }
 
+    /// Applies the pushed policy to the SpringBoard alert a `handleSystemAlert` step judged not to be
+    /// its own, while it still offers the labels the step read (BE-0461 Unit 3).
+    ///
+    /// A raised handler reports `pending`, never `answered`: the step must not read a failed call as
+    /// a press. The store drains into the reply either way, so whatever the call recorded before it
+    /// raised still reaches the driver.
+    func resolveSystemAlert(
+        _ input: Operations.resolveSystemAlert.Input
+    ) async throws -> Operations.resolveSystemAlert.Output {
+        let request: Components.Schemas.SystemAlertResolveRequest
+        switch input.body { case .json(let body): request = body }
+        let resolver = AlertResolver(provider: provider, store: policyStore)
+        let status = await caught(SystemAlertResolution.pending) {
+            resolver.resolveSystemAlert(expecting: request.labels)
+        }
+        let drained = policyStore.drain()
+        let reply = Components.Schemas.SystemAlertResolveReply(
+            status: resolvePayload(status),
+            labels: drained.tapped, unmatched: drained.declined, banners: drained.banners,
+            tappedAlerts: drained.tappedAlerts,
+            tappedSurfaces: drained.tappedSurfaces.map(surfacePayload),
+            unidentified: drained.unidentified,
+            gaveUp: drained.gaveUp.map(gaveUpPayload)
+        )
+        return .ok(.init(body: .json(reply)))
+    }
+
     // MARK: - Cross-app control
 
     /// Activate a named app and make it the target of every following route until a matching
@@ -581,6 +608,18 @@ final class APIHandler: APIProtocol {
         switch surface {
         case .native: return .native
         case .inTree: return .inTree
+        }
+    }
+
+    private func resolvePayload(
+        _ status: SystemAlertResolution
+    ) -> Components.Schemas.SystemAlertResolveReply.statusPayload {
+        switch status {
+        case .answered: return .answered
+        case .changed: return .changed
+        case .absent: return .absent
+        case .unidentified: return .unidentified
+        case .pending: return .pending
         }
     }
 
