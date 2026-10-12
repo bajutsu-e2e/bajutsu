@@ -21,7 +21,8 @@ final class RunnerUITest: XCTestCase {
         // would abort the runner regardless. `APIHandler` catches that at every handler boundary
         // (`caught`: actuation → stale, query → empty screen, screenshot → 500), so the two
         // together keep the runner serving; a genuinely failed operation still surfaces to the Python
-        // side through its response status.
+        // side through its response status. XCUIAutomation's own failures interrupt the test
+        // regardless of this flag; `serve` contains that interruption (`ResidentLoop`).
         continueAfterFailure = true
 
         // Take the answer to an out-of-process system prompt away from XCUITest. Before it
@@ -61,7 +62,7 @@ final class RunnerUITest: XCTestCase {
             // (Local Network and notifications) is told apart the way the Python guard tells it.
             let title = alert.label
             let matched = title.isEmpty ? labels : labels + [alertTitleMarker(title)]
-            guard let label = policy.label(for: matched) else {
+            guard let rule = policy.rule(for: matched, surface: .native) else {
                 // A `labels` carrying no real button text is the same benign race `button.exists`
                 // guards below: the alert lost the race with its own dismissal between XCUITest
                 // flagging the interruption and this query — `buttons.count` can already reflect
@@ -74,13 +75,16 @@ final class RunnerUITest: XCTestCase {
                 }
                 return false
             }
+            let label = rule.tap
             guard let ordinal = labels.firstIndex(of: label) else { return false }
             let button = buttons.element(boundBy: ordinal)
             guard button.exists else { return false }
             button.tap()
             // Recorded so the driver can report this as an `AlertEvent`: a prompt answered here
-            // being missing from the report is the failure this mechanism exists to end.
-            InterruptionPolicyStore.shared.record(label, alert: matched)
+            // being missing from the report is the failure this mechanism exists to end. The store
+            // records only a showing's first press, so a showing a resolving read already answered
+            // is not reported twice (BE-0461 Unit 2) — the press itself always happens.
+            InterruptionPolicyStore.shared.recordMonitorPress(rule, alert: matched)
             return true
         }
     }
@@ -320,9 +324,13 @@ final class RunnerUITest: XCTestCase {
         defer { server.stop() }
 
         // Stay resident: pump the main run loop (servicing the server thread's
-        // DispatchQueue.main work) until Python terminates the process at teardown.
+        // DispatchQueue.main work) until Python terminates the process at teardown. Each turn is
+        // contained, because XCTest raises a deferred test interruption as the turn returns —
+        // outside every handler boundary (`ResidentLoop`).
         while true {
-            RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 1))
+            ResidentLoop.runTurn {
+                RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 1))
+            }
         }
     }
 }

@@ -18,6 +18,15 @@ from bajutsu.common.orchestrator.types import (
     subtract_labels,
     uncleared_prompt_note,
 )
+from bajutsu.common.orchestrator.types.alert_guard_config import (
+    _TREE_DISMISS_MAX_TAPS as _TREE_DISMISS_MAX_TAPS,
+)
+from bajutsu.common.orchestrator.types.alert_guard_config import (
+    _TREE_RETAP_DELAY as _TREE_RETAP_DELAY,
+)
+from bajutsu.common.orchestrator.types.alert_guard_config import (
+    _decline_giveup,
+)
 
 from ._shared import _logger
 
@@ -28,22 +37,6 @@ from ._shared import _logger
 # BE-0402 a trip costs no model call, only the note a timeout would then carry, and a note naming a
 # block that was never there is the one wrong answer this path can still give.
 _GUARD_DEBOUNCE_POLLS = 3  # consecutive collapsed polls before recording the note
-
-
-# Min seconds before `_dismiss_from_tree` re-taps a label its own tap left still showing. A tap the
-# runner accepts does not always land — measured on iOS, testmanagerd confirmed `touch down`/`touch
-# up` at the target's centre with `TouchEventsCompleted` while the app never acted on it — and a
-# prompt that stays up is indistinguishable, at the poll that follows, from one merely fading out.
-# So wait past any real dismiss animation (the same ~1s horizon as `_GUARD_COOLDOWN`) before
-# concluding the tap did not land: re-tapping inside that window would land on whatever is under a
-# vanishing sheet. Clock-based like `_GUARD_COOLDOWN` and like the decline give-up above, because
-# what is being waited out is an animation measured in seconds — on a backend whose `query()` costs
-# 100-300ms, a poll count would stretch this to several seconds of dead wait.
-_TREE_RETAP_DELAY = 1.0
-# Taps `_dismiss_from_tree` spends on one showing of a label that never clears: a prompt still up
-# after this many is not one more tap will fix, so it degrades to the wait's own timeout rather than
-# actuating the device for the rest of it.
-_TREE_DISMISS_MAX_TAPS = 3
 
 
 @dataclass
@@ -636,10 +629,6 @@ class _AlertGuardGate:
         # and only when `probed_absent` holds), so any gap `_withhold_tree_tap_licence` recorded on
         # an intervening unlicensed poll has just ended (BE-0418 review finding).
         self._restore_tree_tap_licence()
-        # Imported in the method, not at module load: `_functions` builds this gate, and rule 5
-        # breaks the cycle the split creates on this side.
-        from ._functions import _decline_giveup
-
         buttons = tree_buttons(elements)
         # The one shared ordering every in-tree, dedup-aware match reads from (BE-0418 review
         # finding): matching over anything else here would let this gate and `dismiss_from_tree_once`

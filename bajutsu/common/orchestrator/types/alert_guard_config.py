@@ -32,6 +32,53 @@ DEFAULT_ALERT_POLL_INTERVAL = 1.0
 # leave a typical wait's budget unspent.
 DEFAULT_FROZEN_SCREEN_TIMEOUT = 10.0
 
+# The pacing the guard hands the XCUITest runner as well as applying itself (BE-0461 Unit 2): the
+# runner's resolving reads re-press and give up on one showing by these same values, pushed through
+# `AlertGuardConfig.pacing`, so the two paths cannot drift while both exist.
+
+# Min seconds before `_dismiss_from_tree` re-taps a label its own tap left still showing. A tap the
+# runner accepts does not always land — measured on iOS, testmanagerd confirmed `touch down`/`touch
+# up` at the target's centre with `TouchEventsCompleted` while the app never acted on it — and a
+# prompt that stays up is indistinguishable, at the poll that follows, from one merely fading out.
+# So wait past any real dismiss animation (the same ~1s horizon as `_GUARD_COOLDOWN`) before
+# concluding the tap did not land: re-tapping inside that window would land on whatever is under a
+# vanishing sheet. Clock-based like `_GUARD_COOLDOWN` and like the decline give-up below, because
+# what is being waited out is an animation measured in seconds — on a backend whose `query()` costs
+# 100-300ms, a poll count would stretch this to several seconds of dead wait.
+_TREE_RETAP_DELAY = 1.0
+# Taps `_dismiss_from_tree` spends on one showing of a label that never clears: a prompt still up
+# after this many is not one more tap will fix, so it degrades to the wait's own timeout rather than
+# actuating the device for the rest of it.
+_TREE_DISMISS_MAX_TAPS = 3
+
+# Seconds of consecutive `ElementNotTappable` declines `_dismiss_from_tree` tolerates for one
+# showing of a label before it stops attempting the tap: unlike `ElementNotFound` (the button left
+# the tree, so the next poll can't re-match it) and `AmbiguousSelector` (guarded by the uniqueness
+# pre-check above it), a genuinely stuck obstruction — a scrim that never lifts, an `elevation`
+# false positive — has neither property, so without its own bound this decline would re-issue a real
+# actuation attempt for the rest of the wait. Clock-based, for the reason `_TREE_RETAP_DELAY` records
+# for itself: what is being waited out is a presentation animation measured in seconds (a UIKit sheet
+# ~0.35-0.5s, an Android dialog enter ~0.25s+). A poll count cannot express that here anyway, because
+# `_dismiss_from_tree` is paced by `guard.poll_interval` rather than `_POLL` (see `_observe_native`)
+# and that interval is configurable per scenario, target, and flag (BE-0177). Twice the default
+# `poll_interval` rather than the animation's own horizon, because the give-up is checked *before*
+# the tap: at one interval the very first attempt would exhaust the budget, leaving a transient scrim
+# no retry at all. That is also why the horizon is *derived* from the interval rather than fixed. A
+# scenario may tune `pollInterval` upwards (the save-password one sets 5), and a fixed 2s would
+# then put the second pass past the horizon before it ever ran — reinstating the zero-retry case
+# this value exists to avoid. The floor keeps the animation horizon intact at short intervals.
+_TREE_DISMISS_DECLINE_GIVEUP_FLOOR = 2.0
+
+
+def _decline_giveup(poll_interval: float) -> float:
+    """Seconds `_dismiss_from_tree` tolerates `ElementNotTappable` on one showing of a label.
+
+    Twice the cadence the path is paced at, floored at the animation horizon: the bound is
+    checked before the tap, so anything under two intervals spends itself on the first attempt.
+    """
+    return max(_TREE_DISMISS_DECLINE_GIVEUP_FLOOR, 2 * poll_interval)
+
+
 # The timeout the reactive guard passes `handle_system_alert` for its tap (BE-0315): 0 means "query
 # SpringBoard once and tap if the button is present, else fail fast" — the guard has already observed
 # the alert via `system_alert_labels`, so it never waits for one to appear (that is the proactive
@@ -720,6 +767,20 @@ class AlertGuardConfig:
         orderings (BE-0418 review finding).
         """
         return _widest_first(self.tree_rules)
+
+    @property
+    def pacing(self) -> base.AlertPacing:
+        """The pacing a backend that answers alerts inside a request applies (BE-0461 Unit 2).
+
+        The same values the mid-wait gate paces its own in-tree taps by, so a showing is re-pressed
+        and given up on alike whichever side answers it.
+        """
+        return base.AlertPacing(
+            poll_interval=self.poll_interval,
+            retap_delay=_TREE_RETAP_DELAY,
+            max_taps=_TREE_DISMISS_MAX_TAPS,
+            give_up=_decline_giveup(self.poll_interval),
+        )
 
     @property
     def native_rules(self) -> list[ResolvedAlertRule]:

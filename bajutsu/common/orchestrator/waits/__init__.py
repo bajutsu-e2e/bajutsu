@@ -1,6 +1,13 @@
 """Condition waits: poll the screen (or the observed network) until satisfied, never a fixed
 sleep — this is what keeps the run deterministic without `sleep`."""
 
+from bajutsu.common.orchestrator.types.alert_guard_config import (
+    _TREE_DISMISS_DECLINE_GIVEUP_FLOOR as _TREE_DISMISS_DECLINE_GIVEUP_FLOOR,
+)
+from bajutsu.common.orchestrator.types.alert_guard_config import (
+    _decline_giveup as _decline_giveup,
+)
+
 from ._alert_guard_gate import _GUARD_DEBOUNCE_POLLS as _GUARD_DEBOUNCE_POLLS
 from ._alert_guard_gate import _TREE_DISMISS_MAX_TAPS as _TREE_DISMISS_MAX_TAPS
 from ._alert_guard_gate import _TREE_RETAP_DELAY as _TREE_RETAP_DELAY
@@ -12,10 +19,8 @@ from ._functions import _SETTLE_POLLS as _SETTLE_POLLS
 from ._functions import _STEP_TAP_TIMEOUT as _STEP_TAP_TIMEOUT
 from ._functions import _SYSTEM_ALERT_POLL as _SYSTEM_ALERT_POLL
 from ._functions import _TRANSITION_QUIESCENCE as _TRANSITION_QUIESCENCE
-from ._functions import _TREE_DISMISS_DECLINE_GIVEUP_FLOOR as _TREE_DISMISS_DECLINE_GIVEUP_FLOOR
 from ._functions import _adaptive_sleep as _adaptive_sleep
 from ._functions import _alert_timeout_reason as _alert_timeout_reason
-from ._functions import _decline_giveup as _decline_giveup
 from ._functions import _effective_timeout as _effective_timeout
 from ._functions import _exists as _exists
 from ._functions import _timeout_floor as _timeout_floor

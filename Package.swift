@@ -46,6 +46,6 @@ let package = Package(
             plugins: [.plugin(name: "OpenAPIGenerator", package: "swift-openapi-generator")]
         ),
         .testTarget(name: "BajutsuKitTests", dependencies: ["BajutsuKit"], path: "BajutsuKit/Tests/BajutsuKitTests"),
-        .testTarget(name: "BajutsuRunnerTests", dependencies: ["BajutsuRunner"], path: "BajutsuKit/Tests/BajutsuRunnerTests"),
+        .testTarget(name: "BajutsuRunnerTests", dependencies: ["BajutsuRunner", "ObjCExceptionCatcher"], path: "BajutsuKit/Tests/BajutsuRunnerTests"),
     ]
 )

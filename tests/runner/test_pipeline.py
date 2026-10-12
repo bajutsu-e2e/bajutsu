@@ -1827,7 +1827,12 @@ def test_run_all_alert_guard_for_selects_per_scenario() -> None:
 
     def alert_guard_for(s: Scenario) -> AlertGuardConfig | None:
         # `false` is the whole off form since BE-0401; a mapping (or an absent key) means on.
-        return None if s.system_alert_handling is False else AlertGuardConfig(rules=[guard_rule()])
+        # One surface only: the scenario-start push refuses a rule claiming both (BE-0461).
+        return (
+            None
+            if s.system_alert_handling is False
+            else AlertGuardConfig(rules=[guard_rule(in_tree=False)])
+        )
 
     # Answering the prompt reveals the tap's target, so the guarded scenario recovers and passes.
     def lease(eff: Effective, scenario: Scenario) -> Lease:
@@ -1844,6 +1849,35 @@ def test_run_all_alert_guard_for_selects_per_scenario() -> None:
 
     results = run_all(_eff(), scenarios, lease, alert_guard_for=alert_guard_for)
     assert [r.ok for r in results] == [True, False]
+
+
+def test_run_all_marks_the_scenario_start_policy_push() -> None:
+    # The resident runner forgets every showing a previous scenario answered only on the push marked
+    # as the scenario's start (BE-0461), so a relaunched app's prompt is answered afresh; that push
+    # also carries the in-tree rules and the guard's pacing.
+    from bajutsu.common.orchestrator import AlertGuardConfig
+
+    scenario = Scenario.model_validate({"name": "s", "steps": [{"tap": {"id": "go"}}]})
+    in_tree = guard_rule("Not Now", identifying=("Save", "Not Now"), native=False)
+    drivers: list[FakeDriver] = []
+
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
+        driver = FakeDriver([_el("go", "Go", ["button"])])
+        drivers.append(driver)
+        return Lease(
+            driver=driver,
+            sink=NullSink(),
+            relaunch=None,
+            control=None,
+            collector=None,
+            release=lambda: None,
+        )
+
+    run_all(_eff(), [scenario], lease, alert_guard_for=lambda s: AlertGuardConfig(rules=[in_tree]))
+    (driver,) = drivers
+    assert driver.interruption_scenario_start is True
+    assert driver.interruption_in_tree_rules == [({"Save", "Not Now"}, "Not Now", set())]
+    assert driver.interruption_pacing is not None
 
 
 def test_run_all_alert_guard_for_uncovered_locale_fails_the_scenario_not_the_run() -> None:

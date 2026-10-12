@@ -12,11 +12,53 @@ public struct InterruptionRule: Sendable, Equatable {
     /// one real case: `notifications` excludes the Local Network prompt's title marker, since the
     /// two prompts share their buttons.
     public let exclude: [String]
+    /// Where this rule's prompt shows. Only a `native` rule reaches the interruption monitor and the
+    /// SpringBoard check; only an `inTree` one reaches a resolving read's in-tree pass (BE-0461).
+    public let surface: AlertSurface
 
-    public init(identify: [String], tap: String, exclude: [String] = []) {
+    public init(
+        identify: [String], tap: String, exclude: [String] = [], surface: AlertSurface = .native
+    ) {
         self.identify = identify
         self.tap = tap
         self.exclude = exclude
+        self.surface = surface
+    }
+
+    /// Whether every identifying label is among *labels* exactly once and no excluded one is.
+    ///
+    /// "Exactly once", not merely present, so a screen with two identically labelled buttons never
+    /// resolves to whichever matched first (determinism first).
+    func matches(_ labels: [String]) -> Bool {
+        identify.allSatisfy { label in labels.filter { $0 == label }.count == 1 }
+            && !exclude.contains(where: labels.contains)
+    }
+}
+
+/// The two places a declared prompt can show (`ResolvedAlertRule.native` / `.in_tree` on the
+/// Python side).
+public enum AlertSurface: String, Sendable, Equatable {
+    case native
+    case inTree
+}
+
+/// How often a resolving read checks SpringBoard, and how one showing is re-pressed and given up
+/// on. Every value is pushed from the Python side (`AlertGuardConfig`), which owns the policy; these
+/// defaults only cover a push that predates them.
+public struct AlertPacing: Sendable, Equatable {
+    public var pollInterval: TimeInterval
+    public var retapDelay: TimeInterval
+    public var maxTaps: Int
+    public var giveUp: TimeInterval
+
+    public init(
+        pollInterval: TimeInterval = 1.0, retapDelay: TimeInterval = 1.0, maxTaps: Int = 3,
+        giveUp: TimeInterval = 2.0
+    ) {
+        self.pollInterval = pollInterval
+        self.retapDelay = retapDelay
+        self.maxTaps = maxTaps
+        self.giveUp = giveUp
     }
 }
 
@@ -62,10 +104,20 @@ public func alertTitleMarker(_ title: String) -> String {
 public struct InterruptionPolicy: Sendable, Equatable {
     public let rules: [InterruptionRule]
     public let governs: Bool
+    public let pacing: AlertPacing
 
-    public init(rules: [InterruptionRule] = [], governs: Bool = false) {
+    public init(rules: [InterruptionRule] = [], governs: Bool = false, pacing: AlertPacing = .init()) {
         self.rules = rules
         self.governs = governs
+        self.pacing = pacing
+    }
+
+    /// The first rule on *surface* that *labels* identify, in the order the rules arrived.
+    ///
+    /// The order is the Python side's (`tree_dedup_rules` puts a nested shape's wider sibling
+    /// first), so nothing here reorders.
+    public func rule(for labels: [String], surface: AlertSurface) -> InterruptionRule? {
+        rules.first { $0.surface == surface && $0.matches(labels) }
     }
 
     /// The label to tap on an alert offering `buttons`, or nil when no rule identifies it.
@@ -78,19 +130,17 @@ public struct InterruptionPolicy: Sendable, Equatable {
     ///
     /// `buttons` may carry the alert's title marker (`alertTitleMarker`) beside its buttons, which a
     /// rule identifies or excludes like any other label.
+    ///
+    /// Only `native` rules answer here: an in-tree prompt never interrupts an XCUITest interaction,
+    /// so matching its rule against a SpringBoard alert could only mistake one prompt for another.
     public func label(for buttons: [String]) -> String? {
-        func presentExactlyOnce(_ label: String) -> Bool {
-            buttons.filter { $0 == label }.count == 1
-        }
-        for rule in rules
-        where rule.identify.allSatisfy(presentExactlyOnce)
-            && !rule.exclude.contains(where: buttons.contains)
-        {
-            return rule.tap
-        }
-        return nil
+        rule(for: buttons, surface: .native)?.tap
     }
 }
+
+/// The identifier `querySystemAlertButtons` gives the untappable entry carrying an alert's title,
+/// which every reader keeps out of the button list (the Python driver's `_ALERT_TITLE_ID`).
+public let systemAlertTitleIdentifier = "bajutsu.systemAlert.title"
 
 /// The identifier SpringBoard gives a foreground notification banner (BE-0416 Unit 1).
 ///
@@ -131,8 +181,76 @@ public func isNotificationBanner(identifier: String) -> Bool {
 /// onto it — the system-alert query, the banner query, and the banner's own dismiss swipe.
 public let springboardBundleID = "com.apple.springboard"
 
-/// The live interruption policy, plus what the monitor has tapped, declined, and swiped away since
-/// the last drain.
+/// A showing the runner stopped pressing (BE-0461): the rule's identifying labels, its surface, and
+/// the button it chose but could not clear the alert with.
+public struct GaveUpRecord: Sendable, Equatable {
+    public let identify: [String]
+    public let surface: AlertSurface
+    public let tap: String
+}
+
+/// Everything recorded since the last drain, oldest first within each list.
+public struct InterruptionRecords: Sendable, Equatable {
+    /// The label of each answer, monitor and resolving read alike.
+    public var tapped: [String] = []
+    /// Per entry of `tapped`, what the rule matched that alert by.
+    public var tappedAlerts: [[String]] = []
+    /// Per entry of `tapped`, the surface of the rule that answered it.
+    public var tappedSurfaces: [AlertSurface] = []
+    public var declined: [[String]] = []
+    public var banners: [String] = []
+    /// The buttons of a SpringBoard alert a resolving read found and no rule identified.
+    public var unidentified: [[String]] = []
+    public var gaveUp: [GaveUpRecord] = []
+}
+
+/// What the pacing memo lets a resolving read do with a showing it found.
+enum PressDecision: Equatable {
+    case press
+    /// Pressed inside the re-tap delay already; leave it for a later request.
+    case withhold
+    /// Past the tap ceiling, or declined as a changed screen: press it no more.
+    case stop
+}
+
+/// One showing, as the runner identifies it across requests: a native rule by its identifying
+/// labels, an in-tree prompt by the label it taps.
+///
+/// An in-tree showing is keyed on the tapped label rather than the rule because `savePassword`'s
+/// nested shapes all tap "Not Now", and a fading sheet read with a subset of its buttons matches the
+/// narrower sibling — a per-rule key would tap that sibling again inside the re-tap delay (BE-0461).
+struct ShowingKey: Hashable {
+    let surface: AlertSurface
+    let name: [String]
+
+    static func of(_ rule: InterruptionRule) -> ShowingKey {
+        switch rule.surface {
+        case .native: return ShowingKey(surface: .native, name: rule.identify.sorted())
+        case .inTree: return ShowingKey(surface: .inTree, name: [rule.tap])
+        }
+    }
+}
+
+/// A screen's identity for the changed-screen decline: labels and identifiers, not frames, so an
+/// animation settling a few pixels does not read as a new screen (`tree_signature` in Python).
+struct TreeSignatureEntry: Equatable {
+    let label: String?
+    let identifier: String?
+}
+
+private struct ShowingMemo {
+    let rule: InterruptionRule
+    var answered = false
+    var taps = 0
+    var lastPress: TimeInterval?
+    var gaveUp = false
+    var declined = false
+    var signature: [TreeSignatureEntry]?
+    var notHittableSince: TimeInterval?
+}
+
+/// The live interruption policy, plus what the monitor and the resolving reads have answered,
+/// declined and swiped away since the last drain, and the per-showing pacing memo they share.
 ///
 /// A shared store rather than a value threaded through `ElementProviding`, because the two sides
 /// that need it never meet: the policy arrives on a server thread (`POST /interruptionPolicy`),
@@ -144,19 +262,24 @@ public let springboardBundleID = "com.apple.springboard"
 /// drained declined button lists do the same for an alert nothing answered on the scenario's behalf
 /// (BE-0406 Unit 2b), and the drained banners do it for a foreground notification banner swiped away
 /// (BE-0416): the failure mode this whole mechanism exists to end covers all three.
+///
+/// The memo is what keeps one showing to at most one *answered* and at most one *gave up* record on
+/// every path that presses it (BE-0461 Unit 2).
 public final class InterruptionPolicyStore: @unchecked Sendable {
     public static let shared = InterruptionPolicyStore()
 
     private let lock = NSLock()
+    private let now: @Sendable () -> TimeInterval
     private var _policy = InterruptionPolicy()
-    private var _tapped: [String] = []
-    /// Per tapped label, what the policy matched its alert by: the buttons plus the title marker.
-    /// The label alone cannot say which prompt it answered, since two prompts can share it.
-    private var _tappedAlerts: [[String]] = []
-    private var _declined: [[String]] = []
-    private var _banners: [String] = []
+    private var _records = InterruptionRecords()
+    private var _memo: [ShowingKey: ShowingMemo] = [:]
+    private var _lastSpringboardCheck: TimeInterval?
 
-    public init() {}
+    /// *now* is injectable so the pacing can be tested without sleeping; the runner uses uptime,
+    /// which a wall-clock change cannot move.
+    public init(now: @escaping @Sendable () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
+        self.now = now
+    }
 
     public var policy: InterruptionPolicy {
         lock.lock()
@@ -167,28 +290,33 @@ public final class InterruptionPolicyStore: @unchecked Sendable {
     /// Replaces the policy. Also clears the pending drain: what's queued belongs to whichever
     /// scenario set the policy it happened under, so carrying it into the next one would misreport
     /// it.
-    public func setPolicy(_ policy: InterruptionPolicy) {
+    ///
+    /// Only the push at scenario start (*scenarioStart*) clears the memo and the check clock, so
+    /// nothing a previous scenario answered or declined suppresses the same prompt after a
+    /// relaunch. A push inside a scenario keeps them, so a showing spanning it is neither re-pressed
+    /// early nor recorded twice.
+    public func setPolicy(_ policy: InterruptionPolicy, scenarioStart: Bool = false) {
         lock.lock()
         defer { lock.unlock() }
         _policy = policy
-        _tapped = []
-        _tappedAlerts = []
-        _declined = []
-        _banners = []
+        _records = InterruptionRecords()
+        if scenarioStart {
+            _memo = [:]
+            _lastSpringboardCheck = nil
+        }
     }
 
-    public func record(_ label: String, alert: [String] = []) {
+    public func record(_ label: String, alert: [String] = [], surface: AlertSurface = .native) {
         lock.lock()
         defer { lock.unlock() }
-        _tapped.append(label)
-        _tappedAlerts.append(alert)
+        appendAnswered(label, alert: alert, surface: surface)
     }
 
     /// Records the buttons of an alert `governs` covered but no rule identified, before declining.
     public func recordDeclined(_ buttons: [String]) {
         lock.lock()
         defer { lock.unlock() }
-        _declined.append(buttons)
+        _records.declined.append(buttons)
     }
 
     /// Records a notification banner the monitor cleared, by the notification's own text.
@@ -203,21 +331,191 @@ public final class InterruptionPolicyStore: @unchecked Sendable {
     public func recordBanner(_ label: String) {
         lock.lock()
         defer { lock.unlock() }
-        _banners.append(label)
+        _records.banners.append(label)
     }
 
-    /// Returns what was tapped (with each tap's alert), declined and swiped away since the last
-    /// drain, and clears them all.
-    public func drain() -> (
-        tapped: [String], tappedAlerts: [[String]], declined: [[String]], banners: [String]
-    ) {
+    /// Records a SpringBoard alert a resolving read found and no rule identified — on every check,
+    /// since it is what keeps the blocked-screen note alive on the Python side.
+    func recordUnidentified(_ buttons: [String]) {
         lock.lock()
         defer { lock.unlock() }
-        let drained = (_tapped, _tappedAlerts, _declined, _banners)
-        _tapped = []
-        _tappedAlerts = []
-        _declined = []
-        _banners = []
+        _records.unidentified.append(buttons)
+    }
+
+    /// The monitor's entry point: it has just pressed *rule*'s button, and this decides whether that
+    /// press is recorded.
+    ///
+    /// The monitor always presses — a declined interruption hands the alert to XCUITest's default
+    /// button — so the memo cannot withhold it, inside the re-tap delay and past the ceiling alike.
+    /// It can only keep a showing that already holds a key from being recorded *answered* twice.
+    /// Returns whether the press was recorded.
+    @discardableResult
+    public func recordMonitorPress(_ rule: InterruptionRule, alert: [String]) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        let key = ShowingKey.of(rule)
+        let first = !(_memo[key]?.answered ?? false)
+        notePressLocked(key, rule: rule, alert: alert, signature: nil)
+        return first
+    }
+
+    /// Whether a resolving read may query SpringBoard now, claiming the slot when it may.
+    ///
+    /// *force* skips the rate limit — the recovery read after a refused actuation or a failed check
+    /// (BE-0461 Unit 5), and the in-tree re-check in a request whose own check just ran.
+    func claimSpringboardCheck(force: Bool) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        let at = now()
+        if !force, let last = _lastSpringboardCheck, at - last < _policy.pacing.pollInterval {
+            return false
+        }
+        _lastSpringboardCheck = at
+        return true
+    }
+
+    /// What the memo lets a resolving read do with *rule*'s showing. Records *gave up* the first time
+    /// the ceiling stops it.
+    ///
+    /// *signature* is the in-tree screen the read sees. Past the re-tap delay, a label that still
+    /// matches on a changed screen is an application button the sheet was covering, so the showing
+    /// is declined for good and records no *gave up*.
+    func decide(_ rule: InterruptionRule, signature: [TreeSignatureEntry]? = nil) -> PressDecision {
+        lock.lock()
+        defer { lock.unlock() }
+        let key = ShowingKey.of(rule)
+        guard var memo = _memo[key] else { return .press }
+        if memo.declined || memo.gaveUp { return .stop }
+        if let last = memo.lastPress, now() - last < _policy.pacing.retapDelay { return .withhold }
+        if memo.lastPress != nil, let tapped = memo.signature, let signature, tapped != signature {
+            memo.declined = true
+            _memo[key] = memo
+            return .stop
+        }
+        if memo.taps >= _policy.pacing.maxTaps {
+            giveUpLocked(key, &memo)
+            _memo[key] = memo
+            return .stop
+        }
+        return .press
+    }
+
+    /// A resolving read pressed *rule*'s button: records *answered* on the showing's first press.
+    func notePress(_ rule: InterruptionRule, alert: [String], signature: [TreeSignatureEntry]? = nil) {
+        lock.lock()
+        defer { lock.unlock() }
+        notePressLocked(ShowingKey.of(rule), rule: rule, alert: alert, signature: signature)
+    }
+
+    /// A resolving read tried to press *rule*'s button and the press did not happen (the button was
+    /// gone or refused). It counts toward the tap ceiling, so a press that keeps failing ends in
+    /// *gave up* rather than being retried for the rest of the wait; it records no *answered*.
+    func noteFailedPress(_ rule: InterruptionRule) {
+        lock.lock()
+        defer { lock.unlock() }
+        let key = ShowingKey.of(rule)
+        var memo = _memo[key] ?? ShowingMemo(rule: rule)
+        memo.taps += 1
+        memo.lastPress = now()
+        _memo[key] = memo
+    }
+
+    /// *rule*'s showing cannot be pressed at all (its button is not on screen exactly once), so it
+    /// records *gave up* now instead of guessing which match to press.
+    func giveUp(_ rule: InterruptionRule) {
+        lock.lock()
+        defer { lock.unlock() }
+        let key = ShowingKey.of(rule)
+        var memo = _memo[key] ?? ShowingMemo(rule: rule)
+        giveUpLocked(key, &memo)
+        _memo[key] = memo
+    }
+
+    /// An in-tree button was present but not hittable (a scrim mid-animation). Past the give-up
+    /// bound from the first such refusal, the showing records *gave up*.
+    func noteNotHittable(_ rule: InterruptionRule) {
+        lock.lock()
+        defer { lock.unlock() }
+        let key = ShowingKey.of(rule)
+        var memo = _memo[key] ?? ShowingMemo(rule: rule)
+        let at = now()
+        if let since = memo.notHittableSince {
+            if at - since >= _policy.pacing.giveUp { giveUpLocked(key, &memo) }
+        } else {
+            memo.notHittableSince = at
+        }
+        _memo[key] = memo
+    }
+
+    /// Re-arms every native key but *kept*: a check that no longer finds a showing ends it.
+    func rearmNative(keeping kept: InterruptionRule? = nil) {
+        lock.lock()
+        defer { lock.unlock() }
+        let keep = kept.map(ShowingKey.of)
+        _memo = _memo.filter { $0.key.surface != .native || $0.key == keep }
+    }
+
+    /// Re-arms every in-tree key no rule matching the tree still taps (`_reset_tree_showing` in the
+    /// Python gate): the showing is gone even when an application button carrying the same label
+    /// stays, so the sheet returning over it is a new showing.
+    func rearmInTree(armed labels: Set<String>) {
+        lock.lock()
+        defer { lock.unlock() }
+        _memo = _memo.filter { $0.key.surface != .inTree || $0.key.name.allSatisfy(labels.contains) }
+    }
+
+    /// An actuation on the application has completed. XCUITest synthesizes one only once no alert
+    /// blocks it, so every native showing pressed before it is gone, and a prompt that recurs before
+    /// the next check (the paste prompt on every paste) is a new showing.
+    ///
+    /// A refused actuation synthesized nothing, so it re-arms nothing; neither does a press on a
+    /// SpringBoard alert's own button, which never comes here, since XCUITest synthesizes that while
+    /// the alert is still up. An in-tree key is never re-armed this way: an in-tree alert does not
+    /// block synthesis.
+    func actuationCompleted(_ result: TapResult) {
+        switch result {
+        case .ok, .valueNotFound:
+            rearmNative()
+        case .stale, .notFound, .notHittable:
+            break
+        }
+    }
+
+    /// Returns everything recorded since the last drain, and clears it.
+    public func drain() -> InterruptionRecords {
+        lock.lock()
+        defer { lock.unlock() }
+        let drained = _records
+        _records = InterruptionRecords()
         return drained
+    }
+
+    private func appendAnswered(_ label: String, alert: [String], surface: AlertSurface) {
+        _records.tapped.append(label)
+        _records.tappedAlerts.append(alert)
+        _records.tappedSurfaces.append(surface)
+    }
+
+    private func notePressLocked(
+        _ key: ShowingKey, rule: InterruptionRule, alert: [String], signature: [TreeSignatureEntry]?
+    ) {
+        var memo = _memo[key] ?? ShowingMemo(rule: rule)
+        if !memo.answered {
+            memo.answered = true
+            appendAnswered(rule.tap, alert: alert, surface: rule.surface)
+        }
+        memo.taps += 1
+        memo.lastPress = now()
+        memo.notHittableSince = nil
+        if let signature { memo.signature = signature }
+        _memo[key] = memo
+    }
+
+    private func giveUpLocked(_ key: ShowingKey, _ memo: inout ShowingMemo) {
+        guard !memo.gaveUp else { return }
+        memo.gaveUp = true
+        _records.gaveUp.append(
+            GaveUpRecord(identify: memo.rule.identify, surface: memo.rule.surface, tap: memo.rule.tap)
+        )
     }
 }

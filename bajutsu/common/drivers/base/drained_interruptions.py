@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Literal
+
+from .gave_up_alert import GaveUpAlert
 
 
 @dataclass(frozen=True)
@@ -26,16 +29,32 @@ class DrainedInterruptions:
     notifications both tap "Allow"), so a `handleSystemAlert` step checks the title here before it
     counts a monitor's tap as its own. Shorter than `tapped` from a runner predating it; read it
     through `alert_of`, which answers an empty list for a tap whose alert is unknown.
+
+    `tapped_surfaces` is, per tapped label, the surface of the rule that answered it: `native` for a
+    SpringBoard press, `inTree` for an application-owned prompt a resolving read tapped (BE-0461),
+    so a reader can tell the two apart. Read it through `surface_of`, which answers `native` for a
+    runner predating it — the only surface such a runner ever pressed.
+
+    `unidentified` is the button lists of SpringBoard alerts a resolving read found and no rule
+    identified, recorded on every check. Unlike `declined` it fails nothing: it feeds the
+    blocked-screen note. `gave_up` is the showings the backend stopped pressing (BE-0461).
     """
 
     tapped: list[str]
     declined: list[list[str]]
     banners: list[str]
     tapped_alerts: list[list[str]] = field(default_factory=list)
+    tapped_surfaces: list[Literal["native", "inTree"]] = field(default_factory=list)
+    unidentified: list[list[str]] = field(default_factory=list)
+    gave_up: list[GaveUpAlert] = field(default_factory=list)
 
     def alert_of(self, index: int) -> list[str]:
         """What the monitor matched the `index`-th tap by, or empty when the runner did not say."""
         return self.tapped_alerts[index] if index < len(self.tapped_alerts) else []
+
+    def surface_of(self, index: int) -> Literal["native", "inTree"]:
+        """The surface of the rule behind the `index`-th tap, `native` when the runner did not say."""
+        return self.tapped_surfaces[index] if index < len(self.tapped_surfaces) else "native"
 
     @classmethod
     def empty(cls) -> DrainedInterruptions:
@@ -52,4 +71,8 @@ class DrainedInterruptions:
             # onto this drain's taps.
             tapped_alerts=[self.alert_of(i) for i in range(len(self.tapped))]
             + [later.alert_of(i) for i in range(len(later.tapped))],
+            tapped_surfaces=[self.surface_of(i) for i in range(len(self.tapped))]
+            + [later.surface_of(i) for i in range(len(later.tapped))],
+            unidentified=self.unidentified + later.unidentified,
+            gave_up=self.gave_up + later.gave_up,
         )

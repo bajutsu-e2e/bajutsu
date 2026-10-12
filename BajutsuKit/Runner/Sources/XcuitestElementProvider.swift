@@ -30,10 +30,6 @@ private final class SystemAlertButtonBacking {
 /// handle fails the `SystemAlertButtonBacking` cast in `tapSystemAlertButton` and reports not found.
 private final class SystemAlertTitleBacking {}
 
-/// The identifier of the title entry `querySystemAlertButtons` adds per alert; the Python driver's
-/// `_ALERT_TITLE_ID` must stay identical.
-private let systemAlertTitleIdentifier = "bajutsu.systemAlert.title"
-
 /// The notification banner's backing (BE-0416). Inert: nothing ever acts on a banner by handle —
 /// Unit 3's dismiss is a raw-coordinate swipe through the existing `/swipe` route, not a tap
 /// resolved from this snapshot — but `ElementSnapshot.backingElement` still needs some identity.

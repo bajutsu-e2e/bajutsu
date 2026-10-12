@@ -312,7 +312,9 @@ def matching_alert_rule(
     return identified[0] if identified else None
 
 
-def push_interruption_policy(driver: base.Driver, guard: AlertGuardConfig | None) -> None:
+def push_interruption_policy(
+    driver: base.Driver, guard: AlertGuardConfig | None, *, scenario_start: bool = False
+) -> None:
     """Hand the backend the buttons it may press on an alert that interrupts its own interactions.
 
     XCUITest resolves such an alert *before* it synthesizes the interaction, and with nothing
@@ -335,16 +337,43 @@ def push_interruption_policy(driver: base.Driver, guard: AlertGuardConfig | None
     rather than skipping the call, so a scenario that switched the guard off does not inherit the
     previous scenario's policy from the resident runner. A backend that does not implement
     `InterruptionPolicyTarget` is simply never asked.
+
+    The in-tree rules travel separately, in `tree_dedup_rules` order, together with the guard's
+    pacing, for a backend that answers an application-owned prompt inside a request (BE-0461 Unit 2).
+    *scenario_start* marks the push at scenario start, which also makes the backend forget every
+    showing a previous scenario answered.
+
+    Raises:
+        ValueError: A rule claims both surfaces. No declared prompt does, and pushing it on one
+            surface only would silently drop the other.
     """
     if not isinstance(driver, base.InterruptionPolicyTarget):
         return
     rules: list[tuple[frozenset[str], str, frozenset[str]]] = []
+    in_tree_rules: list[tuple[frozenset[str], str, frozenset[str]]] = []
+    pacing: base.AlertPacing | None = None
     if guard is not None:
-        reachable = [rule for rule in guard.rules if rule.native]
-        rules = [
-            (rule.identifying_labels, rule.tap_label, rule.excluded_labels) for rule in reachable
-        ]
-    driver.set_interruption_policy(rules, guard is not None)
+        for rule in guard.rules:
+            if rule.native and rule.in_tree:
+                raise ValueError(
+                    f"alert rule {sorted(rule.identifying_labels)} claims both the native and the "
+                    "in-tree surface; a declared prompt shows on one"
+                )
+        rules = [_policy_rule(rule) for rule in guard.rules if rule.native]
+        in_tree_rules = [_policy_rule(rule) for rule in guard.tree_dedup_rules]
+        pacing = guard.pacing
+    driver.set_interruption_policy(
+        rules,
+        guard is not None,
+        in_tree_rules=in_tree_rules,
+        pacing=pacing,
+        scenario_start=scenario_start,
+    )
+
+
+def _policy_rule(rule: ResolvedAlertRule) -> tuple[frozenset[str], str, frozenset[str]]:
+    """A resolved rule in the shape `set_interruption_policy` takes."""
+    return (rule.identifying_labels, rule.tap_label, rule.excluded_labels)
 
 
 def drain_interruptions(driver: base.Driver) -> DrainedInterruptionEvents:
