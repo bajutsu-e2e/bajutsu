@@ -1047,8 +1047,11 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   step or `expect` that met the interruption fails, naming them, rather than the run continuing as
   if nothing had answered on the scenario's behalf. A foreground notification banner reaches that same monitor but takes a branch of
   its own, ahead of the policy (BE-0416): a banner carries no button a rule could identify — its one
-  tappable region opens the notification's app — so the monitor swipes it upward by its own measured
-  frame, confirms the clearance before claiming the interruption, and records it as an `AlertEvent`
+  tappable region opens the notification's app — so the monitor waits for the banner to settle on
+  screen, swipes it upward by its own measured frame, confirms the clearance before claiming the
+  interruption — waiting out the banner's own auto-dismissal when the swipe misses, since on
+  iOS 26.5 XCUITest's own handler ignores the banner and its lookup errors stop the runner — and
+  records it as an `AlertEvent`
   under a `notificationBanner` kind, since the text beside it is the notification's rather than a
   button's. The branch sits ahead of the `governs` check because neither alert outcome fits a
   banner: a governing policy recorded it as an undeclared interruption and failed an otherwise

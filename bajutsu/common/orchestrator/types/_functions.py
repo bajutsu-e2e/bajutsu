@@ -377,7 +377,7 @@ def _policy_rule(rule: ResolvedAlertRule) -> tuple[frozenset[str], str, frozense
 
 
 def drain_interruptions(driver: base.Driver) -> DrainedInterruptionEvents:
-    """The prompts the backend answered, declined and swiped away at interruption time since the last drain.
+    """The prompts the backend answered, declined and cleared at interruption time since the last drain.
 
     A tapped label is reported as an ordinary `AlertEvent` so a dismissal that happened inside the
     backend's own interruption handling is not missing from the run's report. A declined alert is
@@ -385,11 +385,13 @@ def drain_interruptions(driver: base.Driver) -> DrainedInterruptionEvents:
     so it is not a dismissal, but its buttons are what lets a caller fail by name rather than let the
     interruption pass in silence (BE-0406 Unit 2b). A backend without the opt-in contributes nothing.
 
-    A swiped-away notification banner is a dismissal like the first, so it joins `alerts` rather than
+    A cleared notification banner is a dismissal like the first, so it joins `alerts` rather than
     `undeclared` — under its own kind, since nothing was tapped and the label is the notification's
-    text (BE-0416). It is deliberately *not* an undeclared interruption: no scenario could have
-    declared it, because a banner offers no button for a rule to identify, so failing the step over
-    one would fail every run a notification happened to land in.
+    text (BE-0416). Cleared, not necessarily swiped away: the XCUITest runner also reports a banner
+    that went by its own auto-dismissal, and logs which path cleared it to its own output. It is
+    deliberately *not* an undeclared interruption: no scenario could have declared it, because a
+    banner offers no button for a rule to identify, so failing the step over one would fail every
+    run a notification happened to land in.
     """
     if not isinstance(driver, base.InterruptionPolicyTarget):
         return DrainedInterruptionEvents(alerts=[], undeclared=[])
