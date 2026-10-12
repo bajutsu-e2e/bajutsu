@@ -51,7 +51,7 @@ final class RunnerUITest: XCTestCase {
             // BE-0416): a governed run would record it as an undeclared interruption and fail a
             // passing step, an ungoverned one would leave XCUITest to wait it out.
             if isNotificationBanner(identifier: alert.identifier) {
-                return Self.swipeAwayNotificationBanner(alert)
+                return Self.swipeAwayNotificationBanner()
             }
             let policy = InterruptionPolicyStore.shared.policy
             guard policy.governs else { return false }
@@ -114,13 +114,15 @@ final class RunnerUITest: XCTestCase {
     /// this whole mechanism exists to end: nothing calls `recordDeclined` for a banner (that path
     /// classifies as an `UndeclaredInterruption` and would fail the step, the outcome BE-0416 removes
     /// for a banner), so an unconfirmed swipe is logged instead — observable without failing the step.
-    private static func swipeAwayNotificationBanner(_ banner: XCUIElement) -> Bool {
-        // Read before the swipe: once the banner is gone its label resolves to empty, and the label
-        // is the only thing that identifies the dismissal in the run's report.
-        let label = banner.label
+    private static func swipeAwayNotificationBanner() -> Bool {
         let springboard = XCUIApplication(bundleIdentifier: springboardBundleID)
         let remaining = springboard.descendants(matching: .any)
             .matching(identifier: notificationBannerIdentifier)
+        // Read before the swipe: once the banner is gone its label resolves to empty, and the label
+        // is the only thing that identifies the dismissal in the run's report. Read through the same
+        // query as every other read here (see `settledFrame`), behind `exists` for the same reason.
+        let current = remaining.firstMatch
+        let label = current.exists ? current.label : ""
         guard let frame = settledFrame(of: remaining.firstMatch) else {
             return awaitBannerClearance(
                 remaining, label: label, swiped: false, unconfirmed: "the banner never settled on screen"
@@ -150,17 +152,25 @@ final class RunnerUITest: XCTestCase {
     /// The banner's frame once it is fully on screen and has stopped moving, or `nil` if it never
     /// does (or disappears) within `bannerSettleTimeout`. Two equal consecutive reads mark the end of
     /// the slide-in animation; a top edge at or below the screen's own rules out a banner that is
-    /// still partly above it. Read through the type-agnostic identifier query rather than the typed
-    /// interrupting element, whose `BannerNotification` lookup misses on iOS 26.5 (#2156).
+    /// still partly above it.
+    ///
+    /// Read through the type-agnostic identifier query rather than the typed interrupting element.
+    /// The lookups seen missing in #2156 were XCUITest's own, by the banner's `BannerNotification`
+    /// type, after the monitor declined; the monitor's typed reads did resolve there. The identifier
+    /// query is what the banner is matched on in the first place, so the monitor's reads stay off
+    /// the type that iOS 26.5 misclassifies.
     private static func settledFrame(of banner: XCUIElement) -> CGRect? {
         var previous: CGRect?
         let deadline = Date().addingTimeInterval(bannerSettleTimeout)
         repeat {
             // `exists` first: reading `frame` of a vanished element records a UI automation failure.
+            // Two separate resolutions, so this narrows that race rather than closing it; the paced
+            // poll below bounds how many times the race is taken.
             guard banner.exists else { return nil }
             let frame = banner.frame
             if frame.height > 0, frame.minY >= 0, frame == previous { return frame }
             previous = frame
+            Thread.sleep(forTimeInterval: bannerSettlePollInterval)
         } while Date() < deadline
         return nil
     }
@@ -213,6 +223,14 @@ final class RunnerUITest: XCTestCase {
     /// How long the banner may take to finish sliding in before the swipe is abandoned. The
     /// slide-in is a fraction of a second; this only bounds a banner that never comes to rest.
     private static let bannerSettleTimeout: TimeInterval = 2
+
+    /// The pause between settle reads. Each read is an `exists` → `frame` pair that a banner
+    /// vanishing in between turns into a recorded UI automation failure, so an unpaced poll would
+    /// take that race once per ~64ms query pair, about 30 times in `bannerSettleTimeout`. Paced, it
+    /// takes it at most ~20 times on any host, and the usual fraction-of-a-second slide-in settles in
+    /// a handful. Two equal reads 0.1s apart are also firmer evidence the banner has stopped moving
+    /// than two taken back to back.
+    private static let bannerSettlePollInterval: TimeInterval = 0.1
 
     /// Not a deadline: the line past which a clearance after a real swipe is logged as the banner's
     /// own auto-dismissal rather than the swipe's work. It keeps the confirmation window the swipe had

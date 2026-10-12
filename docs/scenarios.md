@@ -225,18 +225,19 @@ screen, and a swipe from that frame would move downward. The runner then confirm
 gone before claiming the interruption. Once the banner leaves, the step's interaction lands on the
 element the scenario named.
 
-A swipe can miss the banner. The runner then waits for the banner's own auto-dismissal. Handing the
-banner back to XCUITest is the last resort. On iOS 26.5, XCUITest's own handler ignores a banner.
-Each XCUITest lookup of the banner records an error, and those errors stop the runner.
+A swipe can miss the banner. The runner then waits up to 10 seconds for the banner's own
+auto-dismissal. Handing the banner back to XCUITest is the last resort. On iOS 26.5, XCUITest's own
+handler ignores a banner. Each XCUITest lookup of the banner records an error, and those errors stop
+the runner.
 
 A *confirmed* dismissal reaches the run's report on the step it interrupted, under its own kind.
 The text recorded beside that dismissal belongs to the notification, not a button. That kind keeps
 a reader from misreading the text as a button the guard chose.
 
-A banner that outlasts both the swipe and its own display time carries no such record. The runner
-logs the attempt to its own output and hands the banner back to XCUITest. No banner reaches that
-hand-off before outlasting its own display time. On iOS 26.5, the hand-off can still stop the
-runner.
+A banner still on screen after that 10-second wait carries no such record. The runner logs the
+attempt to its own output and hands the banner back to XCUITest. A temporary banner leaves within
+the wait in the common case. A persistent-style banner never dismisses itself, so it can reach the
+hand-off. On iOS 26.5, that hand-off can still stop the runner.
 
 Nothing about a banner is yours to declare. The banner path runs regardless of whether
 `systemAlertHandling` is on. Before BE-0416 a governed run met the banner on the alert path instead.
