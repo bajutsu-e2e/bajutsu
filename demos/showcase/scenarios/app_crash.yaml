@@ -30,11 +30,13 @@
     - wait: { for: { id: crash.trigger }, timeout: 10 }
     - assert:
         - exists: { sel: { id: crash.alive } }
-    # Keeps the trigger from being the session's first synthesized touch. On the iOS 26.4 CI host,
-    # XCUITest attaches its virtual digitizer to backboardd on that first touch, and the touch can
-    # lose the race ("already have a main display digitizer", then "didn't see a previous touch
-    # down … skipping event"). The tap then still reports success, the app never faults, and the
-    # run goes green with no crash to diagnose. The title is static text, so this tap does nothing.
+    # A stopgap that keeps the trigger from being the session's first synthesized touch. On the iOS
+    # 26.4 CI Simulator, backboardd now and then registers XCUITest's per-touch virtual digitizer
+    # twice and drops the touch ("unknown digitizer", then "skipping event"), while the tap still
+    # reports success: the app never faults, and the run goes green with no crash to diagnose. Any
+    # tap can hit the race (#2157), but two of the three captured drops were a session's first tap,
+    # so this tap may absorb it. The title is static text, so a dropped or delivered tap here does
+    # nothing. Remove it once dropped touches are detected and re-issued (#2161).
     - tap: { id: crash.title }
     # Faults the process. Reports success: the tap lands before the app goes down.
     - tap: { id: crash.trigger }
