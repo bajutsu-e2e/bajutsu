@@ -139,12 +139,11 @@ def selector_names_button(sel: base.Selector, buttons: Sequence[str]) -> bool:
 
 
 def observed_alert_labels(driver: base.Driver) -> list[str]:
-    """What the reactive guard matches rules against: the alert's buttons, then its title's marker.
+    """What a `handleSystemAlert` step's title check reads: the alert's buttons, then its title's marker.
 
     The title joins as one more label (`system_alerts.alert_title_marker`), so a prompt whose
     buttons another prompt shares — Local Network and notifications both offer "Allow" / "Don't
-    Allow" — is identified by naming that marker, or ruled out by excluding it, with no change to the
-    accept test below. A backend with no titles to report (`system_alert_titles` absent) contributes
+    Allow" — is identified by naming that marker, or ruled out by excluding it. A backend with no titles to report (`system_alert_titles` absent) contributes
     its buttons alone, as before.
     """
     buttons = driver.system_alert_labels()

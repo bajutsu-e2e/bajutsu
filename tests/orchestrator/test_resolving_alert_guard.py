@@ -546,10 +546,12 @@ def test_a_native_note_lifts_on_a_checked_read_and_not_on_an_unchecked_one() -> 
     gate.note_records(
         base.DrainedInterruptions(tapped=[], declined=[], banners=[], unidentified=[["A", "B"]])
     )
-    gate.reads.read("inTree")  # an in-tree read checks nothing
+    reads = gate.reads
+    assert reads is not None
+    reads.read("inTree")  # an in-tree read checks nothing
     gate.observe([])
     assert gate.blocked_note == alert_block_note(["A", "B"])
-    gate.reads.read("true")  # the model's clear screen: checked
+    reads.read("true")  # the model's clear screen: checked
     gate.observe([el("app", "App")])
     assert gate.blocked_note == ""
     assert driver is not None
