@@ -498,10 +498,10 @@ _SAVE_PASSWORD_WIDE = ResolvedAlertRule(
 
 
 def _gate(guard: AlertGuardConfig) -> tuple[object, ResolvingFakeDriver]:
-    from bajutsu.common.orchestrator.waits import ResolvingReads, _ResolvingAlertGate
+    from bajutsu.common.orchestrator.waits import ResolvingReads, _AlertGuardGate
 
     driver = _driver([], guard)
-    return _ResolvingAlertGate(clock=FakeClock(), guard=guard, reads=ResolvingReads(driver)), driver
+    return _AlertGuardGate(clock=FakeClock(), guard=guard, reads=ResolvingReads(driver)), driver
 
 
 def _gave_up(identify: list[str], surface: str) -> base.DrainedInterruptions:
@@ -514,11 +514,11 @@ def _gave_up(identify: list[str], surface: str) -> base.DrainedInterruptions:
 
 
 def test_an_in_tree_give_up_holds_while_a_nesting_shape_shows_and_lifts_once_it_is_gone() -> None:
-    from bajutsu.common.orchestrator.waits import _ResolvingAlertGate
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
 
     guard = _guard(_SAVE_PASSWORD_WIDE, _SAVE_PASSWORD)
     gate, _ = _gate(guard)
-    assert isinstance(gate, _ResolvingAlertGate)
+    assert isinstance(gate, _AlertGuardGate)
     gate.note_records(_gave_up(["Save Password", "Not Now", "Never for This Website"], "inTree"))
     narrower = [el("app", "App"), *_alert("Save Password", "Not Now")]
     gate.observe(narrower)
@@ -528,10 +528,10 @@ def test_an_in_tree_give_up_holds_while_a_nesting_shape_shows_and_lifts_once_it_
 
 
 def test_an_in_tree_give_up_survives_a_collapsed_read() -> None:
-    from bajutsu.common.orchestrator.waits import _ResolvingAlertGate
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
 
     gate, _ = _gate(_guard(_SAVE_PASSWORD))
-    assert isinstance(gate, _ResolvingAlertGate)
+    assert isinstance(gate, _AlertGuardGate)
     gate.note_records(_gave_up(["Save Password", "Not Now"], "inTree"))
     for _ in range(5):
         gate.observe([])
@@ -539,10 +539,10 @@ def test_an_in_tree_give_up_survives_a_collapsed_read() -> None:
 
 
 def test_a_native_note_lifts_on_a_checked_read_and_not_on_an_unchecked_one() -> None:
-    from bajutsu.common.orchestrator.waits import _ResolvingAlertGate
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
 
     gate, driver = _gate(_guard(_NOTIFICATIONS))
-    assert isinstance(gate, _ResolvingAlertGate)
+    assert isinstance(gate, _AlertGuardGate)
     gate.note_records(
         base.DrainedInterruptions(tapped=[], declined=[], banners=[], unidentified=[["A", "B"]])
     )
@@ -553,3 +553,57 @@ def test_a_native_note_lifts_on_a_checked_read_and_not_on_an_unchecked_one() -> 
     gate.observe([el("app", "App")])
     assert gate.blocked_note == ""
     assert driver is not None
+
+
+def test_an_undeclared_alert_s_buttons_reach_a_handle_system_alert_step_s_timeout() -> None:
+    guard = _guard(_NOTIFICATIONS)
+    driver = _driver([el("home", "Home")], guard)
+    driver.system_alert_buttons = _alert("Trust This Computer?", "Trust")
+    result = _run(driver, _HSA_SAVE, guard)
+    reason = result.steps[0].reason
+    assert "the alert on screen offered: Trust This Computer?, Trust" in reason
+    assert alert_block_note(["Trust This Computer?", "Trust"]) in reason
+
+
+def test_an_alert_resolve_answered_is_not_reported_as_still_on_screen() -> None:
+    # The reason states the step's latest read: an interruption the policy answered early, and a
+    # prompt the app then never raised, is "no alert appeared".
+    guard = _guard(_NOTIFICATIONS)
+    driver = _driver([el("home", "Home")], guard)
+    driver.system_alert_buttons = _alert("Allow", "Don't Allow")
+    result = _run(driver, _HSA_SAVE, guard)
+    reason = result.steps[0].reason
+    assert "no system alert appeared" in reason
+    assert "Don't Allow" not in reason
+    assert AlertEvent(label="Don't Allow") in result.steps[0].alerts
+
+
+# --- a backend that answers nothing itself ---------------------------------------------------------
+
+
+def test_a_backend_without_the_capability_taps_no_in_tree_prompt() -> None:
+    # Python taps no prompt any more (BE-0461 Unit 7): with the runner's in-tree pass out of reach,
+    # the sheet stays, and the wait's timeout names a block nothing could clear.
+    guard = _guard(_SAVE_PASSWORD)
+    driver = FakeDriver([el("app", "App"), *_alert("Save Password", "Not Now")])
+    result = _run(driver, _WAIT_GO, guard)
+    assert not result.ok
+    assert _calls(driver, "tap") == []
+    assert _calls(driver, "query_resolving") == []
+
+
+def test_the_collapsed_tree_proxy_alone_names_a_persistent_collapse() -> None:
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    gate = _AlertGuardGate(clock=FakeClock(), guard=_guard(_NOTIFICATIONS))
+    gate.observe([])
+    gate.observe([])
+    assert gate.blocked_note == ""  # debounced: a transient collapse is not a block
+    gate.observe([])
+    assert gate.blocked_note == alert_block_note([])
+    gate.observe([el("app", "App")])
+    assert gate.blocked_note == ""
+    # It cannot rule an alert out, so it never stops a wait early.
+    for _ in range(500):
+        gate.observe([])
+    assert gate.stuck_note == ""

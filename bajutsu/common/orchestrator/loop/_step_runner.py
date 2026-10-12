@@ -15,7 +15,6 @@ from bajutsu.common.evidence import Artifact, NullSink, intervals, start_after_s
 from bajutsu.common.orchestrator.actions import (
     _action_of,
     _step_label,
-    handle_system_alert_selector,
 )
 from bajutsu.common.orchestrator.evidence_rules import _collect_captures, _kind_of, _run_extract
 from bajutsu.common.orchestrator.substitution import _interp_step, _resolve_system_alert
@@ -512,8 +511,7 @@ class _StepRunner:
         the monitor before this step's poll ever runs, finds no rule for a prompt only this step
         declares, and fails as undeclared \u2014 even though this very step is a few lines away from
         answering it correctly (BE-0406 Unit 2b review finding). Reserving it for the step's own
-        duration, the same way the reactive guard's native probe already reserves it
-        (`probe_native`'s `"reserved"` answer), closes that gap.
+        duration closes that gap.
 
         Only the `prompt`/`choice` form carries the full identifying label set the monitor's exact
         matching needs; a `sel`-form step names one button, not the alert's whole shape, so it keeps
@@ -584,51 +582,25 @@ class _StepRunner:
             return None
         return prompt_title_check(hsa.prompt, hsa.choice, self.cfg.locale)
 
-    def _clear_entry_alert(self, driver: base.Driver, alerts: list[AlertEvent], step: Step) -> None:
-        """Run the guard once before the scenario's first act, for a prompt raised during launch.
+    def _clear_entry_alert(self, driver: base.Driver, step: Step) -> None:
+        """Answer a prompt raised during launch with one read before the scenario's first act.
 
         A permission prompt the app raises while it launches (iOS's Local Network prompt, raised by
         the app's first report to a real device's collector) is up before step one, which may not
-        wait at all, or wait for an element the prompt only covers. The guard otherwise first polls
-        inside a pending wait, so a first tap would land on the prompt instead of the app. One
-        guarded read costs one native query when nothing is up, and answers only declared prompts.
+        read the screen at all, or wait for an element the prompt only covers. One forced resolving
+        read answers what the policy names, and costs one SpringBoard check when nothing is up
+        (BE-0461). A first `handleSystemAlert` step's own prompt is left to that step, whose wait
+        answers anything else it meets. The answer is reported by the step's own drain.
         """
         guard = self.cfg.alert_guard
-        if guard is None or not guard.native_rules:
-            return
         resolving = self._resolving_reads(driver)
-        if resolving is not None:
-            # The backend answers what the policy names inside one forced read (BE-0461). A first
-            # `handleSystemAlert` step's own prompt is left to that step, whose wait answers anything
-            # else it meets. The answer is reported by the step's own drain, like any other read's.
-            if step.handle_system_alert is None:
-                read = resolving.target.query_resolving("true", force_check=True)
-                if read.drained.tapped:
-                    self._settle(driver)
+        if guard is None or not guard.native_rules or resolving is None:
             return
-        # A first `handleSystemAlert` step answers its own prompt, and may want the opposite of a
-        # rule's choice for it (BE-0406), so that prompt is reserved for it as its wait reserves it.
-        # One whose title rules the step's prompt out (Local Network under a notifications step)
-        # stays the guard's. A `sel`-form step names no prompt to check, so the probe leaves it all.
-        reserved: base.Selector | None = None
-        title = self._system_alert_title(step)
         if step.handle_system_alert is not None:
-            if title is None:
-                return
-            # Resolvable to a label: a title check exists only where the label table covers it.
-            target = handle_system_alert_selector(_resolve_system_alert(step, self.cfg.locale))
-            reserved = target if isinstance(target, dict) else None
-        # The native SpringBoard path alone: a launch-time prompt is a system one, and the in-tree
-        # dismissal would tap the app's own buttons before the scenario asked anything of it.
-        state, event, _ = guard.probe_native(driver, reserved, reserved_title=title)
-        if state == "dismissed" and event is not None:
-            alerts.append(event)
-            settle_after_alert_dismiss(
-                driver,
-                self.cfg.clock,
-                transitions=self.cfg.transitions,
-                cancelled=self.cfg.cancelled,
-            )
+            return
+        read = resolving.target.query_resolving("true", force_check=True)
+        if read.drained.tapped:
+            self._settle(driver)
 
     def _handle_lifecycle(
         self,
@@ -1152,12 +1124,10 @@ class _StepRunner:
         # so the merge below is a no-op there.
         reserved_alerts: list[AlertEvent] = []
         reserved_undeclared: list[UndeclaredInterruption] = []
-        # A declared prompt already up when the scenario starts, cleared before its first act.
-        entry_alerts: list[AlertEvent] = []
         if not self.state.entry_alert_checked:
             self.state.entry_alert_checked = True
             if front_failure is None:
-                self._clear_entry_alert(active_driver, entry_alerts, step)
+                self._clear_entry_alert(active_driver, step)
         # The label a `handleSystemAlert` step tapped, for `outcome.system_alert` (BE-0445).
         system_alert_taps: list[str] = []
         # The title its prompt must show, so the step never taps a look-alike prompt (Local Network
@@ -1329,41 +1299,6 @@ class _StepRunner:
                                 ok, reason, results, snapshot = rerun_body(wait_trace)
                             if not ok and note and note not in reason:
                                 reason = f"{reason} \u2014 {note}"
-                    elif not ok and not guard_done and self.cfg.alert_guard is not None:
-                        # The guard's own call settles the screen after every round it dismisses
-                        # something in (BE-0418), the last one included, so nothing here settles
-                        # again before the retry below reads the screen.
-                        cleared = self.cfg.alert_guard(
-                            active_driver,
-                            outcome.alerts,
-                            settle=lambda: settle_after_alert_dismiss(
-                                active_driver,
-                                self.cfg.clock,
-                                transitions=self.cfg.transitions,
-                                cancelled=self.cfg.cancelled,
-                            ),
-                        )
-                        # Read here, appended only after the retry below, which reassigns `reason`
-                        # outright and would otherwise discard it.
-                        note = self.cfg.alert_guard.blocked_note
-                        if cleared:
-                            wait_trace = WaitTrace() if wait_trace is not None else None
-                            # The retry is the end-of-step "one more shot": it does not re-arm the
-                            # mid-wait guard (no alert_guard passed), so one dismissed prompt buys one
-                            # extra attempt and no more.
-                            ok, reason, results, snapshot = rerun_body(wait_trace)
-                        if not ok and note and note not in reason:
-                            # Same as the `expect` site: an alert the guard could not fully clear
-                            # still explains the failure, so the step says so instead of failing as a
-                            # bare `element not found` (BE-0402). Gated on the note alone, not on
-                            # `cleared`: a multi-round call can clear a stacked alert while leaving a
-                            # second one unhandled, so the two are no longer mutually exclusive the
-                            # way a single-shot dismiss made them (BE-0418). `not ok` so a step the
-                            # retry actually passed carries no stray failure note. `not in reason`
-                            # because a guarded `wait` already carried the note out of `_wait`: this
-                            # guard re-probes the same still-unanswered alert, so appending
-                            # unconditionally would say it twice.
-                            reason = f"{reason} \u2014 {note}"
                 # A failure inside an interrupt's own recovery `steps` fails the step loudly, rather
                 # than being swallowed while the run continues against a screen the recovery left
                 # broken (determinism first). It overrides a step that otherwise passed — this is the
@@ -1382,7 +1317,6 @@ class _StepRunner:
                     push_interruption_policy(active_driver, self.cfg.alert_guard)
         outcome.ok, outcome.reason, outcome.assertion_results = ok, reason, results
         outcome.duration_s = self.cfg.clock.now() - start
-        outcome.alerts.extend(entry_alerts)
         if reserved_alerts or reserved_undeclared:
             outcome.alerts.extend(reserved_alerts)
             if reserved_undeclared:

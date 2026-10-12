@@ -144,7 +144,7 @@ def test_a_step_retried_after_an_alert_carries_both_attempts_in_order(
     # The alert is seeded from the start to stand for one arriving mid-step; the scenario-entry
     # check would clear it before the step that this test is about ever meets it.
     monkeypatch.setattr(_StepRunner, "_clear_entry_alert", lambda *_a, **_k: None)
-    """The guard dismisses a prompt and the body runs again; both taps really happened."""
+    """The backend answers a prompt and the body runs again; both taps really happened."""
     driver = _FlakyTapDriver([el("blocked.button", frame=(0.0, 0.0, 10.0, 10.0))])
 
     steps = _run(
@@ -153,92 +153,13 @@ def test_a_step_retried_after_an_alert_carries_both_attempts_in_order(
         alert_guard=AlertGuardConfig(rules=[guard_rule()]),
     )
 
-    # Everything that really reached the device during this step, in order: the tap that failed, the
-    # guard's own dismiss (by handle, out of the app's coordinate space, so no target), and the tap
-    # that then succeeded.
+    # Everything this driver actuated during this step, in order: the tap that failed and the tap
+    # that then succeeded. The press that cleared the prompt happened inside the backend's own
+    # resolving read (BE-0461), so it reaches the report as an alert event, not an actuation.
     assert [(a.gesture, a.target) for a in steps[0]] == [
         ("tap", "blocked.button"),
-        ("systemAlert", None),
         ("tap", "blocked.button"),
     ]
-
-
-def test_the_expect_phase_guard_records_onto_the_scenario_result() -> None:
-    """The one actuation with no step to carry it lands on `RunResult.expect_actuations`."""
-
-    def react(d: FakeDriver, kind: str, _arg: object) -> None:
-        if kind == "tap":  # the prompt closes and the app finishes what it was blocked on
-            d.screen = [el("verified", frame=(0.0, 0.0, 5.0, 5.0))]
-
-    # The in-tree dismiss is the guard path that actuates the app's own screen: an identifier-less
-    # button an in-tree rule of the scenario's own identifies, tapped through `Driver.tap` (BE-0315,
-    # BE-0406). It is the one guard path that still logs a gesture now the vision fallback is gone
-    # (BE-0402); the native path taps out of the app's coordinate space by handle, so it records no
-    # in-app actuation.
-    prompt = el(None, "OK", ["button"], frame=(10.0, 10.0, 30.0, 30.0))
-    driver = FakeDriver([prompt], react=react)
-
-    result = run_scenario(
-        driver,
-        _scenario(
-            {
-                "name": "expect retry",
-                "steps": [{"assert": [{"exists": {"label": "OK"}}]}],
-                "expect": [{"exists": {"id": "verified"}}],
-            }
-        ),
-        clock=FakeClock(),
-        alert_guard=AlertGuardConfig(rules=[guard_rule("OK")]),
-    )
-
-    assert result.ok
-    # No identifier on the prompt's button, so the record carries the gesture and no authored target.
-    assert [(a.gesture, a.target) for a in result.expect_actuations] == [("tap", None)]
-    # And it is not double-counted onto the step that ran before the expect phase.
-    assert result.steps[0].actuations == []
-
-
-def test_the_expect_phase_guard_drains_its_own_tap_even_when_the_call_reports_nothing_cleared() -> (
-    None
-):
-    """A tap that really reached the device is still reported even when the guard's own later
-    diagnosis withdraws the `AlertEvent` it earned (BE-0418 review finding): the sheet accepts the
-    tap and re-presents itself with a validation error, so it never actually closes, and the final
-    round's own diagnosis takes the `AlertEvent` back -- `cleared` reports `False` even though
-    `driver.tap` genuinely fired once. Gating the actuation drain on `cleared` lost that tap from
-    the report entirely, on exactly the failing `expect` whose report needs it most.
-    """
-
-    class _ReRaisesWithAnErrorRow(FakeDriver):
-        def tap(self, sel: base.Selector) -> None:
-            super().tap(sel)
-            self.screen = [
-                el(None, "Not Now", ["button"], frame=(10.0, 10.0, 30.0, 30.0)),
-                el(None, "Incorrect password", frame=(0.0, 0.0, 5.0, 5.0)),
-            ]
-
-    driver = _ReRaisesWithAnErrorRow(
-        [el(None, "Not Now", ["button"], frame=(10.0, 10.0, 30.0, 30.0))]
-    )
-
-    result = run_scenario(
-        driver,
-        _scenario(
-            {
-                "name": "expect retry never lands",
-                "steps": [{"assert": [{"exists": {"label": "Not Now"}}]}],
-                "expect": [{"exists": {"id": "verified"}}],
-            }
-        ),
-        clock=FakeClock(),
-        alert_guard=AlertGuardConfig(rules=[guard_rule("Not Now")]),
-    )
-
-    assert not result.ok  # the sheet never actually clears, so "verified" never appears
-    # The tap the guard made on round 0 still reaches the report, even though the call's own final
-    # round concludes it never landed and withdraws the AlertEvent for it.
-    assert [(a.gesture, a.target) for a in result.expect_actuations] == [("tap", None)]
-    assert result.steps[0].actuations == []
 
 
 # --- the redaction boundary: no authored string reaches the record ---
@@ -370,33 +291,6 @@ def test_a_steps_actuations_carry_absolute_instants_after_its_own_start() -> Non
     first, second = (step.actuations[0] for step in result.steps)
     assert first.at == result.steps[0].started_at == _WALL
     assert second.at == result.steps[1].started_at == _WALL + 0.4
-
-
-def test_the_expect_phase_actuation_carries_an_absolute_instant() -> None:
-    def react(d: FakeDriver, kind: str, _arg: object) -> None:
-        if kind == "tap":
-            d.screen = [el("verified", frame=(0.0, 0.0, 5.0, 5.0))]
-
-    clock = FakeClock()
-    prompt = el(None, "OK", ["button"], frame=(10.0, 10.0, 30.0, 30.0))
-    driver = FakeDriver([prompt], react=react, now=clock.now)
-
-    result = run_scenario(
-        driver,
-        _scenario(
-            {
-                "name": "expect retry",
-                "steps": [{"assert": [{"exists": {"label": "OK"}}]}],
-                "expect": [{"exists": {"id": "verified"}}],
-            }
-        ),
-        clock=clock,
-        wall_clock=lambda: _WALL,
-        alert_guard=AlertGuardConfig(rules=[guard_rule("OK")]),
-    )
-
-    (tap,) = result.expect_actuations
-    assert tap.at is not None and tap.at >= _WALL
 
 
 def test_the_default_cap_is_far_above_a_real_step() -> None:

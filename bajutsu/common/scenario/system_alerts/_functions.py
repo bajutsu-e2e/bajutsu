@@ -176,9 +176,9 @@ _LABELS: _Prompts = {
 }
 
 
-# SpringBoard owns every prompt but `savePassword`, so each reaches the step and the native probe and
-# nothing else.
-# `savePassword` is the mirror image: the in-tree dismissal alone.
+# SpringBoard owns every prompt but `savePassword`, so each reaches the step and the runner's
+# SpringBoard check and nothing else.
+# `savePassword` is the mirror image: the runner's in-tree pass alone.
 _SURFACES: _PromptSurfaces = {
     "notifications": {"step": True, "native": True, "in_tree": False},
     "tracking": {"step": True, "native": True, "in_tree": False},

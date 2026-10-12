@@ -448,7 +448,6 @@ def _run_step_body(
                 network,
                 trace=wait_trace,
                 alert_guard=alert_guard,
-                alerts=alerts,
                 on_tick=on_wait_tick,
                 transitions=transitions,
                 on_interrupt_poll=on_interrupt_poll,
@@ -1038,17 +1037,9 @@ def run_scenario(  # noqa: C901, PLR0915
                     expect_alerts.extend(expect_drained.alerts)
                     expect_undeclared.extend(expect_drained.undeclared)
                     if not assertions.passed(expect_results) and alert_guard is not None:
-                        cleared, expect_block_note, dropped = _recover_expect_from_alert(
-                            driver,
-                            alert_guard,
-                            expect_alerts,
-                            expect_actuations,
-                            wall_offset_s,
-                            clock,
-                            transitions,
-                            cancelled,
+                        cleared, expect_block_note = _recover_expect_from_alert(
+                            driver, clock, transitions, cancelled
                         )
-                        expect_dropped_actuations += dropped
                         if cleared:
                             # Settled already: `_recover_expect_from_alert` settles after whatever
                             # it cleared, so the retry reads a screen that has stopped moving.
@@ -1074,10 +1065,11 @@ def run_scenario(  # noqa: C901, PLR0915
                                 ),
                             )
                             expect_dropped_actuations += dropped
-                        # The guard's own rounds just now, and the retry's queries when one ran, can
-                        # each be interrupted too, and nothing else drains this phase again afterwards
-                        # (BE-0406 Unit 2b). Outside the `if cleared` branch above so a call that cleared
-                        # nothing is still covered.
+                        # The recovery read's records, and whatever interrupted the retry's queries,
+                        # are this scenario's: nothing else drains this phase again afterwards, and the
+                        # next scenario's policy push would discard them (BE-0406 Unit 2b, BE-0461).
+                        # Outside the `if cleared` branch above so a read that cleared nothing is
+                        # still covered.
                         retry_drained = drain_interruptions(driver)
                         expect_alerts.extend(retry_drained.alerts)
                         expect_undeclared.extend(retry_drained.undeclared)
@@ -1553,41 +1545,24 @@ def _run_steps(
 
 def _recover_expect_from_alert(
     driver: base.Driver,
-    alert_guard: AlertGuardConfig,
-    expect_alerts: list[AlertEvent],
-    expect_actuations: list[Actuation],
-    wall_offset_s: float,
     clock: Clock,
     transitions: TransitionSource,
     cancelled: CancelSource,
-) -> tuple[bool, str, int]:
-    """Clear what may be blocking a failed `expect`, once: whether anything cleared, the note naming
-    what still blocks the screen, and the actuations dropped while draining the guard's own tap.
+) -> tuple[bool, str]:
+    """Clear what may be blocking a failed `expect`, once: whether a retry is worth it, and the note
+    naming what still blocks the screen (BE-0461 Unit 5).
 
-    On a backend answering alerts inside its own reads, one forced resolving read (BE-0461 Unit 5):
-    the assertions keep reading through `Driver.query`, so a read never changes the screen in the
-    middle of the check itself. It settles the screen after an answer, or after a showing the pacing
-    memo withheld, before the caller evaluates again.
+    One forced resolving read, on a backend answering alerts inside its own reads; every other
+    backend has nothing here to clear. The assertions keep reading through `Driver.query`, so a read
+    never changes the screen in the middle of the check itself. The screen settles after an answer,
+    or after a showing the pacing memo withheld, before the caller evaluates again.
     """
-    if base.Capability.RESOLVE_ALERTS in driver.capabilities() and isinstance(
+    if base.Capability.RESOLVE_ALERTS not in driver.capabilities() or not isinstance(
         driver, base.AlertResolvingTarget
     ):
-        recovery = driver.query_resolving("true", force_check=True)
-        cleared = bool(recovery.drained.tapped) or recovery.withheld
-        if cleared:
-            settle_after_alert_dismiss(driver, clock, transitions=transitions, cancelled=cancelled)
-        return cleared, records_note(recovery.drained), 0
-    # The guard's own call settles the screen after every round it dismisses something in
-    # (BE-0418), the last one included, so the caller's retry reads a settled screen.
-    cleared = alert_guard(
-        driver,
-        expect_alerts,
-        settle=lambda: settle_after_alert_dismiss(
-            driver, clock, transitions=transitions, cancelled=cancelled
-        ),
-    )
-    # Drained whether or not anything cleared: since BE-0418 a call can tap and still return False,
-    # once a withdrawn `AlertEvent` leaves `alerts` no longer than it started (BE-0402's report still
-    # needs that tap).
-    dropped = _drain_into_expect_actuations(driver, expect_actuations, wall_offset_s)
-    return cleared, alert_guard.blocked_note, dropped
+        return False, ""
+    recovery = driver.query_resolving("true", force_check=True)
+    cleared = bool(recovery.drained.tapped) or recovery.withheld
+    if cleared:
+        settle_after_alert_dismiss(driver, clock, transitions=transitions, cancelled=cancelled)
+    return cleared, records_note(recovery.drained)

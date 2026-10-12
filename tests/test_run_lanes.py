@@ -10,7 +10,7 @@ import typer
 
 from bajutsu.common.config import Effective, load_config, resolve
 from bajutsu.common.orchestrator import DEFAULT_ALERT_POLL_INTERVAL, DEFAULT_FROZEN_SCREEN_TIMEOUT
-from bajutsu.common.orchestrator.types import ResolvedAlertRule, matching_alert_rule
+from bajutsu.common.orchestrator.types import ResolvedAlertRule
 from bajutsu.common.scenario import (
     Scenario,
     SystemAlertHandling,
@@ -84,17 +84,17 @@ def test_an_unpinned_device_run_is_always_a_serial_pool_of_one() -> None:
 
 
 def _match_tap_label(rules: list[ResolvedAlertRule], buttons: list[str]) -> str | None:
-    """The tap label `matching_alert_rule` resolves to, or None (BE-0418 review finding).
+    """The tap label of the first rule that identifies *buttons*, or None.
 
-    A thin test-only convenience over `matching_alert_rule`, which returns the rule itself rather
-    than a bare label: production keys on the rule's own shape, since two rules can share one
-    alert's shape under different choices and keying on the label alone would let one such rule's
-    exclusion promote its sibling to tap the opposite button. The tests below only care about the
-    resolved label, so this extracts it rather than reintroducing a production wrapper with no
-    caller of its own.
+    The runner's accept test (`InterruptionRule.matches`, BajutsuKit), restated: every identifying
+    label on the alert exactly once, and no excluded label present at all.
     """
-    rule = matching_alert_rule(rules, buttons)
-    return rule.tap_label if rule is not None else None
+    for rule in rules:
+        if all(buttons.count(label) == 1 for label in rule.identifying_labels) and not any(
+            label in buttons for label in rule.excluded_labels
+        ):
+            return rule.tap_label
+    return None
 
 
 def _eff(**target: str) -> Effective:
@@ -514,7 +514,6 @@ def test_alert_guard_factory_needs_no_credential_and_reaches_no_model(
     Claude-free by construction rather than by the shell happening to lack a variable.
     """
     from bajutsu.common.analytics import ledger as usage_ledger
-    from bajutsu.common.drivers.fake import FakeDriver
     from bajutsu.common.orchestrator import AlertGuardConfig
 
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
@@ -532,15 +531,13 @@ def test_alert_guard_factory_needs_no_credential_and_reaches_no_model(
         assert isinstance(guard, AlertGuardConfig)
         assert not hasattr(guard, "vision")  # the fallback is gone from the type, not merely unused
 
-        # A backend with no native capability: nothing left to try, so the guard reports nothing and
-        # leaves no note — an absent alert is not a blocked screen.
-        assert guard(FakeDriver([]), [], settle=lambda: None) is False
-        assert guard.blocked_note == ""
+        # The guard's rules reach the backend unchanged, which answers the prompt the scenario's own
+        # rule names inside a read — no credential, no model (BE-0461). The labels are the ones
+        # `system_alerts` resolves for `en`, since BE-0406 leaves an alert no rule identifies alone.
+        from bajutsu.common.drivers.fake import ResolvingFakeDriver
+        from bajutsu.common.orchestrator.types import push_interruption_policy
 
-        # The native path is untouched — it needs no credential, so it still taps the prompt the
-        # scenario's own rule names. The labels are the ones `system_alerts` resolves for `en`,
-        # since BE-0406 leaves an alert no rule identifies alone rather than guessing at it.
-        driver = FakeDriver([])
+        driver = ResolvingFakeDriver([])
         driver.system_alert_buttons = [
             {
                 "identifier": None,
@@ -552,8 +549,8 @@ def test_alert_guard_factory_needs_no_credential_and_reaches_no_model(
             }
             for label in ("Don’t Allow", "Allow")
         ]
-        state, event, _ = guard.probe_native(driver)
-        assert state == "dismissed" and event is not None
+        push_interruption_policy(driver, guard, scenario_start=True)
+        assert driver.query_resolving("true").drained.tapped == ["Allow"]
 
         assert not ledger_path.exists()  # no AI call, so no attributed event
         # No credential note either way. Named substrings rather than an empty stream, so an

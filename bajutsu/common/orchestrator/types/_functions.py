@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
@@ -45,32 +45,10 @@ def _no_network() -> list[NetworkExchange]:
 def alert_block_note(buttons: Sequence[str]) -> str:
     """What the guard saw blocking the screen, for a failure reason to name (BE-0402).
 
-    *buttons* are the labels blocking the screen that this call has not already answered —
-    `probe_native`'s `"unhandled"` answer, or the leftover buttons a `"dismissed"`,
-    `already_dismissed`, `"unhandled"`, or raced-`"absent"` round (`subtract_labels`) finds beyond
-    the shapes that round accounted for (`AlertGuardConfig.__call__`, BE-0418) — a fresh dismissal
-    computes it too, since the alert it just tapped is never the only thing `buttons` enumerates.
-    All four credit per *read* — every rule `identified_alert_rules` resolves on it, not only the
-    shapes this call has tapped — so a second, *declared* prompt co-present on the same read is
-    subtracted too rather than named as one no rule identifies. `already_dismissed` needs this too,
-    not only the other three: a wider declared sibling nesting with an already-dismissed narrower
-    shape (`_resolve_alert_rule`'s own reverse-containment test) reaches `already_dismissed` with
-    its own extra label still on `buttons`, and crediting only the tapped shapes there would report
-    that label as one no rule identifies, when a rule does identify it (BE-0418 review finding).
-    `_AlertGuardGate._observe_native`'s `"unhandled"` and raced-`"absent"` branches
-    (`waits/_alert_guard_gate.py`) pass a leftover credited that same per-read way.
-    Not-yet-answered is weaker than "no rule accounts for it": a label two rules both name can
-    collide (the built-in `notifications` and `tracking` both grant `"Allow"`) and land here
-    un-subtracted even though a rule does identify it, once a per-label collision keeps
-    `matching_alert_rule` from resolving either
-    (`test_the_end_of_step_guard_filters_the_unhandled_note_when_the_collision_never_resolves`).
-    Empty means the
-    block was inferred from the collapsed-tree proxy rather than enumerated — a surface
-    `springboard.alerts` cannot see, or a backend with no native query at all — so the note hedges
-    rather than naming buttons nobody read. A prompt the policy *did* name and a tap that did not
-    take is a different story, and gets `uncleared_prompt_note` below instead — the in-tree
-    dismiss's own `NotTappable`, or `__call__` spending its whole round bound with the shape it
-    most recently tapped, native or in-tree, still reading back on the final round (BE-0418).
+    *buttons* are a SpringBoard alert's buttons that no rule identifies — the *unidentified* record
+    a resolving read returns (BE-0461). Empty means the block was inferred from the collapsed-tree
+    proxy rather than enumerated, so the note hedges rather than naming buttons nobody read. A
+    prompt a rule *did* name, whose press did not clear it, gets `uncleared_prompt_note` instead.
     """
     if buttons:
         return f"{_UNHANDLED_ALERT_NOTE} (buttons: {', '.join(buttons)})"
@@ -78,17 +56,17 @@ def alert_block_note(buttons: Sequence[str]) -> str:
 
 
 def collapsed_tree_note(seconds: float) -> str:
-    """A screen the guard has positively ruled a SpringBoard alert out of, yet whose tree still fails
+    """A screen a read has positively ruled a SpringBoard alert out of, yet whose tree still fails
     `shows_app_ui` after *seconds* — no element other than the application itself carries a label or
     an identifier — for a wait to stop on rather than spend its whole timeout.
 
     Distinct from `alert_block_note`'s hedged form, which reads a collapsed tree as *possibly* an
-    alert: here a native probe has just reported none, so what holds the screen is something outside
-    the tree no answer path reaches. Measured on an iOS 26.5 Simulator, iOS's Save Password alert can
-    be left mid-presentation this way when a notification request lands at the same moment — never
-    drawn, absent from every process's accessibility tree, yet modal over the app — and neither
-    backgrounding the app, a hardware Escape, nor a tap on a control that is still enumerable cleared
-    it.
+    alert: here the read's own SpringBoard check just found none, so what holds the screen is
+    something outside the tree no answer path reaches. Measured on an iOS 26.5 Simulator, iOS's Save
+    Password alert can be left mid-presentation this way when a notification request lands at the
+    same moment — never drawn, absent from every process's accessibility tree, yet modal over the app
+    — and neither backgrounding the app, a hardware Escape, nor a tap on a control that is still
+    enumerable cleared it.
     """
     return (
         f"no element below the application has carried a label or identifier for {seconds:.0f}s "
@@ -98,21 +76,12 @@ def collapsed_tree_note(seconds: float) -> str:
 
 
 def uncleared_prompt_note(label: str) -> str:
-    """A give-up on a prompt a rule named but could not clear (BE-0402): the in-tree dismiss's own
-    `NotTappable`, `AlertGuardConfig.__call__` spending its whole round bound with the shape it
-    most recently tapped — native or in-tree — still reading back on the final round, a native tap
-    `_AlertGuardGate._observe_native` resolved and then found the label twice (`AmbiguousSelector`,
-    which `probe_native` reports as `"unhandled"`), or a second, declared prompt the `"dismissed"`
-    branch's own fallback (`_fresh_dismiss_leftover_note`) resolves fresh against the final round's
-    own read, queued behind the one that round actually tapped and never reached within the bound
-    (BE-0418 review finding) — BE-0418.
+    """A give-up on a prompt a rule named but could not clear (BE-0402): the *gave up* record the
+    backend returns once a showing reaches its press ceiling, or stays unhittable past its bound
+    (BE-0461).
 
     Deliberately not `alert_block_note`: "unhandled" would tell the author no rule identified the
-    alert, when their rule did identify it. "Could not clear" covers every producer above without
-    claiming which one happened — a tap that did not take or never became deliverable, *and* a
-    prompt this call never attempted a tap on at all because the round bound ran out first (BE-0418
-    review finding) — either way, telling the author to write a rule they already have instead of
-    to the stuck prompt is the one wrong answer this note exists to avoid.
+    alert, when their rule did identify it — and send them to write a rule they already have.
     """
     return f"{_UNCLEARED_PROMPT_NOTE} (button: {label})"
 
@@ -169,54 +138,6 @@ def selector_names_button(sel: base.Selector, buttons: Sequence[str]) -> bool:
     return any(base.matches(_alert_button(label), sel) for label in buttons)
 
 
-def subtract_labels(buttons: Sequence[str], shapes: Iterable[frozenset[str]]) -> list[str]:
-    """The buttons left over once every one of *shapes*' own labels has been accounted for.
-
-    Shared by `AlertGuardConfig.__call__`'s `_leftover_note` (`alert_guard_config.py`) and both
-    `_AlertGuardGate._observe_native` branches that credit a whole read — its `"unhandled"` one and
-    its race one (`waits/_alert_guard_gate.py`, BE-0418) — so none of the three carries an
-    independent copy of the same subtraction: the one-shot call's `dismissed` shapes and the
-    mid-wait gate's own `identified_alert_rules` result are all, after all, "shapes whose labels
-    this read should not still name".
-
-    Subtracted with multiplicity, not as a set: `answered = {label for labels in shapes for label
-    in labels}` followed by `[b for b in buttons if b not in answered]` would treat one shape as
-    consuming *every* occurrence of its labels at once, so a second, genuinely live alert rendering
-    the identical label pair — two permission prompts both offering "Allow" / "Don't Allow", say —
-    would vanish from the leftover along with the one already accounted for. Removing one
-    occurrence per label instead leaves that second alert's own copy behind to name, while two
-    shapes sharing a label (BE-0418's own `notifications` / `tracking` pair, both granting "Allow")
-    still cancel out to nothing between them.
-
-    Subtracts each shape's own `identifying_labels`, deliberately not the *whole* `buttons` a round
-    actually read: `buttons` is `system_alert_labels()`'s enumeration of every alert SpringBoard
-    currently holds, not one alert's own button set, so a second, different, unidentified alert
-    already up alongside one already accounted for — the ordinary shape of a stacked pair queued by
-    one action, not a corner case, per
-    `test_the_end_of_step_guard_still_names_a_co_present_alert_no_rule_identifies`
-    (`tests/orchestrator/test_native_alert_guard.py`) — would have its own buttons permanently
-    credited to the other alert and never surfaced (review finding: recording the whole read this
-    way was tried and reverted). The trade-off this leaves stands the other way: a rule whose
-    `identifying_labels` deliberately names only *some* of its alert's buttons
-    (`ResolvedAlertRule`'s own docstring — "not a demand that the shape's labels be the alert's
-    whole button set") leaves the rest stranded here, reported as if a second, different, unhandled
-    alert had joined the one already accounted for. No currently declared native shape does this
-    (every entry in `_LABELS` names its prompt's whole button set), and the two failure directions
-    are irreconcilable from a flat button list alone — nothing here can tell "this alert's own
-    unlisted button" apart from "a different alert's button that happens to be enumerable at the
-    same moment" — so this side stays the accepted gap rather than the swallowed-stranger one,
-    which a passing scenario hits today.
-    """
-    leftover = list(buttons)
-    for shape in shapes:
-        for label in shape:
-            if label in leftover:
-                leftover.remove(label)
-    # A title marker (`observed_alert_labels`) is no button: only `localNetwork` names its own, so
-    # every other dismissed alert would otherwise leave its title behind as a phantom unhandled one.
-    return [label for label in leftover if not label.startswith(TITLE_MARKER)]
-
-
 def observed_alert_labels(driver: base.Driver) -> list[str]:
     """What the reactive guard matches rules against: the alert's buttons, then its title's marker.
 
@@ -266,52 +187,6 @@ def prompt_title_check(
     return check
 
 
-def identified_alert_rules(
-    rules: Sequence[ResolvedAlertRule], buttons: Sequence[str]
-) -> list[ResolvedAlertRule]:
-    """Every rule whose shape is uniquely identified on `buttons`: no excluded label present, and
-    each identifying label present exactly once.
-
-    The shared accept test behind `matching_alert_rule` below (its first element), so a caller
-    crediting a whole read against every rule that could act on it — the mid-wait gate's own race
-    branch, subtracting every declared prompt's own labels from a leftover (`waits/_alert_guard_gate.py`,
-    BE-0418) — cannot drift from what a probe itself would actually resolve. A hand-rolled copy of
-    this predicate elsewhere would credit, or refuse, a shape this function disagrees with the
-    moment either changes, and the caller would find out only as a `wait` blocked by an alert
-    nothing clears, or one a rule does identify silently going unreported.
-    """
-    present = list(buttons)
-    return [
-        rule
-        for rule in rules
-        if not any(label in present for label in rule.excluded_labels)
-        and all(present.count(label) == 1 for label in rule.identifying_labels)
-    ]
-
-
-def matching_alert_rule(
-    rules: Sequence[ResolvedAlertRule], buttons: Sequence[str]
-) -> ResolvedAlertRule | None:
-    """The first rule whose shape is uniquely identified on `buttons`.
-
-    A rule matches when each of its identifying labels is present exactly once — the full set, not
-    only the label it taps, since a single shared label cannot by itself distinguish one covered
-    prompt from another — and no excluded label is present at all. None means no rule's prompt is
-    identified, so the caller leaves the alert alone and reports it (BE-0406).
-
-    Returns the rule itself, not just its tap label: a caller that keyed on the label alone could
-    not tell two rules sharing one alert's shape under different choices apart (a scenario's
-    `choice` overriding a target's for the same prompt, BE-0177), and one such rule's exclusion
-    would then promote its sibling to tap the opposite button on an alert it never actually
-    matched. `AlertGuardConfig.__call__`'s native dedup (BE-0418) keys on a matched rule's own
-    `identifying_labels` rather than the raw `buttons` read for the identical reason: `buttons`
-    enumerates every alert SpringBoard currently holds and changes whenever a *different* alert
-    joins or leaves the surface, while the rule that answers one already-dismissed alert does not.
-    """
-    identified = identified_alert_rules(rules, buttons)
-    return identified[0] if identified else None
-
-
 def push_interruption_policy(
     driver: base.Driver, guard: AlertGuardConfig | None, *, scenario_start: bool = False
 ) -> None:
@@ -321,8 +196,7 @@ def push_interruption_policy(
     installed answers with the alert's own default button — granting a permission the scenario may
     have refused, with nothing in the report. Pushing the guard's already-resolved labels keeps that
     decision here: the backend applies `rules`, and an alert none of them identifies is declined and
-    reported rather than guessed at — a fallback `probe_native` itself no longer has either
-    (BE-0406).
+    reported rather than guessed at (BE-0406).
 
     A rule the monitor can never meet is dropped rather than pushed: this surface exists for an
     alert in another process interrupting an XCUITest interaction, and one raised into the
