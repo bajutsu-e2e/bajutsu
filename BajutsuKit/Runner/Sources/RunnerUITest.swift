@@ -112,7 +112,8 @@ final class RunnerUITest: XCTestCase {
     /// classifies the banner as `Other`) and records a UI automation failure; those failures then
     /// preempted the interrupted `swipe` and ended the test case, losing the runner (#2156). So an
     /// unconfirmed swipe keeps waiting for the banner's own auto-dismissal, which clears it as surely
-    /// as the swipe would, and declines only if the banner outlasts that too.
+    /// as the swipe would, and declines only if the banner outlasts that too — or if the identifier
+    /// query cannot see the banner at all, where its absence would prove nothing (below).
     ///
     /// Either outcome still needs to be *legible*, or it reproduces in miniature the invisibility
     /// this whole mechanism exists to end: nothing calls `recordDeclined` for a banner (that path
@@ -122,11 +123,18 @@ final class RunnerUITest: XCTestCase {
         let springboard = XCUIApplication(bundleIdentifier: springboardBundleID)
         let remaining = springboard.descendants(matching: .any)
             .matching(identifier: notificationBannerIdentifier)
-        // Read before the swipe: once the banner is gone its label resolves to empty, and the label
-        // is the only thing that identifies the dismissal in the run's report. Read through the same
-        // query as every other read here (see `settledFrame`), behind `exists` for the same reason.
+        // Every later check reads the banner's absence from this query as its clearance, which holds
+        // only once the query has seen the banner. A query that cannot resolve it here may simply be
+        // missing a banner still on screen, and claiming that is the reinvocation loop above — so
+        // decline rather than claim an interruption nothing here can confirm.
         let current = remaining.firstMatch
-        let label = current.exists ? current.label : ""
+        guard current.exists else {
+            logBanner("the identifier query could not see the interrupting banner — declining to XCUITest's own handler")
+            return false
+        }
+        // Read before the swipe: once the banner is gone its label resolves to empty, and the label
+        // is the only thing that identifies the dismissal in the run's report.
+        let label = current.label
         guard let frame = settledFrame(of: remaining.firstMatch) else {
             return awaitBannerClearance(
                 remaining, label: label, swiped: false, unconfirmed: "the banner never settled on screen"
@@ -193,7 +201,13 @@ final class RunnerUITest: XCTestCase {
                 if !swiped || elapsed > bannerSwipeClearanceWindow {
                     logBanner("\(reason); it cleared on its own after \(String(format: "%.1f", elapsed))s")
                 }
-                InterruptionPolicyStore.shared.recordBanner(label)
+                // An empty label would put a blank event in the run's report; the clearance is
+                // still real, so it is claimed and only logged.
+                if label.isEmpty {
+                    logBanner("cleared, but its label read empty, so the report records nothing")
+                } else {
+                    InterruptionPolicyStore.shared.recordBanner(label)
+                }
                 return true
             }
         } while Date().timeIntervalSince(start) < bannerClearanceTimeout
@@ -246,10 +260,10 @@ final class RunnerUITest: XCTestCase {
     /// swipe that actually landed on a slow host, or block a fast one for far longer than the ~32ms
     /// per query measured while sizing this. A deadline instead gives the dismissal the same real
     /// time on every host, while each poll is still a real SpringBoard query rather than a sleep
-    /// (determinism first). Sized to outlast a temporary banner's own display time, so declining —
-    /// fatal to the runner, see `swipeAwayNotificationBanner` — is reached only by a banner that
-    /// will not leave by itself. The worst case per interruption, settle (`bannerSettleTimeout`, 2s)
-    /// plus clearance (10s), is about 12s, well inside the 30s actuation window
+    /// (determinism first). Sized to outlast a temporary banner's own display time, so declining
+    /// after a clearance wait — fatal to the runner, see `swipeAwayNotificationBanner` — is reached
+    /// only by a banner that will not leave by itself. The worst case per interruption, settle
+    /// (`bannerSettleTimeout`, 2s) plus clearance (10s), is about 12s, well inside the 30s actuation window
     /// (`_ACTUATION_TIMEOUT_SECONDS` in `bajutsu/common/drivers/xcuitest/_functions.py`).
     private static let bannerClearanceTimeout: TimeInterval = 10
 

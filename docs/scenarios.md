@@ -220,8 +220,8 @@ notification's own text. Pressing that region opens the notification's app. A ru
 pressed it would leave the scenario under test.
 
 The runner swipes the banner upward instead, anchored to the banner's own measured frame. The
-runner first waits for the banner to finish sliding in. A frame read mid-animation sits above the
-screen, and a swipe from that frame would move downward. The runner then confirms the banner has
+runner reads that frame after the banner has come to rest. A banner still sliding in sits above the
+screen, so a swipe from its frame would travel downward. The runner then confirms the banner has
 gone before claiming the interruption. Once the banner leaves, the step's interaction lands on the
 element the scenario named.
 
