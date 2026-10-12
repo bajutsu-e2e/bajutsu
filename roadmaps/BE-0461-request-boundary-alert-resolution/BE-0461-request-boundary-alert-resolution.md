@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0461") |
-| Implementing PR | [#2152](https://github.com/bajutsu-e2e/bajutsu/pull/2152) (unit 1), [#2155](https://github.com/bajutsu-e2e/bajutsu/pull/2155) (unit 2) |
+| Implementing PR | [#2152](https://github.com/bajutsu-e2e/bajutsu/pull/2152) (unit 1), [#2155](https://github.com/bajutsu-e2e/bajutsu/pull/2155) (unit 2), [#2164](https://github.com/bajutsu-e2e/bajutsu/pull/2164) (units 3–9) |
 | Topic | Platform support |
 <!-- /BE-METADATA -->
 
@@ -491,7 +491,7 @@ Log:
   before the next completed actuation is pressed but not reported again. The design accepts this
   window. The checks in Unit 4's resolving reads close it.
 
-- [#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM) — Units 3 to 9, completing the item. The
+- [#2164](https://github.com/bajutsu-e2e/bajutsu/pull/2164) — Units 3 to 9, completing the item. The
   runner gains `POST /systemAlert/resolve`. It answers by policy while the alert still offers the
   labelled buttons the step read, and not otherwise. It shares the pacing memo with the resolving
   read. Python gains

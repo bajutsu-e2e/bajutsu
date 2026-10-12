@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0461") |
-| 実装 PR | [#2152](https://github.com/bajutsu-e2e/bajutsu/pull/2152)（Unit 1）、[#2155](https://github.com/bajutsu-e2e/bajutsu/pull/2155)（Unit 2） |
+| 実装 PR | [#2152](https://github.com/bajutsu-e2e/bajutsu/pull/2152)（Unit 1）、[#2155](https://github.com/bajutsu-e2e/bajutsu/pull/2155)（Unit 2）、[#2164](https://github.com/bajutsu-e2e/bajutsu/pull/2164)（Unit 3〜9） |
 | トピック | Platform support |
 <!-- /BE-METADATA -->
 
@@ -410,7 +410,7 @@ capability のない backend は、今のゲートを使い続けます。明示
   プロンプトがまた出ると、監視はボタンを押しますが、記録はしません。設計はこの隙間を受け入れて
   います。Unit 4 の片付ける読み取りによる確認で、この隙間はなくなります。
 
-- [#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM) — Unit 3 から 9 までで、本項目を完了しました。
+- [#2164](https://github.com/bajutsu-e2e/bajutsu/pull/2164) — Unit 3 から 9 までで、本項目を完了しました。
   runner に `POST /systemAlert/resolve` を足しました。アラートがステップの読んだラベル付きのボタンを
   そのまま示している間だけ方針どおりに答え、ペース制御のメモは片付ける読み取りと共有します。Python には
   `Capability.RESOLVE_ALERTS` と `AlertResolvingTarget` を足しました。ガードが効いているときは、待機と
