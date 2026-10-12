@@ -140,11 +140,20 @@ final class RunnerUITest: XCTestCase {
                 remaining, label: label, swiped: false, unconfirmed: "the banner never settled on screen"
             )
         }
+        // The outcome itself, not only its proxy: a settled frame implies an upward swipe of at least
+        // `bannerSwipeTravel` for the banner shapes measured, but the top-margin clamp can still
+        // shorten or invert it for others. The same rule the step loop's proactive sweep applies
+        // (`notification_banner_swipe_points`), so the two cannot drift.
+        let endY = max(bannerSwipeTopMargin, frame.minY - bannerSwipeTravel)
+        guard frame.midY - endY >= bannerSwipeTravel else {
+            return awaitBannerClearance(
+                remaining, label: label, swiped: false,
+                unconfirmed: "the settled frame left the swipe shorter than \(bannerSwipeTravel) points"
+            )
+        }
         let origin = springboard.coordinate(withNormalizedOffset: .zero)
         let from = origin.withOffset(CGVector(dx: frame.midX, dy: frame.midY))
-        let to = origin.withOffset(
-            CGVector(dx: frame.midX, dy: max(bannerSwipeTopMargin, frame.minY - bannerSwipeTravel))
-        )
+        let to = origin.withOffset(CGVector(dx: frame.midX, dy: endY))
         // Re-checked immediately before the gesture, mirroring the alert branch's own `button.exists`
         // guard above: the banner can lose the race with its own auto-dismissal between the frame
         // read and this press, and a flick delivered at its former screen position would then land on
