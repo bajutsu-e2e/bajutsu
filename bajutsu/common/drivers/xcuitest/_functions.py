@@ -301,30 +301,51 @@ def _parse_resolving_drain_fold(raw: bytes | None) -> base.DrainedInterruptions:
 
 
 def _require_resolving_records(body: dict[str, Any]) -> None:
-    """Raise unless *body*'s BE-0461 record fields are present and well formed."""
-    surfaces = body.get("tappedSurfaces")
+    """Raise unless every record field of *body* is present and well formed.
+
+    Every field, not only BE-0461's own: the runner has already drained these records, so a value
+    the lenient fold below turned into an empty list would be lost for good. The per-tap lists must
+    also line up with `labels`, since a short one misattributes every tap after the gap.
+    """
     labels = body.get("labels")
     gave_up = body.get("gaveUp")
-    well_formed = (
+    alerts = body.get("tappedAlerts")
+    surfaces = body.get("tappedSurfaces")
+    if not (
         isinstance(labels, list)
+        and isinstance(alerts, list)
         and isinstance(surfaces, list)
+        and isinstance(gave_up, list)
+        and _is_strings(labels)
+        and _is_string_lists(body.get("unmatched"))
+        and _is_strings(body.get("banners"))
+        and _is_string_lists(alerts)
+        and len(alerts) == len(labels)
         and len(surfaces) == len(labels)
         and all(item in _SURFACES for item in surfaces)
-        and isinstance(body.get("unidentified"), list)
-        and isinstance(gave_up, list)
+        and _is_string_lists(body.get("unidentified"))
         and all(
             isinstance(item, dict)
-            and isinstance(item.get("identify"), list)
+            and _is_strings(item.get("identify"))
             and isinstance(item.get("tap"), str)
             and item["tap"]
             and item.get("surface") in _SURFACES
             for item in gave_up
         )
-    )
-    if not well_formed:
+    ):
         raise XcuitestChannelError(
             "the runner answered a resolveAlerts read with malformed records"
         )
+
+
+def _is_strings(value: object) -> bool:
+    """Whether *value* is a list of strings."""
+    return isinstance(value, list) and all(isinstance(item, str) for item in value)
+
+
+def _is_string_lists(value: object) -> bool:
+    """Whether *value* is a list of lists of strings."""
+    return isinstance(value, list) and all(_is_strings(item) for item in value)
 
 
 _SURFACES = frozenset({"native", "inTree"})

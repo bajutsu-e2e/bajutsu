@@ -60,7 +60,10 @@ struct AlertResolver {
         // reads — the same benign race the monitor guards (`RunnerUITest.swift`). Nothing to answer,
         // and no evidence the screen is clear either.
         guard labels.contains(where: { !$0.isEmpty }) else { return false }
-        let matched = alert.title.map { labels + [alertTitleMarker($0)] } ?? labels
+        // Every title joins as a marker, as the Python probe adds them: with two alerts up, dropping
+        // one title could let a rule its marker excludes (notifications vs. Local Network) match
+        // their shared buttons.
+        let matched = labels + alert.titles.map(alertTitleMarker)
         guard let rule = policy.rule(for: matched, surface: .native) else {
             store.rearmNative()
             if policy.governs { store.recordUnidentified(labels) }
@@ -160,13 +163,14 @@ struct AlertResolver {
     }
 }
 
-/// `querySystemAlertButtons`'s reply split into the tappable buttons and the alert's title.
+/// `querySystemAlertButtons`'s reply split into the tappable buttons and the titles of the alerts
+/// they sit on.
 private struct SpringboardAlert {
     let buttons: [ElementSnapshot]
-    let title: String?
+    let titles: [String]
 
     init(_ entries: [ElementSnapshot]) {
         buttons = entries.filter { $0.identifier != systemAlertTitleIdentifier }
-        title = entries.first { $0.identifier == systemAlertTitleIdentifier }?.label
+        titles = entries.compactMap { $0.identifier == systemAlertTitleIdentifier ? $0.label : nil }
     }
 }

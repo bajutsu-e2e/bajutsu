@@ -43,20 +43,19 @@ final class AlertResolutionTests: XCTestCase {
         )
     }
 
-    private func alertButtons(_ labels: [String], title: String? = nil) -> [ElementSnapshot] {
+    private func alertButtons(_ labels: [String], title: String? = nil, titles: [String] = []) -> [ElementSnapshot] {
         let buttons = labels.map { label in
             ElementSnapshot(
                 identifier: nil, label: label, value: nil, traits: ["button"],
                 frame: (0, 0, 10, 10), backingElement: NSObject()
             )
         }
-        guard let title else { return buttons }
-        return buttons + [
+        return buttons + ((title.map { [$0] } ?? []) + titles).map { title in
             ElementSnapshot(
                 identifier: systemAlertTitleIdentifier, label: title, value: nil, traits: [],
                 frame: (0, 0, 10, 10), backingElement: NSObject()
             )
-        ]
+        }
     }
 
     private func treeButton(_ label: String, identifier: String? = nil) -> ElementSnapshot {
@@ -130,6 +129,24 @@ final class AlertResolutionTests: XCTestCase {
         )
         let reply = try await read()
         XCTAssertEqual(reply["labels"] as? [String], ["Don’t Allow"])
+    }
+
+    func testEveryAlertTitleJoinsTheMatchedLabels() async throws {
+        // With notifications and Local Network both up, the Local Network title must reach the
+        // match even when it is not the first, or the notifications rule would answer it.
+        let localNetworkTitle = "“Showcase” Would Like to Find and Connect to Devices on Your Local Network"
+        let notificationsRule = InterruptionRule(
+            identify: ["Allow", "Don’t Allow"], tap: "Don’t Allow",
+            exclude: [alertTitleMarker(localNetworkTitle)]
+        )
+        push([notificationsRule])
+        provider.systemAlertButtons = alertButtons(
+            ["Allow", "Don’t Allow"],
+            titles: ["“Showcase” Would Like to Send You Notifications", localNetworkTitle]
+        )
+        let reply = try await read()
+        XCTAssertTrue(provider.systemAlertTapCalls.isEmpty)
+        XCTAssertEqual(reply["labels"] as? [String], [])
     }
 
     func testNoAlertSetsSpringboardChecked() async throws {

@@ -160,7 +160,10 @@ class XcuitestDriver:
             reply = _channel_transport(method, path, body)
             if _is_resolving_read(method, path):
                 # A resolving read drains the runner's whole store into its reply, as `/tap` does,
-                # so it leaves the carry just as current (BE-0461 Unit 2).
+                # so it leaves the carry just as current (BE-0461 Unit 2). The flag drops first: a
+                # reply that fails to parse has lost its records, and the next drain must then ask
+                # the wire rather than trust a carry an earlier tap left current.
+                carry.is_current = False
                 carry.drained = carry.drained.merged_with(_parse_resolving_drain_fold(reply.raw))
                 carry.is_current = True
                 return reply

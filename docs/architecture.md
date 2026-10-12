@@ -1034,7 +1034,8 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   and pushes them, alongside whether the guard governs the scenario at all, once per scenario over
   `POST /interruptionPolicy`. Each rule carries its surface, and the monitor matches only the native
   ones (an in-process prompt never interrupts another process's interaction); the in-tree rules
-  travel with the guard's pacing for the runner's resolving reads (BE-0461). A `handleSystemAlert` step's own prompt/choice
+  travel with the guard's pacing, so the runner can answer such a prompt inside the request that
+  reads the screen (BE-0461). A `handleSystemAlert` step's own prompt/choice
   form is not necessarily among those rules — the step exists precisely for a prompt an author
   chooses not to declare in `systemAlertHandling` — so while that one step waits the orchestrator
   pushes one more rule for the step's own target alongside the scenario's, and restores the

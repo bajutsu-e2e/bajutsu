@@ -21,12 +21,6 @@ from bajutsu.common.orchestrator.types import (
     selector_names_button,
     undeclared_interruption_note,
 )
-from bajutsu.common.orchestrator.types.alert_guard_config import (
-    _TREE_DISMISS_DECLINE_GIVEUP_FLOOR as _TREE_DISMISS_DECLINE_GIVEUP_FLOOR,
-)
-from bajutsu.common.orchestrator.types.alert_guard_config import (
-    _decline_giveup as _decline_giveup,
-)
 from bajutsu.common.scenario import Gone, SystemAlertRole, Wait, WaitRequest
 from bajutsu.common.scenario.system_alerts import TITLE_MARKER
 
@@ -43,14 +37,6 @@ _SETTLE_POLLS = 2  # consecutive unchanged polls that count as "settled" (tree-d
 # over a chained transition posting more than one report in quick succession, not a whole
 # animation's duration.
 _TRANSITION_QUIESCENCE = 0.3
-# Seconds of consecutive `ElementNotTappable` declines `_dismiss_from_tree` tolerates for one
-# showing of a label before it stops attempting the tap: unlike `ElementNotFound` (the button left
-# the tree, so the next poll can't re-match it) and `AmbiguousSelector` (guarded by the uniqueness
-# pre-check above it), a genuinely stuck obstruction — a scrim that never lifts, an `elevation`
-# false positive — has neither property, so without its own bound this decline would re-issue a real
-# actuation attempt for the rest of the wait. Clock-based, for the reason `_TREE_RETAP_DELAY` records
-# for itself: what is being waited out is a presentation animation measured in seconds (a UIKit sheet
-# ~0.35-0.5s, an Android dialog enter ~0.25s+). A poll count cannot express that here anyway, because
 
 
 # A lane may raise the floor under a wait's ceiling: a condition wait returns the instant it is

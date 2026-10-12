@@ -51,6 +51,14 @@ _TREE_RETAP_DELAY = 1.0
 # actuating the device for the rest of it.
 _TREE_DISMISS_MAX_TAPS = 3
 
+# Seconds of consecutive `ElementNotTappable` declines `_dismiss_from_tree` tolerates for one
+# showing of a label before it stops attempting the tap: unlike `ElementNotFound` (the button left
+# the tree, so the next poll can't re-match it) and `AmbiguousSelector` (guarded by the uniqueness
+# pre-check above it), a genuinely stuck obstruction — a scrim that never lifts, an `elevation`
+# false positive — has neither property, so without its own bound this decline would re-issue a real
+# actuation attempt for the rest of the wait. Clock-based, for the reason `_TREE_RETAP_DELAY` records
+# for itself: what is being waited out is a presentation animation measured in seconds (a UIKit sheet
+# ~0.35-0.5s, an Android dialog enter ~0.25s+). A poll count cannot express that here anyway, because
 # `_dismiss_from_tree` is paced by `guard.poll_interval` rather than `_POLL` (see `_observe_native`)
 # and that interval is configurable per scenario, target, and flag (BE-0177). Twice the default
 # `poll_interval` rather than the animation's own horizon, because the give-up is checked *before*

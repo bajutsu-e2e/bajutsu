@@ -2277,6 +2277,8 @@ _RECORDS: dict[str, Any] = {
     "elements": [],
     "labels": ["Not Now"],
     "unmatched": [],
+    "banners": [],
+    "tappedAlerts": [["Save Password", "Not Now"]],
     "tappedSurfaces": ["inTree"],
     "unidentified": [],
     "gaveUp": [],
@@ -2291,6 +2293,10 @@ _RECORDS: dict[str, Any] = {
         {"unidentified": None},
         {"gaveUp": [{"identify": ["Not Now"], "surface": "inTree"}]},  # no `tap`
         {"gaveUp": ["Not Now"]},  # not an object
+        {"tappedAlerts": []},  # shorter than `labels`: the tap's alert would read as unknown
+        {"banners": None},  # a swiped banner would be lost
+        {"unmatched": [[1]]},  # not strings
+        {"labels": ["Not Now", 2]},
     ],
 )
 def test_a_resolving_reply_with_malformed_records_is_a_channel_error(
@@ -2303,6 +2309,27 @@ def test_a_resolving_reply_with_malformed_records_is_a_channel_error(
 
     with pytest.raises(XcuitestChannelError, match="malformed records"):
         _driver(transport)._transport("GET", "/elements?resolveAlerts=true", None)
+
+
+def test_a_resolving_reply_that_fails_to_parse_leaves_the_carry_non_current() -> None:
+    # A tap left the carry current; the broken resolving reply lost its records, so the next drain
+    # must ask the wire instead of returning that stale carry.
+    paths: list[str] = []
+
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        paths.append(path)
+        if path == "/tap":
+            return _Reply(status="ok", raw=json.dumps({"labels": [], "unmatched": []}).encode())
+        if path.startswith("/elements"):
+            return _Reply(status="ok", raw=json.dumps({"status": "ok", "elements": []}).encode())
+        return _Reply(status="ok", raw=json.dumps({"labels": [], "unmatched": []}).encode())
+
+    driver = _driver(transport)
+    driver._transport("POST", "/tap", {"handle": "h"})
+    with pytest.raises(XcuitestChannelError):
+        driver._transport("GET", "/elements?resolveAlerts=true", None)
+    driver.drain_interruptions()
+    assert paths[-1] == "/interruptionPolicy/drain"
 
 
 def test_a_resolving_reply_that_is_not_json_is_a_channel_error() -> None:
@@ -2327,6 +2354,8 @@ def test_a_resolving_reply_s_records_make_the_carry_current() -> None:
                     "elements": [],
                     "labels": ["Not Now"],
                     "unmatched": [],
+                    "banners": [],
+                    "tappedAlerts": [["Save Password", "Not Now"]],
                     "tappedSurfaces": ["inTree"],
                     "unidentified": [],
                     "gaveUp": [],

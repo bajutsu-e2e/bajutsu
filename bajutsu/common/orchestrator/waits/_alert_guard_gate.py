@@ -24,6 +24,9 @@ from bajutsu.common.orchestrator.types.alert_guard_config import (
 from bajutsu.common.orchestrator.types.alert_guard_config import (
     _TREE_RETAP_DELAY as _TREE_RETAP_DELAY,
 )
+from bajutsu.common.orchestrator.types.alert_guard_config import (
+    _decline_giveup,
+)
 
 from ._shared import _logger
 
@@ -626,10 +629,6 @@ class _AlertGuardGate:
         # and only when `probed_absent` holds), so any gap `_withhold_tree_tap_licence` recorded on
         # an intervening unlicensed poll has just ended (BE-0418 review finding).
         self._restore_tree_tap_licence()
-        # Imported in the method, not at module load: `_functions` builds this gate, and rule 5
-        # breaks the cycle the split creates on this side.
-        from ._functions import _decline_giveup
-
         buttons = tree_buttons(elements)
         # The one shared ordering every in-tree, dedup-aware match reads from (BE-0418 review
         # finding): matching over anything else here would let this gate and `dismiss_from_tree_once`
