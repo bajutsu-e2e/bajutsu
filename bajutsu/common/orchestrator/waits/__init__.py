@@ -31,14 +31,18 @@ from ._functions import _with_block_note as _with_block_note
 from ._functions import describe_wait, settle_after_alert_dismiss, wait_for_system_alert
 from ._heartbeat import _TICK_INTERVAL as _TICK_INTERVAL
 from ._heartbeat import _Heartbeat as _Heartbeat
+from ._resolving_alert_gate import _ResolvingAlertGate as _ResolvingAlertGate
 from ._shared import WaitTick
 from ._shared import _logger as _logger
+from .resolving_reads import ResolvingReads, records_note
 from .wait_trace import WaitTrace
 
 __all__ = [
+    "ResolvingReads",
     "WaitTick",
     "WaitTrace",
     "describe_wait",
+    "records_note",
     "settle_after_alert_dismiss",
     "wait_for_system_alert",
 ]

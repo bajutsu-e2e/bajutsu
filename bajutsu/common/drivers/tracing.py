@@ -70,6 +70,7 @@ _TRACED_METHODS = frozenset(
 # `tests/test_driver_tracing.py` walks the package to confirm this tuple never misses one.
 _PROTOCOLS: tuple[type, ...] = (
     base.Driver,
+    base.AlertResolvingTarget,
     base.AppCrashPollResettable,
     base.AppCrashSignal,
     base.Queryable,

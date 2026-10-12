@@ -26,8 +26,14 @@ from bajutsu.common.scenario.system_alerts import TITLE_MARKER
 
 from ._alert_guard_gate import _AlertGuardGate
 from ._heartbeat import _Heartbeat
+from ._resolving_alert_gate import _ResolvingAlertGate
 from ._shared import WaitTick, _logger
+from .resolving_reads import ResolvingReads
 from .wait_trace import WaitTrace
+
+# Either gate a wait runs: the backend answering alerts inside its reads (BE-0461), or the one that
+# watches from here.
+_Gate = _AlertGuardGate | _ResolvingAlertGate
 
 _POLL = 0.05
 _SETTLE_POLLS = 2  # consecutive unchanged polls that count as "settled" (tree-diff fallback)
@@ -105,7 +111,7 @@ def _exists(elements: list[base.Element], sel: base.Selector) -> bool:
     return len(base.find_all(elements, sel)) >= 1
 
 
-def _stuck_reason(what: str, start: float, clock: Clock, gate: _AlertGuardGate) -> str:
+def _stuck_reason(what: str, start: float, clock: Clock, gate: _Gate) -> str:
     """A `for` or `screenChanged` wait's reason for stopping before its deadline on `stuck_note`.
 
     Both wait for the app's tree to change in a way the frozen screen never will. The other guarded
@@ -116,7 +122,7 @@ def _stuck_reason(what: str, start: float, clock: Clock, gate: _AlertGuardGate) 
     return f"wait stopped: {what} after {clock.now() - start:.1f}s \u2014 {gate.stuck_note}"
 
 
-def _with_block_note(reason: str, gate: _AlertGuardGate | None) -> str:
+def _with_block_note(reason: str, gate: _Gate | None) -> str:
     """The wait's timeout reason, plus what the guard last saw blocking the screen (BE-0402).
 
     Read only at the moment a timeout is reported, and only from the gate's latest observation, so a
@@ -150,6 +156,7 @@ def wait_for_system_alert(  # noqa: C901  # the step's one wait state machine (B
     tapped: list[str] | None = None,
     title_check: AlertTitleCheck | None = None,
     cancelled: CancelSource = not_cancelled,
+    resolving: ResolvingReads | None = None,
 ) -> tuple[bool, str]:
     """Wait for the system alert `sel` names and tap it, clearing declared interruptions meanwhile.
 
@@ -183,6 +190,11 @@ def wait_for_system_alert(  # noqa: C901  # the step's one wait state machine (B
             noticed within one tick instead of actuating the device for the rest of the timeout
             (BE-0370). It raises rather than returning a verdict: the prompt neither appeared nor
             timed out, and the scenario is over either way.
+        resolving: The step's resolving reads, on a backend that answers alerts inside its own
+            reads (BE-0461 Unit 3). The guard's per-poll tree read then resolves in-tree only, so
+            the step's own SpringBoard alert stays the step's, and an alert the step reads and
+            judges not its own is answered through `resolve_system_alert`, at most once per
+            `poll_interval`, with the labels the step saw.
 
     Raises:
         base.UnsupportedAction: the backend does not advertise `HANDLE_SYSTEM_ALERT`.
@@ -208,19 +220,29 @@ def wait_for_system_alert(  # noqa: C901  # the step's one wait state machine (B
     _require_system_alert_capability(driver, sel)
     wanted = role.describe() if role is not None else repr(sel)
     deadline = clock.now() + timeout
-    gate = (
-        _AlertGuardGate(
-            driver=driver,
-            clock=clock,
-            guard=alert_guard,
-            alerts=alerts if alerts is not None else [],
-            reserved=sel,
-            reserved_title=title_check,
-        )
-        if alert_guard is not None and role is None
-        else None
-    )
+    gate: _Gate | None = None
+    resolving_gate: _ResolvingAlertGate | None = None
+    # The tree the gate reads each poll: in-tree resolution only on a resolving backend.
+    tree_driver = driver
+    if alert_guard is not None and role is None:
+        if resolving is not None:
+            gate = resolving_gate = _ResolvingAlertGate(
+                clock=clock, guard=alert_guard, reads=resolving
+            )
+            tree_driver = resolving.view(driver, "inTree")
+        else:
+            gate = _AlertGuardGate(
+                driver=driver,
+                clock=clock,
+                guard=alert_guard,
+                alerts=alerts if alerts is not None else [],
+                reserved=sel,
+                reserved_title=title_check,
+            )
     last_read: float | None = None
+    # When this step last asked the backend to answer an alert it judged not its own, so it asks at
+    # the guard's own cadence: each call queries SpringBoard (BE-0315).
+    last_resolve: float | None = None
     # The buttons the step's *latest* read saw, for the timeout to name — reassigned on every read,
     # including an empty one. Keeping the last non-empty list instead would report an alert the
     # guard has since cleared as still on screen, turning "no alert appeared at all" into "an alert
@@ -254,6 +276,8 @@ def wait_for_system_alert(  # noqa: C901  # the step's one wait state machine (B
             named = sel is not None and selector_names_button(sel, seen)
             # The button is there, but the title says the alert is another prompt sharing it.
             other_prompt = named and title_check is not None and not title_check(observed)
+            if resolving_gate is not None:
+                resolving_gate.note_step_read(seen, own=named and not other_prompt)
             if sel is not None and named and not other_prompt:
                 try:
                     driver.handle_system_alert(sel, _STEP_TAP_TIMEOUT)
@@ -285,11 +309,24 @@ def wait_for_system_alert(  # noqa: C901  # the step's one wait state machine (B
                 # end, reintroduced by the mechanism meant to close it. A backend without the
                 # opt-in, or one nothing has pushed a policy to, drains nothing and falls through
                 # unchanged.
+                if (
+                    resolving_gate is not None
+                    and resolving is not None
+                    and alert_guard is not None
+                    and seen
+                    and (last_resolve is None or t0 - last_resolve >= alert_guard.poll_interval)
+                ):
+                    # Not the step's alert, so the policy answers it — but only while it still
+                    # offers what the step just read, so the step's own alert arriving in its place
+                    # is never answered by policy. The answer itself is reported by the drain below.
+                    last_resolve = t0
+                    resolution = resolving.target.resolve_system_alert(seen)
+                    resolving_gate.note_records(resolution.drained)
                 answered = _policy_answered_alert(driver, sel, alerts, tapped, title_check)
                 if answered is not None:
                     return answered
         if gate is not None:
-            gate.observe(driver.query())
+            gate.observe(tree_driver.query())
         if cancelled():
             raise RunCancelled
         if clock.now() >= deadline:
@@ -337,6 +374,10 @@ def _policy_answered_alert(
         # A position rule with no alert read yet names no label, and nothing reserved one for the
         # monitor either, so no label it tapped can be the step's own.
         if sel is None or not selector_names_button(sel, [label]):
+            return False
+        # An application-owned button sharing the step's label is never the step's SpringBoard
+        # alert (BE-0461 Unit 3).
+        if drained.surface_of(index) != "native":
             return False
         alert = drained.alert_of(index)
         return title_check is None or not alert or title_check(alert)
@@ -450,6 +491,7 @@ def _wait(  # noqa: C901, PLR0911, PLR0912
     transitions: TransitionSource = _no_transitions,
     on_interrupt_poll: Callable[[list[base.Element]], bool] | None = None,
     cancelled: CancelSource = not_cancelled,
+    resolving: ResolvingReads | None = None,
 ) -> tuple[bool, str, list[base.Element] | None]:
     """Condition wait. Polls query() (or the observed network) until satisfied instead
     of a fixed sleep.
@@ -493,6 +535,11 @@ def _wait(  # noqa: C901, PLR0911, PLR0912
     default reports none, so `settled` keeps its unchanged tree-diff behavior unless a caller passes
     a real source.
 
+    `resolving` (BE-0461 Unit 4) is the step's resolving reads, on a backend that answers alerts
+    inside its own reads. Every poll then reads through it, so the backend answers what the guard
+    used to watch for, and the gate only reads the records each read returned. It applies with or
+    without `alert_guard`: a retry's re-run keeps resolving, with no gate to read the records.
+
     `cancelled` (BE-0370) is consulted once per poll, right where the deadline is, so a wait blocked
     on a condition notices a cancelled run within one polling tick instead of burning the rest of
     its timeout. It raises `RunCancelled` rather than returning a verdict: the condition is neither
@@ -510,16 +557,7 @@ def _wait(  # noqa: C901, PLR0911, PLR0912
     # Give the gate a real list to record into even when the caller passed none (e.g. a direct
     # _wait() unit test), so the record-the-event path has no None branch. `is not None`, not
     # `or []`: an empty list the caller *did* pass is falsy but must still be the one appended to.
-    gate = (
-        _AlertGuardGate(
-            driver=driver,
-            clock=clock,
-            guard=alert_guard,
-            alerts=alerts if alerts is not None else [],
-        )
-        if alert_guard is not None
-        else None
-    )
+    driver, gate = _wait_gate(driver, clock, alert_guard, alerts, resolving)
     hb = _Heartbeat(on_tick, deadline) if on_tick is not None else None
     if hb is not None:
         # Fire once up front so the awaited condition is shown even for a wait that resolves on its
@@ -629,11 +667,34 @@ def _wait(  # noqa: C901, PLR0911, PLR0912
         _adaptive_sleep(clock, t0)
 
 
+def _wait_gate(
+    driver: base.Driver,
+    clock: Clock,
+    alert_guard: AlertGuardConfig | None,
+    alerts: list[AlertEvent] | None,
+    resolving: ResolvingReads | None,
+) -> tuple[base.Driver, _Gate | None]:
+    """The driver a wait polls through, and the gate that reads each poll (see `_wait`)."""
+    if resolving is not None:
+        view = resolving.view(driver, "true")
+        if alert_guard is None:
+            return view, None
+        return view, _ResolvingAlertGate(clock=clock, guard=alert_guard, reads=resolving)
+    if alert_guard is None:
+        return driver, None
+    return driver, _AlertGuardGate(
+        driver=driver,
+        clock=clock,
+        guard=alert_guard,
+        alerts=alerts if alerts is not None else [],
+    )
+
+
 def _wait_settled(
     driver: base.Driver,
     deadline: float,
     clock: Clock,
-    gate: _AlertGuardGate | None = None,
+    gate: _Gate | None = None,
     hb: _Heartbeat | None = None,
     transitions: TransitionSource = _no_transitions,
     on_interrupt_poll: Callable[[list[base.Element]], bool] | None = None,
@@ -720,7 +781,7 @@ def _wait_settled_by_signal(
     driver: base.Driver,
     deadline: float,
     clock: Clock,
-    gate: _AlertGuardGate | None,
+    gate: _Gate | None,
     hb: _Heartbeat | None,
     transitions: TransitionSource,
     last: float,

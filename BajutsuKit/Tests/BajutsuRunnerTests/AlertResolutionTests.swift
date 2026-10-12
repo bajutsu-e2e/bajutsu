@@ -631,6 +631,13 @@ final class AlertResolutionTests: XCTestCase {
         XCTAssertEqual(reply["status"] as? String, "changed")
     }
 
+    func testResolveIgnoresAnUnlabelledButtonTheDriverNeverReported() async throws {
+        push([Self.notifications])
+        provider.systemAlertButtons = alertButtons(["Allow", "Don’t Allow", ""])
+        let reply = try await resolve(["Allow", "Don’t Allow"])
+        XCTAssertEqual(reply["status"] as? String, "answered")
+    }
+
     func testResolveReportsAbsentWhenNoAlertIsShowing() async throws {
         push([Self.notifications])
         let reply = try await resolve(["Allow", "Don’t Allow"])

@@ -63,11 +63,13 @@ from bajutsu.common.orchestrator.types import (
     undeclared_interruption_note,
 )
 from bajutsu.common.orchestrator.waits import (
+    ResolvingReads,
     WaitTick,
     WaitTrace,
     _adaptive_sleep,
     _timeout_floor,
     _wait,
+    records_note,
     settle_after_alert_dismiss,
     wait_for_system_alert,
 )
@@ -406,6 +408,7 @@ def _run_step_body(
     step_index: int | None = None,
     channel: Collector | None = None,
     hide_markers: bool = False,
+    resolving: ResolvingReads | None = None,
 ) -> tuple[bool, str, list[AssertionResult], list[base.Element] | None]:
     """Execute one step's effect, returning (ok, reason, assertion_results, snapshot).
 
@@ -430,7 +433,11 @@ def _run_step_body(
     given for an ``assert`` step whose block carries a ``visual`` entry, back that entry's own
     single-shot screenshot: ``step_id`` and ``step_index`` scope the capture's evidence path to this
     step's own execution, and ``channel``/``hide_markers`` back the same touch-marker suspension
-    ``expect``'s own visual capture already gets."""
+    ``expect``'s own visual capture already gets. ``resolving`` (reset by the caller with
+    ``start_body`` before each run), on a backend that answers alerts
+    inside its own reads under a governing guard (BE-0461 Unit 4), carries a ``wait``'s polls, a
+    ``handleSystemAlert`` step's tree reads, and an action's selector-resolution reads; an
+    ``assert`` keeps the plain read, so a check never changes the screen it is checking."""
     try:
         if kind == "wait":
             assert step.wait is not None
@@ -446,6 +453,7 @@ def _run_step_body(
                 transitions=transitions,
                 on_interrupt_poll=on_interrupt_poll,
                 cancelled=cancelled,
+                resolving=resolving,
             )
             return ok, reason, [], tree
         if kind == "handle_system_alert":
@@ -463,6 +471,7 @@ def _run_step_body(
                 tapped=system_alert_taps,
                 title_check=system_alert_title,
                 cancelled=cancelled,
+                resolving=resolving,
             )
             if ok and selection is not None:
                 # `_do_action` invalidates the live selection after every action but `select` and
@@ -541,7 +550,14 @@ def _run_step_body(
             )
             ok = assertions.passed(results)
             return ok, "" if ok else _fail_reason(results), results, tree
-        _do_action(driver, step, relaunch, control, bindings, selection)
+        _do_action(
+            _action_driver(driver, resolving),
+            step,
+            relaunch,
+            control,
+            bindings,
+            selection,
+        )
         # Four branches return from this block; hoisting only the last into an `else` would suggest
         # the other three are not on the success path.
         return True, "", [], None  # noqa: TRY300
@@ -551,7 +567,23 @@ def _run_step_body(
         base.UnsupportedAction,
         NotImplementedError,
     ) as e:
+        _note_refusal(resolving, e)
         return False, str(e), [], None
+
+
+def _action_driver(driver: base.Driver, resolving: ResolvingReads | None) -> base.Driver:
+    """The driver an action's handler reads its target through: resolving under the capability."""
+    return resolving.view(driver, "true") if resolving is not None else driver
+
+
+def _note_refusal(resolving: ResolvingReads | None, error: Exception) -> None:
+    """Mark a body run that failed the way an alert covering the screen explains (BE-0461 Unit 5).
+
+    A refused actuation or a target a read could not find; an ambiguous selector is the author's to
+    fix, so it is left out.
+    """
+    if resolving is not None and isinstance(error, base.ElementNotFound | base.ElementNotTappable):
+        resolving.refused = True
 
 
 def _resolve_video_start_offset(
@@ -1006,39 +1038,20 @@ def run_scenario(  # noqa: C901, PLR0915
                     expect_alerts.extend(expect_drained.alerts)
                     expect_undeclared.extend(expect_drained.undeclared)
                     if not assertions.passed(expect_results) and alert_guard is not None:
-                        # The guard's own call settles the screen after every round it dismisses
-                        # something in (BE-0418), the last one included, so nothing here settles again
-                        # before the retry below reads the screen -- `_retry_expect_after_guard_dismiss`
-                        # no longer settles for that reason (review finding, merging BE-0416 and
-                        # BE-0418).
-                        cleared = alert_guard(
+                        cleared, expect_block_note, dropped = _recover_expect_from_alert(
                             driver,
+                            alert_guard,
                             expect_alerts,
-                            settle=lambda: settle_after_alert_dismiss(
-                                driver, clock, transitions=transitions, cancelled=cancelled
-                            ),
+                            expect_actuations,
+                            wall_offset_s,
+                            clock,
+                            transitions,
+                            cancelled,
                         )
-                        # A prompt the guard could not fully clear (BE-0402 leaves an alert no rule
-                        # identifies alone rather than guessing where to tap), named on the `expect`
-                        # failure below, which would otherwise report only the assertion that never held.
-                        # Taken whether or not the call cleared anything: a multi-round call can clear a
-                        # stacked alert while leaving a second one unhandled, so both facts hold at once.
-                        expect_block_note = alert_guard.blocked_note
-                        # Drained whether or not anything cleared: since BE-0418 a call can tap and
-                        # still return False, once a withdrawn `AlertEvent` leaves `alerts` no
-                        # longer than it started (BE-0402's report still needs that tap). Uses the
-                        # shared helper so this drain's own dropped count folds into
-                        # `RunResult.dropped_expect_actuations` the same way the banner sweep's does
-                        # (BE-0416 Unit 8).
-                        expect_dropped_actuations += _drain_into_expect_actuations(
-                            driver, expect_actuations, wall_offset_s
-                        )
+                        expect_dropped_actuations += dropped
                         if cleared:
-                            # Does not settle the screen itself, unlike an ordinary post-dismiss
-                            # retry (BE-0406): the guard's own multi-round call above already
-                            # settles after every round it dismisses something in (BE-0418), the
-                            # last one included, so settling again here would just repeat a
-                            # condition wait the guard's own call already resolved.
+                            # Settled already: `_recover_expect_from_alert` settles after whatever
+                            # it cleared, so the retry reads a screen that has stopped moving.
                             expect_results, dropped = _evaluate_expect(
                                 driver,
                                 expect,
@@ -1536,3 +1549,45 @@ def _run_steps(
     # `_handle_action`, so the net only reached the step that returns before acting at all, where it
     # paired post-run pixels with a pre-action tree (BE-0341, "Later revision").
     return result
+
+
+def _recover_expect_from_alert(
+    driver: base.Driver,
+    alert_guard: AlertGuardConfig,
+    expect_alerts: list[AlertEvent],
+    expect_actuations: list[Actuation],
+    wall_offset_s: float,
+    clock: Clock,
+    transitions: TransitionSource,
+    cancelled: CancelSource,
+) -> tuple[bool, str, int]:
+    """Clear what may be blocking a failed `expect`, once: whether anything cleared, the note naming
+    what still blocks the screen, and the actuations dropped while draining the guard's own tap.
+
+    On a backend answering alerts inside its own reads, one forced resolving read (BE-0461 Unit 5):
+    the assertions keep reading through `Driver.query`, so a read never changes the screen in the
+    middle of the check itself. It settles the screen after an answer, or after a showing the pacing
+    memo withheld, before the caller evaluates again.
+    """
+    if base.Capability.RESOLVE_ALERTS in driver.capabilities() and isinstance(
+        driver, base.AlertResolvingTarget
+    ):
+        recovery = driver.query_resolving("true", force_check=True)
+        cleared = bool(recovery.drained.tapped) or recovery.withheld
+        if cleared:
+            settle_after_alert_dismiss(driver, clock, transitions=transitions, cancelled=cancelled)
+        return cleared, records_note(recovery.drained), 0
+    # The guard's own call settles the screen after every round it dismisses something in
+    # (BE-0418), the last one included, so the caller's retry reads a settled screen.
+    cleared = alert_guard(
+        driver,
+        expect_alerts,
+        settle=lambda: settle_after_alert_dismiss(
+            driver, clock, transitions=transitions, cancelled=cancelled
+        ),
+    )
+    # Drained whether or not anything cleared: since BE-0418 a call can tap and still return False,
+    # once a withdrawn `AlertEvent` leaves `alerts` no longer than it started (BE-0402's report still
+    # needs that tap).
+    dropped = _drain_into_expect_actuations(driver, expect_actuations, wall_offset_s)
+    return cleared, alert_guard.blocked_note, dropped

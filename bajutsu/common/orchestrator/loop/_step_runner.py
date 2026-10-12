@@ -35,9 +35,11 @@ from bajutsu.common.orchestrator.types import (
     undeclared_interruption_note,
 )
 from bajutsu.common.orchestrator.waits import (
+    ResolvingReads,
     WaitTick,
     WaitTrace,
     describe_wait,
+    records_note,
     settle_after_alert_dismiss,
 )
 from bajutsu.common.scenario import (
@@ -556,6 +558,25 @@ class _StepRunner:
         push_interruption_policy(driver, replace(guard, rules=[*guard.rules, reservation]))
         return True, drained.alerts, drained.undeclared
 
+    def _resolving_reads(self, driver: base.Driver) -> ResolvingReads | None:
+        """This step's resolving reads, when a governing guard runs on a backend that answers alerts
+        inside its own reads (BE-0461 Unit 4); otherwise None, and every read stays plain."""
+        if (
+            self.cfg.alert_guard is None
+            or base.Capability.RESOLVE_ALERTS not in driver.capabilities()
+            or not isinstance(driver, base.AlertResolvingTarget)
+        ):
+            return None
+        return ResolvingReads(driver)
+
+    def _settle(self, driver: base.Driver) -> None:
+        settle_after_alert_dismiss(
+            driver,
+            self.cfg.clock,
+            transitions=self.cfg.transitions,
+            cancelled=self.cfg.cancelled,
+        )
+
     def _system_alert_title(self, step: Step) -> AlertTitleCheck | None:
         """The title check of a `prompt`/`choice` `handleSystemAlert` step, else None."""
         hsa = step.handle_system_alert
@@ -574,6 +595,16 @@ class _StepRunner:
         """
         guard = self.cfg.alert_guard
         if guard is None or not guard.native_rules:
+            return
+        resolving = self._resolving_reads(driver)
+        if resolving is not None:
+            # The backend answers what the policy names inside one forced read (BE-0461). A first
+            # `handleSystemAlert` step's own prompt is left to that step, whose wait answers anything
+            # else it meets. The answer is reported by the step's own drain, like any other read's.
+            if step.handle_system_alert is None:
+                read = resolving.target.query_resolving("true", force_check=True)
+                if read.drained.tapped:
+                    self._settle(driver)
             return
         # A first `handleSystemAlert` step answers its own prompt, and may want the opposite of a
         # rule's choice for it (BE-0406), so that prompt is reserved for it as its wait reserves it.
@@ -1143,6 +1174,42 @@ class _StepRunner:
             reason = front_failure or (guard.failure if guard is not None else None) or ""
             results: list[AssertionResult] = []
         else:
+            resolving = self._resolving_reads(active_driver)
+
+            def rerun_body(
+                trace: WaitTrace | None,
+            ) -> tuple[bool, str, list[AssertionResult], list[base.Element] | None]:
+                # One more run of the body, for the TipKit retry and the alert retry. Neither re-arms
+                # the mid-wait guard (no `alert_guard`), so one cleared blocker buys one more attempt;
+                # resolving reads still carry it, since they keep no state a re-run could re-arm.
+                if resolving is not None:
+                    resolving.start_body()
+                return _run_step_body(
+                    active_driver,
+                    interp_step,
+                    kind,
+                    self.cfg.clock,
+                    self.cfg.network,
+                    self.cfg.relaunch,
+                    self.state.bindings,
+                    self.cfg.control,
+                    self.cfg.mailbox,
+                    self.cfg.ctx,
+                    wait_trace=trace,
+                    selection=self.state.selection,
+                    system_alert_taps=system_alert_taps,
+                    system_alert_title=system_alert_title,
+                    on_wait_tick=wait_tick,
+                    transitions=self.cfg.transitions,
+                    on_interrupt_poll=tip_poll,
+                    cancelled=self.cfg.cancelled,
+                    step_id=step_id,
+                    step_index=idx,
+                    channel=self.cfg.channel,
+                    hide_markers=self.cfg.hide_markers,
+                    resolving=resolving,
+                )
+
             # Push the interruption monitor this step's own declared alert for the
             # duration of its own wait, restored below whether it passes, fails, or
             # raises — see `_reserve_declared_alert` for why (BE-0406 Unit 2b).
@@ -1159,6 +1226,8 @@ class _StepRunner:
             # Captured here in the `finally`, before that restore, and merged into `outcome` after
             # `outcome.ok`/`outcome.reason` are (re)assigned below — merging any earlier would be
             # silently discarded by that assignment.
+            if resolving is not None:
+                resolving.start_body()
             try:
                 ok, reason, results, snapshot = _run_step_body(
                     active_driver,
@@ -1185,6 +1254,7 @@ class _StepRunner:
                     step_index=idx,
                     channel=self.cfg.channel,
                     hide_markers=self.cfg.hide_markers,
+                    resolving=resolving,
                 )
                 if guard is not None and guard.failure is not None:
                     # A mid-wait recovery failure is a decided outcome — fail on it now rather than
@@ -1237,35 +1307,28 @@ class _StepRunner:
                         # shot. Reached only when a tip was actually dismissed, so a step that failed for
                         # any other reason still fails on its first attempt, with no retry to mask it.
                         wait_trace = WaitTrace() if wait_trace is not None else None
-                        ok, reason, results, snapshot = _run_step_body(
-                            active_driver,
-                            interp_step,
-                            kind,
-                            self.cfg.clock,
-                            self.cfg.network,
-                            self.cfg.relaunch,
-                            self.state.bindings,
-                            self.cfg.control,
-                            self.cfg.mailbox,
-                            self.cfg.ctx,
-                            wait_trace=wait_trace,
-                            selection=self.state.selection,
-                            system_alert_taps=system_alert_taps,
-                            system_alert_title=system_alert_title,
-                            on_wait_tick=wait_tick,
-                            transitions=self.cfg.transitions,
-                            on_interrupt_poll=tip_poll,
-                            cancelled=self.cfg.cancelled,
-                            step_id=step_id,
-                            step_index=idx,
-                            channel=self.cfg.channel,
-                            hide_markers=self.cfg.hide_markers,
-                        )
+                        ok, reason, results, snapshot = rerun_body(wait_trace)
                     # Re-read `guard.failure`: the tip retry above runs a whole step body, whose own
                     # mid-wait interrupt recovery can newly fail — and that is a decided outcome, so it
                     # must not be followed by an alert dismiss against the screen it left.
                     if guard is not None and guard.failure is not None:
                         ok, reason = False, guard.failure
+                    elif not ok and not guard_done and resolving is not None:
+                        # The narrowed retry (BE-0461 Unit 5): at most one per step, here and never
+                        # inside the body, so the TipKit retry's second run cannot spend another.
+                        hsa_by_position = hsa is not None and hsa.role() is not None
+                        if kind == "assert_" or hsa_by_position or resolving.refused:
+                            answered_before = resolving.answered
+                            recovery = resolving.read("true", force_check=True)
+                            note = records_note(recovery.drained)
+                            # The body's own read answering an alert that is gone by now licenses the
+                            # retry as much as this read's own answer does.
+                            if recovery.drained.tapped or recovery.withheld or answered_before:
+                                self._settle(active_driver)
+                                wait_trace = WaitTrace() if wait_trace is not None else None
+                                ok, reason, results, snapshot = rerun_body(wait_trace)
+                            if not ok and note and note not in reason:
+                                reason = f"{reason} \u2014 {note}"
                     elif not ok and not guard_done and self.cfg.alert_guard is not None:
                         # The guard's own call settles the screen after every round it dismisses
                         # something in (BE-0418), the last one included, so nothing here settles
@@ -1288,30 +1351,7 @@ class _StepRunner:
                             # The retry is the end-of-step "one more shot": it does not re-arm the
                             # mid-wait guard (no alert_guard passed), so one dismissed prompt buys one
                             # extra attempt and no more.
-                            ok, reason, results, snapshot = _run_step_body(
-                                active_driver,
-                                interp_step,
-                                kind,
-                                self.cfg.clock,
-                                self.cfg.network,
-                                self.cfg.relaunch,
-                                self.state.bindings,
-                                self.cfg.control,
-                                self.cfg.mailbox,
-                                self.cfg.ctx,
-                                wait_trace=wait_trace,
-                                selection=self.state.selection,
-                                system_alert_taps=system_alert_taps,
-                                system_alert_title=system_alert_title,
-                                on_wait_tick=wait_tick,
-                                transitions=self.cfg.transitions,
-                                on_interrupt_poll=tip_poll,
-                                cancelled=self.cfg.cancelled,
-                                step_id=step_id,
-                                step_index=idx,
-                                channel=self.cfg.channel,
-                                hide_markers=self.cfg.hide_markers,
-                            )
+                            ok, reason, results, snapshot = rerun_body(wait_trace)
                         if not ok and note and note not in reason:
                             # Same as the `expect` site: an alert the guard could not fully clear
                             # still explains the failure, so the step says so instead of failing as a

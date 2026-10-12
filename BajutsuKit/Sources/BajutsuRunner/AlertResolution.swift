@@ -91,9 +91,11 @@ struct AlertResolver {
             return .absent
         }
         let labels = alert.buttons.map { $0.label ?? "" }
-        // A multiset comparison: a label offered twice is a different alert from one offering it
-        // once. An all-empty read (the alert racing its own dismissal) never equals what the step saw.
-        guard labels.sorted() == expected.sorted() else { return .changed }
+        // A multiset comparison over the labelled buttons, the ones the driver's read reports: a
+        // label offered twice is a different alert from one offering it once. An all-empty read (the
+        // alert racing its own dismissal) never equals what the step saw.
+        let named = labels.filter { !$0.isEmpty }
+        guard !named.isEmpty, named.sorted() == expected.sorted() else { return .changed }
         let matched = labels + alert.titles.map(alertTitleMarker)
         guard let rule = policy.rule(for: matched, surface: .native) else {
             store.rearmNative()
