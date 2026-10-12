@@ -245,7 +245,8 @@ final class RunnerUITest: XCTestCase {
     private func serve(_ app: XCUIApplication) throws {
         // Before binding, so the first scenario tap never pays event playback's one-time setup
         // cost — the cost that drops it on a slow host (`EventSynthesisWarmUp`, #2157). Anchored to
-        // SpringBoard rather than `app`, so the off-screen aim holds whatever the app's frame.
+        // SpringBoard rather than `app`, so the off-screen aim holds whatever the app's frame, and
+        // so a permission prompt already up is not resolved before the scenario's policy arrives.
         EventSynthesisWarmUp.run {
             XCUIApplication(bundleIdentifier: springboardBundleID)
                 .coordinate(withNormalizedOffset: .zero)

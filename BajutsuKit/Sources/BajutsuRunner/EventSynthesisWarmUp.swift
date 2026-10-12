@@ -19,6 +19,13 @@ import ObjCExceptionCatcher
 /// rather than the top: a top-corner tap lands on the status bar, which SpringBoard turns into a
 /// scroll-to-top action for the foreground app, invisible as a touch but a change to a screen the
 /// runner attached to (BE-0455).
+///
+/// It runs before the scenario's interruption policy can arrive, so it must not reach XCUITest's
+/// interruption handling, whose default handler would answer a permission prompt with its default
+/// button (BE-0406). Aiming it at SpringBoard is what keeps it out: a system prompt is
+/// SpringBoard's own element, not an interruption of a SpringBoard-targeted event. Measured on
+/// iOS 26.4 with the notification prompt up: the warm-up left the prompt standing and never invoked
+/// the monitor, while an app-targeted tap invoked it and the default handler answered the prompt.
 public enum EventSynthesisWarmUp {
     /// Where the warm-up touch is aimed, in points from the screen's top-left corner: far enough
     /// past the bottom-left corner that no screen size brings it on-screen.
