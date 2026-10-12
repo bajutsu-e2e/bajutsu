@@ -488,8 +488,7 @@ class XcuitestDriver:
         path = f"/elements?resolveAlerts={mode}" + ("&forceCheck=true" if force_check else "")
         elements, _ = self._query_with_handles(path=path)
         reply = self._last_tree_reply
-        if reply is None:  # set by the read just above
-            raise XcuitestChannelError("a resolving read left no reply to read")
+        assert reply is not None  # set by the read just above
         # Parsed first, so a malformed reply raises the channel error rather than a JSON one.
         drained = _parse_resolving_drain_fold(reply.raw)
         body = json.loads(reply.raw) if reply.raw else {}
