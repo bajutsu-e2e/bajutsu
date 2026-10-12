@@ -391,8 +391,14 @@ def test_repeat_cli_rejects_a_target_mismatched_single_declared_target(tmp_path:
     assert "single-target" in result.output
 
 
-def test_repeat_cli_allows_a_matching_single_declared_target(tmp_path: Path) -> None:
+def test_repeat_cli_allows_a_matching_single_declared_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     # The membership check must not reject the scenario's own declared target — only a mismatch.
+    # The stub keeps the host's booted Simulators out of the gate (issue #2158).
+    monkeypatch.setattr(
+        "bajutsu.common.backend_cli.simctl.resolve_udid", lambda u, run=None: "FAKE-UDID"
+    )
     scn = tmp_path / "single.yaml"
     scn.write_text(
         "- name: single-target\n"

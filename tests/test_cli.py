@@ -1047,11 +1047,14 @@ def test_run_rejects_a_duplicate_extract_body_var_in_a_target_config_hook(tmp_pa
 
 
 def test_run_tag_filtering_away_a_multi_target_scenario_lets_the_rest_run(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # BE-0428: the guard runs after `_filter_scenarios`, so `--tag` selecting away the only
     # multi-target scenario in a suite still lets an ordinary scenario in the same file run —
     # rather than a suite-wide exit 2 just because *some* file in it declares `targets`.
+    monkeypatch.setattr(
+        "bajutsu.common.backend_cli.simctl.resolve_udid", lambda u, run=None: "FAKE-UDID"
+    )
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
         "defaults: { backend: [fake] }\n"
@@ -1121,10 +1124,15 @@ def _suite_dir_with_a_cross_target_file(tmp_path: Path) -> Path:
     return cfg
 
 
-def test_run_scenarios_dir_excluding_a_cross_target_file_runs_the_rest(tmp_path: Path) -> None:
+def test_run_scenarios_dir_excluding_a_cross_target_file_runs_the_rest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     # The showcase lanes run the whole scenarios dir with `--exclude multi-target`; the
     # self-declaring check runs after that selection, so the excluded file no longer turns the
     # whole suite away with exit 2.
+    monkeypatch.setattr(
+        "bajutsu.common.backend_cli.simctl.resolve_udid", lambda u, run=None: "FAKE-UDID"
+    )
     cfg = _suite_dir_with_a_cross_target_file(tmp_path)
     r = runner.invoke(
         app,

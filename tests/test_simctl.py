@@ -161,6 +161,39 @@ def test_booted_udids_parses_simctl() -> None:
     assert simctl.booted_udids(run=boom) == []  # failure -> empty, never raises
 
 
+def test_resolve_udid_walks_a_stubbed_device_list() -> None:
+    # Every branch is driven by a stub, so this file's coverage never depends on whether the host
+    # running the gate has a Simulator booted (issue #2158).
+    import json
+
+    def returning(stdout: str) -> simctl.RunFn:
+        def run(args: list[str], e: Mapping[str, str] | None = None) -> str:
+            return stdout
+
+        return run
+
+    def listing(*devices: dict[str, str]) -> simctl.RunFn:
+        return returning(json.dumps({"devices": {"iOS-26-0": list(devices), "iOS-18-6": []}}))
+
+    def failing(args: list[str], e: Mapping[str, str] | None = None) -> str:
+        raise subprocess.CalledProcessError(1, args)
+
+    assert simctl.resolve_udid("CONCRETE", run=failing) == "CONCRETE"  # never probes
+    first_booted = listing(
+        {"udid": "OFF", "state": "Shutdown"},
+        {"udid": "", "state": "Booted"},
+        {"udid": "AAA", "state": "Booted"},
+        {"udid": "BBB", "state": "Booted"},
+    )
+    assert simctl.resolve_udid("booted", run=first_booted) == "AAA"
+    assert simctl.resolve_udid("booted", run=listing({"udid": "OFF", "state": "Shutdown"})) == (
+        "booted"
+    )
+    assert simctl.resolve_udid("booted", run=returning("{}")) == "booted"
+    assert simctl.resolve_udid("booted", run=returning("not json")) == "booted"
+    assert simctl.resolve_udid("booted", run=failing) == "booted"
+
+
 def test_device_booted_is_three_valued() -> None:
     import json
 
