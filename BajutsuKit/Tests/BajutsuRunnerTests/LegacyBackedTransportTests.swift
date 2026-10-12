@@ -71,6 +71,33 @@ final class LegacyBackedTransportTests: XCTestCase {
         )
     }
 
+    /// A query string is the operation's input, not part of its route (BE-0461): matching the full
+    /// path left `GET /elements?resolveAlerts=true` a 404 on a live runner, which the handler-level
+    /// tests could not see.
+    func testAQueryStringReachesTheOperationOverTheWire() throws {
+        let provider = FakeElementProvider()
+        // The public server reads the process-wide store; a scenario-start push leaves it clean.
+        InterruptionPolicyStore.shared.setPolicy(InterruptionPolicy(), scenarioStart: true)
+        let server = RunnerServer(provider: provider)
+        let port = try server.start()
+        defer { server.stop() }
+
+        // Off the main thread, which has to spin for the operation's `DispatchQueue.main.sync`.
+        let replied = XCTestExpectation(description: "the resolving read answered")
+        var reply: (status: Int?, data: Data?) = (nil, nil)
+        DispatchQueue.global().async {
+            reply = HTTPTestClient.get(port: port, path: "/elements?resolveAlerts=true&forceCheck=true")
+            replied.fulfill()
+        }
+        wait(for: [replied], timeout: 10)
+        XCTAssertEqual(reply.status, 200)
+        let body = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: XCTUnwrap(reply.data)) as? [String: Any]
+        )
+        XCTAssertNotNil(body["labels"], "the resolving read must carry its records")
+        XCTAssertEqual(provider.systemAlertQueryCalls, 1)
+    }
+
     /// BE-0287's invariant, restated on the stack Unit 4 builds: `/health` reports whether the
     /// runner is serving, so it has to stay answerable while a long operation holds the main thread
     /// — that is what lets the driver tell "runner busy" from "runner dead".

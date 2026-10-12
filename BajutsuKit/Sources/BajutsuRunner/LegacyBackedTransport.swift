@@ -58,8 +58,11 @@ final class LegacyBackedTransport: ServerTransport {
     /// The 404 is the legacy router's own: an unknown path — and an unknown *method* on a known
     /// path, which fails to resolve a route just the same — was its `default` case.
     func respond(to request: HTTPRequest) -> HTTPResponse {
+        // The route table is keyed by path alone, so a query string (`/elements?resolveAlerts=true`,
+        // BE-0461) is matched without it and handed on whole for the generated server to parse.
+        let route = request.path.split(separator: "?", maxSplits: 1).first.map(String.init) ?? ""
         guard let method = HTTPTypes.HTTPRequest.Method(rawValue: request.method),
-              let handler = lock.withLock({ routes[Route(method: method, path: request.path)] })
+              let handler = lock.withLock({ routes[Route(method: method, path: route)] })
         else {
             return .error(404, "unknown endpoint")
         }
