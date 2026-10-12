@@ -244,16 +244,24 @@ notification's own text. Pressing that region opens the notification's app. A ru
 pressed it would leave the scenario under test.
 
 The runner swipes the banner upward instead, anchored to the banner's own measured frame. The
-runner confirms the banner has gone before claiming the interruption. An unconfirmed swipe hands the
-banner back to XCUITest, whose own handler clears a banner too. Under either path the step's
-interaction lands on the element the scenario named.
+runner reads that frame after the banner has come to rest. A banner still sliding in sits above the
+screen, so a swipe from its frame would travel downward. The runner then confirms the banner has
+gone before claiming the interruption. Once the banner leaves, the step's interaction lands on the
+element the scenario named.
+
+A swipe can miss the banner. The runner then waits up to 10 seconds for the banner's own
+auto-dismissal. Handing the banner back to XCUITest is the last resort. On iOS 26.5, XCUITest's own
+handler ignores a banner. Each XCUITest lookup of the banner records an error, and those errors stop
+the runner.
 
 A *confirmed* dismissal reaches the run's report on the step it interrupted, under its own kind.
 The text recorded beside that dismissal belongs to the notification, not a button. That kind keeps
 a reader from misreading the text as a button the guard chose.
 
-A swipe the runner could not confirm carries no such record. The runner logs the attempt to its own
-output instead. The report shows nothing beyond the step running slower than usual.
+A banner still on screen after that 10-second wait carries no such record. The runner logs the
+attempt to its own output and hands the banner back to XCUITest. A temporary banner leaves within
+the wait in the common case. A persistent-style banner never dismisses itself, so it can reach the
+hand-off. On iOS 26.5, that hand-off can still stop the runner.
 
 Nothing about a banner is yours to declare. The banner path runs regardless of whether
 `systemAlertHandling` is on. Before BE-0416 a governed run met the banner on the alert path instead.

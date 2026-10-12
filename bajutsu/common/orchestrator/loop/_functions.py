@@ -1211,12 +1211,13 @@ def _tip_poll_hook(
     return poll
 
 
-# How long a swipe's clearance is re-checked before the shutter proceeds regardless — the same
-# deadline `RunnerUITest.swift`'s own `bannerClearanceTimeout` re-observes a banner's absence by
-# (BE-0416), so a banner still mid-animation when the swipe lands does not reach the screenshot
-# this sweep exists to protect. A condition wait against the injected `clock`, not a fixed sleep or
-# a real-time deadline: each tick is a real presence query, and a fake clock in tests never pays
-# the real 2s.
+# How long a swipe's clearance is re-checked before the shutter proceeds regardless, so a banner
+# still mid-animation when the swipe lands does not reach the screenshot this sweep exists to
+# protect (BE-0416). The same kind of wait `RunnerUITest.swift` re-observes a banner's absence by,
+# though not the same budget: the runner's monitor waits longer, because declining there can stop
+# the runner (#2156), while proceeding here costs at most a banner in one screenshot. A condition
+# wait against the injected `clock`, not a fixed sleep or a real-time deadline: each tick is a real
+# presence query, and a fake clock in tests never pays the real 2s.
 _BANNER_CLEARANCE_TIMEOUT = 2.0
 _BANNER_CLEARANCE_POLL = 0.1
 
