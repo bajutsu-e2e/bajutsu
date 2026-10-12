@@ -131,9 +131,10 @@ class ResolvingFakeDriver(FakeDriver):
             return base.DrainedInterruptions(
                 tapped=[], declined=[], banners=[], unidentified=unidentified
             ), False
-        self._record("resolve_press", rule[1])
         if not self.sticky_alert:
             self.system_alert_buttons = []
+        # After the alert clears, so a `react` callback can script what the press revealed.
+        self._record("resolve_press", rule[1])
         return self._answered(rule[1], labels, "native"), False
 
     def _resolve_in_tree(self, elements: list[base.Element]) -> base.DrainedInterruptions | None:
