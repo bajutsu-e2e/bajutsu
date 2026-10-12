@@ -766,7 +766,7 @@ def test_the_view_resolves_an_actuation_grade_read_and_keeps_reads_only_for_a_re
     reads = ResolvingReads(driver)
     view = reads.view(driver, "true")
     assert isinstance(view, base.SettledReadProvider)
-    assert [e["identifier"] for e in view.settled_query()] == ["go"]  # type: ignore[attr-defined]
+    assert [e["identifier"] for e in view.settled_query()] == ["go"]
     assert len(reads.take()) == 1
     reads.view(driver, "true", keep=False).query()
     assert reads.take() == []
