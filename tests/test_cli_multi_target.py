@@ -132,18 +132,20 @@ def test_omitting_target_with_a_missing_file_exits_2(
 # --- the scenarios-dir rejection ---------------------------------------------------------------
 
 
-def test_the_scenarios_dir_refuses_a_self_declaring_file(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+def test_the_scenarios_dir_refuses_a_self_declaring_scenario(
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    # Rejected at discovery: a matching name would silently launch every other target the file
-    # declares, and a mismatching one would fail every other scenario in the same batch.
-    legacy = tmp_path / "ok.yaml"
-    legacy.write_text("- name: ok\n  steps:\n    - tap: { id: a }\n", encoding="utf-8")
-    cross = tmp_path / "cross.yaml"
-    cross.write_text(
-        "- name: cross\n  targets: [app, site]\n  steps:\n    - target: app\n      tap: { id: a }\n",
-        encoding="utf-8",
+    # A matching name would silently launch every other target the file declares, and a
+    # mismatching one would fail every other scenario in the same batch.
+    legacy = Scenario.model_validate({"name": "ok", "steps": [{"tap": {"id": "a"}}]})
+    cross = Scenario.model_validate(
+        {
+            "name": "cross",
+            "targets": ["app", "site"],
+            "steps": [{"target": "app", "tap": {"id": "a"}}],
+        }
     )
+    cross.set_source_stem("cross")
     with pytest.raises(typer.Exit) as exc:
         _reject_self_declaring_in_dir([legacy, cross], "app")
     assert exc.value.exit_code == 2
@@ -152,9 +154,8 @@ def test_the_scenarios_dir_refuses_a_self_declaring_file(
     assert "--scenario" in out
 
 
-def test_the_scenarios_dir_passes_a_suite_of_legacy_files(tmp_path: Path) -> None:
-    scn = tmp_path / "ok.yaml"
-    scn.write_text("- name: ok\n  steps:\n    - tap: { id: a }\n", encoding="utf-8")
+def test_the_scenarios_dir_passes_a_suite_of_legacy_scenarios() -> None:
+    scn = Scenario.model_validate({"name": "ok", "steps": [{"tap": {"id": "a"}}]})
     _reject_self_declaring_in_dir([scn], "app")  # no exception
 
 
