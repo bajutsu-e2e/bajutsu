@@ -531,9 +531,6 @@ def _wait(  # noqa: C901, PLR0911, PLR0912
     timeout = _effective_timeout(w)
     start = clock.now()
     deadline = start + timeout
-    # Give the gate a real list to record into even when the caller passed none (e.g. a direct
-    # _wait() unit test), so the record-the-event path has no None branch. `is not None`, not
-    # `or []`: an empty list the caller *did* pass is falsy but must still be the one appended to.
     driver, gate = _wait_gate(driver, clock, alert_guard, resolving)
     hb = _Heartbeat(on_tick, deadline) if on_tick is not None else None
     if hb is not None:
@@ -652,7 +649,9 @@ def _wait_gate(
 ) -> tuple[base.Driver, _AlertGuardGate | None]:
     """The driver a wait polls through, and the gate that reads each poll (see `_wait`)."""
     if resolving is not None:
-        driver = resolving.view(driver, "true")
+        # With no gate to take them, the reads need not be kept: a re-run's wait can poll for its
+        # whole timeout.
+        driver = resolving.view(driver, "true", keep=alert_guard is not None)
     if alert_guard is None:
         return driver, None
     return driver, _AlertGuardGate(clock=clock, guard=alert_guard, reads=resolving)

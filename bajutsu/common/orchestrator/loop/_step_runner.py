@@ -38,7 +38,6 @@ from bajutsu.common.orchestrator.waits import (
     WaitTick,
     WaitTrace,
     describe_wait,
-    records_note,
     settle_after_alert_dismiss,
 )
 from bajutsu.common.scenario import (
@@ -589,8 +588,10 @@ class _StepRunner:
         the app's first report to a real device's collector) is up before step one, which may not
         read the screen at all, or wait for an element the prompt only covers. One forced resolving
         read answers what the policy names, and costs one SpringBoard check when nothing is up
-        (BE-0461). A first `handleSystemAlert` step's own prompt is left to that step, whose wait
-        answers anything else it meets. The answer is reported by the step's own drain.
+        (BE-0461). The read runs the in-tree pass too, as every guarded read does; an in-tree rule
+        needs each identifying label on an identifier-less button exactly once, so an app's own
+        screen rarely matches. A first `handleSystemAlert` step's own prompt is left to that step,
+        whose wait answers anything else it meets. The answer is reported by the step's own drain.
         """
         guard = self.cfg.alert_guard
         resolving = self._resolving_reads(driver)
@@ -1289,8 +1290,8 @@ class _StepRunner:
                         hsa_by_position = hsa is not None and hsa.role() is not None
                         if kind == "assert_" or hsa_by_position or resolving.refused:
                             answered_before = resolving.answered
-                            recovery = resolving.read("true", force_check=True)
-                            note = records_note(recovery.drained)
+                            recovery = resolving.read("true", force_check=True, keep=False)
+                            note = resolving.note(recovery)
                             # The body's own read answering an alert that is gone by now licenses the
                             # retry as much as this read's own answer does.
                             if recovery.drained.tapped or recovery.withheld or answered_before:

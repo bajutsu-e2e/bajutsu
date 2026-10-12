@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, cast
+from typing import Any, cast, get_protocol_members
 
 from bajutsu.common.drivers import base
+from bajutsu.common.drivers.tracing import _PROTOCOLS
 from bajutsu.common.orchestrator.types import alert_block_note, uncleared_prompt_note
 
 
@@ -33,10 +34,13 @@ class ResolvingReads:
     # and so the ones the narrowed retry may follow (Unit 5).
     refused: bool = False
 
-    def read(self, mode: base.ResolveMode, *, force_check: bool = False) -> base.ResolvingRead:
-        """One resolving read, kept for the gate and the retry to look at."""
+    def read(
+        self, mode: base.ResolveMode, *, force_check: bool = False, keep: bool = True
+    ) -> base.ResolvingRead:
+        """One resolving read, kept for the gate and the retry to look at unless *keep* is off."""
         result = self.target.query_resolving(mode, force_check=force_check)
-        self._unseen.append(result)
+        if keep:
+            self._unseen.append(result)
         if result.drained.tapped:
             self.answered = True
         return result
@@ -52,14 +56,28 @@ class ResolvingReads:
         self.answered = False
         self.refused = False
 
-    def view(self, driver: base.Driver, mode: base.ResolveMode) -> base.Driver:
+    def note(self, recovery: base.ResolvingRead) -> str:
+        """The blocked-screen note for a failed body run: the newest one its reads and *recovery* name.
+
+        A showing records *gave up* once, so a give-up a body read returned is not repeated by the
+        recovery read that follows; reading the body's unconsumed reads keeps it on the failure.
+        """
+        for read in reversed([*self.take(), recovery]):
+            note = records_note(read.drained)
+            if note:
+                return note
+        return ""
+
+    def view(
+        self, driver: base.Driver, mode: base.ResolveMode, *, keep: bool = True
+    ) -> base.Driver:
         """*driver*, with `query()` sending a resolving read in *mode* and every other call unchanged.
 
         A forwarding view rather than a flag threaded through every handler: the reads a handler makes
         to resolve its target are ordinary `query()` calls, and a handle-based actuation's own read
         stays inside the driver, plain, as the design wants.
         """
-        return cast("base.Driver", _ResolvingView(driver, self, mode))
+        return cast("base.Driver", _ResolvingView(driver, self, mode, keep))
 
 
 def records_note(drained: base.DrainedInterruptions) -> str:
@@ -78,14 +96,32 @@ def records_note(drained: base.DrainedInterruptions) -> str:
 class _ResolvingView:
     """The forwarding view `ResolvingReads.view` returns."""
 
-    def __init__(self, driver: base.Driver, reads: ResolvingReads, mode: base.ResolveMode) -> None:
+    def __init__(
+        self, driver: base.Driver, reads: ResolvingReads, mode: base.ResolveMode, keep: bool
+    ) -> None:
         self._driver = driver
         self._reads = reads
         self._mode: base.ResolveMode = mode
+        self._keep = keep
+        # Real attributes, not `__getattr__` alone: `isinstance` against a runtime protocol looks
+        # members up statically, so a view forwarding by `__getattr__` would pass no protocol check
+        # and hide the backend's own (the reason `TracingDriver` installs them the same way).
+        for protocol in _PROTOCOLS:
+            if isinstance(driver, protocol):
+                for name in get_protocol_members(protocol):
+                    setattr(self, name, getattr(driver, name))
+        # Both reads a handler takes its target from resolve; an actuation-grade read included, which
+        # would otherwise skip the alert.
+        self.query = self._resolving_query  # type: ignore[method-assign]
+        if isinstance(driver, base.SettledReadProvider):
+            self.settled_query = self._resolving_query
+
+    def _resolving_query(self) -> list[base.Element]:
+        return self._reads.read(self._mode, keep=self._keep).elements
 
     def query(self) -> list[base.Element]:
-        return self._reads.read(self._mode).elements
+        return self._resolving_query()
 
     def __getattr__(self, name: str) -> Any:
-        # Every other member is the driver's own, so a capability or protocol check reads the backend.
+        # A member no protocol declares is still the driver's own.
         return getattr(self._driver, name)

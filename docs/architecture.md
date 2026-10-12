@@ -869,8 +869,10 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   deadline, reading the step's target first and then driving the reactive guard below on the same
   poll. Keeping the wait here is what lets the guard clear an interruption while the step waits —
   inside the driver's own loop nothing else could act, so a declared prompt held the screen for the
-  step's whole timeout. The guard is given the step's selector and declines an alert it names, so
-  the two never answer the same prompt
+  step's whole timeout. Since BE-0461 the step's own tree reads resolve in-tree alone, so its
+  SpringBoard alert stays the step's. An alert the step judges not its own goes to
+  `POST /systemAlert/resolve`, which answers while that alert still offers the buttons the step
+  read, and not otherwise, so the two never answer the same prompt
 - DSL `systemAlertHandling` (BE-0315), the reactive counterpart: an alert guard. It answers the
   prompts the scenario's own `rules` name, with no model call. Since BE-0461 the XCUITest backend
   answers them inside the requests that read the screen, not from a watcher in Python. Under a

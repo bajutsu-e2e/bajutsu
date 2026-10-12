@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+import pytest
 from _orch import FakeClock
 from conftest import el
 
@@ -699,3 +700,75 @@ def test_a_position_rule_step_re_runs_once_when_its_recovery_read_answers() -> N
     assert _calls(driver, "query_resolving") == [("true", True)]
     assert result.ok, result.steps[0].reason
     assert len(_calls(driver, "handle_system_alert")) == 1
+
+
+def test_a_tap_whose_outcome_is_unknown_takes_no_recovery_read() -> None:
+    # A channel error after delivery means the tap may have landed: re-running it could actuate
+    # twice (BE-0207), so no recovery follows — the error ends the run loudly instead.
+    from bajutsu.common.drivers.xcuitest import XcuitestChannelError
+
+    guard = _guard(_NOTIFICATIONS)
+
+    class _Lost(ResolvingFakeDriver):
+        def tap(self, sel: base.Selector) -> None:
+            self._record("tap", sel)
+            raise XcuitestChannelError("response lost after delivery")
+
+    driver = _Lost(screen=[el("go", "Go", traits=[base.Trait.BUTTON])])
+    push_interruption_policy(driver, guard, scenario_start=True)
+    with pytest.raises(XcuitestChannelError):
+        _run(driver, _TAP_GO, guard)
+    assert _calls(driver, "tap") == [{"id": "go"}]
+    assert _calls(driver, "query_resolving").count(("true", True)) == 1  # the entry read alone
+
+
+def test_the_entry_read_leaves_a_first_handle_system_alert_step_its_prompt() -> None:
+    guard = _guard(_NOTIFICATIONS)
+    driver = _driver([el("home", "Home")], guard)
+    driver.system_alert_buttons = _alert("Allow", "Don't Allow")
+    yaml = "- name: t\n  steps:\n    - handleSystemAlert: { sel: { label: Allow }, timeout: 1 }\n"
+    result = _run(driver, yaml, guard)
+    assert result.ok, result.steps[0].reason
+    assert ("true", True) not in _calls(driver, "query_resolving")
+    assert _calls(driver, "resolve_press") == []  # the step tapped its own button
+
+
+def test_a_give_up_a_body_read_returned_names_the_failure_the_recovery_read_cannot() -> None:
+    # A showing records *gave up* once: the recovery read after the swipe's own read finds none.
+    guard = _guard(_NOTIFICATIONS)
+    driver = _driver([], guard)
+    gave_up = base.DrainedInterruptions(
+        tapped=[],
+        declined=[],
+        banners=[],
+        gave_up=[base.GaveUpAlert(["Allow", "Don't Allow"], "native", "Don't Allow")],
+    )
+    empty = base.DrainedInterruptions.empty()
+    driver.resolving_reads = [
+        base.ResolvingRead(elements=[], drained=empty),  # entry
+        base.ResolvingRead(elements=[], drained=gave_up),  # the swipe's own read
+        base.ResolvingRead(elements=[], drained=empty),  # the recovery read
+    ]
+    yaml = "- name: t\n  steps:\n    - swipe: { on: { id: go }, direction: up }\n"
+    result = _run(driver, yaml, guard)
+    assert not result.ok
+    assert uncleared_prompt_note("Don't Allow") in result.steps[0].reason
+
+
+def test_the_view_resolves_an_actuation_grade_read_and_keeps_reads_only_for_a_reader() -> None:
+    from bajutsu.common.orchestrator.waits import ResolvingReads
+
+    class _Settling(ResolvingFakeDriver):
+        def settled_query(self) -> list[base.Element]:
+            raise AssertionError("the view must not bypass resolution")
+
+    driver = _Settling(screen=[el("go", "Go")])
+    reads = ResolvingReads(driver)
+    view = reads.view(driver, "true")
+    assert isinstance(view, base.SettledReadProvider)
+    assert [e["identifier"] for e in view.settled_query()] == ["go"]  # type: ignore[attr-defined]
+    assert len(reads.take()) == 1
+    reads.view(driver, "true", keep=False).query()
+    assert reads.take() == []
+    # A plain driver stays plain: the view adds no protocol the backend lacks.
+    assert not isinstance(reads.view(_driver([], _guard()), "true"), base.SettledReadProvider)
