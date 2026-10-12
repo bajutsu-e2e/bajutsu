@@ -120,9 +120,9 @@ scenarios:
 
 ## systemAlertHandling（システムアラートガード）
 
-iOS バックエンドは **SpringBoard レベルのプロンプト**（通知や App Tracking Transparency のリクエスト、"Allow Paste" など）を見ることも tap することもできません。これらのプロンプトはアプリを覆って要素ツリーを潰し、ステップを静かにブロックします。**アラートガード**がこれをリアクティブに片付けます。iOS の XCUITest バックエンドでは**決定論的なネイティブ経路**をとります（BE-0315）。BE-0316 の SpringBoard 照会を再利用してアラートが提示するボタンを把握し、規則が名指しするボタンを押します。スクリーンショットもモデルへの往復も使わないため、頻出するプロンプトを 0.1 秒を大きく下回る時間で片付け、`ANTHROPIC_API_KEY` が**なくても**動作します。決定論的な経路がどれも対処できない場合（capability を持たないバックエンド、どの規則も同定しないアラート、SpringBoard の照会が列挙できず、しかもどの規則も同定しない画面。規則が同定するものは、後述のツリー内の経路が片付けます）、**ガードは何もしません**（[BE-0402](../../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback-ja.md)）。ブロックされたステップまたは `wait` は、ガードを設定していないときとまったく同じように自身のタイムアウトまで進み、そのタイムアウトが**ガードの見たものを名指しします**。`wait timeout: for {'id': 'submit'} (10.0s) — an unhandled system alert is blocking the screen (buttons: Allow, Don't Allow)` の形、何も列挙できなかった場合は `… — the screen appears blocked, possibly by a system alert or another overlay outside the app's view` という曖昧な形です。BE-0402 より前は、この場合にスクリーンショットを読む AI 視覚ガードへフォールバックしていました。`run` はもうそれをしないため、**どのフラグを付けてもモデルに到達しません**。（`record` と `crawl` はオーサリング向けにそのガードを保持します。[詳細](recording.md#システムアラートの自動対処)）`wait` ステップ（`for`/`gone`/`settled`/`screenChanged`）では、ガードは **wait の途中でも**発火します。ネイティブ経路が独自の間隔（既定は 1 秒）で SpringBoard をポーリングするため、wait 自体のタイムアウトを待たず、ステップが失敗する前に回復できます（BE-0269）。
+iOS バックエンドは **SpringBoard レベルのプロンプト**（通知や App Tracking Transparency のリクエスト、"Allow Paste" など）を見ることも tap することもできません。これらのプロンプトはアプリを覆って要素ツリーを潰し、ステップを静かにブロックします。**アラートガード**がこれをリアクティブに片付けます。iOS の XCUITest バックエンドでは**決定論的なネイティブ経路**をとります（BE-0315）。BE-0316 の SpringBoard 照会を再利用してアラートが提示するボタンを把握し、規則が名指しするボタンを押します。スクリーンショットもモデルへの往復も使わないため、頻出するプロンプトを 0.1 秒を大きく下回る時間で片付け、`ANTHROPIC_API_KEY` が**なくても**動作します。決定論的な経路がどれも対処できない場合（capability を持たないバックエンド、どの規則も同定しないアラート、SpringBoard の照会が列挙できず、しかもどの規則も同定しない画面。規則が同定するものは、後述のツリー内の経路が片付けます）、**ガードは何もしません**（[BE-0402](../../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback-ja.md)）。ブロックされたステップまたは `wait` は、ガードを設定していないときとまったく同じように自身のタイムアウトまで進み、そのタイムアウトが**ガードの見たものを名指しします**。`wait timeout: for {'id': 'submit'} (10.0s) — an unhandled system alert is blocking the screen (buttons: Allow, Don't Allow)` の形、何も列挙できなかった場合は `… — the screen appears blocked, possibly by a system alert or another overlay outside the app's view` という曖昧な形です。BE-0402 より前は、この場合にスクリーンショットを読む AI 視覚ガードへフォールバックしていました。`run` はもうそれをしないため、**どのフラグを付けてもモデルに到達しません**。（`record` と `crawl` はオーサリング向けにそのガードを保持します。[詳細](recording.md#システムアラートの自動対処)）`wait` ステップ（`for`/`gone`/`settled`/`screenChanged`）では、ガードは **wait の途中でも**働きます。XCUITest では wait 自身のツリー読み取りのたびに、ツリーを返す前に規則が名指しするプロンプトへ答えます。SpringBoard の確認は `pollInterval`（既定は 1 秒）につき 1 回までです（[BE-0461](../../roadmaps/BE-0461-request-boundary-alert-resolution/BE-0461-request-boundary-alert-resolution-ja.md)）。そのため wait 自体のタイムアウトを待たず、ステップが失敗する前に回復できます（BE-0269）。
 
-XCUITest バックエンドでは、画面が止まったときに `for` と `screenChanged` の wait を早めに打ち切ります。止まった画面とは、ガードの SpringBoard 照会が直前の確認でアラートなしと答えているのに、アプリケーション自身を除くどの要素も、ラベルと識別子のどちらも 10 秒間持たない状態です。iOS 26.5 の Simulator で、この状態を計測しました。iOS が Save Password アラートを提示する瞬間に通知の許諾リクエストが重なると、このアラートが提示の途中で止まることがあります。止まったアラートは描画されず、どのプロセスのアクセシビリティツリーにも現れませんが、アプリの上でモーダルのまま残ります。ガードが届く手段ではこのアラートを閉じられないため、wait は自身のタイムアウトまで待たずに、次の理由で失敗します。
+XCUITest バックエンドでは、画面が止まったときに `for` と `screenChanged` の wait を早めに打ち切ります。止まった画面とは、読み取り自身の SpringBoard 確認がアラートなしと答えているのに、アプリケーション自身を除くどの要素も、ラベルと識別子のどちらも 10 秒間持たない状態です。iOS 26.5 の Simulator で、この状態を計測しました。iOS が Save Password アラートを提示する瞬間に通知の許諾リクエストが重なると、このアラートが提示の途中で止まることがあります。止まったアラートは描画されず、どのプロセスのアクセシビリティツリーにも現れませんが、アプリの上でモーダルのまま残ります。ガードが届く手段ではこのアラートを閉じられないため、wait は自身のタイムアウトまで待たずに、次の理由で失敗します。
 
 ```text
 wait stopped: for {'id': 'Close'} after 10.4s — no element below the application has carried a label or identifier for 10s while no system alert is up — …
@@ -130,7 +130,7 @@ wait stopped: for {'id': 'Close'} after 10.4s — no element below the applicati
 
 この打ち切りは、`rules` に `savePassword` のようなアプリ内のプロンプトを宣言したシナリオに限ります。それ以外のシナリオでは、長く空のツリーがアプリ自身のラベルのない読み込み画面である可能性があるため、wait は従来どおり自身のタイムアウトまで待ちます。ラベルのない読み込み画面が 10 秒を超えうるアプリでは、`frozenScreenTimeout` で上限を延ばせます。`0` を指定すると打ち切りは無効になります。`gone` と `settled` の wait は、止まったツリーで条件を満たしてしまうため、この打ち切りの対象外です。`handleSystemAlert` ステップも対象外です。このステップは SpringBoard を待っており、プロンプトがあとから出る可能性があるためです。
 
-これは **既定で ON** で、**ステップ（または `expect`）がブロックされたとき、あるいはガード対象の `wait` でネイティブのポーリングがアラートを見つけたとき**に発火します。そのため、成功するシナリオは余計な処理をしません。`ANTHROPIC_API_KEY` は**不要**で、参照もしません。シナリオごとに動作を変えるには `systemAlertHandling` を使います。
+これは **既定で ON** です。XCUITest ではステップがすでに行う読み取りに相乗りし、成功するステップは再試行を受けません。そのため、成功するシナリオが払うのは `pollInterval` あたり最大 1 回の SpringBoard 確認だけです。`ANTHROPIC_API_KEY` は**不要**で、参照もしません。シナリオごとに動作を変えるには `systemAlertHandling` を使います。
 
 **`rules` がガードの宣言のすべてです**（[BE-0406](../../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md)）。シナリオは、現れると見込むプロンプトと、それぞれに返す選択を書きます。どの応答経路も、その宣言だけを見て一致を判定します。BE-0401 が導入した順序付きの `labels` は BE-0406 で削除しました。ボタンのラベルが名指しするのはボタンであって、そのボタンが載っているアラートではありません。「Cancel」も「Close」もアプリの通常の語彙ですから、ラベルはシナリオが記述していない画面へのタップまで許してしまっていたのです。`visionInstruction` は vision フォールバックを方向づけていましたが、いまはどのコマンドにも届きません。**`run` はこれを拒否し**（後述）、`record` と `crawl` は自由記述を自身の `--alert-vision-instruction` フラグからだけ読み、シナリオからは読みません。ON と OFF は真偽値が担うので、マッピングを書けば常に ON です。
 
@@ -140,7 +140,7 @@ wait stopped: for {'id': 'Close'} after 10.4s — no element below the applicati
 | `systemAlertHandling: false` | このシナリオでは無効 |
 | `systemAlertHandling: { rules: [{ prompt: notifications, choice: grant }] }` | ON。**名指しした対応済みプロンプト**に、他のプロンプトとどのラベルを共有していても、その規則自身の選択で答える |
 | `systemAlertHandling: { visionInstruction: "tap Allow" }` | **どのコマンドにも届きません。** `run` は黙って無視せず、**どのシナリオも実行する前に失敗します**（[BE-0402](../../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback-ja.md)）。`record` と `crawl` はシナリオのこのキーを読みません。スキーマが残しているのは、書いてしまったファイルにこのメッセージを返すためだけです |
-| `systemAlertHandling: { pollInterval: 2 }` | ON。ネイティブの presence 照会を既定の 1 秒ではなく 2 秒間隔でポーリングする |
+| `systemAlertHandling: { pollInterval: 2 }` | ON。SpringBoard の確認を、既定の 1 秒ではなく最大 2 秒に 1 回にする |
 | `systemAlertHandling: { frozenScreenTimeout: 30 }` | ON。ガード対象の wait が止まった画面で打ち切るまでの時間を、デフォルトの 10 秒ではなく 30 秒にする（`0` で打ち切りを無効にする） |
 
 ```yaml
@@ -158,7 +158,7 @@ wait stopped: for {'id': 'Close'} after 10.4s — no element below the applicati
 
 ツリー内のタップで届くプロンプトに規則を書くと、iOS ではもう 1 つ、ツリー内の経路も有効になります。相手は SpringBoard のアラートではありません。いま対応しているのは `savePassword` の 1 つだけです。iOS はこの「パスワードを保存」アラートを**アプリ自身の**プロセスに出すので、そのボタンはラベルを持ち識別子を持たない形で要素ツリーに現れ、SpringBoard の照会には決して映りません。つまりツリー内のタップだけが、これを片付けられます。
 
-そのタップは同じ `pollInterval` で間隔を空け、しかも直前の SpringBoard 照会が空だったポーリングでのみ撃ちます。XCUITest は要素への操作を合成する前に、割り込んでいるプロセス外のアラートを解決してしまい、アプリのツリーからはそのアラートが見えないからです。したがって 2 つのプロンプトが同時に出ているときは、まず SpringBoard のアラートに答え、そのあとでアプリ側のアラートをツリーから片付けます。
+runner はこのタップを読み取りの中で行い、しかも同じ読み取りでの新たな SpringBoard 確認が空だったときに限ります。XCUITest は要素への操作を合成する前に、割り込んでいるプロセス外のアラートを解決してしまい、アプリのツリーからはそのアラートが見えないからです。したがって 2 つのプロンプトが同時に出ているときは、まず SpringBoard のアラートに答え、そのあとでアプリ側のアラートをツリーから片付けます。
 
 割り込んできたアラートがどのボタンを受け取るかも、利用者の方針が決めます。XCUITest は割り込まれた操作より先にそのアラートを解決し、放っておけばアラート自身の**デフォルト**ボタンで答えます。`rules` が拒否したはずの権限を許可し、しかも実行結果には何も残りません。そこで runner は、`rules` が名指ししたボタンを押す割り込み監視を入れます。判定の作法はネイティブ経路と同じで、押した結果は通常のアラートイベントとして報告されます。この監視が決して出会えない規則は、送らずに落とします。`savePassword` は別プロセスの操作に割り込むことがないからです。どの規則も同定しないアラートは、従来どおり XCUITest 自身の既定ハンドラに委ねられ、この tap 自体は変えられません。変わるのは沈黙のほうです。その割り込みに遭遇したステップや `expect` は、あなたに代わって何かが答えたかのように続けるのではなく、アラートが差し出したボタン名を添えて失敗します。
 （[`demos/showcase/scenarios/save_password_browser.yaml`](../../demos/showcase/scenarios/save_password_browser.yaml) 実物）
@@ -167,6 +167,23 @@ wait stopped: for {'id': 'Close'} after 10.4s — no element below the applicati
 
 CLI の `--system-alert-handling` / `--no-system-alert-handling` フラグは**全シナリオを上書き**します。無指定ならシナリオごとの既定が使われます。その run にだけキーを与えるフラグは `--alert-poll-interval` の 1 つだけです。入る位置はシナリオとターゲット config の中間です（後述の[層の重ね方](#層の重ね方1-つのキーは-3-か所から届く)を参照）。
 （[`demos/showcase/scenarios/permission.yaml`](../../demos/showcase/scenarios/permission.yaml) 実物）
+
+### プロンプトに答える代わりに出さないようにする
+
+アプリが出さないプロンプトには、答える必要がありません。テスト中にアプリが自分のプロンプトを省くための方法として、ターゲットの config（`targets.<name>`）の起動引数または環境変数（`launchArgs` と `launchEnv`）を用意しています。アプリは起動時にそれを読みます。
+
+```yaml
+targets:
+  my-app:
+    bundleId: com.example.myapp
+    launchEnv: { UITEST_SKIP_ONBOARDING_PROMPTS: "1" }   # the app checks this and asks nothing
+```
+
+出さないようにすればガードの出番は減りますが、ガードの代わりにはなりません。次の 3 つのプロンプトは、引き続きリアクティブに答えます。
+
+- **通知**は、`xcrun simctl privacy` が許可できるプライバシーサービスではありません（[BE-0276](../../roadmaps/BE-0276-scenario-permission-state/BE-0276-scenario-permission-state-ja.md)）。
+- **App Tracking Transparency（ATT）**も、`simctl privacy` のサービスにはありません。このコマンド自身のサービス一覧に載っていないことを確認しています。
+- **パスワードの保存**は、Simulator の「パスワードを自動入力」の設定に左右されます。実行前にこの設定を切る、サポートされた方法は見つかりませんでした。そのためシナリオは `savePassword` の規則で答えます（[BE-0461](../../roadmaps/BE-0461-request-boundary-alert-resolution/BE-0461-request-boundary-alert-resolution-ja.md)）。
 
 ### 通知バナーはタップせずスワイプで消す
 
