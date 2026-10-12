@@ -162,9 +162,9 @@ final class RunnerUITest: XCTestCase {
     }
 
     /// The banner's frame once it is fully on screen and has stopped moving, or `nil` if it never
-    /// does (or disappears) within `bannerSettleTimeout`. Two equal consecutive reads mark the end of
-    /// the slide-in animation; a top edge at or below the screen's own rules out a banner that is
-    /// still partly above it.
+    /// does (or disappears) within `bannerSettleTimeout`. Two consecutive reads agreeing within a
+    /// point mark the end of the slide-in animation; a top edge at or below the screen's own rules
+    /// out a banner that is still partly above it.
     ///
     /// Read through the type-agnostic identifier query rather than the typed interrupting element.
     /// The lookups seen missing in #2156 were XCUITest's own, by the banner's `BannerNotification`
@@ -180,7 +180,13 @@ final class RunnerUITest: XCTestCase {
             // poll below bounds how many times the race is taken.
             guard banner.exists else { return nil }
             let frame = banner.frame
-            if frame.height > 0, frame.minY >= 0, frame == previous { return frame }
+            // Within a point rather than exact `CGRect` equality: a frame that jitters by a fraction
+            // of a point would otherwise never count as settled, and the gesture depends only on
+            // `minY` and `height`.
+            if let previous, frame.height > 0, frame.minY >= 0,
+               abs(frame.minY - previous.minY) < 1, abs(frame.height - previous.height) < 1 {
+                return frame
+            }
             previous = frame
             Thread.sleep(forTimeInterval: bannerSettlePollInterval)
         } while Date() < deadline
