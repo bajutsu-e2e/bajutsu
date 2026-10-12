@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0461") |
-| 実装 PR | [#2152](https://github.com/bajutsu-e2e/bajutsu/pull/2152)（Unit 1）、[#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM)（Unit 2） |
+| 実装 PR | [#2152](https://github.com/bajutsu-e2e/bajutsu/pull/2152)（Unit 1）、[#2155](https://github.com/bajutsu-e2e/bajutsu/pull/2155)（Unit 2） |
 | トピック | Platform support |
 <!-- /BE-METADATA -->
 
@@ -387,7 +387,7 @@ capability のない backend は、今のゲートを使い続けます。明示
   直しました。`--exclude` で自己宣言型のシナリオファイルを除いたあとも、`bajutsu run` がシナリオ
   ディレクトリ全体を拒んでいました。この拒否のため、計測で `make run-swiftui` をそのまま使えません
   でした。
-- [#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM) — Unit 2 です。着手の前に、Unit 1 で
+- [#2155](https://github.com/bajutsu-e2e/bajutsu/pull/2155) — Unit 2 です。着手の前に、Unit 1 で
   runner が失われた件をメンテナーが判断しました。アラートを片付けるコストではなく、BE-0416 のバナーの
   経路にもともとある不具合と見て、Unit 2 を進めることにしました。`GET /elements` に `resolveAlerts`
   （`true` または `inTree`）と `forceCheck` を足しました。片付ける読み取りは、送られた

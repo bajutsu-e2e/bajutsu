@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0461") |
-| Implementing PR | [#2152](https://github.com/bajutsu-e2e/bajutsu/pull/2152) (unit 1), [#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM) (unit 2) |
+| Implementing PR | [#2152](https://github.com/bajutsu-e2e/bajutsu/pull/2152) (unit 1), [#2155](https://github.com/bajutsu-e2e/bajutsu/pull/2155) (unit 2) |
 | Topic | Platform support |
 <!-- /BE-METADATA -->
 
@@ -468,7 +468,7 @@ Log:
   Review weighs that loss before Unit 2 starts. The PR also fixes a BE-0428 regression. `bajutsu
   run` refused a whole scenarios dir even after `--exclude` had removed its self-declaring files.
   That refusal kept `make run-swiftui` from running as is during the measurement.
-- [#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM) — Unit 2. Before it started, the
+- [#2155](https://github.com/bajutsu-e2e/bajutsu/pull/2155) — Unit 2. Before it started, the
   maintainer judged the Unit 1 runner loss to be an existing defect in the BE-0416 banner path, not
   a cost of resolving, and let Unit 2 proceed. `GET /elements` gains `resolveAlerts` (`true` or
   `inTree`) and `forceCheck`. A resolving read checks SpringBoard at most once per pushed
