@@ -91,29 +91,41 @@ final class RunnerUITest: XCTestCase {
     /// navigate the run away from the scenario under test. The gesture is anchored to the banner's
     /// measured frame rather than a fixed screen coordinate, so it holds across device sizes, and it
     /// ends just above that frame rather than past the screen's edge, where the drag would become
-    /// SpringBoard's own top-edge gesture instead.
+    /// SpringBoard's own top-edge gesture instead. That frame is read only once the banner has
+    /// settled: XCUITest can flag the banner while it is still sliding in from above the screen, and
+    /// a frame read then puts the swipe's start off-screen and its end *below* it — a downward drag
+    /// that cannot dismiss anything (issue #2156, measured on iOS 26.5 at a frame centred at y=-78.7).
     ///
     /// Returning `true` claims the interruption, and XCUITest re-invokes a monitor that claimed one
     /// it did not actually clear — the same unbounded reinvocation loop BE-0399 measured for an
     /// alert (above), reproduced for a banner while measuring BE-0416 by capping a throwaway test
     /// monitor at six invocations rather than letting it run to the failure BE-0399 hit. So the
-    /// clearance is *confirmed* before claiming it, and an unconfirmed swipe declines instead,
-    /// handing the banner back to XCUITest's own handler, which does clear it.
+    /// clearance is *confirmed* before claiming it.
     ///
-    /// A decline here still needs to be *legible*, or it reproduces in miniature the invisibility
+    /// Declining is the last resort, not the fallback: XCUITest's own handler does not clear a
+    /// banner. Measured on iOS 26.5, it ignores a non-alert element, and every lookup it makes of the
+    /// banner by its `BannerNotification` type misses ("Automation type mismatch": the snapshot
+    /// classifies the banner as `Other`) and records a UI automation failure; those failures then
+    /// preempted the interrupted `swipe` and ended the test case, losing the runner (#2156). So an
+    /// unconfirmed swipe keeps waiting for the banner's own auto-dismissal, which clears it as surely
+    /// as the swipe would, and declines only if the banner outlasts that too.
+    ///
+    /// Either outcome still needs to be *legible*, or it reproduces in miniature the invisibility
     /// this whole mechanism exists to end: nothing calls `recordDeclined` for a banner (that path
     /// classifies as an `UndeclaredInterruption` and would fail the step, the outcome BE-0416 removes
-    /// for a banner), so an unconfirmed swipe is logged instead — observable without being fatal.
+    /// for a banner), so an unconfirmed swipe is logged instead — observable without failing the step.
     private static func swipeAwayNotificationBanner(_ banner: XCUIElement) -> Bool {
-        let frame = banner.frame
-        guard frame.height > 0 else {
-            logUnconfirmedBanner("the interrupting element reported an empty frame")
-            return false
-        }
         // Read before the swipe: once the banner is gone its label resolves to empty, and the label
         // is the only thing that identifies the dismissal in the run's report.
         let label = banner.label
         let springboard = XCUIApplication(bundleIdentifier: springboardBundleID)
+        let remaining = springboard.descendants(matching: .any)
+            .matching(identifier: notificationBannerIdentifier)
+        guard let frame = settledFrame(of: remaining.firstMatch) else {
+            return awaitBannerClearance(
+                remaining, label: label, swiped: false, unconfirmed: "the banner never settled on screen"
+            )
+        }
         let origin = springboard.coordinate(withNormalizedOffset: .zero)
         let from = origin.withOffset(CGVector(dx: frame.midX, dy: frame.midY))
         let to = origin.withOffset(
@@ -123,29 +135,61 @@ final class RunnerUITest: XCTestCase {
         // guard above: the banner can lose the race with its own auto-dismissal between the frame
         // read and this press, and a flick delivered at its former screen position would then land on
         // whatever the application under test draws there instead — a gesture the scenario never
-        // asked for.
-        guard banner.exists else {
-            logUnconfirmedBanner("the banner disappeared before the swipe could be sent")
-            return false
+        // asked for. A banner already gone is cleared, so it is confirmed rather than declined.
+        guard remaining.firstMatch.exists else {
+            return awaitBannerClearance(
+                remaining, label: label, swiped: false, unconfirmed: "the banner disappeared before the swipe"
+            )
         }
         from.press(forDuration: bannerSwipePressDuration, thenDragTo: to)
+        return awaitBannerClearance(
+            remaining, label: label, swiped: true, unconfirmed: "the swipe did not clear the banner"
+        )
+    }
 
-        let remaining = springboard.descendants(matching: .any)
-            .matching(identifier: notificationBannerIdentifier)
-        let deadline = Date().addingTimeInterval(bannerClearanceTimeout)
+    /// The banner's frame once it is fully on screen and has stopped moving, or `nil` if it never
+    /// does (or disappears) within `bannerSettleTimeout`. Two equal consecutive reads mark the end of
+    /// the slide-in animation; a top edge at or below the screen's own rules out a banner that is
+    /// still partly above it. Read through the type-agnostic identifier query rather than the typed
+    /// interrupting element, whose `BannerNotification` lookup misses on iOS 26.5 (#2156).
+    private static func settledFrame(of banner: XCUIElement) -> CGRect? {
+        var previous: CGRect?
+        let deadline = Date().addingTimeInterval(bannerSettleTimeout)
+        repeat {
+            // `exists` first: reading `frame` of a vanished element records a UI automation failure.
+            guard banner.exists else { return nil }
+            let frame = banner.frame
+            if frame.height > 0, frame.minY >= 0, frame == previous { return frame }
+            previous = frame
+        } while Date() < deadline
+        return nil
+    }
+
+    /// Confirm the banner is gone and claim it, or decline once it has outlasted
+    /// `bannerClearanceTimeout`. A cleared banner is still claimed when the swipe was skipped, or when
+    /// it went only after `bannerSwipeClearanceWindow`, since it is cleared either way; both cases are
+    /// logged so the path that cleared it stays observable.
+    private static func awaitBannerClearance(
+        _ remaining: XCUIElementQuery, label: String, swiped: Bool, unconfirmed reason: String
+    ) -> Bool {
+        let start = Date()
         repeat {
             if !remaining.firstMatch.exists {
+                let elapsed = Date().timeIntervalSince(start)
+                if !swiped || elapsed > bannerSwipeClearanceWindow {
+                    logBanner("\(reason); it cleared on its own after \(String(format: "%.1f", elapsed))s")
+                }
                 InterruptionPolicyStore.shared.recordBanner(label)
                 return true
             }
-        } while Date() < deadline
-        logUnconfirmedBanner("the banner was still on screen \(bannerClearanceTimeout)s after the swipe")
+        } while Date().timeIntervalSince(start) < bannerClearanceTimeout
+        logBanner("\(reason); still on screen after \(bannerClearanceTimeout)s — declining to XCUITest's own handler")
         return false
     }
 
-    private static func logUnconfirmedBanner(_ reason: String) {
+    private static func logBanner(_ message: String) {
         FileHandle.standardError.write(
-            Data("bajutsu runner: notification banner swipe unconfirmed (\(reason)) — declining to XCUITest's own handler\n".utf8)
+            Data("bajutsu runner: notification banner: \(message)\n".utf8)
         )
     }
 
@@ -166,13 +210,26 @@ final class RunnerUITest: XCTestCase {
     /// (`XcuitestElementProvider.scrollVelocity`, BE-0400).
     private static let bannerSwipePressDuration: TimeInterval = 0.05
 
-    /// How long the swipe's clearance is re-checked before it counts as unconfirmed. A deadline, not
-    /// a sample count: a fixed count of SpringBoard queries scales with host speed, so it can decide
-    /// "unconfirmed" for a swipe that actually landed on a slow host, or block a fast one for far
-    /// longer than the ~32ms per query measured while sizing this. A deadline instead gives the
-    /// dismissal animation the same real time on every host, while each poll is still a real
-    /// SpringBoard query rather than a sleep (determinism first).
-    private static let bannerClearanceTimeout: TimeInterval = 2
+    /// How long the banner may take to finish sliding in before the swipe is abandoned. The
+    /// slide-in is a fraction of a second; this only bounds a banner that never comes to rest.
+    private static let bannerSettleTimeout: TimeInterval = 2
+
+    /// Not a deadline: the line past which a clearance after a real swipe is logged as the banner's
+    /// own auto-dismissal rather than the swipe's work. It keeps the confirmation window the swipe had
+    /// before #2156.
+    private static let bannerSwipeClearanceWindow: TimeInterval = 2
+
+    /// How long clearance is re-checked before the monitor declines. Deadlines, not sample counts: a
+    /// fixed count of SpringBoard queries scales with host speed, so it can decide "unconfirmed" for a
+    /// swipe that actually landed on a slow host, or block a fast one for far longer than the ~32ms
+    /// per query measured while sizing this. A deadline instead gives the dismissal the same real
+    /// time on every host, while each poll is still a real SpringBoard query rather than a sleep
+    /// (determinism first). Sized to outlast a temporary banner's own display time, so declining —
+    /// fatal to the runner, see `swipeAwayNotificationBanner` — is reached only by a banner that
+    /// will not leave by itself. The worst case per interruption, settle (`bannerSettleTimeout`, 2s)
+    /// plus clearance (10s), is about 12s, well inside the 30s actuation window
+    /// (`_ACTUATION_TIMEOUT_SECONDS` in `bajutsu/common/drivers/xcuitest/_functions.py`).
+    private static let bannerClearanceTimeout: TimeInterval = 10
 
     override func record(_ issue: XCTIssue) {
         super.record(issue)
