@@ -13,6 +13,7 @@ from conftest import el
 
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver, ResolvingFakeDriver
+from bajutsu.common.evidence.network import ScreenTransition
 from bajutsu.common.orchestrator import AlertEvent, AlertGuardConfig, run_scenario
 from bajutsu.common.orchestrator.types import (
     ResolvedAlertRule,
@@ -197,7 +198,7 @@ def test_a_settled_wait_on_the_transition_signal_reads_through_the_backend() -> 
         clock,
         alert_guard=guard,
         resolving=ResolvingReads(driver),
-        transitions=lambda: [("screen", clock.now())],
+        transitions=lambda: [(ScreenTransition(kind="screenChanged"), clock.now())],
         on_tick=lambda _remaining: None,
     )
     assert ok
