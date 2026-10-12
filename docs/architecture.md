@@ -918,8 +918,9 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   alone, and the step rejects it at parse time rather than polling an empty button list to its
   deadline.
 
-  A step makes at most one alert retry. Three kinds of step failure take it: a refused actuation, a
-  target the step's selector read could not find, and a failed `assert`. A failed `expect` takes it
+  A step makes at most one alert retry. Four kinds of step failure take it: a refused actuation, a
+  target the step's selector read could not find, a failed `assert`, and a failed `handleSystemAlert`
+  step that answers by position (BE-0445), which waits without the gate. A failed `expect` takes it
   as well. The retry sends one forced resolving read (`forceCheck=true`), which skips the
   SpringBoard rate limit. Three outcomes license a second run: an answer, a press the memo withheld,
   and an answer the step's own reads made. On one of them the screen settles, and the step (or the

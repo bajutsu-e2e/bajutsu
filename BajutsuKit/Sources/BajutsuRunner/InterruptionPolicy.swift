@@ -232,7 +232,7 @@ struct ShowingKey: Hashable {
 }
 
 /// A screen's identity for the changed-screen decline: labels and identifiers, not frames, so an
-/// animation settling a few pixels does not read as a new screen (`tree_signature` in Python).
+/// animation settling a few pixels does not read as a new screen.
 struct TreeSignatureEntry: Equatable {
     let label: String?
     let identifier: String?

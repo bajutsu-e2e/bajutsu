@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import time
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
@@ -17,11 +16,13 @@ from ._drain_carry import _DrainCarry
 from ._functions import (
     _as_float,
     _await_health,
+    _drain_fold,
     _http_transport,
     _is_resolving_read,
     _parse_drain_fold,
     _parse_resolving_drain_fold,
     _parse_tap_drain_fold,
+    _resolving_body,
     _tip_is_up,
     _to_element,
 )
@@ -489,9 +490,10 @@ class XcuitestDriver:
         elements, _ = self._query_with_handles(path=path)
         reply = self._last_tree_reply
         assert reply is not None  # set by the read just above
-        # Parsed first, so a malformed reply raises the channel error rather than a JSON one.
-        drained = _parse_resolving_drain_fold(reply.raw)
-        body = json.loads(reply.raw) if reply.raw else {}
+        # Decoded once, with the records checked, so a malformed reply raises the channel error
+        # rather than a JSON one; the tree itself is the whole body, so a decode is not free.
+        body = _resolving_body(reply.raw)
+        drained = _drain_fold(body)
         return base.ResolvingRead(
             elements=elements,
             drained=drained,
