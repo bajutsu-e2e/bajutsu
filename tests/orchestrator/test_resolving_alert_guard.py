@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-import pytest
 from _orch import FakeClock
 from conftest import el
 
@@ -385,23 +384,21 @@ def test_a_failed_wait_takes_no_end_of_step_recovery() -> None:
 def test_a_label_named_handle_system_alert_step_takes_no_recovery() -> None:
     guard = _guard(_NOTIFICATIONS)
     driver = _driver([el("home", "Home")], guard)
-    _run(driver, _HSA_SAVE, guard)
-    assert ("true", True) not in _calls(driver, "query_resolving")
+    # A passing step first, so the scenario-entry read is spent and any later forced read could
+    # only be a recovery.
+    yaml = (
+        "- name: t\n  steps:\n"
+        "    - assert: [{ exists: { id: home } }]\n"
+        "    - handleSystemAlert: { sel: { label: Save }, timeout: 2 }\n"
+    )
+    result = _run(driver, yaml, guard)
+    assert not result.ok
+    assert _calls(driver, "query_resolving").count(("true", True)) == 1
 
 
-def test_the_guard_s_own_call_never_runs_under_the_capability(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    def refuse(*_a: object, **_k: object) -> bool:
-        raise AssertionError("AlertGuardConfig.__call__ ran under RESOLVE_ALERTS")
-
-    monkeypatch.setattr(AlertGuardConfig, "__call__", refuse)
-    guard = _guard(_NOTIFICATIONS)
-    driver = _driver([], guard)
-    yaml = "- name: t\n  steps:\n    - tap: { id: go }\n  expect: [{ exists: { id: go } }]\n"
-    assert not _run(driver, yaml, guard).ok
-    yaml_expect = "- name: t\n  steps: []\n  expect: [{ exists: { id: go } }]\n"
-    assert not _run(_driver([], guard), yaml_expect, guard).ok
+def test_the_guard_is_configuration_alone_and_no_longer_callable() -> None:
+    # Unit 7 deleted `AlertGuardConfig.__call__`: no recovery path can reach a Python dismissal.
+    assert not callable(AlertGuardConfig())
 
 
 def test_a_failed_expect_recovers_once_and_its_drain_reports_the_answer() -> None:
@@ -609,3 +606,96 @@ def test_the_collapsed_tree_proxy_alone_names_a_persistent_collapse() -> None:
     for _ in range(500):
         gate.observe([])
     assert gate.stuck_note == ""
+
+
+def test_a_failed_extract_takes_no_recovery_and_never_re_runs() -> None:
+    guard = _guard(_NOTIFICATIONS)
+    driver = _driver([el("home", "Home")], guard)
+    yaml = (
+        "- name: t\n  steps:\n"
+        "    - wait: { for: { id: home }, timeout: 1 }\n"
+        "      extract: { count: { sel: { id: missing } } }\n"
+    )
+    result = _run(driver, yaml, guard)
+    assert not result.ok
+    assert _calls(driver, "query_resolving").count(("true", True)) == 1  # the entry read alone
+
+
+def test_an_ambiguous_selector_takes_no_recovery() -> None:
+    # The author's to fix, so no alert explains it (`_note_refusal`).
+    guard = _guard(_NOTIFICATIONS)
+    twins = [
+        el("go", "Go", traits=[base.Trait.BUTTON], frame=(0.0, 0.0, 10.0, 10.0)),
+        el("go", "Go", traits=[base.Trait.BUTTON], frame=(0.0, 50.0, 10.0, 10.0)),
+    ]
+    driver = _driver(twins, guard)
+    result = _run(driver, _TAP_GO, guard)
+    assert not result.ok
+    assert _calls(driver, "query_resolving").count(("true", True)) == 1
+
+
+def test_a_swipe_not_found_under_a_springboard_alert_a_rate_limit_skipped_recovers_once() -> None:
+    guard = _guard(_NOTIFICATIONS)
+    go = el("go", "Go", traits=[base.Trait.BUTTON])
+
+    class _RateLimited(ResolvingFakeDriver):
+        # A read the rate limit keeps from checking SpringBoard: the tree alone.
+        def query_resolving(
+            self, mode: base.ResolveMode, *, force_check: bool = False
+        ) -> base.ResolvingRead:
+            if force_check:
+                return super().query_resolving(mode, force_check=True)
+            self._record("query_resolving", (mode, force_check))
+            return base.ResolvingRead(self.query(), base.DrainedInterruptions.empty())
+
+    def react(d: FakeDriver, kind: str, _arg: object) -> None:
+        if kind == "resolve_press":
+            d.screen = [el("home", "Home"), go]
+
+    driver = _RateLimited(screen=[el("home", "Home")], react=react)
+    push_interruption_policy(driver, guard, scenario_start=True)
+    yaml = (
+        "- name: t\n  steps:\n"
+        "    - assert: [{ exists: { id: home } }]\n"
+        "    - swipe: { on: { id: go }, direction: up }\n"
+    )
+
+    # The alert arrives once the entry read is spent: after the first step's own reads.
+    original_query = driver.query
+
+    def query() -> list[base.Element]:
+        if _calls(driver, "query_resolving") and not _calls(driver, "resolve_press"):
+            driver.system_alert_buttons = _alert("Allow", "Don't Allow")
+        return original_query()
+
+    driver.query = query  # type: ignore[method-assign]
+    result = _run(driver, yaml, guard)
+    assert result.ok, result.steps[1].reason
+    assert _calls(driver, "resolve_press") == ["Don't Allow"]
+    assert _calls(driver, "query_resolving").count(("true", True)) == 2  # entry, then recovery
+    assert result.steps[1].alerts == [AlertEvent(label="Don't Allow")]
+
+
+def test_a_position_rule_step_re_runs_once_when_its_recovery_read_answers() -> None:
+    guard = _guard(_NOTIFICATIONS)
+    driver = _driver([el("home", "Home")], guard)
+    german = _alert("Einmal erlauben", "Beim Verwenden erlauben", "Nicht erlauben")
+    # A declared alert the position rule cannot read (three buttons where the rule expects two)
+    # covers the step's own prompt; the forced read answers it and uncovers that one.
+    driver.system_alert_buttons = _alert("Allow", "Don't Allow", "Settings")
+
+    def react(d: FakeDriver, kind: str, _arg: object) -> None:
+        if kind == "resolve_press":
+            d.system_alert_buttons = german[:2]
+
+    driver._react = react
+    yaml = (
+        "- name: t\n  steps:\n"
+        "    - handleSystemAlert: { prompt: notifications, choice: grant, timeout: 1 }\n"
+    )
+    result = run_scenario(
+        driver, load_scenarios(yaml)[0], clock=FakeClock(), alert_guard=guard, locale="de_DE"
+    )
+    assert _calls(driver, "query_resolving") == [("true", True)]
+    assert result.ok, result.steps[0].reason
+    assert len(_calls(driver, "handle_system_alert")) == 1

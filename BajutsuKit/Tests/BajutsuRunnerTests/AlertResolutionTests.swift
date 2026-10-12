@@ -597,7 +597,9 @@ final class AlertResolutionTests: XCTestCase {
     private func resolve(_ labels: [String]) async throws -> [String: Any] {
         let out = try await handler.resolveSystemAlert(.init(body: .json(.init(labels: labels))))
         guard case .ok(let ok) = out, case .json(let payload) = ok.body else {
-            throw XCTSkip("unexpected /systemAlert/resolve output")
+            // A failure, not a skip: a skip would leave every resolve test green on a broken handler.
+            XCTFail("unexpected /systemAlert/resolve output")
+            throw CancellationError()
         }
         return try XCTUnwrap(
             JSONSerialization.jsonObject(with: JSONEncoder().encode(payload)) as? [String: Any]
@@ -711,6 +713,40 @@ final class AlertResolutionTests: XCTestCase {
         let reply = try await resolve(["Allow", "Don’t Allow"])
         XCTAssertEqual(reply["status"] as? String, "pending")
         XCTAssertEqual(reply["labels"] as? [String], [])
+    }
+
+    func testAnAllUnlabelledAlertReadsAsChanged() async throws {
+        push([Self.notifications])
+        provider.systemAlertButtons = alertButtons(["", ""])
+        let reply = try await resolve(["Allow", "Don’t Allow"])
+        XCTAssertEqual(reply["status"] as? String, "changed")
+        XCTAssertTrue(provider.systemAlertTapCalls.isEmpty)
+    }
+
+    func testAnAbsentResolveReArmsSoTheNextShowingIsAnsweredAnew() async throws {
+        push([Self.notifications], pacing: AlertPacing(pollInterval: 0, retapDelay: 10))
+        provider.systemAlertButtons = alertButtons(["Allow", "Don’t Allow"])
+        _ = try await resolve(["Allow", "Don’t Allow"])
+        provider.systemAlertButtons = []
+        let gone = try await resolve(["Allow", "Don’t Allow"])
+        XCTAssertEqual(gone["status"] as? String, "absent")
+        // Inside the re-tap delay, but a new showing: the absent check ended the first one.
+        provider.systemAlertButtons = alertButtons(["Allow", "Don’t Allow"])
+        let again = try await resolve(["Allow", "Don’t Allow"])
+        XCTAssertEqual(again["status"] as? String, "answered")
+        XCTAssertEqual(again["labels"] as? [String], ["Don’t Allow"])
+    }
+
+    func testResolveReportsPendingWhenTheProviderRaises() async throws {
+        push([Self.notifications])
+        provider.systemAlertButtons = alertButtons(["Allow", "Don’t Allow"])
+        store.recordDeclined(["Save", "Cancel"])
+        provider.systemAlertQueryRaises = NSException(name: .genericException, reason: "torn down")
+        let reply = try await resolve(["Allow", "Don’t Allow"])
+        XCTAssertEqual(reply["status"] as? String, "pending")
+        XCTAssertTrue(provider.systemAlertTapCalls.isEmpty)
+        // What the store held before the raise still drains into the reply.
+        XCTAssertEqual(reply["unmatched"] as? [[String]], [["Save", "Cancel"]])
     }
 
     func testResolveDrainsWhatTheMonitorRecordedBeforeIt() async throws {

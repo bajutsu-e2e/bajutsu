@@ -2427,6 +2427,28 @@ def test_resolve_system_alert_posts_the_labels_and_folds_the_records_into_the_ca
     assert len(sent) == 1
 
 
+@pytest.mark.parametrize("status", ["changed", "absent", "unidentified", "pending"])
+def test_resolve_system_alert_reads_every_status_the_runner_answers(status: str) -> None:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        records = _RECORDS | {
+            "status": status,
+            "labels": [],
+            "tappedAlerts": [],
+            "tappedSurfaces": [],
+        }
+        return _Reply(status=status, raw=json.dumps(records).encode())
+
+    assert _driver(transport).resolve_system_alert(["Allow"]).status == status
+
+
+def test_a_resolve_reply_without_its_records_is_a_channel_error() -> None:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        return _Reply(status="pending", raw=json.dumps({"status": "pending"}).encode())
+
+    with pytest.raises(XcuitestChannelError, match="without its records"):
+        _driver(transport).resolve_system_alert(["Allow"])
+
+
 def test_resolve_system_alert_on_a_runner_without_the_route_is_a_channel_error() -> None:
     def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         return _Reply(status="error", raw=json.dumps({"status": "error"}).encode())
