@@ -162,10 +162,17 @@ public let notificationBannerIdentifier = "NotificationShortLookView"
 /// so before this existed a governed run recorded it as an *undeclared interruption* and failed an
 /// otherwise-passing step, naming the notification's body text as a button it had expected to find
 /// (BE-0416 Unit 1, measured). And a banner is the one interruption XCUITest's own default handler
-/// cannot press a button on: it waits the banner out instead, which is why an interrupted
-/// interaction with an auto-dismissing banner cost ~9s against ~0.6s undisturbed. A persistent-style
-/// banner never auto-dismisses; Unit 1 measured XCUITest clearing that one by some other means, in
-/// ~3.5s — so the wait-it-out account, and the ~9s it explains, hold for the auto-dismissing case.
+/// cannot press a button on. When Unit 1 measured it, the handler waited the banner out instead,
+/// which is why an interrupted interaction with an auto-dismissing banner cost ~9s against ~0.6s
+/// undisturbed. A persistent-style banner never auto-dismisses; Unit 1 measured XCUITest clearing
+/// that one by some other means, in ~3.5s — so the wait-it-out account, and the ~9s it explains,
+/// held for the auto-dismissing case.
+///
+/// That hand-off is no longer benign on iOS 26.5 (#2156): the handler ignores the banner as a
+/// non-alert element, and each lookup it makes of the banner by type misses and records a UI
+/// automation failure, which can preempt the interrupted interaction and end the test case. So the
+/// monitor's banner branch declines to XCUITest only as a last resort; see
+/// `RunnerUITest.swipeAwayNotificationBanner`.
 public func isNotificationBanner(identifier: String) -> Bool {
     identifier == notificationBannerIdentifier
 }
@@ -312,7 +319,11 @@ public final class InterruptionPolicyStore: @unchecked Sendable {
         _records.declined.append(buttons)
     }
 
-    /// Records a notification banner the monitor swiped away, by the notification's own text.
+    /// Records a notification banner the monitor cleared, by the notification's own text.
+    ///
+    /// Cleared, not necessarily swiped away: the monitor also claims a banner that went by its own
+    /// auto-dismissal, before or after a swipe that missed. The runner's stderr log says which path
+    /// cleared it.
     ///
     /// Separate from `record` because the two are not the same event: `record` names the *button*
     /// the policy chose, while a banner has none and is identified by its content. The Python side
