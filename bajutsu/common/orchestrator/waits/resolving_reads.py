@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, cast, get_protocol_members
 
 from bajutsu.common.drivers import base
@@ -60,9 +60,24 @@ class ResolvingReads:
         """The blocked-screen note for a failed body run: the newest one its reads and *recovery* name.
 
         A showing records *gave up* once, so a give-up a body read returned is not repeated by the
-        recovery read that follows; reading the body's unconsumed reads keeps it on the failure.
+        recovery read that follows; reading the body's unconsumed reads keeps it on the failure. A
+        recovery read whose SpringBoard check found nothing retires the native facts those reads
+        named, as the gate does: that alert is gone, and naming it would mislead.
         """
-        for read in reversed([*self.take(), recovery]):
+        body = self.take()
+        if recovery.springboard_checked:
+            body = [
+                replace(
+                    read,
+                    drained=replace(
+                        read.drained,
+                        unidentified=[],
+                        gave_up=[g for g in read.drained.gave_up if g.surface != "native"],
+                    ),
+                )
+                for read in body
+            ]
+        for read in reversed([*body, recovery]):
             note = records_note(read.drained)
             if note:
                 return note
@@ -114,6 +129,8 @@ class _ResolvingView:
         # would otherwise skip the alert.
         self.query = self._resolving_query  # type: ignore[method-assign]
         if isinstance(driver, base.SettledReadProvider):
+            # Without the backend's settle: no backend both settles its reads and resolves alerts
+            # today (adb settles, XCUITest resolves). One that did would need the barrier first.
             self.settled_query = self._resolving_query
 
     def _resolving_query(self) -> list[base.Element]:

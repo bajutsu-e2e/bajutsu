@@ -772,3 +772,26 @@ def test_the_view_resolves_an_actuation_grade_read_and_keeps_reads_only_for_a_re
     assert reads.take() == []
     # A plain driver stays plain: the view adds no protocol the backend lacks.
     assert not isinstance(reads.view(_driver([], _guard()), "true"), base.SettledReadProvider)
+
+
+def test_a_clear_recovery_check_retires_a_native_give_up_a_body_read_named() -> None:
+    # The alert went away on its own: the forced read's SpringBoard check found nothing, so the
+    # failure must not be blamed on it.
+    guard = _guard(_NOTIFICATIONS)
+    driver = _driver([], guard)
+    gave_up = base.DrainedInterruptions(
+        tapped=[],
+        declined=[],
+        banners=[],
+        gave_up=[base.GaveUpAlert(["Allow", "Don't Allow"], "native", "Don't Allow")],
+    )
+    empty = base.DrainedInterruptions.empty()
+    driver.resolving_reads = [
+        base.ResolvingRead(elements=[], drained=empty),
+        base.ResolvingRead(elements=[], drained=gave_up),
+        base.ResolvingRead(elements=[], drained=empty, springboard_checked=True),
+    ]
+    yaml = "- name: t\n  steps:\n    - swipe: { on: { id: go }, direction: up }\n"
+    result = _run(driver, yaml, guard)
+    assert not result.ok
+    assert uncleared_prompt_note("Don't Allow") not in result.steps[0].reason
