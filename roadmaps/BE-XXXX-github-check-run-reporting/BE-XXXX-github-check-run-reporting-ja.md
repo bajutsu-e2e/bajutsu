@@ -100,6 +100,38 @@ OIDC トークンの claim から検証したものです。リクエスト自�
 check を書けるのは自分のリポジトリだけです。人間のセッションから `githubCheck` 付きのリクエストが
 来た場合は `400` を返します。
 
+serve は、コミットも同じようにトークンへ結び付けます。`headSha` を検証しなければ、同じリポジトリの
+どのワークフローも、別の open な pull request の head に成功の check を書けてしまいます。
+その pull request の必須チェックは、自分の scenario を実行しないまま通ります。
+そこで serve は、machine セッションの検証済みの claim と `headSha` を突き合わせます。
+
+| `ref` claim | serve が受け付けるコミット |
+|---|---|
+| `refs/pull/<N>/merge`(`pull_request` イベント) | pull request `<N>` の現在の head。serve が installation token で GitHub API から読みます |
+| `refs/heads/<branch>`(`push` イベント) | `sha` claim |
+| それ以外の ref | なし。リクエストは `400` を返します |
+
+受け付けるコミットと異なる `headSha` には `409` を返します。
+ワークフローの開始後に head が動いた pull request が、この場合にあたります。
+新しい push は自分のワークフローを起動し、新しい head に報告します。
+serve はトークンの claim のうち `ref` と `sha` の両方を保持しています。
+
+この結び付けは、check を書ける主体を絞りますが、check の対象範囲までは保証しません。
+ワークフローのファイルも scenario のリストも、pull request 自身のツリーから来ます。
+したがって branch を push できる貢献者は、ワークフローを書き換えて登録する scenario を減らせます。
+GitHub Actions が作る必須チェックは、どれも同じ境界を持ちます。
+この check が証明するのは、リクエストが挙げた scenario が head コミット上で成功したことです。
+それ以上の保護が必要なリポジトリは、ワークフローのファイルを守ります。
+たとえば `.github/workflows/` に `CODEOWNERS` の記述を置きます。
+
+この設計の対象は、リポジトリ自身の branch から出た pull request です。
+fork から出た pull request では、GitHub はワークフローのトークンの書き込み権限をすべて読み取り専用に落とします。
+`id-token: write` も例外ではありません。管理者が fork のワークフローへ書き込みトークンを送る設定を有効にした場合だけは別です。
+そのようなワークフローは OIDC トークンを得られないので、そもそも登録できません。
+ワークフローを `pull_request_target` で動かせばトークンは得られますが、信頼できない fork のコードをそのトークン付きで動かすことになります。
+そのため、fork からの pull request を受け付けるリポジトリは、そのすべてに `bajutsu` check を必須にはできません。
+そうしたリポジトリでは、check を任意のままにするか、fork からの pull request を除外する ruleset で必須にします。
+
 `githubCheck` 付きのリクエストは、全件を登録するか、1件も登録しないかのどちらかにします。
 現在の `POST /api/run-set` は、同時実行数の上限(全体、ユーザーごと、org ごと)に達すると展開を打ち切ります。
 そのうえで、短くなった job id のリストを `200` で返します。
@@ -113,8 +145,9 @@ check を書けるのは自分のリポジトリだけです。人間のセッ�
 グループとは、1回のリクエストが作った job id の集合です。
 serve はグループを SQL の job ストアに、job と同じデータベースへ記録します。記録には次の内容を持たせます。
 
-- job id の集合(リクエストを受け付けた時点で確定します)
+- job id とその scenario の集合(リクエストを受け付けた時点で確定します)
 - リポジトリ、head コミット、check の名前
+- serve がグループを登録した時刻
 - check run の作成の状態(作成待ち、GitHub が返した id を伴う作成済み、再試行を使い切った断念のいずれか)
 
 インメモリのストアにはグループの記録を持たせません。
@@ -136,14 +169,32 @@ worker が落ちると、リースは期限切れになります。試行回数�
 2. serve は、すべての枠が埋まったグループを定期的に走査して拾います。
    報告の前にグループの行を claim するので、複数の serve の replica が同時に走査しても、check を完了させるのは1つだけです。
 
+この2段階だけでは、グループが永久に完了しない場合があります。
+生きている worker が1つもリースできない job は、リースを一度も取りません。そのため、リースの使い切りに至りません。
+現在、そのような job は `queued` のまま残り、serve は `bajutsu_unroutable_jobs` メトリクスで示すだけです。
+また、リースの回収処理は worker が job を取りに来たときにしか動きません。
+worker がすべて落ちていると回収処理は動かず、期限切れのリースも回収されないまま残ります。
+どちらの場合も枠が埋まらず、必須チェックは理由を示さないまま `in_progress` で止まります。
+
+そこでグループには期限も設けます。
+グループの経過時間が `BAJUTSU_GITHUB_CHECK_DEADLINE` を超えると、枠が埋まっていなくても走査がグループを完了させます。
+デフォルト値は6時間で、GitHub Actions の1つの job が動ける最長の時間に合わせます。
+走査は worker とは独立に serve のタイマーで動くので、worker が1つも生きていなくても期限は効きます。
+期限は job そのものには手を付けません。後から判定が届いても、check を開き直すことはありません。
+
+check を完了させた後も、グループの行は残します。走査が、報告済みのグループと未完了のグループを区別できるようにするためです。
+完了したグループの行は、run の保持期間の掃除(`BAJUTSU_RUN_RETENTION_DAYS`)が同じ古さの run と一緒に消します。
+
 ### 単位3 — serve から check run を書く
 
 reporter は run のプロセスではなく serve の中で動かします。worker は長期の認証情報を持ちません
 ([BE-0160](../BE-0160-worker-credential-free-uploads/BE-0160-worker-credential-free-uploads-ja.md))。
 しかもグループは複数の worker にまたがるので、グループ全体を見渡せる run のプロセスはありません。
 
-reporter は Checks API を2回呼びます。どちらの呼び出しにも、`bajutsu/common/github/app.py` で発行した、
-グループのリポジトリ向けの installation token を使います。
+reporter は Checks API を2回呼びます。どちらの呼び出しにも、`bajutsu/common/github/app.py` で発行した
+installation token を使います。現在のこのモジュールは、installation の全権限を持つトークンを要求します。
+reporter はトークンを、グループのリポジトリと2つの権限(`checks: write` と `pull_requests: read`)に絞ります。
+トークンが漏れても、この項目が必要とする以上の書き込みはできません。2回の呼び出しは次のとおりです。
 
 1. **登録時**に、`headSha` 上に `status: in_progress` の check run を作ります。`details_url` は serve の
    Web UI を指します。
@@ -156,14 +207,18 @@ reporter は Checks API を2回呼びます。どちらの呼び出しにも、`
 |---|---|
 | すべての job が成功した | `success` |
 | いずれかの job が失敗した、またはエラーで終わった | `failure` |
+| 未完了の job を残したままグループの期限を過ぎた | `failure` |
 
 GitHub は `failure` を必須チェックの失敗として扱うので、マージは止まります。
 現在、キャンセルはリモートの worker に届きません。
 キャンセルは serve の中で job に印を付けるだけで、その job を実行している worker には何も送りません。
-そのためグループの job は、必ず自身の判定か、リースの使い切りで終わります。
+そのためグループの job は、自身の判定、リースの使い切り、グループの期限のいずれかで終わります。
 表に `cancelled` の行が要らないのはこのためです。
-要約は scenario ごとに1行の Markdown の表で、各行に判定、所要時間、レポートへのリンクを
-載せます。失敗した行を先に並べます。GitHub は `output.summary` を65,535文字までに制限しています。
+
+要約は scenario ごとに1行の Markdown の表で、各行に判定とレポートへのリンクを載せます。
+scenario はグループの記録から取ります。レポートへのリンクは、worker が結果とともに送った run id から作ります。
+期限までに終わらなかった scenario は未実行として示し、リンクは付けません。
+失敗した行を先に並べます。GitHub は `output.summary` を65,535文字までに制限しています。
 上限を超えるときは、失敗した行をすべて残して成功した行を省き、省いた行数を書き添えます。
 
 リンクを作るには、serve の公開オリジンが必要です。
@@ -176,33 +231,50 @@ OAuth を設定済みのデプロイは、2つの設定を揃えて保つ必要�
 リンクを開けるのは、job の org にサインインできる閲覧者だけです。
 この check はレポートへの導線を作るもので、レポートを公開するものではありません。
 
-GitHub App には、報告先のリポジトリに対する `checks: write` 権限が必要です。App を設定していない
-デプロイや、App にこの権限がないデプロイでは、`githubCheck` 付きのリクエストを登録時点で `400` として
-拒否します。後になって失敗すると、check が黙って現れないままになるからです。
+GitHub App には、報告先のリポジトリに対する2つの権限が必要です。
+`checks: write` と、pull request の head を解決するための `pull_requests: read` です。
+serve は登録時に両方を確かめます。リポジトリの installation を引くと、App がそこで持つ権限も返ってきます。
+App を設定していないデプロイや、App にどちらかの権限がないデプロイでは、`githubCheck` 付きのリクエストを
+`400` として拒否します。後になって失敗すると、check が黙って現れないままになるからです。
 
 GitHub への呼び出しが失敗したときは、上限付きのバックオフで再試行し、それでも失敗すればログに残します。
 登録時の作成の呼び出しが再試行を使い切って断念された場合は、完了時の呼び出しで check run を `completed` として
 直接作ります。作成が失われても、結論は必ず書かれます。作成待ちのグループは走査の対象から外すので、
 リトライ中の作成と完了時の作成が競合して、同じ名前の check run が2つできることはありません。
-この失敗が判定を変えることはありません。serve が完了させられなかった check は `in_progress` のまま残り、必須チェックとしては未通過の扱いに
-なります。つまり報告が失われると、マージは素通りせず止まります。
+
+そのため作成待ちの状態には、走査の claim と同じく期限付きの claim を持たせます。
+作成をリトライしている replica がその claim を持ちます。
+その replica がバックオフの途中で再起動すると claim は期限切れになり、別の replica の走査が作成を断念に移します。
+この期限がなければ、もうどの replica も進めていない作成待ちのせいで、以後の走査がそのグループを飛ばし続けます。
+
+この失敗が判定を変えることはありません。serve が完了させられなかった check は `in_progress` のまま残り、
+必須チェックとしては未通過の扱いになります。つまり報告が失われると、マージは素通りせず止まります。
+
+この項目の範囲外に残る制約が2つあります。
+
+- serve は GitHub の webhook を購読しないので、check のページの「Re-run」ボタンは何もしません。利用者はワークフローを再実行します。
+- 新しい push は、古い head のグループをキャンセルしません。古いグループは最後まで実行され、古いコミットに報告します。古いコミットの check は、もう pull request のマージを左右しません。
 
 ### 単位4 — テストとドキュメント
 
 - テストは Checks API を HTTP の境界で偽装し、次の点を検証します。
   - 結論の表
   - head コミットとリポジトリの結び付け
+  - 受け付けるコミットと異なる `headSha` への `409` と、対象外の ref への `400`
+  - 1つのリポジトリと2つの権限に絞ったトークン
   - 人間の principal の拒否
   - 要約の上限
   - ログで終わる再試行
   - セット全体を受け入れられないときの `429`
   - 2つの replica が同じ check を完了させないための claim
   - リースの使い切りで失敗した job により、グループが `failure` で完了すること
+  - リースできない job を含むグループを、worker が1つも生きていなくても期限が `failure` で完了させること
   - 作成待ちのグループを走査が飛ばすこと
+  - claim が期限切れになった作成待ちを、別の replica が断念に移すこと
   - 作成に失敗して完了時に回復する経路
 - `docs/self-hosting.md` とその `docs/ja/` のミラーに、ワークフローの例を加えます。例は OIDC の交換、
   アップロード、`githubCheck` 付きの `POST /api/run-set` 1回で構成します。最後に、check を必須にする
-  branch protection の設定を示します。
+  branch protection の設定を示します。このページには、fork の制約と、ワークフローのファイルを守る勧めも書きます。
 - `docs/architecture.md` に、グループの記録と reporter を記載します。
 
 ### 基本原則との関係
@@ -238,9 +310,9 @@ GitHub への呼び出しが失敗したときは、上限付きのバックオ�
 > (作業単位ごとに1つのチェックボックス)に対応し、ログには変更内容と時期を
 > (古い順に)PR へのリンク付きで記録します。
 
-- [ ] 単位1 — `POST /api/run-set` を worker キューへ流し、machine の許可リストに加え、上書き指定と `githubCheck` を全件かゼロかで受け付ける
-- [ ] 単位2 — SQL の job ストアにグループの記録を持たせ、終了行を書くたびに枠を埋め、serve が定期的に走査し、claim してから報告する
-- [ ] 単位3 — Checks API の reporter、結論の対応付け、要約、`BAJUTSU_PUBLIC_URL`
+- [ ] 単位1 — `POST /api/run-set` の worker キュー対応、machine の許可、上書き指定、全件かゼロかの `githubCheck`、`headSha` の検証
+- [ ] 単位2 — SQL の job ストアのグループの記録、終了行ごとの枠の更新、serve による claim 付きの走査、グループの期限
+- [ ] 単位3 — 絞ったトークンを使う Checks API の reporter、結論の対応付け、要約、作成待ちの claim、`BAJUTSU_PUBLIC_URL`
 - [ ] 単位4 — テストとドキュメント
 
 ## 参考
@@ -250,5 +322,9 @@ GitHub への呼び出しが失敗したときは、上限付きのバックオ�
   <https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches>
 - GitHub Actions のワークフローを起動するイベント(`pull_request` と `GITHUB_SHA`):
   <https://docs.github.com/en/actions/writing-workflows/choosing-when-your-workflow-runs/events-that-trigger-workflows#pull_request>
+- GitHub Actions のワークフロー構文の `permissions`(fork からの pull request での書き込み権限):
+  <https://docs.github.com/en/actions/writing-workflows/workflow-syntax-for-github-actions#permissions>
+- GitHub REST API の installation access token の作成(`repositories` と `permissions` による絞り込み):
+  <https://docs.github.com/en/rest/apps/apps#create-an-installation-access-token-for-an-app>
 - [BE-0414](../BE-0414-ci-oidc-machine-identity/BE-0414-ci-oidc-machine-identity-ja.md):この登録経路が乗る OIDC の machine セッションです。
 - [BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out-ja.md):この項目が一般化する、scenario セットの展開です。
