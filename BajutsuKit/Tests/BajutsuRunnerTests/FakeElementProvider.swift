@@ -35,6 +35,13 @@ final class FakeElementProvider: ElementProviding {
     // The SpringBoard alert buttons `/systemAlert/query` returns, and the taps it records (BE-0316).
     var systemAlertButtons: [ElementSnapshot] = []
     var systemAlertTapCalls: [AnyObject] = []
+    // How many times `/systemAlert/query` or a resolving read checked SpringBoard and read the app
+    // tree, and hooks that change the screen after a press — what the BE-0461 resolution tests
+    // observe and drive.
+    var systemAlertQueryCalls = 0
+    var queryElementsCalls = 0
+    var afterSystemAlertTap: (() -> Void)?
+    var afterTap: (() -> Void)?
     // What `/app/state` reports (BE-0424). A live app by default, so every existing test keeps the
     // behavior it had before this route existed.
     var appRunState: AppRunState = .runningForeground
@@ -51,6 +58,7 @@ final class FakeElementProvider: ElementProviding {
 
     func queryElements() -> [ElementSnapshot] {
         beforeQueryElements?()
+        queryElementsCalls += 1
         if let exception = queryRaises { exception.raise() }
         return elementsToReturn
     }
@@ -58,6 +66,7 @@ final class FakeElementProvider: ElementProviding {
     func tap(backingElement: AnyObject, taps: Int, duration: TimeInterval) -> TapResult {
         tapCalls.append((backingElement, taps, duration))
         if let exception = tapRaises { exception.raise() }
+        afterTap?()
         return tapResult
     }
 
@@ -116,11 +125,13 @@ final class FakeElementProvider: ElementProviding {
     }
 
     func querySystemAlertButtons() -> [ElementSnapshot] {
-        systemAlertButtons
+        systemAlertQueryCalls += 1
+        return systemAlertButtons
     }
 
     func tapSystemAlertButton(backingElement: AnyObject) -> TapResult {
         systemAlertTapCalls.append(backingElement)
+        afterSystemAlertTap?()
         return tapResult
     }
 

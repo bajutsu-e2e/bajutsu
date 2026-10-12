@@ -42,6 +42,7 @@ from ._shared import (
     Frame,
     Point,
 )
+from .alert_pacing import AlertPacing
 from .ambiguous_selector import AmbiguousSelector
 from .app_crash_poll_resettable import AppCrashPollResettable
 from .app_crash_signal import AppCrashSignal
@@ -57,6 +58,7 @@ from .element import Element
 from .element_not_found import ElementNotFound
 from .element_not_tappable import ElementNotTappable
 from .evidence_provider import EvidenceProvider
+from .gave_up_alert import GaveUpAlert
 from .interruption_policy_target import InterruptionPolicyTarget
 from .manual_step_required import ManualStepRequired
 from .queryable import Queryable
@@ -81,6 +83,7 @@ __all__ = [
     "MAX_REDIRECT_CANDIDATES",
     "OS_BACK_BUTTON",
     "PERMISSION_SERVICES",
+    "AlertPacing",
     "AmbiguousSelector",
     "AppCrashPollResettable",
     "AppCrashSignal",
@@ -97,6 +100,7 @@ __all__ = [
     "ElementNotTappable",
     "EvidenceProvider",
     "Frame",
+    "GaveUpAlert",
     "InterruptionPolicyTarget",
     "ManualStepRequired",
     "Point",

@@ -1306,10 +1306,12 @@ class _ScenarioRunner:
             # Hand the backend this scenario's own answer for a prompt that interrupts one of its
             # interactions, before any of them run. The resident runner outlives a scenario, so this
             # is set per scenario rather than per lease — including to *empty* when the scenario
-            # disables the guard, so it never inherits the previous scenario's policy.
-            push_interruption_policy(lz.driver, handler)
+            # disables the guard, so it never inherits the previous scenario's policy. The
+            # scenario-start mark also makes it forget every showing the previous scenario answered
+            # (BE-0461), so a relaunched app's prompt is answered afresh.
+            push_interruption_policy(lz.driver, handler, scenario_start=True)
             for extra in others.values():
-                push_interruption_policy(extra.driver, handler)
+                push_interruption_policy(extra.driver, handler, scenario_start=True)
             # Score the entry screen before the scenario mutates it — the app is freshly launched here,
             # exactly what a standalone `doctor` probe would see, but on the lease this run already holds.
             self._maybe_emit_score(i, lz.driver)

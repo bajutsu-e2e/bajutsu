@@ -183,7 +183,10 @@ final class TransportParityTests: XCTestCase {
                 "/tap (\(result))",
                 // `/tap`'s interruption-drain fold (BE-0407 Unit 6) is a deliberate difference from
                 // the legacy `Router`, which never gains it — pinned separately in `TapDrainFoldTests`.
-                ignoringKeys: ["labels", "unmatched", "banners", "tappedAlerts"]
+                ignoringKeys: [
+                    "labels", "unmatched", "banners", "tappedAlerts", "tappedSurfaces", "unidentified",
+                    "gaveUp",
+                ]
             )
             try assertSame(
                 try wire("POST", "/isHittable", json: ["handle": handle.live]),
@@ -218,7 +221,10 @@ final class TransportParityTests: XCTestCase {
             try wire("POST", "/tap", json: ["point": [12.5, 34]]),
             try reference("POST", "/tap", json: ["point": [12.5, 34]]),
             "/tap (coordinate)",
-            ignoringKeys: ["labels", "unmatched", "banners", "tappedAlerts"]
+            ignoringKeys: [
+                    "labels", "unmatched", "banners", "tappedAlerts", "tappedSurfaces", "unidentified",
+                    "gaveUp",
+                ]
         )
         XCTAssertEqual(provider.tapPointCalls.count, 1, "the coordinate path must reach the provider")
         try assertSame(

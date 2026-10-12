@@ -37,23 +37,6 @@ _SETTLE_POLLS = 2  # consecutive unchanged polls that count as "settled" (tree-d
 # over a chained transition posting more than one report in quick succession, not a whole
 # animation's duration.
 _TRANSITION_QUIESCENCE = 0.3
-# Seconds of consecutive `ElementNotTappable` declines `_dismiss_from_tree` tolerates for one
-# showing of a label before it stops attempting the tap: unlike `ElementNotFound` (the button left
-# the tree, so the next poll can't re-match it) and `AmbiguousSelector` (guarded by the uniqueness
-# pre-check above it), a genuinely stuck obstruction — a scrim that never lifts, an `elevation`
-# false positive — has neither property, so without its own bound this decline would re-issue a real
-# actuation attempt for the rest of the wait. Clock-based, for the reason `_TREE_RETAP_DELAY` records
-# for itself: what is being waited out is a presentation animation measured in seconds (a UIKit sheet
-# ~0.35-0.5s, an Android dialog enter ~0.25s+). A poll count cannot express that here anyway, because
-# `_dismiss_from_tree` is paced by `guard.poll_interval` rather than `_POLL` (see `_observe_native`)
-# and that interval is configurable per scenario, target, and flag (BE-0177). Twice the default
-# `poll_interval` rather than the animation's own horizon, because the give-up is checked *before*
-# the tap: at one interval the very first attempt would exhaust the budget, leaving a transient scrim
-# no retry at all. That is also why the horizon is *derived* from the interval rather than fixed. A
-# scenario may tune `pollInterval` upwards (the save-password one sets 5), and a fixed 2s would
-# then put the second pass past the horizon before it ever ran — reinstating the zero-retry case
-# this value exists to avoid. The floor keeps the animation horizon intact at short intervals.
-_TREE_DISMISS_DECLINE_GIVEUP_FLOOR = 2.0
 
 
 # A lane may raise the floor under a wait's ceiling: a condition wait returns the instant it is
@@ -102,15 +85,6 @@ def describe_wait(w: Wait) -> str:
     if isinstance(w.until, WaitRequest):
         return f"until request {assertions.request_label(w.until.request)}"
     return f"until {w.until}"  # "settled" | "screenChanged"
-
-
-def _decline_giveup(poll_interval: float) -> float:
-    """Seconds `_dismiss_from_tree` tolerates `ElementNotTappable` on one showing of a label.
-
-    Twice the cadence the path is paced at, floored at the animation horizon: the bound is
-    checked before the tap, so anything under two intervals spends itself on the first attempt.
-    """
-    return max(_TREE_DISMISS_DECLINE_GIVEUP_FLOOR, 2 * poll_interval)
 
 
 def _timeout_floor() -> float:

@@ -1224,11 +1224,71 @@ def test_push_interruption_policy_omits_a_rule_the_backend_can_never_meet() -> N
     from bajutsu.common.orchestrator import push_interruption_policy
 
     driver = FakeDriver([])
-    reachable = guard_rule("Don't Allow", identifying=("Allow", "Don't Allow"))
+    reachable = guard_rule("Don't Allow", identifying=("Allow", "Don't Allow"), in_tree=False)
     in_tree_only = guard_rule("Not Now", identifying=("Save", "Not Now"), native=False)
     push_interruption_policy(driver, AlertGuardConfig(rules=[reachable, in_tree_only]))
     assert driver.interruption_policy is not None
     assert driver.interruption_policy[0] == [({"Allow", "Don't Allow"}, "Don't Allow")]
+    # It travels on the in-tree list instead, which the runner's monitor never matches (BE-0461).
+    assert driver.interruption_in_tree_rules == [({"Save", "Not Now"}, "Not Now", set())]
+
+
+def test_push_interruption_policy_sends_in_tree_rules_widest_first_with_the_guard_s_pacing() -> (
+    None
+):
+    # The runner answers an application-owned prompt inside a resolving read (BE-0461 Unit 2), so it
+    # needs the in-tree rules in the one order every in-tree match reads (`tree_dedup_rules`), and
+    # the pacing the gate applies to its own taps, so a showing is re-pressed and given up on alike
+    # whichever side answers it.
+    from bajutsu.common.orchestrator import push_interruption_policy
+    from bajutsu.common.orchestrator.types.alert_guard_config import (
+        _TREE_DISMISS_MAX_TAPS,
+        _TREE_RETAP_DELAY,
+        _decline_giveup,
+    )
+
+    driver = FakeDriver([])
+    narrow = guard_rule("Not Now", identifying=("Save", "Not Now"), native=False)
+    wide = guard_rule("Not Now", identifying=("Save", "Not Now", "Never"), native=False)
+    guard = AlertGuardConfig(rules=[narrow, wide], poll_interval=5.0)
+    push_interruption_policy(driver, guard)
+    assert driver.interruption_in_tree_rules == [
+        ({"Save", "Not Now", "Never"}, "Not Now", set()),
+        ({"Save", "Not Now"}, "Not Now", set()),
+    ]
+    assert driver.interruption_pacing == base.AlertPacing(
+        poll_interval=5.0,
+        retap_delay=_TREE_RETAP_DELAY,
+        max_taps=_TREE_DISMISS_MAX_TAPS,
+        give_up=_decline_giveup(5.0),
+    )
+    assert driver.interruption_scenario_start is False
+
+
+def test_push_interruption_policy_marks_the_scenario_start_push() -> None:
+    from bajutsu.common.orchestrator import push_interruption_policy
+
+    driver = FakeDriver([])
+    push_interruption_policy(driver, AlertGuardConfig(), scenario_start=True)
+    assert driver.interruption_scenario_start is True
+
+
+def test_push_interruption_policy_refuses_a_rule_claiming_both_surfaces() -> None:
+    # No declared prompt shows on both surfaces; pushing such a rule on one would silently drop the
+    # other, so it fails loudly instead (BE-0461 Unit 2).
+    from bajutsu.common.orchestrator import push_interruption_policy
+
+    with pytest.raises(ValueError, match="both the native and the in-tree surface"):
+        push_interruption_policy(FakeDriver([]), AlertGuardConfig(rules=[guard_rule("OK")]))
+
+
+def test_push_interruption_policy_without_a_guard_sends_no_pacing() -> None:
+    from bajutsu.common.orchestrator import push_interruption_policy
+
+    driver = FakeDriver([])
+    push_interruption_policy(driver, None)
+    assert driver.interruption_pacing is None
+    assert driver.interruption_in_tree_rules == []
 
 
 def test_push_interruption_policy_carries_a_reachable_rule_s_exclusion_set() -> None:
