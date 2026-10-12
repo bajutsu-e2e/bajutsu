@@ -187,6 +187,14 @@ final class RunnerUITest: XCTestCase {
         // is the operational blip `continueAfterFailure` deliberately tolerates and must NOT end the
         // runner (`APIHandler` already contains it at each handler boundary).
         guard !serving else { return }
+        // The warm-up touch is the one pre-bind interaction whose failure is not a startup failure:
+        // it only leaves the first scenario tap on the slow path (`EventSynthesisWarmUp`, #2157).
+        if EventSynthesisWarmUp.inProgress {
+            FileHandle.standardError.write(
+                Data("bajutsu runner: event-synthesis warm-up recorded a failure, continuing: \(issue.compactDescription)\n".utf8)
+            )
+            return
+        }
         FileHandle.standardError.write(
             Data("bajutsu runner: startup failure before the server bound — exiting for a fresh cold spawn: \(issue.compactDescription)\n".utf8)
         )
@@ -235,6 +243,15 @@ final class RunnerUITest: XCTestCase {
 
     /// Serve the loopback endpoints over `app` until Python terminates the process at teardown.
     private func serve(_ app: XCUIApplication) throws {
+        // Before binding, so the first scenario tap never pays event playback's one-time setup
+        // cost — the cost that drops it on a slow host (`EventSynthesisWarmUp`, #2157). Anchored to
+        // SpringBoard rather than `app`, so the off-screen aim holds whatever the app's frame.
+        EventSynthesisWarmUp.run {
+            XCUIApplication(bundleIdentifier: springboardBundleID)
+                .coordinate(withNormalizedOffset: .zero)
+                .withOffset(EventSynthesisWarmUp.offscreenOffset)
+                .tap()
+        }
         let provider = XcuitestElementProvider(app: app)
         let server = RunnerServer(provider: provider)
         let port = try server.startFromEnvironment()
