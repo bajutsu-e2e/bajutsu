@@ -40,7 +40,8 @@ class InterruptionPolicyTarget(Protocol):
         """Hand the backend the buttons it may press on an interrupting alert.
 
         Each rule is its identifying labels, the label it taps, and the labels whose presence rules
-        it out — the same accept test `identified_alert_rules` applies on this side.
+        it out — the accept test the runner applies (`InterruptionRule.matches`, BajutsuKit): every
+        identifying label on the alert exactly once, and no excluded label present.
 
         Args:
             rules: The rules for a prompt in another process (a SpringBoard alert), in match order.

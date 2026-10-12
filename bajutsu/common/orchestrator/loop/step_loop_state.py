@@ -69,8 +69,8 @@ class StepLoopState:
     running_recovery: bool = False
     # When the proactive notification-banner sweep (BE-0416 Unit 8) last actually queried the
     # backend, in `clock.now()` units — `None` before the run's first step. Rate-limits that query
-    # to the resolved poll interval, decoupled from how often a step runs, the same way
-    # `_AlertGuardGate` rate-limits its own native probe (BE-0315).
+    # to the resolved poll interval, decoupled from how often a step runs, the same way the
+    # runner rate-limits its own SpringBoard check (BE-0461).
     last_notification_banner_poll_at: float | None = None
     # Which declared targets can take a step and which one is the primary now (BE-0447). Shared by
     # every phase like `app_crash`; `None` for a scenario declaring no targets.

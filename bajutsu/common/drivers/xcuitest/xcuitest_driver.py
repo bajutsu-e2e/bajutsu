@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from bajutsu.common.devices.os import DeviceOS
 from bajutsu.common.drivers import base, tracing
@@ -16,11 +16,13 @@ from ._drain_carry import _DrainCarry
 from ._functions import (
     _as_float,
     _await_health,
+    _drain_fold,
     _http_transport,
     _is_resolving_read,
     _parse_drain_fold,
     _parse_resolving_drain_fold,
     _parse_tap_drain_fold,
+    _resolving_body,
     _tip_is_up,
     _to_element,
 )
@@ -29,6 +31,9 @@ from ._reply import _Reply
 from ._shared import _OK, _TIPKIT_DISMISS_REGION, TransportFn
 from .runner_target import RunnerTarget
 from .xcuitest_channel_error import XcuitestChannelError
+
+# Every status `/systemAlert/resolve` answers with (BE-0461 Unit 3).
+_RESOLVE_STATUSES = frozenset({"answered", "changed", "absent", "unidentified", "pending"})
 
 _STALE = "stale"  # the resolved handle no longer maps to a live element (the screen changed)
 _NOT_FOUND = "not-found"  # the runner could not act on the handle (no matching live element)
@@ -93,6 +98,7 @@ class XcuitestDriver:
                 base.Capability.SELECT_PHOTOS,
                 base.Capability.HANDLE_TIPKIT_TIP,
                 base.Capability.HANDLE_NOTIFICATION_BANNER,
+                base.Capability.RESOLVE_ALERTS,
                 # Members of a device group share this runner, each retargeting it to its own app
                 # (BE-0447); a real device drops it, since nothing installs a second build there.
                 base.Capability.DEVICE_GROUP,
@@ -158,9 +164,10 @@ class XcuitestDriver:
 
         def _tracking_transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
             reply = _channel_transport(method, path, body)
-            if _is_resolving_read(method, path):
-                # A resolving read drains the runner's whole store into its reply, as `/tap` does,
-                # so it leaves the carry just as current (BE-0461 Unit 2). The flag drops first: a
+            if _is_resolving_read(method, path) or path == "/systemAlert/resolve":
+                # A resolving read, and `/systemAlert/resolve` (Unit 3), drain the runner's whole
+                # store into the reply, as `/tap` does, so they leave the carry just as current
+                # (BE-0461 Unit 2). The flag drops first: a
                 # reply that fails to parse has lost its records, and the next drain must then ask
                 # the wire rather than trust a carry an earlier tap left current.
                 carry.is_current = False
@@ -233,6 +240,8 @@ class XcuitestDriver:
         # would be pure waste. None until the first read. No `parsed_input`: unlike adb's resident
         # channel, nothing here narrows the runner's own reply before it becomes `elements`.
         self._raw_bytes: bytes | None = None
+        # The reply behind the last tree read, so a resolving read can take its two flags off it.
+        self._last_tree_reply: _Reply | None = None
         # The in-app responder that measures `nativeZ` (BE-0355). None when the run allocated no
         # port, or when the app never links BajutsuKit — either way every element keeps `None`.
         self._zorder = zorder
@@ -279,7 +288,7 @@ class XcuitestDriver:
     # --- the channel ---
 
     def _query_with_handles(
-        self, *, apply_native_z: bool = True
+        self, *, apply_native_z: bool = True, path: str = "/elements"
     ) -> tuple[list[base.Element], dict[int, str]]:
         """A snapshot plus a map from each element's object identity to its handle.
 
@@ -294,6 +303,7 @@ class XcuitestDriver:
                 resolves a handle to act on and discards the rest of the tree gains nothing from it.
                 `False` for those internal resolutions; `True` (the default) for `query()`, whose
                 result reaches evidence and the serve read API.
+            path: The tree route, carrying `resolveAlerts` for a resolving read (BE-0461).
         """
         if self._member_bundle is not None and (state := self.app_state()) != "runningForeground":
             # Another member's app holds the screen: raised, never read as an empty tree, so no
@@ -302,8 +312,9 @@ class XcuitestDriver:
                 f"{self._member_bundle} is not in front (its state is {state}) — bring it up with a "
                 "foreground step addressed to its target"
             )
-        reply = self._transport("GET", "/elements", None)
+        reply = self._transport("GET", path, None)
         self._raw_bytes = reply.raw
+        self._last_tree_reply = reply
         elements, handles = self._parse_elements(reply)
         if apply_native_z:
             self._apply_native_z(elements)
@@ -466,6 +477,47 @@ class XcuitestDriver:
     def query(self) -> list[base.Element]:
         elements, _ = self._query_with_handles()
         return elements
+
+    def query_resolving(
+        self, mode: base.ResolveMode, *, force_check: bool = False
+    ) -> base.ResolvingRead:
+        """Answer the alert the pushed policy names, then read the tree (BE-0461 Unit 4).
+
+        The records the reply drained already sit in `_drain_carry` (`_tracking_transport`), so the
+        drain that consumes them reports each once; they are returned here for the caller to read.
+        """
+        path = f"/elements?resolveAlerts={mode}" + ("&forceCheck=true" if force_check else "")
+        elements, _ = self._query_with_handles(path=path)
+        reply = self._last_tree_reply
+        assert reply is not None  # set by the read just above
+        # Decoded once, with the records checked, so a malformed reply raises the channel error
+        # rather than a JSON one; the tree itself is the whole body, so a decode is not free.
+        body = _resolving_body(reply.raw)
+        drained = _drain_fold(body)
+        return base.ResolvingRead(
+            elements=elements,
+            drained=drained,
+            springboard_checked=body.get("springboardChecked") is True,
+            withheld=body.get("withheld") is True,
+        )
+
+    def resolve_system_alert(self, labels: Sequence[str]) -> base.SystemAlertResolution:
+        """Answer the SpringBoard alert by policy while it still offers *labels* (BE-0461 Unit 3).
+
+        Raises:
+            XcuitestChannelError: The runner answered with no known status (a build predating the
+                route answers 404), or without its records.
+        """
+        reply = self._transport("POST", "/systemAlert/resolve", {"labels": list(labels)})
+        if reply.status not in _RESOLVE_STATUSES:
+            raise XcuitestChannelError(
+                f"resolving a system alert failed (status={reply.status}); "
+                "rebuild the runner (make runner-build)"
+            )
+        return base.SystemAlertResolution(
+            status=cast("base.SystemAlertResolutionStatus", reply.status),
+            drained=_parse_resolving_drain_fold(reply.raw),
+        )
 
     def tap(self, sel: base.Selector) -> None:
         handle, el = self._resolve_handle(sel)

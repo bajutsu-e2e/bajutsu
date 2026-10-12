@@ -7,9 +7,9 @@
 |---|---|
 | 提案 | [BE-0461](BE-0461-request-boundary-alert-resolution-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0461") |
-| 実装 PR | [#2152](https://github.com/bajutsu-e2e/bajutsu/pull/2152)（Unit 1）、[#2155](https://github.com/bajutsu-e2e/bajutsu/pull/2155)（Unit 2） |
+| 実装 PR | [#2152](https://github.com/bajutsu-e2e/bajutsu/pull/2152)（Unit 1）、[#2155](https://github.com/bajutsu-e2e/bajutsu/pull/2155)（Unit 2）、[#2164](https://github.com/bajutsu-e2e/bajutsu/pull/2164)（Unit 3〜9） |
 | トピック | Platform support |
 <!-- /BE-METADATA -->
 
@@ -369,13 +369,13 @@ capability のない backend は、今のゲートを使い続けます。明示
 
 - [x] Unit 1：スナップショットの挙動、SpringBoard の確認のコスト、押下の所要時間、ステップのコストを測る（関門）
 - [x] Unit 2：`resolveAlerts` でアラートを片付ける `/elements`
-- [ ] Unit 3：`handleSystemAlert` ステップのための `POST /systemAlert/resolve`
-- [ ] Unit 4：`RESOLVE_ALERTS` capability の内側にある Python 側の薄い経路
-- [ ] Unit 5：範囲を狭めた、ステップあたり 1 回のリトライ
-- [ ] Unit 6：予防（起動引数とパスワードの自動入力の試作）
-- [ ] Unit 7：Python 側の旧来の検知経路の削除
-- [ ] Unit 8：Swift、Python、実機での検証
-- [ ] Unit 9：両言語の文書
+- [x] Unit 3：`handleSystemAlert` ステップのための `POST /systemAlert/resolve`
+- [x] Unit 4：`RESOLVE_ALERTS` capability の内側にある Python 側の薄い経路
+- [x] Unit 5：範囲を狭めた、ステップあたり 1 回のリトライ
+- [x] Unit 6：予防（起動引数とパスワードの自動入力の試作）
+- [x] Unit 7：Python 側の旧来の検知経路の削除
+- [x] Unit 8：Swift、Python、実機での検証
+- [x] Unit 9：両言語の文書
 
 ログ：
 
@@ -409,6 +409,36 @@ capability のない backend は、今のゲートを使い続けます。明示
   割り込み監視が割り込んだ操作がそのあと例外で終わるとキーは残ります。次の操作が完了する前に同じ
   プロンプトがまた出ると、監視はボタンを押しますが、記録はしません。設計はこの隙間を受け入れて
   います。Unit 4 の片付ける読み取りによる確認で、この隙間はなくなります。
+
+- [#2164](https://github.com/bajutsu-e2e/bajutsu/pull/2164) — Unit 3 から 9 までで、本項目を完了しました。
+  runner に `POST /systemAlert/resolve` を足しました。アラートがステップの読んだラベル付きのボタンを
+  そのまま示している間だけ方針どおりに答え、ペース制御のメモは片付ける読み取りと共有します。Python には
+  `Capability.RESOLVE_ALERTS` と `AlertResolvingTarget` を足しました。ガードが効いているときは、待機と
+  操作のセレクタの解決の読み取りが片付ける読み取りを通り、アサーションと証跡は通常の読み取りのままです。
+  ゲートは記録を読む部分と折りたたみツリーの代理指標だけに縮みました。ステップ終了時、`expect`、
+  シナリオ開始時の立て直しは、それぞれ強制の読み取りを 1 回送ります。Unit 7 では、`probe_native`、
+  `dismiss_from_tree_once`、`AlertGuardConfig.__call__`、ゲートのネイティブ照会とツリー内のタップを
+  削除しました。実機では `permission.yaml`、`permission_system_alert.yaml`、
+  `save_password_browser.yaml`、`save_password_interrupts_step.yaml` が、iOS 18.6、26.3、26.4、26.5 の
+  すべてで成功しました。Unit 7 の前と後の 2 回とも成功しています。最初の実機の実行で、Unit 2 の不具合が
+  見つかりました。`LegacyBackedTransport` がパス全体でルートを照合していたため、
+  `GET /elements?resolveAlerts=true` が 404 を返していました。Unit 2 のテストはハンドラを直接呼んで
+  いたので、この不具合を捉えられませんでした。この変更でルーティングを直し、通信経路を通すテストを
+  足しました。設計の記述から外れた点は 5 つです。
+  - シナリオ開始時の確認（`_clear_entry_alert`）も `probe_native` を使っていましたが、設計には載って
+    いませんでした。いまは強制の読み取りを 1 回送ります。
+  - 読み取りの中の押下はドライバの操作ではないため、ステップの操作記録に `systemAlert` の項目は
+    残りません。押下はアラートのイベントとしてレポートに届きます。
+  - 失敗した `email` ステップは、アラートによるリトライを受けなくなりました。範囲を狭めたリトライの
+    対象は、拒まれた操作、見つからなかった対象、失敗した判定、位置で答える `handleSystemAlert`
+    ステップだけだからです。
+  - `/systemAlert/resolve` はラベル付きのボタンだけを比べます。ドライバ自身の読み取りが報告するのと
+    同じ集合です。また、メモが保留した表示だけでなく、押下を打ち切った表示にも `pending` を返します。
+  - Unit 6 では、予防の手段として `launchArgs` と `launchEnv` を文書にし、`simctl privacy` に通知と
+    ATT のサービスがないことを確かめました。パスワードの自動入力の試作では、実行前にこの設定を切る
+    サポートされた方法が見つかりませんでした。26.5 では自動操作でスイッチが切り替わらず、手で切り
+    替えても、実行前の手順が書き込める設定ファイルは変わりませんでした。そのため
+    `simulator.autofillPasswords` のオプトインは出荷しません。
 
 ## 参考
 

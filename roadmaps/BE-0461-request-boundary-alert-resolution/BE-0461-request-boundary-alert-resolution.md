@@ -7,9 +7,9 @@
 |---|---|
 | Proposal | [BE-0461](BE-0461-request-boundary-alert-resolution.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0461") |
-| Implementing PR | [#2152](https://github.com/bajutsu-e2e/bajutsu/pull/2152) (unit 1), [#2155](https://github.com/bajutsu-e2e/bajutsu/pull/2155) (unit 2) |
+| Implementing PR | [#2152](https://github.com/bajutsu-e2e/bajutsu/pull/2152) (unit 1), [#2155](https://github.com/bajutsu-e2e/bajutsu/pull/2155) (unit 2), [#2164](https://github.com/bajutsu-e2e/bajutsu/pull/2164) (units 3–9) |
 | Topic | Platform support |
 <!-- /BE-METADATA -->
 
@@ -451,13 +451,13 @@ detector. The change that deletes the detector updates them as well (BE-0113).
 
 - [x] Unit 1 — measure snapshot behavior, SpringBoard cost, press latency, and step cost (gate)
 - [x] Unit 2 — alert-aware `/elements` behind `resolveAlerts`
-- [ ] Unit 3 — `POST /systemAlert/resolve` for the `handleSystemAlert` step
-- [ ] Unit 4 — thin Python path behind the `RESOLVE_ALERTS` capability
-- [ ] Unit 5 — narrowed once-per-step retry
-- [ ] Unit 6 — prevention: launch arguments and an AutoFill Passwords spike
-- [ ] Unit 7 — delete the old Python detection path
-- [ ] Unit 8 — Swift, Python, and on-device verification
-- [ ] Unit 9 — documentation in both languages
+- [x] Unit 3 — `POST /systemAlert/resolve` for the `handleSystemAlert` step
+- [x] Unit 4 — thin Python path behind the `RESOLVE_ALERTS` capability
+- [x] Unit 5 — narrowed once-per-step retry
+- [x] Unit 6 — prevention: launch arguments and an AutoFill Passwords spike
+- [x] Unit 7 — delete the old Python detection path
+- [x] Unit 8 — Swift, Python, and on-device verification
+- [x] Unit 9 — documentation in both languages
 
 Log:
 
@@ -490,6 +490,36 @@ Log:
   interaction the monitor interrupted then raises, the key stays, and the same prompt returning
   before the next completed actuation is pressed but not reported again. The design accepts this
   window. The checks in Unit 4's resolving reads close it.
+
+- [#2164](https://github.com/bajutsu-e2e/bajutsu/pull/2164) — Units 3 to 9, completing the item. The
+  runner gains `POST /systemAlert/resolve`. It answers by policy while the alert still offers the
+  labelled buttons the step read, and not otherwise. It shares the pacing memo with the resolving
+  read. Python gains
+  `Capability.RESOLVE_ALERTS` and `AlertResolvingTarget`. Under a governing guard, waits and action
+  selector reads go through a resolving view; assertions and evidence keep the plain read. The gate
+  shrinks to a reader of the records plus the collapsed-tree proxy. The end-of-step, `expect`, and
+  scenario-entry recoveries each send one forced resolving read. Unit 7 deletes `probe_native`,
+  `dismiss_from_tree_once`, `AlertGuardConfig.__call__`, and the gate's native probe and in-tree
+  dismissal. Four showcase scenarios ran on device: `permission.yaml`,
+  `permission_system_alert.yaml`, `save_password_browser.yaml`, and
+  `save_password_interrupts_step.yaml`. Each passed on iOS 18.6, 26.3, 26.4, and 26.5, before Unit 7
+  and again after it. The first device run exposed a Unit 2 defect:
+  `LegacyBackedTransport` matched routes on the full path, so `GET /elements?resolveAlerts=true`
+  answered 404. Unit 2's tests called the handler directly. This change fixes the routing and adds an
+  over-the-wire test. The change departs from the design text in five places:
+  - The scenario-entry check (`_clear_entry_alert`) also used `probe_native`. The design did not list
+    it. It now sends one forced resolving read.
+  - A press inside a read is not a driver actuation. A step's actuation record carries no
+    `systemAlert` entry for it any more; the press reaches the report as an alert event.
+  - An `email` step takes no alert retry any more. The narrowed retry covers four failures: a refused
+    actuation, an unfound target, a check, and a position-rule `handleSystemAlert` step.
+  - `/systemAlert/resolve` compares the labelled buttons alone, the set the driver's own read
+    reports. It answers `pending` for a showing the memo stopped, as for one it withheld.
+  - Unit 6 documents `launchArgs` and `launchEnv` as the prevention path and confirms that
+    `simctl privacy` has no notifications or ATT service. The AutoFill Passwords spike found no
+    supported way to turn the setting off before a run: on 26.5 the switch did not flip under
+    automation, and toggling it changed no preference file a pre-run step could write. The
+    `simulator.autofillPasswords` opt-in does not ship.
 
 ## References
 

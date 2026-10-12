@@ -196,7 +196,11 @@ def _parse_drain_fold(raw: bytes | None) -> base.DrainedInterruptions:
     """
     if not raw:
         return base.DrainedInterruptions.empty()
-    body = json.loads(raw)
+    return _drain_fold(json.loads(raw))
+
+
+def _drain_fold(body: dict[str, Any]) -> base.DrainedInterruptions:
+    """`_parse_drain_fold` over a body already decoded, so a caller holding one decodes it once."""
     unmatched = body.get("unmatched")
     declined = (
         [_string_list(group) for group in unmatched if isinstance(group, list)]
@@ -272,7 +276,12 @@ def _parse_tap_drain_fold(raw: bytes | None) -> base.DrainedInterruptions | None
 
 
 def _parse_resolving_drain_fold(raw: bytes | None) -> base.DrainedInterruptions:
-    """The records a resolving `/elements` reply drained (BE-0461 Unit 2).
+    """The records a resolving reply drained, read with `_resolving_body`'s checks."""
+    return _drain_fold(_resolving_body(raw))
+
+
+def _resolving_body(raw: bytes | None) -> dict[str, Any]:
+    """A resolving `/elements` or `/systemAlert/resolve` reply's body, its records checked (BE-0461).
 
     The runner attaches them to every resolving reply, empty arrays included, so their absence can
     only mean a runner build predating the parameter, which answered with a plain tree and pressed
@@ -290,14 +299,14 @@ def _parse_resolving_drain_fold(raw: bytes | None) -> base.DrainedInterruptions:
     try:
         body = json.loads(raw) if raw else None
     except json.JSONDecodeError as exc:
-        raise XcuitestChannelError("the runner answered a resolveAlerts read with no JSON") from exc
+        raise XcuitestChannelError("the runner answered a resolving request with no JSON") from exc
     if not isinstance(body, dict) or "labels" not in body or "unmatched" not in body:
         raise XcuitestChannelError(
-            "the runner answered a resolveAlerts read without its records; "
+            "the runner answered a resolving request without its records; "
             "rebuild the runner (make runner-build)"
         )
     _require_resolving_records(body)
-    return _parse_drain_fold(raw)
+    return body
 
 
 def _require_resolving_records(body: dict[str, Any]) -> None:
@@ -333,9 +342,7 @@ def _require_resolving_records(body: dict[str, Any]) -> None:
             for item in gave_up
         )
     ):
-        raise XcuitestChannelError(
-            "the runner answered a resolveAlerts read with malformed records"
-        )
+        raise XcuitestChannelError("the runner answered a resolving request with malformed records")
 
 
 def _is_strings(value: object) -> bool:

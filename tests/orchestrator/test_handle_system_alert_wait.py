@@ -203,46 +203,6 @@ def test_the_timeout_names_the_alert_whose_buttons_the_selector_did_not_match() 
     assert "the alert on screen offered: Save Password, Not Now" in reason
 
 
-def test_the_timeout_carries_the_guards_note_for_a_prompt_nothing_could_clear() -> None:
-    # An undeclared alert held the screen for the wait. The step's own read sees it too, and the
-    # guard's note names it as one nothing will answer — the third case the reason distinguishes.
-    driver = FakeDriver([])
-    driver.system_alert_buttons = [_button("Trust This Computer?"), _button("Trust")]
-    guard = AlertGuardConfig(rules=[_notification_rule()], poll_interval=0.1)
-
-    ok, reason = wait_for_system_alert(
-        driver, {"label": "Allow"}, 0.5, _LogicalClock(), alert_guard=guard, alerts=[]
-    )
-
-    assert not ok
-    assert "an unhandled system alert is blocking the screen" in reason
-    assert "Trust This Computer?" in reason
-
-
-def test_an_alert_the_guard_cleared_is_not_reported_as_still_on_screen() -> None:
-    # The reason states the step's *latest* read, not the last non-empty one. A guard that cleared
-    # an interruption early and a prompt the app then never raised is case 1 — no alert appeared —
-    # and reporting the cleared alert's buttons would send the author after a prompt the guard
-    # already answered correctly.
-    def clear_the_alert(d: FakeDriver, kind: str, _arg: object) -> None:
-        if kind == "handle_system_alert":
-            d.system_alert_buttons = []
-
-    driver = FakeDriver([], react=clear_the_alert)
-    driver.system_alert_buttons = [_button("Allow"), _button("Don’t Allow")]
-    guard = AlertGuardConfig(rules=[_notification_rule()], poll_interval=0.1)
-    alerts: list[AlertEvent] = []
-
-    ok, reason = wait_for_system_alert(
-        driver, {"label": "Trust"}, 1.0, _LogicalClock(), alert_guard=guard, alerts=alerts
-    )
-
-    assert not ok
-    assert alerts == [AlertEvent(label="Don’t Allow")]  # the guard did clear it
-    assert "no system alert appeared within 1.0s" in reason
-    assert "Don’t Allow" not in reason
-
-
 def test_a_cancelled_run_ends_the_wait_within_one_poll() -> None:
     # BE-0370's invariant, which the driver's own loop never had to honor: a run stopped mid-step
     # must not keep polling and actuating the device for the rest of the step's timeout.
@@ -380,26 +340,6 @@ def test_a_reserved_alert_leaves_no_hedged_block_note_behind() -> None:
     assert "unhandled system alert" not in reason
 
 
-def test_the_guard_clears_a_declared_interruption_while_the_step_waits() -> None:
-    # The motivating case (BE-0406). iOS's save-password alert is raised into the app's own process,
-    # so `springboard.alerts` never sees it and the step's own read reports nothing; it holds the
-    # screen, and the permission prompt the step was placed for is never raised while it is up.
-    # Before this unit, no guard could run inside the driver's wait and the step timed out naming a
-    # prompt it never saw. Now the guard clears the sheet from the tree mid-wait and the prompt the
-    # step is waiting for lands.
-    driver = FakeDriver([_button("Not Now")], react=_clear_the_sheet)
-    guard = AlertGuardConfig(rules=[guard_rule("Not Now")], poll_interval=0.1)
-    alerts: list[AlertEvent] = []
-
-    ok, reason = wait_for_system_alert(
-        driver, {"label": "Allow"}, 5.0, _LogicalClock(), alert_guard=guard, alerts=alerts
-    )
-
-    assert ok, reason
-    assert alerts == [AlertEvent(label="Not Now")]
-    assert ("handle_system_alert", ({"label": "Allow"}, 0.0)) in driver.actions
-
-
 def test_the_end_of_step_guard_leaves_a_failed_steps_own_alert_alone() -> None:
     # A failed `handleSystemAlert` step is the one case the end-of-step guard skips outright
     # (BE-0406). `wait_for_system_alert` already drove this same guard, reserved against the step's
@@ -434,26 +374,6 @@ def test_the_end_of_step_guard_leaves_a_failed_steps_own_alert_alone() -> None:
     # Nothing was tapped on the step's behalf, and nothing was recorded as dismissed.
     assert result.steps[0].alerts == []
     assert not [a for a in driver.actions if a[0] == "tap"]
-
-
-def test_the_run_loop_hands_the_step_the_scenarios_guard() -> None:
-    # The wiring, end to end: `_run_step_body` passes `alert_guard`/`alerts` for this step kind as it
-    # already did for `wait`, so a run — not only a direct call — clears the interruption mid-step
-    # and reports the dismissal on the step's own outcome.
-    from bajutsu.common.orchestrator import run_scenario
-
-    driver = FakeDriver([_button("Not Now")], react=_clear_the_sheet)
-
-    result = run_scenario(
-        driver,
-        load_scenarios(
-            "- name: t\n  steps:\n    - handleSystemAlert: { sel: { label: Allow }, timeout: 5 }\n"
-        )[0],
-        alert_guard=AlertGuardConfig(rules=[guard_rule("Not Now")], poll_interval=0.1),
-    )
-
-    assert result.ok, result.failure
-    assert result.steps[0].alerts == [AlertEvent(label="Not Now")]
 
 
 def test_the_step_invalidates_a_live_text_selection() -> None:

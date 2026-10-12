@@ -154,13 +154,12 @@ def test_select_returns_none_when_no_eligible_match() -> None:
 
 # --- handler + end-to-end (injected reader + fake clock; no network) ---
 
-from conftest import AlertingDriver, el, guard_rule  # noqa: E402
+from conftest import el  # noqa: E402
 
 from bajutsu.common.drivers import base  # noqa: E402
 from bajutsu.common.drivers.fake import FakeDriver  # noqa: E402
-from bajutsu.common.orchestrator import AlertGuardConfig, run_scenario  # noqa: E402
+from bajutsu.common.orchestrator import run_scenario  # noqa: E402
 from bajutsu.common.orchestrator.loop import _do_email  # noqa: E402
-from bajutsu.common.orchestrator.loop._step_runner import _StepRunner  # noqa: E402
 from bajutsu.common.scenario import Scenario  # noqa: E402
 
 
@@ -325,42 +324,3 @@ def test_email_requires_positive_timeout() -> None:
                 "timeout": 0,
             }
         )
-
-
-def test_on_blocked_retry_preserves_the_mailbox(monkeypatch: pytest.MonkeyPatch) -> None:
-    # The alert is seeded from the start to stand for one arriving later in the run; the
-    # scenario-entry check would clear it before the phase this test is about ever meets it.
-    monkeypatch.setattr(_StepRunner, "_clear_entry_alert", lambda *_a, **_k: None)
-    # Regression: the retry-after-on_blocked path must still pass the mailbox, or a transient first
-    # failure would be masked by a spurious "no mailbox configured" on the retry.
-
-    msg = _msg(id="new", subject="Verify", body="PIN 135790", at="2026-01-01T00:01:00Z")
-    # First attempt (timeout 1s, ~1s poll) baselines + polls empty -> times out -> on_blocked fires
-    # -> retry baselines empty then sees the message -> succeeds via the same mailbox. Were the retry
-    # to drop the mailbox, it would report "no mailbox configured" instead.
-    mailbox = _FakeMailbox([], [], [], [msg])
-    scenario = Scenario.model_validate(
-        {
-            "name": "x",
-            "steps": [
-                {
-                    "email": {
-                        "match": {"subjectMatches": "Verify"},
-                        "extract": {"var": "pin", "bodyMatches": r"PIN (\d+)"},
-                        "timeout": 1,
-                    }
-                }
-            ],
-        }
-    )
-
-    result = run_scenario(
-        AlertingDriver([el("home.title", "Home")], label="Allow"),
-        scenario,
-        clock=_FakeClock(),
-        bindings={},
-        mailbox=mailbox,
-        alert_guard=AlertGuardConfig(rules=[guard_rule("Allow")]),
-    )
-    assert result.ok, result.failure
-    assert "no mailbox configured" not in (result.steps[0].reason or "")

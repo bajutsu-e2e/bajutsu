@@ -592,6 +592,171 @@ final class AlertResolutionTests: XCTestCase {
         XCTAssertEqual(again["labels"] as? [String], [])
     }
 
+    // MARK: - POST /systemAlert/resolve (Unit 3)
+
+    private func resolve(_ labels: [String]) async throws -> [String: Any] {
+        let out = try await handler.resolveSystemAlert(.init(body: .json(.init(labels: labels))))
+        guard case .ok(let ok) = out, case .json(let payload) = ok.body else {
+            // A failure, not a skip: a skip would leave every resolve test green on a broken handler.
+            XCTFail("unexpected /systemAlert/resolve output")
+            throw CancellationError()
+        }
+        return try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(payload)) as? [String: Any]
+        )
+    }
+
+    func testResolveAnswersTheAlertTheStepReadAndDrainsItsRecord() async throws {
+        push([Self.notifications])
+        provider.systemAlertButtons = alertButtons(["Allow", "Don’t Allow"])
+        let reply = try await resolve(["Don’t Allow", "Allow"])
+        XCTAssertEqual(reply["status"] as? String, "answered")
+        XCTAssertEqual(provider.systemAlertTapCalls.count, 1)
+        XCTAssertTrue(provider.systemAlertTapCalls[0] === provider.systemAlertButtons[1].backingElement)
+        XCTAssertEqual(reply["labels"] as? [String], ["Don’t Allow"])
+        XCTAssertEqual(reply["tappedSurfaces"] as? [String], ["native"])
+    }
+
+    func testResolveTapsNothingWhenTheAlertNoLongerOffersTheLabelsTheStepRead() async throws {
+        push([Self.notifications])
+        provider.systemAlertButtons = alertButtons(["Allow", "Don’t Allow"])
+        let reply = try await resolve(["Allow Paste", "Don’t Allow Paste"])
+        XCTAssertEqual(reply["status"] as? String, "changed")
+        XCTAssertTrue(provider.systemAlertTapCalls.isEmpty)
+        XCTAssertEqual(reply["labels"] as? [String], [])
+    }
+
+    func testResolveComparesTheLabelsAsAMultiset() async throws {
+        push([Self.notifications])
+        provider.systemAlertButtons = alertButtons(["Allow", "Allow", "Don’t Allow"])
+        let reply = try await resolve(["Allow", "Don’t Allow"])
+        XCTAssertEqual(reply["status"] as? String, "changed")
+    }
+
+    func testResolveIgnoresAnUnlabelledButtonTheDriverNeverReported() async throws {
+        push([Self.notifications])
+        provider.systemAlertButtons = alertButtons(["Allow", "Don’t Allow", ""])
+        let reply = try await resolve(["Allow", "Don’t Allow"])
+        XCTAssertEqual(reply["status"] as? String, "answered")
+    }
+
+    func testResolveReportsAbsentWhenNoAlertIsShowing() async throws {
+        push([Self.notifications])
+        let reply = try await resolve(["Allow", "Don’t Allow"])
+        XCTAssertEqual(reply["status"] as? String, "absent")
+        XCTAssertTrue(provider.systemAlertTapCalls.isEmpty)
+    }
+
+    func testResolveRecordsAnAlertNoRuleIdentifiesAndTapsNothing() async throws {
+        push([Self.notifications])
+        provider.systemAlertButtons = alertButtons(["Save", "Cancel"])
+        let reply = try await resolve(["Save", "Cancel"])
+        XCTAssertEqual(reply["status"] as? String, "unidentified")
+        XCTAssertTrue(provider.systemAlertTapCalls.isEmpty)
+        XCTAssertEqual(reply["unidentified"] as? [[String]], [["Save", "Cancel"]])
+    }
+
+    func testResolveNeverAnswersThroughAnInTreeRule() async throws {
+        push([Self.savePassword])
+        provider.systemAlertButtons = alertButtons(["Save Password", "Not Now"])
+        let reply = try await resolve(["Save Password", "Not Now"])
+        XCTAssertEqual(reply["status"] as? String, "unidentified")
+        XCTAssertTrue(provider.systemAlertTapCalls.isEmpty)
+    }
+
+    func testResolveSharesThePacingMemoAndReportsAWithheldCallAsPending() async throws {
+        push([Self.notifications], pacing: AlertPacing(pollInterval: 0, retapDelay: 1.0))
+        provider.systemAlertButtons = alertButtons(["Allow", "Don’t Allow"])
+        // A resolving read answered this showing first: inside the re-tap delay, resolve withholds.
+        let read = try await read()
+        XCTAssertEqual(read["labels"] as? [String], ["Don’t Allow"])
+        clock.now += 0.3
+        let reply = try await resolve(["Allow", "Don’t Allow"])
+        XCTAssertEqual(reply["status"] as? String, "pending")
+        XCTAssertEqual(provider.systemAlertTapCalls.count, 1)
+        XCTAssertEqual(reply["labels"] as? [String], [])
+    }
+
+    func testResolveRePressesUpToTheCeilingRecordingOneAnswerAndOneGiveUp() async throws {
+        push([Self.notifications], pacing: AlertPacing(pollInterval: 0, retapDelay: 1.0, maxTaps: 2))
+        provider.systemAlertButtons = alertButtons(["Allow", "Don’t Allow"])
+        var statuses: [String] = []
+        var answered: [String] = []
+        var gaveUp: [[String: Any]] = []
+        for _ in 0..<4 {
+            let reply = try await resolve(["Allow", "Don’t Allow"])
+            statuses.append(reply["status"] as? String ?? "")
+            answered += reply["labels"] as? [String] ?? []
+            gaveUp += reply["gaveUp"] as? [[String: Any]] ?? []
+            clock.now += 1.5
+        }
+        XCTAssertEqual(statuses, ["answered", "answered", "pending", "pending"])
+        XCTAssertEqual(provider.systemAlertTapCalls.count, 2)
+        XCTAssertEqual(answered, ["Don’t Allow"])
+        XCTAssertEqual(gaveUp.count, 1)
+        XCTAssertEqual(gaveUp.first?["surface"] as? String, "native")
+    }
+
+    func testResolvesOwnPressReArmsNoKeySoAnUnlandedPressReachesTheCeiling() async throws {
+        push([Self.notifications], pacing: AlertPacing(pollInterval: 0, retapDelay: 0, maxTaps: 1))
+        provider.systemAlertButtons = alertButtons(["Allow", "Don’t Allow"])
+        _ = try await resolve(["Allow", "Don’t Allow"])
+        let again = try await resolve(["Allow", "Don’t Allow"])
+        XCTAssertEqual(again["status"] as? String, "pending")
+        XCTAssertEqual((again["gaveUp"] as? [Any])?.count, 1)
+    }
+
+    func testARefusedResolvePressIsPendingAndRecordsNoAnswer() async throws {
+        push([Self.notifications])
+        provider.systemAlertButtons = alertButtons(["Allow", "Don’t Allow"])
+        provider.tapResult = .stale
+        let reply = try await resolve(["Allow", "Don’t Allow"])
+        XCTAssertEqual(reply["status"] as? String, "pending")
+        XCTAssertEqual(reply["labels"] as? [String], [])
+    }
+
+    func testAnAllUnlabelledAlertReadsAsChanged() async throws {
+        push([Self.notifications])
+        provider.systemAlertButtons = alertButtons(["", ""])
+        let reply = try await resolve(["Allow", "Don’t Allow"])
+        XCTAssertEqual(reply["status"] as? String, "changed")
+        XCTAssertTrue(provider.systemAlertTapCalls.isEmpty)
+    }
+
+    func testAnAbsentResolveReArmsSoTheNextShowingIsAnsweredAnew() async throws {
+        push([Self.notifications], pacing: AlertPacing(pollInterval: 0, retapDelay: 10))
+        provider.systemAlertButtons = alertButtons(["Allow", "Don’t Allow"])
+        _ = try await resolve(["Allow", "Don’t Allow"])
+        provider.systemAlertButtons = []
+        let gone = try await resolve(["Allow", "Don’t Allow"])
+        XCTAssertEqual(gone["status"] as? String, "absent")
+        // Inside the re-tap delay, but a new showing: the absent check ended the first one.
+        provider.systemAlertButtons = alertButtons(["Allow", "Don’t Allow"])
+        let again = try await resolve(["Allow", "Don’t Allow"])
+        XCTAssertEqual(again["status"] as? String, "answered")
+        XCTAssertEqual(again["labels"] as? [String], ["Don’t Allow"])
+    }
+
+    func testResolveReportsPendingWhenTheProviderRaises() async throws {
+        push([Self.notifications])
+        provider.systemAlertButtons = alertButtons(["Allow", "Don’t Allow"])
+        store.recordDeclined(["Save", "Cancel"])
+        provider.systemAlertQueryRaises = NSException(name: .genericException, reason: "torn down")
+        let reply = try await resolve(["Allow", "Don’t Allow"])
+        XCTAssertEqual(reply["status"] as? String, "pending")
+        XCTAssertTrue(provider.systemAlertTapCalls.isEmpty)
+        // What the store held before the raise still drains into the reply.
+        XCTAssertEqual(reply["unmatched"] as? [[String]], [["Save", "Cancel"]])
+    }
+
+    func testResolveDrainsWhatTheMonitorRecordedBeforeIt() async throws {
+        push([Self.notifications])
+        store.recordDeclined(["Save", "Cancel"])
+        let reply = try await resolve(["Allow", "Don’t Allow"])
+        XCTAssertEqual(reply["unmatched"] as? [[String]], [["Save", "Cancel"]])
+        XCTAssertTrue(store.drain().declined.isEmpty)
+    }
+
     // MARK: - Drains
 
     func testTheDrainEndpointCarriesTheNewRecordKinds() async throws {

@@ -130,7 +130,7 @@ the launch sequence ([run-loop](run-loop.md#runner-the-run-pipeline)).
 
 ## systemAlertHandling (the system-alert guard)
 
-The iOS backend cannot see or tap **SpringBoard-level prompts** (a notification or App Tracking Transparency request, "Allow Paste"). These prompts cover the app and collapse its element tree, silently blocking a step. The **alert guard** clears them reactively. On the iOS XCUITest backend it takes a **deterministic native path** (BE-0315): reusing BE-0316's SpringBoard query, it reads which buttons the alert offers and taps the one a rule names — no screenshot and no model round trip, so it clears the common prompts in well under a tenth of a second and runs **without `ANTHROPIC_API_KEY`**. Where nothing deterministic can act — a backend without the capability, an alert no rule of yours identifies, or a non-SpringBoard surface the query cannot enumerate that no rule identifies either (the in-tree path below clears the ones a rule does identify) — **the guard does nothing** ([BE-0402](../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md)). The blocked step or `wait` runs on to its own timeout, exactly as it would with no guard configured, and that timeout **names what the guard saw**: `wait timeout: for {'id': 'submit'} (10.0s) — an unhandled system alert is blocking the screen (buttons: Allow, Don't Allow)`, or the hedged `… — the screen appears blocked, possibly by a system alert or another overlay outside the app's view` where nothing enumerated it. Before BE-0402 that case fell back to an AI-vision guard reading a screenshot; `run` no longer does, so **no flag of `run`'s reaches a model at all**. (`record` and `crawl` keep that guard for authoring — [details](recording.md#dismissing-system-alerts-automatically).) For a `wait` step (`for`/`gone`/`settled`/`screenChanged`), the guard fires **mid-wait**: the native path polls SpringBoard on its own interval (default one second), recovering before the wait's own timeout elapses rather than waiting for the step to fail first (BE-0269).
+The iOS backend cannot see or tap **SpringBoard-level prompts** (a notification or App Tracking Transparency request, "Allow Paste"). These prompts cover the app and collapse its element tree, silently blocking a step. The **alert guard** clears them reactively. On the iOS XCUITest backend it takes a **deterministic native path** (BE-0315): reusing BE-0316's SpringBoard query, it reads which buttons the alert offers and taps the one a rule names — no screenshot and no model round trip, so it clears the common prompts in well under a tenth of a second and runs **without `ANTHROPIC_API_KEY`**. Where nothing deterministic can act — a backend without the capability, an alert no rule of yours identifies, or a non-SpringBoard surface the query cannot enumerate that no rule identifies either (the in-tree path below clears the ones a rule does identify) — **the guard does nothing** ([BE-0402](../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md)). The blocked step or `wait` runs on to its own timeout, exactly as it would with no guard configured, and that timeout **names what the guard saw**: `wait timeout: for {'id': 'submit'} (10.0s) — an unhandled system alert is blocking the screen (buttons: Allow, Don't Allow)`, or the hedged `… — the screen appears blocked, possibly by a system alert or another overlay outside the app's view` where nothing enumerated it. Before BE-0402 that case fell back to an AI-vision guard reading a screenshot; `run` no longer does, so **no flag of `run`'s reaches a model at all**. (`record` and `crawl` keep that guard for authoring — [details](recording.md#dismissing-system-alerts-automatically).) For a `wait` step (`for`/`gone`/`settled`/`screenChanged`), the guard acts **mid-wait**: on XCUITest, each of the wait's own tree reads answers a prompt a rule names before it returns the tree, checking SpringBoard at most once per `pollInterval` (default one second) ([BE-0461](../roadmaps/BE-0461-request-boundary-alert-resolution/BE-0461-request-boundary-alert-resolution.md)). The wait recovers before its own timeout elapses rather than waiting for the step to fail first (BE-0269).
 
 On the XCUITest backend, a frozen screen stops a `for` or `screenChanged` wait before its deadline. A screen counts as frozen when both conditions below hold. A fresh SpringBoard check finds no alert. Yet for 10 seconds, no element below the application has carried a label or an identifier. We measured such a screen on an iOS 26.5 Simulator. A notification request can land while iOS presents its Save Password alert. That alert then halts mid-presentation. It never draws and is in no process's accessibility tree, yet it stays modal over the app. Nothing the guard can reach clears it, so the wait fails at that point with a reason like this:
 
@@ -140,7 +140,7 @@ wait stopped: for {'id': 'Close'} after 10.4s — no element below the applicati
 
 A scenario opts into this stop by declaring an in-app prompt such as `savePassword` in its `rules`. Without one, a long empty tree may be the app's own unlabelled loading screen. The wait then keeps its own timeout. An app with a slower unlabelled loading screen raises the bound with `frozenScreenTimeout`. A value of `0` turns the stop off. A `gone` or `settled` wait never stops this way, because a frozen tree already satisfies it. A `handleSystemAlert` step does not either: it waits on SpringBoard, which can still raise its prompt.
 
-It is **on by default** and fires **only when a step (or `expect`) is blocked, or — for a guarded `wait` — the native poll finds an alert**, so a passing scenario does no extra work. It needs **no `ANTHROPIC_API_KEY`** and consults none. Use `systemAlertHandling` to change the behavior per scenario:
+It is **on by default**. On XCUITest it rides the reads a step already makes, and a step that passes takes no retry, so a passing scenario pays one SpringBoard check per `pollInterval` at most. It needs **no `ANTHROPIC_API_KEY`** and consults none. Use `systemAlertHandling` to change the behavior per scenario:
 
 **`rules` is the guard's whole declaration**
 ([BE-0406](../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts.md)):
@@ -158,7 +158,7 @@ application vocabulary, so a label licensed a tap on a screen no scenario had de
 | `systemAlertHandling: false` | off for this scenario |
 | `systemAlertHandling: { rules: [{ prompt: notifications, choice: grant }] }` | on; answer a **named, covered prompt** by its own choice, regardless of which label it shares with another prompt |
 | `systemAlertHandling: { visionInstruction: "tap Allow" }` | **reaches no command.** `run` **fails before any scenario starts** rather than ignoring it ([BE-0402](../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md)); `record` / `crawl` never read a scenario's key. The schema keeps it only so a file carrying it gets that message |
-| `systemAlertHandling: { pollInterval: 2 }` | on; poll the native presence query every 2 s instead of the one-second default |
+| `systemAlertHandling: { pollInterval: 2 }` | on; check SpringBoard at most every 2 s instead of the one-second default |
 | `systemAlertHandling: { frozenScreenTimeout: 30 }` | on; tolerate a frozen screen for 30 s instead of the 10-second default before a guarded wait stops (`0` turns the stop off) |
 
 ```yaml
@@ -181,8 +181,8 @@ the remaining way of reaching.
 A rule for a prompt the tree can reach also arms a second, in-tree path on iOS, for a prompt that is
 **not** a SpringBoard alert at all. The one such prompt covered today is `savePassword`, which iOS
 raises in the *app's own* process: its buttons reach the element tree with a label and no identifier,
-and the SpringBoard query never sees it, so only a tap in the tree can clear it. That tap is paced by
-the same `pollInterval` and issued only on a poll whose own SpringBoard query just came back empty — because XCUITest resolves
+and the SpringBoard query never sees it, so only a tap in the tree can clear it. The runner makes that
+tap inside a read, and only after a fresh SpringBoard check in the same read comes back empty — because XCUITest resolves
 whatever out-of-process alert is interrupting *before* it synthesizes an element interaction, and the
 app's tree cannot see that alert. So when both prompts are up, the SpringBoard alert is answered
 first, and the app-attached alert is cleared from the tree afterwards.
@@ -208,6 +208,30 @@ The CLI `--system-alert-handling` / `--no-system-alert-handling` flag **override
 (otherwise the per-scenario default applies); `--alert-poll-interval` supplies that one key for a
 single run, between the scenario and the target config (see [layering](#layering-a-key-reaches-a-run-from-three-places) below).
 (real file: [`demos/showcase/scenarios/permission.yaml`](../demos/showcase/scenarios/permission.yaml))
+
+### Preventing a prompt instead of answering it
+
+A prompt the app never raises needs no answer. The supported way for an app to skip its own prompts
+under test is a launch argument or environment variable in the target's config, `targets.<name>`
+(`launchArgs` and `launchEnv`), which the app reads at start-up:
+
+```yaml
+targets:
+  my-app:
+    bundleId: com.example.myapp
+    launchEnv: { UITEST_SKIP_ONBOARDING_PROMPTS: "1" }   # the app checks this and asks nothing
+```
+
+Prevention makes the guard's work rarer, but it cannot replace the guard. Three prompts stay
+reactive:
+
+- **Notifications** are not a privacy service `xcrun simctl privacy` can grant
+  ([BE-0276](../roadmaps/BE-0276-scenario-permission-state/BE-0276-scenario-permission-state.md)).
+- **App Tracking Transparency (ATT)** has no `simctl privacy` service either: the tool's own service
+  list names none.
+- **Save Password** depends on the Simulator's AutoFill Passwords setting. We found no supported way
+  to turn that setting off before a run, so the scenario answers the prompt with a `savePassword`
+  rule ([BE-0461](../roadmaps/BE-0461-request-boundary-alert-resolution/BE-0461-request-boundary-alert-resolution.md)).
 
 ### Notification banners are swiped away, never tapped
 

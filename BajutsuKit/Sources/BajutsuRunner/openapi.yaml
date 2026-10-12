@@ -353,6 +353,32 @@ paths:
                 $ref: "#/components/schemas/ActuationReply"
         "400":
           $ref: "#/components/responses/BadRequest"
+  /systemAlert/resolve:
+    post:
+      operationId: resolveSystemAlert
+      summary: Apply the pushed policy to the SpringBoard alert showing, if it is still the one read.
+      description: >-
+        A `handleSystemAlert` step sends this when the alert its own `/systemAlert/query` read is not
+        the one its selector names (BE-0461 Unit 3). The runner answers only while the alert showing
+        offers exactly `labels` (as a multiset), so the step's own alert arriving in its place is
+        never answered by policy; otherwise it replies `changed` and presses nothing. It shares the
+        resolving read's per-showing key and pacing memo, and drains the runner's whole store into
+        its reply, as `tap` does.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SystemAlertResolveRequest"
+      responses:
+        "200":
+          description: What the runner did, and every record it drained.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemAlertResolveReply"
+        "400":
+          $ref: "#/components/responses/BadRequest"
   /app/enter:
     post:
       operationId: enterApp
@@ -634,6 +660,64 @@ components:
           description: >-
             True when the pacing memo kept this request from pressing a showing that already holds
             a key, inside the re-tap delay.
+    SystemAlertResolveRequest:
+      type: object
+      required: [labels]
+      properties:
+        labels:
+          type: array
+          description: The button labels the step's last `/systemAlert/query` read, titles excluded.
+          items:
+            type: string
+    SystemAlertResolveReply:
+      type: object
+      required: [status, labels, unmatched, banners, tappedAlerts, tappedSurfaces, unidentified, gaveUp]
+      properties:
+        status:
+          type: string
+          enum: [answered, changed, absent, unidentified, pending]
+          description: >-
+            `answered`: a native rule identified the alert and the runner pressed its button.
+            `changed`: the alert showing no longer offers `labels`, so nothing was pressed.
+            `absent`: no SpringBoard alert is showing. `unidentified`: an alert is showing and no
+            rule identifies it (recorded when the policy governs). `pending`: a rule identified it
+            but nothing landed — the pacing memo withheld or stopped the press, or the press was
+            refused — so the step never reads it as an answer.
+        labels:
+          type: array
+          description: The runner's whole store, drained as `InterruptionsReply` describes.
+          items:
+            type: string
+        unmatched:
+          type: array
+          items:
+            type: array
+            items:
+              type: string
+        banners:
+          type: array
+          items:
+            type: string
+        tappedAlerts:
+          type: array
+          items:
+            type: array
+            items:
+              type: string
+        tappedSurfaces:
+          type: array
+          items:
+            $ref: "#/components/schemas/AlertSurface"
+        unidentified:
+          type: array
+          items:
+            type: array
+            items:
+              type: string
+        gaveUp:
+          type: array
+          items:
+            $ref: "#/components/schemas/GaveUpRecord"
     AlertSurface:
       type: string
       enum: [native, inTree]

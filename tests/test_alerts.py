@@ -13,7 +13,7 @@ from bajutsu.common.agents.alerts import AlertDecision, ClaudeAlertLocator, Syst
 from bajutsu.common.agents.protocols import Proposal
 from bajutsu.common.ai.base import AnyTool, ImagePart, TextPart
 from bajutsu.common.drivers import base
-from bajutsu.common.drivers.fake import FakeDriver
+from bajutsu.common.drivers.fake import FakeDriver, ResolvingFakeDriver
 from bajutsu.common.evidence import FileSink
 from bajutsu.common.orchestrator import AlertEvent, AlertGuardConfig, run_scenario
 from bajutsu.common.orchestrator.loop._step_runner import _StepRunner
@@ -326,14 +326,15 @@ def test_on_blocked_retries_expect_after_recovery(monkeypatch: pytest.MonkeyPatc
     # scenario-entry check would clear it before the phase this test is about ever meets it.
     monkeypatch.setattr(_StepRunner, "_clear_entry_alert", lambda *_a, **_k: None)
     # A system alert can cover the screen exactly when expect runs; the guard must
-    # clear it there too, not only during steps.
+    # clear it there too, not only during steps. The step is an `assert`, whose plain reads leave
+    # the alert up for the expect phase to meet (BE-0461).
     here, later = _el("here"), _el("later")
     # 'later' is missing until the alert is dismissed.
     driver = AlertingDriver([here], label="Allow", on_dismiss=lambda d: d.screen.append(later))
 
     yaml = (
         "- name: e\n"
-        "  steps:\n    - wait: { for: { id: here }, timeout: 1 }\n"
+        "  steps:\n    - assert: [{ exists: { id: here } }]\n"
         "  expect:\n    - exists: { id: later }\n"
     )
     result = run_scenario(
@@ -430,17 +431,18 @@ def test_undeclared_interruption_fails_expect_that_otherwise_passed() -> None:
 
 
 def test_undeclared_interruption_during_a_declining_probe_still_fails_expect() -> None:
-    # The guard's own probe (`system_alert_labels`, inside `probe_native`) can be interrupted too,
-    # even on a poll where the guard clears nothing (`event is None`) — the case the retry-drain
-    # used to miss, because it lived inside the "the guard cleared something" branch alone
-    # (BE-0406 Unit 2b). The original assertion detail must also survive alongside the alert note,
-    # appended rather than replaced.
-    class _DeclinesDuringProbe(FakeDriver):
-        def system_alert_labels(self) -> list[str]:
+    # The recovery read can meet an alert the monitor declines, even when it answers nothing and so
+    # licenses no retry — the case the retry-drain used to miss, because it lived inside the
+    # "something cleared" branch alone (BE-0406 Unit 2b). The original assertion detail must also
+    # survive alongside the alert note, appended rather than replaced.
+    class _DeclinesDuringRead(ResolvingFakeDriver):
+        def query_resolving(
+            self, mode: base.ResolveMode, *, force_check: bool = False
+        ) -> base.ResolvingRead:
             self.interruptions_declined_to_drain = [["Save", "Not Now"]]
-            return super().system_alert_labels()
+            return super().query_resolving(mode, force_check=force_check)
 
-    driver = _DeclinesDuringProbe([_el("here")])
+    driver = _DeclinesDuringRead([_el("here")])
     yaml = "- name: e\n  steps: []\n  expect:\n    - exists: { id: later }\n"
     result = run_scenario(driver, load_scenarios(yaml)[0], alert_guard=AlertGuardConfig())
     assert result.ok is False
@@ -472,7 +474,7 @@ def test_undeclared_interruption_during_the_expect_retry_still_fails_it(
 
     yaml = (
         "- name: e\n"
-        "  steps:\n    - wait: { for: { id: here }, timeout: 1 }\n"
+        "  steps:\n    - assert: [{ exists: { id: here } }]\n"
         "  expect:\n    - exists: { id: later }\n"
     )
     result = run_scenario(

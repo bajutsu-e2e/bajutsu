@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 from _orch import FakeClock, _scenario
-from conftest import el, guard_rule
+from conftest import AlertingDriver, el, guard_rule
 
 from bajutsu.common.assertions import EvalContext, VisualContext
 from bajutsu.common.drivers import base
@@ -25,6 +25,7 @@ from bajutsu.common.evidence.intervals import Interval
 from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.common.evidence.sink import RunArtifactWriter
 from bajutsu.common.orchestrator import AlertGuardConfig, RunResult, TargetRuntime, run_scenario
+from bajutsu.common.orchestrator.loop._step_runner import _StepRunner
 from bajutsu.common.scenario import Interrupt, Scenario
 
 _APP_SCREEN = [el("app.button", label="tap me"), el("app.value", value="7")]
@@ -444,7 +445,12 @@ def _alert_button(label: str) -> base.Element:
     }
 
 
-def test_alert_guard_retry_polls_every_expect_entry_against_its_own_target() -> None:
+def test_alert_guard_retry_polls_every_expect_entry_against_its_own_target(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The alert stands for one arriving after the step; the scenario-entry read would clear it first.
+    monkeypatch.setattr(_StepRunner, "_clear_entry_alert", lambda *_a, **_k: None)
+
     # BE-0428 regression: the retry `_evaluate_expect` run after a guard dismissal must forward
     # `target_runtimes`/`primary_target` exactly like the first evaluation. Before the fix, the
     # retry call site dropped both, so every entry — the `web` one included — was silently
@@ -455,13 +461,12 @@ def test_alert_guard_retry_polls_every_expect_entry_against_its_own_target() -> 
     # dismiss; `web` starts with the wrong value so the first `expect` evaluation fails and the
     # guard fires at all, and the dismissal's own `react` hook flips it to the right one — standing
     # in for whatever the alert was covering on that platform's own client.
-    def react(d: FakeDriver, kind: str, _arg: object) -> None:
-        if kind == "handle_system_alert":
-            d.system_alert_buttons = []  # the alert cleared
-            web.screen[0] = el("shared.value", value="web-side")
+    def on_dismiss(_d: AlertingDriver) -> None:
+        web.screen[0] = el("shared.value", value="web-side")
 
-    app = FakeDriver(screen=[el("shared.value", value="app-side")], react=react)
-    app.system_alert_buttons = [_alert_button("Allow")]
+    app = AlertingDriver(
+        [el("shared.value", value="app-side")], label="Allow", on_dismiss=on_dismiss
+    )
     web = FakeDriver(screen=[el("shared.value", value="not-yet-set")])
 
     r = run_scenario(
