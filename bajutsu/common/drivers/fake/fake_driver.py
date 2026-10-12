@@ -293,7 +293,13 @@ class FakeDriver:
         return self.notification_banner
 
     def set_interruption_policy(
-        self, rules: Sequence[tuple[frozenset[str], str, frozenset[str]]], governs: bool
+        self,
+        rules: Sequence[tuple[frozenset[str], str, frozenset[str]]],
+        governs: bool,
+        *,
+        in_tree_rules: Sequence[tuple[frozenset[str], str, frozenset[str]]] = (),
+        pacing: base.AlertPacing | None = None,
+        scenario_start: bool = False,
     ) -> None:
         """Record the policy the orchestrator pushed, so a test can assert what the backend was told.
 
@@ -307,6 +313,13 @@ class FakeDriver:
             ],
             governs,
         )
+        # Kept apart from `interruption_policy`, whose shape nearly every assertion compares
+        # against, so only a test about the in-tree push (BE-0461) reads these.
+        self.interruption_in_tree_rules = [
+            (set(identify), tap, set(exclude)) for identify, tap, exclude in in_tree_rules
+        ]
+        self.interruption_pacing = pacing
+        self.interruption_scenario_start = scenario_start
 
     def drain_interruptions(self) -> base.DrainedInterruptions:
         """Hand back (and clear) whatever the three `*_to_drain` lists were seeded with."""

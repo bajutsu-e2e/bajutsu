@@ -9,6 +9,7 @@ step rather than tapping something guessed.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -62,9 +63,12 @@ def test_the_step_reserves_its_own_prompt_on_the_interruption_policy_while_it_wa
             ] = []
 
         def set_interruption_policy(
-            self, rules: Sequence[tuple[frozenset[str], str, frozenset[str]]], governs: bool
+            self,
+            rules: Sequence[tuple[frozenset[str], str, frozenset[str]]],
+            governs: bool,
+            **kwargs: Any,
         ) -> None:
-            super().set_interruption_policy(rules, governs)
+            super().set_interruption_policy(rules, governs, **kwargs)
             assert self.interruption_policy is not None
             self.policy_pushes.append(self.interruption_policy)
 
@@ -101,9 +105,12 @@ def test_the_reservation_is_restored_even_when_the_step_times_out() -> None:
             ] = []
 
         def set_interruption_policy(
-            self, rules: Sequence[tuple[frozenset[str], str, frozenset[str]]], governs: bool
+            self,
+            rules: Sequence[tuple[frozenset[str], str, frozenset[str]]],
+            governs: bool,
+            **kwargs: Any,
         ) -> None:
-            super().set_interruption_policy(rules, governs)
+            super().set_interruption_policy(rules, governs, **kwargs)
             assert self.interruption_policy is not None
             self.policy_pushes.append(self.interruption_policy)
 

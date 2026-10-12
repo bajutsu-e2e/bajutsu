@@ -17,7 +17,9 @@ from ._functions import (
     _as_float,
     _await_health,
     _http_transport,
+    _is_resolving_read,
     _parse_drain_fold,
+    _parse_resolving_drain_fold,
     _parse_tap_drain_fold,
     _tip_is_up,
     _to_element,
@@ -156,6 +158,12 @@ class XcuitestDriver:
 
         def _tracking_transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
             reply = _channel_transport(method, path, body)
+            if _is_resolving_read(method, path):
+                # A resolving read drains the runner's whole store into its reply, as `/tap` does,
+                # so it leaves the carry just as current (BE-0461 Unit 2).
+                carry.drained = carry.drained.merged_with(_parse_resolving_drain_fold(reply.raw))
+                carry.is_current = True
+                return reply
             if path != "/tap":
                 # This call may itself have let something new interrupt, or (the stale-retry
                 # re-resolution case) run *between* the tap the carry describes and its own retry, so
@@ -895,7 +903,13 @@ class XcuitestDriver:
         return banners[0]["frame"] if banners else None
 
     def set_interruption_policy(
-        self, rules: Sequence[tuple[frozenset[str], str, frozenset[str]]], governs: bool
+        self,
+        rules: Sequence[tuple[frozenset[str], str, frozenset[str]]],
+        governs: bool,
+        *,
+        in_tree_rules: Sequence[tuple[frozenset[str], str, frozenset[str]]] = (),
+        pacing: base.AlertPacing | None = None,
+        scenario_start: bool = False,
     ) -> None:
         """Push the button policy the runner's interruption monitor applies.
 
@@ -914,22 +928,29 @@ class XcuitestDriver:
 
         A rule's identifying labels are sent as a sorted list so the request is byte-stable across
         runs — the set is order-free, and a stable body keeps a replayed request comparable.
+
+        The in-tree rules follow the native ones, each marked with its surface (BE-0461): the runner
+        matches each surface's rules in the order they arrive, so appending keeps both orders. The
+        runner answers them only inside a resolving `/elements`; its interruption monitor never
+        matches one.
         """
-        reply = self._transport(
-            "POST",
-            "/interruptionPolicy",
-            {
-                "rules": [
-                    {
-                        "identify": sorted(identify),
-                        "tap": tap,
-                        **({"exclude": sorted(exclude)} if exclude else {}),
-                    }
-                    for identify, tap, exclude in rules
-                ],
-                "governs": governs,
-            },
-        )
+        body: dict[str, object] = {
+            "rules": [
+                *(_policy_rule(rule, "native") for rule in rules),
+                *(_policy_rule(rule, "inTree") for rule in in_tree_rules),
+            ],
+            "governs": governs,
+        }
+        if pacing is not None:
+            body |= {
+                "pollIntervalSeconds": pacing.poll_interval,
+                "retapDelaySeconds": pacing.retap_delay,
+                "maxTapsPerShowing": pacing.max_taps,
+                "giveUpSeconds": pacing.give_up,
+            }
+        if scenario_start:
+            body["scenarioStart"] = True
+        reply = self._transport("POST", "/interruptionPolicy", body)
         if reply.status != _OK:
             # A runner that did not store the policy answers the next interrupting alert with
             # XCUITest's own default button, which is the silent grant this method exists to end —
@@ -1140,3 +1161,16 @@ def _split_alert_titles(elements: list[base.Element]) -> tuple[list[base.Element
     buttons = [el for el in elements if el["identifier"] != _ALERT_TITLE_ID]
     titles = [el["label"] for el in elements if el["identifier"] == _ALERT_TITLE_ID and el["label"]]
     return buttons, titles
+
+
+def _policy_rule(
+    rule: tuple[frozenset[str], str, frozenset[str]], surface: str
+) -> dict[str, object]:
+    """One `/interruptionPolicy` rule entry, its sets sorted so the body is byte-stable."""
+    identify, tap, exclude = rule
+    return {
+        "identify": sorted(identify),
+        "tap": tap,
+        **({"exclude": sorted(exclude)} if exclude else {}),
+        "surface": surface,
+    }

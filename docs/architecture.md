@@ -1032,8 +1032,9 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   an interruption monitor that presses the same rule-named button the reactive guard would, and
   records what it pressed as an ordinary `AlertEvent`; the orchestrator resolves each rule's labels
   and pushes them, alongside whether the guard governs the scenario at all, once per scenario over
-  `POST /interruptionPolicy`, dropping a rule this surface can never meet (an in-process prompt
-  never interrupts another process's interaction). A `handleSystemAlert` step's own prompt/choice
+  `POST /interruptionPolicy`. Each rule carries its surface, and the monitor matches only the native
+  ones (an in-process prompt never interrupts another process's interaction); the in-tree rules
+  travel with the guard's pacing for the runner's resolving reads (BE-0461). A `handleSystemAlert` step's own prompt/choice
   form is not necessarily among those rules — the step exists precisely for a prompt an author
   chooses not to declare in `systemAlertHandling` — so while that one step waits the orchestrator
   pushes one more rule for the step's own target alongside the scenario's, and restores the

@@ -901,6 +901,16 @@ def test_actuation_write_gets_a_longer_bounded_timeout_than_reads() -> None:
     assert _ACTUATION_TIMEOUT_SECONDS <= 60  # still bounded
 
 
+def test_a_resolving_read_gets_the_actuation_window() -> None:
+    # A resolving `/elements` may press a button, so it gives up the retry a read leans on and gets a
+    # write's single longer window instead (BE-0461 Unit 2); a plain or explicitly non-resolving read
+    # keeps the tight one.
+    assert _timeout_for("GET", "/elements?resolveAlerts=true") == _ACTUATION_TIMEOUT_SECONDS
+    assert _timeout_for("GET", "/elements?resolveAlerts=inTree") == _ACTUATION_TIMEOUT_SECONDS
+    assert _timeout_for("GET", "/elements?resolveAlerts=false") == _SOCKET_TIMEOUT_SECONDS
+    assert _timeout_for("GET", "/elements") == _SOCKET_TIMEOUT_SECONDS
+
+
 class _FakeSocket:
     """A `.sock`-shaped stand-in `_is_stale` never actually inspects in these tests.
 
@@ -1415,6 +1425,21 @@ def test_is_retry_eligible_splits_on_delivery_and_idempotency() -> None:
     assert _is_retry_eligible("POST", delivered=True) is False
 
 
+def test_a_delivered_resolving_read_is_not_retry_eligible() -> None:
+    # It may already have pressed an alert button; re-sending it could press a second one.
+    path = "/elements?resolveAlerts=true&forceCheck=true"
+    assert _is_retry_eligible("GET", delivered=True, path=path) is False
+    assert _is_retry_eligible("GET", delivered=False, path=path) is True
+    assert _is_retry_eligible("GET", delivered=True, path="/elements?resolveAlerts=false") is True
+
+
+def test_a_resolving_read_that_times_out_after_delivery_is_not_re_sent() -> None:
+    inner, calls = _counting([_TransportFailure("timed out", delivered=True), _Reply(status="ok")])
+    with pytest.raises(XcuitestChannelError, match="GET /elements"):
+        _with_retry(inner, sleep=lambda _s: None)("GET", "/elements?resolveAlerts=true", None)
+    assert calls[0] == 1
+
+
 def test_transient_read_failure_retries_then_succeeds() -> None:
     inner, calls = _counting([_TransportFailure("timed out", delivered=True), _Reply(status="ok")])
     reply = _with_retry(inner, sleep=lambda _s: None)("GET", "/elements", None)
@@ -1523,6 +1548,16 @@ def test_a_delivered_write_crash_is_never_re_issued_and_fails_distinctly() -> No
             "POST", "/gesture", {"kind": "pinch"}
         )
     assert calls[0] == 1  # never re-issued
+
+
+def test_a_delivered_resolving_read_crash_is_never_re_issued() -> None:
+    # BE-0287's re-issue rides the same predicate as the BE-0207 retry, so one rule covers both.
+    inner, calls = _counting([_crash("GET", delivered=True), _Reply(status="ok")])
+    with pytest.raises(XcuitestRunnerCrashError):
+        _with_crash_recovery(inner, health=lambda _t: _HealthWait.READY)(
+            "GET", "/elements?resolveAlerts=inTree", None
+        )
+    assert calls[0] == 1
 
 
 def test_a_declared_crash_offers_the_diagnostics_hook_the_moment_it_happens() -> None:
@@ -2068,17 +2103,104 @@ def test_set_interruption_policy_sends_the_rules_and_governs() -> None:
                 # An exclusion set travels sorted, and a rule without one carries no key at all, so
                 # an older runner's body is unchanged for every rule that needs none.
                 "rules": [
-                    {"identify": ["Allow", "Don't Allow"], "tap": "Don't Allow"},
+                    {
+                        "identify": ["Allow", "Don't Allow"],
+                        "tap": "Don't Allow",
+                        "surface": "native",
+                    },
                     {
                         "identify": ["Allow", "Don't Allow"],
                         "tap": "Allow",
                         "exclude": ["title: A", "title: B"],
+                        "surface": "native",
                     },
                 ],
                 "governs": True,
             },
         )
     ]
+
+
+def test_set_interruption_policy_appends_in_tree_rules_and_sends_pacing_and_the_start_mark() -> (
+    None
+):
+    # The in-tree rules follow the native ones, each carrying its surface: the runner matches each
+    # surface's rules in arrival order, so appending keeps both orders (BE-0461 Unit 2).
+    sent: list[tuple[str, str, Any]] = []
+
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        sent.append((method, path, body))
+        return _Reply(status="ok")
+
+    _driver(transport).set_interruption_policy(
+        [(frozenset({"Allow", "Don't Allow"}), "Don't Allow", frozenset())],
+        True,
+        in_tree_rules=[(frozenset({"Save Password", "Not Now"}), "Not Now", frozenset({"Never"}))],
+        pacing=base.AlertPacing(poll_interval=5.0, retap_delay=1.0, max_taps=3, give_up=10.0),
+        scenario_start=True,
+    )
+    assert sent == [
+        (
+            "POST",
+            "/interruptionPolicy",
+            {
+                "rules": [
+                    {
+                        "identify": ["Allow", "Don't Allow"],
+                        "tap": "Don't Allow",
+                        "surface": "native",
+                    },
+                    {
+                        "identify": ["Not Now", "Save Password"],
+                        "tap": "Not Now",
+                        "exclude": ["Never"],
+                        "surface": "inTree",
+                    },
+                ],
+                "governs": True,
+                "pollIntervalSeconds": 5.0,
+                "retapDelaySeconds": 1.0,
+                "maxTapsPerShowing": 3,
+                "giveUpSeconds": 10.0,
+                "scenarioStart": True,
+            },
+        )
+    ]
+
+
+def test_drain_interruptions_reads_surfaces_unidentified_and_given_up_records() -> None:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        return _Reply(
+            status="ok",
+            raw=json.dumps(
+                {
+                    "labels": ["Don’t Allow", "Not Now"],
+                    "unmatched": [],
+                    "tappedSurfaces": ["native", "inTree"],
+                    "unidentified": [["Save", "Cancel"]],
+                    "gaveUp": [
+                        {"identify": ["Not Now", "Save"], "surface": "inTree", "tap": "Not Now"}
+                    ],
+                }
+            ).encode(),
+        )
+
+    drained = _driver(transport).drain_interruptions()
+    assert drained.tapped_surfaces == ["native", "inTree"]
+    assert drained.unidentified == [["Save", "Cancel"]]
+    assert drained.gave_up == [
+        base.GaveUpAlert(identify=["Not Now", "Save"], surface="inTree", tap="Not Now")
+    ]
+
+
+def test_a_drain_from_a_runner_predating_surfaces_reads_every_tap_as_native() -> None:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        return _Reply(status="ok", raw=json.dumps({"labels": ["Allow"], "unmatched": []}).encode())
+
+    drained = _driver(transport).drain_interruptions()
+    assert drained.surface_of(0) == "native"
+    assert drained.unidentified == []
+    assert drained.gave_up == []
 
 
 def test_drain_interruptions_reads_the_labels_the_monitor_tapped_and_declined() -> None:
@@ -2138,6 +2260,103 @@ def test_merged_drains_keep_each_tap_with_its_own_alert() -> None:
     )
     merged = first.merged_with(later)
     assert (merged.alert_of(0), merged.alert_of(1)) == ([], ["Allow", "title: x"])
+
+
+def test_a_resolving_reply_without_its_records_is_a_channel_error() -> None:
+    # A runner predating BE-0461 ignores the parameter and returns a plain tree, having pressed
+    # nothing; reading that as "no alert" would let the caller proceed as if one had been resolved.
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        return _Reply(status="ok", raw=json.dumps({"status": "ok", "elements": []}).encode())
+
+    with pytest.raises(XcuitestChannelError, match="resolveAlerts"):
+        _driver(transport)._transport("GET", "/elements?resolveAlerts=true", None)
+
+
+_RECORDS: dict[str, Any] = {
+    "status": "ok",
+    "elements": [],
+    "labels": ["Not Now"],
+    "unmatched": [],
+    "tappedSurfaces": ["inTree"],
+    "unidentified": [],
+    "gaveUp": [],
+}
+
+
+@pytest.mark.parametrize(
+    "broken",
+    [
+        {"tappedSurfaces": []},  # shorter than `labels`
+        {"tappedSurfaces": ["intree"]},  # an unknown surface
+        {"unidentified": None},
+        {"gaveUp": [{"identify": ["Not Now"], "surface": "inTree"}]},  # no `tap`
+        {"gaveUp": ["Not Now"]},  # not an object
+    ],
+)
+def test_a_resolving_reply_with_malformed_records_is_a_channel_error(
+    broken: dict[str, Any],
+) -> None:
+    # A runner that understood the parameter sends every record well formed; reading a broken one
+    # leniently could attribute an in-tree press to SpringBoard or lose a give-up.
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        return _Reply(status="ok", raw=json.dumps(_RECORDS | broken).encode())
+
+    with pytest.raises(XcuitestChannelError, match="malformed records"):
+        _driver(transport)._transport("GET", "/elements?resolveAlerts=true", None)
+
+
+def test_a_resolving_reply_that_is_not_json_is_a_channel_error() -> None:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        return _Reply(status="ok", raw=b"<html>")
+
+    with pytest.raises(XcuitestChannelError, match="no JSON"):
+        _driver(transport)._transport("GET", "/elements?resolveAlerts=inTree", None)
+
+
+def test_a_resolving_reply_s_records_make_the_carry_current() -> None:
+    # It drained the runner's whole store, so the next drain needs no round trip of its own.
+    sent: list[str] = []
+
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        sent.append(path)
+        return _Reply(
+            status="ok",
+            raw=json.dumps(
+                {
+                    "status": "ok",
+                    "elements": [],
+                    "labels": ["Not Now"],
+                    "unmatched": [],
+                    "tappedSurfaces": ["inTree"],
+                    "unidentified": [],
+                    "gaveUp": [],
+                }
+            ).encode(),
+        )
+
+    driver = _driver(transport)
+    driver._transport("GET", "/elements?resolveAlerts=true", None)
+    drained = driver.drain_interruptions()
+    assert drained.tapped == ["Not Now"]
+    assert drained.tapped_surfaces == ["inTree"]
+    assert sent == ["/elements?resolveAlerts=true"]
+
+
+def test_merged_drains_keep_each_tap_with_its_own_surface_and_append_the_new_records() -> None:
+    first = base.DrainedInterruptions(
+        tapped=["Allow"], declined=[], banners=[], unidentified=[["Save", "Cancel"]]
+    )
+    later = base.DrainedInterruptions(
+        tapped=["Not Now"],
+        declined=[],
+        banners=[],
+        tapped_surfaces=["inTree"],
+        gave_up=[base.GaveUpAlert(identify=["Not Now"], surface="inTree", tap="Not Now")],
+    )
+    merged = first.merged_with(later)
+    assert merged.tapped_surfaces == ["native", "inTree"]
+    assert merged.unidentified == [["Save", "Cancel"]]
+    assert merged.gave_up == later.gave_up
 
 
 def test_drain_interruptions_reads_no_banners_from_a_runner_that_predates_them() -> None:

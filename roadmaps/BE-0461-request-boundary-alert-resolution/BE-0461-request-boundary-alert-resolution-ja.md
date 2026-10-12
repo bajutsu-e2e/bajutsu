@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0461") |
-| 実装 PR | [#2152](https://github.com/bajutsu-e2e/bajutsu/pull/2152)（Unit 1） |
+| 実装 PR | [#2152](https://github.com/bajutsu-e2e/bajutsu/pull/2152)（Unit 1）、[#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM)（Unit 2） |
 | トピック | Platform support |
 <!-- /BE-METADATA -->
 
@@ -368,7 +368,7 @@ capability のない backend は、今のゲートを使い続けます。明示
 > ともに記録します。
 
 - [x] Unit 1：スナップショットの挙動、SpringBoard の確認のコスト、押下の所要時間、ステップのコストを測る（関門）
-- [ ] Unit 2：`resolveAlerts` でアラートを片付ける `/elements`
+- [x] Unit 2：`resolveAlerts` でアラートを片付ける `/elements`
 - [ ] Unit 3：`handleSystemAlert` ステップのための `POST /systemAlert/resolve`
 - [ ] Unit 4：`RESOLVE_ALERTS` capability の内側にある Python 側の薄い経路
 - [ ] Unit 5：範囲を狭めた、ステップあたり 1 回のリトライ
@@ -387,6 +387,28 @@ capability のない backend は、今のゲートを使い続けます。明示
   直しました。`--exclude` で自己宣言型のシナリオファイルを除いたあとも、`bajutsu run` がシナリオ
   ディレクトリ全体を拒んでいました。この拒否のため、計測で `make run-swiftui` をそのまま使えません
   でした。
+- [#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM) — Unit 2 です。着手の前に、Unit 1 で
+  runner が失われた件をメンテナーが判断しました。アラートを片付けるコストではなく、BE-0416 のバナーの
+  経路にもともとある不具合と見て、Unit 2 を進めることにしました。`GET /elements` に `resolveAlerts`
+  （`true` または `inTree`）と `forceCheck` を足しました。片付ける読み取りは、送られた
+  `pollIntervalSeconds` につき多くとも 1 回 SpringBoard を確認してから、スナップショットを取ります。
+  続いて SpringBoard を確認し直し、アラートがなければ、最初に一致した in-tree のルールに答えます。
+  返信は記録をすべて drain し、`springboardChecked` と `withheld` を載せます。表示ごとのキーと
+  ペース制御のメモは `InterruptionPolicyStore` が持ち、割り込み監視、片付ける読み取り、操作の完了の
+  3 つが共有します。ストアは *unidentified* と *gave up* も記録します。`push_interruption_policy` は
+  in-tree のルールを `tree_dedup_rules` の順に送り、ガードのペース制御の値と `scenarioStart` の印を
+  添えます。両方の表示面を名乗るルールには `ValueError` を出します。ドライバは、BE-0207 の再送、
+  BE-0287 の再発行、タイムアウトの長さについて、片付ける読み取りを書き込みと同じに扱います。記録の
+  ない返信には `XcuitestChannelError` を出し、記録は `_drain_carry` に最新のものとして畳み込みます。
+  片付ける読み取りを送る箇所はまだありません。`query_resolving` と `RESOLVE_ALERTS` のトークンは
+  Unit 4 で足します。設計の記述と食い違う点が 1 つあります。設計には、除外ラベルを持つ native の
+  ルールを `push_interruption_policy` がすでに拒んでいるとありますが、実際には拒んでいません。
+  `notifications` は除外ラベルごと送られ、runner もその除外を守るため、この変更でも拒否は足して
+  いません。ペース制御の定数は `alert_guard_config.py` に移し、Unit 7 まではガードもそこから読みます。
+  Unit 4 が片付ける読み取りを送り始めるまでは、native のキーを解除するのは完了した操作だけです。
+  割り込み監視が割り込んだ操作がそのあと例外で終わるとキーは残ります。次の操作が完了する前に同じ
+  プロンプトがまた出ると、監視はボタンを押しますが、記録はしません。設計はこの隙間を受け入れて
+  います。Unit 4 の片付ける読み取りによる確認で、この隙間はなくなります。
 
 ## 参考
 

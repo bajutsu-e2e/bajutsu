@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0461") |
-| Implementing PR | [#2152](https://github.com/bajutsu-e2e/bajutsu/pull/2152) (unit 1) |
+| Implementing PR | [#2152](https://github.com/bajutsu-e2e/bajutsu/pull/2152) (unit 1), [#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM) (unit 2) |
 | Topic | Platform support |
 <!-- /BE-METADATA -->
 
@@ -450,7 +450,7 @@ detector. The change that deletes the detector updates them as well (BE-0113).
 > (oldest first), linking the PRs.
 
 - [x] Unit 1 — measure snapshot behavior, SpringBoard cost, press latency, and step cost (gate)
-- [ ] Unit 2 — alert-aware `/elements` behind `resolveAlerts`
+- [x] Unit 2 — alert-aware `/elements` behind `resolveAlerts`
 - [ ] Unit 3 — `POST /systemAlert/resolve` for the `handleSystemAlert` step
 - [ ] Unit 4 — thin Python path behind the `RESOLVE_ALERTS` capability
 - [ ] Unit 5 — narrowed once-per-step retry
@@ -468,6 +468,28 @@ Log:
   Review weighs that loss before Unit 2 starts. The PR also fixes a BE-0428 regression. `bajutsu
   run` refused a whole scenarios dir even after `--exclude` had removed its self-declaring files.
   That refusal kept `make run-swiftui` from running as is during the measurement.
+- [#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM) — Unit 2. Before it started, the
+  maintainer judged the Unit 1 runner loss to be an existing defect in the BE-0416 banner path, not
+  a cost of resolving, and let Unit 2 proceed. `GET /elements` gains `resolveAlerts` (`true` or
+  `inTree`) and `forceCheck`. A resolving read checks SpringBoard at most once per pushed
+  `pollIntervalSeconds` and takes the snapshot. It then answers the first matching in-tree rule after
+  a SpringBoard re-check finds no alert. The reply drains every record and carries
+  `springboardChecked` and `withheld`. `InterruptionPolicyStore` holds the per-showing keys and the
+  pacing memo. The interruption monitor, the resolving read, and actuation completions share them.
+  The store also records *unidentified* and *gave up*. `push_interruption_policy` sends the in-tree
+  rules in `tree_dedup_rules` order, with the guard's pacing and a `scenarioStart` mark. It raises
+  `ValueError` on a rule that claims both surfaces. The driver treats a resolving read as a write for
+  the BE-0207 retry, the BE-0287 re-issue, and the timeout window. It raises `XcuitestChannelError`
+  on a reply without records, and folds the records into `_drain_carry` as current. Nothing sends a
+  resolving read yet: Unit 4 adds `query_resolving` and the `RESOLVE_ALERTS` token. The change
+  departs from the design text in one place. The design says `push_interruption_policy` already
+  refuses a native rule with an exclusion set, but it does not. `notifications` is pushed with its
+  exclusion, and the runner honors it, so this change adds no such refusal. The pacing constants
+  moved to `alert_guard_config.py`, and the gate reads them from there until Unit 7. Until Unit 4
+  sends resolving reads, a completed actuation is the only event that re-arms a native key. If the
+  interaction the monitor interrupted then raises, the key stays, and the same prompt returning
+  before the next completed actuation is pressed but not reported again. The design accepts this
+  window. The checks in Unit 4's resolving reads close it.
 
 ## References
 

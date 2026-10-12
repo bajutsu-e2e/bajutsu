@@ -31,6 +31,28 @@ paths:
     get:
       operationId: queryElements
       summary: Snapshot the app's element tree.
+      description: >-
+        A plain read (no `resolveAlerts`, or `false`) is a pure read. With `true` the runner first
+        answers whatever SpringBoard alert the pushed policy names (at most one check per
+        `pollIntervalSeconds`), takes the snapshot, then answers an in-tree prompt a pushed
+        `inTree` rule names, and folds what it recorded into the reply (BE-0461 Unit 2). `inTree`
+        skips the SpringBoard step and runs the rest. Such a read may press a button, so a client
+        must not re-send one whose request was delivered.
+      parameters:
+        - name: resolveAlerts
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: ["false", "true", inTree]
+        - name: forceCheck
+          in: query
+          required: false
+          description: >-
+            With `resolveAlerts=true`, skip the SpringBoard check's rate limit — the recovery read
+            after a refused actuation or a failed check (BE-0461 Unit 5).
+          schema:
+            type: boolean
       responses:
         "200":
           description: The current snapshot, one handle minted per element.
@@ -562,6 +584,78 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Element"
+        labels:
+          type: array
+          description: >-
+            Present on every `resolveAlerts` reply, empty arrays included, and absent on a plain
+            read: the runner's whole store, drained into this reply as `tap` folds it (BE-0407
+            Unit 6). A `resolveAlerts` reply lacking it comes from a runner predating BE-0461,
+            which the client treats as a channel error. See `InterruptionsReply` for every
+            record field below.
+          items:
+            type: string
+        unmatched:
+          type: array
+          items:
+            type: array
+            items:
+              type: string
+        banners:
+          type: array
+          items:
+            type: string
+        tappedAlerts:
+          type: array
+          items:
+            type: array
+            items:
+              type: string
+        tappedSurfaces:
+          type: array
+          items:
+            $ref: "#/components/schemas/AlertSurface"
+        unidentified:
+          type: array
+          items:
+            type: array
+            items:
+              type: string
+        gaveUp:
+          type: array
+          items:
+            $ref: "#/components/schemas/GaveUpRecord"
+        springboardChecked:
+          type: boolean
+          description: >-
+            True when this reply's own SpringBoard check ran and found no alert, and the in-tree
+            pass's re-check, when it ran, found none either. A fact of this request, not a cache.
+        withheld:
+          type: boolean
+          description: >-
+            True when the pacing memo kept this request from pressing a showing that already holds
+            a key, inside the re-tap delay.
+    AlertSurface:
+      type: string
+      enum: [native, inTree]
+      description: >-
+        Where a rule's prompt shows: a SpringBoard alert (`native`), which the interruption monitor
+        and the SpringBoard check answer, or a prompt inside the application's own tree (`inTree`),
+        which only a resolving read's in-tree pass answers.
+    GaveUpRecord:
+      type: object
+      required: [identify, surface, tap]
+      description: >-
+        A showing the runner stopped pressing: its tap ceiling was reached, or (in-tree) its button
+        stayed unhittable past the give-up bound. Recorded once per showing, beside its answer.
+      properties:
+        identify:
+          type: array
+          items:
+            type: string
+        surface:
+          $ref: "#/components/schemas/AlertSurface"
+        tap:
+          type: string
     AppStateReply:
       type: object
       required: [status, state]
@@ -632,6 +726,23 @@ components:
             type: array
             items:
               type: string
+        tappedSurfaces:
+          type: array
+          description: Per entry of `labels`, folded for the same reason. See `InterruptionsReply`.
+          items:
+            $ref: "#/components/schemas/AlertSurface"
+        unidentified:
+          type: array
+          description: Folded for the same reason as `labels`. See `InterruptionsReply`.
+          items:
+            type: array
+            items:
+              type: string
+        gaveUp:
+          type: array
+          description: Folded for the same reason as `labels`. See `InterruptionsReply`.
+          items:
+            $ref: "#/components/schemas/GaveUpRecord"
     ErrorReply:
       type: object
       required: [status, message]
@@ -657,6 +768,28 @@ components:
             Whether the scenario's guard is on at all, independent of whether any rule survived the
             driver's own filtering. Decides whether a decline gets recorded for the next drain
             (BE-0406 Unit 2b).
+        pollIntervalSeconds:
+          type: number
+          description: >-
+            The least time between two SpringBoard checks a resolving read makes
+            (`systemAlertHandling.pollInterval`). Absent keeps the runner's default of one second.
+        retapDelaySeconds:
+          type: number
+          description: The least time before a showing the runner pressed is pressed again.
+        maxTapsPerShowing:
+          type: integer
+          description: How many presses one showing gets before the runner records it as given up.
+        giveUpSeconds:
+          type: number
+          description: >-
+            How long an in-tree button that is present but not hittable is retried before its
+            showing is recorded as given up.
+        scenarioStart:
+          type: boolean
+          description: >-
+            Set on the push at scenario start only. Also clears the per-showing keys and the pacing
+            memo, so nothing a previous scenario answered suppresses the same prompt after a
+            relaunch; a push inside a scenario keeps them.
     InterruptionRule:
       type: object
       required: [identify, tap]
@@ -677,6 +810,8 @@ components:
             title, the one prompt sharing its buttons. Absent means none.
           items:
             type: string
+        surface:
+          $ref: "#/components/schemas/AlertSurface"
     InterruptionsReply:
       type: object
       required: [labels, unmatched, banners]
@@ -714,6 +849,29 @@ components:
             type: array
             items:
               type: string
+        tappedSurfaces:
+          type: array
+          description: >-
+            Per entry of `labels`, in the same order, the surface of the rule that answered it, so
+            a reader can tell a SpringBoard press from an in-tree one (BE-0461). Absent from a
+            runner predating it, which a client reads as every answer being native.
+          items:
+            $ref: "#/components/schemas/AlertSurface"
+        unidentified:
+          type: array
+          description: >-
+            One button list per SpringBoard alert a resolving read found and no rule identified,
+            recorded on every check, oldest first. Unlike `unmatched` it fails nothing; it feeds the
+            blocked-screen note (BE-0461).
+          items:
+            type: array
+            items:
+              type: string
+        gaveUp:
+          type: array
+          description: Showings the runner stopped pressing, oldest first (BE-0461).
+          items:
+            $ref: "#/components/schemas/GaveUpRecord"
     EmptyRequest:
       type: object
       description: >-

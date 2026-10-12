@@ -8,8 +8,9 @@ import logging
 import select
 import socket
 import time
+import urllib.parse
 from collections.abc import Callable, Mapping
-from typing import Any
+from typing import Any, Literal
 
 from bajutsu.common.drivers import base
 
@@ -90,14 +91,31 @@ _MAX_CRASH_RECOVERIES = 3
 _MAX_HUNG_CALLS = 3
 
 
-def _timeout_for(method: str) -> float:
+def _is_resolving_read(method: str, path: str) -> bool:
+    """Whether a call is a `GET /elements` that may press an alert button (BE-0461 Unit 2).
+
+    Such a read is not idempotent, so every rule below that leans on a `GET` being a pure read
+    treats it as a write instead.
+    """
+    if method != "GET":
+        return False
+    route, _, query = path.partition("?")
+    if route != "/elements":
+        return False
+    return urllib.parse.parse_qs(query).get("resolveAlerts", ["false"])[-1] != "false"
+
+
+def _timeout_for(method: str, path: str = "") -> float:
     """Per-attempt socket timeout for a channel call, chosen by its idempotency class.
 
     Reads (`GET`) get the tight `_SOCKET_TIMEOUT_SECONDS` and lean on the BE-0207 retry to absorb a
     transient blip; a write (`POST`) cannot be retried after delivery, so it gets the longer, still
-    bounded `_ACTUATION_TIMEOUT_SECONDS` to tolerate a slow actuation on a loaded host.
+    bounded `_ACTUATION_TIMEOUT_SECONDS` to tolerate a slow actuation on a loaded host. A resolving
+    read gets the write's window, since it has given up the retry a read leans on.
     """
-    return _SOCKET_TIMEOUT_SECONDS if method == "GET" else _ACTUATION_TIMEOUT_SECONDS
+    if method == "GET" and not _is_resolving_read(method, path):
+        return _SOCKET_TIMEOUT_SECONDS
+    return _ACTUATION_TIMEOUT_SECONDS
 
 
 def _tip_is_up(tree: list[base.Element]) -> bool:
@@ -186,9 +204,11 @@ def _parse_drain_fold(raw: bytes | None) -> base.DrainedInterruptions:
         else []
     )
     tapped_alerts = body.get("tappedAlerts")
+    unidentified = body.get("unidentified")
     # A runner predating BE-0416 omits `banners` entirely; an empty list is the same answer as far as
     # any caller is concerned, since such a runner never swiped a banner away to report. One
-    # predating `tappedAlerts` omits it too, and every tap then reads as an unknown alert.
+    # predating `tappedAlerts` omits it too, and every tap then reads as an unknown alert. One
+    # predating BE-0461 omits the last three, and every tap then reads as a native one.
     return base.DrainedInterruptions(
         tapped=_string_list(body.get("labels")),
         declined=declined,
@@ -198,7 +218,34 @@ def _parse_drain_fold(raw: bytes | None) -> base.DrainedInterruptions:
             if isinstance(tapped_alerts, list)
             else []
         ),
+        tapped_surfaces=[_surface(item) for item in _string_list(body.get("tappedSurfaces"))],
+        unidentified=(
+            [_string_list(group) for group in unidentified if isinstance(group, list)]
+            if isinstance(unidentified, list)
+            else []
+        ),
+        gave_up=_gave_up_list(body.get("gaveUp")),
     )
+
+
+def _surface(value: str) -> Literal["native", "inTree"]:
+    """A reply's surface name, with anything unrecognized read as the native one a runner always had."""
+    return "inTree" if value == "inTree" else "native"
+
+
+def _gave_up_list(value: object) -> list[base.GaveUpAlert]:
+    """A reply's `gaveUp` records, skipping any entry that is not an object."""
+    if not isinstance(value, list):
+        return []
+    return [
+        base.GaveUpAlert(
+            identify=_string_list(item.get("identify")),
+            surface=_surface(str(item.get("surface", ""))),
+            tap=str(item.get("tap", "")),
+        )
+        for item in value
+        if isinstance(item, dict)
+    ]
 
 
 def _parse_tap_drain_fold(raw: bytes | None) -> base.DrainedInterruptions | None:
@@ -224,6 +271,65 @@ def _parse_tap_drain_fold(raw: bytes | None) -> base.DrainedInterruptions | None
     return _parse_drain_fold(raw)
 
 
+def _parse_resolving_drain_fold(raw: bytes | None) -> base.DrainedInterruptions:
+    """The records a resolving `/elements` reply drained (BE-0461 Unit 2).
+
+    The runner attaches them to every resolving reply, empty arrays included, so their absence can
+    only mean a runner build predating the parameter, which answered with a plain tree and pressed
+    nothing. That is raised rather than read as "nothing happened": the caller asked for alerts to
+    be resolved and would otherwise proceed as if they had been.
+
+    Stricter than the standalone drain readers, which may meet an older runner: a runner that
+    understood the parameter is new enough to send every record field well formed, so anything else
+    is a broken reply, and reading it leniently could attribute an in-tree press to SpringBoard or
+    lose a give-up.
+
+    Raises:
+        XcuitestChannelError: The reply lacks a record field or carries a malformed one.
+    """
+    try:
+        body = json.loads(raw) if raw else None
+    except json.JSONDecodeError as exc:
+        raise XcuitestChannelError("the runner answered a resolveAlerts read with no JSON") from exc
+    if not isinstance(body, dict) or "labels" not in body or "unmatched" not in body:
+        raise XcuitestChannelError(
+            "the runner answered a resolveAlerts read without its records; "
+            "rebuild the runner (make runner-build)"
+        )
+    _require_resolving_records(body)
+    return _parse_drain_fold(raw)
+
+
+def _require_resolving_records(body: dict[str, Any]) -> None:
+    """Raise unless *body*'s BE-0461 record fields are present and well formed."""
+    surfaces = body.get("tappedSurfaces")
+    labels = body.get("labels")
+    gave_up = body.get("gaveUp")
+    well_formed = (
+        isinstance(labels, list)
+        and isinstance(surfaces, list)
+        and len(surfaces) == len(labels)
+        and all(item in _SURFACES for item in surfaces)
+        and isinstance(body.get("unidentified"), list)
+        and isinstance(gave_up, list)
+        and all(
+            isinstance(item, dict)
+            and isinstance(item.get("identify"), list)
+            and isinstance(item.get("tap"), str)
+            and item["tap"]
+            and item.get("surface") in _SURFACES
+            for item in gave_up
+        )
+    )
+    if not well_formed:
+        raise XcuitestChannelError(
+            "the runner answered a resolveAlerts read with malformed records"
+        )
+
+
+_SURFACES = frozenset({"native", "inTree"})
+
+
 # The two `POST` routes that change nothing a repeat could double (BE-0447): `/app/state` reads, and
 # `/app/target` assigns the same base app however many times it arrives. A device group sends one of
 # them before each member read, so a blip there must ride the same retry a `GET` read would.
@@ -239,9 +345,15 @@ def _is_retry_eligible(method: str, *, delivered: bool, path: str = "") -> bool:
     method: the runner's channel is REST-shaped, so every read is a `GET` (`/elements`, `/screenshot`,
     `/health`) and every actuation a `POST` — and the conservative direction is safe, since a request
     wrongly judged non-idempotent merely fails loudly instead of risking a double actuation. The two
-    exceptions are named one by one (`_IDEMPOTENT_POSTS`).
+    exceptions are named one by one (`_IDEMPOTENT_POSTS`), and so is the one `GET` that is not a
+    pure read: a resolving `/elements` may press an alert button, so a delivered one is never
+    re-sent (BE-0461 Unit 2).
     """
-    return not delivered or method == "GET" or path in _IDEMPOTENT_POSTS
+    if not delivered:
+        return True
+    if method == "GET":
+        return not _is_resolving_read(method, path)
+    return path in _IDEMPOTENT_POSTS
 
 
 def _with_retry(inner: TransportFn, *, sleep: Callable[[float], None] = time.sleep) -> TransportFn:
@@ -579,7 +691,7 @@ def _raw_http_transport(host: str, port: int) -> TransportFn:
         # One `app.snapshot()` per `/elements` (BE-0105), so the bounded read window still covers a
         # cold first snapshot; a write gets the longer actuation window (`_timeout_for`) since it
         # can't be retried after delivery — both still fail a wedged runner in a reasonable window.
-        timeout = _timeout_for(method)
+        timeout = _timeout_for(method, path)
         conn = state.conn
         idle_too_long = (
             conn is not None

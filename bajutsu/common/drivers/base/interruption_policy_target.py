@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Protocol, runtime_checkable
 
+from .alert_pacing import AlertPacing
 from .drained_interruptions import DrainedInterruptions
 
 
@@ -28,12 +29,29 @@ class InterruptionPolicyTarget(Protocol):
     """
 
     def set_interruption_policy(
-        self, rules: Sequence[tuple[frozenset[str], str, frozenset[str]]], governs: bool
+        self,
+        rules: Sequence[tuple[frozenset[str], str, frozenset[str]]],
+        governs: bool,
+        *,
+        in_tree_rules: Sequence[tuple[frozenset[str], str, frozenset[str]]] = (),
+        pacing: AlertPacing | None = None,
+        scenario_start: bool = False,
     ) -> None:
         """Hand the backend the buttons it may press on an interrupting alert.
 
         Each rule is its identifying labels, the label it taps, and the labels whose presence rules
         it out — the same accept test `identified_alert_rules` applies on this side.
+
+        Args:
+            rules: The rules for a prompt in another process (a SpringBoard alert), in match order.
+            governs: Whether the scenario's guard is on at all.
+            in_tree_rules: The rules for a prompt inside the application's own tree, in match order
+                (`AlertGuardConfig.tree_dedup_rules`), for a backend that answers those itself
+                inside a request (BE-0461). A backend that does not ignores them.
+            pacing: How such a backend re-presses and gives up on one showing; `None` leaves the
+                backend's own defaults.
+            scenario_start: True on the push at scenario start only, which also forgets every
+                showing a previous scenario answered.
         """
         ...
 
