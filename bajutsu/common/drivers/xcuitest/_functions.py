@@ -272,7 +272,7 @@ def _parse_tap_drain_fold(raw: bytes | None) -> base.DrainedInterruptions | None
 
 
 def _parse_resolving_drain_fold(raw: bytes | None) -> base.DrainedInterruptions:
-    """The records a resolving `/elements` reply drained (BE-0461 Unit 2).
+    """The records a resolving `/elements` or `/systemAlert/resolve` reply drained (BE-0461).
 
     The runner attaches them to every resolving reply, empty arrays included, so their absence can
     only mean a runner build predating the parameter, which answered with a plain tree and pressed
@@ -290,10 +290,10 @@ def _parse_resolving_drain_fold(raw: bytes | None) -> base.DrainedInterruptions:
     try:
         body = json.loads(raw) if raw else None
     except json.JSONDecodeError as exc:
-        raise XcuitestChannelError("the runner answered a resolveAlerts read with no JSON") from exc
+        raise XcuitestChannelError("the runner answered a resolving request with no JSON") from exc
     if not isinstance(body, dict) or "labels" not in body or "unmatched" not in body:
         raise XcuitestChannelError(
-            "the runner answered a resolveAlerts read without its records; "
+            "the runner answered a resolving request without its records; "
             "rebuild the runner (make runner-build)"
         )
     _require_resolving_records(body)
@@ -333,9 +333,7 @@ def _require_resolving_records(body: dict[str, Any]) -> None:
             for item in gave_up
         )
     ):
-        raise XcuitestChannelError(
-            "the runner answered a resolveAlerts read with malformed records"
-        )
+        raise XcuitestChannelError("the runner answered a resolving request with malformed records")
 
 
 def _is_strings(value: object) -> bool:

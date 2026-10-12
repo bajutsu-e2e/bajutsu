@@ -2268,7 +2268,7 @@ def test_a_resolving_reply_without_its_records_is_a_channel_error() -> None:
     def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         return _Reply(status="ok", raw=json.dumps({"status": "ok", "elements": []}).encode())
 
-    with pytest.raises(XcuitestChannelError, match="resolveAlerts"):
+    with pytest.raises(XcuitestChannelError, match="resolving request"):
         _driver(transport)._transport("GET", "/elements?resolveAlerts=true", None)
 
 
@@ -2369,6 +2369,75 @@ def test_a_resolving_reply_s_records_make_the_carry_current() -> None:
     assert drained.tapped == ["Not Now"]
     assert drained.tapped_surfaces == ["inTree"]
     assert sent == ["/elements?resolveAlerts=true"]
+
+
+def test_query_resolving_sends_the_mode_and_returns_the_reply_s_records_and_facts() -> None:
+    sent: list[str] = []
+    payload = _RECORDS | {"springboardChecked": True, "withheld": False}
+
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        sent.append(path)
+        if path == "/interruptionPolicy/drain":
+            return _Reply(status="ok", raw=json.dumps({"labels": [], "unmatched": []}).encode())
+        return _Reply(status="ok", elements=[], raw=json.dumps(payload).encode())
+
+    driver = _driver(transport)
+    read = driver.query_resolving("true", force_check=True)
+    assert read.drained.tapped == ["Not Now"]
+    assert read.drained.tapped_surfaces == ["inTree"]
+    assert (read.springboard_checked, read.withheld) == (True, False)
+    # The same records also sit in the carry, so the drain that consumes them reports them once.
+    assert driver.drain_interruptions().tapped == ["Not Now"]
+    assert sent == ["/elements?resolveAlerts=true&forceCheck=true"]
+    assert driver.drain_interruptions().tapped == []
+
+
+def test_query_resolving_in_tree_omits_the_force_flag_and_reads_withheld() -> None:
+    sent: list[str] = []
+
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        sent.append(path)
+        return _Reply(
+            status="ok", elements=[], raw=json.dumps(_RECORDS | {"withheld": True}).encode()
+        )
+
+    read = _driver(transport).query_resolving("inTree")
+    assert sent == ["/elements?resolveAlerts=inTree"]
+    assert (read.springboard_checked, read.withheld) == (False, True)
+
+
+def test_resolve_system_alert_posts_the_labels_and_folds_the_records_into_the_carry() -> None:
+    sent: list[tuple[str, Any]] = []
+
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        sent.append((path, body))
+        records = _RECORDS | {
+            "status": "answered",
+            "labels": ["Allow"],
+            "tappedSurfaces": ["native"],
+        }
+        return _Reply(status="answered", raw=json.dumps(records).encode())
+
+    driver = _driver(transport)
+    resolution = driver.resolve_system_alert(["Allow", "Don\u2019t Allow"])
+    assert resolution.status == "answered"
+    assert resolution.drained.tapped == ["Allow"]
+    assert sent == [("/systemAlert/resolve", {"labels": ["Allow", "Don\u2019t Allow"]})]
+    assert driver.drain_interruptions().tapped == ["Allow"]
+    assert len(sent) == 1
+
+
+def test_resolve_system_alert_on_a_runner_without_the_route_is_a_channel_error() -> None:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        return _Reply(status="error", raw=json.dumps({"status": "error"}).encode())
+
+    with pytest.raises(XcuitestChannelError, match="rebuild the runner"):
+        _driver(transport).resolve_system_alert(["Allow"])
+
+
+def test_the_xcuitest_driver_advertises_resolve_alerts() -> None:
+    assert base.Capability.RESOLVE_ALERTS in XcuitestDriver.CAPABILITIES
+    assert isinstance(_driver(lambda *_: _Reply(status="ok")), base.AlertResolvingTarget)
 
 
 def test_merged_drains_keep_each_tap_with_its_own_surface_and_append_the_new_records() -> None:

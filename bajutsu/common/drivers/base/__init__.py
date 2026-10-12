@@ -43,6 +43,7 @@ from ._shared import (
     Point,
 )
 from .alert_pacing import AlertPacing
+from .alert_resolving_target import AlertResolvingTarget
 from .ambiguous_selector import AmbiguousSelector
 from .app_crash_poll_resettable import AppCrashPollResettable
 from .app_crash_signal import AppCrashSignal
@@ -66,6 +67,12 @@ from .raw_source import RawSource
 from .raw_source_provider import RawSourceProvider
 from .read_lag_provider import ReadLagProvider
 from .read_order_provider import ReadOrderProvider
+from .resolving_read import (
+    ResolveMode,
+    ResolvingRead,
+    SystemAlertResolution,
+    SystemAlertResolutionStatus,
+)
 from .selector import Selector
 from .selector_error import SelectorError
 from .settled_cache_invalidator import SettledCacheInvalidator
@@ -84,6 +91,7 @@ __all__ = [
     "OS_BACK_BUTTON",
     "PERMISSION_SERVICES",
     "AlertPacing",
+    "AlertResolvingTarget",
     "AmbiguousSelector",
     "AppCrashPollResettable",
     "AppCrashSignal",
@@ -109,10 +117,14 @@ __all__ = [
     "RawSourceProvider",
     "ReadLagProvider",
     "ReadOrderProvider",
+    "ResolveMode",
+    "ResolvingRead",
     "Selector",
     "SelectorError",
     "SettledCacheInvalidator",
     "SettledReadProvider",
+    "SystemAlertResolution",
+    "SystemAlertResolutionStatus",
     "Trait",
     "UnsupportedAction",
     "ViewportProvider",
