@@ -61,7 +61,16 @@ to drive an app.
 Re-issuing a dropped touch is safe. `backboardd` cancels the half-delivered touch when the digitizer
 detaches, so the app never sees a completed touch. No control fires, and no gesture recognizer
 completes. A second touch cannot double an action the first one performed, provided each verdict
-covers exactly one synthesized touch. The design below guarantees that.
+covers exactly one synthesized touch and the drop precedes that touch's first delivered event. The
+design below guarantees the first. Unit 1 measures the second, because a continuous recognizer (the
+pan behind `/swipe`, `/scroll`, and the picker drags, and the pinch and rotate behind `/gesture`) can
+report `.changed` before the cancel, leaving travel a re-issue would add to. Until Unit 1 shows a
+drop never lands mid-drag, the driver re-issues only discrete touches: `/tap` and
+`/systemAlert/tap`. A continuous gesture whose verdict is `dropped` fails the step by name instead.
+
+One limit remains. A control that acts on touch-down rather than touch-up (for example a `UIControl`
+wired to `.touchDown`) already received the down when a tap drops, so a re-issue would repeat its
+action. The design accepts that limit because standard controls act on touch-up, and records it.
 
 The change should be visible in two places once it ships. A run's evidence records each re-issued
 touch against the actuation that needed it. And the false passes above stop recurring across
@@ -77,15 +86,21 @@ picker-wheel adjustment, and the system-alert button tap. Typing goes through ke
 touch digitizer, and stays out of scope.
 
 Two existing behaviors would put more than one touch inside one verdict, and the design removes
-both. First, `/gesture` actuates a pinch or rotate inside the runner up to four times (three re-issues) when a
-scenario sets `BAJUTSU_GESTURE_RETRY=1`. Unit 4 retires that loop once the driver's re-issue is in
-place, so the driver's re-issue becomes the only retry. Second, the runner's interruption monitor taps an alert button or swipes away a
-notification banner in the middle of an outer actuation. Those touches get markers of their own,
-described below.
+or contains both. First, `/gesture` actuates a pinch or rotate inside the runner up to four times
+(three re-issues) when a scenario sets `BAJUTSU_GESTURE_RETRY=1`. Unit 4 retires that loop only once
+the driver's re-issue covers `/gesture`, that is, once Unit 1 has shown that a dropped pinch or
+rotate emits the drop lines and never lands mid-gesture. Until then the loop stays, each of its
+attempts gets its own markers, and the verdict covers only its last attempt. Second, the runner's
+interruption monitor taps an alert button or swipes away a notification banner in the middle of an
+outer actuation. Those touches get markers of their own, described below.
 
-The picker-wheel adjustment may synthesize several drags in one call. Re-issuing it stays safe,
-because the call targets a value: a second adjustment toward the same value changes nothing that
-the first one already set.
+Detection covers every endpoint above. The driver re-issues only the discrete touches, `/tap` and
+`/systemAlert/tap`, until Unit 1 clears the continuous gestures.
+
+The picker-wheel adjustment may synthesize several drags in one call. Its drags are continuous, so
+it follows the continuous rule above. If Unit 1 clears them, re-issuing it is safe, because the call
+targets a value: a second adjustment toward the same value changes nothing that the first one
+already set.
 
 The mechanism runs on every iOS Simulator run with the XCUITest backend, with no configuration. A
 false pass happens where nobody is looking for it, so the protection cannot wait for someone to opt
@@ -99,11 +114,15 @@ writes two `os_log` lines around its touch synthesis. The lines go to a dedicate
 category:
 
 ```
-bajutsu.synthesis begin <id>
-bajutsu.synthesis end <id>
+bajutsu.synthesis begin <nonce>/<id>
+bajutsu.synthesis end <nonce>/<id>
+bajutsu.synthesis fence <nonce>/<id>
 ```
 
-`<id>` is a counter the runner owns, unique for the life of the runner process. The interruption
+`<id>` is a counter the runner owns, unique for the life of the runner process. Each marker carries
+a nonce the runner generates at startup (`<nonce>/<id>`), so the ids of a runner the environment
+respawned inside one device session (after a crash, or once the warm-reuse budget is spent) never
+collide with the previous runner's in the same stream. The interruption
 monitor wraps each of its own touches in the same pair of markers, with an id of its own. Its
 markers therefore nest inside the window of the outer actuation it interrupted. The reply of each
 in-scope endpoint gains an optional `synthesisId` field (`BajutsuKit/Sources/BajutsuRunner/openapi.yaml`).
@@ -139,27 +158,37 @@ sleep. It then answers one of three verdicts:
 
 | Verdict | Meaning | Driver response |
 |---|---|---|
-| `delivered` | No drop line between the id's begin and end markers. | Continue. |
-| `dropped` | At least one drop line inside that window. | Re-issue the same request. |
-| `unverified` | The end marker did not arrive within the bound. | Continue, and record the verdict. |
+| `delivered` | No drop line between the id's begin and end markers, and the stream has since produced a line stamped after the end marker, so no drop line for the window is still in flight. | Continue. |
+| `dropped` | At least one drop line inside that window. | Discrete touch: re-issue the same request. Continuous gesture: fail the step by name, unless Unit 1 clears it. |
+| `unverified` | The end marker, or a later-stamped line, did not arrive within the bound. | Continue, and record the verdict. |
+
+The runner emits a fence marker right after each end marker, so a later-stamped line always follows.
 
 An `unverified` verdict leaves the run as it behaves today, so a stalled log stream can
 never fail a healthy scenario. Unit 1 sets the bound from measurement.
 
+A monitor that never worked is a separate case. The runner emits a startup marker when it begins
+serving. If the stream does not deliver that marker within the bound (a `log stream` process that
+failed to spawn or died, or a predicate that matches nothing on a new iOS version), the run fails
+naming the monitor, rather than passing every touch as `unverified` and silently restoring the false
+passes above.
+
 A dropped monitor touch is not re-issued. The banner swipe already confirms clearance before it
 claims the interruption, and declines when it cannot. An alert the monitor claimed but that is still
 up makes XCUITest re-invoke the monitor on the next interaction, so a dropped alert press is pressed
-again. What changes is the
-report: an alert answer or banner dismissal is reported as
-unconfirmed only when every touch the monitor synthesized for that showing dropped, so the run never claims an answer the app did not receive.
+again. Only the report changes. The run marks an alert answer or a banner dismissal as unconfirmed
+only when every touch the monitor synthesized for that showing was dropped, so it never claims an
+answer the app did not receive.
 
 ### Re-issue, then fail by name
 
 `XcuitestDriver` (`bajutsu/common/drivers/xcuitest/xcuitest_driver.py`) re-issues a `dropped`
-request at most twice. Each re-issue goes through the same path as the original, including the
-handle re-resolution that a `stale` reply already triggers (BE-0289). A third `dropped` verdict
-raises a new `TouchNotDelivered` error. Its reason names the Simulator race, not the selector, so the
-failure is not mistaken for a missing element.
+discrete request (`/tap` and `/systemAlert/tap`) at most twice. Each re-issue goes through the same
+path as the original, including the handle re-resolution that a `stale` reply already triggers
+(BE-0289). A third `dropped` verdict raises a new `TouchNotDelivered` error. Its reason names the
+Simulator race, not the selector, so the failure is not mistaken for a missing element. A continuous
+gesture whose verdict is `dropped` raises the same error at once, without a re-issue, unless Unit 1
+has cleared it.
 
 Each actuation record in the run's evidence gains the verdicts it went through. A re-issued tap
 shows up in the report with its drop, not as an ordinary tap.
@@ -178,21 +207,34 @@ shows up in the report with its drop, not as an ordinary tap.
    record two numbers on the iOS CI host: the delay between an end marker and its arrival on the
    host, and whether `backboardd` lines ever arrive after a later runner marker. The first number
    sets the bound. The second decides whether the verdict may compare arrival order or must compare
-   timestamps. It also confirms that a dropped two-finger pinch or rotate emits the same
-   `backboardd` lines.
-2. **Runner markers and `synthesisId`.** Add the `os_log` markers to every in-scope handler and to
-   the interruption monitor's touches, and the optional `synthesisId` field to `openapi.yaml` and
-   each in-scope reply, and the monitor touches' ids, as parallel arrays, to every reply that drains `labels` and `banners`
-   (`/interruptionPolicy/drain`, `tap`, `resolveAlerts`). Cover the id counter
-   and the reply field in `swift test`.
+   timestamps. A third measurement is the lag of a `backboardd` line relative to its own timestamp,
+   and whether logd ever delivers a `backboardd` line after a runner line stamped later than it. If
+   it does, a fence alone cannot close the window and the design must be revisited before Unit 3.
+   Unit 1 also confirms that a dropped two-finger pinch or rotate emits the same `backboardd` lines.
+   Last, it measures whether a drop can follow a delivered touch-down mid-drag, for the swipe,
+   scroll, picker drag, pinch, and rotate. That result decides whether continuous gestures join the
+   re-issue.
+2. **Runner markers and `synthesisId`.** Add the `os_log` markers, each carrying the startup nonce,
+   to every in-scope handler and to the interruption monitor's touches. Emit a fence marker after
+   each end marker and a startup marker when serving begins. Add the optional `synthesisId` field to
+   `openapi.yaml` and each in-scope reply, and the monitor touches' ids, as parallel arrays, to every
+   reply that drains `labels` and `banners` (`/interruptionPolicy/drain`, `tap`, `resolveAlerts`).
+   While the `BAJUTSU_GESTURE_RETRY` loop stays, give each of its attempts its own markers, and have
+   the reply carry the last attempt's id. Cover the id counter and the reply field in `swift test`.
 3. **Host log monitor.** Start and stop the `log stream` process with the device session, parse it,
    and answer verdicts. Attribute each drop line to the innermost window, and report a monitor
-   answer as unconfirmed only when every touch it synthesized for that showing dropped. Cover the parser, the nesting, and all three verdicts
-   in the fast suite with a recorded stream.
-4. **Driver re-issue and `TouchNotDelivered`.** Check the verdict after each in-scope actuation,
-   re-issue at most twice, and raise the new error after that. Record the verdicts in the actuation
-   evidence. Retire the `BAJUTSU_GESTURE_RETRY` loop in `/gesture`, and drop the opt-in and its
-   comment from `demos/showcase/scenarios/gestures_multitouch.yaml`. Cover the retry bound and the error in the fast suite with a fake monitor.
+   answer as unconfirmed only when every touch it synthesized for that showing was dropped. Fail the
+   run naming the monitor when the startup marker does not arrive within the bound. Cover the
+   parser, the nesting, all three verdicts, and the dead monitor in the fast suite with a recorded
+   stream.
+4. **Driver re-issue and `TouchNotDelivered`.** Check the verdict after each in-scope actuation.
+   Re-issue a discrete touch at most twice, and raise the new error after that. Fail a continuous
+   gesture whose verdict is `dropped` at once with the same error, unless Unit 1 cleared it. Record
+   the verdicts in the actuation evidence. Once Unit 1 has shown that a dropped pinch or rotate
+   never lands mid-gesture, extend the re-issue to `/gesture`, retire the `BAJUTSU_GESTURE_RETRY`
+   loop, and drop the opt-in and its comment from `demos/showcase/scenarios/gestures_multitouch.yaml`.
+   Until then the loop and the opt-in stay. Cover the retry bound and the error in the fast suite
+   with a fake monitor.
 5. **Documentation.** Describe the verdicts, the re-issue, and the new error in `docs/` and its
    `docs/ja/` mirror, and in `DESIGN.md` or `docs/architecture.md` wherever the XCUITest actuation
    path is described.
@@ -209,6 +251,7 @@ shows up in the report with its drop, not as an ordinary tap.
 | Fail on a drop, without re-issuing | Removes the false pass but keeps a flake in every scenario the race hits. The re-issue is safe, because the app received a cancelled touch. |
 | Record drops in the evidence only | Leaves the false pass in place; the drop becomes visible only to someone who reads the evidence after a run. |
 | An opt-in configuration switch | The false pass happens where nobody expects it, so an opt-in protects only users who already know about the race. |
+| Treat a dead monitor like a per-touch `unverified` | It would silently remove the whole protection while every run stays green. |
 
 ## Progress
 
