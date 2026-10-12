@@ -1,4 +1,5 @@
 import XCTest
+import ObjCExceptionCatcher
 @testable import BajutsuRunner
 
 /// The serve loop's containment of a test interruption XCTest raises as a run-loop turn returns
@@ -42,5 +43,20 @@ final class ResidentLoopTests: XCTestCase {
             }, report: { _ in })
         }
         XCTAssertEqual(turns, 3)
+    }
+
+    func testAnyOtherExceptionIsRaisedAgainWithItsNameAndReason() {
+        // Only the deferred interruption is known to leave XCTest's state clean; anything else must
+        // still end the test so the Python side respawns a fresh runner rather than reuse this one.
+        var reports: [String] = []
+        let other = NSException(name: .internalInconsistencyException, reason: "corrupted", userInfo: nil)
+        XCTAssertThrowsError(try ObjCExceptionCatcher.catchException {
+            ResidentLoop.runTurn({ other.raise() }, report: { reports.append($0) })
+        }) { error in
+            let info = (error as NSError).userInfo
+            XCTAssertEqual(info["NSExceptionName"] as? String, NSExceptionName.internalInconsistencyException.rawValue)
+            XCTAssertEqual(error.localizedDescription, "corrupted")
+        }
+        XCTAssertEqual(reports, [])
     }
 }

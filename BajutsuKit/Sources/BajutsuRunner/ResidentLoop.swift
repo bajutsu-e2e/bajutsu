@@ -14,18 +14,24 @@ import ObjCExceptionCatcher
 /// between two requests (measured: a notification banner XCUITest could not snapshot during a
 /// `swipe` on iOS 26.5, BE-0461 Unit 1).
 ///
-/// So each turn of the pump is contained the same way an operation is: the raise is logged and the
-/// loop serves on. XCTest clears its halt mark before it raises, so the next turn starts clean.
+/// So each turn of the pump contains that one exception: the raise is logged and the loop serves on.
+/// XCTest clears its halt mark before it raises, so the next turn starts clean. Any other exception
+/// is raised again, as it was before this boundary existed: nothing shows the runner is still sound
+/// after it, so XCTest tears the test down and the Python side respawns a fresh runner.
 public enum ResidentLoop {
-    /// Run one turn of the serve loop, containing an exception raised out of it.
+    /// The exception XCTest raises for a deferred test interruption (`-[XCTestCase _interruptTest]`).
+    static let deferredInterruption = "_XCTestCaseInterruptionException"
+
+    /// Run one turn of the serve loop, containing XCTest's deferred test interruption.
     ///
     /// Args:
     ///   turn: One pump of the main run loop.
-    ///   report: Where a contained exception is described; the runner's stderr by default, which
+    ///   report: Where a contained interruption is described; the runner's stderr by default, which
     ///     `BAJUTSU_XCUITEST_RUNNER_LOG` captures.
     ///
     /// Returns:
-    ///   `true` if the turn returned normally, `false` if it raised and was contained.
+    ///   `true` if the turn returned normally, `false` if it raised the deferred interruption and
+    ///   was contained. Any other exception is raised again, with its name and reason.
     @discardableResult
     public static func runTurn(
         _ turn: () -> Void, report: ((String) -> Void)? = nil
@@ -35,6 +41,12 @@ public enum ResidentLoop {
             return true
         } catch {
             let name = (error as NSError).userInfo["NSExceptionName"] as? String ?? "NSException"
+            guard name == deferredInterruption else {
+                NSException(
+                    name: NSExceptionName(name), reason: error.localizedDescription, userInfo: nil
+                ).raise()
+                return false
+            }
             (report ?? writeToStandardError)("bajutsu runner: the serve loop raised \(name), still serving: \(error.localizedDescription)\n")
             return false
         }
