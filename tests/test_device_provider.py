@@ -12,6 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from run_cli import invoke
 from typer.testing import CliRunner
 
 from bajutsu.cli import app
@@ -208,7 +209,8 @@ def test_run_warns_and_keeps_its_verdict_when_release_raises(
             encoding="utf-8",
         )
 
-        result = CliRunner().invoke(
+        result = invoke(
+            CliRunner(),
             app,
             [
                 "run",

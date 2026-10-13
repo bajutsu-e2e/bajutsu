@@ -176,3 +176,14 @@ def test_render_value_option_omits_empty() -> None:
     assert cf.flag_args("run", {"tag": "smoke"}) == ["--tag", "smoke"]
     assert cf.flag_args("run", {"tag": ""}) == []  # serve's "unset" sentinel
     assert cf.flag_args("run", {"tag": None}) == []
+
+
+def test_the_internal_run_module_takes_exactly_runs_flags() -> None:
+    # The spec builders emit `python -m bajutsu.run.internal` (BE-0449), so the classification above
+    # covers it only while its flag surface is `run`'s own.
+    from typer.main import get_command
+
+    from bajutsu.run.internal import build_app
+
+    params = get_command(build_app()).params
+    assert {p.name for p in params} == _option_names("run")

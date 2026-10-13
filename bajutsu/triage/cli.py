@@ -23,6 +23,7 @@ from bajutsu.cli._shared import (
 from bajutsu.common.analytics import usage as _usage
 from bajutsu.common.config import Effective, IosConfig
 from bajutsu.common.run_meta.files import DEFAULT_RUNS_DIR
+from bajutsu.run import INTERNAL_MODULE as INTERNAL_RUN_MODULE
 from bajutsu.triage import heuristic as _triage
 
 
@@ -325,11 +326,12 @@ def _rerun_command(
     Kept `--no-erase` to reuse the current device state. Built as a list so it is easy to assert in
     tests.
     """
+    # The internal run module, not the public wrapper: this caller may kill the run, and the kill must
+    # reach the run itself, not a wrapper whose child lives on in a session of its own (BE-0449).
     cmd = [
         sys.executable,
         "-m",
-        "bajutsu",
-        "run",
+        INTERNAL_RUN_MODULE,
         "--scenario",
         target,
         "--target",

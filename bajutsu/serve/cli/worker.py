@@ -39,10 +39,10 @@ from bajutsu.common.run_meta.object_store import content_type_for
 from bajutsu.serve import InMemoryLogBus
 from bajutsu.serve.capabilities import WORKER_CAPABILITIES_ENV, worker_capabilities
 from bajutsu.serve.helpers import valid_sha256
-from bajutsu.serve.jobs import cancel_job
 from bajutsu.serve.operations.composition import materialize_composition, place_overrides
 from bajutsu.serve.operations.worker import WORKER_LOG_MAX_LINE_CHARS, WORKER_LOG_MAX_LINES
 from bajutsu.serve.server.db import cancelled_job_result
+from bajutsu.serve.server.worker_job import CancelRelay as _CancelRelay
 from bajutsu.serve.server.worker_job import WorkerIO, _materialize, execute_job_spec
 from bajutsu.serve.state import Job
 from bajutsu.serve.upload_artifacts import ARTIFACT_KINDS, OVERRIDE_KINDS, ArtifactOverrides
@@ -214,12 +214,25 @@ def worker(
             "of the shipped default (BE-0450) and handed to every `run` it executes.",
         ),
     ] = None,
+    once: Annotated[
+        Path | None,
+        typer.Option(
+            "--once",
+            help="Execute the one job spec in this JSON file on this machine, with no server, and "
+            "exit with the job's exit code (BE-0449). The run tree stays local; a spec that names "
+            "an uploaded bundle or artifact overrides is refused, since those arrive by signed URL. "
+            "The server options are ignored.",
+        ),
+    ] = None,
 ) -> None:
     """Run a worker that leases queued `bajutsu run` jobs from the control plane over HTTP.
 
     Polls POST /api/worker/lease; on a job, runs execute_job_spec, uploads the run tree, and
-    posts the result to POST /api/worker/result.
+    posts the result to POST /api/worker/result. With `--once`, executes one job spec from a file
+    instead and exits with its exit code.
     """
+    if once is not None:
+        raise typer.Exit(_run_once(once, _worker_config_or_exit(worker_config, once=True)))
     # Both drive sleeps/timeouts; a non-positive value would spin the poll or heartbeat loop hot.
     if poll_interval <= 0:
         raise typer.BadParameter("--poll-interval must be positive")
@@ -331,12 +344,13 @@ def worker(
         typer.echo(f"  completed job {job_id} ({outcome})")
 
 
-def _worker_config_or_exit(path: Path | None) -> Path | None:
+def _worker_config_or_exit(path: Path | None, *, once: bool = False) -> Path | None:
     """Validate the worker capability file at startup and return its absolute path (BE-0450).
 
     A bad file stops the worker before it leases anything, rather than failing every job it takes.
     The path is what each spawned `run` reads, so it is resolved once here, independent of the
     per-job working directory the run starts in. None (no flag) leaves every run on the default.
+    *once* words the device-cloud refusal for `--once`, whose Device Farm submission is BE-0448's.
     """
     from bajutsu.common.capability.worker_capability import (
         WorkerCapabilityError,
@@ -347,6 +361,13 @@ def _worker_config_or_exit(path: Path | None) -> Path | None:
         cap = load_worker_capability(path)
     except WorkerCapabilityError as e:
         raise typer.BadParameter(str(e), param_hint="--worker-config") from None
+    if not cap.is_local and once:
+        raise typer.BadParameter(
+            f"environment '{cap.environment}' is not supported by `bajutsu worker --once` yet; "
+            "submitting a Device Farm job without a server arrives with BE-0448. "
+            "Use `environment: local`",
+            param_hint="--worker-config",
+        )
     if not cap.is_local:
         # Leasing jobs for a device cloud is the Device Farm worker dispatch (BE-0448), which this
         # worker does not do yet; refusing beats advertising local platforms for a cloud file.
@@ -358,40 +379,21 @@ def _worker_config_or_exit(path: Path | None) -> Path | None:
     return None if path is None else path.resolve()
 
 
-class _CancelRelay:
-    """Hands a cancel from the heartbeat loop to the job the run thread is running (BE-0449).
+def _run_once(path: Path, worker_file: Path | None) -> int:
+    """Execute the one job spec in *path* without a server; the exit code for the caller (BE-0449).
 
-    The run thread builds its `Job` inside `execute_job_spec`, so a cancel can arrive before the job
-    exists, after, or while it is being bound. The lock orders the two: whichever comes second
-    delivers the cancel, and it is delivered once, since the heartbeat repeats the flag on every beat
-    and a second graceful stop would restart the run's grace window.
+    A spec that cannot run without a server is refused before anything runs, with exit 2 like any
+    other usage error.
     """
+    from bajutsu.serve.server import one_shot
 
-    def __init__(self) -> None:
-        self._lock = threading.Lock()
-        self._job: Job | None = None
-        self._requested = False
-
-    @property
-    def requested(self) -> bool:
-        with self._lock:
-            return self._requested
-
-    def bind(self, job: Job) -> None:
-        with self._lock:
-            self._job = job
-            pending = self._requested
-        if pending:
-            cancel_job(job)
-
-    def request(self) -> None:
-        with self._lock:
-            if self._requested:
-                return
-            self._requested = True
-            job = self._job
-        if job is not None:
-            cancel_job(job)
+    try:
+        spec = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as e:
+        raise typer.BadParameter(f"cannot read the job spec: {e}", param_hint="--once") from None
+    if (reason := one_shot.refusal(spec, Path.cwd())) is not None:
+        raise typer.BadParameter(reason, param_hint="--once")
+    return one_shot.run_spec_once(spec, worker_config=worker_file)
 
 
 class _LogStreamer:

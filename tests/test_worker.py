@@ -37,6 +37,7 @@ from bajutsu.serve.cli.worker import (
     _write_console_log,
     worker,
 )
+from bajutsu.serve.server import worker_job
 from bajutsu.serve.server.db import cancelled_job_result
 from bajutsu.serve.state import Job
 
@@ -718,7 +719,7 @@ def test_run_with_heartbeat_cancels_the_job_on_a_heartbeat_cancel(
             repeated.set()
         return 200, {"ok": True, "cancel": True}
 
-    monkeypatch.setattr(worker_mod, "cancel_job", fake_cancel)
+    monkeypatch.setattr(worker_job, "cancel_job", fake_cancel)
     monkeypatch.setattr(worker_mod, "execute_job_spec", running_execute)
     monkeypatch.setattr(worker_mod, "_post_json", hb_cancel)
     result, abandoned, _job_work = _run_hb(tmp_path)
@@ -766,7 +767,7 @@ def test_run_with_heartbeat_skips_the_run_when_cancelled_during_the_fetch(
 
 
 def test_cancel_relay_delivers_a_cancel_that_arrived_before_the_job() -> None:
-    relay = worker_mod._CancelRelay()
+    relay = worker_job.CancelRelay()
     relay.request()
     relay.request()  # repeated beats are idempotent
     job = Job(id="j1", cmd=["bajutsu", "run"])

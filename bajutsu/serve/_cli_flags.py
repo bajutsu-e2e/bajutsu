@@ -95,3 +95,31 @@ def _render(option: TyperOption, value: FlagValue) -> list[str]:
             return [option.opts[0]]
         return [option.secondary_opts[0]] if option.secondary_opts else []
     return [option.opts[0], str(value)]
+
+
+def option_args(name: Command, values: Mapping[str, object]) -> list[str]:
+    """Render every option in *values* as argv, whatever its value.
+
+    The public `bajutsu run` passes the flags its caller typed on to the internal run module this
+    way (BE-0449). Unlike `flag_args`, an empty string is a value like any other (`--udid ""`), a
+    repeatable option renders once per value, and each value is joined to its option with `=`, so a
+    value that starts with `-` cannot be read as an option.
+
+    Raises:
+        ValueError: *values* names a parameter that isn't an option on the command.
+    """
+    opts = _options(name)
+    args: list[str] = []
+    for key, value in values.items():
+        option = opts.get(key)
+        if option is None:
+            raise ValueError(f"{key!r} is not an option on `bajutsu {name}`")
+        if option.is_bool_flag:
+            if value:
+                args.append(option.opts[0])
+            elif option.secondary_opts:
+                args.append(option.secondary_opts[0])
+            continue
+        items = value if option.multiple and isinstance(value, (list, tuple)) else [value]
+        args += [f"{option.opts[0]}={item}" for item in items]
+    return args

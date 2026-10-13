@@ -13,6 +13,7 @@ from typing import Any
 
 import pytest
 import typer
+from run_cli import invoke
 from typer.testing import CliRunner
 
 from bajutsu.cli import app
@@ -100,8 +101,10 @@ def test_run_refuses_a_device_cloud_worker_file(
 def test_run_refuses_an_invalid_worker_file(tmp_path: Path) -> None:
     path = tmp_path / "bad.worker.yaml"
     path.write_text("version: 1\ndrivers: [selenium]\n", encoding="utf-8")
-    result = runner.invoke(
-        app, ["run", "--target", "app", "--worker-config", str(path), "--config", "nope.yaml"]
+    result = invoke(
+        runner,
+        app,
+        ["run", "--target", "app", "--worker-config", str(path), "--config", "nope.yaml"],
     )
     assert result.exit_code == 2
     assert "unknown driver(s) ['selenium']" in result.output
@@ -206,8 +209,10 @@ def test_run_hands_the_failed_scenario_to_the_report_and_acquires_only_its_peers
     monkeypatch.setattr("bajutsu.run.cli.acquire_device", fake_acquire)
     monkeypatch.setattr("bajutsu.run.cli.device_pool", lambda *a, **k: (object(), lambda: None))
     monkeypatch.setattr("bajutsu.run.cli.run_and_report", reached_execution)
-    result = runner.invoke(
-        app, _write(tmp_path, "version: 1\nmaxTargetsPerJob: 1\ndrivers: [fake, playwright]\n")
+    result = invoke(
+        runner,
+        app,
+        _write(tmp_path, "version: 1\nmaxTargetsPerJob: 1\ndrivers: [fake, playwright]\n"),
     )
     assert result.exit_code == 7, result.output
     # `site` is declared only by the failed scenario, so no device is reserved for it.
@@ -221,7 +226,7 @@ def test_run_exits_2_when_no_scenario_is_runnable(tmp_path: Path) -> None:
     args = _write(tmp_path, "version: 1\nmaxTargetsPerJob: 1\ndrivers: [fake]\n")
     # Keep only the two-target file, which this worker cannot run.
     del args[1:3]
-    result = runner.invoke(app, args)
+    result = invoke(runner, app, args)
     assert result.exit_code == 2
     assert "two: worker-capability-unsupported: the scenario declares 2 targets" in result.output
 
@@ -261,7 +266,7 @@ def test_a_primary_only_failed_scenarios_use_is_not_acquired(
     two.write_text("- name: two\n  targets: [site, app]\n  steps: []\n", encoding="utf-8")
     # The failing file first, so it is the one the primary is inferred from.
     args[2], args[4] = args[4], args[2]
-    result = runner.invoke(app, args)
+    result = invoke(runner, app, args)
     assert result.exit_code == 7, result.output
     assert acquired == ["app"]
     assert [sc.preconditions.erase for sc in reached if sc.name == "one"] == [True]
@@ -283,7 +288,8 @@ def test_the_browser_matrix_still_refuses_a_failed_multi_target_scenario(tmp_pat
     wfile.write_text(
         "version: 1\nmaxTargetsPerJob: 1\ndrivers: [playwright, fake]\n", encoding="utf-8"
     )
-    result = runner.invoke(
+    result = invoke(
+        runner,
         app,
         [
             "run",

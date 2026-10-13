@@ -13,6 +13,7 @@ from email.message import Message
 from pathlib import Path
 
 import pytest
+from run_cli import invoke
 
 from bajutsu.common.config import IosConfig
 from bajutsu.common.config_source import (
@@ -633,8 +634,10 @@ def test_run_builds_a_git_sourced_app_from_the_checkout_root(
     )
     # `--backend nope` makes the run exit cleanly after the build (the sandbox has no Simulator),
     # so the test asserts only that the build ran — producing the binary under the checkout root.
-    r = CliRunner().invoke(
-        app, ["run", "--target", "demo", "--backend", "nope", "--config", "github:acme/repo@main"]
+    r = invoke(
+        CliRunner(),
+        app,
+        ["run", "--target", "demo", "--backend", "nope", "--config", "github:acme/repo@main"],
     )
     assert (root / "build" / "Demo.app").exists()  # built under the checkout, not the process cwd
     assert r.exit_code == 2  # then the unavailable backend exits cleanly

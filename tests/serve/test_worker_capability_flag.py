@@ -100,12 +100,12 @@ def test_execute_job_spec_hands_the_real_run_argv_the_flag(
     from bajutsu.serve.server import worker_job
 
     seen: list[list[str]] = []
-    monkeypatch.setattr(worker_job, "run_job", lambda state, job: seen.append(job.cmd))
+    monkeypatch.setattr(worker_job, "run_job", lambda state, job, **_kw: seen.append(job.cmd))
     path = tmp_path / "w.yaml"
     worker_job.execute_job_spec(
         {"job_id": "j", "cmd": run_command("s.yaml", "demo")}, cwd=tmp_path, worker_config=path
     )
-    assert seen and seen[0][3:6] == ["run", "--worker-config", str(path.resolve())]
+    assert seen and seen[0][2:5] == ["bajutsu.run.internal", "--worker-config", str(path.resolve())]
 
 
 def test_the_worker_loop_hands_its_file_to_every_leased_job(
@@ -149,3 +149,41 @@ def test_the_worker_loop_hands_its_file_to_every_leased_job(
             worker_config=Path("w.yaml"),
         )
     assert seen == [tmp_path.resolve() / "w.yaml"]
+
+
+# --- the internal run module the spec builders emit (BE-0449) ------------------------------------
+
+_INTERNAL = [sys.executable, "-m", "bajutsu.run.internal"]
+
+
+def test_the_flag_is_inserted_into_the_internal_run_module(tmp_path: Path) -> None:
+    path = tmp_path / "w.yaml"
+    assert _with_worker_config([*_INTERNAL, "--target", "demo"], path) == [
+        *_INTERNAL,
+        "--worker-config",
+        str(path.resolve()),
+        "--target",
+        "demo",
+    ]
+
+
+def test_the_internal_run_module_strips_a_spec_supplied_flag(tmp_path: Path) -> None:
+    for injected in (["--worker-config", "/elsewhere.yaml"], ["--worker-config=/elsewhere.yaml"]):
+        cmd = [*_INTERNAL, *injected, "--target", "demo"]
+        assert _with_worker_config(cmd, None) == [*_INTERNAL, "--target", "demo"]
+        out = _with_worker_config(cmd, tmp_path / "w.yaml")
+        assert "/elsewhere.yaml" not in " ".join(out)
+
+
+def test_an_unrecognised_internal_run_argv_fails(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="unrecognised run argv"):
+        _with_worker_config(
+            ["python", "bajutsu.run.internal", "--target", "x"], tmp_path / "w.yaml"
+        )
+
+
+def test_a_device_cloud_file_under_once_names_the_device_farm_item(tmp_path: Path) -> None:
+    path = tmp_path / "w.yaml"
+    path.write_text("version: 1\nenvironment: devicefarm\ndrivers: [adb]\n", encoding="utf-8")
+    with pytest.raises(typer.BadParameter, match="BE-0448"):
+        worker_mod._worker_config_or_exit(path, once=True)

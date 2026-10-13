@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import inspect
 import os
+import select
 import sys
+import typing
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -37,7 +40,7 @@ from bajutsu.common.backends import (
     select_actuator,
     select_actuator_for_scenario,
 )
-from bajutsu.common.cancellation import CancelSource, graceful_sigterm
+from bajutsu.common.cancellation import CancelSource, graceful_sigterm, not_cancelled
 from bajutsu.common.capability import capability_preflight
 from bajutsu.common.capability.worker_capability import WorkerCapability
 from bajutsu.common.config import WEB_ENGINES, AndroidConfig, Effective, IosConfig
@@ -613,9 +616,32 @@ def _reject_web_flags_across_targets(
         raise typer.Exit(2)
 
 
-def _read_step_line(prompt: str) -> str:
-    """One line for the `--step` prompt, written to stderr so stdout stays the PASS/FAIL line."""
+# How often a `--step` prompt waiting on the terminal checks whether the run was cancelled.
+_STEP_CANCEL_POLL_SECONDS = 0.2
+
+
+class _LateCancel:
+    """A `CancelSource` the run binds once its SIGTERM handler is up, after the step gate is built."""
+
+    def __init__(self) -> None:
+        self.source: CancelSource = not_cancelled
+
+    def __call__(self) -> bool:
+        return self.source()
+
+
+def _read_step_line(prompt: str, cancelled: CancelSource = not_cancelled) -> str:
+    """One line for the `--step` prompt, written to stderr so stdout stays the PASS/FAIL line.
+
+    A cancel ends the wait as end of input does, which the prompt reads as `quit`. The run behind
+    the public wrapper sits in a session of its own and learns of a Ctrl-C as a SIGTERM (BE-0449),
+    whose handler only sets a flag: a read blocked on the terminal would otherwise hold the run past
+    its grace window. The terminal is checked in short slices for that reason.
+    """
     typer.echo(prompt, nl=False, err=True)
+    while not select.select([sys.stdin], [], [], _STEP_CANCEL_POLL_SECONDS)[0]:
+        if cancelled():
+            raise EOFError
     line = sys.stdin.readline()
     if not line:
         raise EOFError
@@ -630,6 +656,7 @@ def _build_step_gate(
     scenarios: list[Scenario],
     engines: list[str],
     workers: int,
+    cancelled: CancelSource = not_cancelled,
 ) -> PromptStepGate | None:
     """The prompt `--step` / `--break` / `--break-on-fail` ask for, or `None` when none was given.
 
@@ -655,7 +682,7 @@ def _build_step_gate(
         pause_first=step,
         breaks=break_at,
         break_on_fail=break_on_fail,
-        read_line=_read_step_line,
+        read_line=lambda prompt: _read_step_line(prompt, cancelled),
         say=lambda line: typer.echo(line, err=True),
     )
 
@@ -2307,7 +2334,21 @@ def _finish(plan: _RunPlan, results: list[RunResult], manifest: Path) -> None:
     raise typer.Exit(0 if ok else 1)
 
 
-def run(
+def _check_label(value: str) -> str:
+    """Refuse an over-long `--label` while the command line is parsed (BE-0404 unit 2).
+
+    Rejected, never truncated: an operator learns the label was refused instead of finding a
+    silently shortened one in the history. Checked at parse time rather than in the body, so the
+    public wrapper refuses it before it spawns the internal run (BE-0449).
+    """
+    if len(value) > MAX_LABEL_LENGTH:
+        raise typer.BadParameter(
+            f"a label must be at most {MAX_LABEL_LENGTH} characters", param_hint="--label"
+        )
+    return value
+
+
+def run_body(
     # --- Target & scenario selection ---
     target_name: str = typer.Option(
         "",
@@ -2510,6 +2551,7 @@ def run(
     label: str = typer.Option(
         "",
         "--label",
+        callback=_check_label,
         help="tag this run's history entry with a short free-text label, so runs of two configs "
         "stay readable apart (BE-0404). Opaque to the tool — never parsed or matched against "
         "config; defaults to the config's own name",
@@ -2530,12 +2572,6 @@ def run(
     Pass/fail is machine-only; the sole AI is the alert guard (on by default per scenario), which
     only fires to clear an OS prompt that blocked a step — see each scenario's `systemAlertHandling`.
     """
-    if len(label) > MAX_LABEL_LENGTH:
-        # Rejected, never truncated (BE-0404 unit 2): an operator learns the label was refused
-        # instead of finding a silently shortened one in the history.
-        raise typer.BadParameter(
-            f"a label must be at most {MAX_LABEL_LENGTH} characters", param_hint="--label"
-        )
     # Resolve the run's inputs from the flags — each step is an independently testable helper — then
     # assemble the plan and hand it to dispatch/finish. `run` itself stays a thin sequence.
     #
@@ -2566,6 +2602,7 @@ def run(
         ios_tipkit_handling,
         eff.run_defaults.ios_tip_kit_handling,
     )
+    step_cancel = _LateCancel()
     step_gate = _build_step_gate(
         step=step,
         break_at=break_at or [],
@@ -2573,6 +2610,7 @@ def run(
         scenarios=scenarios,
         engines=engines,
         workers=workers,
+        cancelled=step_cancel,
     )
     # After filtering, so `--tag`/`--exclude` selecting away a self-declaring scenario in a suite
     # leaves the rest of the suite resolving exactly as it did before that file was added (BE-0428)
@@ -2693,6 +2731,7 @@ def run(
         # covers `_finish` too: the `FAIL <manifest>` line it prints is what `serve` reads this run's
         # id from, so a hard kill between the report and that line would still lose the run.
         with graceful_sigterm() as cancelled:
+            step_cancel.source = cancelled
             plan = _RunPlan(
                 eff=eff,
                 config_source=config_source,
@@ -2747,6 +2786,59 @@ def run(
         _release_devices(setups)
 
 
+def run(ctx: typer.Context, **params: Any) -> None:
+    """The public `bajutsu run`: execute the run body as a one-shot job (BE-0449).
+
+    Takes exactly the body's flags (`_share_signature`), and passes on every one the caller gave on
+    the command line to the internal run module, which the one-shot worker path spawns with this
+    process's standard streams. A default, or a value read from an environment variable, is left for
+    the internal run to resolve the same way from the environment it inherits. The PASS or FAIL
+    line, the progress on standard error, and an interactive `--step` prompt therefore behave as
+    they did in one process. The body keeps every check of its own, the refusal of a device-cloud
+    `--worker-config` among them, so each stays in one place. A SIGINT, SIGTERM, or SIGHUP cancels
+    the run as a served cancel does; the exit code is the run's, or 128 plus the signal number.
+    """
+    from bajutsu.serve._cli_flags import option_args
+    from bajutsu.serve.server.one_shot import local_run_spec, run_spec_once
+
+    given = {name: value for name, value in params.items() if _from_command_line(ctx, name)}
+    spec = local_run_spec(option_args("run", given))
+    raise typer.Exit(run_spec_once(spec, worker_config=None, apply_worker_config=False))
+
+
+def _from_command_line(ctx: typer.Context, name: str) -> bool:
+    """Whether the caller typed option *name*, rather than leaving its default or environment value.
+
+    Compared by name: Typer vendors its own Click, whose `ParameterSource` enum is not public API,
+    while `Context.get_parameter_source` is.
+    """
+    source = ctx.get_parameter_source(name)
+    return source is not None and source.name == "COMMANDLINE"
+
+
+def _share_signature(wrapper: Callable[..., None], body: Callable[..., None]) -> None:
+    """Give *wrapper* the signature of *body*, led by a `typer.Context`, so both share one flag set.
+
+    Typer reads a command's options from its signature and their types from its annotations, so
+    copying both makes the wrapper's flag surface the body's by definition. The context lets the
+    wrapper ask which options the caller typed.
+    """
+    body_sig = inspect.signature(body, eval_str=True)
+    hints = typing.get_type_hints(body, include_extras=True)
+    hints.pop("return", None)
+    ctx_param = inspect.Parameter(
+        "ctx", inspect.Parameter.POSITIONAL_OR_KEYWORD, annotation=typer.Context
+    )
+    wrapper.__signature__ = body_sig.replace(  # type: ignore[attr-defined]
+        parameters=[ctx_param, *body_sig.parameters.values()]
+    )
+    wrapper.__annotations__ = {"ctx": typer.Context, **hints, "return": None}
+
+
+_share_signature(run, run_body)
+
+
 def register(app: typer.Typer) -> None:
     """Register this command on the Typer app."""
-    app.command()(run)
+    # The body's docstring is the command's help, so `bajutsu run --help` reads as it always has.
+    app.command(help=inspect.getdoc(run_body))(run)

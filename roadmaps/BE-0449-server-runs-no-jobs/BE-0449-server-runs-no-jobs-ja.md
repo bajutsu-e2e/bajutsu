@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0449") |
-| 実装 PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167)（単位 1 の 1）、[#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168)（単位 1 の 2）、[#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170)（単位 1 の 3）、[#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171)（単位 2）、[#2172](https://github.com/bajutsu-e2e/bajutsu/pull/2172)（単位 4） |
+| 実装 PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167)（単位 1 の 1）、[#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168)（単位 1 の 2）、[#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170)（単位 1 の 3）、[#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171)（単位 2）、[#2172](https://github.com/bajutsu-e2e/bajutsu/pull/2172)（単位 4）、PR_PLACEHOLDER6（単位 3） |
 | トピック | Hosting the web UI |
 <!-- /BE-METADATA -->
 
@@ -148,7 +148,7 @@ local バックエンドと server バックエンドの違いは、これらの
 
 - [x] ローカルの既定値
 - [x] 分割をまたぐキャンセル
-- [ ] 1 回実行の worker とラッパー
+- [x] 1 回実行の worker とラッパー
 - [x] ライブのログのストリームとルーティング用の executor
 - [ ] `run` の移行
 - [ ] `run-set`（Device Farm の batch）の移行
@@ -246,6 +246,35 @@ local バックエンドと server バックエンドの違いは、これらの
   `before_upload` のフックを通じて、run ツリーのアップロードの前に `console.log` をそのツリーへ書くように
   なりました。これまではアップロードのあとに書いていたため、`console.log` はアーティファクトストアに
   届いていませんでした。`crawl` のためのライブのアーティファクトのストリームは、単位 8 で入ります。
+- PR_PLACEHOLDER6（単位 3）— `bajutsu run` は、1 回実行の worker 経路を通る薄いラッパーへ変わりました。
+  コマンドの本体は内部の入口 `python -m bajutsu.run.internal` に移しました。隠しサブコマンドではなく
+  独立したモジュールにしたので、`bajutsu --help` にも BE-0101 のコマンド一覧にも現れず、そのプロセスは
+  run の本体だけを読み込みます。`run_command`、`triage --rerun` のコマンド、MCP の `run` ツールは
+  このモジュールを出力します。`Job.kind` と `_with_worker_config` はこのモジュールを認識し、変更前に
+  キューに入った仕様の `-m bajutsu run` も引き続き受け付けます。`_local_interpreter` はその古い形を
+  内部のモジュールに書き換えるので、そうした仕様はキューに入れたときと同じく 1 プロセスで動きます。
+  ラッパーは本体と同じシグネチャを持つので、フラグの集合は 1 つです。ラッパーは、呼び出し側が
+  入力したフラグを値にかかわらずすべて引き渡します。既定値と環境変数の値は run 自身に解決させます。
+  `--label` はコマンドラインの解析時に検査するので、長すぎるラベルはラッパーが呼び出し側の言葉で
+  拒否します。`bajutsu worker --once <spec.json>` は、何もしない `LocalWorkerIO` を使い、リポジトリを
+  持たずに、`execute_job_spec` で仕様を 1 つ実行します。`run_job` の新しい `inherit_stdio` モードは、
+  呼び出し側の標準ストリームと `PATH` のまま、独自のセッションで子プロセスを起動し、新しい run ツリー
+  から run ID を読みます。呼び出し側は待つあいだ生存確認のパイプを開いたままにします。パイプが終端に
+  達すると内部の run は自分に SIGTERM を送るので、SIGKILL で終了したラッパーがデバイスを動かし続ける
+  run を残すことはありません。`--once` は、バンドル、アーティファクトの上書き、Device Farm のバッチ、
+  `local` 以外の worker ファイル（BE-0448 を案内します）、型の誤った `udids` と `materials`、
+  カレントディレクトリの別の内容のファイルを上書きする materials を拒否します。SIGINT、SIGTERM、
+  SIGHUP は単位 2 のキャンセルになります。2 回目の SIGINT は子プロセスのグループをすぐに終了させます。
+  SIGTSTP は子プロセスのグループを停止してからラッパーを停止し、SIGCONT は両方を再開します。
+  呼び出し側がすでに無視しているシグナルは無視したままにします。終了コードは子プロセスの終了コードか、
+  128 にシグナル番号を足した値です。`--step` のプロンプトは端末の入力を待つあいだ run のキャンセルを
+  確認するようになったので、プロンプトでの Ctrl-C でも run はレポートを書いて終わります。
+  `bajutsu run` への Ctrl-C と SIGTERM の終了コードは、1 プロセスのときの 1 から 130 と 143 に
+  変わりました。Ctrl-C は run のドライバーの子プロセスに直接は届かなくなり、バックグラウンドの
+  `--step` の run は端末の入力で停止しなくなりました。サブプロセスでの同等性テストは、成功、失敗、
+  使い方の誤り、2 つのシグナル、SIGKILL されたラッパー、2 回目の Ctrl-C、Ctrl-Z、疑似端末での `--step`
+  のプロンプト、`--once` での変更前の仕様を確かめます。往復のテストは、`run` のすべてのオプションを
+  描画して内部の入口で解析し直します。プロセス内の CLI テストは内部の入口を呼びます。
 
 ## 参考
 

@@ -32,7 +32,8 @@ from bajutsu.common.devices import os as device_os
 from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.common.evidence.sink import RunArtifactWriter
 from bajutsu.common.handoff import REQUEST_LINE_PREFIX as _HANDOFF_REQUEST_PREFIX
-from bajutsu.common.run_meta.files import RunArtifactReader
+from bajutsu.common.run_meta.files import DEFAULT_RUNS_DIR, RunArtifactReader
+from bajutsu.run import PARENT_FD_ENV
 from bajutsu.serve.helpers import valid_run_id
 from bajutsu.serve.orgs import DEFAULT_ORG
 from bajutsu.serve.state import Job, ServeState
@@ -46,7 +47,7 @@ logger = logging.getLogger(__name__)
 _RUN_ID_RE = re.compile(r"runs/([0-9A-Za-z._-]+)/manifest\.json")
 
 
-def _spawn_env(job: Job) -> dict[str, str]:
+def _spawn_env(job: Job, *, prepend_bindir: bool = True) -> dict[str, str]:
     """The child env for a spawned run/record: the venv bin dir (where the ``idb`` client lives) on
     PATH, plus *job*'s per-org AI provider overlay (BE-0229).
 
@@ -57,14 +58,19 @@ def _spawn_env(job: Job) -> dict[str, str]:
     ``os.environ`` — the tenant-isolation guarantee. When the overlay names a provider it is
     authoritative, so the Bajutsu-managed provider vars are cleared from the inherited env first and
     then replaced, rather than letting a stale launch-env value leak through; an empty overlay (no
-    selection) leaves the inherited env untouched, preserving the zero-config path (BE-0101)."""
+    selection) leaves the inherited env untouched, preserving the zero-config path (BE-0101).
+
+    `prepend_bindir` is False for a one-shot run (BE-0449): it runs in the caller's own shell
+    environment, as `bajutsu run` always has, so a `launchServer` command or a device tool resolves
+    on the caller's `PATH` exactly as before the wrapper existed."""
     e = dict(os.environ)
     if job.env_overlay:
         for var in PROVIDER_MANAGED_ENV:
             e.pop(var, None)
         e.update(job.env_overlay)
-    bindir = str(Path(sys.executable).parent)
-    e["PATH"] = bindir + os.pathsep + e.get("PATH", "")
+    if prepend_bindir:
+        bindir = str(Path(sys.executable).parent)
+        e["PATH"] = bindir + os.pathsep + e.get("PATH", "")
     if job.graceful_cancel:
         # Tell the spawned run how long it has to close itself out, so the deadline its own SIGTERM
         # handler enforces is bound to *this* grace window (BE-0370). An independently chosen constant
@@ -382,12 +388,23 @@ def _build_app(state: ServeState, job: Job) -> bool:
     return True
 
 
-def run_job(state: ServeState, job: Job) -> None:
+def run_job(state: ServeState, job: Job, *, inherit_stdio: bool = False) -> None:
     """Boot the job's devices (if any), build the app if its binary is missing, then run
     ``job.cmd``, capturing combined output line-by-line and the produced run id. The job's live
-    log channel is closed on every exit path, so an ``/events`` subscriber's stream always ends."""
+    log channel is closed on every exit path, so an ``/events`` subscriber's stream always ends.
+
+    Args:
+        state: The serve or worker state the job runs under.
+        job: The job to run; its status, exit code, and run id are set in place.
+        inherit_stdio: Run ``job.cmd`` on this process's own standard input, output, and error,
+            instead of the piped, merged capture a served or leased job uses. The one-shot worker
+            and the public `bajutsu run` set it (BE-0449), so the PASS or FAIL line reaches the
+            caller's standard output and an interactive `--step` prompt reads the caller's
+            terminal. The run id then comes from the run tree the child wrote, since no output is
+            read here.
+    """
     try:
-        _run_job(state, job)
+        _run_job(state, job, inherit_stdio=inherit_stdio)
     finally:
         _record_provenance(state, job)
         _persist_run(state, job)
@@ -711,15 +728,16 @@ def _run_summary(
     }
 
 
-def _run_job(state: ServeState, job: Job) -> None:
+def _run_job(state: ServeState, job: Job, *, inherit_stdio: bool = False) -> None:
     if job.batch is not None:
         # A cloud-batch job runs its scenario on a remote reserved device, not a local subprocess
         # (BE-0336). No device to boot, no app to build here — the provider packages and submits.
         _run_batch_job(state, job)
         return
-    if not _boot_devices(state, job):
+    if not (_boot_devices(state, job) and _build_app(state, job)):
         return
-    if not _build_app(state, job):
+    if inherit_stdio:
+        _run_inherited(state, job)
         return
     # A stdin pipe is the human-handoff response channel (BE-0179): a paused `record --handoff stream`
     # reads the human's response line here. Only handoff-capable commands get the pipe; every other
@@ -779,6 +797,105 @@ def _run_job(state: ServeState, job: Job) -> None:
         job.awaiting_human = False
     if swept:
         _sweep_group(pgid)
+
+
+def _run_inherited(state: ServeState, job: Job) -> None:
+    """Run ``job.cmd`` on this process's standard streams and wait for it (BE-0449, one-shot).
+
+    The child still gets a session of its own, as a served job does: a Ctrl-C at the terminal then
+    reaches only the caller, which turns it into the same cancel a served job receives, rather than
+    killing the run and its driver children before the run can write its manifest. A child in
+    another session can still read the terminal it inherited, so `--step` keeps its prompt.
+
+    A session of its own also means a `run` child outlives a caller that dies without a signal it can
+    catch (SIGKILL, an out-of-memory kill), still driving the device. So for a `run` the caller holds
+    the write end of a pipe until the child exits, and the internal run module reads the other end
+    (`PARENT_FD_ENV`): end of file there means the caller is gone, and the run cancels itself as on
+    SIGTERM. The other kinds have no such reader, so they get no pipe.
+    """
+    cwd = Path(job.cwd or state.binding.cwd)
+    is_run = job.kind == "run"
+    runs = _runs_dir_of(job.cmd, cwd) if is_run else None
+    before = _run_dir_names(runs)
+    alive_r, alive_w = os.pipe() if is_run else (None, None)
+    try:
+        env = _spawn_env(job, prepend_bindir=False)
+        extra: dict[str, Any] = {}
+        if alive_r is not None:
+            env[PARENT_FD_ENV] = str(alive_r)
+            extra["pass_fds"] = (alive_r,)
+        try:
+            proc = state.popen(job.cmd, cwd=str(cwd), env=env, start_new_session=True, **extra)
+        finally:
+            if alive_r is not None:
+                os.close(alive_r)
+        _wait_inherited(job, proc, runs, before)
+    finally:
+        if alive_w is not None:
+            os.close(alive_w)
+
+
+def _wait_inherited(job: Job, proc: Any, runs: Path | None, before: frozenset[str]) -> None:
+    """Wait for an inherited-stdio child and record how it ended (see `_run_inherited`)."""
+    if not _register_proc(job, proc, graceful=job.graceful_cancel):
+        proc.wait()
+        with job.lock:
+            job.exit_code, job.status, job.proc = proc.returncode or 1, "done", None
+            job.proc_graceful = False
+        return
+    pgid = _pgid_of(proc)
+    proc.wait()
+    run_id = _new_run_id_in(runs, before)
+    with job.lock:
+        swept = job.cancelled and job.proc_graceful
+        job.proc = None
+        job.proc_graceful = False
+        job.exit_code = proc.returncode
+        job.run_id = run_id
+        job.status = "done"
+    if swept:
+        _sweep_group(pgid)
+
+
+def _runs_dir_of(cmd: list[str], cwd: Path) -> Path:
+    """The runs directory a `run` command line writes into: its last `--runs-dir`, else the default."""
+    value = DEFAULT_RUNS_DIR
+    for i, arg in enumerate(cmd):
+        if arg == "--runs-dir" and i + 1 < len(cmd):
+            value = cmd[i + 1]
+        elif arg.startswith("--runs-dir="):
+            value = arg.removeprefix("--runs-dir=")
+    return cwd / value
+
+
+def _run_dir_names(runs: Path | None) -> frozenset[str]:
+    """The run directories already under *runs*, so the one a run adds can be told apart."""
+    if runs is None:
+        return frozenset()
+    try:
+        return frozenset(p.name for p in runs.iterdir() if p.is_dir())
+    except OSError:
+        return frozenset()
+
+
+def _new_run_id_in(runs: Path | None, before: frozenset[str]) -> str | None:
+    """The id of the run tree that appeared under *runs* since *before*, or None when none did.
+
+    Read from the tree and not from the PASS or FAIL line, which goes to the caller's own standard
+    output in a one-shot run. A tree counts once it holds its `manifest.json`. Run ids are UTC
+    timestamps, so when another process wrote into the same directory meanwhile, the latest wins.
+    """
+    if runs is None:
+        return None
+    try:
+        added = [
+            p.name
+            for p in runs.iterdir()
+            if p.name not in before and valid_run_id(p.name) and (p / "manifest.json").is_file()
+        ]
+    except OSError:
+        return None
+    return max(added, default=None)
 
 
 @dataclass

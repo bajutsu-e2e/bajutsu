@@ -1,0 +1,731 @@
+"""`bajutsu worker --once` and the public `bajutsu run` wrapper on the one-shot path (BE-0449).
+
+These run in process with injected processes; `tests/test_run_wrapper.py` runs the real commands.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import signal
+import subprocess
+import sys
+import threading
+from pathlib import Path
+from typing import Any
+
+import pytest
+import typer
+from typer.testing import CliRunner
+
+from bajutsu import serve as srv
+from bajutsu.cli import app
+from bajutsu.common.cancellation import GRACE_ENV
+from bajutsu.run import INTERNAL_MODULE, PARENT_FD_ENV
+from bajutsu.run import cli as run_cli
+from bajutsu.serve import _cli_flags as cf
+from bajutsu.serve import jobs as srv_jobs
+from bajutsu.serve.server import one_shot
+from bajutsu.serve.server.worker_job import _local_interpreter
+
+runner = CliRunner()
+
+_INTERNAL = [sys.executable, "-m", INTERNAL_MODULE]
+
+
+# --- what a one-shot job refuses before running ------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("spec", "words"),
+    [
+        ([], "JSON object"),
+        ({"cmd": ["x"], "bundle": {"id": "a" * 64}}, "uploaded bundle"),
+        ({"cmd": ["x"], "overrides": {"binary": "b"}}, "artifact overrides"),
+        ({"batch": {"provider": "devicefarm"}}, "BE-0448"),
+        ({"cmd": []}, "non-empty list"),
+        ({"cmd": ["x", 1]}, "non-empty list"),
+        ({}, "non-empty list"),
+    ],
+)
+def test_a_spec_a_server_must_serve_is_refused(spec: Any, words: str) -> None:
+    reason = one_shot.refusal(spec)
+    assert reason is not None and words in reason
+
+
+@pytest.mark.parametrize(
+    ("spec", "words"),
+    [
+        ({"cmd": ["x"], "udids": "U1"}, "`udids`"),
+        ({"cmd": ["x"], "udids": [1]}, "`udids`"),
+        ({"cmd": ["x"], "materials": ["s.yaml"]}, "`materials`"),
+        ({"cmd": ["x"], "materials": {"s.yaml": 1}}, "`materials`"),
+    ],
+)
+def test_a_spec_field_of_the_wrong_type_is_refused(spec: Any, words: str) -> None:
+    reason = one_shot.refusal(spec)
+    assert reason is not None and words in reason
+
+
+def test_a_material_that_would_overwrite_a_different_file_is_refused(tmp_path: Path) -> None:
+    (tmp_path / "same.yaml").write_text("x: 1\n", encoding="utf-8")
+    (tmp_path / "other.yaml").write_text("mine\n", encoding="utf-8")
+    (tmp_path / "dir.yaml").mkdir()
+    spec = {"cmd": ["x"], "materials": {"same.yaml": "x: 1\n", "new.yaml": "y"}}
+    assert one_shot.refusal(spec, tmp_path) is None
+    for rel in ("other.yaml", "dir.yaml"):
+        reason = one_shot.refusal({"cmd": ["x"], "materials": {rel: "theirs"}}, tmp_path)
+        assert reason is not None and rel in reason
+    assert (tmp_path / "other.yaml").read_text(encoding="utf-8") == "mine\n"
+
+
+def test_worker_once_refuses_a_clashing_material(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "bajutsu.config.yaml").write_text("mine\n", encoding="utf-8")
+    spec = _spec_file(
+        tmp_path, {"cmd": ["never-run"], "materials": {"bajutsu.config.yaml": "theirs"}}
+    )
+    result = runner.invoke(app, ["worker", "--once", str(spec)])
+    assert result.exit_code == 2
+    assert "overwrite" in result.output
+
+
+def test_a_plain_spec_is_accepted() -> None:
+    assert (
+        one_shot.refusal({"cmd": ["x"], "bundle": None, "overrides": None, "batch": None}) is None
+    )
+
+
+def test_the_local_worker_io_touches_nothing(tmp_path: Path) -> None:
+    io = one_shot.LocalWorkerIO()
+    io.download_baselines(tmp_path)
+    io.upload_run(tmp_path, "r1")
+    io.save_scenario(tmp_path, "out.yaml", "app", "ref")
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_the_wrappers_spec_leaves_devices_and_builds_to_the_run() -> None:
+    spec = one_shot.local_run_spec(["--target=demo"])
+    assert spec["cmd"] == [*_INTERNAL, "--target=demo"]
+    assert spec["udids"] == [] and spec["build"] is None
+    assert spec["graceful_cancel"] is True
+    assert one_shot.refusal(spec) is None
+
+
+# --- the exit code ------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("code", "signum", "expected"),
+    [(0, None, 0), (1, None, 1), (2, None, 2), (-9, None, 137), (None, None, 1), (1, 15, 143)],
+)
+def test_the_exit_code_is_the_childs_or_128_plus_the_signal(
+    code: int | None, signum: int | None, expected: int
+) -> None:
+    job = srv.Job(cmd=["x"])
+    job.exit_code = code
+    assert one_shot.exit_code(job, signum) == expected
+
+
+# --- the signal mapping -------------------------------------------------------------------------
+
+
+class _Child:
+    """Records what the signal relay asks of the job's child."""
+
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+        self.cancelled = threading.Event()
+        self.killed = threading.Event()
+
+    def request(self) -> None:
+        self.calls.append("cancel")
+        self.cancelled.set()
+
+    def pgid(self) -> int | None:
+        return None
+
+    def kill(self) -> None:
+        self.calls.append("kill")
+        self.killed.set()
+
+
+def test_a_signal_becomes_one_cancel_and_the_handlers_come_back() -> None:
+    before = signal.getsignal(signal.SIGTERM)
+    child = _Child()
+    with one_shot.cancel_on_signals(child) as signalled:
+        assert signalled() is None
+        os.kill(os.getpid(), signal.SIGTERM)
+        os.kill(os.getpid(), signal.SIGTERM)  # a repeat is not a second cancel
+        assert child.cancelled.wait(5)
+        assert signalled() == signal.SIGTERM
+    assert child.calls == ["cancel"]
+    assert signal.getsignal(signal.SIGTERM) == before
+
+
+def test_a_second_ctrl_c_kills_the_child_at_once() -> None:
+    child = _Child()
+    with one_shot.cancel_on_signals(child) as signalled:
+        os.kill(os.getpid(), signal.SIGINT)
+        assert child.cancelled.wait(5)
+        os.kill(os.getpid(), signal.SIGINT)
+        assert child.killed.wait(5)
+        assert signalled() == signal.SIGINT
+    assert child.calls == ["cancel", "kill"]
+
+
+def test_a_continue_reaches_the_childs_group() -> None:
+    sent: list[tuple[int, int]] = []
+
+    class _Grouped(_Child):
+        def pgid(self) -> int | None:
+            return 4242
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(os, "killpg", lambda pgid, sig: sent.append((pgid, sig)))
+        with one_shot.cancel_on_signals(_Grouped()):
+            os.kill(os.getpid(), signal.SIGCONT)
+    assert (4242, signal.SIGCONT) in sent
+
+
+def test_a_signal_the_caller_ignores_stays_ignored() -> None:
+    previous = signal.signal(signal.SIGHUP, signal.SIG_IGN)
+    try:
+        with one_shot.cancel_on_signals(_Child()):
+            assert signal.getsignal(signal.SIGHUP) == signal.SIG_IGN
+    finally:
+        signal.signal(signal.SIGHUP, previous)
+
+
+def test_off_the_main_thread_the_signals_keep_their_defaults() -> None:
+    seen: list[int | None] = []
+
+    def body() -> None:
+        with one_shot.cancel_on_signals(_Child()) as signalled:
+            seen.append(signalled())
+
+    thread = threading.Thread(target=body)
+    thread.start()
+    thread.join(5)
+    assert seen == [None]
+
+
+# --- the inherited-stdio spawn and the run id from the run tree ---------------------------------
+
+
+class _TreeProc:
+    """A finished child that wrote a run tree under *runs*, as the internal run does."""
+
+    def __init__(self, runs: Path | None, code: int) -> None:
+        if runs is not None:
+            (runs / "20260101-000000").mkdir(parents=True)
+            (runs / "20260101-000000" / "manifest.json").write_text("{}", encoding="utf-8")
+        self.pid = -1
+        self.returncode = code
+
+    def wait(self, timeout: float | None = None) -> int:
+        return self.returncode
+
+    def poll(self) -> int:
+        return self.returncode
+
+
+def test_an_inherited_run_takes_its_run_id_from_the_tree(tmp_path: Path) -> None:
+    calls: list[dict[str, Any]] = []
+    runs = tmp_path / "elsewhere"
+    (runs / "older").mkdir(parents=True)
+
+    def popen(cmd: list[str], **kw: Any) -> _TreeProc:
+        calls.append(kw)
+        return _TreeProc(runs, 1)
+
+    state = srv.ServeState(runs_dir=tmp_path / "runs", cwd=tmp_path, popen=popen)
+    job = srv.Job(cmd=[*_INTERNAL, "--runs-dir", str(runs)])
+    srv.run_job(state, job, inherit_stdio=True)
+    assert job.run_id == "20260101-000000"
+    assert job.exit_code == 1 and job.status == "done"
+    # The caller's own streams, and a session of its own for the child.
+    assert "stdout" not in calls[0] and "stdin" not in calls[0]
+    assert calls[0]["start_new_session"] is True
+    # The liveness pipe: the child gets its read end, named in its environment, and nothing else.
+    (fd,) = calls[0]["pass_fds"]
+    assert calls[0]["env"][PARENT_FD_ENV] == str(fd)
+
+
+def test_an_inherited_run_keeps_the_callers_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("PATH", "/only/this")
+    envs: list[dict[str, str]] = []
+
+    def popen(cmd: list[str], **kw: Any) -> _TreeProc:
+        envs.append(kw["env"])
+        return _TreeProc(None, 0)
+
+    state = srv.ServeState(runs_dir=tmp_path / "runs", cwd=tmp_path, popen=popen)
+    srv.run_job(state, srv.Job(cmd=["echo"], graceful_cancel=True), inherit_stdio=True)
+    assert envs[0]["PATH"] == "/only/this"
+    assert GRACE_ENV in envs[0]
+
+
+def test_an_inherited_job_that_is_not_a_run_has_no_run_id(tmp_path: Path) -> None:
+    state = srv.ServeState(
+        runs_dir=tmp_path / "runs",
+        cwd=tmp_path,
+        popen=lambda c, **k: _TreeProc(tmp_path / "runs", 0),
+    )
+    job = srv.Job(cmd=[sys.executable, "-m", "bajutsu", "record"])
+    srv.run_job(state, job, inherit_stdio=True)
+    assert job.run_id is None and job.exit_code == 0
+
+
+def test_a_job_cancelled_before_its_spawn_never_runs(tmp_path: Path) -> None:
+    state = srv.ServeState(
+        runs_dir=tmp_path / "runs", cwd=tmp_path, popen=lambda c, **k: _TreeProc(None, 0)
+    )
+    job = srv.Job(cmd=["echo"])
+    job.cancelled = True
+    srv.run_job(state, job, inherit_stdio=True)
+    assert job.exit_code == 1 and job.status == "done"
+
+
+@pytest.mark.parametrize(
+    ("cmd", "expected"),
+    [
+        ([], "runs"),
+        (["--runs-dir", "a"], "a"),
+        (["--runs-dir=b"], "b"),
+        (["--runs-dir", "a", "--runs-dir=c"], "c"),
+        (["--runs-dir"], "runs"),
+    ],
+)
+def test_the_runs_dir_follows_the_last_flag(tmp_path: Path, cmd: list[str], expected: str) -> None:
+    assert srv_jobs._runs_dir_of(cmd, tmp_path) == tmp_path / expected
+
+
+def test_a_tree_without_a_manifest_is_no_run(tmp_path: Path) -> None:
+    (tmp_path / "20260101-000000").mkdir()
+    assert srv_jobs._new_run_id_in(tmp_path, frozenset()) is None
+    assert srv_jobs._new_run_id_in(tmp_path / "missing", frozenset()) is None
+    assert srv_jobs._new_run_id_in(None, frozenset()) is None
+    assert srv_jobs._run_dir_names(tmp_path / "missing") == frozenset()
+
+
+# --- run_spec_once: a cancel on a signal --------------------------------------------------------
+
+
+class _CancellableProc:
+    """A running child that ends when it is sent SIGTERM, as a cancelled `bajutsu run` does."""
+
+    def __init__(self) -> None:
+        self.pid = -1
+        self.returncode: int | None = None
+        self.started = threading.Event()
+        self._ended = threading.Event()
+        self.signals: list[int] = []
+
+    def send_signal(self, sig: int) -> None:
+        self.signals.append(sig)
+        self.returncode = 1
+        self._ended.set()
+
+    def wait(self, timeout: float | None = None) -> int | None:
+        self.started.set()
+        self._ended.wait(timeout)
+        return self.returncode
+
+    def poll(self) -> int | None:
+        return self.returncode
+
+
+def test_a_signal_cancels_a_one_shot_run_gracefully(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(GRACE_ENV, "0.1")  # the escalation timer finds the run already gone
+    proc = _CancellableProc()
+
+    def signal_once_running() -> None:
+        assert proc.started.wait(5)
+        os.kill(os.getpid(), signal.SIGTERM)
+
+    threading.Thread(target=signal_once_running, daemon=True).start()
+    code = one_shot.run_spec_once(
+        {"cmd": [*_INTERNAL, "--target", "demo"], "graceful_cancel": True},
+        worker_config=None,
+        cwd=tmp_path,
+        popen=lambda cmd, **kw: proc,
+    )
+    assert code == 128 + signal.SIGTERM
+    # Graceful: the leader alone is asked to stop (BE-0370), not its group killed.
+    assert proc.signals == [signal.SIGTERM]
+
+
+def test_run_spec_once_hands_the_run_its_worker_file(tmp_path: Path) -> None:
+    seen: list[list[str]] = []
+
+    def popen(cmd: list[str], **kw: Any) -> _TreeProc:
+        seen.append(cmd)
+        return _TreeProc(None, 0)
+
+    path = tmp_path / "w.yaml"
+    code = one_shot.run_spec_once(
+        {"cmd": ["python", "-m", "bajutsu", "run", "--target", "demo"]},
+        worker_config=path,
+        cwd=tmp_path,
+        popen=popen,
+    )
+    assert code == 0
+    # A spec queued before BE-0449 runs the internal module directly: one process, no wrapper.
+    assert seen == [[*_INTERNAL, "--worker-config", str(path.resolve()), "--target", "demo"]]
+
+
+def test_the_wrapper_keeps_the_callers_worker_file_as_typed(tmp_path: Path) -> None:
+    seen: list[list[str]] = []
+
+    def popen(cmd: list[str], **kw: Any) -> _TreeProc:
+        seen.append(cmd)
+        return _TreeProc(None, 0)
+
+    spec = one_shot.local_run_spec(["--worker-config=w.yaml"])
+    one_shot.run_spec_once(
+        spec, worker_config=None, apply_worker_config=False, cwd=tmp_path, popen=popen
+    )
+    assert seen == [[*_INTERNAL, "--worker-config=w.yaml"]]
+
+
+# --- `bajutsu worker --once` --------------------------------------------------------------------
+
+
+def _spec_file(tmp_path: Path, spec: Any) -> Path:
+    path = tmp_path / "spec.json"
+    path.write_text(json.dumps(spec), encoding="utf-8")
+    return path
+
+
+def test_worker_once_exits_with_the_jobs_code(tmp_path: Path) -> None:
+    spec = _spec_file(tmp_path, {"cmd": [sys.executable, "-c", "raise SystemExit(3)"]})
+    result = runner.invoke(app, ["worker", "--once", str(spec)])
+    assert result.exit_code == 3, result.output
+
+
+def test_worker_once_refuses_a_bundle_before_running(tmp_path: Path) -> None:
+    spec = _spec_file(tmp_path, {"cmd": ["never-run"], "bundle": {"id": "a" * 64}})
+    result = runner.invoke(app, ["worker", "--once", str(spec)])
+    assert result.exit_code == 2
+    assert "uploaded bundle" in result.output
+
+
+def test_worker_once_refuses_an_unreadable_spec(tmp_path: Path) -> None:
+    bad = tmp_path / "spec.json"
+    bad.write_text("{not json", encoding="utf-8")
+    for path in (bad, tmp_path / "missing.json"):
+        result = runner.invoke(app, ["worker", "--once", str(path)])
+        assert result.exit_code == 2
+        assert "cannot read the job spec" in result.output
+
+
+def test_worker_once_refuses_a_device_cloud_worker_file(tmp_path: Path) -> None:
+    worker_file = tmp_path / "w.yaml"
+    worker_file.write_text(
+        "version: 1\nenvironment: devicefarm\ndrivers: [adb]\n", encoding="utf-8"
+    )
+    spec = _spec_file(tmp_path, {"cmd": ["never-run"]})
+    result = runner.invoke(
+        app, ["worker", "--once", str(spec), "--worker-config", str(worker_file)]
+    )
+    assert result.exit_code == 2
+    assert "BE-0448" in result.output
+
+
+# --- the public `bajutsu run` wrapper -----------------------------------------------------------
+
+
+def test_the_wrapper_passes_on_what_the_caller_typed(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, Any] = {}
+
+    def fake_once(spec: dict[str, Any], **kwargs: Any) -> int:
+        captured.update(spec=spec, **kwargs)
+        return 7
+
+    monkeypatch.setattr(one_shot, "run_spec_once", fake_once)
+    # An environment value is left for the run to read itself; a typed one is passed on, even when
+    # it equals the default or clears the environment value.
+    monkeypatch.setenv("BAJUTSU_EVIDENCE_STORE", "s3://bucket/prefix")
+    argv = [
+        "run",
+        "--scenario",
+        "a.yaml",
+        "--scenario",
+        "b.yaml",
+        "--target",
+        "demo",
+        "--udid",
+        "",
+        "--workers",
+        "1",
+        "--erase",
+        "--no-network",
+        "--zip",
+        "--break",
+        "-1",
+        "--label",
+        "-x",
+    ]
+    result = runner.invoke(app, argv)
+    assert result.exit_code == 7, result.output
+    assert captured["spec"]["cmd"] == [
+        *_INTERNAL,
+        "--target=demo",
+        "--scenario=a.yaml",
+        "--scenario=b.yaml",
+        "--udid=",
+        "--workers=1",
+        "--erase",
+        "--no-network",
+        "--break=-1",
+        "--zip",
+        "--label=-x",
+    ]
+    assert captured["worker_config"] is None
+    assert captured["apply_worker_config"] is False
+
+    result = runner.invoke(app, ["run", "--target", "demo", "--evidence-store", ""])
+    assert result.exit_code == 7, result.output
+    assert captured["spec"]["cmd"] == [*_INTERNAL, "--target=demo", "--evidence-store="]
+
+
+def test_the_internal_module_is_a_run_job() -> None:
+    assert srv.Job(cmd=[*_INTERNAL, "--target", "demo"]).kind == "run"
+    assert srv.Job(cmd=[sys.executable, "-m", "bajutsu", "run"]).kind == "run"
+    assert srv.Job(cmd=[sys.executable, "-m"]).kind is None
+    assert srv.Job(cmd=[sys.executable, "-m", "bajutsu"]).kind is None
+    assert srv.Job(cmd=[sys.executable, "-m", "other", "run"]).kind is None
+    assert _local_interpreter(["/elsewhere/python", "-m", INTERNAL_MODULE]) == _INTERNAL
+
+
+# --- option_args: every option survives the trip to the internal run -----------------------------
+
+
+def _non_default(option: Any) -> Any:
+    """A value for *option* that differs from its default and that its type accepts."""
+    if option.is_bool_flag:
+        # A flag pair whose default is unset or on is sent its `--no-` side, so both sides are tried.
+        return not (option.secondary_opts and option.default in (None, True))
+    kind = option.type.name
+    if kind == "integer":
+        return 3
+    if kind == "float":
+        return 0.25
+    if kind == "path":
+        return Path("w.yaml")
+    if option.multiple:
+        return ["a", "-b"]
+    return "-value"
+
+
+def test_every_option_round_trips_through_the_internal_run() -> None:
+    options = cf._options("run")
+    values = {name: _non_default(option) for name, option in options.items()}
+    assert all(values[name] != option.default for name, option in options.items())
+    captured: dict[str, Any] = {}
+
+    def capture(**kwargs: Any) -> None:
+        captured.update(kwargs)
+
+    run_cli._share_signature(capture, run_cli.run_body)
+    body = typer.Typer()
+    body.command()(capture)
+    result = runner.invoke(body, cf.option_args("run", values))
+    assert result.exit_code == 0, result.output
+    assert {name: captured[name] for name in values} == values
+
+
+def test_option_args_refuses_an_unknown_option() -> None:
+    with pytest.raises(ValueError, match="not an option"):
+        cf.option_args("run", {"nope": 1})
+
+
+# --- the `--step` prompt notices a cancel -------------------------------------------------------
+
+
+@pytest.fixture
+def piped_stdin(monkeypatch: pytest.MonkeyPatch) -> Any:
+    read_fd, write_fd = os.pipe()
+    reader = os.fdopen(read_fd, "r")
+    writer = os.fdopen(write_fd, "w")
+    monkeypatch.setattr(sys, "stdin", reader)
+    yield writer
+    reader.close()
+    if not writer.closed:
+        writer.close()
+
+
+def test_the_step_prompt_ends_on_a_cancel(piped_stdin: Any) -> None:
+    with pytest.raises(EOFError):
+        run_cli._read_step_line("step> ", lambda: True)
+
+
+def test_the_step_prompt_reads_a_typed_line(piped_stdin: Any) -> None:
+    piped_stdin.write("n\n")
+    piped_stdin.flush()
+    assert run_cli._read_step_line("step> ") == "n\n"
+    piped_stdin.close()
+    with pytest.raises(EOFError):
+        run_cli._read_step_line("step> ")
+
+
+def test_the_late_cancel_reads_the_source_bound_last() -> None:
+    late = run_cli._LateCancel()
+    assert late() is False
+    late.source = lambda: True
+    assert late() is True
+
+
+def test_a_real_child_inherits_the_callers_streams(tmp_path: Path) -> None:
+    # A real process, so the spawn's keyword set is one `subprocess.Popen` accepts.
+    out = tmp_path / "out.txt"
+    code = one_shot.run_spec_once(
+        {"cmd": [sys.executable, "-c", f"open({str(out)!r}, 'w').write('ran')"]},
+        worker_config=None,
+        cwd=tmp_path,
+        popen=subprocess.Popen,
+    )
+    assert code == 0
+    assert out.read_text(encoding="utf-8") == "ran"
+
+
+# --- what the relay knows of the bound job's child ---------------------------------------------
+
+
+class _LiveProc:
+    def __init__(self, pid: int) -> None:
+        self.pid = pid
+        self.killed = False
+
+    def kill(self) -> None:
+        self.killed = True
+
+
+def test_the_relay_reaches_the_bound_childs_group() -> None:
+    from bajutsu.serve.server.worker_job import CancelRelay
+
+    relay = CancelRelay()
+    assert relay.pgid() is None
+    relay.kill()  # nothing bound yet: a no-op
+    job = srv.Job(cmd=["x"])
+    relay.bind(job)
+    assert relay.pgid() is None  # bound, but not spawned
+    job.proc = _LiveProc(os.getpid())
+    assert relay.pgid() == os.getpgid(os.getpid())
+    gone = _LiveProc(-1)  # no such group, so the kill falls back to the process itself
+    job.proc = gone
+    relay.kill()
+    assert gone.killed is True
+
+
+# --- round 2: the liveness pipe is a `run`'s alone, and spec shapes ------------------------------
+
+
+def test_only_a_run_gets_the_liveness_pipe(tmp_path: Path) -> None:
+    calls: list[dict[str, Any]] = []
+
+    def popen(cmd: list[str], **kw: Any) -> _TreeProc:
+        calls.append(kw)
+        return _TreeProc(None, 0)
+
+    state = srv.ServeState(runs_dir=tmp_path / "runs", cwd=tmp_path, popen=popen)
+    srv.run_job(state, srv.Job(cmd=[sys.executable, "-m", "bajutsu", "triage"]), inherit_stdio=True)
+    assert "pass_fds" not in calls[0]
+    assert PARENT_FD_ENV not in calls[0]["env"]
+
+
+def test_a_failing_spawn_closes_both_pipe_ends(tmp_path: Path) -> None:
+    opened: list[int] = []
+    real_pipe = os.pipe
+
+    def tracking_pipe() -> tuple[int, int]:
+        r, w = real_pipe()
+        opened.extend((r, w))
+        return r, w
+
+    def popen(cmd: list[str], **kw: Any) -> Any:
+        raise OSError("spawn failed")
+
+    state = srv.ServeState(runs_dir=tmp_path / "runs", cwd=tmp_path, popen=popen)
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(os, "pipe", tracking_pipe)
+        with pytest.raises(OSError, match="spawn failed"):
+            srv_jobs._run_inherited(state, srv.Job(cmd=[*_INTERNAL]))
+    for fd in opened:
+        with pytest.raises(OSError, match="Bad file descriptor"):
+            os.fstat(fd)
+
+
+@pytest.mark.parametrize("raw", ["not-a-number", "999999"])
+def test_the_run_ignores_a_parent_fd_it_cannot_watch(
+    raw: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from bajutsu.run import internal
+
+    monkeypatch.setenv(PARENT_FD_ENV, raw)
+    internal._watch_parent()
+    assert PARENT_FD_ENV not in os.environ
+
+
+def test_the_run_ignores_a_parent_fd_that_is_not_a_pipe(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from bajutsu.run import internal
+
+    started: list[Any] = []
+    monkeypatch.setattr(threading, "Thread", lambda *a, **k: started.append(k))
+    with (tmp_path / "f").open("w") as f:
+        monkeypatch.setenv(PARENT_FD_ENV, str(f.fileno()))
+        internal._watch_parent()
+    assert started == []
+    monkeypatch.delenv(PARENT_FD_ENV, raising=False)
+    internal._watch_parent()  # no variable: nothing to watch
+    assert started == []
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("build", "make"),
+        ("env_overlay", {"A": 1}),
+        ("env_overlay", ["A"]),
+        ("app_path", 3),
+        ("graceful_cancel", "yes"),
+        ("actor", 7),
+    ],
+)
+def test_a_spec_field_of_the_wrong_shape_is_refused(field: str, value: Any) -> None:
+    reason = one_shot.refusal({"cmd": ["x"], field: value})
+    assert reason is not None and f"`{field}`" in reason
+
+
+def test_well_shaped_optional_fields_are_accepted() -> None:
+    spec = {
+        "cmd": ["x"],
+        "build": {"cmd": "make"},
+        "env_overlay": {"A": "b"},
+        "app_path": "App.app",
+        "graceful_cancel": True,
+        "actor": "me",
+    }
+    assert one_shot.refusal(spec) is None
+
+
+def test_the_wrapper_passes_on_only_the_flag_the_caller_typed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, Any] = {}
+    monkeypatch.setattr(
+        one_shot, "run_spec_once", lambda spec, **kw: captured.update(spec=spec) or 0
+    )
+    monkeypatch.setenv("BAJUTSU_EVIDENCE_STORE", "s3://bucket/prefix")
+    result = runner.invoke(app, ["run", "--target", "demo"])
+    assert result.exit_code == 0, result.output
+    assert captured["spec"]["cmd"] == [*_INTERNAL, "--target=demo"]
