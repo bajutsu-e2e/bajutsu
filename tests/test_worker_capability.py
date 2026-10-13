@@ -94,11 +94,22 @@ def test_missing_file_is_a_clear_error(tmp_path: Path) -> None:
         load_worker_capability(tmp_path / "absent.yaml")
 
 
-def test_environments_match_the_registrable_batch_providers() -> None:
+def test_environments_match_the_registrable_batch_providers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     # The core cannot import the server's provider registry, so the list is kept by hand; this
-    # pins it to the one kind `batch_bootstrap` registers.
-    source = Path("bajutsu/serve/batch_bootstrap.py").read_text(encoding="utf-8")
-    kinds = set(re.findall(r'batch_provider\.register\("([a-z]+)"', source))
+    # pins it to every kind `batch_bootstrap` registers when fully configured, through the real
+    # registration call rather than its source text.
+    from bajutsu.serve import batch_bootstrap, batch_provider
+
+    kinds: set[str] = set()
+    monkeypatch.setattr(batch_bootstrap, "_make_devicefarm_client", lambda _region: object())
+    monkeypatch.setattr(batch_bootstrap, "HttpTransfer", object)
+    monkeypatch.setattr(batch_provider, "register", lambda kind, _provider: kinds.add(kind))
+    registered = batch_bootstrap.register_batch_providers(
+        {"DEVICEFARM_PROJECT_ARN": "arn:aws:devicefarm:us-west-2:1:project:abc"}
+    )
+    assert set(registered) == kinds
     assert ENVIRONMENTS - {"local"} == kinds
 
 

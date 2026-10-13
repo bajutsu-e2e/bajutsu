@@ -181,11 +181,15 @@ def _with_worker_config(cmd: list[str], worker_config: Path | None) -> list[str]
 
     The worker alone holds `worker.yaml` — the server is not a worker and never sets the flag — so
     the run it spawns must read the same file to apply the same check. Only `run` takes the flag;
-    the other commands' argv is returned unchanged.
+    the other commands' argv is returned unchanged. A worker started without a file still strips a
+    spec-supplied flag from a recognised ``python -m bajutsu run`` argv, so the run falls back to the
+    shipped default rather than the spec's choice.
     """
-    if worker_config is None or "run" not in cmd[:4]:
+    if "run" not in cmd[:4]:
         return cmd
     if cmd[1:4] != ["-m", "bajutsu", "run"]:
+        if worker_config is None:
+            return cmd
         # Passing the argv through would run under the shipped default, which offers every driver:
         # a silent widening of what the operator declared, so the job fails instead.
         raise ValueError(f"cannot apply --worker-config to an unrecognised run argv: {cmd[:4]}")
@@ -200,6 +204,8 @@ def _with_worker_config(cmd: list[str], worker_config: Path | None) -> list[str]
             or cmd[i - 1] == "--worker-config"
         )
     ]
+    if worker_config is None:
+        return [*cmd[:4], *rest]
     return [*cmd[:4], "--worker-config", str(worker_config.resolve()), *rest]
 
 

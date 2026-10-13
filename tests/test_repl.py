@@ -40,6 +40,16 @@ from bajutsu.repl.session import COMMAND_ERRORS, FATAL_ERRORS, ReplExit, ReplSes
 
 runner = CliRunner()
 
+
+@pytest.fixture(autouse=True)
+def _macos_host(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin the host to macOS so the BE-0450 worker filter keeps xcuitest on a Linux CI runner.
+
+    These tests stub actuator selection as if a Simulator were present; the host check runs first.
+    """
+    monkeypatch.setattr("bajutsu.cli._shared.current_host_os", lambda: "darwin")
+
+
 _EFF = resolve(load_config("targets: { demo: { bundleId: com.example.demo } }"), "demo")
 
 

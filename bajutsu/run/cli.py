@@ -2605,6 +2605,24 @@ def run(
             browser=browser,
             browsers=browsers,
         )
+        # Reload under the new primary: the first load applied the old primary's setup and the
+        # filter baked in its run defaults. Every scenario here declares its own targets, which
+        # alone decide the worker check, so the recomputed failures are the same set.
+        scenarios, description, source_name, files, plan_sources = _load_scenarios(
+            eff, scenario or [], target_name
+        )
+        scenarios = _filter_scenarios(
+            scenarios,
+            tag,
+            exclude,
+            erase,
+            eff.run_defaults.erase,
+            ios_tipkit_handling,
+            eff.run_defaults.ios_tip_kit_handling,
+        )
+        all_scenarios = scenarios
+        worker_failures = _worker_capability_failures(loaded, scenarios, eff, backend, worker)
+        scenarios = [s for i, s in enumerate(scenarios) if i not in worker_failures]
     target_effs = _resolve_target_effs(
         loaded, scenarios, target_name, eff, headed=headed, browser=browser
     )
