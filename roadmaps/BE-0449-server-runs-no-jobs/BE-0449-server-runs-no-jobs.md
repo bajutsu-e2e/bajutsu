@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0449") |
-| Implementing PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167) (Unit 1, part 1 of 3), [#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168) (Unit 1, part 2 of 3), [#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170) (Unit 1, part 3 of 3), [#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171) (Unit 2), [#2172](https://github.com/bajutsu-e2e/bajutsu/pull/2172) (Unit 4), [#2173](https://github.com/bajutsu-e2e/bajutsu/pull/2173) (Unit 3), [#2182](https://github.com/bajutsu-e2e/bajutsu/pull/2182) (Unit 5, part 1 of 2: a lossless local start), [#2183](https://github.com/bajutsu-e2e/bajutsu/pull/2183) (Unit 5, part 2 of 2: `run` on a worker), [#2184](https://github.com/bajutsu-e2e/bajutsu/pull/2184), [#2185](https://github.com/bajutsu-e2e/bajutsu/pull/2185), [#2186](https://github.com/bajutsu-e2e/bajutsu/pull/2186) (Unit 6, through BE-0448), [#2187](https://github.com/bajutsu-e2e/bajutsu/pull/2187) (Unit 7), [#2188](https://github.com/bajutsu-e2e/bajutsu/pull/2188) (Unit 8), and PR_PLACEHOLDER15 (Unit 9) |
+| Implementing PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167) (Unit 1, part 1 of 3), [#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168) (Unit 1, part 2 of 3), [#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170) (Unit 1, part 3 of 3), [#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171) (Unit 2), [#2172](https://github.com/bajutsu-e2e/bajutsu/pull/2172) (Unit 4), [#2173](https://github.com/bajutsu-e2e/bajutsu/pull/2173) (Unit 3), [#2182](https://github.com/bajutsu-e2e/bajutsu/pull/2182) (Unit 5, part 1 of 2: a lossless local start), [#2183](https://github.com/bajutsu-e2e/bajutsu/pull/2183) (Unit 5, part 2 of 2: `run` on a worker), [#2184](https://github.com/bajutsu-e2e/bajutsu/pull/2184), [#2185](https://github.com/bajutsu-e2e/bajutsu/pull/2185), [#2186](https://github.com/bajutsu-e2e/bajutsu/pull/2186) (Unit 6, through BE-0448), [#2187](https://github.com/bajutsu-e2e/bajutsu/pull/2187) (Unit 7), [#2188](https://github.com/bajutsu-e2e/bajutsu/pull/2188) (Unit 8), and [#2189](https://github.com/bajutsu-e2e/bajutsu/pull/2189) (Unit 9) |
 | Topic | Hosting the web UI |
 <!-- /BE-METADATA -->
 
@@ -406,7 +406,7 @@ Log:
   page, the answer at the record, and a cancel while the record waits. Hosted deployments keep two
   gaps. A crawl there names server paths, as the unit 7 follow-up describes. The device takeover
   stays refused on a hosted start (BE-0185).
-- PR_PLACEHOLDER15 (Unit 9) — the server runs no job in its own process, on any shape it starts
+- [#2189](https://github.com/bajutsu-e2e/bajutsu/pull/2189) (Unit 9) — the server runs no job in its own process, on any shape it starts
   in. This unit deletes the in-process executor, `LocalExecutor`, with its thread body
   `run_job_in_process`. The routing that kept kinds in process went with it: `RoutingExecutor`,
   `runs_in_process`, and `LOCAL_QUEUED_KINDS`. `bajutsu serve` wires `DbQueueExecutor` alone. The last
