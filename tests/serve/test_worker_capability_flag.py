@@ -74,6 +74,20 @@ def test_a_spec_supplied_flag_cannot_override_the_workers_file(tmp_path: Path) -
         assert out[6:] == ["--target", "demo"]
 
 
+def test_a_default_worker_strips_a_spec_supplied_flag() -> None:
+    # A worker with no file runs under the shipped default; the spec must not swap in its own.
+    for injected in (["--worker-config", "/elsewhere.yaml"], ["--worker-config=/elsewhere.yaml"]):
+        cmd = [sys.executable, "-m", "bajutsu", "run", *injected, "--target", "demo"]
+        assert _with_worker_config(cmd, None) == [
+            sys.executable,
+            "-m",
+            "bajutsu",
+            "run",
+            "--target",
+            "demo",
+        ]
+
+
 def test_an_unrecognised_run_argv_fails_instead_of_running_on_the_default(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="unrecognised run argv"):
         _with_worker_config(["bajutsu", "run", "--target", "demo"], tmp_path / "w.yaml")

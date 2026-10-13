@@ -232,6 +232,7 @@ def test_a_primary_only_failed_scenarios_use_is_not_acquired(
     # The first file infers the primary (`site`), but it is the one that fails: the run moves its
     # primary to the runnable file's target rather than reserving a device for `site`.
     acquired: list[str] = []
+    reached: list[Scenario] = []
 
     def fake_acquire(eff: Any, udid: str) -> Any:
         from bajutsu.common.platform_lifecycle import ProvisionProfile
@@ -241,12 +242,21 @@ def test_a_primary_only_failed_scenarios_use_is_not_acquired(
         return DeviceLease(udid_spec=udid, provision=ProvisionProfile(), release=lambda: None)
 
     def reached_execution(_eff: Any, scenarios: list[Scenario], *_a: object, **kw: Any) -> object:
+        reached.extend(scenarios)
         raise typer.Exit(7)
 
     monkeypatch.setattr("bajutsu.run.cli.acquire_device", fake_acquire)
     monkeypatch.setattr("bajutsu.run.cli.device_pool", lambda *a, **k: (object(), lambda: None))
     monkeypatch.setattr("bajutsu.run.cli.run_and_report", reached_execution)
     args = _write(tmp_path, "version: 1\nmaxTargetsPerJob: 1\ndrivers: [fake, playwright]\n")
+    # Only the new primary erases by default, so a scenario still carrying the failed primary's
+    # run defaults would reach execution with erase off.
+    (tmp_path / "bajutsu.config.yaml").write_text(
+        _CONFIG.replace(
+            "{ bundleId: com.example.app }", "{ bundleId: com.example.app, erase: true }"
+        ),
+        encoding="utf-8",
+    )
     two = tmp_path / "two.yaml"
     two.write_text("- name: two\n  targets: [site, app]\n  steps: []\n", encoding="utf-8")
     # The failing file first, so it is the one the primary is inferred from.
@@ -254,6 +264,7 @@ def test_a_primary_only_failed_scenarios_use_is_not_acquired(
     result = runner.invoke(app, args)
     assert result.exit_code == 7, result.output
     assert acquired == ["app"]
+    assert [sc.preconditions.erase for sc in reached if sc.name == "one"] == [True]
 
 
 def test_the_browser_matrix_still_refuses_a_failed_multi_target_scenario(tmp_path: Path) -> None:
