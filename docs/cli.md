@@ -1167,9 +1167,8 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   only warns. Needs the `s3` or `gcs` extra **on the server** (the worker needs neither). See
   [self-hosting](self-hosting.md) for the topology.
 - **`--backend` — which jobs a worker runs.** Both backends keep a queue for a `bajutsu worker`
-  (BE-0449). The `local` default queues each run with its build phase, the Device Farm fan-out,
-  and triage. It runs record and crawl inside the `serve` process. The `server` backend queues every
-  job. A queued job waits for a worker. With no live worker able to take it, the job carries a
+  (BE-0449). Both now queue every kind of job, and the `serve` process runs none of them. A queued
+  job waits for a worker. With no live worker able to take it, the job carries a
   notice that no worker is available. `make serve` starts a worker beside the server. A bare
   `bajutsu serve` needs `bajutsu worker` beside it. The lease hands the worker the stored secrets
   of the job's org. On one machine, with no `BAJUTSU_SERVER_STORE`, a server needs no environment

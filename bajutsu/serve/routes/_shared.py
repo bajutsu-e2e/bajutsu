@@ -3,13 +3,24 @@
 from __future__ import annotations
 
 from bajutsu.serve import operations as ops
-from bajutsu.serve.operations.worker import WORKER_LOG_MAX_BODY_BYTES
+from bajutsu.serve.operations.worker import (
+    WORKER_ARTIFACT_MAX_BODY_BYTES,
+    WORKER_HANDOFF_MAX_BODY_BYTES,
+    WORKER_LOG_MAX_BODY_BYTES,
+)
 
+from .request_ctx import RequestCtx
 from .route import Route
 
 # Content type for the HTML dashboard routes (/stats, /flakiness, /usage, /coverage); /metrics uses the
 # Prometheus type. Both drive `_text` instead of the JSON writer.
 _HTML = "text/html; charset=utf-8"
+
+
+def _worker_caller(ctx: RequestCtx) -> bool:
+    """Whether the request came in on the shared token (or an ungated loopback start), the way a
+    worker authenticates, rather than on a browser or machine session (BE-0449)."""
+    return ctx.session() is None and ctx.machine_org() is None
 
 
 # The route table. Order is load-bearing for the greedy `/runs/{rel:path}`, which must come after
@@ -481,7 +492,7 @@ ROUTES: tuple[Route, ...] = (
             state,
             ctx.body().get("worker_id", ""),
             ctx.body().get("capabilities"),
-            relay_secrets=ctx.session() is None and ctx.machine_org() is None,
+            relay_secrets=_worker_caller(ctx),
         ),
     ),
     Route(
@@ -496,6 +507,28 @@ ROUTES: tuple[Route, ...] = (
         "/api/worker/log",
         lambda state, ctx: ops.worker_log(state, ctx.body()),
         max_body=WORKER_LOG_MAX_BODY_BYTES,
+    ),
+    # The relay of a crawl's live screen map and a paused record's handoff (BE-0449 unit 8). Each
+    # carries the page's live view or a person's answer, so only a worker reaches it: a caller on a
+    # browser or machine session gets 403, as the lease withholds the secrets from one.
+    Route(
+        "POST",
+        "/api/worker/artifact",
+        lambda state, ctx: ops.worker_artifact(state, ctx.body(), from_worker=_worker_caller(ctx)),
+        max_body=WORKER_ARTIFACT_MAX_BODY_BYTES,
+    ),
+    Route(
+        "POST",
+        "/api/worker/handoff",
+        lambda state, ctx: ops.worker_handoff(state, ctx.body(), from_worker=_worker_caller(ctx)),
+        max_body=WORKER_HANDOFF_MAX_BODY_BYTES,
+    ),
+    Route(
+        "POST",
+        "/api/worker/handoff-response",
+        lambda state, ctx: ops.worker_handoff_response(
+            state, ctx.body(), from_worker=_worker_caller(ctx)
+        ),
     ),
     Route(
         "POST",
@@ -523,7 +556,13 @@ ROUTES: tuple[Route, ...] = (
     Route(
         "POST",
         "/api/jobs/{job_id}/respond-human",
-        lambda state, ctx: ops.respond_human(state, ctx.path_param("job_id"), ctx.body()),
+        lambda state, ctx: ops.respond_human(
+            state,
+            ctx.path_param("job_id"),
+            ctx.body(),
+            actor=ctx.actor(),
+            machine_org=ctx.machine_org(),
+        ),
     ),
     Route(
         "POST",

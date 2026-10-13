@@ -47,6 +47,7 @@ from bajutsu.serve.capabilities import (
     reserved_tokens,
     worker_capabilities,
 )
+from bajutsu.serve.cli.worker_relay import ArtifactStreamer, HandoffRelay
 from bajutsu.serve.helpers import unsafe_env_name, valid_sha256, warn_unsafe_env_name
 from bajutsu.serve.jobs import _runs_dir_of
 from bajutsu.serve.operations.composition import materialize_composition, place_overrides
@@ -1163,14 +1164,16 @@ class _TeeLogBus(InMemoryLogBus):
     """The worker's log buffer, which also hands each line to the live stream (BE-0449).
 
     The buffer still becomes ``console.log`` after the run, unchanged. A handoff request line
-    (BE-0179) stays out of the live stream: nothing relays a person's answer back to a queued job
-    until the handoff relay arrives with `record` on the worker, so a prompt there would wait for
-    an answer that cannot come.
+    (BE-0179) stays out of the live log: it goes to *on_request* instead, the handoff relay that
+    carries it to the page on a route of its own and brings the person's answer back (unit 8).
     """
 
     def __init__(self, on_line: Callable[[str], None]) -> None:
         super().__init__()
         self._on_line = on_line
+        # Set by `_run_with_heartbeat` once the job's handoff relay exists; until then, and for a
+        # job with no relay, a request line is dropped.
+        self.on_request: Callable[[str], None] | None = None
 
     def publish(self, job_id: str, line: str) -> None:
         super().publish(job_id, line)
@@ -1184,6 +1187,34 @@ class _TeeLogBus(InMemoryLogBus):
         for line in lines:
             if not line.startswith(REQUEST_LINE_PREFIX):
                 self._on_line(line)
+            elif self.on_request is not None:
+                self.on_request(line)
+
+
+def _post_relay(
+    url: str,
+    wid: str,
+    job_id: str,
+    auth_token: str | None,
+    path: str,
+    body: dict[str, Any],
+    *,
+    timeout: float = _LOG_POST_TIMEOUT,
+) -> tuple[int | None, Any]:
+    """Post one relay request for the job (BE-0449 unit 8); ``(None, None)`` when it failed.
+
+    The relays are best effort, like the live log: a failure is logged and never reaches the job.
+    """
+    try:
+        return _post_json(
+            f"{url}{path}",
+            {"worker_id": wid, "job_id": job_id, **body},
+            token=auth_token,
+            timeout=timeout,
+        )
+    except Exception as e:  # a relay post must never reach the job, whatever went wrong
+        _logger.warning("relay post %s failed for job %s: %s", path, job_id, e)
+        return None, None
 
 
 def _post_log(
@@ -1275,6 +1306,19 @@ def _run_with_heartbeat(
     holder: dict[str, Any] = {"work": work}
     lost = lost if lost is not None else threading.Event()
     cancel = cancel if cancel is not None else _CancelRelay()
+    # The live relays of `record` and `crawl` (BE-0449 unit 8). Both are bound to the job once it
+    # exists and stay idle for every other kind.
+    relay_post = functools.partial(_post_relay, url, wid, job_id, auth_token)
+    handoff = HandoffRelay(relay_post, cancel=cancel)
+    artifacts = ArtifactStreamer(relay_post)
+    if isinstance(bus, _TeeLogBus):
+        bus.on_request = handoff.offer
+
+    def on_job(job: Job) -> None:
+        cancel.bind(job)
+        handoff.bind(job)
+        artifacts.bind(job, holder["work"])
+
     checkpoint = (
         _LeaseCheckpoint(
             url=url,
@@ -1321,7 +1365,7 @@ def _run_with_heartbeat(
                 bus=bus,
                 io=io,
                 worker_config=worker_config,
-                on_job=cancel.bind,
+                on_job=on_job,
                 secret_env=secret_env,
                 batch_checkpoint=checkpoint,
                 lease_lost=lost,
@@ -1338,14 +1382,20 @@ def _run_with_heartbeat(
 
     runner = threading.Thread(target=_run, daemon=True)
     runner.start()
-    abandoned = _beat_and_stream(
-        runner,
-        beat=lambda: _heartbeat(url, wid, job_id, auth_token, heartbeat_interval, cancel),
-        interval=heartbeat_interval,
-        lost=lost,
-        streamer=streamer,
-        log_flush_interval=log_flush_interval,
-    )
+    artifacts.start(log_flush_interval)
+    try:
+        abandoned = _beat_and_stream(
+            runner,
+            beat=lambda: _heartbeat(url, wid, job_id, auth_token, heartbeat_interval, cancel),
+            interval=heartbeat_interval,
+            lost=lost,
+            streamer=streamer,
+            log_flush_interval=log_flush_interval,
+        )
+    finally:
+        handoff.stop()
+        # The last snapshot goes out ahead of the result, which closes the job's event stream.
+        artifacts.stop(final=not lost.is_set())
 
     if holder.get("transient"):
         return None, abandoned, holder["work"]

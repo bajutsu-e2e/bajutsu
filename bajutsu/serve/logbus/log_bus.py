@@ -5,6 +5,13 @@ from __future__ import annotations
 from collections.abc import Iterator
 from typing import Protocol
 
+# Marks a live artifact snapshot on a job's channel (BE-0449 unit 8): the worker of a crawl posts its
+# growing screen map, and the server publishes it as one line under this prefix, which the event
+# stream turns into an `artifact` event rather than a `log` line. The control characters keep it
+# from colliding with narration, as the handoff request's own prefix does; a log line that starts
+# with either is dropped before it reaches the bus, so a run cannot forge one.
+ARTIFACT_LINE_PREFIX = "\x1eBAJUTSU-ARTIFACT\x1e"
+
 
 class LogBus(Protocol):
     """Carries a job's log lines from producer to live subscribers."""

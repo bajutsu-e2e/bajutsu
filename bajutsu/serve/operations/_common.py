@@ -116,3 +116,17 @@ def no_worker_notice(state: ServeState, job: Job) -> str | None:
     if runs_in_process(state.executor, job.kind):
         return None
     return NO_WORKER_NOTICE if state.repository.lacks_live_worker(job.id) else None
+
+
+def awaiting_human(state: ServeState, job: Job) -> bool:
+    """Whether *job* is paused for a person's handoff answer (BE-0179).
+
+    A job in the jobs table runs on a worker, and its row's flag is the one every replica reads
+    (BE-0449): the replica that took the worker's request need not be the one a page asks. A job
+    with no row runs in this process, which keeps the flag on its own `Job`.
+    """
+    row = state.repository.get_job(job.id) if state.repository is not None else None
+    if row is not None:
+        return bool(row.get("awaiting_human"))
+    with job.lock:
+        return job.awaiting_human

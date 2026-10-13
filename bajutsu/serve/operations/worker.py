@@ -7,11 +7,13 @@ import logging
 from typing import Any
 
 from bajutsu.common.evidence.redaction import mask_credential_shapes
+from bajutsu.common.handoff import DEFAULT_TIMEOUT_SECONDS, REQUEST_LINE_PREFIX, request_from_json
 from bajutsu.serve.helpers import valid_run_id, valid_sha256
 from bajutsu.serve.jobs import lease_secret_env, persist_run
+from bajutsu.serve.logbus import ARTIFACT_LINE_PREFIX
 from bajutsu.serve.orgs import DEFAULT_ORG
 from bajutsu.serve.server.object_store import baseline_prefix, org_prefix, upload_store_key
-from bajutsu.serve.state import ServeState
+from bajutsu.serve.state import Job, ServeState
 from bajutsu.serve.upload_artifacts import ARTIFACT_KINDS, OVERRIDE_KINDS, artifact_store_key
 
 _logger = logging.getLogger(__name__)
@@ -31,6 +33,29 @@ WORKER_LOG_MAX_BODY_BYTES = 4 * 1024 * 1024
 WORKER_LOG_BATCH_BYTES = WORKER_LOG_MAX_BODY_BYTES - 64 * 1024
 # Published once, in place of the lines a job posts past its live budget of lines or bytes.
 LIVE_LOG_TRUNCATED = "[live log truncated; see console.log]\n"
+
+# The live artifacts a worker may post (BE-0449 unit 8): the crawl's screen map alone, the file the
+# Crawl tab draws its graph from. A name outside this set is refused, so the route never becomes a
+# general channel into the page.
+WORKER_ARTIFACT_NAMES = frozenset({"screenmap.json"})
+# One snapshot's size, in UTF-8 bytes. A screen map of the crawl's default fifty screens is far
+# smaller; a map past this keeps growing on disk, and the page reads that file when the job ends.
+WORKER_ARTIFACT_MAX_BYTES = 2 * 1024 * 1024
+# The raw-byte bound on one artifact post. JSON escaping can grow the snapshot inside its envelope,
+# so the body is allowed more than the snapshot itself, and the snapshot bound above is the real one.
+WORKER_ARTIFACT_MAX_BODY_BYTES = 4 * WORKER_ARTIFACT_MAX_BYTES
+# One handoff request, screenshot included, as posted by the worker of a paused `record`. A request
+# arrives only once the previous one has an answer, so the size bound is the rate bound too.
+WORKER_HANDOFF_MAX_BYTES = 8 * 1024 * 1024
+WORKER_HANDOFF_MAX_BODY_BYTES = 2 * WORKER_HANDOFF_MAX_BYTES
+# How long an answer may wait for the worker to take it: the `record` stops waiting after the same
+# time (`handoff.DEFAULT_TIMEOUT_SECONDS`), so an older answer would reach a run that has moved on.
+HANDOFF_ANSWER_TTL_SECONDS = int(DEFAULT_TIMEOUT_SECONDS)
+# The answer to a caller of a worker relay route that came in on a browser or machine session: the
+# relay carries a person's handoff answer and the page's live view, so only a worker may use it.
+_WORKER_ONLY = ({"error": "this route is for workers"}, 403)
+# The line prefixes only the relay routes may publish.
+_RELAY_PREFIXES = (REQUEST_LINE_PREFIX, ARTIFACT_LINE_PREFIX)
 
 
 def _clean_capabilities(raw: Any) -> list[str]:
@@ -256,7 +281,9 @@ def worker_log(state: ServeState, body: dict[str, Any]) -> tuple[dict[str, Any],
     409 and treats it as a lost lease. A batch over `WORKER_LOG_MAX_LINES` is refused whole with 413,
     and a line over `WORKER_LOG_MAX_LINE_CHARS` is cut to that length. Past the job's live budget
     of lines or bytes (`ServeState.live_log_budget`, counted per server process), the lines are
-    dropped and one `LIVE_LOG_TRUNCATED` notice is published instead. Each line passes the credential-shape
+    dropped and one `LIVE_LOG_TRUNCATED` notice is published instead. A line shaped like a handoff
+    request or an artifact snapshot is dropped, since those travel on their own routes (unit 8).
+    Each line passes the credential-shape
     backstop here too, behind the worker's own masking. The uploaded ``console.log`` stays the
     durable copy of the log; these lines are the live view of it.
     """
@@ -275,6 +302,9 @@ def worker_log(state: ServeState, body: dict[str, Any]) -> tuple[dict[str, Any],
         return {"error": f"at most {WORKER_LOG_MAX_LINES} lines per post"}, 413
     if not state.repository.holds_lease(job_id, worker_id):
         return {"error": "lease lost or not held by this worker"}, 409
+    # A handoff request and an artifact snapshot travel on their own routes, which check what they
+    # carry. A log line shaped like either would reach the page as one, so it is dropped here.
+    lines = [line for line in lines if not line.startswith(_RELAY_PREFIXES)]
     # Mask before cutting, so a credential straddling the bound is matched whole, not posted in part.
     masked = [mask_credential_shapes(line)[0][:WORKER_LOG_MAX_LINE_CHARS] for line in lines]
     allowed, crossed = state.live_log_budget.admit(job_id, masked)
@@ -323,7 +353,161 @@ def worker_result(state: ServeState, body: dict[str, Any]) -> tuple[dict[str, An
     _persist_worker_run(state, info, result, ok=not failed)
     state.logbus.close(job_id, json.dumps(result))
     state.live_log_budget.forget(job_id)
+    state.live_artifact_budget.forget(job_id)
+    state.live_handoff_budget.forget(job_id)
     return {"ok": True}, 200
+
+
+def _lease_owner(
+    state: ServeState, body: dict[str, Any]
+) -> tuple[str, str, tuple[Any, int] | None]:
+    """The ``(worker_id, job_id)`` of a relay post, or the refusal when either is missing or the
+    worker does not hold the job's lease, the owner test every worker route applies."""
+    worker_id = body.get("worker_id", "")
+    job_id = body.get("job_id", "")
+    if state.repository is None:
+        return "", "", ({"error": "server backend has no database configured"}, 503)
+    if not isinstance(worker_id, str) or not worker_id:
+        return "", "", ({"error": "worker_id is required"}, 400)
+    if not isinstance(job_id, str) or not job_id:
+        return "", "", ({"error": "job_id is required"}, 400)
+    if not state.repository.holds_lease(job_id, worker_id):
+        return "", "", ({"error": "lease lost or not held by this worker"}, 409)
+    return worker_id, job_id, None
+
+
+def worker_artifact(
+    state: ServeState, body: dict[str, Any], *, from_worker: bool = True
+) -> tuple[dict[str, Any], int]:
+    """Publish a snapshot of a leased job's live artifact to the job's event stream (BE-0449).
+
+    The worker of a crawl posts its screen map each time the file changes, and the page draws the
+    graph from the ``artifact`` event this publishes, so the graph grows wherever the worker runs.
+    The file the crawl writes stays the durable copy, which the page reads once the job ends.
+
+    Accepted only from the lease holder, as the log route is, and only from a worker: *from_worker*
+    is False for a caller that came in on a browser or machine session, which gets 403. The name
+    must be one of `WORKER_ARTIFACT_NAMES`, and the content a JSON object of at most
+    `WORKER_ARTIFACT_MAX_BYTES`. Past the job's live budget (`ServeState.live_artifact_budget`),
+    one ``truncated`` snapshot is published in place of the rest, and the answer carries
+    ``"truncated": true`` so the worker stops posting.
+    """
+    if not from_worker:
+        return _WORKER_ONLY
+    _worker_id, job_id, refused = _lease_owner(state, body)
+    if refused is not None:
+        return refused
+    name = body.get("name")
+    content = body.get("content")
+    if name not in WORKER_ARTIFACT_NAMES:
+        return {"error": f"name must be one of {sorted(WORKER_ARTIFACT_NAMES)}"}, 400
+    if not isinstance(content, str):
+        return {"error": "content must be a string"}, 400
+    if len(content.encode("utf-8", "surrogatepass")) > WORKER_ARTIFACT_MAX_BYTES:
+        return {"error": f"content is over {WORKER_ARTIFACT_MAX_BYTES} bytes"}, 413
+    try:
+        data = json.loads(content)
+    except ValueError:
+        return {"error": "content must be JSON"}, 400
+    if not isinstance(data, dict):
+        return {"error": "content must be a JSON object"}, 400
+    # Re-encoded on one line, so the event stream frames it as one `data:` line.
+    line = ARTIFACT_LINE_PREFIX + json.dumps({"name": name, "data": data}, separators=(",", ":"))
+    allowed, crossed = state.live_artifact_budget.admit(job_id, [line])
+    if allowed:
+        state.logbus.publish(job_id, line)
+        return {"ok": True}, 200
+    if crossed:
+        state.logbus.publish(
+            job_id, ARTIFACT_LINE_PREFIX + json.dumps({"name": name, "truncated": True})
+        )
+    return {"ok": True, "truncated": True}, 200
+
+
+def worker_handoff(
+    state: ServeState, body: dict[str, Any], *, from_worker: bool = True
+) -> tuple[dict[str, Any], int]:
+    """Relay a paused `record`'s request for a person from its worker to the page (BE-0449).
+
+    The worker posts the request the `record` printed, and the server marks the job as waiting on
+    a person and publishes the request, so the page shows it as a ``human-request`` event, as it
+    does for a `record` this process runs. The person's answer goes back through
+    `respond_human`, and the worker takes it from `worker_handoff_response`.
+
+    Accepted only from the lease holder and only from a worker (*from_worker*, as for
+    `worker_artifact`), only for a `record` job, and only while no earlier request still waits on a
+    person (409 otherwise). The request must be a handoff request object of at most
+    `WORKER_HANDOFF_MAX_BYTES`, and a job's requests together stay within
+    `ServeState.live_handoff_budget` (413 past it).
+    """
+    if not from_worker:
+        return _WORKER_ONLY
+    worker_id, job_id, refused = _lease_owner(state, body)
+    if refused is not None:
+        return refused
+    assert state.repository is not None  # `_lease_owner` refused otherwise
+    request = body.get("request")
+    if not isinstance(request, str):
+        return {"error": "request must be a string"}, 400
+    if len(request.encode("utf-8", "surrogatepass")) > WORKER_HANDOFF_MAX_BYTES:
+        return {"error": f"request is over {WORKER_HANDOFF_MAX_BYTES} bytes"}, 413
+    try:
+        request_from_json(request)
+    except ValueError:
+        return {"error": "request must be a handoff request object"}, 400
+    row = state.repository.get_job(job_id)
+    spec = row.get("spec") if row is not None else None
+    # Only a `record` pauses for a person; any other kind posting a request is refused.
+    if not isinstance(spec, dict) or Job(cmd=list(spec.get("cmd") or [])).kind != "record":
+        return {"error": "only a record job hands off to a person"}, 409
+    # Re-encoded on one line, as the `record` printed it, so the event stream frames it whole.
+    line = REQUEST_LINE_PREFIX + json.dumps(json.loads(request))
+    allowed, _crossed = state.live_handoff_budget.admit(job_id, [line])
+    if not allowed:
+        return {"error": "the job's handoff requests are past their live budget"}, 413
+    if not state.repository.open_handoff(job_id, worker_id):
+        return {"error": "lease lost, or a handoff is already waiting on a person"}, 409
+    state.logbus.publish(job_id, line)
+    return {"ok": True}, 200
+
+
+def worker_handoff_response(
+    state: ServeState, body: dict[str, Any], *, from_worker: bool = True
+) -> tuple[dict[str, Any], int]:
+    """Hand the worker of a paused `record` the person's answer, once there is one (BE-0449).
+
+    The worker polls this while its `record` waits. The answer comes back as ``response``, the
+    line the worker writes to the `record`'s standard input, and is removed as it is read. An answer
+    older than `HANDOFF_ANSWER_TTL_SECONDS` is dropped, since the `record` stopped waiting by then.
+    A cancel that reached the job comes back as ``"cancel": true``, so the worker stops the run at
+    once rather than on its next heartbeat.
+
+    Accepted only from the lease holder and only from a worker (*from_worker*, as for
+    `worker_artifact`), since the answer may carry a value such as a one-time password.
+    """
+    if not from_worker:
+        return _WORKER_ONLY
+    worker_id, job_id, refused = _lease_owner(state, body)
+    if refused is not None:
+        return refused
+    assert state.repository is not None  # `_lease_owner` refused otherwise
+    if state.repository.cancel_requested(job_id, worker_id):
+        return {"ok": True, "cancel": True}, 200
+    token = state.repository.take_handoff_response(job_id, worker_id)
+    if token is None or state.handoff_cipher is None:
+        return {"ok": True}, 200
+    from cryptography.fernet import InvalidToken
+
+    try:
+        line = state.handoff_cipher.decrypt(
+            token.encode("ascii"), ttl=HANDOFF_ANSWER_TTL_SECONDS
+        ).decode("utf-8")
+    except (InvalidToken, UnicodeError):
+        # Expired, or written under a key this process does not hold; never logged, since it may
+        # carry a value the person typed.
+        _logger.warning("dropped the handoff answer of job %s: expired or unreadable", job_id)
+        return {"ok": True}, 200
+    return {"ok": True, "response": line}, 200
 
 
 def _persist_worker_run(

@@ -117,9 +117,11 @@ with no human on the deterministic `run` path.
 The same contract has two surfaces. From the terminal, `record` reads the response from an
 interactive, bounded stdin prompt. Driven from `serve`, the request is serialized onto the record's
 server-sent-event stream as a `human-request` event (the paused job enters a visible, resumable
-"awaiting human" state), and the browser posts the response to `/api/jobs/<id>/respond-human`, which
-`serve` writes to the spawned `record` process's stdin. Either way the wait is bounded and
-cancelable, so no surface hangs on a human who walked away. With no responder at all — a
+"awaiting human" state), and the browser posts the response to `/api/jobs/<id>/respond-human`.
+A `bajutsu worker` runs the `record` (BE-0449). The worker relays the request to `serve`, takes
+the response back, and writes it to the `record` process's stdin.
+[Self-hosting](self-hosting.md#the-server-backend-on-one-machine-be-0449) describes the relay.
+Either way the wait is bounded and cancelable, so no surface hangs on a human who walked away. With no responder at all — a
 non-interactive or CI invocation — a needs-human turn is a clean, labeled non-zero exit, never a hang
 and never an AI guess. This substrate owns the mechanism and the boundary; the heuristics that raise
 "needs human" and the shape of what a handoff records are the child items' concern.

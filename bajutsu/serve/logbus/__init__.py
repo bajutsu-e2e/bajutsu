@@ -12,6 +12,6 @@ that attaches after the job finished still replays everything.
 from ._channel import _Channel as _Channel
 from .in_memory_log_bus import InMemoryLogBus
 from .live_line_budget import LiveLineBudget
-from .log_bus import LogBus
+from .log_bus import ARTIFACT_LINE_PREFIX, LogBus
 
-__all__ = ["InMemoryLogBus", "LiveLineBudget", "LogBus"]
+__all__ = ["ARTIFACT_LINE_PREFIX", "InMemoryLogBus", "LiveLineBudget", "LogBus"]

@@ -35,6 +35,7 @@ from bajutsu.common.handoff import REQUEST_LINE_PREFIX as _HANDOFF_REQUEST_PREFI
 from bajutsu.common.run_meta.files import DEFAULT_RUNS_DIR, RunArtifactReader
 from bajutsu.run import PARENT_FD_ENV
 from bajutsu.serve.helpers import unsafe_env_name, valid_run_id, warn_unsafe_env_name
+from bajutsu.serve.logbus import ARTIFACT_LINE_PREFIX
 from bajutsu.serve.orgs import DEFAULT_ORG
 from bajutsu.serve.state import Job, ServeState
 
@@ -871,23 +872,7 @@ def _run_job(state: ServeState, job: Job, *, inherit_stdio: bool = False) -> Non
     produces_run = job.kind != "triage"
     try:
         for raw in proc.stdout or []:
-            line = raw.rstrip("\n")
-            if line.startswith(_HANDOFF_REQUEST_PREFIX):
-                # A handoff request (BE-0179): mark the job awaiting-human and relay the line to the
-                # bus (where the SSE layer turns it into a `human-request` event). Kept out of
-                # `job.lines` so the transcript view isn't polluted by the serialized payload.
-                with job.lock:
-                    job.awaiting_human = True
-                if job.bus is not None:
-                    job.bus.publish(job.id, line)
-                continue
-            match = _RUN_ID_RE.search(line) if produces_run else None
-            with job.lock:
-                job.lines.append(line)
-                if match:
-                    job.run_id = match.group(1)
-            if job.bus is not None:
-                job.bus.publish(job.id, line)
+            _take_line(job, raw.rstrip("\n"), produces_run=produces_run)
     except OSError:
         _terminate(proc)
     proc.wait()
@@ -903,6 +888,33 @@ def _run_job(state: ServeState, job: Job, *, inherit_stdio: bool = False) -> Non
         job.awaiting_human = False
     if swept:
         _sweep_group(pgid)
+
+
+def _take_line(job: Job, line: str, *, produces_run: bool) -> None:
+    """Record one line a spawned job printed and publish it to the job's live stream."""
+    if line.startswith(ARTIFACT_LINE_PREFIX):
+        # Only the server publishes an artifact snapshot (BE-0449); a child's line shaped like one
+        # would otherwise reach the page as a forged screen map.
+        return
+    if line.startswith(_HANDOFF_REQUEST_PREFIX):
+        # A handoff request (BE-0179): mark the job awaiting-human and relay the line to the bus
+        # (where the SSE layer turns it into a `human-request` event). Kept out of `job.lines` so
+        # the transcript view isn't polluted by the serialized payload. Only a `record` pauses for
+        # a person, so another kind's line shaped like one is dropped (BE-0449).
+        if job.kind != "record":
+            return
+        with job.lock:
+            job.awaiting_human = True
+        if job.bus is not None:
+            job.bus.publish(job.id, line)
+        return
+    match = _RUN_ID_RE.search(line) if produces_run else None
+    with job.lock:
+        job.lines.append(line)
+        if match:
+            job.run_id = match.group(1)
+    if job.bus is not None:
+        job.bus.publish(job.id, line)
 
 
 def _run_inherited(state: ServeState, job: Job) -> None:

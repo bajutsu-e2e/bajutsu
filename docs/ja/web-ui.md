@@ -57,8 +57,10 @@ SERVE_WORKER=0 make serve
 
 キューで待つ run は、待っている理由を示します。Replay のステータス行には、使える worker がないという
 通知が出ます。`GET /api/jobs/<id>` は同じ文を `notice` として返します。この通知は、run を実行できる
-worker がサーバに問い合わせると消えます。triage のジョブも同じ worker が実行し、待っているあいだは
-triage のパネルに同じ通知が出ます。record と crawl のジョブは、引き続きサーバのプロセス内で動きます（BE-0449）。
+worker がサーバに問い合わせると消えます。triage、record、crawl のジョブも同じ worker が実行し、
+ローカル起動ではサーバのプロセスがジョブを実行しません（BE-0449）。バケットがあってデータベースがない
+デプロイは、後の単位で取り除くまで、引き続きプロセス内でジョブを実行します。Crawl タブは、crawl の実行中に worker が中継する画面マップから
+グラフを描きます。人の助けを求めて一時停止した record は、従来どおり要求を表示し、回答は worker に戻ります。
 
 `make serve` は内部で `python -m bajutsu serve`、すなわち [CLI リファレンス](cli.md#serve) が説明する
 `bajutsu serve` コマンドを実行します。checkout の外で Bajutsu を導入した場合（`make` が無い場合）は、

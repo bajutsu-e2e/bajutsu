@@ -6,15 +6,19 @@ import json
 from collections.abc import Generator, Iterator
 
 from bajutsu.common.handoff import REQUEST_LINE_PREFIX
-from bajutsu.serve.operations._common import no_worker_notice
+from bajutsu.serve.logbus import ARTIFACT_LINE_PREFIX
+from bajutsu.serve.operations._common import awaiting_human, no_worker_notice
 from bajutsu.serve.state import Job, ServeState
 
 
 def _classify(line: str) -> tuple[str, str]:
     """A bus line as an ``(event, data)`` pair: a handoff request (BE-0179) becomes a
-    ``human-request`` event carrying just its JSON payload; every other line is a ``log``."""
+    ``human-request`` event carrying just its JSON payload, a live artifact snapshot (BE-0449) an
+    ``artifact`` event carrying ``{"name", "data"}``; every other line is a ``log``."""
     if line.startswith(REQUEST_LINE_PREFIX):
         return ("human-request", line[len(REQUEST_LINE_PREFIX) :])
+    if line.startswith(ARTIFACT_LINE_PREFIX):
+        return ("artifact", line[len(ARTIFACT_LINE_PREFIX) :])
     return ("log", line)
 
 
@@ -40,7 +44,8 @@ def job_log_events(state: ServeState, job_id: str) -> Iterator[tuple[str, str]] 
 
 def _job_event_pairs(state: ServeState, job: Job, job_id: str) -> Iterator[tuple[str, str]]:
     for line in state.logbus.stream(job_id):
-        if line is not None:  # no timeout passed, so no heartbeats — guard only satisfies the type
+        # No timeout passed, so no heartbeats; the None guard only satisfies the type.
+        if line is not None and not _stale_request(state, job, line):
             yield _classify(line)
     yield ("done", _terminal_payload(state, job, job_id))
 
@@ -84,8 +89,20 @@ def _job_sse_frames(state: ServeState, job: Job, job_id: str, keepalive: float) 
         if notice is not None:
             notice = None
             yield _notice_frame(None)
+        if _stale_request(state, job, line):
+            continue
         yield format_sse(*_classify(line))
     yield format_sse("done", _terminal_payload(state, job, job_id))
+
+
+def _stale_request(state: ServeState, job: Job, line: str) -> bool:
+    """Whether *line* is a handoff request the job no longer waits on (BE-0449).
+
+    The bus replays a job's whole backlog to a page that connects late or reconnects, and a request
+    already answered, or one whose `record` stopped waiting, must not open the handoff pane again.
+    A request is published after the job is marked waiting, so a live one always passes.
+    """
+    return line.startswith(REQUEST_LINE_PREFIX) and not awaiting_human(state, job)
 
 
 def _notice_frame(notice: str | None) -> str:

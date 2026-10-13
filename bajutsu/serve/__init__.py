@@ -150,11 +150,10 @@ __all__ = [
 # The serve backends `_build_state` can assemble — the source of truth the CLI validates against.
 # Both build the server shape (BE-0449); they differ only in which job kinds the queue takes.
 SERVE_BACKENDS: tuple[str, ...] = ("local", "server")
-# The kinds `--backend local` hands to a worker (BE-0449 units 5 and 7). `run-set` joins `run` because
-# the server registers no batch provider (BE-0448), so only a Device Farm worker can run it, and
-# `triage` follows so its AI investigator runs where the runs do. `record` and `crawl` still run in
-# this process until unit 8 moves them; once every kind is queued, the two backends are one.
-LOCAL_QUEUED_KINDS: frozenset[JobKind] = frozenset({"run", "run-set", "triage"})
+# The kinds `--backend local` hands to a worker (BE-0449 units 5, 7, and 8): every kind, so with a
+# queue the two backends now build the same state and the server runs no job itself. The name stays
+# until unit 9 retires the flag and the in-process executor with it.
+LOCAL_QUEUED_KINDS: frozenset[JobKind] = JOB_KINDS
 
 _logger = logging.getLogger(__name__)
 
@@ -306,10 +305,9 @@ def _build_state(
     """Assemble the `ServeState` for *backend* — the one place the serve seams are wired.
 
     Both backends build the server shape (BE-0449): a queue, sessions, and an artifact store from
-    the environment, or from local defaults under ``.bajutsu/`` where it names none. They differ in
-    which job kinds the queue takes while the kinds move to the workers. ``local`` queues `run`
-    (with its build phase) for a ``bajutsu worker`` and runs every other kind in this process;
-    ``server`` queues every kind. *host* and *port* are the bind, from which a local start builds
+    the environment, or from local defaults under ``.bajutsu/`` where it names none. Both queue
+    every job kind for a ``bajutsu worker`` since every kind has moved (BE-0449 unit 8), so the flag
+    no longer changes what runs where; unit 9 removes it. *host* and *port* are the bind, from which a local start builds
     the URL its file store signs. An unknown backend fails loudly rather than silently falling back
     to local. The transport (stdlib vs uvicorn) is a separate choice."""
     if backend not in SERVE_BACKENDS:
@@ -637,6 +635,9 @@ def _build_server_state(  # noqa: C901, PLR0915
             else InMemoryLogBus()
         ),
         repository=repo,
+        # A paused `record` on a worker waits for a person's answer in the jobs table, encrypted
+        # under the same key as the stored secrets (BE-0449 unit 8).
+        handoff_cipher=_secrets_fernet if repo is not None else None,
         # The authentication cluster (BE-0248): the shared token, the login-session store (a
         # DB-backed one when a database is wired so sessions survive restarts, else in-memory), and
         # the GitHub OAuth client + the server-wide admin Teams (BE-0313).

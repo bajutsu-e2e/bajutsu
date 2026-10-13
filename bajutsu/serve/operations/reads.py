@@ -31,7 +31,11 @@ from bajutsu.serve.helpers import (
     valid_run_id,
     valid_scenario_ref,
 )
-from bajutsu.serve.operations._common import _resolve_org_or_forbid, no_worker_notice
+from bajutsu.serve.operations._common import (
+    _resolve_org_or_forbid,
+    awaiting_human,
+    no_worker_notice,
+)
 from bajutsu.serve.operations.config import FS_DISABLED_ERROR, launch_label
 from bajutsu.serve.operations.runs import sweep_expired_trash
 from bajutsu.serve.orgs import DEFAULT_ORG
@@ -913,6 +917,8 @@ def job_view(state: ServeState, job_id: str, *, machine_org: str | None = None) 
         # A queued job with no live worker says so, rather than looking merely slow (BE-0449).
         if (notice := no_worker_notice(state, job)) is not None:
             view["notice"] = notice
+        # A paused `record` on a worker is waiting by its row, which every replica reads (BE-0449).
+        view["awaitingHuman"] = awaiting_human(state, job)
     return view, 200
 
 
@@ -1027,7 +1033,7 @@ def cancel_job(
     row = state.repository.get_job(job_id) if state.repository is not None else None
     in_process: bool | None = None
     if row is None:
-        if job is None or not _may_cancel(state, job.org, actor=actor, machine_org=machine_org):
+        if job is None or not _may_act_on_job(state, job.org, actor=actor, machine_org=machine_org):
             return {"error": "no such job"}, 404
         in_process = jobs.cancel_job(job)
         # The job may be between registration and enqueue: its row can appear while this cancel
@@ -1037,7 +1043,7 @@ def cancel_job(
             row = state.repository.get_job(job_id)
         if row is None:
             return {"cancelled": in_process}, 200
-    elif not _may_cancel(state, row["org_id"], actor=actor, machine_org=machine_org):
+    elif not _may_act_on_job(state, row["org_id"], actor=actor, machine_org=machine_org):
         return {"error": "no such job"}, 404
     assert state.repository is not None  # a row was read from it just above
     outcome = state.repository.cancel_job(job_id)
@@ -1057,14 +1063,14 @@ def cancel_job(
     return {"cancelled": applied or bool(in_process), "status": status}, 200
 
 
-def _may_cancel(
+def _may_act_on_job(
     state: ServeState, org: str | None, *, actor: str | None, machine_org: str | None
 ) -> bool:
-    """Whether the caller may cancel a job of *org*.
+    """Whether the caller may cancel, or answer the handoff of, a job of *org*.
 
-    Cancelling is an editor action (`required_role`), and the route's gate checked only the role in
-    the caller's active org, so a stored membership of the job's org must itself grant editor: an
-    editor in one org who is a viewer in another must not cancel the other's jobs. With no stored
+    Both are editor actions (`required_role`), and the route's gate checked only the role in the
+    caller's active org, so a stored membership of the job's org must itself grant editor: an
+    editor in one org who is a viewer in another must not cancel or answer the other's jobs. With no stored
     membership of *org*, the caller's active org still counts, so a single-tenant deployment, whose
     users hold none, cancels its own `default` jobs under the role the gate already checked.
     """
@@ -1079,20 +1085,49 @@ def _may_cancel(
     return org == state.org_of(actor)
 
 
-def respond_human(state: ServeState, job_id: str, body: dict[str, Any]) -> tuple[Any, int]:
-    """Deliver a human's handoff response to a paused `record` job, resuming it (BE-0179).
+def respond_human(
+    state: ServeState,
+    job_id: str,
+    body: dict[str, Any],
+    *,
+    actor: str | None = None,
+    machine_org: str | None = None,
+) -> tuple[Any, int]:
+    """Deliver a person's handoff response to a paused `record` job, resuming it (BE-0179).
 
-    The response is written to the job's stdin as the transport-neutral JSON the record loop reads
-    (the same contract the terminal uses). `resumed` is False when the job has no live stdin — it
-    already finished or was never handoff-capable.
+    The response is the transport-neutral JSON the record loop reads (the same contract the
+    terminal uses). A job in the jobs table runs on a worker (BE-0449): the response waits there,
+    encrypted under the secrets key, until the worker that holds the job takes it and writes it to
+    the `record`'s standard input. A job with no row runs in this process, and the response goes
+    to its standard input here. `resumed` is False when the job is not waiting on a person: it
+    already finished, its handoff closed, or it was never handoff-capable.
 
-    One response never reaches stdin: a device-operation takeover (`acted`, no values) on a hosted
-    serve is refused with a 409 and `resumed=False` (BE-0185 box 3) — the author is not in front of
-    the worker's device there, so the browser cannot drive it. Value handoffs and cancels still pass
-    through.
+    Answering is an editor action that the gate checked in the caller's active org alone, so the
+    job's own org is checked the way `cancel_job` checks it, and a job outside the caller's orgs
+    is answered 404.
+
+    One response never reaches the `record`: a device-operation takeover (`acted`, no values) on a
+    hosted serve is refused with a 409 and `resumed=False` (BE-0185 box 3) — the author is not in
+    front of the worker's device there, so the browser cannot drive it. Value handoffs and cancels
+    still pass through.
+
+    Args:
+        state: The server state holding the in-process jobs and the repository.
+        job_id: The job to answer.
+        body: The person's response (`values`, `acted`, `cancelled`).
+        actor: The signed-in caller, or None for a shared-token or anonymous caller.
+        machine_org: The org a machine principal acts as, or None for every other caller.
+
+    Returns:
+        ``{"resumed": bool}`` and 200; 404 for an unknown job or one outside the caller's orgs;
+        409 for a takeover a hosted deployment refuses; 503 when the response cannot be stored.
     """
     job = state.jobs.get(job_id)
-    if job is None:
+    row = state.repository.get_job(job_id) if state.repository is not None else None
+    org = row["org_id"] if row is not None else (job.org if job is not None else None)
+    if (row is None and job is None) or not _may_act_on_job(
+        state, org, actor=actor, machine_org=machine_org
+    ):
         return {"error": "no such job"}, 404
     response = handoff.HandoffResponse.from_dict(body)
     if state.hosted and response.kind == "acted" and response.acted:
@@ -1115,8 +1150,15 @@ def respond_human(state: ServeState, job_id: str, body: dict[str, Any]) -> tuple
             ),
             "resumed": False,
         }, 409
-    resumed = jobs.send_response(job, handoff.response_to_json(response))
-    return {"resumed": resumed}, 200
+    line = handoff.response_to_json(response)
+    if row is None:
+        assert job is not None  # the 404 above covers a job in neither place
+        return {"resumed": jobs.send_response(job, line)}, 200
+    assert state.repository is not None  # a row was read from it just above
+    if state.handoff_cipher is None:
+        return {"error": "this server cannot hold a handoff response"}, 503
+    token = state.handoff_cipher.encrypt(line.encode("utf-8")).decode("ascii")
+    return {"resumed": state.repository.answer_handoff(job_id, token)}, 200
 
 
 # Each return is a distinct HTTP status from a validation guard — the early-return shape RET505

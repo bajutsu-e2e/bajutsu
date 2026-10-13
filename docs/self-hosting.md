@@ -355,15 +355,16 @@ below, covers that case.
 
 `bajutsu serve` starts on one machine with no cloud service, on either backend. It needs no
 environment variables there. The server queues jobs. A `bajutsu worker` on the same machine leases
-them and runs them, and `make serve` starts that worker for you. The two backends differ in which
-jobs they queue:
+them and runs them, and `make serve` starts that worker for you. The two backends once differed in
+which jobs they queue, and now queue the same ones:
 
 | Backend | Queued for a worker | Run inside the server process |
 |---|---|---|
-| `local` (the default) | `run` with its build phase, the Device Farm fan-out (`run-set`), and `triage` | `record` and `crawl` |
+| `local` (the default) | every job | none |
 | `server` | every job | none |
 
-The remaining kinds move to the worker in later units of BE-0449.
+Both backends now queue every kind of job, so the flag no longer changes where a job runs. A later
+unit of BE-0449 removes the flag and the in-process executor behind it.
 
 A `triage` job reads the run it diagnoses from the server's runs directory. Its command line names
 the run directory by its absolute path on the server's disk. The bound config and the scenario
@@ -372,6 +373,32 @@ reads the file from there. A worker on the same machine runs the job from the co
 as it runs a local `run`. A worker on another machine fails the job. Its message says the job needs
 a worker on the server's machine. A triage with `--ai` reads the AI key from the lease, like every
 queued job. A key set in the UI thus reaches the investigator and never enters the job spec.
+
+A `crawl` or `record` job follows the same same-machine rule. A crawl writes its screen map into
+the server's runs directory. A record writes its scenario into the target's scenarios directory.
+While a crawl runs, its worker posts each new screen map to `POST /api/worker/artifact`. The
+server relays each snapshot to the Crawl tab as an `artifact` event on the job's event stream. The
+graph thus grows as the worker explores. The file stays the durable copy, and the page reads it
+once the job ends. The worker skips a snapshot over 2 MiB. A job has a live budget of 16 MiB. Past
+it, the stream says so once, and the page reads the file instead. A worker on another machine leaves
+no file on the server's disk while the crawl runs. There, the graph updates once the job ends.
+
+A record can pause and ask the person at the browser for help, such as a one-time password. Its
+worker posts the request to `POST /api/worker/handoff`, and the page shows it as before. The
+server encrypts the answer under the secrets key and keeps it in the jobs table. While the record
+waits, its worker polls `POST /api/worker/handoff-response` once a second. The worker takes the
+answer from there and writes it to the record's standard input. The answer leaves the table when
+the worker reads it, or when the job ends. The server drops an answer older than the record's
+five-minute wait. A cancel reaches a waiting record through the same poll, before any heartbeat.
+
+Three rules guard the relay routes:
+
+- Each route accepts a post from the lease holder alone. Any other worker gets `409`. The handoff
+  route also takes a `record` job alone, and one request at a time. A job's requests stay within
+  64 MiB.
+- A caller on a browser or machine login gets `403`. The shared token a worker holds is the one
+  credential these routes accept.
+- An answer to a handoff is an editor action in the job's own org, checked like a cancel.
 
 For each setting left
 unset, the server supplies a local default. Every default lives in a `.bajutsu/` directory beside
