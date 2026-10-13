@@ -33,6 +33,8 @@ from bajutsu.serve.state import Job, ServeState
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
+    from bajutsu.common.capability.worker_capability import WorkerCapability
+
     # Only the type annotations reference it; the runtime rebuild imports it lazily so serializing a
     # normal job never pulls the batch seam (and its optional deps) into the common worker path.
     from bajutsu.serve.batch_provider import BatchCheckpoint, BatchRequest
@@ -449,6 +451,7 @@ def execute_job_spec(
         secret_env=dict(secret_env or {}),
         batch_checkpoint=batch_checkpoint,
         lease_lost=lease_lost,
+        worker_capability=_batch_worker_capability(spec, worker_config),
     )
     # Bind the job's ids so every operational record on this worker correlates to it (BE-0055);
     # `run_id` is the run's own id, minted by `run_job`, so it binds only once the run has started.
@@ -469,6 +472,22 @@ def execute_job_spec(
 
 
 _logger = logging.getLogger("bajutsu.serve.worker")
+
+
+def _batch_worker_capability(
+    spec: dict[str, Any], worker_config: Path | None
+) -> WorkerCapability | None:
+    """The device-cloud `worker.yaml` a cloud-batch job is checked against (BE-0448), or None.
+
+    Only a batch job under a file naming a device cloud is checked: a local file describes this
+    host's drivers, which the device cloud's host does not share.
+    """
+    if spec.get("batch") is None or worker_config is None:
+        return None
+    from bajutsu.common.capability.worker_capability import load_worker_capability
+
+    worker = load_worker_capability(worker_config)
+    return None if worker.is_local else worker
 
 
 def _upload_outputs(work: Path, io: WorkerIO, job: Job, spec: dict[str, Any]) -> None:

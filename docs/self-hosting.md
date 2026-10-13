@@ -360,7 +360,7 @@ jobs they queue:
 
 | Backend | Queued for a worker | Run inside the server process |
 |---|---|---|
-| `local` (the default) | `run`, with its build phase | `record`, `crawl`, `triage`, and the Device Farm fan-out |
+| `local` (the default) | `run`, with its build phase, and the Device Farm fan-out (`run-set`) | `record`, `crawl`, and `triage` |
 | `server` | every job | none |
 
 The remaining kinds move to the worker in later units of BE-0449. For each setting left
@@ -976,6 +976,14 @@ A scenario that needs a driver this machine cannot run fails with a
 `worker-capability-unsupported:` reason. The control plane never reads
 the file. [Drivers](drivers.md#worker-capability-check-be-0450) describes the file format and the
 check.
+
+A worker whose file sets `environment: devicefarm` also reads its job budget there (BE-0448). The
+file's top-level `maxJobConcurrency` caps the jobs that worker holds at once. While every slot holds
+a job, the worker sends no lease request. Above one, the worker runs each job on its own thread and
+in its own `.slots/<n>/` workspace. A stop signal to such a worker lets its leases lapse instead of
+cancelling the jobs. A restarted worker then resumes the runs.
+[Running on AWS Device Farm](devicefarm.md#the-job-budget) covers the budget and the check before
+each submission. It also covers the deprecated server-side settings that the budget replaces.
 
 Wrap it in a `LaunchAgent` (as in Tier A) so it survives reboots. The worker polls the control
 plane's `/api/worker/lease` endpoint over HTTP (no Redis needed), runs each job on a fresh

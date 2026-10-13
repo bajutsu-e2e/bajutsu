@@ -110,7 +110,11 @@ class JobRegistry:
         the device budget for its batch *provider* pool, keyed on ``job.batch.provider`` (BE-0336
         Unit 4): the count spans all targets and orgs sharing that provider (the contended resource),
         so the cap bounds total in-flight device reservations on the provider, not a single target's
-        slice. Each cap ``<= 0`` is unlimited; the batch cap applies only when ``job.batch`` is set."""
+        slice. Each cap ``<= 0`` is unlimited; the batch cap applies only when ``job.batch`` is set.
+
+        ``max_concurrent_batch`` is deprecated (BE-0448): a Device Farm worker's ``maxJobConcurrency``
+        bounds its jobs in flight. A positive value is still honored for one release. The notice is
+        the dispatcher's, which names the setting the operator wrote, so this internal one is silent."""
         self._release_finished()
         with self._lock:
             running = self._running()

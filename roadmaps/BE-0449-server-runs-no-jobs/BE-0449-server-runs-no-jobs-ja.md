@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0449") |
-| 実装 PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167)（単位 1 の 3 分割のうち 1）、[#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168)（単位 1 の 3 分割のうち 2）、[#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170)（単位 1 の 3 分割のうち 3）、[#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171)（単位 2）、[#2172](https://github.com/bajutsu-e2e/bajutsu/pull/2172)（単位 4）、[#2173](https://github.com/bajutsu-e2e/bajutsu/pull/2173)（単位 3）、[#2182](https://github.com/bajutsu-e2e/bajutsu/pull/2182)（単位 5 の 2 分割のうち 1：機能を失わないローカル起動）、[#2183](https://github.com/bajutsu-e2e/bajutsu/pull/2183)（単位 5 の 2 分割のうち 2：worker で動く `run`） |
+| 実装 PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167)（単位 1 の 3 分割のうち 1）、[#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168)（単位 1 の 3 分割のうち 2）、[#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170)（単位 1 の 3 分割のうち 3）、[#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171)（単位 2）、[#2172](https://github.com/bajutsu-e2e/bajutsu/pull/2172)（単位 4）、[#2173](https://github.com/bajutsu-e2e/bajutsu/pull/2173)（単位 3）、[#2182](https://github.com/bajutsu-e2e/bajutsu/pull/2182)（単位 5 の 2 分割のうち 1：機能を失わないローカル起動）、[#2183](https://github.com/bajutsu-e2e/bajutsu/pull/2183)（単位 5 の 2 分割のうち 2：worker で動く `run`）、[#2184](https://github.com/bajutsu-e2e/bajutsu/pull/2184)、[#2185](https://github.com/bajutsu-e2e/bajutsu/pull/2185)、PR_PLACEHOLDER12（単位 6。BE-0448 が実装） |
 | トピック | Hosting the web UI |
 <!-- /BE-METADATA -->
 
@@ -151,7 +151,7 @@ local バックエンドと server バックエンドの違いは、これらの
 - [x] 1 回実行の worker とラッパー
 - [x] ライブのログのストリームとルーティング用の executor
 - [x] `run` の移行
-- [ ] `run-set`（Device Farm の batch）の移行
+- [x] `run-set`（Device Farm の batch）の移行
 - [ ] `triage` の移行
 - [ ] `record` と `crawl` の移行
 - [ ] local の executor の削除
@@ -339,6 +339,17 @@ local バックエンドと server バックエンドの違いは、これらの
   することがあります。`bajutsu serve --port 0` は
   理由を示して終了コード 2 で終わります。端から端までのテストは、キューに入った `run` を、fake backend の
   上で本物の worker のループに通します。
+- [#2184](https://github.com/bajutsu-e2e/bajutsu/pull/2184)、[#2185](https://github.com/bajutsu-e2e/bajutsu/pull/2185)、
+  PR_PLACEHOLDER12（単位 6）— この単位は
+  [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch-ja.md) が実装しました。
+  サーバは Device Farm への fan-out を実行しなくなりました。バッチのプロバイダーを登録せず、AWS の
+  認証情報も持ちません。`run-set` の job はどれも、`worker.yaml` に `environment: devicefarm` を書いた
+  worker をキューで待ちます。その worker が実行を投入し、実行の Amazon Resource Name（ARN）を HTTP で
+  サーバに保存します。そのあと実行をポーリングし、判定を送ります。worker が同時に持つ job の数は、その
+  worker の `maxJobConcurrency` が決めます。サーバ側の予算を決めていた 4 つの設定は、1 リリースの間、
+  非推奨として残ります。`cloudBatchBudget` と `deviceBudget` は、設定ファイルとリクエストの項目です。
+  残る 2 つは、ジョブレジストリの `max_concurrent_batch` と `try_register(device_budget=…)` です。
+  取り除くまでは引き続き fan-out の上限として効きます。設定ファイルとリクエストの 2 つは、`maxJobConcurrency` を案内する通知をサーバのプロセスごとに一度だけ出します。
 
 ## 参考
 

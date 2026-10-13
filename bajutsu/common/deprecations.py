@@ -43,3 +43,20 @@ def reject_renamed_key(data: object, *, surface: str, old: str, new: str) -> Non
     """
     if isinstance(data, dict) and old in data:
         raise ValueError(f"{surface} field '{old}' was removed; rename it to '{new}'")
+
+
+# The server-side Device Farm budget settings, deprecated for one release once the worker owns the
+# budget (BE-0448): still honored as the server-side cap meanwhile, then removed with the target-config
+# restructure's schema. One code each, so every surface still in use is named once.
+SERVER_BATCH_BUDGET_REPLACEMENT = (
+    "set maxJobConcurrency in the Device Farm worker's worker.yaml instead; it is still honored as "
+    "a server-side cap for this release, and will be removed"
+)
+
+
+def warn_server_batch_budget(surface: str) -> None:
+    """Warn once that *surface*, a server-side Device Farm budget setting, is deprecated (BE-0448)."""
+    warn_once(
+        f"serverBatchBudget.{surface}",
+        f"{surface} is deprecated (BE-0448): {SERVER_BATCH_BUDGET_REPLACEMENT}",
+    )

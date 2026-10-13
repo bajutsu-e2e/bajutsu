@@ -39,7 +39,9 @@ from bajutsu.serve.orgs import DEFAULT_ORG
 from bajutsu.serve.state import Job, ServeState
 
 if TYPE_CHECKING:
+    from bajutsu.common.capability.worker_capability import WorkerCapability
     from bajutsu.common.cloud.devicefarm import Interrupt, RunInterrupted
+    from bajutsu.serve.batch_provider import BatchRequest
     from bajutsu.serve.server.db import Repository
 
 logger = logging.getLogger(__name__)
@@ -1024,6 +1026,15 @@ def _run_batch_job(state: ServeState, job: Job, *, one_shot: bool = False) -> No
     if confined and (reason := _app_outside(request.app_path, bundle_dir)) is not None:
         _fail_batch(job, reason)
         return
+    # A job resuming a stored run is past the check: an earlier attempt submitted it, and failing it
+    # here would orphan that run on Device Farm, holding a device nobody polls.
+    if (
+        job.worker_capability is not None
+        and (job.batch_checkpoint is None or job.batch_checkpoint.load() is None)
+        and (reason := _batch_capability_reason(request, bundle_dir, job.worker_capability))
+    ):
+        _fail_batch(job, reason)
+        return
     # Lazy import: only a cloud-batch job needs the batch seam (and its provider's optional deps), so
     # the default serve path never pulls it in.
     from bajutsu.common.cloud.devicefarm import RunInterrupted
@@ -1082,6 +1093,38 @@ def _run_batch_job(state: ServeState, job: Job, *, one_shot: bool = False) -> No
         # scenarios failed — otherwise it sees "FAIL" but never the `failed scenarios:` detail.
         for line in lines:
             job.bus.publish(job.id, line)
+
+
+def _batch_capability_reason(
+    request: BatchRequest, bundle_dir: Path, worker: WorkerCapability
+) -> str | None:
+    """Why *worker* cannot run *request*'s scenario, or None when it can (BE-0450, on BE-0448's worker).
+
+    The same check `bajutsu run` makes against its `--worker-config`, made here before anything is
+    uploaded: the run on the device cloud's host knows nothing of this worker's `drivers` or
+    `maxTargetsPerJob`. Every target is judged on the `--backend` that host passes for the request's
+    platform, since that flag overrides each target's own. A scenario that cannot be read fails
+    too, as the host could not run it either.
+    """
+    from bajutsu.common.backends import current_host_os
+    from bajutsu.common.capability import capability_preflight
+    from bajutsu.common.cloud.devicefarm import host_backend
+    from bajutsu.common.scenario.load_expanded import load_expanded_scenarios
+
+    try:
+        scenarios = load_expanded_scenarios(bundle_dir / request.scenario, root=bundle_dir)
+    except (OSError, ValueError) as exc:
+        return f"{capability_preflight.WORKER_CAPABILITY_PREFIX} cannot read the scenario: {exc}"
+    backends = [host_backend(request.platform)]
+    host = current_host_os()
+    reasons = [
+        reason
+        for scenario in scenarios
+        for reason in capability_preflight.worker_capability_unsupported(
+            scenario, lambda _target: backends, worker, host
+        )
+    ]
+    return capability_preflight.worker_capability_failure(reasons) if reasons else None
 
 
 def _batch_interrupt(job: Job) -> Interrupt | None:

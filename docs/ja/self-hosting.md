@@ -347,7 +347,7 @@ serve ホストの `--root` を辿る**ファイルブラウザ**です。サー
 
 | backend | worker のキューに積む job | サーバのプロセス内で実行する job |
 |---|---|---|
-| `local`（デフォルト） | `run`（ビルド段階を含む） | `record`、`crawl`、`triage`、Device Farm への展開 |
+| `local`（デフォルト） | `run`（ビルド段階を含む）、Device Farm への展開（`run-set`） | `record`、`crawl`、`triage` |
 | `server` | すべての job | なし |
 
 残りの種類は、BE-0449 の後の単位で worker に移ります。デプロイが設定しなかった項目ごとに、サーバは
@@ -941,6 +941,13 @@ worker 能力ファイルを渡します（[BE-0450](../../roadmaps/BE-0450-work
 それぞれのシナリオをこのファイルに照らして検査します。このマシンで動かせないドライバを必要とするシナリオは、
 `worker-capability-unsupported:` で始まる理由により失敗します。コントロールプレーンはこのファイルを読みません。ファイルの形式と検査の内容は
 [drivers](drivers.md#worker-の能力検査be-0450) で説明しています。
+
+ファイルが `environment: devicefarm` のようにデバイスクラウドを指す worker は、ジョブの予算もこのファイルから
+読みます（BE-0448）。最上位の `maxJobConcurrency` が同時に持てるジョブの数で、枠がすべて埋まっている間、
+worker はリースの要求を送りません。値が 1 を超えると、worker は各ジョブを専用のスレッドで、`.slots/<n>/` の下の
+作業ディレクトリで処理します。このような worker に停止シグナルを送ると、ジョブを取り消さずにリースを期限切れに任せ、
+再起動した worker が実行を再開します。予算、投入前の検査、予算が置き換える非推奨のサーバ側の設定は、
+[AWS Device Farm で実行する](devicefarm.md#ジョブ予算) で説明しています。
 
 再起動を越えるよう、Tier A と同じく `LaunchAgent` で包みます。worker はコントロールプレーンの
 `/api/worker/lease` エンドポイントを HTTP でポーリングし（Redis は不要です）、各ジョブをクリーンな

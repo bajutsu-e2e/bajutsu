@@ -317,6 +317,35 @@ def worker(
     typer.echo(f"  workspace: {work}")
     from bajutsu.serve.server.one_shot import cancel_on_signals
 
+    # `WorkerCapability` already refuses a local file above one, so only a device cloud gets here.
+    if capability.max_job_concurrency > 1:
+        typer.echo(f"  job slots: {capability.max_job_concurrency} (maxJobConcurrency)")
+        shutdown = _SlotShutdown()
+        try:
+            with cancel_on_signals(shutdown) as signalled:
+                _serve_slots(
+                    url=url,
+                    auth_token=auth_token,
+                    wid=wid,
+                    caps=caps,
+                    work=work,
+                    poll_interval=poll_interval,
+                    heartbeat_interval=heartbeat_interval,
+                    worker_file=worker_file,
+                    slots=capability.max_job_concurrency,
+                    shutdown=shutdown,
+                    stopped=lambda: signalled() is not None,
+                    environment=capability.environment,
+                )
+                signum = signalled()
+        finally:
+            if temporary:
+                shutil.rmtree(work, ignore_errors=True)
+        if signum is not None:
+            typer.echo("  stopped; in-flight leases left to lapse")
+            raise typer.Exit(128 + signum)
+        return
+
     current = _CurrentJob(pgid_file=work / JOB_PGID_FILE)
     try:
         # A stop signal cancels the leased job the way the control plane's cancel does: gracefully
@@ -362,27 +391,8 @@ def _serve_leases(
 ) -> None:
     """Lease and run jobs until *stopped* answers True; the worker's poll loop."""
     while not stopped():
-        try:
-            code, body = _post_json(
-                f"{url}/api/worker/lease",
-                {"worker_id": wid, "capabilities": caps},
-                token=auth_token,
-            )
-        except (URLError, OSError) as e:
-            _logger.warning("lease request failed: %s", e)
-            time.sleep(poll_interval)
-            continue
-
-        # Say why a lease was refused instead of polling on in silence: a rejected credential or a
-        # proxy blocking the request looks exactly like an empty queue otherwise.
-        if code >= 400:
-            # Truncated: a refusal never self-resolves, so this repeats every poll, and a WAF's
-            # error page is kilobytes of HTML — one refusal must stay one readable line.
-            _logger.warning("lease refused with HTTP %s: %.200s", code, body)
-            time.sleep(poll_interval)
-            continue
-
-        if code == 204 or not body.get("spec"):
+        body = _lease(url, auth_token, wid, caps)
+        if body is None:
             time.sleep(poll_interval)
             continue
 
@@ -440,6 +450,291 @@ def _serve_leases(
             _discard_batch_workspace(work, job_work)
 
 
+def _lease(url: str, auth_token: str | None, wid: str, caps: list[str]) -> dict[str, Any] | None:
+    """Ask the control plane for one job; the lease body, or None when there is nothing to run."""
+    try:
+        code, body = _post_json(
+            f"{url}/api/worker/lease",
+            {"worker_id": wid, "capabilities": caps},
+            token=auth_token,
+        )
+    except (URLError, OSError) as e:
+        _logger.warning("lease request failed: %s", e)
+        return None
+
+    # Say why a lease was refused instead of polling on in silence: a rejected credential or a
+    # proxy blocking the request looks exactly like an empty queue otherwise.
+    if code >= 400:
+        # Truncated: a refusal never self-resolves, so this repeats every poll, and a WAF's
+        # error page is kilobytes of HTML — one refusal must stay one readable line.
+        _logger.warning("lease refused with HTTP %s: %.200s", code, body)
+        return None
+
+    if code == 204 or not body.get("spec"):
+        return None
+    return dict(body)
+
+
+def _serve_slots(
+    *,
+    url: str,
+    auth_token: str | None,
+    wid: str,
+    caps: list[str],
+    work: Path,
+    poll_interval: float,
+    heartbeat_interval: float,
+    worker_file: Path | None,
+    slots: int,
+    shutdown: _SlotShutdown,
+    stopped: Callable[[], bool],
+    environment: str,
+) -> None:
+    """Lease jobs into at most *slots* concurrent slots until stopped; the slot model (BE-0448).
+
+    A job counts against *slots* from its lease until its result is posted, so a slot that is only
+    uploading evidence frees its place, and no lease request goes out while every place is taken. The
+    slot's own heartbeat keeps the worker live meanwhile, so its advertised set never changes. Each
+    slot runs on a thread of its own, in a workspace no other running or uploading job shares.
+
+    Once *stopped* answers True or *shutdown* is requested, the loop leases nothing more and lets
+    every in-flight lease lapse (`_SlotShutdown`). It then waits for the slots to end: those uploading
+    finish, and the others leave their runs. A second SIGINT ends the wait at once.
+    """
+    places = threading.Condition()
+    busy = 0
+    dirs = _SlotDirs(work)
+    threads: list[threading.Thread] = []
+
+    def free() -> None:
+        nonlocal busy
+        with places:
+            busy -= 1
+            places.notify_all()
+
+    try:
+        while not (stopped() or shutdown.stopping):
+            with places:
+                if busy >= slots:
+                    places.wait(timeout=poll_interval)
+                    continue
+            body = _lease(url, auth_token, wid, caps)
+            if body is None:
+                time.sleep(poll_interval)
+                continue
+            with places:
+                busy += 1
+            thread = threading.Thread(
+                target=_run_slot,
+                kwargs={
+                    "body": body,
+                    "dirs": dirs,
+                    "free": free,
+                    "shutdown": shutdown,
+                    "url": url,
+                    "auth_token": auth_token,
+                    "wid": wid,
+                    "heartbeat_interval": heartbeat_interval,
+                    "worker_file": worker_file,
+                    "environment": environment,
+                },
+                daemon=True,
+            )
+            try:
+                thread.start()
+            except BaseException:
+                free()  # no slot ever owned the place, so give it back here
+                raise
+            threads = [t for t in threads if t.is_alive()] + [thread]
+    finally:
+        # Whatever ends the loop, an exception included, the leases in flight lapse as on a stop.
+        shutdown.request()
+        for thread in threads:
+            while thread.is_alive() and not shutdown.now:
+                thread.join(timeout=0.2)
+
+
+def _run_slot(
+    *,
+    body: dict[str, Any],
+    dirs: _SlotDirs,
+    free: Callable[[], None],
+    shutdown: _SlotShutdown,
+    url: str,
+    auth_token: str | None,
+    wid: str,
+    heartbeat_interval: float,
+    worker_file: Path | None,
+    environment: str,
+) -> None:
+    """Run one leased job in a slot of its own, and give its place back once its result is posted.
+
+    The slot owns everything the job touches: its workspace directory, log bus, live-log streamer,
+    heartbeat, and cancel relay. Its *lost* flag is the one `_SlotShutdown` sets to let the lease
+    lapse. The place is freed exactly once, after the result post or, when nothing is posted, at the
+    end.
+    """
+    freed = False
+
+    def post_done() -> None:
+        nonlocal freed
+        if not freed:
+            freed = True
+            free()
+
+    # Read inside the try, so a malformed lease body still gives the place back.
+    job_id = str(body.get("job_id"))
+    slot_work: Path | None = None
+    lost = threading.Event()
+    try:
+        spec = body["spec"]
+        typer.echo(f"  leased job {job_id}")
+        slot_work = dirs.acquire()
+        io = PresignedWorkerIO(
+            url=url,
+            auth_token=auth_token,
+            job_id=job_id,
+            worker_id=wid,
+            baseline_urls=body.get("baseline_urls"),
+        )
+        streamer = _LogStreamer(functools.partial(_post_log, url, wid, job_id, auth_token))
+        shutdown.attach(lost)
+        try:
+            result, abandoned, job_work = _run_with_heartbeat(
+                spec,
+                job_id=job_id,
+                work=slot_work,
+                bundle_urls=body.get("bundle_urls"),
+                override_urls=_override_urls(body),
+                batch_run_arn=body.get("batch_run_arn"),
+                app_url=body.get("app_url"),
+                bus=_TeeLogBus(streamer.add),
+                url=url,
+                wid=wid,
+                auth_token=auth_token,
+                heartbeat_interval=heartbeat_interval,
+                io=io,
+                worker_config=worker_file,
+                streamer=streamer,
+                secret_env=_lease_secret_env(body),
+                environment=environment,
+                lost=lost,
+            )
+        finally:
+            shutdown.detach(lost)
+        try:
+            _finish_job(
+                url=url,
+                auth_token=auth_token,
+                wid=wid,
+                job_id=job_id,
+                spec=spec,
+                outcome=(result, abandoned, job_work),
+                on_posted=post_done,
+            )
+        finally:
+            _discard_batch_workspace(slot_work, job_work)
+    except Exception:  # one slot's failure never takes the worker, or its other slots, down
+        _logger.exception("slot for job %s failed", job_id)
+    finally:
+        post_done()
+        if slot_work is not None:
+            dirs.release(slot_work)
+
+
+# Where a slot worker keeps one workspace per slot under its own working directory (BE-0448). The
+# numbered directories are reused, so a slot's bundle cache outlives the job that filled it.
+_SLOTS_DIR = ".slots"
+
+
+class _SlotDirs:
+    """The workspace directories of a slot worker: each job gets one no other live job holds.
+
+    A directory goes back to the pool only after its job has uploaded its evidence, so a job still
+    uploading never shares its tree with the next lease, even though it no longer counts as in flight.
+    """
+
+    def __init__(self, work: Path) -> None:
+        self._root = work / _SLOTS_DIR
+        self._lock = threading.Lock()
+        self._free: set[int] = set()
+        self._next = 0
+
+    def acquire(self) -> Path:
+        """The lowest-numbered free directory, created when it is new."""
+        with self._lock:
+            if self._free:
+                index = min(self._free)
+                self._free.discard(index)
+            else:
+                index = self._next
+                self._next += 1
+        path = self._root / str(index)
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    def release(self, path: Path) -> None:
+        """Give *path* back to the pool once its job is entirely done."""
+        with self._lock:
+            self._free.add(int(path.name))
+
+
+class _SlotShutdown:
+    """What a stop signal does to a slot worker: stop leasing, and let in-flight leases lapse (BE-0448).
+
+    Unlike `_CurrentJob`, it cancels nothing. Each in-flight slot's lease is treated as lost: the
+    slot stops its heartbeat and posts nothing, so the lease lapses and the job is re-leased. A run
+    whose ARN the server holds keeps running, and a restart or another worker resumes it; a run whose
+    ARN the server does not hold yet is stopped, since nobody could resume it. A second SIGINT ends
+    the wait for the slots at once (`kill`). It serves `cancel_on_signals` as the child.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._slots: set[threading.Event] = set()
+        self._stopping = threading.Event()
+        self._now = threading.Event()
+
+    @property
+    def stopping(self) -> bool:
+        """Whether a stop was requested: the worker leases nothing more."""
+        return self._stopping.is_set()
+
+    @property
+    def now(self) -> bool:
+        """Whether a second SIGINT asked the worker not to wait for its slots."""
+        return self._now.is_set()
+
+    def attach(self, lost: threading.Event) -> None:
+        """Track a slot's *lost* flag, setting it at once when a stop came first."""
+        with self._lock:
+            self._slots.add(lost)
+            stopping = self.stopping
+        if stopping:
+            lost.set()
+
+    def detach(self, lost: threading.Event) -> None:
+        """Stop tracking a slot whose job has ended."""
+        with self._lock:
+            self._slots.discard(lost)
+
+    def request(self) -> None:
+        """Stop leasing, and let the lease of every in-flight slot lapse."""
+        with self._lock:
+            self._stopping.set()
+            slots = list(self._slots)
+        for lost in slots:
+            lost.set()
+
+    def pgid(self) -> int | None:
+        """No process group: a slot submits to a device cloud and spawns no run of its own."""
+        return None
+
+    def kill(self) -> None:
+        """Stop waiting for the slots."""
+        self._now.set()
+
+
 def _finish_job(
     *,
     url: str,
@@ -448,8 +743,13 @@ def _finish_job(
     job_id: str,
     spec: dict[str, Any],
     outcome: tuple[dict[str, Any] | None, bool, Path],
+    on_posted: Callable[[], None] | None = None,
 ) -> None:
-    """Post a run job's result and upload its evidence, or say why neither happens."""
+    """Post a run job's result and upload its evidence, or say why neither happens.
+
+    *on_posted* runs right after the result post, before the evidence upload: a slot worker frees
+    the job's place there (BE-0448).
+    """
     result, abandoned, job_work = outcome
     if abandoned:
         # The control plane reclaimed and likely re-leased this job to another worker; posting a
@@ -469,6 +769,8 @@ def _finish_job(
 
     run_id = result.get("runId")
     _post_result(url, job_id, wid, result, auth_token)
+    if on_posted is not None:
+        on_posted()
 
     # Upload the run's evidence via presigned URLs the control plane signs (BE-0110): the worker
     # holds no cloud credentials of its own. Runs *after* the result is posted — heartbeats stop
@@ -930,6 +1232,7 @@ def _run_with_heartbeat(
     environment: str = LOCAL,
     batch_run_arn: Any = None,
     app_url: Any = None,
+    lost: threading.Event | None = None,
 ) -> tuple[dict[str, Any] | None, bool, Path]:
     """Run the job on a background thread while heart-beating its lease from this one.
 
@@ -966,10 +1269,11 @@ def _run_with_heartbeat(
     A cloud-batch job stores its run's ARN through the server (`_LeaseCheckpoint`), resumes the run
     *batch_run_arn* names when the lease carries one, and has its application fetched from *app_url*
     when the job names a stored one (BE-0448). The same *lost* flag that keeps a run from starting
-    tells its poll to leave the run to the worker that holds the job now.
+    tells its poll to leave the run to the worker that holds the job now. A slot worker passes its
+    own *lost*, which its shutdown sets to let the lease lapse; a fresh one when the caller has none.
     """
     holder: dict[str, Any] = {"work": work}
-    lost = threading.Event()
+    lost = lost if lost is not None else threading.Event()
     cancel = cancel if cancel is not None else _CancelRelay()
     checkpoint = (
         _LeaseCheckpoint(
@@ -1088,12 +1392,13 @@ def _beat_until_done(
     """Heartbeat every *interval* until *runner* ends; True when the lease was lost on the way.
 
     A 409 from the heartbeat or from the log route both mean another worker may now own the job.
+    So does *lost* set from outside, by a slot worker's shutdown: the lease is left to lapse.
     """
     while runner.is_alive():
         runner.join(timeout=interval)
         if not runner.is_alive():
-            return False
-        if beat() == 409 or (streamer is not None and streamer.lost):
+            return lost.is_set()
+        if lost.is_set() or beat() == 409 or (streamer is not None and streamer.lost):
             lost.set()  # seen in time, this stops _run before it ever calls execute_job_spec
             runner.join()  # wait it out so this worker never runs two jobs at once
             return True

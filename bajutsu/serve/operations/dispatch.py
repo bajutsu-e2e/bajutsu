@@ -11,6 +11,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from bajutsu.common.cloud.devicefarm import Platform
+from bajutsu.common.deprecations import SERVER_BATCH_BUDGET_REPLACEMENT, warn_server_batch_budget
 from bajutsu.common.report.manifest import MAX_LABEL_LENGTH
 from bajutsu.common.run_meta.id import new_run_id
 from bajutsu.serve import oplog
@@ -740,11 +741,19 @@ def start_run_set(  # noqa: C901, PLR0911, PLR0912
     # The device budget K bounds how many of this target's runs reserve a device at once (BE-0336
     # Unit 4): the target's configured `cloudBatchBudget`, which a per-request `deviceBudget` may
     # lower. Keyed on the batch provider (the device pool) inside `try_register`, so the (K+1)th job
-    # is rejected and the fan-out stops there.
+    # is rejected and the fan-out stops there. Both are deprecated for the worker's
+    # `maxJobConcurrency` (BE-0448) and still honored for one release; the response says so.
     request_budget, budget_err = _request_device_budget(body)
     if budget_err:
         return budget_err
     device_budget = _device_budget(config_budget, request_budget)
+    deprecated = [
+        name
+        for name, value in (("cloudBatchBudget", config_budget), ("deviceBudget", request_budget))
+        if value is not None
+    ]
+    if request_budget is not None:
+        warn_server_batch_budget("the run-set request field 'deviceBudget'")
     dispatched: list[str] = []
     config_text = cfg.read_text(encoding="utf-8")
     for request, materials in requests:
@@ -778,6 +787,14 @@ def start_run_set(  # noqa: C901, PLR0911, PLR0912
         assert job is not None
         dispatched.append(job.id)
     _record_audit(state, actor, org, "run-set", target, {"count": len(dispatched)})
+    if deprecated:
+        return {
+            "jobIds": dispatched,
+            "warnings": [
+                f"{name} is deprecated (BE-0448): {SERVER_BATCH_BUDGET_REPLACEMENT}"
+                for name in deprecated
+            ],
+        }, 200
     return {"jobIds": dispatched}, 200
 
 
