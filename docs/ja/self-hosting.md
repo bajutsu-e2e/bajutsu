@@ -776,6 +776,15 @@ worker は作業ディレクトリの `.bundles/<org>/<id>/` にそのツリー�
 です。serve でベースラインを承認しつつバンドルもアップロードしている場合は、承認済みの画像を
 バンドルに入れてください。
 
+1 台のマシンで動かせるものを宣言するには、`bajutsu worker --worker-config <worker.yaml>` で
+worker 能力ファイルを渡します（[BE-0450](../../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability-ja.md)）。このファイルには、マシンが提供するドライバと、1 つのシナリオが
+同時に持てる target の数（`maxTargetsPerJob`）を書きます。フラグを省くと、worker は同梱の既定を使います。
+既定はすべてのドライバを提供し、target の数に上限を設けません。worker は起動時、job をリースする前に
+ファイルを検証します。さらに、起動するすべての `bajutsu run` にファイルの絶対パスを渡します。リースした run は、
+それぞれのシナリオをこのファイルに照らして検査します。このマシンで動かせないドライバを必要とするシナリオは、
+`worker-capability-unsupported:` で始まる理由により失敗します。コントロールプレーンはこのファイルを読みません。ファイルの形式と検査の内容は
+[drivers](drivers.md#worker-の能力検査be-0450) で説明しています。
+
 再起動を越えるよう、Tier A と同じく `LaunchAgent` で包みます。worker はコントロールプレーンの
 `/api/worker/lease` エンドポイントを HTTP でポーリングし（Redis は不要です）、各ジョブをクリーンな
 Simulator で実行し、`runs/<id>/` ツリー（`console.log` 含む）をアップロードし、結果を

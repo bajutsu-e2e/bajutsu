@@ -58,11 +58,15 @@ Deliberately **not** gated (an audit of what each construct actually depends on,
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator, Set
+from collections.abc import Callable, Iterator, Sequence, Set
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from bajutsu.common.drivers import base
 from bajutsu.common.scenario import Assertion, Scenario, Step
+
+if TYPE_CHECKING:
+    from bajutsu.common.capability.worker_capability import WorkerCapability
 
 
 # A construct the capability set can gate: the capability it needs, a human label, and a
@@ -274,3 +278,135 @@ def unsupported(scenario: Scenario, capabilities: Set[str]) -> list[str]:
                 f"{path}: {req.label} needs '{req.capability}'" for path in req.locations(scenario)
             )
     return reasons
+
+
+# --- The worker capability check (BE-0450) -------------------------------------------------------
+#
+# `unsupported()` answers "can this driver perform this step?"; the functions below answer "can this
+# worker run this driver at all, and with how many targets?" from the worker's `worker.yaml`, the
+# driver's host requirement, and the machine's host. They stay pure — no device, no clock — so the
+# check sits on the deterministic path (prime directive 1) and needs no Simulator to test.
+
+WORKER_CAPABILITY_PREFIX = "worker-capability-unsupported:"
+
+_HOST_NAMES = {"darwin": "macOS", "linux": "Linux", "windows": "Windows"}
+
+
+def actuator_unavailable_reason(
+    actuator: str,
+    worker: WorkerCapability,
+    host: str,
+    host_os_for: Callable[[str], frozenset[str] | None] | None = None,
+) -> str | None:
+    """Why *worker* on *host* cannot run *actuator*'s driver, or None when it can (rules 1 and 2).
+
+    Rule 1, the host requirement, applies only to a `local` worker: on a device cloud the driver
+    runs on the provider's host, not this one.
+
+    Args:
+        actuator: The actuator (driver) name.
+        worker: The worker capability in force.
+        host: The machine's host operating system (`backends.current_host_os()`).
+        host_os_for: The driver host-requirement lookup; `backends.host_os_for` when None.
+    """
+    if worker.is_local:
+        if host_os_for is None:
+            from bajutsu.common.backends import host_os_for as default_host_os_for
+
+            host_os_for = default_host_os_for
+        hosts = host_os_for(actuator)
+        if hosts is not None and host not in hosts:
+            names = " or ".join(_HOST_NAMES.get(h, h) for h in sorted(hosts))
+            return f"{actuator} runs only on {names}; this worker runs on {host}"
+    if actuator not in worker.drivers:
+        return (
+            f"{actuator} is not among this worker's drivers ({', '.join(worker.drivers) or 'none'})"
+        )
+    return None
+
+
+def filter_actuators(
+    actuators: Sequence[str],
+    worker: WorkerCapability,
+    host: str,
+    host_os_for: Callable[[str], frozenset[str] | None] | None = None,
+) -> tuple[list[str], list[str]]:
+    """Split *actuators* into the ones *worker* can run and the reasons for the ones it cannot.
+
+    An actuator with no driver yet is kept untouched: the worker file cannot name it, and
+    `select_actuator` already reports it as planned rather than available.
+
+    Returns:
+        The runnable actuators in their original order, and one reason per dropped actuator.
+    """
+    from bajutsu.common.backends import IMPLEMENTED
+
+    kept: list[str] = []
+    reasons: list[str] = []
+    for actuator in actuators:
+        reason = (
+            actuator_unavailable_reason(actuator, worker, host, host_os_for)
+            if actuator in IMPLEMENTED
+            else None
+        )
+        if reason is None:
+            kept.append(actuator)
+        else:
+            reasons.append(reason)
+    return kept, reasons
+
+
+def scenario_target_count(scenario: Scenario) -> int:
+    """How many targets — and so devices — *scenario* holds at once, summed over every pool."""
+    return len(scenario.target_names) or 1
+
+
+def worker_capability_unsupported(
+    scenario: Scenario,
+    backends_for: Callable[[str | None], Sequence[str]],
+    worker: WorkerCapability,
+    host: str,
+    host_os_for: Callable[[str], frozenset[str] | None] | None = None,
+) -> list[str]:
+    """The reasons *worker* on *host* cannot run *scenario*, empty when it can (BE-0450).
+
+    Rules 1 and 2 run once per target the scenario needs: a target fails when none of its
+    requested actuators survives the host and `drivers` filter, so a fallback list such as
+    `[ios, web]` still passes on Linux. Rule 3 runs once per scenario against `maxTargetsPerJob`.
+
+    Args:
+        scenario: The scenario to judge.
+        backends_for: The requested backend list (platform tokens or actuator names) for one of
+            the scenario's declared targets, or for the run's single resolved target when called
+            with None — the effective target configuration with any `--backend` override applied.
+        worker: The worker capability in force.
+        host: The machine's host operating system.
+        host_os_for: The driver host-requirement lookup; `backends.host_os_for` when None.
+
+    Returns:
+        One reason per unmet requirement, each naming the driver or the limit; format them for a
+        report with `worker_capability_failure`.
+    """
+    from bajutsu.common.backends import resolve_actuators
+
+    reasons: list[str] = []
+    targets: list[str | None] = [*scenario.target_names] or [None]
+    for target in targets:
+        kept, dropped = filter_actuators(
+            resolve_actuators(list(backends_for(target))), worker, host, host_os_for
+        )
+        if not kept and dropped:
+            where = f"target '{target}': " if target is not None else ""
+            reasons.append(where + "; ".join(dropped))
+    count = scenario_target_count(scenario)
+    if worker.max_targets_per_job is not None and count > worker.max_targets_per_job:
+        reasons.append(
+            f"the scenario declares {count} targets; this worker allows at most "
+            f"{worker.max_targets_per_job} per job (maxTargetsPerJob)"
+        )
+    return reasons
+
+
+def worker_capability_failure(reasons: Sequence[str]) -> str:
+    """The one-line preflight failure for *reasons*, under the fixed prefix tests and readers key on."""
+    return f"{WORKER_CAPABILITY_PREFIX} {'; '.join(reasons)}"

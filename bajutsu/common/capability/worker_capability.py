@@ -1,0 +1,138 @@
+"""The worker capability: what one worker can run, declared in `worker.yaml` (BE-0450).
+
+A worker is the machine or process that runs scenarios. Its capability file names the worker's
+environment, how many jobs it may have in flight, how many targets one job may hold, and which
+drivers it offers. Only facts that no probe can answer belong here: the host operating system is
+read from the machine (`backends.current_host_os`), and the runtime and device-class tokens a
+server worker advertises come from its device inventory.
+
+The file is replaced whole, never merged: `--worker-config <path>` names the one file in force,
+and without it the default shipped beside this module applies. There is no environment variable
+and no lookup in the working directory, so the file in force is always the one on the command line.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Literal
+
+import yaml
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PositiveInt,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
+
+from bajutsu.common import _yaml
+from bajutsu.common.backends import IMPLEMENTED
+
+DEFAULT_WORKER_CONFIG = Path(__file__).with_name("worker.yaml")
+
+LOCAL = "local"
+
+# `local` plus every batch-provider kind Bajutsu can register (`serve/batch_provider`). The kinds
+# are listed here rather than read from the provider registry, which the server package fills at
+# runtime and the deterministic core may not import; a test keeps the two in step.
+ENVIRONMENTS: frozenset[str] = frozenset({LOCAL, "devicefarm"})
+
+
+class WorkerCapabilityError(ValueError):
+    """A `worker.yaml` that cannot be read or does not match the schema."""
+
+
+class WorkerCapability(BaseModel):
+    """One worker's declared limits, loaded from `worker.yaml` (BE-0450).
+
+    Attributes:
+        version: The file's schema version; only `1` exists.
+        environment: Where the worker runs jobs: `local`, or a device-cloud provider kind.
+        max_job_concurrency: Jobs the worker may have in flight at once.
+        max_targets_per_job: Targets one scenario may declare, counted across every driver; None
+            means unbounded.
+        drivers: The drivers this worker offers; a driver the list omits is unavailable.
+    """
+
+    model_config = ConfigDict(populate_by_name=True, extra="forbid", frozen=True)
+
+    version: Literal[1]
+    environment: str = LOCAL
+    max_job_concurrency: PositiveInt = Field(default=1, alias="maxJobConcurrency")
+    max_targets_per_job: PositiveInt | None = Field(default=None, alias="maxTargetsPerJob")
+    drivers: tuple[str, ...]
+
+    @field_validator("environment")
+    @classmethod
+    def _known_environment(cls, value: str) -> str:
+        if value not in ENVIRONMENTS:
+            raise ValueError(
+                f"unknown environment {value!r}; expected one of {sorted(ENVIRONMENTS)}"
+            )
+        return value
+
+    @field_validator("drivers")
+    @classmethod
+    def _known_drivers(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        unknown = sorted(set(value) - IMPLEMENTED)
+        if unknown:
+            raise ValueError(f"unknown driver(s) {unknown}; expected any of {sorted(IMPLEMENTED)}")
+        return value
+
+    @model_validator(mode="after")
+    def _local_runs_one_job(self) -> WorkerCapability:
+        # Several local jobs at once need a device allocated to each job, which is separate work;
+        # `run --workers` lanes are a different mechanism and stay unaffected.
+        if self.is_local and self.max_job_concurrency > 1:
+            raise ValueError(
+                "maxJobConcurrency above 1 needs a device-cloud environment; a local worker "
+                "runs one job at a time"
+            )
+        return self
+
+    @property
+    def is_local(self) -> bool:
+        """Whether this worker drives devices on its own host."""
+        return self.environment == LOCAL
+
+
+def parse_worker_capability(text: str, *, source: str = "worker.yaml") -> WorkerCapability:
+    """Parse and validate one `worker.yaml` document.
+
+    Args:
+        text: The YAML text.
+        source: The file name quoted in an error.
+
+    Raises:
+        WorkerCapabilityError: The text is not valid YAML or does not match the schema.
+    """
+    try:
+        data = _yaml.safe_load(text)
+    except yaml.YAMLError as e:
+        raise WorkerCapabilityError(f"{source}: invalid YAML: {e}") from e
+    if not isinstance(data, dict):
+        raise WorkerCapabilityError(f"{source}: expected a mapping at the top level")
+    try:
+        return WorkerCapability.model_validate(data)
+    except ValidationError as e:
+        details = "; ".join(
+            f"{'.'.join(str(p) for p in err['loc']) or '(root)'}: {err['msg']}"
+            for err in e.errors()
+        )
+        raise WorkerCapabilityError(f"{source}: {details}") from e
+
+
+def load_worker_capability(path: Path | None = None) -> WorkerCapability:
+    """Load the worker capability in force: *path*, or the shipped default when it is None.
+
+    Raises:
+        WorkerCapabilityError: The file cannot be read or does not match the schema.
+    """
+    target = DEFAULT_WORKER_CONFIG if path is None else path
+    try:
+        text = target.read_text(encoding="utf-8")
+    except OSError as e:
+        raise WorkerCapabilityError(f"{target}: cannot read worker config: {e}") from e
+    return parse_worker_capability(text, source=str(target))

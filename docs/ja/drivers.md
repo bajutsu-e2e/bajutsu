@@ -73,6 +73,68 @@ class Driver(Protocol):
 
 検査は、能力集合で明確に判定できる**真の hard requirement** だけを門にします。`pinch` / `rotate` は `multiTouch`、`selectOption` は `selectOption` トークン（web だけで通る `<select>` の切り替え。iOS / Android はデバイス作業の前に拒否されます）、`select` / `copy` は `textSelection`（全選択とクリップボードへのコピー。web コンテキストはこれらについて座標専用でどちらも拒否します。`delete` / `clear` はどのバックエンドも `delete_text` を実現できるので門にしません）、`visual` アサーションは `screenshot`、`handleSystemAlert` は `handleSystemAlert` トークン（xcuitest だけが公開します）、`setPickerValue` は `pickerWheel` トークン（こちらも xcuitest だけです。ホイール型のピッカーは iOS ネイティブのコントロールなので、Android と web はデバイス作業の前に拒否されます）、そして各デバイス制御ステップは自分の操作に対応するトークンを必要とします。`setLocation` は `deviceControl.setLocation`、クリップボードのステップは `deviceControl.clipboard`、`push` は `deviceControl.push`、という具合です（この操作ごとのトークンへの分割は BE-0212、前掲）。`permissions` の各エントリも同様に、サービスごと（`deviceControl.permissions.<service>`）の門を通すので、未対応のサービスはフィールド全体としてではなく1 つずつ名指しされます。すべての run は `query` と `elements` を必要とします。`relaunch` はここに含みません。`relaunch` は `DeviceControl` ではなく、注入される relauncher で門を通すからです。一方、`conditionWait` は門にしません（run ループはすべての待機を polling で実装するので、どのバックエンドもこのトークンを必要としません）。`network` も門にしません（XCUITest は `network` を公開しませんが、アプリ側の collector で通信を捕捉するため、`request` / `event` / `requestSequence` / `responseSchema` アサーションや `until: { request }` 待機は iOS でも動きます）。`gestures.py` の `_require_multi_touch` は、ジェスチャ実行時の多層防御の検査として残します。デバイス制御ステップについても同様に `_need_control` を残し、その run で `DeviceControl` がまったく配線されていない場合（デバイスを固定しない並行 run など）を捕捉します。トークンが操作ごとになったので、一族の一部だけを実現するバックエンド（Android エミュレータの `setLocation`、`clipboard`、`foreground`）は、公開した操作については preflight を通し、残りについては速く失敗します。未対応のステップは1 つずつ名指しされ、一族が全か無かで扱われることはありません。
 
+### worker の能力検査（BE-0450）
+
+前節のプリフライト能力検査は、actuator がシナリオのステップに対応しているかを問います。もう 1 つの検査は、
+このマシンでそもそも[ドライバ](glossary.md#driver-backend-actuator-platform)を動かせるか、そして 1 つの
+シナリオが同時にいくつの [target](glossary.md#target-app-device) を持てるかを問います
+（[BE-0450](../../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability-ja.md)）。ここでいう
+**worker** は、シナリオを実行するマシンのことです。`bajutsu run` を実行する開発者のノート PC も、
+サーバーから job をリースする `bajutsu worker` も worker にあたります。
+
+**ホストの要件。** ドライバがどのホスト OS で動くかは、ドライバごとに決まった事実です。各ドライバクラスは
+`CAPABILITIES` の隣にある `HOST_OS` 定数でこれを宣言し、worker は自分の OS をマシンから読み取ります。
+
+| ドライバ | 動くホスト |
+|---|---|
+| `xcuitest` | macOS のみ |
+| `adb` | どのホストでも |
+| `playwright` | どのホストでも |
+| `fake` | どのホストでも |
+
+**worker 能力ファイル。** `worker.yaml` は 1 台の worker を記述します。マシンで何を動かせるかを知っているのは
+アプリのチームではなく運用者なので、`bajutsu.config.yaml` とは別のファイルにしています。ローダーはファイルを
+スキーマのバージョン 1 に照らして検証し、未知のキー、未知のドライバ、未知の environment、正でない数値を拒否します。
+
+| キー | 意味 |
+|---|---|
+| `version` | スキーマのバージョンです。`1` でなければなりません。 |
+| `environment` | worker が job を実行する場所です。`local`（既定）か、device cloud のプロバイダ種別を書きます。現在わかっているプロバイダ種別は `devicefarm` だけです。 |
+| `maxJobConcurrency` | worker が同時に実行できる job の数で、正の整数です。省くと 1 になり、`local` の worker は 1 しか受け付けません。 |
+| `maxTargetsPerJob` | 1 つのシナリオが宣言できる target の数で、正の整数です。すべてのドライバとデバイスグループをまたいで数えるので、Simulator の target とブラウザの target は合わせて 2 です。省くと上限なしになります。 |
+| `drivers` | worker が提供するドライバを `xcuitest`、`adb`、`playwright`、`fake` から選んで並べます。リストにないドライバは使えません。 |
+
+パッケージは既定のファイルを `bajutsu/common/capability/worker.yaml` に同梱しています。既定は、すべての
+ドライバを提供し target の数に上限を設けない、ローカルの worker を記述します。
+
+```yaml
+version: 1
+environment: local
+drivers: [xcuitest, adb, playwright, fake]
+```
+
+`bajutsu run` と `bajutsu worker` の `--worker-config <path>` は、既定のファイルを丸ごと置き換えます。2 つの
+ファイルをマージすることはありません。環境変数や作業ディレクトリの探索でファイルを選ぶ仕組みはないので、
+効力を持つファイルは常にコマンドラインで指定したファイルです。ホストの要件は `local` の worker にだけ
+適用します。device cloud の worker では、ドライバはプロバイダ側のホストで動くからです。
+
+**検査。** `bajutsu/common/capability/worker_capability.py` がファイルを読み込んで検証します。
+そのうえで `capability_preflight.worker_capability_unsupported()` がシナリオを判定します。
+検査の結果は、シナリオ、target の設定、worker 能力ファイル、ホストだけで決まります。検査はデバイスと時計を
+使わないので、決定的な経路にとどまります。検査は次の 2 か所で働きます。
+
+- **actuator の選択。** `run`、`record`、`crawl`、`audit`、`repl` は 1 つの選択処理を共有しています。
+  この処理は、ホストで動かせないドライバや worker 能力ファイルにないドライバの actuator を除いてから、
+  残りの中から選びます。そのため、`[ios, web]` のようなフォールバックのリストは、Linux でも `playwright`
+  に解決されます。候補が 1 つも残らなければ、コマンドは理由を示して終了コード 2 で終了します。理由の例は
+  `worker-capability-unsupported: xcuitest runs only on macOS; this worker runs on linux` です。
+  以前は汎用の `no available actuator` で終了していました。`run` 以外のコマンドは常に既定のファイルを使います。
+- **シナリオごと。** `run` は target を解決する前に、各シナリオが自分で宣言した target を検査します。
+  `maxTargetsPerJob` を超えるシナリオや、worker で動かせないドライバを必要とするシナリオは、
+  `worker-capability-unsupported:` で始まる理由で失敗します。そのシナリオのためにデバイスは確保せず、
+  残りのシナリオは実行します。最初のデバイスを確保する前に、すべての target の actuator を選んで検査します。
+  そのため、worker で動かせない target があっても、何も確保しないまま終わります。
+
 ## XCUITest（iOS）
 
 [BE-0290](../../roadmaps/BE-0290-xcuitest-default-ios-backend/BE-0290-xcuitest-default-ios-backend-ja.md) で idb を撤去して以来、**iOS の唯一の backend** です。**XCTest のオートメーションスナップショット**を、**実機上に常駐する runner**（`BajutsuKit`）を loopback HTTP で駆動して読み取り、アプリ側の統合なしに任意のアプリを bundle id で駆動します。実装: `common/drivers/xcuitest.py`。frame 中心の座標に解決するのではなく、能力モデルの豊かな端に位置します（semantic tap、ネイティブ条件待機、multi-touch、テキスト選択）。Xcode の `xcodebuild` が必要です。

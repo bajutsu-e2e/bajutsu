@@ -801,6 +801,18 @@ Two notes for operating it:
   own. If you approve baselines through serve and also upload bundles, put the approved images in
   the bundle.
 
+To declare what one machine can run, pass a worker capability file with
+`bajutsu worker --worker-config <worker.yaml>`
+([BE-0450](../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability.md)). The file lists the
+drivers the machine offers. Its `maxTargetsPerJob` caps the targets one scenario may hold at once.
+Without the flag, the worker uses the shipped default. The default offers every driver and sets no
+target limit. The worker validates the file at startup, before it leases any job. It hands the file's
+absolute path to every `bajutsu run` it spawns. Each leased run checks its scenarios against the file.
+A scenario that needs a driver this machine cannot run fails with a
+`worker-capability-unsupported:` reason. The control plane never reads
+the file. [Drivers](drivers.md#worker-capability-check-be-0450) describes the file format and the
+check.
+
 Wrap it in a `LaunchAgent` (as in Tier A) so it survives reboots. The worker polls the control
 plane's `/api/worker/lease` endpoint over HTTP (no Redis needed), runs each job on a fresh
 Simulator, uploads the `runs/<id>/` tree (including `console.log`), and posts the result back to

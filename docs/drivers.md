@@ -126,6 +126,74 @@ per-operation, a backend that supports only part of the family (the Android emul
 `clipboard`, and `foreground`) passes preflight for what it advertises and fails fast for the rest, each unsupported
 step named individually — rather than the family being all-or-nothing.
 
+### Worker capability check (BE-0450)
+
+The capability preflight above asks whether an actuator supports a scenario's steps. A second check
+([BE-0450](../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability.md)) settles two more
+points:
+
+- whether this machine can run the [driver](glossary.md#driver-backend-actuator-platform) at all.
+- the number of [targets](glossary.md#target-app-device) one scenario may hold at once.
+
+A **worker** is the machine that runs scenarios. A laptop that runs `bajutsu run` is a worker.
+A `bajutsu worker` that leases jobs from a server is one too.
+
+**Host requirement.** Each driver runs on a fixed set of host operating systems. Each driver class
+declares that set in a `HOST_OS` constant beside `CAPABILITIES`. The worker reads its own operating
+system from the machine.
+
+| Driver | Runs on |
+|---|---|
+| `xcuitest` | macOS only |
+| `adb` | any host |
+| `playwright` | any host |
+| `fake` | any host |
+
+**The worker capability file.** `worker.yaml` describes one worker. It stays apart from
+`bajutsu.config.yaml`. An application team writes that config, but an operator knows what a machine
+can host. The loader validates the file against version 1 of the schema. It refuses an unknown key, driver,
+or environment, and any number below one.
+
+| Key | Meaning |
+|---|---|
+| `version` | The schema version. It must be `1`. |
+| `environment` | Where the worker runs jobs: `local` (the default) or a device-cloud provider kind. `devicefarm` is the one provider kind known today. |
+| `maxJobConcurrency` | How many jobs the worker may run at once, a positive integer. Omitted means one, and a `local` worker accepts one alone. |
+| `maxTargetsPerJob` | How many targets one scenario may declare, a positive integer. The count spans every driver and device group, so a Simulator target and a browser target count two. Omitted means unbounded. |
+| `drivers` | The drivers the worker offers, from `xcuitest`, `adb`, `playwright`, and `fake`. A driver the list omits is unavailable. |
+
+The package ships a default at `bajutsu/common/capability/worker.yaml`. The default describes a
+local worker that offers every driver and sets no target limit:
+
+```yaml
+version: 1
+environment: local
+drivers: [xcuitest, adb, playwright, fake]
+```
+
+`bajutsu run` and `bajutsu worker` accept `--worker-config <path>`. The file it names replaces the
+default whole, and the two files never merge. No environment variable or working-directory lookup
+picks a file. The file in force is always the one on the command line. The host rule applies
+to a `local` worker alone. A device-cloud worker runs the driver on the provider's host.
+
+**The check.** `bajutsu/common/capability/worker_capability.py` loads and validates the file.
+Then `capability_preflight.worker_capability_unsupported()` judges a scenario against the file
+and the host. That function needs no device and no clock, so it stays on the deterministic path. Two places
+apply the check:
+
+- **Actuator selection.** Five commands share one selection step: `run`, `record`, `crawl`, `audit`,
+  and `repl`.
+  That step first drops every actuator the host cannot run or the worker file omits. A fallback list
+  such as `[ios, web]` thus still resolves to `playwright` on Linux. When no actuator survives, the command
+  exits 2 with a named reason. The old generic reason was `no available actuator`. The new one reads
+  `worker-capability-unsupported: xcuitest runs only on macOS; this worker runs on linux`. Every
+  command other than `run` uses the default file.
+- **Per scenario.** Before `run` resolves any target, it checks each scenario's own declared
+  targets. A scenario fails when it declares more targets than `maxTargetsPerJob`. It also fails
+  when it needs a driver the worker cannot run. Its reason starts with `worker-capability-unsupported:`. `run` acquires no
+  device for that scenario and runs the rest. `run` also selects and checks every target's actuator
+  before it acquires the first device. An unsupported target thus leaves nothing reserved.
+
 ## XCUITest (iOS)
 
 The **sole iOS backend** since [BE-0290](../roadmaps/BE-0290-xcuitest-default-ios-backend/BE-0290-xcuitest-default-ios-backend.md)

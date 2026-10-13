@@ -1756,6 +1756,9 @@ class AdbDriver(CoordinateTreeDriver):
             return intervals.start_logcat(self.serial, path)
         return None
 
+    # Runs anywhere Bajutsu runs (BE-0450): None means no host restriction.
+    HOST_OS: frozenset[str] | None = None
+
     # No semantic tap and no native network monitoring — the lean end of the capability model.
     # Of the device-control family it advertises only `setLocation` + `clipboard`:
     # `setLocation` over the emulator console (BE-0211), `clipboard` over an ordered `am broadcast`

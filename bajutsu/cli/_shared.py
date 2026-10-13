@@ -17,7 +17,18 @@ import typer
 from bajutsu.common.agents import ai_config, anthropic_client
 from bajutsu.common.ai import credential_gap
 from bajutsu.common.ai import disabled as ai_disabled
-from bajutsu.common.backends import ensure_web_runtime, select_actuator
+from bajutsu.common.backends import (
+    current_host_os,
+    ensure_web_runtime,
+    resolve_actuators,
+    select_actuator,
+)
+from bajutsu.common.capability import capability_preflight
+from bajutsu.common.capability.worker_capability import (
+    WorkerCapability,
+    WorkerCapabilityError,
+    load_worker_capability,
+)
 from bajutsu.common.config import (
     WEB_ENGINES,
     AiConfig,
@@ -412,7 +423,7 @@ def _log_subsystem_default(eff: Effective) -> str:
 
 
 def _select_actuator_or_exit(
-    backend: str, eff: Effective, engines: list[str]
+    backend: str, eff: Effective, engines: list[str], worker: WorkerCapability | None = None
 ) -> tuple[str, list[str]]:
     """Resolve the actuator for the requested backends, provisioning any web runtime, or exit 2 (BE-0260).
 
@@ -422,10 +433,21 @@ def _select_actuator_or_exit(
     on a missing device CLI. `run` passes its `--browsers` matrix and keeps the web-only-axis check
     at its call site; the other three pass no engines and provision the single resolved engine.
 
+    Before selecting, every actuator the worker cannot run — its host cannot drive the driver, or
+    `worker.yaml` omits it (BE-0450) — is dropped, and the returned backend list leaves it out so a
+    later per-scenario selection cannot pick it again. A fallback list such as `[ios, web]` still
+    resolves to `playwright` on Linux; only an empty remainder exits 2, on the named reason.
+
+    Args:
+        backend: The `--backend` override; empty means the target's configured list.
+        eff: The target's effective configuration.
+        engines: The web engines to provision; empty provisions the target's one engine.
+        worker: The worker capability in force; the shipped default when None.
+
     Returns:
         The resolved actuator and the ordered backend list.
     """
-    backends = _backends(backend, eff.backend)
+    backends = _worker_backends(_backends(backend, eff.backend), worker)
     try:
         # A matrix provisions every listed engine (each install idempotent); with no engines the
         # single resolved default (with one, it already equals that).
@@ -436,6 +458,38 @@ def _select_actuator_or_exit(
         typer.echo(str(e))
         raise typer.Exit(2) from None
     return actuator, backends
+
+
+def _worker_backends(backends: list[str], worker: WorkerCapability | None) -> list[str]:
+    """*backends* without the actuators the worker cannot run, or exit 2 when none remains (BE-0450).
+
+    The list comes back unchanged when nothing is dropped, so a run the worker fully supports keeps
+    its platform tokens exactly as before.
+    """
+    if worker is None:
+        worker = _load_worker_capability_or_exit(None)
+    kept, reasons = capability_preflight.filter_actuators(
+        resolve_actuators(backends), worker, current_host_os()
+    )
+    if not reasons:
+        return backends
+    if not kept:
+        typer.echo(capability_preflight.worker_capability_failure(reasons))
+        raise typer.Exit(2)
+    # The fallback is the operator's own declaration at work, not a missing tool, so say why the
+    # earlier backends were skipped rather than leave a run on a different platform unexplained.
+    for reason in reasons:
+        typer.echo(f"note: skipping a backend this worker cannot run: {reason}", err=True)
+    return kept
+
+
+def _load_worker_capability_or_exit(path: Path | None) -> WorkerCapability:
+    """The worker capability named by `--worker-config` (the shipped default when None), or exit 2."""
+    try:
+        return load_worker_capability(path)
+    except WorkerCapabilityError as e:
+        typer.echo(str(e))
+        raise typer.Exit(2) from None
 
 
 def _start_launch_server_or_exit(

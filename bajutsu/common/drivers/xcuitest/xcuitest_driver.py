@@ -71,6 +71,10 @@ class XcuitestDriver:
 
     name = "xcuitest"
 
+    # XCUITest needs Xcode, which exists only on macOS, so a worker on any other host cannot run
+    # this driver (BE-0450). Read without constructing a driver, like CAPABILITIES.
+    HOST_OS: frozenset[str] | None = frozenset({"darwin"})
+
     # Capabilities: a semantic tap (by handle, no coordinates), native condition waiting, and
     # two-finger gestures. No NETWORK — network evidence comes from
     # the app-side collector (BE-0020 boundary), not the actuator. The whole device-control family

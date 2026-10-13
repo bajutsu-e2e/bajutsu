@@ -176,6 +176,33 @@ def _local_interpreter(cmd: list[str]) -> list[str]:
     return cmd
 
 
+def _with_worker_config(cmd: list[str], worker_config: Path | None) -> list[str]:
+    """Hand a leased ``bajutsu run`` the worker's own capability file (BE-0450).
+
+    The worker alone holds `worker.yaml` — the server is not a worker and never sets the flag — so
+    the run it spawns must read the same file to apply the same check. Only `run` takes the flag;
+    the other commands' argv is returned unchanged.
+    """
+    if worker_config is None or "run" not in cmd[:4]:
+        return cmd
+    if cmd[1:4] != ["-m", "bajutsu", "run"]:
+        # Passing the argv through would run under the shipped default, which offers every driver:
+        # a silent widening of what the operator declared, so the job fails instead.
+        raise ValueError(f"cannot apply --worker-config to an unrecognised run argv: {cmd[:4]}")
+    # A spec that carries its own `--worker-config` must not override the worker's: the file is the
+    # worker's declaration, and the last value of a repeated option wins.
+    rest = [
+        arg
+        for i, arg in enumerate(cmd[4:], start=4)
+        if not (
+            arg == "--worker-config"
+            or arg.startswith("--worker-config=")
+            or cmd[i - 1] == "--worker-config"
+        )
+    ]
+    return [*cmd[:4], "--worker-config", str(worker_config.resolve()), *rest]
+
+
 def execute_job_spec(
     spec: dict[str, Any],
     *,
@@ -185,6 +212,7 @@ def execute_job_spec(
     bus: LogBus | None = None,
     io: WorkerIO | None = None,
     repository: Any = None,
+    worker_config: Path | None = None,
 ) -> Job:
     """Worker entrypoint: rebuild the job from *spec*, run the unchanged `run_job`, then upload its
     run tree through the control plane's presigned URLs.
@@ -222,7 +250,7 @@ def execute_job_spec(
     )
     job = Job(
         id=str(spec["job_id"]),  # keep the control plane's id so logs/results line up
-        cmd=_local_interpreter(list(spec["cmd"])),
+        cmd=_with_worker_config(_local_interpreter(list(spec["cmd"])), worker_config),
         udids=list(spec.get("udids") or []),
         app_path=spec.get("app_path"),
         build=spec.get("build"),
