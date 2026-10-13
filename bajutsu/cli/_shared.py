@@ -427,11 +427,11 @@ def _select_actuator_or_exit(
 ) -> tuple[str, list[str]]:
     """Resolve the actuator for the requested backends, provisioning any web runtime, or exit 2 (BE-0260).
 
-    The backend bring-up all four commands (`run` / `crawl` / `record` / `audit`) share: parse the
-    backend list, auto-install the web runtime for each engine a web run needs (idempotent), then
-    select the actuator — so a bad/unavailable backend exits cleanly (2) rather than crashing later
+    The backend bring-up all five commands (`run` / `crawl` / `record` / `audit` / `repl`) share:
+    parse the backend list, auto-install the web runtime for each engine a web run needs
+    (idempotent), then select the actuator — so a bad/unavailable backend exits cleanly (2) rather than crashing later
     on a missing device CLI. `run` passes its `--browsers` matrix and keeps the web-only-axis check
-    at its call site; the other three pass no engines and provision the single resolved engine.
+    at its call site; the other four pass no engines and provision the single resolved engine.
 
     Before selecting, every actuator the worker cannot run — its host cannot drive the driver, or
     `worker.yaml` omits it (BE-0450) — is dropped, and the returned backend list leaves it out so a
