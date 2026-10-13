@@ -1002,3 +1002,56 @@ def test_the_one_shot_modules_import_without_posix_job_control_signals() -> None
         [sys.executable, "-c", code], capture_output=True, text=True, check=False, timeout=60
     )
     assert done.returncode == 0, done.stderr
+
+
+# --- a run argv the worker cannot place `--worker-config` in -------------------------------------
+
+
+@pytest.mark.parametrize(
+    "cmd",
+    [
+        ["bajutsu", "run", "--target", "demo"],
+        ["python", "bajutsu.run.internal", "run"],
+        ["python", "-X", "bajutsu.run.internal"],
+    ],
+)
+def test_an_unrecognised_run_argv_is_refused(cmd: list[str]) -> None:
+    reason = one_shot.refusal({"cmd": cmd})
+    assert reason is not None and "does not recognise" in reason
+
+
+def test_worker_once_refuses_an_unrecognised_run_argv_with_exit_2(tmp_path: Path) -> None:
+    spec = _spec_file(tmp_path, {"cmd": ["bajutsu", "run", "--target", "demo"]})
+    result = runner.invoke(app, ["worker", "--once", str(spec)])
+    assert result.exit_code == 2, result.output
+    assert "does not recognise" in result.output
+
+
+def test_worker_once_turns_a_late_value_error_into_exit_2(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def boom(spec: Any, **kw: Any) -> int:
+        raise ValueError("no slot for the flag")
+
+    monkeypatch.setattr(one_shot, "run_spec_once", boom)
+    spec = _spec_file(tmp_path, {"cmd": ["echo"]})
+    result = runner.invoke(app, ["worker", "--once", str(spec)])
+    assert result.exit_code == 2
+    assert "no slot for the flag" in result.output
+
+
+def test_a_hard_kill_latched_before_the_cancel_lands_still_kills_at_registration() -> None:
+    # The cancel and the kill run on separate helper threads: here the kill's latch lands first and
+    # the child registers before the cancel does. The latch alone must make registration a kill.
+    from bajutsu.serve.server.worker_job import CancelRelay
+
+    relay = CancelRelay()
+    job = srv.Job(cmd=["x"], graceful_cancel=True)
+    relay.bind(job)
+    relay.kill()
+    assert job.kill_requested and not job.cancelled
+    proc = _KillRecorder()
+    assert srv_jobs._register_proc(job, proc, graceful=True) is False
+    assert proc.calls == ["kill"]
+    relay.request()  # the late cancel finds nothing graceful left to ask
+    assert proc.calls == ["kill", "terminate"]

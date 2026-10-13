@@ -241,8 +241,10 @@ def _register_proc(job: Job, proc: Any, *, graceful: bool = False) -> bool:
     a `run` job's spawned run from its own build phase, which keeps today's kill.
     """
     with job.lock:
-        kill = job.cancelled
+        # A latched hard kill stands on its own: the cancel that normally precedes it runs on another
+        # helper thread and may not have landed yet.
         hard = job.kill_requested
+        kill = job.cancelled or hard
         # Registered even when it is about to be stopped, so a hard kill asked for while the caller
         # waits for it to exit still reaches it.
         job.proc = proc

@@ -59,9 +59,9 @@ Running the child in its own session changes three more things at the terminal:
 If `run` itself dies without a signal it can catch (`kill -9`, an out-of-memory kill), the run
 notices that its caller is gone and cancels itself the same way.
 
-On Windows, where the web backend runs, `run` executes the run body in its own process, as it did
-before BE-0449. The child process, the signal relay, and the three terminal behaviors above apply
-on macOS and Linux only.
+On Windows, where the web backend runs, `run` executes the run body in the `run` process itself,
+with no child process, as it did before BE-0449. The child process, the signal relay, and the three
+terminal behaviors above apply on macOS and Linux only.
 
 | Exit code | When |
 |---|---|
@@ -1256,6 +1256,8 @@ differences:
 - a Device Farm batch spec
 - a `--worker-config` whose `environment` is not `local`
 - a `udids` that is not a list of strings, or `materials` that do not map paths to strings
+- a `cmd` that names a run in neither form a worker recognises (`python -m bajutsu.run.internal …`
+  or the older `python -m bajutsu run …`)
 - `materials` whose path is absolute, contains `..`, or leaves the current directory through a
   symbolic link
 - `materials` that would overwrite a different file in the current directory

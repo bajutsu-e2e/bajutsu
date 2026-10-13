@@ -405,7 +405,12 @@ def _run_once(path: Path, worker_file: Path | None) -> int:
         raise typer.BadParameter(f"cannot read the job spec: {e}", param_hint="--once") from None
     if (reason := one_shot.refusal(spec, Path.cwd())) is not None:
         raise typer.BadParameter(reason, param_hint="--once")
-    return one_shot.run_spec_once(spec, worker_config=worker_file)
+    try:
+        return one_shot.run_spec_once(spec, worker_config=worker_file)
+    except (
+        ValueError
+    ) as e:  # a spec the run could still not take, e.g. a run argv with no flag slot
+        raise typer.BadParameter(str(e), param_hint="--once") from None
 
 
 class _LogStreamer:

@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from bajutsu.run import INTERNAL_MODULE
-from bajutsu.serve.server.worker_job import CancelRelay, execute_job_spec
+from bajutsu.serve.server.worker_job import CancelRelay, _run_argv_head, execute_job_spec
 from bajutsu.serve.state import Job
 
 _logger = logging.getLogger(__name__)
@@ -82,6 +82,14 @@ def refusal(spec: Any, work: Path | None = None) -> str | None:
     cmd = spec.get("cmd")
     if not (isinstance(cmd, list) and cmd and all(isinstance(arg, str) for arg in cmd)):
         return "the spec needs a `cmd`: a non-empty list of strings"
+    if _run_argv_head(cmd) is None and ("run" in cmd[:4] or INTERNAL_MODULE in cmd[:3]):
+        # The worker places `--worker-config` after a recognised run head; any other run argv would
+        # fail at spawn time instead of here, before anything runs.
+        return (
+            "the spec's `cmd` names a run in a form a worker does not recognise: "
+            f"{' '.join(cmd[:4])} — use `python -m {INTERNAL_MODULE} …` "
+            "(or the older `python -m bajutsu run …`)"
+        )
     if (reason := _shape_problem(spec)) is not None:
         return reason
     udids = spec.get("udids")
@@ -272,12 +280,15 @@ class _Child(Protocol):
 
     def request(self) -> None:
         """Cancel the job, gracefully for `run` (BE-0370)."""
+        ...
 
     def pgid(self) -> int | None:
         """The child's process group, or None before it exists."""
+        ...
 
     def kill(self) -> None:
         """End the child's group at once."""
+        ...
 
 
 class _SignalRelay:
