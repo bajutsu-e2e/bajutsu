@@ -151,6 +151,19 @@ def is_open(method: str, path: str, *, oidc: bool = False) -> bool:
     )
 
 
+# The `file://` store's object routes (BE-0449). Its signed URL is their whole authorization, so a
+# worker or browser holding one needs no serve credential. Served only by the FastAPI backend, and
+# only when its object store is a `FileObjectStore` — the caller says whether that holds.
+SIGNED_STORE_PREFIX = "/api/store/objects/"
+
+
+def is_signed_store_route(method: str, path: str) -> bool:
+    """Whether this request targets the ``file://`` store's signed-URL routes (BE-0449), which skip
+    the credential gate because each verifies its own HMAC signature instead. The caller combines it
+    with whether the deployment serves those routes at all, so the policy stays closed elsewhere."""
+    return method in ("GET", "PUT") and path.startswith(SIGNED_STORE_PREFIX)
+
+
 def is_authorized(
     auth: SessionManager, authorization: str, session_value: str | None, *, path: str
 ) -> bool:

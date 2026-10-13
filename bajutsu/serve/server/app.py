@@ -30,9 +30,16 @@ from typing import Any
 
 from fastapi import FastAPI, Request, Response
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    RedirectResponse,
+    StreamingResponse,
+)
 from starlette.requests import ClientDisconnect
 
+from bajutsu.common.run_meta.object_store import content_type_for
 from bajutsu.serve import gate, oplog
 from bajutsu.serve import operations as ops
 from bajutsu.serve.handler import (
@@ -49,6 +56,7 @@ from bajutsu.serve.helpers import (
     valid_run_id,
 )
 from bajutsu.serve.routes import ROUTES, Handle, Route
+from bajutsu.serve.server.file_object_store import FileObjectStore, PendingPut
 from bajutsu.serve.sessions import MACHINE
 from bajutsu.serve.state import ServeState
 from bajutsu.serve.upload_artifacts import ArtifactKind
@@ -57,6 +65,7 @@ from bajutsu.serve.uploads import (
     MAX_UPLOAD_BYTES,
     BoundedZipReceiver,
     UploadTooLarge,
+    bounded_zip_receiver,
 )
 
 # How long an idle SSE stream waits before sending a `:keepalive` comment (and rechecking for a
@@ -155,6 +164,106 @@ def _serve_artifact(art: Any, request: Request, *, filename: str | None = None) 
     return Response(chunk, status_code=status, media_type=art.content_type, headers=headers)
 
 
+def _store_signature_ok(
+    store: FileObjectStore, method: str, key: str, content_type: str, request: Request
+) -> bool:
+    """Whether the request's ``expires`` / ``sig`` query parameters authorize *method* on *key*."""
+    try:
+        expires = int(request.query_params.get("expires", ""))
+    except ValueError:
+        return False
+    return store.signer.verify(
+        method, key, content_type, expires, request.query_params.get("sig", "")
+    )
+
+
+def _store_put_cap() -> int:
+    # Read live, like `BoundedZipReceiver`, so a test can shrink the cap with a monkeypatch.
+    return bounded_zip_receiver.MAX_UPLOAD_BYTES
+
+
+async def _receive_store_body(
+    request: Request, pending: PendingPut, cap: int
+) -> tuple[dict[str, str], int] | None:
+    """Stream the request body into *pending* and commit it, or abort it and return the error."""
+    received = 0
+    try:
+        async for chunk in request.stream():
+            received += len(chunk)
+            # Counted while reading too, so a lying or absent Content-Length can't overrun it.
+            if received > cap:
+                await run_in_threadpool(pending.abort)
+                return {"error": f"upload too large (max {cap} bytes)"}, 413
+            await run_in_threadpool(pending.write, chunk)
+        await run_in_threadpool(pending.commit)
+    except ClientDisconnect:
+        await run_in_threadpool(pending.abort)
+        return {"error": "upload interrupted"}, 400
+    except OSError:
+        # The server's own fault (a full disk on write or fsync), not the uploader's: a 5xx lets a
+        # worker tell the two apart.
+        await run_in_threadpool(pending.abort)
+        return {"error": "upload could not be stored"}, 500
+    except BaseException:
+        # A cancelled request must not leave its staging file behind in the store.
+        pending.abort()
+        raise
+    return None
+
+
+def _register_store_routes(app: FastAPI, store: FileObjectStore) -> None:
+    """Serve the `FileObjectStore`'s signed GET and PUT URLs (BE-0449). The signature is the only
+    authorization, so each route verifies it before touching the disk, and accepts nothing else."""
+
+    @app.get(gate.SIGNED_STORE_PREFIX + "{key:path}")
+    async def store_get(key: str, request: Request) -> Response:
+        if not _store_signature_ok(store, "GET", key, "", request):
+            return _result(({"error": "invalid or expired signature"}, 403))
+        try:
+            path = store.path_for(key)
+            found = await run_in_threadpool(path.is_file)
+        except (ValueError, OSError):  # an escaping key, or a name the filesystem rejects
+            found = False
+        if not found:
+            return _result(({"error": "not found"}, 404))
+        return FileResponse(
+            path,
+            media_type=content_type_for(key),
+            headers={
+                "Cache-Control": SIGNED_REDIRECT_CACHE_CONTROL,
+                # Worker-written HTML or SVG is served from this origin; a sandbox without
+                # allow-same-origin keeps it from acting as the UI (cookies, same-origin API calls).
+                "Content-Security-Policy": "sandbox",
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
+
+    @app.put(gate.SIGNED_STORE_PREFIX + "{key:path}")
+    async def store_put(key: str, request: Request) -> Response:
+        content_type = request.query_params.get("ct", "")
+        if not _store_signature_ok(store, "PUT", key, content_type, request):
+            return _result(({"error": "invalid or expired signature"}, 403))
+        # The signature binds the content type, so a body sent under another one is refused the
+        # way S3 refuses it (a signature mismatch), not stored under the wrong type.
+        if (request.headers.get("content-type") or "") != content_type:
+            return _result(({"error": "content type does not match the signed URL"}, 403))
+        cap = _store_put_cap()
+        if int(request.headers.get("content-length") or 0) > cap:
+            return _result(({"error": f"upload too large (max {cap} bytes)"}, 413))
+        try:
+            pending = await run_in_threadpool(store.begin_put, key)
+        except ValueError:
+            return _result(({"error": "invalid object key"}, 400))
+        except OSError:
+            # A key component that is an existing file, or a name too long for the filesystem:
+            # the key conflicts with what the store holds. No path in the message.
+            return _result(({"error": "object key conflicts with the store"}, 409))
+        error = await _receive_store_body(request, pending, cap)
+        if error is not None:
+            return _result(error)
+        return Response(status_code=200)
+
+
 # C901 and PLR0915 fold each nested function's count into the function enclosing it, so this score
 # measures the endpoint functions defined below, not branching here. Ruff bounds each of those on
 # its own, so the exemption loses no signal (BE-0386).
@@ -212,6 +321,9 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
         sid = request.cookies.get(_SESSION_COOKIE)
         return sid if sid is not None and state.auth.valid_session(sid) else None
 
+    # The `file://` store's routes exist only when this server is that store (BE-0449).
+    file_store = state.object_store if isinstance(state.object_store, FileObjectStore) else None
+
     @app.middleware("http")
     async def _security_gate(request: Request, call_next: Any) -> Response:
         """Host allowlist + auth + CSRF + hardening headers, mirroring the stdlib handler's
@@ -240,8 +352,11 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
         # what stops the two backends disagreeing about whether a caller holding a machine cookie
         # may still load the index or re-exchange its token — a divergence on a security branch is
         # the failure BE-0253 put this policy in `gate.py` to prevent.
-        if state.auth.token is not None and not gate.is_open(
-            method, path, oidc=state.auth.oidc is not None
+        signed_store_route = file_store is not None and gate.is_signed_store_route(method, path)
+        if (
+            state.auth.token is not None
+            and not signed_store_route
+            and not gate.is_open(method, path, oidc=state.auth.oidc is not None)
         ):
             if not _authorized(request):
                 return _hardened(JSONResponse({"error": "unauthorized"}, status_code=401))
@@ -577,6 +692,12 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
             )
         finally:
             received.cleanup()
+
+    # --- the `file://` store's signed-URL routes (off_loop, BE-0449) ---
+    # Registered here and not in the shared registry: the stdlib local handler never serves them,
+    # because the local start that uses this store runs on this app (BE-0449 unit 1).
+    if file_store is not None:
+        _register_store_routes(app, file_store)
 
     # --- uniform (JSON / text) routes, generated from the shared registry (BE-0253 Part 3) ---
 

@@ -168,6 +168,18 @@ Log:
   concurrently on a file-backed SQLite and race a heartbeat against a reclaim. The rest of unit 1
   (the generated secrets key, the `file://` artifact store with signed URLs, and the local start
   wiring) follows.
+- PR_PLACEHOLDER2 (Unit 1, part 2 of 3: keys and the file store) — `local_keys` generates the secrets
+  key and the URL-signing key on first use and keeps them in `.bajutsu/` beside the runs directory.
+  Each key file is written to an `O_EXCL | O_NOFOLLOW` staging file with mode `0600`, synced, and
+  hard-linked into place, so a concurrent start reads the winner's key, and an existing path that is
+  a symlink, not a regular file, owned by another account, or open to group or other is refused.
+  `fernet_from_env_or_local` prefers `BAJUTSU_SECRETS_KEY` and falls back to the local key.
+  `FileObjectStore` implements `ObjectStore` on a directory, confines every key to the root
+  (including through symlinks), and writes atomically with owner-only modes. Its signed URLs point at
+  new `GET` and `PUT /api/store/objects/{key}` routes on the FastAPI app, which the signature alone
+  authorizes: an HMAC-SHA256 over the method, the key, the content type, and the expiry. The routes
+  exist only when the object store is a `FileObjectStore`, and the default start is unchanged until
+  part 3 wires it.
 
 ## References
 
