@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import os
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from .org_record import OrgRecord
@@ -68,12 +69,66 @@ def _age_seconds(now: datetime, then: datetime) -> float:
     return (now - _as_utc(then)).total_seconds()
 
 
+def _rowcount(result: Any) -> int:
+    """The rows a conditional UPDATE matched: whether a job transition won its race (BE-0449)."""
+    return int(result.rowcount)
+
+
+# How long a SQLite writer waits for another's lock before failing, in milliseconds. The server's
+# request threads are the concurrent writers (BE-0449); a lease poll and a heartbeat landing together
+# should queue, never surface "database is locked". Longer than the driver's own 5 s default, which a
+# reclaim sweep over a large backlog can outlast.
+SQLITE_BUSY_TIMEOUT_MS = 30_000
+
+
 def engine_from_url(url: str) -> Engine:
     """Build a SQLAlchemy engine for *url* (e.g. ``postgresql://…`` in production, ``sqlite://`` on
-    the gate). SQLAlchemy is imported here so the default path never loads it."""
-    from sqlalchemy import create_engine
+    the gate). SQLAlchemy is imported here so the default path never loads it.
 
-    return create_engine(url)
+    A file-backed SQLite database gets write-ahead logging and a busy timeout on every connection
+    (BE-0449): readers no longer block the writer, and two writers wait for each other instead of
+    failing. An in-memory database has no file to log beside, so it is left as it is.
+    """
+    from sqlalchemy import create_engine, event
+
+    engine = create_engine(url)
+    if engine.dialect.name == "sqlite" and not _is_memory_sqlite(url):
+
+        @event.listens_for(engine, "connect")
+        def _sqlite_pragmas(dbapi_connection: Any, _record: Any) -> None:
+            cursor = dbapi_connection.cursor()
+            # Timeout first: converting the file into WAL needs a brief exclusive lock, which must
+            # wait out another connection rather than fail with "database is locked".
+            cursor.execute(f"PRAGMA busy_timeout={SQLITE_BUSY_TIMEOUT_MS}")
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.close()
+
+    return engine
+
+
+def _is_memory_sqlite(url: str) -> bool:
+    from sqlalchemy.engine import make_url
+
+    database = make_url(url).database
+    return not database or database == ":memory:" or "mode=memory" in url
+
+
+def upgrade_to_head(url: str) -> None:
+    """Bring the database at *url* to the latest Alembic revision (BE-0449).
+
+    The server never ran Alembic itself before: a hosted operator migrates as a deploy step. The
+    default SQLite of a local start has no such step, so the server runs it on that database alone.
+    *url* is handed to the migration environment directly, ahead of ``BAJUTSU_DATABASE_URL``, so a
+    configured database is never migrated in its place.
+    """
+    from alembic import command
+    from alembic.config import Config
+
+    cfg = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
+    # configparser treats `%` as interpolation, which a URL-encoded password would trip.
+    cfg.set_main_option("sqlalchemy.url", url.replace("%", "%%"))
+    cfg.attributes["url"] = url
+    command.upgrade(cfg, "head")
 
 
 def _positive_env(name: str, raw: str, *, cast: Any) -> Any:
@@ -92,13 +147,19 @@ def _positive_env(name: str, raw: str, *, cast: Any) -> Any:
     return value
 
 
-def repository_from_env() -> SqlRepository | None:
-    """A `SqlRepository` from ``BAJUTSU_DATABASE_URL``, or ``None`` when it is unset — so the
-    server backend runs without a database until one is configured, and local never has one. The
-    schema itself is owned by Alembic (7a-2), not created here."""
+def repository_from_env(default_url: str | None = None) -> SqlRepository | None:
+    """A `SqlRepository` from ``BAJUTSU_DATABASE_URL``, else from *default_url*, else ``None``.
+
+    The schema of a configured database is owned by Alembic (7a-2) and migrated by the operator, so
+    it is never touched here. *default_url* is the database a local start supplies for itself
+    (BE-0449); nobody else migrates it, so it is brought to the latest revision before use.
+    """
     url = os.environ.get("BAJUTSU_DATABASE_URL")
     if not url:
-        return None
+        if default_url is None:
+            return None
+        upgrade_to_head(default_url)
+        url = default_url
     kwargs: dict[str, Any] = {}
     if timeout := os.environ.get("BAJUTSU_LEASE_TIMEOUT_SECONDS"):
         kwargs["lease_timeout"] = timedelta(

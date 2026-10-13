@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0449](BE-0449-server-runs-no-jobs.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0449") |
+| Implementing PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167) (Unit 1, part 1 of 3) |
 | Topic | Hosting the web UI |
 <!-- /BE-METADATA -->
 
@@ -155,6 +156,18 @@ This item does not change what a job does, how a verdict is decided, or the run 
 - [ ] Move `triage`
 - [ ] Move `record` and `crawl`
 - [ ] Remove the local executor
+
+Log:
+
+- [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167) (Unit 1, part 1 of 3: the queue store) — every job transition in `SqlRepository`
+  (lease, heartbeat, result, reclaim) is now one conditional `UPDATE` whose row count decides the
+  race, on SQLite and PostgreSQL alike, in place of a select-then-write that skipped its row lock on
+  SQLite. A file-backed SQLite engine sets write-ahead logging and a busy timeout, and
+  `repository_from_env(default_url=…)` migrates the default database to the latest revision before
+  use, while a configured `BAJUTSU_DATABASE_URL` is still never migrated by the server. Tests lease
+  concurrently on a file-backed SQLite and race a heartbeat against a reclaim. The rest of unit 1
+  (the generated secrets key, the `file://` artifact store with signed URLs, and the local start
+  wiring) follows.
 
 ## References
 

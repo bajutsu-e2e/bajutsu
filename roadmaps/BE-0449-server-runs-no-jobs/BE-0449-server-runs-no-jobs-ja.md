@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0449](BE-0449-server-runs-no-jobs-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **承認済み** |
+| 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0449") |
+| 実装 PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167)（単位 1 の 3 分割のうち 1） |
 | トピック | Hosting the web UI |
 <!-- /BE-METADATA -->
 
@@ -155,6 +156,18 @@ local バックエンドと server バックエンドの違いは、これらの
 - [ ] `triage` の移行
 - [ ] `record` と `crawl` の移行
 - [ ] local の executor の削除
+
+ログ：
+
+- [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167)（単位 1 の 3 分割のうち 1：キューのストア）— `SqlRepository` のジョブの状態遷移
+  （リース、heartbeat、結果、reclaim）を、それぞれ 1 つの条件付き `UPDATE` にしました。競合の勝ち負けは
+  更新した行数で決まり、SQLite でも PostgreSQL でも同じです。これまでは読み取りのあとに書き込んでいて、
+  SQLite では行ロックを取っていませんでした。ファイルに置いた SQLite のエンジンには、ログ先行書き込み
+  （WAL）と busy timeout を設定します。`repository_from_env(default_url=…)` は、既定のデータベースを
+  使う前に最新のリビジョンへマイグレーションします。一方、運用者が設定した `BAJUTSU_DATABASE_URL` は、
+  これまでどおりサーバーがマイグレーションしません。ファイルに置いた SQLite で並行してリースする
+  テストと、heartbeat と reclaim を競わせるテストを加えました。単位 1 の残り（秘密鍵の生成、署名付き
+  URL を使う `file://` の成果物ストア、ローカル起動の配線）は後続の PR で入れます。
 
 ## 参考
 
