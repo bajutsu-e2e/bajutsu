@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0449") |
-| Implementing PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167) (Unit 1, part 1 of 3), [#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168) (Unit 1, part 2 of 3), [#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170) (Unit 1, part 3 of 3), [#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171) (Unit 2), [#2172](https://github.com/bajutsu-e2e/bajutsu/pull/2172) (Unit 4), [#2173](https://github.com/bajutsu-e2e/bajutsu/pull/2173) (Unit 3), [#2182](https://github.com/bajutsu-e2e/bajutsu/pull/2182) (Unit 5, part 1 of 2: a lossless local start), [#[#2183](https://github.com/bajutsu-e2e/bajutsu/pull/2183)](https://github.com/bajutsu-e2e/bajutsu/pull/[#2183](https://github.com/bajutsu-e2e/bajutsu/pull/2183)) (Unit 5, part 2 of 2: `run` on a worker) |
+| Implementing PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167) (Unit 1, part 1 of 3), [#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168) (Unit 1, part 2 of 3), [#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170) (Unit 1, part 3 of 3), [#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171) (Unit 2), [#2172](https://github.com/bajutsu-e2e/bajutsu/pull/2172) (Unit 4), [#2173](https://github.com/bajutsu-e2e/bajutsu/pull/2173) (Unit 3), [#2182](https://github.com/bajutsu-e2e/bajutsu/pull/2182) (Unit 5, part 1 of 2: a lossless local start), [#2183](https://github.com/bajutsu-e2e/bajutsu/pull/2183) (Unit 5, part 2 of 2: `run` on a worker) |
 | Topic | Hosting the web UI |
 <!-- /BE-METADATA -->
 
@@ -305,7 +305,7 @@ Log:
   An install command that names either extra still resolves. The CLI still imports none of the
   server stack. The `--asgi` install check is gone, and the server backend's install hint now names
   only the cloud clients. The local backend's executor and defaults are unchanged.
-- [#[#2183](https://github.com/bajutsu-e2e/bajutsu/pull/2183)](https://github.com/bajutsu-e2e/bajutsu/pull/[#2183](https://github.com/bajutsu-e2e/bajutsu/pull/2183)) (Unit 5, part 2 of 2: `run` on a worker) — the local backend is now the local start. Both
+- [#2183](https://github.com/bajutsu-e2e/bajutsu/pull/2183) (Unit 5, part 2 of 2: `run` on a worker) — the local backend is now the local start. Both
   backends build the server shape, and they differ in the kinds they queue. `local` queues `run`
   with its build phase (`LOCAL_QUEUED_KINDS`) and runs every other kind in the server's process.
   `server` queues every kind. The flag stays, and its removal is still unit 9's. A local start now
