@@ -27,6 +27,18 @@ from pathlib import Path
 DEFAULT_RUNS_DIR = "runs"
 
 
+#: The marker a soft-deleted run tree holds (BE-0239). Object storage has no `.trash/` to move a tree
+#: into, so the server backend writes ``<run_id>/.deleted`` in place; once its store mounts the runs
+#: tree (BE-0449) that file lands in ``runs/<id>/``, and every reader that walks ``runs/`` for
+#: history skips a tree holding it, so a run deleted under one backend stays deleted under the other.
+RUN_TOMBSTONE = ".deleted"
+
+
+def is_soft_deleted(run_dir: Path) -> bool:
+    """Whether *run_dir* holds the soft-delete tombstone (see `RUN_TOMBSTONE`)."""
+    return (run_dir / RUN_TOMBSTONE).exists()
+
+
 def runs_root(configured: str | Path | None = None) -> Path:
     """The directory runs land under — the configured one, or the default."""
     return Path(configured) if configured else Path(DEFAULT_RUNS_DIR)

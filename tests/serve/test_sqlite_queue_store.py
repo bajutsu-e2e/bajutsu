@@ -10,11 +10,14 @@ migration of the default database.
 from __future__ import annotations
 
 import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import pytest
-from sqlalchemy import inspect, text
+from sqlalchemy import Engine, event, inspect, text
 from sqlalchemy.orm import Session
 
 from bajutsu.serve.server.db import SqlRepository
@@ -36,33 +39,64 @@ def _backdate(repo: SqlRepository, job_id: str, seconds: float) -> None:
         session.commit()
 
 
+@contextmanager
+def _contend_at_job_update(engine: Engine, parties: int) -> Iterator[None]:
+    """Hold the first *parties* `UPDATE jobs` statements until all of them are about to run.
+
+    Every contender has then finished whatever it read before writing, so the writes collide on the
+    same row: a select-then-write store would let each overwrite the other, while a conditional
+    UPDATE lets exactly one match. One-shot, so the statements after the collision run freely.
+    """
+    barrier = threading.Barrier(parties, timeout=10)
+    held = 0
+    lock = threading.Lock()
+
+    def hold(_conn: Any, _cursor: Any, statement: str, *_args: Any) -> None:
+        nonlocal held
+        if not statement.lstrip().upper().startswith("UPDATE JOBS"):
+            return
+        with lock:
+            if held >= parties:
+                return
+            held += 1
+        barrier.wait()
+
+    event.listen(engine, "before_cursor_execute", hold)
+    try:
+        yield
+    finally:
+        event.remove(engine, "before_cursor_execute", hold)
+
+
 def test_concurrent_leasers_never_take_one_job_twice(tmp_path: Path) -> None:
     repo = _file_repo(tmp_path)
-    jobs = [f"j{i}" for i in range(20)]
-    for job_id in jobs:
-        repo.enqueue_job(job_id, org_id="o", spec={"cmd": []})
+    repo.enqueue_job("j1", org_id="o", spec={"cmd": []})
+    leasers = 4
     leased: list[str] = []
-    errors: list[BaseException] = []
+    errors: list[Exception] = []
     lock = threading.Lock()
-    start = threading.Barrier(8, timeout=10)
 
-    def lease_all(worker: str) -> None:
+    def lease(worker: str) -> None:
         try:
-            start.wait()
-            while (job := repo.lease_job(worker)) is not None:
-                with lock:
-                    leased.append(job.id)
-        except BaseException as e:  # surfaced below: a thread's error must fail the test
+            job = repo.lease_job(worker)
+        except Exception as e:  # surfaced below: a thread's error must fail the test
             errors.append(e)
+            return
+        if job is not None:
+            with lock:
+                leased.append(worker)
 
-    threads = [threading.Thread(target=lease_all, args=(f"w{i}",)) for i in range(8)]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join(timeout=60)
-        assert not t.is_alive()
+    with _contend_at_job_update(repo._engine, leasers):
+        threads = [threading.Thread(target=lease, args=(f"w{i}",)) for i in range(leasers)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=60)
+            assert not t.is_alive()
     assert errors == []  # no "database is locked" under contention
-    assert sorted(leased) == sorted(jobs)  # every job once, none twice
+    assert len(leased) == 1  # every leaser reached the claim on the one job; exactly one won it
+    info = repo.get_job("j1")
+    assert info is not None and info["status"] == "leased" and info["leased_by"] == leased[0]
 
 
 def test_a_heartbeat_after_a_reclaim_does_not_resurrect_the_lease(tmp_path: Path) -> None:
@@ -94,23 +128,22 @@ def _race_once(path: Path) -> None:
     repo.enqueue_job("j1", org_id="o", spec={"cmd": []})
     repo.lease_job("w1")
     _backdate(repo, "j1", 300)
-    start = threading.Barrier(2, timeout=10)
     outcome: dict[str, object] = {}
 
     def beat() -> None:
-        start.wait()
         outcome["beat"] = repo.heartbeat_job("j1", "w1")
 
     def reclaim() -> None:
-        start.wait()
         outcome["reclaimed"] = repo.reclaim_expired_leases(timedelta(seconds=120))
 
-    threads = [threading.Thread(target=beat), threading.Thread(target=reclaim)]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join(timeout=30)
-        assert not t.is_alive()
+    # Both writes are held until each side has read the leased, expired row, so they collide.
+    with _contend_at_job_update(engine, 2):
+        threads = [threading.Thread(target=beat), threading.Thread(target=reclaim)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=30)
+            assert not t.is_alive()
     # A thread that raised never wrote its key, so the run fails here rather than passing quietly.
     assert set(outcome) == {"beat", "reclaimed"}
     info = repo.get_job("j1")

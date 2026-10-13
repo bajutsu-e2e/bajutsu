@@ -23,8 +23,11 @@ response headers.
 
 from __future__ import annotations
 
+import errno
 import json
 import logging
+import os
+import stat
 from collections.abc import AsyncIterator, Callable
 from typing import Any
 
@@ -38,6 +41,7 @@ from fastapi.responses import (
     StreamingResponse,
 )
 from starlette.requests import ClientDisconnect
+from starlette.types import Receive, Scope, Send
 
 from bajutsu.common.run_meta.object_store import content_type_for
 from bajutsu.serve import gate, oplog
@@ -55,7 +59,7 @@ from bajutsu.serve.helpers import (
     range_reply,
     valid_run_id,
 )
-from bajutsu.serve.routes import ROUTES, Handle, Route
+from bajutsu.serve.routes import ROUTES, Handle, Route, json_body_cap
 from bajutsu.serve.server.file_object_store import FileObjectStore, PendingPut
 from bajutsu.serve.sessions import MACHINE
 from bajutsu.serve.state import ServeState
@@ -177,6 +181,34 @@ def _store_signature_ok(
     )
 
 
+async def _json_body(request: Request, cap: int) -> dict[str, Any] | Response:
+    """A POST's JSON object, read at most *cap* bytes deep, or the error response to send instead.
+
+    Parsed the way the stdlib handler parses it (empty -> {}, malformed or non-object -> 400), so
+    both backends reject the same input the same way. The cap is checked against Content-Length
+    first and again while reading, so a chunked or lying body is cut off at *cap* rather than
+    buffered whole (413).
+    """
+    too_large = _result(({"error": f"request body over {cap} bytes"}, 413))
+    declared = request.headers.get("content-length", "")
+    if declared.isdigit() and int(declared) > cap:
+        return too_large
+    chunks: list[bytes] = []
+    received = 0
+    async for chunk in request.stream():
+        received += len(chunk)
+        if received > cap:
+            return too_large
+        chunks.append(chunk)
+    try:
+        parsed = json.loads(b"".join(chunks) or b"{}")
+    except json.JSONDecodeError:
+        return _result(({"error": "bad json"}, 400))
+    if not isinstance(parsed, dict):
+        return _result(({"error": "expected a JSON object"}, 400))
+    return parsed
+
+
 def _store_put_cap() -> int:
     # Read live, like `BoundedZipReceiver`, so a test can shrink the cap with a monkeypatch.
     return bounded_zip_receiver.MAX_UPLOAD_BYTES
@@ -211,6 +243,34 @@ async def _receive_store_body(
     return None
 
 
+class _StoreFileResponse(FileResponse):
+    """A `FileResponse` that answers 404, not a 500, when the object vanished after the route found
+    it (a concurrent purge). The stat it takes here is the one Starlette would take, so range
+    support is unchanged; a delete landing after the headers are sent still ends that read."""
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if self.stat_result is None:
+            try:
+                st = await run_in_threadpool(os.stat, self.path)
+            except FileNotFoundError:
+                st = None
+            if st is None or not stat.S_ISREG(st.st_mode):
+                await _result(({"error": "not found"}, 404))(scope, receive, send)
+                return
+            self.stat_result = st
+            self.set_stat_headers(st)
+        await super().__call__(scope, receive, send)
+
+
+def _begin_put_error(e: OSError) -> tuple[dict[str, Any], int]:
+    # A key component that is an existing file, or a name too long for the filesystem: the key
+    # conflicts with what the store holds. No path in the message.
+    if e.errno in (errno.EEXIST, errno.ENOTDIR, errno.ENAMETOOLONG):
+        return {"error": "object key conflicts with the store"}, 409
+    # Anything else (a full disk, a permission loss) is ours, like `_receive_store_body`'s 500.
+    return {"error": "upload could not be stored"}, 500
+
+
 def _register_store_routes(app: FastAPI, store: FileObjectStore) -> None:
     """Serve the `FileObjectStore`'s signed GET and PUT URLs (BE-0449). The signature is the only
     authorization, so each route verifies it before touching the disk, and accepts nothing else."""
@@ -226,7 +286,7 @@ def _register_store_routes(app: FastAPI, store: FileObjectStore) -> None:
             found = False
         if not found:
             return _result(({"error": "not found"}, 404))
-        return FileResponse(
+        return _StoreFileResponse(
             path,
             media_type=content_type_for(key),
             headers={
@@ -254,10 +314,8 @@ def _register_store_routes(app: FastAPI, store: FileObjectStore) -> None:
             pending = await run_in_threadpool(store.begin_put, key)
         except ValueError:
             return _result(({"error": "invalid object key"}, 400))
-        except OSError:
-            # A key component that is an existing file, or a name too long for the filesystem:
-            # the key conflicts with what the store holds. No path in the message.
-            return _result(({"error": "object key conflicts with the store"}, 409))
+        except OSError as e:
+            return _result(_begin_put_error(e))
         error = await _receive_store_body(request, pending, cap)
         if error is not None:
             return _result(error)
@@ -491,7 +549,10 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
     # --- login + OAuth round-trip (off_loop, set cookies) ---
 
     @app.post(_LOGIN_PATH)
-    async def login(body: dict[str, Any]) -> JSONResponse:
+    async def login(request: Request) -> Response:
+        body = await _json_body(request, json_body_cap(ROUTES, _LOGIN_PATH))
+        if isinstance(body, Response):
+            return body
         payload, status, sid = ops.login(state, str(body.get("token", "") or ""))
         resp = JSONResponse(payload, status_code=status)
         if sid is not None:
@@ -499,7 +560,10 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
         return resp
 
     @app.post(gate.OIDC_EXCHANGE_PATH)
-    async def oidc_exchange(body: dict[str, Any]) -> JSONResponse:
+    async def oidc_exchange(request: Request) -> Response:
+        body = await _json_body(request, json_body_cap(ROUTES, gate.OIDC_EXCHANGE_PATH))
+        if isinstance(body, Response):
+            return body
         # Mirror of the stdlib handler's `_post_oidc_exchange` (BE-0414 unit 1): a CI job presents
         # its OIDC token and gets a machine session cookie, so every later call in the pipeline is
         # an ordinary session request both backends already handle identically.
@@ -716,12 +780,9 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
                 # non-object -> 400) rather than via a typed `dict` param, so a bodyless POST (cancel,
                 # activate, restore) isn't forced to 422 and the two backends reject malformed input
                 # identically.
-                try:
-                    parsed = json.loads(await request.body() or b"{}")
-                except json.JSONDecodeError:
-                    return _result(({"error": "bad json"}, 400))
-                if not isinstance(parsed, dict):
-                    return _result(({"error": "expected a JSON object"}, 400))
+                parsed = await _json_body(request, route.max_body)
+                if isinstance(parsed, Response):
+                    return parsed
                 body = parsed
             ctx = _FastapiCtx(
                 request,

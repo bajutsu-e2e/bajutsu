@@ -1,9 +1,10 @@
 """Alembic environment for the hosted backend's system of record (BE-0015 7a-2).
 
-The database URL comes from ``BAJUTSU_DATABASE_URL`` (the same env var ``repository_from_env`` reads),
-and ``target_metadata`` is the ORM's metadata so ``alembic revision --autogenerate`` and the drift
-test compare migrations against models.py. Imported only when Alembic runs, never on the default
-serve/CLI path."""
+The database URL comes from a URL handed in by ``upgrade_to_head`` (``config.attributes["url"]``),
+else ``BAJUTSU_DATABASE_URL`` (the same env var ``repository_from_env`` reads), else the ini's
+``sqlalchemy.url``; and ``target_metadata`` is the ORM's metadata so ``alembic revision
+--autogenerate`` and the drift test compare migrations against models.py. Imported only when Alembic
+runs, never on the default serve/CLI path."""
 
 from __future__ import annotations
 
@@ -28,7 +29,10 @@ def _url() -> str:
         or config.get_main_option("sqlalchemy.url")
     )
     if not url:
-        raise RuntimeError("BAJUTSU_DATABASE_URL is required to run the migrations")
+        raise RuntimeError(
+            "no database URL to migrate: pass one to upgrade_to_head, set BAJUTSU_DATABASE_URL,"
+            " or set sqlalchemy.url in the Alembic ini"
+        )
     return url
 
 

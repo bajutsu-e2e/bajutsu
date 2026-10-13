@@ -94,6 +94,15 @@ def test_missing_file_is_a_clear_error(tmp_path: Path) -> None:
         load_worker_capability(tmp_path / "absent.yaml")
 
 
+def test_non_utf8_file_is_a_clear_error(tmp_path: Path) -> None:
+    # A Shift-JIS comment raises UnicodeDecodeError, a ValueError rather than an OSError; both
+    # callers catch only WorkerCapabilityError, so it must surface as one.
+    path = tmp_path / "worker.yaml"
+    path.write_bytes("# 作業者\nenvironment: local\n".encode("shift_jis"))
+    with pytest.raises(WorkerCapabilityError, match="cannot read worker config"):
+        load_worker_capability(path)
+
+
 def test_environments_match_the_registrable_batch_providers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

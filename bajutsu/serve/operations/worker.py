@@ -19,6 +19,13 @@ from bajutsu.serve.upload_artifacts import ARTIFACT_KINDS, OVERRIDE_KINDS, artif
 # rate, and a line past 8 KiB is a dumped payload, not a log line a person reads in the console.
 WORKER_LOG_MAX_LINES = 500
 WORKER_LOG_MAX_LINE_CHARS = 8192
+# The raw-byte bound on one post, enforced before the body is read. A full batch of maximal plain
+# lines (500 x 8 KiB, about 3.9 MiB once quoted) fits in one post. JSON escapes a non-ASCII or
+# control character to `\uXXXX`, up to 12 bytes per character, so the worker also splits a batch by
+# its encoded size (`WORKER_LOG_BATCH_BYTES`) and a well-behaved worker never reaches this bound.
+WORKER_LOG_MAX_BODY_BYTES = 4 * 1024 * 1024
+# The lines' share of one post; the rest is left for the envelope (`worker_id`, `job_id`, the keys).
+WORKER_LOG_BATCH_BYTES = WORKER_LOG_MAX_BODY_BYTES - 64 * 1024
 # Published once, in place of the lines a job posts past its live budget of lines or bytes.
 LIVE_LOG_TRUNCATED = "[live log truncated; see console.log]\n"
 

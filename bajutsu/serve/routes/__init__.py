@@ -25,10 +25,18 @@ stdlib serve path stays lean (`tests/serve/test_import_guard.py`).
 """
 
 from ._functions import _match_template as _match_template
-from ._functions import match_route
+from ._functions import json_body_cap, match_route
 from ._shared import _HTML as _HTML
 from ._shared import ROUTES
 from .request_ctx import RequestCtx
-from .route import Handle, Route
+from .route import MAX_JSON_BODY_BYTES, Handle, Route
 
-__all__ = ["ROUTES", "Handle", "RequestCtx", "Route", "match_route"]
+__all__ = [
+    "MAX_JSON_BODY_BYTES",
+    "ROUTES",
+    "Handle",
+    "RequestCtx",
+    "Route",
+    "json_body_cap",
+    "match_route",
+]

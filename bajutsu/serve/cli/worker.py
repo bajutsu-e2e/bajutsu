@@ -40,7 +40,11 @@ from bajutsu.serve import InMemoryLogBus
 from bajutsu.serve.capabilities import WORKER_CAPABILITIES_ENV, worker_capabilities
 from bajutsu.serve.helpers import valid_sha256
 from bajutsu.serve.operations.composition import materialize_composition, place_overrides
-from bajutsu.serve.operations.worker import WORKER_LOG_MAX_LINE_CHARS, WORKER_LOG_MAX_LINES
+from bajutsu.serve.operations.worker import (
+    WORKER_LOG_BATCH_BYTES,
+    WORKER_LOG_MAX_LINE_CHARS,
+    WORKER_LOG_MAX_LINES,
+)
 from bajutsu.serve.server.db import cancelled_job_result
 from bajutsu.serve.server.worker_job import CancelRelay as _CancelRelay
 from bajutsu.serve.server.worker_job import WorkerIO, _materialize, execute_job_spec
@@ -468,7 +472,8 @@ class _LogStreamer:
         with self._flushing:
             with self._lock:
                 batch, self._pending = self._pending, []
-            for start in range(0, len(batch), WORKER_LOG_MAX_LINES):
+            start = 0
+            while start < len(batch):
                 if self._lost.is_set() or self._disabled.is_set():
                     return
                 if deadline is None and self._stop.is_set():
@@ -483,7 +488,9 @@ class _LogStreamer:
                         "log flush ran out of time; dropping %d lines", len(batch) - start
                     )
                     return
-                code = self._post(batch[start : start + WORKER_LOG_MAX_LINES])
+                end = _post_end(batch, start)
+                code = self._post(batch[start:end])
+                start = end
                 if code == 409:
                     self._lost.set()
                     return
@@ -517,6 +524,22 @@ class _LogStreamer:
     def _run(self, interval: float) -> None:
         while not self._stop.wait(interval):
             self.flush()
+
+
+def _post_end(batch: list[str], start: int) -> int:
+    """Where the post beginning at *start* ends: within the server's line count and body size.
+
+    Sized the way `_post_json` encodes the lines, so a batch heavy in escaped characters is split
+    before the server would refuse its body. A post always carries at least one line, and one line
+    cut to `WORKER_LOG_MAX_LINE_CHARS` always fits.
+    """
+    end = min(len(batch), start + WORKER_LOG_MAX_LINES)
+    size = 0
+    for i in range(start, end):
+        size += len(json.dumps(batch[i])) + 2  # the quoted line and its ", " separator
+        if size > WORKER_LOG_BATCH_BYTES and i > start:
+            return i
+    return end
 
 
 class _TeeLogBus(InMemoryLogBus):

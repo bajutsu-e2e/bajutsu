@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import os
 import threading
+import time
 from collections import OrderedDict
 from collections.abc import Generator, Iterator
 from typing import TYPE_CHECKING
@@ -56,7 +57,9 @@ class QueueLogBus(PostCompletionLogBus):
       would repeat each other, and a dropped post leaves a gap at no known place to merge on.
     - ``final`` prefers the payload the result route closed the live bus with, then the jobs table.
     - A live bus that raises (Redis unreachable) is logged once, and the stream and ``final`` fall
-      back to the post-completion behavior this class extends.
+      back to the post-completion behavior this class extends. A stream that had already delivered
+      live lines when the bus failed only waits for the job to finish and ends, for the same reason
+      it never appends ``console.log`` to live lines.
 
     The in-memory channels are bounded: a job enters the eviction order at its first live lines and
     moves to the back when it closes, and past `_KEEP_CLOSED` jobs the oldest finished one is
@@ -117,21 +120,27 @@ class QueueLogBus(PostCompletionLogBus):
             if stored:
                 yield from stored
                 return
+        delivered = [0]  # read after a mid-stream failure, which loses the generator's return value
         try:
-            seen = yield from self._live_lines(job_id, timeout)
+            yield from self._live_lines(job_id, timeout, delivered)
         except Exception:
             self._warn_live()
-            yield from super().stream(job_id, timeout=timeout)
+            if delivered[0] == 0:
+                yield from super().stream(job_id, timeout=timeout)
+            else:
+                yield from self._until_terminal(job_id, timeout)
             return
         self._retire(job_id)
-        if seen == 0:
+        if delivered[0] == 0:
             info = self._repo.get_job(job_id)
             if info is not None and info["status"] in TERMINAL_JOB_STATUSES:
                 yield from self._console_log_of(info, job_id)
 
-    def _live_lines(self, job_id: str, timeout: float | None) -> Generator[str | None, None, int]:
-        """The live bus's lines for *job_id*, ended by its close or the jobs table; their count."""
-        seen = 0
+    def _live_lines(
+        self, job_id: str, timeout: float | None, delivered: list[int]
+    ) -> Generator[str | None]:
+        """The live bus's lines for *job_id*, ended by its close or the jobs table, counted into
+        ``delivered[0]`` as each one is yielded."""
         idle = 0.0
         ending = False
         # The live bus is always read with the poll interval as its timeout, whatever the caller
@@ -140,7 +149,7 @@ class QueueLogBus(PostCompletionLogBus):
         try:
             for line in live:
                 if line is not None:
-                    seen += 1
+                    delivered[0] += 1
                     idle = 0.0
                     yield line
                     continue
@@ -159,7 +168,17 @@ class QueueLogBus(PostCompletionLogBus):
         finally:
             if isinstance(live, Generator):
                 live.close()
-        return seen
+
+    def _until_terminal(self, job_id: str, timeout: float | None) -> Iterator[None]:
+        """Heartbeats every *timeout* seconds until the jobs table shows *job_id* finished."""
+        idle = 0.0
+        while not self._terminal(job_id):
+            time.sleep(self._poll)
+            if timeout is not None:
+                idle += self._poll
+                if idle >= timeout:
+                    idle = 0.0
+                    yield None
 
     def _terminal(self, job_id: str) -> bool:
         info = self._repo.get_job(job_id)

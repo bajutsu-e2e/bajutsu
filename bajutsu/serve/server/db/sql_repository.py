@@ -120,9 +120,12 @@ class SqlRepository:
                 session.commit()
             except IntegrityError:
                 # Another writer inserted the same id between the read and the commit; the primary
-                # key turned that race into a no-op, which is the outcome this method promises.
+                # key turned that race into a no-op, which is the outcome this method promises. Any
+                # other constraint (a foreign key) is a real failure, so it is raised, not hidden.
                 session.rollback()
-                return False
+                if session.get(Run, run.id) is not None:
+                    return False
+                raise
         return True
 
     def get_run(self, run_id: str) -> RunRecord | None:
@@ -681,6 +684,7 @@ class SqlRepository:
         # on the next poll without a separate reaper process.
         self.reclaim_expired_leases(self._lease_timeout, max_attempts=self._max_attempts)
         advertised = set(capabilities)
+        skip_locked = self._engine.dialect.name != "sqlite"
         with Session(self._engine) as session:
             # Scan queued jobs oldest-first for the first this worker can serve — capability filtering
             # can't be a `.limit(1)` because the oldest queued job may need a capability this worker
@@ -691,6 +695,9 @@ class SqlRepository:
             # whose row count says whether this worker won it (BE-0449): one statement both checks
             # and writes, so two leasers can never both take a row — on SQLite, which has no
             # `FOR UPDATE SKIP LOCKED`, as on PostgreSQL. A lost race reads as 0 rows and moves on.
+            # PostgreSQL first takes the candidate with `FOR UPDATE SKIP LOCKED`, so a row another
+            # leaser is mid-claim on is skipped at once instead of waited on — without it every
+            # leaser would convoy on the oldest candidate behind one stalled claimant.
             #
             # The scan is deliberately unbounded rather than capped at the oldest N: an unroutable
             # backlog piles up at the *head* (oldest), so a fixed N would let it hide a servable
@@ -707,6 +714,14 @@ class SqlRepository:
             for job_id, caps in candidates:
                 if not can_serve(caps or [], advertised):
                     continue
+                if skip_locked:
+                    locked = session.execute(
+                        select(JobRecord.id)
+                        .where(JobRecord.id == job_id, JobRecord.status == "queued")
+                        .with_for_update(skip_locked=True)
+                    ).first()
+                    if locked is None:  # held by another leaser, or already taken — try the next
+                        continue
                 claimed = session.execute(
                     update(JobRecord)
                     .where(JobRecord.id == job_id, JobRecord.status == "queued")
@@ -805,13 +820,19 @@ class SqlRepository:
             # routability and the table stays bounded to the live pool (BE-0166), never leaking a row
             # per restarted `worker-<pid>`.
             session.execute(delete(WorkerRecord).where(WorkerRecord.last_seen < cutoff))
-            expired = session.execute(
+            scan = (
                 select(JobRecord.id, JobRecord.attempts, JobRecord.cancel_requested)
                 .where(JobRecord.status == "leased", JobRecord.leased_at < cutoff)
-                # One lock order for every reclaimer: two sweeps running at once (each lease poll
-                # runs one) then queue behind each other on PostgreSQL rather than deadlock.
+                # One lock order for every reclaimer, so two sweeps running at once (each lease
+                # poll runs one) never deadlock on PostgreSQL.
                 .order_by(JobRecord.id)
-            ).all()
+            )
+            if self._engine.dialect.name != "sqlite":
+                # Skip a row a heartbeat (or another sweep) holds rather than wait on it: that
+                # worker is alive, and since every lease poll runs this sweep, waiting would let
+                # one delayed heartbeat stall queue service for every worker.
+                scan = scan.with_for_update(skip_locked=True)
+            expired = session.execute(scan).all()
             for job_id, previous_attempts, cancelling in expired:
                 attempts = previous_attempts + 1
                 exhausted = attempts >= max_attempts

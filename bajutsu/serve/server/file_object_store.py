@@ -35,6 +35,17 @@ _FILE_MODE = 0o600
 _STAGING_PREFIX = ".bajutsu-put-"
 
 
+def _canonical(key: str) -> bool:
+    # A filesystem path collapses ``a//b``, ``a/./b``, ``./a/b`` and ``a/b/`` onto ``a/b``, while a
+    # bucket keeps them distinct; only the one spelling `list_keys` returns is a key here, so a URL
+    # signed for one spelling can never overwrite the object another names. A segment under the
+    # staging prefix is reserved too: `list_keys` hides those names, so an object there could never
+    # be listed, archived, or purged.
+    return all(
+        seg not in ("", ".") and not seg.startswith(_STAGING_PREFIX) for seg in key.split("/")
+    )
+
+
 class UrlSigner:
     """Signs and verifies the store's URLs with HMAC-SHA256 over the method, the object key, the
     content type, and the expiry."""
@@ -138,7 +149,12 @@ class FileObjectStore:
             prefix, directory = mount
             if not prefix.endswith("/") or not valid_relative_key(prefix.rstrip("/")):
                 raise ValueError(f"invalid mount prefix: {prefix!r}")
-            self._mount = (prefix, _owner_only_dir(directory))
+            # The mount is the operator's own runs tree, not a directory this store owns: create and
+            # resolve it, but leave its mode alone (`make_run_dir` already restricts each run dir)
+            # and follow a symlink (a runs tree moved to a larger disk). `path_for` confines every
+            # key to the resolved directory, which is what protects it.
+            directory.mkdir(parents=True, exist_ok=True)
+            self._mount = (prefix, directory.resolve())
 
     @property
     def root(self) -> Path:
@@ -160,20 +176,24 @@ class FileObjectStore:
         """The file *key* names, confined to the root, or to the mount for a key under its prefix.
 
         Raises:
-            ValueError: *key* is not a safe relative key, or resolves (through ``..`` or a symlink)
-                outside its directory or onto the directory itself.
+            ValueError: *key* is not a safe relative key, is not in canonical form (see
+                `_canonical`), or resolves (through ``..`` or a symlink) outside its directory or
+                onto the directory itself.
         """
-        if not valid_relative_key(key):
+        if not valid_relative_key(key) or not _canonical(key):
             raise ValueError(f"invalid object key: {key!r}")
         base, rel = self._locate(key)
         resolved = (base / rel).resolve()
         if resolved == base or not resolved.is_relative_to(base):
             raise ValueError(f"object key escapes the store root: {key!r}")
-        if base == self._root and self._mount is not None:
-            # A root-side key must not land in the mounted directory either (were it nested in the
-            # root), or it would reach the mount under a name its prefix never covered.
-            mounted = self._mount[1]
-            if resolved == mounted or resolved.is_relative_to(mounted):
+        if self._mount is not None:
+            # Neither directory may be reached under the other's names, whichever one nests: a
+            # root-side key must not land in the mount (it would reach it under a name its prefix
+            # never covered), and a mounted key must not land in the root. When *other* encloses
+            # *base*, every key confined to *base* is inside it anyway, so that case is not an escape.
+            other = self._mount[1] if base == self._root else self._root
+            lands_in_other = resolved == other or resolved.is_relative_to(other)
+            if lands_in_other and not base.is_relative_to(other):
                 raise ValueError(f"object key escapes the store root: {key!r}")
         return resolved
 
@@ -193,8 +213,9 @@ class FileObjectStore:
 
         Raises:
             ValueError: *key* is invalid or escapes the root (see `path_for`).
-            OSError: the key conflicts with the store (a component is an existing file) or names a
-                file the filesystem rejects.
+            OSError: the key conflicts with the store (``ENOTDIR``/``EEXIST``: a component is an
+                existing file; ``ENAMETOOLONG``: a name the filesystem rejects), or the server's
+                own I/O failed (a full disk, a permission loss).
         """
         final = self.path_for(key)
         self._make_parents(final)
@@ -208,11 +229,22 @@ class FileObjectStore:
             os.lstat(final)
         return PendingPut(final)
 
+    def _read_path(self, key: str) -> Path | None:
+        # The read and delete half reports an unsafe key as absent, as a bucket would, so a caller
+        # gets a miss (404) rather than a 500. The write and signing half keeps raising.
+        try:
+            return self.path_for(key)
+        except ValueError:
+            return None
+
     def exists(self, key: str) -> bool:
-        return self.path_for(key).is_file()
+        path = self._read_path(key)
+        return path is not None and path.is_file()
 
     def get_bytes(self, key: str) -> bytes | None:
-        path = self.path_for(key)
+        path = self._read_path(key)
+        if path is None:
+            return None
         try:
             return path.read_bytes()
         except (FileNotFoundError, IsADirectoryError):
@@ -270,8 +302,9 @@ class FileObjectStore:
         return sorted(keys)
 
     def delete_key(self, key: str) -> None:
-        path = self.path_for(key)
-        if path.is_file():  # a directory is no object; leave it, as a bucket has none to delete
+        path = self._read_path(key)
+        # A directory is no object; leave it, as a bucket has none to delete.
+        if path is not None and path.is_file():
             path.unlink(missing_ok=True)
             self._prune_empty_parents(path, self._locate(key)[0])
 
@@ -317,7 +350,12 @@ def _walk(base: Path, key_prefix: str, prefix: str) -> list[str]:
         dirnames[:] = [d for d in dirnames if not (here / d).is_symlink()]
         for name in filenames:
             full = here / name
-            if name.startswith(_STAGING_PREFIX) or not stat.S_ISREG(os.lstat(full).st_mode):
+            if name.startswith(_STAGING_PREFIX):
+                continue
+            try:
+                if not stat.S_ISREG(os.lstat(full).st_mode):
+                    continue
+            except FileNotFoundError:  # removed between the walk and the check: not listed
                 continue
             if not full.resolve().is_relative_to(base):
                 continue

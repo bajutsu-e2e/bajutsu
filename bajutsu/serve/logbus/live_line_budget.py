@@ -37,6 +37,10 @@ class LiveLineBudget:
         """How many of *lines*, from the front, *job_id* may publish, and whether this batch is the
         one that crossed a cap (so the caller publishes the truncation notice once)."""
         with self._lock:
+            if job_id in self._truncated:
+                # Closed for good once the notice went out: a smaller later line that would still
+                # fit under the byte cap must not appear after the notice that ended the live log.
+                return 0, False
             used_lines, used_bytes = self._used.get(job_id, (0, 0))
             allowed = 0
             for line in lines:

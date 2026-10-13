@@ -346,8 +346,8 @@ environment variables there. Such a server queues every job and runs none itself
 unset, the server supplies a local default. Every default lives in a `.bajutsu/` directory beside
 the runs directory. The server creates that directory owner-only (`0700`), and Git ignores it.
 These defaults apply when `BAJUTSU_SERVER_STORE` is unset. A deployment with a bucket and no
-database has no queue and runs jobs in its own process, as before. With a SQLite file per replica,
-replicas would split the queue.
+database has no queue and runs jobs in its own process, as before: a SQLite file per replica would
+split the queue across them.
 
 | Setting left unset | Local default |
 |---|---|
@@ -370,9 +370,19 @@ its bucket key. Scenarios, baselines, uploaded bundles, and every other org's ru
 them out of `runs/` keeps tenants apart. A default-org request for a run named `acme` or `scenarios`
 finds nothing. It can neither read nor delete another org's runs or a store folder.
 
+The server leaves the runs directory itself as it is. It creates `runs/` when it is missing, but
+never changes its mode. A symlinked `runs/`, such as one moved to a larger disk, is followed. Every
+key is confined to the resolved directory, so none reaches outside it. Only `.bajutsu/objects/`,
+which the server owns, is made owner-only (`0700`), and a symlink there is refused.
+
+The two backends share the runs tree. A run deleted under the server backend stays at
+`runs/<run id>/` with a `.deleted` marker, rather than moving to `runs/.trash/`. The local
+backend's history, `bajutsu flakiness --history`, and `bajutsu triage --flaky` skip a tree that
+holds the marker, so the run stays deleted under either backend.
+
 The browser and the worker reach a stored file through a signed URL. The server signs each URL with
 an HMAC key. That key lives in `.bajutsu/store-signing.key`, under the same `0600` rules. Each URL
-names the server's loopback address, `127.0.0.1` for a wildcard bind. The FastAPI transport alone
+names the `--host` the server was given, or `127.0.0.1` for a wildcard bind. The FastAPI transport alone
 serves these routes. A server backend without a bucket switches itself to `--asgi` and says so at
 startup. The URLs carry the port fixed at startup, and such a server refuses `--port 0`.
 
@@ -882,7 +892,8 @@ The browser shows a queued job's console live (BE-0449). While a job runs, the w
 log lines to `/api/worker/log` about once a second. The worker masks credential shapes first. A
 private key block stays masked up to its END line. The control plane accepts a batch
 from the lease holder alone. Any other worker gets `409` and drops the job, as on a heartbeat `409`.
-One post carries at most 500 lines. The control plane cuts a line longer than 8 KiB. A job may
+One post carries at most 500 lines and 4 MiB; the worker splits a larger batch, and the control plane
+refuses a larger body with `413` before reading it. The control plane cuts a line longer than 8 KiB. A job may
 publish 50,000 live lines or 16 MiB. Past that, a single truncation notice replaces the rest. Each line goes
 to the job's Server-Sent Events (SSE) stream. The worker's result closes the stream. The worker
 logs and drops a batch it cannot post. A lost batch never stops or delays the job.

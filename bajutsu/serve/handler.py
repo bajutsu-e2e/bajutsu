@@ -29,7 +29,7 @@ from bajutsu.serve.helpers import (
     range_reply,
     valid_run_id,
 )
-from bajutsu.serve.routes import ROUTES, match_route
+from bajutsu.serve.routes import ROUTES, json_body_cap, match_route
 from bajutsu.serve.sessions import MACHINE
 from bajutsu.serve.state import ServeState
 from bajutsu.serve.upload_artifacts import ArtifactKind
@@ -455,6 +455,14 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:  # noqa: C
                 self._handle_scenarios_upload()
                 return
             length = int(self.headers.get("Content-Length") or 0)
+            cap = json_body_cap(ROUTES, path)
+            if length > cap:
+                # Refused before a byte is read, so an oversized body never reaches memory; the
+                # connection closes rather than draining it. `http.server` reads no chunked body
+                # (no Content-Length means an empty one), so the declared length is the whole bound.
+                self.close_connection = True
+                self._json({"error": f"request body over {cap} bytes"}, 413)
+                return
             # Block cross-origin state-changing requests unconditionally (BE-0121) — not only when a
             # token is configured. The no-token loopback default is the common `make serve` case, and
             # an unguarded POST there is the CSRF-to-arbitrary-config hole this closes.

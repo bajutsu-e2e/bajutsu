@@ -1148,3 +1148,17 @@ def test_cli_flaky_no_passing_run_names_the_missing_side(
     assert r.exit_code == 0
     # the advisory must name the side that is actually missing, not the opposite
     assert "no passing" in r.output.lower()
+
+
+def test_split_flaky_runs_skips_a_soft_deleted_run(tmp_path: Path) -> None:
+    # A run the server backend trashed keeps its tree under a `.deleted` tombstone; it is no
+    # evidence any more, exactly as a run moved into the local `.trash/` is not.
+    from bajutsu.triage.cli import _split_flaky_runs
+
+    hist = tmp_path / "hist"
+    _write_flaky_run(hist / "r1", ok=True)
+    _write_flaky_run(hist / "r2", ok=False, reason="no match: {'id': 'home.titel'}")
+    (hist / "r2" / ".deleted").write_text("2026-01-01T00:00:00+00:00")
+    _name, pass_dirs, fail_dirs, _hash = _split_flaky_runs(hist, "login")
+    assert [d.name for d in pass_dirs] == ["r1"]
+    assert fail_dirs == []
