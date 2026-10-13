@@ -262,7 +262,7 @@ expiry, the staged-manifest target check, and the run-time resolution errors. Th
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Spike: on one real device, find which profiles a manual build needs (host, the `.xctrunner`
+- [x] Spike: on one real device, find which profiles a manual build needs (host, the `.xctrunner`
   app, or one wildcard), confirm the `.xctrunner` identifier, and confirm the staged-manifest and
   generated-spec approach builds.
 - [x] Signing file model, validation (prefix or explicit `bundleIds`), and lookup order, with tests.
@@ -293,6 +293,20 @@ Log:
     the key needs `xcodebuild -version` and, for manual signing, `security`.
   - The `runner` command group needed its own help-panel classification, because the panel
     grouping previously walked plain commands alone.
+- 2026-10-13 — PR_LINK ran the spike on an iPhone 14 Pro with Xcode 27.0, and proved the
+  automatic path on the device. Automatic signing signs both products with Xcode's own wildcard
+  profile, `iOS Team Provisioning Profile: *`, and the `.xctrunner` app takes
+  `<uitests identifier>.xctrunner`, as designed. The staged manifest and the generated spec build
+  as designed. Manual signing cannot reuse that wildcard: Xcode rejects a profile it manages, but
+  only deep inside `xcodebuild`. The preflight now reads `IsXcodeManaged` from each named profile
+  and rejects such a profile up front, naming the two fixes. The docs now name both profile
+  directories, since Xcode 16 and later keep profiles under
+  `~/Library/Developer/Xcode/UserData/Provisioning Profiles/`. The proof itself is half done. A
+  runner built with automatic signing under the user's own identifiers ran `smoke.yaml` on the
+  USB-attached device from a target with no `testRunner`, and passed. Two checks still need
+  resources this machine lacks: a manual build needs a profile created in the Apple Developer
+  portal, and the second-team check needs a second team. The real-device proof unit stays open
+  for them.
 
 ## References
 

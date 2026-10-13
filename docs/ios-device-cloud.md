@@ -206,7 +206,9 @@ signing: automatic                 # automatic (the default) or manual
 ```
 
 The file holds no secret. A team ID, a certificate name, and a profile name merely point at keys
-and profiles. Those stay in the Keychain and in `~/Library/MobileDevice/Provisioning Profiles/`.
+and profiles. Those stay in the Keychain and in the profile directories: Xcode 16 and later keep
+profiles in `~/Library/Developer/Xcode/UserData/Provisioning Profiles/`, and earlier releases use
+`~/Library/MobileDevice/Provisioning Profiles/`. Bajutsu searches both.
 
 | Key | Meaning |
 |---|---|
@@ -215,7 +217,7 @@ and profiles. Those stay in the Keychain and in `~/Library/MobileDevice/Provisio
 | `teamId` | The Apple Developer team that signs both products. |
 | `signing` | `automatic` lets Xcode mint the profiles. `manual` pins the certificate and profiles below. |
 | `manual.identity` | The codesigning identity, by name or by its certificate hash. |
-| `manual.profile` / `manual.profiles` | One profile for every product, or one each for the runner's main app (`profiles.host`) and the `.xctrunner` app (`profiles.runner`). Give exactly one form. When two unexpired profiles share a name, give the profile by the identifier in its `UUID` field instead. |
+| `manual.profile` / `manual.profiles` | One profile for every product, or one each for the runner's main app (`profiles.host`) and the `.xctrunner` app (`profiles.runner`). Give exactly one form. When two unexpired profiles share a name, give the profile by the identifier in its `UUID` field instead. A profile Xcode manages, such as `iOS Team Provisioning Profile: *`, does not qualify: Xcode refuses it under manual signing, so the check before the build rejects it. Create a development profile in the Apple Developer portal, or use `signing: automatic`. |
 
 The UI-test bundle's `.xctrunner` app takes the identifier `<uitests identifier>.xctrunner`. A
 manual build with one profile per product needs a profile for that identifier too.
