@@ -19,8 +19,11 @@ output is always reviewable; a runtime-only construct the shared walk cannot tra
 
 from __future__ import annotations
 
+import json
 import re
+from typing import Any
 
+from bajutsu.codegen._playwright_dict_match import DICT_MATCH_JS
 from bajutsu.codegen.common import (
     AfterEmission,
     device_group_todo,
@@ -128,7 +131,8 @@ def _request_predicate(req: RequestMatch) -> str:
     `e` carries `method` / `url` / `status` / `body`. Only set matcher fields are emitted, AND-ed,
     mirroring `match_request`. `body_matches` guards `e.body !== null` first: the runner fails a body
     matcher when the request has no body, so without the guard a pattern like `.*` would match a
-    body-less request and pass incorrectly.
+    body-less request and pass incorrectly. `query` / `body` call the `bajutsuDict` helper the setup
+    emits (BE-0463).
     """
     pathname = "new URL(e.url).pathname"  # `path` is path-only in the runner, so drop the query
     clauses: list[str] = []
@@ -146,7 +150,20 @@ def _request_predicate(req: RequestMatch) -> str:
         clauses.append(f"e.status === {req.status}")
     if req.body_matches is not None:
         clauses.append(f"e.body !== null && {_re_test_js(req.body_matches, 'e.body')}")
+    if req.query is not None or req.body is not None:
+        clauses.append(f"bajutsuDict(e, {_json_js(req.query)}, {_json_js(req.body)})")
     return " && ".join(clauses) if clauses else "true"
+
+
+def _json_js(matcher: dict[str, Any] | None) -> str:
+    """A dictionary matcher as a JS value, or `null` when unset.
+
+    Parsed from a string rather than written as an object literal, where a `__proto__` key would set
+    the prototype instead of naming a field.
+    """
+    if matcher is None:
+        return "null"
+    return f"JSON.parse({_ts(json.dumps(matcher, separators=(',', ':'), ensure_ascii=False))})"
 
 
 def _emit_request_assertion(req: RequestMatch) -> list[str]:
@@ -198,18 +215,25 @@ def _emit_request_sequence(seq: list[RequestMatch]) -> list[str]:
     ]
 
 
-def _scenario_uses_network(scenario: Scenario) -> bool:
-    """Whether any step or `expect` reads the network (request / requestSequence / until request)."""
+def _network_matchers(scenario: Scenario) -> list[RequestMatch]:
+    """Every request matcher a step or `expect` reads (request / requestSequence / until request)."""
 
-    def asserts_network(assertions: list[Assertion]) -> bool:
-        return any(a.request is not None or a.request_sequence is not None for a in assertions)
+    def from_assertions(assertions: list[Assertion]) -> list[RequestMatch]:
+        out: list[RequestMatch] = []
+        for a in assertions:
+            if a.request is not None:
+                out.append(a.request)
+            if a.request_sequence is not None:
+                out.extend(a.request_sequence)
+        return out
 
+    matchers: list[RequestMatch] = []
     for step in scenario.steps:
         if step.wait is not None and isinstance(step.wait.until, WaitRequest):
-            return True
-        if step.assert_ is not None and asserts_network(step.assert_):
-            return True
-    return asserts_network(scenario.expect)
+            matchers.append(step.wait.until.request)
+        if step.assert_ is not None:
+            matchers.extend(from_assertions(step.assert_))
+    return matchers + from_assertions(scenario.expect)
 
 
 def _glob_to_css(glob: str) -> str | None:
@@ -583,7 +607,10 @@ class _PlaywrightGen:
         # over the network — otherwise the scaffold stays free of unused plumbing. `permissions`
         # (BE-0276) has no browser equivalent (no TCC/pm-style OS permission model), so it is always
         # a TODO when present, regardless of the target this scenario also runs on.
-        lines = list(_RECORDER_SETUP) if _scenario_uses_network(scenario) else []
+        matchers = _network_matchers(scenario)
+        lines = list(_RECORDER_SETUP) if matchers else []
+        if any(m.query is not None or m.body is not None for m in matchers):
+            lines += DICT_MATCH_JS.splitlines()
         return lines + permissions_setup_lines(scenario) + interrupts_setup_lines(scenario)
 
     def launch_env_line(self, key: str, value: str) -> str:

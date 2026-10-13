@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0463](BE-0463-network-expect-dict-matchers-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **承認済み** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0463") |
 | トピック | 検証とカバレッジ |
 <!-- /BE-METADATA -->
@@ -136,11 +136,25 @@ Playwright のコード生成は、`match_request` を JavaScript で再現し�
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] モデル：`query` と `body` のフィールド、入れ子の値の文法の検証、モックでの拒否
-- [ ] 評価：`match_request` と `event` の処理での共通の辞書照合
-- [ ] レポート：ラベル、失敗の詳細、レポートの表示
-- [ ] コード生成：Playwright への翻訳
-- [ ] ドキュメントとショーケースのシナリオ（両言語）
+- [x] モデル：`query` と `body` のフィールド、入れ子の値の文法の検証、モックでの拒否
+- [x] 評価：`match_request` と `event` の処理での共通の辞書照合
+- [x] レポート：ラベル、失敗の詳細、レポートの表示
+- [x] コード生成：Playwright への翻訳
+- [x] ドキュメントとショーケースのシナリオ（両言語）
+
+ログ：
+
+- PR_LINK — 5 つの単位をすべて実装しました。`query` と `body` は共通のエンドポイントのマッチャに
+  置きました。そのため、`request`、`event`、`requestSequence`、`responseSchema.request`、
+  `until: { request }` のどれでも使えます。値の文法は読み込み時に検証し、`mocks` はどちらのフィールドも拒否します。評価は
+  1 つの純粋な照合関数（`bajutsu/common/assertions/dict_match.py`）が担います。`NetworkExchange` が
+  解析済みのクエリと JSON 本文を保持するので、1 つの通信を解析するのは 1 回だけです。候補の通信が
+  ちょうど 1 件のときは、失敗メッセージが最初に食い違ったキーを示します。Playwright 向けのヘルパーは、
+  キーの順序と数値の字句を保つ小さな JSON 読み取り器で本文を読みます。その読み取り器が runner の
+  テキスト形式と一致することは、`node` で動かすパリティテストで固定しました。Web デモの Sync
+  リクエストにはクエリ、入れ子の本文フィールド、リストを加え、`network.yaml` で検査しています。実際の
+  ブラウザでの実行でも通りました。`event` の `body` は、省略時の値を空の辞書から未指定に変えました。`$` で
+  始まる最上位の本文キーは、今後 `$$` と書く必要があります。
 
 ## 参考
 
