@@ -99,9 +99,12 @@ class SqlRepository:
                 session.commit()
             except IntegrityError:
                 # Another writer inserted the same id between the read and the commit; the primary
-                # key turned that race into a no-op, which is the outcome this method promises.
+                # key turned that race into a no-op, which is the outcome this method promises. Any
+                # other constraint (a foreign key) is a real failure, so it is raised, not hidden.
                 session.rollback()
-                return False
+                if session.get(Run, run.id) is not None:
+                    return False
+                raise
         return True
 
     def get_run(self, run_id: str) -> RunRecord | None:
