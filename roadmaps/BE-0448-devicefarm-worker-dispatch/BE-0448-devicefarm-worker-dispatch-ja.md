@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0448") |
-| 実装 PR | PR_PLACEHOLDER10（単位 1〜2 と単位 3 の一部） |
+| 実装 PR | [#2184](https://github.com/bajutsu-e2e/bajutsu/pull/2184)（単位 1〜2 と単位 3 の一部） |
 | トピック | Device-cloud execution |
 <!-- /BE-METADATA -->
 
@@ -178,7 +178,7 @@ worker は、実行のツリーを一時ディレクトリにダウンロード�
 
 ログ：
 
-- PR_PLACEHOLDER10（単位 1〜2 と単位 3 の一部）— `bajutsu worker` は、`worker.yaml` の `environment` が指す
+- [#2184](https://github.com/bajutsu-e2e/bajutsu/pull/2184)（単位 1〜2 と単位 3 の一部）— `bajutsu worker` は、`worker.yaml` の `environment` が指す
   プロバイダーを、`BAJUTSU_BATCH_HOOKS` のフックとともに登録します。登録した worker は
   `environment:devicefarm` を広告します。登録できない worker は、理由を示して起動時に終了します。理由は、`DEVICEFARM_PROJECT_ARN`
   の未設定、読み込めないフック、ソースのチェックアウトがないことのいずれかです。デバイスクラウドの

@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0448") |
-| Implementing PR | PR_PLACEHOLDER10 (Units 1–2 and part of 3) |
+| Implementing PR | [#2184](https://github.com/bajutsu-e2e/bajutsu/pull/2184) (Units 1–2 and part of 3) |
 | Topic | Device-cloud execution |
 <!-- /BE-METADATA -->
 
@@ -197,7 +197,7 @@ This item removes the in-process dispatch of the server (`_run_batch_job` and th
 
 Log:
 
-- PR_PLACEHOLDER10 (Units 1–2 and part of 3) — `bajutsu worker` now registers the provider that its
+- [#2184](https://github.com/bajutsu-e2e/bajutsu/pull/2184) (Units 1–2 and part of 3) — `bajutsu worker` now registers the provider that its
   `worker.yaml` names as `environment`, together with the `BAJUTSU_BATCH_HOOKS` hooks, and advertises
   `environment:devicefarm`. A worker that cannot register it exits at startup with the reason: no
   `DEVICEFARM_PROJECT_ARN`, a hook that fails to load, or no source checkout. A device-cloud worker
