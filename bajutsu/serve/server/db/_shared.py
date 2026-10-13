@@ -12,7 +12,7 @@ TERMINAL_JOB_STATUSES = ("done", "failed", "cancelled")
 
 
 def cancelled_job_result(job_id: str) -> dict[str, Any]:
-    """The terminal result of a job that was cancelled before any worker could post one (BE-0449).
+    """The terminal result of a cancelled job whose own run reported none (BE-0449).
 
     Shaped like `Job.view` without its lines, which is what a worker posts, so the job view and the
     post-completion log bus read a cancel the server recorded the same way as one a worker reported.

@@ -242,3 +242,30 @@ def test_state_dir_ignores_itself_for_git(tmp_path: Path) -> None:
     ignore.write_text("*\n# edited\n")
     ensure_state_dir(state)  # an existing file is left as the user has it
     assert ignore.read_text() == "*\n# edited\n"
+
+
+@pytest.mark.parametrize("content", ["", "# nothing ignored\n", "*.log\n!*\n"])
+def test_state_dir_refuses_a_gitignore_without_the_wildcard(tmp_path: Path, content: str) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    (state / ".gitignore").write_text(content)
+    with pytest.raises(ValueError, match="does not ignore everything"):
+        secrets_key(tmp_path / "state")
+    assert [p.name for p in state.iterdir()] == [".gitignore"]  # fails before any key exists
+
+
+def test_state_dir_refuses_a_symlinked_gitignore(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    target = tmp_path / "elsewhere"
+    target.write_text("*\n")
+    (state / ".gitignore").symlink_to(target)
+    with pytest.raises(ValueError, match=r"\.gitignore"):
+        ensure_state_dir(state)
+
+
+def test_state_dir_refuses_a_gitignore_that_is_a_directory(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    (state / ".gitignore").mkdir(parents=True)
+    with pytest.raises(ValueError, match=r"\.gitignore"):
+        ensure_state_dir(state)

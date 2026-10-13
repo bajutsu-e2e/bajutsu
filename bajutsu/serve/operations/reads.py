@@ -22,7 +22,7 @@ from bajutsu.common.scenario import declared_name, load_scenario_file
 from bajutsu.common.scenario.models import STEP_ACTIONS, Scenario, Step
 from bajutsu.serve import jobs
 from bajutsu.serve.artifacts import Artifact, ArtifactStore
-from bajutsu.serve.authz import _record_audit, _target_forbidden
+from bajutsu.serve.authz import _record_audit, _target_forbidden, role_allows
 from bajutsu.serve.helpers import (
     list_fs,
     list_simulators,
@@ -1059,15 +1059,21 @@ def _may_cancel(
 ) -> bool:
     """Whether the caller may cancel a job of *org*.
 
-    The caller's active org counts besides its memberships, so a single-tenant deployment, whose
-    users hold no stored membership, still cancels its own `default` jobs.
+    Cancelling is an editor action (`required_role`), and the route's gate checked only the role in
+    the caller's active org, so a stored membership of the job's org must itself grant editor: an
+    editor in one org who is a viewer in another must not cancel the other's jobs. With no stored
+    membership of *org*, the caller's active org still counts, so a single-tenant deployment, whose
+    users hold none, cancels its own `default` jobs under the role the gate already checked.
     """
     org = org or DEFAULT_ORG
     if machine_org is not None:
         return org == machine_org
     if not actor:
         return True
-    return org == state.org_of(actor) or org in state.eligible_orgs(actor)
+    memberships = state.eligible_orgs(actor)
+    if org in memberships:
+        return role_allows(memberships[org], "editor")
+    return org == state.org_of(actor)
 
 
 def respond_human(state: ServeState, job_id: str, body: dict[str, Any]) -> tuple[Any, int]:

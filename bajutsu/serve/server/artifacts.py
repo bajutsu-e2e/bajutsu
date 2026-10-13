@@ -20,6 +20,7 @@ from pathlib import PurePosixPath
 from typing import Any
 
 from bajutsu.common.report.archive import zip_tree
+from bajutsu.common.run_meta.files import RUN_TOMBSTONE
 from bajutsu.common.run_meta.object_store import content_type_for
 from bajutsu.serve.artifacts import Artifact
 from bajutsu.serve.helpers import crawl_run_summary, valid_run_id
@@ -29,7 +30,7 @@ from bajutsu.serve.server.object_store import ObjectStore
 # deletion time (ISO-8601). Object storage has no filesystem `.trash/` to move a tree into, so the
 # tombstone is the store-side "this run is trashed" signal `list_runs`/`list_crawl_runs` skip on and
 # the retention sweep reads a timestamp from (BE-0239) — the mirror of `LocalArtifactStore`'s trash.
-TOMBSTONE = ".deleted"
+TOMBSTONE = RUN_TOMBSTONE
 
 
 class ObjectStorageArtifactStore:

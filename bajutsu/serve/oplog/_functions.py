@@ -26,6 +26,8 @@ EVENTS: frozenset[str] = frozenset(
         "run.soft_deleted",
         "run.restored",
         "run.purged",
+        # An admin indexed the run trees under `runs/` into the history (BE-0449).
+        "runs.rescanned",
         "oauth.login",
         "oauth.denied",
         # The OIDC exchange (BE-0414): a CI job traded its token for a machine session, or was

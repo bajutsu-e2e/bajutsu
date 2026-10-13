@@ -7,6 +7,7 @@ under ``runs/`` indexed into the history at start and on a rescan.
 
 from __future__ import annotations
 
+import logging
 import os
 import stat
 from pathlib import Path
@@ -312,6 +313,44 @@ def test_the_rescan_picks_up_a_run_written_after_start(tmp_path: Path) -> None:
     assert ops.rescan_runs(state) == ({"indexed": 0}, 200)
 
 
+def test_the_rescan_records_who_rescanned(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    state = _local(tmp_path)
+    assert state.repository is not None
+    audits: list[dict[str, Any]] = []
+    monkeypatch.setattr(state.repository, "record_audit", lambda **kw: audits.append(kw))
+    write_run(tmp_path / "runs", "20260105-000000", ok=True, scenarios=[("smoke", True)])
+    with caplog.at_level(logging.INFO, logger="bajutsu.serve.operations"):
+        result = ops.rescan_runs(state, actor="alice")
+    assert result == ({"indexed": 1}, 200)
+    assert audits == [
+        {
+            "org_id": state.org_of("alice"),
+            "actor_id": "alice",
+            "action": "runs.rescan",
+            "target": "",
+            "detail": {"indexed": 1},
+        }
+    ]
+    record = next(r for r in caplog.records if getattr(r, "event", None) == "runs.rescanned")
+    assert (getattr(record, "actor", None), getattr(record, "indexed", None)) == ("alice", 1)
+
+
+def test_the_rescan_route_passes_the_actor(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[str | None] = []
+
+    def _rescan(state: Any, *, actor: str | None = None) -> tuple[Any, int]:
+        seen.append(actor)
+        return {"indexed": 0}, 200
+
+    monkeypatch.setattr(ops, "rescan_runs", _rescan)
+    client = TestClient(make_app(_local(tmp_path)))
+    resp = client.post("/api/runs/rescan")
+    assert resp.json() == {"indexed": 0}
+    assert len(seen) == 1
+
+
 def test_the_rescan_route_is_admin_gated() -> None:
     assert ops.required_role("POST", "/api/runs/rescan") == "admin"
     # The neighbouring run-lifecycle routes keep their own tier.
@@ -428,11 +467,12 @@ def test_a_default_org_actor_cannot_reach_another_tree(tmp_path: Path, name: str
     assert client.get(f"/runs/{name}/{rel}", follow_redirects=False).status_code == 404
     assert client.get(f"/runs/{name}/archive.zip").status_code == 404
     # Neither a soft-delete nor a purge reaches the tree behind the name.
-    assert client.delete(f"/api/runs/{name}").status_code == 404
-    assert client.delete(f"/api/runs/{name}?purge=true").status_code == 404
-    assert client.post("/api/runs/bulk-delete", json={"ids": [name], "purge": True}).json()[
-        "notFound"
-    ] == [name]
+    soft = client.delete(f"/api/runs/{name}")
+    purge = client.delete(f"/api/runs/{name}?purge=true")
+    bulk = client.post("/api/runs/bulk-delete", json={"ids": [name], "purge": True})
+    assert soft.status_code == 404
+    assert purge.status_code == 404
+    assert bulk.json()["notFound"] == [name]
     assert paths[name].is_file()
 
 
@@ -476,6 +516,23 @@ def test_indexing_never_overwrites_a_row_a_job_wrote(tmp_path: Path) -> None:
     assert (row.label, row.ok) == ("nightly", True)
     # The insert-only write itself refuses an existing id, so a race past the read loses quietly.
     assert repo.record_run_if_absent(RunRecord(id="r1", org_id="default", status="done")) is False
+
+
+def test_record_run_if_absent_raises_a_foreign_key_failure(tmp_path: Path) -> None:
+    from sqlalchemy import event
+    from sqlalchemy.exc import IntegrityError
+
+    from bajutsu.serve.server.db import RunRecord
+
+    repo = _local(tmp_path).repository
+    assert repo is not None
+    # SQLite enforces foreign keys only when asked; ask on every checkout so the insert below fails.
+    engine = repo._engine  # type: ignore[attr-defined]
+    event.listen(engine, "checkout", lambda conn, *_: conn.execute("PRAGMA foreign_keys=ON"))
+    # No such org: the failure is not a lost race on the id, so it must not read as "already there".
+    with pytest.raises(IntegrityError):
+        repo.record_run_if_absent(RunRecord(id="r1", org_id="no-such-org", status="done"))
+    assert repo.get_run("r1") is None
 
 
 def test_indexing_skips_a_run_an_in_process_job_is_still_writing(tmp_path: Path) -> None:
@@ -543,3 +600,24 @@ def test_a_completing_job_wins_a_race_with_a_rescan(tmp_path: Path) -> None:
     row = repo.get_run("r1")
     assert row is not None
     assert (row.label, row.ok) == ("nightly", True)
+
+
+def test_a_run_soft_deleted_under_the_server_backend_stays_hidden_locally(tmp_path: Path) -> None:
+    # The server backend trashes a run in place with a `.deleted` tombstone; the local backend's
+    # history and the CLI history readers walk the same tree, so they must skip it too.
+    from bajutsu.cli._shared import read_manifests
+    from bajutsu.serve.helpers import list_crawl_runs, list_runs
+
+    state = _local(tmp_path)
+    runs = tmp_path / "runs"
+    write_run(runs, "20260101-000000", ok=True, scenarios=[("smoke", True)])
+    write_run(runs, "20260102-000000", ok=True, scenarios=[("smoke", True)])
+    (runs / "20260102-000000" / "screenmap.json").write_text("{}")
+    (runs / "20260101-000000" / "screenmap.json").write_text("{}")
+    result = ops.delete_run(state, "20260102-000000")
+    assert result[1] == 200
+    assert (runs / "20260102-000000" / ".deleted").is_file()  # trashed in place, not moved
+
+    assert [r["id"] for r in list_runs(runs)] == ["20260101-000000"]
+    assert [r["id"] for r in list_crawl_runs(runs)] == ["20260101-000000"]
+    assert len(read_manifests(runs)) == 1

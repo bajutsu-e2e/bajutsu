@@ -285,6 +285,39 @@ def test_a_member_of_another_org_cannot_cancel_a_queued_job(tmp_path: Path) -> N
     )
 
 
+def test_a_viewer_of_the_jobs_org_cannot_cancel_it_from_an_org_they_edit(tmp_path: Path) -> None:
+    # bob edits globex (his active org, which the route's role gate checked) but only views acme.
+    repo = _file_repo(tmp_path)
+    _orgs(repo)
+    repo.set_user_orgs("bob", {"globex": "editor", "acme": "viewer"})
+    state = _state(tmp_path, repo)
+    repo.enqueue_job("j1", org_id="acme", spec={"cmd": []})
+    assert ops.cancel_job(state, "j1", actor="bob")[1] == 404
+    assert _status(repo, "j1") == "queued"
+
+
+def test_an_editor_of_the_jobs_org_cancels_it_from_another_active_org(tmp_path: Path) -> None:
+    repo = _file_repo(tmp_path)
+    _orgs(repo)
+    repo.set_user_orgs("bob", {"globex": "editor", "acme": "editor"})
+    state = _state(tmp_path, repo)
+    repo.enqueue_job("j1", org_id="acme", spec={"cmd": []})
+    assert ops.cancel_job(state, "j1", actor="bob") == (
+        {"cancelled": True, "status": "cancelled"},
+        200,
+    )
+
+
+def test_a_viewer_membership_of_the_active_org_does_not_fall_back(tmp_path: Path) -> None:
+    # A stored membership decides even for the active org; the fallback is for no row at all.
+    repo = _file_repo(tmp_path)
+    _orgs(repo)
+    repo.set_user_orgs("alice", {"acme": "viewer"})
+    state = _state(tmp_path, repo)
+    repo.enqueue_job("j1", org_id="acme", spec={"cmd": []})
+    assert ops.cancel_job(state, "j1", actor="alice")[1] == 404
+
+
 # --- reclaim --------------------------------------------------------------------------------------
 
 
