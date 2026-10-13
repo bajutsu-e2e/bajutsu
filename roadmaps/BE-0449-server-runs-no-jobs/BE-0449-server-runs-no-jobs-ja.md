@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0449") |
-| 実装 PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167)（単位 1 の 3 分割のうち 1）、[#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168)（単位 1 の 3 分割のうち 2）、[#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170)（単位 1 の 3 分割のうち 3）、[#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171)（単位 2）、[#2172](https://github.com/bajutsu-e2e/bajutsu/pull/2172)（単位 4）、[#2173](https://github.com/bajutsu-e2e/bajutsu/pull/2173)（単位 3）、[#2182](https://github.com/bajutsu-e2e/bajutsu/pull/2182)（単位 5 の 2 分割のうち 1：機能を失わないローカル起動）、[#2183](https://github.com/bajutsu-e2e/bajutsu/pull/2183)（単位 5 の 2 分割のうち 2：worker で動く `run`）、[#2184](https://github.com/bajutsu-e2e/bajutsu/pull/2184)、[#2185](https://github.com/bajutsu-e2e/bajutsu/pull/2185)、[#2186](https://github.com/bajutsu-e2e/bajutsu/pull/2186)（単位 6。BE-0448 が実装）、[#2187](https://github.com/bajutsu-e2e/bajutsu/pull/2187)（単位 7）、PR_PLACEHOLDER14（単位 8） |
+| 実装 PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167)（単位 1 の 3 分割のうち 1）、[#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168)（単位 1 の 3 分割のうち 2）、[#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170)（単位 1 の 3 分割のうち 3）、[#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171)（単位 2）、[#2172](https://github.com/bajutsu-e2e/bajutsu/pull/2172)（単位 4）、[#2173](https://github.com/bajutsu-e2e/bajutsu/pull/2173)（単位 3）、[#2182](https://github.com/bajutsu-e2e/bajutsu/pull/2182)（単位 5 の 2 分割のうち 1：機能を失わないローカル起動）、[#2183](https://github.com/bajutsu-e2e/bajutsu/pull/2183)（単位 5 の 2 分割のうち 2：worker で動く `run`）、[#2184](https://github.com/bajutsu-e2e/bajutsu/pull/2184)、[#2185](https://github.com/bajutsu-e2e/bajutsu/pull/2185)、[#2186](https://github.com/bajutsu-e2e/bajutsu/pull/2186)（単位 6。BE-0448 が実装）、[#2187](https://github.com/bajutsu-e2e/bajutsu/pull/2187)（単位 7）、[#2188](https://github.com/bajutsu-e2e/bajutsu/pull/2188)（単位 8） |
 | トピック | Hosting the web UI |
 <!-- /BE-METADATA -->
 
@@ -371,7 +371,7 @@ local バックエンドと server バックエンドの違いは、これらの
   run のツリーをダウンロードし、`triage.json` をアップロードして戻す仕組みが先に要ります。2つ目として、
   サーバのパスを指定する job（`run` と `triage`）は、サーバのホストに結び付く能力を持ちません。別の
   マシンの worker がその job を lease してから失敗させることがあります。
-- PR_PLACEHOLDER14（単位 8）— ローカル起動は `record` と `crawl` もキューへ積むので、
+- [#2188](https://github.com/bajutsu-e2e/bajutsu/pull/2188)（単位 8）— ローカル起動は `record` と `crawl` もキューへ積むので、
   `LOCAL_QUEUED_KINDS` はすべての種類を含みます。キューがあれば、サーバは自分のプロセスで job を実行しません。
   バケットがあってデータベースがないデプロイは引き続き `LocalExecutor` を使い、単位 9 でこれを取り除きます。
   crawl の worker は、crawl の `--out` ディレクトリにある画面マップを監視します。変化したスナップショットが
