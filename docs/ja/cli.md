@@ -80,10 +80,18 @@ bajutsu run --scenario <self-declaring.yaml> [options]          # --target は�
 | `--label` | config 自身の名前 | この run の履歴エントリに、短い自由記述のラベルを付けます。2 つの config の run を、run 一覧・Replay・run 統計ダッシュボードで読み分けられるようになります（[BE-0404](../../roadmaps/BE-0404-collapse-project-layer/BE-0404-collapse-project-layer-ja.md)）。ツールにとってラベルは不透明な値で、解析も config との照合も権限判定もしません。120 文字を超える値は、切り詰めずに拒否します |
 | `--config-offline` | off | Git ソースの `--config`（[configuration](configuration.md#git-リポジトリからの-configbe-0063)）向け。ローカルキャッシュだけを使い、ネットワークには一切触れません。ブランチはオフラインで解決できないので、pinned な `@<sha>` が必要です |
 | `--require-pinned-config` | off | Git ソースの `--config` 向け。コミット SHA を pin していなければ失敗します。ブランチや tag はゲート下で動きうるので、SHA だけを受け付けます |
+| `--worker-config` | 同梱の既定（`bajutsu/common/capability/worker.yaml`） | この run の判定に使う worker 能力ファイル。既定の代わりに使い、既定とはマージしません（[BE-0450](../../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability-ja.md)。[このマシンで動かせるもの](drivers.md#worker-の能力検査be-0450)を参照）。`run` は自分のホストでデバイスを動かすので、`environment` が `local` 以外のファイルを拒否します（終了コード 2） |
 
 - 証跡は `FileSink(runs/<runId>, udid=..., log_predicate=...)` に書きます（[evidence](evidence.md#sink証跡の出力先)）。
 - `runId` は `YYYYMMDD-HHMMSS`。
 - 出力: `PASS|FAIL  runs/<runId>/manifest.json`。**終了コードは全シナリオ成功で 0、失敗で 1**。
+- **worker の能力（BE-0450）。** `run` は target を解決する前に、各シナリオを検査します。
+  照らし合わせる対象は、worker 能力ファイルとホストの OS です。ファイルは `--worker-config` で指定し、
+  指定がなければ同梱の既定を使います。このマシンで動かせない
+  ドライバを必要とするシナリオや、`maxTargetsPerJob` を超える数の target を宣言するシナリオは、
+  `worker-capability-unsupported:` で始まる理由で失敗します。この失敗は、ほかの失敗シナリオと同じく
+  run の結果とレポートに記録されます。そのシナリオのためにデバイスは確保せず、残りのシナリオは実行します。
+  実行できるシナリオが 1 つもなければ、`run` は理由を列挙して終了コード 2 で終了します。
 - `AI usage:` 行は出力しません。`run` はどのフラグを付けてもトークンを消費しないため（BE-0402）、
   使用量台帳を導入せず、報告もしません。`record`、`crawl`、`triage --ai` は従来どおり出力します。
 
@@ -918,6 +926,7 @@ bajutsu mcp [--config bajutsu.config.yaml] [--runs runs] [--transport stdio]
 ```bash
 bajutsu worker [--server-url <url>] [--token <t>] [--platform ios] [--capabilities <tokens>]
                [--poll-interval 2.0] [--heartbeat-interval 30.0] [--worker-id <id>]
+               [--worker-config <worker.yaml>]
 ```
 
 | オプション | 既定 | 説明 |
@@ -929,6 +938,7 @@ bajutsu worker [--server-url <url>] [--token <t>] [--platform ios] [--capabiliti
 | `--poll-interval` | `2.0` | 空き時間にリースを試みる間隔（秒） |
 | `--heartbeat-interval` | `30.0` | run 中にリースのハートビートを送る間隔（秒）。コントロールプレーンのリースタイムアウトより短く保つことで、長時間の run を停止した worker と誤認して回収されないようにしています |
 | `--worker-id` | "" (自動生成) | worker の識別子 |
+| `--worker-config` | 同梱の既定 | この worker が従う worker 能力ファイル（[BE-0450](../../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability-ja.md)。[drivers](drivers.md#worker-の能力検査be-0450) を参照）。worker は起動時にファイルを検証し、不正なら job をリースする前に終了します。device cloud 向けの job のリースはまだ実装していないため、`environment` が `local` 以外のファイルも当面は拒否します。worker は起動するすべての `bajutsu run` にファイルの絶対パスを渡すので、リースした run はどれも同じファイルで検査されます。サーバーはこのファイルを読みません |
 
 ## `lint`
 

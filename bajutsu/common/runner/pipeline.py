@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Collection, Iterable, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -228,6 +228,9 @@ class _ScenarioRunner:
     # the actuator preflighted here is the one the lease builds. None keeps the fixed-`actuator` path
     # (the cross-browser matrix, tests driving a lease directly).
     resolve_actuator: Callable[[Scenario], str] | None = None
+    # Scenarios the worker capability check (BE-0450) already failed, keyed by their index in the
+    # run: each is reported with its reason and never leased, so no device is acquired for it.
+    worker_failures: Mapping[int, str] = field(default_factory=dict)
     # Emit the app's entry-screen convention score once per run (the first scenario's freshly launched
     # driver), folding `doctor`'s Ready/Partial/Blocked tell into the run so CI needs no separate
     # `doctor` invocation that would cold-spawn a second XCUITest runner. Purely diagnostic and off the
@@ -483,6 +486,15 @@ class _ScenarioRunner:
         Runs once per crash-recovery attempt, inside — or, when `--trace-driver` is off, without —
         the open trace `run_one` wraps it in.
         """
+        # Checked ahead of a cancel: this scenario would never have run, so its reason is the truer one.
+        if (worker_failure := self.worker_failures.get(i)) is not None:
+            if self.progress is not None:
+                self.progress(
+                    f"✘ scenario {i + 1}/{self.total}: {s.name} (unsupported on this worker)"
+                )
+            return RunResult(
+                scenario=s.name, ok=False, steps=[], backend="", sid=sid, failure=worker_failure
+            )
         # A cancel that landed before this scenario started (BE-0370). It is failed rather than
         # dropped, so `run_all` still returns exactly one result per scenario in declaration order
         # and nothing downstream needs to know cancellation happened at all — an operator who
@@ -1743,7 +1755,11 @@ def _fill_target(step: Step, target: str) -> None:
 
 
 def with_lifecycle_phases(
-    eff: Effective, scenarios: list[Scenario], target_effs: Mapping[str, Effective] | None = None
+    eff: Effective,
+    scenarios: list[Scenario],
+    target_effs: Mapping[str, Effective] | None = None,
+    *,
+    skip: Collection[int] = (),
 ) -> list[Scenario]:
     """Fold the target config's `before` / `after` into each scenario's own (BE-0392).
 
@@ -1763,8 +1779,13 @@ def with_lifecycle_phases(
         scenarios: The scenarios to fold into; returned unchanged when nothing folds in.
         target_effs: Every declared target's own config, keyed by name (BE-0428). A self-declaring
             scenario folds each of these in instead of `eff`; None keeps the single-target path.
+        skip: Indices of scenarios that never run — the ones the worker capability check failed
+            (BE-0450). Their targets were never resolved, so folding would read the primary's hooks
+            under another target's name; they keep their own phases only.
     """
-    hooks = [_hooks_for(s, eff, target_effs) for s in scenarios]
+    hooks = [
+        ([], []) if i in skip else _hooks_for(s, eff, target_effs) for i, s in enumerate(scenarios)
+    ]
     if not any(before or after for before, after in hooks):
         return scenarios  # nothing app-wide to fold in; keep the caller's own objects
     folded = [
@@ -1802,6 +1823,7 @@ def run_all(
     schemas_dir: Path | None = None,
     actuator: str | None = None,
     resolve_actuator: Callable[[Scenario], str] | None = None,
+    worker_failures: Mapping[int, str] | None = None,
     golden_context: GoldenContext | None = None,
     lease_udid_spec: str = "booted",
     on_score: Callable[[Score], None] | None = None,
@@ -1854,6 +1876,8 @@ def run_all(
             scenario's own steps (cheapest sufficient), instead of the one fixed `actuator`. Mutually
             exclusive with `actuator` (passing both raises): the CLI's single-engine path and `audit`
             pass this, the cross-browser matrix passes `actuator`.
+        worker_failures: Scenarios the worker capability check (BE-0450) already failed, keyed by
+            index into *scenarios*, each with its prefixed reason; they are reported, never leased.
         golden_context: Goldens directory for `golden` assertions (BE-0006). None disables them.
         lease_udid_spec: The run's resolved udid spec (the provider's `udid_spec`). A WebDriver URL
             routes the run to the live XCUITest environment, so the preflight narrows to that
@@ -1934,7 +1958,7 @@ def run_all(
     # `run_matrix_and_report` apply the same helper to what they hand the report, so the run and the
     # report read one effective scenario rather than two lists that could drift.
     target_effs = _effs_of(targets)
-    scenarios = with_lifecycle_phases(eff, scenarios, target_effs)
+    scenarios = with_lifecycle_phases(eff, scenarios, target_effs, skip=worker_failures or {})
     # `redact` unions every declared target's own config (BE-0428): a value one target's config
     # marks secret is scrubbed everywhere, not only from that one target's own capture. Widening the
     # redaction set is the safer error, unlike a field with only one right answer (`caps`, `mailbox`).
@@ -1979,6 +2003,7 @@ def run_all(
         schemas_dir=schemas_dir,
         actuator=actuator,
         resolve_actuator=resolve_actuator,
+        worker_failures=dict(worker_failures or {}),
         golden_context=golden_context,
         udid_spec=lease_udid_spec,
         on_score=on_score,
@@ -2028,6 +2053,7 @@ def run_and_report(
     schemas_dir: Path | None = None,
     actuator: str | None = None,
     resolve_actuator: Callable[[Scenario], str] | None = None,
+    worker_failures: Mapping[int, str] | None = None,
     config_source: dict[str, str] | None = None,
     exec_provenance: dict[str, str | None] | None = None,
     label: str | None = None,
@@ -2075,6 +2101,7 @@ def run_and_report(
         schemas_dir=schemas_dir,
         actuator=actuator,
         resolve_actuator=resolve_actuator,
+        worker_failures=worker_failures,
         golden_context=golden_context,
         lease_udid_spec=lease_udid_spec,
         on_score=on_score,
@@ -2088,7 +2115,7 @@ def run_and_report(
         # pairs each outcome with the step definition that actually produced it — a config-level
         # hook folded from one target's own `before`/`after` here and the primary's there would
         # otherwise mislabel or drop outcomes for every other declared target (BE-0428).
-        with_lifecycle_phases(eff, scenarios, _effs_of(targets)),
+        with_lifecycle_phases(eff, scenarios, _effs_of(targets), skip=worker_failures or {}),
         results,
         run_dir,
         run_id,
@@ -2120,6 +2147,7 @@ def run_matrix_and_report(
     exec_provenance: dict[str, str | None] | None = None,
     label: str | None = None,
     cancelled: CancelSource = not_cancelled,
+    worker_failures: Mapping[int, str] | None = None,
 ) -> tuple[list[RunResult], Path]:
     """Run the scenarios once per engine, then assemble ONE report at `runs_dir/run_id` (BE-0076).
 
@@ -2161,7 +2189,7 @@ def run_matrix_and_report(
                 ", ".join(engines[index:]),
             )
             for skipped in engines[index:]:
-                results.extend(_cancelled_pass(scenarios, skipped))
+                results.extend(_cancelled_pass(scenarios, skipped, worker_failures))
             break
         passed = run_pass(engine, run_dir / engine)
         for r in passed:
@@ -2169,7 +2197,7 @@ def run_matrix_and_report(
             _reroot_evidence(r, engine)  # its evidence lives under <engine>/ in the one report
         results.extend(passed)
     manifest = _assemble_report(
-        with_lifecycle_phases(eff, scenarios),
+        with_lifecycle_phases(eff, scenarios, skip=worker_failures or {}),
         results,
         run_dir,
         run_id,
@@ -2185,12 +2213,15 @@ def run_matrix_and_report(
     return results, manifest
 
 
-def _cancelled_pass(scenarios: list[Scenario], engine: str) -> list[RunResult]:
+def _cancelled_pass(
+    scenarios: list[Scenario], engine: str, worker_failures: Mapping[int, str] | None = None
+) -> list[RunResult]:
     """One cancelled result per scenario for an engine pass a cancel stopped from ever starting.
 
     The same shape `_ScenarioRunner.run_one` gives a scenario the cancel reached before its first
     lease (BE-0370), so the report needs no notion of an engine that was skipped: it sees one verdict
-    per requested engine x scenario, as it does for a run that finished.
+    per requested engine x scenario, as it does for a run that finished. A scenario the worker
+    capability check already failed (BE-0450) keeps that reason: it would never have run anyway.
     """
     return [
         RunResult(
@@ -2200,7 +2231,7 @@ def _cancelled_pass(scenarios: list[Scenario], engine: str) -> list[RunResult]:
             backend="",
             engine=engine,
             sid=_evidence_sid(i, s),
-            failure=CANCELLED_FAILURE,
+            failure=(worker_failures or {}).get(i, CANCELLED_FAILURE),
         )
         for i, s in enumerate(scenarios)
     ]

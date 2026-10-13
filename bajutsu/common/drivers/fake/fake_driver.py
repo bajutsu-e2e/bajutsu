@@ -375,6 +375,9 @@ class FakeDriver:
     def screenshot(self, path: str) -> None:
         self.actions.append(("screenshot", path))
 
+    # Runs anywhere Bajutsu runs (BE-0450): None means no host restriction.
+    HOST_OS: frozenset[str] | None = None
+
     # A deliberately rich set (semanticTap / conditionWait / multiTouch / selectOption) so tests
     # can exercise those paths. Class constant so the preflight (BE-0082) reads it without
     # constructing a driver.

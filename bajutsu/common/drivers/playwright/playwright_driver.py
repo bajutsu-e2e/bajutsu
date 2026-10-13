@@ -813,6 +813,9 @@ class PlaywrightDriver:
 
         return WebNetworkCollector(self._page, mocks)
 
+    # Runs anywhere Bajutsu runs (BE-0450): None means no host restriction.
+    HOST_OS: frozenset[str] | None = None
+
     # Playwright has a genuine semantic click, native auto-waiting, native network observation +
     # stubbing, and (via CDP touch synthesis) two-finger gestures (BE-0054). Class constant so the
     # preflight (BE-0082) reads it via `backends.capabilities_for` without starting a browser.

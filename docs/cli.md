@@ -84,11 +84,19 @@ uses it as always. Each self-declaring file has it checked for membership instea
 | `--label` | the config's own name | tag this run's history entry with a short free-text label, so the runs of two configs stay readable apart in the run list, Replay, and the run-stats dashboard ([BE-0404](../roadmaps/BE-0404-collapse-project-layer/BE-0404-collapse-project-layer.md)). Opaque to the tool: never parsed, never matched against config, never consulted by authorization. A value longer than 120 characters is refused rather than shortened |
 | `--config-offline` | off | for a Git `--config` ([configuration](configuration.md#config-from-a-git-repository-be-0063)): use the local cache and never touch the network — needs a pinned `@<sha>`, since a branch can't be resolved offline |
 | `--require-pinned-config` | off | for a Git `--config`: fail unless it pins a commit SHA — a branch or tag can move under a gate, so only a SHA is accepted |
+| `--worker-config` | the shipped default (`bajutsu/common/capability/worker.yaml`) | the worker capability file `run` checks each scenario against; it replaces the default and never merges with it ([BE-0450](../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability.md)); see [what this machine can run](drivers.md#worker-capability-check-be-0450). `run` drives devices on its own host, so a file whose `environment` is not `local` exits 2 |
 
 - Evidence is written to `FileSink(runs/<runId>, udid=..., log_predicate=...)`
   ([evidence](evidence.md#sinks-where-evidence-goes)).
 - `runId` is `YYYYMMDD-HHMMSS`.
 - Output: `PASS|FAIL  runs/<runId>/manifest.json`. **Exits 0 if every scenario passes, 1 on failure.**
+- **Worker capability (BE-0450).** Before `run` resolves any target, it checks each scenario
+  against the worker capability file and the host operating system. The file is `--worker-config`,
+  or the shipped default. A scenario fails when it needs a driver this machine cannot run. It also
+  fails when it declares more targets than `maxTargetsPerJob`. Its reason starts with
+  `worker-capability-unsupported:`. The run's results and report record it like any other
+  scenario that did not pass. `run` acquires no device for that scenario and runs the rest. When no scenario
+  can run, `run` exits 2 and lists each reason.
 - No `AI usage:` line: `run` spends no tokens under any flag (BE-0402), so it installs no usage
   ledger and reports none. `record`, `crawl`, and `triage --ai` still do.
 
@@ -1163,6 +1171,7 @@ plane signs (BE-0160), so the worker needs only an HTTP client. Not needed for l
 ```bash
 bajutsu worker [--server-url <url>] [--token <t>] [--platform ios] [--capabilities <tokens>]
                [--poll-interval 2.0] [--heartbeat-interval 30.0] [--worker-id <id>]
+               [--worker-config <worker.yaml>]
 ```
 
 | Option | Default | Description |
@@ -1174,6 +1183,7 @@ bajutsu worker [--server-url <url>] [--token <t>] [--platform ios] [--capabiliti
 | `--poll-interval` | `2.0` | seconds between lease attempts while idle |
 | `--heartbeat-interval` | `30.0` | seconds between lease heartbeats during a run (kept under the control plane's lease timeout, so a long run is never mistaken for a dead worker and reclaimed) |
 | `--worker-id` | "" (auto) | worker identifier |
+| `--worker-config` | the shipped default | the worker capability file this worker runs under ([BE-0450](../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability.md); see [drivers](drivers.md#worker-capability-check-be-0450)). The worker validates it at startup and exits before leasing anything when the file does not load. It also refuses an `environment` other than `local` for now, because leasing jobs for a device cloud is not implemented yet. The worker passes the file's absolute path to every `bajutsu run` it spawns, so each leased run is checked against the same file; the server never reads it |
 
 ## `lint`
 

@@ -40,6 +40,9 @@ def test_run_flag_surface_is_fully_classified() -> None:
         "step",
         "break_at",
         "break_on_fail",
+        # The server is not a worker (BE-0450): the worker appends its own `--worker-config` to the
+        # leased command, so the server never sets it.
+        "worker_config",
     }
     pass_through = {
         "backend",

@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0450](BE-0450-worker-capability.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0450") |
+| Implementing PR | [#2166](https://github.com/bajutsu-e2e/bajutsu/pull/2166) (Units 1–4) |
 | Topic | Driver & backend architecture |
 <!-- /BE-METADATA -->
 
@@ -222,12 +223,28 @@ The item is a decision about *runnability*, not about capability of a step, so t
 > *Detailed design* (one entry per unit of work), and the log records what changed and when, oldest
 > first, each with a link to its PR.
 
-- [ ] Worker file and loader
-- [ ] Driver host requirement
-- [ ] Requirement derivation
-- [ ] The check
+- [x] Worker file and loader
+- [x] Driver host requirement
+- [x] Requirement derivation
+- [x] The check
 - [ ] Advertising and routing
 - [ ] Documentation and Japanese mirrors
+
+Log:
+
+- [#2166](https://github.com/bajutsu-e2e/bajutsu/pull/2166) (Units 1–4) — added `worker.yaml` with its schema and loader
+  (`bajutsu/common/capability/worker_capability.py`, default file beside it), a `HOST_OS` constant
+  on each driver read through `backends.host_os_for` and `backends.current_host_os`, and
+  `worker_capability_unsupported()` with the `worker-capability-unsupported:` prefix. `bajutsu run
+  --worker-config` drops the actuators the host or the file rules out in the shared actuator
+  selection, checks each scenario before its targets are resolved, reports a failed scenario
+  through the pipeline without leasing a device for it, and selects every target's actuator before
+  the first device is acquired. `bajutsu worker --worker-config` validates the file at startup and
+  hands its absolute path to every leased `run`. Two parts of unit 4 wait on other items: the
+  `bajutsu worker --once` path and the internal run entry point do not exist yet (BE-0449), and
+  the check before a cloud request is submitted waits for the worker-side Device Farm dispatch
+  (BE-0448), so `bajutsu worker` refuses a non-`local` environment until then. The documentation
+  for the shipped behavior lands here; unit 6 stays open for unit 5's pages.
 
 ## References
 

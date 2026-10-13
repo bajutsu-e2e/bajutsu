@@ -191,6 +191,50 @@ def capabilities_for(actuator: str) -> frozenset[str]:
     raise ValueError(f"unknown backend: {actuator!r}")
 
 
+def host_os_for(actuator: str) -> frozenset[str] | None:
+    """The host operating systems an actuator's driver can run on, or None for any host (BE-0450).
+
+    Read from each driver's `HOST_OS` class constant, beside `CAPABILITIES`, without constructing
+    a driver — the same lazy-import shape as `capabilities_for`.
+
+    Raises:
+        ValueError: The actuator is unknown or has no driver yet.
+    """
+    if actuator == "fake":
+        return FakeDriver.HOST_OS
+    if actuator == "playwright":
+        from bajutsu.common.drivers.playwright import PlaywrightDriver
+
+        return PlaywrightDriver.HOST_OS
+    if actuator == "xcuitest":
+        from bajutsu.common.drivers.xcuitest import XcuitestDriver
+
+        return XcuitestDriver.HOST_OS
+    if actuator == "adb":
+        from bajutsu.common.drivers.adb import AdbDriver
+
+        return AdbDriver.HOST_OS
+    raise ValueError(f"unknown or unimplemented backend: {actuator!r}")
+
+
+def current_host_os(platform: str | None = None) -> str:
+    """The operating system this process runs on, as a `HOST_OS` name (BE-0450).
+
+    The host is a fact about the machine, read here and never declared in `worker.yaml`.
+
+    Args:
+        platform: A `sys.platform` value to map instead of the running one (for tests).
+    """
+    import sys
+
+    p = sys.platform if platform is None else platform
+    if p.startswith("linux"):
+        return "linux"
+    if p in ("win32", "cygwin"):
+        return "windows"
+    return p
+
+
 def capabilities_for_run(
     actuator: str, eff: Effective, udid_spec: str = "booted"
 ) -> frozenset[str]:

@@ -21,7 +21,7 @@ import tempfile
 import threading
 import time
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -179,6 +179,14 @@ def worker(
         help="Extra capability tokens to advertise beyond the platform + Simulator inventory "
         "(comma/space separated, e.g. 'ios18,ipad'); also read from $BAJUTSU_WORKER_CAPABILITIES.",
     ),
+    worker_config: Annotated[
+        Path | None,
+        typer.Option(
+            "--worker-config",
+            help="The worker capability file (worker.yaml) this worker runs under, used in place "
+            "of the shipped default (BE-0450) and handed to every `run` it executes.",
+        ),
+    ] = None,
 ) -> None:
     """Run a worker that leases queued `bajutsu run` jobs from the control plane over HTTP.
 
@@ -198,6 +206,7 @@ def worker(
     # The capability set this worker advertises on every lease (BE-0166), computed once at startup
     # (the pool is assumed stable per worker).
     caps = _advertised_capabilities(platform, capabilities)
+    worker_file = _worker_config_or_exit(worker_config)
 
     typer.echo(f"bajutsu worker → polling {url}  (Ctrl-C to stop)")
     typer.echo(f"  advertising capabilities: {', '.join(caps) or '(none)'}")
@@ -253,6 +262,7 @@ def worker(
             auth_token=auth_token,
             heartbeat_interval=heartbeat_interval,
             io=io,
+            worker_config=worker_file,
         )
         if abandoned:
             # The control plane reclaimed and likely re-leased this job to another worker; posting a
@@ -294,6 +304,33 @@ def worker(
         typer.echo(f"  completed job {job_id} ({'ok' if result.get('ok') else 'FAILED'})")
 
 
+def _worker_config_or_exit(path: Path | None) -> Path | None:
+    """Validate the worker capability file at startup and return its absolute path (BE-0450).
+
+    A bad file stops the worker before it leases anything, rather than failing every job it takes.
+    The path is what each spawned `run` reads, so it is resolved once here, independent of the
+    per-job working directory the run starts in. None (no flag) leaves every run on the default.
+    """
+    from bajutsu.common.capability.worker_capability import (
+        WorkerCapabilityError,
+        load_worker_capability,
+    )
+
+    try:
+        cap = load_worker_capability(path)
+    except WorkerCapabilityError as e:
+        raise typer.BadParameter(str(e), param_hint="--worker-config") from None
+    if not cap.is_local:
+        # Leasing jobs for a device cloud is the Device Farm worker dispatch (BE-0448), which this
+        # worker does not do yet; refusing beats advertising local platforms for a cloud file.
+        raise typer.BadParameter(
+            f"environment '{cap.environment}' is not supported by `bajutsu worker` yet; "
+            "use `environment: local`",
+            param_hint="--worker-config",
+        )
+    return None if path is None else path.resolve()
+
+
 def _run_with_heartbeat(
     spec: dict[str, Any],
     *,
@@ -307,6 +344,7 @@ def _run_with_heartbeat(
     heartbeat_interval: float,
     io: WorkerIO | None = None,
     override_urls: dict[str, str] | None = None,
+    worker_config: Path | None = None,
 ) -> tuple[dict[str, Any] | None, bool, Path]:
     """Run the job on a background thread while heart-beating its lease from this one.
 
@@ -357,6 +395,7 @@ def _run_with_heartbeat(
                 cwd=job_work,
                 bus=bus,
                 io=io,
+                worker_config=worker_config,
             )
             result = job.view()
             result.pop("lines", None)

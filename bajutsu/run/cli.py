@@ -18,8 +18,10 @@ from pydantic import ValidationError
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
     LoadedConfig,
+    _backends,
     _effective_for,
     _load_config_with_source,
+    _load_worker_capability_or_exit,
     _log_subsystem_default,
     _resolve_browser,
     _select_actuator_or_exit,
@@ -30,11 +32,14 @@ from bajutsu.cli._shared import (
 from bajutsu.common.assertions import GoldenContext
 from bajutsu.common.backends import (
     capabilities_for_run,
+    current_host_os,
     default_available,
     select_actuator,
     select_actuator_for_scenario,
 )
 from bajutsu.common.cancellation import CancelSource, graceful_sigterm
+from bajutsu.common.capability import capability_preflight
+from bajutsu.common.capability.worker_capability import WorkerCapability
 from bajutsu.common.config import WEB_ENGINES, AndroidConfig, Effective, IosConfig
 from bajutsu.common.deprecations import warn_once
 from bajutsu.common.devices import errors as device_errors
@@ -504,6 +509,59 @@ def _reject_legacy_without_target(
         raise typer.Exit(2)
 
 
+def _load_local_worker_or_exit(path: Path | None) -> WorkerCapability:
+    """The `--worker-config` file in force for `run`, refusing a device-cloud environment (BE-0450).
+
+    `run` drives devices on its own host and never submits to a cloud, so a file naming a provider
+    environment describes a different kind of worker and is a usage error, not a silent override.
+    """
+    worker = _load_worker_capability_or_exit(path)
+    if not worker.is_local:
+        typer.echo(
+            f"--worker-config: environment '{worker.environment}' is a device cloud; "
+            "`bajutsu run` drives devices on its own host and needs `environment: local`"
+        )
+        raise typer.Exit(2)
+    return worker
+
+
+def _uses_target(scenarios: list[Scenario], target: str) -> bool:
+    """Whether any scenario runs on *target*: it declares it, or declares none and so runs on it."""
+    return any(not s.target_names or target in s.target_names for s in scenarios)
+
+
+def _worker_capability_failures(
+    loaded: LoadedConfig,
+    scenarios: list[Scenario],
+    primary_eff: Effective,
+    backend: str,
+    worker: WorkerCapability,
+) -> dict[int, str]:
+    """The scenarios this worker cannot run, keyed by index, each with its prefixed reason (BE-0450).
+
+    Judged before any target is resolved for the run or any device acquired, so a failed scenario's
+    targets never reserve a device and never count toward a pool's demand. Each scenario is judged
+    on its own declared targets, read from the configuration, so a later file in an inferred-target
+    batch is not judged on the first file's targets.
+    """
+    per_target: dict[str, list[str]] = {}
+
+    def backends_for(target: str | None) -> list[str]:
+        if target is None:
+            return _backends(backend, primary_eff.backend)
+        if target not in per_target:
+            per_target[target] = _backends(backend, _effective_for(loaded, target).backend)
+        return per_target[target]
+
+    host = current_host_os()
+    failures: dict[int, str] = {}
+    for i, s in enumerate(scenarios):
+        reasons = capability_preflight.worker_capability_unsupported(s, backends_for, worker, host)
+        if reasons:
+            failures[i] = capability_preflight.worker_capability_failure(reasons)
+    return failures
+
+
 def _resolve_target_effs(
     loaded: LoadedConfig,
     scenarios: list[Scenario],
@@ -872,7 +930,9 @@ def _filter_scenarios(
     return scenarios
 
 
-def _select_actuator(backend: str, eff: Effective, engines: list[str]) -> tuple[str, list[str]]:
+def _select_actuator(
+    backend: str, eff: Effective, engines: list[str], worker: WorkerCapability | None = None
+) -> tuple[str, list[str]]:
     """Select the actuator for the requested backends, provisioning any web runtime, then validate.
 
     Validates the backend before touching the Simulator CLIs, so an unknown/unavailable actuator
@@ -881,7 +941,7 @@ def _select_actuator(backend: str, eff: Effective, engines: list[str]) -> tuple[
     `--browsers` matrix on a non-web actuator is a user error caught up front. Returns the resolved
     actuator and the ordered backend list.
     """
-    actuator, backends = _select_actuator_or_exit(backend, eff, engines)
+    actuator, backends = _select_actuator_or_exit(backend, eff, engines, worker)
     # --browsers is a web-only axis: a multi-engine matrix on a non-web actuator is a user error,
     # caught up front rather than after building an iOS pool that ignores the engine list.
     if len(engines) > 1 and actuator != "playwright":
@@ -1678,6 +1738,7 @@ def _reject_unshareable_groups(
     backend: str,
     engines: list[str],
     udid: str,
+    worker: WorkerCapability | None = None,
 ) -> None:
     """Refuse a device group on a backend that cannot share a device, before any device work.
 
@@ -1687,7 +1748,7 @@ def _reject_unshareable_groups(
     """
     grouped = {name for s in scenarios for g in s.device_groups if len(g) >= 2 for name in g}
     for name in sorted(grouped):
-        actuator, _ = _select_actuator(backend, target_effs[name], engines)
+        actuator, _ = _select_actuator(backend, target_effs[name], engines, worker)
         # The run-aware set: a real iPhone and a WebDriver endpoint drop `deviceGroup` there.
         if base.Capability.DEVICE_GROUP not in capabilities_for_run(
             actuator, target_effs[name], udid
@@ -1705,17 +1766,25 @@ def _acquire_targets(
     engines: list[str],
     udid: str,
     workers: int,
+    worker: WorkerCapability | None = None,
 ) -> dict[str, _TargetSetup]:
     """Select an actuator and acquire a device for every declared target, or release what we took.
 
     `acquire_device` reads the target's own `deviceProvider` (BE-0236), so it runs once per target
     rather than once per run: two targets can be served by two different providers, and a cloud
     device reserved for one of them must be handed back even if a later target's acquisition fails.
+
+    Every target's actuator is selected — and checked against the worker capability (BE-0450) —
+    before the first device is acquired, so a target the worker cannot run exits 2 with nothing
+    reserved yet.
     """
+    selected = {
+        name: _select_actuator(backend, eff, engines, worker) for name, eff in target_effs.items()
+    }
     setups: dict[str, _TargetSetup] = {}
     try:
         for name, eff in target_effs.items():
-            actuator, backends = _select_actuator(backend, eff, engines)
+            actuator, backends = selected[name]
             device = acquire_device(eff, udid)
             udids, lanes = _resolve_lanes(
                 actuator,
@@ -1887,6 +1956,9 @@ class _RunPlan:
     # each scenario, step, and condition-wait boundary and fails whatever it did not finish, so a
     # cancelled run still writes its manifest and report instead of vanishing from the history.
     cancelled: CancelSource
+    # Scenarios the worker capability check failed before any device work (BE-0450), keyed by their
+    # index in `scenarios`: reported with the prefixed reason and never leased.
+    worker_failures: Mapping[int, str]
     # Whether a backend-crash-triggered retry may force `preconditions.erase=True`
     # (`bajutsu/common/runner/pipeline.py`'s forced-erase retry). `erase is not False` — True for the default
     # (unset) and explicit `--erase`, False only for an explicit `--no-erase` — captured here, ahead of
@@ -2065,6 +2137,7 @@ def _dispatch_single(
             # collapses to that one actuator; a multi-actuator platform escalates only the scenarios
             # that need it (iOS is single-actuator since BE-0290, so `[ios]` collapses too).
             resolve_actuator=lambda s: select_actuator_for_scenario(plan.backends, s),
+            worker_failures=plan.worker_failures,
             config_source=plan.config_source,
             exec_provenance=exec_decision,
             label=plan.label or None,
@@ -2123,6 +2196,7 @@ def _dispatch_matrix(
                 baselines_dir=plan.baselines_dir,
                 schemas_dir=plan.schemas_dir,
                 actuator=plan.actuator,
+                worker_failures=plan.worker_failures,
                 golden_context=plan.golden_context,
                 # Each engine pass scores its own entry screen once (`--score`); off by default.
                 on_score=_print_score if plan.score else None,
@@ -2148,6 +2222,7 @@ def _dispatch_matrix(
         config_source=plan.config_source,
         exec_provenance=exec_decision,
         cancelled=plan.cancelled,
+        worker_failures=plan.worker_failures,
     )
 
 
@@ -2255,6 +2330,16 @@ def run(
         "",
         help="comma list of platforms (ios/android/web/fake) or actuators (idb); first available wins",
     ),
+    worker_config: Annotated[
+        Path | None,
+        typer.Option(
+            "--worker-config",
+            help=(
+                "the worker capability file (worker.yaml) this machine runs under, used in place "
+                "of the shipped default (BE-0450); its environment must be `local`"
+            ),
+        ),
+    ] = None,
     tag: str = typer.Option(
         "", "--tag", help="comma list; run only scenarios with any of these tags"
     ),
@@ -2458,6 +2543,7 @@ def run(
     # the primary target is resolved first, from the flag or from the `--scenario` files themselves;
     # everything below — the config load, the pool, the evidence dirs — is unchanged once it has one.
     explicit_target = bool(target_name)
+    worker = _load_local_worker_or_exit(worker_config)
     target_name = _resolve_primary_target(target_name, scenario or [])
     loaded, eff, config_source, engines = _resolve_config_and_engines(
         config,
@@ -2495,6 +2581,48 @@ def run(
         _reject_self_declaring_in_dir(scenarios, target_name)
     _check_target_membership(scenarios, target_name, explicit=explicit_target)
     _reject_legacy_without_target(scenarios, target_name, explicit=explicit_target)
+    # The run keeps every scenario so each failed one is still reported, in declaration order; the
+    # checks and device acquisition below see only the runnable ones (BE-0450).
+    all_scenarios = scenarios
+    worker_failures = _worker_capability_failures(loaded, scenarios, eff, backend, worker)
+    if worker_failures and len(worker_failures) == len(scenarios):
+        for i, reason in sorted(worker_failures.items()):
+            typer.echo(f"{scenarios[i].name}: {reason}")
+        raise typer.Exit(2)
+    scenarios = [s for i, s in enumerate(scenarios) if i not in worker_failures]
+    if worker_failures and not _uses_target(scenarios, target_name):
+        # The primary was inferred from (or named for) scenarios that just failed, and no runnable
+        # one uses it: acquiring it would exit 2 on the very target the worker already ruled out,
+        # taking the runnable rest down with it. Every remaining scenario declares its own targets
+        # here, so the first one's first name is the primary they share with the inferred path.
+        target_name = scenarios[0].target_names[0]
+        loaded, eff, config_source, engines = _resolve_config_and_engines(
+            config,
+            target_name,
+            offline=config_offline,
+            require_pinned=require_pinned_config,
+            headed=headed,
+            browser=browser,
+            browsers=browsers,
+        )
+        # Reload under the new primary: the first load applied the old primary's setup and the
+        # filter baked in its run defaults. Every scenario here declares its own targets, which
+        # alone decide the worker check, so the recomputed failures are the same set.
+        scenarios, description, source_name, files, plan_sources = _load_scenarios(
+            eff, scenario or [], target_name
+        )
+        scenarios = _filter_scenarios(
+            scenarios,
+            tag,
+            exclude,
+            erase,
+            eff.run_defaults.erase,
+            ios_tipkit_handling,
+            eff.run_defaults.ios_tip_kit_handling,
+        )
+        all_scenarios = scenarios
+        worker_failures = _worker_capability_failures(loaded, scenarios, eff, backend, worker)
+        scenarios = [s for i, s in enumerate(scenarios) if i not in worker_failures]
     target_effs = _resolve_target_effs(
         loaded, scenarios, target_name, eff, headed=headed, browser=browser
     )
@@ -2502,7 +2630,9 @@ def run(
     # routed elsewhere uses may be declared only on that target's own config (BE-0428).
     secret_bindings, secret_values = _resolve_secrets(target_effs.values())
     _reject_web_flags_across_targets(target_effs, headed=headed, browser=browser, browsers=browsers)
-    _reject_cross_browser_matrix_with_targets(scenarios, engines)
+    # Every scenario, not only the runnable ones: the matrix still carries the failed ones to the
+    # pipeline, whose own guard would otherwise raise mid-run instead of this clean exit 2.
+    _reject_cross_browser_matrix_with_targets(all_scenarios, engines)
     _reject_bad_target_config_hooks(target_effs, scenarios, target_name)
     _reject_bad_device_groups(scenarios, target_effs, checkout_root=loaded.root)
     # Where this target's devices come from is a seam (BE-0236): the provider `acquire` returns the
@@ -2516,8 +2646,8 @@ def run(
     # idb, `--udid` is a concrete comma list capped to the pool size. (The "booted" default is
     # unused on web.) How a device handle resolves is the platform's, behind the Environment seam
     # (BE-0256): Android via adb, the iOS family via simctl — no `actuator == "adb"` branch here.
-    _reject_unshareable_groups(scenarios, target_effs, backend, engines, udid)
-    setups = _acquire_targets(target_effs, backend, engines, udid, workers)
+    _reject_unshareable_groups(scenarios, target_effs, backend, engines, udid, worker)
+    setups = _acquire_targets(target_effs, backend, engines, udid, workers, worker)
     primary = setups[target_name]
     actuator, backends = primary.actuator, primary.backends
     udids = primary.udids
@@ -2568,7 +2698,7 @@ def run(
                 config_source=config_source,
                 target_name=target_name,
                 targets=setups,
-                scenarios=scenarios,
+                scenarios=all_scenarios,
                 description=description,
                 source_name=source_name,
                 plan_sources=plan_sources,
@@ -2602,6 +2732,7 @@ def run(
                 # mean "no operator opt-out", only `--no-erase` (False) does.
                 force_erase_on_retry=erase is not False,
                 cancelled=cancelled,
+                worker_failures=worker_failures,
             )
             # No usage ledger and no token accounting here: since BE-0402 removed the alert guard's
             # vision fallback, nothing in `run` can reach a model, so there is nothing to attribute.

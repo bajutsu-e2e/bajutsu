@@ -578,7 +578,8 @@ def test_a_device_group_on_a_backend_that_cannot_share_is_refused_before_acquisi
 ) -> None:
     # Refused from the resolved actuator alone, before any device is reserved (BE-0447).
     monkeypatch.setattr(
-        "bajutsu.run.cli._select_actuator", lambda backend, eff, engines: ("playwright", [])
+        "bajutsu.run.cli._select_actuator",
+        lambda backend, eff, engines, worker=None: ("playwright", []),
     )
     grouped = Scenario.model_validate(
         {
@@ -593,7 +594,7 @@ def test_a_device_group_on_a_backend_that_cannot_share_is_refused_before_acquisi
         _reject_unshareable_groups([grouped], _effs(), "", [], "booted")
     assert "backend 'playwright' cannot share a device" in capsys.readouterr().out
     monkeypatch.setattr(
-        "bajutsu.run.cli._select_actuator", lambda backend, eff, engines: ("fake", [])
+        "bajutsu.run.cli._select_actuator", lambda backend, eff, engines, worker=None: ("fake", [])
     )
     _reject_unshareable_groups([grouped], _effs(), "", [], "booted")
 
@@ -642,7 +643,8 @@ def test_a_real_iphone_group_is_refused_before_acquisition(
     capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
-        "bajutsu.run.cli._select_actuator", lambda backend, eff, engines: ("xcuitest", [])
+        "bajutsu.run.cli._select_actuator",
+        lambda backend, eff, engines, worker=None: ("xcuitest", []),
     )
     monkeypatch.setattr(
         "bajutsu.run.cli.capabilities_for_run",

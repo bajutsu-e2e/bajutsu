@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0450](BE-0450-worker-capability-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **承認済み** |
+| 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0450") |
+| 実装 PR | [#2166](https://github.com/bajutsu-e2e/bajutsu/pull/2166)（単位 1〜4） |
 | トピック | Driver & backend architecture |
 <!-- /BE-METADATA -->
 
@@ -189,12 +190,28 @@ server は、ルーティングにとどまります。単一のホスト OS だ
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] worker のファイルとローダー
-- [ ] ドライバーのホスト要件
-- [ ] 要求の導出
-- [ ] 検査
+- [x] worker のファイルとローダー
+- [x] ドライバーのホスト要件
+- [x] 要求の導出
+- [x] 検査
 - [ ] 広告とルーティング
 - [ ] ドキュメントと日本語ミラー
+
+ログ：
+
+- [#2166](https://github.com/bajutsu-e2e/bajutsu/pull/2166)（単位 1〜4）：`worker.yaml` のスキーマとローダー
+  （`bajutsu/common/capability/worker_capability.py` と、その隣に置く既定ファイル）を追加しました。
+  各ドライバーには `HOST_OS` 定数を置き、`backends.host_os_for` と `backends.current_host_os` で
+  読みます。判定関数 `worker_capability_unsupported()` は、`worker-capability-unsupported:` で始まる
+  理由を返します。`bajutsu run --worker-config` は、共通の actuator 選択でホストやファイルが除外する
+  actuator を外します。シナリオごとの判定はターゲットを解決する前に行い、失敗したシナリオは
+  デバイスを確保せずにパイプラインから報告します。すべてのターゲットの actuator は、最初の
+  デバイスを確保する前に選びます。`bajutsu worker --worker-config` は起動時にファイルを検証し、
+  リースした `run` のそれぞれに絶対パスを渡します。単位 4 のうち 2 つは、ほかの項目を待っています。
+  `bajutsu worker --once` と内部の run エントリポイントはまだありません（BE-0449）。クラウドへの
+  要求を投入する前の判定は、ワーカー側の Device Farm ディスパッチ（BE-0448）を待ちます。それまで
+  `bajutsu worker` は `local` 以外の環境を拒否します。出荷した振る舞いのドキュメントはこの変更に
+  含めますが、単位 6 は単位 5 で触れるページのために未完了のまま残します。
 
 ## 参考
 
