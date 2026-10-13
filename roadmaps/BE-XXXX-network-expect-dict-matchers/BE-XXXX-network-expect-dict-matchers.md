@@ -42,6 +42,29 @@ expect:
         coupon: { $exists: false }
 ```
 
+The example uses YAML flow style (`{ ... }` and `[ ... ]`) to stay compact. Block style, which nests by indentation, loads into the same data, so the matcher sees no difference. Authors may write either style and may mix them inside one matcher. The same scenario in block style reads as follows.
+
+```yaml
+expect:
+  - request:
+      method: POST
+      path: /api/orders
+      query:
+        page: "2"
+        sort:
+          $matches: "^(asc|desc)$"
+      body:
+        user:
+          id: "42"
+          email:
+            $exists: true
+        items:
+          - sku: A-1
+            qty: "1"
+        coupon:
+          $exists: false
+```
+
 ### Fields
 
 | Field | On | Meaning |

@@ -42,6 +42,29 @@ expect:
         coupon: { $exists: false }
 ```
 
+この例は、短く収めるために YAML のフロー形式（`{ ... }` と `[ ... ]`）で書いています。インデントで入れ子を表すブロック形式で書いても、読み込んだ結果は同じデータになるので、照合の結果は変わりません。作者はどちらの形式で書いてもよく、1つの照合の中で混ぜても構いません。同じシナリオをブロック形式で書くと次のとおりです。
+
+```yaml
+expect:
+  - request:
+      method: POST
+      path: /api/orders
+      query:
+        page: "2"
+        sort:
+          $matches: "^(asc|desc)$"
+      body:
+        user:
+          id: "42"
+          email:
+            $exists: true
+        items:
+          - sku: A-1
+            qty: "1"
+        coupon:
+          $exists: false
+```
+
 ### フィールド
 
 | フィールド | 対象 | 意味 |
