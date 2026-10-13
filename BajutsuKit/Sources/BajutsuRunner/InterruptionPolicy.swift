@@ -199,6 +199,13 @@ public struct InterruptionRecords: Sendable, Equatable {
     public var tappedSurfaces: [AlertSurface] = []
     public var declined: [[String]] = []
     public var banners: [String] = []
+    /// Per entry of `tapped`, the synthesis id of every press behind it (BE-0462): the first press,
+    /// and any re-press of the same showing made before this drain. Empty for an answer recorded
+    /// with no marked touch.
+    public var tappedSynthesisIds: [[String]] = []
+    /// Per entry of `banners`, the synthesis id of the swipe behind it, if any. Empty when the banner
+    /// cleared without one — it went by its own auto-dismissal.
+    public var bannerSynthesisIds: [[String]] = []
     /// The buttons of a SpringBoard alert a resolving read found and no rule identified.
     public var unidentified: [[String]] = []
     public var gaveUp: [GaveUpRecord] = []
@@ -247,6 +254,10 @@ private struct ShowingMemo {
     var declined = false
     var signature: [TreeSignatureEntry]?
     var notHittableSince: TimeInterval?
+    /// Where this showing's *answered* entry sits while it is still undrained, so a re-press lands
+    /// its synthesis id on the same entry (BE-0462). Stamped with the drain generation it belongs
+    /// to: once that drain has gone, a re-press has no entry left to extend.
+    var entry: (generation: Int, index: Int)?
 }
 
 /// The live interruption policy, plus what the monitor and the resolving reads have answered,
@@ -274,6 +285,9 @@ public final class InterruptionPolicyStore: @unchecked Sendable {
     private var _records = InterruptionRecords()
     private var _memo: [ShowingKey: ShowingMemo] = [:]
     private var _lastSpringboardCheck: TimeInterval?
+    /// Bumped whenever `_records` is replaced, so a memo's `entry` from an earlier drain is never
+    /// mistaken for an index into the current one.
+    private var _generation = 0
 
     /// *now* is injectable so the pacing can be tested without sleeping; the runner uses uptime,
     /// which a wall-clock change cannot move.
@@ -300,16 +314,19 @@ public final class InterruptionPolicyStore: @unchecked Sendable {
         defer { lock.unlock() }
         _policy = policy
         _records = InterruptionRecords()
+        _generation += 1
         if scenarioStart {
             _memo = [:]
             _lastSpringboardCheck = nil
         }
     }
 
-    public func record(_ label: String, alert: [String] = [], surface: AlertSurface = .native) {
+    public func record(
+        _ label: String, alert: [String] = [], surface: AlertSurface = .native, synthesisIds: [String] = []
+    ) {
         lock.lock()
         defer { lock.unlock() }
-        appendAnswered(label, alert: alert, surface: surface)
+        appendAnswered(label, alert: alert, surface: surface, synthesisIds: synthesisIds)
     }
 
     /// Records the buttons of an alert `governs` covered but no rule identified, before declining.
@@ -328,10 +345,13 @@ public final class InterruptionPolicyStore: @unchecked Sendable {
     /// Separate from `record` because the two are not the same event: `record` names the *button*
     /// the policy chose, while a banner has none and is identified by its content. The Python side
     /// keeps them apart in the report for the same reason (BE-0416).
-    public func recordBanner(_ label: String) {
+    ///
+    /// *synthesisIds* names the swipe that cleared it (BE-0462), empty when none did.
+    public func recordBanner(_ label: String, synthesisIds: [String] = []) {
         lock.lock()
         defer { lock.unlock() }
         _records.banners.append(label)
+        _records.bannerSynthesisIds.append(synthesisIds)
     }
 
     /// Records a SpringBoard alert a resolving read found and no rule identified — on every check,
@@ -350,12 +370,14 @@ public final class InterruptionPolicyStore: @unchecked Sendable {
     /// It can only keep a showing that already holds a key from being recorded *answered* twice.
     /// Returns whether the press was recorded.
     @discardableResult
-    public func recordMonitorPress(_ rule: InterruptionRule, alert: [String]) -> Bool {
+    public func recordMonitorPress(
+        _ rule: InterruptionRule, alert: [String], synthesisId: String? = nil
+    ) -> Bool {
         lock.lock()
         defer { lock.unlock() }
         let key = ShowingKey.of(rule)
         let first = !(_memo[key]?.answered ?? false)
-        notePressLocked(key, rule: rule, alert: alert, signature: nil)
+        notePressLocked(key, rule: rule, alert: alert, signature: nil, synthesisId: synthesisId)
         return first
     }
 
@@ -401,10 +423,15 @@ public final class InterruptionPolicyStore: @unchecked Sendable {
     }
 
     /// A resolving read pressed *rule*'s button: records *answered* on the showing's first press.
-    func notePress(_ rule: InterruptionRule, alert: [String], signature: [TreeSignatureEntry]? = nil) {
+    func notePress(
+        _ rule: InterruptionRule, alert: [String], signature: [TreeSignatureEntry]? = nil,
+        synthesisId: String? = nil
+    ) {
         lock.lock()
         defer { lock.unlock() }
-        notePressLocked(ShowingKey.of(rule), rule: rule, alert: alert, signature: signature)
+        notePressLocked(
+            ShowingKey.of(rule), rule: rule, alert: alert, signature: signature, synthesisId: synthesisId
+        )
     }
 
     /// A resolving read tried to press *rule*'s button and the press did not happen (the button was
@@ -487,22 +514,34 @@ public final class InterruptionPolicyStore: @unchecked Sendable {
         defer { lock.unlock() }
         let drained = _records
         _records = InterruptionRecords()
+        _generation += 1
         return drained
     }
 
-    private func appendAnswered(_ label: String, alert: [String], surface: AlertSurface) {
+    /// Appends an *answered* entry and returns its index in the current records.
+    @discardableResult
+    private func appendAnswered(
+        _ label: String, alert: [String], surface: AlertSurface, synthesisIds: [String]
+    ) -> Int {
         _records.tapped.append(label)
         _records.tappedAlerts.append(alert)
         _records.tappedSurfaces.append(surface)
+        _records.tappedSynthesisIds.append(synthesisIds)
+        return _records.tapped.count - 1
     }
 
     private func notePressLocked(
-        _ key: ShowingKey, rule: InterruptionRule, alert: [String], signature: [TreeSignatureEntry]?
+        _ key: ShowingKey, rule: InterruptionRule, alert: [String], signature: [TreeSignatureEntry]?,
+        synthesisId: String?
     ) {
         var memo = _memo[key] ?? ShowingMemo(rule: rule)
+        let ids = synthesisId.map { [$0] } ?? []
         if !memo.answered {
             memo.answered = true
-            appendAnswered(rule.tap, alert: alert, surface: rule.surface)
+            let index = appendAnswered(rule.tap, alert: alert, surface: rule.surface, synthesisIds: ids)
+            memo.entry = (_generation, index)
+        } else if let entry = memo.entry, entry.generation == _generation {
+            _records.tappedSynthesisIds[entry.index].append(contentsOf: ids)
         }
         memo.taps += 1
         memo.lastPress = now()

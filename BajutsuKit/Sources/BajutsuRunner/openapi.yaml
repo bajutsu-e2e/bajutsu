@@ -636,6 +636,20 @@ components:
             type: array
             items:
               type: string
+        tappedSynthesisIds:
+          type: array
+          description: Per entry of `labels`, folded for the same reason. See `InterruptionsReply`.
+          items:
+            type: array
+            items:
+              type: string
+        bannerSynthesisIds:
+          type: array
+          description: Per entry of `banners`, folded for the same reason. See `InterruptionsReply`.
+          items:
+            type: array
+            items:
+              type: string
         tappedSurfaces:
           type: array
           items:
@@ -700,6 +714,20 @@ components:
             type: string
         tappedAlerts:
           type: array
+          items:
+            type: array
+            items:
+              type: string
+        tappedSynthesisIds:
+          type: array
+          description: Per entry of `labels`, folded for the same reason. See `InterruptionsReply`.
+          items:
+            type: array
+            items:
+              type: string
+        bannerSynthesisIds:
+          type: array
+          description: Per entry of `banners`, folded for the same reason. See `InterruptionsReply`.
           items:
             type: array
             items:
@@ -769,6 +797,16 @@ components:
             on, but never took the requested value — a picker wheel with no such row (BE-0356).
             `not-foreground` means `/app/enter` or `/app/leave` called `activate()` but the app
             never reached `.runningForeground` within the bounded poll.
+        synthesisId:
+          type: string
+          description: >-
+            The id (`<nonce>/<id>`) of the touch this request synthesized, whose begin/end marker
+            window the runner wrote to the unified log so the host can check the Simulator did not
+            drop it (BE-0462). Set by the touch actuations alone (`tap`, `gesture`, `swipe`,
+            `scroll`, `setPickerValue`, `systemAlert/tap`); `gesture`'s opt-in retry reports its
+            last attempt. Absent when the request synthesized no touch — a stale or unreachable
+            handle, a raised interaction, an actuation that types — so a client has nothing to
+            verify.
         labels:
           type: array
           description: >-
@@ -806,6 +844,20 @@ components:
           description: >-
             Per entry of `labels`, what the monitor matched that alert by, folded in for the same
             reason as `labels` above. See `InterruptionsReply.tappedAlerts`.
+          items:
+            type: array
+            items:
+              type: string
+        tappedSynthesisIds:
+          type: array
+          description: Per entry of `labels`, folded for the same reason. See `InterruptionsReply`.
+          items:
+            type: array
+            items:
+              type: string
+        bannerSynthesisIds:
+          type: array
+          description: Per entry of `banners`, folded for the same reason. See `InterruptionsReply`.
           items:
             type: array
             items:
@@ -929,6 +981,28 @@ components:
             buttons plus its `title: `-prefixed title marker. A label alone cannot say which prompt
             it answered, since Local Network and notifications both tap "Allow". Absent from a
             runner predating it, which a client reads as every tap's alert being unknown.
+          items:
+            type: array
+            items:
+              type: string
+        tappedSynthesisIds:
+          type: array
+          description: >-
+            Per entry of `labels`, in the same order, the synthesis id (`<nonce>/<id>`) of every
+            press behind that answer: the first, and any re-press of the same showing made before
+            this drain (BE-0462). Each id names a begin/end marker window the runner wrote to the
+            unified log, which the host checks for a touch the Simulator dropped. Empty for an
+            answer with no marked press. Absent from a runner predating it.
+          items:
+            type: array
+            items:
+              type: string
+        bannerSynthesisIds:
+          type: array
+          description: >-
+            Per entry of `banners`, in the same order, the synthesis id of the swipe that cleared
+            it, or an empty list when it cleared on its own auto-dismissal (BE-0462). Absent from a
+            runner predating it.
           items:
             type: array
             items:
