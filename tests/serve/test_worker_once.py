@@ -718,7 +718,7 @@ def test_the_internal_run_calls_the_apps_shared_bootstrap(monkeypatch: pytest.Mo
 def test_the_app_callback_skips_logging_for_serve_alone(
     monkeypatch: pytest.MonkeyPatch, sub: str, logging_on: bool
 ) -> None:
-    import bajutsu.cli as cli_pkg
+    from bajutsu.cli import _bootstrap
     from bajutsu.common import diagnostics
 
     seen: list[bool] = []
@@ -728,7 +728,7 @@ def test_the_app_callback_skips_logging_for_serve_alone(
     class _Ctx:
         invoked_subcommand = sub
 
-    cli_pkg._bootstrap(_Ctx())  # type: ignore[arg-type]
+    _bootstrap(_Ctx())  # type: ignore[arg-type]
     assert seen == ([True] if logging_on else [])
 
 
