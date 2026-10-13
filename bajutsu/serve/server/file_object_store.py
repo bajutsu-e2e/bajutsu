@@ -158,8 +158,9 @@ class FileObjectStore:
 
         Raises:
             ValueError: *key* is invalid or escapes the root (see `path_for`).
-            OSError: the key conflicts with the store (a component is an existing file) or names a
-                file the filesystem rejects.
+            OSError: the key conflicts with the store (``ENOTDIR``/``EEXIST``: a component is an
+                existing file; ``ENAMETOOLONG``: a name the filesystem rejects), or the server's
+                own I/O failed (a full disk, a permission loss).
         """
         final = self.path_for(key)
         self._make_parents(final)
@@ -173,11 +174,22 @@ class FileObjectStore:
             os.lstat(final)
         return PendingPut(final)
 
+    def _read_path(self, key: str) -> Path | None:
+        # The read and delete half reports an unsafe key as absent, as a bucket would, so a caller
+        # gets a miss (404) rather than a 500. The write and signing half keeps raising.
+        try:
+            return self.path_for(key)
+        except ValueError:
+            return None
+
     def exists(self, key: str) -> bool:
-        return self.path_for(key).is_file()
+        path = self._read_path(key)
+        return path is not None and path.is_file()
 
     def get_bytes(self, key: str) -> bytes | None:
-        path = self.path_for(key)
+        path = self._read_path(key)
+        if path is None:
+            return None
         try:
             return path.read_bytes()
         except (FileNotFoundError, IsADirectoryError):
@@ -235,7 +247,12 @@ class FileObjectStore:
             dirnames[:] = [d for d in dirnames if not (here / d).is_symlink()]
             for name in filenames:
                 full = here / name
-                if name.startswith(_STAGING_PREFIX) or not stat.S_ISREG(os.lstat(full).st_mode):
+                if name.startswith(_STAGING_PREFIX):
+                    continue
+                try:
+                    if not stat.S_ISREG(os.lstat(full).st_mode):
+                        continue
+                except FileNotFoundError:  # removed between the walk and the check: not listed
                     continue
                 if not full.resolve().is_relative_to(self._root):
                     continue
@@ -245,8 +262,10 @@ class FileObjectStore:
         return sorted(keys)
 
     def delete_key(self, key: str) -> None:
-        path = self.path_for(key)
-        if path.is_file():  # a directory is no object; leave it, as a bucket has none to delete
+        path = self._read_path(key)
+        if (
+            path is not None and path.is_file()
+        ):  # a directory is no object; leave it, as a bucket has none to delete
             path.unlink(missing_ok=True)
 
     def delete_keys(self, keys: Iterable[str]) -> None:

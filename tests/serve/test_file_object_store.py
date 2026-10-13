@@ -7,6 +7,7 @@ through TestClient over a real `ServeState`. No network, no mocks of the store.
 
 from __future__ import annotations
 
+import errno
 import os
 import stat
 from pathlib import Path
@@ -22,6 +23,7 @@ from bajutsu import serve as srv
 from bajutsu.common.run_meta.object_store import ObjectStore
 from bajutsu.serve import gate
 from bajutsu.serve.server.app import make_app
+from bajutsu.serve.server.artifacts import ObjectStorageArtifactStore
 from bajutsu.serve.server.file_object_store import FileObjectStore, PendingPut, UrlSigner
 from bajutsu.serve.state import SessionManager
 from bajutsu.serve.uploads import bounded_zip_receiver
@@ -170,6 +172,26 @@ def test_store_refuses_unsafe_keys(tmp_path: Path, key: str) -> None:
         store.presigned_url(key)
 
 
+@pytest.mark.parametrize("key", ["", "/abs", "../up", "a/../../up", "a\x00b", "a\\..\\up", "."])
+def test_store_reads_and_deletes_report_an_unsafe_key_as_absent(tmp_path: Path, key: str) -> None:
+    # The same contract as S3/GCS: a key no object can live at is a miss, never an error.
+    store = _store(tmp_path)
+    assert store.exists(key) is False
+    assert store.get_bytes(key) is None
+    store.delete_key(key)
+    store.delete_keys([key, "also-absent"])
+
+
+def test_artifact_store_over_the_file_store_misses_a_backslash_traversal(tmp_path: Path) -> None:
+    # `_key` screens only POSIX traversal, so this reaches the store, which must answer "absent".
+    store = _store(tmp_path)
+    artifacts = ObjectStorageArtifactStore(store, prefix="artifacts/")
+    rel = "a\\..\\..\\x"
+    assert artifacts.get(rel) is None
+    assert artifacts.exists(rel) is False
+    assert artifacts.open_bytes(rel) is None
+
+
 def test_store_refuses_an_unsafe_list_prefix(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="invalid object key prefix"):
         _store(tmp_path).list_keys("../")
@@ -181,8 +203,10 @@ def test_store_refuses_a_symlink_escape(tmp_path: Path) -> None:
     outside.mkdir()
     (outside / "secret").write_bytes(b"s")
     (store.root / "esc").symlink_to(outside)
-    with pytest.raises(ValueError, match="escapes"):
-        store.get_bytes("esc/secret")
+    assert store.get_bytes("esc/secret") is None  # a read through the escape is a miss
+    assert not store.exists("esc/secret")
+    store.delete_key("esc/secret")
+    assert (outside / "secret").exists()
     with pytest.raises(ValueError, match="escapes"):
         store.put_bytes("esc/new", b"x")
     assert not (outside / "new").exists()
@@ -421,6 +445,55 @@ def test_put_whose_key_is_too_long_for_the_filesystem_is_409(tmp_path: Path) -> 
     url = _rel(store.presigned_put_url(key, content_type="text/plain"))
     resp = client.put(url, content=b"y", headers={"Content-Type": "text/plain"})
     assert resp.status_code == 409
+
+
+@pytest.mark.parametrize("err", [errno.ENOSPC, errno.EACCES, errno.EIO])
+def test_put_whose_begin_fails_with_a_server_side_io_error_is_500(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, err: int
+) -> None:
+    client, store = _client(tmp_path)
+
+    def _fail(self: FileObjectStore, key: str) -> PendingPut:
+        raise OSError(err, os.strerror(err))
+
+    monkeypatch.setattr(FileObjectStore, "begin_put", _fail)
+    url = _rel(store.presigned_put_url("k", content_type="text/plain"))
+    resp = client.put(url, content=b"y", headers={"Content-Type": "text/plain"})
+    assert resp.status_code == 500
+    assert str(store.root) not in resp.text
+
+
+@pytest.mark.parametrize("err", [errno.EEXIST, errno.ENOTDIR, errno.ENAMETOOLONG])
+def test_put_whose_begin_fails_on_the_key_is_409(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, err: int
+) -> None:
+    client, store = _client(tmp_path)
+
+    def _fail(self: FileObjectStore, key: str) -> PendingPut:
+        raise OSError(err, os.strerror(err))
+
+    monkeypatch.setattr(FileObjectStore, "begin_put", _fail)
+    url = _rel(store.presigned_put_url("k", content_type="text/plain"))
+    resp = client.put(url, content=b"y", headers={"Content-Type": "text/plain"})
+    assert resp.status_code == 409
+
+
+def test_list_keys_skips_an_entry_removed_during_the_walk(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = _store(tmp_path)
+    store.put_bytes("a/gone", b"x")
+    store.put_bytes("a/kept", b"y")
+    real_lstat = os.lstat
+
+    def _lstat(path: os.PathLike[str] | str, *args: object, **kwargs: object) -> os.stat_result:
+        # A concurrent purge removes `gone` after os.walk listed it but before the check.
+        if Path(path).name == "gone":
+            raise FileNotFoundError(path)
+        return real_lstat(path, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(os, "lstat", _lstat)
+    assert store.list_keys("a/") == ["a/kept"]
 
 
 def test_get_of_a_name_too_long_for_the_filesystem_is_404(tmp_path: Path) -> None:

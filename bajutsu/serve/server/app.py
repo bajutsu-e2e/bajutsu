@@ -23,6 +23,7 @@ response headers.
 
 from __future__ import annotations
 
+import errno
 import json
 import logging
 from collections.abc import AsyncIterator, Callable
@@ -211,6 +212,15 @@ async def _receive_store_body(
     return None
 
 
+def _begin_put_error(e: OSError) -> tuple[dict[str, Any], int]:
+    # A key component that is an existing file, or a name too long for the filesystem: the key
+    # conflicts with what the store holds. No path in the message.
+    if e.errno in (errno.EEXIST, errno.ENOTDIR, errno.ENAMETOOLONG):
+        return {"error": "object key conflicts with the store"}, 409
+    # Anything else (a full disk, a permission loss) is ours, like `_receive_store_body`'s 500.
+    return {"error": "upload could not be stored"}, 500
+
+
 def _register_store_routes(app: FastAPI, store: FileObjectStore) -> None:
     """Serve the `FileObjectStore`'s signed GET and PUT URLs (BE-0449). The signature is the only
     authorization, so each route verifies it before touching the disk, and accepts nothing else."""
@@ -254,10 +264,8 @@ def _register_store_routes(app: FastAPI, store: FileObjectStore) -> None:
             pending = await run_in_threadpool(store.begin_put, key)
         except ValueError:
             return _result(({"error": "invalid object key"}, 400))
-        except OSError:
-            # A key component that is an existing file, or a name too long for the filesystem:
-            # the key conflicts with what the store holds. No path in the message.
-            return _result(({"error": "object key conflicts with the store"}, 409))
+        except OSError as e:
+            return _result(_begin_put_error(e))
         error = await _receive_store_body(request, pending, cap)
         if error is not None:
             return _result(error)
