@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0449") |
-| Implementing PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167) (Unit 1, part 1), [#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168) (Unit 1, part 2), [#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170) (Unit 1, part 3), PR_PLACEHOLDER4 (Unit 2) |
+| Implementing PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167) (Unit 1, part 1), [#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168) (Unit 1, part 2), [#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170) (Unit 1, part 3), [#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171) (Unit 2) |
 | Topic | Hosting the web UI |
 <!-- /BE-METADATA -->
 
@@ -196,7 +196,7 @@ Log:
   the default org, through a new insert-only `record_run_if_absent`, so a completing job's row is
   never overwritten. An admin's `POST /api/runs/rescan` does the same on demand and answers `409`
   without the local layout. Unit 1 is complete.
-- PR_PLACEHOLDER4 (Unit 2) — a cancel now reaches a job wherever the split put it. The cancel route
+- [#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171) (Unit 2) — a cancel now reaches a job wherever the split put it. The cancel route
   looks the job up in the jobs table first, so it still reaches a job queued before a restart. A job
   with no row stops in process, as before. A queued job becomes `cancelled`
   through a conditional `UPDATE` on `status = 'queued'`, so no lease returns it. A leased job keeps

@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0449") |
-| 実装 PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167)（単位 1 の 1）、[#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168)（単位 1 の 2）、[#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170)（単位 1 の 3）、PR_PLACEHOLDER4（単位 2） |
+| 実装 PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167)（単位 1 の 1）、[#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168)（単位 1 の 2）、[#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170)（単位 1 の 3）、[#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171)（単位 2） |
 | トピック | Hosting the web UI |
 <!-- /BE-METADATA -->
 
@@ -197,7 +197,7 @@ local バックエンドと server バックエンドの違いは、これらの
   登録には新しい追加専用の `record_run_if_absent` を使うので、完了した job の行を上書きしません。
   admin の `POST /api/runs/rescan` は同じ登録を必要なときに行い、ローカルの配置がなければ `409` を
   返します。これで単位 1 が完了しました。
-- PR_PLACEHOLDER4（単位 2）— キャンセルが、分割のどちら側にある job にも届くようになりました。
+- [#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171)（単位 2）— キャンセルが、分割のどちら側にある job にも届くようになりました。
   キャンセルの経路はまず jobs テーブルから job を探すので、再起動の前にキューへ入った job もキャンセル
   できます。行のない job は、これまでどおりプロセス内でキャンセルします。キュー中の job は
   `status = 'queued'` を条件とする `UPDATE` で `cancelled` になり、リースが返すことはありません。
