@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0449") |
-| 実装 PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167)（単位 1 の 1）、[#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168)（単位 1 の 2）、PR_PLACEHOLDER3（単位 1 の 3） |
+| 実装 PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167)（単位 1 の 1）、[#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168)（単位 1 の 2）、[#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170)（単位 1 の 3） |
 | トピック | Hosting the web UI |
 <!-- /BE-METADATA -->
 
@@ -180,7 +180,7 @@ local バックエンドと server バックエンドの違いは、これらの
   この経路を認可するのは署名だけで、署名はメソッド、キー、コンテンツタイプ、有効期限に対する
   HMAC-SHA256 です。経路はオブジェクトストアが `FileObjectStore` のときだけ存在し、デフォルトの起動は、
   3 番目の PR で配線するまで変わりません。
-- PR_PLACEHOLDER3（単位 1 の 3 分割のうち 3：ローカル起動）— `bajutsu serve --backend server` が、
+- [#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170)（単位 1 の 3 分割のうち 3：ローカル起動）— `bajutsu serve --backend server` が、
   クラウドのサービスや環境変数がなくても起動するようになりました。`BAJUTSU_SERVER_STORE` と
   `BAJUTSU_DATABASE_URL` がどちらも未設定なら、サーバーは `.bajutsu/queue.db` にマイグレーション済みの
   SQLite のキューを持ちます。シークレットを暗号化するキーは、`BAJUTSU_SECRETS_KEY` が未設定なら

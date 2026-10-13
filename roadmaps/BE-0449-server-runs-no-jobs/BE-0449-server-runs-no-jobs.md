@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0449") |
-| Implementing PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167) (Unit 1, part 1), [#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168) (Unit 1, part 2), PR_PLACEHOLDER3 (Unit 1, part 3) |
+| Implementing PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167) (Unit 1, part 1), [#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168) (Unit 1, part 2), [#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170) (Unit 1, part 3) |
 | Topic | Hosting the web UI |
 <!-- /BE-METADATA -->
 
@@ -180,7 +180,7 @@ Log:
   authorizes: an HMAC-SHA256 over the method, the key, the content type, and the expiry. The routes
   exist only when the object store is a `FileObjectStore`, and the default start is unchanged until
   part 3 wires it.
-- PR_PLACEHOLDER3 (Unit 1, part 3 of 3: the local start) — `bajutsu serve --backend server` now
+- [#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170) (Unit 1, part 3 of 3: the local start) — `bajutsu serve --backend server` now
   starts with no cloud service. With neither `BAJUTSU_SERVER_STORE` nor `BAJUTSU_DATABASE_URL`
   set, the server keeps a migrated SQLite queue at `.bajutsu/queue.db`. The secrets key is
   `BAJUTSU_SECRETS_KEY` when set, else generated into `.bajutsu/secrets.key`. A configured database
