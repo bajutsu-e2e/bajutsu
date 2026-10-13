@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0450") |
+| 実装 PR | [#2166](https://github.com/bajutsu-e2e/bajutsu/pull/2166)（単位 1〜4） |
 | トピック | Driver & backend architecture |
 <!-- /BE-METADATA -->
 
@@ -198,7 +199,7 @@ server は、ルーティングにとどまります。単一のホスト OS だ
 
 ログ：
 
-- PR_PLACEHOLDER（単位 1〜4）— `worker.yaml` のスキーマとローダー
+- [#2166](https://github.com/bajutsu-e2e/bajutsu/pull/2166)（単位 1〜4）— `worker.yaml` のスキーマとローダー
   （`bajutsu/common/capability/worker_capability.py` と、その隣に置く既定ファイル）を追加しました。
   各ドライバーには `HOST_OS` 定数を置き、`backends.host_os_for` と `backends.current_host_os` で
   読みます。判定関数 `worker_capability_unsupported()` は、`worker-capability-unsupported:` で始まる

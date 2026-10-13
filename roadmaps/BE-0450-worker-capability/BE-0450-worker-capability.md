@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0450") |
+| Implementing PR | [#2166](https://github.com/bajutsu-e2e/bajutsu/pull/2166) (Units 1–4) |
 | Topic | Driver & backend architecture |
 <!-- /BE-METADATA -->
 
@@ -231,7 +232,7 @@ The item is a decision about *runnability*, not about capability of a step, so t
 
 Log:
 
-- PR_PLACEHOLDER (Units 1–4) — added `worker.yaml` with its schema and loader
+- [#2166](https://github.com/bajutsu-e2e/bajutsu/pull/2166) (Units 1–4) — added `worker.yaml` with its schema and loader
   (`bajutsu/common/capability/worker_capability.py`, default file beside it), a `HOST_OS` constant
   on each driver read through `backends.host_os_for` and `backends.current_host_os`, and
   `worker_capability_unsupported()` with the `worker-capability-unsupported:` prefix. `bajutsu run
