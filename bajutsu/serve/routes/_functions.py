@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from .route import Route
+from .route import MAX_JSON_BODY_BYTES, Route
 
 
 def _match_template(template: str, path: str) -> dict[str, str] | None:
@@ -44,3 +44,13 @@ def match_route(
         if params is not None:
             return route, params
     return None
+
+
+def json_body_cap(routes: Sequence[Route], path: str) -> int:
+    """The most bytes a JSON POST to *path* may carry: its route's `max_body`, else the global cap.
+
+    A path no uniform route declares (login, the OIDC exchange, a 404) gets the global cap, so every
+    JSON POST is bounded before either backend buffers it.
+    """
+    matched = match_route(routes, "POST", path)
+    return matched[0].max_body if matched is not None else MAX_JSON_BODY_BYTES

@@ -882,7 +882,8 @@ The browser shows a queued job's console live (BE-0449). While a job runs, the w
 log lines to `/api/worker/log` about once a second. The worker masks credential shapes first. A
 private key block stays masked up to its END line. The control plane accepts a batch
 from the lease holder alone. Any other worker gets `409` and drops the job, as on a heartbeat `409`.
-One post carries at most 500 lines. The control plane cuts a line longer than 8 KiB. A job may
+One post carries at most 500 lines and 4 MiB; the worker splits a larger batch, and the control plane
+refuses a larger body with `413` before reading it. The control plane cuts a line longer than 8 KiB. A job may
 publish 50,000 live lines or 16 MiB. Past that, a single truncation notice replaces the rest. Each line goes
 to the job's Server-Sent Events (SSE) stream. The worker's result closes the stream. The worker
 logs and drops a batch it cannot post. A lost batch never stops or delays the job.

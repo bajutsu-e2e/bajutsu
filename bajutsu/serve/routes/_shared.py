@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from bajutsu.serve import operations as ops
+from bajutsu.serve.operations.worker import WORKER_LOG_MAX_BODY_BYTES
 
 from .route import Route
 
@@ -485,7 +486,12 @@ ROUTES: tuple[Route, ...] = (
             state, ctx.body().get("worker_id", ""), ctx.body().get("job_id", "")
         ),
     ),
-    Route("POST", "/api/worker/log", lambda state, ctx: ops.worker_log(state, ctx.body())),
+    Route(
+        "POST",
+        "/api/worker/log",
+        lambda state, ctx: ops.worker_log(state, ctx.body()),
+        max_body=WORKER_LOG_MAX_BODY_BYTES,
+    ),
     Route("POST", "/api/worker/result", lambda state, ctx: ops.worker_result(state, ctx.body())),
     Route(
         "POST",

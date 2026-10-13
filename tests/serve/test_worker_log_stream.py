@@ -954,3 +954,135 @@ def test_the_worker_hands_execute_job_spec_its_console_log_writer(
         heartbeat_interval=5.0,
     )
     assert (tmp_path / "runs" / "r1" / "console.log").read_text(encoding="utf-8") == "line\n"
+
+
+# --- review follow-ups: body caps, a closed budget, a live bus failing mid-stream -----------------
+
+
+def test_the_live_budget_stays_closed_once_the_byte_cap_truncates() -> None:
+    budget = srv.LiveLineBudget(bytes_per_job=10)
+    assert budget.admit("j1", ["123456789"]) == (1, False)
+    assert budget.admit("j1", ["12"]) == (0, True)  # 9 + 2 > 10: the notice goes out
+    assert budget.admit("j1", ["1"]) == (0, False)  # would fit, but follows the notice
+
+
+class _FailingMidStream(srv.InMemoryLogBus):
+    def stream(self, job_id: str, *, timeout: float | None = None) -> Any:
+        yield "live 1\n"
+        raise ConnectionError("redis down")
+
+
+def test_a_live_bus_failing_mid_stream_does_not_replay_console_log(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    files = {"r1/console.log": b"live 1\nstored 2\n"}
+    bus = QueueLogBus(repo, _FailingMidStream(), lambda _org: _Artifacts(files), poll_interval=0.01)
+    repo.enqueue_job("j1", org_id="o", spec={"cmd": []})
+    assert repo.lease_job("w1") is not None
+    stream = bus.stream("j1", timeout=0.02)
+    assert next(stream) == "live 1\n"
+    assert next(stream) is None  # waiting for the job to finish, heartbeating
+    assert repo.complete_job("j1", {"ok": True, "runId": "r1"}, worker_id="w1")
+    assert [line for line in stream if line is not None] == []  # no duplicate of "live 1"
+
+
+def test_the_streamer_splits_a_batch_by_its_encoded_size() -> None:
+    from bajutsu.serve.operations.worker import WORKER_LOG_MAX_BODY_BYTES
+
+    posts = _Posts()
+    streamer = worker_mod._LogStreamer(posts)
+    # One emoji escapes to 12 bytes of JSON, so 500 such lines would be ~49 MiB in one post.
+    lines = [f"{i:04d}" + "\U0001f600" * (WORKER_LOG_MAX_LINE_CHARS - 4) for i in range(200)]
+    for line in lines:
+        streamer.add(line)
+    streamer.flush()
+    assert len(posts.batches) > 1
+    assert [line for batch in posts.batches for line in batch] == lines
+    for batch in posts.batches:
+        body = json.dumps({"worker_id": "w" * 64, "job_id": "j" * 64, "lines": batch})
+        assert len(body) <= WORKER_LOG_MAX_BODY_BYTES
+
+
+def test_a_full_batch_of_maximal_plain_lines_fits_one_post() -> None:
+    from bajutsu.serve.operations.worker import WORKER_LOG_MAX_BODY_BYTES
+
+    posts = _Posts()
+    streamer = worker_mod._LogStreamer(posts)
+    for _ in range(WORKER_LOG_MAX_LINES):
+        streamer.add("x" * WORKER_LOG_MAX_LINE_CHARS)
+    streamer.flush()
+    assert [len(b) for b in posts.batches] == [WORKER_LOG_MAX_LINES]
+    body = json.dumps({"worker_id": "w1", "job_id": "j1", "lines": posts.batches[0]})
+    assert len(body) <= WORKER_LOG_MAX_BODY_BYTES
+
+
+def test_the_routes_declare_their_body_caps() -> None:
+    from bajutsu.serve.operations.worker import WORKER_LOG_MAX_BODY_BYTES
+    from bajutsu.serve.routes import MAX_JSON_BODY_BYTES, ROUTES, json_body_cap
+
+    assert json_body_cap(ROUTES, "/api/worker/log") == WORKER_LOG_MAX_BODY_BYTES
+    assert json_body_cap(ROUTES, "/api/worker/result") == MAX_JSON_BODY_BYTES
+    assert json_body_cap(ROUTES, "/api/login") == MAX_JSON_BODY_BYTES  # bespoke: the global cap
+    assert WORKER_LOG_MAX_BODY_BYTES < MAX_JSON_BODY_BYTES
+
+
+def test_fastapi_refuses_an_oversized_log_body_by_length_and_while_streaming(
+    tmp_path: Path,
+) -> None:
+    from bajutsu.serve.operations.worker import WORKER_LOG_MAX_BODY_BYTES
+
+    repo = _repo(tmp_path)
+    state = _state(tmp_path, repo)
+    _queued(state)
+    client = TestClient(make_app(state))
+    assert client.post("/api/worker/lease", json={"worker_id": "w1"}).status_code == 200
+    huge = json.dumps(
+        {"worker_id": "w1", "job_id": "j1", "lines": ["x" * (WORKER_LOG_MAX_BODY_BYTES + 1)]}
+    ).encode()
+    assert client.post("/api/worker/log", content=huge).status_code == 413
+
+    def chunked() -> Any:  # no Content-Length: only the streaming count can stop it
+        for start in range(0, len(huge), 65536):
+            yield huge[start : start + 65536]
+
+    assert client.post("/api/worker/log", content=chunked()).status_code == 413
+    ok = client.post("/api/worker/log", json={"worker_id": "w1", "job_id": "j1", "lines": ["a\n"]})
+    assert ok.status_code == 200
+
+
+def test_fastapi_login_body_is_capped_and_parsed_like_stdlib(tmp_path: Path) -> None:
+    from bajutsu.serve.routes import MAX_JSON_BODY_BYTES
+
+    client = TestClient(make_app(srv.ServeState(runs_dir=tmp_path / "runs")))
+    too_big = client.post("/api/login", content=b" " * (MAX_JSON_BODY_BYTES + 1))
+    assert too_big.status_code == 413
+    assert client.post("/api/login", content=b"{not json").status_code == 400
+    assert client.post("/api/login", content=b"[]").status_code == 400
+
+
+def test_stdlib_refuses_an_oversized_body_before_reading_it(tmp_path: Path) -> None:
+    import http.client
+
+    from _shared import _serve
+
+    from bajutsu.serve.operations.worker import WORKER_LOG_MAX_BODY_BYTES
+    from bajutsu.serve.routes import MAX_JSON_BODY_BYTES
+
+    server, port = _serve(srv.ServeState(runs_dir=tmp_path / "runs"))
+    try:
+        for path, cap in (
+            ("/api/worker/log", WORKER_LOG_MAX_BODY_BYTES),
+            ("/api/login", MAX_JSON_BODY_BYTES),
+        ):
+            conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+            # Declare a body past the cap and send none of it: a server that read before checking
+            # would block here until the timeout instead of answering.
+            conn.putrequest("POST", path)
+            conn.putheader("Content-Type", "application/json")
+            conn.putheader("Content-Length", str(cap + 1))
+            conn.endheaders()
+            resp = conn.getresponse()
+            assert resp.status == 413
+            conn.close()
+    finally:
+        server.shutdown()
+        server.server_close()
