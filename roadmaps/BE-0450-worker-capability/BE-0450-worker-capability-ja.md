@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0450") |
-| 実装 PR | [#2166](https://github.com/bajutsu-e2e/bajutsu/pull/2166)（単位 1〜4）、[#PR_PLACEHOLDER16](https://github.com/bajutsu-e2e/bajutsu/pull/PR_PLACEHOLDER16)（単位 5〜6） |
+| 実装 PR | [#2166](https://github.com/bajutsu-e2e/bajutsu/pull/2166)（単位 1〜4）、[#2190](https://github.com/bajutsu-e2e/bajutsu/pull/2190)（単位 5〜6） |
 | トピック | Driver & backend architecture |
 <!-- /BE-METADATA -->
 
@@ -215,7 +215,7 @@ server は、ルーティングにとどまります。単一のホスト OS だ
 - BE-0449 の単位 3（[#2173](https://github.com/bajutsu-e2e/bajutsu/pull/2173)）が、`bajutsu worker --once` と内部の run エントリポイントを
   加えました。`--once` は解決済みの `--worker-config` のパスを起動する run に渡すので、上に記録した
   2 つの待ちのうち 1 つ目が解消しました。この項目の単位は変えていません。
-- [#PR_PLACEHOLDER16](https://github.com/bajutsu-e2e/bajutsu/pull/PR_PLACEHOLDER16)（単位 5〜6）：どのワーカーも、自分のマシンを表す `host:<os>` を広告するようになりました。
+- [#2190](https://github.com/bajutsu-e2e/bajutsu/pull/2190)（単位 5〜6）：どのワーカーも、自分のマシンを表す `host:<os>` を広告するようになりました。
   ターゲットの `backend` が解決するすべての actuator が 1 つのホストでしか動かない場合、ジョブは
   `host:<os>` を必要とします。そのため、`xcuitest` のターゲットは `host:darwin` を必要とします。この要件は
   プラットフォームではなく、`run` が選ぶリストである `eff.backend` から導きます。`[fake]` の backend や

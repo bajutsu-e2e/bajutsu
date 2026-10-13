@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0450") |
-| Implementing PR | [#2166](https://github.com/bajutsu-e2e/bajutsu/pull/2166) (Units 1–4), [#PR_PLACEHOLDER16](https://github.com/bajutsu-e2e/bajutsu/pull/PR_PLACEHOLDER16) (Units 5–6) |
+| Implementing PR | [#2166](https://github.com/bajutsu-e2e/bajutsu/pull/2166) (Units 1–4), [#2190](https://github.com/bajutsu-e2e/bajutsu/pull/2190) (Units 5–6) |
 | Topic | Driver & backend architecture |
 <!-- /BE-METADATA -->
 
@@ -248,7 +248,7 @@ Log:
 - BE-0449 unit 3 ([#2173](https://github.com/bajutsu-e2e/bajutsu/pull/2173)) added `bajutsu worker --once` and the internal run entry point.
   `--once` passes the resolved `--worker-config` path to the run it spawns, which closes the first
   of the two waits recorded above. This change leaves the units here as they were.
-- [#PR_PLACEHOLDER16](https://github.com/bajutsu-e2e/bajutsu/pull/PR_PLACEHOLDER16) (Units 5–6) — every worker now advertises `host:<os>` for its machine. A job requires
+- [#2190](https://github.com/bajutsu-e2e/bajutsu/pull/2190) (Units 5–6) — every worker now advertises `host:<os>` for its machine. A job requires
   `host:<os>` when every actuator its target's `backend` resolves to runs on one host alone, so an
   `xcuitest` target requires `host:darwin`. The host token comes from `eff.backend`, the list `run`
   selects from, rather than the platform: a `[fake]` backend or an `[ios, web]` fallback requires
