@@ -1,4 +1,4 @@
-"""Server-side lifecycle hooks around one Device Farm batch submit (BE-0435)."""
+"""Lifecycle hooks around one Device Farm batch submit, run where the provider is (BE-0435)."""
 
 from __future__ import annotations
 
@@ -28,7 +28,9 @@ class BatchContext:
 
 
 class BatchLifecycleHook(Protocol):
-    """Server-side lifecycle hook around one Device Farm batch submit (BE-0435).
+    """Lifecycle hook around one Device Farm batch submit (BE-0435).
+
+    It runs in the worker that registered the provider (BE-0448), never in the server.
 
     Hooks are wired at process start only (via ``BAJUTSU_BATCH_HOOKS``); no ``serve`` endpoint,
     config field, or ``BatchRequest`` field may select or configure a hook (same trust boundary
@@ -39,7 +41,7 @@ class BatchLifecycleHook(Protocol):
     """
 
     def before_submit(self, ctx: BatchContext) -> None:  # noqa: ARG002
-        """Run in the serve process before packaging; may populate ``ctx.launch_env``."""
+        """Run in the worker before packaging; may populate ``ctx.launch_env``."""
         return
 
     def after_run(self, ctx: BatchContext, verdict: Verdict | None) -> None:  # noqa: ARG002

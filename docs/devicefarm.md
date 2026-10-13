@@ -216,21 +216,52 @@ targets:
     cloudBatchBudget: 4           # reserve at most four devices at once across the pool
 ```
 
-serve reaches AWS through the process environment, not the config file, so no ARN or credential lands
-in a checked-in target. Set **`DEVICEFARM_PROJECT_ARN`** before launching serve to turn cloud-batch
-dispatch on for the process; AWS credentials come from boto3's own chain (an instance role, the
-`AWS_*` variables, or a named profile), and **`DEVICEFARM_REGION`** overrides the default `us-west-2`
-for an account pinned elsewhere. With `DEVICEFARM_PROJECT_ARN` unset the `devicefarm` provider stays
-unregistered, so a cloud-batch dispatch fails loud at that point rather than silently vanishing;
-serve prints `cloud-batch dispatch enabled: devicefarm` at startup when it is wired. Unlike the
-headless submitter, serve reserves a single device per run through a device-selection filter, so it
-needs no device-pool ARN.
+The server does not submit these runs itself (BE-0448). Each fan-out job waits in the queue for a
+Device Farm worker. Such a worker's capability file, `worker.yaml`, sets `environment: devicefarm`.
+That worker packages the run and submits it. It then polls the run and posts the verdict back. The
+AWS role thus lives in the worker's environment, never in the server's. The server and the worker
+may share one machine as two processes. Start the worker with the file and no `--platform`:
 
-> **Config and scenario placement.** The cloud-batch package is rooted at the *cloud-batch package
-> root* — the Bajutsu source tree (holding `pyproject.toml`, `tests/`, and the `bajutsu/` package)
-> when serving from a checkout, or the config's own directory otherwise. A cloud-batch target's
-> config file and its `scenarios` directory must live inside that root. A config outside it causes
-> `POST /api/run-set` to return a 400 error that names the actual package root path.
+```yaml
+# devicefarm.worker.yaml
+version: 1
+environment: devicefarm
+drivers: [adb, xcuitest]
+```
+
+```bash
+DEVICEFARM_PROJECT_ARN=arn:aws:devicefarm:us-west-2:123456789012:project:abc \
+  bajutsu worker --worker-config devicefarm.worker.yaml --server-url http://localhost:8765
+```
+
+The worker reaches AWS through its own environment, not the config file. No ARN or credential lands
+in a checked-in target. **`DEVICEFARM_PROJECT_ARN`** names the project. boto3 finds the AWS
+credentials itself: an instance role, the `AWS_*` variables, or a named profile.
+**`DEVICEFARM_REGION`** overrides the default `us-west-2` for an account pinned elsewhere. At
+startup, the worker exits with the reason unless all three conditions below hold:
+
+- The environment names `DEVICEFARM_PROJECT_ARN`, and the provider and its hooks load.
+- The worker runs from a Bajutsu source checkout. Each run's package carries the checkout's
+  `pyproject.toml`, `tests/`, and `bajutsu/`, which an installed Bajutsu lacks.
+- The command line names no `--platform`. The phone belongs to the Device Farm host, so the worker
+  drives no device of its own.
+
+Once registered, the worker prints `provider registered: devicefarm`. It advertises the routing
+token `environment:devicefarm`. A fan-out job requires that token and no other. A worker
+advertising the token leases no other job. Local jobs and Device Farm jobs never cross. Serving
+both on one machine takes two workers. This registration alone may advertise the `environment:`
+prefix. `--capabilities` and `$BAJUTSU_WORKER_CAPABILITIES` refuse it at startup. A fan-out job
+that no live worker can serve stays queued as unroutable, like any other job. A server with no
+queue runs jobs in its own process. Such a server refuses `POST /api/run-set` instead. Unlike the headless submitter, the worker reserves one device per run through a
+device-selection filter. It needs no device-pool ARN.
+
+> **Config and scenario placement.** The worker composes a separate package for each job. The
+> package holds the source checkout's three parts, plus the job's bundle directory under `bundle/`.
+> The bundle directory is the config's own directory, an uploaded bundle, or the config and scenario
+> the scenario store ships with the job. The request names the config and the scenario relative to
+> that directory. A scenario outside the config's directory makes `POST /api/run-set` return a 400
+> error. The target's `appPath` travels as written, and the worker resolves a relative one against
+> the same directory. A missing binary fails the job before the worker uploads anything.
 
 A `POST /api/run-set` request fans a target out. Its body names the `target` and, optionally, a
 `scenarios` subset and a `deviceBudget`:
@@ -247,30 +278,39 @@ of it. When the budget is already full, the surplus scenarios are **deferred**, 
 partial dispatch is the routine outcome the cap governs, and the response lists the jobs it did
 start. serve refuses the request loudly, though, when it cannot honor it at all — a web target (no
 device to reserve), a target with no `cloudBatch` provider or no `appPath`, or a config or scenario
-that sits outside the run directory the provider packages.
+outside the config's directory, which the worker packages.
 
-On the hosted, database-backed backend the run is **durable across a serve restart**. serve
-checkpoints the scheduled run's ARN the moment Device Farm accepts it, so a worker that re-leases the
-job after a restart resumes polling that same run — no re-upload, no reschedule — and its reserved
-device is not orphaned during the 150-minute poll. The local single-process backend keeps a thinner,
-best-effort path: a restart there loses in-memory state regardless, so it does not checkpoint.
+A worker with a database connection (`BAJUTSU_DATABASE_URL`) makes the run **durable across a
+restart**. The worker checkpoints the scheduled run's Amazon Resource Name (ARN) the moment Device
+Farm accepts it. A worker that re-leases the job resumes polling that same run. It uploads and
+schedules nothing again. The reserved device stays owned during the 150-minute poll. A worker
+that reaches the server over HTTP alone stores no ARN yet. A job it re-leases submits again.
+`bajutsu worker --once <spec.json>` with the same `worker.yaml` submits one batch spec with no
+server. Its `appPath` is a path on that machine, and it stores no ARN.
 
 None of this touches the verdict. Each Device Farm run reports pass or fail from Bajutsu's own
-`manifest.json`, exactly as a local run does, and serve lands the downloaded run under its runs
-directory so its report viewer and history render it like any other. The submission and polling
+`manifest.json`, exactly as a local run does. The worker lands the downloaded run and uploads it.
+serve's report viewer and history then render it like any other run. The submission and polling
 machinery stays off the `run`/CI verdict path, with no large language model (LLM) call on it (prime
 directive 1).
 
-## Server-side batch lifecycle hooks (BE-0435)
+## Batch lifecycle hooks (BE-0435)
 
-`render_test_spec`'s `pre_test_commands` hook (BE-0432) handles **device-host setup**: commands that run on the Device Farm host, during the run, as shell. Some per-run setup cannot run there. It must happen in the `serve` process before packaging — for example, minting a short-lived credential that the app must receive through its launch environment.
+`render_test_spec`'s `pre_test_commands` hook (BE-0432) handles **device-host setup**: commands that run on the Device Farm host, during the run, as shell. Some per-run setup cannot run there. It must happen in the worker that submits the run, before packaging — for example, minting a short-lived credential that the app must receive through its launch environment.
 
-`BatchLifecycleHook` covers that gap. A hook runs in the `serve` process around one `DeviceFarmBatchProvider.submit` call:
+`BatchLifecycleHook` covers that gap. A hook runs in the worker whose environment is `devicefarm`, around one `DeviceFarmBatchProvider.submit` call. The server runs none:
 
 - **`before_submit(ctx)`** — called before the package is built. May populate `ctx.launch_env` with key/value pairs that are merged into the packaged config's `targets.<target>.launchEnv` before upload, so the app receives them as launch environment variables.
 - **`after_run(ctx, verdict)`** — called in a `finally` after the verdict is collected (or with `verdict=None` when the run fails before a verdict is available), in reverse hook order so teardown mirrors setup. A hook whose `after_run` raises does not stop the remaining hooks. Once `submit` collects a verdict, it logs every teardown error and raises none. A failed credential release thus never discards a finished run. Without a verdict, `submit` raises one teardown error and logs the others. The raised one comes from the last-registered hook that raised.
 
 `BatchContext` carries the run's `request`, `work_dir`, `job_id` (the stable per-job identifier, useful for looking up per-job state across a restart), and the mutable `launch_env` dict.
+
+Since the worker dispatch (BE-0448), `work_dir` is the job's bundle directory. The request names
+`request.config` and `request.scenario` by their paths inside it. `request.app_path` keeps the
+target's `appPath` as written. A hook that reads the binary resolves a relative value against
+`ctx.work_dir`, not its own working directory. A worker that runs from a source checkout puts the
+bundle under `bundle/` inside the package. A `pre_test_commands` command that names a file beside
+the config needs the `bundle/` prefix on the Device Farm machine.
 
 ### Wiring hooks
 
@@ -278,10 +318,10 @@ Hooks are wired at **process start only**, through the `BAJUTSU_BATCH_HOOKS` env
 
 ```bash
 BAJUTSU_BATCH_HOOKS=myapp.hooks:make_proxy_hook,myapp.hooks:make_audit_hook \
-  bajutsu serve --asgi --backend=server
+  bajutsu worker --worker-config devicefarm.worker.yaml
 ```
 
-A deployment ships its hook module in the serve image and names it in that variable. No `serve` endpoint, config field, or batch-request field may select or configure a hook — hook identity comes only from the deploy-time environment (the same trust boundary as `pre_test_commands`).
+A deployment ships its hook module in the worker's image and names it in that variable. A hook that fails to load stops the worker at startup. No `serve` endpoint, config field, or batch-request field may select or configure a hook — hook identity comes only from the deploy-time environment (the same trust boundary as `pre_test_commands`).
 
 ```python
 # myapp/hooks.py

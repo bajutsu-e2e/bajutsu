@@ -35,7 +35,6 @@ from bajutsu.common.run_meta.object_store import EvidenceTarget
 from bajutsu.serve import gate, oplog
 from bajutsu.serve.artifacts import Artifact, ArtifactStore, LocalArtifactStore
 from bajutsu.serve.baselines import LocalBaselineStore
-from bajutsu.serve.batch_bootstrap import bajutsu_source_root, register_batch_providers
 from bajutsu.serve.commands import (
     _int,
     crawl_command,
@@ -151,9 +150,11 @@ __all__ = [
 # The serve backends `_build_state` can assemble — the source of truth the CLI validates against.
 # Both build the server shape (BE-0449); they differ only in which job kinds the queue takes.
 SERVE_BACKENDS: tuple[str, ...] = ("local", "server")
-# The kinds `--backend local` hands to a worker (BE-0449 unit 5). The rest still run in this process
-# until their own units move them; once every kind is queued, the two backends are one.
-LOCAL_QUEUED_KINDS: frozenset[JobKind] = frozenset({"run"})
+# The kinds `--backend local` hands to a worker (BE-0449 unit 5). `run-set` joins `run` because the
+# server registers no batch provider (BE-0448), so only a Device Farm worker can run it. The rest
+# still run in this process until their own units move them; once every kind is queued, the two
+# backends are one.
+LOCAL_QUEUED_KINDS: frozenset[JobKind] = frozenset({"run", "run-set"})
 
 _logger = logging.getLogger(__name__)
 
@@ -890,19 +891,6 @@ def serve(
     # configuration its org last bound on that session's first request. Nothing runs here: the seam
     # fires on a slot miss, and stays inert on a deployment with no database to remember into.
     state.restore_binding = partial(restore_org_binding, state)
-    # Where the cloud-batch (Device Farm) package roots — see ServeState.devicefarm_package_root.
-    state.devicefarm_package_root = bajutsu_source_root()
-    # Fill the batch-provider registry from the environment (BE-0336): with DEVICEFARM_PROJECT_ARN set,
-    # cloud-batch dispatch reaches AWS Device Farm; with it unset the registry stays empty and a
-    # mis-dispatched cloud-batch job fails loud at resolve() rather than silently vanishing.
-    # A broken wiring (missing boto3, bad credentials) must not take down the whole serve process —
-    # the failure belongs at dispatch, not at boot. Leave the provider unregistered and say so.
-    try:
-        for kind in register_batch_providers():
-            print(f"cloud-batch dispatch enabled: {kind}")  # noqa: T201
-    except Exception as exc:  # an optional feature must never block the bind
-        _logger.warning("cloud-batch dispatch disabled at startup", exc_info=True)
-        print(f"note: cloud-batch dispatch is off — {exc}")  # noqa: T201
     hint = str(config) if config else "open a config.yml in the UI"
     if not gate.allowed_hosts(host):
         # A wildcard bind can't enumerate its reachable hostnames, so the Host allowlist is off

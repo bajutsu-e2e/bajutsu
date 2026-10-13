@@ -15,6 +15,7 @@ from bajutsu.common.cloud.devicefarm import (
     APP_UPLOAD_TYPE,
     REQUIREMENTS_TXT,
     DeviceFarmClient,
+    DeviceFarmError,
     Transfer,
     Verdict,
     build_package,
@@ -29,6 +30,14 @@ from .batch_lifecycle_hook import BatchContext, BatchLifecycleHook
 from .batch_request import BatchRequest
 
 _logger = logging.getLogger(__name__)
+
+# Where a job's bundle sits inside a package composed from the source tree (BE-0448). Nested rather
+# than packed at the root, so a bundle that carries its own `tests/` or `pyproject.toml` can never
+# collide with the source tree's entries the test spec installs.
+BUNDLE_ARCNAME = "bundle"
+# The parts of the source tree a package needs: what the test spec `pip install`s, and the `tests/`
+# Device Farm's APPIUM_PYTHON_TEST_PACKAGE validation looks for at the root.
+_SOURCE_ENTRIES = ("pyproject.toml", "tests", "bajutsu")
 
 
 def _check_launch_env_collisions(
@@ -71,8 +80,13 @@ class DeviceFarmBatchProvider:
     are held at once (BE-0336). The boto3 client and the presigned-URL transfer are injected so this
     logic runs against the in-memory fake in tests; production wires the real ones.
 
-    `hooks` are server-side lifecycle hooks (BE-0435) wired at process start only — never from a
-    request, config field, or BatchRequest field.
+    `hooks` are lifecycle hooks (BE-0435) wired at process start only — never from a request,
+    config field, or BatchRequest field.
+
+    With a `source_root`, each job's package is composed per job (BE-0448): the source tree's
+    `pyproject.toml`, `tests/`, and `bajutsu/`, plus the job's bundle directory under
+    `BUNDLE_ARCNAME`. Nothing is written into either tree. Without one, the bundle directory alone
+    is packed at the root, the shape the in-memory tests drive.
     """
 
     def __init__(
@@ -83,12 +97,14 @@ class DeviceFarmBatchProvider:
         project_arn: str,
         sleep: Callable[[float], None] = time.sleep,
         hooks: Sequence[BatchLifecycleHook] = (),
+        source_root: Path | None = None,
     ) -> None:
         self._client = client
         self._transfer = transfer
         self._project_arn = project_arn
         self._sleep = sleep
         self._hooks = list(hooks)
+        self._source_root = source_root
 
     def submit(
         self,
@@ -101,11 +117,14 @@ class DeviceFarmBatchProvider:
     ) -> Verdict:
         """Render the one-scenario spec, package `work_dir`, submit the run, and collect the verdict.
 
+        `work_dir` is the job's bundle directory: `request.scenario` and `request.config` are
+        relative to it, and so is `request.app_path` unless it is absolute (BE-0448).
+
         A `checkpoint` carrying a run ARN means this job was already scheduled before a restart: resume
         polling that run and collect it — no re-upload, no reschedule — so the in-flight run and its
         reserved device are not orphaned (BE-0336 Unit 5).
 
-        `hooks` (set at construction) run server-side lifecycle steps: `before_submit` may inject
+        `hooks` (set at construction) run lifecycle steps on the worker: `before_submit` may inject
         launch environment variables into the packaged config; `after_run` runs in a ``finally`` in
         reverse hook order so teardown always mirrors setup (BE-0435). No `after_run` failure is
         dropped: each is logged, except that when no verdict was collected the last-registered
@@ -131,8 +150,13 @@ class DeviceFarmBatchProvider:
                 for hook in self._hooks:
                     hook.before_submit(ctx)
 
+                app_path = _application(request, work_dir)
+                prefix = f"{BUNDLE_ARCNAME}/" if self._source_root is not None else ""
+                config_arc = f"{prefix}{request.config}"
                 extra_texts: dict[str, str] = {"requirements.txt": REQUIREMENTS_TXT}
-                exclude_arcnames: set[str] = set()
+                # The binary travels as the run's app upload, so a copy inside the bundle would only
+                # double the package.
+                exclude_arcnames: set[str] = set(_inside(app_path, work_dir, prefix))
 
                 if ctx.launch_env:
                     config_path = work_dir / request.config
@@ -154,13 +178,13 @@ class DeviceFarmBatchProvider:
                         **target.get("launchEnv", {}),
                         **ctx.launch_env,
                     }
-                    extra_texts[request.config] = yaml.dump(config_data, allow_unicode=True)
-                    exclude_arcnames.add(request.config)
+                    extra_texts[config_arc] = yaml.dump(config_data, allow_unicode=True)
+                    exclude_arcnames.add(config_arc)
 
                 spec = render_test_spec(
-                    [request.scenario],
+                    [f"{prefix}{request.scenario}"],
                     target=request.target,
-                    config=request.config,
+                    config=config_arc,
                     platform=request.platform,
                 )
                 with tempfile.TemporaryDirectory() as staging_name:
@@ -169,7 +193,7 @@ class DeviceFarmBatchProvider:
                     spec_path.write_text(spec, encoding="utf-8")
                     package_zip = staging / "devicefarm-package.zip"
                     build_package(
-                        [(work_dir, ".")],
+                        self._package_entries(work_dir),
                         package_zip,
                         extra_texts=extra_texts,
                         exclude_arcnames=exclude_arcnames,
@@ -179,7 +203,7 @@ class DeviceFarmBatchProvider:
                         self._transfer,
                         project_arn=self._project_arn,
                         device_selection=device_selection_for(request.platform),
-                        app_path=Path(request.app_path),
+                        app_path=app_path,
                         package_zip=package_zip,
                         spec_yaml=spec_path,
                         dest=dest,
@@ -209,3 +233,36 @@ class DeviceFarmBatchProvider:
 
         assert verdict is not None  # exceptions take the other path
         return verdict
+
+    def _package_entries(self, work_dir: Path) -> list[tuple[Path, str]]:
+        """The `(source, arcname)` pairs of one job's package (see the class docstring)."""
+        if self._source_root is None:
+            return [(work_dir, ".")]
+        return [
+            *((self._source_root / name, name) for name in _SOURCE_ENTRIES),
+            (work_dir, BUNDLE_ARCNAME),
+        ]
+
+
+def _application(request: BatchRequest, work_dir: Path) -> Path:
+    """The binary *request* names, resolved against the job's bundle directory (BE-0448).
+
+    Raises:
+        DeviceFarmError: No file is there, which would otherwise surface as an opaque upload error.
+    """
+    app = Path(request.app_path)
+    resolved = app if app.is_absolute() else work_dir / app
+    if not resolved.is_file():
+        raise DeviceFarmError(
+            f"application {request.app_path!r} is not in this job's bundle ({resolved})"
+        )
+    return resolved
+
+
+def _inside(path: Path, root: Path, prefix: str) -> list[str]:
+    """*path*'s arcname in a package that holds *root* under *prefix*, or none when outside it."""
+    try:
+        rel = path.resolve().relative_to(root.resolve())
+    except ValueError:
+        return []
+    return [f"{prefix}{rel.as_posix()}"]

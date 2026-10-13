@@ -98,3 +98,19 @@ def test_simctl_capabilities_derives_major_version_only() -> None:
     )
     # A job pinned to `ios17` matches any 17.x runtime — the minor version is dropped.
     assert cap.simctl_capabilities(run) == {"ios17", "iphone"}
+
+
+def test_an_environment_worker_serves_only_jobs_that_require_its_token() -> None:
+    # BE-0448: the subset test alone would hand a Device Farm worker every job requiring nothing.
+    df = ["environment:devicefarm"]
+    assert cap.environment_capability("devicefarm") == "environment:devicefarm"
+    assert cap.can_serve(["environment:devicefarm"], df)
+    assert not cap.can_serve([], df)
+    assert not cap.can_serve(["platform:ios"], [*df, "platform:ios"])
+    # A plain worker never covers the reserved token, so it never serves a batch job.
+    assert not cap.can_serve(["environment:devicefarm"], ["platform:ios", "platform:android"])
+    assert cap.can_serve([], ["platform:ios"])
+
+
+def test_reserved_tokens_names_the_environment_prefix_alone() -> None:
+    assert cap.reserved_tokens(["ios18", "environment:x", "platform:ios"]) == ["environment:x"]

@@ -1,0 +1,635 @@
+"""A worker whose `worker.yaml` environment is `devicefarm` runs the Device Farm dispatch (BE-0448).
+
+Units 1 to 3: the worker registers the provider and advertises `environment:devicefarm`, the server
+registers none and refuses to run a fan-out itself, and a leased batch job is packaged on the worker
+from the source tree plus its own bundle directory, with paths and the application reference relative
+to that bundle. Everything runs against the in-memory Device Farm fake; no AWS call is made.
+"""
+
+from __future__ import annotations
+
+import io
+import json
+import re
+import zipfile
+from collections.abc import Iterator
+from dataclasses import asdict
+from pathlib import Path
+from typing import Any
+
+import pytest
+import typer
+from typer.testing import CliRunner
+
+from bajutsu.cli import app
+from bajutsu.common.backend_cli import simctl
+from bajutsu.common.cloud.devicefarm import DeviceFarmError, Verdict
+from bajutsu.serve import batch_bootstrap
+from bajutsu.serve import batch_provider as bp
+from bajutsu.serve.cli import worker as worker_mod
+from bajutsu.serve.executor import LocalExecutor
+from bajutsu.serve.logbus import InMemoryLogBus
+from bajutsu.serve.operations.dispatch import start_run_set
+from bajutsu.serve.server import one_shot
+from bajutsu.serve.server.worker_job import execute_job_spec
+from bajutsu.serve.state import ServeState
+
+runner = CliRunner()
+
+_SCENARIO = "- name: a\n  steps:\n    - tap: { id: x }\n"
+
+
+@pytest.fixture(autouse=True)
+def _clean_registry() -> Iterator[None]:
+    # The provider registry is process-global; restore it so a registration never leaks.
+    saved = dict(bp._PROVIDERS)
+    try:
+        yield
+    finally:
+        bp._PROVIDERS.clear()
+        bp._PROVIDERS.update(saved)
+
+
+def _zip_bytes(members: dict[str, str]) -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as zf:
+        for name, text in members.items():
+            zf.writestr(name, text)
+    return buffer.getvalue()
+
+
+class _FakeClient:
+    """The happy path of the Device Farm client, counting the runs it schedules."""
+
+    def __init__(self) -> None:
+        self.schedule_calls = 0
+
+    def create_upload(self, *, projectArn: str, name: str, type: str) -> dict[str, Any]:  # noqa: N803 - boto3 kwargs
+        return {"upload": {"arn": f"arn:upload/{name}", "url": f"https://s3/{name}"}}
+
+    def get_upload(self, *, arn: str) -> dict[str, Any]:
+        return {"upload": {"arn": arn, "status": "SUCCEEDED"}}
+
+    def schedule_run(self, **kwargs: Any) -> dict[str, Any]:
+        self.schedule_calls += 1
+        return {"run": {"arn": f"arn:run/{self.schedule_calls}"}}
+
+    def get_run(self, *, arn: str) -> dict[str, Any]:
+        return {"run": {"arn": arn, "status": "COMPLETED"}}
+
+    def list_artifacts(self, *, arn: str, type: str) -> dict[str, Any]:
+        return {"artifacts": [{"name": "runs", "extension": "zip", "url": "https://s3/runs.zip"}]}
+
+
+class _CapturingTransfer:
+    """Keeps every uploaded file's bytes (the staging directory is gone once submit returns)."""
+
+    def __init__(self) -> None:
+        self.uploads: dict[str, bytes] = {}
+
+    def upload(self, url: str, path: Path) -> None:
+        self.uploads[url] = path.read_bytes()
+
+    def download(self, url: str) -> bytes:
+        manifest = json.dumps({"ok": True, "scenarios": [{"scenario": "a", "ok": True}]})
+        return _zip_bytes({"runs/20260101-1/manifest.json": manifest})
+
+    def package(self) -> zipfile.ZipFile:
+        (data,) = (v for k, v in self.uploads.items() if k.endswith("devicefarm-package.zip"))
+        return zipfile.ZipFile(io.BytesIO(data))
+
+
+def _source_tree(root: Path) -> Path:
+    """A stand-in for Bajutsu's checkout: the three parts a package takes from it, plus noise."""
+    (root / "tests").mkdir(parents=True)
+    (root / "tests" / "test_x.py").write_text("", encoding="utf-8")
+    (root / "bajutsu").mkdir()
+    (root / "bajutsu" / "__init__.py").write_text("", encoding="utf-8")
+    (root / "pyproject.toml").write_text("[project]\nname='bajutsu'\n", encoding="utf-8")
+    (root / "README.md").write_text("not packaged", encoding="utf-8")
+    return root
+
+
+def _provider(
+    source_root: Path | None,
+) -> tuple[bp.DeviceFarmBatchProvider, _FakeClient, _CapturingTransfer]:
+    client, transfer = _FakeClient(), _CapturingTransfer()
+    provider = bp.DeviceFarmBatchProvider(
+        client=client,
+        transfer=transfer,
+        project_arn="arn:project/1",
+        sleep=lambda _: None,
+        source_root=source_root,
+    )
+    return provider, client, transfer
+
+
+def _bundle(root: Path) -> Path:
+    """A job's bundle directory: config, one scenario, the binary, and a stray earlier run."""
+    (root / "scenarios").mkdir(parents=True)
+    (root / "scenarios" / "one.yaml").write_text(_SCENARIO, encoding="utf-8")
+    (root / "bajutsu.config.yaml").write_text("targets: {}\n", encoding="utf-8")
+    (root / "app.apk").write_bytes(b"APK")
+    (root / "runs" / "old").mkdir(parents=True)
+    (root / "runs" / "old" / "manifest.json").write_text("{}", encoding="utf-8")
+    return root
+
+
+def _request(app_path: str = "app.apk") -> bp.BatchRequest:
+    return bp.BatchRequest(
+        provider="devicefarm",
+        scenario="scenarios/one.yaml",
+        target="demo",
+        config="bajutsu.config.yaml",
+        platform="android",
+        app_path=app_path,
+    )
+
+
+# --- unit 1: the worker registers the provider; the server does not -----------------------------
+
+
+def test_a_device_farm_worker_registers_its_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DEVICEFARM_PROJECT_ARN", "arn:aws:devicefarm:us-west-2:1:project:p")
+    monkeypatch.setattr(batch_bootstrap, "_make_devicefarm_client", lambda _region: object())
+    worker_mod._register_environment_or_exit("devicefarm")
+    provider = bp.resolve("devicefarm")
+    assert isinstance(provider, bp.DeviceFarmBatchProvider)
+    # The package is composed from the checkout this worker runs from.
+    assert provider._source_root == batch_bootstrap.bajutsu_source_root()
+
+
+def test_a_local_worker_registers_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DEVICEFARM_PROJECT_ARN", "arn:aws:devicefarm:us-west-2:1:project:p")
+    bp._PROVIDERS.clear()
+    worker_mod._register_environment_or_exit("local")
+    assert bp._PROVIDERS == {}
+
+
+def test_a_provider_that_cannot_be_built_stops_the_worker(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DEVICEFARM_PROJECT_ARN", "arn:aws:devicefarm:us-west-2:1:project:p")
+    monkeypatch.setenv("BAJUTSU_BATCH_HOOKS", "not-a-hook-path")
+    with pytest.raises(typer.BadParameter, match="cannot register its provider"):
+        worker_mod._register_environment_or_exit("devicefarm")
+
+
+def test_registration_needs_a_source_checkout(monkeypatch: pytest.MonkeyPatch) -> None:
+    # An installed Bajutsu carries no pyproject.toml or tests/, so no job's package could validate.
+    monkeypatch.setattr(batch_bootstrap, "bajutsu_source_root", lambda: None)
+    monkeypatch.setattr(batch_bootstrap, "_make_devicefarm_client", lambda _region: object())
+    with pytest.raises(DeviceFarmError, match="source checkout"):
+        batch_bootstrap.register_batch_providers(
+            {"DEVICEFARM_PROJECT_ARN": "arn:aws:devicefarm:us-west-2:1:project:p"}
+        )
+
+
+def test_a_device_farm_worker_advertises_its_environment_alone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("BAJUTSU_WORKER_CAPABILITIES", raising=False)
+    assert worker_mod._advertised_capabilities("", "", "devicefarm") == ["environment:devicefarm"]
+
+
+def test_a_device_farm_worker_refuses_an_explicit_platform() -> None:
+    with pytest.raises(typer.BadParameter, match="environment is 'devicefarm'"):
+        worker_mod._advertised_capabilities("android", "", "devicefarm")
+
+
+def test_a_local_worker_defaults_to_ios(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("BAJUTSU_WORKER_CAPABILITIES", raising=False)
+    # No Simulator inventory is probed, so the platform axis alone is advertised.
+    monkeypatch.setattr(simctl, "real_run", None)
+    assert worker_mod._advertised_capabilities("", "", "local") == ["platform:ios"]
+
+
+@pytest.mark.parametrize("environment", ["local", "devicefarm"])
+def test_the_environment_prefix_is_reserved_in_the_override(
+    environment: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with pytest.raises(typer.BadParameter, match="reserved"):
+        worker_mod._advertised_capabilities("", "environment:devicefarm", environment)
+    monkeypatch.setenv("BAJUTSU_WORKER_CAPABILITIES", "ios18,environment:x")
+    with pytest.raises(typer.BadParameter, match="reserved"):
+        worker_mod._advertised_capabilities("", "", environment)
+
+
+def test_a_server_running_jobs_itself_refuses_a_fan_out(tmp_path: Path) -> None:
+    # No provider is registered in the server, so a fan-out it ran itself could only fail at submit.
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text("targets: {}\n", encoding="utf-8")
+    state = ServeState(config=cfg, runs_dir=tmp_path / "runs", cwd=tmp_path)
+    assert isinstance(state.executor, LocalExecutor)
+    payload, status = start_run_set(state, {"target": "demo"})
+    assert status == 400
+    assert "needs a queue and a worker" in payload["error"]
+
+
+# --- unit 3: the package is composed per job, from the source tree and the bundle ---------------
+
+
+def test_the_package_holds_the_source_parts_and_the_bundle(tmp_path: Path) -> None:
+    source = _source_tree(tmp_path / "src")
+    before = sorted(p.relative_to(source) for p in source.rglob("*"))
+    bundle = _bundle(tmp_path / "bundle")
+    provider, client, transfer = _provider(source)
+
+    verdict = provider.submit(_request(), work_dir=bundle, dest=tmp_path / "dest")
+
+    assert verdict.ok and client.schedule_calls == 1
+    names = set(transfer.package().namelist())
+    assert {"pyproject.toml", "tests/test_x.py", "bajutsu/__init__.py"} <= names
+    assert {"bundle/bajutsu.config.yaml", "bundle/scenarios/one.yaml"} <= names
+    # Nothing outside the three source parts, no earlier run, and no second copy of the binary.
+    assert "README.md" not in names
+    assert not any(n.startswith("bundle/runs/") for n in names)
+    assert "bundle/app.apk" not in names
+    # The binary went up as the app upload instead.
+    assert any(url.endswith("app.apk") for url in transfer.uploads)
+    # The test spec runs the scenario from inside the bundle.
+    (spec,) = (v for k, v in transfer.uploads.items() if k.endswith("testspec.yml"))
+    assert "--scenario bundle/scenarios/one.yaml" in spec.decode()
+    assert "--config bundle/bajutsu.config.yaml" in spec.decode()
+    # Neither tree is written into.
+    assert sorted(p.relative_to(source) for p in source.rglob("*")) == before
+    assert not (bundle / "testspec.yml").exists()
+
+
+def test_an_injected_launch_env_overlays_the_bundled_config(tmp_path: Path) -> None:
+    class _Inject(bp.BatchLifecycleHook):
+        def before_submit(self, ctx: bp.BatchContext) -> None:
+            ctx.launch_env["TOKEN"] = "t"
+
+    source = _source_tree(tmp_path / "src")
+    bundle = _bundle(tmp_path / "bundle")
+    client, transfer = _FakeClient(), _CapturingTransfer()
+    provider = bp.DeviceFarmBatchProvider(
+        client=client,
+        transfer=transfer,
+        project_arn="arn:project/1",
+        sleep=lambda _: None,
+        hooks=[_Inject()],
+        source_root=source,
+    )
+    provider.submit(_request(), work_dir=bundle, dest=tmp_path / "dest")
+    package = transfer.package()
+    assert package.namelist().count("bundle/bajutsu.config.yaml") == 1
+    assert "TOKEN: t" in package.read("bundle/bajutsu.config.yaml").decode()
+    assert (bundle / "bajutsu.config.yaml").read_text(encoding="utf-8") == "targets: {}\n"
+
+
+def test_an_application_missing_from_the_bundle_fails_before_any_upload(tmp_path: Path) -> None:
+    bundle = _bundle(tmp_path / "bundle")
+    provider, client, transfer = _provider(None)
+    with pytest.raises(DeviceFarmError, match="not in this job's bundle"):
+        provider.submit(_request("missing.apk"), work_dir=bundle, dest=tmp_path / "dest")
+    assert client.schedule_calls == 0 and transfer.uploads == {}
+
+
+def _storage_state(tmp_path: Path, executor: Any) -> ServeState:
+    """A server whose scenario store ships scenario text as materials, as the hosted store does."""
+    from unittest import mock
+
+    from bajutsu.serve.scenarios import Runnable
+
+    cfg = tmp_path / "server" / "bajutsu.config.yaml"
+    cfg.parent.mkdir()
+    cfg.write_text(
+        "targets:\n  demo:\n    platform: android\n    package: com.example.demo\n"
+        "    scenarios: scenarios\n    cloudBatch: devicefarm\n    appPath: app.apk\n",
+        encoding="utf-8",
+    )
+
+    class _Scope:
+        def list(self) -> list[dict[str, str]]:
+            return [{"file": "one.yaml"}]
+
+        def runnable(self, name: str) -> Runnable:
+            return Runnable(arg=f"scenarios/{name}", materials={f"scenarios/{name}": _SCENARIO})
+
+    class _Store:
+        def scope(self, *_a: Any, **_k: Any) -> _Scope:
+            return _Scope()
+
+    state = ServeState(config=cfg, runs_dir=tmp_path / "runs", cwd=cfg.parent, executor=executor)
+    bundle = mock.MagicMock()
+    bundle.scenarios = _Store()
+    state.for_org = lambda *_a, **_k: bundle  # type: ignore[method-assign]
+    return state
+
+
+class _Recording:
+    def __init__(self) -> None:
+        self.jobs: list[Any] = []
+
+    def dispatch(self, _state: ServeState, job: Any) -> None:
+        self.jobs.append(job)
+
+
+def test_a_leased_fan_out_job_runs_on_the_worker_from_its_own_workspace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The whole unit-3 path: the server queues a job whose scenario travels as materials, the worker
+    # gives it a workspace of its own, places the binary the lease delivered, and the provider
+    # packages that workspace and lands the run there.
+    from bajutsu.serve.server.worker_job import job_spec
+
+    monkeypatch.delenv("BAJUTSU_DATABASE_URL", raising=False)
+    executor = _Recording()
+    state = _storage_state(tmp_path, executor)
+    _payload, status = start_run_set(state, {"target": "demo"})
+    assert status == 200
+    (job,) = executor.jobs
+    spec = job_spec(job)
+    assert spec["batch"]["app_path"] == "app.apk"
+    assert spec["cwd"] is None  # it ships its files, so it names nothing on the server's disk
+    assert job.capabilities == ["environment:devicefarm"]
+
+    work = tmp_path / "worker"
+    work.mkdir()
+    (work / "stray.txt").write_text("another job's file", encoding="utf-8")
+    job_work, failure = worker_mod._workspace_or_failure(work, spec, None)
+    assert failure is None
+    assert job_work == work / ".batch" / job.id
+    (job_work / "app.apk").write_bytes(b"APK")  # what the lease's signed URL delivers
+    source = _source_tree(tmp_path / "src")
+    provider, client, transfer = _provider(source)
+    bp.register("devicefarm", provider)
+
+    ran = execute_job_spec(spec, cwd=job_work, bus=InMemoryLogBus())
+
+    assert ran.view()["ok"] is True and client.schedule_calls == 1
+    names = set(transfer.package().namelist())
+    assert {"bundle/bajutsu.config.yaml", "bundle/scenarios/one.yaml"} <= names
+    assert not any("stray" in n for n in names)
+    assert (job_work / "runs" / "20260101-1" / "manifest.json").is_file()
+    worker_mod._discard_batch_workspace(work, job_work)
+    assert not job_work.exists() and (work / "stray.txt").exists()
+
+
+def test_a_job_naming_a_host_directory_packages_that_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A local start's job ships no files and names the config's directory (BE-0449); a worker on the
+    # same machine packages it and resolves the relative appPath there.
+    monkeypatch.delenv("BAJUTSU_DATABASE_URL", raising=False)
+    project = _bundle(tmp_path / "project")
+    spec = {
+        "job_id": "j-host",
+        "cmd": [],
+        "cwd": str(project),
+        "batch": {**asdict(_request())},
+    }
+    provider, client, transfer = _provider(_source_tree(tmp_path / "src"))
+    bp.register("devicefarm", provider)
+    job_work = worker_mod._bundle_workspace(tmp_path / "worker", spec, None)
+
+    ran = execute_job_spec(spec, cwd=job_work, bus=InMemoryLogBus())
+
+    assert ran.view()["ok"] is True and client.schedule_calls == 1
+    assert "bundle/scenarios/one.yaml" in transfer.package().namelist()
+    assert (job_work / "runs" / "20260101-1").is_dir()
+    assert not (project / "runs" / "20260101-1").exists()
+
+
+def test_a_batch_job_with_an_unsafe_id_gets_no_workspace(tmp_path: Path) -> None:
+    with pytest.raises(RuntimeError, match="cannot name a directory"):
+        worker_mod._bundle_workspace(
+            tmp_path, {"job_id": "../x", "batch": {"provider": "devicefarm"}}, None
+        )
+
+
+# --- the worker runs only what belongs to its environment ---------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("spec", "environment", "words"),
+    [
+        ({"batch": {"provider": "devicefarm"}}, "local", "worker.yaml environment"),
+        ({"cmd": ["x"]}, "devicefarm", "runs only that provider's batch jobs"),
+        ({"batch": {"provider": "other"}}, "devicefarm", "names provider 'other'"),
+    ],
+)
+def test_a_job_outside_the_workers_environment_is_refused(
+    spec: dict[str, Any], environment: str, words: str
+) -> None:
+    reason = one_shot.environment_refusal(spec, environment)
+    assert reason is not None and words in reason
+
+
+def test_a_leased_job_outside_the_environment_fails_before_it_is_fetched(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(worker_mod, "_post_json", lambda *_a, **_k: (200, {}))
+    result, abandoned, _work = worker_mod._run_with_heartbeat(
+        {"cmd": ["x"], "bundle": {"id": "a" * 64}},
+        job_id="j1",
+        work=tmp_path,
+        bundle_urls=None,
+        bus=InMemoryLogBus(),
+        url="http://cp",
+        wid="w1",
+        auth_token=None,
+        heartbeat_interval=0.02,
+        environment="devicefarm",
+    )
+    assert not abandoned
+    assert result is not None and result["ok"] is False
+    assert "runs only that provider's batch jobs" in result["error"]
+
+
+@pytest.mark.parametrize(
+    ("batch", "words"),
+    [
+        ({**asdict(_request()), "extra": "x"}, "must name exactly"),
+        ({**asdict(_request()), "platform": "web"}, "android or ios"),
+        ({**asdict(_request()), "scenario": "../one.yaml"}, "batch.scenario"),
+        ({**asdict(_request()), "config": ""}, "non-empty strings"),
+    ],
+)
+def test_a_malformed_one_shot_batch_is_refused(batch: dict[str, Any], words: str) -> None:
+    reason = one_shot.refusal({"batch": batch}, environment="devicefarm")
+    assert reason is not None and words in reason
+
+
+# --- `bajutsu worker --once` submits one batch spec with no server --------------------------------
+
+
+class _RecordingProvider:
+    """Wraps the real provider over the fake, recording the checkpoint each submit received."""
+
+    def __init__(self, inner: bp.DeviceFarmBatchProvider) -> None:
+        self.inner = inner
+        self.checkpoints: list[Any] = []
+
+    def submit(
+        self,
+        request: bp.BatchRequest,
+        *,
+        work_dir: Path,
+        dest: Path,
+        checkpoint: Any = None,
+        job_id: str = "",
+    ) -> Verdict:
+        self.checkpoints.append(checkpoint)
+        return self.inner.submit(
+            request, work_dir=work_dir, dest=dest, checkpoint=checkpoint, job_id=job_id
+        )
+
+
+def test_worker_once_submits_a_batch_spec_from_a_local_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = _bundle(tmp_path / "project")
+    inner, client, _transfer = _provider(_source_tree(tmp_path / "src"))
+    recording = _RecordingProvider(inner)
+
+    def register(*_a: Any, **_k: Any) -> list[str]:
+        bp.register("devicefarm", recording)
+        return ["devicefarm"]
+
+    monkeypatch.setattr(batch_bootstrap, "register_batch_providers", register)
+    worker_file = tmp_path / "w.yaml"
+    worker_file.write_text("version: 1\nenvironment: devicefarm\ndrivers: [adb]\n", "utf-8")
+    spec_file = tmp_path / "spec.json"
+    spec_file.write_text(json.dumps({"batch": asdict(_request())}), encoding="utf-8")
+    monkeypatch.chdir(project)
+
+    result = runner.invoke(
+        app, ["worker", "--once", str(spec_file), "--worker-config", str(worker_file)]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "bajutsu verdict: PASS" in result.output
+    assert client.schedule_calls == 1
+    # The application resolved from this directory, and no ARN was stored anywhere.
+    assert recording.checkpoints == [None]
+    assert (project / "runs" / "20260101-1" / "manifest.json").is_file()
+
+
+def test_worker_once_refuses_a_plain_spec_under_a_device_farm_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        batch_bootstrap, "register_batch_providers", lambda *_a, **_k: ["devicefarm"]
+    )
+    worker_file = tmp_path / "w.yaml"
+    worker_file.write_text("version: 1\nenvironment: devicefarm\ndrivers: [adb]\n", "utf-8")
+    spec_file = tmp_path / "spec.json"
+    spec_file.write_text(json.dumps({"cmd": ["never-run"]}), encoding="utf-8")
+    result = runner.invoke(
+        app, ["worker", "--once", str(spec_file), "--worker-config", str(worker_file)]
+    )
+    assert result.exit_code == 2
+    assert "runs only that provider's batch jobs" in re.sub(r"[\s│]+", " ", result.output)
+
+
+# --- review follow-ups: state directories and the application's reach ---------------------------
+
+
+def test_process_state_never_reaches_the_package(tmp_path: Path) -> None:
+    # A bundle directory may be a project holding the local start's keys, or a worker workspace.
+    bundle = _bundle(tmp_path / "bundle")
+    for rel in (
+        ".bajutsu/secrets.key",
+        ".bajutsu/queue.db",
+        ".bundles/o/x/app.apk",
+        ".overrides/x",
+        ".batch/j/x",
+        ".owner-pid",
+        ".job-pgid",
+    ):
+        (bundle / rel).parent.mkdir(parents=True, exist_ok=True)
+        (bundle / rel).write_text("state", encoding="utf-8")
+    provider, _client, transfer = _provider(_source_tree(tmp_path / "src"))
+
+    provider.submit(_request(), work_dir=bundle, dest=tmp_path / "dest")
+
+    names = transfer.package().namelist()
+    assert "bundle/bajutsu.config.yaml" in names
+    assert not [n for n in names if "/." in n or n.startswith(".")]
+
+
+def _shipped_spec(job_id: str, app_path: str) -> dict[str, Any]:
+    """A leased spec that ships its config and scenario as materials, naming *app_path*."""
+    return {
+        "job_id": job_id,
+        "cmd": [],
+        "materials": {"bajutsu.config.yaml": "targets: {}\n", "scenarios/one.yaml": _SCENARIO},
+        "batch": asdict(_request(app_path)),
+    }
+
+
+@pytest.mark.parametrize("how", ["absolute", "dotdot", "symlink"])
+def test_a_shipped_job_may_not_upload_a_binary_outside_its_workspace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, how: str
+) -> None:
+    monkeypatch.delenv("BAJUTSU_DATABASE_URL", raising=False)
+    outside = tmp_path / "host.apk"
+    outside.write_bytes(b"host file")
+    spec = _shipped_spec(f"j-{how}", str(outside))
+    job_work = worker_mod._bundle_workspace(tmp_path / "worker", spec, None)
+    if how == "dotdot":
+        spec["batch"]["app_path"] = "../../../host.apk"
+    elif how == "symlink":
+        (job_work / "app.apk").symlink_to(outside)
+        spec["batch"]["app_path"] = "app.apk"
+    provider, client, transfer = _provider(_source_tree(tmp_path / "src"))
+    bp.register("devicefarm", provider)
+
+    ran = execute_job_spec(spec, cwd=job_work, bus=InMemoryLogBus())
+
+    assert ran.view()["ok"] is False
+    assert any("outside this job's bundle" in line for line in ran.lines)
+    assert client.schedule_calls == 0 and transfer.uploads == {}
+
+
+def test_a_host_directory_job_may_name_a_binary_anywhere_on_its_machine(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The job names files on the server's own machine, which the worker shares, so no workspace
+    # bounds it; the same holds for `--once` (covered by the one-shot test above, from a local path).
+    monkeypatch.delenv("BAJUTSU_DATABASE_URL", raising=False)
+    project = _bundle(tmp_path / "project")
+    elsewhere = tmp_path / "builds" / "app.apk"
+    elsewhere.parent.mkdir()
+    elsewhere.write_bytes(b"APK")
+    spec = {
+        "job_id": "j-abs",
+        "cmd": [],
+        "cwd": str(project),
+        "batch": asdict(_request(str(elsewhere))),
+    }
+    provider, client, _transfer = _provider(_source_tree(tmp_path / "src"))
+    bp.register("devicefarm", provider)
+    job_work = worker_mod._bundle_workspace(tmp_path / "worker", spec, None)
+
+    ran = execute_job_spec(spec, cwd=job_work, bus=InMemoryLogBus())
+
+    assert ran.view()["ok"] is True and client.schedule_calls == 1
+
+
+def test_worker_once_may_name_a_binary_outside_the_current_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = _bundle(tmp_path / "project")
+    elsewhere = tmp_path / "app.apk"
+    elsewhere.write_bytes(b"APK")
+    provider, client, _transfer = _provider(_source_tree(tmp_path / "src"))
+
+    def register(*_a: Any, **_k: Any) -> list[str]:
+        bp.register("devicefarm", provider)
+        return ["devicefarm"]
+
+    monkeypatch.setattr(batch_bootstrap, "register_batch_providers", register)
+    worker_file = tmp_path / "w.yaml"
+    worker_file.write_text("version: 1\nenvironment: devicefarm\ndrivers: [adb]\n", "utf-8")
+    spec_file = tmp_path / "spec.json"
+    spec_file.write_text(json.dumps({"batch": asdict(_request(str(elsewhere)))}), "utf-8")
+    monkeypatch.chdir(project)
+
+    result = runner.invoke(
+        app, ["worker", "--once", str(spec_file), "--worker-config", str(worker_file)]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert client.schedule_calls == 1

@@ -13,7 +13,9 @@ from bajutsu.serve.server.worker_job import _with_worker_config
 
 
 def test_no_flag_leaves_every_run_on_the_default() -> None:
-    assert worker_mod._worker_config_or_exit(None) is None
+    path, cap = worker_mod._worker_file_or_exit(None)
+    assert path is None
+    assert cap.is_local
 
 
 def test_a_valid_file_is_resolved_to_an_absolute_path(
@@ -21,21 +23,21 @@ def test_a_valid_file_is_resolved_to_an_absolute_path(
 ) -> None:
     (tmp_path / "w.yaml").write_text("version: 1\ndrivers: [playwright]\n", encoding="utf-8")
     monkeypatch.chdir(tmp_path)
-    assert worker_mod._worker_config_or_exit(Path("w.yaml")) == tmp_path.resolve() / "w.yaml"
+    assert worker_mod._worker_file_or_exit(Path("w.yaml"))[0] == tmp_path.resolve() / "w.yaml"
 
 
 def test_an_invalid_file_stops_the_worker_before_it_leases(tmp_path: Path) -> None:
     path = tmp_path / "w.yaml"
     path.write_text("version: 1\ndrivers: [selenium]\n", encoding="utf-8")
     with pytest.raises(typer.BadParameter, match="unknown driver"):
-        worker_mod._worker_config_or_exit(path)
+        worker_mod._worker_file_or_exit(path)
 
 
-def test_a_device_cloud_file_is_refused_until_the_dispatch_lands(tmp_path: Path) -> None:
+def test_a_device_cloud_file_loads_with_its_environment(tmp_path: Path) -> None:
+    # The Device Farm dispatch runs on such a worker (BE-0448), so the file is no longer refused.
     path = tmp_path / "w.yaml"
     path.write_text("version: 1\nenvironment: devicefarm\ndrivers: [adb]\n", encoding="utf-8")
-    with pytest.raises(typer.BadParameter, match="environment 'devicefarm' is not supported"):
-        worker_mod._worker_config_or_exit(path)
+    assert worker_mod._worker_file_or_exit(path)[1].environment == "devicefarm"
 
 
 def test_the_flag_is_inserted_into_a_leased_run(tmp_path: Path) -> None:
@@ -182,8 +184,10 @@ def test_an_unrecognised_internal_run_argv_fails(tmp_path: Path) -> None:
         )
 
 
-def test_a_device_cloud_file_under_once_names_the_device_farm_item(tmp_path: Path) -> None:
-    path = tmp_path / "w.yaml"
-    path.write_text("version: 1\nenvironment: devicefarm\ndrivers: [adb]\n", encoding="utf-8")
-    with pytest.raises(typer.BadParameter, match="BE-0448"):
-        worker_mod._worker_config_or_exit(path, once=True)
+def test_a_device_cloud_worker_without_a_provider_stops_at_startup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Leasing jobs it could only fail is worse than not starting (BE-0448).
+    monkeypatch.delenv("DEVICEFARM_PROJECT_ARN", raising=False)
+    with pytest.raises(typer.BadParameter, match="registered no provider"):
+        worker_mod._register_environment_or_exit("devicefarm")

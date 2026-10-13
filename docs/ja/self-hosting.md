@@ -516,8 +516,8 @@ curl -X POST "$SERVER/api/run" -H "Authorization: Bearer $TOKEN" \
 - `appPath` を持たない target（web の target）に `binaryArtifact` を指定すると `400` を返します。
 - 単一プロセスの `serve` は、どちらのフィールドも拒否します。その構成では job がオペレータ自身の
   プロジェクトディレクトリで動くため、差し替えで上書きするわけにはいかないからです。
-- `POST /api/run-set` も、どちらのフィールドも拒否します。クラウドバッチのファンアウトは、serve と
-  worker を分けた構成ではまだ動かないためです。
+- `POST /api/run-set` も、どちらのフィールドも拒否します。クラウドバッチのファンアウトは Device Farm の
+  worker で動きますが、差し替えを Device Farm へのリクエストに対応づける作業はまだ済んでいないためです。
 
 リースは、指定された差し替えごとに presigned GET（`binary_url`、`scenarios_url`）を、リースした job の
 org の下で署名します。worker は各ダウンロードを sha256 で検証し、その job 専用のツリーを組み立てます。

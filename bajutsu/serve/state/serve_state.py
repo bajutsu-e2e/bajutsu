@@ -100,13 +100,6 @@ class ServeState:
     # repoint the binding's `cwd`. Runs off a Git/upload bind still land their tree here
     # (BE-0063/BE-0073).
     base_cwd: Path = field(init=False)
-    # Root the cloud-batch (Device Farm) test package is built from. Device Farm's
-    # APPIUM_PYTHON_TEST_PACKAGE validation needs Bajutsu's own `tests/` and `pyproject.toml` at the
-    # package root, and its test spec `pip install`s that root — so the package must be rooted at the
-    # Bajutsu source tree, not the config's own directory (`cwd`, which BE-0242 points at the config).
-    # serve() sets it to the source root when serving from a checkout; None falls back to `cwd` (the
-    # in-process test model, where the config, scenarios, and source all sit in one tmp tree).
-    devicefarm_package_root: Path | None = None
     # Policy for an uploaded bundle's launchServer command (and the latent mockServer.cmd, once it is
     # wired) (BE-0090): deny | reuse | sandbox. Default `sandbox` runs it in a throwaway container,
     # never on the serve host; it applies only to upload-sourced configs (a local/Git config is

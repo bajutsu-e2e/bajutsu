@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0448](BE-0448-devicefarm-worker-dispatch-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **承認済み** |
+| 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0448") |
+| 実装 PR | PR_PLACEHOLDER10（単位 1〜2 と単位 3 の一部） |
 | トピック | Device-cloud execution |
 <!-- /BE-METADATA -->
 
@@ -166,14 +167,50 @@ worker は、実行のツリーを一時ディレクトリにダウンロード�
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] worker でのプロバイダーの登録
-- [ ] ルーティング
+- [x] worker でのプロバイダーの登録
+- [x] ルーティング
 - [ ] パッケージの根とアプリの受け取り
 - [ ] 並行スロット
 - [ ] 宣言からの予算
 - [ ] HTTP 経由のチェックポイント
 - [ ] 結果の経路
 - [ ] テストとドキュメント
+
+ログ：
+
+- PR_PLACEHOLDER10（単位 1〜2 と単位 3 の一部）— `bajutsu worker` は、`worker.yaml` の `environment` が指す
+  プロバイダーを、`BAJUTSU_BATCH_HOOKS` のフックとともに登録します。登録した worker は
+  `environment:devicefarm` を広告します。登録できない worker は、理由を示して起動時に終了します。理由は、`DEVICEFARM_PROJECT_ARN`
+  の未設定、読み込めないフック、ソースのチェックアウトがないことのいずれかです。デバイスクラウドの
+  worker は `platform:*` を広告せず、明示した `--platform` を拒否します。このフラグのデフォルトは空になり、
+  ローカルの worker は引き続き空を `ios` として扱います。
+  worker の `--capabilities` と `$BAJUTSU_WORKER_CAPABILITIES` は、`environment:` のトークンを拒否します。
+  サーバは `register_batch_providers` を呼ばなくなり、`ServeState.devicefarm_package_root` を削除しました。
+  `--backend local` は、`run` に加えて `run-set` もキューに積みます。`run-set` を自分のプロセスで実行する
+  サーバは `400` を返します。ファンアウトのジョブが要求するのは `environment:<cloudBatch>` だけです。
+  `can_serve` には、`environment:*` を広告する worker はそのトークンを要求するジョブだけを扱うという
+  規則を加えました。lease、ルーティング不能の件数、worker 不在の通知が、同じ規則を適用します。
+  ファンアウトは、リクエストの設定ファイルとシナリオのパスを、設定ファイルのディレクトリ（ジョブの
+  バンドルディレクトリ）からの相対パスで組み立てます。materials として届くシナリオを受け付け、設定ファイルを
+  同梱します。`BatchRequest.app_path` は、フックのために名前を保ったまま、ターゲットの `appPath` を
+  書かれたとおりに運びます。プロバイダーは相対パスをバンドルディレクトリを基準に解決し、ファイルが
+  なければアップロードの前に失敗させます。ソースのルートを持つプロバイダーは、`pyproject.toml`、
+  `tests/`、`bajutsu/` と、`bundle/` の下のバンドルディレクトリから、ジョブごとのパッケージを組み立てます。
+  バイナリと過去の実行は含めず、どちらのツリーにも書き込みません。バンドルを持たないバッチのジョブには、
+  worker の `.batch/` の下に専用のワークスペースを与え、証跡をアップロードしたあとで削除します。
+  worker は、自分の環境に属さないジョブを、何も取得する前に拒否します。`devicefarm` のファイルを
+  指定した `bajutsu worker --once` は、バッチの仕様を 1 つ投入します。`appPath` はローカルで解決し、
+  ARN は保存せず、判定の行を表示します。単位 6 と 7 までのあいだも、ディスパッチは端から端まで動きます。
+  worker は既存の経路で実行を収めてアップロードし、`BAJUTSU_DATABASE_URL` を持つ worker は引き続き
+  ARN をチェックポイントに保存します。パッケージには、プロセス自身の状態のディレクトリ（`.bajutsu`、
+  worker の `.bundles`、`.overrides`、`.batch`）と、所有者やプロセスグループのファイルを含めません。
+  ファイルを同梱するジョブでは、`appPath` が `..` やシンボリックリンクを経てワークスペースの外を指すと
+  失敗します。ホストのディレクトリを指すジョブと `--once` は、ローカルの任意のパスを指定できます。
+  単位 3 には未完の点が 1 つ残ります。バイナリは、アップロードされたバンドルか設定ファイルの
+  ディレクトリに入っていれば worker に届きます。しかし、シナリオを materials で運ぶジョブのリースには
+  バイナリの presigned URL（BE-0413）が付かないので、相対パスの `appPath` はリモートの worker に
+  存在しません。単位 6 までは、`--once` への SIGINT は投入済みの Device Farm の実行を止めません。
+  HTTP だけでサーバに接続する worker は ARN を保存しないので、再リースしたジョブをもう一度投入します。
 
 ## 参考
 

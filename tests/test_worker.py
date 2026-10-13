@@ -354,7 +354,7 @@ def test_worker_advertises_capabilities_on_every_lease(
     monkeypatch.chdir(tmp_path)
     seen: dict[str, Any] = {}
 
-    def record_caps(platform: str, capabilities: str) -> list[str]:
+    def record_caps(platform: str, capabilities: str, _environment: str) -> list[str]:
         seen["platform"] = platform
         seen["capabilities"] = capabilities
         return ["beta", "platform:web"]

@@ -198,3 +198,47 @@ def test_worker_lease_op_rejects_a_malformed_capabilities_payload(
     # A non-list capabilities value must not crash the lease — it advertises nothing.
     payload, code = ops.worker_lease(state, "w", capabilities="not-a-list")
     assert code == 200 and payload["job_id"] == "plain"
+
+
+# --- the environment axis (BE-0448) -------------------------------------------------------------
+
+
+def test_a_device_farm_worker_leases_only_device_farm_jobs(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    repo = _repo(serve_engine)
+    # Older first: an unannotated job any plain worker could take, then a local iOS job.
+    repo.enqueue_job("plain", "o", {})
+    repo.enqueue_job("ios", "o", {}, capabilities=["platform:ios"])
+    repo.enqueue_job("batch", "o", {}, capabilities=["environment:devicefarm"])
+    # The Device Farm worker skips both local jobs, even the one requiring nothing.
+    leased = repo.lease_job("df", ["environment:devicefarm"])
+    assert leased is not None and leased.id == "batch"
+    assert repo.lease_job("df", ["environment:devicefarm"]) is None
+
+
+def test_a_plain_worker_never_leases_a_device_farm_job(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    repo = _repo(serve_engine)
+    repo.enqueue_job("batch", "o", {}, capabilities=["environment:devicefarm"])
+    assert repo.lease_job("mac", ["platform:ios", "platform:android", "platform:web"]) is None
+
+
+def test_unroutable_count_applies_the_environment_rule(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    repo = _repo(serve_engine)
+    repo.enqueue_job("plain", "o", {})
+    repo.enqueue_job("batch", "o", {}, capabilities=["environment:devicefarm"])
+    # Only a Device Farm worker is live: it cannot take the unannotated local job.
+    repo.register_worker("df", ["environment:devicefarm"])
+    assert repo.metrics_snapshot().unroutable_queued == 1
+    assert repo.lacks_live_worker("plain")
+    assert not repo.lacks_live_worker("batch")
+    # With only a plain worker live, the Device Farm job is the unroutable one.
+    repo2 = _repo(serve_engine)
+    repo2.enqueue_job("batch", "o", {}, capabilities=["environment:devicefarm"])
+    repo2.register_worker("mac", ["platform:ios"])
+    assert repo2.metrics_snapshot().unroutable_queued == 1
+    assert repo2.lacks_live_worker("batch")

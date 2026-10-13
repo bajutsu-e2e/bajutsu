@@ -31,13 +31,21 @@ import typer
 
 from bajutsu.common.backend_cli import simctl
 from bajutsu.common.backends import PLATFORMS
+from bajutsu.common.capability.worker_capability import LOCAL, WorkerCapability
 from bajutsu.common.evidence.redaction import LineCredentialMasker, Redactor
 from bajutsu.common.evidence.sink import RunArtifactWriter
 from bajutsu.common.handoff import REQUEST_LINE_PREFIX
 from bajutsu.common.run_meta.files import DEFAULT_RUNS_DIR
 from bajutsu.common.run_meta.object_store import content_type_for
 from bajutsu.serve import InMemoryLogBus
-from bajutsu.serve.capabilities import WORKER_CAPABILITIES_ENV, worker_capabilities
+from bajutsu.serve.capabilities import (
+    ENVIRONMENT_PREFIX,
+    WORKER_CAPABILITIES_ENV,
+    environment_capability,
+    parse_capabilities,
+    reserved_tokens,
+    worker_capabilities,
+)
 from bajutsu.serve.helpers import unsafe_env_name, valid_sha256, warn_unsafe_env_name
 from bajutsu.serve.jobs import _runs_dir_of
 from bajutsu.serve.operations.composition import materialize_composition, place_overrides
@@ -47,6 +55,7 @@ from bajutsu.serve.operations.worker import (
     WORKER_LOG_MAX_LINES,
 )
 from bajutsu.serve.server.db import cancelled_job_result
+from bajutsu.serve.server.one_shot import environment_refusal
 from bajutsu.serve.server.worker_job import CancelRelay as _CancelRelay
 from bajutsu.serve.server.worker_job import WorkerIO, _materialize, execute_job_spec
 from bajutsu.serve.state import Job
@@ -95,6 +104,12 @@ _BUNDLE_CACHE_DIR = ".bundles"
 # Where a job carrying per-job artifact overrides (BE-0431) gets a tree of its own, beside the bundle
 # cache rather than inside it, so a bundle's tree is still fetched once whatever overrides reuse it.
 _OVERRIDE_CACHE_DIR = ".overrides"
+# Where a cloud-batch job that ships no bundle gets a workspace of its own (BE-0448): the provider
+# packages that directory, so it must hold this job's config and scenarios and no other job's, nor
+# the bundle cache beside it. Removed once the job's evidence is uploaded.
+_BATCH_JOBS_DIR = ".batch"
+# A job id the worker turns into a directory name: one plain path segment.
+_SAFE_SEGMENT = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 
 # The parts a lease may sign for one bundle: the whole tree as a zip (a single-zip bind, BE-0073), or
 # one object per artifact kind (a composed triple, BE-0268). A name outside this set is a broken or
@@ -157,15 +172,37 @@ def _post_json(
             return e.code, raw.decode(errors="replace")
 
 
-def _advertised_capabilities(platform: str, capabilities: str) -> list[str]:
+def _advertised_capabilities(
+    platform: str, capabilities: str, environment: str = LOCAL
+) -> list[str]:
     """The sorted capability set this worker advertises (BE-0166).
 
     Combines its ``--platform`` axes, the operator override (``--capabilities`` or
     `WORKER_CAPABILITIES_ENV`), and, for an iOS worker, the installed Simulator inventory. The
     Simulator probe is gated on ``ios`` so a web-only worker (the Linux container) never shells out
     to an absent ``xcrun``.
+
+    A worker whose *environment* is a device cloud (BE-0448) drives no device of its own: it
+    advertises ``environment:<name>`` in place of any ``platform:*`` token, and refuses an explicit
+    ``--platform``. An empty *platform* means ``ios`` for a local worker. The ``environment:``
+    prefix is reserved for that token, so the override may not carry it.
     """
-    platforms = [p.strip() for p in platform.split(",") if p.strip()]
+    override = capabilities or os.environ.get(WORKER_CAPABILITIES_ENV)
+    if reserved := reserved_tokens(parse_capabilities(override)):
+        raise typer.BadParameter(
+            f"{', '.join(reserved)}: the {ENVIRONMENT_PREFIX} prefix is reserved for the provider a "
+            "worker registers from its worker.yaml environment",
+            param_hint="--capabilities",
+        )
+    if environment != LOCAL:
+        if platform:
+            raise typer.BadParameter(
+                f"a worker whose environment is '{environment}' drives no device of its own, so it "
+                "takes no --platform; the phone belongs to the provider's host",
+                param_hint="--platform",
+            )
+        return sorted({environment_capability(environment), *parse_capabilities(override)})
+    platforms = [p.strip() for p in (platform or "ios").split(",") if p.strip()]
     # Fail loudly on a typo'd platform (e.g. `--platform iso`) rather than silently advertising a
     # `platform:iso` token that matches no job — the worker would otherwise poll forever leasing
     # nothing (BE-0166, "determinism first"). Same known set config's `_check_platform` validates.
@@ -176,7 +213,7 @@ def _advertised_capabilities(platform: str, capabilities: str) -> list[str]:
     return sorted(
         worker_capabilities(
             platforms,
-            override=capabilities or os.environ.get(WORKER_CAPABILITIES_ENV),
+            override=override,
             run=simctl.real_run if "ios" in platforms else None,
         )
     )
@@ -199,11 +236,12 @@ def worker(
     ),
     worker_id: str = typer.Option("", "--worker-id", help="Worker identifier"),
     platform: str = typer.Option(
-        "ios",
+        "",
         "--platform",
         help="Comma-list of platforms this worker can drive (ios / web / android) — the backend "
-        "axis it advertises for capability routing (BE-0166). A Mac iOS worker is 'ios'; the "
-        "Playwright container is 'web'.",
+        "axis it advertises for capability routing (BE-0166). A Mac iOS worker is 'ios' (the "
+        "default); the Playwright container is 'web'. A worker whose worker.yaml environment is a "
+        "device cloud takes none (BE-0448).",
     ),
     capabilities: str = typer.Option(
         "",
@@ -245,8 +283,10 @@ def worker(
     posts the result to POST /api/worker/result. With `--once`, executes one job spec from a file
     instead and exits with its exit code.
     """
+    worker_file, capability = _worker_file_or_exit(worker_config)
     if once is not None:
-        raise typer.Exit(_run_once(once, _worker_config_or_exit(worker_config, once=True)))
+        _register_environment_or_exit(capability.environment)
+        raise typer.Exit(_run_once(once, worker_file, capability.environment))
     # Both drive sleeps/timeouts; a non-positive value would spin the poll or heartbeat loop hot.
     if poll_interval <= 0:
         raise typer.BadParameter("--poll-interval must be positive")
@@ -259,8 +299,9 @@ def worker(
     work, temporary = _workspace(workdir)
     # The capability set this worker advertises on every lease (BE-0166), computed once at startup
     # (the pool is assumed stable per worker).
-    caps = _advertised_capabilities(platform, capabilities)
-    worker_file = _worker_config_or_exit(worker_config)
+    caps = _advertised_capabilities(platform, capabilities, capability.environment)
+    # After the flags are checked, so a typo'd flag is reported before any AWS client is built.
+    _register_environment_or_exit(capability.environment)
 
     typer.echo(f"bajutsu worker → polling {url}  (Ctrl-C to stop)")
     typer.echo(f"  advertising capabilities: {', '.join(caps) or '(none)'}")
@@ -285,6 +326,7 @@ def worker(
                 worker_file=worker_file,
                 current=current,
                 stopped=lambda: signalled() is not None,
+                environment=capability.environment,
             )
             signum = signalled()
     finally:
@@ -307,6 +349,7 @@ def _serve_leases(
     worker_file: Path | None,
     current: _CurrentJob,
     stopped: Callable[[], bool],
+    environment: str = LOCAL,
 ) -> None:
     """Lease and run jobs until *stopped* answers True; the worker's poll loop."""
     while not stopped():
@@ -369,45 +412,70 @@ def _serve_leases(
                 streamer=streamer,
                 secret_env=_lease_secret_env(body),
                 cancel=relay,
+                environment=environment,
             )
         finally:
             current.detach()
-        if abandoned:
-            # The control plane reclaimed and likely re-leased this job to another worker; posting a
-            # result would race that worker, so drop it (the re-run is the source of truth).
-            typer.echo(f"  lease lost for job {job_id}; abandoning")
-            continue
-        if result is None:
-            # The bundle fetch hit a transient failure (a reset connection, an expired signature) —
-            # logged already, inside `_run_with_heartbeat`. Posting a failure here would turn one
-            # network blip into a red run for a scenario that never executed; leaving the lease to
-            # lapse instead gives the queue's own reclaim-and-retry a chance to hand the job to
-            # another attempt (directive 2: keep worker-side flakiness out of the verdict).
-            typer.echo(
-                f"  bundle fetch failed transiently for job {job_id}; leaving it to be re-leased"
-            )
-            continue
-
-        run_id = result.get("runId")
-        _post_result(url, job_id, wid, result, auth_token)
-
-        # Upload the run's evidence via presigned URLs the control plane signs (BE-0110): the worker
-        # holds no cloud credentials of its own. Runs *after* the result is posted — heartbeats stop
-        # once the run returns, so a slow upload must not delay the post and risk the lease being
-        # reclaimed. Best-effort and time-bounded: a failure or stall warns and never affects the run.
-        if run_id:
-            _upload_evidence(
-                job_work,
-                run_id,
+        try:
+            _finish_job(
                 url=url,
                 auth_token=auth_token,
-                evidence_prefix=str(spec.get("evidence_prefix") or ""),
+                wid=wid,
+                job_id=job_id,
+                spec=spec,
+                outcome=(result, abandoned, job_work),
             )
+        finally:
+            _discard_batch_workspace(work, job_work)
 
-        # Say which way it went: a run that died on its first line ("No module named bajutsu")
-        # otherwise looked exactly like a pass from this console.
-        outcome = "cancelled" if result.get("cancelled") else "ok" if result.get("ok") else "FAILED"
-        typer.echo(f"  completed job {job_id} ({outcome})")
+
+def _finish_job(
+    *,
+    url: str,
+    auth_token: str | None,
+    wid: str,
+    job_id: str,
+    spec: dict[str, Any],
+    outcome: tuple[dict[str, Any] | None, bool, Path],
+) -> None:
+    """Post a run job's result and upload its evidence, or say why neither happens."""
+    result, abandoned, job_work = outcome
+    if abandoned:
+        # The control plane reclaimed and likely re-leased this job to another worker; posting a
+        # result would race that worker, so drop it (the re-run is the source of truth).
+        typer.echo(f"  lease lost for job {job_id}; abandoning")
+        return
+    if result is None:
+        # The bundle fetch hit a transient failure (a reset connection, an expired signature) —
+        # logged already, inside `_run_with_heartbeat`. Posting a failure here would turn one
+        # network blip into a red run for a scenario that never executed; leaving the lease to
+        # lapse instead gives the queue's own reclaim-and-retry a chance to hand the job to
+        # another attempt (directive 2: keep worker-side flakiness out of the verdict).
+        typer.echo(
+            f"  bundle fetch failed transiently for job {job_id}; leaving it to be re-leased"
+        )
+        return
+
+    run_id = result.get("runId")
+    _post_result(url, job_id, wid, result, auth_token)
+
+    # Upload the run's evidence via presigned URLs the control plane signs (BE-0110): the worker
+    # holds no cloud credentials of its own. Runs *after* the result is posted — heartbeats stop
+    # once the run returns, so a slow upload must not delay the post and risk the lease being
+    # reclaimed. Best-effort and time-bounded: a failure or stall warns and never affects the run.
+    if run_id:
+        _upload_evidence(
+            job_work,
+            run_id,
+            url=url,
+            auth_token=auth_token,
+            evidence_prefix=str(spec.get("evidence_prefix") or ""),
+        )
+
+    # Say which way it went: a run that died on its first line ("No module named bajutsu")
+    # otherwise looked exactly like a pass from this console.
+    ending = "cancelled" if result.get("cancelled") else "ok" if result.get("ok") else "FAILED"
+    typer.echo(f"  completed job {job_id} ({ending})")
 
 
 # The prefix of a temporary workspace, and the file in it naming the process that owns it: a
@@ -567,13 +635,12 @@ class _CurrentJob:
             relay.kill()
 
 
-def _worker_config_or_exit(path: Path | None, *, once: bool = False) -> Path | None:
-    """Validate the worker capability file at startup and return its absolute path (BE-0450).
+def _worker_file_or_exit(path: Path | None) -> tuple[Path | None, WorkerCapability]:
+    """Validate the worker capability file at startup; its absolute path and contents (BE-0450).
 
     A bad file stops the worker before it leases anything, rather than failing every job it takes.
     The path is what each spawned `run` reads, so it is resolved once here, independent of the
     per-job working directory the run starts in. None (no flag) leaves every run on the default.
-    *once* words the device-cloud refusal for `--once`, whose Device Farm submission is BE-0448's.
     """
     from bajutsu.common.capability.worker_capability import (
         WorkerCapabilityError,
@@ -584,29 +651,42 @@ def _worker_config_or_exit(path: Path | None, *, once: bool = False) -> Path | N
         cap = load_worker_capability(path)
     except WorkerCapabilityError as e:
         raise typer.BadParameter(str(e), param_hint="--worker-config") from None
-    if not cap.is_local and once:
-        raise typer.BadParameter(
-            f"environment '{cap.environment}' is not supported by `bajutsu worker --once` yet; "
-            "submitting a Device Farm job without a server arrives with BE-0448. "
-            "Use `environment: local`",
-            param_hint="--worker-config",
-        )
-    if not cap.is_local:
-        # Leasing jobs for a device cloud is the Device Farm worker dispatch (BE-0448), which this
-        # worker does not do yet; refusing beats advertising local platforms for a cloud file.
-        raise typer.BadParameter(
-            f"environment '{cap.environment}' is not supported by `bajutsu worker` yet; "
-            "use `environment: local`",
-            param_hint="--worker-config",
-        )
-    return None if path is None else path.resolve()
+    return (None if path is None else path.resolve()), cap
 
 
-def _run_once(path: Path, worker_file: Path | None) -> int:
+def _register_environment_or_exit(environment: str) -> None:
+    """Register the batch provider a device-cloud worker's environment names, or stop (BE-0448).
+
+    The provider and its lifecycle hooks (BE-0435) live in the worker that submits, so the AWS role
+    is held here and never by the server. A worker that cannot register it would lease jobs only to
+    fail each one, so it exits at startup instead, with the reason. A `local` worker registers none.
+    """
+    if environment == LOCAL:
+        return
+    from bajutsu.serve.batch_bootstrap import register_batch_providers
+
+    try:
+        kinds = register_batch_providers()
+    except Exception as e:  # a missing extra, a bad hook path, a client that cannot be built
+        raise typer.BadParameter(
+            f"environment '{environment}': cannot register its provider: {e}",
+            param_hint="--worker-config",
+        ) from None
+    if environment not in kinds:
+        raise typer.BadParameter(
+            f"environment '{environment}' registered no provider: set DEVICEFARM_PROJECT_ARN "
+            "(and the AWS credentials) in this worker's environment",
+            param_hint="--worker-config",
+        )
+    typer.echo(f"  provider registered: {environment}")
+
+
+def _run_once(path: Path, worker_file: Path | None, environment: str = LOCAL) -> int:
     """Execute the one job spec in *path* without a server; the exit code for the caller (BE-0449).
 
     A spec that cannot run without a server is refused before anything runs, with exit 2 like any
-    other usage error, and so is any spec on Windows (see the body).
+    other usage error, and so is any spec on Windows (see the body). Under a device-cloud
+    *environment* the spec must be that provider's batch, submitted with no ARN stored (BE-0448).
     """
     from bajutsu.serve.server import one_shot
 
@@ -622,10 +702,10 @@ def _run_once(path: Path, worker_file: Path | None) -> int:
         spec = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as e:
         raise typer.BadParameter(f"cannot read the job spec: {e}", param_hint="--once") from None
-    if (reason := one_shot.refusal(spec, Path.cwd())) is not None:
+    if (reason := one_shot.refusal(spec, Path.cwd(), environment=environment)) is not None:
         raise typer.BadParameter(reason, param_hint="--once")
     try:
-        return one_shot.run_spec_once(spec, worker_config=worker_file)
+        return one_shot.run_spec_once(spec, worker_config=worker_file, environment=environment)
     except (
         ValueError
     ) as e:  # a spec the run could still not take, e.g. a run argv with no flag slot
@@ -836,6 +916,7 @@ def _run_with_heartbeat(
     log_flush_interval: float = DEFAULT_LOG_FLUSH_INTERVAL,
     secret_env: dict[str, str] | None = None,
     cancel: _CancelRelay | None = None,
+    environment: str = LOCAL,
 ) -> tuple[dict[str, Any] | None, bool, Path]:
     """Run the job on a background thread while heart-beating its lease from this one.
 
@@ -866,13 +947,17 @@ def _run_with_heartbeat(
 
     *secret_env* is the org's stored secrets from the lease (BE-0449); it reaches the job's child
     environment alone and is never logged. *cancel* is the relay a stop signal cancels the job
-    through, as the heartbeat's cancel does; a fresh one when the caller has none.
+    through, as the heartbeat's cancel does; a fresh one when the caller has none. A job that does
+    not belong to this worker's *environment* (BE-0448) fails before anything is fetched.
     """
     holder: dict[str, Any] = {"work": work}
     lost = threading.Event()
     cancel = cancel if cancel is not None else _CancelRelay()
 
     def _run() -> None:
+        if (reason := environment_refusal(spec, environment)) is not None:
+            holder["result"] = {"ok": False, "error": reason}
+            return
         try:
             job_work, failure = _workspace_or_failure(work, spec, bundle_urls, override_urls)
         except _TransientFetch as e:
@@ -1373,7 +1458,7 @@ def _bundle_workspace(work: Path, spec: dict[str, Any], bundle_urls: Any) -> Pat
     """
     bundle = spec.get("bundle")
     if not isinstance(bundle, dict):
-        return work
+        return _batch_workspace(work, spec) if spec.get("batch") else work
     bundle_id = bundle.get("id")
     if not valid_sha256(bundle_id):
         # Server-authored, so this is purely defensive — but the id becomes a directory name below,
@@ -1396,6 +1481,24 @@ def _bundle_workspace(work: Path, spec: dict[str, Any], bundle_urls: Any) -> Pat
     if config is None:
         raise RuntimeError(f"bundle {bundle_id} holds no bajutsu.config.yaml")
     return config.parent
+
+
+def _batch_workspace(work: Path, spec: dict[str, Any]) -> Path:
+    """A fresh directory of this cloud-batch job's own under *work* (see `_BATCH_JOBS_DIR`)."""
+    job_id = str(spec.get("job_id") or "")
+    if not _SAFE_SEGMENT.fullmatch(job_id):
+        raise RuntimeError(f"job carries an id that cannot name a directory: {job_id!r}")
+    tree = work / _BATCH_JOBS_DIR / job_id
+    # A re-leased job may find the tree of its earlier attempt; a stale material would ride along.
+    shutil.rmtree(tree, ignore_errors=True)
+    tree.mkdir(parents=True)
+    return tree
+
+
+def _discard_batch_workspace(work: Path, job_work: Path) -> None:
+    """Remove a cloud-batch job's own directory once its result and evidence are posted."""
+    if job_work.parent == work / _BATCH_JOBS_DIR:
+        shutil.rmtree(job_work, ignore_errors=True)
 
 
 def _expected_digest(bundle: dict[str, Any], name: str) -> str | None:

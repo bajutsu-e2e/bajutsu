@@ -25,6 +25,12 @@ from bajutsu.common.backend_cli import simctl as _simctl
 # free operator-declared token (`ios18`, `ipad`) can never collide with the platform axis.
 PLATFORM_PREFIX = "platform:"
 
+# The environment axis (BE-0448): a worker whose `worker.yaml` names a device cloud as its
+# `environment` advertises `environment:<name>`, and a cloud-batch job requires exactly that token.
+# Reserved: only a worker that registered the named provider may advertise it, so an operator's
+# free-form tokens can never pull a cloud job onto a worker that holds no provider.
+ENVIRONMENT_PREFIX = "environment:"
+
 # Operator override: extra capability tokens a worker advertises beyond its platform + Simulator
 # inventory (comma/space separated), e.g. `ios18,ipad`. The pinning escape hatch the design keeps.
 WORKER_CAPABILITIES_ENV = "BAJUTSU_WORKER_CAPABILITIES"
@@ -35,6 +41,16 @@ _SPLIT = re.compile(r"[,\s]+")
 def platform_capability(platform: str) -> str:
     """The backend-axis token for a platform, e.g. ``platform:ios``."""
     return f"{PLATFORM_PREFIX}{platform}"
+
+
+def environment_capability(environment: str) -> str:
+    """The environment-axis token for a device cloud, e.g. ``environment:devicefarm``."""
+    return f"{ENVIRONMENT_PREFIX}{environment}"
+
+
+def reserved_tokens(tokens: Iterable[str]) -> list[str]:
+    """The tokens among *tokens* that carry the reserved ``environment:`` prefix, sorted."""
+    return sorted(t for t in tokens if t.startswith(ENVIRONMENT_PREFIX))
 
 
 def parse_capabilities(raw: str | None) -> set[str]:
@@ -63,8 +79,14 @@ def can_serve(required: Iterable[str], advertised: Iterable[str]) -> bool:
 
     A subset test: the worker must advertise *every* token the job requires. A job with no declared
     requirement (the empty set) is servable by any worker, so an un-annotated job routes as before.
+    One rule narrows it (BE-0448): a worker advertising an ``environment:*`` token serves only jobs
+    that require that token, since the empty set would otherwise hand it every local job.
     """
-    return set(required) <= set(advertised)
+    needed, offered = set(required), set(advertised)
+    environments = {t for t in offered if t.startswith(ENVIRONMENT_PREFIX)}
+    if environments and not environments & needed:
+        return False
+    return needed <= offered
 
 
 def worker_capabilities(

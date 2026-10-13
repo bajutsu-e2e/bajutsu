@@ -168,8 +168,9 @@ def job_spec(job: Job) -> dict[str, Any]:
         # org's provider/model/effort without the worker holding any provider settings of its own.
         "env_overlay": dict(job.env_overlay),
         # The cloud-batch request (BE-0336 Unit 5), so a batch job dispatched through the DB queue is
-        # reconstructed as a batch run on the worker instead of degrading to a local subprocess. None
-        # for a normal (local-subprocess) job.
+        # reconstructed as a batch run on the worker instead of degrading to a local subprocess. Its
+        # paths are relative to the job's bundle directory and its app is a logical reference, so
+        # the spec names nothing on the server's host (BE-0448). None for a normal job.
         "batch": _batch_spec(job.batch),
         # The per-job artifact overrides (BE-0431): the worker places each named artifact into this
         # job's own workspace before running. None for a job naming none.
@@ -411,9 +412,10 @@ def execute_job_spec(
     job = Job(
         id=str(spec["job_id"]),  # keep the control plane's id so logs/results line up
         cmd=(
-            _with_worker_config(_local_interpreter(list(spec["cmd"])), worker_config)
+            # A cloud-batch spec spawns nothing, so a one-shot one may leave `cmd` out (BE-0448).
+            _with_worker_config(_local_interpreter(list(spec.get("cmd") or [])), worker_config)
             if apply_worker_config
-            else _local_interpreter(list(spec["cmd"]))
+            else _local_interpreter(list(spec.get("cmd") or []))
         ),
         udids=list(spec.get("udids") or []),
         app_path=spec.get("app_path"),

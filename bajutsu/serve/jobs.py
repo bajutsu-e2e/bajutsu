@@ -830,7 +830,8 @@ def _run_job(state: ServeState, job: Job, *, inherit_stdio: bool = False) -> Non
     if job.batch is not None:
         # A cloud-batch job runs its scenario on a remote reserved device, not a local subprocess
         # (BE-0336). No device to boot, no app to build here — the provider packages and submits.
-        _run_batch_job(state, job)
+        _run_batch_job(state, job, one_shot=inherit_stdio)
+        _echo_lines(job, inherit_stdio)
         return
     if not (_boot_devices(state, job) and _build_app(state, job)):
         return
@@ -1025,22 +1026,26 @@ def _batch_checkpoint(state: ServeState, job_id: str) -> _RepositoryBatchCheckpo
     return _RepositoryBatchCheckpoint(repo, job_id)
 
 
-def _run_batch_job(state: ServeState, job: Job) -> None:
+def _run_batch_job(state: ServeState, job: Job, *, one_shot: bool = False) -> None:
     """Run a cloud-batch job (BE-0336): submit its one scenario to the named batch provider, land the
-    downloaded run under ``runs_dir`` so serve records and renders it like a local run, and set the
+    downloaded run under ``runs_dir`` so it is recorded and rendered like a local run, and set the
     job's verdict from the run's own manifest — no local device, no subprocess, off the verdict path.
 
-    Note: cloud-batch dispatch currently works only through the in-process serve path. The DB-queue
-    worker path (``bajutsu/serve/server/worker_job.py``) builds its own ``ServeState`` without
-    ``devicefarm_package_root``, so it falls back to the ephemeral workspace — a directory that holds
-    only the scenario and config, not Bajutsu's ``tests/`` or ``pyproject.toml``. Any cloud-batch job
-    leased from the DB queue will fail Device Farm's ``APPIUM_PYTHON_TEST_PACKAGE`` validation until
-    the worker's ``ServeState`` is wired with the package root and a host-portable app artifact path.
+    Only a worker whose environment registered the provider gets here (BE-0448): the server registers
+    none. The job's bundle directory — the directory it names on this machine (``job.cwd``), else the
+    workspace its materials or bundle were placed in — is what the request's paths are relative to.
+    A job that shipped its files must name a binary inside that workspace; a job that names a
+    directory on this machine, or a *one_shot* job, may name any path here.
     """
     request = job.batch
     if (
         request is None
     ):  # _run_job routes here only when batch is set; the guard keeps intent + mypy honest
+        return
+    bundle_dir = job.cwd or state.binding.cwd
+    confined = job.cwd is None and not one_shot
+    if confined and (reason := _app_outside(request.app_path, bundle_dir)) is not None:
+        _fail_batch(job, reason)
         return
     # Lazy import: only a cloud-batch job needs the batch seam (and its provider's optional deps), so
     # the default serve path never pulls it in.
@@ -1056,9 +1061,8 @@ def _run_batch_job(state: ServeState, job: Job) -> None:
         try:
             verdict = provider.submit(
                 request,
-                # Same package root start_run_set relativized the config/scenario paths against (see
-                # ServeState.devicefarm_package_root), falling back to the job's own cwd then state.binding.cwd.
-                work_dir=state.devicefarm_package_root or job.cwd or state.binding.cwd,
+                # The bundle directory start_run_set made the config and scenario paths relative to.
+                work_dir=bundle_dir,
                 dest=Path(download_name),
                 checkpoint=_batch_checkpoint(state, job.id),
                 job_id=job.id,
@@ -1096,6 +1100,34 @@ def _run_batch_job(state: ServeState, job: Job) -> None:
         # scenarios failed — otherwise it sees "FAIL" but never the `failed scenarios:` detail.
         for line in lines:
             job.bus.publish(job.id, line)
+
+
+def _app_outside(app_path: str, bundle_dir: Path) -> str | None:
+    """Why *app_path* may not be uploaded from a job's shipped workspace, or None when it may.
+
+    The path comes from a spec the server queued, so on a worker it must not reach a file outside
+    the workspace the job shipped, by an absolute path, `..`, or a symbolic link (BE-0448): the
+    worker would otherwise upload a file of its own host to Device Farm.
+    """
+    app = Path(app_path)
+    resolved = (app if app.is_absolute() else bundle_dir / app).resolve()
+    if resolved.is_relative_to(bundle_dir.resolve()):
+        return None
+    return f"cloud-batch application {app_path!r} is outside this job's bundle ({bundle_dir})"
+
+
+def _echo_lines(job: Job, inherit_stdio: bool) -> None:
+    """Write a one-shot batch's lines to standard output, when it is one (BE-0448).
+
+    It has no console to stream to, so its verdict lines go where a one-shot run prints its PASS or
+    FAIL line. A served batch streams them on its bus instead, so nothing is written for it.
+    """
+    if not inherit_stdio:
+        return
+    with job.lock:
+        lines = list(job.lines)
+    sys.stdout.write("".join(f"{line}\n" for line in lines))
+    sys.stdout.flush()
 
 
 def _fail_batch(job: Job, message: str) -> None:
