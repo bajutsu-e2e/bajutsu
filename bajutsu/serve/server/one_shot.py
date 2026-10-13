@@ -276,19 +276,23 @@ def exit_code(job: Job, signum: int | None) -> int:
 
 
 class _Child(Protocol):
-    """What the signal handlers need of the job's child: `CancelRelay` provides it."""
+    """What the signal handlers need of the job's child: `CancelRelay` provides it.
+
+    The bodies raise rather than fall through: an implementation that inherits this instead of
+    overriding a method would otherwise get a `pgid()` of None and signal nothing at all.
+    """
 
     def request(self) -> None:
         """Cancel the job, gracefully for `run` (BE-0370)."""
-        ...
+        raise NotImplementedError
 
     def pgid(self) -> int | None:
         """The child's process group, or None before it exists."""
-        ...
+        raise NotImplementedError
 
     def kill(self) -> None:
         """End the child's group at once."""
-        ...
+        raise NotImplementedError
 
 
 class _SignalRelay:
