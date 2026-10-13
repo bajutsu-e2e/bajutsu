@@ -20,7 +20,13 @@ target_metadata = Base.metadata
 
 
 def _url() -> str:
-    url = os.environ.get("BAJUTSU_DATABASE_URL") or config.get_main_option("sqlalchemy.url")
+    # A URL handed in by `upgrade_to_head` (the default SQLite of a local start, BE-0449) names the
+    # one database to migrate, so it outranks the environment the operator's database comes from.
+    url = (
+        config.attributes.get("url")
+        or os.environ.get("BAJUTSU_DATABASE_URL")
+        or config.get_main_option("sqlalchemy.url")
+    )
     if not url:
         raise RuntimeError("BAJUTSU_DATABASE_URL is required to run the migrations")
     return url
