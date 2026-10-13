@@ -2803,7 +2803,9 @@ def run(ctx: typer.Context, **params: Any) -> None:
 
     given = {name: value for name, value in params.items() if _from_command_line(ctx, name)}
     spec = local_run_spec(option_args("run", given))
-    raise typer.Exit(run_spec_once(spec, worker_config=None, apply_worker_config=False))
+    raise typer.Exit(
+        run_spec_once(spec, worker_config=None, apply_worker_config=False, keep_caller_path=True)
+    )
 
 
 def _from_command_line(ctx: typer.Context, name: str) -> bool:

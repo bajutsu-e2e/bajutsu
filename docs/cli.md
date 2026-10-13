@@ -46,7 +46,7 @@ next safe boundary and still writes its manifest and report
 ([BE-0370](../roadmaps/BE-0370-graceful-run-cancel/BE-0370-graceful-run-cancel.md)). A signal
 that the caller already ignores stays ignored, as SIGHUP does under `nohup`.
 
-The session of its own changes three more things at the terminal:
+Running the child in its own session changes three more things at the terminal:
 
 - **Ctrl-C twice.** The first Ctrl-C asks the run to stop, which can take up to the grace window
   (90 seconds by default, `BAJUTSU_CANCEL_GRACE`) when a driver call is in flight. Press Ctrl-C again
@@ -1246,8 +1246,9 @@ differences:
 
 `--once` refuses some specs before it runs anything, and exits 2:
 
-- a spec that names an uploaded bundle or artifact overrides, since those arrive by signed URL and
-  a one-shot job has no server to sign one
+- a spec that names an uploaded bundle or artifact overrides, or asks for visual baselines
+  (`materialize_baselines`), since those arrive by signed URL and a one-shot job has no server to
+  sign one; point `--baselines` at a directory on disk instead
 - a Device Farm batch spec
 - a `--worker-config` whose `environment` is not `local`
 - a `udids` that is not a list of strings, or `materials` that do not map paths to strings

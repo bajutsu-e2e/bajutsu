@@ -1,8 +1,9 @@
 """Derive serve's launch argv from the CLI's own option metadata (BE-0134).
 
-serve spawns ``python -m bajutsu run/record/crawl …`` for its launch requests. Rather than
-re-listing each flag's spelling and on/off form by hand — a second definition that drifts from the
-CLI as flags are added or changed — render every flag from the single source of truth: the
+serve spawns ``python -m bajutsu.run.internal …`` (the body of ``bajutsu run``) and
+``python -m bajutsu record/crawl …`` for its launch requests. Rather than re-listing each flag's
+spelling and on/off form by hand — a second definition that drifts from the CLI as flags are added
+or changed — render every flag from the single source of truth: the
 ``typer`` command's own ``click`` parameters. Adding a flag to the CLI command makes it renderable
 here with no second edit, and a flag that was renamed/removed on the CLI is caught (``flag_args``
 raises on a name it can't find).

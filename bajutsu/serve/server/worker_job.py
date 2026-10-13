@@ -301,6 +301,7 @@ def execute_job_spec(
     before_upload: Callable[[Job], None] | None = None,
     one_shot: bool = False,
     apply_worker_config: bool = True,
+    keep_caller_path: bool = False,
 ) -> Job:
     """Worker entrypoint: rebuild the job from *spec*, run the unchanged `run_job`, then upload its
     run tree through the control plane's presigned URLs.
@@ -322,7 +323,9 @@ def execute_job_spec(
     child inherits this process's standard streams, and no repository is read from the
     environment, so the run is recorded nowhere but in its own run tree. *apply_worker_config* False
     leaves the argv's own `--worker-config` as the caller typed it, for the public `bajutsu run`,
-    whose run reads the file and reports a bad one in the caller's own words."""
+    whose run reads the file and reports a bad one in the caller's own words. *keep_caller_path*
+    spawns the run on the caller's own `PATH`, also for the public `bajutsu run` alone; every other
+    job, `worker --once` included, puts this interpreter's bin dir first as a leased job does."""
     # The subprocess runs with cwd=work and writes runs/<id>/ relative to it, so runs_dir must be
     # work/runs — otherwise state.artifacts would be confined to an unrelated process-CWD runs/.
     work = cwd or Path.cwd()
@@ -374,6 +377,7 @@ def execute_job_spec(
         # batch seam here rather than degrading to a local subprocess. None for a normal job.
         batch=_batch_from_spec(spec.get("batch")),
         provenance=_provenance_from_spec(spec.get("provenance")),
+        keep_caller_path=keep_caller_path,
     )
     # Bind the job's ids so every operational record on this worker correlates to it (BE-0055);
     # `run_id` is the run's own id, minted by `run_job`, so it binds only once the run has started.

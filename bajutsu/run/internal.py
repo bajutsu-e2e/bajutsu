@@ -20,8 +20,7 @@ import threading
 
 import typer
 
-from bajutsu.cli.dotenv import load_dotenv
-from bajutsu.common import diagnostics
+from bajutsu import cli as _cli
 from bajutsu.run import PARENT_FD_ENV
 from bajutsu.run.cli import run_body
 
@@ -70,10 +69,9 @@ def _watch_parent() -> None:
 
 
 def main() -> None:
-    """Load `.env` and logging as the `bajutsu` app's own callback does, then run the body."""
+    """Run the `bajutsu` app's shared setup (`bajutsu.cli.bootstrap`), then the body."""
     _watch_parent()
-    load_dotenv()
-    diagnostics.configure()
+    _cli.bootstrap(configure_logging=True)
     build_app()(prog_name=PROG_NAME)
 
 

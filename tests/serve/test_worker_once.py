@@ -42,6 +42,7 @@ _INTERNAL = [sys.executable, "-m", INTERNAL_MODULE]
         ([], "JSON object"),
         ({"cmd": ["x"], "bundle": {"id": "a" * 64}}, "uploaded bundle"),
         ({"cmd": ["x"], "overrides": {"binary": "b"}}, "artifact overrides"),
+        ({"cmd": ["x"], "materialize_baselines": True}, "visual baselines"),
         ({"batch": {"provider": "devicefarm"}}, "BE-0448"),
         ({"cmd": []}, "non-empty list"),
         ({"cmd": ["x", 1]}, "non-empty list"),
@@ -94,7 +95,16 @@ def test_worker_once_refuses_a_clashing_material(
 
 def test_a_plain_spec_is_accepted() -> None:
     assert (
-        one_shot.refusal({"cmd": ["x"], "bundle": None, "overrides": None, "batch": None}) is None
+        one_shot.refusal(
+            {
+                "cmd": ["x"],
+                "bundle": None,
+                "overrides": None,
+                "batch": None,
+                "materialize_baselines": False,
+            }
+        )
+        is None
     )
 
 
@@ -254,8 +264,9 @@ def test_an_inherited_run_takes_its_run_id_from_the_tree(tmp_path: Path) -> None
     assert calls[0]["env"][PARENT_FD_ENV] == str(fd)
 
 
-def test_an_inherited_run_keeps_the_callers_path(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize(("keep", "expected"), [(True, "/only/this"), (False, None)])
+def test_only_a_job_that_keeps_the_callers_path_skips_the_bin_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, keep: bool, expected: str | None
 ) -> None:
     monkeypatch.setenv("PATH", "/only/this")
     envs: list[dict[str, str]] = []
@@ -265,9 +276,35 @@ def test_an_inherited_run_keeps_the_callers_path(
         return _TreeProc(None, 0)
 
     state = srv.ServeState(runs_dir=tmp_path / "runs", cwd=tmp_path, popen=popen)
-    srv.run_job(state, srv.Job(cmd=["echo"], graceful_cancel=True), inherit_stdio=True)
-    assert envs[0]["PATH"] == "/only/this"
+    job = srv.Job(cmd=["echo"], graceful_cancel=True, keep_caller_path=keep)
+    srv.run_job(state, job, inherit_stdio=True)
+    bindir = str(Path(sys.executable).parent)
+    assert envs[0]["PATH"] == (expected or bindir + os.pathsep + "/only/this")
     assert GRACE_ENV in envs[0]
+
+
+@pytest.mark.parametrize(("keep", "bindir_first"), [(True, False), (False, True)])
+def test_run_spec_once_puts_the_bin_dir_first_unless_the_wrapper_keeps_the_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, keep: bool, bindir_first: bool
+) -> None:
+    # `worker --once` (keep False) resolves `idb` as a leased worker does; the public `bajutsu run`
+    # (keep True) keeps the caller's shell PATH.
+    monkeypatch.setenv("PATH", "/only/this")
+    envs: list[dict[str, str]] = []
+
+    def popen(cmd: list[str], **kw: Any) -> _TreeProc:
+        envs.append(kw["env"])
+        return _TreeProc(None, 0)
+
+    one_shot.run_spec_once(
+        {"cmd": ["echo"]},
+        worker_config=None,
+        keep_caller_path=keep,
+        cwd=tmp_path,
+        popen=popen,
+    )
+    bindir = str(Path(sys.executable).parent)
+    assert envs[0]["PATH"].startswith(bindir + os.pathsep) is bindir_first
 
 
 def test_an_inherited_job_that_is_not_a_run_has_no_run_id(tmp_path: Path) -> None:
@@ -663,6 +700,38 @@ def test_a_failing_spawn_closes_both_pipe_ends(tmp_path: Path) -> None:
             os.fstat(fd)
 
 
+def test_the_internal_run_calls_the_apps_shared_bootstrap(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Every `bajutsu run` executes in the internal module rather than under the app's callback, so
+    # the module calls the same `bootstrap`: a setup step added there reaches the run by construction.
+    from bajutsu.run import internal
+
+    calls: list[bool] = []
+    monkeypatch.setattr(
+        "bajutsu.cli.bootstrap", lambda *, configure_logging: calls.append(configure_logging)
+    )
+    monkeypatch.setattr(internal, "build_app", lambda: lambda **kw: None)
+    internal.main()
+    assert calls == [True]
+
+
+@pytest.mark.parametrize(("sub", "logging_on"), [("serve", False), ("lint", True)])
+def test_the_app_callback_skips_logging_for_serve_alone(
+    monkeypatch: pytest.MonkeyPatch, sub: str, logging_on: bool
+) -> None:
+    import bajutsu.cli as cli_pkg
+    from bajutsu.common import diagnostics
+
+    seen: list[bool] = []
+    monkeypatch.setattr("bajutsu.cli.load_dotenv", lambda: None)
+    monkeypatch.setattr(diagnostics, "configure", lambda: seen.append(True))
+
+    class _Ctx:
+        invoked_subcommand = sub
+
+    cli_pkg._bootstrap(_Ctx())  # type: ignore[arg-type]
+    assert seen == ([True] if logging_on else [])
+
+
 @pytest.mark.parametrize("raw", ["not-a-number", "999999"])
 def test_the_run_ignores_a_parent_fd_it_cannot_watch(
     raw: str, monkeypatch: pytest.MonkeyPatch
@@ -723,9 +792,10 @@ def test_the_wrapper_passes_on_only_the_flag_the_caller_typed(
 ) -> None:
     captured: dict[str, Any] = {}
     monkeypatch.setattr(
-        one_shot, "run_spec_once", lambda spec, **kw: captured.update(spec=spec) or 0
+        one_shot, "run_spec_once", lambda spec, **kw: captured.update(spec=spec, kw=kw) or 0
     )
     monkeypatch.setenv("BAJUTSU_EVIDENCE_STORE", "s3://bucket/prefix")
     result = runner.invoke(app, ["run", "--target", "demo"])
     assert result.exit_code == 0, result.output
     assert captured["spec"]["cmd"] == [*_INTERNAL, "--target=demo"]
+    assert captured["kw"]["keep_caller_path"] is True

@@ -78,6 +78,10 @@ class Job:
     # Written and cleared with `proc` at every site that touches it, so `proc is None` always implies
     # False here rather than a stale value the reader has to reason is harmless.
     proc_graceful: bool = False
+    # Whether the spawn keeps the caller's own `PATH` instead of putting this interpreter's bin dir
+    # first (BE-0449). Only the public `bajutsu run` sets it: that run lives in the caller's shell, as
+    # it always has. A leased job and `worker --once` leave it False, so both resolve `idb` alike.
+    keep_caller_path: bool = False
     lines: list[str] = field(default_factory=list)
     lock: threading.Lock = field(default_factory=threading.Lock)
     bus: LogBus | None = None  # live-log channel; set from state.logbus at creation (BE-0015)

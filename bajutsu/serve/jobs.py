@@ -47,7 +47,7 @@ logger = logging.getLogger(__name__)
 _RUN_ID_RE = re.compile(r"runs/([0-9A-Za-z._-]+)/manifest\.json")
 
 
-def _spawn_env(job: Job, *, prepend_bindir: bool = True) -> dict[str, str]:
+def _spawn_env(job: Job) -> dict[str, str]:
     """The child env for a spawned run/record: the venv bin dir (where the ``idb`` client lives) on
     PATH, plus *job*'s per-org AI provider overlay (BE-0229).
 
@@ -60,15 +60,15 @@ def _spawn_env(job: Job, *, prepend_bindir: bool = True) -> dict[str, str]:
     then replaced, rather than letting a stale launch-env value leak through; an empty overlay (no
     selection) leaves the inherited env untouched, preserving the zero-config path (BE-0101).
 
-    `prepend_bindir` is False for a one-shot run (BE-0449): it runs in the caller's own shell
-    environment, as `bajutsu run` always has, so a `launchServer` command or a device tool resolves
-    on the caller's `PATH` exactly as before the wrapper existed."""
+    A job with `keep_caller_path` (the public `bajutsu run`, BE-0449) skips the bin dir: that run
+    lives in the caller's own shell environment, as it always has, so a `launchServer` command or a
+    device tool resolves on the caller's `PATH` exactly as before the wrapper existed."""
     e = dict(os.environ)
     if job.env_overlay:
         for var in PROVIDER_MANAGED_ENV:
             e.pop(var, None)
         e.update(job.env_overlay)
-    if prepend_bindir:
+    if not job.keep_caller_path:
         bindir = str(Path(sys.executable).parent)
         e["PATH"] = bindir + os.pathsep + e.get("PATH", "")
     if job.graceful_cancel:
@@ -819,7 +819,7 @@ def _run_inherited(state: ServeState, job: Job) -> None:
     before = _run_dir_names(runs)
     alive_r, alive_w = os.pipe() if is_run else (None, None)
     try:
-        env = _spawn_env(job, prepend_bindir=False)
+        env = _spawn_env(job)
         extra: dict[str, Any] = {}
         if alive_r is not None:
             env[PARENT_FD_ENV] = str(alive_r)

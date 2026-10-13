@@ -3,12 +3,13 @@
 A Tier-1 convenience (authoring / operation), **never part of the CI gate**.  Two top-level
 tabs over the CLI: **Record** authors a scenario from a natural-language goal (``python -m
 bajutsu record …``), streaming the agent's turn-by-turn progress and writing the result under
-the scenarios dir; **Replay** runs a scenario (``python -m bajutsu run …``) and shows its
-self-contained ``report.html``.  Each request spawns the CLI on a background thread, streams
-its output, and the produced ``runs/<id>/`` tree is served so the report's relative asset
-links resolve.  The default transport is stdlib-only — the same ``ThreadingHTTPServer`` approach
-as the network collector ([[network]]); ``--asgi`` instead serves the same UI/API as a FastAPI app
-over uvicorn (the ``server`` extra), the transport the hosted backend uses (BE-0015).
+the scenarios dir; **Replay** runs a scenario (``python -m bajutsu.run.internal …``, the body
+of ``bajutsu run``) and shows its self-contained ``report.html``.  Each request spawns the CLI on
+a background thread, streams its output, and the produced ``runs/<id>/`` tree is served so the
+report's relative asset links resolve.  The default transport is stdlib-only — the same
+``ThreadingHTTPServer`` approach as the network collector ([[network]]); ``--asgi`` instead serves
+the same UI/API as a FastAPI app over uvicorn (the ``server`` extra), the transport the hosted
+backend uses (BE-0015).
 
 Split into submodules:
 

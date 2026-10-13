@@ -305,7 +305,7 @@ def _child_of(pid: int, deadline: float) -> int:
         if out.stdout.split():
             return int(out.stdout.split()[0])
         time.sleep(0.05)
-    pytest.fail(f"process {pid} never started a child")
+    raise AssertionError(f"process {pid} never started a child")
 
 
 def _alive(pid: int) -> bool:

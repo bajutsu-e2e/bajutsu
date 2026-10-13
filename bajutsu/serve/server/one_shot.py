@@ -45,7 +45,8 @@ class LocalWorkerIO:
     """The `WorkerIO` of a one-shot job: every operation is local, so each is a no-op.
 
     A leased job reaches object storage through URLs the server signs (BE-0160). A one-shot job has
-    no server: the baselines its `--baselines` names are already on disk, the run tree stays where
+    no server: the baselines its `--baselines` names are already on disk (`refusal` turns away a
+    spec that asks for them to be fetched), the run tree stays where
     the run wrote it, and a `record` job's authored scenario is already at its `--out` path.
     """
 
@@ -62,11 +63,12 @@ class LocalWorkerIO:
 def refusal(spec: Any, work: Path | None = None) -> str | None:
     """Why *spec* cannot run as a one-shot job in workspace *work*, or None when it can.
 
-    Checked before anything runs. An uploaded bundle and artifact overrides arrive only by signed
-    URL, which a one-shot job has none of; a Device Farm batch needs a device-cloud worker, which
-    BE-0448 adds. The materials a server ships are written into the workspace, which for a one-shot
-    job is the caller's own directory, so a material that would overwrite a different file there is
-    refused rather than written over it; *work* None skips that check.
+    Checked before anything runs. An uploaded bundle, artifact overrides, and visual baselines
+    arrive only by signed URL, which a one-shot job has none of; a Device Farm batch needs a
+    device-cloud worker, which BE-0448 adds. The materials a server ships are written into the
+    workspace, which for a one-shot job is the caller's own directory, so a material that would
+    overwrite a different file there is refused rather than written over it; *work* None skips that
+    check.
     """
     if not isinstance(spec, dict):
         return "a job spec must be a JSON object"
@@ -79,6 +81,11 @@ def refusal(spec: Any, work: Path | None = None) -> str | None:
         return (
             "the spec names artifact overrides, which a worker fetches by signed URL; a one-shot "
             "run has no server to sign one — place the artifacts in the workspace instead"
+        )
+    if spec.get("materialize_baselines"):
+        return (
+            "the spec asks for visual baselines, which a worker fetches by signed URL; a one-shot "
+            "run has no server to sign one — point `--baselines` at a directory on disk instead"
         )
     if spec.get("batch") is not None:
         return (
@@ -167,6 +174,7 @@ def run_spec_once(
     *,
     worker_config: Path | None,
     apply_worker_config: bool = True,
+    keep_caller_path: bool = False,
     cwd: Path | None = None,
     popen: Any = subprocess.Popen,
 ) -> int:
@@ -178,6 +186,8 @@ def run_spec_once(
             for the shipped default.
         apply_worker_config: False leaves the spec's own `--worker-config` as written, for the
             public `bajutsu run`, which passes the caller's flag through untouched.
+        keep_caller_path: True spawns the run on the caller's own `PATH`, for the public `bajutsu
+            run` alone; `worker --once` leaves it False so its run resolves tools as a leased one.
         cwd: The workspace the job runs in; the current directory when None.
         popen: The process factory, injectable for tests.
 
@@ -194,6 +204,7 @@ def run_spec_once(
             io=LocalWorkerIO(),
             worker_config=worker_config,
             apply_worker_config=apply_worker_config,
+            keep_caller_path=keep_caller_path,
             on_job=relay.bind,
             one_shot=True,
         )
