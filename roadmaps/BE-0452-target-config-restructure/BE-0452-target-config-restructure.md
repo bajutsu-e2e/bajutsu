@@ -7,9 +7,9 @@
 |---|---|
 | Proposal | [BE-0452](BE-0452-target-config-restructure.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0452") |
-| Implementing PR | — |
+| Implementing PR | [#PR_PLACEHOLDER17](https://github.com/bajutsu-e2e/bajutsu/pull/PR_PLACEHOLDER17) (Units 1–3) |
 | Topic | Driver & backend architecture |
 | Related | [BE-0126](../BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config.md), [BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact.md), [BE-0228](../BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation.md), [BE-0076](../BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md), [BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks.md), [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md), [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch.md), [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md), [BE-0447](../BE-0447-install-app-step/BE-0447-install-app-step.md), [BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md) |
 <!-- /BE-METADATA -->
@@ -167,7 +167,7 @@ for that target, as today.
 | `app` | `id`, `path`, `build`, `reinstall`, `launch.env`, `launch.args`, `launch.deeplink` | `id`, `path`, `build`, `reinstall`, `launch.env`, `launch.deeplink`, `grantPermissions` | `url`, `launch.env` |
 | `app`, iOS, Android, and web | `startWhen`, `idNamespaces` | same | same |
 | `runsOn` | `model`, `os`, `kind`, `locale`, `seedPhotos` | `avd`, `apiLevel` | `browser.engine`, `browser.version`, `emulate` |
-| `driver` | `runner.testRunner`, `runner.build` | `nativeZ` | `headless` |
+| `driver` | `runner.testRunner`, `runner.build`, `runner.hostAddress` | `nativeZ` | `headless` |
 | `run`, extra fields | `tipKitHandling` | — | — |
 
 Every placement follows a reader found in today's code. Android reads `launchEnv` as intent extras
@@ -243,11 +243,12 @@ the scenario's value replaces the target's. Both keys go away:
   combination goes away.
 - Each prelude file is rewritten once as a component file, since the two formats differ. A prelude
   that uses `group:`, `setMocks`, or data-row placeholders cannot become a target-hook component;
-  each scenario that needs it calls it with `use:` in its own `setup`. Unit 2 finds these preludes.
+  each scenario that needs it calls it with `use:` in its own `setup`. Unit 2 found no prelude
+  outside the test fixtures. The log names those fixtures.
 - The prelude's reference base changes. Today a target's `setup:` resolves against each scenario
   file's directory, so one reference can name different preludes in different directories; the
-  component path resolves against the config file. Unit 2 finds such targets, and each affected
-  scenario calls its own prelude with `use:` instead.
+  component path resolves against the config file. Each scenario of such a target calls its own
+  prelude with `use:` instead. Unit 2 found no such target in the tree.
 - The prelude's place in the order changes. Today it splices onto `steps`, so it runs after the
   scenario's `before`. As a component appended last to the target's `setup`, after the target's
   former `before` steps, it runs before the scenario's `setup`. A scenario's own prelude, converted
@@ -402,7 +403,7 @@ matches an `avd`.
 | iOS `runsOn.os` | the Simulator's runtime label, parsed by `DeviceOS` | version range |
 | iOS `runsOn.model` | the simctl device-type name of the udid | exact |
 | Android `runsOn.apiLevel` | `ro.build.version.sdk` | version range on an integer |
-| Android `runsOn.avd` | the emulator's Android Virtual Device (AVD) name | exact; a physical device never matches |
+| Android `runsOn.avd` | the emulator's Android Virtual Device (AVD) name, from `ro.boot.qemu.avd_name`, else `ro.kernel.qemu.avd_name` | exact; a physical device never matches |
 | Web `runsOn.browser.version` | Playwright's `browser.version` | version range |
 
 Matching covers devices the invocation drives on its own host. A target whose `runsOn.kind` is
@@ -642,7 +643,7 @@ OS a matched run sees. A replacement that cannot keep the type and runtime fails
 | `device` | `runsOn.model`; the meaning changes from a hint for a replacement Simulator to a condition every run must meet |
 | `locale`, `xcuitest.deviceType` | `runsOn.locale`, `runsOn.kind` |
 | `browser`, `deviceMode` | `runsOn.browser.engine`, `runsOn.emulate` (omitted means desktop) |
-| `headless`, `nativeZ`, `xcuitest.testRunner`, `xcuitest.build` | `driver.headless`, `driver.nativeZ`, `driver.runner.*` |
+| `headless`, `nativeZ`, `xcuitest.testRunner`, `xcuitest.build`, `xcuitest.hostAddress` | `driver.headless`, `driver.nativeZ`, `driver.runner.*` |
 | `launchServer`, `mockServer`, `mailbox` | `services.server`, `services.mockServer`, `services.mailbox` |
 | `deviceProvider`, `cloudBatch`, `cloudBatchBudget`, `requires` | removed from the target (see *Where a run happens*) |
 | `erase`, `network`, `visualCompare`, `secrets`, `systemAlertHandling`, `iosTipKitHandling` | `run.*` (the last as `run.tipKitHandling`) |
@@ -792,7 +793,8 @@ batch provider that packages `launchEnv`, `common/report/rows.py`, `templates/se
    `launchEnv`, the `analysis/impact` deeplink reads, and code generation.
 8. **Reading devices.** Read the model and OS (iOS), the API level and AVD name (Android), and the
    browser version (web) from each available device, and reject conditions for `kind: device` and
-   remote environments.
+   remote environments. Before relying on the AVD name, verify the read on a real emulator at each
+   supported API level. Unit 2 could not, so this check stays open.
 9. **Runs and outcomes.** Form runs from lists and ranges, combine them across a multi-target
    scenario's targets and device groups, and assign each run from its eligible set. Fail a run with
    no device, record not applicable for an open range, and exit 1 when no run executed. Store each
@@ -857,9 +859,9 @@ batch provider that packages `launchEnv`, `common/report/rows.py`, `templates/se
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1: `VersionSpec`
-- [ ] Unit 2: confirm the open facts
-- [ ] Unit 3: platform registry and models
+- [x] Unit 1: `VersionSpec`
+- [x] Unit 2: confirm the open facts
+- [x] Unit 3: platform registry and models
 - [ ] Unit 4: schema switch-over, fixtures, and `demos/` configs
 - [ ] Unit 5: setup and cleanup
 - [ ] Unit 6: command-line flags
@@ -873,7 +875,38 @@ batch provider that packages `launchEnv`, `common/report/rows.py`, `templates/se
 
 ### Log
 
-- No entries yet.
+- [#PR_PLACEHOLDER17](https://github.com/bajutsu-e2e/bajutsu/pull/PR_PLACEHOLDER17) (Units 1–3) — the
+  first three units land. No existing config changes behavior.
+  - `VersionSpec` in `bajutsu/common/devices/version.py` implements npm's range grammar in-house.
+    Adopting a package would have added a dependency for one small parser. Its tests pin the
+    desugaring examples of the node-semver README. npm ignores build metadata, and so does
+    `VersionSpec`; a prerelease tag fails at load. `majors()` lists the majors that the bounded sides
+    of a union cover. An open side adds none, because the pool decides its majors.
+  - The registry sits in `bajutsu/common/config/schema/platform/`, one module per platform.
+    `validate_group` checks one group against its platform's model. On an unknown key, its message
+    lists the fields the block accepts, for a nested block too. The loader does not call it yet;
+    unit 4 wires it into `TargetConfig`. A test pins the registry's keys to `backends.PLATFORMS`.
+  - Unit 2 found no prelude in the tree outside the tests. No config or scenario sets one.
+    Test fixtures in eight files use one: `tests/test_config.py`, `tests/test_run_lanes.py`,
+    `tests/test_inline_components.py`, `tests/test_components.py`, and `tests/test_impact.py`,
+    plus `test_loading.py`, `test_primary_target.py`, and `test_target_groups.py` under
+    `tests/scenario/`. `DESIGN.md`, `docs/configuration.md`, and `docs/dsl-grammar.md` describe the
+    prelude. Since no tracked config sets a target's `setup:`, no reference resolves to different
+    files from different scenario directories.
+  - Unit 2 also checked the AVD name. Nothing in the repository reads it yet, and Android CI boots
+    API level 34 alone. This unit had no emulator to read. The emulator passes the name on its
+    kernel command line. Images from API level 31 expose it as `ro.boot.qemu.avd_name`. Older
+    images expose it as `ro.kernel.qemu.avd_name`. That split rests on known emulator
+    behavior, not a device read, so we rate it medium. Unit 8 should read both
+    properties, and fail when an emulator reports neither. An `avd` condition then never misses
+    without a message. The read stays an open item. Unit 8 must verify it on a real emulator at each
+    supported API level.
+    For a local emulator, `adb emu avd name` asks the emulator console as a
+    further fallback.
+  - Two departures from the design text. The design predates `xcuitest.hostAddress`. That key
+    moves to `driver.runner.hostAddress` with the rest of the runner block. Both tables now list it.
+    The web engine list `WEB_ENGINES` moves beside the web model. Today's loader imports it from
+    there.
 
 ## References
 
