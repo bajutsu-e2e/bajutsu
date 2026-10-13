@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0448") |
-| Implementing PR | [#2184](https://github.com/bajutsu-e2e/bajutsu/pull/2184) (Units 1–2 and part of 3), PR_PLACEHOLDER11 (Units 3, 6–7) |
+| Implementing PR | [#2184](https://github.com/bajutsu-e2e/bajutsu/pull/2184) (Units 1–2 and part of 3), [#2185](https://github.com/bajutsu-e2e/bajutsu/pull/2185) (Units 3, 6–7) |
 | Topic | Device-cloud execution |
 <!-- /BE-METADATA -->
 
@@ -230,7 +230,7 @@ Log:
   lease (BE-0413), so its relative `appPath` is missing on a remote worker. Until unit 6, a
   SIGINT to `--once` does not stop a scheduled Device Farm run. A worker that reaches the server
   over HTTP alone stores no ARN, so a job it re-leases submits again.
-- PR_PLACEHOLDER11 (Units 3, 6–7) — This change closes the three gaps of the #2184 entry. First, a
+- [#2185](https://github.com/bajutsu-e2e/bajutsu/pull/2185) (Units 3, 6–7) — This change closes the three gaps of the #2184 entry. First, a
   fan-out whose scenarios travel as materials delivers its binary without a bundle. At
   dispatch the server stores the file that `appPath` names as a binary artifact. Its key is the
   file's Secure Hash Algorithm 256 (SHA-256) digest. The job names that digest as `batch_app`, and

@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0448") |
-| 実装 PR | [#2184](https://github.com/bajutsu-e2e/bajutsu/pull/2184)（単位 1〜2 と単位 3 の一部）、PR_PLACEHOLDER11（単位 3、6〜7） |
+| 実装 PR | [#2184](https://github.com/bajutsu-e2e/bajutsu/pull/2184)（単位 1〜2 と単位 3 の一部）、[#2185](https://github.com/bajutsu-e2e/bajutsu/pull/2185)（単位 3、6〜7） |
 | トピック | Device-cloud execution |
 <!-- /BE-METADATA -->
 
@@ -211,7 +211,7 @@ worker は、実行のツリーを一時ディレクトリにダウンロード�
   バイナリの presigned URL（BE-0413）が付かないので、相対パスの `appPath` はリモートの worker に
   存在しません。単位 6 までは、`--once` への SIGINT は投入済みの Device Farm の実行を止めません。
   HTTP だけでサーバに接続する worker は ARN を保存しないので、再リースしたジョブをもう一度投入します。
-- PR_PLACEHOLDER11（単位 3、6〜7）— #2184 の項目が記録した 3 つの未完の点を解消しました。1 つ目に、
+- [#2185](https://github.com/bajutsu-e2e/bajutsu/pull/2185)（単位 3、6〜7）— #2184 の項目が記録した 3 つの未完の点を解消しました。1 つ目に、
   シナリオを materials で運び、アップロードされたバンドルを持たない fan-out でも、バイナリが届くように
   なりました。サーバはディスパッチの時点で、`appPath` が指すファイルをバイナリのアーティファクトとして
   保存します。キーは Secure Hash Algorithm 256（SHA-256）のダイジェストです。ジョブはそのダイジェストを
