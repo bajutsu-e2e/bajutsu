@@ -26,6 +26,8 @@ from __future__ import annotations
 import errno
 import json
 import logging
+import os
+import stat
 from collections.abc import AsyncIterator, Callable
 from typing import Any
 
@@ -39,6 +41,7 @@ from fastapi.responses import (
     StreamingResponse,
 )
 from starlette.requests import ClientDisconnect
+from starlette.types import Receive, Scope, Send
 
 from bajutsu.common.run_meta.object_store import content_type_for
 from bajutsu.serve import gate, oplog
@@ -212,6 +215,25 @@ async def _receive_store_body(
     return None
 
 
+class _StoreFileResponse(FileResponse):
+    """A `FileResponse` that answers 404, not a 500, when the object vanished after the route found
+    it (a concurrent purge). The stat it takes here is the one Starlette would take, so range
+    support is unchanged; a delete landing after the headers are sent still ends that read."""
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if self.stat_result is None:
+            try:
+                st = await run_in_threadpool(os.stat, self.path)
+            except FileNotFoundError:
+                st = None
+            if st is None or not stat.S_ISREG(st.st_mode):
+                await _result(({"error": "not found"}, 404))(scope, receive, send)
+                return
+            self.stat_result = st
+            self.set_stat_headers(st)
+        await super().__call__(scope, receive, send)
+
+
 def _begin_put_error(e: OSError) -> tuple[dict[str, Any], int]:
     # A key component that is an existing file, or a name too long for the filesystem: the key
     # conflicts with what the store holds. No path in the message.
@@ -236,7 +258,7 @@ def _register_store_routes(app: FastAPI, store: FileObjectStore) -> None:
             found = False
         if not found:
             return _result(({"error": "not found"}, 404))
-        return FileResponse(
+        return _StoreFileResponse(
             path,
             media_type=content_type_for(key),
             headers={

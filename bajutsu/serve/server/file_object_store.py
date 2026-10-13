@@ -35,6 +35,17 @@ _FILE_MODE = 0o600
 _STAGING_PREFIX = ".bajutsu-put-"
 
 
+def _canonical(key: str) -> bool:
+    # A filesystem path collapses ``a//b``, ``a/./b``, ``./a/b`` and ``a/b/`` onto ``a/b``, while a
+    # bucket keeps them distinct; only the one spelling `list_keys` returns is a key here, so a URL
+    # signed for one spelling can never overwrite the object another names. A segment under the
+    # staging prefix is reserved too: `list_keys` hides those names, so an object there could never
+    # be listed, archived, or purged.
+    return all(
+        seg not in ("", ".") and not seg.startswith(_STAGING_PREFIX) for seg in key.split("/")
+    )
+
+
 class UrlSigner:
     """Signs and verifies the store's URLs with HMAC-SHA256 over the method, the object key, the
     content type, and the expiry."""
@@ -133,10 +144,11 @@ class FileObjectStore:
         """The file *key* names, confined to the store root.
 
         Raises:
-            ValueError: *key* is not a safe relative key, or resolves (through ``..`` or a symlink)
-                outside the root or onto the root itself.
+            ValueError: *key* is not a safe relative key, is not in canonical form (see
+                `_canonical`), or resolves (through ``..`` or a symlink) outside the root or onto
+                the root itself.
         """
-        if not valid_relative_key(key):
+        if not valid_relative_key(key) or not _canonical(key):
             raise ValueError(f"invalid object key: {key!r}")
         resolved = (self._root / key).resolve()
         if resolved == self._root or not resolved.is_relative_to(self._root):

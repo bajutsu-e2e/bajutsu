@@ -192,6 +192,43 @@ def test_artifact_store_over_the_file_store_misses_a_backslash_traversal(tmp_pat
     assert artifacts.open_bytes(rel) is None
 
 
+@pytest.mark.parametrize(
+    "key", ["a//b", "a/./b", "./a/b", "a/b/", "a/.bajutsu-put-x", ".bajutsu-put-x/b"]
+)
+def test_store_refuses_non_canonical_and_reserved_keys(tmp_path: Path, key: str) -> None:
+    store = _store(tmp_path)
+    store.put_bytes("a/b", b"original")
+    with pytest.raises(ValueError, match="invalid object key"):
+        store.put_bytes(key, b"x")
+    with pytest.raises(ValueError, match="invalid object key"):
+        store.presigned_put_url(key)
+    with pytest.raises(ValueError, match="invalid object key"):
+        store.presigned_url(key)
+    assert store.exists(key) is False
+    assert store.get_bytes(key) is None
+    store.delete_key(key)
+    assert store.get_bytes("a/b") == b"original"
+
+
+def test_a_put_signed_for_another_spelling_cannot_overwrite_the_object(tmp_path: Path) -> None:
+    client, store = _client(tmp_path)
+    store.put_bytes("a/b", b"original")
+    # Even a correctly signed URL for `a//b` is refused: the spelling itself is not a key.
+    expires, sig = store.signer.sign("PUT", "a//b", "text/plain", 60)
+    url = f"{gate.SIGNED_STORE_PREFIX}a//b?expires={expires}&sig={sig}&ct=text%2Fplain"
+    resp = client.put(url, content=b"evil", headers={"Content-Type": "text/plain"})
+    assert resp.status_code in (400, 403, 404)
+    assert store.get_bytes("a/b") == b"original"
+
+
+def test_an_object_under_the_staging_prefix_cannot_be_written_to_hide(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    with pytest.raises(ValueError, match="invalid object key"):
+        store.put_bytes("run/.bajutsu-put-log", b"x")
+    assert store.list_keys("run/") == []
+    assert not (store.root / "run" / ".bajutsu-put-log").exists()
+
+
 def test_store_refuses_an_unsafe_list_prefix(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="invalid object key prefix"):
         _store(tmp_path).list_keys("../")
@@ -494,6 +531,32 @@ def test_list_keys_skips_an_entry_removed_during_the_walk(
 
     monkeypatch.setattr(os, "lstat", _lstat)
     assert store.list_keys("a/") == ["a/kept"]
+
+
+def test_signed_get_of_an_object_purged_after_the_probe_is_404(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, store = _client(tmp_path)
+    store.put_bytes("r/f.txt", b"x")
+    real_is_file = Path.is_file
+
+    def _is_file_then_purge(self: Path) -> bool:
+        found = real_is_file(self)
+        if self.name == "f.txt":
+            self.unlink()  # a concurrent purge lands between the route's probe and the send
+        return found
+
+    monkeypatch.setattr(Path, "is_file", _is_file_then_purge)
+    resp = client.get(_rel(store.presigned_url("r/f.txt")))
+    assert resp.status_code == 404
+
+
+def test_signed_get_still_serves_a_range(tmp_path: Path) -> None:
+    client, store = _client(tmp_path)
+    store.put_bytes("r/f.txt", b"0123456789")
+    resp = client.get(_rel(store.presigned_url("r/f.txt")), headers={"Range": "bytes=2-4"})
+    assert resp.status_code == 206
+    assert resp.content == b"234"
 
 
 def test_get_of_a_name_too_long_for_the_filesystem_is_404(tmp_path: Path) -> None:
