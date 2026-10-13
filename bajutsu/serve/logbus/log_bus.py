@@ -12,6 +12,9 @@ class LogBus(Protocol):
     def publish(self, job_id: str, line: str) -> None:
         """Append one log *line* to *job_id*'s channel."""
 
+    def publish_many(self, job_id: str, lines: list[str]) -> None:
+        """Append *lines* to *job_id*'s channel in order, as one write where the store allows."""
+
     def close(self, job_id: str, final: str | None = None) -> None:
         """Signal that no more lines will be published for *job_id* (the job finished), optionally
         recording its terminal status payload (a JSON view) for `final` to return."""

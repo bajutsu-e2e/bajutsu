@@ -485,6 +485,7 @@ ROUTES: tuple[Route, ...] = (
             state, ctx.body().get("worker_id", ""), ctx.body().get("job_id", "")
         ),
     ),
+    Route("POST", "/api/worker/log", lambda state, ctx: ops.worker_log(state, ctx.body())),
     Route("POST", "/api/worker/result", lambda state, ctx: ops.worker_result(state, ctx.body())),
     Route(
         "POST",

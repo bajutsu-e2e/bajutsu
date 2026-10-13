@@ -40,7 +40,7 @@ from bajutsu.serve.commands import (
     run_command,
     triage_command,
 )
-from bajutsu.serve.executor import LocalExecutor, RunExecutor
+from bajutsu.serve.executor import LocalExecutor, RoutingExecutor, RunExecutor
 from bajutsu.serve.handler import make_server
 from bajutsu.serve.helpers import (
     _scenario_path,
@@ -64,7 +64,7 @@ from bajutsu.serve.helpers import (
 )
 from bajutsu.serve.jobs import cancel_job, index_run_trees, run_job
 from bajutsu.serve.launchagent import launchagent_plist
-from bajutsu.serve.logbus import InMemoryLogBus, LogBus
+from bajutsu.serve.logbus import InMemoryLogBus, LiveLineBudget, LogBus
 from bajutsu.serve.oidc import GITHUB_ACTIONS, PROVIDERS, OidcConfig
 from bajutsu.serve.operations.config import (
     restore_org_binding,
@@ -82,6 +82,7 @@ from bajutsu.serve.scenarios import (
 from bajutsu.serve.secrets import SecretStore
 from bajutsu.serve.sessions import InMemorySessionStore
 from bajutsu.serve.state import (
+    JOB_KINDS,
     Job,
     Popen,
     ProviderSettingsManager,
@@ -91,11 +92,13 @@ from bajutsu.serve.state import (
 )
 
 __all__ = [
+    "JOB_KINDS",
     "SERVE_BACKENDS",
     "Artifact",
     "ArtifactStore",
     "InMemoryLogBus",
     "Job",
+    "LiveLineBudget",
     "LocalArtifactStore",
     "LocalExecutor",
     "LocalScenarioScope",
@@ -103,6 +106,7 @@ __all__ = [
     "LogBus",
     "MissingServerExtra",
     "Popen",
+    "RoutingExecutor",
     "RunExecutor",
     "ScenarioScope",
     "ScenarioStore",
@@ -407,8 +411,8 @@ def _build_server_state(  # noqa: C901
     )
     from bajutsu.serve.server.oauth import GitHubOAuthClient
     from bajutsu.serve.server.object_store import artifact_prefix, org_prefix
-    from bajutsu.serve.server.post_completion_logbus import PostCompletionLogBus
     from bajutsu.serve.server.provider_store import DbProviderSettingsStore
+    from bajutsu.serve.server.queue_logbus import QueueLogBus, live_log_bus_from_env
     from bajutsu.serve.server.scenarios import (
         LocalTreeScenarioStorage,
         ObjectScenarioStorage,
@@ -605,10 +609,19 @@ def _build_server_state(  # noqa: C901
         # the file browser (BE-0108) and refuses the device takeover (BE-0185); a local start keeps
         # both.
         hosted=hosted,
-        executor=DbQueueExecutor(repo) if repo is not None else LocalExecutor(),
+        # With a queue, every job kind goes to the workers today; the routing executor is the seam
+        # that moves kinds one at a time as the server stops running jobs itself (BE-0449).
+        executor=(
+            RoutingExecutor(DbQueueExecutor(repo), LocalExecutor(), queued_kinds=JOB_KINDS)
+            if repo is not None
+            else LocalExecutor()
+        ),
+        # Workers post their log lines while a queued job runs, so the bus accepts writes (in
+        # memory, or Redis across replicas) and falls back to the uploaded console.log (BE-0449).
         logbus=(
-            PostCompletionLogBus(
+            QueueLogBus(
                 repo,
+                live_log_bus_from_env(),
                 artifacts_fn=lambda org: ObjectStorageArtifactStore(
                     store, prefix=artifact_prefix(org_prefix(prefix, org))
                 ),

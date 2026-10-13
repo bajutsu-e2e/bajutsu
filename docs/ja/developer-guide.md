@@ -1005,6 +1005,8 @@ Bedrock を、`claude_code.py` が Claude Code のコマンドラインインタ
 アプリケーション（`server/app.py`）が同じ経路表を配れます。`executor.py` は `RunExecutor` という
 接続面を宣言します。ローカル配置とホスティング配置が分かれるのはここだけです。`LocalExecutor` は
 各ジョブをデーモンスレッドで走らせ、`DbQueueExecutor` は遠隔の `bajutsu worker` 向けに積みます。
+ジョブの種類は、サーバーから worker へ 1 つずつ移します（BE-0449）。その移行の間は、
+`RoutingExecutor` が `Job.kind` を読み、種類ごとに 2 つの executor のどちらかを選びます。
 実行の本体である `jobs.py` は、どちらの側でも同じです。
 
 **`mcp/`** は `run` と `doctor` を Model Context Protocol（MCP）のツールとして、run の証跡を MCP の

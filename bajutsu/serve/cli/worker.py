@@ -10,6 +10,7 @@ the control plane signs, so the worker needs only an HTTP client.
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
 import logging
@@ -20,6 +21,7 @@ import subprocess
 import tempfile
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated, Any
 from urllib.error import HTTPError, URLError
@@ -29,8 +31,9 @@ import typer
 
 from bajutsu.common.backend_cli import simctl
 from bajutsu.common.backends import PLATFORMS
-from bajutsu.common.evidence.redaction import Redactor
+from bajutsu.common.evidence.redaction import LineCredentialMasker, Redactor
 from bajutsu.common.evidence.sink import RunArtifactWriter
+from bajutsu.common.handoff import REQUEST_LINE_PREFIX
 from bajutsu.common.run_meta.files import DEFAULT_RUNS_DIR
 from bajutsu.common.run_meta.object_store import content_type_for
 from bajutsu.serve import InMemoryLogBus
@@ -38,6 +41,7 @@ from bajutsu.serve.capabilities import WORKER_CAPABILITIES_ENV, worker_capabilit
 from bajutsu.serve.helpers import valid_sha256
 from bajutsu.serve.jobs import cancel_job
 from bajutsu.serve.operations.composition import materialize_composition, place_overrides
+from bajutsu.serve.operations.worker import WORKER_LOG_MAX_LINE_CHARS, WORKER_LOG_MAX_LINES
 from bajutsu.serve.server.db import cancelled_job_result
 from bajutsu.serve.server.worker_job import WorkerIO, _materialize, execute_job_spec
 from bajutsu.serve.state import Job
@@ -49,6 +53,26 @@ _logger = logging.getLogger("bajutsu.worker")
 # Heartbeat well under the control plane's default lease timeout (DEFAULT_LEASE_TIMEOUT_SECONDS) so
 # a legitimately long run is never mistaken for a dead worker and reclaimed (BE-0016).
 DEFAULT_HEARTBEAT_INTERVAL = 30.0
+
+# How often a leased job's new log lines are posted to the control plane (BE-0449): short enough
+# that the browser's console reads as live, long enough that a chatty run sends a batch, not a
+# request per line.
+DEFAULT_LOG_FLUSH_INTERVAL = 1.0
+
+# Per-request timeout for one log batch, so a stalled control plane delays the live console and
+# never the job; the final flush before the result post waits at most this long per batch.
+_LOG_POST_TIMEOUT = 10.0
+
+# The most time the last flush after a job may spend, so a slow control plane delays the result
+# post by seconds rather than by one timeout per pending batch.
+_LOG_FINAL_FLUSH_BUDGET = 5.0
+
+# Lines that may wait to post before the oldest are dropped, so a run that prints faster than the
+# control plane accepts cannot grow the worker's memory without bound. Twenty full batches.
+_LOG_MAX_PENDING = 10_000
+
+# Statuses that mean the control plane predates the log route, so no later post can succeed.
+_LOG_ROUTE_ABSENT = frozenset({401, 404, 405})
 
 # Per-request timeout for the presigned upload/download paths (BE-0110/BE-0160), so a stalled
 # connection can't hang the worker on a single file (evidence upload runs after heartbeats stop).
@@ -252,7 +276,8 @@ def worker(
             worker_id=wid,
             baseline_urls=body.get("baseline_urls"),
         )
-        bus = InMemoryLogBus()
+        streamer = _LogStreamer(functools.partial(_post_log, url, wid, job_id, auth_token))
+        bus = _TeeLogBus(streamer.add)
         result, abandoned, job_work = _run_with_heartbeat(
             spec,
             job_id=job_id,
@@ -266,6 +291,7 @@ def worker(
             heartbeat_interval=heartbeat_interval,
             io=io,
             worker_config=worker_file,
+            streamer=streamer,
         )
         if abandoned:
             # The control plane reclaimed and likely re-leased this job to another worker; posting a
@@ -284,9 +310,6 @@ def worker(
             continue
 
         run_id = result.get("runId")
-        if run_id:
-            _write_console_log(job_work, run_id, bus, job_id)
-
         _post_result(url, job_id, wid, result, auth_token)
 
         # Upload the run's evidence via presigned URLs the control plane signs (BE-0110): the worker
@@ -371,6 +394,165 @@ class _CancelRelay:
             cancel_job(job)
 
 
+class _LogStreamer:
+    """Posts a leased job's log lines to the control plane in batches while it runs (BE-0449).
+
+    Best-effort by design: the uploaded ``console.log`` is the durable copy, so a batch that fails
+    to post is logged and dropped, never retried into a growing backlog, and nothing here can fail
+    or hold up the job. A 409 means the lease is gone, as on the heartbeat: `lost` turns True and
+    no further line is sent. A control plane older than the log route (404 / 405, or 401 from a
+    gate that does not know it) turns the streamer off for the rest of the job. *post* sends one
+    batch and returns the HTTP status, or None when the request did not complete. *clock* bounds
+    the final flush and is injectable for tests.
+    """
+
+    def __init__(
+        self,
+        post: Callable[[list[str]], int | None],
+        *,
+        clock: Callable[[], float] = time.monotonic,
+        max_pending: int = _LOG_MAX_PENDING,
+    ) -> None:
+        self._post = post
+        self._clock = clock
+        self._max_pending = max_pending
+        # One masker for the whole job, so a private key block spanning two lines (or two batches)
+        # stays masked to its END line.
+        self._masker = LineCredentialMasker()
+        self._lock = threading.Lock()  # guards `_pending`, `_dropped`, and the masker
+        # Held for a whole flush, so the timed flusher and the final flush never interleave
+        # batches and the server receives lines in the order the run printed them.
+        self._flushing = threading.Lock()
+        self._pending: list[str] = []
+        self._dropped = 0  # lines discarded because the control plane fell behind
+        self._lost = threading.Event()
+        self._disabled = threading.Event()
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    @property
+    def lost(self) -> bool:
+        """Whether the log route answered 409: the lease is no longer this worker's."""
+        return self._lost.is_set()
+
+    @property
+    def dropped(self) -> int:
+        """How many lines were discarded because more than the pending cap waited to post."""
+        with self._lock:
+            return self._dropped
+
+    def add(self, line: str) -> None:
+        """Queue one line for the next flush, masked and cut to the server's line length."""
+        if self._lost.is_set() or self._disabled.is_set():
+            return
+        with self._lock:
+            self._pending.append(self._masker.mask(line)[:WORKER_LOG_MAX_LINE_CHARS])
+            overflow = len(self._pending) - self._max_pending
+            if overflow > 0:
+                # Keep the newest lines: a live console is about what the run does now.
+                del self._pending[:overflow]
+                self._dropped += overflow
+
+    def flush(self, *, deadline: float | None = None) -> None:
+        """Post every queued line, in batches the server accepts, until *deadline* on the clock."""
+        with self._flushing:
+            with self._lock:
+                batch, self._pending = self._pending, []
+            for start in range(0, len(batch), WORKER_LOG_MAX_LINES):
+                if self._lost.is_set() or self._disabled.is_set():
+                    return
+                if deadline is None and self._stop.is_set():
+                    # A background flush yields to `stop`: the rest goes back to the front of the
+                    # queue for the final flush, which posts it within its own budget, so `stop`
+                    # never waits on a long backlog here.
+                    with self._lock:
+                        self._pending[:0] = batch[start:]
+                    return
+                if deadline is not None and self._clock() >= deadline:
+                    _logger.warning(
+                        "log flush ran out of time; dropping %d lines", len(batch) - start
+                    )
+                    return
+                code = self._post(batch[start : start + WORKER_LOG_MAX_LINES])
+                if code == 409:
+                    self._lost.set()
+                    return
+                if code in _LOG_ROUTE_ABSENT:
+                    _logger.warning(
+                        "the control plane has no worker log route (HTTP %s); "
+                        "streaming the live log is off for this job",
+                        code,
+                    )
+                    self._disabled.set()
+                    return
+                if code is None:
+                    return  # the control plane is unreachable; drop the rest of this batch
+
+    def start(self, interval: float) -> None:
+        """Flush every *interval* seconds on a background thread until `stop`."""
+        self._thread = threading.Thread(target=self._run, args=(interval,), daemon=True)
+        self._thread.start()
+
+    def stop(self, *, flush: bool, budget: float = _LOG_FINAL_FLUSH_BUDGET) -> None:
+        """End the background flushes, then post what is still queued when *flush* is True,
+        spending at most *budget* seconds on it."""
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join()
+        if flush:
+            self.flush(deadline=self._clock() + budget)
+        if self.dropped:
+            _logger.warning("the live log dropped %d lines it could not post in time", self.dropped)
+
+    def _run(self, interval: float) -> None:
+        while not self._stop.wait(interval):
+            self.flush()
+
+
+class _TeeLogBus(InMemoryLogBus):
+    """The worker's log buffer, which also hands each line to the live stream (BE-0449).
+
+    The buffer still becomes ``console.log`` after the run, unchanged. A handoff request line
+    (BE-0179) stays out of the live stream: nothing relays a person's answer back to a queued job
+    until the handoff relay arrives with `record` on the worker, so a prompt there would wait for
+    an answer that cannot come.
+    """
+
+    def __init__(self, on_line: Callable[[str], None]) -> None:
+        super().__init__()
+        self._on_line = on_line
+
+    def publish(self, job_id: str, line: str) -> None:
+        super().publish(job_id, line)
+        if not line.startswith(REQUEST_LINE_PREFIX):
+            self._on_line(line)
+
+
+def _post_log(
+    url: str,
+    wid: str,
+    job_id: str,
+    auth_token: str | None,
+    lines: list[str],
+    *,
+    timeout: float = _LOG_POST_TIMEOUT,
+) -> int | None:
+    """Post one batch of log lines; the HTTP status, or None when the post failed (logged)."""
+    try:
+        code, _body = _post_json(
+            f"{url}/api/worker/log",
+            {"worker_id": wid, "job_id": job_id, "lines": lines},
+            token=auth_token,
+            timeout=timeout,
+        )
+    except Exception as e:  # a live-log post must never reach the job, whatever went wrong
+        _logger.warning("log post failed for job %s; dropping %d lines: %s", job_id, len(lines), e)
+        return None
+    if code not in (200, 409):
+        _logger.warning("log post for job %s answered HTTP %s; dropping it", job_id, code)
+    return code
+
+
 def _run_with_heartbeat(
     spec: dict[str, Any],
     *,
@@ -385,6 +567,8 @@ def _run_with_heartbeat(
     io: WorkerIO | None = None,
     override_urls: dict[str, str] | None = None,
     worker_config: Path | None = None,
+    streamer: _LogStreamer | None = None,
+    log_flush_interval: float = DEFAULT_LOG_FLUSH_INTERVAL,
 ) -> tuple[dict[str, Any] | None, bool, Path]:
     """Run the job on a background thread while heart-beating its lease from this one.
 
@@ -408,6 +592,10 @@ def _run_with_heartbeat(
     fetch into `execute_job_spec` — installing the app and driving the device beside whichever worker
     won the re-lease — and only discard the result afterward. The fetch is the one point past which
     nothing has touched the device yet, so returning early there costs nothing.
+
+    With a *streamer*, a flusher thread posts the job's log lines every *log_flush_interval*
+    seconds, and one last flush runs after the job, before this returns, so every line is on the
+    server ahead of the result. A 409 on the log route abandons the job like a 409 on the heartbeat.
     """
     holder: dict[str, Any] = {"work": work}
     lost = threading.Event()
@@ -441,6 +629,9 @@ def _run_with_heartbeat(
                 io=io,
                 worker_config=worker_config,
                 on_job=cancel.bind,
+                # Written before the run tree uploads, so console.log travels with it and is the
+                # durable copy the server's log stream falls back to (BE-0449).
+                before_upload=functools.partial(_write_job_console_log, job_work, bus),
             )
             result = job.view()
             result.pop("lines", None)
@@ -451,22 +642,70 @@ def _run_with_heartbeat(
 
     runner = threading.Thread(target=_run, daemon=True)
     runner.start()
-    abandoned = False
-    while runner.is_alive():
-        runner.join(timeout=heartbeat_interval)
-        if not runner.is_alive():
-            break
-        code = _heartbeat(url, wid, job_id, auth_token, heartbeat_interval, cancel)
-        if code == 409:
-            abandoned = True
-            lost.set()  # seen in time, this stops _run before it ever calls execute_job_spec
-            runner.join()  # wait it out so this worker never runs two jobs at once
-            break
+    abandoned = _beat_and_stream(
+        runner,
+        beat=lambda: _heartbeat(url, wid, job_id, auth_token, heartbeat_interval, cancel),
+        interval=heartbeat_interval,
+        lost=lost,
+        streamer=streamer,
+        log_flush_interval=log_flush_interval,
+    )
 
     if holder.get("transient"):
         return None, abandoned, holder["work"]
     result = holder.get("result", {"ok": False, "error": "worker produced no result"})
     return result, abandoned, holder["work"]
+
+
+def _beat_and_stream(
+    runner: threading.Thread,
+    *,
+    beat: Callable[[], int | None],
+    interval: float,
+    lost: threading.Event,
+    streamer: _LogStreamer | None,
+    log_flush_interval: float,
+) -> bool:
+    """`_beat_until_done`, with the live log flushed alongside; True when the lease was lost.
+
+    The streamer is stopped whatever happens, so its thread never outlives the job. Its tail is
+    posted here, before the caller posts the result, so the result route closes a stream that
+    already holds every line; a heartbeat loop that raised or lost the lease posts no tail.
+    """
+    if streamer is None:
+        return _beat_until_done(runner, beat=beat, interval=interval, lost=lost, streamer=None)
+    abandoned: bool | None = None
+    streamer.start(log_flush_interval)
+    try:
+        abandoned = _beat_until_done(
+            runner, beat=beat, interval=interval, lost=lost, streamer=streamer
+        )
+    finally:
+        streamer.stop(flush=abandoned is False)
+    return abandoned or streamer.lost
+
+
+def _beat_until_done(
+    runner: threading.Thread,
+    *,
+    beat: Callable[[], int | None],
+    interval: float,
+    lost: threading.Event,
+    streamer: _LogStreamer | None,
+) -> bool:
+    """Heartbeat every *interval* until *runner* ends; True when the lease was lost on the way.
+
+    A 409 from the heartbeat or from the log route both mean another worker may now own the job.
+    """
+    while runner.is_alive():
+        runner.join(timeout=interval)
+        if not runner.is_alive():
+            return False
+        if beat() == 409 or (streamer is not None and streamer.lost):
+            lost.set()  # seen in time, this stops _run before it ever calls execute_job_spec
+            runner.join()  # wait it out so this worker never runs two jobs at once
+            return True
+    return False
 
 
 def _heartbeat(
@@ -497,6 +736,12 @@ def _heartbeat(
         # gracefully, and only this worker's cancelled result finishes it (BE-0449).
         cancel.request()
     return code
+
+
+def _write_job_console_log(work: Path, bus: InMemoryLogBus, job: Job) -> None:
+    """`_write_console_log` for a finished job, when it produced a run."""
+    if job.run_id:
+        _write_console_log(work, job.run_id, bus, job.id)
 
 
 def _write_console_log(work: Path, run_id: str, bus: InMemoryLogBus, job_id: str) -> None:

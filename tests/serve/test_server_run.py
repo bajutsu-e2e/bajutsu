@@ -76,7 +76,7 @@ def test_build_state_server_wires_the_hosted_seams(
     from bajutsu.serve.server.artifacts import ObjectStorageArtifactStore
     from bajutsu.serve.server.baselines import ObjectBaselineStore
     from bajutsu.serve.server.db_executor import DbQueueExecutor
-    from bajutsu.serve.server.post_completion_logbus import PostCompletionLogBus
+    from bajutsu.serve.server.queue_logbus import QueueLogBus
     from bajutsu.serve.server.scenarios import StorageScenarioStore
     from bajutsu.serve.server.secrets import DbSecretStore
 
@@ -95,8 +95,12 @@ def test_build_state_server_wires_the_hosted_seams(
         token=None,
         backend="server",
     )
-    assert isinstance(state.executor, DbQueueExecutor)
-    assert isinstance(state.logbus, PostCompletionLogBus)
+    # Every job kind is queued today; the routing executor is the seam later units narrow (BE-0449).
+    assert isinstance(state.executor, srv.RoutingExecutor)
+    assert state.executor.queued_kinds == srv.JOB_KINDS
+    assert isinstance(state.executor._queue, DbQueueExecutor)
+    assert isinstance(state.logbus, QueueLogBus)
+    assert isinstance(state.logbus._live, srv.InMemoryLogBus)  # no BAJUTSU_REDIS_URL
     assert isinstance(state.artifacts, ObjectStorageArtifactStore)
     assert isinstance(state.scenarios, StorageScenarioStore)
     assert isinstance(state.baselines, ObjectBaselineStore)
@@ -122,7 +126,6 @@ def test_build_state_server_has_no_repository_without_a_database_url(
     monkeypatch.delenv("BAJUTSU_DATABASE_URL", raising=False)
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
-    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
     _scn, cfg, runs = project(tmp_path)
     state = srv._build_state(
         runs_dir=runs,
@@ -148,7 +151,6 @@ def test_build_state_server_wires_the_repository_when_a_database_url_is_set(
 
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
-    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
     monkeypatch.setenv("BAJUTSU_DATABASE_URL", "sqlite://")
     monkeypatch.setenv("BAJUTSU_SECRETS_KEY", Fernet.generate_key().decode("ascii"))
     _scn, cfg, runs = project(tmp_path)
@@ -179,7 +181,6 @@ def test_build_state_server_seeds_the_job_id_counter_past_a_restart(
 
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
-    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
     db_url = f"sqlite:///{tmp_path / 'serve.db'}"
     monkeypatch.setenv("BAJUTSU_DATABASE_URL", db_url)
     monkeypatch.setenv("BAJUTSU_SECRETS_KEY", Fernet.generate_key().decode("ascii"))
@@ -251,7 +252,6 @@ def test_build_state_server_uses_sql_sessions_when_db_is_configured(
 
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
-    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
     monkeypatch.setenv("BAJUTSU_DATABASE_URL", "sqlite://")
     monkeypatch.setenv("BAJUTSU_SECRETS_KEY", Fernet.generate_key().decode("ascii"))
     _scn, cfg, runs = project(tmp_path)
@@ -275,7 +275,6 @@ def test_build_state_server_falls_back_to_in_memory_sessions_without_db(
 
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
-    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
     monkeypatch.delenv("BAJUTSU_DATABASE_URL", raising=False)
     _scn, cfg, runs = project(tmp_path)
     state = srv._build_state(
@@ -305,7 +304,6 @@ def test_build_state_server_wires_oauth_when_configured(
 
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
-    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
     monkeypatch.setenv("BAJUTSU_OAUTH_GITHUB_CLIENT_ID", "cid")
     monkeypatch.setenv("BAJUTSU_OAUTH_GITHUB_CLIENT_SECRET", "secret")
     monkeypatch.setenv(
@@ -332,7 +330,6 @@ def test_build_state_server_parses_the_admin_teams(
     # BAJUTSU_OAUTH_ADMIN_TEAMS.
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
-    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
     monkeypatch.setenv("BAJUTSU_OAUTH_ADMIN_TEAMS", "acme-gh/ops, other-gh/root")
     _scn, cfg, runs = project(tmp_path)
     state = srv._build_state(
@@ -380,7 +377,6 @@ def test_build_state_server_warns_on_a_half_configured_oauth(
     # gated the opposite way.
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
-    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
     _delenv_oauth(monkeypatch)
     monkeypatch.setenv("BAJUTSU_OAUTH_GITHUB_CLIENT_ID", "cid")
     monkeypatch.setenv("BAJUTSU_OAUTH_GITHUB_CLIENT_SECRET", "secret")
@@ -422,7 +418,6 @@ def test_build_state_server_warns_on_a_half_configured_oauth_naming_every_unset_
     # join must name both, not just whichever one a single-var test happens to cover.
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
-    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
     _delenv_oauth(monkeypatch)
     monkeypatch.setenv("BAJUTSU_OAUTH_GITHUB_CLIENT_ID", "cid")
     # _CLIENT_SECRET and _REDIRECT_URI both deliberately left unset.
@@ -450,7 +445,6 @@ def test_build_state_server_warns_on_a_half_configured_oauth_with_a_token_set(
     # instead, not the "unauthenticated" one above.
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
-    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
     _delenv_oauth(monkeypatch)
     monkeypatch.setenv("BAJUTSU_OAUTH_GITHUB_CLIENT_ID", "cid")
     monkeypatch.setenv("BAJUTSU_OAUTH_GITHUB_CLIENT_SECRET", "secret")
@@ -479,7 +473,6 @@ def test_build_state_server_does_not_warn_when_oauth_is_fully_unset(
     # OAuth is "partly configured" -- none of it is configured, on purpose.
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
-    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
     _delenv_oauth(monkeypatch)
     _scn, cfg, runs = project(tmp_path)
     state = srv._build_state(
@@ -508,7 +501,6 @@ def test_build_state_server_warns_on_the_retired_singular_admin_team_var(
     # OAuth must actually be wired (all three GitHub vars set), since the warning fires only then.
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
-    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
     _setenv_oauth(monkeypatch)
     monkeypatch.delenv("BAJUTSU_OAUTH_ADMIN_TEAMS", raising=False)
     monkeypatch.setenv("BAJUTSU_OAUTH_ADMIN_TEAM", "acme-gh/ops")
@@ -600,7 +592,6 @@ def test_build_state_server_warns_when_admin_teams_was_never_set(
     # empty list has no entries to be malformed.
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
-    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
     _setenv_oauth(monkeypatch)
     monkeypatch.delenv("BAJUTSU_OAUTH_ADMIN_TEAM", raising=False)
     monkeypatch.delenv("BAJUTSU_OAUTH_ADMIN_TEAMS", raising=False)
@@ -629,7 +620,6 @@ def test_build_state_server_without_oauth_does_not_warn_about_admin_teams(
     # admin -- the guard's first operand, which no other test in this file exercises.
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
-    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
     _delenv_oauth(monkeypatch)
     _scn, cfg, runs = project(tmp_path)
     srv._build_state(
@@ -652,7 +642,6 @@ def test_build_state_server_without_oauth_does_not_warn_on_malformed_admin_teams
     # decides nothing, so a stale malformed value left in the environment must not warn either.
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
-    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
     _delenv_oauth(monkeypatch)
     monkeypatch.setenv("BAJUTSU_OAUTH_ADMIN_TEAMS", "acme-gh/ops other-gh/root")
     _scn, cfg, runs = project(tmp_path)
@@ -677,7 +666,6 @@ def test_build_state_server_without_oauth_does_not_warn_on_the_retired_admin_tea
     # decides nothing there. Without this, dropping `oauth is not None` from that check is green.
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
-    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
     _delenv_oauth(monkeypatch)
     monkeypatch.setenv("BAJUTSU_OAUTH_ADMIN_TEAM", "acme-gh/ops")
     _scn, cfg, runs = project(tmp_path)
@@ -704,7 +692,6 @@ def test_build_state_server_warns_on_the_retired_var_even_when_admin_teams_is_al
     # check below never fires, so this needs its own unconditional check on the retired var alone.
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
-    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
     _setenv_oauth(monkeypatch)
     monkeypatch.setenv("BAJUTSU_OAUTH_ADMIN_TEAM", "acme-gh/legacy")
     monkeypatch.setenv("BAJUTSU_OAUTH_ADMIN_TEAMS", "acme-gh/ops")
@@ -733,7 +720,6 @@ def test_build_state_server_warns_on_a_malformed_admin_teams_entry(
     # silently loses every admin the same way the retired singular name does, so it must warn too.
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
-    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
     _setenv_oauth(monkeypatch)
     monkeypatch.setenv("BAJUTSU_OAUTH_ADMIN_TEAMS", "acme-gh/ops other-gh/root")
     _scn, cfg, runs = project(tmp_path)
@@ -768,7 +754,6 @@ def test_build_state_server_warns_on_an_empty_side_or_inner_space(
     # a stray leading space that `.strip()` on the whole entry doesn't remove.
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
-    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
     _setenv_oauth(monkeypatch)
     monkeypatch.setenv("BAJUTSU_OAUTH_ADMIN_TEAMS", "acme-gh/,/ops,acme-gh/ ops")
     _scn, cfg, runs = project(tmp_path)
@@ -799,7 +784,6 @@ def test_build_state_server_does_not_warn_on_an_uppercase_slug(
     # teach them to ignore this warning for the one list where a genuinely broken entry hides.
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
-    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
     _setenv_oauth(monkeypatch)
     monkeypatch.setenv("BAJUTSU_OAUTH_ADMIN_TEAMS", "acme-gh/Ops")
     _scn, cfg, runs = project(tmp_path)
@@ -822,7 +806,6 @@ def test_build_state_server_parses_the_per_user_quota(
 ) -> None:
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
-    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
     monkeypatch.setenv("BAJUTSU_MAX_CONCURRENT_PER_USER", "3")
     _scn, cfg, runs = project(tmp_path)
     state = srv._build_state(
@@ -843,7 +826,6 @@ def test_build_state_server_parses_the_per_org_quota(
 ) -> None:
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
-    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
     monkeypatch.setenv("BAJUTSU_MAX_CONCURRENT_PER_ORG", "5")
     _scn, cfg, runs = project(tmp_path)
     state = srv._build_state(
@@ -865,7 +847,6 @@ def test_build_state_server_has_no_oauth_without_the_env(
     monkeypatch.delenv("BAJUTSU_OAUTH_GITHUB_CLIENT_ID", raising=False)
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
-    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
     _scn, cfg, runs = project(tmp_path)
     state = srv._build_state(
         runs_dir=runs,

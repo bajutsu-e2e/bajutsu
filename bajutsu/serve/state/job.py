@@ -5,7 +5,7 @@ from __future__ import annotations
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal, get_args
 
 from bajutsu.serve.logbus import LogBus
 
@@ -14,6 +14,21 @@ from ._shared import _DEFAULT_ORG
 if TYPE_CHECKING:
     from bajutsu.serve.batch_provider import BatchRequest
     from bajutsu.serve.upload_artifacts import ArtifactOverrides
+
+
+# What a job does, which decides where it executes while job kinds move from the server to the
+# workers one at a time (BE-0449, `RoutingExecutor`).
+JobKind = Literal["run", "run-set", "record", "crawl", "triage"]
+JOB_KINDS: frozenset[JobKind] = frozenset(get_args(JobKind))
+
+
+def _cmd_kind(cmd: list[str]) -> JobKind | None:
+    """The `bajutsu` subcommand *cmd* spawns, when it is one of the job kinds."""
+    for i in range(len(cmd) - 2):
+        if cmd[i] == "-m" and cmd[i + 1] == "bajutsu":
+            sub = cmd[i + 2]
+            return next((k for k in JOB_KINDS if k == sub), None)
+    return None
 
 
 @dataclass
@@ -116,6 +131,19 @@ class Job:
     # branches on it; None is the ordinary local/worker run. The verdict still comes from the run's
     # own manifest, so the batch path stays off the `run`/CI verdict path.
     batch: BatchRequest | None = None
+
+    @property
+    def kind(self) -> JobKind | None:
+        """What this job does: ``run-set`` for a cloud-batch request, else the subcommand its
+        command line spawns, or None for a command that is none of the job kinds.
+
+        Derived rather than stored (BE-0449): every dispatcher already fixes the kind in `cmd` or
+        `batch`, so a stored field would be a second copy each dispatcher, the job spec, and the
+        worker's rebuilt `Job` would all have to keep in step.
+        """
+        if self.batch is not None:
+            return "run-set"
+        return _cmd_kind(self.cmd)
 
     def view(self, *, include_lines: bool = True) -> dict[str, Any]:
         """The job's state for the UI. `include_lines=False` omits the log buffer — used for the

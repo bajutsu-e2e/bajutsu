@@ -181,6 +181,31 @@ def test_an_executor_without_the_lease_worker_refuses_either_field(tmp_path: Pat
     assert not state.executor.jobs  # type: ignore[attr-defined]
 
 
+def test_a_routing_executor_refuses_while_run_still_routes_in_process(tmp_path: Path) -> None:
+    # BE-0449: the refusal keys on where a `run` job goes, not on the executor's type, so a routing
+    # executor that keeps `run` local still protects the operator's project directory.
+    state, store = _hosted(tmp_path)
+    queue, local = _Recorder(), _Recorder()
+    state.executor = srv.RoutingExecutor(queue, local, queued_kinds={"record", "crawl"})
+    resp, code = _run(state, binaryArtifact=_store(store, "binary", b"bin"))
+    assert code == 400
+    assert "hosted" in resp["error"]
+    assert not queue.jobs and not local.jobs
+
+
+def test_a_routing_executor_that_queues_run_accepts_an_override(tmp_path: Path) -> None:
+    state, store = _hosted(tmp_path)
+    queue, local = _Recorder(), _Recorder()
+    state.executor = srv.RoutingExecutor(queue, local, queued_kinds=srv.JOB_KINDS)
+    sha = _store(store, "binary", b"bin")
+    _resp, code = _run(state, binaryArtifact=sha)
+    assert code == 200
+    assert not local.jobs
+    assert [job.kind for job in queue.jobs] == ["run"]
+    assert queue.jobs[0].overrides is not None
+    assert queue.jobs[0].overrides.binary == sha
+
+
 def test_a_malformed_digest_is_refused(tmp_path: Path) -> None:
     state, _ = _hosted(tmp_path)
     resp, code = _run(state, binaryArtifact="../../etc/passwd")

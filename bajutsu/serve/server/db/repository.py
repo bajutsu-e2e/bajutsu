@@ -261,6 +261,14 @@ class Repository(Protocol):
         it should stop.
         """
 
+    def holds_lease(self, job_id: str, worker_id: str) -> bool:
+        """Whether *worker_id* holds the live lease on *job_id*, without renewing it (BE-0449).
+
+        The same owner test as `heartbeat_job`, as a read: the worker log route asks it on every
+        batch, and a write per batch would contend for SQLite's single writer for no gain, since the
+        heartbeat already renews the lease.
+        """
+
     def cancel_requested(self, job_id: str, worker_id: str) -> bool:
         """Whether a cancel has reached the job *worker_id* holds the lease on (BE-0449).
 

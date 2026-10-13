@@ -77,7 +77,8 @@ def test_a_server_backend_starts_with_no_environment(tmp_path: Path) -> None:
     assert (state_dir / "queue.db").is_file()
     # The schema is migrated: the runs table answers a query.
     assert state.repository.list_runs(org_id="default") == []
-    assert isinstance(state.executor, DbQueueExecutor)
+    assert isinstance(state.executor, srv.RoutingExecutor)
+    assert isinstance(state.executor._queue, DbQueueExecutor)
     assert isinstance(state.secrets, DbSecretStore)
     for key_file in ("secrets.key", "store-signing.key"):
         assert stat.S_IMODE(os.lstat(state_dir / key_file).st_mode) == 0o600

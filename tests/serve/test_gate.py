@@ -101,6 +101,7 @@ class _StubOAuth:
 _WORKER_PATHS = (
     "/api/worker/lease",
     "/api/worker/heartbeat",
+    "/api/worker/log",
     "/api/worker/result",
     "/api/worker/artifact-urls",
     "/api/worker/scenario-url",

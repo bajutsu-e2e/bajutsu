@@ -137,6 +137,7 @@ from bajutsu.serve.operations.version import server_checkout, server_version
 from bajutsu.serve.operations.worker import (
     worker_heartbeat,
     worker_lease,
+    worker_log,
     worker_result,
 )
 from bajutsu.serve.operations.worker_uploads import (
@@ -259,6 +260,7 @@ __all__ = [
     "worker_artifact_urls",
     "worker_heartbeat",
     "worker_lease",
+    "worker_log",
     "worker_result",
     "worker_scenario_url",
 ]

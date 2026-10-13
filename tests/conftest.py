@@ -81,6 +81,9 @@ def _fresh_clone_resident_gate(monkeypatch: pytest.MonkeyPatch) -> None:
 
     built = adb_resident.server_apks_built
     monkeypatch.delenv("BAJUTSU_ADB_RESIDENT", raising=False)
+    # A developer's own Redis URL would switch every queue-backed state to the Redis log bus, which
+    # needs the redis package the gate does not install (BE-0449).
+    monkeypatch.delenv("BAJUTSU_REDIS_URL", raising=False)
     # Only the gate's ambient, argument-less call is answered "not built"; an explicit-path call (the
     # function's own test) keeps the real logic, since the paths it asks about are its own fixtures.
     # Positional and keyword paths both forward, so naming them cannot silently land in the stub.

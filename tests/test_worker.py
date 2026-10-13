@@ -291,6 +291,7 @@ def test_worker_runs_a_bundle_job_from_the_bundles_own_tree(
 
     def fake_execute(spec: dict[str, Any], **kwargs: Any) -> _FakeJob:
         seen["run"] = kwargs["cwd"]
+        kwargs["before_upload"](Job(id="j1", run_id="r1"))  # the console log, ahead of the upload
         return _FakeJob()
 
     monkeypatch.setattr(worker_mod, "execute_job_spec", fake_execute)

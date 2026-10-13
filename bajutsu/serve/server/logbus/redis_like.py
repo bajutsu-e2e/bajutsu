@@ -8,8 +8,8 @@ from typing import Protocol
 class RedisLike(Protocol):
     """The slice of a redis-py client `RedisLogBus` uses (so a fake can stand in)."""
 
-    def rpush(self, key: str, value: str) -> object:
-        """Append *value* to the list at *key*."""
+    def rpush(self, key: str, *values: str) -> object:
+        """Append *values* to the list at *key*, in one command."""
 
     def lrange(self, key: str, start: int, end: int) -> list[object]:
         """Return the list at *key* from index *start* to *end* (`-1` = last)."""

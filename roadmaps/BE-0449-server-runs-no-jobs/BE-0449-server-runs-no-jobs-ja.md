@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0449") |
-| 実装 PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167)（単位 1 の 1）、[#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168)（単位 1 の 2）、[#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170)（単位 1 の 3）、[#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171)（単位 2） |
+| 実装 PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167)（単位 1 の 1）、[#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168)（単位 1 の 2）、[#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170)（単位 1 の 3）、[#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171)（単位 2）、PR_PLACEHOLDER5（単位 4） |
 | トピック | Hosting the web UI |
 <!-- /BE-METADATA -->
 
@@ -149,7 +149,7 @@ local バックエンドと server バックエンドの違いは、これらの
 - [x] ローカルの既定値
 - [x] 分割をまたぐキャンセル
 - [ ] 1 回実行の worker とラッパー
-- [ ] ライブのログのストリームとルーティング用の executor
+- [x] ライブのログのストリームとルーティング用の executor
 - [ ] `run` の移行
 - [ ] `run-set`（Device Farm の batch）の移行
 - [ ] `triage` の移行
@@ -219,6 +219,33 @@ local バックエンドと server バックエンドの違いは、これらの
   org に限りますが、ゲートが machine をキャンセルの経路に通さないので、この検査は防御のためのものです。
   リース済みの job のキャンセルには、この版以降の worker が要ります。古い worker はハートビートの
   `cancel` を無視するからです。`worker --once` での SIGINT と SIGTERM の対応付けは単位 3 で入ります。
+- PR_PLACEHOLDER5（単位 4）— キューに入った job のコンソールが、再びライブで表示されるようになりました。
+  worker はログの行を、新しい `POST /api/worker/log` へおよそ 1 秒ごとに送り、結果の送信の前にも
+  5 秒の持ち時間でもう 1 度送ります。状態を持つ行単位の伏せ字処理が資格情報の形を隠し、秘密鍵の
+  ブロックは BEGIN の行から END の行まで、行と送信をまたいで伏せ字にします。server も、届いた各行に
+  行単位の伏せ字処理をもう 1 度かけます。ハンドオフの要求の行はライブのストリームに流しません。経路は、
+  新しい読み取り専用の `Repository.holds_lease` でリースを持つ worker の送信だけを受け付け、それ以外には
+  `409` を返します。worker はその `409` を、ハートビートの `409` と同じくリースの喪失として扱います。
+  1 回の送信は 500 行までで、8 KiB を超える行は server が切り詰めます。1 つの job のライブの行が
+  50,000 行か 16 MiB を超えると、server は打ち切りの通知を 1 行だけ流して残りを捨てます。この行数は server の
+  プロセスごとに数えます。worker は送れなかった行をログに記録して捨て、未送信の行の待ち行列に上限を
+  設け、古い control plane から `401`、`404`、`405` が返ると送信をやめます。server 側では、リポジトリが
+  あるとき（ローカルの起動を含みます）、完了後のログのバスに代えて新しい `QueueLogBus` を使います。
+  `QueueLogBus` は届いた行をメモリ上のバスへ流し、新しい `BAJUTSU_REDIS_URL` があれば `RedisLogBus` へ
+  流します。`RedisLogBus` は送信の 1 回分を 1 つのコマンドで積み、書き込みのたびにリストの寿命を
+  設定するようになりました。メモリ上のバスは、終わった job のチャネルを、後から 256 個の job が
+  終わった時点で捨てます。ストリームを閉じるのは、これまでどおり結果の経路です。ストリームは待機中に
+  jobs テーブルも確認するので、閉じる操作がこのバスに届かずに終わった job でも、ストリームは終わります。
+  終わった job を開いた閲覧者と、1 行も受け取らなかったライブの閲覧者は、アップロードされた
+  `console.log` を読みます。ライブのバスが失敗した場合も、その完了後の読み出しに戻ります。`Job.kind` は、
+  `batch` か、`cmd` が起動するサブコマンドからジョブの種類を導きます。`RoutingExecutor` は、
+  `queued_kinds` に含まれる種類と種類の不明な job を `DbQueueExecutor` へ、それ以外を `LocalExecutor` へ
+  送ります。server はすべての種類をキューに送る設定で組むので、振る舞いは変わりません。ジョブ単位の
+  アーティファクトの上書きを拒む分岐は、executor の型ではなく、`run` の job の行き先で判断するように
+  なりました。バケットだけの構成と `--backend local` は変わりません。worker は、`execute_job_spec` の新しい
+  `before_upload` のフックを通じて、run ツリーのアップロードの前に `console.log` をそのツリーへ書くように
+  なりました。これまではアップロードのあとに書いていたため、`console.log` はアーティファクトストアに
+  届いていませんでした。`crawl` のためのライブのアーティファクトのストリームは、単位 8 で入ります。
 
 ## 参考
 

@@ -17,7 +17,7 @@ from bajutsu.serve.artifacts import ArtifactStore, LocalArtifactStore
 from bajutsu.serve.baselines import BaselineStore, LocalBaselineStore
 from bajutsu.serve.executor import LocalExecutor, RunExecutor
 from bajutsu.serve.helpers import load_serve_config_file
-from bajutsu.serve.logbus import InMemoryLogBus, LogBus
+from bajutsu.serve.logbus import InMemoryLogBus, LiveLineBudget, LogBus
 from bajutsu.serve.oidc import JwksCache
 from bajutsu.serve.orgs import targets_for_org
 from bajutsu.serve.scenarios import LocalScenarioStore, ScenarioStore
@@ -135,11 +135,16 @@ class ServeState:
     serves_local_routes: bool = True
     popen: Popen = subprocess.Popen
     # How a created job gets executed. Defaults to in-process threads (LocalExecutor); a server
-    # backend swaps in a queue-based executor without touching the handler or run_job (BE-0015).
+    # backend swaps in a queue-based executor without touching the handler or run_job (BE-0015),
+    # routed per job kind while kinds move to the workers (`RoutingExecutor`, BE-0449).
     executor: RunExecutor = field(default_factory=LocalExecutor)
-    # Live-log delivery. In-memory buffer by default; a server backend swaps in `PostCompletionLogBus`
-    # (BE-0106), which serves any replica any job's `/events` from the jobs table + object storage.
+    # Live-log delivery. In-memory buffer by default; a server backend with a queue swaps in
+    # `QueueLogBus` (BE-0449), which relays the lines workers post and falls back to the jobs table +
+    # the uploaded console.log.
     logbus: LogBus = field(default_factory=InMemoryLogBus)
+    # How many live lines each queued job has posted through `/api/worker/log` (BE-0449), so one
+    # job cannot fill the bus without bound.
+    live_log_budget: LiveLineBudget = field(default_factory=LiveLineBudget)
     # Run-artifact reads. Filesystem-confined by default; a server backend swaps in an
     # object-storage store (set after construction) that may serve signed-URL redirects (BE-0015).
     artifacts: ArtifactStore = field(init=False)

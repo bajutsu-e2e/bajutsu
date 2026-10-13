@@ -15,7 +15,7 @@ from bajutsu.serve import oplog
 from bajutsu.serve.authz import _record_audit
 from bajutsu.serve.batch_provider import BatchRequest
 from bajutsu.serve.commands import _float, _int, crawl_command, record_command, run_command
-from bajutsu.serve.executor import LocalExecutor
+from bajutsu.serve.executor import runs_in_process
 from bajutsu.serve.helpers import (
     target_batch_info,
     target_build_info,
@@ -273,8 +273,10 @@ def _artifact_overrides(
     # Only the HTTP-lease worker (`bajutsu worker`, which needs the jobs table) places overrides; an
     # executor that runs `execute_job_spec` directly would install the bound binary while the manifest
     # records the override. A single-process serve runs the job in the operator's own project
-    # directory, with no job-scoped workspace to place an override into at all.
-    if isinstance(state.executor, LocalExecutor) or state.repository is None:
+    # directory, with no job-scoped workspace to place an override into at all. Keyed on where a
+    # `run` job routes, not on the executor's type, so a routing executor (BE-0449) still refuses
+    # while `run` stays in process and accepts once it moves to the queue.
+    if runs_in_process(state.executor, "run") or state.repository is None:
         return None, (
             {
                 "error": f"{' and '.join(named)} require a hosted deployment's workers; a single-process "

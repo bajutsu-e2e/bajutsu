@@ -8,7 +8,10 @@ the job is in flight, and that ends with the full log once the job completes.
 ``publish`` and ``close`` are no-ops: the worker never calls them (it writes to the object store
 instead).  ``stream`` polls the jobs table for status; ``final`` reads the terminal result from
 the jobs table.  The repository and artifact store are **injected**, so no SQLAlchemy or boto3 is
-imported at the top."""
+imported at the top.
+
+The server no longer wires this bus on its own: `QueueLogBus` (BE-0449) extends it with the live
+lines workers post, and keeps this read of ``console.log`` as its fallback."""
 
 from __future__ import annotations
 
@@ -50,6 +53,9 @@ class PostCompletionLogBus:
     def publish(self, job_id: str, line: str) -> None:
         _ = job_id, line
 
+    def publish_many(self, job_id: str, lines: list[str]) -> None:
+        _ = job_id, lines
+
     def close(self, job_id: str, final: str | None = None) -> None:
         if final is not None:
             self._finals[job_id] = final
@@ -74,8 +80,7 @@ class PostCompletionLogBus:
         while True:
             info = self._repo.get_job(job_id)
             if info is not None and info["status"] in TERMINAL_JOB_STATUSES:
-                run_id = info.get("result", {}).get("runId")
-                yield from self._read_console_log(info.get("org_id", ""), run_id or job_id)
+                yield from self._console_log_of(info, job_id)
                 return
             time.sleep(self._poll)
             if timeout is not None:
@@ -83,6 +88,11 @@ class PostCompletionLogBus:
                 if idle >= timeout:
                     idle = 0.0
                     yield None
+
+    def _console_log_of(self, info: dict[str, Any], job_id: str) -> list[str]:
+        """The uploaded console.log of the finished job whose jobs-table row is *info*."""
+        run_id = (info.get("result") or {}).get("runId")
+        return self._read_console_log(info.get("org_id", ""), run_id or job_id)
 
     def _read_console_log(self, org_id: str, run_id: str) -> list[str]:
         if self._artifacts_fn is None:

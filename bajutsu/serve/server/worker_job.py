@@ -222,6 +222,7 @@ def execute_job_spec(
     repository: Any = None,
     worker_config: Path | None = None,
     on_job: Callable[[Job], None] | None = None,
+    before_upload: Callable[[Job], None] | None = None,
 ) -> Job:
     """Worker entrypoint: rebuild the job from *spec*, run the unchanged `run_job`, then upload its
     run tree through the control plane's presigned URLs.
@@ -235,8 +236,9 @@ def execute_job_spec(
     it's recorded (BE-0015). `popen` / `simctl` / `cwd` / `bus` / `io` / `repository` are injectable
     so the run can be driven with a fake subprocess, an in-memory Redis, a fake `WorkerIO`, and an
     in-memory database on the gate. *on_job* receives the rebuilt `Job` before it starts, so the
-    worker's heartbeat loop can cancel it when the control plane asks (BE-0449). Returns the
-    finished `Job`."""
+    worker's heartbeat loop can cancel it when the control plane asks (BE-0449). *before_upload*
+    receives the finished `Job` before its outputs are uploaded, so the worker can add files the run
+    itself did not write (its ``console.log``) to the uploaded tree. Returns the finished `Job`."""
     # The subprocess runs with cwd=work and writes runs/<id>/ relative to it, so runs_dir must be
     # work/runs — otherwise state.artifacts would be confined to an unrelated process-CWD runs/.
     work = cwd or Path.cwd()
@@ -294,6 +296,8 @@ def execute_job_spec(
         # subprocess, so those values aren't in this process to seed a run-scoped redactor here.
         with oplog.run_context(job.run_id) if job.run_id else nullcontext():
             oplog.log_event(_logger, "worker.job.finished", "worker finished job")
+            if before_upload is not None:
+                before_upload(job)
             if io is not None:
                 _upload_outputs(work, io, job, spec)
     return job
