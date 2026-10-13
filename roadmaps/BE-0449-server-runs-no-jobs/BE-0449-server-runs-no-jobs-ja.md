@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0449") |
-| 実装 PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167)（単位 1 の 3 分割のうち 1）、[#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168)（単位 1 の 3 分割のうち 2）、[#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170)（単位 1 の 3 分割のうち 3）、[#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171)（単位 2）、[#2172](https://github.com/bajutsu-e2e/bajutsu/pull/2172)（単位 4）、[#2173](https://github.com/bajutsu-e2e/bajutsu/pull/2173)（単位 3）、[#2182](https://github.com/bajutsu-e2e/bajutsu/pull/2182)（単位 5 の 2 分割のうち 1：機能を失わないローカル起動）、[#[#2183](https://github.com/bajutsu-e2e/bajutsu/pull/2183)](https://github.com/bajutsu-e2e/bajutsu/pull/[#2183](https://github.com/bajutsu-e2e/bajutsu/pull/2183))（単位 5 の 2 分割のうち 2：worker で動く `run`） |
+| 実装 PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167)（単位 1 の 3 分割のうち 1）、[#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168)（単位 1 の 3 分割のうち 2）、[#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170)（単位 1 の 3 分割のうち 3）、[#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171)（単位 2）、[#2172](https://github.com/bajutsu-e2e/bajutsu/pull/2172)（単位 4）、[#2173](https://github.com/bajutsu-e2e/bajutsu/pull/2173)（単位 3）、[#2182](https://github.com/bajutsu-e2e/bajutsu/pull/2182)（単位 5 の 2 分割のうち 1：機能を失わないローカル起動）、[#2183](https://github.com/bajutsu-e2e/bajutsu/pull/2183)（単位 5 の 2 分割のうち 2：worker で動く `run`） |
 | トピック | Hosting the web UI |
 <!-- /BE-METADATA -->
 
@@ -309,7 +309,7 @@ local バックエンドと server バックエンドの違いは、これらの
   そのまま解決します。CLI は引き続きサーバの依存を 1 つも import しません。`--asgi` のインストール確認は
   なくなり、サーバ backend のインストールの案内はクラウドのクライアントだけを挙げます。ローカル backend の
   executor と既定値は変えていません。
-- [#[#2183](https://github.com/bajutsu-e2e/bajutsu/pull/2183)](https://github.com/bajutsu-e2e/bajutsu/pull/[#2183](https://github.com/bajutsu-e2e/bajutsu/pull/2183))（単位 5 の 2 分割のうち 2：worker で動く `run`）— `--backend local` は、ローカル起動になりました。
+- [#2183](https://github.com/bajutsu-e2e/bajutsu/pull/2183)（単位 5 の 2 分割のうち 2：worker で動く `run`）— `--backend local` は、ローカル起動になりました。
   どちらの backend もサーバの形を組み立て、違いはキューに積む種類だけです。`local` はビルド段階を含む
   `run` を積み（`LOCAL_QUEUED_KINDS`）、他の種類はサーバのプロセスで実行します。`server` はすべての種類を
   積みます。フラグは残し、その削除は引き続き単位 9 で行います。ローカル起動は、起動時の config の
