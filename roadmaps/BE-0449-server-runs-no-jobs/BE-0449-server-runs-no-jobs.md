@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0449") |
-| Implementing PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167) (Unit 1, part 1) |
+| Implementing PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167) (Unit 1, part 1), [#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168) (Unit 1, part 2) |
 | Topic | Hosting the web UI |
 <!-- /BE-METADATA -->
 
@@ -168,7 +168,7 @@ Log:
   concurrently on a file-backed SQLite and race a heartbeat against a reclaim. The rest of unit 1
   (the generated secrets key, the `file://` artifact store with signed URLs, and the local start
   wiring) follows.
-- PR_PLACEHOLDER2 (Unit 1, part 2 of 3: keys and the file store) — `local_keys` generates the secrets
+- [#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168) (Unit 1, part 2 of 3: keys and the file store) — `local_keys` generates the secrets
   key and the URL-signing key on first use and keeps them in `.bajutsu/` beside the runs directory.
   Each key file is written to an `O_EXCL | O_NOFOLLOW` staging file with mode `0600`, synced, and
   hard-linked into place, so a concurrent start reads the winner's key, and an existing path that is
