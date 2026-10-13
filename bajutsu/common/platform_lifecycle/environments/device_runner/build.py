@@ -248,7 +248,8 @@ def _manual_problems(signing: SigningConfig, toolchain: Toolchain) -> list[str]:
                 f"provisioning profile {name!r} expired on {profile.expires:%Y-%m-%d} — renew it "
                 "in the Apple Developer portal and install the new one"
             )
-        elif profile.xcode_managed:
+        # Independent of expiry: renewing an Xcode-managed profile cannot fix a manual build.
+        if profile is not None and profile.xcode_managed:
             problems.append(
                 f"provisioning profile {name!r} is managed by Xcode, which manual signing cannot "
                 "use — create a development profile in the Apple Developer portal, or set "

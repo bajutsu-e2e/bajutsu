@@ -262,7 +262,7 @@ expiry, the staged-manifest target check, and the run-time resolution errors. Th
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [x] Spike: on one real device, find which profiles a manual build needs (host, the `.xctrunner`
+- [ ] Spike: on one real device, find which profiles a manual build needs (host, the `.xctrunner`
   app, or one wildcard), confirm the `.xctrunner` identifier, and confirm the staged-manifest and
   generated-spec approach builds.
 - [x] Signing file model, validation (prefix or explicit `bundleIds`), and lookup order, with tests.
@@ -293,8 +293,8 @@ Log:
     the key needs `xcodebuild -version` and, for manual signing, `security`.
   - The `runner` command group needed its own help-panel classification, because the panel
     grouping previously walked plain commands alone.
-- 2026-10-13 — [#2176](https://github.com/bajutsu-e2e/bajutsu/pull/2176) ran the spike on an iPhone 14 Pro with Xcode 27.0, and proved the
-  automatic path on the device. Automatic signing signs both products with Xcode's own wildcard
+- 2026-10-13 — [#2176](https://github.com/bajutsu-e2e/bajutsu/pull/2176) ran most of the spike on an iPhone 14 Pro with Xcode 27.0, and proved
+  the automatic path on the device. Automatic signing signs both products with Xcode's own wildcard
   profile, `iOS Team Provisioning Profile: *`, and the `.xctrunner` app takes
   `<uitests identifier>.xctrunner`, as designed. The staged manifest and the generated spec build
   as designed. Manual signing cannot reuse that wildcard: Xcode rejects a profile it manages, but
@@ -306,7 +306,8 @@ Log:
   USB-attached device from a target with no `testRunner`, and passed. Two checks still need
   resources this machine lacks: a manual build needs a profile created in the Apple Developer
   portal, and the second-team check needs a second team. The real-device proof unit stays open
-  for them.
+  for them, and so does the spike, whose question of which profiles a manual build
+  needs waits on the same portal profile.
 
 ## References
 

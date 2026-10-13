@@ -221,6 +221,16 @@ def test_preflight_rejects_an_xcode_managed_profile_for_manual_signing(tmp_path:
     assert "profile 'R'" not in message
 
 
+def test_preflight_reports_an_expired_xcode_managed_profile_as_both(tmp_path: Path) -> None:
+    host = _manual_host(tmp_path)
+    expired = NOW - timedelta(days=1)
+    _install_profile(tmp_path, "h.mobileprovision", "H", "UH", expired, xcode_managed=True)
+    with pytest.raises(DeviceRunnerError) as info:
+        build.preflight(MANUAL, host.toolchain())
+    message = str(info.value)
+    assert "profile 'H' expired on" in message and "profile 'H' is managed by Xcode" in message
+
+
 def test_capture_reports_stderr_and_a_missing_tool() -> None:
     script = "import sys; sys.stderr.write('boom'); sys.exit(3)"
     with pytest.raises(DeviceRunnerError, match=r"exit 3.*boom"):
