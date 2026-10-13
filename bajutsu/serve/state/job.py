@@ -82,6 +82,10 @@ class Job:
     # first (BE-0449). Only the public `bajutsu run` sets it: that run lives in the caller's shell, as
     # it always has. A leased job and `worker --once` leave it False, so both resolve `idb` alike.
     keep_caller_path: bool = False
+    # A hard kill asked for while no subprocess was registered (BE-0449): a second Ctrl-C that lands
+    # before the spawn. Latched here so registration ends the spawn at once instead of sending the
+    # SIGTERM a child may ignore.
+    kill_requested: bool = False
     lines: list[str] = field(default_factory=list)
     lock: threading.Lock = field(default_factory=threading.Lock)
     bus: LogBus | None = None  # live-log channel; set from state.logbus at creation (BE-0015)

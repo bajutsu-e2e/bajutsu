@@ -35,7 +35,12 @@ _logger = logging.getLogger(__name__)
 
 # The signals that cancel a one-shot job. SIGHUP joins the two the item names because the child runs
 # in a session of its own: a closed terminal would otherwise end the caller and leave the run going.
-CANCEL_SIGNALS: tuple[signal.Signals, ...] = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
+# Looked up by name, so this module imports on Windows, which has no SIGHUP.
+CANCEL_SIGNALS: tuple[signal.Signals, ...] = tuple(
+    sig
+    for sig in (getattr(signal, name, None) for name in ("SIGINT", "SIGTERM", "SIGHUP"))
+    if sig is not None
+)
 
 # The id a one-shot job carries when its spec names none; it labels log records and nothing else.
 _DEFAULT_JOB_ID = "once"
@@ -72,6 +77,44 @@ def refusal(spec: Any, work: Path | None = None) -> str | None:
     """
     if not isinstance(spec, dict):
         return "a job spec must be a JSON object"
+    if (reason := _needs_a_server(spec)) is not None:
+        return reason
+    cmd = spec.get("cmd")
+    if not (isinstance(cmd, list) and cmd and all(isinstance(arg, str) for arg in cmd)):
+        return "the spec needs a `cmd`: a non-empty list of strings"
+    if (reason := _shape_problem(spec)) is not None:
+        return reason
+    udids = spec.get("udids")
+    if udids is not None and not (
+        isinstance(udids, list) and all(isinstance(u, str) for u in udids)
+    ):
+        return "the spec's `udids` must be a list of strings"
+    materials = spec.get("materials")
+    if materials is not None and not (
+        isinstance(materials, dict)
+        and all(isinstance(k, str) and isinstance(v, str) for k, v in materials.items())
+    ):
+        return "the spec's `materials` must map relative paths to file contents (strings)"
+    escaping = sorted(rel for rel in materials or {} if _escapes(work, rel))
+    if escaping:
+        # `_materialize` would skip such a path silently, and the job would run without the scenario
+        # or config it declares.
+        return (
+            "the spec's materials must name files inside the workspace: "
+            f"{', '.join(escaping)} is absolute, climbs out with `..`, or leaves it through a link"
+        )
+    if work is not None and materials:
+        clashes = sorted(rel for rel, content in materials.items() if _clashes(work, rel, content))
+        if clashes:
+            return (
+                "the spec's materials would overwrite a different file in this directory: "
+                f"{', '.join(clashes)} — run it from an empty directory"
+            )
+    return None
+
+
+def _needs_a_server(spec: dict[str, Any]) -> str | None:
+    """Why *spec* names something only a server supplies, or None when it names nothing of the kind."""
     if spec.get("bundle") is not None:
         return (
             "the spec names an uploaded bundle, which a worker fetches by signed URL; a one-shot "
@@ -92,36 +135,14 @@ def refusal(spec: Any, work: Path | None = None) -> str | None:
             "the spec is a Device Farm batch, which needs a device-cloud worker; submitting one "
             "without a server arrives with BE-0448"
         )
-    cmd = spec.get("cmd")
-    if not (isinstance(cmd, list) and cmd and all(isinstance(arg, str) for arg in cmd)):
-        return "the spec needs a `cmd`: a non-empty list of strings"
-    if (reason := _shape_problem(spec)) is not None:
-        return reason
-    udids = spec.get("udids")
-    if udids is not None and not (
-        isinstance(udids, list) and all(isinstance(u, str) for u in udids)
-    ):
-        return "the spec's `udids` must be a list of strings"
-    materials = spec.get("materials")
-    if materials is not None and not (
-        isinstance(materials, dict)
-        and all(isinstance(k, str) and isinstance(v, str) for k, v in materials.items())
-    ):
-        return "the spec's `materials` must map relative paths to file contents (strings)"
-    if work is not None and materials:
-        clashes = sorted(rel for rel, content in materials.items() if _clashes(work, rel, content))
-        if clashes:
-            return (
-                "the spec's materials would overwrite a different file in this directory: "
-                f"{', '.join(clashes)} — run it from an empty directory"
-            )
     return None
 
 
 def _shape_problem(spec: dict[str, Any]) -> str | None:
     """Which optional spec field has the wrong type, or None when every one present is well formed."""
     checks: tuple[tuple[str, Callable[[Any], bool], str], ...] = (
-        ("build", lambda v: v is None or isinstance(v, dict), "an object or null"),
+        # `Job.build` is the shell command that builds the app, serialized as is by `job_spec`.
+        ("build", lambda v: v is None or isinstance(v, str), "a string or null"),
         (
             "env_overlay",
             lambda v: (
@@ -141,6 +162,20 @@ def _shape_problem(spec: dict[str, Any]) -> str | None:
         if not ok(spec.get(field)):
             return f"the spec's `{field}` must be {shape}"
     return None
+
+
+def _escapes(work: Path | None, rel: str) -> bool:
+    """Whether material path *rel* names no file strictly inside *work* (the `_materialize` rule).
+
+    Absolute paths and `..` are refused outright; with a *work*, a path is also resolved, so one
+    reaching out through a symbolic link, or naming the workspace itself, is caught too.
+    """
+    path = Path(rel)
+    if not rel or path.is_absolute() or path.drive or ".." in path.parts:
+        return True
+    if work is None:
+        return False
+    return work.resolve() not in (work / rel).resolve().parents
 
 
 def _clashes(work: Path, rel: str, content: str) -> bool:
@@ -256,8 +291,10 @@ class _SignalRelay:
     def install(self) -> None:
         """Install every handler, leave an ignored signal ignored, and start the helpers."""
         handlers: dict[signal.Signals, Any] = dict.fromkeys(CANCEL_SIGNALS, self._cancel)
-        handlers[signal.SIGTSTP] = self._stop
-        handlers[signal.SIGCONT] = self._continue
+        # Job control exists only on POSIX; elsewhere the two are absent and nothing is relayed.
+        for name, handler in (("SIGTSTP", self._stop), ("SIGCONT", self._continue)):
+            if (sig := getattr(signal, name, None)) is not None:
+                handlers[sig] = handler
         try:
             for sig, handler in handlers.items():
                 # `nohup` ignores SIGHUP, and a shell ignores SIGINT for a background job, so the run

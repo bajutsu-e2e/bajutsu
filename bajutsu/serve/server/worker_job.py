@@ -25,7 +25,7 @@ from bajutsu.common.backend_cli import simctl as _simctl
 from bajutsu.common.run_meta.files import DEFAULT_RUNS_DIR
 from bajutsu.run import INTERNAL_MODULE as _INTERNAL_RUN_MODULE
 from bajutsu.serve import oplog
-from bajutsu.serve.jobs import _kill, _pgid_of, cancel_job, run_job
+from bajutsu.serve.jobs import _kill, _pgid_of, _still_running, cancel_job, run_job
 from bajutsu.serve.logbus import InMemoryLogBus, LogBus
 from bajutsu.serve.orgs import DEFAULT_ORG as _DEFAULT_ORG
 from bajutsu.serve.state import Job, ServeState
@@ -70,6 +70,7 @@ class CancelRelay:
         self._lock = threading.Lock()
         self._job: Job | None = None
         self._requested = False
+        self._kill_requested = False
 
     @property
     def requested(self) -> bool:
@@ -82,6 +83,10 @@ class CancelRelay:
         with self._lock:
             self._job = job
             pending = self._requested
+            hard = self._kill_requested
+        if hard:
+            with job.lock:
+                job.kill_requested = True
         if pending:
             cancel_job(job)
 
@@ -103,10 +108,22 @@ class CancelRelay:
         return None if proc is None else _pgid_of(proc)
 
     def kill(self) -> None:
-        """End the bound job's live child and its group at once, past any grace window."""
+        """End the bound job's live child and its group at once, past any grace window.
+
+        With no child registered yet the request is latched (`Job.kill_requested`), and the
+        registration consumes it by killing the child it would otherwise ask to stop.
+        """
         with self._lock:
             job = self._job
-        proc = job.proc if job is not None else None
+            if job is None:
+                self._kill_requested = True
+                return
+        with job.lock:
+            proc = job.proc
+            # A finished build phase leaves its exited process here until the run is spawned.
+            if proc is None or not _still_running(proc):
+                job.kill_requested = True
+                proc = None
         if proc is not None:
             _kill(proc)
 

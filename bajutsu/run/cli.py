@@ -639,7 +639,8 @@ def _read_step_line(prompt: str, cancelled: CancelSource = not_cancelled) -> str
     its grace window. The terminal is checked in short slices for that reason.
     """
     typer.echo(prompt, nl=False, err=True)
-    while not select.select([sys.stdin], [], [], _STEP_CANCEL_POLL_SECONDS)[0]:
+    # `select` takes only sockets on Windows, where the run is never behind the wrapper anyway.
+    while os.name != "nt" and not select.select([sys.stdin], [], [], _STEP_CANCEL_POLL_SECONDS)[0]:
         if cancelled():
             raise EOFError
     line = sys.stdin.readline()
@@ -2797,7 +2798,13 @@ def run(ctx: typer.Context, **params: Any) -> None:
     they did in one process. The body keeps every check of its own, the refusal of a device-cloud
     `--worker-config` among them, so each stays in one place. A SIGINT, SIGTERM, or SIGHUP cancels
     the run as a served cancel does; the exit code is the run's, or 128 plus the signal number.
+    On Windows the body runs in this process instead, with no wrapper.
     """
+    if os.name == "nt":
+        # The wrapper's process-group relay, Ctrl-Z handling, and liveness pipe are POSIX-only, so
+        # on Windows (where the web backend runs) the body runs in this process, as before BE-0449.
+        run_body(**params)
+        return
     from bajutsu.serve._cli_flags import option_args
     from bajutsu.serve.server.one_shot import local_run_spec, run_spec_once
 

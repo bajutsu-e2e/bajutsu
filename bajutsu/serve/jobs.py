@@ -234,20 +234,24 @@ def _request_graceful_stop(proc: Any) -> None:
 
 def _register_proc(job: Job, proc: Any, *, graceful: bool = False) -> bool:
     """Attach *proc* as the job's live subprocess so a cancel request can reach it.  If a cancel
-    already arrived, kill *proc* at once and return False so the caller stops before streaming.
+    already arrived, stop *proc* at once and return False so the caller stops before streaming; a
+    latched `kill_requested` makes that stop a SIGKILL rather than a SIGTERM.
 
     `graceful` records that *proc* answers a cancel cooperatively (BE-0370), so `cancel_job` can tell
     a `run` job's spawned run from its own build phase, which keeps today's kill.
     """
     with job.lock:
-        if job.cancelled:
-            kill = True
-        else:
-            job.proc = proc
-            job.proc_graceful = graceful
-            kill = False
+        kill = job.cancelled
+        hard = job.kill_requested
+        # Registered even when it is about to be stopped, so a hard kill asked for while the caller
+        # waits for it to exit still reaches it.
+        job.proc = proc
+        job.proc_graceful = graceful and not kill
     if kill:
-        _terminate(proc)
+        if hard:
+            _kill(proc)
+        else:
+            _terminate(proc)
     return not kill
 
 

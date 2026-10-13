@@ -762,7 +762,7 @@ def test_the_run_ignores_a_parent_fd_that_is_not_a_pipe(
 @pytest.mark.parametrize(
     ("field", "value"),
     [
-        ("build", "make"),
+        ("build", {"cmd": "make"}),
         ("env_overlay", {"A": 1}),
         ("env_overlay", ["A"]),
         ("app_path", 3),
@@ -778,7 +778,7 @@ def test_a_spec_field_of_the_wrong_shape_is_refused(field: str, value: Any) -> N
 def test_well_shaped_optional_fields_are_accepted() -> None:
     spec = {
         "cmd": ["x"],
-        "build": {"cmd": "make"},
+        "build": "make app",
         "env_overlay": {"A": "b"},
         "app_path": "App.app",
         "graceful_cancel": True,
@@ -799,3 +799,170 @@ def test_the_wrapper_passes_on_only_the_flag_the_caller_typed(
     assert result.exit_code == 0, result.output
     assert captured["spec"]["cmd"] == [*_INTERNAL, "--target=demo"]
     assert captured["kw"]["keep_caller_path"] is True
+
+
+def test_a_queued_spec_with_a_build_command_is_accepted() -> None:
+    from bajutsu.serve.server.worker_job import job_spec
+
+    spec = job_spec(srv.Job(cmd=["x"], build="xcodebuild -scheme App", app_path="App.app"))
+    assert spec["build"] == "xcodebuild -scheme App"
+    assert one_shot.refusal(spec) is None
+
+
+# --- materials must stay inside the workspace -----------------------------------------------------
+
+
+@pytest.mark.parametrize("rel", ["../scenario.yaml", "/etc/scenario.yaml", "a/../../b.yaml", ""])
+def test_a_material_that_escapes_the_workspace_is_refused(tmp_path: Path, rel: str) -> None:
+    for work in (None, tmp_path):
+        reason = one_shot.refusal({"cmd": ["x"], "materials": {rel: "y"}}, work)
+        assert reason is not None and "inside the workspace" in reason
+
+
+def test_a_material_reaching_out_through_a_link_is_refused(tmp_path: Path) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    work = tmp_path / "work"
+    work.mkdir()
+    (work / "link").symlink_to(outside, target_is_directory=True)
+    reason = one_shot.refusal({"cmd": ["x"], "materials": {"link/s.yaml": "y"}}, work)
+    assert reason is not None and "link/s.yaml" in reason
+    assert one_shot.refusal({"cmd": ["x"], "materials": {"in/s.yaml": "y"}}, work) is None
+
+
+def test_worker_once_refuses_an_escaping_material(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    spec = _spec_file(tmp_path, {"cmd": ["never-run"], "materials": {"../s.yaml": "y"}})
+    result = runner.invoke(app, ["worker", "--once", str(spec)])
+    assert result.exit_code == 2
+    assert not (tmp_path.parent / "s.yaml").exists()
+
+
+# --- a second Ctrl-C before the spawn is registered -----------------------------------------------
+
+
+class _KillRecorder:
+    pid = -1  # no such group: `_kill` / `_terminate` fall back to the methods below
+    returncode = -9
+
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    def kill(self) -> None:
+        self.calls.append("kill")
+
+    def terminate(self) -> None:
+        self.calls.append("terminate")
+
+    def wait(self, timeout: float | None = None) -> int:
+        return self.returncode
+
+
+@pytest.mark.parametrize("bind_first", [True, False])
+def test_a_hard_kill_before_the_spawn_is_consumed_at_registration(bind_first: bool) -> None:
+    from bajutsu.serve.server.worker_job import CancelRelay
+
+    relay = CancelRelay()
+    job = srv.Job(cmd=["x"], graceful_cancel=True)
+    if bind_first:
+        relay.bind(job)
+    relay.request()
+    relay.kill()  # the second Ctrl-C: no child yet, so it is latched
+    if not bind_first:
+        relay.bind(job)
+    assert job.kill_requested and job.cancelled
+    proc = _KillRecorder()
+    assert srv_jobs._register_proc(job, proc, graceful=True) is False
+    assert proc.calls == ["kill"]  # never the SIGTERM a child may ignore
+
+
+def test_a_hard_kill_reaches_a_child_stopped_at_registration() -> None:
+    from bajutsu.serve.server.worker_job import CancelRelay
+
+    relay = CancelRelay()
+    job = srv.Job(cmd=["x"], graceful_cancel=True)
+    relay.bind(job)
+    relay.request()
+    proc = _KillRecorder()
+    assert srv_jobs._register_proc(job, proc, graceful=True) is False
+    assert proc.calls == ["terminate"]
+    relay.kill()  # pressed while the caller waits for the terminated child to exit
+    assert proc.calls == ["terminate", "kill"]
+
+
+def test_a_hard_kill_past_a_finished_build_is_latched_for_the_run() -> None:
+    from bajutsu.serve.server.worker_job import CancelRelay
+
+    class _Exited(_KillRecorder):
+        def poll(self) -> int:
+            return 0
+
+    relay = CancelRelay()
+    job = srv.Job(cmd=["x"])
+    relay.bind(job)
+    built = _Exited()
+    job.proc = built  # a build phase leaves its exited process until the run is spawned
+    relay.kill()
+    assert built.calls == [] and job.kill_requested
+
+
+# --- Windows: no wrapper, and nothing POSIX-only at import -----------------------------------------
+
+
+def test_on_windows_the_public_run_calls_the_body_in_process(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[dict[str, Any]] = []
+    monkeypatch.setattr(run_cli, "run_body", lambda **kw: seen.append(kw))
+    monkeypatch.setattr(
+        one_shot, "run_spec_once", lambda *a, **k: pytest.fail("no wrapper on Windows")
+    )
+    monkeypatch.setattr(os, "name", "nt")
+    run_cli.run(None, target_name="demo")  # type: ignore[arg-type]
+    monkeypatch.undo()
+    assert seen == [{"target_name": "demo"}]
+
+
+def test_on_windows_worker_once_refuses(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from bajutsu.serve.cli import worker as worker_cli
+
+    spec = _spec_file(tmp_path, {"cmd": ["never-run"]})
+    monkeypatch.setattr(os, "name", "nt")
+    with pytest.raises(typer.BadParameter) as caught:
+        worker_cli._run_once(spec, None)
+    monkeypatch.undo()
+    assert "POSIX" in str(caught.value)
+
+
+def test_on_windows_the_step_prompt_reads_without_select(monkeypatch: pytest.MonkeyPatch) -> None:
+    import io
+    import select
+
+    monkeypatch.setattr(select, "select", lambda *a: pytest.fail("select on Windows"))
+    monkeypatch.setattr(sys, "stdin", io.StringIO("n\n"))
+    monkeypatch.setattr(os, "name", "nt")
+    line = run_cli._read_step_line("step> ")
+    monkeypatch.undo()
+    assert line == "n\n"
+
+
+def test_the_one_shot_modules_import_without_posix_job_control_signals() -> None:
+    # Windows has no SIGHUP, SIGTSTP, or SIGCONT; a fresh interpreter without them must still import
+    # the wrapper's modules and install the cancel handlers it has.
+    code = (
+        "import signal\n"
+        "for name in ('SIGHUP', 'SIGTSTP', 'SIGCONT'):\n"
+        "    delattr(signal, name)\n"
+        "import bajutsu.run.cli, bajutsu.serve.jobs\n"
+        "from bajutsu.serve.server import one_shot\n"
+        "from bajutsu.serve.server.worker_job import CancelRelay\n"
+        "assert one_shot.CANCEL_SIGNALS == (signal.SIGINT, signal.SIGTERM), one_shot.CANCEL_SIGNALS\n"
+        "with one_shot.cancel_on_signals(CancelRelay()) as signalled:\n"
+        "    assert signalled() is None\n"
+    )
+    done = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, check=False, timeout=60
+    )
+    assert done.returncode == 0, done.stderr

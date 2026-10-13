@@ -383,10 +383,18 @@ def _run_once(path: Path, worker_file: Path | None) -> int:
     """Execute the one job spec in *path* without a server; the exit code for the caller (BE-0449).
 
     A spec that cannot run without a server is refused before anything runs, with exit 2 like any
-    other usage error.
+    other usage error, and so is any spec on Windows (see the body).
     """
     from bajutsu.serve.server import one_shot
 
+    if os.name == "nt":
+        # The one-shot path relays signals to its child's process group and watches it through an
+        # inherited pipe, neither of which Windows offers; refusing beats a run nothing can cancel.
+        raise typer.BadParameter(
+            "`bajutsu worker --once` needs a POSIX host (macOS or Linux) for now; "
+            "on Windows, run `bajutsu run` directly",
+            param_hint="--once",
+        )
     try:
         spec = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as e:
