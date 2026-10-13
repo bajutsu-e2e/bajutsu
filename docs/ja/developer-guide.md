@@ -765,6 +765,38 @@ classDiagram
 2 つあります。報告内容がまったく同じ候補は 1 つにまとめます。作成者が区別できる材料がないためです。
 また、分類済みの兄弟要素と同じラベルを持つ汎用の `other` 特性の包みは、候補から落とします。
 
+![セレクタ解決のフロー図。query() の 1 スナップショットが find_all に入ります。within があれば、空間的に内側の候補だけを残します。候補が 0 件なら ElementNotFound を送出します。内容がまったく同じ候補は、先に 1 つへまとめます。内容の異なる候補が 2 件以上残り、index の指定もなければ AmbiguousSelector を送出します。resolve_unique を出るのは 1 件だけです。そのあと backend が、要素自身の点を topmost_at_point で調べます。覆いがあれば ElementNotTappable を送出し、なければその要素を操作します。](assets/diagrams/developer-guide-selector-resolution-ja.svg)
+
+<details>
+<summary>Mermaid のソース</summary>
+
+<!-- mermaid-svg: assets/diagrams/developer-guide-selector-resolution-ja.svg -->
+```mermaid
+flowchart TB
+    q["query() — 画面の 1 スナップショット"] --> fa["find_all(elements, sel)"]
+    fa --> w{"within の指定は"}
+    w -->|あり| ct["contains() — 内側の候補を残す"]
+    w -->|なし| n
+    ct --> n{"候補の数は"}
+    n -->|0 件| e1["ElementNotFound"]
+    n -->|1 件| ok["解決した要素"]
+    n -->|2 件以上| dup["内容が同じ候補をまとめる"]
+    dup --> ix{"まだ複数か"}
+    ix -->|いいえ| ok
+    ix -->|index あり| ok
+    ix -->|index なし| e2["AmbiguousSelector"]
+    ok --> cov{"topmost_at_point: 覆われているか"}
+    cov -->|はい| e3["ElementNotTappable"]
+    cov -->|いいえ| act["backend が操作を行う"]
+```
+
+</details>
+
+覆いの検査は `resolve_unique` の外、backend の側にあります。`AdbDriver`、`XcuitestLiveDriver`、
+`FakeDriver` が、解決済みの要素に対して `base.raise_if_covered` を呼びます。2 つを分けておくと、
+解決は 1 つのスナップショットだけに依る純粋な関数のままです。「要素はあるが何かが上に乗っている」
+という答えは、セレクタではなく backend の持ち物になります。
+
 **狭い任意プロトコル**が、プラットフォーム間の能力差を引き受けます。すべての backend が空実装を
 並べる巨大なインターフェースを置く代わりに、`base.py` は小さなプロトコルを宣言します。
 `EvidenceProvider`、`ViewportProvider`、`ReadLagProvider`、`ReadOrderProvider`、
@@ -840,6 +872,31 @@ Android と web を 1 つのインターフェースで動かせます。
 ポーリングの仕組みと `WaitTrace` を持ちます。`WaitTrace` は待機のポーリング履歴を記録するので、
 タイムアウトの原因を成果物だけから追えます。
 
+![条件待機 1 回のフロー図。待機は毎巡の先頭で期限を確かめます。期限を過ぎていれば失敗し、FileSink.wait_diagnostic が WaitTrace をツリーと並べて書き出します。期限内なら画面か観測した通信を読みます。続いて警戒役が、画面を塞ぐシステムダイアログを消します。シナリオの interrupts が、割り込みの画面を片付けます。条件を満たせばステップへ戻ります。満たさなければ _adaptive_sleep が巡回の間隔を広げて待ち、次の巡回に入ります。](assets/diagrams/developer-guide-wait-loop-ja.svg)
+
+<details>
+<summary>Mermaid のソース</summary>
+
+<!-- mermaid-svg: assets/diagrams/developer-guide-wait-loop-ja.svg -->
+```mermaid
+flowchart LR
+    s(["待機の開始"]) --> d{"期限を過ぎたか"}
+    d -->|はい| to["失敗 — wait_diagnostic が WaitTrace を書く"]
+    d -->|いいえ| rd["画面、または観測した通信を読む"]
+    rd --> ag["警戒役 — システムダイアログを消す"]
+    ag --> ig["interrupts — 割り込み画面を片付ける"]
+    ig --> m{"条件を満たしたか"}
+    m -->|はい| ok(["ステップが続く"])
+    m -->|いいえ| bo["_adaptive_sleep が間隔を広げる"]
+    bo --> d
+```
+
+</details>
+
+このループには効きどころが 2 つあります。警戒役と割り込み処理は巡回の**内側**で走るので、
+システムダイアログや割り込み画面を片付けるために別の待機を足す必要がありません。そして出口は
+どれも条件か期限についての判断であり、固定の停止ではありません。第二原則のもっとも具体的な姿です。
+
 **アクションの振り分けは条件分岐の連なりではなくレジストリです。**
 [`actions/_registry.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/bajutsu/common/orchestrator/actions/_registry.py)
 は実行時アクションの一覧を `Step` モデル自身から導きます。そのため `Step` に欄を宣言するだけで、
@@ -894,6 +951,33 @@ run が何を残すのかに答えます。
 HTML ページを組み立てます。`archive.py` と `load.py` は、終わった run を `.zip` に書き出し、
 オフラインで読み直して再描画します。`manifest.json` が唯一の正本であり、CI は HTML を解析せずに
 manifest を読みます。
+
+![証跡の書き込み経路のフロー図。3 つの供給元が 1 つのシンクへ入ります。ドライバはスクリーンショット、要素ツリー、生ダンプを供給します。アプリ内のコレクタは NetworkExchange の記録を供給します。Interval は動画と端末ログを供給します。シンクはすべてを RunArtifactWriter へ渡します。RunArtifactWriter は唯一の書き込み口で、run ディレクトリへ届く前に Redactor を適用します。manifest.json は run ディレクトリから書かれ、唯一の正本になります。JUnit XML、CTRF の JSON、HTML レポート、共有用の zip は、いずれも manifest から描画されます。](assets/diagrams/developer-guide-evidence-path-ja.svg)
+
+<details>
+<summary>Mermaid のソース</summary>
+
+<!-- mermaid-svg: assets/diagrams/developer-guide-evidence-path-ja.svg -->
+```mermaid
+flowchart LR
+    drv["Driver — 画面 · 要素ツリー · 生ダンプ"] --> sink["EvidenceSink"]
+    net["アプリ内のコレクタ — NetworkExchange"] --> sink
+    iv["Interval — 動画 · 端末ログ"] --> sink
+    sink --> w["RunArtifactWriter — 唯一の書き込み口"]
+    w --> red["Redactor — 秘密 · ラベル · ヘッダ · 欄"]
+    red --> dir["run ディレクトリ"]
+    dir --> man["manifest.json"]
+    man --> o1["junit.xml"]
+    man --> o2["CTRF の JSON"]
+    man --> o3["report.html"]
+    man --> o4["run の .zip"]
+```
+
+</details>
+
+この形は、上の文章が別々に述べた保証を 2 つ運んでいます。どの成果物も 1 つの書き手を通るので、
+秘匿の処理を置く場所は 1 か所で済みます。供給元ごとに覚えておく規則にはなりません。そして 4 つの
+描画はいずれも manifest を読むため、レポートが CI の読んだ判定と食い違うことがありません。
 
 ---
 
@@ -966,6 +1050,26 @@ observe、propose、execute、emit の順で回ります。画面を読んで `O
 シナリオに追記します。同じ振り分け役を使い回すからこそ、記録したステップはそのまま再生できます。
 `capture.py` は代理操作による記録の経路です。人間がアプリを操作し、記録側がそこからステップを
 起こします。
+
+![record ループのフロー図。ループは画面を読んで Observation にし、Agent に次の操作を尋ねます。Step を運ぶ Proposal は、決定的な run と同じ _do_action の振り分け役へ渡ります。実行したステップは、次の観察へ移る前に、育ちつつあるシナリオへ追記されます。人手を必要とする Proposal は handoff へ向かい、そのあとループに戻ります。ゴール到達を報せる Proposal は、仕上がったシナリオを書き出します。](assets/diagrams/developer-guide-record-loop-ja.svg)
+
+<details>
+<summary>Mermaid のソース</summary>
+
+<!-- mermaid-svg: assets/diagrams/developer-guide-record-loop-ja.svg -->
+```mermaid
+flowchart LR
+    obs["画面を読む — Observation"] --> ask["Agent.next_action"]
+    ask --> prop{"Proposal"}
+    prop -->|Step| exec["_do_action — 決定的な振り分け役"]
+    prop -->|人手が必要| hand["handoff"]
+    prop -->|ゴール到達| emit(["シナリオを書き出す"])
+    exec --> app["ステップを追記する"]
+    app --> obs
+    hand --> obs
+```
+
+</details>
 
 **`crawl/`** はアプリを幅優先で探索し、画面地図を出力します。
 [`core.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/bajutsu/crawl/core.py) がグラフの型

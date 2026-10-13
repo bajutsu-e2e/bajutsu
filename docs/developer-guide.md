@@ -764,6 +764,38 @@ weakening it: candidates reporting identical content collapse to one, since noth
 them for an author to disambiguate on, and a generic `other`-trait wrapper drops out when a
 classified sibling shares its label.
 
+![Flowchart of selector resolution. One query snapshot enters find_all. A within clause keeps the spatially nested candidates. No candidate raises ElementNotFound. Content-identical candidates collapse to one first. Two or more content-distinct candidates raise AmbiguousSelector, unless the author gave an index. One candidate alone leaves resolve_unique. The backend then checks the element's own point with topmost_at_point. A cover raises ElementNotTappable, and an uncovered element is acted on.](assets/diagrams/developer-guide-selector-resolution.svg)
+
+<details>
+<summary>Mermaid source</summary>
+
+<!-- mermaid-svg: assets/diagrams/developer-guide-selector-resolution.svg -->
+```mermaid
+flowchart TB
+    q["query() — one screen snapshot"] --> fa["find_all(elements, sel)"]
+    fa --> w{"within given?"}
+    w -->|yes| ct["contains() — keep the nested candidates"]
+    w -->|no| n
+    ct --> n{"how many candidates?"}
+    n -->|none| e1["ElementNotFound"]
+    n -->|one| ok["the resolved element"]
+    n -->|two or more| dup["collapse content-identical candidates"]
+    dup --> ix{"still several?"}
+    ix -->|no| ok
+    ix -->|index given| ok
+    ix -->|no index| e2["AmbiguousSelector"]
+    ok --> cov{"topmost_at_point: covered?"}
+    cov -->|yes| e3["ElementNotTappable"]
+    cov -->|no| act["the backend performs the action"]
+```
+
+</details>
+
+The cover check sits outside `resolve_unique`, in the backend. `AdbDriver`,
+`XcuitestLiveDriver`, and `FakeDriver` each call `base.raise_if_covered` on it. Separating the two
+keeps resolution a pure function of one snapshot. That leaves "something is over it" a backend's
+answer, not a selector's.
+
 **Narrow optional protocols** carry the capability differences between platforms. Rather than one
 fat interface every backend must stub out, `base.py` declares small protocols — `EvidenceProvider`,
 `ViewportProvider`, `ReadLagProvider`, `ReadOrderProvider`, `SettledReadProvider`,
@@ -837,6 +869,31 @@ holds the step loop. `loop.py` is the largest file in the core, and its structur
 the polling machinery and `WaitTrace`, which records a wait's poll timeline so a timeout stays
 diagnosable from the artifacts alone.
 
+![Flowchart of one condition wait. The wait checks its deadline at the top of every turn. Past the deadline it fails, and FileSink.wait_diagnostic writes the WaitTrace beside the tree. Within the deadline it reads the screen or the observed traffic. The alert guard then clears a blocking system prompt, and the scenario's interrupts clear an interstitial screen. A satisfied condition returns to the step. An unsatisfied one sleeps through _adaptive_sleep, which widens the gap between turns, and the next turn begins.](assets/diagrams/developer-guide-wait-loop.svg)
+
+<details>
+<summary>Mermaid source</summary>
+
+<!-- mermaid-svg: assets/diagrams/developer-guide-wait-loop.svg -->
+```mermaid
+flowchart LR
+    s(["wait starts"]) --> d{"past the deadline?"}
+    d -->|yes| to["fail — wait_diagnostic writes the WaitTrace"]
+    d -->|no| rd["read the screen, or the observed traffic"]
+    rd --> ag["alert guard — clear a system prompt"]
+    ag --> ig["interrupts — clear an interstitial screen"]
+    ig --> m{"condition met?"}
+    m -->|yes| ok(["the step continues"])
+    m -->|no| bo["_adaptive_sleep widens the gap"]
+    bo --> d
+```
+
+</details>
+
+Two properties of that loop matter. The guards run **inside** the turn. Clearing a system prompt
+or an interstitial screen costs no separate wait. Every exit is a decision about the condition or
+the deadline, never a fixed pause. That is prime directive 2 at its most concrete.
+
 **Action dispatch is a registry, not a conditional chain.**
 [`actions/_registry.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/bajutsu/common/orchestrator/actions/_registry.py)
 derives the runtime action list from the `Step` model itself, so declaring a field on `Step` makes
@@ -891,6 +948,33 @@ writes the CTRF JSON; `html.py`, `rows.py`, `panels.py`, and `richtext.py` build
 page; `archive.py` and `load.py` export a finished run as a `.zip` and reload it offline for
 re-rendering. `manifest.json` is the single source of truth, and CI reads it rather than parsing the
 HTML.
+
+![Flowchart of the evidence write path. Three producers feed one sink: the driver supplies screenshots, element trees, and raw dumps; the in-app collectors supply NetworkExchange records; Interval supplies video and the device log. The sink hands everything to RunArtifactWriter, the single write path, which applies the Redactor before anything reaches the run directory. manifest.json is written from the run directory and is the single source of truth. The JUnit XML, the CTRF JSON, the HTML report, and the shareable zip are each rendered from the manifest.](assets/diagrams/developer-guide-evidence-path.svg)
+
+<details>
+<summary>Mermaid source</summary>
+
+<!-- mermaid-svg: assets/diagrams/developer-guide-evidence-path.svg -->
+```mermaid
+flowchart LR
+    drv["Driver — screenshot · element tree · raw dump"] --> sink["EvidenceSink"]
+    net["in-app collectors — NetworkExchange"] --> sink
+    iv["Interval — video · device log"] --> sink
+    sink --> w["RunArtifactWriter — the single write path"]
+    w --> red["Redactor — secrets · labels · headers · fields"]
+    red --> dir["the run directory"]
+    dir --> man["manifest.json"]
+    man --> o1["junit.xml"]
+    man --> o2["CTRF JSON"]
+    man --> o3["report.html"]
+    man --> o4["run .zip"]
+```
+
+</details>
+
+The shape carries two guarantees the prose above states separately. Every artifact passes through
+one writer. Masking has one place to happen, rather than a rule each producer must remember. And
+the four renderings read the manifest, so a report never disagrees with the verdict CI read.
 
 ---
 
@@ -963,6 +1047,26 @@ propose → execute → emit: it reads the screen into an `Observation`, asks th
 loop uses, and appends the step to the growing scenario. Reusing the dispatcher is what makes a
 recorded step replayable. `capture.py` covers the proxy-actuation path, where a human drives the app
 and the recorder captures the resulting steps.
+
+![Flowchart of the record loop. The loop reads the screen into an Observation and asks the Agent for the next action. A Proposal carrying a Step goes to the same _do_action dispatcher the deterministic run uses, and the executed step is appended to the growing scenario before the next observation. A Proposal that needs a person goes to handoff and returns to the loop afterwards. A Proposal that reports the goal reached emits the finished scenario.](assets/diagrams/developer-guide-record-loop.svg)
+
+<details>
+<summary>Mermaid source</summary>
+
+<!-- mermaid-svg: assets/diagrams/developer-guide-record-loop.svg -->
+```mermaid
+flowchart LR
+    obs["read the screen — Observation"] --> ask["Agent.next_action"]
+    ask --> prop{"Proposal"}
+    prop -->|a Step| exec["_do_action — the deterministic dispatcher"]
+    prop -->|needs a person| hand["handoff"]
+    prop -->|goal reached| emit(["emit the scenario"])
+    exec --> app["append the step"]
+    app --> obs
+    hand --> obs
+```
+
+</details>
 
 **`crawl/`** explores an app breadth-first and emits a screen map.
 [`core.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/bajutsu/crawl/core.py) holds the graph
