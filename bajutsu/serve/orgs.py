@@ -23,6 +23,7 @@ from pydantic import Field, ValidationError, model_validator
 from bajutsu.common import _yaml
 from bajutsu.common.config import Config, _Model, parse_config_dict
 from bajutsu.serve.oidc import WorkloadClaims
+from bajutsu.serve.store_keys import reserved_slug_error
 
 if TYPE_CHECKING:  # keeps the default serve/CLI path free of `serve.server` (server/__init__.py)
     from bajutsu.serve.server.db import Repository
@@ -371,6 +372,11 @@ def parse_orgs(orgs_block: object) -> dict[str, OrgConfig]:
         return {}
     if not isinstance(orgs_block, dict):
         raise ValueError("orgs: must be a mapping of org name to its config")  # noqa: TRY004  # invalid external payload, not a caller type error
+    for name in orgs_block:
+        # The name becomes the org id and its object-key prefix, as an API-created slug does, so the
+        # same reserved names are refused here, for the seed and for sign-in alike (BE-0449).
+        if isinstance(name, str) and (reason := reserved_slug_error(name)):
+            raise ValueError(f"orgs: {reason}")
     return {name: OrgConfig.model_validate(body or {}) for name, body in orgs_block.items()}
 
 

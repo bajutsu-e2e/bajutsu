@@ -8,8 +8,8 @@ of ``bajutsu run``) and shows its self-contained ``report.html``.  Each request 
 a background thread, streams its output, and the produced ``runs/<id>/`` tree is served so the
 report's relative asset links resolve.  The default transport is stdlib-only — the same
 ``ThreadingHTTPServer`` approach as the network collector ([[network]]); ``--asgi`` instead serves
-the same UI/API as a FastAPI app over uvicorn (the ``server`` extra), the transport the hosted
-backend uses (BE-0015).
+the same UI/API as a FastAPI app over uvicorn (a base dependency, loaded lazily), the transport
+the hosted backend uses (BE-0015).
 
 Split into submodules:
 
@@ -33,6 +33,7 @@ from bajutsu.common.config_source import _bajutsu_cache_root
 from bajutsu.common.run_meta.object_store import EvidenceTarget
 from bajutsu.serve import gate, oplog
 from bajutsu.serve.artifacts import Artifact, ArtifactStore, LocalArtifactStore
+from bajutsu.serve.baselines import LocalBaselineStore
 from bajutsu.serve.batch_bootstrap import bajutsu_source_root, register_batch_providers
 from bajutsu.serve.commands import (
     _int,
@@ -73,7 +74,7 @@ from bajutsu.serve.operations.config import (
     seed_orgs_from_bound_config,
 )
 from bajutsu.serve.orgs import DEFAULT_ORG
-from bajutsu.serve.provider_store import LocalProviderSettingsStore
+from bajutsu.serve.provider_store import LocalProviderSettingsStore, ProviderSettingsStore
 from bajutsu.serve.scenarios import (
     LocalScenarioScope,
     LocalScenarioStore,
@@ -267,7 +268,7 @@ def _joserfc_installed() -> bool:
 
 
 class MissingServerExtra(ImportError):
-    """A server-backend optional extra (FastAPI/uvicorn, the database, object storage) is not
+    """A server-backend optional extra (an object-storage SDK, the PostgreSQL driver, Redis) is not
     installed.
 
     Carries the install hint and lets the CLI exit cleanly. Distinct from a plain ImportError so a
@@ -310,8 +311,9 @@ def _build_state(
         scenarios_dir / "baselines" if scenarios_dir else Path("baselines")
     )
     if backend == "server":
-        # The server backend's seams (FastAPI/uvicorn, object storage, the database) live behind the
-        # optional extras and import lazily. If any is missing, surface one clear install hint
+        # FastAPI, uvicorn, SQLAlchemy, and Alembic are base dependencies (BE-0449). What stays
+        # optional is the client for a service the environment names: boto3 for s3://, the GCS SDK
+        # for gs://, psycopg for PostgreSQL. If one is missing, surface one clear install hint
         # rather than a raw ImportError naming whichever module happened to load first.
         try:
             return _build_server_state(
@@ -334,9 +336,10 @@ def _build_state(
             if e.name and e.name.split(".")[0] == "bajutsu":
                 raise
             raise MissingServerExtra(
-                "the server backend needs its optional extras — install with: "
-                "pip install 'bajutsu[server,worker,db,gcs]' (gcs is only needed if "
-                "BAJUTSU_SERVER_STORE or --evidence-store uses gs://)"
+                "the server backend needs the optional extra for a service it is configured "
+                "with — install with: pip install 'bajutsu[server,db,gcs]' (server adds boto3 "
+                "for s3://, db adds psycopg for a PostgreSQL BAJUTSU_DATABASE_URL, gcs is only "
+                "needed if BAJUTSU_SERVER_STORE or --evidence-store uses gs://)"
             ) from e
     return ServeState(
         runs_dir=runs_dir,
@@ -370,7 +373,7 @@ def _build_state(
 
 # The count folds in the nested closures below (`_warn`, `make_bundle` and its org-store helpers),
 # which ruff checks on their own, plus a flat run of independent startup checks (BE-0386).
-def _build_server_state(  # noqa: C901
+def _build_server_state(  # noqa: C901, PLR0915
     *,
     runs_dir: Path,
     config: Path | None,
@@ -427,7 +430,13 @@ def _build_server_state(  # noqa: C901
     hosted = hosted_from_env(server_store_set=bool(os.environ.get("BAJUTSU_SERVER_STORE")))
     # The local defaults (BE-0449) live in one owner-only directory beside the runs tree.
     state_dir = local_state_dir(runs_dir)
-    store, prefix, local_layout = artifact_store(runs_dir, state_dir, host=host, port=port)
+    # Anchored as `ServeState` anchors it, so the store's baselines mount, the approve, and a run's
+    # `--baselines` all name one directory (BE-0449).
+    if not baselines_dir.is_absolute():
+        baselines_dir = Path.cwd() / baselines_dir
+    store, prefix, local_layout = artifact_store(
+        runs_dir, state_dir, host=host, port=port, baselines_dir=baselines_dir
+    )
     db_url = os.environ.get("BAJUTSU_DATABASE_URL") or None
     # Only a local start (no bucket) gets the default SQLite (BE-0449). A bucket-backed deployment
     # with no database keeps its in-process shape: on several replicas, a SQLite file per replica
@@ -692,9 +701,23 @@ def _build_server_state(  # noqa: C901
         # choice survives a restart per org; None without one, so the selection is session-only
         # in-memory (still resolved per org, just not persisted) — the same no-database fallback the
         # secret store takes above. Not sensitive, so it is stored in the clear.
-        provider_settings = (
+        provider_settings: ProviderSettingsStore | None = (
             DbProviderSettingsStore(_db_engine, org) if _db_engine is not None else None
         )
+        if local_layout and org == DEFAULT_ORG:
+            # A local start keeps the default org's scenarios, baselines, and AI provider settings
+            # where `--backend local` keeps them (BE-0449), as it already does that org's runs. A
+            # saved scenario then lists back from the tree it was saved to, an approved baseline
+            # lands in the `--baselines` directory a run reads, and the provider settings file
+            # stays the one source of truth, which either backend reads and writes. Another org
+            # keeps the bucket layout, so no tenant writes into the default org's tree.
+            return StoreBundle(
+                artifacts=ObjectStorageArtifactStore(store, prefix=artifact_prefix(base)),
+                scenarios=local_scenarios,
+                baselines=LocalBaselineStore(baselines_dir),
+                secrets=secrets,
+                provider_settings=local_provider_settings,
+            )
         # Scenarios are read from the bound config's local-tree dir, not this org's object-storage
         # prefix (BE-0324): a Git- or zip-sourced scenario is already extracted onto the control
         # plane's disk by the time a request arrives, so `list`/`read` resolve it from there. The
@@ -711,6 +734,11 @@ def _build_server_state(  # noqa: C901
             provider_settings=provider_settings,
         )
 
+    # The default org's local stores on a local start (BE-0449), taken before the default bundle
+    # below overwrites the bare fields: `ServeState` built the scenario store over the bound
+    # config's tree, exactly as for `--backend local`.
+    local_scenarios = state.scenarios
+    local_provider_settings = LocalProviderSettingsStore(runs_dir.parent / "provider-settings.json")
     state.org_stores = make_bundle
     # The default-org bundle backs the bare ServeState fields, so code paths that don't resolve an
     # org (and local-parity tests) keep working.
@@ -770,18 +798,12 @@ def _emit_startup_warnings(state: ServeState) -> None:
 
 def make_asgi_server(state: ServeState, host: str = "127.0.0.1", port: int = 8765) -> Any:
     """A uvicorn ``Server`` running the FastAPI control-plane app over *state*. uvicorn and the app
-    (FastAPI) are imported lazily — only when the ASGI transport is selected — so the default path
-    stays server-free (`tests/serve/test_import_guard.py`). (Return type is Any so the module
-    needn't import uvicorn to annotate it.)"""
-    try:
-        import uvicorn
+    (FastAPI) are base dependencies (BE-0449) but imported lazily — only when the ASGI transport is
+    selected — so the CLI path stays server-free (`tests/serve/test_import_guard.py`). (Return type
+    is Any so the module needn't import uvicorn to annotate it.)"""
+    import uvicorn
 
-        from bajutsu.serve.server.app import make_app
-    except ImportError as e:
-        raise ImportError(
-            "the 'server' extra is required for --asgi (FastAPI + uvicorn) — "
-            "install with: pip install 'bajutsu[server]'"
-        ) from e
+    from bajutsu.serve.server.app import make_app
 
     # Derive the Host allowlist from the bound interface, exactly as make_server does for the stdlib
     # transport, so the ASGI gate enforces the same DNS-rebinding defense (BE-0121).

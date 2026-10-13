@@ -22,6 +22,7 @@ from bajutsu.serve.authz import _record_audit
 from bajutsu.serve.orgs import DEFAULT_ORG, AllowedRepository
 from bajutsu.serve.sessions import machine_identity
 from bajutsu.serve.state import ServeState
+from bajutsu.serve.store_keys import reserved_slug_error
 
 _logger = logging.getLogger(__name__)
 
@@ -52,7 +53,9 @@ def _validate_slug(slug: str) -> str | None:
         return "slug must contain only ASCII letters, digits, '-' and '_'"
     if not slug.islower() and any(c.isalpha() for c in slug):
         return "slug must be lowercase"
-    return None
+    # A non-default org's objects nest under its slug, so a slug naming a folder of the default
+    # org's layout would write into that org's tree (BE-0449).
+    return reserved_slug_error(slug)
 
 
 def _string_list(value: Any, field: str) -> tuple[list[str] | None, str | None]:

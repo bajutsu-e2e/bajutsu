@@ -128,10 +128,8 @@ class ServeState:
     hosted: bool = False
     # Whether this deployment's transport serves the `local_only` routes (`serve.routes`) — the
     # `/api/capture/*` family among them. The stdlib server registers every route, so the default
-    # holds there; `make_app` clears it, since the FastAPI transport skips them. Distinct from
-    # `hosted`, which the local `serve --asgi` leaves False while still going through `make_app`:
-    # that deployment keeps the file browser and its host paths but serves no capture route, so the
-    # boot read's `capture` capability is keyed to this field rather than to `hosted` (issue 1721).
+    # holds there; `make_app` sets it to `not hosted`, since the FastAPI transport skips them only on
+    # a hosted deployment (BE-0449). The boot read's `capture` capability reads it (issue 1721).
     serves_local_routes: bool = True
     popen: Popen = subprocess.Popen
     # How a created job gets executed. Defaults to in-process threads (LocalExecutor); a server
@@ -296,7 +294,7 @@ class ServeState:
         self.baselines = LocalBaselineStore(self.baselines_dir)
         # The local secret store holds the value in this process's env; the name->env-var mapping is
         # resolved lazily so a config bound later (its `ai.keyEnv`, BE-0097) is reflected.
-        self.secrets = EnvSecretStore(self._env_var_for_secret)
+        self.secrets = EnvSecretStore(self.env_var_for_secret)
         # `logbus` is resolved by now (a plain field), so the registry can capture it: it is never
         # reassigned after construction, so the registry's reference stays the live bus.
         self.job_registry = JobRegistry(logbus=self.logbus, finished_ids=self._finished_job_ids)
@@ -348,8 +346,9 @@ class ServeState:
             return {org.id: "admin" for org in repository.list_orgs()}
         return repository.list_user_orgs(actor)
 
-    def _env_var_for_secret(self, name: str) -> str:
-        """The env var the local secret store reads/writes for logical secret *name* (BE-0136).
+    def env_var_for_secret(self, name: str) -> str:
+        """The env var the local secret store reads/writes for logical secret *name* (BE-0136), and
+        the one an in-process job receives the value under from any store (BE-0449).
 
         The Claude API key honors the bound config's ``ai.keyEnv`` (BE-0097); the `claude-code`
         provider's OAuth token maps to its fixed CLI variable (BE-0215) — the `claude` CLI names it,

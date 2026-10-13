@@ -1,10 +1,13 @@
-"""Containment guardrail for optional dependencies on the default path.
+"""Containment guardrail for heavy dependencies on the default import path.
 
-Every opt-in subsystem — the hosted server backend (FastAPI / Redis / SQLAlchemy / object storage /
-OAuth), the web backend's Playwright, and the AI SDK (`anthropic`, BE-0111) — must stay off the
-default `bajutsu serve` / CLI / `run` path, imported only when that subsystem is explicitly used.
-These tests lock that invariant: importing the default path must pull in **none** of those deps, so
-the base (AI-free) install and the Linux gate stay lean, and `make serve` stays single-process.
+Every opt-in subsystem — the hosted server backend's cloud clients (Redis / object storage / the
+PostgreSQL driver / OAuth), the web backend's Playwright, and the AI SDK (`anthropic`, BE-0111) —
+must stay off the default `bajutsu serve` / CLI / `run` path, imported only when that subsystem is
+explicitly used. The server stack itself (FastAPI, uvicorn, SQLAlchemy, Alembic) is a base
+dependency since BE-0449, so a base install can start the local server shape, but it is still
+imported only by the `serve` paths that use it: the CLI (`bajutsu run` and the rest) must start
+without loading it. These tests lock that invariant: importing the default path must pull in
+**none** of those packages, so CLI startup stays fast and `make serve` stays single-process.
 
 Each test runs in a clean child interpreter so the result can't be contaminated by other tests in
 the session that may import those packages.
@@ -15,8 +18,9 @@ from __future__ import annotations
 import subprocess
 import sys
 
-# Top-level packages that only an opt-in backend may import — never the default path: the
-# (future) server backend, plus the web backend's Playwright (a heavy dep loaded only when a
+# Top-level packages the default path never imports: the server stack (installed with the base
+# since BE-0449, but loaded only when `serve` builds a server state or the FastAPI app), the
+# server's optional cloud clients, and the web backend's Playwright (a heavy dep loaded only when a
 # browser is actually started; see bajutsu/common/drivers/playwright.py).
 FORBIDDEN = sorted(
     {
@@ -26,6 +30,8 @@ FORBIDDEN = sorted(
         "uvicorn",
         "sqlalchemy",
         "alembic",
+        "cryptography",
+        "starlette",
         "authlib",
         "joserfc",
         "boto3",
@@ -169,3 +175,24 @@ def test_default_path_runs_with_anthropic_absent() -> None:
         f"stderr: {result.stderr.strip() or '(none)'}\n"
         "The base (AI-free) install must import and run the deterministic subset without `anthropic`."
     )
+
+
+def test_the_server_stack_is_a_base_dependency_and_the_old_extras_still_resolve() -> None:
+    """The server shape needs no extra (BE-0449), and an existing install command still works.
+
+    FastAPI, uvicorn, SQLAlchemy, Alembic, and `cryptography` are base dependencies, so a plain
+    install can run the local start. The PostgreSQL driver stays in `db`, since SQLite ships with
+    Python, and boto3 stays in `server`. Both extras keep their names, so `bajutsu[server,db]` keeps
+    resolving.
+    """
+    import tomllib
+    from pathlib import Path
+
+    pyproject = Path(__file__).resolve().parents[2] / "pyproject.toml"
+    project = tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]
+    base = {dep.split(">")[0].split("=")[0].split("[")[0] for dep in project["dependencies"]}
+    assert {"fastapi", "uvicorn", "sqlalchemy", "alembic", "cryptography"} <= base
+    assert "psycopg" not in base
+    extras = project["optional-dependencies"]
+    assert extras["db"] == ["psycopg[binary]>=3.1"]
+    assert extras["server"] == ["boto3>=1.34"]

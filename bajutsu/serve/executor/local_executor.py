@@ -13,6 +13,10 @@ class LocalExecutor:
     """Runs each job in-process on a daemon thread — the default for `bajutsu serve`."""
 
     def dispatch(self, state: ServeState, job: Job) -> None:
-        from bajutsu.serve.jobs import run_job  # local import breaks the jobs↔executor cycle
+        # Local import breaks the jobs↔executor cycle.
+        from bajutsu.serve.jobs import run_job_in_process
 
-        threading.Thread(target=run_job, args=(state, job), daemon=True).start()
+        # The thread reads the org's secrets into the child env, on the in-process path alone, so a
+        # store that keeps them out of `os.environ` (the database of a local start) still reaches
+        # the job, and a queued job's stored spec never carries them (BE-0449).
+        threading.Thread(target=run_job_in_process, args=(state, job), daemon=True).start()

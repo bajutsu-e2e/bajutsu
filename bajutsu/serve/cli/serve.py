@@ -98,7 +98,7 @@ def serve(
     asgi: bool = typer.Option(
         False,
         "--asgi",
-        help="serve the FastAPI app over uvicorn instead of the stdlib server (needs bajutsu[server])",
+        help="serve the FastAPI app over uvicorn instead of the stdlib server",
     ),
     backend: str = typer.Option(
         "local",
@@ -173,18 +173,6 @@ def serve(
             evidence = evidence_target_from_uri(evidence_store)
         except (ValueError, ImportError) as e:
             typer.echo(f"--evidence-store {evidence_store}: {e}")
-            raise typer.Exit(2) from None
-
-    # `--asgi` needs the optional `server` extra (FastAPI + uvicorn); fail with an install hint
-    # rather than a raw ImportError traceback, mirroring `bajutsu worker`.
-    if asgi:
-        try:
-            import uvicorn  # noqa: F401
-        except ImportError:
-            typer.echo(
-                "the `server` extra is required for --asgi — "
-                "install with: pip install 'bajutsu[server]'"
-            )
             raise typer.Exit(2) from None
 
     if emit_launchagent:

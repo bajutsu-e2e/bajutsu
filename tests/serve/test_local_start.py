@@ -54,7 +54,8 @@ def _local(tmp_path: Path, **kwargs: Any) -> srv.ServeState:
         config=tmp_path / "bajutsu.config.yaml",
         scenarios_dir=None,
         root=tmp_path,
-        baselines_dir=None,
+        # Explicit, so the store's baselines mount stays inside the test's directory.
+        baselines_dir=tmp_path / "baselines",
         max_concurrent=4,
         token=None,
         backend="server",

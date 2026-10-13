@@ -33,8 +33,8 @@ class Route:
             `off_loop` route each backend handles bespoke.
         off_loop: The route writes its own response (streaming, file serve, raw upload, redirect)
             rather than the uniform JSON/text path; declared here but dispatched per backend.
-        local_only: The FastAPI generator deliberately skips this route (Part 4's triage:
-            `/api/ant/login`, `/api/capture/*`).
+        local_only: The route needs a single-process server (Part 4's triage: `/api/ant/login`,
+            `/api/capture/*`), so the FastAPI app skips it on a hosted deployment (BE-0449).
         content_type: When set, the response is text of this type instead of JSON.
         max_body: The most bytes a POST body may carry; a larger one is refused with 413 before
             it is read whole.

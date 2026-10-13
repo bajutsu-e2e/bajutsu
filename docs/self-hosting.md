@@ -318,9 +318,9 @@ below, covers that case.
   `/api/capture/*` route is local-only and a hosted deployment answers `404`. The boot read
   (`GET /api/config`) reports the absence as a capability flag. A hosted Author tab then
   disables both controls — each showing the server's own reason — and opens in Edit mode, rather
-  than offering a mode whose first call fails (#1721). A local `bajutsu serve --asgi` runs the same
-  transport, so it serves no capture route either; there the flag's reason names the transport
-  rather than the deployment, since the devices are on the machine after all. The Record tab keeps
+  than offering a mode whose first call fails (#1721). A deployment that is not hosted serves the
+  capture routes on either transport: a local `bajutsu serve --asgi` and a local start of the
+  server backend both keep Capture, since the devices are on the machine (BE-0449). The Record tab keeps
   working: `POST /api/record` dispatches a job the way a run does, so a recording made through the
   AI path still runs hosted.
 - **App binary.** An uploaded bundle already carries a prebuilt binary, so its `build:` never runs
@@ -349,6 +349,12 @@ These defaults apply when `BAJUTSU_SERVER_STORE` is unset. A deployment with a b
 database has no queue and runs jobs in its own process, as before: a SQLite file per replica would
 split the queue across them.
 
+A plain `pip install bajutsu` is enough for this shape. The base dependencies carry the server
+stack, such as FastAPI, SQLAlchemy, and `cryptography`. SQLite ships with Python.
+The `server` extra adds boto3
+for an S3 bucket, and the `db` extra adds psycopg for PostgreSQL. A hosted deployment still
+installs those extras, as the Tier B image does.
+
 | Setting left unset | Local default |
 |---|---|
 | `BAJUTSU_DATABASE_URL` | A SQLite file, `.bajutsu/queue.db`. The server migrates it to the latest schema at every start, because no operator runs Alembic for it. |
@@ -366,8 +372,9 @@ The file store uses the bucket's key layout, with one difference. The default or
 have keys under `artifacts/<run id>/`. They stay where `bajutsu run` writes them, at
 `runs/<run id>/`. A run from the command line resolves through the store without moving a file. The
 same holds for a run already under `runs/`. Every other object lives in `.bajutsu/objects/` under
-its bucket key. Scenarios, baselines, uploaded bundles, and every other org's runs go there. Keeping
-them out of `runs/` keeps tenants apart. A default-org request for a run named `acme` or `scenarios`
+its bucket key. Uploaded bundles and every other org's runs, scenarios, and baselines go there. The
+default org's scenarios and baselines stay on the local tree, as the next subsection describes.
+Keeping the other objects out of `runs/` keeps tenants apart. A default-org request for a run named `acme` or `scenarios`
 finds nothing. It can neither read nor delete another org's runs or a store folder.
 
 The server leaves the runs directory itself as it is. It creates `runs/` when it is missing, but
@@ -400,6 +407,43 @@ unset, `hosted` follows the store. A bucket in `BAJUTSU_SERVER_STORE` makes it `
 existing Tier B deployment behaves as before. Otherwise `hosted` is `false`. A database does not
 imply `hosted`. A local start with a queue keeps the file browser (BE-0108). It also keeps the
 device takeover of `record` (BE-0185), since the author sits at the device.
+
+#### What a local start keeps from the local backend
+
+The `local` backend is moving to the shape of a local start. A local start keeps the features a
+`--backend local` user relies on. Queued jobs still lack one of them, described below. Each item
+applies to the default org of a local start. That org is the one whose runs already live in the runs tree.
+
+| Feature | Where a local start keeps it |
+|---|---|
+| Capture mode and the live step picker of the editor | The FastAPI app serves `/api/capture/*` and `/api/ant/login` on any deployment that is not hosted. The UI offers Capture as on the local backend. |
+| Secrets set in the UI | The database keeps them encrypted. A job the server runs in its own process reads them when it starts, and gets the AI key and every `${secrets.X}` value in its environment. A queued job does not get them yet (see below). |
+| Scenarios | Saved to the scenarios directory of the bound config, the same directory the scenario list reads. |
+| Visual baselines | Approved into the `--baselines` directory, the one a run is pointed at. The file store mounts that directory at `baselines/`, so a worker downloads the same files. The start refuses a `--baselines` directory that holds the runs directory or `.bajutsu/`. |
+| AI provider settings | Read from and written to `provider-settings.json` beside the runs directory, the file the local backend uses (BE-0184). |
+
+A local start queues every job kind today, so a `bajutsu worker` runs each one. A queued job gets
+no stored secret yet. The next part of this work relays the values in the lease response. Until
+then, a queued job reads the AI key and each `${secrets.X}` value from its worker's environment.
+
+The secret read for a job has a narrow scope. The server calls it on one path: when it starts a job
+in its own process. No HTTP handler calls it, so no response can carry a stored value
+(BE-0136). The read leaves out the Git credential of a private config source. A job never fetches a
+config, so the job has no use for that credential.
+
+The provider settings stay in the file rather than moving into the database. Both backends then read
+and write one copy. A user who switches between the backends sees the same choice. A copy in the
+database would drift from the file the moment the local backend saved a change.
+
+Another org on a local start keeps the bucket layout under `.bajutsu/objects/`. Its scenarios and
+baselines reach the worker the way they do on a hosted deployment. No tenant writes into the
+default org's tree. To keep that true, no org may take the name of a folder in the default org's
+layout. `POST /api/orgs` and an `orgs:` entry both refuse these four slugs:
+
+- `artifacts`
+- `baselines`
+- `scenarios`
+- `uploads`
 
 ### Per-job artifact overrides for a CI run (BE-0431)
 
