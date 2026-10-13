@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0462") |
+| Implementing PR | [#2169](https://github.com/bajutsu-e2e/bajutsu/pull/2169) (Unit 2) |
 | Topic | Platform support |
 <!-- /BE-METADATA -->
 
@@ -268,7 +269,7 @@ shows up in the report with its drop, not as an ordinary tap.
 
 Log:
 
-- Unit 2. The runner now marks every touch it synthesizes; nothing reads the markers yet.
+- [#2169](https://github.com/bajutsu-e2e/bajutsu/pull/2169) — Unit 2. The runner now marks every touch it synthesizes; nothing reads the markers yet.
   - A new `SynthesisLedger` writes the `begin`, `end`, and `fence` markers from the `BajutsuRunner`
     package. It also writes a `serving` marker once the socket binds. The markers go to the unified
     log under subsystem `bajutsu.runner` and category `synthesis`. Their level is `.notice`, which the

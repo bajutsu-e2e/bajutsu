@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0462") |
+| 実装 PR | [#2169](https://github.com/bajutsu-e2e/bajutsu/pull/2169)（ユニット 2） |
 | トピック | Platform support |
 <!-- /BE-METADATA -->
 
@@ -251,7 +252,7 @@ runner は終了マーカーの直後にフェンスマーカーを出すので�
 
 ログ：
 
-- ユニット 2。runner が合成するすべてのタッチにマーカーを付けるようにしました。マーカーを読むホスト側の
+- [#2169](https://github.com/bajutsu-e2e/bajutsu/pull/2169) — ユニット 2。runner が合成するすべてのタッチにマーカーを付けるようにしました。マーカーを読むホスト側の
   コードは、まだありません。
   - `BajutsuRunner` パッケージに `SynthesisLedger` を加えました。`begin`、`end`、`fence` の各マーカーと、
     ソケットの bind 後に出す `serving` マーカーを書きます。出力先は unified log で、サブシステムは
