@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0449") |
+| Implementing PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167) (Unit 1, part 1) |
 | Topic | Hosting the web UI |
 <!-- /BE-METADATA -->
 
@@ -158,7 +159,7 @@ This item does not change what a job does, how a verdict is decided, or the run 
 
 Log:
 
-- PR_PLACEHOLDER (Unit 1, part 1 of 3: the queue store) — every job transition in `SqlRepository`
+- [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167) (Unit 1, part 1 of 3: the queue store) — every job transition in `SqlRepository`
   (lease, heartbeat, result, reclaim) is now one conditional `UPDATE` whose row count decides the
   race, on SQLite and PostgreSQL alike, in place of a select-then-write that skipped its row lock on
   SQLite. A file-backed SQLite engine sets write-ahead logging and a busy timeout, and
