@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0449") |
-| 実装 PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167)（単位 1 の 3 分割のうち 1）、[#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168)（単位 1 の 3 分割のうち 2）、[#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170)（単位 1 の 3 分割のうち 3）、[#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171)（単位 2）、[#2172](https://github.com/bajutsu-e2e/bajutsu/pull/2172)（単位 4）、[#2173](https://github.com/bajutsu-e2e/bajutsu/pull/2173)（単位 3）、[#2182](https://github.com/bajutsu-e2e/bajutsu/pull/2182)（単位 5 の 2 分割のうち 1：機能を失わないローカル起動）、[#2183](https://github.com/bajutsu-e2e/bajutsu/pull/2183)（単位 5 の 2 分割のうち 2：worker で動く `run`）、[#2184](https://github.com/bajutsu-e2e/bajutsu/pull/2184)、[#2185](https://github.com/bajutsu-e2e/bajutsu/pull/2185)、[#2186](https://github.com/bajutsu-e2e/bajutsu/pull/2186)（単位 6。BE-0448 が実装） |
+| 実装 PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167)（単位 1 の 3 分割のうち 1）、[#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168)（単位 1 の 3 分割のうち 2）、[#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170)（単位 1 の 3 分割のうち 3）、[#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171)（単位 2）、[#2172](https://github.com/bajutsu-e2e/bajutsu/pull/2172)（単位 4）、[#2173](https://github.com/bajutsu-e2e/bajutsu/pull/2173)（単位 3）、[#2182](https://github.com/bajutsu-e2e/bajutsu/pull/2182)（単位 5 の 2 分割のうち 1：機能を失わないローカル起動）、[#2183](https://github.com/bajutsu-e2e/bajutsu/pull/2183)（単位 5 の 2 分割のうち 2：worker で動く `run`）、[#2184](https://github.com/bajutsu-e2e/bajutsu/pull/2184)、[#2185](https://github.com/bajutsu-e2e/bajutsu/pull/2185)、[#2186](https://github.com/bajutsu-e2e/bajutsu/pull/2186)（単位 6。BE-0448 が実装）、PR_PLACEHOLDER13（単位 7） |
 | トピック | Hosting the web UI |
 <!-- /BE-METADATA -->
 
@@ -152,7 +152,7 @@ local バックエンドと server バックエンドの違いは、これらの
 - [x] ライブのログのストリームとルーティング用の executor
 - [x] `run` の移行
 - [x] `run-set`（Device Farm の batch）の移行
-- [ ] `triage` の移行
+- [x] `triage` の移行（ローカル起動。ホスト型の triage と同じホストへの割り当ては後続の作業。ログを参照）
 - [ ] `record` と `crawl` の移行
 - [ ] local の executor の削除
 
@@ -350,6 +350,27 @@ local バックエンドと server バックエンドの違いは、これらの
   非推奨として残ります。`cloudBatchBudget` と `deviceBudget` は、設定ファイルとリクエストの項目です。
   残る 2 つは、ジョブレジストリの `max_concurrent_batch` と `try_register(device_budget=…)` です。
   取り除くまでは引き続き fan-out の上限として効きます。設定ファイルとリクエストの 2 つは、`maxJobConcurrency` を案内する通知をサーバのプロセスごとに一度だけ出します。
+- PR_PLACEHOLDER13（単位 7）— ローカル起動は、`triage` もキューへ積みます（`LOCAL_QUEUED_KINDS`）。
+  triage は worker が実行し、サーバは triage のプロセスを起動しません。job は、run ディレクトリを
+  サーバのディスク上の絶対パスで指定します。バインドした設定とシナリオのソースも同じく絶対パスで
+  指定します。同じマシンの worker は、設定のディレクトリから job を実行します。結果の `triage.json` は
+  サーバの run ディレクトリへ書き、UI はそのファイルを読みます。別のマシンの worker は、単位 5 と同じ
+  メッセージで job を失敗させます。triage はアップロードしたバンドルを読まないので、job はバンドルを
+  運ばなくなりました。`--ai` の triage は、キューのほかの job と同じく AI キーを lease から受け取ります。
+  サーバの認証情報の確認は、org が UI で保存したキーも数えるようになりました。確認が読むのはマスクした
+  説明だけです。キーを数えるのは、ターゲットが読む変数でキーが届く場合に限ります。これまでのローカル
+  起動は、サーバ自身の環境にキーがなければ `--ai` の triage を拒んでいました。triage の job は、出力に
+  現れた run のパスを自分の run ID とみなさなくなりました。みなすと、job の後処理が読んだ run を
+  記録し直します。worker では、その run の `console.log` も上書きします。triage のパネルは、job が
+  待っているあいだ worker がないという通知を表示します。判定の経路は変わりません。新しい import の
+  ガードは、run の入口と worker のループを調べます。どちらも、triage のモジュール、Claude の
+  エージェント、Anthropic のクライアントライブラリを読み込みません。端から端までのテストは、キューに入った
+  triage を本物の worker のループに通します。`--ai` の経路では、モデルの代わりにスタブのエージェントを
+  使います。後続の作業が2つ残ります。1つ目として、ホスト型のデプロイは引き続き triage を拒否します。
+  そのデプロイではシナリオを `materials` として送り、run をオブジェクトストレージに置きます。worker が
+  run のツリーをダウンロードし、`triage.json` をアップロードして戻す仕組みが先に要ります。2つ目として、
+  サーバのパスを指定する job（`run` と `triage`）は、サーバのホストに結び付く能力を持ちません。別の
+  マシンの worker がその job を lease してから失敗させることがあります。
 
 ## 参考
 

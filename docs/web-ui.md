@@ -57,8 +57,9 @@ SERVE_WORKER=0 make serve
 
 A queued run says why it waits. The Replay status line shows a notice that no worker is
 available. `GET /api/jobs/<id>` carries the same text as `notice`. The notice
-clears once a worker that can serve the run polls the server. Record, crawl, and triage jobs still
-run inside the server process (BE-0449).
+clears once a worker that can serve the run polls the server. A triage job goes through the same
+worker, and its panel shows the same notice while it waits. Record and crawl jobs still run inside
+the server process (BE-0449).
 
 Under the hood `make serve` runs `python -m bajutsu serve` — the `bajutsu serve` command the
 [CLI reference](cli.md#serve) documents. If you installed Bajutsu outside a checkout (so there is no

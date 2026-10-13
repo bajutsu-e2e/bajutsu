@@ -206,7 +206,12 @@ def _device_budget(config_budget: int | None, request_budget: int | None) -> int
 
 
 def _register_and_dispatch(
-    state: ServeState, job: Job, *, binding: ConfigBinding | None = None, device_budget: int = 0
+    state: ServeState,
+    job: Job,
+    *,
+    binding: ConfigBinding | None = None,
+    device_budget: int = 0,
+    ship_bundle: bool = True,
 ) -> tuple[Job | None, tuple[Any, int] | None]:
     """Register *job* under the concurrency cap and dispatch it, the tail shared by every start_*
     endpoint. Returns ``(job, None)`` once dispatched, or ``(None, (error, 429))`` when the cap is
@@ -219,7 +224,11 @@ def _register_and_dispatch(
     at the one tail they all funnel through, and passing it *at all* is what makes the job's working
     directory agree with the `--config` already on its command line: both then come from the session
     that asked. Omitted only by a caller with no session binding of its own, which falls through to
-    the deployment's in `try_register`."""
+    the deployment's in `try_register`.
+
+    *ship_bundle* False keeps an uploaded bundle off a job whose command line names its files by
+    absolute path on the server's disk (`triage`, BE-0449), so a worker does not download the whole
+    bundle, application binary included, for a job that reads none of it."""
     # Resolve the requesting org's AI provider selection into this job's env overlay (BE-0229), so
     # the spawn uses that org's provider/model/effort without the serve process mutating its shared
     # os.environ. Empty when no provider is selected (the zero-config path). Travels in the job spec,
@@ -228,7 +237,7 @@ def _register_and_dispatch(
     job.env_overlay = resolve_provider_env(state, job.org)
     if binding is not None:
         job.cwd = binding.cwd
-        if binding.upload is not None:
+        if binding.upload is not None and ship_bundle:
             # A remote worker has no project on disk, so `job.cwd` means nothing there. Carry the
             # bundle's identity as well, and the lease signs a GET for its stored zip — without it
             # the run starts against an `appPath` no worker ever received.

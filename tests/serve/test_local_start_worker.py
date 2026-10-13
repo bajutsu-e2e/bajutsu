@@ -33,7 +33,7 @@ from bajutsu.serve.cli import worker as worker_mod
 from bajutsu.serve.operations._common import NO_WORKER_NOTICE, no_worker_notice
 from bajutsu.serve.server.app import make_app
 from bajutsu.serve.server.worker_job import _spec_cwd, execute_job_spec, job_spec
-from bajutsu.serve.state import Job
+from bajutsu.serve.state import Job, JobKind
 
 # Every variable that would steer the start away from its local defaults, plus the credentials a
 # test sets through the API and must not find already in the environment.
@@ -210,11 +210,13 @@ def test_a_local_start_queues_a_run_and_a_worker_runs_it(
 def test_a_local_start_runs_the_other_kinds_in_process(tmp_path: Path) -> None:
     state = _local_start(tmp_path, _fake_project(tmp_path))
     assert isinstance(state.executor, srv.RoutingExecutor)
-    for kind in ("record", "crawl", "triage"):
+    for kind in ("record", "crawl"):
         assert state.executor.routes_locally(kind)
-    # A Device Farm fan-out needs a worker that registered the provider (BE-0448).
-    assert not state.executor.routes_locally("run")
-    assert not state.executor.routes_locally("run-set")
+    # A Device Farm fan-out needs a worker that registered the provider (BE-0448), and a triage
+    # moved in unit 7.
+    queued: tuple[JobKind, ...] = ("run", "run-set", "triage")
+    for kind in queued:
+        assert not state.executor.routes_locally(kind)
 
 
 # --- the lease relays the stored secrets, and nothing else does ---------------------------------

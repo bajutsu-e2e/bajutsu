@@ -865,6 +865,10 @@ def _run_job(state: ServeState, job: Job, *, inherit_stdio: bool = False) -> Non
         return
     # Read while the leader is alive, for the post-exit sweep below (see `_pgid_of`).
     pgid = _pgid_of(proc)
+    # A triage job reads a run and produces none. A run path in its output must not become its run
+    # id, or the job's tail would re-record that run under triage's exit code and, on a worker,
+    # write triage's console over the run's own `console.log` (BE-0449).
+    produces_run = job.kind != "triage"
     try:
         for raw in proc.stdout or []:
             line = raw.rstrip("\n")
@@ -877,7 +881,7 @@ def _run_job(state: ServeState, job: Job, *, inherit_stdio: bool = False) -> Non
                 if job.bus is not None:
                     job.bus.publish(job.id, line)
                 continue
-            match = _RUN_ID_RE.search(line)
+            match = _RUN_ID_RE.search(line) if produces_run else None
             with job.lock:
                 job.lines.append(line)
                 if match:
