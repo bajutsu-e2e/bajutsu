@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0452") |
-| Implementing PR | [#PR_PLACEHOLDER17](https://github.com/bajutsu-e2e/bajutsu/pull/PR_PLACEHOLDER17) (Units 1–3) |
+| Implementing PR | [#2191](https://github.com/bajutsu-e2e/bajutsu/pull/2191) (Units 1–3) |
 | Topic | Driver & backend architecture |
 | Related | [BE-0126](../BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config.md), [BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact.md), [BE-0228](../BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation.md), [BE-0076](../BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md), [BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks.md), [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md), [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch.md), [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md), [BE-0447](../BE-0447-install-app-step/BE-0447-install-app-step.md), [BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md) |
 <!-- /BE-METADATA -->
@@ -875,7 +875,7 @@ batch provider that packages `launchEnv`, `common/report/rows.py`, `templates/se
 
 ### Log
 
-- [#PR_PLACEHOLDER17](https://github.com/bajutsu-e2e/bajutsu/pull/PR_PLACEHOLDER17) (Units 1–3) — the
+- [#2191](https://github.com/bajutsu-e2e/bajutsu/pull/2191) (Units 1–3) — the
   first three units land. No existing config changes behavior.
   - `VersionSpec` in `bajutsu/common/devices/version.py` implements npm's range grammar in-house.
     Adopting a package would have added a dependency for one small parser. Its tests pin the
