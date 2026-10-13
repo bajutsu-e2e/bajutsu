@@ -49,7 +49,7 @@ expect:
 | `query` | `request`、`event` | 各 `key: value` が URL のクエリ文字列について成り立つ必要があります。キーと値はどちらも URL デコードしてから比べます（`+` は `urllib.parse.parse_qs` と同じく空白として読みます）。値が空または値のないキー（`?debug`、`?page=`）も、`URLSearchParams` と同じく値 `""` を持つキーとして存在するとみなします（`parse_qs(..., keep_blank_values=True)`）。同じキーが繰り返し現れる場合は、いずれか1つが値を満たせば一致とします。 |
 | `body` | `request`（新規）、`event`（拡張） | 各 `key: value` が、解析した JSON のリクエスト本文について成り立つ必要があります。入れ子のマップとリストは再帰的にたどります。 |
 
-条件はすべて、既存のフィールドと AND で結合します。`bodyMatches` と `urlMatches` はそのまま動きます。`query` か `body` だけを指定した照合も条件を持つとみなすので、「条件が少なくとも1つ必要」という検証を通ります。`requestSequence`、`responseSchema.request`、`until: { request }` も同じ `RequestMatch` モデルと `match_request` を使うので、これらでも `query` と `body` を使えるようになります。テストとドキュメントもこれらを対象に含めます。
+条件はすべて、既存のフィールドと AND で結合します。`bodyMatches` と `urlMatches` はそのまま動きます。空でない `query` か `body` だけを指定した照合も条件を持つとみなすので、「条件が少なくとも1つ必要」という検証を通ります。空の `query: {}` や `body: {}` は検証エラーにします。空の辞書はどの交換にも成り立つので、`request: { body: {} }` が任意の通信に一致してしまうからです。今の `event` アサーションも、同じ理由で空の `body` だけを条件とは認めていません。`requestSequence`、`responseSchema.request`、`until: { request }` も同じ `RequestMatch` モデルと `match_request` を使うので、これらでも `query` と `body` を使えるようになります。テストとドキュメントもこれらを対象に含めます。
 
 ### 値の文法
 

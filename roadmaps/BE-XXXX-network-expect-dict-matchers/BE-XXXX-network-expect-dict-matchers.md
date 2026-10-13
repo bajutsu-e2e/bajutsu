@@ -49,7 +49,7 @@ expect:
 | `query` | `request`, `event` | Each `key: value` must hold for the URL's query string. Both key and value are URL-decoded (`+` reads as a space, as in `urllib.parse.parse_qs`). A key with an empty or missing value (`?debug`, `?page=`) is present with the value `""`, as `URLSearchParams` reads it (`parse_qs(..., keep_blank_values=True)`). A repeated key matches if any occurrence satisfies the value. |
 | `body` | `request` (new), `event` (extended) | Each `key: value` must hold for the parsed JSON request body, recursing into nested maps and lists. |
 
-All criteria stay AND-ed with the existing fields. `bodyMatches` and `urlMatches` keep working unchanged. A matcher that sets only `query` or `body` counts as having a criterion, so the "at least one criterion" validators accept it. Because `requestSequence`, `responseSchema.request`, and `until: { request }` reuse the same `RequestMatch` model and `match_request`, they gain `query` and `body` too. The tests and documentation cover them as well.
+All criteria stay AND-ed with the existing fields. `bodyMatches` and `urlMatches` keep working unchanged. A matcher that sets only a non-empty `query` or `body` counts as having a criterion, so the "at least one criterion" validators accept it. An empty `query: {}` or `body: {}` is a validation error. An empty dictionary holds for every exchange, so `request: { body: {} }` would match any traffic. The `event` assertion already refuses an empty `body` as its only criterion for the same reason. Because `requestSequence`, `responseSchema.request`, and `until: { request }` reuse the same `RequestMatch` model and `match_request`, they gain `query` and `body` too. The tests and documentation cover them as well.
 
 ### Value grammar
 
