@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0463") |
+| Implementing PR | [#2179](https://github.com/bajutsu-e2e/bajutsu/pull/2179) |
 | Topic | Verification & coverage |
 <!-- /BE-METADATA -->
 
@@ -144,8 +145,9 @@ The Playwright code generator mirrors `match_request` in JavaScript. It must tra
 
 Log:
 
-- PR_LINK — all five units. `query` and `body` live on the shared endpoint matcher, so `request`,
-  `event`, `requestSequence`, `responseSchema.request`, and `until: { request }` all accept them.
+- [#2179](https://github.com/bajutsu-e2e/bajutsu/pull/2179) — all five units. `query` and `body`
+  live on the shared endpoint matcher, so `request`, `event`, `requestSequence`,
+  `responseSchema.request`, and `until: { request }` all accept them.
   A load-time check enforces the value grammar, and `mocks` refuse both fields. One pure matcher
   (`bajutsu/common/assertions/dict_match.py`) evaluates them. `NetworkExchange` caches its parsed
   query and JSON body, so each exchange parses once. When one candidate exchange alone exists, the

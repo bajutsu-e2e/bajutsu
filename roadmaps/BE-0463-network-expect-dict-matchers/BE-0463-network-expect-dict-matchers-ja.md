@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0463") |
+| 実装 PR | [#2179](https://github.com/bajutsu-e2e/bajutsu/pull/2179) |
 | トピック | 検証とカバレッジ |
 <!-- /BE-METADATA -->
 
@@ -144,8 +145,8 @@ Playwright のコード生成は、`match_request` を JavaScript で再現し�
 
 ログ：
 
-- PR_LINK — 5 つの単位をすべて実装しました。`query` と `body` は共通のエンドポイントのマッチャに
-  置きました。そのため、`request`、`event`、`requestSequence`、`responseSchema.request`、
+- [#2179](https://github.com/bajutsu-e2e/bajutsu/pull/2179) — 5 つの単位をすべて実装しました。`query` と `body` は共通の
+  エンドポイントのマッチャに置きました。そのため、`request`、`event`、`requestSequence`、`responseSchema.request`、
   `until: { request }` のどれでも使えます。値の文法は読み込み時に検証し、`mocks` はどちらのフィールドも拒否します。評価は
   1 つの純粋な照合関数（`bajutsu/common/assertions/dict_match.py`）が担います。`NetworkExchange` が
   解析済みのクエリと JSON 本文を保持するので、1 つの通信を解析するのは 1 回だけです。候補の通信が
