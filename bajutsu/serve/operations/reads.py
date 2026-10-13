@@ -34,7 +34,8 @@ from bajutsu.serve.helpers import (
 from bajutsu.serve.operations._common import _resolve_org_or_forbid
 from bajutsu.serve.operations.config import FS_DISABLED_ERROR, launch_label
 from bajutsu.serve.operations.runs import sweep_expired_trash
-from bajutsu.serve.server.db import RunRecord
+from bajutsu.serve.orgs import DEFAULT_ORG
+from bajutsu.serve.server.db import RunRecord, cancelled_job_result
 from bajutsu.serve.state import ServeState
 
 _REPORT_SUFFIX = "/report.html"
@@ -892,10 +893,11 @@ def job_view(state: ServeState, job_id: str, *, machine_org: str | None = None) 
     this particular id exists, the one thing the refusal is there to withhold.
 
     The check is deliberately narrowed to a machine rather than applied to every caller. A person's
-    org is read from their user row, which `set_active_org` rewrites, while a job's org is frozen at
-    dispatch — so scoping a human here would 404 a member on a run they started seconds earlier,
-    merely because they switched org while it was in flight. The job routes are uniformly unscoped
-    for people today; narrowing that is its own change, tracked separately.
+    active org is read from their user row, which `set_active_org` rewrites, while a job's org is
+    frozen at dispatch — so scoping a human by active org here would 404 a member on a run they
+    started seconds earlier, merely because they switched org while it was in flight. The view stays
+    unscoped for people. `cancel_job` scopes them by membership instead (`org_of` plus
+    `eligible_orgs`, BE-0449), because a cancel reaches jobs this process never registered.
     """
     job = state.jobs.get(job_id)
     if job is None or (machine_org is not None and job.org != machine_org):
@@ -987,11 +989,85 @@ def approve_baseline(
     return {"ok": True, "baseline": baseline}, 200
 
 
-def cancel_job(state: ServeState, job_id: str) -> tuple[Any, int]:
+def cancel_job(
+    state: ServeState,
+    job_id: str,
+    *,
+    actor: str | None = None,
+    machine_org: str | None = None,
+) -> tuple[Any, int]:
+    """Cancel a job, whether it runs in this process or waits for or runs on a worker.
+
+    A job in the jobs table is cancelled there (BE-0449), so a job queued before a restart can still
+    be cancelled: a queued job is marked ``cancelled`` and never leased, and a leased job is flagged
+    for its worker, which stops the run on its next heartbeat and reports the cancel. A job with no
+    row runs in process (`LocalExecutor`) and is stopped here, as before. A cancel that arrives
+    after the job finished changes nothing and reports the job's terminal status.
+
+    The cancel reaches jobs this process never registered (queued before a restart, or by another
+    replica), and job ids are sequential, so a signed-in caller may cancel a job only in their active
+    org or an org they belong to; any other job is answered 404, which does not confirm the id
+    exists. A machine principal is scoped to its own org the way `job_view` scopes it. A deployment
+    with no signed-in caller keeps today's unscoped cancel.
+
+    Args:
+        state: The server state holding the in-process jobs and the repository.
+        job_id: The job to cancel.
+        actor: The signed-in caller, or None for a shared-token or anonymous caller.
+        machine_org: The org a machine principal acts as, or None for every other caller.
+
+    Returns:
+        ``{"cancelled": bool}`` and 200, plus ``status`` (the row's status after the cancel) for a
+        job in the jobs table; 404 for an unknown job or one outside the caller's orgs.
+    """
     job = state.jobs.get(job_id)
-    if job is None:
+    row = state.repository.get_job(job_id) if state.repository is not None else None
+    in_process: bool | None = None
+    if row is None:
+        if job is None or not _may_cancel(state, job.org, actor=actor, machine_org=machine_org):
+            return {"error": "no such job"}, 404
+        in_process = jobs.cancel_job(job)
+        # The job may be between registration and enqueue: its row can appear while this cancel
+        # runs, after the dispatcher already checked `job.cancelled`. Re-reading closes that gap,
+        # and the dispatcher's own check covers the other order.
+        if state.repository is not None:
+            row = state.repository.get_job(job_id)
+        if row is None:
+            return {"cancelled": in_process}, 200
+    elif not _may_cancel(state, row["org_id"], actor=actor, machine_org=machine_org):
         return {"error": "no such job"}, 404
-    return {"cancelled": jobs.cancel_job(job)}, 200
+    assert state.repository is not None  # a row was read from it just above
+    outcome = state.repository.cancel_job(job_id)
+    if outcome is None:
+        return {"error": "no such job"}, 404
+    status, applied = outcome
+    if applied and job is not None:
+        # The control plane's own `Job` holds no process on this path; this marks it cancelled and
+        # puts the "cancelled" line on its log stream, as a cancel always has.
+        jobs.cancel_job(job)
+    if applied and status == "cancelled":
+        # No worker will ever post a result for a job cancelled while queued, so the server writes
+        # the terminal view itself, or the job would read as running forever.
+        state.logbus.close(job_id, json.dumps(cancelled_job_result(job_id)))
+    # This request stopped the in-memory job even when the dispatcher, seeing that, moved the row
+    # first, so it reports the cancel it caused rather than the row's "already finished".
+    return {"cancelled": applied or bool(in_process), "status": status}, 200
+
+
+def _may_cancel(
+    state: ServeState, org: str | None, *, actor: str | None, machine_org: str | None
+) -> bool:
+    """Whether the caller may cancel a job of *org*.
+
+    The caller's active org counts besides its memberships, so a single-tenant deployment, whose
+    users hold no stored membership, still cancels its own `default` jobs.
+    """
+    org = org or DEFAULT_ORG
+    if machine_org is not None:
+        return org == machine_org
+    if not actor:
+        return True
+    return org == state.org_of(actor) or org in state.eligible_orgs(actor)
 
 
 def respond_human(state: ServeState, job_id: str, body: dict[str, Any]) -> tuple[Any, int]:

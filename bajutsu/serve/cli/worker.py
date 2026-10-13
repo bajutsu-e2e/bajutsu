@@ -36,8 +36,11 @@ from bajutsu.common.run_meta.object_store import content_type_for
 from bajutsu.serve import InMemoryLogBus
 from bajutsu.serve.capabilities import WORKER_CAPABILITIES_ENV, worker_capabilities
 from bajutsu.serve.helpers import valid_sha256
+from bajutsu.serve.jobs import cancel_job
 from bajutsu.serve.operations.composition import materialize_composition, place_overrides
+from bajutsu.serve.server.db import cancelled_job_result
 from bajutsu.serve.server.worker_job import WorkerIO, _materialize, execute_job_spec
+from bajutsu.serve.state import Job
 from bajutsu.serve.upload_artifacts import ARTIFACT_KINDS, OVERRIDE_KINDS, ArtifactOverrides
 from bajutsu.serve.uploads import find_bundle_config, materialize_bundle, validate_bundle_config
 
@@ -301,7 +304,8 @@ def worker(
 
         # Say which way it went: a run that died on its first line ("No module named bajutsu")
         # otherwise looked exactly like a pass from this console.
-        typer.echo(f"  completed job {job_id} ({'ok' if result.get('ok') else 'FAILED'})")
+        outcome = "cancelled" if result.get("cancelled") else "ok" if result.get("ok") else "FAILED"
+        typer.echo(f"  completed job {job_id} ({outcome})")
 
 
 def _worker_config_or_exit(path: Path | None) -> Path | None:
@@ -329,6 +333,42 @@ def _worker_config_or_exit(path: Path | None) -> Path | None:
             param_hint="--worker-config",
         )
     return None if path is None else path.resolve()
+
+
+class _CancelRelay:
+    """Hands a cancel from the heartbeat loop to the job the run thread is running (BE-0449).
+
+    The run thread builds its `Job` inside `execute_job_spec`, so a cancel can arrive before the job
+    exists, after, or while it is being bound. The lock orders the two: whichever comes second
+    delivers the cancel, and it is delivered once, since the heartbeat repeats the flag on every beat
+    and a second graceful stop would restart the run's grace window.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._job: Job | None = None
+        self._requested = False
+
+    @property
+    def requested(self) -> bool:
+        with self._lock:
+            return self._requested
+
+    def bind(self, job: Job) -> None:
+        with self._lock:
+            self._job = job
+            pending = self._requested
+        if pending:
+            cancel_job(job)
+
+    def request(self) -> None:
+        with self._lock:
+            if self._requested:
+                return
+            self._requested = True
+            job = self._job
+        if job is not None:
+            cancel_job(job)
 
 
 def _run_with_heartbeat(
@@ -371,6 +411,7 @@ def _run_with_heartbeat(
     """
     holder: dict[str, Any] = {"work": work}
     lost = threading.Event()
+    cancel = _CancelRelay()
 
     def _run() -> None:
         try:
@@ -387,6 +428,9 @@ def _run_with_heartbeat(
             return
         if lost.is_set():  # the lease is already gone — never start the run
             return
+        if cancel.requested:  # cancelled during the fetch — nothing has touched the device yet
+            holder["result"] = cancelled_job_result(job_id)
+            return
         try:
             job = execute_job_spec(
                 spec,
@@ -396,6 +440,7 @@ def _run_with_heartbeat(
                 bus=bus,
                 io=io,
                 worker_config=worker_config,
+                on_job=cancel.bind,
             )
             result = job.view()
             result.pop("lines", None)
@@ -411,19 +456,7 @@ def _run_with_heartbeat(
         runner.join(timeout=heartbeat_interval)
         if not runner.is_alive():
             break
-        try:
-            code, _ = _post_json(
-                f"{url}/api/worker/heartbeat",
-                {"worker_id": wid, "job_id": job_id},
-                token=auth_token,
-                # Bounded by one interval: without a timeout a stalled connection blocks this loop
-                # indefinitely and the lease lapses anyway — the failure this function exists to
-                # prevent, arriving through the renewal path itself.
-                timeout=heartbeat_interval,
-            )
-        except (URLError, OSError) as e:
-            _logger.warning("heartbeat failed for job %s: %s", job_id, e)
-            continue
+        code = _heartbeat(url, wid, job_id, auth_token, heartbeat_interval, cancel)
         if code == 409:
             abandoned = True
             lost.set()  # seen in time, this stops _run before it ever calls execute_job_spec
@@ -434,6 +467,36 @@ def _run_with_heartbeat(
         return None, abandoned, holder["work"]
     result = holder.get("result", {"ok": False, "error": "worker produced no result"})
     return result, abandoned, holder["work"]
+
+
+def _heartbeat(
+    url: str,
+    wid: str,
+    job_id: str,
+    auth_token: str | None,
+    interval: float,
+    cancel: _CancelRelay,
+) -> int | None:
+    """Renew the lease once and relay a cancel it carries; the HTTP status, or None on a transport
+    failure (logged), which the loop rides out until the next beat."""
+    try:
+        code, beat = _post_json(
+            f"{url}/api/worker/heartbeat",
+            {"worker_id": wid, "job_id": job_id},
+            token=auth_token,
+            # Bounded by one interval: without a timeout a stalled connection blocks the loop
+            # indefinitely and the lease lapses anyway — the failure the loop exists to prevent,
+            # arriving through the renewal path itself.
+            timeout=interval,
+        )
+    except (URLError, OSError) as e:
+        _logger.warning("heartbeat failed for job %s: %s", job_id, e)
+        return None
+    if code == 200 and isinstance(beat, dict) and beat.get("cancel") is True:
+        # The loop keeps heart-beating afterwards: the row stays leased while a `run` winds down
+        # gracefully, and only this worker's cancelled result finishes it (BE-0449).
+        cancel.request()
+    return code
 
 
 def _write_console_log(work: Path, run_id: str, bus: InMemoryLogBus, job_id: str) -> None:

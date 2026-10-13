@@ -273,3 +273,40 @@ def test_0020_carries_live_sessions_and_orgs_through_the_table_rebuild(
             assert [tuple(r) for r in conn.execute(text("SELECT id FROM orgs"))] == [("acme",)]
     finally:
         engine.dispose()
+
+
+@pytest.mark.parametrize("migration_db_url", _DIALECTS, indirect=True)
+def test_0022_adds_an_unset_cancel_flag_to_existing_jobs(migration_db_url: str) -> None:
+    """0022 lands under a live queue: a job leased before it must read as not cancelled. The
+    downgrade's table rebuild on SQLite must keep every job, and turn `cancelled` into `failed`."""
+    from alembic import command
+
+    cfg = _alembic_config()
+    command.upgrade(cfg, "0021")
+    engine = create_engine(migration_db_url)
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO jobs (id, org_id, spec, capabilities, status, attempts, result, "
+                    "batch_state) VALUES ('j1', 'o', '{}', '[]', 'leased', 0, '{}', '{}')"
+                )
+            )
+        command.upgrade(cfg, "0022")
+        with engine.begin() as conn:
+            assert [tuple(r) for r in conn.execute(text("SELECT cancel_requested FROM jobs"))] == [
+                (False,)
+            ]
+            conn.execute(
+                text(
+                    "INSERT INTO jobs (id, org_id, spec, capabilities, status, attempts, result, "
+                    "batch_state) VALUES ('j2', 'o', '{}', '[]', 'cancelled', 0, '{}', '{}')"
+                )
+            )
+        command.downgrade(cfg, "0021")
+        with engine.begin() as conn:
+            # The older code knows no `cancelled`, so the downgrade folds it into `failed`.
+            rows = conn.execute(text("SELECT id, status FROM jobs ORDER BY id"))
+            assert [tuple(r) for r in rows] == [("j1", "leased"), ("j2", "failed")]
+    finally:
+        engine.dispose()

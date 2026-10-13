@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0449") |
-| 実装 PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167)（単位 1 の 1）、[#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168)（単位 1 の 2）、[#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170)（単位 1 の 3） |
+| 実装 PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167)（単位 1 の 1）、[#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168)（単位 1 の 2）、[#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170)（単位 1 の 3）、PR_PLACEHOLDER4（単位 2） |
 | トピック | Hosting the web UI |
 <!-- /BE-METADATA -->
 
@@ -68,7 +68,6 @@ local バックエンドと server バックエンドの違いは、これらの
 
 - キュー中のジョブのキャンセルは、行をキャンセル済みにし、lease はそれを飛ばします。キャンセルはリポジトリからジョブを見つけるので、再起動の前にキューに入ったジョブもキャンセルできます。
 - lease 済みのジョブのキャンセルは、行を leased のまま、キャンセル要求のフラグを立てます。フラグは、ハートビートの応答が 200 で返します。worker は、自分の `Job` をキャンセルします。`run` は穏やかに、他の種類はプロセスグループの終了で行います。結果の経路は、lease の持ち主からのキャンセル済みの結果を受け付け、それだけが行をキャンセル済みに移します。
-- `worker --once` は、SIGINT と SIGTERM を同じキャンセルに対応づけます。
 
 ### 分割をまたぐライブの出力
 
@@ -78,7 +77,7 @@ local バックエンドと server バックエンドの違いは、これらの
 
 ### 1 回実行の worker
 
-`bajutsu worker --once <spec>` は、server なしで 1 つのジョブ仕様を実行し、ジョブの終了コードで終了します。仕様は、キューがすでに保存している形（`worker_job.py` の `job_spec`）です。worker は、`--worker-config` で `worker.yaml` を読み、worker capability の検査を実行し、HTTP と署名付き URL の代わりにローカルの入出力で `execute_job_spec` を通してジョブを実行し、1 回実行のモードでは、リースしたジョブが使う、パイプでつないで統合した取得の代わりに、標準入力、標準出力、標準エラーを継承した子プロセスを起動します。実行の ID は、PASS の行ではなく、子が書いた実行のツリーから取り、起動する内部の run の入口には、解決した `--worker-config` のパスを渡します。アップロード済みのバンドルやアーティファクトの上書きを名指しする仕様は、明確なメッセージで拒否します。それらは署名付き URL で届き、1 回実行の worker にはそれがないからです。同じコマンドが、テスト、調査、次のラッパーに使われます。
+`bajutsu worker --once <spec>` は、server なしで 1 つのジョブ仕様を実行し、ジョブの終了コードで終了します。仕様は、キューがすでに保存している形（`worker_job.py` の `job_spec`）です。worker は、`--worker-config` で `worker.yaml` を読み、worker capability の検査を実行し、HTTP と署名付き URL の代わりにローカルの入出力で `execute_job_spec` を通してジョブを実行し、1 回実行のモードでは、リースしたジョブが使う、パイプでつないで統合した取得の代わりに、標準入力、標準出力、標準エラーを継承した子プロセスを起動します。実行の ID は、PASS の行ではなく、子が書いた実行のツリーから取り、起動する内部の run の入口には、解決した `--worker-config` のパスを渡します。アップロード済みのバンドルやアーティファクトの上書きを名指しする仕様は、明確なメッセージで拒否します。それらは署名付き URL で届き、1 回実行の worker にはそれがないからです。`worker --once` は、SIGINT と SIGTERM を、リース済みのジョブがハートビートで受け取るのと同じキャンセルに対応づけます。同じコマンドが、テスト、調査、次のラッパーに使われます。
 
 ### 薄いラッパーとしての `bajutsu run`
 
@@ -148,7 +147,7 @@ local バックエンドと server バックエンドの違いは、これらの
 > ともに記録します。
 
 - [x] ローカルの既定値
-- [ ] 分割をまたぐキャンセル
+- [x] 分割をまたぐキャンセル
 - [ ] 1 回実行の worker とラッパー
 - [ ] ライブのログのストリームとルーティング用の executor
 - [ ] `run` の移行
@@ -198,6 +197,28 @@ local バックエンドと server バックエンドの違いは、これらの
   登録には新しい追加専用の `record_run_if_absent` を使うので、完了した job の行を上書きしません。
   admin の `POST /api/runs/rescan` は同じ登録を必要なときに行い、ローカルの配置がなければ `409` を
   返します。これで単位 1 が完了しました。
+- PR_PLACEHOLDER4（単位 2）— キャンセルが、分割のどちら側にある job にも届くようになりました。
+  キャンセルの経路はまず jobs テーブルから job を探すので、再起動の前にキューへ入った job もキャンセル
+  できます。行のない job は、これまでどおりプロセス内でキャンセルします。キュー中の job は
+  `status = 'queued'` を条件とする `UPDATE` で `cancelled` になり、リースが返すことはありません。
+  リース済みの job はリースを保ったまま、新しい `cancel_requested` 列（マイグレーション `0022`）に
+  印を付けます。ハートビートは `{"ok": true, "cancel": true}` を返し、worker は `jobs.cancel_job` で
+  自分の `Job` をキャンセルします。`run` は穏当に止め、それ以外の種類はプロセスグループごと終了します。
+  `execute_job_spec` は run の開始前に、組み立てた `Job` をハートビートのループへ渡します。バンドルの
+  取得中に届いたキャンセルでは、run を始めません。結果の経路は `"cancelled": true` をリースの持ち主から
+  だけ受け付け、`status = 'leased' AND leased_by = :worker` を条件とする `UPDATE` で記録します。job が
+  終わったあとのキャンセルは何も変えず、終了時の状態を返します。キャンセルの印が付いたままリースが
+  回収された job は、試行回数の上限に達していても、キューへ戻さず `cancelled` で終えます。`cancelled` は
+  終了状態に加わり、job の同時実行枠を解放し、ログのストリームを閉じます。`0022` のダウングレードは
+  `cancelled` を `failed` に戻します。job の登録からキュー投入までのあいだに届いたキャンセルも、どちらの
+  順序でも行に届きます。`DbQueueExecutor.dispatch` はメモリ上でキャンセル済みの job の行をキャンセルし、
+  キャンセルの経路はプロセス内のキャンセルのあとで jobs テーブルを読み直します。サインインした呼び出し元は、
+  プロセス内の job も jobs テーブルの job も、その org が自分のアクティブな org か所属する org のときに
+  限りキャンセルできます。それ以外の job には `404` を返します。job のビューは、人に対しては org で
+  絞り込まないままです。経路は machine principal も job の読み出しと同じく自分の
+  org に限りますが、ゲートが machine をキャンセルの経路に通さないので、この検査は防御のためのものです。
+  リース済みの job のキャンセルには、この版以降の worker が要ります。古い worker はハートビートの
+  `cancel` を無視するからです。`worker --once` での SIGINT と SIGTERM の対応付けは単位 3 で入ります。
 
 ## 参考
 

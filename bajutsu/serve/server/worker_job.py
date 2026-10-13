@@ -29,6 +29,8 @@ from bajutsu.serve.orgs import DEFAULT_ORG as _DEFAULT_ORG
 from bajutsu.serve.state import Job, ServeState
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     # Only the type annotations reference it; the runtime rebuild imports it lazily so serializing a
     # normal job never pulls the batch seam (and its optional deps) into the common worker path.
     from bajutsu.serve.batch_provider import BatchRequest
@@ -219,6 +221,7 @@ def execute_job_spec(
     io: WorkerIO | None = None,
     repository: Any = None,
     worker_config: Path | None = None,
+    on_job: Callable[[Job], None] | None = None,
 ) -> Job:
     """Worker entrypoint: rebuild the job from *spec*, run the unchanged `run_job`, then upload its
     run tree through the control plane's presigned URLs.
@@ -231,7 +234,9 @@ def execute_job_spec(
     of record under its org/actor — the run executes here, not on the control plane, so this is where
     it's recorded (BE-0015). `popen` / `simctl` / `cwd` / `bus` / `io` / `repository` are injectable
     so the run can be driven with a fake subprocess, an in-memory Redis, a fake `WorkerIO`, and an
-    in-memory database on the gate. Returns the finished `Job`."""
+    in-memory database on the gate. *on_job* receives the rebuilt `Job` before it starts, so the
+    worker's heartbeat loop can cancel it when the control plane asks (BE-0449). Returns the
+    finished `Job`."""
     # The subprocess runs with cwd=work and writes runs/<id>/ relative to it, so runs_dir must be
     # work/runs — otherwise state.artifacts would be confined to an unrelated process-CWD runs/.
     work = cwd or Path.cwd()
@@ -280,6 +285,8 @@ def execute_job_spec(
     )
     # Bind the job's ids so every operational record on this worker correlates to it (BE-0055);
     # `run_id` is the run's own id, minted by `run_job`, so it binds only once the run has started.
+    if on_job is not None:
+        on_job(job)
     with oplog.job_context(job_id=job.id, org=org, actor=spec.get("actor")):
         oplog.log_event(_logger, "worker.job.started", "worker started job")
         run_job(state, job)

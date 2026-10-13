@@ -8,7 +8,12 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from ._functions import _age_seconds, _as_utc, _rowcount, _to_org, _to_record
-from ._shared import DEFAULT_LEASE_MAX_ATTEMPTS, DEFAULT_RUN_LIMIT
+from ._shared import (
+    DEFAULT_LEASE_MAX_ATTEMPTS,
+    DEFAULT_RUN_LIMIT,
+    TERMINAL_JOB_STATUSES,
+    cancelled_job_result,
+)
 from .job_metrics import JobMetrics
 from .leased_job import LeasedJob
 from .org_record import OrgRecord
@@ -21,6 +26,11 @@ if TYPE_CHECKING:
 # reclaimed this many times is failed rather than re-queued forever (BE-0016 worker liveness). The
 # worker's heartbeat interval must stay well under the timeout so a live long run is never reclaimed.
 DEFAULT_LEASE_TIMEOUT_SECONDS = 120.0
+
+# How many times `cancel_job` retries its queued-then-leased pair when the row moves between the two
+# updates. Each retry needs a lease or a reclaim to land in a window of one statement, so a handful
+# is far past what a real race produces.
+_CANCEL_ATTEMPTS = 5
 
 # The clock skew a spent-`jti` row must outlive, matching `bajutsu.serve.oidc`'s own allowance —
 # duplicated as a constant rather than imported so this module stays free of the OIDC one.
@@ -46,6 +56,17 @@ def _run_fields(run: RunRecord) -> dict[str, Any]:
     if run.created_at is not None:
         fields["created_at"] = run.created_at
     return fields
+
+
+def _reclaimed_outcome(
+    job_id: str, attempts: int, *, exhausted: bool, cancelling: bool
+) -> dict[str, Any]:
+    """The status (and terminal result, if any) a reclaimed lease moves its job to."""
+    if cancelling:
+        return {"status": "cancelled", "result": cancelled_job_result(job_id)}
+    if exhausted:
+        return {"status": "failed", "result": {"error": f"lease expired after {attempts} attempts"}}
+    return {"status": "queued"}
 
 
 class SqlRepository:
@@ -736,6 +757,22 @@ class SqlRepository:
             session.commit()
             return _rowcount(renewed) == 1
 
+    def cancel_requested(self, job_id: str, worker_id: str) -> bool:
+        from sqlalchemy import select
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import JobRecord
+
+        with Session(self._engine) as session:
+            flag = session.scalar(
+                select(JobRecord.cancel_requested).where(
+                    JobRecord.id == job_id,
+                    JobRecord.status == "leased",
+                    JobRecord.leased_by == worker_id,
+                )
+            )
+            return bool(flag)
+
     def reclaim_expired_leases(
         self, timeout: timedelta, *, max_attempts: int = DEFAULT_LEASE_MAX_ATTEMPTS
     ) -> list[str]:
@@ -753,20 +790,26 @@ class SqlRepository:
             # per restarted `worker-<pid>`.
             session.execute(delete(WorkerRecord).where(WorkerRecord.last_seen < cutoff))
             expired = session.execute(
-                select(JobRecord.id, JobRecord.attempts)
+                select(JobRecord.id, JobRecord.attempts, JobRecord.cancel_requested)
                 .where(JobRecord.status == "leased", JobRecord.leased_at < cutoff)
                 # One lock order for every reclaimer: two sweeps running at once (each lease poll
                 # runs one) then queue behind each other on PostgreSQL rather than deadlock.
                 .order_by(JobRecord.id)
             ).all()
-            for job_id, previous_attempts in expired:
+            for job_id, previous_attempts, cancelling in expired:
                 attempts = previous_attempts + 1
                 exhausted = attempts >= max_attempts
+                # A job a cancel already reached is not run again when its worker dies: it ends
+                # `cancelled`, the outcome its requester asked for (BE-0449).
+                outcome = _reclaimed_outcome(
+                    job_id, attempts, exhausted=exhausted, cancelling=cancelling
+                )
                 # Re-checked in the UPDATE itself: a heartbeat that renewed the lease since the scan
                 # moved `leased_at` past the cutoff, so that live worker's job matches no row and is
                 # left alone rather than reclaimed out from under it (BE-0449). `attempts` must still
                 # read what the scan saw, so a count from before a concurrent reclaim never
-                # overwrites the newer one, whatever the replicas' clocks say.
+                # overwrites the newer one, whatever the replicas' clocks say. The cancel flag must
+                # too, so a cancel landing after the scan is never re-queued with the flag still set.
                 reclaimed = session.execute(
                     update(JobRecord)
                     .where(
@@ -774,20 +817,11 @@ class SqlRepository:
                         JobRecord.status == "leased",
                         JobRecord.leased_at < cutoff,
                         JobRecord.attempts == previous_attempts,
+                        JobRecord.cancel_requested == cancelling,
                     )
-                    .values(
-                        attempts=attempts,
-                        leased_by=None,
-                        leased_at=None,
-                        status="failed" if exhausted else "queued",
-                        **(
-                            {"result": {"error": f"lease expired after {attempts} attempts"}}
-                            if exhausted
-                            else {}
-                        ),
-                    )
+                    .values(attempts=attempts, leased_by=None, leased_at=None, **outcome)
                 )
-                if _rowcount(reclaimed) == 1 and not exhausted:
+                if _rowcount(reclaimed) == 1 and outcome["status"] == "queued":
                     requeued.append(job_id)
             session.commit()
         return requeued
@@ -826,6 +860,47 @@ class SqlRepository:
             session.commit()
             return _rowcount(finished) == 1
 
+    def cancel_job(self, job_id: str) -> tuple[str, bool] | None:
+        from sqlalchemy import update
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import JobRecord
+
+        with Session(self._engine) as session:
+            # Each step is one conditional UPDATE, like every other transition (BE-0449). A row can
+            # move between them — leased by a worker after the first missed, or reclaimed back to
+            # the queue after the second — so the pair is retried a bounded number of times; a
+            # terminal status ends it at once.
+            status = "queued"
+            for _ in range(_CANCEL_ATTEMPTS):
+                queued = session.execute(
+                    update(JobRecord)
+                    .where(JobRecord.id == job_id, JobRecord.status == "queued")
+                    .values(status="cancelled", result=cancelled_job_result(job_id))
+                )
+                if _rowcount(queued) == 1:
+                    session.commit()
+                    return "cancelled", True
+                leased = session.execute(
+                    update(JobRecord)
+                    .where(JobRecord.id == job_id, JobRecord.status == "leased")
+                    .values(cancel_requested=True)
+                )
+                session.commit()
+                if _rowcount(leased) == 1:
+                    return "leased", True
+                row = session.get(JobRecord, job_id)
+                if row is None:
+                    return None
+                status = row.status
+                if status in TERMINAL_JOB_STATUSES:
+                    return status, False
+                session.expire_all()
+            return status, False
+
+    def cancel_leased_job(self, job_id: str, result: dict[str, Any], *, worker_id: str) -> bool:
+        return self._finish_job(job_id, status="cancelled", payload=result, worker_id=worker_id)
+
     def get_job(self, job_id: str) -> dict[str, Any] | None:
         from sqlalchemy.orm import Session
 
@@ -853,7 +928,7 @@ class SqlRepository:
         if not ids:
             return set()
         stmt = select(JobRecord.id).where(
-            JobRecord.id.in_(ids), JobRecord.status.in_(("done", "failed"))
+            JobRecord.id.in_(ids), JobRecord.status.in_(TERMINAL_JOB_STATUSES)
         )
         with Session(self._engine) as session:
             return set(session.scalars(stmt))
