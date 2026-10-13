@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from bajutsu.serve.helpers import mask_secret
@@ -98,3 +99,22 @@ def fernet_from_env() -> Fernet | None:
             "(generate one with `python3 -c 'from cryptography.fernet import Fernet; "
             "print(Fernet.generate_key().decode())'`)"
         ) from e
+
+
+def fernet_from_env_or_local(state_dir: Path) -> Fernet:
+    """A `Fernet` from ``BAJUTSU_SECRETS_KEY`` when it is set, else from the key a local start
+    generates and keeps in *state_dir* (BE-0449). The deployment setting wins so an operator who
+    provisions a key is never overridden by a file on disk.
+
+    Raises:
+        ValueError: ``BAJUTSU_SECRETS_KEY`` is malformed, or the local key file is unsafe or holds
+            something that is not a Fernet key (see `local_keys.secrets_key`).
+    """
+    from_env = fernet_from_env()
+    if from_env is not None:
+        return from_env
+    from cryptography.fernet import Fernet
+
+    from bajutsu.serve.server.local_keys import secrets_key
+
+    return Fernet(secrets_key(state_dir))

@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0449") |
-| 実装 PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167)（単位 1 の 3 分割のうち 1） |
+| 実装 PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167)（単位 1 の 3 分割のうち 1）、[#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168)（単位 1 の 3 分割のうち 2） |
 | トピック | Hosting the web UI |
 <!-- /BE-METADATA -->
 
@@ -168,6 +168,18 @@ local バックエンドと server バックエンドの違いは、これらの
   これまでどおりサーバーがマイグレーションしません。ファイルに置いた SQLite で並行してリースする
   テストと、heartbeat と reclaim を競わせるテストを加えました。単位 1 の残り（秘密鍵の生成、署名付き
   URL を使う `file://` の成果物ストア、ローカル起動の配線）は後続の PR で入れます。
+- [#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168)（単位 1 の 3 分割のうち 2：鍵とファイルストア）— `local_keys` が秘密鍵と URL の
+  署名鍵を初回に生成します。保存先は、runs のディレクトリの隣の `.bajutsu/` です。鍵のファイルは、
+  `O_EXCL | O_NOFOLLOW` で開いたモード `0600` の一時ファイルに書いて同期し、ハードリンクで所定の名前に
+  置きます。このため、同時に起動したプロセスは先に置かれた鍵を読みます。既存のパスがシンボリックリンク、
+  通常のファイル以外、他のアカウントの所有、グループや他者に開いた権限のいずれかに当たるときは、
+  使わずに拒否します。`fernet_from_env_or_local` は `BAJUTSU_SECRETS_KEY` を優先し、未設定のときは
+  ローカルの鍵を使います。`FileObjectStore` はディレクトリの上に `ObjectStore` を実装し、どのキーも
+  シンボリックリンクを経由する場合を含めてルートの内側に閉じ込め、所有者だけの権限で不可分に書き込みます。
+  署名付き URL の宛先は、FastAPI のアプリに加えた `GET` と `PUT` の `/api/store/objects/{key}` です。
+  この経路を認可するのは署名だけで、署名はメソッド、キー、コンテンツタイプ、有効期限に対する
+  HMAC-SHA256 です。経路はオブジェクトストアが `FileObjectStore` のときだけ存在し、デフォルトの起動は、
+  3 番目の PR で配線するまで変わりません。
 
 ## 参考
 

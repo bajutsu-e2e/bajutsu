@@ -36,6 +36,8 @@ provider-settings.json
 # serve's default SQLite database, created by `bajutsu serve` when no DB URL is configured — runtime
 # state, never committed (root-only so a target's own tracked *.db, if any, is unaffected)
 /bajutsu.db
+# Keys a local `bajutsu serve` generates beside the runs directory (BE-0449); never committed.
+/.bajutsu/
 
 # serve's ephemeral upload sandboxes (BE-0073): extracted bundles, cleared on serve start
 uploads/
