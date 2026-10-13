@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0456") |
-| 実装 PR | [#2140](https://github.com/bajutsu-e2e/bajutsu/pull/2140)（単位 2〜8） |
+| 実装 PR | [#2140](https://github.com/bajutsu-e2e/bajutsu/pull/2140)（単位 2〜8）、[#2176](https://github.com/bajutsu-e2e/bajutsu/pull/2176)（単位 1） |
 | トピック | デバイスクラウド実行 |
 | 関連 | [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md), [BE-0238](../BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution-ja.md), [BE-0288](../BE-0288-ios-device-signing-batch-build/BE-0288-ios-device-signing-batch-build-ja.md), [BE-0292](../BE-0292-xcuitest-bundled-runner/BE-0292-xcuitest-bundled-runner-ja.md) |
 <!-- /BE-METADATA -->
@@ -284,7 +284,7 @@ bajutsu runner build --device [--signing PATH] [--out DIR] [--force]
     キーの計算には `xcodebuild -version` と、手動署名では `security` の実行が必要になるためです。
   - `runner` コマンドグループには、ヘルプパネルの分類を別途追加しました。これまでのパネル分けは、
     通常のコマンドしか対象にしていなかったためです。
-- 2026-10-13：PR_LINK で、iPhone 14 Pro と Xcode 27.0 を使ってスパイクを行い、自動署名の経路を実機で
+- 2026-10-13：[#2176](https://github.com/bajutsu-e2e/bajutsu/pull/2176) で、iPhone 14 Pro と Xcode 27.0 を使ってスパイクを行い、自動署名の経路を実機で
   確認しました。自動署名では、Xcode 自身が管理するワイルドカードのプロファイル
   `iOS Team Provisioning Profile: *` で両方の成果物に署名します。`.xctrunner` アプリの識別子は設計どおり
   `<uitests の識別子>.xctrunner` でした。ステージング済みマニフェストと生成 spec の方式も設計どおりに
