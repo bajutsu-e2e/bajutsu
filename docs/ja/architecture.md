@@ -550,8 +550,8 @@ iOS 側の対になるジョブ `pool (xcuitest)` は、Simulator を 2 台起�
   2つの同時 CI ディスパッチが、デプロイのフォールバック binding を奪い合ったり、org の記憶済み設定を
   書き換えたりすることがなくなります。worker はジョブのワークスペースを override の識別子でキー付け
   するため、同じ worker 上の後続ジョブが汚染されることはなく、bundle のキャッシュ木も再取得せずに
-  再利用します。単一プロセスの `serve`（`LocalExecutor` は配置を隔離するワークスペースを持たないため）
-  と、クラウドバッチの `run-set` ファンアウト（この item が対象とする分割 worker トポロジでは動作
+  再利用します。サーバが自分のプロセスで実行するジョブ（`LocalExecutor` は配置を隔離するワークスペースを
+  持たないため。BE-0449 の単位 5 以降、`run` はどの backend でも worker が実行します）と、クラウドバッチの `run-set` ファンアウト（この item が対象とする分割 worker トポロジでは動作
   しません）では拒否されます。差し替えた sha256 はそれぞれ run の manifest の provenance に記録
   されます
 - **target を横断する比較ダッシュボード**（BE-0226。BE-0404 で軸を target に付け替え）: `serve` の **Comparison** タブが、bind している config の target を pass 率、flaky 率、p50/p95 の run 所要時間、そして target ごとのトレンドスパークラインで横並びに順位付けします。BE-0102 の config 単位の集計を target ごとに 1 回ずつ実行して再利用します（`GET /api/metrics/targets`）。BE-0102 と同じく読み取り専用でアドバイザリです。行を選ぶと、その target の run 履歴が読み取り専用で開きます。ポインタでもキーボードでも到達できます。この画面は何も書き換えません。target は binding ではないので、有効にするものが存在しないからです

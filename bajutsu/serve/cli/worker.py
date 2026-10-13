@@ -38,7 +38,8 @@ from bajutsu.common.run_meta.files import DEFAULT_RUNS_DIR
 from bajutsu.common.run_meta.object_store import content_type_for
 from bajutsu.serve import InMemoryLogBus
 from bajutsu.serve.capabilities import WORKER_CAPABILITIES_ENV, worker_capabilities
-from bajutsu.serve.helpers import valid_sha256
+from bajutsu.serve.helpers import unsafe_env_name, valid_sha256, warn_unsafe_env_name
+from bajutsu.serve.jobs import _runs_dir_of
 from bajutsu.serve.operations.composition import materialize_composition, place_overrides
 from bajutsu.serve.operations.worker import (
     WORKER_LOG_BATCH_BYTES,
@@ -218,6 +219,15 @@ def worker(
             "of the shipped default (BE-0450) and handed to every `run` it executes.",
         ),
     ] = None,
+    workdir: Annotated[
+        Path | None,
+        typer.Option(
+            "--workdir",
+            help="The directory leased jobs run in: their materials, fetched bundles, and run "
+            "trees before upload. Default: a fresh temporary directory, removed when the worker "
+            "stops, so a worker started in a project never writes into it (BE-0449).",
+        ),
+    ] = None,
     once: Annotated[
         Path | None,
         typer.Option(
@@ -246,7 +256,7 @@ def worker(
     url = server_url or os.environ.get("BAJUTSU_SERVER_URL") or "http://localhost:8765"
     auth_token = token or os.environ.get("BAJUTSU_TOKEN") or None
     wid = worker_id or f"worker-{os.getpid()}"
-    work = Path.cwd()
+    work, temporary = _workspace(workdir)
     # The capability set this worker advertises on every lease (BE-0166), computed once at startup
     # (the pool is assumed stable per worker).
     caps = _advertised_capabilities(platform, capabilities)
@@ -254,7 +264,52 @@ def worker(
 
     typer.echo(f"bajutsu worker → polling {url}  (Ctrl-C to stop)")
     typer.echo(f"  advertising capabilities: {', '.join(caps) or '(none)'}")
-    while True:
+    typer.echo(f"  workspace: {work}")
+    from bajutsu.serve.server.one_shot import cancel_on_signals
+
+    current = _CurrentJob(pgid_file=work / JOB_PGID_FILE)
+    try:
+        # A stop signal cancels the leased job the way the control plane's cancel does: gracefully
+        # for a run, whose cancelled result is then posted, so the queue records it cancelled
+        # rather than reclaiming the lease and running it again (BE-0449). The loop then ends; a
+        # second SIGINT ends the job's group at once, as for `--once`.
+        with cancel_on_signals(current) as signalled:
+            _serve_leases(
+                url=url,
+                auth_token=auth_token,
+                wid=wid,
+                caps=caps,
+                work=work,
+                poll_interval=poll_interval,
+                heartbeat_interval=heartbeat_interval,
+                worker_file=worker_file,
+                current=current,
+                stopped=lambda: signalled() is not None,
+            )
+            signum = signalled()
+    finally:
+        if temporary:
+            shutil.rmtree(work, ignore_errors=True)
+    if signum is not None:
+        typer.echo("  stopped")
+        raise typer.Exit(128 + signum)
+
+
+def _serve_leases(
+    *,
+    url: str,
+    auth_token: str | None,
+    wid: str,
+    caps: list[str],
+    work: Path,
+    poll_interval: float,
+    heartbeat_interval: float,
+    worker_file: Path | None,
+    current: _CurrentJob,
+    stopped: Callable[[], bool],
+) -> None:
+    """Lease and run jobs until *stopped* answers True; the worker's poll loop."""
+    while not stopped():
         try:
             code, body = _post_json(
                 f"{url}/api/worker/lease",
@@ -295,21 +350,28 @@ def worker(
         )
         streamer = _LogStreamer(functools.partial(_post_log, url, wid, job_id, auth_token))
         bus = _TeeLogBus(streamer.add)
-        result, abandoned, job_work = _run_with_heartbeat(
-            spec,
-            job_id=job_id,
-            work=work,
-            bundle_urls=body.get("bundle_urls"),
-            override_urls=_override_urls(body),
-            bus=bus,
-            url=url,
-            wid=wid,
-            auth_token=auth_token,
-            heartbeat_interval=heartbeat_interval,
-            io=io,
-            worker_config=worker_file,
-            streamer=streamer,
-        )
+        relay = _CancelRelay()
+        current.attach(relay)
+        try:
+            result, abandoned, job_work = _run_with_heartbeat(
+                spec,
+                job_id=job_id,
+                work=work,
+                bundle_urls=body.get("bundle_urls"),
+                override_urls=_override_urls(body),
+                bus=bus,
+                url=url,
+                wid=wid,
+                auth_token=auth_token,
+                heartbeat_interval=heartbeat_interval,
+                io=io,
+                worker_config=worker_file,
+                streamer=streamer,
+                secret_env=_lease_secret_env(body),
+                cancel=relay,
+            )
+        finally:
+            current.detach()
         if abandoned:
             # The control plane reclaimed and likely re-leased this job to another worker; posting a
             # result would race that worker, so drop it (the re-run is the source of truth).
@@ -346,6 +408,163 @@ def worker(
         # otherwise looked exactly like a pass from this console.
         outcome = "cancelled" if result.get("cancelled") else "ok" if result.get("ok") else "FAILED"
         typer.echo(f"  completed job {job_id} ({outcome})")
+
+
+# The prefix of a temporary workspace, and the file in it naming the process that owns it: a
+# workspace whose owner is gone is left over from a worker killed outright, and the next worker
+# removes it (BE-0449). `scripts/serve.sh` writes the same file into the workspace it hands over.
+WORKSPACE_PREFIX = "bajutsu-worker-"
+OWNER_PID_FILE = ".owner-pid"
+# The file in the workspace naming the process group of the job running now, so a supervisor that
+# must kill this worker outright (`scripts/serve.sh` past its wait) can end the run as well; the
+# run lives in a session of its own and would otherwise outlive the worker.
+JOB_PGID_FILE = ".job-pgid"
+
+
+def _workspace(workdir: Path | None) -> tuple[Path, bool]:
+    """The directory leased jobs run in, and whether it is a temporary one to remove at exit.
+
+    Not the current directory: a worker started in a project would otherwise extract bundles into
+    it, and upload a run tree it wrote there onto the same files (BE-0449). A temporary one records
+    this process as its owner, after workspaces whose owners are gone are swept.
+    """
+    if workdir is not None:
+        workdir.mkdir(parents=True, exist_ok=True)
+        return workdir.resolve(), False
+    root = Path(tempfile.gettempdir())
+    _sweep_stale_workspaces(root)
+    work = Path(tempfile.mkdtemp(prefix=WORKSPACE_PREFIX, dir=root))
+    (work / OWNER_PID_FILE).write_text(f"{os.getpid()}\n", encoding="utf-8")
+    return work, True
+
+
+def _sweep_stale_workspaces(root: Path) -> None:
+    """Remove the temporary workspaces under *root* whose owning process has exited.
+
+    Only a real directory of this account, named with `WORKSPACE_PREFIX`, whose owner file names
+    one or more processes (one per line) that have all exited, is removed. Anything else is left
+    alone, a workspace with no owner file included, since nothing says it is abandoned. Skipped on
+    Windows, where `os.kill(pid, 0)` sends a console control event rather than probing.
+    """
+    if os.name == "nt":
+        return
+    uid = os.getuid()
+    for path in root.glob(f"{WORKSPACE_PREFIX}*"):
+        try:
+            if path.is_symlink() or not path.is_dir() or path.stat().st_uid != uid:
+                continue
+            text = (path / OWNER_PID_FILE).read_text(encoding="utf-8")
+            pids = [int(line) for line in text.split() if line]
+        except (OSError, ValueError):
+            continue
+        if pids and not any(_process_alive(pid) for pid in pids):
+            shutil.rmtree(path, ignore_errors=True)
+
+
+def _group_alive(pgid: int) -> bool:
+    """Whether the process group *pgid* still has a member (POSIX; assumed alive elsewhere)."""
+    if os.name == "nt":
+        return True
+    try:
+        os.killpg(pgid, 0)
+    except ProcessLookupError:
+        return False
+    except OSError:
+        return True
+    return True
+
+
+def _process_alive(pid: int) -> bool:
+    """Whether a process with *pid* exists (one of another account counts as alive)."""
+    if pid <= 0:
+        return True
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except OSError:
+        return True
+    return True
+
+
+class _CurrentJob:
+    """The job a stop signal cancels: the one leased now, or the next one the moment it is leased.
+
+    The signal handlers of `cancel_on_signals` call into it from their helper threads, while the
+    poll loop attaches and detaches each job's relay, so a lock orders the two.
+    """
+
+    def __init__(self, pgid_file: Path | None = None) -> None:
+        self._lock = threading.Lock()
+        self._relay: _CancelRelay | None = None
+        self._stopping = False
+        self._pgid_file = pgid_file
+
+    def attach(self, relay: _CancelRelay) -> None:
+        """Make *relay* the job a signal cancels, cancelling it at once when a stop came first.
+
+        With a *pgid_file*, a helper thread records the job's process group there once its child
+        exists, and keeps it current while the job runs.
+        """
+        with self._lock:
+            self._relay = relay
+            stopping = self._stopping
+        if self._pgid_file is not None:
+            threading.Thread(target=self._record_pgid, args=(relay,), daemon=True).start()
+        if stopping:
+            relay.request()
+
+    def detach(self) -> None:
+        """Forget the finished job's relay, and its recorded process group."""
+        with self._lock:
+            self._relay = None
+            if self._pgid_file is not None:
+                self._pgid_file.unlink(missing_ok=True)
+
+    def _record_pgid(self, relay: _CancelRelay) -> None:
+        recorded: int | None = None
+        while True:
+            pgid = relay.pgid()
+            with self._lock:
+                if self._relay is not relay:
+                    return
+                # The child has gone; drop its group once nothing is left in it, so a supervisor
+                # never kills a group number the system may hand to another.
+                if (
+                    pgid is None
+                    and recorded is not None
+                    and self._pgid_file is not None
+                    and not _group_alive(recorded)
+                ):
+                    self._pgid_file.unlink(missing_ok=True)
+                    recorded = None
+                if pgid is not None and pgid != recorded and self._pgid_file is not None:
+                    staging = self._pgid_file.with_suffix(".tmp")
+                    staging.write_text(f"{pgid}\n", encoding="utf-8")
+                    staging.replace(self._pgid_file)
+                    recorded = pgid
+            time.sleep(0.2)
+
+    def request(self) -> None:
+        """Cancel the current job gracefully, and every job leased after it."""
+        with self._lock:
+            self._stopping = True
+            relay = self._relay
+        if relay is not None:
+            relay.request()
+
+    def pgid(self) -> int | None:
+        """The current job's process group, for job control."""
+        with self._lock:
+            relay = self._relay
+        return None if relay is None else relay.pgid()
+
+    def kill(self) -> None:
+        """End the current job's group at once."""
+        with self._lock:
+            relay = self._relay
+        if relay is not None:
+            relay.kill()
 
 
 def _worker_config_or_exit(path: Path | None, *, once: bool = False) -> Path | None:
@@ -615,6 +834,8 @@ def _run_with_heartbeat(
     worker_config: Path | None = None,
     streamer: _LogStreamer | None = None,
     log_flush_interval: float = DEFAULT_LOG_FLUSH_INTERVAL,
+    secret_env: dict[str, str] | None = None,
+    cancel: _CancelRelay | None = None,
 ) -> tuple[dict[str, Any] | None, bool, Path]:
     """Run the job on a background thread while heart-beating its lease from this one.
 
@@ -642,10 +863,14 @@ def _run_with_heartbeat(
     With a *streamer*, a flusher thread posts the job's log lines every *log_flush_interval*
     seconds, and one last flush runs after the job, before this returns, so every line is on the
     server ahead of the result. A 409 on the log route abandons the job like a 409 on the heartbeat.
+
+    *secret_env* is the org's stored secrets from the lease (BE-0449); it reaches the job's child
+    environment alone and is never logged. *cancel* is the relay a stop signal cancels the job
+    through, as the heartbeat's cancel does; a fresh one when the caller has none.
     """
     holder: dict[str, Any] = {"work": work}
     lost = threading.Event()
-    cancel = _CancelRelay()
+    cancel = cancel if cancel is not None else _CancelRelay()
 
     def _run() -> None:
         try:
@@ -675,6 +900,7 @@ def _run_with_heartbeat(
                 io=io,
                 worker_config=worker_config,
                 on_job=cancel.bind,
+                secret_env=secret_env,
                 # Written before the run tree uploads, so console.log travels with it and is the
                 # durable copy the server's log stream falls back to (BE-0449).
                 before_upload=functools.partial(_write_job_console_log, job_work, bus),
@@ -785,19 +1011,29 @@ def _heartbeat(
 
 
 def _write_job_console_log(work: Path, bus: InMemoryLogBus, job: Job) -> None:
-    """`_write_console_log` for a finished job, when it produced a run."""
+    """`_write_console_log` for a finished job, when it produced a run.
+
+    The file goes into the runs directory the run wrote, which is the workspace's for a job that
+    shipped its files, and the server's own for a local start's run that names it by path (BE-0449),
+    where the server reads it without an upload.
+    """
     if job.run_id:
-        _write_console_log(work, job.run_id, bus, job.id)
+        runs = _runs_dir_of(job.cmd, job.cwd or work)
+        _write_run_console_log(runs / job.run_id, bus, job.id)
 
 
 def _write_console_log(work: Path, run_id: str, bus: InMemoryLogBus, job_id: str) -> None:
-    """Write the job's buffered log to runs/<run_id>/console.log for upload.
+    """Write the job's buffered log to runs/<run_id>/console.log under *work* for upload."""
+    _write_run_console_log(work / DEFAULT_RUNS_DIR / run_id, bus, job_id)
+
+
+def _write_run_console_log(run_dir: Path, bus: InMemoryLogBus, job_id: str) -> None:
+    """Write the job's buffered log to *run_dir*/console.log.
 
     The log is whatever the run printed, so it goes through the sink like every other run artifact
-    (BE-0331). A worker holds no secret values of its own, so the redactor is inert and only the
-    sink's pattern backstop — which needs no configuration — reaches this text.
+    (BE-0331). The redactor is inert here and only the sink's pattern backstop, which needs no
+    configuration, reaches this text; the run masks its own `${secrets.X}` values as it prints them.
     """
-    run_dir = work / DEFAULT_RUNS_DIR / run_id
     if not run_dir.is_dir():
         return
     lines = list(bus.stream(job_id, timeout=0.0))
@@ -953,6 +1189,29 @@ def _safe_org(org: Any) -> str:
         return cleaned or "default"
     digest = hashlib.sha256(raw.encode("utf-8", "surrogatepass")).hexdigest()
     return f"{cleaned[:51] or 'org'}-{digest[:12]}"
+
+
+def _lease_secret_env(lease: dict[str, Any]) -> dict[str, str]:
+    """The environment variables the lease relayed from the org's stored secrets (BE-0449).
+
+    Only string names and values are kept, so a malformed lease cannot put anything but text into
+    the child's environment. An older control plane sends none, and the job then runs with the
+    worker's own environment alone, as before.
+    """
+    raw = lease.get("secret_env")
+    if not isinstance(raw, dict):
+        return {}
+    # A control plane is trusted to send values, never to rewrite how this worker's own processes
+    # load and run, so a variable on the deny list is dropped whoever sent it.
+    kept: dict[str, str] = {}
+    for k, v in raw.items():
+        if not (isinstance(k, str) and k and isinstance(v, str)):
+            continue
+        if unsafe_env_name(k):
+            warn_unsafe_env_name(k, "the lease's secret_env")
+            continue
+        kept[k] = v
+    return kept
 
 
 def _override_urls(lease: dict[str, Any]) -> dict[str, str]:

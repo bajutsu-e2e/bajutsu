@@ -1,4 +1,4 @@
-"""The in-process executor, one daemon thread per job — serve's default."""
+"""The in-process executor, one daemon thread per job, for the kinds not yet moved to workers."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 
 
 class LocalExecutor:
-    """Runs each job in-process on a daemon thread — the default for `bajutsu serve`."""
+    """Runs each job in-process on a daemon thread: the kinds `RoutingExecutor` keeps (BE-0449)."""
 
     def dispatch(self, state: ServeState, job: Job) -> None:
         # Local import breaks the jobs↔executor cycle.

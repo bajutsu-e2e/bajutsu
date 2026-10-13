@@ -76,7 +76,10 @@ def test_dispatch_enqueues_a_serializable_job_spec(tmp_path: Path) -> None:
         "batch": None,  # not a cloud-batch job (BE-0336 Unit 5)
         "overrides": None,  # no per-job artifact override named (BE-0431)
         "provenance": None,  # nothing uploaded or overridden to record into the manifest
+        # It ships no files, so a worker on this machine starts it where the config lives (BE-0449).
+        "cwd": str(job.cwd),
     }
+    assert job.cwd is not None
     json.dumps(spec)  # must carry no live objects (locks/Popen/bus) — JSON round-trips
 
 

@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0449") |
-| 実装 PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167)（単位 1 の 3 分割のうち 1）、[#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168)（単位 1 の 3 分割のうち 2）、[#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170)（単位 1 の 3 分割のうち 3）、[#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171)（単位 2）、[#2172](https://github.com/bajutsu-e2e/bajutsu/pull/2172)（単位 4）、[#2173](https://github.com/bajutsu-e2e/bajutsu/pull/2173)（単位 3）、[#2182](https://github.com/bajutsu-e2e/bajutsu/pull/2182)（単位 5 の 2 分割のうち 1：機能を失わないローカル起動） |
+| 実装 PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167)（単位 1 の 3 分割のうち 1）、[#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168)（単位 1 の 3 分割のうち 2）、[#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170)（単位 1 の 3 分割のうち 3）、[#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171)（単位 2）、[#2172](https://github.com/bajutsu-e2e/bajutsu/pull/2172)（単位 4）、[#2173](https://github.com/bajutsu-e2e/bajutsu/pull/2173)（単位 3）、[#2182](https://github.com/bajutsu-e2e/bajutsu/pull/2182)（単位 5 の 2 分割のうち 1：機能を失わないローカル起動）、[#PR_PLACEHOLDER9](https://github.com/bajutsu-e2e/bajutsu/pull/PR_PLACEHOLDER9)（単位 5 の 2 分割のうち 2：worker で動く `run`） |
 | トピック | Hosting the web UI |
 <!-- /BE-METADATA -->
 
@@ -150,7 +150,7 @@ local バックエンドと server バックエンドの違いは、これらの
 - [x] 分割をまたぐキャンセル
 - [x] 1 回実行の worker とラッパー
 - [x] ライブのログのストリームとルーティング用の executor
-- [ ] `run` の移行
+- [x] `run` の移行
 - [ ] `run-set`（Device Farm の batch）の移行
 - [ ] `triage` の移行
 - [ ] `record` と `crawl` の移行
@@ -309,6 +309,36 @@ local バックエンドと server バックエンドの違いは、これらの
   そのまま解決します。CLI は引き続きサーバの依存を 1 つも import しません。`--asgi` のインストール確認は
   なくなり、サーバ backend のインストールの案内はクラウドのクライアントだけを挙げます。ローカル backend の
   executor と既定値は変えていません。
+- [#PR_PLACEHOLDER9](https://github.com/bajutsu-e2e/bajutsu/pull/PR_PLACEHOLDER9)（単位 5 の 2 分割のうち 2：worker で動く `run`）— `--backend local` は、ローカル起動になりました。
+  どちらの backend もサーバの形を組み立て、違いはキューに積む種類だけです。`local` はビルド段階を含む
+  `run` を積み（`LOCAL_QUEUED_KINDS`）、他の種類はサーバのプロセスで実行します。`server` はすべての種類を
+  積みます。フラグは残し、その削除は引き続き単位 9 で行います。ローカル起動は、起動時の config の
+  ディレクトリ、Git の由来、テーマの設定も保ちます。lease の応答は `secret_env` を持ちます。この
+  フィールドは、lease した job の org に保存された secret を、job が読む環境変数の名前で持ちます。
+  サーバは lease の時点で `jobs.lease_secret_env` を通じて値を読み、仕様には保存しません。ブラウザや
+  マシンのログインで取った lease は値を受け取りません。ストアを読めないときは、値なしで実行せずに job を
+  失敗にします。worker は値を run の環境変数に重ね、引数には載せません。ファイルを送らない job は、
+  仕様の `cwd` で config のディレクトリを示します。同じマシンの worker は、そこで job をビルドして実行し、
+  run が書いた runs ディレクトリに `console.log` を書きます。UI で設定した Git の資格情報は、
+  データベースのストアからでも `jobs.stored_git_credential` を通じてサーバ自身の非公開リポジトリの取得に
+  届きます。その優先順位は GitHub App の次で、環境のトークンより前です。キューに入った job は、扱える
+  稼働中の worker がないと通知を持ちます。`Repository.lacks_live_worker` が、lease のタイムアウトと
+  能力だけからこれを判定します。job の表示はこれを `notice` として返し、ライブストリームは通知の出現と
+  解消のたびに `notice` イベントを送ります。Replay と Record のステータス行がこれを表示します。
+  `make serve` は、作業用のディレクトリで同じトークンを使うローカルの worker をサーバの横で起動し、
+  serve の終了とともに止めます。`SERVE_WORKER=0` で無効にできます。lease する worker は、SIGINT や
+  SIGTERM を受けると job をキャンセルし、キャンセルした結果を送ってから終わります。そのため、キューが
+  取り残された job を再び実行することはありません。`serve.sh` は worker を先に止め、猶予時間のあいだ
+  待ちます。worker は、`--workdir` の指定がなければ、現在のディレクトリではなく専用の一時ディレクトリで
+  job を実行します。そのディレクトリには持ち主を記録し、持ち主が終了したディレクトリは後の worker が
+  削除します。実行中の job のプロセスグループもそこに記録するので、worker を強制終了する場合に
+  `serve.sh` は run も終わらせられます。パスを指定する job のディレクトリを持たない worker は、理由を
+  明示して job を失敗にします。保存した secret も lease も、ローダ、インタプリタ、シェル、`BAJUTSU_*` の
+  変数は設定できず、捨てた名前は値を含めずにログに残します。既知の課題として、パスを指定する job は、
+  サーバのマシンの worker だけが宣言する能力を持たないので、別のマシンの worker が lease してから失敗に
+  することがあります。`bajutsu serve --port 0` は
+  理由を示して終了コード 2 で終わります。端から端までのテストは、キューに入った `run` を、fake backend の
+  上で本物の worker のループに通します。
 
 ## 参考
 

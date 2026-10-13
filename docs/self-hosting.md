@@ -83,6 +83,18 @@ PLIST=~/Library/LaunchAgents/com.bajutsu.serve.plist
 /usr/libexec/PlistBuddy -c "Add :EnvironmentVariables:PATH string $(brew --prefix)/bin:/usr/bin:/bin:/usr/sbin:/sbin:$(pwd)/.venv/bin" "$PLIST"
 ```
 
+The agent starts the server alone. The server queues each run for a `bajutsu worker` and does not
+drive a device itself (BE-0449). Run a worker beside it as a second LaunchAgent:
+
+1. Copy the plist under another label.
+2. Change its `ProgramArguments` to `python -m bajutsu worker --platform ios`. Add
+   `--server-url http://127.0.0.1:<port>` when the server listens on a port other than 8765.
+3. Put the same token in its `EnvironmentVariables`, as `BAJUTSU_TOKEN`.
+4. Leave the working directory unchanged. The worker runs each job in a temporary directory.
+   Pass `--workdir <dir>` to keep that workspace in one fixed place.
+
+Until a worker polls, every run stays queued, and the UI says that no worker is available.
+
 serve stays bound to `127.0.0.1`; the next step is what makes it reachable.
 
 ## 2. Load it
@@ -225,10 +237,11 @@ store as the [Claude API key](#operator-secrets-the-claude-api-key): masked, nev
 **local** serve it is held for the lifetime of the process in a bajutsu-owned variable
 (`BAJUTSU_GIT_CONFIG_TOKEN`) that the fetch reads ahead of an ambient `GITHUB_TOKEN` — deliberately
 *not* `GITHUB_TOKEN` itself, so entering or clearing a UI credential never disturbs a token you
-exported at launch. On the **hosted** backend it is encrypted at rest and scoped **per organization**,
-so each tenant's stored credential is its own; wiring that per-organization value into the hosted
-control plane's in-process bind is a follow-up, so a hosted private bind resolves through the
-process-global App / env credential today. When a bind fails for
+exported at launch. A server with a database encrypts it at rest and scopes it **per
+organization**. Each tenant's stored credential is its own. A local start and the **hosted**
+backend both have such a database. The bind hands the organization's stored value to its own fetch
+(BE-0449). That value ranks after a configured GitHub App and ahead of an ambient token. It
+reaches the fetch and never a response. When a bind fails for
 lack of access, the dialog shows the diagnostic inline — the message names the real cause (a rate
 limit, an organization single sign-on (SSO) authorization gap, a rejected token, or "provide a
 credential with Contents: read for `<owner>/<repo>`") rather than a bare 404.
@@ -294,7 +307,7 @@ below, covers that case.
 | State | Local (`hosted: false` — Tier A, or a bare `make serve`) | Hosted (`hosted: true` — Tier B server backend) |
 |---|---|---|
 | **Config** | File browser + Git + upload; own filesystem, paths unconfined | Git + upload only; file browser disabled, 403 (BE-0108) |
-| **Scenario and run artifacts** | `scenarios/` and `runs/` on disk; soft-delete moves to `runs/.trash/` | Object store (S3/GCS) + Postgres; soft-delete sets `deleted_at` (BE-0239) |
+| **Scenario and run artifacts** | `scenarios/` and `runs/` on disk, with the queue and the run history in `.bajutsu/queue.db`; soft-delete leaves a `.deleted` marker in the run tree | Object store (S3/GCS) + Postgres; soft-delete sets `deleted_at` (BE-0239) |
 | **App binary** | `appPath` on disk; build only when missing — never for an uploaded bundle, which ships its binary prebuilt | An uploaded bundle's binary ships to the worker via presigned URLs, no build runs (BE-0413); a Git-sourced config still has the worker build from the checkout, remote build gated (BE-0121) |
 | **Authoring against a live screen** | Capture mode and Edit's live picker both hold a driver open in the `serve` process | Neither is offered: both controls are disabled, each carrying the reason (#1721) |
 
@@ -340,9 +353,17 @@ below, covers that case.
 
 ### The server backend on one machine (BE-0449)
 
-`bajutsu serve --backend server` also starts on one machine with no cloud service. It needs no
-environment variables there. Such a server queues every job and runs none itself. A
-`bajutsu worker` on the same machine leases the queued jobs and runs them. For each setting left
+`bajutsu serve` starts on one machine with no cloud service, on either backend. It needs no
+environment variables there. The server queues jobs. A `bajutsu worker` on the same machine leases
+them and runs them, and `make serve` starts that worker for you. The two backends differ in which
+jobs they queue:
+
+| Backend | Queued for a worker | Run inside the server process |
+|---|---|---|
+| `local` (the default) | `run`, with its build phase | `record`, `crawl`, `triage`, and the Device Farm fan-out |
+| `server` | every job | none |
+
+The remaining kinds move to the worker in later units of BE-0449. For each setting left
 unset, the server supplies a local default. Every default lives in a `.bajutsu/` directory beside
 the runs directory. The server creates that directory owner-only (`0700`), and Git ignores it.
 These defaults apply when `BAJUTSU_SERVER_STORE` is unset. A deployment with a bucket and no
@@ -408,32 +429,63 @@ existing Tier B deployment behaves as before. Otherwise `hosted` is `false`. A d
 imply `hosted`. A local start with a queue keeps the file browser (BE-0108). It also keeps the
 device takeover of `record` (BE-0185), since the author sits at the device.
 
-#### What a local start keeps from the local backend
+#### What a local start keeps from the earlier local backend
 
-The `local` backend is moving to the shape of a local start. A local start keeps the features a
-`--backend local` user relies on. Queued jobs still lack one of them, described below. Each item
-applies to the default org of a local start. That org is the one whose runs already live in the runs tree.
+The `local` backend now has the shape of a local start. It keeps the features the earlier in-process
+backend offered. Each item applies to the default org of a local start. That org is the one whose
+runs already live in the runs tree.
 
 | Feature | Where a local start keeps it |
 |---|---|
 | Capture mode and the live step picker of the editor | The FastAPI app serves `/api/capture/*` and `/api/ant/login` on any deployment that is not hosted. The UI offers Capture as on the local backend. |
-| Secrets set in the UI | The database keeps them encrypted. A job the server runs in its own process reads them when it starts, and gets the AI key and every `${secrets.X}` value in its environment. A queued job does not get them yet (see below). |
+| Secrets set in the UI | The database keeps them encrypted. A job the server runs in its own process reads them when it starts. A queued job receives them in the worker's lease. Either way the job gets the AI key and every `${secrets.X}` value in its environment. |
 | Scenarios | Saved to the scenarios directory of the bound config, the same directory the scenario list reads. |
 | Visual baselines | Approved into the `--baselines` directory, the one a run is pointed at. The file store mounts that directory at `baselines/`, so a worker downloads the same files. The start refuses a `--baselines` directory that holds the runs directory or `.bajutsu/`. |
-| AI provider settings | Read from and written to `provider-settings.json` beside the runs directory, the file the local backend uses (BE-0184). |
+| AI provider settings | Read from and written to `provider-settings.json` beside the runs directory, the file the earlier local backend used (BE-0184). |
+| A run's files | A run names the bound config, its scenario, the runs directory, and the `--baselines` directory by their paths on this machine. The worker on the same machine builds and runs it from the config's directory, and writes the run tree straight into `runs/`. |
 
-A local start queues every job kind today, so a `bajutsu worker` runs each one. A queued job gets
-no stored secret yet. The next part of this work relays the values in the lease response. Until
-then, a queued job reads the AI key and each `${secrets.X}` value from its worker's environment.
+The server reads a stored secret in plaintext on three paths. No HTTP response carries the value
+(BE-0136).
 
-The secret read for a job has a narrow scope. The server calls it on one path: when it starts a job
-in its own process. No HTTP handler calls it, so no response can carry a stored value
-(BE-0136). The read leaves out the Git credential of a private config source. A job never fetches a
-config, so the job has no use for that credential.
+| Path | What the value is for |
+|---|---|
+| The server starts a job in its own process | That job's environment |
+| A worker leases a job | The lease response, which the worker receives |
+| The server binds a config from a private Git repository | That fetch's credential |
 
-The provider settings stay in the file rather than moving into the database. Both backends then read
-and write one copy. A user who switches between the backends sees the same choice. A copy in the
-database would drift from the file the moment the local backend saved a change.
+The lease relays the secrets of the leased job's org and no other. A caller that authenticates with
+the shared token receives them. On a loopback start with no token, any caller does. A browser or
+machine login that reaches the lease route gets none. The values never enter the job spec. The
+queue's database thus keeps them in their encrypted rows alone. A worker lays them over the job's
+environment, never its argv. The job's environment leaves out the Git credential, because a job
+never fetches a config.
+
+A secret may not set a variable that changes how a job's processes load or run. The server and the
+worker both drop such a name and log it, without its value:
+
+| Denied | Names |
+|---|---|
+| Shell and system variables | `PATH`, `HOME`, `USER`, `SHELL`, `LANG`, `TERM`, `PWD`, `OLDPWD`, `LOGNAME`, `TMPDIR`, `DISPLAY`, `IFS`, `ENV`, `BASH_ENV`, `PS4`, `PROMPT_COMMAND` |
+| Interpreter options | `NODE_OPTIONS`, `NODE_PATH`, `RUBYOPT`, `RUBYLIB`, `PERL5OPT`, `PERL5LIB`, `JAVA_TOOL_OPTIONS`, `_JAVA_OPTIONS` |
+| Name prefixes | `LD_`, `DYLD_`, `PYTHON`, `BAJUTSU_` |
+
+On macOS and Linux the deny list matches a name in its exact case; on Windows, case does not matter. The same rule
+applies to a config's `ai.keyEnv` and its `secrets:` names. A denied `ai.keyEnv` makes the server
+read `ANTHROPIC_API_KEY` and log a warning.
+
+A run that waits for a worker says why. The wait ends once a live worker advertises every
+capability the run requires. Until then, three places show a notice that no worker is available:
+
+- the `notice` field of the job view, `GET /api/jobs/<id>`;
+- a `notice` event on the job's live stream, `/api/jobs/<id>/events`;
+- the run's status line in the UI.
+
+A worker counts as live when it polled or sent a heartbeat within the lease timeout. The
+`bajutsu_unroutable_jobs` metric uses the same window. The notice clears as soon as such a worker
+polls, or a worker leases the run.
+
+The provider settings stay in the file rather than moving into the database. A server on either
+backend then reads and writes one copy, so a user who switches backends sees the same choice.
 
 Another org on a local start keeps the bucket layout under `.bajutsu/objects/`. Its scenarios and
 baselines reach the worker the way they do on a hosted deployment. No tenant writes into the
@@ -864,13 +916,12 @@ The same store also holds a scenario's **own** declared secrets
 `.env` the process inherited; now an admin sets each one from the settings panel's **Scenario
 secrets** section, and on the hosted control plane it lands in the same per-org encrypted `secrets`
 table (reusing `BAJUTSU_SECRETS_KEY`, already required above — no new key), write-once and masked
-like the operator credentials. What is **not yet wired** on a self-hosted deployment is *consuming* a
-stored scenario secret: a run executes on a remote Mac worker, not in the control-plane process, so
-threading the stored value into the worker's spawned `bajutsu run` (and the trust-boundary decision
-of whether the plaintext rides the job queue or the worker decrypts it itself) is a tracked
-follow-up — the same gap [BE-0224](../roadmaps/BE-0224-github-private-repo-config-auth/BE-0224-github-private-repo-config-auth.md)
-leaves for the Git config-source token. Storing works on both backends today; on a **local** `serve`
-the value is held in the process environment and a spawned run inherits it directly.
+like the operator credentials. A run reads every stored secret on the worker that leases it
+(BE-0449). The control plane decrypts the org's secrets at lease time. It hands them over in the
+lease response, so the plaintext never rides the job queue. The worker lays the values over the
+spawned run's environment. The API key, the Claude Code token, and each `${secrets.X}` then
+resolve there. A lease taken with the shared token receives the values, and a browser login does
+not. The stored Git config-source token reaches the control plane's own fetch, never a job.
 
 ### 3. Run a Mac worker
 

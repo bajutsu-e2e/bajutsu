@@ -1166,16 +1166,21 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   the run id is always in the key and runs never collide. Upload runs after the verdict, so a failure
   only warns. Needs the `s3` or `gcs` extra **on the server** (the worker needs neither). See
   [self-hosting](self-hosting.md) for the topology.
-- **`--backend server` — a queue and a worker.** The `local` default runs each job
-  inside the `serve` process. The `server` backend queues each job, and a `bajutsu worker` runs it.
-  On one machine, with no `BAJUTSU_SERVER_STORE`, it needs no environment variables. It keeps a
+- **`--backend` — which jobs a worker runs.** Both backends keep a queue for a `bajutsu worker`
+  (BE-0449). The `local` default queues each run, with its build phase. It runs record, crawl,
+  triage, and the Device Farm fan-out inside the `serve` process. The `server` backend queues every
+  job. A queued job waits for a worker. With no live worker able to take it, the job carries a
+  notice that no worker is available. `make serve` starts a worker beside the server. A bare
+  `bajutsu serve` needs `bajutsu worker` beside it. The lease hands the worker the stored secrets
+  of the job's org. On one machine, with no `BAJUTSU_SERVER_STORE`, a server needs no environment
+  variables. It keeps a
   SQLite queue at `.bajutsu/queue.db` beside the runs directory. It generates a key there with mode
   `0600` for signed URLs. It also generates one for stored secrets, unless you provide
   `BAJUTSU_SECRETS_KEY`. Its artifact store reads the default org's runs straight from the runs
   tree, over URLs the server signs. Every other object goes to `.bajutsu/objects/`. At startup it
   indexes the runs already under `runs/` into its history. An admin's `POST /api/runs/rescan` picks
   up later ones. `BAJUTSU_DATABASE_URL`, `BAJUTSU_SECRETS_KEY`, `BAJUTSU_SERVER_STORE`, and
-  `BAJUTSU_HOSTED` override those defaults. A server backend with no bucket uses the FastAPI
+  `BAJUTSU_HOSTED` override those defaults. A server with no bucket uses the FastAPI
   transport, as `--asgi` does, and needs a fixed `--port`. See
   [self-hosting → The server backend on one machine](self-hosting.md#the-server-backend-on-one-machine-be-0449).
 - **Hosting flags (advanced).** `--emit-launchagent` prints a launchd plist to run `serve` as a
@@ -1214,12 +1219,32 @@ execution half of the hosted server backend
 Redis or RQ**, BE-0106), runs it with the unchanged `run_job`, and posts the result back to
 `/api/worker/result`. It holds **no cloud credentials**: every object-store touch — downloading
 baselines before a run, uploading the run tree after — goes through presigned URLs the control
-plane signs (BE-0160), so the worker needs only an HTTP client. Not needed for local use.
+plane signs (BE-0160), so the worker needs only an HTTP client.
+
+A local `bajutsu serve` needs a worker as well, since it queues every run (BE-0449). `make serve`
+starts one. The lease response hands a worker two more fields:
+
+- `secret_env` holds the stored secrets of the leased job's org. Those are the AI key and each
+  `${secrets.X}` value a user set in the UI. The server reads them at lease time and never stores
+  them in the queue. The worker lays them over the run's environment, never its argv. A lease taken
+  with the shared token receives them, as does a lease on a loopback start with no token. A
+  browser login gets none.
+- The spec's `cwd` names the bound config's directory, for a job that ships no files of its own.
+  A run on a local start is such a job: it names its config, scenario, runs, and baselines by path.
+  The worker builds and runs the job from that directory. The config's relative `appPath` and
+  `build:` then resolve as in the server's process. A worker on another machine lacks the
+  directory, so it fails the job with a message saying the job needs a worker on the server's
+  machine.
+
+A SIGINT or SIGTERM stops the worker the way a cancel from the server does. The worker cancels its
+leased job; a run gets its grace window to write its report. The worker then posts the cancelled
+result and exits with 128 plus the signal number. The queue then records the job as cancelled and does not run it again. A second SIGINT ends
+the job's process group at once, as with `--once`.
 
 ```bash
 bajutsu worker [--server-url <url>] [--token <t>] [--platform ios] [--capabilities <tokens>]
                [--poll-interval 2.0] [--heartbeat-interval 30.0] [--worker-id <id>]
-               [--worker-config <worker.yaml>]
+               [--worker-config <worker.yaml>] [--workdir <dir>]
 bajutsu worker --once <spec.json> [--worker-config <worker.yaml>]
 ```
 
@@ -1233,6 +1258,7 @@ bajutsu worker --once <spec.json> [--worker-config <worker.yaml>]
 | `--poll-interval` | `2.0` | seconds between lease attempts while idle |
 | `--heartbeat-interval` | `30.0` | seconds between lease heartbeats during a run (kept under the control plane's lease timeout, so a long run is never mistaken for a dead worker and reclaimed) |
 | `--worker-id` | "" (auto) | worker identifier |
+| `--workdir` | a new temporary directory | where leased jobs run: their materials, fetched bundles, and run trees before upload. The default directory is removed when the worker stops, so a worker started inside a project never writes into it |
 | `--worker-config` | the shipped default | the worker capability file this worker runs under ([BE-0450](../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability.md); see [drivers](drivers.md#worker-capability-check-be-0450)). The worker validates it at startup and exits before leasing anything when the file does not load. It also refuses an `environment` other than `local` for now, because leasing jobs for a device cloud is not implemented yet. The worker passes the file's absolute path to every `bajutsu run` it spawns, so each leased run is checked against the same file; the server never reads it |
 
 `--once` executes one job spec without a server

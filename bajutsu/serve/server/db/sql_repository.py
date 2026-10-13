@@ -736,6 +736,27 @@ class SqlRepository:
                 return leased
             return None
 
+    def lacks_live_worker(self, job_id: str) -> bool:
+        from sqlalchemy import select
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.capabilities import can_serve
+        from bajutsu.serve.server.models import JobRecord, WorkerRecord
+
+        cutoff = datetime.now(UTC) - self._lease_timeout
+        with Session(self._engine) as session:
+            # Only the routing key is read, never `spec`, which carries the run's materials.
+            row = session.execute(
+                select(JobRecord.status, JobRecord.capabilities).where(JobRecord.id == job_id)
+            ).first()
+            if row is None or row.status != "queued":
+                return False
+            required = list(row.capabilities or [])
+            live = session.scalars(
+                select(WorkerRecord.capabilities).where(WorkerRecord.last_seen >= cutoff)
+            ).all()
+        return not any(can_serve(required, list(caps or [])) for caps in live)
+
     def touch_worker(self, worker_id: str) -> None:
         from sqlalchemy import update
         from sqlalchemy.orm import Session

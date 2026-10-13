@@ -44,11 +44,30 @@ make serve ARGS="--config demos/showcase/showcase.config.yaml --port 8766"   # t
 The showcase app needs the showcase config, since the repository has no root
 `bajutsu.config.yaml`.
 
+The server does not drive a device for a run. It queues each run for a `bajutsu worker`. The worker
+leases the run and drives the device or browser. For that reason `make serve` starts one worker
+beside the server. The worker runs on the same machine, with the same token. It stops when the
+server stops. It advertises the platforms of the startup config's targets. A target of another
+platform, bound later, needs its own worker; the no-worker notice says so. Set `SERVE_WORKER=0` to
+start the server alone, for example to attach your own workers:
+
+```bash
+SERVE_WORKER=0 make serve
+```
+
+A queued run says why it waits. The Replay status line shows a notice that no worker is
+available. `GET /api/jobs/<id>` carries the same text as `notice`. The notice
+clears once a worker that can serve the run polls the server. Record, crawl, and triage jobs still
+run inside the server process (BE-0449).
+
 Under the hood `make serve` runs `python -m bajutsu serve` — the `bajutsu serve` command the
 [CLI reference](cli.md#serve) documents. If you installed Bajutsu outside a checkout (so there is no
 `make`), run `bajutsu serve` (or `python -m bajutsu serve`) directly; you are then responsible for
 the backend's dependencies yourself — the XCUITest runner (and Xcode) for an iOS target (a web /
-Playwright target does not need them). Either way the server does not open a browser for you: it
+Playwright target does not need them).
+Start the worker yourself, too, in a second terminal: `bajutsu worker`.
+A web target needs `--platform web` on that worker.
+Either way the server does not open a browser for you: it
 binds `127.0.0.1`, so once it is running, open the printed URL yourself (`http://127.0.0.1:8765` by
 default, or the `--port` you passed). These flags — `--port`, `--config`, `--root`,
 `--runs`, `--baselines`, `--themes`, `--host`, `--token`, `--max-concurrent-runs`,

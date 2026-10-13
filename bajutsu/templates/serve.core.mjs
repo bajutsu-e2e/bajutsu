@@ -68,9 +68,12 @@ async function cancelJob(id,stop){
 }
 // Live-stream a job's log over SSE (BE-0015): a `log` event per line, then one `done` event with
 // the job's final view. Returns the EventSource so a restart can close it. Replaces 1s polling.
-function streamJob(id,onLog,onDone,onHuman){
+// onNotice receives a queued job's no-worker notice (BE-0449): its text while no worker can take
+// the job, then null once one does.
+function streamJob(id,onLog,onDone,onHuman,onNotice){
   const es=new EventSource('/api/jobs/'+id+'/events');
   es.addEventListener('log',e=>onLog(e.data));
+  es.addEventListener('notice',e=>{if(onNotice)onNotice(JSON.parse(e.data).notice)});
   // A "needs human" turn (BE-0179): the paused record's serialized request. Only record wires
   // onHuman; run/crawl never emit it.
   es.addEventListener('human-request',e=>{if(onHuman)onHuman(JSON.parse(e.data))});
@@ -234,7 +237,7 @@ async function startJob(o){
   if(data.error)return fail(data.error);
   if(!data.jobId)return fail('no job started');  // a non-2xx without an {error} field still can't stream
   if(o.onStart)o.onStart(data);
-  return streamJob(data.jobId,o.onLog,o.onDone,o.onHuman);
+  return streamJob(data.jobId,o.onLog,o.onDone,o.onHuman,n=>setStatus(o.status,n||'',n?'ng':'run'));
 }
 
 // ---- determinism audit badge (BE-0145): shared by the Author editor and the Replay views ----

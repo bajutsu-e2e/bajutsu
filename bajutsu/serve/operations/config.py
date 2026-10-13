@@ -48,6 +48,8 @@ from bajutsu.serve.authz import _record_audit, forbidden_for_role
 from bajutsu.serve.helpers import (
     list_targets,
     load_serve_config_file,
+    unsafe_env_name,
+    warn_unsafe_env_name,
 )
 from bajutsu.serve.operations.orgs import NO_ORG_STORE_ERROR
 from bajutsu.serve.operations.upload import (
@@ -73,12 +75,11 @@ AI_API_KEY_SECRET = "aiApiKey"  # noqa: S105 — a secret's logical name, not a 
 AI_CLAUDE_CODE_TOKEN_SECRET = "aiClaudeCodeOauthToken"  # noqa: S105 — a logical name, not a value
 
 # The logical name of the GitHub credential for a private-repo config source (BE-0224) — a third
-# named secret reusing the same write-once store. Local serve materializes it into the bajutsu-owned
-# `BAJUTSU_GIT_CONFIG_TOKEN` (via `ServeState.env_var_for_secret`), which the in-process
-# `bind_git_config` fetch then reads. The hosted backend encrypts it per org, so each tenant's stored
-# credential is its own; wiring the per-org value into the hosted control plane's in-process fetch is
-# a follow-up (the write-once store discloses no plaintext to a handler), so on hosted a private bind
-# resolves through the process-global App / env credential today.
+# named secret reusing the same write-once store. A store without a database writes it into the
+# bajutsu-owned `BAJUTSU_GIT_CONFIG_TOKEN` (via `ServeState.env_var_for_secret`); the database store
+# encrypts it per org, so each tenant's stored credential is its own. Either way `bind_git_config`
+# hands the org's value to its fetch (`jobs.stored_git_credential`, BE-0449), and no response
+# discloses it.
 GIT_CONFIG_TOKEN_SECRET = "gitConfigToken"  # noqa: S105 — a logical name, not a value
 
 # The three logical names above are all valid identifiers, so `_valid_key_env_name` alone would let a
@@ -92,28 +93,10 @@ _RESERVED_SECRET_NAMES = frozenset(
     {AI_API_KEY_SECRET, AI_CLAUDE_CODE_TOKEN_SECRET, GIT_CONFIG_TOKEN_SECRET}
 )
 
-_UNSAFE_ENV_VARS = frozenset(
-    {
-        "PATH",
-        "HOME",
-        "USER",
-        "SHELL",
-        "LANG",
-        "TERM",
-        "PWD",
-        "OLDPWD",
-        "LOGNAME",
-        "TMPDIR",
-        "DISPLAY",
-        "LD_LIBRARY_PATH",
-        "DYLD_LIBRARY_PATH",
-    }
-)
-
 
 def _valid_key_env_name(name: str) -> bool:
     """Whether *name* is a safe env-var name for an API key."""
-    return bool(name) and name.isidentifier() and name not in _UNSAFE_ENV_VARS
+    return bool(name) and name.isidentifier() and not unsafe_env_name(name)
 
 
 def active_key_env(state: ServeState) -> str:
@@ -129,8 +112,15 @@ def active_key_env(state: ServeState) -> str:
         try:
             cfg = load_config(launch.config.read_text(encoding="utf-8"))
             ai_settings = cfg.defaults.ai if cfg.defaults else None
-            if ai_settings and ai_settings.key_env and _valid_key_env_name(ai_settings.key_env):
-                return ai_settings.key_env
+            if ai_settings and ai_settings.key_env:
+                if _valid_key_env_name(ai_settings.key_env):
+                    return ai_settings.key_env
+                # The CLI would still read this variable, so the server reading another one is a
+                # disagreement an operator must hear about.
+                if unsafe_env_name(ai_settings.key_env):
+                    warn_unsafe_env_name(
+                        ai_settings.key_env, f"ai.keyEnv (the server reads {ANTHROPIC_KEY_ENV})"
+                    )
         except Exception:
             logging.getLogger(__name__).debug("cannot read ai.keyEnv from config", exc_info=True)
     return ANTHROPIC_KEY_ENV
@@ -819,8 +809,13 @@ def bind_git_config(
         return {
             "error": f"not a Git config spec: {spec_str!r} (use github:owner/repo@ref:path)"
         }, 400
+    from bajutsu.serve.jobs import stored_git_credential
+
+    org = org if org is not None else state.org_of(actor)  # see `bind_config`
     try:
-        mat = materialize(spec)
+        # The org's stored credential reaches the fetch even when its store keeps it out of the
+        # process environment, as the database of a local start does (BE-0449).
+        mat = materialize(spec, credential=stored_git_credential(state, org))
     except (OSError, ValueError) as e:
         return {"error": f"could not fetch the Git config: {e}"}, 400
     if not mat.config_path.is_file():
@@ -845,7 +840,6 @@ def bind_git_config(
     # (BE-0121). A Git-sourced config is bound *as* the acting org, and its content is not this
     # deployment's, so that org owns every target it declares and its `orgs:` block partitions
     # nothing (BE-0375).
-    org = org if org is not None else state.org_of(actor)  # see `bind_config`
     state.rebind(
         session,
         org,
@@ -956,6 +950,8 @@ def declared_secret_names(
             for name in resolve(cfg, target).secrets:
                 if _valid_key_env_name(name) and name not in _RESERVED_SECRET_NAMES:
                     names.setdefault(name, None)
+                elif unsafe_env_name(name):
+                    warn_unsafe_env_name(name, f"secrets: of target {target!r}")
         return list(names)
     except Exception:
         logging.getLogger(__name__).debug(

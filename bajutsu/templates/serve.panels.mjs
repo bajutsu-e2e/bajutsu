@@ -748,7 +748,8 @@ function initPanels(){
     const {jobId,error}=await r.json();
     if(error){setStatus($('#rec-runstatus'),error,'ng');setBusy($('#rec-run'),$('#rec-runstop'),false);return;}
     state.recRunJobId=jobId;
-    state.recRunPoll=streamJob(jobId,line=>appendLine($('#rec-out'),line),recRunDone);
+    state.recRunPoll=streamJob(jobId,line=>appendLine($('#rec-out'),line),recRunDone,null,
+      n=>{const el=$('#rec-runstatus');if(el)setStatus(el,n||'',n?'ng':'run')});
   });
   $('#rec-runstop').addEventListener('click',()=>cancelJob(state.recRunJobId,$('#rec-runstop')));
   // Dismiss the Run-result pane with its X. A run in progress keeps going (Stop lives on the Generated

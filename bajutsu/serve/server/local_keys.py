@@ -22,6 +22,8 @@ import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
+from bajutsu.serve.helpers import ServeStartupError
+
 STATE_DIR_MODE = 0o700
 KEY_FILE_MODE = 0o600
 
@@ -49,12 +51,14 @@ def ensure_state_dir(path: Path) -> Path:
         FileExistsError: *path* exists and is not a directory.
     """
     if path.is_symlink():
-        raise ValueError(f"refusing to use a symlinked state directory: {path}")
+        raise ServeStartupError(f"refusing to use a symlinked state directory: {path}")
     path.mkdir(parents=True, exist_ok=True)
     # mkdir(exist_ok=True) already raised FileExistsError if the path is anything but a directory.
     st = os.lstat(path)
     if st.st_uid != os.getuid():
-        raise ValueError(f"refusing to use a state directory owned by another account: {path}")
+        raise ServeStartupError(
+            f"refusing to use a state directory owned by another account: {path}"
+        )
     path.chmod(STATE_DIR_MODE)
     _ignore_everything(path)
     return path
@@ -86,12 +90,12 @@ def _check_ignores_everything(gitignore: Path) -> None:
     try:
         fd = os.open(gitignore, os.O_RDONLY | os.O_NOFOLLOW)
     except OSError as e:  # ELOOP: a symlink, refused rather than followed
-        raise ValueError(
+        raise ServeStartupError(
             f"refusing to use the state directory's .gitignore {gitignore}: {e}"
         ) from e
     try:
         if not stat.S_ISREG(os.fstat(fd).st_mode):
-            raise ValueError(f"refusing to use {gitignore}: it is not a regular file")
+            raise ServeStartupError(f"refusing to use {gitignore}: it is not a regular file")
         chunks = []
         while chunk := os.read(fd, 4096):
             chunks.append(chunk)
@@ -99,7 +103,7 @@ def _check_ignores_everything(gitignore: Path) -> None:
         os.close(fd)
     lines = b"".join(chunks).decode("utf-8", errors="replace").splitlines()
     if "*" not in (line.strip() for line in lines):
-        raise ValueError(
+        raise ServeStartupError(
             f"refusing to use the state directory: {gitignore} does not ignore everything "
             "(add a `*` line, or remove the file to have it regenerated)"
         )
@@ -120,14 +124,14 @@ def _unsafe_reason(st: os.stat_result) -> str | None:
 def _read_existing(path: Path) -> bytes:
     reason = _unsafe_reason(os.lstat(path))
     if reason is not None:
-        raise ValueError(f"refusing to use the key file {path}: {reason}")
+        raise ServeStartupError(f"refusing to use the key file {path}: {reason}")
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
     try:
         # Re-check the opened file, not the name: a swap between the lstat and the open must not
         # hand back another file's bytes.
         reason = _unsafe_reason(os.fstat(fd))
         if reason is not None:
-            raise ValueError(f"refusing to use the key file {path}: {reason}")
+            raise ServeStartupError(f"refusing to use the key file {path}: {reason}")
         chunks = []
         while chunk := os.read(fd, 4096):
             chunks.append(chunk)
@@ -135,7 +139,7 @@ def _read_existing(path: Path) -> bytes:
         os.close(fd)
     data = b"".join(chunks)
     if not data:
-        raise ValueError(f"refusing to use the key file {path}: it is empty")
+        raise ServeStartupError(f"refusing to use the key file {path}: it is empty")
     return data
 
 
@@ -199,7 +203,7 @@ def secrets_key(state_dir: Path) -> bytes:
     try:
         Fernet(key)
     except ValueError as e:
-        raise ValueError(f"the key file {path} does not hold a Fernet key") from e
+        raise ServeStartupError(f"the key file {path} does not hold a Fernet key") from e
     return key
 
 
@@ -215,5 +219,5 @@ def signing_key(state_dir: Path) -> bytes:
     path = state_dir / SIGNING_KEY_FILE
     key = load_or_create_key(path, lambda: secrets.token_bytes(SIGNING_KEY_BYTES))
     if len(key) != SIGNING_KEY_BYTES:
-        raise ValueError(f"the key file {path} does not hold a {SIGNING_KEY_BYTES}-byte key")
+        raise ServeStartupError(f"the key file {path} does not hold a {SIGNING_KEY_BYTES}-byte key")
     return key

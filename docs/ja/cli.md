@@ -923,7 +923,7 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
 - **`--max-concurrent-runs`（既定 4）** は同時実行できる run/record ジョブ数の上限です。1 呼び出し元が
   希少なデバイスを独占しないようにします（BE-0051）。上限超過の dispatch は **429** を返します。`0` で無制限。
 - **`--evidence-store <uri>`（または `$BAJUTSU_EVIDENCE_STORE`）。各 run の証跡をアップロードします（[BE-0110](../../roadmaps/BE-0110-evidence-store-uri/BE-0110-evidence-store-uri-ja.md)）。** `s3://bucket/prefix` または `gs://bucket/prefix` を指定すると、完了した run のツリーがそこへアップロードされます。キーは `<prefix><evidence_prefix><runId>/…` の形になるので、パスによってクラウドのライフサイクルポリシーが切り替わります。スタンドアロンの `run --evidence-store`（Runner 自身の認証情報で直接アップロードする）と違い、**`serve` は認証情報を保持し、Worker には渡しません**。コントロールプレーンがファイルごとに presigned PUT URL を発行し、Worker はクラウド SDK も認証情報も持たずに平文 HTTP でアップロードします。呼び出し元は `POST /api/run` のボディに `evidence_prefix`（安全な相対セグメントとして検証されます）を渡して run ごとのパスを選びます。サーバが自分のバケットとベースプレフィックスを前置するので、run ID が必ずキーに含まれ、run 同士が衝突しません。アップロードは判定の後に走るため、失敗しても警告のみです。**サーバ側**に `s3` または `gcs` extra が必要です（Worker には不要）。トポロジは [self-hosting](self-hosting.md) を参照してください。
-- **`--backend server`（キューとワーカー）。** 既定の `local` は、各 job を `serve` のプロセスの中で実行します。`server` は各 job をキューに積み、`bajutsu worker` が実行します。1台のマシンで `BAJUTSU_SERVER_STORE` を設定しなければ、環境変数は要りません。キューは runs ディレクトリの隣の `.bajutsu/queue.db`（SQLite）に置きます。キーも同じ場所に `0600` の権限で生成します。1つは署名付き URL 用で、もう1つは保存するシークレット用です（`BAJUTSU_SECRETS_KEY` を設定したときは生成しません）。アーティファクトのストアは default org の run を runs のツリーから直接、サーバが署名した URL で読み、それ以外のオブジェクトは `.bajutsu/objects/` に置きます。起動時には、すでに `runs/` の下にある run を履歴に登録します。その後の run は、admin が `POST /api/runs/rescan` を呼ぶと登録されます。`BAJUTSU_DATABASE_URL`、`BAJUTSU_SECRETS_KEY`、`BAJUTSU_SERVER_STORE`、`BAJUTSU_HOSTED` を設定すると、これらの既定値を上書きします。バケットのないサーバ backend は、`--asgi` と同じく FastAPI のトランスポートを使います。また、`--port 0` ではなく固定のポートが必要です。詳しくは [self-hosting の「1台のマシンで動かすサーバ backend」](self-hosting.md#1台のマシンで動かすサーバ-backendbe-0449)を参照してください。
+- **`--backend`（worker が実行する job）。** どちらの backend も、`bajutsu worker` に渡す job のキューを持ちます（BE-0449）。デフォルトの `local` は、各 run をビルド段階ごとキューに積みます。record、crawl、triage と Device Farm への展開は `serve` のプロセスの中で実行します。`server` は、すべての job をキューに積みます。キューの job は worker を待ちます。その job を実行できる稼働中の worker がないあいだ、job には使える worker がないという通知が付きます。`make serve` はサーバの横で worker を起動します。`bajutsu serve` を直接起動したときは、横で `bajutsu worker` を起動する必要があります。lease は、その job の org に保存されたシークレットを worker に渡します。1台のマシンで `BAJUTSU_SERVER_STORE` を設定しなければ、サーバに環境変数は要りません。キューは runs ディレクトリの隣の `.bajutsu/queue.db`（SQLite）に置きます。キーも同じ場所に `0600` の権限で生成します。1つは署名付き URL 用で、もう1つは保存するシークレット用です（`BAJUTSU_SECRETS_KEY` を設定したときは生成しません）。アーティファクトのストアは default org の run を runs のツリーから直接、サーバが署名した URL で読み、それ以外のオブジェクトは `.bajutsu/objects/` に置きます。起動時には、すでに `runs/` の下にある run を履歴に登録します。その後の run は、admin が `POST /api/runs/rescan` を呼ぶと登録されます。`BAJUTSU_DATABASE_URL`、`BAJUTSU_SECRETS_KEY`、`BAJUTSU_SERVER_STORE`、`BAJUTSU_HOSTED` を設定すると、これらの既定値を上書きします。バケットのないサーバは、`--asgi` と同じく FastAPI のトランスポートを使います。また、`--port 0` ではなく固定のポートが必要です。詳しくは [self-hosting の「1台のマシンで動かすサーバ backend」](self-hosting.md#1台のマシンで動かすサーバ-backendbe-0449)を参照してください。
 - **ホスティング向けフラグ（応用）。** `--emit-launchagent` は `serve` を単一 Mac 上でトークン認証付きの LaunchAgent として動かす launchd plist を出力します。`--upload-exec`（または環境変数 `BAJUTSU_UPLOAD_EXEC`）は、アップロードされたバンドルの `launchServer` コマンドを実行してよいかを決めます（`deny` / `reuse` / `sandbox`、既定は `sandbox`）。`--allow-remote-build`（または環境変数 `BAJUTSU_ALLOW_REMOTE_BUILD`）は、UI で bind した **Git** ソースの config の `build` コマンドをホスト上で実行することを許可します（既定はオフ）。いずれも [self-hosting](self-hosting.md) で扱います。
 
 ## `mcp`
@@ -948,12 +948,19 @@ bajutsu mcp [--config bajutsu.config.yaml] [--runs runs] [--transport stdio]
 ホスト型コントロールプレーン（`serve --backend=server`）にキュー済みの run をポーリングし、実行します。
 ホスティング用サーバ backend の実行側です（[BE-0015](../../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)、[self-hosting](self-hosting.md)）。
 
-`/api/worker/lease` を単純な HTTP でポーリングして job をリースします。Redis や RQ には頼りません（BE-0106）。リースした job はそのまま `run_job` で実行し、結果を `/api/worker/result` に返します。worker は cloud の資格情報を一切持ちません。run 前のベースラインのダウンロードも、run 後の run ツリーのアップロードも、コントロールプレーンが発行する署名付き URL（presigned URL）を経由します（BE-0160）。そのため worker に必要なのは HTTP クライアントだけです。ローカル利用には不要です。
+`/api/worker/lease` を単純な HTTP でポーリングして job をリースします。Redis や RQ には頼りません（BE-0106）。リースした job はそのまま `run_job` で実行し、結果を `/api/worker/result` に返します。worker は cloud の資格情報を一切持ちません。run 前のベースラインのダウンロードも、run 後の run ツリーのアップロードも、コントロールプレーンが発行する署名付き URL（presigned URL）を経由します（BE-0160）。そのため worker に必要なのは HTTP クライアントだけです。
+
+ローカルの `bajutsu serve` も run をすべてキューに積むので、worker が要ります（BE-0449）。`make serve` は worker を1つ起動します。lease の応答は、worker にさらに2つのフィールドを渡します。
+
+- `secret_env` は、lease した job の org に保存されたシークレットを持ちます。AI のキーと、ユーザーが UI で設定した `${secrets.X}` の値がこれにあたります。サーバはこれらを lease の時点で読み、キューには保存しません。worker はこれらを run の環境変数に重ね、引数には載せません。共有トークンで取った lease はこれらを受け取ります。トークンのないループバックでの起動でも、lease は受け取ります。ブラウザのログインは受け取りません。
+- 仕様の `cwd` は、自前のファイルを送らない job のために、bind した config のディレクトリを示します。ローカル起動での run はこの種の job で、config、シナリオ、runs、ベースラインをパスで指定します。worker は、そのディレクトリで job をビルドして実行します。これで config の相対的な `appPath` と `build:` が、サーバのプロセスの中と同じように解決します。別のマシンの worker はそのディレクトリを持たないので、サーバのマシンの worker が必要だと伝えて job を失敗にします。
+
+SIGINT や SIGTERM を受けた worker は、サーバからのキャンセルと同じように止まります。lease した job をキャンセルし（run なら穏やかに止めます）、キャンセルした結果を送ってから、128 にシグナル番号を足した終了コードで終わります。キューはその job をキャンセル済みとして記録し、再び実行しません。2 回目の SIGINT は、`--once` と同じく job のプロセスグループをすぐに終わらせます。
 
 ```bash
 bajutsu worker [--server-url <url>] [--token <t>] [--platform ios] [--capabilities <tokens>]
                [--poll-interval 2.0] [--heartbeat-interval 30.0] [--worker-id <id>]
-               [--worker-config <worker.yaml>]
+               [--worker-config <worker.yaml>] [--workdir <dir>]
 bajutsu worker --once <spec.json> [--worker-config <worker.yaml>]
 ```
 
@@ -966,6 +973,7 @@ bajutsu worker --once <spec.json> [--worker-config <worker.yaml>]
 | `--capabilities` | "" (`$BAJUTSU_WORKER_CAPABILITIES` も可) | platform と Simulator の在庫情報に加えて広告する追加の capability トークン（例: `ios18,ipad`）。job がそのトークンを要求する場合、それを持つ worker にしかリースされません |
 | `--poll-interval` | `2.0` | 空き時間にリースを試みる間隔（秒） |
 | `--heartbeat-interval` | `30.0` | run 中にリースのハートビートを送る間隔（秒）。コントロールプレーンのリースタイムアウトより短く保つことで、長時間の run を停止した worker と誤認して回収されないようにしています |
+| `--workdir` | 新しい一時ディレクトリ | lease した job を実行する場所です。job の materials、取得したバンドル、アップロード前の run のツリーを置きます。既定のディレクトリは worker の停止時に削除するので、プロジェクトの中で起動した worker がプロジェクトに書き込むことはありません |
 | `--worker-id` | "" (自動生成) | worker の識別子 |
 | `--worker-config` | 同梱の既定 | この worker が従う worker 能力ファイル（[BE-0450](../../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability-ja.md)。[drivers](drivers.md#worker-の能力検査be-0450) を参照）。worker は起動時にファイルを検証し、不正なら job をリースする前に終了します。device cloud 向けの job のリースはまだ実装していないため、`environment` が `local` 以外のファイルも当面は拒否します。worker は起動するすべての `bajutsu run` にファイルの絶対パスを渡すので、リースした run はどれも同じファイルで検査されます。サーバーはこのファイルを読みません |
 

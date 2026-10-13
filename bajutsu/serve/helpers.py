@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import subprocess
 import threading
@@ -34,6 +35,85 @@ _VALID_BACKENDS = frozenset(PLATFORMS) | frozenset(KNOWN_ACTUATORS)
 _RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 # A content-addressed upload's identity (see `valid_sha256`): exactly 64 lowercase hex characters.
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+
+
+# Environment variables a stored secret must never set in a job's environment: the shell and system
+# variables a job relies on, and those that make an interpreter or the dynamic loader run code a
+# job did not ask for. On a worker that several orgs share, a secret named `LD_PRELOAD` or
+# `PYTHONSTARTUP` would otherwise run one org's code inside every later step of its job (BE-0449).
+UNSAFE_ENV_VARS = frozenset(
+    {
+        "PATH",
+        "HOME",
+        "USER",
+        "SHELL",
+        "LANG",
+        "TERM",
+        "PWD",
+        "OLDPWD",
+        "LOGNAME",
+        "TMPDIR",
+        "DISPLAY",
+        "IFS",
+        "ENV",
+        "BASH_ENV",
+        "PS4",
+        "PROMPT_COMMAND",
+        "NODE_OPTIONS",
+        "NODE_PATH",
+        "RUBYOPT",
+        "RUBYLIB",
+        "PERL5OPT",
+        "PERL5LIB",
+        "JAVA_TOOL_OPTIONS",
+        "_JAVA_OPTIONS",
+    }
+)
+# Whole families of the same kind: the loaders' `LD_*` / `DYLD_*`, the interpreter's `PYTHON*`, and
+# Bajutsu's own `BAJUTSU_*`, which steer the worker and the run themselves.
+UNSAFE_ENV_PREFIXES = ("LD_", "DYLD_", "PYTHON", "BAJUTSU_")
+
+
+def unsafe_env_name(name: str) -> bool:
+    """Whether *name* is a variable a stored secret may not set in a job's environment.
+
+    The names compare exactly on POSIX, where `ld_preload` is a different variable from
+    `LD_PRELOAD` and no loader or interpreter reads it. Windows folds the case of every
+    environment name, so there any spelling of a denied name is denied.
+    """
+    key = name.upper() if os.name == "nt" else name
+    return key in UNSAFE_ENV_VARS or key.startswith(UNSAFE_ENV_PREFIXES)
+
+
+class ServeStartupError(ValueError):
+    """A startup check refused the server's settings: a flag, an environment variable, or a file.
+
+    Raised at each check site (a `--port 0` for a local start, a missing or unsafe key, a
+    `--baselines` directory that encloses the server's own state), so the CLI prints the reason and
+    exits 2. Any other `ValueError` keeps its traceback.
+    """
+
+
+_warned_env_names: set[tuple[str, str]] = set()
+_warned_lock = threading.Lock()
+
+
+def warn_unsafe_env_name(name: str, where: str) -> None:
+    """Log, once per process for each *name* and *where*, that a denied variable name was dropped.
+
+    The name alone is logged, never a value, so an operator learns why a secret or `ai.keyEnv`
+    they set has no effect without the log disclosing it (BE-0449).
+    """
+    with _warned_lock:
+        if (name, where) in _warned_env_names:
+            return
+        _warned_env_names.add((name, where))
+    logging.getLogger(__name__).warning(
+        "%s: ignoring %r — a secret may not set a loader, interpreter, shell, or BAJUTSU_* "
+        "variable (see docs/self-hosting.md)",
+        where,
+        name,
+    )
 
 
 def mask_secret(value: str) -> str:
