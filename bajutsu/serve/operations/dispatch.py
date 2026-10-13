@@ -19,7 +19,6 @@ from bajutsu.serve.authz import _record_audit
 from bajutsu.serve.batch_provider import BatchRequest
 from bajutsu.serve.capabilities import environment_capability
 from bajutsu.serve.commands import _float, _int, crawl_command, record_command, run_command
-from bajutsu.serve.executor import runs_in_process
 from bajutsu.serve.helpers import (
     target_batch_info,
     target_build_info,
@@ -285,15 +284,12 @@ def _artifact_overrides(
         return None, None
     # Only the HTTP-lease worker (`bajutsu worker`, which needs the jobs table) places overrides; an
     # executor that runs `execute_job_spec` directly would install the bound binary while the manifest
-    # records the override. A single-process serve runs the job in the operator's own project
-    # directory, with no job-scoped workspace to place an override into at all. Keyed on where a
-    # `run` job routes, not on the executor's type, so a routing executor (BE-0449) still refuses
-    # while `run` stays in process and accepts once it moves to the queue.
-    if runs_in_process(state.executor, "run") or state.repository is None:
+    # records the override. A state with no queue runs no job at all (BE-0449).
+    if state.repository is None:
         return None, (
             {
-                "error": f"{' and '.join(named)} require a hosted deployment's workers; a single-process "
-                "serve runs in your own project directory — point appPath/scenarios there instead"
+                "error": f"{' and '.join(named)} require a job queue and its workers; this server "
+                "has no queue — start it with `bajutsu serve` and run a `bajutsu worker`"
             },
             400,
         )
@@ -654,12 +650,12 @@ def _run_set_refusal(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]
     for field in _OVERRIDE_FIELDS:
         if body.get(field) is not None:
             return {"error": f"{field} is not supported by run-set (BE-0431)"}, 400
-    if runs_in_process(state.executor, "run-set"):
-        # The server registers no batch provider (BE-0448), so a fan-out it would run itself could
-        # only fail at submit; say where it has to run instead.
+    if state.repository is None:
+        # The server registers no batch provider (BE-0448) and runs no job itself (BE-0449), so a
+        # fan-out needs the queue; say where it has to run instead.
         return {
             "error": "run-set needs a queue and a worker whose environment is the target's "
-            "cloudBatch provider; this server runs jobs in its own process"
+            "cloudBatch provider; this server has no queue"
         }, 400
     return None
 

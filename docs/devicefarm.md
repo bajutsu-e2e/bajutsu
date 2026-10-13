@@ -248,7 +248,7 @@ advertising the token leases no other job. Local jobs and Device Farm jobs never
 both on one machine takes two workers. This registration alone may advertise the `environment:`
 prefix. `--capabilities` and `$BAJUTSU_WORKER_CAPABILITIES` refuse it at startup. A fan-out job
 that no live worker can serve stays queued as unroutable, like any other job. A server with no
-queue runs jobs in its own process. Such a server refuses `POST /api/run-set` instead. Unlike the headless submitter, the worker reserves one device per run through a
+queue refuses `POST /api/run-set`. Unlike the headless submitter, the worker reserves one device per run through a
 device-selection filter. It needs no device-pool ARN.
 
 > **Config and scenario placement.** The worker composes a separate package for each job. The

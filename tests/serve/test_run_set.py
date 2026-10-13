@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from _shared import _post, _serve
+from _shared import _post, _serve, queue_repository
 
 from bajutsu import serve as srv
 from bajutsu.serve.operations.dispatch import start_run_set
@@ -63,6 +63,7 @@ def _state(tmp_path: Path, cfg: Path, scn_dir: Path) -> tuple[ServeState, _Recor
         runs_dir=tmp_path / "runs",
         cwd=tmp_path,
         executor=executor,
+        repository=queue_repository(),
     )
     return state, executor
 
@@ -227,6 +228,7 @@ def test_fan_out_rejects_a_config_outside_the_run_directory(tmp_path: Path) -> N
         runs_dir=tmp_path / "runs",
         cwd=run_dir,  # the config (under tmp_path) is not under this run dir
         executor=executor,
+        repository=queue_repository(),
     )
 
     payload, status = start_run_set(state, {"target": "demo"})
@@ -237,7 +239,12 @@ def test_fan_out_rejects_a_config_outside_the_run_directory(tmp_path: Path) -> N
 
 
 def test_fan_out_requires_an_open_config(tmp_path: Path) -> None:
-    state = ServeState(runs_dir=tmp_path / "runs", cwd=tmp_path, executor=_RecordingExecutor())
+    state = ServeState(
+        runs_dir=tmp_path / "runs",
+        cwd=tmp_path,
+        executor=_RecordingExecutor(),
+        repository=queue_repository(),
+    )
     payload, status = start_run_set(state, {"target": "demo"})
     assert status == 400
     assert "config" in payload["error"]
@@ -259,6 +266,7 @@ def test_fan_out_returns_429_when_cap_rejects_the_first_job(tmp_path: Path) -> N
         runs_dir=tmp_path / "runs",
         cwd=tmp_path,
         executor=_RecordingExecutor(),
+        repository=queue_repository(),
     )
     with unittest.mock.patch.object(state, "try_register", return_value=None):
         payload, status = start_run_set(state, {"target": "demo"})
@@ -401,6 +409,7 @@ def test_fan_out_ships_scenarios_that_travel_as_materials(tmp_path: Path) -> Non
         runs_dir=tmp_path / "runs",
         cwd=tmp_path,
         executor=executor,
+        repository=queue_repository(),
     )
     state.object_store = FakeObjectStore()
     # Inject the materials-returning scope via for_org().scenarios
@@ -430,6 +439,7 @@ def test_run_set_endpoint_is_wired(tmp_path: Path) -> None:
         runs_dir=tmp_path / "runs",
         cwd=tmp_path,
         executor=_RecordingExecutor(),
+        repository=queue_repository(),
     )
     server, port = _serve(state)
     try:

@@ -2,7 +2,7 @@
 
 `serve` separates two choices: the **transport** (the stdlib server, or the FastAPI app over
 uvicorn — `--asgi`) and the **backend** (which seam implementations the ServeState carries —
-`--backend`, only `local` until the hosted backings land). `_build_state` is the seam-assembly
+from the environment, or local defaults when it names none). `_build_state` is the seam-assembly
 factory both share; `make_asgi_server` runs the FastAPI app as a real ASGI server. These tests
 exercise the factory and a real uvicorn server (beyond the TestClient coverage in
 test_server_app.py), so the actual serving path — middleware, routing — is checked end to end.
@@ -28,6 +28,14 @@ def _free_port() -> int:
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         return int(s.getsockname()[1])
+
+
+def _with_database(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Name the database a bucket-backed deployment needs (BE-0449 unit 9), with its secrets key."""
+    from cryptography.fernet import Fernet
+
+    monkeypatch.setenv("BAJUTSU_DATABASE_URL", "sqlite://")
+    monkeypatch.setenv("BAJUTSU_SECRETS_KEY", Fernet.generate_key().decode("ascii"))
 
 
 def _state(tmp_path: Path) -> srv.ServeState:
@@ -58,18 +66,13 @@ def _no_ambient_server_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_build_state_local_is_the_server_shape_that_queues_every_kind(tmp_path: Path) -> None:
-    # `--backend local` is the local start (BE-0449 unit 5): a run goes to a worker through the
-    # queue, and so does a Device Farm fan-out, since the server registers no provider (BE-0448),
-    # a triage (unit 7), and a record and a crawl (unit 8). No kind runs in this process.
+    # A local start queues every job for a worker (BE-0449): no kind runs in this process.
     from bajutsu.serve.server.db_executor import DbQueueExecutor
     from bajutsu.serve.server.queue_logbus import QueueLogBus
 
     state = _state(tmp_path)
     assert isinstance(state, srv.ServeState)
-    assert isinstance(state.executor, srv.RoutingExecutor)
-    assert state.executor.queued_kinds == srv.LOCAL_QUEUED_KINDS == srv.JOB_KINDS
-    assert isinstance(state.executor._queue, DbQueueExecutor)
-    assert isinstance(state.executor._local, srv.LocalExecutor)
+    assert type(state.executor) is DbQueueExecutor
     assert isinstance(state.logbus, QueueLogBus)
     assert state.local_file_store
     assert not state.hosted
@@ -98,22 +101,6 @@ def test_build_state_local_keeps_the_startup_cwd_and_provenance(tmp_path: Path) 
     assert state.default_theme == "light"
 
 
-def test_build_state_rejects_unknown_backend(tmp_path: Path) -> None:
-    _scn, cfg, runs = project(tmp_path)
-    # An unknown backend fails loudly rather than silently running local.
-    with pytest.raises(ValueError, match="backend"):
-        srv._build_state(
-            runs_dir=runs,
-            config=cfg,
-            scenarios_dir=None,
-            root=tmp_path,
-            baselines_dir=None,
-            max_concurrent=4,
-            token=None,
-            backend="bogus",
-        )
-
-
 def test_build_state_server_wires_the_hosted_seams(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -139,12 +126,9 @@ def test_build_state_server_wires_the_hosted_seams(
         baselines_dir=None,
         max_concurrent=4,
         token=None,
-        backend="server",
     )
-    # Every job kind is queued today; the routing executor is the seam later units narrow (BE-0449).
-    assert isinstance(state.executor, srv.RoutingExecutor)
-    assert state.executor.queued_kinds == srv.JOB_KINDS
-    assert isinstance(state.executor._queue, DbQueueExecutor)
+    # Every job is queued for a worker (BE-0449).
+    assert type(state.executor) is DbQueueExecutor
     assert isinstance(state.logbus, QueueLogBus)
     assert isinstance(state.logbus._live, srv.InMemoryLogBus)  # no BAJUTSU_REDIS_URL
     assert isinstance(state.artifacts, ObjectStorageArtifactStore)
@@ -166,26 +150,26 @@ def test_build_state_local_keeps_a_sqlite_repository(tmp_path: Path) -> None:
     assert (tmp_path / ".bajutsu" / "queue.db").is_file()
 
 
-def test_build_state_server_has_no_repository_without_a_database_url(
+def test_build_state_refuses_a_bucket_without_a_database(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # The database is optional on the server backend: with BAJUTSU_DATABASE_URL unset the repository
-    # stays None, so the existing server backing keeps working until a database is configured.
+    # The server runs no job itself (BE-0449 unit 9), so a bucket-backed deployment must name the
+    # database its queue lives in; it gets no SQLite default, which several replicas would split.
     monkeypatch.delenv("BAJUTSU_DATABASE_URL", raising=False)
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     _scn, cfg, runs = project(tmp_path)
-    state = srv._build_state(
-        runs_dir=runs,
-        config=cfg,
-        scenarios_dir=None,
-        root=tmp_path,
-        baselines_dir=None,
-        max_concurrent=4,
-        token=None,
-        backend="server",
-    )
-    assert state.repository is None
+    with pytest.raises(srv.ServeStartupError, match="BAJUTSU_DATABASE_URL is unset"):
+        srv._build_state(
+            runs_dir=runs,
+            config=cfg,
+            scenarios_dir=None,
+            root=tmp_path,
+            baselines_dir=None,
+            max_concurrent=4,
+            token=None,
+        )
+    assert not (tmp_path / ".bajutsu").exists()
 
 
 def test_build_state_server_wires_the_repository_when_a_database_url_is_set(
@@ -210,7 +194,6 @@ def test_build_state_server_wires_the_repository_when_a_database_url_is_set(
         baselines_dir=None,
         max_concurrent=4,
         token=None,
-        backend="server",
     )
     assert isinstance(state.repository, SqlRepository)
 
@@ -246,7 +229,6 @@ def test_build_state_server_seeds_the_job_id_counter_past_a_restart(
             baselines_dir=None,
             max_concurrent=4,
             token=None,
-            backend="server",
         )
 
     before_restart = _build()
@@ -280,7 +262,6 @@ def test_build_state_server_requires_a_secrets_key_with_a_database(
             baselines_dir=None,
             max_concurrent=4,
             token=None,
-            backend="server",
         )
 
 
@@ -311,31 +292,8 @@ def test_build_state_server_uses_sql_sessions_when_db_is_configured(
         baselines_dir=None,
         max_concurrent=4,
         token=None,
-        backend="server",
     )
     assert isinstance(state.auth.sessions, SqlSessionStore)
-
-
-def test_build_state_server_falls_back_to_in_memory_sessions_without_db(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from bajutsu.serve.sessions import InMemorySessionStore
-
-    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
-    monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
-    monkeypatch.delenv("BAJUTSU_DATABASE_URL", raising=False)
-    _scn, cfg, runs = project(tmp_path)
-    state = srv._build_state(
-        runs_dir=runs,
-        config=cfg,
-        scenarios_dir=None,
-        root=tmp_path,
-        baselines_dir=None,
-        max_concurrent=4,
-        token=None,
-        backend="server",
-    )
-    assert isinstance(state.auth.sessions, InMemorySessionStore)
 
 
 def test_build_state_local_has_no_oauth(tmp_path: Path) -> None:
@@ -351,6 +309,8 @@ def test_build_state_server_wires_oauth_when_configured(
     from bajutsu.serve.server.oauth import GitHubOAuthClient
 
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
+
+    _with_database(monkeypatch)
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     monkeypatch.setenv("BAJUTSU_OAUTH_GITHUB_CLIENT_ID", "cid")
     monkeypatch.setenv("BAJUTSU_OAUTH_GITHUB_CLIENT_SECRET", "secret")
@@ -366,7 +326,6 @@ def test_build_state_server_wires_oauth_when_configured(
         baselines_dir=None,
         max_concurrent=4,
         token=None,
-        backend="server",
     )
     assert isinstance(state.auth.oauth, GitHubOAuthClient)
 
@@ -377,6 +336,7 @@ def test_build_state_server_parses_the_admin_teams(
     # The admin role follows one or more server-wide GitHub Teams, named by the comma-separated
     # BAJUTSU_OAUTH_ADMIN_TEAMS.
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
+    _with_database(monkeypatch)
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     monkeypatch.setenv("BAJUTSU_OAUTH_ADMIN_TEAMS", "acme-gh/ops, other-gh/root")
     _scn, cfg, runs = project(tmp_path)
@@ -388,7 +348,6 @@ def test_build_state_server_parses_the_admin_teams(
         baselines_dir=None,
         max_concurrent=4,
         token=None,
-        backend="server",
     )
     assert state.auth.oauth_admin_teams == ("acme-gh/ops", "other-gh/root")
 
@@ -424,6 +383,7 @@ def test_build_state_server_warns_on_a_half_configured_oauth(
     # but a silent, unintended fallback the operator needs to know about, so it needs its own check,
     # gated the opposite way.
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
+    _with_database(monkeypatch)
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     _delenv_oauth(monkeypatch)
     monkeypatch.setenv("BAJUTSU_OAUTH_GITHUB_CLIENT_ID", "cid")
@@ -438,7 +398,6 @@ def test_build_state_server_warns_on_a_half_configured_oauth(
         baselines_dir=None,
         max_concurrent=4,
         token=None,
-        backend="server",
     )
     assert state.auth.oauth is None
     err = capsys.readouterr().err
@@ -465,6 +424,7 @@ def test_build_state_server_warns_on_a_half_configured_oauth_naming_every_unset_
     # Two of the three vars unset -- the grammar branch ("are unset," not "is unset") and the
     # join must name both, not just whichever one a single-var test happens to cover.
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
+    _with_database(monkeypatch)
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     _delenv_oauth(monkeypatch)
     monkeypatch.setenv("BAJUTSU_OAUTH_GITHUB_CLIENT_ID", "cid")
@@ -478,7 +438,6 @@ def test_build_state_server_warns_on_a_half_configured_oauth_naming_every_unset_
         baselines_dir=None,
         max_concurrent=4,
         token=None,
-        backend="server",
     )
     assert state.auth.oauth is None
     err = capsys.readouterr().err
@@ -492,6 +451,7 @@ def test_build_state_server_warns_on_a_half_configured_oauth_with_a_token_set(
     # does re-enable itself on this same `oauth is None` -- the message must name that fallback
     # instead, not the "unauthenticated" one above.
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
+    _with_database(monkeypatch)
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     _delenv_oauth(monkeypatch)
     monkeypatch.setenv("BAJUTSU_OAUTH_GITHUB_CLIENT_ID", "cid")
@@ -506,7 +466,6 @@ def test_build_state_server_warns_on_a_half_configured_oauth_with_a_token_set(
         baselines_dir=None,
         max_concurrent=4,
         token="shared-secret",
-        backend="server",
     )
     assert state.auth.oauth is None
     err = capsys.readouterr().err
@@ -520,6 +479,7 @@ def test_build_state_server_does_not_warn_when_oauth_is_fully_unset(
     # A deliberate token-auth-only deployment (no GitHub OAuth vars at all) must not be told its
     # OAuth is "partly configured" -- none of it is configured, on purpose.
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
+    _with_database(monkeypatch)
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     _delenv_oauth(monkeypatch)
     _scn, cfg, runs = project(tmp_path)
@@ -531,7 +491,6 @@ def test_build_state_server_does_not_warn_when_oauth_is_fully_unset(
         baselines_dir=None,
         max_concurrent=4,
         token=None,
-        backend="server",
     )
     assert state.auth.oauth is None
     assert "GitHub OAuth is only partly configured" not in capsys.readouterr().err
@@ -548,6 +507,7 @@ def test_build_state_server_warns_on_the_retired_singular_admin_team_var(
     # otherwise lose every admin silently on this hard cutover — it must warn loudly instead.
     # OAuth must actually be wired (all three GitHub vars set), since the warning fires only then.
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
+    _with_database(monkeypatch)
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     _setenv_oauth(monkeypatch)
     monkeypatch.delenv("BAJUTSU_OAUTH_ADMIN_TEAMS", raising=False)
@@ -561,7 +521,6 @@ def test_build_state_server_warns_on_the_retired_singular_admin_team_var(
         baselines_dir=None,
         max_concurrent=4,
         token=None,
-        backend="server",
     )
     assert state.auth.oauth_admin_teams == ()
     err = capsys.readouterr().err
@@ -639,6 +598,7 @@ def test_build_state_server_warns_when_admin_teams_was_never_set(
     # falls through both the old guard's own condition and the malformed-entry check, since an
     # empty list has no entries to be malformed.
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
+    _with_database(monkeypatch)
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     _setenv_oauth(monkeypatch)
     monkeypatch.delenv("BAJUTSU_OAUTH_ADMIN_TEAM", raising=False)
@@ -652,7 +612,6 @@ def test_build_state_server_warns_when_admin_teams_was_never_set(
         baselines_dir=None,
         max_concurrent=4,
         token=None,
-        backend="server",
     )
     assert state.auth.oauth_admin_teams == ()
     err = capsys.readouterr().err
@@ -667,6 +626,7 @@ def test_build_state_server_without_oauth_does_not_warn_about_admin_teams(
     # so the empty-list warning must stay quiet rather than tell every such deployment it has no
     # admin -- the guard's first operand, which no other test in this file exercises.
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
+    _with_database(monkeypatch)
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     _delenv_oauth(monkeypatch)
     _scn, cfg, runs = project(tmp_path)
@@ -678,7 +638,6 @@ def test_build_state_server_without_oauth_does_not_warn_about_admin_teams(
         baselines_dir=None,
         max_concurrent=4,
         token=None,
-        backend="server",
     )
     assert "BAJUTSU_OAUTH_ADMIN_TEAMS" not in capsys.readouterr().err
 
@@ -689,6 +648,7 @@ def test_build_state_server_without_oauth_does_not_warn_on_malformed_admin_teams
     # Same gating for the malformed-entry check: without OAuth wired, BAJUTSU_OAUTH_ADMIN_TEAMS
     # decides nothing, so a stale malformed value left in the environment must not warn either.
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
+    _with_database(monkeypatch)
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     _delenv_oauth(monkeypatch)
     monkeypatch.setenv("BAJUTSU_OAUTH_ADMIN_TEAMS", "acme-gh/ops other-gh/root")
@@ -701,7 +661,6 @@ def test_build_state_server_without_oauth_does_not_warn_on_malformed_admin_teams
         baselines_dir=None,
         max_concurrent=4,
         token=None,
-        backend="server",
     )
     assert "BAJUTSU_OAUTH_ADMIN_TEAMS" not in capsys.readouterr().err
 
@@ -713,6 +672,7 @@ def test_build_state_server_without_oauth_does_not_warn_on_the_retired_admin_tea
     # only backend still carrying the retired singular name must stay quiet too, since the value
     # decides nothing there. Without this, dropping `oauth is not None` from that check is green.
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
+    _with_database(monkeypatch)
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     _delenv_oauth(monkeypatch)
     monkeypatch.setenv("BAJUTSU_OAUTH_ADMIN_TEAM", "acme-gh/ops")
@@ -725,7 +685,6 @@ def test_build_state_server_without_oauth_does_not_warn_on_the_retired_admin_tea
         baselines_dir=None,
         max_concurrent=4,
         token=None,
-        backend="server",
     )
     assert "retired" not in capsys.readouterr().err
     assert state.startup_warnings == ()
@@ -739,6 +698,7 @@ def test_build_state_server_warns_on_the_retired_var_even_when_admin_teams_is_al
     # old Team's members silently stop being admin -- with the new list non-empty, the empty-list
     # check below never fires, so this needs its own unconditional check on the retired var alone.
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
+    _with_database(monkeypatch)
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     _setenv_oauth(monkeypatch)
     monkeypatch.setenv("BAJUTSU_OAUTH_ADMIN_TEAM", "acme-gh/legacy")
@@ -752,7 +712,6 @@ def test_build_state_server_warns_on_the_retired_var_even_when_admin_teams_is_al
         baselines_dir=None,
         max_concurrent=4,
         token=None,
-        backend="server",
     )
     assert state.auth.oauth_admin_teams == ("acme-gh/ops",)  # the new name wins, the old is ignored
     err = capsys.readouterr().err
@@ -767,6 +726,7 @@ def test_build_state_server_warns_on_a_malformed_admin_teams_entry(
     # "/" count would pass it — yet it can never match a real "<github-org>/<team-slug>": that
     # silently loses every admin the same way the retired singular name does, so it must warn too.
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
+    _with_database(monkeypatch)
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     _setenv_oauth(monkeypatch)
     monkeypatch.setenv("BAJUTSU_OAUTH_ADMIN_TEAMS", "acme-gh/ops other-gh/root")
@@ -779,7 +739,6 @@ def test_build_state_server_warns_on_a_malformed_admin_teams_entry(
         baselines_dir=None,
         max_concurrent=4,
         token=None,
-        backend="server",
     )
     assert state.auth.oauth_admin_teams == ("acme-gh/ops other-gh/root",)
     err = capsys.readouterr().err
@@ -801,6 +760,7 @@ def test_build_state_server_warns_on_an_empty_side_or_inner_space(
     # real "<github-org>/<team-slug>": an empty org half, an empty slug half, and a slug half with
     # a stray leading space that `.strip()` on the whole entry doesn't remove.
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
+    _with_database(monkeypatch)
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     _setenv_oauth(monkeypatch)
     monkeypatch.setenv("BAJUTSU_OAUTH_ADMIN_TEAMS", "acme-gh/,/ops,acme-gh/ ops")
@@ -813,7 +773,6 @@ def test_build_state_server_warns_on_an_empty_side_or_inner_space(
         baselines_dir=None,
         max_concurrent=4,
         token=None,
-        backend="server",
     )
     assert state.auth.oauth_admin_teams == ("acme-gh/", "/ops", "acme-gh/ ops")
     err = capsys.readouterr().err
@@ -831,6 +790,7 @@ def test_build_state_server_does_not_warn_on_an_uppercase_slug(
     # `acme-gh/ops` perfectly. Warning here would tell the operator to "fix" a working config, and
     # teach them to ignore this warning for the one list where a genuinely broken entry hides.
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
+    _with_database(monkeypatch)
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     _setenv_oauth(monkeypatch)
     monkeypatch.setenv("BAJUTSU_OAUTH_ADMIN_TEAMS", "acme-gh/Ops")
@@ -843,7 +803,6 @@ def test_build_state_server_does_not_warn_on_an_uppercase_slug(
         baselines_dir=None,
         max_concurrent=4,
         token=None,
-        backend="server",
     )
     assert state.auth.oauth_admin_teams == ("acme-gh/Ops",)
     assert "will never match" not in capsys.readouterr().err
@@ -853,6 +812,7 @@ def test_build_state_server_parses_the_per_user_quota(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
+    _with_database(monkeypatch)
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     monkeypatch.setenv("BAJUTSU_MAX_CONCURRENT_PER_USER", "3")
     _scn, cfg, runs = project(tmp_path)
@@ -864,7 +824,6 @@ def test_build_state_server_parses_the_per_user_quota(
         baselines_dir=None,
         max_concurrent=4,
         token=None,
-        backend="server",
     )
     assert state.max_concurrent_per_user == 3
 
@@ -873,6 +832,7 @@ def test_build_state_server_parses_the_per_org_quota(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
+    _with_database(monkeypatch)
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     monkeypatch.setenv("BAJUTSU_MAX_CONCURRENT_PER_ORG", "5")
     _scn, cfg, runs = project(tmp_path)
@@ -884,7 +844,6 @@ def test_build_state_server_parses_the_per_org_quota(
         baselines_dir=None,
         max_concurrent=4,
         token=None,
-        backend="server",
     )
     assert state.max_concurrent_per_org == 5
 
@@ -894,6 +853,7 @@ def test_build_state_server_has_no_oauth_without_the_env(
 ) -> None:
     monkeypatch.delenv("BAJUTSU_OAUTH_GITHUB_CLIENT_ID", raising=False)
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
+    _with_database(monkeypatch)
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     _scn, cfg, runs = project(tmp_path)
     state = srv._build_state(
@@ -904,7 +864,6 @@ def test_build_state_server_has_no_oauth_without_the_env(
         baselines_dir=None,
         max_concurrent=4,
         token=None,
-        backend="server",
     )
     assert state.auth.oauth is None
 
@@ -926,7 +885,6 @@ def test_build_state_server_without_a_server_store_uses_the_local_file_store(
         baselines_dir=None,
         max_concurrent=4,
         token=None,
-        backend="server",
     )
     assert isinstance(state.object_store, FileObjectStore)
     assert state.object_store.mount == ("artifacts/", runs.resolve())
@@ -941,6 +899,8 @@ def test_build_state_server_without_extras_raises_a_clear_install_hint(
     import sys
 
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
+
+    _with_database(monkeypatch)
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     monkeypatch.setitem(sys.modules, "boto3", None)
     _scn, cfg, runs = project(tmp_path)
@@ -953,7 +913,6 @@ def test_build_state_server_without_extras_raises_a_clear_install_hint(
             baselines_dir=None,
             max_concurrent=4,
             token=None,
-            backend="server",
         )
 
 
@@ -966,6 +925,8 @@ def test_build_state_server_without_the_gcs_extra_names_it_in_the_install_hint(
     import sys
 
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "gs://bkt")
+
+    _with_database(monkeypatch)
     monkeypatch.setitem(sys.modules, "google", None)
     _scn, cfg, runs = project(tmp_path)
     with pytest.raises(srv.MissingServerExtra, match="gcs"):
@@ -977,7 +938,6 @@ def test_build_state_server_without_the_gcs_extra_names_it_in_the_install_hint(
             baselines_dir=None,
             max_concurrent=4,
             token=None,
-            backend="server",
         )
 
 
@@ -997,7 +957,6 @@ def test_build_state_server_rejects_a_malformed_server_store(
             baselines_dir=None,
             max_concurrent=4,
             token=None,
-            backend="server",
         )
 
 
@@ -1021,7 +980,6 @@ def test_build_state_server_reraises_internal_import_bugs(
             baselines_dir=None,
             max_concurrent=4,
             token=None,
-            backend="server",
         )
     assert not isinstance(caught.value, srv.MissingServerExtra)
     assert "extra" not in str(caught.value)
@@ -1031,7 +989,8 @@ def test_build_state_server_normalizes_a_prefix_without_a_slash(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # A prefix without a trailing slash must not fuse into "tenantartifacts/" / "tenantscenarios/".
-    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt/tenant")  # no trailing slash
+    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt/tenant")
+    _with_database(monkeypatch)  # no trailing slash
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     _scn, cfg, runs = project(tmp_path)
     state = srv._build_state(
@@ -1042,7 +1001,6 @@ def test_build_state_server_normalizes_a_prefix_without_a_slash(
         baselines_dir=None,
         max_concurrent=4,
         token=None,
-        backend="server",
     )
     # The artifact store keys a run-relative path under "<prefix>artifacts/", with the slash added.
     assert isinstance(state.artifacts, ObjectStorageArtifactStore)
@@ -1058,6 +1016,7 @@ def test_build_state_server_wires_a_gcs_object_store_from_a_gs_uri(
 
     patch_gcs_client(monkeypatch)
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "gs://bucket/tenant")
+    _with_database(monkeypatch)
     _scn, cfg, runs = project(tmp_path)
     state = srv._build_state(
         runs_dir=runs,
@@ -1067,7 +1026,6 @@ def test_build_state_server_wires_a_gcs_object_store_from_a_gs_uri(
         baselines_dir=None,
         max_concurrent=4,
         token=None,
-        backend="server",
     )
     assert isinstance(state.artifacts, ObjectStorageArtifactStore)
     assert isinstance(state.artifacts._store, GCSObjectStore)
@@ -1159,28 +1117,7 @@ def _server_state(tmp_path: Path) -> srv.ServeState:
         baselines_dir=None,
         max_concurrent=4,
         token=None,
-        backend="server",
     )
-
-
-def test_build_state_warns_when_oidc_is_configured_without_a_database(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """The OIDC exchange spends each token's `jti` in the database to make single-use hold across
-    replicas, so with none configured it refuses every exchange. `docs/self-hosting.md` promises
-    the operator hears that at boot rather than one failed pipeline run at a time (BE-0414)."""
-    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
-    monkeypatch.delenv("BAJUTSU_DATABASE_URL", raising=False)
-    _delenv_oauth(monkeypatch)
-    _delenv_oidc(monkeypatch)
-    monkeypatch.setenv("BAJUTSU_OIDC_AUDIENCE", "https://bajutsu.example.com")
-
-    state = _server_state(tmp_path)
-
-    # Keyed on `check=`, not the message text, for the reason `ServeState.startup_warnings`'
-    # own comment gives: an alert keys on the stable discriminator, and the prose can reword.
-    assert any(check == "oidc_without_database" for check, _msg in state.startup_warnings)
-    assert state.auth.oidc is not None  # configured, just unusable until a database appears
 
 
 def test_build_state_warns_when_oidc_is_configured_without_joserfc(
@@ -1189,6 +1126,7 @@ def test_build_state_warns_when_oidc_is_configured_without_joserfc(
     """Verification imports `joserfc` lazily, so a deployment missing the `oauth` extra would
     otherwise meet it as a 500 per exchange with no `oidc.denied` behind it (BE-0414)."""
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
+    _with_database(monkeypatch)
     _delenv_oauth(monkeypatch)
     _delenv_oidc(monkeypatch)
     monkeypatch.setenv("BAJUTSU_OIDC_AUDIENCE", "https://bajutsu.example.com")
@@ -1210,6 +1148,7 @@ def test_build_state_is_quiet_about_oidc_when_none_is_configured(
     """No expected audience means the caller shape is off, which is the ordinary deployment — it
     must not be warned at about a feature it never asked for."""
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
+    _with_database(monkeypatch)
     _delenv_oauth(monkeypatch)
     _delenv_oidc(monkeypatch)
 

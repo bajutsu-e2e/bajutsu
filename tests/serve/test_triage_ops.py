@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from _shared import FakeProc, project
+from _shared import FakeProc, WorkerStandIn, project
 
 from bajutsu.serve import operations as ops
 from bajutsu.serve.state import ServeState
@@ -22,7 +22,14 @@ from bajutsu.serve.state import ServeState
 def _state(tmp_path: Path, popen: Any = None) -> ServeState:
     scn_dir, cfg, runs = project(tmp_path)
     kw = {"popen": popen} if popen is not None else {}
-    return ServeState(runs_dir=runs, config=cfg, scenarios_dir=scn_dir, cwd=tmp_path, **kw)
+    return ServeState(
+        executor=WorkerStandIn(),
+        runs_dir=runs,
+        config=cfg,
+        scenarios_dir=scn_dir,
+        cwd=tmp_path,
+        **kw,
+    )
 
 
 def _write_run(state: ServeState, run_id: str) -> str:
@@ -42,7 +49,7 @@ def _await_done(state: ServeState, job_id: str) -> None:
 
 
 def test_start_triage_requires_config(tmp_path: Path) -> None:
-    state = ServeState(runs_dir=tmp_path / "runs", config=None)
+    state = ServeState(executor=WorkerStandIn(), runs_dir=tmp_path / "runs", config=None)
     payload, status = ops.start_triage(
         state, {"runId": "r", "target": "demo", "scenario": "smoke.yaml"}
     )
@@ -121,6 +128,7 @@ def test_start_triage_ai_refuses_under_provider_none(tmp_path: Path, monkeypatch
     runs = tmp_path / "runs"
     runs.mkdir()
     state = ServeState(
+        executor=WorkerStandIn(),
         runs_dir=runs,
         config=cfg,
         scenarios_dir=scn_dir,

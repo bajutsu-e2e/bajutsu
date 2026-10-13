@@ -65,7 +65,7 @@ def _spawn_env(job: Job) -> dict[str, str]:
     selection) leaves the inherited env untouched, preserving the zero-config path (BE-0101).
 
     A store that keeps secrets out of ``os.environ`` (the database store of a local start, BE-0449)
-    reaches the child through the job's `secret_env` instead, resolved by `run_job_in_process`.
+    reaches the child through the job's `secret_env` instead, which the worker fills from its lease.
 
     A job with `keep_caller_path` (the public `bajutsu run`, BE-0449) skips the bin dir: that run
     lives in the caller's own shell environment, as it always has, so a `launchServer` command or a
@@ -92,7 +92,7 @@ def _spawn_env(job: Job) -> dict[str, str]:
 
 
 def job_secret_env(state: ServeState, org: str) -> dict[str, str]:
-    """The environment variables *org*'s stored secrets give a job the server runs itself (BE-0449).
+    """The environment variables *org*'s stored secrets give a job (BE-0449).
 
     Each secret lands under the variable a spawned job reads it from (`env_var_for_secret`): the
     AI key under the bound config's ``ai.keyEnv``, the Claude Code token under its CLI variable, a
@@ -100,8 +100,8 @@ def job_secret_env(state: ServeState, org: str) -> dict[str, str]:
     out: the server's own config fetch is its only reader, and a job never fetches.
 
     One of the two callers of `SecretStore.values_for_job`, both here, on the job-execution path
-    and never on a response path an HTTP reader sees (BE-0136). The in-process job thread reads it
-    (`run_job_in_process`), and so does a worker's lease (`lease_secret_env`).
+    and never on a response path an HTTP reader sees (BE-0136). A worker's lease reads it
+    (`lease_secret_env`).
     """
     from bajutsu.serve.operations.config import GIT_CONFIG_TOKEN_SECRET
 
@@ -498,25 +498,17 @@ def _finish_job(state: ServeState, job: Job) -> None:
         job.bus.close(job.id, json.dumps(job.view(include_lines=False)))
 
 
-def run_job_in_process(state: ServeState, job: Job) -> None:
-    """Run *job* in this process, with its org's stored secrets in the child env (BE-0449).
+def fail_unrun_job(state: ServeState, job: Job, reason: str) -> None:
+    """End *job*, which nothing will run, with *reason* in its console and a failing exit code.
 
-    The body of `LocalExecutor`'s thread. The secrets are read here, on the thread, rather than at
-    dispatch: a store that fails (a database error, say) then fails this one job with a line saying
-    why, instead of raising out of the dispatch and leaving a registered job that never ends.
+    The tail every finished job takes still runs, so the job's live stream closes and its
+    concurrency slot is released rather than left waiting on a run that never starts.
     """
-    try:
-        job.secret_env = job_secret_env(state, job.org)
-    # Any failure of the store, whatever its backend raises, must end the job rather than strand it.
-    except Exception:
-        logger.warning("could not read the stored secrets of org %s", job.org, exc_info=True)
-        _log(job, "error: could not read the org's stored secrets, so the job did not start")
-        with job.lock:
-            job.exit_code = 1
-            job.status = "done"
-        _finish_job(state, job)
-        return
-    run_job(state, job)
+    _log(job, reason)
+    with job.lock:
+        job.exit_code = 1
+        job.status = "done"
+    _finish_job(state, job)
 
 
 def _record_provenance(state: ServeState, job: Job) -> None:

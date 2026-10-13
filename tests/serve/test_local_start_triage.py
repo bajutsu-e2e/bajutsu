@@ -1,4 +1,4 @@
-"""`--backend local` queues `triage` for a worker (BE-0449 unit 7).
+"""A local start queues `triage` for a worker (BE-0449 unit 7).
 
 Triage is an investigator, never a judge: it reads a finished run and explains it, and the run's
 verdict stays the one its deterministic assertions wrote. Moving it to a worker changes where the
@@ -193,10 +193,10 @@ def _start_triage(client: TestClient, *, ai: bool = False) -> Any:
 
 
 def test_a_local_start_queues_triage(tmp_path: Path) -> None:
+    from bajutsu.serve.server.db_executor import DbQueueExecutor
+
     state = _local_start(tmp_path, _project(tmp_path))
-    assert isinstance(state.executor, srv.RoutingExecutor)
-    assert "triage" in srv.LOCAL_QUEUED_KINDS
-    assert not state.executor.routes_locally("triage")
+    assert type(state.executor) is DbQueueExecutor
 
 
 # --- end to end: a triage on a local start goes through a worker --------------------------------

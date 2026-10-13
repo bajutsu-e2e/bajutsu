@@ -9,7 +9,6 @@ from bajutsu.common.config import Effective, resolve
 from bajutsu.common.config.schema import Config
 from bajutsu.common.drivers import base as driver_base
 from bajutsu.serve.authz import _target_forbidden
-from bajutsu.serve.executor import runs_in_process
 from bajutsu.serve.helpers import (
     valid_backend,
     valid_udid,
@@ -108,12 +107,9 @@ def no_worker_notice(state: ServeState, job: Job) -> str | None:
     """`NO_WORKER_NOTICE` while *job* waits in the queue with no live worker to serve it, else None.
 
     Decided by the queue's own lease and liveness data (`Repository.lacks_live_worker`), with no
-    timer of its own, so the answer is the same on every read. A job the server runs in its own
-    process never waits for a worker, so it is never asked about.
+    timer of its own, so the answer is the same on every read.
     """
     if state.repository is None or job.status == "done" or job.kind is None:
-        return None
-    if runs_in_process(state.executor, job.kind):
         return None
     return NO_WORKER_NOTICE if state.repository.lacks_live_worker(job.id) else None
 
@@ -123,7 +119,7 @@ def awaiting_human(state: ServeState, job: Job) -> bool:
 
     A job in the jobs table runs on a worker, and its row's flag is the one every replica reads
     (BE-0449): the replica that took the worker's request need not be the one a page asks. A job
-    with no row runs in this process, which keeps the flag on its own `Job`.
+    with no row reads the flag on its own `Job`: on a worker, `run_job` sets it there.
     """
     row = state.repository.get_job(job.id) if state.repository is not None else None
     if row is not None:

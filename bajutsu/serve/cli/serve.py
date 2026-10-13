@@ -10,6 +10,15 @@ import typer
 
 from bajutsu.common.run_meta.files import DEFAULT_RUNS_DIR
 
+# The notice a passed `--backend` prints (BE-0449). It names what replaced the flag, so an operator
+# knows to drop it and to start a worker rather than wait for a removal to break their command.
+BACKEND_DEPRECATION = (
+    "warning: --backend is deprecated and ignored, and the next release removes it: `bajutsu "
+    "serve` always queues every job for a `bajutsu worker` (start one beside the server; "
+    "`make serve` does), with the queue and artifact store from BAJUTSU_DATABASE_URL and "
+    "BAJUTSU_SERVER_STORE, or local defaults under .bajutsu/ when they are unset"
+)
+
 
 def _is_loopback(host: str) -> bool:
     """Whether binding `host` keeps the server private to this machine.
@@ -101,11 +110,11 @@ def serve(
         help="serve the FastAPI app over uvicorn instead of the stdlib server",
     ),
     backend: str = typer.Option(
-        "local",
+        "",
         "--backend",
-        help="both keep the queue, keys, and artifact store from the environment or local defaults "
-        "under .bajutsu/ and queue jobs for a `bajutsu worker`; 'local' queues `run` alone and runs "
-        "the other job kinds in this process, 'server' queues every kind",
+        help="deprecated and ignored (BE-0449): the server always queues every job for a "
+        "`bajutsu worker`; the queue, keys, and artifact store come from the environment, or from "
+        "local defaults under .bajutsu/. Removed in the next release",
     ),
     upload_exec: str = typer.Option(
         "",
@@ -139,9 +148,9 @@ def serve(
     non-loopback `--host` requires one so the server is never exposed unauthenticated.
     With `--emit-launchagent`, print a LaunchAgent plist matching these flags (for self-hosting)
     and exit without starting the server. With `--asgi`, serve the same UI/API as a FastAPI app
-    over uvicorn. A run is queued for a `bajutsu worker` (`make serve` starts one beside the
-    server); `--backend server` queues every other job kind too. Either backend uses the FastAPI
-    transport whenever its artifacts stay on this machine.
+    over uvicorn. The server runs no job itself: every job is queued for a `bajutsu worker`
+    (`make serve` starts one beside the server). The FastAPI transport is used whenever the
+    artifacts stay on this machine.
     """
     from bajutsu.serve import (
         SERVE_BACKENDS,
@@ -159,9 +168,13 @@ def serve(
         )
         raise typer.Exit(2)
 
-    if backend not in SERVE_BACKENDS:
-        typer.echo(f"unknown --backend {backend!r} (available: {', '.join(SERVE_BACKENDS)})")
-        raise typer.Exit(2)
+    if backend:
+        # Deprecated for one release (BE-0449): a typo still fails loudly, and a known value only
+        # warns, since both values now build the same server.
+        if backend not in SERVE_BACKENDS:
+            typer.echo(f"unknown --backend {backend!r} (available: {', '.join(SERVE_BACKENDS)})")
+            raise typer.Exit(2)
+        typer.echo(BACKEND_DEPRECATION, err=True)
 
     # The flag wins, then the env mirror (for the hosted backend), then the safe-yes default.
     resolved_upload_exec = upload_exec or os.environ.get("BAJUTSU_UPLOAD_EXEC") or "sandbox"
@@ -217,7 +230,6 @@ def serve(
             evidence=evidence,
             allow_remote_build=allow_remote_build,
             asgi=asgi,
-            backend=backend,
             cwd=cwd,
             config_provenance=config_provenance,
             themes_dir=Path(themes) if themes else None,

@@ -66,7 +66,7 @@ class JobRegistry:
     def _release_finished(self) -> None:
         """Release the cap slot of every job `finished_ids` reports as finished elsewhere.
 
-        The registry observes only an in-process job's end (`run_job` sets its `status`). A job
+        The registry observes only an end written to its own `Job` (a job failed at dispatch). A job
         dispatched to a remote worker finishes in the jobs table instead — on the worker's result,
         or on a lease reclaim that no worker ever reports — and nothing writes that back to the
         control plane's `Job` (BE-0015 W2), so its slot would be held until serve restarts.

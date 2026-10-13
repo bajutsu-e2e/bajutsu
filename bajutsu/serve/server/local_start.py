@@ -1,7 +1,7 @@
-"""The defaults a server backend supplies for itself when no cloud service is configured (BE-0449).
+"""The defaults the server supplies for itself when no cloud service is configured (BE-0449).
 
 A hosted deployment names its database, its secrets key, and its bucket in the environment. A
-local ``bajutsu serve --backend server`` names none of them, so the server fills each gap from the
+local ``bajutsu serve`` names none of them, so the server fills each gap from the
 state directory beside the runs tree (`local_keys.local_state_dir`): a SQLite queue, a generated
 secrets key, and a ``file://`` store that reads the default org's runs from the runs tree. Each helper here decides one of those
 defaults; ``_build_server_state`` wires them.
@@ -165,13 +165,13 @@ def artifact_store(
     return store, "", True
 
 
-def secrets_fernet(state_dir: Path, *, database: bool, local_database: bool) -> Fernet | None:
-    """The key that encrypts operator secrets at rest (BE-0136), or None without a *database*.
+def secrets_fernet(state_dir: Path, *, local_database: bool) -> Fernet:
+    """The key that encrypts operator secrets at rest in the database (BE-0136).
 
-    ``BAJUTSU_SECRETS_KEY`` when it is set. Otherwise only the default SQLite of a local start
-    (*local_database*) gets a key generated into *state_dir*: an operator's own database never has
-    one minted behind their back, so it fails at startup instead of degrading to plaintext in
-    memory. Without a database, secrets stay in the process env and need no key.
+    Every start has a database (BE-0449). ``BAJUTSU_SECRETS_KEY`` is the key when it is set.
+    Otherwise only the default SQLite of a local start (*local_database*) gets a key generated into
+    *state_dir*: an operator's own database never has one minted behind their back, so it fails at
+    startup instead of degrading to plaintext in memory.
 
     Raises:
         ValueError: a configured database has no ``BAJUTSU_SECRETS_KEY``, the key is malformed, or
@@ -180,8 +180,8 @@ def secrets_fernet(state_dir: Path, *, database: bool, local_database: bool) -> 
     if local_database:
         return fernet_from_env_or_local(state_dir)
     fernet = fernet_from_env()
-    if database and fernet is None:
+    if fernet is None:
         raise ServeStartupError(
-            "BAJUTSU_SECRETS_KEY is required for --backend=server with a database"
+            "BAJUTSU_SECRETS_KEY is required with a configured BAJUTSU_DATABASE_URL"
         )
     return fernet

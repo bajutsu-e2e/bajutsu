@@ -209,7 +209,7 @@ def test_cancel_is_scoped_to_a_machines_org(tmp_path: Path) -> None:
 
 
 def test_in_process_cancel_is_unchanged_and_scoped(tmp_path: Path) -> None:
-    # A job with no row runs in process (`LocalExecutor`); its cancel is the in-process stop.
+    # A job with no row is stopped through its own `Job` (on a worker, the process it spawned).
     repo = _file_repo(tmp_path)
     state = srv.ServeState(runs_dir=tmp_path / "runs", repository=repo)
     job = state.register(Job(cmd=["bajutsu", "run"], org="acme"))

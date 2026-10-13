@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from _shared import queue_repository
 
 from bajutsu import serve as srv
 from bajutsu.serve import batch_provider as bp
@@ -189,6 +190,7 @@ def test_relative_app_path_travels_as_a_logical_reference(tmp_path: Path) -> Non
         runs_dir=tmp_path / "runs",
         cwd=tmp_path,
         executor=executor,
+        repository=queue_repository(),
     )
 
     _payload, status = start_run_set(state, {"target": "demo"})
@@ -217,7 +219,12 @@ def test_request_paths_are_relative_to_the_config_directory(tmp_path: Path) -> N
     )
     executor = _RecordingExecutor()
     state = ServeState(
-        scenarios_dir=scn_dir, config=cfg, runs_dir=tmp_path / "runs", cwd=proj, executor=executor
+        scenarios_dir=scn_dir,
+        config=cfg,
+        runs_dir=tmp_path / "runs",
+        cwd=proj,
+        executor=executor,
+        repository=queue_repository(),
     )
 
     _payload, status = start_run_set(state, {"target": "demo"})
@@ -247,7 +254,12 @@ def test_a_scenario_outside_the_config_directory_is_refused(tmp_path: Path) -> N
     )
     executor = _RecordingExecutor()
     state = ServeState(
-        scenarios_dir=scn_dir, config=cfg, runs_dir=tmp_path / "runs", cwd=proj, executor=executor
+        scenarios_dir=scn_dir,
+        config=cfg,
+        runs_dir=tmp_path / "runs",
+        cwd=proj,
+        executor=executor,
+        repository=queue_repository(),
     )
 
     payload, status = start_run_set(state, {"target": "demo"})
@@ -273,6 +285,7 @@ def test_fan_out_runs_every_scenario_through_the_device_farm_fake(tmp_path: Path
         runs_dir=tmp_path / "runs",
         cwd=tmp_path,
         executor=executor,
+        repository=queue_repository(),
     )
 
     payload, status = start_run_set(state, {"target": "demo"})
@@ -302,6 +315,7 @@ def test_fan_out_surfaces_a_failing_manifest_from_the_fake(tmp_path: Path) -> No
         runs_dir=tmp_path / "runs",
         cwd=tmp_path,
         executor=executor,
+        repository=queue_repository(),
     )
 
     payload, status = start_run_set(state, {"target": "demo"})
@@ -329,6 +343,7 @@ def test_device_budget_bounds_a_faked_fan_out(tmp_path: Path) -> None:
         runs_dir=tmp_path / "runs",
         cwd=tmp_path,
         executor=executor,
+        repository=queue_repository(),
     )
 
     payload, status = start_run_set(state, {"target": "demo"})

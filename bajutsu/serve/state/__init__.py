@@ -3,8 +3,8 @@
 Split from `serve/jobs.py` (BE-0206): most of the serve package reads `ServeState` (and the `Job`,
 `StoreBundle`, `CaptureSession` value types), while only the run/cancel execution engine — which
 stays in `jobs.py` — mutates a `Job`. The runtime dependency is one-directional: `state` imports
-`executor` at runtime (for the `LocalExecutor` field default), while `executor` references
-`ServeState`/`Job` only under `TYPE_CHECKING` and imports `run_job` lazily — avoiding a
+`executor` at runtime (for the `UnqueuedExecutor` field default), while `executor` references
+`ServeState`/`Job` only under `TYPE_CHECKING` and imports `jobs` lazily — avoiding a
 `state ⇄ executor` cycle. The state module keeps the file from growing on two axes at once.
 """
 

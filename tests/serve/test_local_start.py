@@ -1,6 +1,6 @@
 """The server backend's local start (BE-0449 unit 1, part 3).
 
-`bajutsu serve --backend server` with no environment: a default SQLite queue, a generated secrets
+`bajutsu serve` with no environment: a default SQLite queue, a generated secrets
 key, a ``file://`` store that mounts the runs tree for the default org's runs, ``hosted`` as its own setting, and the run trees
 under ``runs/`` indexed into the history at start and on a rescan.
 """
@@ -58,7 +58,6 @@ def _local(tmp_path: Path, **kwargs: Any) -> srv.ServeState:
         baselines_dir=tmp_path / "baselines",
         max_concurrent=4,
         token=None,
-        backend="server",
         **kwargs,
     )
 
@@ -79,8 +78,7 @@ def test_a_server_backend_starts_with_no_environment(tmp_path: Path) -> None:
     assert (state_dir / "queue.db").is_file()
     # The schema is migrated: the runs table answers a query.
     assert state.repository.list_runs(org_id="default") == []
-    assert isinstance(state.executor, srv.RoutingExecutor)
-    assert isinstance(state.executor._queue, DbQueueExecutor)
+    assert type(state.executor) is DbQueueExecutor
     assert isinstance(state.secrets, DbSecretStore)
     for key_file in ("secrets.key", "store-signing.key"):
         assert stat.S_IMODE(os.lstat(state_dir / key_file).st_mode) == 0o600
@@ -142,25 +140,24 @@ def test_a_configured_database_is_used_and_not_migrated_by_the_server(
 def test_a_server_store_keeps_the_bucket_and_stays_hosted(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    from cryptography.fernet import Fernet
+
+    from bajutsu.serve.server.db_executor import DbQueueExecutor
     from bajutsu.serve.server.file_object_store import FileObjectStore
-    from bajutsu.serve.sessions import InMemorySessionStore
 
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt/tenant/")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
-    monkeypatch.setenv("BAJUTSU_OIDC_AUDIENCE", "https://bajutsu.example.com")
+    # A bucket names its database (BE-0449 unit 9): a SQLite file per replica would split the queue.
+    monkeypatch.setenv("BAJUTSU_DATABASE_URL", f"sqlite:///{tmp_path / 'configured.db'}")
+    monkeypatch.setenv("BAJUTSU_SECRETS_KEY", Fernet.generate_key().decode("ascii"))
     state = _local(tmp_path)
     assert state.object_store is not None
     assert not isinstance(state.object_store, FileObjectStore)
     assert state.object_store_prefix == "tenant/"
     assert state.local_file_store is False
     assert state.hosted is True
-    # A bucket with no database keeps its in-process shape: a SQLite file per replica would split
-    # the queue, so none of the local defaults apply.
-    assert state.repository is None
-    assert isinstance(state.executor, srv.LocalExecutor)
-    assert isinstance(state.logbus, srv.InMemoryLogBus)
-    assert isinstance(state.auth.sessions, InMemorySessionStore)
-    assert any(check == "oidc_without_database" for check, _msg in state.startup_warnings)
+    assert type(state.executor) is DbQueueExecutor
+    # None of the local defaults apply: the configured database is the queue.
     assert not (tmp_path / ".bajutsu").exists()
 
 
@@ -423,7 +420,7 @@ def test_serve_switches_a_local_start_to_the_fastapi_transport(
     # Leave the process-wide logging configuration to the tests that own it.
     monkeypatch.setattr(srv, "_configure_oplog", lambda _state: None)
     _scn, cfg, runs = project(tmp_path)
-    srv.serve("127.0.0.1", 8799, None, cfg, runs, root=tmp_path, backend="server")
+    srv.serve("127.0.0.1", 8799, None, cfg, runs, root=tmp_path)
     assert ran == ["asgi"]
     assert "using --asgi" in capsys.readouterr().out
 
@@ -641,7 +638,7 @@ def test_serve_registers_no_batch_provider_even_with_a_project_named(
     bp._PROVIDERS.clear()
     try:
         _scn, cfg, runs = project(tmp_path)
-        srv.serve("127.0.0.1", 8798, None, cfg, runs, root=tmp_path, backend="server")
+        srv.serve("127.0.0.1", 8798, None, cfg, runs, root=tmp_path)
         assert bp._PROVIDERS == {}
     finally:
         bp._PROVIDERS.clear()

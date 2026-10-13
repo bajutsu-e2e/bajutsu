@@ -18,7 +18,7 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-from _shared import FakeObjectStore, FakeProc, _get_json, _post, _serve, fake_popen
+from _shared import FakeObjectStore, FakeProc, WorkerStandIn, _get_json, _post, _serve, fake_popen
 
 from bajutsu import serve as srv
 from bajutsu.serve import handler as handler_mod
@@ -96,6 +96,7 @@ def _state(
     runs = tmp_path / "runs"
     runs.mkdir(exist_ok=True)
     return srv.ServeState(
+        executor=WorkerStandIn(),
         runs_dir=runs,
         cwd=tmp_path,
         root=tmp_path,

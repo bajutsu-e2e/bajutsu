@@ -132,10 +132,10 @@ Implemented and covered by tests (run without a Simulator):
   reports and every evidence type; approve visual baselines; live job streaming over SSE; usage,
   flakiness, and coverage dashboards. How to drive each tab:
   [docs/web-ui.md](docs/web-ui.md)
-- **Hosted server backend** (`serve --backend server`, `bajutsu worker`): a self-hostable control
-  plane — FastAPI, Postgres, S3-compatible object storage, GitHub OAuth login, RBAC
-  (role-based access control), and quotas — that Mac and Linux workers poll over plain HTTP for
-  queued runs, carrying only the control-plane URL and a token (no cloud SDK or object-store
+- **Hosted server backend** (`bajutsu serve` with a bucket and a database, plus `bajutsu worker`):
+  a self-hostable control plane — FastAPI, Postgres, S3-compatible object storage, GitHub OAuth
+  login, RBAC (role-based access control), and quotas — that Mac and Linux workers poll over plain
+  HTTP for queued jobs, carrying only the control-plane URL and a token (no cloud SDK or object-store
   secrets), so a team can share one `serve` instead of running it per machine.
   Guide: [`docs/self-hosting.md`](docs/self-hosting.md)
 
@@ -338,8 +338,8 @@ bajutsu/
 ├── analysis/             # read-only advisory analysis, never gates CI: audit / coverage /
 │                         #   flakiness / impact / stats / trace
 ├── serve/                # local web UI (author + run + reports; Tier 1) and, in server/, the
-│                         #   hosted control plane (FastAPI + Postgres + OAuth) behind
-│                         #   `serve --backend server`
+│                         #   hosted control plane (FastAPI + Postgres + OAuth); every job
+│                         #   runs on a `bajutsu worker`
 ├── mcp/                  # MCP server (tools + resources for agent integration)
 ├── templates/            # Jinja report/dashboard templates + the web UI's own JS/CSS
 ├── cli/                  # CLI (typer) — one file per command

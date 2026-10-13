@@ -4,9 +4,9 @@ A Tier-1 convenience (authoring / operation), **never part of the CI gate**.  Tw
 tabs over the CLI: **Record** authors a scenario from a natural-language goal (``python -m
 bajutsu record …``), streaming the agent's turn-by-turn progress and writing the result under
 the scenarios dir; **Replay** runs a scenario (``python -m bajutsu.run.internal …``, the body
-of ``bajutsu run``) and shows its self-contained ``report.html``.  Each request spawns the CLI on
-a background thread, streams its output, and the produced ``runs/<id>/`` tree is served so the
-report's relative asset links resolve.  The default transport is stdlib-only — the same
+of ``bajutsu run``) and shows its self-contained ``report.html``.  Each request queues a job that a
+``bajutsu worker`` runs (the server never runs one itself, BE-0449), its output streams back, and
+the produced ``runs/<id>/`` tree is served so the report's relative asset links resolve.  The default transport is stdlib-only — the same
 ``ThreadingHTTPServer`` approach as the network collector ([[network]]); ``--asgi`` instead serves
 the same UI/API as a FastAPI app over uvicorn (a base dependency, loaded lazily), the transport
 the hosted backend uses (BE-0015).
@@ -25,7 +25,6 @@ from __future__ import annotations
 import logging
 import os
 import sys
-from collections.abc import Iterable
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -42,7 +41,7 @@ from bajutsu.serve.commands import (
     run_command,
     triage_command,
 )
-from bajutsu.serve.executor import LocalExecutor, RoutingExecutor, RunExecutor, runs_in_process
+from bajutsu.serve.executor import UNQUEUED_LINE, RunExecutor, UnqueuedExecutor
 from bajutsu.serve.handler import make_server
 from bajutsu.serve.helpers import (
     ServeStartupError,
@@ -83,11 +82,9 @@ from bajutsu.serve.scenarios import (
     ScenarioStore,
 )
 from bajutsu.serve.secrets import SecretStore
-from bajutsu.serve.sessions import InMemorySessionStore
 from bajutsu.serve.state import (
     JOB_KINDS,
     Job,
-    JobKind,
     Popen,
     ServeState,
     SessionManager,
@@ -96,26 +93,25 @@ from bajutsu.serve.state import (
 
 __all__ = [
     "JOB_KINDS",
-    "LOCAL_QUEUED_KINDS",
     "SERVE_BACKENDS",
+    "UNQUEUED_LINE",
     "Artifact",
     "ArtifactStore",
     "InMemoryLogBus",
     "Job",
     "LiveLineBudget",
     "LocalArtifactStore",
-    "LocalExecutor",
     "LocalScenarioScope",
     "LocalScenarioStore",
     "LogBus",
     "MissingServerExtra",
     "Popen",
-    "RoutingExecutor",
     "RunExecutor",
     "ScenarioScope",
     "ScenarioStore",
     "ServeStartupError",
     "ServeState",
+    "UnqueuedExecutor",
     "_int",
     "_scenario_path",
     "cancel_job",
@@ -147,13 +143,10 @@ __all__ = [
 ]
 
 
-# The serve backends `_build_state` can assemble — the source of truth the CLI validates against.
-# Both build the server shape (BE-0449); they differ only in which job kinds the queue takes.
+# The values the deprecated `--backend` flag still accepts (BE-0449 unit 9). Both now build the same
+# server, which queues every job for a worker, so the CLI only warns and ignores the flag; the next
+# release removes it.
 SERVE_BACKENDS: tuple[str, ...] = ("local", "server")
-# The kinds `--backend local` hands to a worker (BE-0449 units 5, 7, and 8): every kind, so with a
-# queue the two backends now build the same state and the server runs no job itself. The name stays
-# until unit 9 retires the flag and the in-process executor with it.
-LOCAL_QUEUED_KINDS: frozenset[JobKind] = JOB_KINDS
 
 _logger = logging.getLogger(__name__)
 
@@ -294,7 +287,6 @@ def _build_state(
     upload_exec: str = "sandbox",
     evidence: EvidenceTarget | None = None,
     allow_remote_build: bool = False,
-    backend: str = "local",
     cwd: Path | None = None,
     config_provenance: dict[str, str] | None = None,
     themes_dir: Path | None = None,
@@ -302,18 +294,12 @@ def _build_state(
     host: str = "127.0.0.1",
     port: int = 8765,
 ) -> ServeState:
-    """Assemble the `ServeState` for *backend* — the one place the serve seams are wired.
+    """Assemble the server's `ServeState` — the one place the serve seams are wired.
 
-    Both backends build the server shape (BE-0449): a queue, sessions, and an artifact store from
-    the environment, or from local defaults under ``.bajutsu/`` where it names none. Both queue
-    every job kind for a ``bajutsu worker`` since every kind has moved (BE-0449 unit 8), so the flag
-    no longer changes what runs where; unit 9 removes it. *host* and *port* are the bind, from which a local start builds
-    the URL its file store signs. An unknown backend fails loudly rather than silently falling back
-    to local. The transport (stdlib vs uvicorn) is a separate choice."""
-    if backend not in SERVE_BACKENDS:
-        raise ValueError(
-            f"unknown serve backend: {backend!r} (available: {', '.join(SERVE_BACKENDS)})"
-        )
+    The server keeps a queue, sessions, and an artifact store from the environment, or from local
+    defaults under ``.bajutsu/`` where it names none, and queues every job for a ``bajutsu worker``:
+    it never runs a job itself (BE-0449). *host* and *port* are the bind, from which a local start
+    builds the URL its file store signs. The transport (stdlib vs uvicorn) is a separate choice."""
     resolved_baselines = baselines_dir or (
         scenarios_dir / "baselines" if scenarios_dir else Path("baselines")
     )
@@ -335,7 +321,6 @@ def _build_state(
             allow_remote_build=allow_remote_build,
             host=host,
             port=port,
-            queued_kinds=LOCAL_QUEUED_KINDS if backend == "local" else JOB_KINDS,
             cwd=cwd,
             config_provenance=config_provenance,
             themes_dir=themes_dir,
@@ -356,7 +341,7 @@ def _build_state(
 
 # The count folds in the nested closures below (`_warn`, `make_bundle` and its org-store helpers),
 # which ruff checks on their own, plus a flat run of independent startup checks (BE-0386).
-def _build_server_state(  # noqa: C901, PLR0915
+def _build_server_state(  # noqa: C901
     *,
     runs_dir: Path,
     config: Path | None,
@@ -370,7 +355,6 @@ def _build_server_state(  # noqa: C901, PLR0915
     allow_remote_build: bool = False,
     host: str = "127.0.0.1",
     port: int = 8765,
-    queued_kinds: Iterable[JobKind] = JOB_KINDS,
     cwd: Path | None = None,
     config_provenance: dict[str, str] | None = None,
     themes_dir: Path | None = None,
@@ -385,9 +369,13 @@ def _build_server_state(  # noqa: C901, PLR0915
     fills the gaps from the state directory beside the runs tree (BE-0449): a SQLite queue migrated
     here unless a database is configured, a generated secrets key for it, and a ``file://`` store
     that reads the default org's runs from the runs tree, whose URLs point at *host* and *port*. A
-    bucket with no database keeps the in-process shape. With a queue, a job whose kind is in
-    *queued_kinds* goes to a worker and any other runs in this process. Server extras (SQLAlchemy,
-    boto3, google-cloud-storage) are imported lazily so the default path stays SDK-free."""
+    bucket with no database is refused: the server runs no job itself, so it needs a queue, and a
+    SQLite file per replica would split one. Every job goes to a worker (BE-0449). Server extras
+    (SQLAlchemy, boto3, google-cloud-storage) are imported lazily so the default path stays SDK-free.
+
+    Raises:
+        ServeStartupError: A bucket is named with no database, among the other startup checks.
+    """
     import os
 
     from bajutsu.serve.authz import ADMIN_TEAM_ENTRY_RE, admin_teams_unusable
@@ -417,6 +405,7 @@ def _build_server_state(  # noqa: C901, PLR0915
     # Read before any local default is created, so a malformed BAJUTSU_SERVER_STORE or BAJUTSU_HOSTED
     # fails without leaving a state directory behind.
     hosted = hosted_from_env(server_store_set=bool(os.environ.get("BAJUTSU_SERVER_STORE")))
+    db_url = os.environ.get("BAJUTSU_DATABASE_URL") or None
     # The local defaults (BE-0449) live in one owner-only directory beside the runs tree.
     state_dir = local_state_dir(runs_dir)
     # Anchored as `ServeState` anchors it, so the store's baselines mount, the approve, and a run's
@@ -426,20 +415,28 @@ def _build_server_state(  # noqa: C901, PLR0915
     store, prefix, local_layout = artifact_store(
         runs_dir, state_dir, host=host, port=port, baselines_dir=baselines_dir
     )
-    db_url = os.environ.get("BAJUTSU_DATABASE_URL") or None
-    # Only a local start (no bucket) gets the default SQLite (BE-0449). A bucket-backed deployment
-    # with no database keeps its in-process shape: on several replicas, a SQLite file per replica
-    # would split the queue.
+    if not local_layout and not db_url:
+        # The server runs no job itself (BE-0449), so a deployment without a queue could run
+        # nothing. A bucket marks a deployment that may run several replicas, where a SQLite file
+        # per replica would split the queue, so it gets no local default and must name its database.
+        raise ServeStartupError(
+            "BAJUTSU_SERVER_STORE names a bucket but BAJUTSU_DATABASE_URL is unset: the server "
+            "queues every job for a `bajutsu worker` and runs none itself, so a bucket-backed "
+            "deployment needs a database for its queue — set BAJUTSU_DATABASE_URL, or unset "
+            "BAJUTSU_SERVER_STORE for a local start"
+        )
+    # Only a local start (no bucket) gets the default SQLite (BE-0449); a bucket was refused above
+    # unless it names a database.
     local_db_url = (
         default_database_url(ensure_state_dir(state_dir)) if local_layout and not db_url else None
     )
     # `repository_from_env` migrates the default SQLite, since no operator will.
     repo = repository_from_env(default_url=local_db_url)
     engine_url = db_url or local_db_url
-    _db_engine = engine_from_url(engine_url) if engine_url else None
-    _secrets_fernet = secrets_fernet(
-        state_dir, database=_db_engine is not None, local_database=local_db_url is not None
-    )
+    # Every start that reaches here has a database: the configured one, or a local start's SQLite.
+    assert repo is not None and engine_url is not None
+    _db_engine = engine_from_url(engine_url)
+    _secrets_fernet = secrets_fernet(state_dir, local_database=local_db_url is not None)
     # GitHub OAuth login is optional: wired only when all three OAuth vars are set, else None (token
     # auth only). Once configured, sign-in and the viewer/editor role follow GitHub org/Team
     # membership (BE-0313); `BAJUTSU_OAUTH_ADMIN_TEAMS` names the server-wide admin Teams (a member of
@@ -543,18 +540,9 @@ def _build_server_state(  # noqa: C901, PLR0915
             )
         _warn("admin_teams_malformed", msg)
 
-    # A CI job's own credential (BE-0414): wired only when an expected audience is configured, and
-    # useless without a database, since the exchange spends each token's `jti` in the shared
-    # system of record. Warn rather than fail — a deployment may be mid-setup — but say plainly
-    # that the endpoint will refuse every exchange until the database is there.
+    # A CI job's own credential (BE-0414): wired only when an expected audience is configured. The
+    # exchange spends each token's `jti` in the database, which every start now has (BE-0449).
     oidc = _oidc_from_env()
-    if oidc is not None and _db_engine is None:
-        _warn(
-            "oidc_without_database",
-            "BAJUTSU_OIDC_AUDIENCE is set but no BAJUTSU_DATABASE_URL is — the OIDC exchange "
-            "spends each token's 'jti' in the database to make it single-use across replicas, so "
-            "every exchange will be refused until one is configured",
-        )
     if oidc is not None and token is None:
         # Both backends skip the request gate with no token configured, so the machine allowlist
         # never runs and the org the exchange verified never reaches an operation. `oidc_exchange`
@@ -614,42 +602,29 @@ def _build_server_state(  # noqa: C901, PLR0915
         # the file browser (BE-0108) and refuses the device takeover (BE-0185); a local start keeps
         # both.
         hosted=hosted,
-        # With a queue, the kinds in *queued_kinds* go to the workers; the routing executor is the
-        # seam that moves kinds one at a time as the server stops running jobs itself (BE-0449).
-        executor=(
-            RoutingExecutor(DbQueueExecutor(repo), LocalExecutor(), queued_kinds=queued_kinds)
-            if repo is not None
-            else LocalExecutor()
-        ),
+        # Every job goes to the queue for a worker; the server never runs one itself (BE-0449).
+        executor=DbQueueExecutor(repo),
         # Workers post their log lines while a queued job runs, so the bus accepts writes (in
         # memory, or Redis across replicas) and falls back to the uploaded console.log (BE-0449).
-        logbus=(
-            QueueLogBus(
-                repo,
-                live_log_bus_from_env(),
-                artifacts_fn=lambda org: ObjectStorageArtifactStore(
-                    store, prefix=artifact_prefix(org_prefix(prefix, org))
-                ),
-            )
-            if repo is not None
-            else InMemoryLogBus()
+        logbus=QueueLogBus(
+            repo,
+            live_log_bus_from_env(),
+            artifacts_fn=lambda org: ObjectStorageArtifactStore(
+                store, prefix=artifact_prefix(org_prefix(prefix, org))
+            ),
         ),
         repository=repo,
         # A paused `record` on a worker waits for a person's answer in the jobs table, encrypted
         # under the same key as the stored secrets (BE-0449 unit 8).
-        handoff_cipher=_secrets_fernet if repo is not None else None,
-        # The authentication cluster (BE-0248): the shared token, the login-session store (a
-        # DB-backed one when a database is wired so sessions survive restarts, else in-memory), and
-        # the GitHub OAuth client + the server-wide admin Teams (BE-0313).
+        handoff_cipher=_secrets_fernet,
+        # The authentication cluster (BE-0248): the shared token, the database-backed login-session
+        # store (so sessions survive restarts), and the GitHub OAuth client + the server-wide admin
+        # Teams (BE-0313).
         auth=SessionManager(
             token=token,
-            sessions=(
-                SqlSessionStore(
-                    _db_engine,
-                    ttl=_session_ttl_from_env(os.environ.get("BAJUTSU_SESSION_TTL"), _DEFAULT_TTL),
-                )
-                if _db_engine is not None
-                else InMemorySessionStore()
+            sessions=SqlSessionStore(
+                _db_engine,
+                ttl=_session_ttl_from_env(os.environ.get("BAJUTSU_SESSION_TTL"), _DEFAULT_TTL),
             ),
             oauth=oauth,
             oauth_admin_teams=oauth_admin_teams,
@@ -657,13 +632,12 @@ def _build_server_state(  # noqa: C901, PLR0915
         ),
         startup_warnings=tuple(startup_warnings),
     )
-    if repo is not None:
-        # A restart otherwise reissues job ids from "1" while the DB-backed `jobs` table keeps
-        # every id the previous process handed out, so the first dispatch after restart collides
-        # on a primary key already taken. Only the control plane mints ids (a worker's ServeState
-        # builds its `Job` straight from the leased spec, bypassing the registry entirely), so this
-        # is the only construction site that needs the seed.
-        state.job_registry.seed_seq(repo.max_job_id())
+    # A restart otherwise reissues job ids from "1" while the DB-backed `jobs` table keeps every id
+    # the previous process handed out, so the first dispatch after restart collides on a primary
+    # key already taken. Only the control plane mints ids (a worker's ServeState builds its `Job`
+    # straight from the leased spec, bypassing the registry entirely), so this is the only
+    # construction site that needs the seed.
+    state.job_registry.seed_seq(repo.max_job_id())
 
     # Build the object-storage seams per org (BE-0015 multi-tenancy): each org's artifacts/
     # scenarios/baselines live under its own key prefix, and its scenario store only acknowledges
@@ -684,24 +658,12 @@ def _build_server_state(  # noqa: C901, PLR0915
 
     def make_bundle(org: str) -> StoreBundle:
         base = org_prefix(prefix, org)
-        # Secrets are encrypted per org in the database when one is wired; without a database the
-        # server keeps the local shape (value in the process env), matching how the executor/logbus
-        # fall back to their in-process defaults above (BE-0136). The startup guard above already
-        # rejected "database wired but no master key", so the process-env fallback is only ever the
-        # no-database case — asserted here so softening that guard can't silently turn this into a
-        # plaintext-in-memory store for a database-backed deployment.
-        if _db_engine is not None:
-            assert _secrets_fernet is not None  # guaranteed by the BAJUTSU_SECRETS_KEY check above
-            secrets: SecretStore = DbSecretStore(_db_engine, org, _secrets_fernet)
-        else:
-            secrets = state.secrets  # the process-env local store built in __post_init__
-        # The per-org AI provider selection (BE-0229): DB-backed when a database is wired, so a saved
-        # choice survives a restart per org; None without one, so the selection is session-only
-        # in-memory (still resolved per org, just not persisted) — the same no-database fallback the
-        # secret store takes above. Not sensitive, so it is stored in the clear.
-        provider_settings: ProviderSettingsStore | None = (
-            DbProviderSettingsStore(_db_engine, org) if _db_engine is not None else None
-        )
+        # Secrets are encrypted per org in the database (BE-0136), under the key `secrets_fernet`
+        # guarantees.
+        secrets: SecretStore = DbSecretStore(_db_engine, org, _secrets_fernet)
+        # The per-org AI provider selection (BE-0229), in the database so a saved choice survives a
+        # restart per org. Not sensitive, so it is stored in the clear.
+        provider_settings: ProviderSettingsStore | None = DbProviderSettingsStore(_db_engine, org)
         if local_layout and org == DEFAULT_ORG:
             # A local start keeps the default org's scenarios, baselines, and AI provider settings
             # on the local tree (BE-0449), as it already does that org's runs. A saved scenario then
@@ -750,7 +712,7 @@ def _build_server_state(  # noqa: C901, PLR0915
     # A local start's history is the database now, so the runs already under `runs/`, and those
     # `bajutsu run` wrote from the command line, are indexed into it (BE-0449). A bucket-backed
     # deployment's runs tree is not where its artifacts live, so there is nothing to index there.
-    if repo is not None and local_layout:
+    if local_layout:
         repo.ensure_org(DEFAULT_ORG, slug=DEFAULT_ORG, name=DEFAULT_ORG)
         index_run_trees(state)
     return state
@@ -846,7 +808,6 @@ def serve(
     evidence: EvidenceTarget | None = None,
     allow_remote_build: bool = False,
     asgi: bool = False,
-    backend: str = "local",
     cwd: Path | None = None,
     config_provenance: dict[str, str] | None = None,
     themes_dir: Path | None = None,
@@ -863,7 +824,6 @@ def serve(
         upload_exec=upload_exec,
         evidence=evidence,
         allow_remote_build=allow_remote_build,
-        backend=backend,
         cwd=cwd,
         config_provenance=config_provenance,
         themes_dir=themes_dir,
@@ -906,16 +866,15 @@ def serve(
         # serves (BE-0449), so the stdlib transport would hand out links that 404.
         print("note: the local file store is served by the FastAPI transport; using --asgi")  # noqa: T201
         asgi = True
-    if state.repository is not None and not runs_in_process(state.executor, "run"):
-        # Runs wait in the queue until a worker leases them (BE-0449); say how to start one, since a
-        # bare `bajutsu serve` executes none itself.
-        from bajutsu.serve.server.local_start import loopback_base_url
+    # Jobs wait in the queue until a worker leases them (BE-0449); say how to start one, since
+    # `bajutsu serve` executes none itself.
+    from bajutsu.serve.server.local_start import loopback_base_url
 
-        print(  # noqa: T201
-            "note: runs are queued for a worker; start one with "
-            f"`bajutsu worker --server-url {loopback_base_url(host, port)} "
-            f"--platform {worker_platforms(config)}` (`make serve` starts one for you)"
-        )
+    print(  # noqa: T201
+        "note: jobs are queued for a worker; start one with "
+        f"`bajutsu worker --server-url {loopback_base_url(host, port)} "
+        f"--platform {worker_platforms(config)}` (`make serve` starts one for you)"
+    )
     if asgi:
         # The FastAPI app over uvicorn — the transport the hosted backend will use; runnable now
         # with the local backend (a single-process ASGI server) so the path is exercised before

@@ -1,8 +1,8 @@
-"""A local start loses nothing a `--backend local` user has (BE-0449 unit 5, part 1).
+"""A local start loses nothing the former local backend offered (BE-0449 unit 5, part 1).
 
-`bajutsu serve --backend server` with no cloud service is the shape the local backend moves to.
-These tests lock what it keeps: the capture routes and the capture capability, the UI-set secrets in
-a job the server runs itself, scenarios and baselines on the local tree, and the saved AI provider
+`bajutsu serve` with no cloud service is the shape the local backend moved to. These tests lock
+what it keeps: the capture routes and the capture capability, the UI-set secrets that a worker's
+lease relays to a job, scenarios and baselines on the local tree, and the saved AI provider
 settings file. The secret read that makes the second possible is locked off every HTTP handler.
 """
 
@@ -11,9 +11,7 @@ from __future__ import annotations
 import ast
 import hashlib
 import json
-import threading
 from pathlib import Path
-from typing import Any
 from urllib.parse import urlsplit
 
 import pytest
@@ -24,8 +22,7 @@ from fastapi.testclient import TestClient
 from bajutsu import serve as srv
 from bajutsu.serve import jobs
 from bajutsu.serve import operations as ops
-from bajutsu.serve.executor import LocalExecutor, RoutingExecutor
-from bajutsu.serve.jobs import _spawn_env, job_secret_env, run_job_in_process
+from bajutsu.serve.jobs import _spawn_env, job_secret_env
 from bajutsu.serve.operations.config import (
     AI_API_KEY_SECRET,
     AI_CLAUDE_CODE_TOKEN_SECRET,
@@ -85,7 +82,6 @@ def _local(tmp_path: Path) -> srv.ServeState:
         baselines_dir=tmp_path / "baselines",
         max_concurrent=4,
         token=None,
-        backend="server",
     )
 
 
@@ -99,21 +95,6 @@ class _Recording:
         self.jobs.append(job)
 
 
-def _capture_in_process_env(
-    monkeypatch: pytest.MonkeyPatch,
-) -> tuple[threading.Event, dict[str, Any]]:
-    """Stand in for `run_job` on the in-process thread, keeping the env the child would get."""
-    seen: dict[str, Any] = {}
-    done = threading.Event()
-
-    def fake_run_job(_state: srv.ServeState, job: Job) -> None:
-        seen["env"] = _spawn_env(job)
-        done.set()
-
-    monkeypatch.setattr(jobs, "run_job", fake_run_job)
-    return done, seen
-
-
 # --- end to end: a local start through the FastAPI app ---
 
 
@@ -121,7 +102,7 @@ def test_a_local_start_keeps_what_the_local_backend_offers(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     scn_dir = _project(tmp_path)
-    # Provider settings a user saved under `--backend local` (BE-0184), before this start.
+    # Provider settings a user saved under the former local backend (BE-0184), before this start.
     settings_file = tmp_path / "provider-settings.json"
     settings_file.write_text(
         json.dumps({"provider": "api-key", "settings": {"api-key": {"effort": "high"}}}),
@@ -158,7 +139,7 @@ def test_a_local_start_keeps_what_the_local_backend_offers(
     assert approved.status_code == 200, approved.text
     assert (state.baselines_dir / "home.png").read_bytes() == b"\x89PNG approved"
     queue = _Recording()
-    state.executor = RoutingExecutor(queue, LocalExecutor(), queued_kinds={"run"})
+    state.executor = queue
     started = client.post("/api/run", json={"target": "demo", "scenario": "smoke.yaml"})
     assert started.status_code == 200, started.text
     cmd = queue.jobs[0].cmd
@@ -174,7 +155,7 @@ def test_a_local_start_keeps_what_the_local_backend_offers(
     persisted = json.loads(settings_file.read_text(encoding="utf-8"))
     assert persisted["settings"]["api-key"]["effort"] == "low"
 
-    # Secrets set through the API reach a job the server runs in its own process.
+    # Secrets set through the API reach a job through the lease that hands it to a worker.
     assert client.post("/api/apikey", json={"value": "sk-ant-local-0001"}).status_code == 200
     assert (
         client.post(
@@ -182,14 +163,9 @@ def test_a_local_start_keeps_what_the_local_backend_offers(
         ).status_code
         == 200
     )
-    done, seen = _capture_in_process_env(monkeypatch)
-    state.executor = RoutingExecutor(_Recording(), LocalExecutor(), queued_kinds=())
-    assert client.post(
-        "/api/run", json={"target": "demo", "scenario": "smoke.yaml"}
-    ).status_code == (200)
-    assert done.wait(10)
-    assert seen["env"]["ANTHROPIC_API_KEY"] == "sk-ant-local-0001"
-    assert seen["env"]["LOGIN_PASSWORD"] == "hunter2 local"
+    relayed = jobs.lease_secret_env(state, "default")
+    assert relayed["ANTHROPIC_API_KEY"] == "sk-ant-local-0001"
+    assert relayed["LOGIN_PASSWORD"] == "hunter2 local"
 
 
 def test_no_http_response_carries_a_stored_secret(tmp_path: Path) -> None:
@@ -229,6 +205,9 @@ def test_a_hosted_server_store_keeps_its_bucket_stores(
         "bajutsu.serve.server.local_start.object_store_from_env",
         lambda: (FakeObjectStore(), "p"),
     )
+    # A bucket needs a database for its queue (BE-0449 unit 9).
+    monkeypatch.setenv("BAJUTSU_DATABASE_URL", "sqlite://")
+    monkeypatch.setenv("BAJUTSU_SECRETS_KEY", Fernet.generate_key().decode("ascii"))
     state = _local(tmp_path)
     default = state.for_org("default")
     assert isinstance(default.scenarios, StorageScenarioStore)
@@ -328,21 +307,6 @@ def test_job_secret_env_keeps_orgs_apart(tmp_path: Path) -> None:
     assert job_secret_env(state, "acme") == {"LOGIN_PASSWORD": "acme-only"}
 
 
-def test_the_local_executor_resolves_the_job_orgs_secrets(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _project(tmp_path)
-    state = _local(tmp_path)
-    assert state.repository is not None
-    state.repository.ensure_org("acme", slug="acme", name="acme")
-    state.for_org("acme").secrets.set("LOGIN_PASSWORD", "acme-pw")
-    state.for_org("default").secrets.set("LOGIN_PASSWORD", "default-pw")
-    done, seen = _capture_in_process_env(monkeypatch)
-    LocalExecutor().dispatch(state, Job(cmd=["x"], org="acme"))
-    assert done.wait(10)
-    assert seen["env"]["LOGIN_PASSWORD"] == "acme-pw"
-
-
 def test_the_provider_overlay_stays_authoritative_over_a_secret() -> None:
     job = Job(
         secret_env={"LOGIN_PASSWORD": "pw", "BAJUTSU_AI_PROVIDER": "from-secret"},
@@ -376,29 +340,12 @@ def _calls_of(name: str) -> set[str]:
 
 def test_only_the_job_execution_path_reads_a_secrets_plaintext() -> None:
     # BE-0136 keeps every plaintext read away from an HTTP handler. The one read (BE-0449) is called
-    # from `serve.jobs` alone, and `job_secret_env` from there too: the in-process job thread and
-    # the lease's own named reader (`test_local_start_worker`) both go through it. This is a tripwire
+    # from `serve.jobs` alone, and `job_secret_env` from there too: the lease's own named reader
+    # (`test_local_start_worker`) goes through it. This is a tripwire
     # on direct calls by name, not a lock: a call through an alias or `getattr` would slip past it.
     # It catches the likely mistake, an operation or route calling either function outright.
     assert _calls_of("values_for_job") == {"bajutsu/serve/jobs.py"}
     assert _calls_of("job_secret_env") == {"bajutsu/serve/jobs.py"}
-    assert _calls_of("run_job_in_process") == set()  # handed to the thread, never called directly
-
-
-def test_a_store_failure_ends_the_job_instead_of_stranding_it(tmp_path: Path) -> None:
-    class _Broken:
-        def values_for_job(self) -> dict[str, str]:
-            raise RuntimeError("database is down")
-
-    _project(tmp_path)
-    state = _local(tmp_path)
-    state.org_stores = None
-    state.secrets = _Broken()  # type: ignore[assignment]
-    job = Job(cmd=["x"])
-    run_job_in_process(state, job)
-    assert (job.status, job.exit_code) == ("done", 1)
-    assert any("stored secrets" in line for line in job.lines)
-    assert "database is down" not in "".join(job.lines)
 
 
 def test_a_worker_downloads_the_baseline_an_approve_wrote(tmp_path: Path) -> None:
@@ -487,5 +434,4 @@ def test_a_local_start_refuses_baselines_that_hold_the_runs_or_state_directory(
             baselines_dir=tmp_path / baselines,
             max_concurrent=4,
             token=None,
-            backend="server",
         )
