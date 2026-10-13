@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0449") |
-| Implementing PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167) (Unit 1, part 1), [#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168) (Unit 1, part 2), [#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170) (Unit 1, part 3), [#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171) (Unit 2), [#2172](https://github.com/bajutsu-e2e/bajutsu/pull/2172) (Unit 4), PR_PLACEHOLDER6 (Unit 3) |
+| Implementing PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167) (Unit 1, part 1), [#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168) (Unit 1, part 2), [#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170) (Unit 1, part 3), [#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171) (Unit 2), [#2172](https://github.com/bajutsu-e2e/bajutsu/pull/2172) (Unit 4), [#2173](https://github.com/bajutsu-e2e/bajutsu/pull/2173) (Unit 3) |
 | Topic | Hosting the web UI |
 <!-- /BE-METADATA -->
 
@@ -246,7 +246,7 @@ Log:
   that tree uploads, through a new `before_upload` callback on `execute_job_spec`. The worker used
   to write the file after the upload, so `console.log` never reached the artifact store. The live artifact stream for
   `crawl` arrives with unit 8.
-- PR_PLACEHOLDER6 (Unit 3) — `bajutsu run` is now a thin wrapper over the one-shot worker path. The
+- [#2173](https://github.com/bajutsu-e2e/bajutsu/pull/2173) (Unit 3) — `bajutsu run` is now a thin wrapper over the one-shot worker path. The
   body of the command moved behind an internal entry point, `python -m bajutsu.run.internal`, a
   module of its own rather than a hidden subcommand. The module stays out of `bajutsu --help` and
   the BE-0101 command list, and its process imports the run body alone. `run_command`, the `triage

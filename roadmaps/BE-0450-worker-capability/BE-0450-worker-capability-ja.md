@@ -212,7 +212,7 @@ server は、ルーティングにとどまります。単一のホスト OS だ
   要求を投入する前の判定は、ワーカー側の Device Farm ディスパッチ（BE-0448）を待ちます。それまで
   `bajutsu worker` は `local` 以外の環境を拒否します。出荷した振る舞いのドキュメントはこの変更に
   含めますが、単位 6 は単位 5 で触れるページのために未完了のまま残します。
-- BE-0449 の単位 3（PR_PLACEHOLDER6）が、`bajutsu worker --once` と内部の run エントリポイントを
+- BE-0449 の単位 3（[#2173](https://github.com/bajutsu-e2e/bajutsu/pull/2173)）が、`bajutsu worker --once` と内部の run エントリポイントを
   加えました。`--once` は解決済みの `--worker-config` のパスを起動する run に渡すので、上に記録した
   2 つの待ちのうち 1 つ目が解消しました。この項目の単位は変えていません。
 
