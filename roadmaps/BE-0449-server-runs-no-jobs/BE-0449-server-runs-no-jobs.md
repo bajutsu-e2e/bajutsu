@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0449") |
-| Implementing PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167) (Unit 1, part 1 of 3), [#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168) (Unit 1, part 2 of 3), [#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170) (Unit 1, part 3 of 3), [#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171) (Unit 2), [#2172](https://github.com/bajutsu-e2e/bajutsu/pull/2172) (Unit 4), [#2173](https://github.com/bajutsu-e2e/bajutsu/pull/2173) (Unit 3), PR_PLACEHOLDER8 (Unit 5, part 1 of 2: a lossless local start) |
+| Implementing PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167) (Unit 1, part 1 of 3), [#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168) (Unit 1, part 2 of 3), [#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170) (Unit 1, part 3 of 3), [#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171) (Unit 2), [#2172](https://github.com/bajutsu-e2e/bajutsu/pull/2172) (Unit 4), [#2173](https://github.com/bajutsu-e2e/bajutsu/pull/2173) (Unit 3), [#2182](https://github.com/bajutsu-e2e/bajutsu/pull/2182) (Unit 5, part 1 of 2: a lossless local start) |
 | Topic | Hosting the web UI |
 <!-- /BE-METADATA -->
 
@@ -277,7 +277,7 @@ Log:
   point. The in-process CLI tests now invoke the internal entry point. Workers must be upgraded
   before or with the control plane: a worker built before this change does not map the queued
   `-m bajutsu.run.internal` onto its own interpreter, so it fails every `run` it leases.
-- PR_PLACEHOLDER8 (Unit 5, part 1 of 2: a lossless local start) — a local start now keeps the
+- [#2182](https://github.com/bajutsu-e2e/bajutsu/pull/2182) (Unit 5, part 1 of 2: a lossless local start) — a local start now keeps the
   features a `--backend local` user has, so the local backend can become this shape in part 2. One
   gap stays open until part 2: a local start queues every job kind, and a queued job does not get
   the stored secrets until the lease relays them. The

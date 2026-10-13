@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0449") |
-| 実装 PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167)（単位 1 の 3 分割のうち 1）、[#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168)（単位 1 の 3 分割のうち 2）、[#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170)（単位 1 の 3 分割のうち 3）、[#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171)（単位 2）、[#2172](https://github.com/bajutsu-e2e/bajutsu/pull/2172)（単位 4）、[#2173](https://github.com/bajutsu-e2e/bajutsu/pull/2173)（単位 3）、PR_PLACEHOLDER8（単位 5 の 2 分割のうち 1：機能を失わないローカル起動） |
+| 実装 PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167)（単位 1 の 3 分割のうち 1）、[#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168)（単位 1 の 3 分割のうち 2）、[#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170)（単位 1 の 3 分割のうち 3）、[#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171)（単位 2）、[#2172](https://github.com/bajutsu-e2e/bajutsu/pull/2172)（単位 4）、[#2173](https://github.com/bajutsu-e2e/bajutsu/pull/2173)（単位 3）、[#2182](https://github.com/bajutsu-e2e/bajutsu/pull/2182)（単位 5 の 2 分割のうち 1：機能を失わないローカル起動） |
 | トピック | Hosting the web UI |
 <!-- /BE-METADATA -->
 
@@ -278,7 +278,7 @@ local バックエンドと server バックエンドの違いは、これらの
   worker はコントロールプレーンより先に、または同時に更新する必要があります。この変更より前のビルドの
   worker は、キューに入った `-m bajutsu.run.internal` を自分のインタプリタに置き換えないので、リースした
   `run` がすべて失敗します。
-- PR_PLACEHOLDER8（単位 5 の 2 分割のうち 1：機能を失わないローカル起動）— ローカル起動は、
+- [#2182](https://github.com/bajutsu-e2e/bajutsu/pull/2182)（単位 5 の 2 分割のうち 1：機能を失わないローカル起動）— ローカル起動は、
   `--backend local` の利用者が使える機能を残すようになりました。これで、2 分割のうち 2 で
   ローカル backend をこの形へ移せます。ただし 1 点は 2 分割のうち 2 まで残ります。ローカル起動は
   すべての種類の job をキューに積み、キューに入った job は、リースが中継するまで保存した secret を
