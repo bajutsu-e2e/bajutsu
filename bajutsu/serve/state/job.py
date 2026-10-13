@@ -13,7 +13,7 @@ from bajutsu.serve.logbus import LogBus
 from ._shared import _DEFAULT_ORG
 
 if TYPE_CHECKING:
-    from bajutsu.serve.batch_provider import BatchRequest
+    from bajutsu.serve.batch_provider import BatchCheckpoint, BatchRequest
     from bajutsu.serve.upload_artifacts import ArtifactOverrides
 
 
@@ -153,6 +153,20 @@ class Job:
     # branches on it; None is the ordinary local/worker run. The verdict still comes from the run's
     # own manifest, so the batch path stays off the `run`/CI verdict path.
     batch: BatchRequest | None = None
+    # The sha256 of the application a cloud-batch job's `appPath` names, stored as a binary artifact
+    # for a job whose files travel as materials with no uploaded bundle (BE-0448): the lease signs a
+    # GET for it, and the worker places it at that `appPath` in the job's workspace. None when the
+    # bundle, or the config's own directory, already holds the binary.
+    batch_app: str | None = None
+    # Worker-side only, never serialized. Where a leased cloud-batch job stores its scheduled run's
+    # ARN, over the server's lease-owner-checked route (BE-0448); None runs without one (`--once`).
+    batch_checkpoint: BatchCheckpoint | None = None
+    # Worker-side only: set once the job's lease is lost, so a cloud-batch poll leaves its run to the
+    # worker that holds the job now instead of waiting it out (BE-0448).
+    lease_lost: threading.Event | None = None
+    # Why a job failed before producing a verdict of its own (a cloud-batch submission that failed),
+    # posted as the result's `error` so the jobs row names the cause rather than "unknown".
+    error: str | None = None
 
     @property
     def kind(self) -> JobKind | None:
@@ -184,6 +198,8 @@ class Job:
                 else None,
                 "awaitingHuman": self.awaiting_human,
             }
+            if self.error is not None:
+                v["error"] = self.error
             if include_lines:
                 v["lines"] = list(self.lines)
             return v

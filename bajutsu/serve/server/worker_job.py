@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 
     # Only the type annotations reference it; the runtime rebuild imports it lazily so serializing a
     # normal job never pulls the batch seam (and its optional deps) into the common worker path.
-    from bajutsu.serve.batch_provider import BatchRequest
+    from bajutsu.serve.batch_provider import BatchCheckpoint, BatchRequest
 
 
 class WorkerIO(Protocol):
@@ -172,6 +172,9 @@ def job_spec(job: Job) -> dict[str, Any]:
         # paths are relative to the job's bundle directory and its app is a logical reference, so
         # the spec names nothing on the server's host (BE-0448). None for a normal job.
         "batch": _batch_spec(job.batch),
+        # The stored application a batch job's worker places at its `appPath` (BE-0448): the lease
+        # signs a GET for this sha, since a job shipping materials has no other copy of the binary.
+        "batch_app": job.batch_app,
         # The per-job artifact overrides (BE-0431): the worker places each named artifact into this
         # job's own workspace before running. None for a job naming none.
         "overrides": job.overrides.to_spec() if job.overrides is not None else None,
@@ -357,6 +360,8 @@ def execute_job_spec(
     apply_worker_config: bool = True,
     keep_caller_path: bool = False,
     secret_env: Mapping[str, str] | None = None,
+    batch_checkpoint: BatchCheckpoint | None = None,
+    lease_lost: threading.Event | None = None,
 ) -> Job:
     """Worker entrypoint: rebuild the job from *spec*, run the unchanged `run_job`, then upload its
     run tree through the control plane's presigned URLs.
@@ -382,7 +387,9 @@ def execute_job_spec(
     spawns the run on the caller's own `PATH`, also for the public `bajutsu run` alone; every other
     job, `worker --once` included, puts this interpreter's bin dir first as a leased job does.
     *secret_env* is the org's stored secrets the lease relayed (BE-0449), laid over the child's
-    environment and never written into the spec or the run's argv."""
+    environment and never written into the spec or the run's argv. *batch_checkpoint* and
+    *lease_lost* are a leased cloud-batch job's link to its lease (BE-0448): where its run's ARN is
+    stored, and the flag that tells its poll the lease is gone."""
     # The subprocess runs with cwd=work and writes runs/<id>/ relative to it, so runs_dir must be
     # work/runs — otherwise state.artifacts would be confined to an unrelated process-CWD runs/.
     work = cwd or Path.cwd()
@@ -440,6 +447,8 @@ def execute_job_spec(
         keep_caller_path=keep_caller_path,
         cwd=job_cwd,
         secret_env=dict(secret_env or {}),
+        batch_checkpoint=batch_checkpoint,
+        lease_lost=lease_lost,
     )
     # Bind the job's ids so every operational record on this worker correlates to it (BE-0055);
     # `run_id` is the run's own id, minted by `run_job`, so it binds only once the run has started.

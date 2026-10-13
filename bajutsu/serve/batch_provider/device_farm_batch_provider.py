@@ -16,6 +16,7 @@ from bajutsu.common.cloud.devicefarm import (
     REQUIREMENTS_TXT,
     DeviceFarmClient,
     DeviceFarmError,
+    Interrupt,
     Transfer,
     Verdict,
     build_package,
@@ -114,6 +115,7 @@ class DeviceFarmBatchProvider:
         dest: Path,
         checkpoint: BatchCheckpoint | None = None,
         job_id: str = "",
+        interrupt: Callable[[], Interrupt | None] | None = None,
     ) -> Verdict:
         """Render the one-scenario spec, package `work_dir`, submit the run, and collect the verdict.
 
@@ -122,7 +124,9 @@ class DeviceFarmBatchProvider:
 
         A `checkpoint` carrying a run ARN means this job was already scheduled before a restart: resume
         polling that run and collect it — no re-upload, no reschedule — so the in-flight run and its
-        reserved device are not orphaned (BE-0336 Unit 5).
+        reserved device are not orphaned (BE-0336 Unit 5). The run is named after `job_id`, so an
+        operator can find the run of a job on Device Farm (BE-0448). `interrupt` is asked before the
+        run is scheduled and before every poll, and an answer raises `RunInterrupted` (BE-0448).
 
         `hooks` (set at construction) run lifecycle steps on the worker: `before_submit` may inject
         launch environment variables into the packaged config; `after_run` runs in a ``finally`` in
@@ -145,6 +149,7 @@ class DeviceFarmBatchProvider:
                     run_arn=resume_arn,
                     dest=dest,
                     sleep=self._sleep,
+                    interrupt=interrupt,
                 )
             else:
                 for hook in self._hooks:
@@ -208,8 +213,10 @@ class DeviceFarmBatchProvider:
                         spec_yaml=spec_path,
                         dest=dest,
                         app_upload_type=APP_UPLOAD_TYPE[request.platform],
+                        run_name=job_id or "bajutsu",
                         sleep=self._sleep,
                         on_scheduled=(checkpoint.save if checkpoint is not None else None),
+                        interrupt=interrupt,
                     )
         finally:
             hook_errors: list[tuple[BatchLifecycleHook, Exception]] = []

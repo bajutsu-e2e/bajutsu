@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import Protocol
 
-from bajutsu.common.cloud.devicefarm import Verdict
+from bajutsu.common.cloud.devicefarm import Interrupt, Verdict
 
 from .batch_checkpoint import BatchCheckpoint
 from .batch_request import BatchRequest
@@ -27,10 +28,13 @@ class BatchProvider(Protocol):
         dest: Path,
         checkpoint: BatchCheckpoint | None = None,
         job_id: str = "",
+        interrupt: Callable[[], Interrupt | None] | None = None,
     ) -> Verdict:
         """Package `work_dir`, run `request.scenario` on the cloud, download artifacts under `dest`.
 
         With a `checkpoint`, persist the scheduled run so a re-leased worker resumes polling it after a
         restart rather than resubmitting (BE-0336 Unit 5); None keeps the best-effort, non-durable path.
+        `interrupt` lets the caller give the run up while it is submitted or polled: ``stop`` stops
+        it, ``leave`` leaves it to whoever resumes it, and either raises `RunInterrupted` (BE-0448).
         """
         raise NotImplementedError

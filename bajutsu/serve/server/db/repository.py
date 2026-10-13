@@ -353,12 +353,13 @@ class Repository(Protocol):
     def metrics_snapshot(self) -> JobMetrics:
         """A one-pass aggregate of the jobs table for the ``/metrics`` endpoint (BE-0169)."""
 
-    def save_batch_run_arn(self, job_id: str, run_arn: str) -> None:
-        """Persist the scheduled Device Farm run ARN for *job_id* (BE-0336 Unit 5).
+    def save_batch_run_arn(self, job_id: str, run_arn: str, *, worker_id: str) -> bool:
+        """Persist the scheduled Device Farm run ARN for *job_id*, if *worker_id* holds its lease.
 
-        A worker records the ARN the moment the cloud-batch run is scheduled, so a worker that
-        re-leases the job after a restart resumes polling that run rather than resubmitting. A no-op
-        if the job row is gone.
+        A worker records the ARN the moment the cloud-batch run is scheduled (BE-0336 Unit 5), so a
+        worker that re-leases the job after a restart resumes polling that run rather than
+        resubmitting. Checked against the lease owner in the same statement, as the heartbeat is
+        (BE-0448): False when the job is not leased to *worker_id*, or gone, and nothing is written.
         """
 
     def load_batch_run_arn(self, job_id: str) -> str | None:

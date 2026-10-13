@@ -69,6 +69,9 @@ class _FakeClient:
     def list_artifacts(self, *, arn: str, type: str) -> dict[str, Any]:
         return {"artifacts": [{"name": "runs", "extension": "zip", "url": "https://s3/runs.zip"}]}
 
+    def stop_run(self, *, arn: str) -> dict[str, Any]:
+        return {"run": {"arn": arn, "status": "STOPPING"}}
+
 
 class _FakeTransfer:
     """Downloads a distinct run tree per call so a fan-out's jobs each land their own run.

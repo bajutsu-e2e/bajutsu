@@ -991,17 +991,26 @@ class SqlRepository:
         with Session(self._engine) as session:
             return set(session.scalars(stmt))
 
-    def save_batch_run_arn(self, job_id: str, run_arn: str) -> None:
+    def save_batch_run_arn(self, job_id: str, run_arn: str, *, worker_id: str) -> bool:
+        from sqlalchemy import update
         from sqlalchemy.orm import Session
 
         from bajutsu.serve.server.models import JobRecord
 
         with Session(self._engine) as session:
-            row = session.get(JobRecord, job_id)
-            if row is None:
-                return
-            row.batch_state = {"run_arn": run_arn}
+            # One conditional UPDATE, as `heartbeat_job` does: a save landing after a reclaim matches
+            # no row, so a stale worker never overwrites the run the job's next attempt resumes.
+            saved = session.execute(
+                update(JobRecord)
+                .where(
+                    JobRecord.id == job_id,
+                    JobRecord.status == "leased",
+                    JobRecord.leased_by == worker_id,
+                )
+                .values(batch_state={"run_arn": run_arn})
+            )
             session.commit()
+            return _rowcount(saved) == 1
 
     def load_batch_run_arn(self, job_id: str) -> str | None:
         from sqlalchemy.orm import Session

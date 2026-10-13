@@ -9,6 +9,7 @@ half calls back into execution.
 from __future__ import annotations
 
 import contextlib
+import functools
 import json
 import logging
 import os
@@ -20,7 +21,6 @@ import subprocess
 import sys
 import tempfile
 import threading
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -39,6 +39,7 @@ from bajutsu.serve.orgs import DEFAULT_ORG
 from bajutsu.serve.state import Job, ServeState
 
 if TYPE_CHECKING:
+    from bajutsu.common.cloud.devicefarm import Interrupt, RunInterrupted
     from bajutsu.serve.server.db import Repository
 
 logger = logging.getLogger(__name__)
@@ -997,35 +998,6 @@ def _new_run_id_in(runs: Path | None, before: frozenset[str]) -> str | None:
     return max(added, default=None)
 
 
-@dataclass
-class _RepositoryBatchCheckpoint:
-    """Persist and resume a cloud-batch run's scheduled ARN through the system of record (Unit 5).
-
-    Keyed by job id on the ``jobs`` row, so a worker that re-leases the job after a restart resumes the
-    scheduled run instead of resubmitting it.
-    """
-
-    repo: Repository
-    job_id: str
-
-    def load(self) -> str | None:
-        return self.repo.load_batch_run_arn(self.job_id)
-
-    def save(self, run_arn: str) -> None:
-        self.repo.save_batch_run_arn(self.job_id, run_arn)
-
-
-def _batch_checkpoint(state: ServeState, job_id: str) -> _RepositoryBatchCheckpoint | None:
-    """A durable checkpoint when the hosted DB backend is wired, else None (BE-0336 Unit 5).
-
-    The local single-process backend keeps only the in-process best-effort path — a restart there loses
-    all in-memory state regardless, so there is nothing durable to resume from."""
-    repo = state.repository
-    if repo is None:
-        return None
-    return _RepositoryBatchCheckpoint(repo, job_id)
-
-
 def _run_batch_job(state: ServeState, job: Job, *, one_shot: bool = False) -> None:
     """Run a cloud-batch job (BE-0336): submit its one scenario to the named batch provider, land the
     downloaded run under ``runs_dir`` so it is recorded and rendered like a local run, and set the
@@ -1036,6 +1008,11 @@ def _run_batch_job(state: ServeState, job: Job, *, one_shot: bool = False) -> No
     workspace its materials or bundle were placed in — is what the request's paths are relative to.
     A job that shipped its files must name a binary inside that workspace; a job that names a
     directory on this machine, or a *one_shot* job, may name any path here.
+
+    The run's ARN goes through ``job.batch_checkpoint``, the leased worker's route to the server, so a
+    re-leased job resumes the run it names instead of submitting again; a one-shot job has none. A
+    cancel stops the scheduled run and ends the job cancelled; a lost lease (``job.lease_lost``)
+    leaves the run to the worker that holds the job now.
     """
     request = job.batch
     if (
@@ -1049,6 +1026,7 @@ def _run_batch_job(state: ServeState, job: Job, *, one_shot: bool = False) -> No
         return
     # Lazy import: only a cloud-batch job needs the batch seam (and its provider's optional deps), so
     # the default serve path never pulls it in.
+    from bajutsu.common.cloud.devicefarm import RunInterrupted
     from bajutsu.serve import batch_provider
 
     try:
@@ -1064,9 +1042,13 @@ def _run_batch_job(state: ServeState, job: Job, *, one_shot: bool = False) -> No
                 # The bundle directory start_run_set made the config and scenario paths relative to.
                 work_dir=bundle_dir,
                 dest=Path(download_name),
-                checkpoint=_batch_checkpoint(state, job.id),
+                checkpoint=job.batch_checkpoint,
                 job_id=job.id,
+                interrupt=functools.partial(_batch_interrupt, job),
             )
+        except RunInterrupted as exc:
+            _end_interrupted_batch(job, exc)
+            return
         except Exception as exc:
             # A provider or submission failure is a failed run, never a stranded worker thread: catch
             # broadly (like `_persist_run`'s finalization guards) and surface it as a loud FAIL. Log the
@@ -1100,6 +1082,29 @@ def _run_batch_job(state: ServeState, job: Job, *, one_shot: bool = False) -> No
         # scenarios failed — otherwise it sees "FAIL" but never the `failed scenarios:` detail.
         for line in lines:
             job.bus.publish(job.id, line)
+
+
+def _batch_interrupt(job: Job) -> Interrupt | None:
+    """What a cloud-batch poll should do about *job* now: stop on a cancel, leave on a lost lease."""
+    with job.lock:
+        cancelled = job.cancelled
+    if cancelled:
+        return "stop"
+    if job.lease_lost is not None and job.lease_lost.is_set():
+        return "leave"
+    return None
+
+
+def _end_interrupted_batch(job: Job, exc: RunInterrupted) -> None:
+    """Finish a cloud-batch job whose run was given up: cancelled, or left to another worker."""
+    line = f"cloud-batch run {exc}"
+    with job.lock:
+        job.lines.append(line)
+        job.exit_code = 1
+        job.status = "done"
+    if job.bus is not None:
+        job.bus.publish(job.id, line)
+    logger.info("cloud-batch job %s %s", job.id, exc)
 
 
 def _app_outside(app_path: str, bundle_dir: Path) -> str | None:
@@ -1137,6 +1142,7 @@ def _fail_batch(job: Job, message: str) -> None:
         job.lines.append(message)
         job.exit_code = 1
         job.status = "done"
+        job.error = message
     if job.bus is not None:
         job.bus.publish(job.id, message)
     logger.warning("cloud-batch job %s failed: %s", job.id, message)

@@ -63,6 +63,10 @@ def worker_lease(
     holds. A job naming per-job artifact overrides (BE-0431) carries ``binary_url`` /
     ``scenarios_url`` the same way.
 
+    A cloud-batch job carries ``batch_run_arn`` once an earlier attempt stored its scheduled run, so
+    the worker resumes that run instead of submitting again, and ``app_url`` when its application
+    was stored at dispatch because the job ships no bundle (BE-0448).
+
     With *relay_secrets*, the response also carries ``secret_env``: the leased job's org's stored
     secrets (the AI key and the ``${secrets.X}`` values a user set in the UI) under the variables a
     job reads them from (BE-0449). They are read here, at lease time, and never enter the stored
@@ -92,6 +96,12 @@ def worker_lease(
             return _fail_unread_secrets(state, leased.id, worker_id), 204
         if secret_env:
             resp["secret_env"] = secret_env
+    if leased.spec.get("batch") is not None and (
+        run_arn := state.repository.load_batch_run_arn(leased.id)
+    ):
+        # A re-leased cloud-batch job resumes the run an earlier attempt scheduled (BE-0448), so the
+        # worker learns its ARN here rather than through a database connection of its own.
+        resp["batch_run_arn"] = run_arn
     if state.object_store is not None:
         org = leased.org_id or DEFAULT_ORG
         if leased.spec.get("materialize_baselines"):
@@ -99,6 +109,11 @@ def worker_lease(
         if urls := _bundle_urls(state, org, leased.spec.get("bundle")):
             resp["bundle_urls"] = urls
         resp.update(_override_urls(state, org, leased.spec.get("overrides")))
+        if valid_sha256(sha := leased.spec.get("batch_app")):
+            # Signed under the leased job's org and re-validated, as `_bundle_urls` explains.
+            resp["app_url"] = state.object_store.presigned_url(
+                artifact_store_key(state.object_store_prefix, org, "binary", sha)
+            )
     return resp, 200
 
 
@@ -202,6 +217,35 @@ def worker_heartbeat(state: ServeState, worker_id: str, job_id: str) -> tuple[di
             return {"ok": True, "cancel": True}, 200
         return {"ok": True}, 200
     return {"error": "lease lost or not held by this worker"}, 409
+
+
+def worker_batch_run(state: ServeState, body: dict[str, Any]) -> tuple[dict[str, Any], int]:
+    """Store the ARN of the cloud-batch run a leased job scheduled (BE-0448).
+
+    Accepted only from the worker holding the lease, the same owner test as the heartbeat, so a
+    worker whose lease was reclaimed cannot overwrite the run the job's next attempt resumes; it gets
+    409, stops the run it scheduled, and gives the job up. A repeat of the ARN already stored answers
+    200 whoever sends it, so a retry after a lost response never stops a recorded run. The lease
+    response of every later attempt carries the stored ARN as ``batch_run_arn``.
+    """
+    if state.repository is None:
+        return {"error": "server backend has no database configured"}, 503
+    worker_id = body.get("worker_id", "")
+    job_id = body.get("job_id", "")
+    run_arn = body.get("run_arn")
+    if not worker_id:
+        return {"error": "worker_id is required"}, 400
+    if not job_id:
+        return {"error": "job_id is required"}, 400
+    if not isinstance(run_arn, str) or not run_arn.startswith("arn:"):
+        return {"error": "run_arn must be an ARN"}, 400
+    # Idempotent: a worker whose first save landed but whose answer was lost retries the same ARN,
+    # possibly after a reclaim; the run is recorded either way, so it must not be stopped for that.
+    if state.repository.load_batch_run_arn(job_id) == run_arn:
+        return {"ok": True}, 200
+    if not state.repository.save_batch_run_arn(job_id, run_arn, worker_id=worker_id):
+        return {"error": "lease lost or not held by this worker"}, 409
+    return {"ok": True}, 200
 
 
 def worker_log(state: ServeState, body: dict[str, Any]) -> tuple[dict[str, Any], int]:

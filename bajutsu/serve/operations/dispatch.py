@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
+import tempfile
 import zipfile
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -33,7 +35,7 @@ from bajutsu.serve.operations.config import launch_label, resolve_provider_env
 from bajutsu.serve.operations.upload import _fetch_artifact, artifact_presence
 from bajutsu.serve.scenarios import Runnable, ScenarioScope
 from bajutsu.serve.state import ConfigBinding, Job, ServeState
-from bajutsu.serve.upload_artifacts import ArtifactKind, ArtifactOverrides
+from bajutsu.serve.upload_artifacts import ArtifactKind, ArtifactOverrides, artifact_store_key
 
 _logger = logging.getLogger("bajutsu.serve.operations")
 
@@ -583,6 +585,58 @@ def _batch_requests(
     return requests, None
 
 
+def _batch_application(
+    state: ServeState, binding: ConfigBinding, org: str, app_path: str, *, ships_files: bool
+) -> tuple[str | None, tuple[Any, int] | None]:
+    """Store a fan-out's application for a worker that receives no copy of it, or say why not.
+
+    Returns the stored binary's sha256, which the lease signs a GET for (BE-0448, BE-0413), or None
+    when the worker already receives the binary: an uploaded bundle carries it, and a job that ships
+    no files names the config's directory, which a worker on this machine reads. A job whose files
+    travel as materials with no bundle has only the config's directory on this server to take the
+    binary from, so the `appPath` must name a file inside it — never an absolute path, or one that
+    leaves through `..` or a symbolic link, since the server would otherwise hand a file of its own
+    host to the worker and to Device Farm (BE-0051).
+    """
+    if not ships_files or binding.upload is not None:
+        return None, None
+    if state.object_store is None:
+        return None, (
+            {
+                "error": "the target's appPath cannot reach a worker: this server has no object "
+                "store to deliver the application through"
+            },
+            400,
+        )
+    root = binding.cwd.resolve()
+    app = Path(app_path)
+    resolved = (root / app).resolve()
+    if app.is_absolute() or not resolved.is_relative_to(root):
+        return None, ({"error": f"appPath {app_path!r} is not under the config's directory"}, 400)
+    if not resolved.is_file():
+        return None, ({"error": f"appPath {app_path!r} names no file on this server"}, 400)
+    # Hash and upload one snapshot of the bytes: a build that rewrites the file in between would
+    # otherwise store bytes under a digest they do not have, and the worker's check would refuse them.
+    with tempfile.TemporaryDirectory(prefix="bajutsu-app-") as tmp:
+        snapshot = Path(tmp) / "app"
+        digest = hashlib.sha256()
+        with resolved.open("rb") as src, snapshot.open("wb") as dst:
+            while chunk := src.read(1024 * 1024):
+                digest.update(chunk)
+                dst.write(chunk)
+        sha = digest.hexdigest()
+        key = artifact_store_key(state.object_store_prefix, org, "binary", sha)
+        try:
+            if not state.object_store.exists(key):
+                state.object_store.put_file(key, snapshot, content_type="application/octet-stream")
+        except (
+            Exception
+        ) as e:  # SDK-specific errors vary by backend (S3 vs GCS), as `bind_artifact`
+            _logger.warning("could not store the application %s", resolved, exc_info=True)
+            return None, ({"error": f"could not store the application: {e}"}, 502)
+    return sha, None
+
+
 def _run_set_refusal(state: ServeState, body: dict[str, Any]) -> tuple[Any, int] | None:
     """Why `run-set` refuses *body* on this server before reading any target, or None."""
     # Refused rather than ignored: mapping an override onto a Device Farm request is separate work,
@@ -601,9 +655,10 @@ def _run_set_refusal(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]
 
 
 # Each return is a distinct HTTP status from a validation guard — the early-return shape RET505
-# itself asks for (BE-0386). Those guards are also what the complexity count tallies, so C901 is
-# exempted for the same reason; the one self-contained step, `_batch_requests`, is already split.
-def start_run_set(  # noqa: C901, PLR0911
+# itself asks for (BE-0386). Those guards are also what the complexity and branch counts tally, so
+# C901 and PLR0912 are exempted for the same reason; the self-contained steps, `_batch_requests` and
+# `_batch_application`, are already split.
+def start_run_set(  # noqa: C901, PLR0911, PLR0912
     state: ServeState, body: dict[str, Any], *, actor: str | None = None, session: str | None = None
 ) -> tuple[Any, int]:
     """Fan out a scenario-set request into one cloud-batch job per scenario (BE-0336 Unit 3).
@@ -675,6 +730,10 @@ def start_run_set(  # noqa: C901, PLR0911
     )
     if requests_err:
         return requests_err
+    ships_files = bool(requests[0][1])
+    batch_app, app_err = _batch_application(state, binding, org, app_path, ships_files=ships_files)
+    if app_err:
+        return app_err
     label, label_err = _run_label(binding, body)
     if label_err:
         return label_err
@@ -702,6 +761,7 @@ def start_run_set(  # noqa: C901, PLR0911
                 org=org,
                 label=label,
                 capabilities=[environment_capability(provider)],
+                batch_app=batch_app,
             ),
             binding=binding,
             device_budget=device_budget,

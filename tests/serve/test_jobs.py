@@ -61,6 +61,7 @@ def test_run_job_cloud_batch_records_the_manifest_verdict(tmp_path: Path) -> Non
             dest: Path,
             checkpoint: Any = None,
             job_id: str = "",
+            interrupt: Any = None,
         ) -> Any:
             run_dir = dest / "runs" / "20260101-1"
             run_dir.mkdir(parents=True)
@@ -135,6 +136,7 @@ def test_run_job_cloud_batch_fails_loud_when_submit_raises(tmp_path: Path) -> No
             dest: Path,
             checkpoint: Any = None,
             job_id: str = "",
+            interrupt: Any = None,
         ) -> Any:
             raise RuntimeError("simulated AWS failure")
 
@@ -918,6 +920,7 @@ class _CapturingProvider:
         dest: Path,
         checkpoint: Any = None,
         job_id: str = "",
+        interrupt: Any = None,
     ) -> Any:
         import json
 
@@ -951,33 +954,29 @@ def _batch_state(tmp_path: Path, provider: Any, **kwargs: Any) -> tuple[srv.Serv
     return state, job
 
 
-def test_batch_job_gets_a_durable_checkpoint_on_the_db_backend(
-    tmp_path: Path, serve_engine: Any
-) -> None:
-    # On the hosted DB backend the worker hands the provider a durable checkpoint, so a 150-minute
-    # poll interrupted by a serve restart resumes the scheduled run rather than losing it (Unit 5).
+def test_batch_job_hands_the_provider_its_lease_checkpoint(tmp_path: Path) -> None:
+    # A leased worker sets the job's checkpoint, its route to the server's stored ARN, so a poll
+    # interrupted by a restart resumes the scheduled run rather than losing it (BE-0448).
     from bajutsu.serve import batch_provider as bp
-    from bajutsu.serve.server.db import SqlRepository
-    from bajutsu.serve.server.models import Base
 
-    engine = serve_engine()
-    Base.metadata.create_all(engine)
     provider = _CapturingProvider()
+    checkpoint = object()
     saved = dict(bp._PROVIDERS)
     try:
-        state, job = _batch_state(tmp_path, provider, repository=SqlRepository(engine))
+        state, job = _batch_state(tmp_path, provider)
+        job.batch_checkpoint = checkpoint  # type: ignore[assignment]
         srv.run_job(state, job)
     finally:
         bp._PROVIDERS.clear()
         bp._PROVIDERS.update(saved)
 
-    assert provider.checkpoint is not None
+    assert provider.checkpoint is checkpoint
     assert job.view()["ok"] is True
 
 
-def test_batch_job_has_no_durable_checkpoint_on_the_local_backend(tmp_path: Path) -> None:
-    # A local single-process backend has no database to persist to, so the checkpoint is None: its
-    # best-effort path is the in-process retry, never a cross-restart resume (BE-0336 Unit 5).
+def test_batch_job_without_a_lease_has_no_checkpoint(tmp_path: Path) -> None:
+    # A job nobody leased (`worker --once`) has no server to store an ARN on, so the checkpoint is
+    # None and nothing is resumed across a restart (BE-0448).
     from bajutsu.serve import batch_provider as bp
 
     provider = _CapturingProvider()
@@ -1005,9 +1004,28 @@ def test_batch_run_arn_persists_across_a_repository_reload(serve_engine: Any) ->
     repo.enqueue_job("j1", "o", {}, capabilities=[])
 
     assert repo.load_batch_run_arn("j1") is None
-    repo.save_batch_run_arn("j1", "arn:run/xyz")
+    assert repo.lease_job("w1", []) is not None
+    assert repo.save_batch_run_arn("j1", "arn:run/xyz", worker_id="w1") is True
 
     assert SqlRepository(engine).load_batch_run_arn("j1") == "arn:run/xyz"
+
+
+def test_only_the_lease_holder_stores_a_batch_run_arn(serve_engine: Any) -> None:
+    # A worker whose lease was reclaimed must not overwrite the run the job's next attempt resumes,
+    # so the save is checked against the lease owner as the heartbeat is (BE-0448).
+    from bajutsu.serve.server.db import SqlRepository
+    from bajutsu.serve.server.models import Base
+
+    engine = serve_engine()
+    Base.metadata.create_all(engine)
+    repo = SqlRepository(engine)
+    repo.enqueue_job("j1", "o", {}, capabilities=[])
+
+    assert repo.save_batch_run_arn("j1", "arn:run/queued", worker_id="w1") is False
+    assert repo.lease_job("w1", []) is not None
+    assert repo.save_batch_run_arn("j1", "arn:run/stale", worker_id="w2") is False
+    assert repo.save_batch_run_arn("gone", "arn:run/x", worker_id="w1") is False
+    assert repo.load_batch_run_arn("j1") is None
 
 
 # --- cooperative cancellation of a `run` job (BE-0370) ---

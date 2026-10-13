@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0448") |
-| Implementing PR | [#2184](https://github.com/bajutsu-e2e/bajutsu/pull/2184) (Units 1–2 and part of 3) |
+| Implementing PR | [#2184](https://github.com/bajutsu-e2e/bajutsu/pull/2184) (Units 1–2 and part of 3), PR_PLACEHOLDER11 (Units 3, 6–7) |
 | Topic | Device-cloud execution |
 <!-- /BE-METADATA -->
 
@@ -103,7 +103,7 @@ Concurrent jobs are a real change to the worker loop, which today leases one job
 
 - A job is in flight from its lease until its result is posted. A slot is one thread that owns one leased job, its heartbeat, its own workspace directory, its own package, and its own log bus. Slots share nothing mutable.
 - The lease loop runs while the number of jobs in flight is below `maxJobConcurrency`; a slot that has posted its result uploads its evidence without counting.
-- On shutdown the worker stops leasing and lets the in-flight leases lapse, so that a restart or another worker resumes each run from its stored identifier. It does not cancel a Device Farm run that is already scheduled.
+- On a shutdown without a cancel, a slot worker stops leasing and lets the in-flight leases lapse. A restart or another worker then resumes each run from its stored identifier. Under this slot-model policy, the worker leaves a scheduled Device Farm run running.
 - Bundle downloads run one per slot, and the operator sizes the disk and memory for that many binaries at once, plus the run trees of slots still uploading evidence.
 
 A worker that leaves `maxJobConcurrency` at its default keeps today's single-slot loop unchanged. A `local` worker accepts a value of one only, as the worker capability item states, because concurrent local jobs need a device allocated to each job and are separate work.
@@ -112,7 +112,7 @@ The server-side settings that bounded the Device Farm count therefore go away. T
 
 ### Restart and lease loss
 
-The lease heartbeat runs during the poll, so a run that lasts 150 minutes holds its lease. The stored ARN must survive the loss of a worker, and today the store is reachable only by a process that holds a database connection ([`jobs.py`](../../bajutsu/serve/jobs.py)). A worker that reaches the server over HTTP has no such connection. The lease response therefore carries the stored ARN, and a new worker route saves it once the run is scheduled. That route is checked against the lease owner in the way the heartbeat route is, so a worker whose lease was reclaimed cannot overwrite it. The worker retries the save until it succeeds or the route reports the lease lost. A lost lease stops the scheduled run only when the ARN was never stored, because no other worker can resume such a run. Once the ARN is stored, the worker leaves the run alone and the reclaiming worker resumes it. A worker that stops between scheduling a run and saving its ARN leaves that run unowned: the re-leased job submits again, and the first run holds its device until Device Farm ends it. The worker names each run after its job id, so an operator can find and stop it. Looking a run up by that name to resume it instead of submitting again needs a `list_runs` call on the Device Farm client and is left to a later item. A cancel flag on the heartbeat response, or SIGINT or SIGTERM under `bajutsu worker --once`, stops the scheduled Device Farm run through `stop_run` and posts the result as cancelled; the shutdown policy above, which lets leases lapse, applies only to a worker that stops without a cancel. A re-leased job resumes polling the same run, and nothing about how the verdict is read changes. Requiring a database connection on every worker would work too, but it would give the worker a second credential of the kind BE-0160 removes.
+The lease heartbeat runs during the poll, so a run that lasts 150 minutes holds its lease. The stored ARN must survive the loss of a worker, and today the store is reachable only by a process that holds a database connection ([`jobs.py`](../../bajutsu/serve/jobs.py)). A worker that reaches the server over HTTP has no such connection. The lease response therefore carries the stored ARN, and a new worker route saves it once the run is scheduled. That route is checked against the lease owner in the way the heartbeat route is, so a worker whose lease was reclaimed cannot overwrite it. The worker retries the save until it succeeds or the route refuses it. A deadline of three lease lengths bounds the retries. A 409 from the route means a lost lease. Any other refusal is a server or configuration error. In all three cases the server holds no ARN to resume from. The worker thus stops the run, and the job fails with the cause. A lost lease stops the scheduled run only when the ARN was never stored, because no other worker can resume such a run. Once the ARN is stored, the worker leaves the run alone and the reclaiming worker resumes it. A worker that stops between scheduling a run and saving its ARN leaves that run unowned: the re-leased job submits again, and the first run holds its device until Device Farm ends it. The worker names each run after its job id, so an operator can find and stop it. Looking a run up by that name to resume it instead of submitting again needs a `list_runs` call on the Device Farm client and is left to a later item. A cancel flag on the heartbeat response stops the scheduled Device Farm run through `stop_run`. The worker then posts the result as cancelled. A stop signal does the same. That covers SIGINT or SIGTERM under `bajutsu worker --once`. It also covers a stop signal to the looped `bajutsu worker`. Since BE-0449, that worker cancels the job it holds on such a signal. The shutdown policy above lets leases lapse. That policy belongs to the slot model of unit 4, for a worker that stops without a cancel. A re-leased job resumes polling the same run, and nothing about how the verdict is read changes. Requiring a database connection on every worker would work too, but it would give the worker a second credential of the kind BE-0160 removes.
 
 ### Result and run landing
 
@@ -188,11 +188,11 @@ This item removes the in-process dispatch of the server (`_run_batch_job` and th
 
 - [x] Provider registration on the worker
 - [x] Routing
-- [ ] Package root and application delivery
+- [x] Package root and application delivery
 - [ ] Concurrent slots
 - [ ] Budget from the declaration
-- [ ] Checkpoint over HTTP
-- [ ] Result path
+- [x] Checkpoint over HTTP
+- [x] Result path
 - [ ] Tests and documentation
 
 Log:
@@ -230,6 +230,37 @@ Log:
   lease (BE-0413), so its relative `appPath` is missing on a remote worker. Until unit 6, a
   SIGINT to `--once` does not stop a scheduled Device Farm run. A worker that reaches the server
   over HTTP alone stores no ARN, so a job it re-leases submits again.
+- PR_PLACEHOLDER11 (Units 3, 6–7) — This change closes the three gaps of the #2184 entry. First, a
+  fan-out whose scenarios travel as materials delivers its binary without a bundle. At
+  dispatch the server stores the file that `appPath` names as a binary artifact. Its key is the
+  file's Secure Hash Algorithm 256 (SHA-256) digest. The job names that digest as `batch_app`, and
+  the lease signs a download for it as `app_url`. The worker places the file at `appPath` in the
+  job's own workspace and checks the digest. `run-set` answers `400` when the server has no object
+  store. It also answers `400` when `appPath` is absolute, leaves the config's directory, or names no
+  file. The worker refuses an `appPath` outside its workspace. `--once` refuses a spec that names a
+  stored application. Second, the stored ARN travels over HTTP. The lease response carries it as
+  `batch_run_arn`. A new route, `POST /api/worker/batch-run`, stores it for the lease holder alone.
+  One conditional update checks the lease owner, as the lease renewal route does. A repeat of the
+  ARN already stored answers `200` from any worker, so a retry after a lost answer stops nothing.
+  On a transport error or a `5xx`, the worker retries with backoff for at most 360 seconds. A cancel
+  or a lost lease ends the retries at once. A `409` means a lost lease. Any other `4xx` is a server
+  or configuration error, and the worker logs it as one. The worker stops the run on a `409`, on
+  another `4xx`, and at the deadline, since no other worker could resume it. The job then fails
+  with the cause. A lease that the renewal reports lost before the server stores the ARN stops the
+  run too. A lease lost after that leaves the
+  run to the next worker. That worker's lease carries the ARN, and its poll resumes the run without a
+  second submission. `BAJUTSU_DATABASE_URL` no longer plays a part. No worker reads or writes the ARN
+  through its own database connection. Each run carries its job id as its name on Device Farm.
+  Third, the Device Farm client gains `stop_run`. A cancel that the lease renewal relays stops a
+  scheduled run. A stop signal to `bajutsu worker` or `--once` does the same. The worker then posts
+  the job as cancelled. A cancel during the uploads schedules nothing. The poll asks before every
+  status request. It thus reacts within one poll interval, at most 30 seconds. A stop signal to
+  `bajutsu worker` cancels the job it holds, as it has since BE-0449. Unit 4's shutdown policy, which
+  lets leases lapse, will apply to the slot model alone. Unit 7 needed one more piece. The worker
+  already landed, posted, and uploaded the run through the ordinary worker path. A batch job that
+  fails before any verdict now also posts its reason as the result's `error`. The jobs row then names
+  the cause instead of `unknown`. The window from scheduling a run to storing its ARN stays open (see
+  *Restart and lease loss*).
 
 ## References
 

@@ -366,9 +366,17 @@ def test_fan_out_ships_scenarios_that_travel_as_materials(tmp_path: Path) -> Non
     # On the server-backed scenario store, runnable.arg is already workspace-relative and the
     # scenario text travels as materials (BE-0448). The job ships it with the config, and the
     # request names both by their place in the worker's workspace, which is the bundle it packages.
+    from conftest import FakeObjectStore
+
     from bajutsu.serve.scenarios import Runnable
 
     scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml"])
+    # A worker without the project receives the binary by signed URL, so the appPath names a file
+    # inside the config's directory and the server has an object store to deliver it through.
+    cfg.write_text(
+        cfg.read_text(encoding="utf-8").replace(str(tmp_path / "app.apk"), "app.apk"),
+        encoding="utf-8",
+    )
 
     class _MaterialsScope:
         """A fake scope whose runnable carries materials (server-backed scenario store)."""
@@ -394,6 +402,7 @@ def test_fan_out_ships_scenarios_that_travel_as_materials(tmp_path: Path) -> Non
         cwd=tmp_path,
         executor=executor,
     )
+    state.object_store = FakeObjectStore()
     # Inject the materials-returning scope via for_org().scenarios
     import unittest.mock
 
@@ -408,6 +417,7 @@ def test_fan_out_ships_scenarios_that_travel_as_materials(tmp_path: Path) -> Non
     assert (job.batch.scenario, job.batch.config) == ("one.yaml", "bajutsu.config.yaml")
     assert job.materials["one.yaml"].startswith("- name: a")
     assert job.materials["bajutsu.config.yaml"] == cfg.read_text(encoding="utf-8")
+    assert job.batch_app is not None  # the stored binary the lease signs for the worker
 
 
 def test_run_set_endpoint_is_wired(tmp_path: Path) -> None:

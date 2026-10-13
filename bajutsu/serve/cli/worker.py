@@ -32,6 +32,7 @@ import typer
 from bajutsu.common.backend_cli import simctl
 from bajutsu.common.backends import PLATFORMS
 from bajutsu.common.capability.worker_capability import LOCAL, WorkerCapability
+from bajutsu.common.cloud.devicefarm import RunInterrupted
 from bajutsu.common.evidence.redaction import LineCredentialMasker, Redactor
 from bajutsu.common.evidence.sink import RunArtifactWriter
 from bajutsu.common.handoff import REQUEST_LINE_PREFIX
@@ -108,6 +109,14 @@ _OVERRIDE_CACHE_DIR = ".overrides"
 # packages that directory, so it must hold this job's config and scenarios and no other job's, nor
 # the bundle cache beside it. Removed once the job's evidence is uploaded.
 _BATCH_JOBS_DIR = ".batch"
+# How long `_LeaseCheckpoint` waits between attempts to store a run's ARN, doubling up to the cap:
+# the run is already holding a device, so the first retries come quickly (BE-0448).
+_CHECKPOINT_RETRY_INITIAL = 1.0
+_CHECKPOINT_RETRY_MAX = 30.0
+# How long `_LeaseCheckpoint` keeps retrying before it gives the run up: three of the server's
+# default lease timeouts (120 seconds, `DEFAULT_LEASE_TIMEOUT_SECONDS`). Past that, the lease has
+# lapsed anyway, and an unrecorded run that keeps polling would only hold a device nobody can resume.
+_CHECKPOINT_DEADLINE = 360.0
 # A job id the worker turns into a directory name: one plain path segment.
 _SAFE_SEGMENT = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 
@@ -402,6 +411,8 @@ def _serve_leases(
                 work=work,
                 bundle_urls=body.get("bundle_urls"),
                 override_urls=_override_urls(body),
+                batch_run_arn=body.get("batch_run_arn"),
+                app_url=body.get("app_url"),
                 bus=bus,
                 url=url,
                 wid=wid,
@@ -917,6 +928,8 @@ def _run_with_heartbeat(
     secret_env: dict[str, str] | None = None,
     cancel: _CancelRelay | None = None,
     environment: str = LOCAL,
+    batch_run_arn: Any = None,
+    app_url: Any = None,
 ) -> tuple[dict[str, Any] | None, bool, Path]:
     """Run the job on a background thread while heart-beating its lease from this one.
 
@@ -949,17 +962,37 @@ def _run_with_heartbeat(
     environment alone and is never logged. *cancel* is the relay a stop signal cancels the job
     through, as the heartbeat's cancel does; a fresh one when the caller has none. A job that does
     not belong to this worker's *environment* (BE-0448) fails before anything is fetched.
+
+    A cloud-batch job stores its run's ARN through the server (`_LeaseCheckpoint`), resumes the run
+    *batch_run_arn* names when the lease carries one, and has its application fetched from *app_url*
+    when the job names a stored one (BE-0448). The same *lost* flag that keeps a run from starting
+    tells its poll to leave the run to the worker that holds the job now.
     """
     holder: dict[str, Any] = {"work": work}
     lost = threading.Event()
     cancel = cancel if cancel is not None else _CancelRelay()
+    checkpoint = (
+        _LeaseCheckpoint(
+            url=url,
+            auth_token=auth_token,
+            wid=wid,
+            job_id=job_id,
+            stored=batch_run_arn if isinstance(batch_run_arn, str) and batch_run_arn else None,
+            lost=lost,
+            cancelled=lambda: cancel.requested,
+        )
+        if spec.get("batch") is not None
+        else None
+    )
 
     def _run() -> None:
         if (reason := environment_refusal(spec, environment)) is not None:
             holder["result"] = {"ok": False, "error": reason}
             return
         try:
-            job_work, failure = _workspace_or_failure(work, spec, bundle_urls, override_urls)
+            job_work, failure = _workspace_or_failure(
+                work, spec, bundle_urls, override_urls, app_url=app_url
+            )
         except _TransientFetch as e:
             _logger.warning(
                 "bundle fetch failed for job %s; leaving the lease to lapse: %s", job_id, e
@@ -986,6 +1019,8 @@ def _run_with_heartbeat(
                 worker_config=worker_config,
                 on_job=cancel.bind,
                 secret_env=secret_env,
+                batch_checkpoint=checkpoint,
+                lease_lost=lost,
                 # Written before the run tree uploads, so console.log travels with it and is the
                 # durable copy the server's log stream falls back to (BE-0449).
                 before_upload=functools.partial(_write_job_console_log, job_work, bus),
@@ -1311,6 +1346,8 @@ def _workspace_or_failure(
     spec: dict[str, Any],
     bundle_urls: Any,
     override_urls: dict[str, str] | None = None,
+    *,
+    app_url: Any = None,
 ) -> tuple[Path, dict[str, Any] | None]:
     """The workspace to run this job from, or the failed result to post when none can be prepared.
 
@@ -1328,6 +1365,7 @@ def _workspace_or_failure(
     """
     try:
         base = _bundle_workspace(work, spec, bundle_urls)
+        _place_batch_app(base, spec, app_url)
     except _TransientFetch:
         raise
     except Exception as e:
@@ -1453,6 +1491,8 @@ def _bundle_workspace(work: Path, spec: dict[str, Any], bundle_urls: Any) -> Pat
     console log inside it — the worker already shares one working directory across jobs, and this
     keeps that property rather than paying a copy of an app binary per job.
 
+    A cloud-batch job that ships no bundle gets a fresh tree of its own instead (BE-0448).
+
     Raises rather than falling back to *work*: a run started against a missing binary fails opaquely
     at install time, far from this cause (directive 2).
     """
@@ -1493,6 +1533,160 @@ def _batch_workspace(work: Path, spec: dict[str, Any]) -> Path:
     shutil.rmtree(tree, ignore_errors=True)
     tree.mkdir(parents=True)
     return tree
+
+
+def _place_batch_app(tree: Path, spec: dict[str, Any], app_url: Any) -> None:
+    """Fetch the stored application a cloud-batch job names into *tree*, at its `appPath` (BE-0448).
+
+    The job ships its config and scenario as materials and no bundle, so the lease's signed URL is
+    the only way its binary reaches this worker. The `appPath` comes from a leased spec, so it must
+    name a place strictly inside *tree*; the bytes must hash to the sha the job names, as a bundle
+    part must. A job naming no stored application, or carrying a bundle, is left alone, so *tree* is
+    always the job's own fresh workspace (`_batch_workspace`).
+
+    Raises:
+        RuntimeError: The job names an invalid sha or an `appPath` outside *tree*, or the lease
+            signed no URL for it; no worker can get past any of these.
+        _TransientFetch: The download failed or arrived corrupted; another attempt may succeed.
+    """
+    sha = spec.get("batch_app")
+    # A bundle's tree is shared with every later job off it, so nothing is placed into one.
+    if sha is None or spec.get("bundle") is not None:
+        return
+    if not valid_sha256(sha):
+        raise RuntimeError(f"job carries an invalid application sha: {sha!r}")
+    batch = spec.get("batch")
+    rel = batch.get("app_path") if isinstance(batch, dict) else None
+    if not isinstance(rel, str) or not rel:
+        raise RuntimeError("job names a stored application but no batch.app_path to place it at")
+    dest = tree / rel
+    if Path(rel).is_absolute() or tree.resolve() not in dest.resolve().parents:
+        raise RuntimeError(f"application path {rel!r} is outside this job's workspace")
+    if not isinstance(app_url, str) or not app_url:
+        raise RuntimeError(f"job needs application {sha}, but the lease signed no url for it")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    _fetch_part(app_url, dest, sha)
+
+
+class _CheckpointLostError(RuntimeError):
+    """The server answered 409 (or the heartbeat saw it): this worker no longer holds the lease."""
+
+
+class _CheckpointRefusedError(RuntimeError):
+    """The server refused the ARN with a 4xx other than 409: a server or configuration error."""
+
+
+class _CheckpointTimeoutError(RuntimeError):
+    """The server could not be reached to store the ARN before `_CHECKPOINT_DEADLINE` ran out."""
+
+
+class _LeaseCheckpoint:
+    """A leased cloud-batch job's `BatchCheckpoint`, kept by the server (BE-0448).
+
+    `load` answers the ARN the lease carried, so a re-leased job resumes the run an earlier attempt
+    scheduled. `save` posts the new ARN to the lease-owner-checked route and retries until the
+    server stores it, refuses it, or the retry deadline runs out; the worker never holds a database
+    connection for it. Every way `save` gives up raises, and the provider then stops the run: a run
+    whose ARN the server does not hold cannot be resumed by anyone, so it must not keep a device.
+    """
+
+    def __init__(
+        self,
+        *,
+        url: str,
+        auth_token: str | None,
+        wid: str,
+        job_id: str,
+        stored: str | None,
+        lost: threading.Event,
+        cancelled: Callable[[], bool] = lambda: False,
+        sleep: Callable[[float], None] = time.sleep,
+        clock: Callable[[], float] = time.monotonic,
+        deadline: float = _CHECKPOINT_DEADLINE,
+    ) -> None:
+        self._url = url
+        self._auth_token = auth_token
+        self._wid = wid
+        self._job_id = job_id
+        self._stored = stored
+        self._lost = lost
+        self._cancelled = cancelled
+        self._sleep = sleep
+        self._clock = clock
+        self._deadline = deadline
+
+    def load(self) -> str | None:
+        """The run ARN the lease carried, or the one this attempt stored."""
+        return self._stored
+
+    def save(self, run_arn: str) -> None:
+        """Store *run_arn* on the server, retrying a transport failure or a server error.
+
+        Raises:
+            RunInterrupted: The job was cancelled while the save was retrying.
+            _CheckpointLostError: The lease is gone, by the route's 409 or by the heartbeat's.
+            _CheckpointRefusedError: The route answered another 4xx, which no retry changes.
+            _CheckpointTimeoutError: The deadline ran out before the server answered.
+        """
+        give_up_at = self._clock() + self._deadline
+        delay = _CHECKPOINT_RETRY_INITIAL
+        while True:
+            # Checked on every attempt, so a cancel or a lost lease never waits out the backoff.
+            if self._cancelled():
+                raise RunInterrupted("stop", run_arn)
+            if self._lost.is_set():
+                raise _CheckpointLostError(
+                    f"lease on job {self._job_id} lost before run {run_arn} was stored"
+                )
+            code, body = self._post(run_arn)
+            if code == 200:
+                self._stored = run_arn
+                return
+            if code == 409:
+                raise _CheckpointLostError(
+                    f"lease on job {self._job_id} lost before run {run_arn} was stored"
+                )
+            if code is not None and 400 <= code < 500:
+                # Not a lease question: the route is missing, the token is refused, or the request
+                # is malformed. Durability cannot be had, so the run stops and the job fails loudly.
+                _logger.error(
+                    "server refused to store run %s for job %s (HTTP %s): a server or "
+                    "configuration error, not a lost lease: %.200s",
+                    run_arn,
+                    self._job_id,
+                    code,
+                    body,
+                )
+                raise _CheckpointRefusedError(
+                    f"server or configuration error storing run {run_arn} for job "
+                    f"{self._job_id}: HTTP {code}: {body!s:.200}"
+                )
+            if self._clock() + delay > give_up_at:
+                raise _CheckpointTimeoutError(
+                    f"could not store run {run_arn} for job {self._job_id} within "
+                    f"{self._deadline:.0f}s (last: {code if code is not None else body})"
+                )
+            _logger.warning(
+                "storing run %s for job %s failed (%s); retrying in %.0fs",
+                run_arn,
+                self._job_id,
+                code if code is not None else body,
+                delay,
+            )
+            self._sleep(delay)
+            delay = min(delay * 2, _CHECKPOINT_RETRY_MAX)
+
+    def _post(self, run_arn: str) -> tuple[int | None, Any]:
+        """One attempt at the route: its status and body, or None and the transport error."""
+        try:
+            return _post_json(
+                f"{self._url}/api/worker/batch-run",
+                {"worker_id": self._wid, "job_id": self._job_id, "run_arn": run_arn},
+                token=self._auth_token,
+                timeout=_UPLOAD_HTTP_TIMEOUT,
+            )
+        except (URLError, OSError) as e:
+            return None, str(e)
 
 
 def _discard_batch_workspace(work: Path, job_work: Path) -> None:
