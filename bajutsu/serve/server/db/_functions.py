@@ -97,8 +97,10 @@ def engine_from_url(url: str) -> Engine:
         @event.listens_for(engine, "connect")
         def _sqlite_pragmas(dbapi_connection: Any, _record: Any) -> None:
             cursor = dbapi_connection.cursor()
-            cursor.execute("PRAGMA journal_mode=WAL")
+            # Timeout first: converting the file into WAL needs a brief exclusive lock, which must
+            # wait out another connection rather than fail with "database is locked".
             cursor.execute(f"PRAGMA busy_timeout={SQLITE_BUSY_TIMEOUT_MS}")
+            cursor.execute("PRAGMA journal_mode=WAL")
             cursor.close()
 
     return engine
