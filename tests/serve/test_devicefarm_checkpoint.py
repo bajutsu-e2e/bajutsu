@@ -66,6 +66,11 @@ def _zip_bytes(members: dict[str, str]) -> bytes:
     return buffer.getvalue()
 
 
+# A poll count no test reaches when the run is stopped as intended: a fake run that is never stopped
+# fails the test instead of hanging the suite (a self-sent SIGINT was seen to go missing under xdist).
+_MAX_POLLS = 2000
+
+
 class _Client:
     """A Device Farm fake whose run stays RUNNING until `complete` is set; *on_poll* sees each poll."""
 
@@ -88,6 +93,10 @@ class _Client:
 
     def get_run(self, *, arn: str) -> dict[str, Any]:
         self.polls += 1
+        if self.polls > _MAX_POLLS:
+            raise AssertionError(
+                f"the fake run was polled {self.polls} times without being stopped"
+            )
         if self._on_poll is not None:
             self._on_poll(self.polls)
         status = "COMPLETED" if self.complete.is_set() else "RUNNING"
