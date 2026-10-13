@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0448") |
-| Implementing PR | [#2184](https://github.com/bajutsu-e2e/bajutsu/pull/2184) (Units 1–2 and part of 3), [#2185](https://github.com/bajutsu-e2e/bajutsu/pull/2185) (Units 3, 6–7), PR_PLACEHOLDER12 (Units 4–5, 8) |
+| Implementing PR | [#2184](https://github.com/bajutsu-e2e/bajutsu/pull/2184) (Units 1–2 and part of 3), [#2185](https://github.com/bajutsu-e2e/bajutsu/pull/2185) (Units 3, 6–7), [#2186](https://github.com/bajutsu-e2e/bajutsu/pull/2186) (Units 4–5, 8) |
 | Topic | Device-cloud execution |
 <!-- /BE-METADATA -->
 
@@ -261,7 +261,7 @@ Log:
   fails before any verdict now also posts its reason as the result's `error`. The jobs row then names
   the cause instead of `unknown`. The window from scheduling a run to storing its ARN stays open (see
   *Restart and lease loss*).
-- PR_PLACEHOLDER12 (Units 4–5, 8) — A device-cloud worker now reads its job budget from `worker.yaml`.
+- [#2186](https://github.com/bajutsu-e2e/bajutsu/pull/2186) (Units 4–5, 8) — A device-cloud worker now reads its job budget from `worker.yaml`.
   The budget is the file's top-level `maxJobConcurrency`. Above one, the worker runs the slot model.
   Each leased job runs on a thread of its own, with its own lease renewal, log bus, and package. Its
   workspace lives under `.slots/<n>/`. The workspace returns to the pool once the job has uploaded its

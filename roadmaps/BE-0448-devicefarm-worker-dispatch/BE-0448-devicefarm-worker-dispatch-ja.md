@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0448") |
-| 実装 PR | [#2184](https://github.com/bajutsu-e2e/bajutsu/pull/2184)（単位 1〜2 と単位 3 の一部）、[#2185](https://github.com/bajutsu-e2e/bajutsu/pull/2185)（単位 3、6〜7）、PR_PLACEHOLDER12（単位 4〜5、8） |
+| 実装 PR | [#2184](https://github.com/bajutsu-e2e/bajutsu/pull/2184)（単位 1〜2 と単位 3 の一部）、[#2185](https://github.com/bajutsu-e2e/bajutsu/pull/2185)（単位 3、6〜7）、[#2186](https://github.com/bajutsu-e2e/bajutsu/pull/2186)（単位 4〜5、8） |
 | トピック | Device-cloud execution |
 <!-- /BE-METADATA -->
 
@@ -241,7 +241,7 @@ worker は、実行のツリーを一時ディレクトリにダウンロード�
   通常の worker の経路で実行をアップロードしていました。判定の前に失敗したバッチのジョブは、その理由を
   結果の `error` として送るようになりました。そのため、ジョブの行には `unknown` ではなく原因が残ります。
   実行のスケジュールから ARN の保存までの隙間は、「再起動と lease の喪失」の記述どおり残ります。
-- PR_PLACEHOLDER12（単位 4〜5、8）— デバイスクラウドの worker は、ジョブの予算を `worker.yaml` から
+- [#2186](https://github.com/bajutsu-e2e/bajutsu/pull/2186)（単位 4〜5、8）— デバイスクラウドの worker は、ジョブの予算を `worker.yaml` から
   読むようになりました。予算は、ファイル最上位の `maxJobConcurrency` です。値が 1 を超えると、worker はスロット
   モデルで動きます。リースした各ジョブは専用のスレッドで動き、ハートビート、ログバス、パッケージも
   ジョブごとに持ちます。作業ディレクトリは `.slots/<n>/` の下に置きます。作業ディレクトリがプールへ
