@@ -551,7 +551,7 @@ def test_a_failing_log_post_never_fails_the_job(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     posts = _Posts(None)
-    (result, abandoned, _work), _bus = _run_streaming(monkeypatch, tmp_path, posts)
+    (result, abandoned, _work), _ = _run_streaming(monkeypatch, tmp_path, posts)
     assert abandoned is False
     assert result == {"ok": True, "runId": "r1"}
 
@@ -560,7 +560,7 @@ def test_a_409_on_the_log_route_abandons_the_job(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     posts = _Posts(409)
-    (_result, abandoned, _work), _bus = _run_streaming(monkeypatch, tmp_path, posts)
+    (_result, abandoned, _work), _ = _run_streaming(monkeypatch, tmp_path, posts)
     assert abandoned is True
 
 
