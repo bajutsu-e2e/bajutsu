@@ -765,7 +765,7 @@ classDiagram
 2 つあります。報告内容がまったく同じ候補は 1 つにまとめます。作成者が区別できる材料がないためです。
 また、分類済みの兄弟要素と同じラベルを持つ汎用の `other` 特性の包みは、候補から落とします。
 
-![セレクタ解決のフロー図。query() の 1 スナップショットが find_all に入ります。within があれば、空間的に内側の候補だけを残します。候補が 0 件なら ElementNotFound を送出します。内容がまったく同じ候補は、先に 1 つへまとめます。内容の異なる候補が 2 件以上残り、index の指定もなければ AmbiguousSelector を送出します。resolve_unique を出るのは 1 件だけです。そのあと backend が、要素自身の点を topmost_at_point で調べます。覆いがあれば ElementNotTappable を送出し、なければその要素を操作します。](assets/diagrams/developer-guide-selector-resolution-ja.svg)
+![セレクタ解決のフロー図。query() の 1 スナップショットが find_all に入ります。within があれば、空間的に内側の候補だけを残します。候補が 0 件なら ElementNotFound を送出します。内容がまったく同じ候補は、先に 1 つへまとめます。内容の異なる候補が 2 件以上残り、index の指定もなければ AmbiguousSelector を送出します。resolve_unique を出るのは 1 件だけです。そのあと backend が、要素自身の点が覆われていないかを調べます。覆いがあれば ElementNotTappable を送出し、なければその要素を操作します。](assets/diagrams/developer-guide-selector-resolution-ja.svg)
 
 <details>
 <summary>Mermaid のソース</summary>
@@ -785,17 +785,19 @@ flowchart TB
     ix -->|いいえ| ok
     ix -->|index あり| ok
     ix -->|index なし| e2["AmbiguousSelector"]
-    ok --> cov{"topmost_at_point: 覆われているか"}
+    ok --> cov{"backend の覆い検査"}
     cov -->|はい| e3["ElementNotTappable"]
     cov -->|いいえ| act["backend が操作を行う"]
 ```
 
 </details>
 
-覆いの検査は `resolve_unique` の外、backend の側にあります。`AdbDriver`、`XcuitestLiveDriver`、
-`FakeDriver` が、解決済みの要素に対して `base.raise_if_covered` を呼びます。2 つを分けておくと、
-解決は 1 つのスナップショットだけに依る純粋な関数のままです。「要素はあるが何かが上に乗っている」
-という答えは、セレクタではなく backend の持ち物になります。
+覆いの検査は `resolve_unique` の外、backend の側にあり、形は 2 通りです。ネイティブなヒットテストを
+持たない backend は、解決済みの要素に対して `base.raise_if_covered` を呼びます。`AdbDriver`、
+`XcuitestLiveDriver`、`FakeDriver` が、この文書順の近似を共有します。`PlaywrightDriver` は
+`document.elementFromPoint` でブラウザ自身に尋ねます。検査を解決から分けておくと、解決は 1 つの
+スナップショットだけに依る純粋な関数のままです。「要素はあるが何かが上に乗っている」という答えは、
+セレクタではなく backend の持ち物になります。
 
 **狭い任意プロトコル**が、プラットフォーム間の能力差を引き受けます。すべての backend が空実装を
 並べる巨大なインターフェースを置く代わりに、`base.py` は小さなプロトコルを宣言します。
@@ -872,7 +874,7 @@ Android と web を 1 つのインターフェースで動かせます。
 ポーリングの仕組みと `WaitTrace` を持ちます。`WaitTrace` は待機のポーリング履歴を記録するので、
 タイムアウトの原因を成果物だけから追えます。
 
-![条件待機 1 回のフロー図。待機は毎巡の先頭で期限を確かめます。期限を過ぎていれば失敗し、FileSink.wait_diagnostic が WaitTrace をツリーと並べて書き出します。期限内なら画面か観測した通信を読みます。続いて警戒役が、画面を塞ぐシステムダイアログを消します。シナリオの interrupts が、割り込みの画面を片付けます。条件を満たせばステップへ戻ります。満たさなければ _adaptive_sleep が巡回の間隔を広げて待ち、次の巡回に入ります。](assets/diagrams/developer-guide-wait-loop-ja.svg)
+![条件待機 1 回のフロー図。各巡回は画面か観測した通信を読み、まず条件を判定します。条件を満たせば、その場でステップへ戻ります。満たさなければ alert guard が画面を塞ぐシステムダイアログを消し、続いてシナリオの interrupts が割り込みの画面を片付けます。期限の判定は最後で、だからこそ最初の読み取りは必ず走ります。期限を過ぎていれば失敗し、wait_diagnostic が WaitTrace をツリーと並べて書き出します。期限内なら _adaptive_sleep が固定のポーリング周期の残りだけ待ち、次の巡回に入ります。](assets/diagrams/developer-guide-wait-loop-ja.svg)
 
 <details>
 <summary>Mermaid のソース</summary>
@@ -880,22 +882,24 @@ Android と web を 1 つのインターフェースで動かせます。
 <!-- mermaid-svg: assets/diagrams/developer-guide-wait-loop-ja.svg -->
 ```mermaid
 flowchart LR
-    s(["待機の開始"]) --> d{"期限を過ぎたか"}
-    d -->|はい| to["失敗 — wait_diagnostic が WaitTrace を書く"]
-    d -->|いいえ| rd["画面、または観測した通信を読む"]
-    rd --> ag["警戒役 — システムダイアログを消す"]
-    ag --> ig["interrupts — 割り込み画面を片付ける"]
-    ig --> m{"条件を満たしたか"}
+    s(["待機の開始"]) --> rd["画面、または観測した通信を読む"]
+    rd --> m{"条件を満たしたか"}
     m -->|はい| ok(["ステップが続く"])
-    m -->|いいえ| bo["_adaptive_sleep が間隔を広げる"]
-    bo --> d
+    m -->|いいえ| ag["alert guard — システムダイアログを消す"]
+    ag --> ig["interrupts — 割り込み画面を片付ける"]
+    ig --> d{"期限を過ぎたか"}
+    d -->|はい| to["失敗 — wait_diagnostic が WaitTrace を書く"]
+    d -->|いいえ| bo["_adaptive_sleep — ポーリング周期の残り"]
+    bo --> rd
 ```
 
 </details>
 
-このループには効きどころが 2 つあります。警戒役と割り込み処理は巡回の**内側**で走るので、
-システムダイアログや割り込み画面を片付けるために別の待機を足す必要がありません。そして出口は
-どれも条件か期限についての判断であり、固定の停止ではありません。第二原則のもっとも具体的な姿です。
+このループには、取り違えやすい点が 3 つあります。条件の判定は guard より**先**にあるので、
+すでに条件を満たした待機が何かを操作することはありません。期限の判定は**最後**です。だからこそ、
+最初の読み取りは必ず走ります。そして `_adaptive_sleep` はバックオフではありません。固定の
+ポーリング周期の残りだけ待つ実装で、端末のダンプを伴う `query()` はその周期を使い切っていること
+が多いからです。出口はどれも条件か期限についての判断であり、固定の停止ではありません。
 
 **アクションの振り分けは条件分岐の連なりではなくレジストリです。**
 [`actions/_registry.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/bajutsu/common/orchestrator/actions/_registry.py)
@@ -952,7 +956,7 @@ HTML ページを組み立てます。`archive.py` と `load.py` は、終わっ
 オフラインで読み直して再描画します。`manifest.json` が唯一の正本であり、CI は HTML を解析せずに
 manifest を読みます。
 
-![証跡の書き込み経路のフロー図。3 つの供給元が 1 つのシンクへ入ります。ドライバはスクリーンショット、要素ツリー、生ダンプを供給します。アプリ内のコレクタは NetworkExchange の記録を供給します。Interval は動画と端末ログを供給します。シンクはすべてを RunArtifactWriter へ渡します。RunArtifactWriter は唯一の書き込み口で、run ディレクトリへ届く前に Redactor を適用します。manifest.json は run ディレクトリから書かれ、唯一の正本になります。JUnit XML、CTRF の JSON、HTML レポート、共有用の zip は、いずれも manifest から描画されます。](assets/diagrams/developer-guide-evidence-path-ja.svg)
+![証跡の書き込み経路のフロー図。3 つの供給元が 1 つのシンクへ入ります。ドライバはスクリーンショット、要素ツリー、生ダンプを供給します。アプリ内のコレクタは NetworkExchange の記録を供給します。Interval は動画と端末ログを供給します。シンクはすべてを RunArtifactWriter へ渡します。RunArtifactWriter は唯一の書き込み口で、run ディレクトリへ届く前に Redactor を適用します。これとは別に write_report が、メモリ上の RunResult の一覧を 4 通りに描画して同じディレクトリへ書きます。manifest.json、junit.xml、ctrf.json、report.html です。CI は manifest を読みます。共有用の zip は仕上がったディレクトリを詰めたもので、オフラインの再描画だけが manifest を読み戻して HTML レポートを作ります。](assets/diagrams/developer-guide-evidence-path-ja.svg)
 
 <details>
 <summary>Mermaid のソース</summary>
@@ -963,21 +967,28 @@ flowchart LR
     drv["Driver — 画面 · 要素ツリー · 生ダンプ"] --> sink["EvidenceSink"]
     net["アプリ内のコレクタ — NetworkExchange"] --> sink
     iv["Interval — 動画 · 端末ログ"] --> sink
-    sink --> w["RunArtifactWriter — 唯一の書き込み口"]
-    w --> red["Redactor — 秘密 · ラベル · ヘッダ · 欄"]
-    red --> dir["run ディレクトリ"]
-    dir --> man["manifest.json"]
-    man --> o1["junit.xml"]
-    man --> o2["CTRF の JSON"]
-    man --> o3["report.html"]
-    man --> o4["run の .zip"]
+    sink --> w["RunArtifactWriter — 唯一の書き込み口、Redactor を適用"]
+    rr["RunResult の一覧"] --> wr["write_report — 4 つすべてを描画"]
+    subgraph dir["run ディレクトリ"]
+        art["ステップごとの証跡"]
+        man["manifest.json — CI が読む"]
+        o1["junit.xml · ctrf.json · report.html"]
+    end
+    w --> art
+    wr --> man
+    wr --> o1
+    dir --> z["run の .zip — archive_run_dir がディレクトリを詰める"]
+    man -.->|"オフラインの再描画"| o1
 ```
 
 </details>
 
-この形は、上の文章が別々に述べた保証を 2 つ運んでいます。どの成果物も 1 つの書き手を通るので、
-秘匿の処理を置く場所は 1 か所で済みます。供給元ごとに覚えておく規則にはなりません。そして 4 つの
-描画はいずれも manifest を読むため、レポートが CI の読んだ判定と食い違うことがありません。
+この形は、文章が招きやすい読み違いを 2 つ閉じます。レポートの 4 ファイルは**兄弟**であり、
+連鎖ではありません。`write_report` が同じメモリ上の `RunResult` の一覧から 4 つとも描画します。
+manifest は CI が読むファイルであって、他の 3 つが派生するもとではありません。読み戻すのは
+オフラインの再描画だけです。そして 2 つの書き手は届く範囲が違います。ステップごとのシンクは
+シナリオの `redact` 規則を適用しますが、レポート側の書き手が持つのは secret のリテラルだけです。
+つまり `manifest.json` はその規則を通さずに書かれます（[evidence](evidence.md)）。
 
 ---
 
