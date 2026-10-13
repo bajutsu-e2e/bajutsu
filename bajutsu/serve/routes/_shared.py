@@ -519,6 +519,8 @@ ROUTES: tuple[Route, ...] = (
         "/api/runs/bulk-delete",
         lambda state, ctx: ops.bulk_delete_runs(state, ctx.body(), actor=ctx.actor()),
     ),
+    # Index run trees written outside the server into the history (BE-0449); admin-gated.
+    Route("POST", "/api/runs/rescan", lambda state, _ctx: ops.rescan_runs(state)),
     Route(
         "POST",
         "/api/runs/{run_id}/restore",

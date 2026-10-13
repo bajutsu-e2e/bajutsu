@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0449") |
-| 実装 PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167)（単位 1 の 1）、[#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168)（単位 1 の 2） |
+| 実装 PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167)（単位 1 の 1）、[#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168)（単位 1 の 2）、PR_PLACEHOLDER3（単位 1 の 3） |
 | トピック | Hosting the web UI |
 <!-- /BE-METADATA -->
 
@@ -57,7 +57,7 @@ local バックエンドは、既定で `LocalExecutor` を使います（[`serv
 - **マイグレーション**は、既定の SQLite では自動で実行します。現在の server は Alembic を実行しないからです。
 - **secrets の鍵** `BAJUTSU_SECRETS_KEY` は、現在、データベースを使う起動で必須です。ローカルの起動は、鍵を生成して runs のディレクトリの隣に保存します。ファイルは、所有者だけが読める権限（`0600`）の通常ファイル（symlink ではないもの）として原子的に作成し、安全でない既存のパスがあれば起動に失敗します。秘密を含むファイルの扱いは、`bajutsu/common/run_meta/artifact_perms.py` に合わせます。共有ホストで誰でも読める鍵は、BE-0136 の保護を無効にするからです。
 - **`hosted`** は、デプロイの設定のままにします。リポジトリがそれを含意すると、BE-0108 のファイルブラウザが消え、デバイスの前にいる作者に対して `record` のデバイスの引き継ぎ（BE-0185）が拒否されます。
-- **実行の履歴**は、リポジトリがあるとデータベースの窓から取るので、コマンドラインの `bajutsu run` が書いた実行や、`runs/` にすでにある実行が、ローカルの UI から消えます。server は、`runs/` の下の実行のツリー（すでにあるものも、コマンドラインの `bajutsu run` が書いたものも）を、起動時と再走査のときに runs テーブルへ索引します。ファイルのストアは runs のツリーに置くので、それらのアーティファクトも解決できます。target は、リポジトリがあると組織ごとに分かれるので、ローカルの起動は 1 つの既定の組織を使います。
+- **実行の履歴**は、リポジトリがあるとデータベースの窓から取るので、コマンドラインの `bajutsu run` が書いた実行や、`runs/` にすでにある実行が、ローカルの UI から消えます。server は、`runs/` の下の実行のツリー（すでにあるものも、コマンドラインの `bajutsu run` が書いたものも）を、起動時と再走査のときに runs テーブルへ索引します。ファイルのストアは default org の `artifacts/` プレフィックスに runs のツリーをマウントするので、それらのアーティファクトも解決できます。target は、リポジトリがあると組織ごとに分かれるので、ローカルの起動は 1 つの既定の組織を使います。
 - **アーティファクトの保存先**には、ファイルシステムの実装を加えます。オブジェクトストアが受け付けるのは、現在 `s3://` と `gs://` だけです（[`object_store.py`](../../bajutsu/serve/server/object_store.py)）。`file://` のストアがあれば、worker が実行のツリーを書き、server が読めます。worker はこのストアにも、[BE-0160](../BE-0160-worker-credential-free-uploads/BE-0160-worker-credential-free-uploads-ja.md) の署名付き URL のインターフェースで話しかけ、このストアの URL は server が提供します。各 URL は、server が生成して保存する HMAC の鍵（secrets の鍵と同じ規則で保存します。原子的な `0600` での作成、通常ファイル、安全でない既存のパスの拒否）で署名し、有効期限を持ち、オブジェクトのキーと content type を署名に結び付け、既存のキーの検証でストアのルートに閉じ込めます。経路は、それ以外を受け付けません。
 
 local バックエンドと server バックエンドの違いは、これらの既定値だけになります。`--backend` フラグは意味を失うので、1 リリース非推奨にして、次のリリースで削除します。
@@ -147,7 +147,7 @@ local バックエンドと server バックエンドの違いは、これらの
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] ローカルの既定値
+- [x] ローカルの既定値
 - [ ] 分割をまたぐキャンセル
 - [ ] 1 回実行の worker とラッパー
 - [ ] ライブのログのストリームとルーティング用の executor
@@ -180,6 +180,24 @@ local バックエンドと server バックエンドの違いは、これらの
   この経路を認可するのは署名だけで、署名はメソッド、キー、コンテンツタイプ、有効期限に対する
   HMAC-SHA256 です。経路はオブジェクトストアが `FileObjectStore` のときだけ存在し、デフォルトの起動は、
   3 番目の PR で配線するまで変わりません。
+- PR_PLACEHOLDER3（単位 1 の 3 分割のうち 3：ローカル起動）— `bajutsu serve --backend server` が、
+  クラウドのサービスや環境変数がなくても起動するようになりました。`BAJUTSU_SERVER_STORE` と
+  `BAJUTSU_DATABASE_URL` がどちらも未設定なら、サーバーは `.bajutsu/queue.db` にマイグレーション済みの
+  SQLite のキューを持ちます。シークレットを暗号化するキーは、`BAJUTSU_SECRETS_KEY` が未設定なら
+  `.bajutsu/secrets.key` に生成します。設定したデータベースに `BAJUTSU_SECRETS_KEY` がない場合は、
+  これまでどおり起動に失敗します。バケットを指定してデータベースを指定しないデプロイは、これまでどおり
+  プロセス内で実行します。レプリカごとに SQLite のファイルを持つとキューが分かれるためです。バケットが
+  なければ、成果物ストアは `FileObjectStore` です。バケットと同じキーの配置で `.bajutsu/objects/` に
+  置き、default org の `artifacts/` プレフィックスにだけ runs のツリーをマウントします。このため、
+  `bajutsu run` が書いた run も動かさずに読め、default org のストアから他の org の run やストアの
+  フォルダを指すこともできません。ストアはローカルの鍵で署名し、宛先はサーバーのループバックの URL です。
+  そのためローカル起動は `--port 0` を拒否し、署名付き URL の経路を配信する FastAPI のトランスポートへ
+  自動で切り替えます。`hosted` は `BAJUTSU_HOSTED` から読むようにしました。未設定のときはバケットを
+  指定したかどうかに従うので、ローカル起動ではファイルブラウザとデバイスの引き継ぎが残ります。
+  サーバーは起動時に、`runs/` の下の run のツリーをすべて、既定の org の runs テーブルへ登録します。
+  登録には新しい追加専用の `record_run_if_absent` を使うので、完了した job の行を上書きしません。
+  admin の `POST /api/runs/rescan` は同じ登録を必要なときに行い、ローカルの配置がなければ `409` を
+  返します。これで単位 1 が完了しました。
 
 ## 参考
 

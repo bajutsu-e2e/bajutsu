@@ -452,3 +452,40 @@ def test_list_keys_skips_a_regular_file_reached_outside_the_root(
 
     monkeypatch.setattr(Path, "resolve", _resolve)
     assert store.list_keys("a/") == []
+
+
+def test_delete_prunes_the_empty_directories_it_leaves(tmp_path: Path) -> None:
+    runs = tmp_path / "runs"
+    store = FileObjectStore(
+        tmp_path / "objects", _BASE, UrlSigner(_KEY), mount=("artifacts/", runs)
+    )
+    store.put_bytes("artifacts/r1/steps/a.png", b"A")
+    store.put_bytes("artifacts/r1/manifest.json", b"{}")
+    store.put_bytes("scenarios/demo/smoke.yaml", b"x")
+
+    store.delete_key("artifacts/r1/steps/a.png")
+    assert not (runs / "r1" / "steps").exists()
+    assert (runs / "r1").is_dir()  # still holds the manifest
+    store.delete_key("artifacts/r1/manifest.json")
+    assert not (runs / "r1").exists()
+    assert runs.is_dir()  # the mounted directory itself is never removed
+
+    store.delete_key("scenarios/demo/smoke.yaml")
+    assert not (tmp_path / "objects" / "scenarios").exists()
+    assert (tmp_path / "objects").is_dir()
+
+
+def test_a_mounted_key_never_reaches_the_root(tmp_path: Path) -> None:
+    runs = tmp_path / "runs"
+    store = FileObjectStore(
+        tmp_path / "objects", _BASE, UrlSigner(_KEY), mount=("artifacts/", runs)
+    )
+    store.put_bytes("artifacts/r1/a.txt", b"A")
+    store.put_bytes("acme/artifacts/r1/a.txt", b"B")
+    assert (runs / "r1" / "a.txt").read_bytes() == b"A"
+    assert (tmp_path / "objects" / "acme" / "artifacts" / "r1" / "a.txt").read_bytes() == b"B"
+    assert store.list_keys("") == ["acme/artifacts/r1/a.txt", "artifacts/r1/a.txt"]
+    assert store.list_keys("artifacts/") == ["artifacts/r1/a.txt"]
+    assert store.list_keys("acme/") == ["acme/artifacts/r1/a.txt"]
+    with pytest.raises(ValueError, match="mount prefix"):
+        FileObjectStore(tmp_path / "o2", _BASE, UrlSigner(_KEY), mount=("artifacts", runs))

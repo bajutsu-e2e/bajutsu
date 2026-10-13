@@ -880,22 +880,27 @@ def test_build_state_server_has_no_oauth_without_the_env(
     assert state.auth.oauth is None
 
 
-def test_build_state_server_requires_a_server_store(
+def test_build_state_server_without_a_server_store_uses_the_local_file_store(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # BAJUTSU_SERVER_STORE is optional now (BE-0449): the default org's runs stay in the runs tree.
+    from bajutsu.serve.server.file_object_store import FileObjectStore
+
     monkeypatch.delenv("BAJUTSU_SERVER_STORE", raising=False)
+    monkeypatch.delenv("BAJUTSU_DATABASE_URL", raising=False)
     _scn, cfg, runs = project(tmp_path)
-    with pytest.raises(ValueError, match="BAJUTSU_SERVER_STORE"):
-        srv._build_state(
-            runs_dir=runs,
-            config=cfg,
-            scenarios_dir=None,
-            root=tmp_path,
-            baselines_dir=None,
-            max_concurrent=4,
-            token=None,
-            backend="server",
-        )
+    state = srv._build_state(
+        runs_dir=runs,
+        config=cfg,
+        scenarios_dir=None,
+        root=tmp_path,
+        baselines_dir=None,
+        max_concurrent=4,
+        token=None,
+        backend="server",
+    )
+    assert isinstance(state.object_store, FileObjectStore)
+    assert state.object_store.mount == ("artifacts/", runs.resolve())
 
 
 def test_build_state_server_without_extras_raises_a_clear_install_hint(

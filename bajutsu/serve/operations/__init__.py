@@ -107,6 +107,7 @@ from bajutsu.serve.operations.reads import (
 from bajutsu.serve.operations.runs import (
     bulk_delete_runs,
     delete_run,
+    rescan_runs,
     restore_run,
     sweep_expired_trash,
 )
@@ -215,6 +216,7 @@ __all__ = [
     "read_scenario",
     "render_metrics",
     "required_role",
+    "rescan_runs",
     "resolve_capture_pick",
     "resolve_scenario_pick",
     "respond_human",

@@ -21,6 +21,7 @@ import sys
 import tempfile
 import threading
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -33,6 +34,7 @@ from bajutsu.common.evidence.sink import RunArtifactWriter
 from bajutsu.common.handoff import REQUEST_LINE_PREFIX as _HANDOFF_REQUEST_PREFIX
 from bajutsu.common.run_meta.files import RunArtifactReader
 from bajutsu.serve.helpers import valid_run_id
+from bajutsu.serve.orgs import DEFAULT_ORG
 from bajutsu.serve.state import Job, ServeState
 
 if TYPE_CHECKING:
@@ -469,48 +471,149 @@ def persist_run(
     FK violation on Postgres, a flaky DB) is caught and logged rather than stranding the stream."""
     if state.repository is None:
         return  # local / stdlib serve: no system of record to write into
-    repo = state.repository
     try:
-        # Lazy import: only a server backend has a repository, where SQLAlchemy is already loaded,
-        # so the default serve path never pulls server.db in (the import guard stays green).
-        from bajutsu.serve.server.db import RunRecord
-
-        # The run's org was decided at job creation (and travels to a worker in the spec). Attribute
-        # `created_by` only to a user that actually exists, so the foreign key can't fail (a token /
-        # CI run has no actor; an OAuth run's user was upserted at login).
-        repo.ensure_org(org, slug=org, name=org)
-        created_by = actor if actor and repo.user_org(actor) is not None else None
         # Read + parse the manifest once and feed both the summary and the provenance stamp: a hosted
         # `open_bytes` can be an object-storage round trip, so a second read per run would double the
         # cost `_run_summary` was written to avoid.
         manifest = _read_manifest(state, run_id, org)
-        scenario_hash, tool_version, git_revision = _run_provenance(manifest)
-        # The enqueue-time label wins: it is the only source for a cloud-batch run, whose manifest
-        # comes back from the device cloud without one. The manifest is the fallback for a job built
-        # outside the enqueue path.
-        label = label or _run_str(manifest, "label")
-        target = _run_str(manifest, "target")
-        repo.record_run(
-            RunRecord(
-                id=run_id,
-                org_id=org,
-                status="done",
-                created_by=created_by,
-                ok=ok,
-                # The summary carries the same two values as the columns beside it: the DB-backed
-                # history list reads the summary, so a disagreement would hide a run from the very
-                # label filter its column says it belongs to (BE-0404 unit 4).
-                summary=_run_summary(run_id, manifest, ok=ok, label=label, target=target),
-                scenario_hash=scenario_hash,
-                tool_version=tool_version,
-                git_revision=git_revision,
-                device_runtime=_run_device_runtime(manifest),
-                label=label,
-                target=target,
-            )
+        _record_run(
+            state.repository,
+            run_id=run_id,
+            org=org,
+            actor=actor,
+            label=label,
+            ok=ok,
+            manifest=manifest,
         )
     except Exception:
         logger.warning("failed to persist run %s to the system of record", run_id, exc_info=True)
+
+
+def _record_run(
+    repo: Repository,
+    *,
+    run_id: str,
+    org: str,
+    actor: str | None,
+    label: str | None,
+    ok: bool,
+    manifest: dict[str, Any] | None,
+    created_at: datetime | None = None,
+    if_absent: bool = False,
+) -> bool:
+    """Write one run row from its parsed manifest, returning whether a row was written:
+    `persist_run`'s body, shared with `index_run_trees` so a run recorded at completion and one
+    indexed from disk carry the same row. *if_absent* inserts only, never overwriting a row."""
+    # Lazy import: only a server backend has a repository, where SQLAlchemy is already loaded, so
+    # the default serve path never pulls server.db in (the import guard stays green).
+    from bajutsu.serve.server.db import RunRecord
+
+    # The run's org was decided at job creation (and travels to a worker in the spec). Attribute
+    # `created_by` only to a user that actually exists, so the foreign key can't fail (a token / CI
+    # run has no actor; an OAuth run's user was upserted at login).
+    repo.ensure_org(org, slug=org, name=org)
+    created_by = actor if actor and repo.user_org(actor) is not None else None
+    scenario_hash, tool_version, git_revision = _run_provenance(manifest)
+    # The enqueue-time label wins: it is the only source for a cloud-batch run, whose manifest comes
+    # back from the device cloud without one. The manifest is the fallback for a job built outside
+    # the enqueue path.
+    label = label or _run_str(manifest, "label")
+    target = _run_str(manifest, "target")
+    record = RunRecord(
+        id=run_id,
+        org_id=org,
+        status="done",
+        created_by=created_by,
+        ok=ok,
+        created_at=created_at,
+        # The summary carries the same two values as the columns beside it: the DB-backed
+        # history list reads the summary, so a disagreement would hide a run from the very label
+        # filter its column says it belongs to (BE-0404 unit 4).
+        summary=_run_summary(run_id, manifest, ok=ok, label=label, target=target),
+        scenario_hash=scenario_hash,
+        tool_version=tool_version,
+        git_revision=git_revision,
+        device_runtime=_run_device_runtime(manifest),
+        label=label,
+        target=target,
+    )
+    if if_absent:
+        return repo.record_run_if_absent(record)
+    repo.record_run(record)
+    return True
+
+
+def index_run_trees(state: ServeState, org: str = DEFAULT_ORG) -> int:
+    """Record every run tree under ``state.runs_dir`` that the run history does not hold yet, under
+    *org*, and return how many were recorded (BE-0449).
+
+    Once a repository exists the history is read from the database, so a run that ``bajutsu run``
+    wrote from the command line, or one that was already under ``runs/``, would otherwise vanish
+    from the UI. Each tree is read through *org*'s artifact store, which a local start mounts on the
+    runs tree, so the row is built exactly as `persist_run` builds it at completion.
+
+    Idempotent, and never in a completing job's way: a row is only ever inserted, so a run id
+    already recorded keeps its row, and a run an in-process job is still producing is left to that
+    job. A queued job's run id is unknown until its worker reports it, so a worker's run is guarded
+    by the insert-only write alone. A tree with no readable ``manifest.json`` is skipped, since it is
+    not a finished run, and one unreadable tree never stops the rest. Its ``created_at`` is the
+    manifest's modification time, so indexed runs keep their order.
+
+    A no-op unless this is a local start (`ServeState.local_file_store`): elsewhere the runs tree is
+    not where the deployment's artifacts live.
+    """
+    repo = state.repository
+    if repo is None or not state.local_file_store or not state.runs_dir.is_dir():
+        return 0
+    # Lazy, like every server-side import here: only a server backend reaches this line.
+    from bajutsu.serve.server.artifacts import TOMBSTONE
+
+    in_flight = {j.run_id for j in list(state.jobs.values()) if j.status != "done" and j.run_id}
+    indexed = 0
+    for entry in sorted(state.runs_dir.iterdir()):
+        run_id = entry.name
+        # A symlinked tree could point anywhere; `bajutsu run` never writes one (`make_run_dir`).
+        if not valid_run_id(run_id) or entry.is_symlink() or not entry.is_dir():
+            continue
+        if run_id in in_flight:
+            continue
+        try:
+            # A trashed run stays trashed: its tombstone outlives a lost database row, so the row
+            # must not come back from disk (BE-0239).
+            if (entry / TOMBSTONE).exists():
+                continue
+            manifest_path = entry / "manifest.json"
+            # A symlinked manifest, even one pointing at another run in the tree, would record one
+            # run's verdict under another's id.
+            if manifest_path.is_symlink():
+                logger.debug("not indexing %s: manifest.json is a symlink", run_id)
+                continue
+            if repo.get_run(run_id) is not None:
+                continue
+            manifest = _read_manifest(state, run_id, org)
+            if manifest is None:
+                logger.debug("not indexing %s: no readable manifest.json", run_id)
+                continue
+            recorded = _record_run(
+                repo,
+                run_id=run_id,
+                org=org,
+                actor=None,
+                label=None,
+                ok=bool(manifest.get("ok")),
+                manifest=manifest,
+                created_at=datetime.fromtimestamp(manifest_path.lstat().st_mtime, UTC),
+                if_absent=True,
+            )
+        except Exception:
+            # One unreadable or unwritable run must not keep the rest out of the history, nor stop
+            # the server from starting.
+            logger.warning(
+                "failed to index run %s into the system of record", run_id, exc_info=True
+            )
+            continue
+        indexed += recorded
+    return indexed
 
 
 def _run_str(manifest: dict[str, Any] | None, key: str) -> str | None:

@@ -103,7 +103,8 @@ def serve(
     backend: str = typer.Option(
         "local",
         "--backend",
-        help="which serve seams to assemble (only 'local' available; hosted backends land later)",
+        help="'local' runs jobs in this process; 'server' queues them for a `bajutsu worker`, with "
+        "the queue, keys, and artifact store from the environment or local defaults under .bajutsu/",
     ),
     upload_exec: str = typer.Option(
         "",
@@ -137,8 +138,8 @@ def serve(
     non-loopback `--host` requires one so the server is never exposed unauthenticated.
     With `--emit-launchagent`, print a LaunchAgent plist matching these flags (for self-hosting)
     and exit without starting the server. With `--asgi`, serve the same UI/API as a FastAPI app
-    over uvicorn (the transport the hosted backend will use); `--backend` selects which seams to
-    assemble (only `local` for now).
+    over uvicorn; `--backend server` queues jobs for a `bajutsu worker` instead of running them here,
+    and uses the FastAPI transport whenever its artifacts stay on this machine.
     """
     from bajutsu.serve import SERVE_BACKENDS, MissingServerExtra, launchagent_plist
     from bajutsu.serve import serve as _serve
