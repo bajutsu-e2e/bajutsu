@@ -128,7 +128,7 @@ def bulk_delete_runs(
     return {"deleted": deleted, "notFound": not_found, "purged": purge}, 200
 
 
-def rescan_runs(state: ServeState) -> tuple[Any, int]:
+def rescan_runs(state: ServeState, *, actor: str | None = None) -> tuple[Any, int]:
     """Index the run trees under ``runs/`` that the run history does not hold yet (BE-0449).
 
     The on-demand twin of the index a server start runs, for a run that ``bajutsu run`` wrote from
@@ -136,12 +136,19 @@ def rescan_runs(state: ServeState) -> tuple[Any, int]:
     the default org, which only an operator should decide. Returns ``{"indexed": <count>}``, which is
     0 without a repository, where the history is the tree itself. A 409 on a deployment whose
     artifacts do not live in the runs tree, since there is nothing of its own there to index.
+    Records an audit entry and an oplog event, like every other acting run mutation here.
     """
     if not state.local_file_store:
         return {
             "error": "rescan needs the local file store: this server's runs live elsewhere"
         }, 409
-    return {"indexed": index_run_trees(state)}, 200
+    indexed = index_run_trees(state)
+    org = state.org_of(actor)
+    _record_audit(state, actor, org, "runs.rescan", "", {"indexed": indexed})
+    oplog.log_event(
+        _logger, "runs.rescanned", "run trees rescanned", org=org, actor=actor, indexed=indexed
+    )
+    return {"indexed": indexed}, 200
 
 
 def sweep_expired_trash(

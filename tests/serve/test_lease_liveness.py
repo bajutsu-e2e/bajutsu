@@ -10,11 +10,14 @@ the `postgres` marker, against a real Postgres service in the serve-db.yml lane 
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import threading
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from sqlalchemy import Engine
+import pytest
+from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session
 
 from bajutsu import serve as srv
@@ -125,6 +128,74 @@ def test_lease_reclaims_an_expired_lease_before_serving(
     # The queue looks empty (j1 is leased), but a fresh lease should reclaim then hand it back out.
     leased = repo.lease_job("w2")
     assert leased is not None and leased.id == "j1"
+
+
+@contextmanager
+def _row_locked(repo: SqlRepository, job_id: str) -> Iterator[None]:
+    """Hold *job_id*'s row lock from another connection — a leaser or heartbeat mid-transaction."""
+    with repo._engine.connect() as conn:
+        conn.execute(text("SELECT id FROM jobs WHERE id = :id FOR UPDATE"), {"id": job_id})
+        try:
+            yield
+        finally:
+            conn.rollback()
+
+
+def _within[T](seconds: float, call: Callable[[], T]) -> T:
+    """Run *call* on a thread and return its result, failing rather than hanging if it blocks."""
+    out: dict[str, T] = {}
+    thread = threading.Thread(target=lambda: out.setdefault("value", call()), daemon=True)
+    thread.start()
+    thread.join(timeout=seconds)
+    assert not thread.is_alive(), "blocked on a locked row instead of skipping it"
+    assert "value" in out  # the call raised on its thread
+    return out["value"]
+
+
+# SQLite has no row locks to skip — its writers serialize on the file (test_sqlite_queue_store) —
+# so these run only in the serve-db.yml lane.
+_postgres_only = pytest.mark.parametrize(
+    "serve_engine", [pytest.param("postgresql", marks=pytest.mark.postgres)], indirect=True
+)
+
+
+@_postgres_only
+def test_lease_skips_a_locked_candidate_instead_of_waiting(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    repo = _repo(serve_engine)
+    repo.enqueue_job("j1", org_id="o1", spec={"cmd": []})
+    repo.enqueue_job("j2", org_id="o1", spec={"cmd": []})
+
+    # The oldest job is mid-claim elsewhere; this leaser moves on to the next one at once (BE-0449).
+    with _row_locked(repo, "j1"):
+        leased = _within(5, lambda: repo.lease_job("w1"))
+
+    assert leased is not None and leased.id == "j2"
+    info = repo.get_job("j1")
+    assert info is not None and info["status"] == "queued"
+
+
+@_postgres_only
+def test_reclaim_skips_a_locked_lease_instead_of_waiting(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    repo = _repo(serve_engine)
+    for job_id in ("j1", "j2"):
+        repo.enqueue_job(job_id, org_id="o1", spec={"cmd": []})
+        repo.lease_job("w1")
+    # Backdated only once both are leased: a lease poll sweeps first, so backdating j1 before
+    # leasing j2 would have that poll reclaim and re-lease j1, leaving j2 queued.
+    for job_id in ("j1", "j2"):
+        _backdate_lease(repo, job_id, seconds=300)
+
+    # A heartbeat holds j1, so the sweep leaves that live worker's row alone and reclaims j2.
+    with _row_locked(repo, "j1"):
+        requeued = _within(5, lambda: repo.reclaim_expired_leases(timedelta(seconds=120)))
+
+    assert requeued == ["j2"]
+    info = repo.get_job("j1")
+    assert info is not None and info["status"] == "leased"
 
 
 def test_worker_heartbeat_endpoint_renews(

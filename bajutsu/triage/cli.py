@@ -22,7 +22,7 @@ from bajutsu.cli._shared import (
 )
 from bajutsu.common.analytics import usage as _usage
 from bajutsu.common.config import Effective, IosConfig
-from bajutsu.common.run_meta.files import DEFAULT_RUNS_DIR
+from bajutsu.common.run_meta.files import DEFAULT_RUNS_DIR, is_soft_deleted
 from bajutsu.triage import heuristic as _triage
 
 
@@ -158,7 +158,10 @@ def _split_flaky_runs(
     scenario_hash: str | None = None
     pass_dirs: list[Path] = []
     fail_dirs: list[Path] = []
-    for run_dir in sorted(d for d in runs_dir.iterdir() if (d / "manifest.json").is_file()):
+    runs = (
+        d for d in runs_dir.iterdir() if (d / "manifest.json").is_file() and not is_soft_deleted(d)
+    )
+    for run_dir in sorted(runs):
         try:
             manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError, json.JSONDecodeError):

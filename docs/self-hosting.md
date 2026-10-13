@@ -346,8 +346,8 @@ environment variables there. Such a server queues every job and runs none itself
 unset, the server supplies a local default. Every default lives in a `.bajutsu/` directory beside
 the runs directory. The server creates that directory owner-only (`0700`), and Git ignores it.
 These defaults apply when `BAJUTSU_SERVER_STORE` is unset. A deployment with a bucket and no
-database has no queue and runs jobs in its own process, as before. With a SQLite file per replica,
-replicas would split the queue.
+database has no queue and runs jobs in its own process, as before: a SQLite file per replica would
+split the queue across them.
 
 | Setting left unset | Local default |
 |---|---|
@@ -370,9 +370,19 @@ its bucket key. Scenarios, baselines, uploaded bundles, and every other org's ru
 them out of `runs/` keeps tenants apart. A default-org request for a run named `acme` or `scenarios`
 finds nothing. It can neither read nor delete another org's runs or a store folder.
 
+The server leaves the runs directory itself as it is. It creates `runs/` when it is missing, but
+never changes its mode. A symlinked `runs/`, such as one moved to a larger disk, is followed. Every
+key is confined to the resolved directory, so none reaches outside it. Only `.bajutsu/objects/`,
+which the server owns, is made owner-only (`0700`), and a symlink there is refused.
+
+The two backends share the runs tree. A run deleted under the server backend stays at
+`runs/<run id>/` with a `.deleted` marker, rather than moving to `runs/.trash/`. The local
+backend's history, `bajutsu flakiness --history`, and `bajutsu triage --flaky` skip a tree that
+holds the marker, so the run stays deleted under either backend.
+
 The browser and the worker reach a stored file through a signed URL. The server signs each URL with
 an HMAC key. That key lives in `.bajutsu/store-signing.key`, under the same `0600` rules. Each URL
-names the server's loopback address, `127.0.0.1` for a wildcard bind. The FastAPI transport alone
+names the `--host` the server was given, or `127.0.0.1` for a wildcard bind. The FastAPI transport alone
 serves these routes. A server backend without a bucket switches itself to `--asgi` and says so at
 startup. The URLs carry the port fixed at startup, and such a server refuses `--port 0`.
 

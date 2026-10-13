@@ -133,6 +133,6 @@ def load_worker_capability(path: Path | None = None) -> WorkerCapability:
     target = DEFAULT_WORKER_CONFIG if path is None else path
     try:
         text = target.read_text(encoding="utf-8")
-    except OSError as e:
+    except (OSError, UnicodeDecodeError) as e:
         raise WorkerCapabilityError(f"{target}: cannot read worker config: {e}") from e
     return parse_worker_capability(text, source=str(target))
