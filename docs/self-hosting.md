@@ -901,8 +901,8 @@ live lines in memory. Replicas behind a load balancer need a shared store instea
 - Install the `redis` package beside the server extras (`pip install redis`).
 
 A worker's post and a browser's stream then meet in Redis, whatever replica each one reaches.
-Without Redis, a browser misses the lines a worker posted to another replica. Each replica counts
-the cap on its own. A deployment with a bucket and no database runs jobs in its own process. That
+Without Redis, a browser misses the lines a worker posted to another replica. Each replica applies
+the cap to its own tally. A deployment with a bucket and no database runs jobs in its own process. That
 deployment ignores `BAJUTSU_REDIS_URL`.
 
 A cancel reaches a job whether the job waits in the queue or runs on a worker. The control plane

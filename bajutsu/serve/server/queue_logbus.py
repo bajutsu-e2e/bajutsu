@@ -59,7 +59,8 @@ class QueueLogBus(PostCompletionLogBus):
       back to the post-completion behavior this class extends.
 
     The in-memory channels are bounded: a job enters the eviction order at its first live lines and
-    moves to the back when it closes, and past `_KEEP_CLOSED` jobs the front one is discarded. The
+    moves to the back when it closes, and past `_KEEP_CLOSED` jobs the oldest finished one is
+    discarded — an unfinished one only when no finished job is left to drop. The
     live backlog then does not grow for the server's lifetime, even for jobs whose close never
     comes here; a Redis bus expires its own keys.
     """
@@ -76,7 +77,7 @@ class QueueLogBus(PostCompletionLogBus):
         super().__init__(repository, artifacts_fn, poll_interval=poll_interval)
         self._live = live
         self._keep_closed = keep_closed
-        self._closed: OrderedDict[str, None] = OrderedDict()
+        self._closed: OrderedDict[str, bool] = OrderedDict()  # job -> finished
         self._closed_lock = threading.Lock()
         self._warned = False
 
@@ -168,13 +169,11 @@ class QueueLogBus(PostCompletionLogBus):
         """Add *job_id* to the eviction order once, at its first lines, without reordering it."""
         if not isinstance(self._live, InMemoryLogBus):
             return
-        evicted = []
         with self._closed_lock:
             if job_id in self._closed:
                 return
-            self._closed[job_id] = None
-            while len(self._closed) > self._keep_closed:
-                evicted.append(self._closed.popitem(last=False)[0])
+            self._closed[job_id] = False
+            evicted = self._evict()
         for old in evicted:
             self._live.discard(old)
 
@@ -183,13 +182,27 @@ class QueueLogBus(PostCompletionLogBus):
         if not isinstance(self._live, InMemoryLogBus):
             return  # Redis expires a finished job's keys itself
         with self._closed_lock:
-            self._closed[job_id] = None
+            self._closed[job_id] = True
             self._closed.move_to_end(job_id)
-            evicted = []
-            while len(self._closed) > self._keep_closed:
-                evicted.append(self._closed.popitem(last=False)[0])
+            evicted = self._evict()
         for old in evicted:
             self._live.discard(old)
+
+    def _evict(self) -> list[str]:
+        """Victims past the bound, oldest finished job first, so a running job keeps its channel.
+
+        Only when every entry left is unfinished does the oldest of them go: that is a job whose
+        close never reaches this process (its result landed on another replica, or its worker
+        vanished), and keeping it would let the backlog grow for the server's lifetime.
+        """
+        victims: list[str] = []
+        while len(self._closed) > self._keep_closed:
+            done = next((job for job, finished in self._closed.items() if finished), None)
+            if done is None:
+                done = next(iter(self._closed))
+            del self._closed[done]
+            victims.append(done)
+        return victims
 
     def _warn_live(self) -> None:
         if not self._warned:
@@ -210,7 +223,7 @@ def live_log_bus(
     client; by default it is redis-py's ``Redis.from_url``, imported only here.
 
     Raises:
-        ValueError: *redis_url* is set but the ``redis`` package is not installed.
+        MissingServerExtra: *redis_url* is set but the ``redis`` package is not installed.
     """
     if not redis_url:
         return InMemoryLogBus()
@@ -226,7 +239,9 @@ def _redis_from_url(url: str) -> RedisLike:
     try:
         import redis
     except ImportError as e:
-        raise ValueError(
+        from bajutsu.serve import MissingServerExtra
+
+        raise MissingServerExtra(
             f"{REDIS_URL_ENV} is set, but the redis package is not installed; "
             "install it with `pip install redis`"
         ) from e

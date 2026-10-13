@@ -197,6 +197,20 @@ def test_write_console_log_writes_joined_lines(tmp_path: Path) -> None:
     assert (run_dir / "console.log").read_text(encoding="utf-8") == "first\nsecond\n"
 
 
+def test_write_console_log_restores_the_newline_the_bus_strips(tmp_path: Path) -> None:
+    # `jobs.py` publishes each stdout line with its newline stripped; the replay of console.log
+    # splits on newlines, so a joined file with none would come back as one line.
+    run_dir = tmp_path / "runs" / "run1"
+    run_dir.mkdir(parents=True)
+    bus = InMemoryLogBus()
+    bus.publish("j1", "step ok")
+    bus.publish("j1", "PASS  runs/run1/manifest.json")
+    bus.close("j1")
+    _write_console_log(tmp_path, "run1", bus, "j1")
+    text = (run_dir / "console.log").read_text(encoding="utf-8")
+    assert text == "step ok\nPASS  runs/run1/manifest.json\n"
+
+
 # --- worker() polling loop ----------------------------------------------------------------------
 
 

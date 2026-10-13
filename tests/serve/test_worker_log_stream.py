@@ -115,6 +115,19 @@ def test_the_log_route_holds_its_caps(tmp_path: Path) -> None:
     assert line == "y" * WORKER_LOG_MAX_LINE_CHARS  # the over-long line is cut, the batch kept
 
 
+def test_the_log_route_masks_a_token_straddling_the_line_cut(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    state = _state(tmp_path, repo)
+    _queued(state)
+    assert repo.lease_job("w1") is not None
+    # Joined at runtime so `make lint-secrets` does not flag the synthetic token in this source.
+    token = "ghp_" + "a" * 30
+    straddling = "y" * (WORKER_LOG_MAX_LINE_CHARS - 11) + " " + token
+    assert _log(state, "w1", [straddling])[1] == 200
+    line = next(state.logbus.stream("j1", timeout=0.05))
+    assert line is not None and "ghp_" not in line  # cut first, its 6-char prefix would go out
+
+
 def test_the_log_route_validates_its_body(tmp_path: Path) -> None:
     repo = _repo(tmp_path)
     state = _state(tmp_path, repo)
@@ -289,7 +302,7 @@ def test_a_redis_url_without_the_redis_package_fails_clearly(
 ) -> None:
     monkeypatch.setitem(sys.modules, "redis", None)  # makes `import redis` raise ImportError
     monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://cache:6379/0")
-    with pytest.raises(ValueError, match="BAJUTSU_REDIS_URL"):
+    with pytest.raises(srv.MissingServerExtra, match="BAJUTSU_REDIS_URL"):
         live_log_bus_from_env()
 
 
@@ -572,12 +585,15 @@ def test_a_lost_log_lease_stops_the_heartbeat_loop(tmp_path: Path) -> None:
 
 # --- review follow-ups: masking across lines, bounded storage, fallbacks ---------------------------
 
+# The armour is joined at runtime so the source never holds a contiguous PEM block: gitleaks'
+# private-key rule (`make lint-secrets`) would otherwise flag this synthetic fixture.
+_KEY = "RSA PRIVATE " + "KEY-----\n"
 _PEM = [
-    "-----BEGIN RSA PRIVATE KEY-----\n",
+    "-----BEGIN " + _KEY,
     "MIIEowIBAAKCAQEAbody1\n",
     "c2VjcmV0Ym9keTI=\n",
     "c2VjcmV0Ym9keTM=\n",
-    "-----END RSA PRIVATE KEY-----\n",
+    "-----END " + _KEY,
 ]
 
 
@@ -676,6 +692,21 @@ def test_a_channel_that_never_closes_is_still_evicted(tmp_path: Path) -> None:
     assert list(live.stream("orphan", timeout=0.0)) == []
     bus.close("next", "{}")
     assert live.final("next") == "{}"
+
+
+def test_a_running_channel_outlives_a_finished_one_past_the_bound(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    live = srv.InMemoryLogBus()
+    bus = QueueLogBus(repo, live, poll_interval=0.01, keep_closed=2)
+    bus.publish_many("running", ["still going\n"])  # oldest in the order, and not finished
+    for job in ("done", "later"):
+        bus.publish_many(job, ["x\n"])
+        bus.close(job, "{}")
+    # Over the bound at "later": the oldest *finished* job goes, not the older running one.
+    assert live.final("done") is None
+    assert live.final("later") == "{}"
+    live.close("running")
+    assert list(live.stream("running", timeout=0.0)) == ["still going\n"]
 
 
 def test_finished_channels_are_discarded_past_the_bound(tmp_path: Path) -> None:
@@ -819,6 +850,17 @@ def test_handoff_requests_stay_out_of_the_live_stream() -> None:
     bus.close("j1")
     assert queued == ["step\n"]
     assert len(list(bus.stream("j1", timeout=0.0))) == 2  # console.log still records it
+
+
+def test_a_batched_publish_reaches_the_live_stream_too() -> None:
+    from bajutsu.common.handoff import REQUEST_LINE_PREFIX
+
+    queued: list[str] = []
+    bus = worker_mod._TeeLogBus(queued.append)
+    bus.publish_many("j1", ["a\n", REQUEST_LINE_PREFIX + "{}\n", "b\n"])
+    bus.close("j1")
+    assert queued == ["a\n", "b\n"]
+    assert len(list(bus.stream("j1", timeout=0.0))) == 3
 
 
 def test_a_background_flush_yields_its_backlog_to_stop() -> None:
