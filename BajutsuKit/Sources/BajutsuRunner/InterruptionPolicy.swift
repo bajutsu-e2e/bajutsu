@@ -203,8 +203,9 @@ public struct InterruptionRecords: Sendable, Equatable {
     /// and any re-press of the same showing made before this drain. Empty for an answer recorded
     /// with no marked touch.
     public var tappedSynthesisIds: [[String]] = []
-    /// Per entry of `banners`, the synthesis id of the swipe behind it, if any. Empty when the banner
-    /// cleared without one — it went by its own auto-dismissal.
+    /// Per entry of `banners`, the synthesis id of the swipe the runner synthesized for it, if it
+    /// synthesized one. Empty when it did not — the banner was already gone, or never settled. Not
+    /// a claim that the swipe cleared it: a banner can outlast a swipe and go on its own.
     public var bannerSynthesisIds: [[String]] = []
     /// The buttons of a SpringBoard alert a resolving read found and no rule identified.
     public var unidentified: [[String]] = []
@@ -346,7 +347,8 @@ public final class InterruptionPolicyStore: @unchecked Sendable {
     /// the policy chose, while a banner has none and is identified by its content. The Python side
     /// keeps them apart in the report for the same reason (BE-0416).
     ///
-    /// *synthesisIds* names the swipe that cleared it (BE-0462), empty when none did.
+    /// *synthesisIds* names the swipe the monitor synthesized for it (BE-0462), empty when it made
+    /// none.
     public func recordBanner(_ label: String, synthesisIds: [String] = []) {
         lock.lock()
         defer { lock.unlock() }

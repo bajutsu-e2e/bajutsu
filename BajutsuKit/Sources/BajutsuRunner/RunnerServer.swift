@@ -32,7 +32,8 @@ public final class RunnerServer {
         let bound = try httpServer.start(port: port)
         // Only once the socket is bound: the host reads this marker as proof that its log stream
         // sees a runner able to synthesize, so it must not precede a bind that could still throw
-        // (BE-0462).
+        // (BE-0462). Written once, and `log stream` delivers only what follows its attach, so the
+        // host's stream must be up before it spawns the runner.
         SynthesisLedger.shared.announceServing()
         return bound
     }

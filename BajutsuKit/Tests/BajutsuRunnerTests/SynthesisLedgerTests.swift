@@ -69,6 +69,14 @@ final class SynthesisLedgerTests: XCTestCase {
         XCTAssertTrue(ids.allSatisfy { $0.hasSuffix("/1") })
     }
 
+    func testASwiftThrowClosesItsOwnWindowWithAnAbort() {
+        struct Refused: Error {}
+        XCTAssertThrowsError(try ledger.mark { throw Refused() })
+        XCTAssertNil(ledger.collect {}.synthesisId)
+        ledger.abandonOpenWindows()
+        XCTAssertEqual(sink.lines, ["bajutsu.synthesis begin n0/1", "bajutsu.synthesis abort n0/1"])
+    }
+
     func testATouchCutShortByARaiseIsClosedWithAnAbortInnermostFirst() {
         try? ObjCExceptionCatcher.catchException {
             ledger.mark {

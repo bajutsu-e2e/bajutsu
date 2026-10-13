@@ -66,7 +66,17 @@ public final class SynthesisLedger: @unchecked Sendable {
         _open.append(id)
         lock.unlock()
         sink("bajutsu.synthesis begin \(id)")
-        let value = try touch()
+        let value: T
+        do {
+            value = try touch()
+        } catch {
+            // A Swift throw unwinds past the end marker too, and no `caught` boundary sees it.
+            lock.lock()
+            _open.removeAll { $0 == id }
+            lock.unlock()
+            sink("bajutsu.synthesis abort \(id)")
+            throw error
+        }
         sink("bajutsu.synthesis end \(id)")
         sink("bajutsu.synthesis fence \(id)")
         lock.lock()

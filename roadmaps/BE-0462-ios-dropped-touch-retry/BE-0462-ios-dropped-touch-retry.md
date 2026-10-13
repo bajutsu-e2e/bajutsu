@@ -274,8 +274,9 @@ Log:
     package. It also writes a `serving` marker once the socket binds. The markers go to the unified
     log under subsystem `bajutsu.runner` and category `synthesis`. Their level is `.notice`, which the
     unified log persists, so a later `log show` extract keeps them.
-  - A touch that raises an `NSException` mid-interaction never reaches its end marker. The catching
-    handler then writes an `abort` marker for each window left open, innermost first.
+  - A touch that throws, or raises an `NSException`, mid-interaction never reaches its end marker. `mark`
+    writes an `abort` marker for a Swift throw. For a raise, the catching handler writes one for each
+    window left open, innermost first.
     The design names no such marker. Without one, a window could stay open in the stream for good.
   - Each touch endpoint's reply carries the optional `synthesisId`. The drained interruption records
     gain `tappedSynthesisIds` and `bannerSynthesisIds`. The two arrays run parallel to `labels` and
@@ -290,7 +291,9 @@ Log:
       `/systemAlert/resolve`.
     - A resolving read presses alert buttons as well. Its presses carry ids on their records, like
       the interruption handler's presses.
-    - A banner that clears on its own carries an empty id list.
+    - A banner's id list names the swipe the runner made for it. That swipe need not be what
+      cleared it. A banner that outlasts the swipe and goes on its own still carries the swipe's id. A
+      banner the runner never swiped carries an empty list.
   - A re-press of an answered showing adds its id to that showing's entry. That holds while the
     entry is still undrained. A re-press after the drain has no entry left to extend. Unit 3 decides
     whether that gap matters for an "unconfirmed" answer.

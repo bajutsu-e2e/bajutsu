@@ -1000,9 +1000,11 @@ components:
         bannerSynthesisIds:
           type: array
           description: >-
-            Per entry of `banners`, in the same order, the synthesis id of the swipe that cleared
-            it, or an empty list when it cleared on its own auto-dismissal (BE-0462). Absent from a
-            runner predating it.
+            Per entry of `banners`, in the same order, the synthesis id of the swipe the runner
+            synthesized for it, or an empty list when it synthesized none: the banner was already
+            gone, or never settled (BE-0462). A non-empty list does not mean the swipe is what
+            cleared the banner, which may still have gone by its own auto-dismissal; it names every
+            touch the monitor made for that showing. Absent from a runner predating it.
           items:
             type: array
             items:
