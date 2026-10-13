@@ -8,7 +8,7 @@ from pydantic import Field, field_validator
 
 from bajutsu.common.scenario import Redact
 
-from ._functions import _as_list, _check_platform
+from ._functions import _as_list, _check_platform, _check_requires
 from ._model import _Model
 from .ai_settings import AiSettings
 from .doctor_config import DoctorConfig
@@ -39,6 +39,8 @@ class Defaults(_Model):
     # Team-wide capability tokens every target requires of the worker that runs it (BE-0166), e.g.
     # `[ios18, ipad]`. On the hosted backend these route the job to a worker advertising them; a
     # per-target `requires` adds to (never replaces) this. Empty = only the platform axis routes.
+    # Deprecated (BE-0450): still honored, with a notice, until the runtime and device-class
+    # requirement is derived from the target's `device`.
     requires: list[str] = Field(default_factory=list)
 
     @field_validator("backend", mode="before")
@@ -50,3 +52,8 @@ class Defaults(_Model):
     @classmethod
     def _valid_platform(cls, v: str | None) -> str | None:
         return _check_platform(v)
+
+    @field_validator("requires")
+    @classmethod
+    def _deprecated_requires(cls, v: list[str]) -> list[str]:
+        return _check_requires(v, "config field 'defaults.requires'")

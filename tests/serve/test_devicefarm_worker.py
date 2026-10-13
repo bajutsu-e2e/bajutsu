@@ -23,6 +23,7 @@ from typer.testing import CliRunner
 
 from bajutsu.cli import app
 from bajutsu.common.backend_cli import simctl
+from bajutsu.common.capability.worker_capability import WorkerCapability
 from bajutsu.common.cloud.devicefarm import DeviceFarmError, Verdict
 from bajutsu.serve import batch_bootstrap
 from bajutsu.serve import batch_provider as bp
@@ -186,23 +187,34 @@ def test_registration_needs_a_source_checkout(monkeypatch: pytest.MonkeyPatch) -
         )
 
 
-def test_a_device_farm_worker_advertises_its_environment_alone(
+def _worker(environment: str) -> WorkerCapability:
+    return WorkerCapability(version=1, environment=environment, drivers=("xcuitest", "adb"))
+
+
+def test_a_device_farm_worker_advertises_its_environment_and_host_alone(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("BAJUTSU_WORKER_CAPABILITIES", raising=False)
-    assert worker_mod._advertised_capabilities("", "", "devicefarm") == ["environment:devicefarm"]
+    # No platform axis: the phone is the provider's. The host token is the machine's (BE-0450).
+    assert worker_mod._advertised_capabilities("", "", _worker("devicefarm"), "linux") == [
+        "environment:devicefarm",
+        "host:linux",
+    ]
 
 
 def test_a_device_farm_worker_refuses_an_explicit_platform() -> None:
     with pytest.raises(typer.BadParameter, match="environment is 'devicefarm'"):
-        worker_mod._advertised_capabilities("android", "", "devicefarm")
+        worker_mod._advertised_capabilities("android", "", _worker("devicefarm"), "linux")
 
 
 def test_a_local_worker_defaults_to_ios(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("BAJUTSU_WORKER_CAPABILITIES", raising=False)
-    # No Simulator inventory is probed, so the platform axis alone is advertised.
+    # No Simulator inventory is probed, so the platform axis and the host alone are advertised.
     monkeypatch.setattr(simctl, "real_run", None)
-    assert worker_mod._advertised_capabilities("", "", "local") == ["platform:ios"]
+    assert worker_mod._advertised_capabilities("", "", _worker("local"), "darwin") == [
+        "host:darwin",
+        "platform:ios",
+    ]
 
 
 @pytest.mark.parametrize("environment", ["local", "devicefarm"])
@@ -210,10 +222,12 @@ def test_the_environment_prefix_is_reserved_in_the_override(
     environment: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     with pytest.raises(typer.BadParameter, match="reserved"):
-        worker_mod._advertised_capabilities("", "environment:devicefarm", environment)
+        worker_mod._advertised_capabilities(
+            "", "environment:devicefarm", _worker(environment), "darwin"
+        )
     monkeypatch.setenv("BAJUTSU_WORKER_CAPABILITIES", "ios18,environment:x")
     with pytest.raises(typer.BadParameter, match="reserved"):
-        worker_mod._advertised_capabilities("", "", environment)
+        worker_mod._advertised_capabilities("", "", _worker(environment), "darwin")
 
 
 def test_a_server_without_a_queue_refuses_a_fan_out(tmp_path: Path) -> None:

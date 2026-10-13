@@ -19,12 +19,12 @@ from typing import Any, TypeGuard
 import yaml
 
 from bajutsu.common.backend_cli import simctl as _simctl
-from bajutsu.common.backends import KNOWN_ACTUATORS, PLATFORMS
+from bajutsu.common.backends import KNOWN_ACTUATORS, PLATFORMS, resolve_actuators
 from bajutsu.common.config import Config, IosConfig, resolve
 from bajutsu.common.devices.id import is_valid_device_id
 from bajutsu.common.run_meta.files import is_soft_deleted
 from bajutsu.common.scenario import load_scenario_file
-from bajutsu.serve.capabilities import required_capabilities
+from bajutsu.serve.capabilities import required_capabilities, required_host
 from bajutsu.serve.orgs import OrgConfig, load_serve_config
 
 # Tokens a `--backend` may name: a platform (ios/android/web/fake) or a known actuator (xcuitest/…).
@@ -332,7 +332,8 @@ def target_batch_info(
 
 def target_capabilities(config_path: Path, target: str) -> list[str]:
     """The capability tokens a worker must advertise to run *target* (BE-0166): its resolved
-    platform axis (`platform:ios` / `platform:web`) plus the target's operator-declared `requires`.
+    platform axis (`platform:ios` / `platform:web`), the host operating system its driver is bound
+    to (`host:darwin` for xcuitest, BE-0450), and the target's deprecated `requires`.
 
     Empty on any load/resolve error, so a job with an unreadable config routes as before: with no
     required capabilities it is servable by any worker (an empty set is always a subset in
@@ -343,7 +344,12 @@ def target_capabilities(config_path: Path, target: str) -> list[str]:
         eff = resolve(_load_config_cached(config_path), target)
     except (OSError, ValueError, KeyError):
         return []
-    return required_capabilities(eff.platform, eff.requires)
+    # The actuators `run` itself selects from (`eff.backend`), so the routing requirement and the
+    # worker's own check judge the same drivers: a `[fake]` backend runs anywhere whatever the
+    # target's platform, and a `[ios, web]` fallback may resolve to `playwright` (BE-0450).
+    return required_capabilities(
+        eff.platform, eff.requires, host=required_host(resolve_actuators(eff.backend))
+    )
 
 
 def target_scenarios_dir(config_path: Path, target: str) -> Path | None:

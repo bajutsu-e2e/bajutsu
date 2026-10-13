@@ -11,7 +11,7 @@ from bajutsu.common.deprecations import reject_renamed_key, warn_server_batch_bu
 from bajutsu.common.drivers import base
 from bajutsu.common.scenario import AfterRule, Interrupt, Redact, Step, SystemAlertHandlingField
 
-from ._functions import _as_list, _check_platform
+from ._functions import _as_list, _check_platform, _check_requires
 from ._model import _Model
 from .ai_settings import AiSettings
 from .device_provider import DeviceProvider
@@ -106,7 +106,8 @@ class TargetConfig(_Model):
     locale: str | None = None
     # Capability tokens this target requires of the worker that runs it (BE-0166), added to the
     # team-wide `defaults.requires`. On the hosted backend a job is routed only to a worker that
-    # advertises all of them (e.g. `ios18`, `ipad`); ignored by local single-worker runs.
+    # advertises all of them (e.g. `ios18`, `ipad`); ignored by local single-worker runs. Deprecated
+    # like `defaults.requires` (BE-0450).
     requires: list[str] = Field(default_factory=list)
     launch_env: dict[str, str] = Field(default_factory=dict, alias="launchEnv")
     launch_args: list[str] = Field(default_factory=list, alias="launchArgs")
@@ -272,6 +273,11 @@ class TargetConfig(_Model):
     @classmethod
     def _valid_platform(cls, v: str | None) -> str | None:
         return _check_platform(v)
+
+    @field_validator("requires")
+    @classmethod
+    def _deprecated_requires(cls, v: list[str]) -> list[str]:
+        return _check_requires(v, "config field 'targets.<name>.requires'")
 
     @field_validator("browser")
     @classmethod

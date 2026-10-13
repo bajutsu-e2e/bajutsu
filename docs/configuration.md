@@ -93,7 +93,7 @@ platforms — rather than `effective.bundle_id` directly, which does not exist.
 | `capture` | defaults | the default evidence ([the note in evidence](evidence.md#three-ways-to-request-evidence)) |
 | `redact` | defaults ∪ app | merged (below) |
 | `secrets` | defaults ∪ app | env var names declaring `${secrets.X}`; values are masked in evidence ([evidence](evidence.md#masking-redact)) |
-| `requires` | defaults ∪ app | capability tokens a worker must advertise to run this target on the hosted backend ([self-hosting](self-hosting.md#capability-routed-queues-be-0166), [BE-0166](../roadmaps/BE-0166-capability-routed-queues/BE-0166-capability-routed-queues.md)), e.g. `[ios18, ipad]`. The platform axis is added automatically; add tokens here only to pin a runtime or device class. Ignored by a local single-worker run |
+| `requires` | defaults ∪ app | **deprecated** ([BE-0450](../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability.md)): capability tokens a worker must advertise to run this target on the hosted backend ([self-hosting](self-hosting.md#capability-routed-queues-be-0166), [BE-0166](../roadmaps/BE-0166-capability-routed-queues/BE-0166-capability-routed-queues.md)), for example `[ios18, ipad]`. The platform axis, and the host operating system a macOS-only driver needs, are added automatically; add tokens here only to pin a runtime or device class. Still honored, with a one-time notice, until a runtime or device-class requirement is derived from the target's `device`. A token with the reserved `environment:` or `host:` prefix fails at load. The notice comes at load, so a local `bajutsu run` shows it too. Ignored by a local single-worker run |
 | `ai` | defaults < app (field by field) | the AI paths' provider/model/endpoint/key ([below](#ai-provider-ai-be-0047)); `None` (omitted) = the environment alone decides |
 | `defaults.doctor.idCoverageOk` / `defaults.doctor.idCoverageFail` | defaults | id-coverage thresholds for doctor grading ([below](#configurable-thresholds-defaultsdoctor-be-0024)); default 0.9 / 0.7 |
 
@@ -126,6 +126,18 @@ outside the repository.
 `xcuitest.testRunner` then resolves to the build.
 [iOS on a real device](ios-device-cloud.md#the-signing-file) gives the file format and its lookup
 order.
+
+### What a machine can run (outside the config, BE-0450)
+
+The config describes targets, and an application team writes it. What one machine can run is a
+different fact, which the machine's operator knows. A separate file, `worker.yaml`, states that
+fact. The file names the worker's environment and the drivers it offers. It also caps the targets
+one scenario may hold. The config never carries those keys. A server worker reads the config after
+it leases a job. That point comes too late to decide what the worker advertises. `bajutsu run` and
+`bajutsu worker` both name the file with `--worker-config <path>`. Without the flag, the shipped
+default applies.
+[What this machine can run](drivers.md#worker-capability-check-be-0450) gives the file format and
+the check.
 
 ### Real-device host address (`xcuitest.hostAddress`)
 

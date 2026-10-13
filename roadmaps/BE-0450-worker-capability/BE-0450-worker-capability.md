@@ -7,9 +7,9 @@
 |---|---|
 | Proposal | [BE-0450](BE-0450-worker-capability.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0450") |
-| Implementing PR | [#2166](https://github.com/bajutsu-e2e/bajutsu/pull/2166) (Units 1–4) |
+| Implementing PR | [#2166](https://github.com/bajutsu-e2e/bajutsu/pull/2166) (Units 1–4), [#PR_PLACEHOLDER16](https://github.com/bajutsu-e2e/bajutsu/pull/PR_PLACEHOLDER16) (Units 5–6) |
 | Topic | Driver & backend architecture |
 <!-- /BE-METADATA -->
 
@@ -227,8 +227,8 @@ The item is a decision about *runnability*, not about capability of a step, so t
 - [x] Driver host requirement
 - [x] Requirement derivation
 - [x] The check
-- [ ] Advertising and routing
-- [ ] Documentation and Japanese mirrors
+- [x] Advertising and routing
+- [x] Documentation and Japanese mirrors
 
 Log:
 
@@ -248,6 +248,28 @@ Log:
 - BE-0449 unit 3 ([#2173](https://github.com/bajutsu-e2e/bajutsu/pull/2173)) added `bajutsu worker --once` and the internal run entry point.
   `--once` passes the resolved `--worker-config` path to the run it spawns, which closes the first
   of the two waits recorded above. This change leaves the units here as they were.
+- [#PR_PLACEHOLDER16](https://github.com/bajutsu-e2e/bajutsu/pull/PR_PLACEHOLDER16) (Units 5–6) — every worker now advertises `host:<os>` for its machine. A job requires
+  `host:<os>` when every actuator its target's `backend` resolves to runs on one host alone, so an
+  `xcuitest` target requires `host:darwin`. The host token comes from `eff.backend`, the list `run`
+  selects from, rather than the platform: a `[fake]` backend or an `[ios, web]` fallback requires
+  no host. The lease, the unroutable count, and the no-worker notice all read `can_serve`, so they
+  agree without a change of their own. A `local` worker refuses a `--platform` whose driver its
+  `worker.yaml` omits or its host cannot run, with the reason `run` gives. `make serve` leaves such
+  a platform out of the worker it starts, so on Linux the worker serves `web` and `android` while an
+  iOS run waits with the no-worker notice. `--capabilities`, `$BAJUTSU_WORKER_CAPABILITIES`, and
+  `requires` log a one-time notice and are still honored. A config whose `requires` carries an
+  `environment:` token now fails at load, as the worker's override already did since BE-0448. The
+  required set is the target's, not each scenario's: a multi-target scenario whose other target
+  needs another host still reaches a worker by its job's target, and the worker's own check fails
+  it. Deriving the set from every declared target would need dispatch to load the scenarios. The
+  documentation describes the worker capability file, the check, the routing tokens, and the
+  deprecations, and `deploy/self-host/README.md` no longer points at `requires` to pin runtimes.
+  The worker's override and `requires` now refuse the `host:` prefix as they refuse `environment:`,
+  since the worker fills it itself. Two consequences follow from deriving the host from `backend`
+  while checking `--platform` against the platform's drivers. An iOS target on the `fake` backend
+  requires no host, yet no worker off macOS may advertise `platform:ios`, so the job still needs a
+  Mac. A request-level `backend` override does not change routing either. The platform axis already
+  ignored it, and the host follows the same rule; a follow-up may route on the override.
 
 ## References
 

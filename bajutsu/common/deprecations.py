@@ -60,3 +60,34 @@ def warn_server_batch_budget(surface: str) -> None:
         f"serverBatchBudget.{surface}",
         f"{surface} is deprecated (BE-0448): {SERVER_BATCH_BUDGET_REPLACEMENT}",
     )
+
+
+# The hand-written routing-token inputs, deprecated once the worker capability supplies what they
+# were for (BE-0450). The worker's override goes in the next release; `requires` waits for the item
+# that derives a runtime or device-class requirement from the target's `device`, since removing it
+# first would leave an `ios18` or `ipad` job no way to reach a compatible worker.
+WORKER_CAPABILITIES_REPLACEMENT = (
+    "the runtime and device-class tokens now come from the worker's Simulator inventory, and its "
+    "environment and target limit from worker.yaml (--worker-config); it is still honored for this "
+    "release and will be removed in the next"
+)
+
+REQUIRES_REPLACEMENT = (
+    "a job now requires its platform, plus the host operating system its driver runs on; "
+    "requiring an iOS runtime or a device class is not supported until that requirement is derived "
+    "from the target's `device`. It is still honored until then. This notice comes at config load, "
+    "so a local `bajutsu run` shows it too, although `requires` routes server jobs alone"
+)
+
+
+def warn_worker_capabilities(surface: str) -> None:
+    """Warn once that *surface*, a worker's hand-written capability override, is deprecated (BE-0450)."""
+    warn_once(
+        f"workerCapabilities.{surface}",
+        f"{surface} is deprecated (BE-0450): {WORKER_CAPABILITIES_REPLACEMENT}",
+    )
+
+
+def warn_requires(surface: str) -> None:
+    """Warn once that *surface*, a configuration's `requires` list, is deprecated (BE-0450)."""
+    warn_once(f"requires.{surface}", f"{surface} is deprecated (BE-0450): {REQUIRES_REPLACEMENT}")

@@ -112,5 +112,8 @@ def test_an_environment_worker_serves_only_jobs_that_require_its_token() -> None
     assert cap.can_serve([], ["platform:ios"])
 
 
-def test_reserved_tokens_names_the_environment_prefix_alone() -> None:
-    assert cap.reserved_tokens(["ios18", "environment:x", "platform:ios"]) == ["environment:x"]
+def test_reserved_tokens_names_the_environment_and_host_prefixes_alone() -> None:
+    assert cap.reserved_tokens(["ios18", "host:linux", "environment:x", "platform:ios"]) == [
+        "environment:x",
+        "host:linux",
+    ]

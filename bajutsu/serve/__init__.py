@@ -756,14 +756,32 @@ def _emit_startup_warnings(state: ServeState) -> None:
         oplog.log_event(_logger, "server.startup_warning", msg, level=logging.WARNING, check=check)
 
 
-def worker_platforms(config: Path | None) -> str:
+def worker_platforms(config: Path | None, host: str | None = None) -> str:
     """The `--platform` list a worker beside this server needs, for the startup note (BE-0449).
 
-    The platforms the bound config's targets require. With no config, or none readable, the ones
-    this machine can drive, as `scripts/serve.sh` advertises: the iOS Simulator only on macOS.
+    The platforms the bound config's targets require that this machine can drive. With no config,
+    none readable, or none drivable here, the ones this machine can drive, as `scripts/serve.sh`
+    advertises: the iOS Simulator only on macOS. A platform the host cannot drive is left out
+    because a local worker refuses to start with it (BE-0450); its runs wait with the no-worker
+    notice instead.
+
+    Args:
+        config: The bound config, or None.
+        host: The host operating system; `backends.current_host_os()` when None (for tests).
     """
+    from bajutsu.common.backends import PLATFORMS, current_host_os, host_os_for
     from bajutsu.serve.capabilities import PLATFORM_PREFIX
     from bajutsu.serve.helpers import target_capabilities
+
+    machine = current_host_os() if host is None else host
+    # Judged against the shipped default worker.yaml (every driver), since `scripts/serve.sh` starts
+    # its worker with no `--worker-config`; the host is the one fact that can rule a platform out.
+
+    def drivable(platform: str) -> bool:
+        return any(
+            (hosts := host_os_for(a)) is None or machine in hosts
+            for a in PLATFORMS.get(platform, ())
+        )
 
     found = {
         cap.removeprefix(PLATFORM_PREFIX)
@@ -771,8 +789,9 @@ def worker_platforms(config: Path | None) -> str:
         for cap in target_capabilities(config, target)  # type: ignore[arg-type]
         if cap.startswith(PLATFORM_PREFIX)
     }
+    found = {p for p in found if drivable(p)}
     if not found:
-        found = {"ios", "web", "android"} if sys.platform == "darwin" else {"web", "android"}
+        found = {"ios", "web", "android"} if machine == "darwin" else {"web", "android"}
     return ",".join(sorted(found))
 
 

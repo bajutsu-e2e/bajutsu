@@ -31,7 +31,11 @@ import typer
 
 from bajutsu.common.backend_cli import simctl
 from bajutsu.common.backends import PLATFORMS
-from bajutsu.common.capability.worker_capability import LOCAL, WorkerCapability
+from bajutsu.common.capability.worker_capability import (
+    LOCAL,
+    RESERVED_ROUTING_REASON,
+    WorkerCapability,
+)
 from bajutsu.common.cloud.devicefarm import RunInterrupted
 from bajutsu.common.evidence.redaction import LineCredentialMasker, Redactor
 from bajutsu.common.evidence.sink import RunArtifactWriter
@@ -40,9 +44,9 @@ from bajutsu.common.run_meta.files import DEFAULT_RUNS_DIR
 from bajutsu.common.run_meta.object_store import content_type_for
 from bajutsu.serve import InMemoryLogBus
 from bajutsu.serve.capabilities import (
-    ENVIRONMENT_PREFIX,
     WORKER_CAPABILITIES_ENV,
     environment_capability,
+    host_capability,
     parse_capabilities,
     reserved_tokens,
     worker_capabilities,
@@ -183,35 +187,65 @@ def _post_json(
 
 
 def _advertised_capabilities(
-    platform: str, capabilities: str, environment: str = LOCAL
+    platform: str,
+    capabilities: str,
+    worker_capability: WorkerCapability | None = None,
+    host: str | None = None,
 ) -> list[str]:
     """The sorted capability set this worker advertises (BE-0166).
 
-    Combines its ``--platform`` axes, the operator override (``--capabilities`` or
-    `WORKER_CAPABILITIES_ENV`), and, for an iOS worker, the installed Simulator inventory. The
-    Simulator probe is gated on ``ios`` so a web-only worker (the Linux container) never shells out
-    to an absent ``xcrun``.
+    Combines its ``--platform`` axes, ``host:<os>`` for the machine it runs on (BE-0450), the
+    deprecated operator override (``--capabilities`` or `WORKER_CAPABILITIES_ENV`), and, for an iOS
+    worker, the installed Simulator inventory. The Simulator probe is gated on ``ios`` so a web-only
+    worker (the Linux container) never shells out to an absent ``xcrun``.
 
-    A worker whose *environment* is a device cloud (BE-0448) drives no device of its own: it
+    A worker whose environment is a device cloud (BE-0448) drives no device of its own: it
     advertises ``environment:<name>`` in place of any ``platform:*`` token, and refuses an explicit
-    ``--platform``. An empty *platform* means ``ios`` for a local worker. The ``environment:``
-    prefix is reserved for that token, so the override may not carry it.
+    ``--platform``. An empty *platform* means ``ios`` for a local worker, which refuses a platform
+    whose driver its worker.yaml omits or its host cannot run, rather than advertising a platform it
+    cannot serve (BE-0450). The worker fills the ``environment:`` and ``host:`` prefixes itself, so the
+    override may not carry them.
+
+    Args:
+        platform: The ``--platform`` value, a comma list.
+        capabilities: The ``--capabilities`` value; `WORKER_CAPABILITIES_ENV` when empty.
+        worker_capability: The worker.yaml in force; the shipped default when None.
+        host: The host operating system; `backends.current_host_os()` when None (for tests).
+
+    Raises:
+        typer.BadParameter: The override carries a reserved token, or ``--platform`` names a
+            platform this worker cannot serve.
     """
-    override = capabilities or os.environ.get(WORKER_CAPABILITIES_ENV)
+    from bajutsu.common.backends import current_host_os
+    from bajutsu.common.capability.capability_preflight import filter_actuators
+    from bajutsu.common.capability.worker_capability import load_worker_capability
+    from bajutsu.common.deprecations import warn_worker_capabilities
+
+    cap = load_worker_capability() if worker_capability is None else worker_capability
+    machine = current_host_os() if host is None else host
+    if capabilities:
+        warn_worker_capabilities("--capabilities")
+        override: str | None = capabilities
+    else:
+        override = os.environ.get(WORKER_CAPABILITIES_ENV)
+        if override:
+            warn_worker_capabilities(f"${WORKER_CAPABILITIES_ENV}")
     if reserved := reserved_tokens(parse_capabilities(override)):
         raise typer.BadParameter(
-            f"{', '.join(reserved)}: the {ENVIRONMENT_PREFIX} prefix is reserved for the provider a "
-            "worker registers from its worker.yaml environment",
+            f"{', '.join(reserved)}: {RESERVED_ROUTING_REASON}",
             param_hint="--capabilities",
         )
-    if environment != LOCAL:
+    host_token = host_capability(machine)
+    if not cap.is_local:
         if platform:
             raise typer.BadParameter(
-                f"a worker whose environment is '{environment}' drives no device of its own, so it "
-                "takes no --platform; the phone belongs to the provider's host",
+                f"a worker whose environment is '{cap.environment}' drives no device of its own, so "
+                "it takes no --platform; the phone belongs to the provider's host",
                 param_hint="--platform",
             )
-        return sorted({environment_capability(environment), *parse_capabilities(override)})
+        return sorted(
+            {environment_capability(cap.environment), host_token, *parse_capabilities(override)}
+        )
     platforms = [p.strip() for p in (platform or "ios").split(",") if p.strip()]
     # Fail loudly on a typo'd platform (e.g. `--platform iso`) rather than silently advertising a
     # `platform:iso` token that matches no job — the worker would otherwise poll forever leasing
@@ -220,12 +254,19 @@ def _advertised_capabilities(
         raise typer.BadParameter(
             f"invalid --platform {', '.join(unknown)}: use one of {', '.join(PLATFORMS)}"
         )
+    # The same rule as `run`'s actuator selection: a Linux machine started with the default `ios`
+    # stops here with the reason, rather than idling on jobs it could never start (BE-0450).
+    for p in platforms:
+        kept, reasons = filter_actuators(PLATFORMS[p], cap, machine)
+        if not kept:
+            raise typer.BadParameter(f"{p}: {'; '.join(reasons)}", param_hint="--platform")
     return sorted(
         worker_capabilities(
             platforms,
             override=override,
             run=simctl.real_run if "ios" in platforms else None,
         )
+        | {host_token}
     )
 
 
@@ -250,14 +291,16 @@ def worker(
         "--platform",
         help="Comma-list of platforms this worker can drive (ios / web / android) — the backend "
         "axis it advertises for capability routing (BE-0166). A Mac iOS worker is 'ios' (the "
-        "default); the Playwright container is 'web'. A worker whose worker.yaml environment is a "
-        "device cloud takes none (BE-0448).",
+        "default); the Playwright container is 'web'. A local worker refuses a platform whose "
+        "driver its worker.yaml omits or its host cannot run (BE-0450). A worker whose worker.yaml "
+        "environment is a device cloud takes none (BE-0448).",
     ),
     capabilities: str = typer.Option(
         "",
         "--capabilities",
-        help="Extra capability tokens to advertise beyond the platform + Simulator inventory "
-        "(comma/space separated, e.g. 'ios18,ipad'); also read from $BAJUTSU_WORKER_CAPABILITIES.",
+        help="Deprecated (BE-0450): extra capability tokens to advertise beyond the platform + "
+        "Simulator inventory (comma/space separated, e.g. 'ios18,ipad'); also read from "
+        "$BAJUTSU_WORKER_CAPABILITIES. Still honored, with a notice, for this release.",
     ),
     worker_config: Annotated[
         Path | None,
@@ -309,7 +352,7 @@ def worker(
     work, temporary = _workspace(workdir)
     # The capability set this worker advertises on every lease (BE-0166), computed once at startup
     # (the pool is assumed stable per worker).
-    caps = _advertised_capabilities(platform, capabilities, capability.environment)
+    caps = _advertised_capabilities(platform, capabilities, capability)
     # After the flags are checked, so a typo'd flag is reported before any AWS client is built.
     _register_environment_or_exit(capability.environment)
 

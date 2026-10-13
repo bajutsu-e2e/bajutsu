@@ -79,7 +79,7 @@ targets:
 | `capture` | defaults | 既定証跡（[evidence の注記](evidence.md#証跡の指示方法3-つ)） |
 | `redact` | defaults ∪ app | マージ（下記） |
 | `secrets` | defaults ∪ app | `${secrets.X}` を宣言する環境変数名。実値は証跡でマスク（[evidence](evidence.md#マスキングredact)） |
-| `requires` | defaults ∪ app | ホスト型バックエンドでこのターゲットを実行するために、ワーカーが広告していなければならない capability トークン（[self-hosting](self-hosting.md#能力に基づくキューの振り分けbe-0166)、[BE-0166](../../roadmaps/BE-0166-capability-routed-queues/BE-0166-capability-routed-queues-ja.md)）。たとえば `[ios18, ipad]`。プラットフォーム軸は自動で加わるので、ランタイムやデバイス種別を固定したいときだけここにトークンを足します。ローカルの単一ワーカー実行では無視されます |
+| `requires` | defaults ∪ app | ホスト型バックエンドでこのターゲットを実行するために、ワーカーが広告していなければならない capability トークン（[self-hosting](self-hosting.md#能力に基づくキューの振り分けbe-0166)、[BE-0166](../../roadmaps/BE-0166-capability-routed-queues/BE-0166-capability-routed-queues-ja.md)）。たとえば `[ios18, ipad]`。プラットフォーム軸は自動で加わるので、ランタイムやデバイス種別を固定したいときだけここにトークンを足します。今回のリリースでは非推奨です（[BE-0450](../../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability-ja.md)）。プラットフォーム軸に加え、macOS 専用のドライバが必要とするホストの OS も自動で加わります。ターゲットの `device` からランタイムやデバイス種別の要件を導けるようになるまでは、1 回だけの通知とともに引き続き効きます。予約済みの接頭辞 `environment:` や `host:` を持つトークンは、読み込み時にエラーになります。通知は読み込み時に出るので、ローカルの `bajutsu run` でも表示されます。ローカルの単一ワーカー実行では無視されます |
 | `ai` | defaults < app（フィールドごと） | AI 経路のプロバイダ / モデル / エンドポイント / キー（[下記](#ai-プロバイダaibe-0047)）。省略（`None`）なら環境だけで決まります |
 | `defaults.doctor.idCoverageOk` / `defaults.doctor.idCoverageFail` | defaults | doctor のグレード判定に使う id カバレッジのしきい値（[下記](#しきい値の設定defaultsdoctorbe-0024)）。既定は 0.9 / 0.7 です |
 
@@ -98,6 +98,10 @@ config の `defaults.redact` と `targets.<name>.redact` は **union** されま
 iOS の実機では、ユーザー自身の Apple Developer チームで署名した XCUITest runner が必要です。ターゲットの設定には、この署名に関する値を意図して入れていません。設定はリポジトリとともに共有されるので、そこに書いた Team ID がほかのすべてのユーザーに届いてしまうためです。代わりに、リポジトリの外に置くユーザーごとの署名ファイルが、bundle identifier、チーム、署名方式を持ちます。
 
 `bajutsu runner build --device` がこのファイルを読みます。以後、`xcuitest.deviceType: device` を指定して `xcuitest.testRunner` を指定しないターゲットは、そのビルドに解決します。ファイルの形式と探索順は [iOS の実機](ios-device-cloud.md#署名ファイル)で説明しています。
+
+### マシンが実行できるもの（設定の外、BE-0450）
+
+設定ファイルはターゲットを記述し、アプリケーションのチームが書きます。1 台のマシンで何を実行できるかは別の事実で、それを知っているのはマシンの運用者です。そこで、別のファイル `worker.yaml` がこの事実を記述します。内容は、ワーカーの environment、ワーカーが提供するドライバ、1 つのシナリオが持てるターゲットの数です。設定ファイルはこれらのキーを持ちません。サーバのワーカーは、ジョブをリースしてから設定ファイルを読みます。それでは、どのジョブのために何を広告するかを決めるのに間に合いません。ファイルは `bajutsu run --worker-config <path>` と `bajutsu worker --worker-config <path>` で指定します。指定しなければ、同梱の既定のファイルを使います。ファイルの形式と検査は、[このマシンで何を実行できるか](drivers.md#worker-の能力検査be-0450)で説明しています。
 
 ### 実機のホストアドレス（`xcuitest.hostAddress`）
 

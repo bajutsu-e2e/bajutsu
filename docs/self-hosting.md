@@ -1135,16 +1135,39 @@ set it **requires**; the control plane leases a job to a worker only when the wo
 token the job requires. Routing decides *which* idle worker picks a job up — it never changes the
 deterministic `run` verdict.
 
-- **A worker's advertised set** comes from its `--platform` (the backend axis: `platform:ios` for a
-  Mac iOS worker, `platform:web` for the Playwright container), plus — for an iOS worker — the
-  installed Simulator inventory (an `iosNN` token per runtime, and `iphone` / `ipad` device classes).
-  Pin extra tokens with `--capabilities` or `$BAJUTSU_WORKER_CAPABILITIES` (comma/space separated),
-  e.g. `bajutsu worker --platform ios --capabilities ios18,ipad`. The web-worker container bakes in
-  `--platform web`, so it advertises `web` and needs no flag.
-- **A job's required set** is the target's resolved platform axis plus its `requires:` config list
-  ([configuration](configuration.md)) — set `targets.<name>.requires: [ios18, ipad]` (or team-wide
-  `defaults.requires`) to pin a runtime or device class. A target with no `requires` routes on its
-  platform axis alone.
+- **A worker's advertised set** comes from its `--platform` and from the machine itself. The
+  `--platform` value gives the backend axis: `platform:ios` for a Mac iOS worker, `platform:web`
+  for the Playwright container. Every
+  worker advertises `host:<os>` for the operating system it runs on, such as `host:darwin` on a
+  Mac ([BE-0450](../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability.md)). An iOS
+  worker also advertises its installed Simulator inventory. That inventory gives an `iosNN` token
+  per runtime, and the `iphone` and `ipad` device classes. The web-worker container bakes in `--platform web`, so it advertises
+  `web` and needs no flag.
+- **A local worker refuses a platform it cannot serve.** At startup, the worker checks each
+  `--platform` against its [worker capability file](drivers.md#worker-capability-check-be-0450) and
+  its host. When the file omits the platform's driver, or the host cannot run that driver, the
+  worker exits with a message that names the driver. A Linux machine started with the default
+  `--platform ios` thus stops with `xcuitest runs only on macOS; this worker runs on linux`. It
+  does not idle on jobs it could never start. The check reads the platform's drivers, so an iOS
+  target on the `fake` backend still waits for a Mac worker.
+- **A job's required set** is the target's platform axis. A target can need one operating system:
+  every driver its `backend` lists runs there alone. Such a target's set also holds
+  `host:<os>`. An iOS
+  target on the `xcuitest` driver thus requires `host:darwin`. A web or Android target requires no
+  host. A fallback list such as `[ios, web]` requires none either, because `playwright` runs
+  anywhere. A worker on the matching host leases the job. The worker's own check still judges each
+  scenario before any device work.
+- **Two hand-written inputs now log a deprecation notice.** A worker's `--capabilities` and
+  `$BAJUTSU_WORKER_CAPABILITIES` add tokens verbatim. A target's `requires:` list (or
+  `defaults.requires`) adds tokens to the job's required set. Both still work for this release,
+  each with a one-time notice. The worker's override goes away in the next release. The inventory
+  and the worker capability file now supply what the override was for. An override can also claim
+  a runtime the machine lacks. `requires:` stays until a later item derives a runtime or
+  device-class need from the target's `device`. Until then, `requires:` is the one way to pin
+  `ios18` or `ipad`. None of the three may carry the reserved `environment:` or `host:` prefix,
+  which the worker fills itself. A worker rejects such a token at startup, and a config rejects it
+  at load. The `requires:` notice comes at config load, so a local `bajutsu run` shows it too,
+  although `requires:` routes server jobs alone.
 - **An unroutable job** — one whose required capabilities no live worker advertises — stays queued
   rather than being leased to an incompatible worker or dropped, and is surfaced by the
   `bajutsu_unroutable_jobs` metric (below) so the operator knows to add a worker with the missing
@@ -1154,7 +1177,9 @@ deterministic `run` verdict.
 > [!NOTE]
 > **Upgrade the workers alongside or before the control plane.** Every dispatched job now carries at
 > least its `platform:*` requirement, and a worker on a pre-capability-routing build sends no
-> advertised set — so it advertises nothing and can lease no real job. It fails safe (it never
+> advertised set — so it advertises nothing and can lease no real job. The same holds for BE-0450:
+> an iOS job on `xcuitest` now requires `host:darwin`, which a worker built before that change never
+> advertises. It fails safe (it never
 > mis-routes), but an old worker left running against an upgraded control plane silently stops
 > leasing, showing up only as a rising `bajutsu_unroutable_jobs`. Roll the worker binaries first (or
 > together), not after. The same order holds for BE-0449: the control plane now queues a `run` as

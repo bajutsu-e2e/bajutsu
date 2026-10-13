@@ -1488,6 +1488,16 @@ including which invocations still require `--target`.
 With one declared target, a step may omit `target`. A step may also name that target directly, and
 both spellings behave the same way.
 
+A scenario declares nothing about the machine that runs it. Bajutsu computes what the scenario
+needs from the scenario itself. The scenario needs the driver each declared target resolves to. It
+also holds one device per declared target, counted across every driver. One Simulator target and
+one browser target count two. Before any device work, `bajutsu run` compares those needs with the
+machine's [worker capability file](drivers.md#worker-capability-check-be-0450). It also compares
+them with the host operating system
+([BE-0450](../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability.md)).
+A scenario this machine cannot run fails with a reason that names the driver or the limit. That
+reason starts with `worker-capability-unsupported:`. The other scenarios run.
+
 `${vars.*}` carries across every declared target in one run. These are the same
 [runtime variables](#runtime-variables-vars) `extract` populates. A value one target's step captures
 is readable from an assertion against another target. A cross-platform check can thus name the

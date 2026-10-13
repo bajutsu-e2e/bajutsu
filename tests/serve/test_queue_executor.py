@@ -195,7 +195,8 @@ def test_start_run_derives_the_jobs_required_capabilities(tmp_path: Path) -> Non
     )
     _, code = ops.start_run(state, {"scenario": "smoke.yaml", "target": "demo"})
     assert code == 200
-    assert dispatched[0].capabilities == ["ios18", "platform:ios"]
+    # xcuitest runs only on macOS, so the job requires the host too (BE-0450).
+    assert dispatched[0].capabilities == ["host:darwin", "ios18", "platform:ios"]
 
 
 def test_execute_job_spec_records_the_run_into_an_injected_repository(

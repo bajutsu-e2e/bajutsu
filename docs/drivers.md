@@ -194,6 +194,31 @@ apply the check:
   device for that scenario and runs the rest. `run` also selects and checks every target's actuator
   before it acquires the first device. An unsupported target thus leaves nothing reserved.
 
+**Advertising and routing.** A server worker turns the same facts into routing tokens
+([self-hosting](self-hosting.md#capability-routed-queues-be-0166)). The worker advertises
+`host:<os>` for the operating system it runs on. Some jobs need one host operating system: every
+driver their target can resolve to runs there alone. Such a job requires that host. An `xcuitest`
+job thus requires `host:darwin` and reaches a Mac worker alone.
+
+At startup, a `local` worker checks each `--platform` against the file and the host. When either
+rules the platform out, the worker exits with the driver's reason. A Linux worker started with
+`--platform ios` thus stops. Its reason reads `xcuitest runs only on macOS; this worker runs on
+linux`. The check judges the platform's drivers, not a target's `backend`. No worker off macOS
+advertises `platform:ios`. An iOS target on the `fake` backend thus still needs a Mac worker. A worker
+whose environment is a device cloud advertises `environment:<name>` and no `platform:*` token.
+
+The file declares no routing token itself. The runtime and device-class tokens (`ios18`, `ipad`)
+come from the Simulator inventory. A declaration could promise a runtime the machine lacks.
+
+Three hand-written inputs now log a deprecation notice. Each still works for this release:
+
+- the worker's `--capabilities` flag
+- the `$BAJUTSU_WORKER_CAPABILITIES` environment variable
+- a target's `requires` list
+
+None of the three may carry the reserved `environment:` or `host:` prefix. The worker fills both
+itself.
+
 ## XCUITest (iOS)
 
 The **sole iOS backend** since [BE-0290](../roadmaps/BE-0290-xcuitest-default-ios-backend/BE-0290-xcuitest-default-ios-backend.md)
