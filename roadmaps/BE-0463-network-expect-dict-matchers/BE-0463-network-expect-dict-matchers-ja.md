@@ -1,14 +1,14 @@
-[English](BE-XXXX-network-expect-dict-matchers.md) · **日本語**
+[English](BE-0463-network-expect-dict-matchers.md) · **日本語**
 
-# BE-XXXX — ネットワークのアサーションで、クエリと本文をキーと値の辞書で照合する
+# BE-0463 — ネットワークのアサーションで、クエリと本文をキーと値の辞書で照合する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-network-expect-dict-matchers-ja.md) |
+| 提案 | [BE-0463](BE-0463-network-expect-dict-matchers-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **承認済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0463") |
 | トピック | 検証とカバレッジ |
 <!-- /BE-METADATA -->
 

@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-network-expect-dict-matchers-ja.md)
+**English** · [日本語](BE-0463-network-expect-dict-matchers-ja.md)
 
-# BE-XXXX — Match request query and body by key/value dictionaries in network assertions
+# BE-0463 — Match request query and body by key/value dictionaries in network assertions
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-network-expect-dict-matchers.md) |
+| Proposal | [BE-0463](BE-0463-network-expect-dict-matchers.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0463") |
 | Topic | Verification & coverage |
 <!-- /BE-METADATA -->
 
