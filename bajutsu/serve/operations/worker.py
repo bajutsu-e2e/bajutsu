@@ -192,7 +192,8 @@ def worker_log(state: ServeState, body: dict[str, Any]) -> tuple[dict[str, Any],
         return {"error": f"at most {WORKER_LOG_MAX_LINES} lines per post"}, 413
     if not state.repository.holds_lease(job_id, worker_id):
         return {"error": "lease lost or not held by this worker"}, 409
-    masked = [mask_credential_shapes(line[:WORKER_LOG_MAX_LINE_CHARS])[0] for line in lines]
+    # Mask before cutting, so a credential straddling the bound is matched whole, not posted in part.
+    masked = [mask_credential_shapes(line)[0][:WORKER_LOG_MAX_LINE_CHARS] for line in lines]
     allowed, crossed = state.live_log_budget.admit(job_id, masked)
     published = masked[:allowed]
     if crossed:

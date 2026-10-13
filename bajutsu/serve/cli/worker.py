@@ -524,8 +524,16 @@ class _TeeLogBus(InMemoryLogBus):
 
     def publish(self, job_id: str, line: str) -> None:
         super().publish(job_id, line)
-        if not line.startswith(REQUEST_LINE_PREFIX):
-            self._on_line(line)
+        self._tee([line])
+
+    def publish_many(self, job_id: str, lines: list[str]) -> None:
+        super().publish_many(job_id, lines)
+        self._tee(lines)
+
+    def _tee(self, lines: list[str]) -> None:
+        for line in lines:
+            if not line.startswith(REQUEST_LINE_PREFIX):
+                self._on_line(line)
 
 
 def _post_log(
@@ -758,7 +766,10 @@ def _write_console_log(work: Path, run_id: str, bus: InMemoryLogBus, job_id: str
     if not lines:
         return
     RunArtifactWriter(run_dir, Redactor(None)).write_text(
-        "console.log", "".join(line for line in lines if line is not None)
+        "console.log",
+        # The bus carries lines without their newline (`jobs.py` strips it), and a viewer that
+        # missed the live stream replays this file line by line.
+        "".join(line if line.endswith("\n") else f"{line}\n" for line in lines if line is not None),
     )
 
 
