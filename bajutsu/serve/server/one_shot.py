@@ -229,7 +229,14 @@ def run_spec_once(
     Returns:
         The child's exit code; 128 plus the signal number when the child died of a signal, or when
         this process was signalled; 1 when the job ended with no code at all.
+
+    Raises:
+        ValueError: `refusal` turns *spec* away; nothing has run or been written.
     """
+    # Enforced here as well as by the CLI, so a caller that skipped `refusal` cannot have the spec's
+    # materials written outside the workspace. The public wrapper's own spec always passes.
+    if (reason := refusal(spec, cwd or Path.cwd())) is not None:
+        raise ValueError(f"a one-shot job spec its caller did not vet: {reason}")
     relay = CancelRelay()
     with cancel_on_signals(relay) as signalled:
         job = execute_job_spec(

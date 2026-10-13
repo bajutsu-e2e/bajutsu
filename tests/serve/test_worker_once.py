@@ -11,6 +11,7 @@ import signal
 import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -399,6 +400,20 @@ def test_a_signal_cancels_a_one_shot_run_gracefully(
     assert proc.signals == [signal.SIGTERM]
 
 
+def test_run_spec_once_refuses_a_spec_its_caller_did_not_vet(tmp_path: Path) -> None:
+    def popen(cmd: list[str], **kw: Any) -> Any:
+        raise AssertionError("nothing may run")
+
+    with pytest.raises(ValueError, match="inside the workspace"):
+        one_shot.run_spec_once(
+            {"cmd": ["x"], "materials": {"../escape.yaml": "y"}},
+            worker_config=None,
+            cwd=tmp_path,
+            popen=popen,
+        )
+    assert not (tmp_path.parent / "escape.yaml").exists()
+
+
 def test_run_spec_once_hands_the_run_its_worker_file(tmp_path: Path) -> None:
     seen: list[list[str]] = []
 
@@ -593,6 +608,7 @@ def piped_stdin(monkeypatch: pytest.MonkeyPatch) -> Any:
     reader = os.fdopen(read_fd, "r")
     writer = os.fdopen(write_fd, "w")
     monkeypatch.setattr(sys, "stdin", reader)
+    monkeypatch.setattr(run_cli, "_STEP_INPUT", bytearray())
     yield writer
     reader.close()
     if not writer.closed:
@@ -609,6 +625,26 @@ def test_the_step_prompt_reads_a_typed_line(piped_stdin: Any) -> None:
     piped_stdin.flush()
     assert run_cli._read_step_line("step> ") == "n\n"
     piped_stdin.close()
+    with pytest.raises(EOFError):
+        run_cli._read_step_line("step> ")
+
+
+def test_two_answers_sent_at_once_reach_two_prompts(piped_stdin: Any) -> None:
+    # The writer stays open, so the second answer is never followed by end of file: the prompt must
+    # serve it from what was already read rather than wait on the drained descriptor.
+    piped_stdin.write("n\nc\n")
+    piped_stdin.flush()
+    deadline = time.monotonic() + 5
+    gave_up = lambda: time.monotonic() > deadline  # noqa: E731
+    assert run_cli._read_step_line("step> ", gave_up) == "n\n"
+    assert run_cli._read_step_line("step> ", gave_up) == "c\n"
+    assert not piped_stdin.closed
+
+
+def test_a_last_answer_without_a_newline_is_still_read(piped_stdin: Any) -> None:
+    piped_stdin.write("q")
+    piped_stdin.close()
+    assert run_cli._read_step_line("step> ") == "q"
     with pytest.raises(EOFError):
         run_cli._read_step_line("step> ")
 

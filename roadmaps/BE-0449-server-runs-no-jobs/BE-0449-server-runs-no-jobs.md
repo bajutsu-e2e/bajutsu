@@ -258,8 +258,8 @@ Log:
   an environment value is left for the run to resolve. The parser now checks `--label`, so the
   wrapper refuses an over-long label in the caller's words. `bajutsu worker --once <spec.json>` runs
   one spec through `execute_job_spec` with a no-op `LocalWorkerIO` and no repository. A new
-  `inherit_stdio` mode of `run_job` spawns the child on the caller's standard streams and `PATH`, in
-  a session of its own, and reads the run id from the new run tree. The caller holds a liveness pipe
+  `inherit_stdio` mode of `run_job` spawns the child on the caller's standard streams, in a session
+  of its own (the public `bajutsu run` alone also keeps the caller's `PATH`), and reads the run id from the new run tree. The caller holds a liveness pipe
   open while it waits. When the pipe reaches end of file, the internal run sends itself SIGTERM, so
   a wrapper killed by SIGKILL does not leave a run driving the device. `--once` refuses a bundle,
   artifact overrides, a Device Farm batch, a non-`local` worker file (naming BE-0448), mistyped
@@ -274,7 +274,9 @@ Log:
   Subprocess parity tests cover a pass, a fail, a usage error, both signals, a SIGKILLed wrapper, a
   second Ctrl-C, Ctrl-Z, the `--step` prompt on a pseudo-terminal, and a pre-change spec under
   `--once`. A round-trip test renders every `run` option and parses it back with the internal entry
-  point. The in-process CLI tests now invoke the internal entry point.
+  point. The in-process CLI tests now invoke the internal entry point. Workers must be upgraded
+  before or with the control plane: a worker built before this change does not map the queued
+  `-m bajutsu.run.internal` onto its own interpreter, so it fails every `run` it leases.
 
 ## References
 

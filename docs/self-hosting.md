@@ -1004,7 +1004,9 @@ deterministic `run` verdict.
 > advertised set — so it advertises nothing and can lease no real job. It fails safe (it never
 > mis-routes), but an old worker left running against an upgraded control plane silently stops
 > leasing, showing up only as a rising `bajutsu_unroutable_jobs`. Roll the worker binaries first (or
-> together), not after.
+> together), not after. The same order holds for BE-0449: the control plane now queues a `run` as
+> `python -m bajutsu.run.internal`, which a worker built before that change cannot map onto its own
+> interpreter, so such a worker fails every `run` it leases.
 
 ### Evidence upload to object storage (optional, BE-0110)
 

@@ -194,8 +194,8 @@ def test_a_signal_cancels_the_run_which_still_writes_its_manifest(
 def test_a_spec_queued_before_the_internal_module_runs_once_under_worker_once(
     workspace: Path,
 ) -> None:
-    # A spec queued before BE-0449 names the public command. Under `worker --once` it enters the
-    # wrapper, which spawns the internal module once: one run tree, and no process loop.
+    # A spec queued before BE-0449 names the public command. `_local_interpreter` rewrites it to the
+    # internal module, so it never enters the wrapper: one run tree, and no extra process layer.
     spec = {
         "job_id": "legacy",
         "cmd": [

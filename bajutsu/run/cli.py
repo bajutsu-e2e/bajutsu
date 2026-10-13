@@ -619,6 +619,12 @@ def _reject_web_flags_across_targets(
 # How often a `--step` prompt waiting on the terminal checks whether the run was cancelled.
 _STEP_CANCEL_POLL_SECONDS = 0.2
 
+# Bytes read from standard input past the last `--step` answer, kept for the next prompt. The prompt
+# reads the descriptor itself rather than through `sys.stdin`: `select` sees only the descriptor, so
+# an answer held in `sys.stdin`'s own buffer would be invisible to it and the prompt would wait on
+# input already read.
+_STEP_INPUT = bytearray()
+
 
 class _LateCancel:
     """A `CancelSource` the run binds once its SIGTERM handler is up, after the step gate is built."""
@@ -639,14 +645,29 @@ def _read_step_line(prompt: str, cancelled: CancelSource = not_cancelled) -> str
     its grace window. The terminal is checked in short slices for that reason.
     """
     typer.echo(prompt, nl=False, err=True)
-    # `select` takes only sockets on Windows, where the run is never behind the wrapper anyway.
-    while os.name != "nt" and not select.select([sys.stdin], [], [], _STEP_CANCEL_POLL_SECONDS)[0]:
-        if cancelled():
+    if os.name == "nt":
+        # `select` takes only sockets on Windows, where the run is never behind the wrapper anyway.
+        line = sys.stdin.readline()
+        if not line:
             raise EOFError
-    line = sys.stdin.readline()
-    if not line:
+        return line
+    fd = sys.stdin.fileno()
+    while b"\n" not in _STEP_INPUT:
+        if not select.select([fd], [], [], _STEP_CANCEL_POLL_SECONDS)[0]:
+            if cancelled():
+                raise EOFError
+            continue
+        chunk = os.read(fd, 4096)
+        if not chunk:
+            break
+        _STEP_INPUT.extend(chunk)
+    if not _STEP_INPUT:
         raise EOFError
-    return line
+    end = _STEP_INPUT.find(b"\n")
+    cut = len(_STEP_INPUT) if end < 0 else end + 1
+    line_bytes = bytes(_STEP_INPUT[:cut])
+    del _STEP_INPUT[:cut]
+    return line_bytes.decode(sys.stdin.encoding or "utf-8", errors="replace")
 
 
 def _build_step_gate(

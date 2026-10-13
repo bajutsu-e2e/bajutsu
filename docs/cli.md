@@ -1238,7 +1238,7 @@ bajutsu worker --once <spec.json> [--worker-config <worker.yaml>]
 `--once` executes one job spec without a server
 ([BE-0449](../roadmaps/BE-0449-server-runs-no-jobs/BE-0449-server-runs-no-jobs.md)). The spec has
 the shape the queue stores: a `cmd` list, plus the optional fields a queued job carries. The worker
-validates `--worker-config` first. As for a leased job, the worker passes the file's absolute path
+validates `--worker-config` first and, as it does for a leased job, passes the file's absolute path
 to the run it spawns. The job then runs through the same code as a leased job, with these
 differences:
 
