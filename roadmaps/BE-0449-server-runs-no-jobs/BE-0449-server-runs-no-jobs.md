@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0449") |
-| Implementing PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167) (Unit 1, part 1), [#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168) (Unit 1, part 2), [#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170) (Unit 1, part 3), [#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171) (Unit 2), PR_PLACEHOLDER5 (Unit 4) |
+| Implementing PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167) (Unit 1, part 1), [#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168) (Unit 1, part 2), [#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170) (Unit 1, part 3), [#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171) (Unit 2), [#2172](https://github.com/bajutsu-e2e/bajutsu/pull/2172) (Unit 4) |
 | Topic | Hosting the web UI |
 <!-- /BE-METADATA -->
 
@@ -219,7 +219,7 @@ Log:
   defensive. A leased-job cancel needs workers at this version, since
   an older worker ignores the heartbeat's `cancel`. The SIGINT and SIGTERM mapping for
   `worker --once` arrives with unit 3.
-- PR_PLACEHOLDER5 (Unit 4) — a queued job's console is live again. The worker posts its log lines
+- [#2172](https://github.com/bajutsu-e2e/bajutsu/pull/2172) (Unit 4) — a queued job's console is live again. The worker posts its log lines
   to a new `POST /api/worker/log` about once a second. It posts the tail before its result, within
   five seconds. A stateful line masker hides credential shapes. It keeps a private key block masked
   from BEGIN to END, across lines and batches. The server runs the per-line backstop again on each

@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0449") |
-| 実装 PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167)（単位 1 の 1）、[#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168)（単位 1 の 2）、[#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170)（単位 1 の 3）、[#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171)（単位 2）、PR_PLACEHOLDER5（単位 4） |
+| 実装 PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167)（単位 1 の 1）、[#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168)（単位 1 の 2）、[#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170)（単位 1 の 3）、[#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171)（単位 2）、[#2172](https://github.com/bajutsu-e2e/bajutsu/pull/2172)（単位 4） |
 | トピック | Hosting the web UI |
 <!-- /BE-METADATA -->
 
@@ -219,7 +219,7 @@ local バックエンドと server バックエンドの違いは、これらの
   org に限りますが、ゲートが machine をキャンセルの経路に通さないので、この検査は防御のためのものです。
   リース済みの job のキャンセルには、この版以降の worker が要ります。古い worker はハートビートの
   `cancel` を無視するからです。`worker --once` での SIGINT と SIGTERM の対応付けは単位 3 で入ります。
-- PR_PLACEHOLDER5（単位 4）— キューに入った job のコンソールが、再びライブで表示されるようになりました。
+- [#2172](https://github.com/bajutsu-e2e/bajutsu/pull/2172)（単位 4）— キューに入った job のコンソールが、再びライブで表示されるようになりました。
   worker はログの行を、新しい `POST /api/worker/log` へおよそ 1 秒ごとに送り、結果の送信の前にも
   5 秒の持ち時間でもう 1 度送ります。状態を持つ行単位の伏せ字処理が資格情報の形を隠し、秘密鍵の
   ブロックは BEGIN の行から END の行まで、行と送信をまたいで伏せ字にします。server も、届いた各行に
