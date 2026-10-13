@@ -1196,6 +1196,29 @@ def test_a_dual_stack_collector_answers_on_ipv4_and_ipv6() -> None:
         c.stop()
 
 
+def test_the_dual_stack_bind_clears_v6only_before_binding(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Host-independent: without IPv6 the real server never reaches `server_bind`, so its
+    # per-file coverage floor (BE-0385) would otherwise depend on the host's network stack.
+    from http.server import HTTPServer
+
+    from bajutsu.common.evidence.network import network_collector
+
+    calls: list[object] = []
+
+    class _FakeSocket:
+        def setsockopt(self, level: int, option: int, value: int) -> None:
+            calls.append(("setsockopt", level, option, value))
+
+    def _bound(_self: object) -> None:
+        calls.append("bind")
+
+    monkeypatch.setattr(HTTPServer, "server_bind", _bound)
+    server = object.__new__(network_collector._DualStackServer)
+    server.socket = _FakeSocket()  # type: ignore[assignment]
+    server.server_bind()
+    assert calls == [("setsockopt", socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0), "bind"]
+
+
 def test_a_host_without_ipv6_falls_back_to_every_ipv4_interface(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
