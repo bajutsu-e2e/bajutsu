@@ -184,6 +184,9 @@ def test_reclaim_skips_a_locked_lease_instead_of_waiting(
     for job_id in ("j1", "j2"):
         repo.enqueue_job(job_id, org_id="o1", spec={"cmd": []})
         repo.lease_job("w1")
+    # Backdated only once both are leased: a lease poll sweeps first, so backdating j1 before
+    # leasing j2 would have that poll reclaim and re-lease j1, leaving j2 queued.
+    for job_id in ("j1", "j2"):
         _backdate_lease(repo, job_id, seconds=300)
 
     # A heartbeat holds j1, so the sweep leaves that live worker's row alone and reclaims j2.
