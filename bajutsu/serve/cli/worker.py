@@ -622,23 +622,23 @@ def _run_slot(
             )
         finally:
             shutdown.detach(lost)
-        try:
-            _finish_job(
-                url=url,
-                auth_token=auth_token,
-                wid=wid,
-                job_id=job_id,
-                spec=spec,
-                outcome=(result, abandoned, job_work),
-                on_posted=post_done,
-            )
-        finally:
-            _discard_batch_workspace(slot_work, job_work)
+        _finish_job(
+            url=url,
+            auth_token=auth_token,
+            wid=wid,
+            job_id=job_id,
+            spec=spec,
+            outcome=(result, abandoned, job_work),
+            on_posted=post_done,
+        )
     except Exception:  # one slot's failure never takes the worker, or its other slots, down
         _logger.exception("slot for job %s failed", job_id)
     finally:
         post_done()
         if slot_work is not None:
+            # The slot held this one job, so every cloud-batch tree under it is this job's: removed
+            # on every exit, a failed run included, before the directory goes back to the pool.
+            shutil.rmtree(slot_work / _BATCH_JOBS_DIR, ignore_errors=True)
             dirs.release(slot_work)
 
 
@@ -1402,7 +1402,9 @@ def _beat_until_done(
             lost.set()  # seen in time, this stops _run before it ever calls execute_job_spec
             runner.join()  # wait it out so this worker never runs two jobs at once
             return True
-    return False
+    # Reached when *runner* had already ended at the first check: a shutdown that set *lost* first
+    # still leaves the lease to lapse, the same answer as the exit inside the loop.
+    return lost.is_set()
 
 
 def _heartbeat(
