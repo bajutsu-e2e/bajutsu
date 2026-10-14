@@ -58,6 +58,15 @@ def _tool_available(monkeypatch: pytest.MonkeyPatch, tool: str) -> None:
     )
 
 
+def _macos_host(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin the host to macOS for a test that models an iOS machine (BE-0450).
+
+    The worker capability check refuses xcuitest on any other host, so on the Linux `check` runner
+    the command would exit 2 before reaching the behavior the test is about.
+    """
+    monkeypatch.setattr("bajutsu.cli._shared.current_host_os", lambda: "darwin")
+
+
 def _forbid_probe(monkeypatch: pytest.MonkeyPatch) -> None:
     """Make the screen probe blow up: every test here must exit before reaching a device."""
 
@@ -221,6 +230,7 @@ def test_android_counts_attached_adb_devices(
 def test_ios_counts_booted_simulators(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _forbid_probe(monkeypatch)
     seen = _counted(monkeypatch)
+    _macos_host(monkeypatch)
     monkeypatch.setattr("bajutsu.cli.commands.doctor.select_actuator", lambda _b: "xcuitest")
     # No `xcuitest:` block resolves to the bundled tier, whose mismatch note probes the host
     # toolchain — an external dependency this test is not about.
@@ -307,6 +317,7 @@ def test_the_command_prints_the_xcuitest_runner_tier(
 ) -> None:
     """An xcuitest target discloses which runner it would use — without building or materializing it."""
     _forbid_probe(monkeypatch)
+    _macos_host(monkeypatch)
     monkeypatch.setattr("bajutsu.cli.commands.doctor.select_actuator", lambda _b: "xcuitest")
     monkeypatch.setattr(
         "bajutsu.common.capability.preflight.doctor_environment_checks",

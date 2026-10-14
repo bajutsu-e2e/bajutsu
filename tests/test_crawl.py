@@ -1519,7 +1519,7 @@ def test_cli_crawl_fails_closed_without_credential(
     )
     cfg = _crawl_config(tmp_path)
     # fake backend selects fine, so the guide's missing credential (default anthropic provider) fails.
-    r = _cli.invoke(app, ["crawl", "--target", "demo", "--config", str(cfg)])
+    r = _cli.invoke(app, ["crawl", "--target", "demo", "--backend", "fake", "--config", str(cfg)])
     assert r.exit_code == 2
     assert "no AI credential" in r.output and "ANTHROPIC_API_KEY" in r.output
 
@@ -1549,7 +1549,7 @@ def test_cli_crawl_refuses_under_provider_none(
         ),
         encoding="utf-8",
     )
-    r = _cli.invoke(app, ["crawl", "--target", "demo", "--config", str(cfg)])
+    r = _cli.invoke(app, ["crawl", "--target", "demo", "--backend", "fake", "--config", str(cfg)])
     assert r.exit_code == 2
     assert "ai.provider: none" in r.output
 
