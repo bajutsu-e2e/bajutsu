@@ -2584,27 +2584,83 @@ def run_body(
     worker = _load_device_worker_or_exit(worker_config)
     _reject_url_udid(udid)
     target_name = _resolve_primary_target(target_name, scenario or [])
-    loaded, eff, config_source, engines = _resolve_config_and_engines(
-        config,
-        target_name,
-        offline=config_offline,
-        require_pinned=require_pinned_config,
-        headed=headed,
-        browser=browser,
-        browsers=browsers,
-    )
-    scenarios, description, source_name, files, plan_sources = _load_scenarios(
-        eff, scenario or [], target_name
-    )
-    scenarios = _filter_scenarios(
+
+    def load_under(
+        primary: str,
+    ) -> tuple[
+        LoadedConfig,
+        Effective,
+        dict[str, str] | None,
+        list[str],
+        list[Scenario],
+        str | None,
+        str,
+        list[Path],
+        dict[str, ScenarioPlanSource],
+    ]:
+        # The config and the filtered scenarios as *primary* resolves them: its setup runs at load
+        # and its run defaults feed the filter, so a changed primary reloads both.
+        loaded, eff, config_source, engines = _resolve_config_and_engines(
+            config,
+            primary,
+            offline=config_offline,
+            require_pinned=require_pinned_config,
+            headed=headed,
+            browser=browser,
+            browsers=browsers,
+        )
+        scenarios, description, source_name, files, plan_sources = _load_scenarios(
+            eff, scenario or [], primary
+        )
+        scenarios = _filter_scenarios(
+            scenarios,
+            tag,
+            exclude,
+            erase,
+            eff.run_defaults.erase,
+            ios_tipkit_handling,
+            eff.run_defaults.ios_tip_kit_handling,
+        )
+        return (
+            loaded,
+            eff,
+            config_source,
+            engines,
+            scenarios,
+            description,
+            source_name,
+            files,
+            plan_sources,
+        )
+
+    (
+        loaded,
+        eff,
+        config_source,
+        engines,
         scenarios,
-        tag,
-        exclude,
-        erase,
-        eff.run_defaults.erase,
-        ios_tipkit_handling,
-        eff.run_defaults.ios_tip_kit_handling,
-    )
+        description,
+        source_name,
+        files,
+        plan_sources,
+    ) = load_under(target_name)
+    if not explicit_target and scenarios and not _uses_target(scenarios, target_name):
+        # The primary inferred from the first file's first target belongs to a scenario `--tag` /
+        # `--exclude` just selected away, so no scenario left drives it: re-infer it from the first
+        # one left, the same rule over the scenarios this run attempts. Kept, it would be resolved
+        # and acquired anyway, and `--backend` checked against a platform the run never drives.
+        target_name = scenarios[0].target_names[0]
+        (
+            loaded,
+            eff,
+            config_source,
+            engines,
+            scenarios,
+            description,
+            source_name,
+            files,
+            plan_sources,
+        ) = load_under(target_name)
     step_cancel = _LateCancel()
     step_gate = _build_step_gate(
         step=step,
@@ -2637,30 +2693,20 @@ def run_body(
         # taking the runnable rest down with it. Every remaining scenario declares its own targets
         # here, so the first one's first name is the primary they share with the inferred path.
         target_name = scenarios[0].target_names[0]
-        loaded, eff, config_source, engines = _resolve_config_and_engines(
-            config,
-            target_name,
-            offline=config_offline,
-            require_pinned=require_pinned_config,
-            headed=headed,
-            browser=browser,
-            browsers=browsers,
-        )
         # Reload under the new primary: the first load applied the old primary's setup and the
         # filter baked in its run defaults. Every scenario here declares its own targets, which
         # alone decide the worker check, so the recomputed failures are the same set.
-        scenarios, description, source_name, files, plan_sources = _load_scenarios(
-            eff, scenario or [], target_name
-        )
-        scenarios = _filter_scenarios(
+        (
+            loaded,
+            eff,
+            config_source,
+            engines,
             scenarios,
-            tag,
-            exclude,
-            erase,
-            eff.run_defaults.erase,
-            ios_tipkit_handling,
-            eff.run_defaults.ios_tip_kit_handling,
-        )
+            description,
+            source_name,
+            files,
+            plan_sources,
+        ) = load_under(target_name)
         all_scenarios = scenarios
         worker_failures = _worker_capability_failures(loaded, scenarios, eff, backend, worker)
         scenarios = [s for i, s in enumerate(scenarios) if i not in worker_failures]

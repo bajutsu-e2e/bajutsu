@@ -926,6 +926,11 @@ batch provider that packages `launchEnv`, `common/report/rows.py`, `templates/se
     answers a mismatch with a 400. Routing never widens such a pair to any worker. An
     `environment: appium` run of a scenario that mixes a grid target with a local one gets a 400 at
     dispatch, as the design asks.
+  - A run with no `--target` takes its primary target from the first file's first declared name.
+    `--tag` or `--exclude` can drop every scenario on that target. `run` then infers the primary
+    again, from the first scenario left. The showcase's Android device-group lane needs this fix: its
+    files list the iOS scenario first. The stale iOS primary was still acquired, and the stricter
+    `--backend android` check then exited 2. The check itself keeps its rule.
   - This unit removes `deviceProvider`, `cloudBatch`, `cloudBatchBudget`, `requires`, and the
     server's budget machinery. `run-set` requires a batch-provider `environment`. A request that
     still names `deviceBudget` gets a 400. The plain run request accepts
