@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0452") |
-| 実装 PR | [#2191](https://github.com/bajutsu-e2e/bajutsu/pull/2191)（単位 1〜3）、[#2193](https://github.com/bajutsu-e2e/bajutsu/pull/2193)（単位 4）、[#2194](https://github.com/bajutsu-e2e/bajutsu/pull/2194)（単位 5）、[#2195](https://github.com/bajutsu-e2e/bajutsu/pull/2195)（単位 6〜7）、PR_PLACEHOLDER22（単位 8〜9） |
+| 実装 PR | [#2191](https://github.com/bajutsu-e2e/bajutsu/pull/2191)（単位 1〜3）、[#2193](https://github.com/bajutsu-e2e/bajutsu/pull/2193)（単位 4）、[#2194](https://github.com/bajutsu-e2e/bajutsu/pull/2194)（単位 5）、[#2195](https://github.com/bajutsu-e2e/bajutsu/pull/2195)（単位 6〜7）、[#2196](https://github.com/bajutsu-e2e/bajutsu/pull/2196)（単位 8〜9） |
 | トピック | ドライバとバックエンドのアーキテクチャ |
 | 関連 | [BE-0126](../BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config-ja.md)、[BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact-ja.md)、[BE-0228](../BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation-ja.md)、[BE-0076](../BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md)、[BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks-ja.md)、[BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction-ja.md)、[BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch-ja.md)、[BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md)、[BE-0447](../BE-0447-install-app-step/BE-0447-install-app-step-ja.md)、[BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md) |
 <!-- /BE-METADATA -->
@@ -514,7 +514,7 @@ target は、どこで実行するかを持たなくなります。target が書
     - 作業単位6は`--scenarios`フラグを変えていません。`run`が受け取るのは`--scenario`のファイルで、`--scenarios`を持つのは`serve`だけです。`serve`の`--scenarios`は target のフィールドを指しません。また、`crawl`は`--browser`を持ちません。
   - 投入する写真が無視されないよう、拒否を2つ加えました。複数のターゲットを動かすシナリオで、プライマリ以外のターゲットが重ね合わせたあとの`seedPhotos`を持つと失敗します。run が`run.erase`を決めて写真を投入するのは、プライマリだけだからです。`record`、`crawl`、`repl`は、写真を投入するターゲットに対する`--no-erase`を終了コード2で拒否します。`fake`の target は、平坦な`locale`のときと同じく、シナリオの iOS のロケールを読みます。
   - この作業単位では、これらの名前を説明しているページを更新しました。文書全体の見直しは作業単位13に残します。
-- PR_PLACEHOLDER22（単位 8〜9）— run は利用できるすべてのデバイスを読み、条件から自分の run を作るようになりました。「not yet supported」の拒否は、`doctor`を除くすべてのコマンドから外れました。
+- [#2196](https://github.com/bajutsu-e2e/bajutsu/pull/2196)（単位 8〜9）— run は利用できるすべてのデバイスを読み、条件から自分の run を作るようになりました。「not yet supported」の拒否は、`doctor`を除くすべてのコマンドから外れました。
   - 作業単位8：`bajutsu/common/devices/facts.py`は、simctl と adb の層を通して各デバイスを読みます。iOS では、`simctl list devicetypes`のデバイスタイプ名とランタイムのバージョンを読みます。デバイス自身の名前は自由に付けられるので、比較には使いません。Android では`ro.build.version.sdk`と、エミュレータなら AVD 名を読みます。web では、ヘッドレスの Playwright を短く起動してバージョンを読みます。読めないデバイスがあると、run は終了コード2で失敗します。
   - AVD 名は、`ro.boot.qemu.avd_name`、`ro.kernel.qemu.avd_name`、`adb emu avd name`の順に読みます。どれも返さないエミュレータは失敗します。テストは偽の adb の出力だけを使います。対応する各 API レベルの実機のエミュレータでの読み取りはまだ確かめていないので、この点は未解決のまま残します。
   - `appium`のグリッドが受け持つターゲットと物理の iPhone は、実効的な条件があれば失敗します。検査はターゲットごとに、デバイスを操作する前に行います。Device Farm のプロバイダは、ターゲットかシナリオが条件を宣言したジョブを、何もアップロードする前に拒否します。
