@@ -899,7 +899,7 @@ def test_screenshot_reuse_is_disabled_under_an_alert_guard(tmp_path: Path) -> No
 
 def test_final_capture_does_not_duplicate_a_rule_fired_after_png(tmp_path: Path) -> None:
     """When a `capturePolicy` rule already fires `screenshot.after` post-step on the scenario's
-    last (and only) leaf step — e.g. a `result: error` safety net on a failing final step — the
+    last (and only) leaf step — e.g. a `result: failure` safety net on a failing final step — the
     always-on shutter must not shoot it a second time (review follow-up): both name the one file,
     so a duplicate would overwrite the pixel and leave two manifest entries for it."""
     driver = FakeDriver([el("a", "A", ["button"])])
@@ -909,7 +909,7 @@ def test_final_capture_does_not_duplicate_a_rule_fired_after_png(tmp_path: Path)
         _scenario(
             {
                 "name": "x",
-                "capturePolicy": [{"on": {"result": "error"}, "capture": ["screenshot.after"]}],
+                "capturePolicy": [{"on": {"result": "failure"}, "capture": ["screenshot.after"]}],
                 "steps": [{"tap": {"id": "missing"}}],
             }
         ),

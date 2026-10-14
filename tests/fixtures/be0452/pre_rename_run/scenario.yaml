@@ -1,0 +1,18 @@
+# The plan of a run stored before BE-0452 renamed the lifecycle phases: `before` / `after`, and the
+# outcome word `error` in a cleanup rule and a capturePolicy trigger. The report loader must still
+# read it, with the manifest beside it, whose `after_verdict` is the old `error`.
+- name: lifecycle
+  before:
+    - tap: { id: a }
+  steps:
+    - tap: { id: missing }
+  after:
+    - on: success
+      steps:
+        - tap: { id: a }
+    - on: error
+      steps:
+        - tap: { id: c }
+  capturePolicy:
+    - on: { result: error }
+      capture: [actionLog]

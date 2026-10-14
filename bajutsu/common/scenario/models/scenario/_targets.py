@@ -106,7 +106,7 @@ def _expand_target_groups(scenario: Scenario) -> None:
 
     A pure load-time authoring convenience: `bajutsu run`, the report, and the CLI never see a
     target group, only the flat per-step `target:` form BE-0428 already validates and runs. Walks
-    the same four step lists `_check_target_requirements` walks (`steps`, `before`, every `after`
+    the same four step lists `_check_target_requirements` walks (`steps`, `setup`, every `cleanup`
     rule's `steps`, every `interrupts` entry's `steps`), and the same `if`/`forEach`/`web`/`app`
     nesting.
 
@@ -114,8 +114,8 @@ def _expand_target_groups(scenario: Scenario) -> None:
         ValueError: A target group sits nested directly inside a `web:`/`app:` block's own steps.
     """
     scenario.steps = _expand_steps(scenario.steps, group_target=None, inside_web=False)
-    scenario.before = _expand_steps(scenario.before, group_target=None, inside_web=False)
-    for rule in scenario.after:
+    scenario.setup = _expand_steps(scenario.setup, group_target=None, inside_web=False)
+    for rule in scenario.cleanup:
         rule.steps = _expand_steps(rule.steps, group_target=None, inside_web=False)
     for entry in scenario.interrupts:
         entry.steps = _expand_steps(entry.steps, group_target=None, inside_web=False)
@@ -531,9 +531,9 @@ def _check_target_requirements(scenario: Scenario) -> None:  # noqa: C901
         lifecycle.note_top_level(step)
         if step.set_primary_target is not None:
             primary = step.set_primary_target.target
-    # `before` / `after` resolve to the declared primary: teardown runs wherever the run stopped.
-    walk_steps(scenario.before, mode="required")
-    for rule in scenario.after:
+    # `setup` / `cleanup` resolve to the declared primary: teardown runs wherever the run stopped.
+    walk_steps(scenario.setup, mode="required")
+    for rule in scenario.cleanup:
         walk_steps(rule.steps, mode="required")
     for entry in scenario.interrupts:
         _check_target(entry.target, known=known, context="interrupts entry", required=False)

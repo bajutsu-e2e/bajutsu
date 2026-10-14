@@ -94,15 +94,15 @@ summary::-webkit-details-marker{display:none}
    (dragging/clicking still work); only its own circle is invisible now, not just covered. */
 .vseek::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:0;height:0;opacity:0}
 .vseek::-moz-range-thumb{width:0;height:0;opacity:0;border:0}
-/* before/after lifecycle bands under the scrubber: the stretch of the recording each phase
+/* setup/cleanup lifecycle bands under the scrubber: the stretch of the recording each phase
    covers, so a reader can tell setup/teardown apart from the scenario's own steps at a glance.
    Drawn behind .vmarks (painted after it below) and inset the same 7px so both line up with the
    thumb's travel. The bands are decorative: `pointer-events:none` keeps them from stealing the
    slider's own drag, so a phase's exact range is read from its step rows, not from the band. */
 .vsegs{position:absolute;left:7px;right:7px;top:0;bottom:0;pointer-events:none}
 .vseg{position:absolute;top:50%;height:.34rem;transform:translateY(-50%);border-radius:2px;opacity:.55}
-.vseg-before{background:#0f766e}
-.vseg-after{background:#7c3aed}
+.vseg-setup{background:#0f766e}
+.vseg-cleanup{background:#7c3aed}
 /* Step ticks over the scrubber: one per executed step, at its recording offset, so the
    timeline shows where each step happened. Hovering a tick shows a step-number bubble;
    clicking it seeks there. The container passes pointer events through (so the slider
@@ -365,11 +365,11 @@ details.pre[open]>summary::before{transform:rotate(90deg)}
    then reason when the step has one (its label above, since it can run to more than one line).
    The result/action/view tracks are content-sized (`auto`, not `minmax(0,auto)`), so they never
    shrink below their cell's own min-content the way a fixed-width table column once did (which
-   is what let the `after`-table's `#` cell overlap the PASS/FAIL badge before this rewrite) — a
+   is what let the `cleanup`-table's `#` cell overlap the PASS/FAIL badge before this rewrite) — a
    row too wide for its container overflows into `.rich-scroll`'s own `overflow:auto` instead,
    which degrades to a horizontal scrollbar rather than reproducing that overlap. Two tracks do
    carry a fixed minimum that sits *below* their cell's own min-content. `id`'s `minmax(1.4rem,auto)`
-   is narrower than an `after` row's `always·—`, and only the `overflow-wrap:anywhere` on its own
+   is narrower than a `cleanup` row's `always·—`, and only the `overflow-wrap:anywhere` on its own
    rule below keeps that from overlapping the badge beside it — at the cost of wrapping the word
    rather than scrolling, so don't drop it as redundant.
    `detail`'s is `minmax(3rem,1fr)`: it is meant to flex, and the
@@ -458,7 +458,7 @@ table.sttbl>tbody>tr:not(.nxdetail):not(.alertrow):not(.actrow):not(.genrow):not
 .sttbl>tbody>tr:not(.nxdetail):not(.alertrow):not(.actrow):not(.genrow):not(.grouphead)>td:nth-child(7)::before{
   content:"reason";display:block;margin-bottom:.12rem}
 /* Jump targets for a step's own start/end instant (its `before`/`after` moment, distinct from
-   the scenario-level `before`/`after` phase tables this sits beside) — on one line. */
+   the scenario-level `setup`/`cleanup` phase tables this sits beside) — on one line. */
 /* A dotted underline at rest signals "clickable, not just data" without reading as an ordinary
    link; hover swaps it for a solid blue one, the same affordance the "tree" links use. */
 .stepjump{display:inline;border:0;border-bottom:1px dotted var(--mut);padding:0;margin:0;

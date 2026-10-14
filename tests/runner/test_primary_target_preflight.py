@@ -22,13 +22,13 @@ def _scenario() -> Scenario:
             "name": "s",
             "targets": ["app", "web"],
             "primaryTarget": "app",
-            "before": [{"tap": {"id": "before.app"}}],
+            "setup": [{"tap": {"id": "before.app"}}],
             "steps": [
                 {"tap": {"id": "app.1"}},
                 {"target": "web", "tap": {"id": "web.1"}},
                 {"target": "app", "tap": {"id": "app.2"}},
             ],
-            "after": [{"on": "always", "steps": [{"tap": {"id": "after.app"}}]}],
+            "cleanup": [{"on": "always", "steps": [{"tap": {"id": "after.app"}}]}],
             "expect": [
                 {"exists": {"id": "on.app"}},
                 {"target": "web", "exists": {"id": "on.web"}},
@@ -42,8 +42,8 @@ def test_a_primary_resolved_step_is_narrowed_into_the_primary_alone() -> None:
     app, web = _steps_for_target(s, "app"), _steps_for_target(s, "web")
     assert _tap_ids(app) == ["app.1", "app.2"]
     assert _tap_ids(web) == ["web.1"]
-    assert len(app.before) == 1 and web.before == []
-    assert len(app.after[0].steps) == 1 and web.after[0].steps == []
+    assert len(app.setup) == 1 and web.setup == []
+    assert len(app.cleanup[0].steps) == 1 and web.cleanup[0].steps == []
 
 
 def test_an_omitted_expect_entry_is_narrowed_into_the_primary_alone() -> None:

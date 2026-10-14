@@ -1,7 +1,7 @@
-"""Codegen for the `before` / `after` lifecycle phases (BE-0392).
+"""Codegen for the `setup` / `cleanup` lifecycle phases (BE-0392).
 
-`before` needs no per-target construct — emitting its steps inline at the top of the test body is
-exactly its runtime meaning. `after` does, and the three targets reach it differently: Playwright and
+`setup` needs no per-target construct — emitting its steps inline at the top of the test body is
+exactly its runtime meaning. `cleanup` does, and the three targets reach it differently: Playwright and
 UI Automator wrap the body (their assertions throw, so a `catch` sees the verdict), XCUITest
 registers one `addTeardownBlock` (`XCTAssert` records rather than throws, so a `catch` never would).
 """
@@ -18,16 +18,16 @@ from bajutsu.common.scenario import Scenario, load_scenarios
 
 _LIFECYCLE = """
 - name: lifecycle
-  before:
+  setup:
     - tap: { id: seed }
   steps:
     - tap: { id: login }
-  after:
+  cleanup:
     - on: always
       steps: [{ tap: { id: logout } }]
     - on: success
       steps: [{ tap: { id: cleanup } }]
-    - on: error
+    - on: failure
       steps: [{ tap: { id: diagnostics } }]
 """
 
@@ -49,11 +49,11 @@ def _uiautomator(text: str = _LIFECYCLE) -> str:
 
 
 @pytest.mark.parametrize("render", [_playwright, _xcuitest, _uiautomator])
-def test_before_steps_are_emitted_inline_under_their_own_divider(render: object) -> None:
+def test_setup_steps_are_emitted_inline_under_their_own_divider(render: object) -> None:
     out = render()  # type: ignore[operator]
-    assert "// before (bajutsu lifecycle phase)" in out
+    assert "// setup (bajutsu lifecycle phase)" in out
     # Inline at the top of the body is the phase's exact meaning: first, and a failure aborts what
-    # follows — no framework construct needed, unlike `after`.
+    # follows — no framework construct needed, unlike `cleanup`.
     assert out.index("seed") < out.index("login")
 
 
@@ -63,7 +63,7 @@ def test_playwright_wraps_the_body_and_branches_on_the_caught_failure() -> None:
     assert "} catch (bajutsuError) {" in out
     assert "} finally {" in out
     assert "if (!bajutsuFailed) {" in out  # the `success` rule
-    assert "if (bajutsuFailed) {" in out  # the `error` rule
+    assert "if (bajutsuFailed) {" in out  # the `failure` rule
     # The rethrow keeps the test failing: teardown must not swallow the verdict it branched on.
     assert "throw bajutsuError;" in out
 
@@ -91,7 +91,7 @@ def test_an_unconditional_teardown_needs_no_outcome_flag(render: object) -> None
         """
 - name: lifecycle
   steps: [{ tap: { id: login } }]
-  after:
+  cleanup:
     - on: always
       steps: [{ tap: { id: logout } }]
 """
@@ -105,7 +105,7 @@ def test_an_unconditional_teardown_needs_no_outcome_flag(render: object) -> None
 @pytest.mark.parametrize("render", [_playwright, _xcuitest, _uiautomator])
 def test_a_scenario_without_the_phases_is_unchanged(render: object) -> None:
     out = render("- name: plain\n  steps: [{ tap: { id: login } }]\n")  # type: ignore[operator]
-    assert "before (bajutsu lifecycle phase)" not in out
+    assert "setup (bajutsu lifecycle phase)" not in out
     assert "finally" not in out
     assert "addTeardownBlock" not in out
 
@@ -119,7 +119,7 @@ def test_a_runtime_only_construct_in_a_hook_is_rejected_loudly(render: object) -
             """
 - name: lifecycle
   steps: [{ tap: { id: login } }]
-  after:
+  cleanup:
     - on: always
       steps:
         - if: { condition: { exists: { id: x } }, then: [{ tap: { id: y } }] }

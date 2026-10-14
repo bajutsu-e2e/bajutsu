@@ -61,10 +61,10 @@ scenarios:
 | `installs` | list[str] | `[]` | プライマリと並んで開始時にインストールして起動するデバイスグループのメンバー。2つ以上のメンバーを持つグループのそれ以外のメンバーは、後から `installApp` ステップでインストールします（[デバイスグループ](#デバイスグループ1台のデバイスで複数のアプリを動かすbe-0447)） |
 | `data` / `dataFile` | list / str | なし | データ駆動の行。インライン `data` か `dataFile`（CSV パス）で指定する。1 行 1 run に展開し `${row.col}` を置換する。両者は排他（[再利用とデータ駆動とタグ](#再利用とデータ駆動とタグ)） |
 | `preconditions` | object | `{}` | テスト前の環境準備（下記） |
-| `before` | list | `[]` | `steps` の前に**独立したフェーズ**として走るセットアップのステップ列。ここで失敗するとシナリオを打ち切る（[下記](#before--afterセットアップとティアダウンのフェーズ)） |
+| `setup` | list | `[]` | `steps` の前に**独立したフェーズ**として走るセットアップのステップ列。ここで失敗するとシナリオを打ち切る（[下記](#setup--cleanupセットアップとティアダウンのフェーズ)） |
 | `steps` | list | 必須 | アクションの並び（下記） |
 | `expect` | list | `[]` | 全ステップ成功後の最終アサーション（[selectors](selectors.md#アサーション評価)） |
-| `after` | list | `[]` | ティアダウンのルール。各エントリは `{ on: always \| success \| error, steps }` で、判定が出たあと `steps` を抜けるすべての経路で走る（[下記](#before--afterセットアップとティアダウンのフェーズ)） |
+| `cleanup` | list | `[]` | ティアダウンのルール。各エントリは `{ on: always \| success \| failure, steps }` で、判定が出たあと `steps` を抜けるすべての経路で走る（[下記](#setup--cleanupセットアップとティアダウンのフェーズ)） |
 | `capturePolicy` | list | `[]` | 繰り返し発火する証跡ルール（[evidence](evidence.md#a-capturepolicyルール方式)） |
 | `network` | object | なし | `{ filter: { domains: [...] } }`。`filter.domains` は、レポートの Steps タイムラインに差し込む通信を URL ホストで絞る（親ドメインはサブドメインに一致）。未指定なら全件を表示する。Network タブは常に全件を表示する（[reporting](reporting.md#reporthtml)） |
 | `mocks` | list | `[]` | 決定的なネットワークスタブ。一致する送信リクエストには、ネットワークへ行かず定型レスポンスを返す（[ネットワークモック](#ネットワークモック決定的スタブ)） |
@@ -102,7 +102,7 @@ scenarios:
 | `launchEnv` | dict | `{}` | 起動 env（`SIMCTL_CHILD_*` で注入する。config の `app.launch.env` にマージする） | ✅ |
 | `deeplink` | str | なし | 起動後に `simctl openurl` で開く | ✅ |
 | `locale` | str | なし | 起動時に locale/言語を強制する（`-AppleLocale`/`-AppleLanguages`）。ターゲットの `runsOn.locale` を上書きする | ✅ |
-| `run.inheritSetup` | bool | `true` | `false` にすると、このシナリオが宣言する全ターゲットの `hooks.setup` を省く。各ターゲットの `hooks.cleanup` は走る（[後述](#before--afterセットアップとティアダウンのフェーズ)） | ✅ |
+| `run.inheritSetup` | bool | `true` | `false` にすると、このシナリオが宣言する全ターゲットの `hooks.setup` を省く。各ターゲットの `hooks.cleanup` は走る（[後述](#setup--cleanupセットアップとティアダウンのフェーズ)） | ✅ |
 
 > `launchEnv` の解決順は **config の `app.launch.env` < preconditions の `launchEnv`** です（テストに近い方が優先）。`launch_driver` は `{**eff.launch_env, **pre.launch_env}` でマージします。
 
@@ -451,46 +451,48 @@ config の読み込みは、そうしたエントリと、その `steps` にあ�
 
 「この条件をテスト全体を通して随時判定する」に対応するネイティブな XCUITest / Espresso / Playwright の構文はありません。そのため `codegen` はコードを生成する代わりに、フィールドと設定された各条件を名指ししたラベル付きの `// TODO` を出力します。`bajutsu run` が忠実に実行する経路です。
 
-## `before` / `after`（セットアップとティアダウンのフェーズ）
+## `setup` / `cleanup`（セットアップとティアダウンのフェーズ）
 
 `steps` の先頭に書いたセットアップは、シナリオ自身のステップと見分けが付きません。レポートは 1 つの連番の並びとして表示し、セットアップの失敗も、セットアップ由来であるという印のない、ふつうのステップ失敗として現れます。ティアダウンにいたっては仕組みそのものがありません。後片付けを置ける場所は `steps` の末尾だけです。しかしステップループは最初の失敗で打ち切られる（[run ループ](run-loop.md)）ため、末尾の後片付けのステップが走るのは、それより前のステップがすべて成功した run に限られます。つまり、後片付けをもっとも必要としなかった run でしか走らないのです。テストユーザーを作ってから 3 ステップ先の壊れたボタンで失敗したシナリオは、そのユーザーを残したままになります。
 
-`before` と `after` は、この 2 つの穴を塞ぎます。`before` は最初に走る順序付きのステップ列で、レポートでは独立したセクションになり、ここで失敗すると `steps` と `expect` をまったく実行せずにシナリオを打ち切ります。`after` はルールのリストで、各ルールは結末（`always`、`success`、`error`）と、その結末のときに走らせる `steps` を組にします。ランナーはシナリオの判定が出てからルールを評価し、失敗した経路も含め、`steps` を抜けるすべての経路でこのフェーズに到達します。どちらのフィールドも通常のステップ文法とアサーション DSL をそのまま使うので、フックのステップはシナリオ自身のステップと同じだけマシンチェック可能です。また、どちらも run の `${vars.*}` バインディングを共有します（[実行時変数](#実行時変数vars)）。
+`setup` と `cleanup` は、この 2 つの穴を塞ぎます。`setup` は最初に走る順序付きのステップ列で、レポートでは独立したセクションになり、ここで失敗すると `steps` と `expect` をまったく実行せずにシナリオを打ち切ります。`cleanup` はルールのリストで、各ルールは結末（`always`、`success`、`failure`）と、その結末のときに走らせる `steps` を組にします。ランナーはシナリオの判定が出てからルールを評価し、失敗した経路も含め、`steps` を抜けるすべての経路でこのフェーズに到達します。どちらのフィールドも通常のステップ文法とアサーション DSL をそのまま使うので、フックのステップはシナリオ自身のステップと同じだけマシンチェック可能です。また、どちらも run の `${vars.*}` バインディングを共有します（[実行時変数](#実行時変数vars)）。
 
 ```yaml
 - name: sign up, then release the account
-  before:
+  setup:
     # シードのエンドポイントは、作成したユーザーの id だけをレスポンスボディで返す
     - http: { method: POST, url: "https://api.test/users", saveBody: userId }
   steps:
     - tap:  { id: login.button }
     - type: { text: "${vars.userId}", into: { id: login.username } }
-  after:
+  cleanup:
     - on: always
       steps:
         - tap: { id: session.logout }
     - on: success
       steps:
         - http: { method: DELETE, url: "https://api.test/users/${vars.userId}" }
-    - on: error
+    - on: failure
       steps:
         - http: { method: POST, url: "https://api.test/diagnostics", body: '{"failed":true}' }
 ```
 
-（[`demos/showcase/scenarios/before_after.yaml`](../../demos/showcase/scenarios/before_after.yaml) 実物）
+（[`demos/showcase/scenarios/setup_cleanup.yaml`](../../demos/showcase/scenarios/setup_cleanup.yaml) 実物）
 
-同じ `on` の値を持つルールは複数書けます。同じ結末を共有するルールは宣言順に走ります。1 つの `capturePolicy` トリガーを 2 つのルールが共有できるのと同じ扱いです。あるルールの `steps` が失敗しても、フェーズは止まりません。残りのルールもそのまま走ります。後片付けの残りを飛ばすことこそ、ティアダウンが避けようとしている結末だからです。その失敗が run の判定に与える影響は、run がそれまでどうなっていたかで変わります。成功していた run では、失敗したルールがそのまま run の failure（`after: step 0 (tap): …`）になります。すでに失敗していた run なら、失敗したルールは元の failure を置き換えず、その後ろへ追記されます。読み手が最初に目にする理由を、後片付けの失敗という症状ではなく元の原因のままとするためです。
+2 つのフィールドは、[BE-0452](../../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md) までは `before` と `after` という名前で、結末の語 `failure` も `error` でした。BE-0452 は、ターゲットのフックとシナリオのフェーズを 1 組の語で呼ぶように揃えました。ローダーは古い名前を読みません。古い名前を書いたシナリオは読み込みに失敗し、エラーが新しい名前を示します。
 
-キャンセルされた run（`SIGTERM`、`serve` Web UI のキャンセルボタン）もこのフェーズに到達し、`after` は `error` の結末として振り分けられます。後片付けのルールには、キャンセルの猶予時間のうち一定の割合が与えられます。その持ち時間を使い切ると残りのルールは打ち切られます。レポートを書き出すシャットダウンの後始末を、猶予時間のうちに収めるためです。
+同じ `on` の値を持つルールは複数書けます。同じ結末を共有するルールは宣言順に走ります。1 つの `capturePolicy` トリガーを 2 つのルールが共有できるのと同じ扱いです。あるルールの `steps` が失敗しても、フェーズは止まりません。残りのルールもそのまま走ります。後片付けの残りを飛ばすことこそ、ティアダウンが避けようとしている結末だからです。その失敗が run の判定に与える影響は、run がそれまでどうなっていたかで変わります。成功していた run では、失敗したルールがそのまま run の failure（`cleanup: step 0 (tap): …`）になります。すでに失敗していた run なら、失敗したルールは元の failure を置き換えず、その後ろへ追記されます。読み手が最初に目にする理由を、後片付けの失敗という症状ではなく元の原因のままとするためです。
+
+キャンセルされた run（`SIGTERM`、`serve` Web UI のキャンセルボタン）もこのフェーズに到達し、`cleanup` は `failure` の結末として振り分けられます。後片付けのルールには、キャンセルの猶予時間のうち一定の割合が与えられます。その持ち時間を使い切ると残りのルールは打ち切られます。レポートを書き出すシャットダウンの後始末を、猶予時間のうちに収めるためです。
 
 ### ターゲットのフック：`hooks.setup` と `hooks.cleanup`
 
-`targets.<name>.hooks.setup` は `before` と、`targets.<name>.hooks.cleanup` は `after` と同じ形を取り、アプリ全体の既定になります。シナリオ自身のフィールドとの重ね方は、2 つで逆向きです。
+`targets.<name>.hooks.setup` はシナリオの `setup` と、`targets.<name>.hooks.cleanup` はシナリオの `cleanup` と同じ形を取り、アプリ全体の既定になります。シナリオ自身のフィールドとの重ね方は、2 つで逆向きです。
 
 | フィールド | 重ね方 | 理由 |
 |---|---|---|
-| `before` | config（`hooks.setup`）が先、シナリオが後 | アプリ全体のセットアップが用意した状態の上に、このシナリオ自身のセットアップが積み上がる。`interrupts` が従うのと同じ、config が先でシナリオが後という重ね方 |
-| `after` | シナリオが先、config（`hooks.cleanup`）が後 | このシナリオが作ったものを解放してから、アプリ全体のティアダウンがその外側を閉じる。フィクスチャ方式のテストフレームワークのセットアップとティアダウンの対が与える、後から確保したものを先に解放する順序 |
+| `setup` | config（`hooks.setup`）が先、シナリオが後 | アプリ全体のセットアップが用意した状態の上に、このシナリオ自身のセットアップが積み上がる。`interrupts` が従うのと同じ、config が先でシナリオが後という重ね方 |
+| `cleanup` | シナリオが先、config（`hooks.cleanup`）が後 | このシナリオが作ったものを解放してから、アプリ全体のティアダウンがその外側を閉じる。フィクスチャ方式のテストフレームワークのセットアップとティアダウンの対が与える、後から確保したものを先に解放する順序 |
 
 フックのステップは `use:` で[コンポーネント](#再利用とデータ駆動とタグ)を呼び出せます。ターゲットの全シナリオで共有するログイン手順は、この形で 1 度だけ記述します。`setup` プレリュードファイルは、ターゲットレベルと `preconditions.setup` の両方で廃止しました（[BE-0452](../../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)）。ターゲットのセットアップを走らせたくないシナリオは、`preconditions.run.inheritSetup: false` を指定します。その場合も `hooks.cleanup` は走ります。後片付けは、シナリオを抜けるすべての経路で走るからです。
 
@@ -500,15 +502,15 @@ config の読み込みは、そうしたエントリと、その `steps` にあ�
 
 | フィールド | 走る位置 | レポートでの扱い | 対象 |
 |---|---|---|---|
-| `before` / `after` | 独立したフェーズとして、`steps` の前と判定の後 | 独立した Before / After のブロック | 検証対象のシナリオと読み手が区別できる必要のあるセットアップとティアダウン |
+| `setup` / `cleanup` | 独立したフェーズとして、`steps` の前と判定の後 | 独立した setup / cleanup のブロック | 検証対象のシナリオと読み手が区別できる必要のあるセットアップとティアダウン |
 | `use`（コンポーネント） | 呼び出したステップの位置で展開 | 連番のステップの一部 | 複数のシナリオで共有する再利用可能な手順で、区別が要らない場合 |
 | `capturePolicy` | ステップループ全体を通してステップごとに | ステップに紐づく証跡 | ステップが失敗したときに追加の証跡を取ること。ステップを走らせることではない |
 
-`capturePolicy` の `on: { result: error }` トリガーと `after` ルールの `on: error` は、同じ考え方に同じ語を当てたもので、粒度だけが違います。`capturePolicy` のトリガーは、run のどこで起きたかを問わず 1 つのステップの失敗ごとに発火します。`after` のルールはシナリオ全体の判定に対して一度だけ発火します。
+`capturePolicy` の `on: { result: failure }` トリガーと `cleanup` ルールの `on: failure` は、同じ考え方に同じ語を当てたもので、粒度だけが違います。`capturePolicy` のトリガーは、run のどこで起きたかを問わず 1 つのステップの失敗ごとに発火します。`cleanup` のルールはシナリオ全体の判定に対して一度だけ発火します。
 
 ### `codegen` が出力するもの
 
-`before` にはフレームワークの構文が要りません。`codegen` はそのステップを、生成したテスト本体の先頭に `// before` の区切りコメントとともにそのまま展開します。最初に走り、失敗すれば後続を打ち切るという、フェーズの意味そのままだからです。`after` には構文が要り、ターゲットごとに手段が違います。Playwright と UI Automator では、テスト本体を `try` / `catch` / `finally` で包みます。どちらのターゲットもアサーションが例外を投げるので、`catch` は判定の元になったはずの失敗をそのまま捕まえられるからです。XCUITest では代わりに `addTeardownBlock` を 1 つだけ登録します。`XCTAssert` は例外を投げずに失敗を記録するだけなので、結末は `testRun?.hasSucceeded` から読みます（[codegen](codegen.md)）。
+`setup` にはフレームワークの構文が要りません。`codegen` はそのステップを、生成したテスト本体の先頭に `// setup` の区切りコメントとともにそのまま展開します。最初に走り、失敗すれば後続を打ち切るという、フェーズの意味そのままだからです。`cleanup` には構文が要り、ターゲットごとに手段が違います。Playwright と UI Automator では、テスト本体を `try` / `catch` / `finally` で包みます。どちらのターゲットもアサーションが例外を投げるので、`catch` は判定の元になったはずの失敗をそのまま捕まえられるからです。XCUITest では代わりに `addTeardownBlock` を 1 つだけ登録します。`XCTAssert` は例外を投げずに失敗を記録するだけなので、結末は `testRun?.hasSucceeded` から読みます（[codegen](codegen.md)）。
 
 ## セレクタ（要素の指定）
 
@@ -1251,7 +1253,7 @@ targets:
 `expect` エントリも同じです。
 
 このステップが変えるのはルーティングだけです。デバイスの確保、証跡のディレクトリ、クラッシュからの
-復旧は、宣言したプライマリのままです。`before` と `after` のフェーズでも、省略した `target` は宣言した
+復旧は、宣言したプライマリのままです。`setup` と `cleanup` のフェーズでも、省略した `target` は宣言した
 プライマリに解決します。後片付けは run がどこで止まっても走る必要があるためです。
 
 `setPrimaryTarget` を書けるのは、シナリオのトップレベルの `steps` だけです。ローダーは、次の構文の
@@ -1260,7 +1262,7 @@ targets:
 - `if` や `forEach`
 - ターゲットグループ、`web:`、`app:`
 - `interrupts` エントリ
-- `before` や `after`
+- `setup` や `cleanup`
 
 この配置の制限があるので、ローダーはステップを順にたどって現在のプライマリを追えます。コンポーネントの
 中の `setPrimaryTarget` は、そのコンポーネントを呼ぶ `use:` や `group:` がトップレベルにあれば有効です。

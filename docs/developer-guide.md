@@ -291,10 +291,10 @@ classDiagram
         <<pydantic, authoring>>
         +str name
         +Preconditions preconditions
-        +list~Step~ before
+        +list~Step~ setup
         +list~Step~ steps
         +list~Assertion~ expect
-        +list~AfterRule~ after
+        +list~CleanupRule~ cleanup
         +list~CaptureRule~ capture_policy
     }
     class Step {
@@ -494,7 +494,7 @@ raising.
 | Component | `use` step, plus a separate component file | Expands a named, parameterized step list at compile time, resolved before the run ever starts (`expand.py`, section 7.1) — the step loop never sees a `use` step. |
 | WebView scope | `web` step (`within`, `steps`) | Scopes a nested step list to a WebView reached through the `Selector` in `within`. |
 | Interrupt handler | `interrupts:` (scenario-level) | Clears an interstitial screen — a permission dialog, an app-update prompt — that can appear at an unpredictable point mid-run, sharing the enclosing scenario's `vars.*`. |
-| Setup / teardown phase | `before:` / `after:` (scenario-level) | Steps run ahead of `steps` and after the verdict exists, reported apart from the main step list. |
+| Setup / teardown phase | `setup:` / `cleanup:` (scenario-level) | Steps run ahead of `steps` and after the verdict exists, reported apart from the main step list. |
 | Data-driven rows | `data:` / `dataFile:` | Instantiates one scenario per row of an inline list or a CSV file, substituting `${row.*}`. |
 
 ### 4.6 Interpolation: `${namespace.key}`
@@ -514,7 +514,7 @@ flat `bindings` map the caller supplies.
 A scenario's `capturePolicy` (`common/scenario/models/evidence.py`) names rules the step loop fires
 repeatedly, rather than a one-shot instruction, so a second run collects the same evidence with no
 AI involved. Each rule's `on` trigger is exactly one of `action` (an id-matched step just ran),
-`event: screenChanged`, or `result: error`; its `capture` list names the artifact kinds to collect
+`event: screenChanged`, or `result: failure`; its `capture` list names the artifact kinds to collect
 when the trigger fires. [Evidence](evidence.md) covers the full mechanism, including the baseline
 `capture` guarantee every step gets regardless of `capturePolicy`.
 
@@ -663,7 +663,7 @@ the authoring schema in `models/` and the pipeline that turns text into runnable
 | File | Classes and functions | Job |
 |---|---|---|
 | `models/scenario.py` | `Scenario`, `Component`, `ScenarioFile`, `Preconditions`, `SystemAlertHandling` | The top-level document and the per-scenario setup. |
-| `models/steps.py` | `Step`, `If`, `ForEach`, `Use`, `Web`, `Interrupt`, `AfterRule`, `Extract` | One step, plus the control-flow and lifecycle wrappers. |
+| `models/steps.py` | `Step`, `If`, `ForEach`, `Use`, `Web`, `Interrupt`, `CleanupRule`, `Extract` | One step, plus the control-flow and lifecycle wrappers. |
 | `models/assertions.py` | `Assertion`, `Exists`, `TextMatch`, `CountMatch`, `RequestMatch`, `VisualMatch`, `GoldenMatch` | The 14 assertion kinds. |
 | `models/actions.py` | `TypeText`, `Swipe`, `Scroll`, `HttpRequest`, `Generate`, `Email`, `Totp`, and more | One model per action's arguments. |
 | `models/selector.py` | `Selector` | The authoring selector, converted to the runtime one by `as_selector()`. |
@@ -858,7 +858,7 @@ holds the step loop. `loop.py` is the largest file in the core, and its structur
 
 | Class or function | Role |
 |---|---|
-| `run_scenario()` | The entry point. Starts the requested evidence intervals, runs the `before`, main, and `after` phases, evaluates the trailing `expect`, and assembles the `RunResult`. |
+| `run_scenario()` | The entry point. Starts the requested evidence intervals, runs the `setup`, main, and `cleanup` phases, evaluates the trailing `expect`, and assembles the `RunResult`. |
 | `StepLoopState` | The mutable state one phase carries: the accumulated variable bindings, the previous step's element tree, and the read counters. |
 | `_LoopConfig` | The frozen half: the driver, sink, clock, alert guard, and scenario. |
 | `_StepRunner` | The dispatcher. `exec_steps` walks the list; `_handle_if`, `_handle_for_each`, `_handle_web`, and `_handle_action` handle each step shape. |

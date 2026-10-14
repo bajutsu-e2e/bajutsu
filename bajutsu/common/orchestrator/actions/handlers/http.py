@@ -164,7 +164,7 @@ def _extract_body_fields(http: HttpRequest, body: str, bindings: dict[str, str] 
 
     All-or-nothing: every entry is parsed and resolved into a local list first, and `bindings` is
     written only once every entry has succeeded — never one entry's var left set while a later
-    entry in the same list fails, which `after`/`interrupts` steps could otherwise read as if the
+    entry in the same list fails, which `cleanup`/`interrupts` steps could otherwise read as if the
     whole step had populated cleanly.
     """
     if not http.extract_body or bindings is None:

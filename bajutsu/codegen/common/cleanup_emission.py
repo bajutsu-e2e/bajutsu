@@ -1,4 +1,4 @@
-"""How one codegen target renders a scenario's `after` rules (BE-0392)."""
+"""How one codegen target renders a scenario's `cleanup` rules (BE-0392)."""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
-class AfterEmission:
-    """How one target renders a scenario's `after` rules (BE-0392).
+class CleanupEmission:
+    """How one target renders a scenario's `cleanup` rules (BE-0392).
 
     Two shapes cover the three targets. A target whose teardown is *registered* (XCTest's
     `addTeardownBlock`) fills `prologue` alone; one that must *wrap* the body in a

@@ -108,8 +108,8 @@ from bajutsu.common.scenario.models.scenario import (
 from bajutsu.common.scenario.models.selector import Selector
 from bajutsu.common.scenario.models.steps import _STEP_ACTIONS as STEP_ACTIONS
 from bajutsu.common.scenario.models.steps import (
-    AfterRule,
     App,
+    CleanupRule,
     Extract,
     ForEach,
     Group,
@@ -123,11 +123,11 @@ from bajutsu.common.scenario.models.steps import (
 __all__ = [
     "ASSERTION_KINDS",
     "STEP_ACTIONS",
-    "AfterRule",
     "App",
     "Assertion",
     "Background",
     "CaptureRule",
+    "CleanupRule",
     "ClearClipboard",
     "ClearKeychain",
     "ClearStatusBar",

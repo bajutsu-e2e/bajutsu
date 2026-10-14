@@ -40,14 +40,27 @@ def test_capture_policy_and_redact() -> None:
         "capturePolicy": [
             {"on": {"action": "tap", "idMatches": "*.submit"}, "capture": ["network"]},
             {"on": {"event": "screenChanged"}, "capture": ["elements"]},
-            {"on": {"result": "error"}, "capture": ["video"]},
+            {"on": {"result": "failure"}, "capture": ["video"]},
         ],
         "redact": {"headers": ["Authorization"], "fields": ["token"]},
     }
     s = Scenario.model_validate(data)
     assert len(s.capture_policy) == 3
+    assert s.capture_policy[2].on.result == "failure"
     assert s.redact is not None
     assert s.redact.headers == ["Authorization"]
+
+
+def test_result_error_names_its_replacement() -> None:
+    # BE-0452 renamed the failed outcome `error` to `failure` and reads no old spelling.
+    with pytest.raises(ValidationError, match="'error' was renamed; write 'failure' instead"):
+        Scenario.model_validate(
+            {
+                "name": "x",
+                "steps": [{"tap": {"id": "a"}}],
+                "capturePolicy": [{"on": {"result": "error"}, "capture": ["video"]}],
+            }
+        )
 
 
 def test_trigger_idmatches_requires_action() -> None:

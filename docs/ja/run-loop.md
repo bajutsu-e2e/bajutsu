@@ -61,15 +61,15 @@ def run_scenario(driver, scenario, clock=None, sink=None, alert_guard=None, ...)
 
 ### ステップループを挟む 2 つのライフサイクルフェーズ
 
-シナリオの `before` / `after`（[scenarios](scenarios.md#before--afterセットアップとティアダウンのフェーズ)）は、ステップループの前後にもう 2 つのフェーズを足します。どちらも同じステップランナーが動かすので、フックのステップは他のステップとまったく同じことができ、run の `vars.*` バインディングを共有します。
+シナリオの `setup` / `cleanup`（[scenarios](scenarios.md#setup--cleanupセットアップとティアダウンのフェーズ)）は、ステップループの前後にもう 2 つのフェーズを足します。どちらも同じステップランナーが動かすので、フックのステップは他のステップとまったく同じことができ、run の `vars.*` バインディングを共有します。
 
-1. **`before` が最初に走ります。** ここで失敗すると `failure = "before: …"` を立て、`steps` と `expect` をまったく実行しません。`before` はシナリオ内部のステップではなく、シナリオの前提条件だからです。
+1. **`setup` が最初に走ります。** ここで失敗すると `failure = "setup: …"` を立て、`steps` と `expect` をまったく実行しません。`setup` はシナリオ内部のステップではなく、シナリオの前提条件だからです。
 2. **`steps` と `expect` はそのまま走り**、判定はこれまでどおり計算されます。
-3. **判定が出てから `after` が走ります。** 成功した経路も、失敗した経路も、キャンセルされた経路も含め、`steps` を抜けるすべての経路で到達します。`on` が `always` かその判定に一致するルールが、宣言順に走ります。ルール自身の失敗は、run が成功していたならその run の failure になり、そうでなければ既存の failure の後ろに追記されます。
+3. **判定が出てから `cleanup` が走ります。** 成功した経路も、失敗した経路も、キャンセルされた経路も含め、`steps` を抜けるすべての経路で到達します。`on` が `always` かその判定に一致するルールが、宣言順に走ります。ルール自身の失敗は、run が成功していたならその run の failure になり、そうでなければ既存の failure の後ろに追記されます。
 
-キャンセルされた run では、キャンセル用のソースで `after` フェーズを縛れません。ソースはラッチされた `threading.Event.is_set` です。フェーズ内での最初の読み取りがふたたび `RunCancelled` を投げ、後片付けのステップが 1 つも走らなくなります。代わりにフェーズは専用の期限のもとで走ります。期限は `grace_seconds()` の 1 割で、これを過ぎると残りのルールを打ち切ります。後片付けに限られた実行機会を与えつつ、シャットダウンの後始末が `serve` の無条件 kill までの猶予時間を超えないようにするためです。
+キャンセルされた run では、キャンセル用のソースで `cleanup` フェーズを縛れません。ソースはラッチされた `threading.Event.is_set` です。フェーズ内での最初の読み取りがふたたび `RunCancelled` を投げ、後片付けのステップが 1 つも走らなくなります。代わりにフェーズは専用の期限のもとで走ります。期限は `grace_seconds()` の 1 割で、これを過ぎると残りのルールを打ち切ります。後片付けに限られた実行機会を与えつつ、シャットダウンの後始末が `serve` の無条件 kill までの猶予時間を超えないようにするためです。
 
-各フェーズはステップを 0 から数え直し、それぞれ専用の `RunResult` のリストに記録します。そのためレポートは、シナリオの連番のステップとは別のブロックとして Before と After を表示します。
+各フェーズはステップを 0 から数え直し、それぞれ専用の `RunResult` のリストに記録します。そのためレポートは、シナリオの連番のステップとは別のブロックとして setup と cleanup を表示します。`RunResult.after_verdict` には、cleanup フェーズがルールを振り分けた判定を記録します。BE-0452 より前に保存した run はここに `error` を持ちますが、レポートのローダーはこれを `failure` として読みます。そのため、以前の run も cleanup のブロックを表示できます。
 
 ### 1 ステップの流れ
 
@@ -159,9 +159,9 @@ class RunResult:
     steps: list[StepOutcome]
     expect_results: list[AssertionResult]  # 最終 expect の評価
     failure: str | None          # 例: "step 3 (tap): no match: {...}"
-    before_outcomes: list[StepOutcome]  # before フェーズ自身のステップ
-    after_outcomes: list[StepOutcome]   # after フェーズ自身のステップ
-    after_verdict: str           # "success" / "error" — どの after ルールが走ったか。なければ ""
+    before_outcomes: list[StepOutcome]  # setup フェーズ自身のステップ
+    after_outcomes: list[StepOutcome]   # cleanup フェーズ自身のステップ
+    after_verdict: str           # "success" / "failure" — どの cleanup ルールが走ったか。なければ ""
     target_devices: dict[str, TargetDeviceInfo]  # 宣言済みターゲットごとに 1 行（複数ターゲットのみ）
 ```
 

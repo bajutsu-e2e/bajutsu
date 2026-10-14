@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from bajutsu.common.scenario import AfterRule, Interrupt, Step, SystemAlertHandlingField
+from bajutsu.common.scenario import CleanupRule, Interrupt, Step, SystemAlertHandlingField
 
 
 @dataclass(frozen=True)
@@ -24,8 +24,8 @@ class RunDefaults:
     # App-wide interstitial-screen handlers (BE-0314), prepended to a scenario's own `interrupts`.
     # Empty when the target config declares none.
     interrupts: list[Interrupt] = field(default_factory=list)
-    # App-wide setup/teardown phases (BE-0392). `before` is prepended to a scenario's own, `after`
-    # appended after it — the merge orders `pipeline.py` applies at the `run_scenario` call site.
-    # Empty when the target config declares neither.
-    before: list[Step] = field(default_factory=list)
-    after: list[AfterRule] = field(default_factory=list)
+    # App-wide setup/cleanup phases (BE-0392), from `hooks.setup` / `hooks.cleanup`. `setup` is
+    # prepended to a scenario's own, `cleanup` appended after it — the merge orders `pipeline.py`
+    # applies at the `run_scenario` call site. Empty when the target config declares neither.
+    setup: list[Step] = field(default_factory=list)
+    cleanup: list[CleanupRule] = field(default_factory=list)

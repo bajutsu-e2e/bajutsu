@@ -1044,7 +1044,7 @@ def test_a_pool_too_small_for_the_scenario_still_releases_every_device(tmp_path:
 
 
 def test_run_rejects_a_bad_target_config_hook_end_to_end(tmp_path: Path) -> None:
-    # BE-0428: a config-level `before` hook step carrying a `target` that a 0-target scenario in
+    # BE-0428: a config-level `hooks.setup` step carrying a `target` that a 0-target scenario in
     # this suite would reject must exit 2 cleanly, not crash with a raw traceback from deep inside
     # `run_all` — the multi-target guard above only covers `len(targets) >= 2`.
     cfg = tmp_path / "bajutsu.config.yaml"
@@ -1086,7 +1086,7 @@ def test_run_rejects_a_bad_target_config_hook_end_to_end(tmp_path: Path) -> None
 
 
 def test_run_rejects_a_duplicate_extract_body_var_in_a_target_config_hook(tmp_path: Path) -> None:
-    # BE-0440: `with_lifecycle_phases` folds a target config's `before`/`after` hooks in via
+    # BE-0440: `with_lifecycle_phases` folds a target config's `hooks.setup`/`cleanup` in via
     # `model_copy`, which never re-runs `Scenario`'s own model_validator — and `_hooks_for` reads
     # those hooks as a bare `list[Step]` straight off the target config, never through a full
     # `Scenario.model_validate`. A duplicate `extractBody`/`saveBody` var inside one of a hook's own
@@ -2750,7 +2750,7 @@ def test_visual_asserting_scenarios_finds_a_step_level_visual_in_before_and_afte
     in_before = Scenario.model_validate(
         {
             "name": "visual in before",
-            "before": [{"assert": [{"visual": {"baseline": "home.png"}}]}],
+            "setup": [{"assert": [{"visual": {"baseline": "home.png"}}]}],
             "steps": [],
         }
     )
@@ -2758,7 +2758,7 @@ def test_visual_asserting_scenarios_finds_a_step_level_visual_in_before_and_afte
         {
             "name": "visual in after",
             "steps": [],
-            "after": [
+            "cleanup": [
                 {"on": "always", "steps": [{"assert": [{"visual": {"baseline": "home.png"}}]}]}
             ],
         }
@@ -3229,8 +3229,8 @@ _SWAP: dict[str, list[object]] = {"setMocks": []}
 @pytest.mark.parametrize(
     "placement",
     [
-        {"before": [_SWAP], "steps": []},
-        {"steps": [], "after": [{"on": "always", "steps": [_SWAP]}]},
+        {"setup": [_SWAP], "steps": []},
+        {"steps": [], "cleanup": [{"on": "always", "steps": [_SWAP]}]},
         {
             "steps": [],
             "interrupts": [{"condition": {"exists": {"id": "banner"}}, "steps": [_SWAP]}],
@@ -3238,7 +3238,7 @@ _SWAP: dict[str, list[object]] = {"setMocks": []}
         {"steps": [{"if": {"condition": {"exists": {"id": "a"}}, "else": [_SWAP]}}]},
         {"steps": [{"forEach": {"sel": {"id": "row"}, "as": "r", "steps": [_SWAP]}}]},
     ],
-    ids=["before", "after", "interrupts", "if-else", "forEach"],
+    ids=["setup", "cleanup", "interrupts", "if-else", "forEach"],
 )
 def test_set_mocks_is_found_in_every_phase_and_container(placement: dict[str, object]) -> None:
     """A swap the walk missed would launch the app without the channel key, and the step would

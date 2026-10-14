@@ -187,7 +187,7 @@ capturePolicy:
     capture: [screenshot.around, elements]
 
   # On error in any step, capture the maximum (the safety net)
-  - on: { result: error }
+  - on: { result: failure }
     capture: [screenshot, video, deviceLog, elements, actionLog]
 ```
 
@@ -196,7 +196,7 @@ The trigger `on` is **exactly one** of `action` / `event` / `result`:
 - `action: <tap|longPress|type|swipe|...>` — optionally combined with `idMatches` (glob against the
   primary target's `id`). `idMatches` can only be used with `action`.
 - `event: screenChanged` — fires if `query()` changed during that step.
-- `result: error` — fires if the step failed (the safety net).
+- `result: failure` — fires if the step failed (the safety net).
 
 The detailed firing logic is in [run-loop](run-loop.md#evidence-rule-firing).
 
@@ -229,7 +229,7 @@ app's os_log subsystem, paired into timed intervals by `parse_app_trace`.)
 
 > **Interval kinds are opt-in (BE-0028).** `video` / `deviceLog` / `appTrace` are heavy, so a
 > scenario records an interval **only when it asks for that kind** — through an inline `capture:`
-> or a `capturePolicy` rule (e.g. a `result: error` rule that captures `video`). A scenario that
+> or a `capturePolicy` rule (e.g. a `result: failure` rule that captures `video`). A scenario that
 > requests none records none, keeping the common case cheap; the lightweight instant baseline
 > (`screenshot` + `elements`) is always captured, so a failure still leaves evidence (DESIGN §10).
 > Every step captures a screenshot on **both** sides of its action, but a tree only after it:
@@ -538,7 +538,7 @@ unloaded screen before suspecting the app at all.
 It is a diagnostic, never a verdict: the scenario fails because its step failed, exactly as it would
 for any other terminal step failure, and nothing here decides pass/fail (prime directive 1). The
 crash is classified **in-band**, so the scenario finishes normally — the failing step's screenshot,
-the running video recording, and any `after: on: error` rule all land the way they always do — and
+the running video recording, and any `cleanup: on: failure` rule all land the way they always do — and
 the backend-crash retry loop (`crash-diagnostics/` above, BE-0421) is never triggered: that one names
 a fault in the *test infrastructure*, this one a likely defect in the app a team is testing.
 
@@ -558,13 +558,13 @@ end-of-scenario probe (which is the every-green-run cost the design exists to av
 
 - A crash caused by a scenario's **last** step, where that step's own actuation still reports
   success — a tap the runner delivered before the app died — is never probed, so a scenario
-  declaring neither `expect` nor a non-failure `after` rule stays **green**.
+  declaring neither `expect` nor a non-failure `cleanup` rule stays **green**.
 - The same shape *with* a scenario-level `expect` goes **red but unclassified**: `expect` produces
   assertion results rather than step outcomes, so it never reaches the check, and the reader sees an
   assertion mismatch instead of a crash.
 
 A scenario written to exercise this signal therefore takes one more step after the crash trigger, so
-it is that later step — not the trigger itself — that fails and gets probed. An `after` rule that
+it is that later step — not the trigger itself — that fails and gets probed. A `cleanup` rule that
 runs on success or always is enough too: its own teardown step does reach the check, so the crash is
 caught one step later rather than missed.
 

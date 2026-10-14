@@ -68,12 +68,12 @@ def test_omitted_step_target_resolves_to_the_primary() -> None:
 def test_before_and_after_steps_resolve_the_same_way() -> None:
     s = _scenario(
         **_TWO,
-        before=[_step()],
+        setup=[_step()],
         steps=[_step(target="web")],
-        after=[{"on": "always", "steps": [_step()]}],
+        cleanup=[{"on": "always", "steps": [_step()]}],
     )
-    assert s.before[0].resolved_target == "app"
-    assert s.after[0].steps[0].resolved_target == "app"
+    assert s.setup[0].resolved_target == "app"
+    assert s.cleanup[0].steps[0].resolved_target == "app"
 
 
 def test_nested_if_and_for_each_steps_resolve_to_the_primary_not_their_wrapper() -> None:

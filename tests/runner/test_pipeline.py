@@ -161,7 +161,7 @@ def test_run_all_fails_a_scenario_that_crashes_every_attempt() -> None:
                 # Video is opt-in per scenario (BE-0028); a rule is enough to request it for the
                 # whole scenario regardless of whether its own "on" condition ever fires — this test
                 # is about the disclosure a *requested* recording gets when it is lost to a crash.
-                "capturePolicy": [{"on": {"result": "error"}, "capture": ["video"]}],
+                "capturePolicy": [{"on": {"result": "failure"}, "capture": ["video"]}],
                 "steps": [{"tap": {"id": "ok"}}],
             }
         )
@@ -241,7 +241,7 @@ def test_run_all_shows_the_video_recovered_from_a_scenario_that_crashes_every_at
                 "name": "a",
                 # Video is opt-in per scenario (BE-0028); a rule is enough to request it for the
                 # whole scenario regardless of whether its own "on" condition ever fires.
-                "capturePolicy": [{"on": {"result": "error"}, "capture": ["video"]}],
+                "capturePolicy": [{"on": {"result": "failure"}, "capture": ["video"]}],
                 "steps": [{"tap": {"id": "ok"}}],
             }
         )
@@ -295,7 +295,7 @@ def test_run_all_keeps_an_earlier_attempts_recovered_video_past_a_later_bring_up
         Scenario.model_validate(
             {
                 "name": "a",
-                "capturePolicy": [{"on": {"result": "error"}, "capture": ["video"]}],
+                "capturePolicy": [{"on": {"result": "failure"}, "capture": ["video"]}],
                 "steps": [{"tap": {"id": "ok"}}],
             }
         )
@@ -1196,7 +1196,7 @@ def test_run_all_run_crash_recovery_budget_latch_skips_every_remaining_scenario(
                 "name": "c",
                 # Video is opt-in per scenario (BE-0028); requesting it here is what makes the
                 # "never leased, so it's disclosed" assertion below meaningful (BE-0020).
-                "capturePolicy": [{"on": {"result": "error"}, "capture": ["video"]}],
+                "capturePolicy": [{"on": {"result": "failure"}, "capture": ["video"]}],
                 "steps": [{"tap": {"id": "ok"}}],
             }
         ),
@@ -2356,7 +2356,7 @@ def test_network_json_anchors_to_the_video_corrected_start(tmp_path: Path) -> No
     scn = Scenario.model_validate(
         {
             "name": "net",
-            "capturePolicy": [{"on": {"result": "error"}, "capture": ["video"]}],
+            "capturePolicy": [{"on": {"result": "failure"}, "capture": ["video"]}],
             "steps": [{"assert": [{"request": {"method": "GET", "path": "/items"}}]}],
         }
     )

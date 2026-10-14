@@ -212,7 +212,7 @@ def _step_run_row(
     """
     at_text = f"{at:.1f}s"
     # The step's own end instant — its `before`/`after` moment in the recording, not the
-    # scenario-level `before`/`after` phases this table sits beside. A second jump target only
+    # scenario-level `setup`/`cleanup` phases this table sits beside. A second jump target only
     # when it reads differently from the start: a near-instant tap would otherwise show two
     # identical-looking buttons. Computed once: the button's visible text and its seek target
     # must agree, and a second copy of this arithmetic could drift from this one silently.
@@ -588,7 +588,7 @@ def _phase_rows(
     r: RunResult,
     run_dir: Path | None,
 ) -> list[dict[str, Any]]:
-    """A `before` / `after` phase's step rows (BE-0392), in the order the phase ran them.
+    """A `setup` / `cleanup` phase's step rows (BE-0392), in the order the phase ran them.
 
     A plain list, not `_merged_rows`: the network exchanges are interleaved into the scenario's own
     timeline once, and repeating them beside setup and teardown would double-count them. Rows pair
@@ -629,12 +629,12 @@ def _phase_rows(
     return _fold_groups(rows)
 
 
-def _after_rows(
+def _cleanup_rows(
     r: RunResult,
     rules: list[dict[str, Any]],
     run_dir: Path | None,
 ) -> list[dict[str, Any]]:
-    """The `after` phase's step rows (BE-0392), each lined up with the rule that declared it.
+    """The `cleanup` phase's step rows (BE-0392), each lined up with the rule that declared it.
 
     Only the rules the run dispatched contribute — `r.after_verdict` says which, since the failure
     string can no longer say once a cleanup step's own reason has been folded into it. Within a

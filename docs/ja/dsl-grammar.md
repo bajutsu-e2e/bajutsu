@@ -48,8 +48,8 @@ graph LR
   SC -->|mocks| MK["Mock"]
   SC -->|redact| RD["Redact"]
   SC -->|interrupts| IR["Interrupt"]
-  SC -->|before| ST
-  SC -->|after| AR["AfterRule"]
+  SC -->|setup| ST
+  SC -->|cleanup| AR["CleanupRule"]
   AR -->|steps| ST
 
   ST -->|"tap·doubleTap·longPress·<br/>type·swipe·pinch·rotate·<br/>select·clear·delete·<br/>selectOption·setPickerValue·<br/>drag·scroll·handleSystemAlert"| SEL["Selector"]
@@ -120,10 +120,10 @@ Scenario ::= {
   data?:           list(map(string,string)),# インライン行  ┐ XOR
   dataFile?:       string,                  # CSV パス      ┘ （§6.3）
   preconditions?:  <Preconditions>,         # 既定 {}
-  before?:         list(<Step>),            # 既定 []  — steps の前に独立したフェーズとして走るセットアップ（BE-0392）。宣言した各ターゲットの `hooks.setup` の後に連結される
+  setup?:          list(<Step>),            # 既定 []  — steps の前に独立したフェーズとして走るセットアップ（BE-0392）。宣言した各ターゲットの `hooks.setup` の後に連結される
   steps:           list(<Step>),            # 必須
   expect?:         list(<Assertion>),       # 既定 []  — 最終チェック
-  after?:          list(<AfterRule>),       # 既定 []  — 判定が出たあとに走るティアダウンのルール（BE-0392）。宣言した各ターゲットの `hooks.cleanup` はこの後に続く
+  cleanup?:        list(<CleanupRule>),     # 既定 []  — 判定が出たあとに走るティアダウンのルール（BE-0392）。宣言した各ターゲットの `hooks.cleanup` はこの後に続く
   capturePolicy?:  list(<CaptureRule>),     # 既定 []
   network?:        <Network>,
   mocks?:          list(<Mock>),            # 既定 []
@@ -144,7 +144,7 @@ Interrupt ::= { condition: <Assertion>, steps: list(<Step>), target?: string }
 
 # ティアダウンのルール 1 件です（BE-0392）。答える結末と、その結末のときに走らせるステップを組にします。
 # 結末はシナリオ自身のマシンチェックされた判定であり、モデル呼び出しではありません。
-AfterRule ::= { on: "always" | "success" | "error", steps: list(<Step>) }
+CleanupRule ::= { on: "always" | "success" | "failure", steps: list(<Step>) }
 
 # ── Preconditions ──────────────────────────────────────────────────────
 Preconditions ::= {
@@ -374,7 +374,7 @@ CaptureRule ::= { on: <Trigger>, capture: list(<CaptureToken>), from?: string }
 Trigger ::=                                    # action / event / result のどれか 1 つ
     { action: string, idMatches?: string }     # idMatches は action と併用のときだけ
   | { event: "screenChanged" }
-  | { result: "error" }
+  | { result: "failure" }
 
 # ── Network / mocks / redact ───────────────────────────────────────────
 Network ::= { filter?: { domains?: list(string) } }
@@ -426,7 +426,7 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 | `Scenario.primaryTarget` | 省略するか、`targets` の最初の名前（最初のグループの最初のメンバー）と一致。`targets` が空なら**拒否**（BE-0436） | `scenario/models/scenario/_targets.py` |
 | `Scenario.installs` | 各エントリは宣言済みのターゲットで、重複不可。プライマリを含まない、2つ以上のメンバーを持つグループは、自分のメンバーを**1つ以上**書く（BE-0447） | `scenario/models/scenario/_targets.py` |
 | `installApp` | `from` は、ステップのデバイスを持つグループの**後から入るメンバー**（プライマリでも `installs` 記載でもない、2つ以上のメンバーを持つグループのメンバー）を指す。トップレベルの `installApp` は1つのメンバーにつき**1つまで**。`web:` / `app:` の中では**拒否**。シナリオが `setPrimaryTarget` を含むとき、デバイスを明示しない `interrupts` の復旧ステップでも**拒否**（BE-0447） | `scenario/models/scenario/_targets.py` |
-| `setPrimaryTarget` | `target` は宣言済みのターゲットを指す。**トップレベルの `steps` だけ**に書ける。`if`、`forEach`、ターゲットグループ、`web:`、`app:`、`interrupts` エントリ、`before`、`after` の中では拒否。コンポーネント内のものは、呼び出す `use:` / `group:` がトップレベルにあれば有効で、展開は呼び出し側の `target` をこのステップに刻まない（BE-0447） | `scenario/models/scenario/_targets.py`、`scenario/expand.py` |
+| `setPrimaryTarget` | `target` は宣言済みのターゲットを指す。**トップレベルの `steps` だけ**に書ける。`if`、`forEach`、ターゲットグループ、`web:`、`app:`、`interrupts` エントリ、`setup`、`cleanup` の中では拒否。コンポーネント内のものは、呼び出す `use:` / `group:` がトップレベルにあれば有効で、展開は呼び出し側の `target` をこのステップに刻まない（BE-0447） | `scenario/models/scenario/_targets.py`、`scenario/expand.py` |
 | `Step.target` / `Assertion.target`（`expect` のみ） | `len(target_names) ≤ 1` なら省略可、または宣言済みの1つと一致。`len(target_names) ≥ 2` で `primaryTarget` が未設定なら**必須**（`if`/`forEach`/`web` ラッパーも含み、末端のアクションだけではない）で、宣言済みターゲットの1つを名指し。`len(target_names) ≥ 2` で `primaryTarget` を設定していれば**省略可**で、省略したものは入れ子の深さによらず主ターゲットに対して走る（BE-0436）。この主ターゲットは現在のプライマリで、`setPrimaryTarget` ステップが移す（BE-0447）。`web` ブロック内に入れ子になったステップと、インラインの `assert:` リスト・`if` の `condition`・`interrupts` エントリの `condition` を通して届く `Assertion` では**拒否**（BE-0428） | `scenario/models/scenario/_targets.py` |
 | `use:` / `group:` ステップの `Step.target` | `len(target_names)` によらず、`primaryTarget` がなくても**省略可**で、ステップ自身は解決しない。指定した値は宣言済みターゲットを名指しする。展開は、呼び出しが生むステップのうち `target` を省略したものへその値を刻印し、異なるターゲットを名指しするステップを拒否する（BE-0446） | `scenario/models/scenario/_targets.py`、`scenario/expand.py` |
 | `Interrupt.target` と、`interrupts` エントリの `steps` にある `Step.target` | `primaryTarget` の有無にかかわらず、`len(target_names)` にかかわらず**省略可**。エントリの `target` を省略するとプライマリターゲットを監視し、リカバリ用ステップの `target` を省略するとエントリ自身のターゲットで実行する(ただし、`target` を指定した `if`/`forEach` ステップの内側では、そのステップのターゲットで実行する)。指定した値は、宣言済みターゲットの名指しについて上の `Step.target` の規則に従う（BE-0438） | `scenario/models/scenario/_targets.py` |
@@ -443,13 +443,13 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 
 | フィールド | 既定値 |
 |---|---|
-| `Scenario.tags` / `expect` / `capturePolicy` / `mocks` / `interrupts` / `before` / `after` | `[]` |
+| `Scenario.tags` / `expect` / `capturePolicy` / `mocks` / `interrupts` / `setup` / `cleanup` | `[]` |
 | `Scenario.preconditions` | `{}`（= `erase` は未設定 — ターゲットの `run.erase` が指定しない限りオフ、`reinstall: clean`） |
 | `Scenario.systemAlertHandling` | 未指定（アラートガード ON。ただし規則が無いので、自分からはどのプロンプトにも答えない） |
 | `Scenario.iosTipKitHandling` | 未指定（OFF — tip 自体が検証対象になる場合があるため。iOS のみ） |
 | `Scenario.permissions` | `{}`（起動前の権限状態を適用しない） |
 | `Preconditions.erase` | 未設定 — ターゲットの `run.erase` を継承し、それもなければオフ（BE-0177） |
-| `Preconditions.run.inheritSetup` | `true`（宣言した各ターゲットの `hooks.setup` が `before` の前に走る） |
+| `Preconditions.run.inheritSetup` | `true`（宣言した各ターゲットの `hooks.setup` がシナリオの `setup` の前に走る） |
 | `Preconditions.reinstall` | `clean` |
 | `Preconditions.launchArgs` | `[]` |
 | `Preconditions.launchEnv` | `{}` |
@@ -552,7 +552,7 @@ scenarios:
 
 ### 6.4 共有のセットアップ、secrets、タグ選択
 
-- **共有のセットアップ**：1 度だけ記述するログインやナビゲーションの手順は、コンポーネント（§6.2）にします。シナリオ自身の `before` か、config にあるターゲットの `hooks.setup` から `use` で呼び出します。ターゲットの hooks が呼ぶコンポーネントは config のロード時に config ファイルのディレクトリを基準に解決し、スイートのルートの内側に収まっている必要があります（BE-0174）。以前の `preconditions.setup` プレリュードファイルは廃止しました（[BE-0452](../../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)）。ターゲットの `hooks.setup` を走らせたくないシナリオは、`preconditions.run.inheritSetup: false` を指定します。
+- **共有のセットアップ**：1 度だけ記述するログインやナビゲーションの手順は、コンポーネント（§6.2）にします。シナリオ自身の `setup` か、config にあるターゲットの `hooks.setup` から `use` で呼び出します。ターゲットの hooks が呼ぶコンポーネントは config のロード時に config ファイルのディレクトリを基準に解決し、スイートのルートの内側に収まっている必要があります（BE-0174）。以前の `preconditions.setup` プレリュードファイルは廃止しました（[BE-0452](../../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)）。ターゲットの `hooks.setup` を走らせたくないシナリオは、`preconditions.run.inheritSetup: false` を指定します。
 - **`secrets`**（config の `run.secrets` で宣言する、環境変数名のリスト）：宣言した各名 `X` は `os.environ[X]` から解決され `${secrets.X}` に束縛され、**アクション時**に実行ステップへ置換されます（`cli/commands/run.py`, `orchestrator/substitution.py` `_interp_step`）。シナリオは `${secrets.X}` トークンを保ち値は持たず、リテラル値は証跡で自動マスクされます（`Redactor`）。`params.*` / `row.*` と異なり、この名前空間はロード時ではなく run ループが解決します。
 - **`tags`** と CLI の `--tag` / `--exclude` で実行対象を絞ります。`exclude` が `include` より優先されます（`select_scenarios`, `scenario/select.py`）。
 

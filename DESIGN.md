@@ -216,7 +216,7 @@ UI 操作は **最も安定する選択手段から順に試し、成立した�
     launchEnv: { SHOWCASE_UITEST: "1" }       # 状態注入（launch args / env）
     deeplink: "showcaseswiftui://log"        # 起動後に開く（任意）
     locale: "ja_JP"                          # 省略時は config の固定 locale
-  before:
+  setup:
     - use: { component: _setup.yaml }        # 再利用する前段（任意・§7.1）
   steps:
     - tap: { id: log.openFilter }
@@ -254,7 +254,7 @@ UI 操作は **最も安定する選択手段から順に試し、成立した�
 - wait: { until: { request: { method: GET, url: "https://api/items", status: 200 } }, timeout: 8 }  # 指定エンドポイントへの通信が観測されるまで（§9 collector）
 ```
 
-`timeout` は必須です（無限待ちは禁止です）。タイムアウトはステップ失敗として扱い、`result:error` 安全網（§9 A）が発火します。`wait` が固定時間だけ待つことはありません。固定の待機は別の `sleep` ステップだけが担い、上限と必須の理由と監査の finding によって例外であることを可視に保ちます（§10）。
+`timeout` は必須です（無限待ちは禁止です）。タイムアウトはステップ失敗として扱い、`result: failure` 安全網（§9 A）が発火します。`wait` が固定時間だけ待つことはありません。固定の待機は別の `sleep` ステップだけが担い、上限と必須の理由と監査の finding によって例外であることを可視に保ちます（§10）。
 
 ### 6.4 アサーション DSL（機械チェック）
 
@@ -308,7 +308,7 @@ UI 操作は **最も安定する選択手段から順に試し、成立した�
 
 1. **§7 規約を適用**：主要要素に `accessibilityIdentifier`（アプリ固有の名前空間で。例 `settings.*`）、状態を label / traits / value に露出、launch hook、anim off、ネットワークの mock 化
 2. **config に `targets.<name>` を追加**（§8）：`platform` / `app.id` / 既定の `app.launch.env` / `services.mockServer` / `evidence.redact`
-3. **再利用セットアップを用意**（任意）：複数シナリオ共通の前段（ログインなど）をコンポーネントへ切り出し、`before` か `hooks.setup` から `use:` で呼ぶ（§6.1）
+3. **再利用セットアップを用意**（任意）：複数シナリオ共通の前段（ログインなど）をコンポーネントへ切り出し、シナリオの `setup` か `hooks.setup` から `use:` で呼ぶ（§6.1）
 4. **`bajutsu doctor --target <name>` で検証**：実行可能ゲートと §7 充足度スコアを出す（測り方は §7.2）
 5. **シナリオを `scenarios/<name>/` に配置**：識別子はそのアプリの名前空間で書く
 
@@ -464,7 +464,7 @@ capturePolicy:
     capture: [screenshot.around, elements]
 
   # どのステップでもエラー時は最大限の証跡（既定の安全網）
-  - on:      { result: error }
+  - on:      { result: failure }
     capture: [screenshot, video, deviceLog, elements, actionLog]
 
 redact:                       # 保存前にマスクする対象（§9 注意点）
@@ -581,7 +581,7 @@ runs/<runId>/
 
 | マイルストーン | 内容 |
 |---|---|
-| **M1** | `simctl.py`（simctl ラッパ）+ `drivers/base,idb`（共通 IF、id → frame 中心のセレクタ解決）+ YAML シナリオ(pydantic) + `assertions/` + 証跡の軽量 3 点（`screenshot`/`elements`/`actionLog`）と `result:error` 安全網 + `manifest.json` + per-target config（`targets.<name>` 解決, `bajutsu run --target` / `doctor --target`）。**idb でシナリオが通る** こと、**config だけで対象アプリを切り替えられる** ことを完了条件とする |
+| **M1** | `simctl.py`（simctl ラッパ）+ `drivers/base,idb`（共通 IF、id → frame 中心のセレクタ解決）+ YAML シナリオ(pydantic) + `assertions/` + 証跡の軽量 3 点（`screenshot`/`elements`/`actionLog`）と `result: failure` 安全網 + `manifest.json` + per-target config（`targets.<name>` 解決, `bajutsu run --target` / `doctor --target`）。**idb でシナリオが通る** こと、**config だけで対象アプリを切り替えられる** ことを完了条件とする |
 | **M2** | observe→act→verify の AI ループ（自然言語ステップ・証跡指示の解釈と正規化）+ ルール方式（トリガー）一式 + `video` / `deviceLog` + Reporter(JUnit/HTML) |
 | **M3** | `network`（in-protocol の mocks / collector、§3.2）+ `appTrace`（os_signpost）+ redaction + XCUITest codegen（Tier2）+ CI 統合 |
 | **M4** | 自己修復トリアージ（失敗証跡から原因要約・テスト更新提案、人間レビュー前提） |

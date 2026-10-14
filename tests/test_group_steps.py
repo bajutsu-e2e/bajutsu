@@ -104,9 +104,9 @@ def test_group_expands_in_before_and_after_and_interrupts() -> None:
     scns = load_scenarios(
         """
 - name: s
-  before:
+  setup:
     - group: { name: setup, steps: [{tap: {id: a}}] }
-  after:
+  cleanup:
     - on: always
       steps:
         - group: { name: teardown, steps: [{tap: {id: b}}] }
@@ -120,8 +120,8 @@ def test_group_expands_in_before_and_after_and_interrupts() -> None:
     )
     expand_components(scns, _resolver({}))
     scenario = scns[0]
-    assert scenario.before[0].report_group == "setup"
-    assert scenario.after[0].steps[0].report_group == "teardown"
+    assert scenario.setup[0].report_group == "setup"
+    assert scenario.cleanup[0].steps[0].report_group == "teardown"
     assert scenario.interrupts[0].steps[0].report_group == "dismiss"
 
 

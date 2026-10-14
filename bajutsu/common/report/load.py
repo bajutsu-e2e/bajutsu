@@ -33,7 +33,7 @@ from bajutsu.common.orchestrator import (
     TargetDeviceInfo,
 )
 from bajutsu.common.report.html import html_report, scenario_render_inputs, write_html_and_junit
-from bajutsu.common.scenario import load_scenario_file
+from bajutsu.common.scenario import load_stored_scenario_file, renamed_outcome
 
 _logger = logging.getLogger("bajutsu.common.report.load")
 
@@ -206,9 +206,12 @@ def _result(d: dict[str, Any]) -> RunResult:
     return RunResult(
         **{
             **kw,
+            # BE-0452 renamed the failed outcome `error` to `failure`; a run stored before it still
+            # names the cleanup rules it dispatched, so the report pairs them with their outcomes.
+            "after_verdict": renamed_outcome(kw.get("after_verdict", "")),
             "steps": [_step(s) for s in d.get("steps") or []],
             # The lifecycle phases' own outcomes (BE-0392), reconstructed through the same `_step`
-            # as the scenario's own — a report re-rendered offline shows the Before / After blocks
+            # as the scenario's own — a report re-rendered offline shows the setup / cleanup blocks
             # a live run showed.
             "before_outcomes": [_step(s) for s in d.get("before_outcomes") or []],
             "after_outcomes": [_step(s) for s in d.get("after_outcomes") or []],
@@ -290,7 +293,7 @@ def load_run(run_dir: Path) -> RenderModel:
     scenario_text = (run_dir / "scenario.yaml").read_text(encoding="utf-8")
     try:
         manifest = json.loads(manifest_text)
-        scenario_file = load_scenario_file(scenario_text)
+        scenario_file = load_stored_scenario_file(scenario_text)
         definitions, sources = scenario_render_inputs(scenario_file.scenarios)
         return RenderModel(
             run_id=str(manifest.get("runId") or run_dir.name),

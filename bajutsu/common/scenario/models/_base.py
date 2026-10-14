@@ -8,6 +8,8 @@ cycles.
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict
 
 Point = tuple[float, float]
@@ -53,3 +55,18 @@ def _validate_capture(tokens: list[str]) -> list[str]:
         if mod and mod not in _CAPTURE_MODS:
             raise ValueError(f"unknown capture modifier: {t!r} (§9)")
     return tokens
+
+
+def reject_error_outcome(value: Any, where: str) -> Any:
+    """Refuse the outcome word `error`, which BE-0452 renamed to `failure`, naming the new word.
+
+    Shared by a `cleanup` rule's `on` and a `capturePolicy` trigger's `result`, the two places the
+    word named a failed outcome. Old spellings are not read (BE-0452 *Out of scope*), so this turns
+    Pydantic's generic literal error into one that says what to write instead.
+
+    Raises:
+        ValueError: *value* is `error`.
+    """
+    if value == "error":
+        raise ValueError(f"{where} 'error' was renamed; write 'failure' instead")
+    return value

@@ -6,8 +6,8 @@ forward reference to `Step` is needed.
 """
 
 from ._shared import _MODIFIERS as _MODIFIERS
-from .after_rule import AfterRule
 from .app import App
+from .cleanup_rule import CleanupRule
 from .extract import Extract
 from .for_each import ForEach
 from .group import Group
@@ -20,8 +20,8 @@ from .use import Use
 from .web import Web
 
 __all__ = [
-    "AfterRule",
     "App",
+    "CleanupRule",
     "Extract",
     "ForEach",
     "Group",

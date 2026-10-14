@@ -11,12 +11,12 @@ This is a pure, deterministic transform: no AI, no device. The per-line builders
 `assertion_lines` and the selector/locator helpers behind them) stay in each target's module.
 """
 
-from ._functions import _BEFORE_COMMENT as _BEFORE_COMMENT
 from ._functions import _BODY_INDENT as _BODY_INDENT
 from ._functions import _EXPECT_COMMENT as _EXPECT_COMMENT
 from ._functions import _LINE_TERMINATORS as _LINE_TERMINATORS
 from ._functions import _RE_METACHARS as _RE_METACHARS
 from ._functions import _RUNTIME_ONLY_HINT as _RUNTIME_ONLY_HINT
+from ._functions import _SETUP_COMMENT as _SETUP_COMMENT
 from ._functions import _collapse_line_terminators as _collapse_line_terminators
 from ._functions import _reject_runtime_only as _reject_runtime_only
 from ._functions import _scenario_lines as _scenario_lines
@@ -35,12 +35,12 @@ from ._functions import (
     sleep_comment,
     sleep_ms,
 )
-from .after_emission import AfterEmission
+from .cleanup_emission import CleanupEmission
 from .code_generator import CodeGenerator
 from .codegen_error import CodegenError
 
 __all__ = [
-    "AfterEmission",
+    "CleanupEmission",
     "CodeGenerator",
     "CodegenError",
     "class_name",

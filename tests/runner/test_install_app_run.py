@@ -641,7 +641,7 @@ def test_a_verdict_flipped_by_the_evidence_read_fires_error_captures(tmp_path: P
             "targets": [["app", "auth"]],
             "primaryTarget": "app",
             "installs": ["auth"],
-            "capturePolicy": [{"on": {"result": "error"}, "capture": ["actionLog", "rawTree"]}],
+            "capturePolicy": [{"on": {"result": "failure"}, "capture": ["actionLog", "rawTree"]}],
             "steps": [
                 {"target": "auth", "foreground": {}},
                 {"target": "auth", "tap": {"id": "away"}},

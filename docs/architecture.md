@@ -717,7 +717,7 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   quarter-second slices so a cancelled run leaves promptly and a fake-clock test advances time with
   no wall-clock wait; it touches no driver and needs no capability token. The exception stays
   countable: the progress label and `report.html` show `sleep Ns — reason`, the determinism audit
-  (BE-0049) lists every one as a `fixed-sleep` finding (walking `before`/`after`/`interrupts`/`web`/
+  (BE-0049) lists every one as a `fixed-sleep` finding (walking `setup`/`cleanup`/`interrupts`/`web`/
   `app` too) and grades a scenario Moderate past ten seconds of total fixed pause, `triage`'s laxer
   guard warns on a fix that adds one, every codegen emitter translates it with the reason as a
   comment, and `record`/`crawl` never offer it to the authoring model
@@ -735,14 +735,15 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   ordinary `Step`'s `target`, it stays optional even then, defaulting to the primary target; a
   recovery step in the entry's own `steps` is optional the same way, and an omitted one runs on the
   entry's target rather than the primary (BE-0438)
-- DSL `before` / `after` (BE-0392): a scenario's setup and teardown as their own phases, tracked
-  apart from `steps` rather than spliced into it. `before` is an ordered step list that runs first
-  and aborts the scenario when it fails; `after` is a list of `{ on, steps }` rules keyed to the
-  run's own machine-checked verdict (`always` / `success` / `error`), reached on every path out of
+- DSL `setup` / `cleanup` (BE-0392, named `before` / `after` until BE-0452): a scenario's setup and
+  teardown as their own phases, tracked apart from `steps` rather than spliced into it. `setup` is an
+  ordered step list that runs first and aborts the scenario when it fails; `cleanup` is a list of
+  `{ on, steps }` rules keyed to the run's own machine-checked verdict (`always` / `success` /
+  `failure`), reached on every path out of
   `steps` — including the failing one a trailing cleanup step could never reach, and a cancelled one,
   where the phase runs under a slice of the cancellation grace window instead of the latched cancel
   source. The target config carries the same two phases as `hooks.setup` and `hooks.cleanup` (BE-0452),
-  merging config-then-scenario for `before` and scenario-then-config for `after`; a scenario's
+  merging config-then-scenario for `setup` and scenario-then-config for `cleanup`; a scenario's
   `preconditions.run.inheritSetup: false` skips its targets' `hooks.setup`; both phases report as their own blocks and reach every export
 
 #### DSL gestures, text entry, and device actions

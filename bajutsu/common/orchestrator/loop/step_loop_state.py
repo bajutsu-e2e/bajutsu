@@ -30,7 +30,7 @@ class StepLoopState:
     bindings: dict[str, str]
     # Scenario-scoped like `bindings`, and for the same reason: `run_scenario` creates one and hands
     # every phase the same object, so what a failing `relaunch` in `steps` latched still suppresses
-    # the probe for an `after: on: error` rule dispatched afterward (BE-0424).
+    # the probe for a `cleanup: on: failure` rule dispatched afterward (BE-0424).
     app_crash: AppCrashLatches
     # One selection tracker per run, shared across the recursive step loop (like `_StepCounter`), so
     # a `copy` sees the selection a prior `select` left — and any action in between clears it (BE-0265).

@@ -436,7 +436,7 @@ def test_repeat_cli_allows_a_matching_single_declared_target(
 
 
 def test_repeat_cli_rejects_a_bad_target_config_hook(tmp_path: Path) -> None:
-    # BE-0428: a config-level `before` hook step carrying a `target` that a 0-target scenario
+    # BE-0428: a config-level `hooks.setup` step carrying a `target` that a 0-target scenario
     # would reject must exit 2 cleanly, not crash with a raw traceback from deep inside `run_all`
     # — the multi-target guard above only covers `len(targets) >= 2`.
     scn = tmp_path / "s.yaml"

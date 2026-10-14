@@ -108,14 +108,14 @@ def _walk_scenario(sc: Scenario) -> Iterator[tuple[str, Step]]:
 
     The lifecycle phases take the full step grammar, so a construct in one needs the same capability
     gate as one in `steps`. Missed here, an unsupported teardown step passes the preflight, a device
-    is leased, the whole scenario is driven, and only then does the step fail — and a failing `after`
+    is leased, the whole scenario is driven, and only then does the step fail — and a failing `cleanup`
     rule on an otherwise-passing run *becomes* that run's failure. Late failure after full device
     work is exactly what this module exists to prevent.
     """
-    yield from _walk_steps(sc.before, "before ")
+    yield from _walk_steps(sc.setup, "setup ")
     yield from _walk_steps(sc.steps)
-    for i, rule in enumerate(sc.after):
-        yield from _walk_steps(rule.steps, f"after[{i}] ")
+    for i, rule in enumerate(sc.cleanup):
+        yield from _walk_steps(rule.steps, f"cleanup[{i}] ")
 
 
 def _assertions_with_path(scenario: Scenario) -> Iterator[tuple[str, Assertion]]:
