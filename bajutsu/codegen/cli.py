@@ -50,7 +50,7 @@ def codegen(
             typer.echo(f"--emit playwright needs targets.{target_name}.app.url (a web target)")
         elif emit == "uiautomator":
             typer.echo(
-                f"--emit uiautomator needs targets.{target_name}.package (an Android target)"
+                f"--emit uiautomator needs targets.{target_name}.app.id (an Android target)"
             )
         else:
             typer.echo(str(exc))
