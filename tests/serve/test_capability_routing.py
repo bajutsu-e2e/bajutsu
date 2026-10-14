@@ -236,9 +236,14 @@ def test_unroutable_count_applies_the_environment_rule(
     assert repo.metrics_snapshot().unroutable_queued == 1
     assert repo.lacks_live_worker("plain")
     assert not repo.lacks_live_worker("batch")
-    # With only a plain worker live, the Device Farm job is the unroutable one.
-    repo2 = _repo(serve_engine)
-    repo2.enqueue_job("batch", "o", {}, capabilities=["environment:devicefarm"])
-    repo2.register_worker("mac", ["platform:ios"])
-    assert repo2.metrics_snapshot().unroutable_queued == 1
-    assert repo2.lacks_live_worker("batch")
+
+
+def test_a_device_farm_job_is_unroutable_to_a_plain_worker(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    # A test of its own: on Postgres every engine the factory makes shares one schema.
+    repo = _repo(serve_engine)
+    repo.enqueue_job("batch", "o", {}, capabilities=["environment:devicefarm"])
+    repo.register_worker("mac", ["platform:ios"])
+    assert repo.metrics_snapshot().unroutable_queued == 1
+    assert repo.lacks_live_worker("batch")
