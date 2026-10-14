@@ -997,8 +997,8 @@ batch provider that packages `launchEnv`, `common/report/rows.py`, `templates/se
 - [#2195](https://github.com/bajutsu-e2e/bajutsu/pull/2195) (Units 6–7) — the command-line flags read the regrouped fields, and a scenario's
   `preconditions` takes the target's group names.
   - Unit 6: `parse_engine_flag` reads `--browser` and each `--browsers` entry. It uses the model
-    of `runsOn.browser.engine`. A `--browser` replaces that field. A listed engine then stops
-    counting as a condition. Each flag's help text names the field the flag overrides. That holds
+    of `runsOn.browser.engine`. A `--browser` replaces that field, and so does a `--browsers`
+    matrix. A listed engine then stops counting as a condition. Each flag's help text names the field the flag overrides. That holds
     for `run`, `record`, `crawl`, and `repl`. The `triage --rerun` and MCP run docstrings name it
     too. The flags still act through the unchanged `Effective` names.
   - Behaviour change: `record` and `crawl` default `--system-alert-handling` to the target's
@@ -1009,6 +1009,11 @@ batch provider that packages `launchEnv`, `common/report/rows.py`, `templates/se
     moved to `run.systemAlertHandling`. The top-level `iosTipKitHandling` moved to
     `run.tipKitHandling`. An old key fails at load, and the message names its new home. A
     scenario's `app.reinstall` is unset by default.
+  - Behaviour change: the crash-retry recovery reads the merged `reinstall`. A target that writes
+    `app.reinstall: overwrite` thus turns off the forced erase on a retry for its scenarios. The
+    same holds for the device replacement that follows that erase. A scenario that writes its own
+    `reinstall: clean` keeps both. The target field is the default for its scenarios, and
+    `overwrite` declares that the app data must survive a lease.
   - The target gains `app.reinstall` and `app.launch.deeplink` on iOS and Android. It gains
     `runsOn.seedPhotos` on iOS. They resolve onto `Effective.reinstall`, `.deeplink`, and
     `.seed_photos`. The seeded photos rebase against the config file.
