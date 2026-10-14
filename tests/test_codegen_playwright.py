@@ -220,7 +220,7 @@ def test_relaunch_gotos_base_url() -> None:
 
 def test_launch_env_seeds_localstorage() -> None:
     code = _gen(
-        "- name: x\n  preconditions:\n    launchEnv: { B: '2' }\n  steps:\n    - tap: { id: a }\n",
+        "- name: x\n  preconditions:\n    app: { launch: { env: { B: '2' } } }\n  steps:\n    - tap: { id: a }\n",
         env={"A": "1"},
     )
     assert "await page.addInitScript(() => localStorage.setItem('A', '1'));" in code

@@ -21,7 +21,13 @@ from bajutsu.cli._shared import (
     _with_headed,
     _with_worker_device,
 )
-from bajutsu.common.config import WEB_ENGINES, Effective, IosConfig, require_ios
+from bajutsu.common.config import (
+    WEB_ENGINES,
+    Effective,
+    IosConfig,
+    command_preconditions,
+    require_ios,
+)
 from bajutsu.common.devices import errors as device_errors
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.xcuitest import XcuitestChannelError
@@ -37,7 +43,6 @@ from bajutsu.common.platform_lifecycle.environments.xcuitest_live import (
     is_webdriver_endpoint,
 )
 from bajutsu.common.runner import launch_driver
-from bajutsu.common.scenario import Preconditions
 from bajutsu.repl.loop import repl_loop
 from bajutsu.repl.session import ReplSession
 from bajutsu.repl.tui import run as run_tui
@@ -89,20 +94,21 @@ def repl(
     erase: bool | None = typer.Option(
         None,
         "--erase/--no-erase",
-        help="erase the device before launching (app must be installed); default: erase locally, "
-        "no-erase on the live route to an `appium` grid, which does not support it",
+        help="erase the device before launching (app must be installed); the target's run.erase "
+        "does not apply here (default: erase locally, no-erase on the live route to an `appium` "
+        "grid, which does not support it)",
     ),
     headed: bool | None = typer.Option(
         None,
         "--headed/--no-headed",
         help="web backend: inspect a visible (headed, slow-motion) browser instead of headless; "
-        "default leaves the target's `headless` config",
+        "overrides the target's driver.headless",
     ),
     browser: str = typer.Option(
         "",
         "--browser",
         help=f"web backend: rendering engine to inspect — {' / '.join(WEB_ENGINES)}; "
-        "default leaves the target's `browser` config (chromium)",
+        "overrides the target's runsOn.browser.engine (default: chromium)",
     ),
     attach: bool = typer.Option(
         False,
@@ -177,7 +183,7 @@ def repl(
             udid,
             eff,
             actuator,
-            Preconditions(erase=erase),
+            command_preconditions(eff, erase=erase),
             environment=env,
             # The attached app is wherever the operator left it, not on the `startWhen` screen.
             skip_readiness=attach,

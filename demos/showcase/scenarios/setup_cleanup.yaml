@@ -12,7 +12,9 @@
 # underscore Android Views form, so one scenario runs unchanged on every target (BE-0221).
 - name: a favorite set in setup is released by the cleanup rules
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   setup:
     - wait: { for: { id: [stable.row.2, stable_row_2] }, timeout: 10 }
     - tap: { id: [stable.row.2, stable_row_2] }

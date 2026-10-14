@@ -996,7 +996,7 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   above runs only after the step body finishes, too late for a capture taken inside it. No scenario
   or CLI toggle: a scenario cannot observe a banner, so none can be broken by clearing it — the same
   "no known use for a toggle" the interruption path above already established
-- DSL `iosTipKitHandling` (BE-0389), an opt-in guard for a blocking Apple TipKit tip: TipKit's
+- DSL `preconditions.run.tipKitHandling` (BE-0389; a top-level `iosTipKitHandling` until BE-0452), an opt-in guard for a blocking Apple TipKit tip: TipKit's
   presentation marks the content it covers accessibility-hidden rather than merely occluding it, so a
   blocked tap can fail as `ElementNotFound`, not only `ElementNotTappable`. The XCUITest backend alone
   declares `Capability.HANDLE_TIPKIT_TIP` and implements `Driver.dismiss_blocking_tip()` by resolving

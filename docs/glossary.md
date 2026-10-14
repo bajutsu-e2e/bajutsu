@@ -34,10 +34,15 @@ in the finished scenario only as provenance (see `from`). See [recording](record
 schema. A **control-flow step** (`if` / `forEach`) is the exception: it carries no capture or
 extract modifiers. Defined by `Step` in `bajutsu/scenario/models/steps.py`.
 
-**precondition** — Per-scenario environment setup applied before the run: `erase`, `reinstall`,
-`launchArgs`, `launchEnv`, `deeplink`, `locale`, `run.inheritSetup`. Distinct from runtime concerns
-(`mocks` / `network`) and from config-level `defaults` / `targets`. Defined by `Preconditions` in
-`bajutsu/scenario/models/scenario.py`.
+**precondition** — Per-scenario environment setup applied before the run. It uses the target's own
+groups: `app`, `runsOn`, and `run`. It merges over each target the scenario drives. Its fields:
+
+- `app.reinstall` and `app.launch.env` / `.args` / `.deeplink`
+- `runsOn.<platform>`, on iOS `locale` and `seedPhotos`
+- `run.erase` / `.systemAlertHandling` / `.tipKitHandling` / `.inheritSetup`
+
+Distinct from runtime concerns (`mocks` / `network`) and from config-level `defaults` / `targets`.
+Defined by `Preconditions` in `bajutsu/common/scenario/models/scenario/preconditions.py`.
 
 **expect / assertion** — An **assertion** is a single machine-checkable check (one of `exists` /
 `value` / `label` / `count` / `enabled` / `disabled` / `selected` / `request` / `event` /

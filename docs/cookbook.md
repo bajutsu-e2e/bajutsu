@@ -28,7 +28,9 @@ first and `triage` diagnosing the second.
 ```yaml
 - name: favorite a horse
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - wait: { for: { id: stable.row.3 }, timeout: 10 }
     - tap: { id: stable.row.3 }
@@ -50,7 +52,9 @@ just as important to cover as the happy path.
 ```yaml
 - name: filter narrows the catalog
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Search", traits: [button] }
     - wait: { for: { id: search.field }, timeout: 10 }
@@ -63,7 +67,9 @@ just as important to cover as the happy path.
 
 - name: no match shows the empty state
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Search", traits: [button] }
     - wait: { for: { id: search.field }, timeout: 10 }
@@ -97,7 +103,9 @@ from a scenario, so `run` refuses it outright rather than running with a policy 
   tags: [permission, system]
   systemAlertHandling: { rules: [{ prompt: notifications, choice: grant }] }
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Permissions", traits: [button] }
     - wait: { for: { id: perm.requestNotif }, timeout: 10 }
@@ -123,7 +131,9 @@ flaky network, and `request` assertions confirm the mocked call happened.
 ```yaml
 - name: log submit answered by a mock, toast appears and clears
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   mocks:
     - match: { method: POST, pathMatches: "/post$" }
       respond: { status: 201, body: "{\"ok\":true}" }
@@ -162,7 +172,9 @@ found exactly the horse it searched for.
     - { q: "Horse 3", n: "3" }
     - { q: "Horse 5", n: "5" }
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Search", traits: [button] }
     - wait: { for: { id: search.field }, timeout: 10 }
@@ -195,7 +207,9 @@ Then call it from any scenario with `use` / `with`:
 ```yaml
 - name: search finds a horse by name
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - use: { component: _components/search_for.yaml, with: { query: "Horse 3" } }
     - wait: { for: { id: search.row.3 }, timeout: 5 }

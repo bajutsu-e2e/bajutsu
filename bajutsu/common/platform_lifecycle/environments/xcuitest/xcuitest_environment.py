@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import json
 import math
 import os
@@ -19,6 +20,7 @@ from typing import IO, TYPE_CHECKING, Literal, cast
 from bajutsu.common import backends, stall_diagnostics
 from bajutsu.common.backend_cli import simctl
 from bajutsu.common.config import Effective, require_ios
+from bajutsu.common.config.preconditions import ResolvedPreconditions
 from bajutsu.common.devices import os as device_os
 from bajutsu.common.devices.os import DeviceOS
 from bajutsu.common.drivers import base
@@ -29,7 +31,7 @@ from bajutsu.common.platform_lifecycle.device_control import device_control
 from bajutsu.common.platform_lifecycle.environments._bundled_runner import _products_digest
 from bajutsu.common.platform_lifecycle.environments.ios import _DeviceEnvironment
 from bajutsu.common.platform_lifecycle.protocols import CollectorHost
-from bajutsu.common.scenario import Preconditions, Relaunch, Scenario
+from bajutsu.common.scenario import Relaunch, Scenario
 from bajutsu.crawl import Reset
 
 from ._attempt_failure import _AttemptFailure
@@ -256,7 +258,10 @@ class XcuitestEnvironment(_DeviceEnvironment):
         self._lease_driver: base.Driver | None = None
         self._member_drivers: dict[str, base.Driver] = {}
         self._group: RunnerTarget | None = None
-        self._launch_inputs: tuple[Preconditions, Mapping[str, str]] = (Preconditions(), {})
+        self._launch_inputs: tuple[ResolvedPreconditions, Mapping[str, str]] = (
+            ResolvedPreconditions(),
+            {},
+        )
         # `repl --attach` (BE-0455): set by `request_attach` before `start`, which then drives the
         # app the operator already has open instead of preparing the device; `attach_outcome` says
         # whether that app was running (`attached`) or had to be launched (`launched`). The app is
@@ -283,7 +288,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
     def start(
         self,
         eff: Effective,
-        pre: Preconditions,
+        pre: ResolvedPreconditions,
         *,
         extra_env: Mapping[str, str] | None = None,
         record_video_dir: Path | None = None,
@@ -317,7 +322,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
     def _start(
         self,
         eff: Effective,
-        pre: Preconditions,
+        pre: ResolvedPreconditions,
         *,
         extra_env: Mapping[str, str] | None = None,
         record_video_dir: Path | None = None,  # noqa: ARG002  # Environment shape
@@ -398,7 +403,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
             # never reached this instance (a lease whose environment the pool had already evicted)
             # would then leave the retry with neither remedy.
             return self._spawn_cold(
-                eff, pre.model_copy(update={"erase": False}), device_type, extra_env, permissions
+                eff, dataclasses.replace(pre, erase=False), device_type, extra_env, permissions
             )
 
         # Simulator: reuse a healthy warm runner across leases (BE-0291). `erase` shuts the Simulator
@@ -423,7 +428,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
     def _start_attached(
         self,
         eff: Effective,
-        pre: Preconditions,
+        pre: ResolvedPreconditions,
         device_type: str,
         extra_env: Mapping[str, str] | None,
         permissions: Mapping[str, str] | None,
@@ -503,7 +508,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
     def _spawn_cold(
         self,
         eff: Effective,
-        pre: Preconditions,
+        pre: ResolvedPreconditions,
         device_type: str,
         extra_env: Mapping[str, str] | None,
         permissions: Mapping[str, str] | None,
@@ -523,7 +528,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
         if device_type != "device":
             self._prepare_simulator(eff, pre, permissions, cold=True)
 
-        # The runner launches the app via XCUIApplication.launch(). Preconditions are forwarded
+        # The runner launches the app via XCUIApplication.launch(). ResolvedPreconditions are forwarded
         # through env vars: the runner reads BAJUTSU_LAUNCH_ENV_* and sets them on
         # launchEnvironment, BAJUTSU_LAUNCH_ARGS as launchArguments, and opens BAJUTSU_DEEPLINK.
         launch_env, launch_args = self._launch_params(eff, pre, extra_env)
@@ -582,7 +587,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
         self,
         failure: _AttemptFailure,
         eff: Effective,
-        pre: Preconditions,
+        pre: ResolvedPreconditions,
         permissions: Mapping[str, str] | None,
     ) -> _Recovery:
         """Repair the Simulator a failed cold attempt leaves behind, so the retry spawns onto a live device.
@@ -727,7 +732,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
         return _Recovery(f"rebooted {self._udid}", fresh_budget=_runner_startup_timeout())
 
     def _finish_repair(
-        self, eff: Effective, pre: Preconditions, permissions: Mapping[str, str] | None
+        self, eff: Effective, pre: ResolvedPreconditions, permissions: Mapping[str, str] | None
     ) -> None:
         """Re-prepare the device a reboot or replacement just brought back, outside the recovery bound.
 
@@ -1052,7 +1057,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
     def _resume_warm(
         self,
         eff: Effective,
-        pre: Preconditions,
+        pre: ResolvedPreconditions,
         extra_env: Mapping[str, str] | None,
         permissions: Mapping[str, str] | None,
         driver: base.Driver,
@@ -1098,7 +1103,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
     def _prepare_simulator(
         self,
         eff: Effective,
-        pre: Preconditions,
+        pre: ResolvedPreconditions,
         permissions: Mapping[str, str] | None,
         *,
         cold: bool,
@@ -1130,8 +1135,8 @@ class XcuitestEnvironment(_DeviceEnvironment):
                     resolved = simctl.device_type_of(self._udid, self._run)
                     self._device_type_id, self._device_runtime_id = resolved or (None, None)
                 self._pin_system_locale(e, pre.resolved_locale(eff.locale))
-                # `seedPhotos` requires `erase: true` (`Preconditions`'s own validator), so this
-                # reuses the same wipe that already guarantees a known-empty library — never runs on
+                # A merged `seedPhotos` requires an effective `run.erase` (`check_preconditions`), so
+                # this reuses the same wipe that already guarantees a known-empty library — never runs on
                 # a warm resume (`cold` is False there) or seeds twice into the same device lease.
                 if pre.erase and pre.seed_photos:
                     e.add_media(pre.seed_photos)
@@ -1258,7 +1263,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
         self._pinned_locale = locale
 
     def _launch_params(
-        self, eff: Effective, pre: Preconditions, extra_env: Mapping[str, str] | None
+        self, eff: Effective, pre: ResolvedPreconditions, extra_env: Mapping[str, str] | None
     ) -> tuple[dict[str, str], list[str]]:
         """The launch env and args for this scenario (scenario locale overrides the config default)."""
         launch_env = {**eff.launch_env, **pre.launch_env, **(extra_env or {})}
@@ -1530,7 +1535,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
     def start_member(
         self,
         eff: Effective,
-        pre: Preconditions,
+        pre: ResolvedPreconditions,
         *,
         extra_env: Mapping[str, str] | None = None,
         permissions: Mapping[str, str] | None = None,
@@ -1585,7 +1590,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
         return self._group
 
     def _install_member_build(
-        self, e: simctl.Env, bundle_id: str, app_path: str | None, pre: Preconditions
+        self, e: simctl.Env, bundle_id: str, app_path: str | None, pre: ResolvedPreconditions
     ) -> None:
         # The member's own reinstall mode; `erase` is device-wide and `start` already ran it.
         if not app_path:

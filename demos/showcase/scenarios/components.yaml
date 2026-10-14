@@ -12,7 +12,9 @@
 # exercised by the shared `run` scenarios (modals.yaml) instead.
 - name: filter sheet opens then closes
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Log", traits: [button] }
       capture: [deviceLog]
@@ -26,7 +28,9 @@
 
 - name: gallery cover opens then closes
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Log", traits: [button] }
       capture: [deviceLog]
@@ -40,7 +44,9 @@
 
 - name: search filters the catalog
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Search", traits: [button] }
       capture: [deviceLog]

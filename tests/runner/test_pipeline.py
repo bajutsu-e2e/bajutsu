@@ -373,7 +373,7 @@ def test_run_all_forces_erase_on_a_crash_triggered_retry() -> None:
 
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         state["n"] += 1
-        erase_seen.append(scenario.preconditions.erase)
+        erase_seen.append(scenario.preconditions.run.erase)
         if state["n"] == 1:
             raise base.BackendCrashError("runner crashed during the readiness gate (test)")
         return Lease(
@@ -403,7 +403,7 @@ def test_run_all_forces_erase_on_a_crash_triggered_retry_against_an_xcuitest_sim
 
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         state["n"] += 1
-        erase_seen.append(scenario.preconditions.erase)
+        erase_seen.append(scenario.preconditions.run.erase)
         if state["n"] == 1:
             raise base.BackendCrashError("runner crashed during the readiness gate (test)")
         return Lease(
@@ -433,13 +433,15 @@ def test_run_all_degrades_to_a_bare_respawn_when_the_forced_erase_lease_itself_f
 
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         state["n"] += 1
-        erase_seen.append(scenario.preconditions.erase)
+        erase_seen.append(scenario.preconditions.run.erase)
         if state["n"] == 1:
             raise base.BackendCrashError("runner crashed during the readiness gate (test)")
         if state["n"] == 2:
-            assert scenario.preconditions.erase is True  # the forced-erase attempt
+            assert scenario.preconditions.run.erase is True  # the forced-erase attempt
             raise simctl.DeviceError("simctl erase failed (test)")
-        assert scenario.preconditions.erase is None  # degraded to a bare respawn, erase not forced
+        assert (
+            scenario.preconditions.run.erase is None
+        )  # degraded to a bare respawn, erase not forced
         return Lease(
             driver=_fake_driver(),
             sink=NullSink(),
@@ -484,7 +486,7 @@ def _escalating_lease(
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         state["n"] += 1
         n = state["n"]
-        erase_seen.append(scenario.preconditions.erase)
+        erase_seen.append(scenario.preconditions.run.erase)
         return Lease(
             driver=_crashing_driver() if n <= crashes else _fake_driver(),
             sink=NullSink(),
@@ -544,7 +546,7 @@ def test_a_scenario_keeping_its_app_data_is_never_moved_to_a_blank_device() -> N
         Scenario.model_validate(
             {
                 "name": "a",
-                "preconditions": {"reinstall": "overwrite"},
+                "preconditions": {"app": {"reinstall": "overwrite"}},
                 "steps": [{"tap": {"id": "ok"}}],
             }
         )
@@ -588,7 +590,7 @@ def test_a_lease_time_crash_keeps_the_erase_rung() -> None:
 
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         state["n"] += 1
-        erase_seen.append(scenario.preconditions.erase)
+        erase_seen.append(scenario.preconditions.run.erase)
         if state["n"] < 3:
             raise base.BackendCrashError("runner crashed during the readiness gate (test)")
         return _lease(eff, scenario)
@@ -672,7 +674,7 @@ def test_a_timed_out_forced_erase_prep_fails_the_scenario_instead_of_degrading()
 
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         state["n"] += 1
-        erase_seen.append(scenario.preconditions.erase)
+        erase_seen.append(scenario.preconditions.run.erase)
         if state["n"] == 1:
             raise crash
         raise simctl.DeviceTimeout(
@@ -703,7 +705,7 @@ def test_an_ordinary_device_fault_still_degrades_after_the_timeout_split() -> No
 
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         state["n"] += 1
-        erase_seen.append(scenario.preconditions.erase)
+        erase_seen.append(scenario.preconditions.run.erase)
         if state["n"] == 1:
             raise base.BackendCrashError("runner crashed during the readiness gate (test)")
         if state["n"] == 2:
@@ -729,7 +731,7 @@ def test_a_timed_out_replacement_device_lease_fails_the_scenario_too() -> None:
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         state["n"] += 1
         n = state["n"]
-        erase_seen.append(scenario.preconditions.erase)
+        erase_seen.append(scenario.preconditions.run.erase)
         if n == 3:  # the attempt after the escalation was requested
             raise simctl.DeviceTimeout("device operation timed out after 120s: xcrun simctl clone")
         if n > 3:  # scenario "b" must never be leased at all
@@ -800,7 +802,7 @@ def test_run_all_skips_forced_erase_when_scenario_declares_reinstall_overwrite()
 
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         state["n"] += 1
-        erase_seen.append(scenario.preconditions.erase)
+        erase_seen.append(scenario.preconditions.run.erase)
         if state["n"] == 1:
             raise base.BackendCrashError("runner crashed during the readiness gate (test)")
         return Lease(
@@ -816,7 +818,7 @@ def test_run_all_skips_forced_erase_when_scenario_declares_reinstall_overwrite()
         Scenario.model_validate(
             {
                 "name": "a",
-                "preconditions": {"reinstall": "overwrite"},
+                "preconditions": {"app": {"reinstall": "overwrite"}},
                 "steps": [{"tap": {"id": "ok"}}],
             }
         )
@@ -841,7 +843,7 @@ def test_run_all_forces_erase_even_when_preconditions_erase_is_already_false() -
 
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         state["n"] += 1
-        erase_seen.append(scenario.preconditions.erase)
+        erase_seen.append(scenario.preconditions.run.erase)
         if state["n"] == 1:
             raise base.BackendCrashError("runner crashed during the readiness gate (test)")
         return Lease(
@@ -855,7 +857,11 @@ def test_run_all_forces_erase_even_when_preconditions_erase_is_already_false() -
 
     scenarios = [
         Scenario.model_validate(
-            {"name": "a", "preconditions": {"erase": False}, "steps": [{"tap": {"id": "ok"}}]}
+            {
+                "name": "a",
+                "preconditions": {"run": {"erase": False}},
+                "steps": [{"tap": {"id": "ok"}}],
+            }
         )
     ]
     results = run_all(_eff(), scenarios, lease)
@@ -875,7 +881,7 @@ def test_run_all_honors_an_explicit_no_erase_override_on_a_crash_triggered_retry
 
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         state["n"] += 1
-        erase_seen.append(scenario.preconditions.erase)
+        erase_seen.append(scenario.preconditions.run.erase)
         if state["n"] == 1:
             raise base.BackendCrashError("runner crashed during the readiness gate (test)")
         return Lease(
@@ -889,7 +895,11 @@ def test_run_all_honors_an_explicit_no_erase_override_on_a_crash_triggered_retry
 
     scenarios = [
         Scenario.model_validate(
-            {"name": "a", "preconditions": {"erase": False}, "steps": [{"tap": {"id": "ok"}}]}
+            {
+                "name": "a",
+                "preconditions": {"run": {"erase": False}},
+                "steps": [{"tap": {"id": "ok"}}],
+            }
         )
     ]
     results = run_all(_eff(), scenarios, lease, force_erase_on_retry=False)
@@ -907,7 +917,7 @@ def test_run_all_skips_forced_erase_on_a_real_device() -> None:
 
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         state["n"] += 1
-        erase_seen.append(scenario.preconditions.erase)
+        erase_seen.append(scenario.preconditions.run.erase)
         if state["n"] == 1:
             raise base.BackendCrashError("runner crashed during the readiness gate (test)")
         return Lease(
@@ -934,7 +944,7 @@ def test_run_all_skips_forced_erase_on_the_live_webdriver_route() -> None:
 
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         state["n"] += 1
-        erase_seen.append(scenario.preconditions.erase)
+        erase_seen.append(scenario.preconditions.run.erase)
         if state["n"] == 1:
             raise base.BackendCrashError("runner crashed during the readiness gate (test)")
         return Lease(
@@ -1818,10 +1828,18 @@ def test_run_all_alert_guard_for_selects_per_scenario() -> None:
 
     scenarios = [
         Scenario.model_validate(
-            {"name": "guarded", "systemAlertHandling": True, "steps": [{"tap": {"id": "later"}}]}
+            {
+                "name": "guarded",
+                "preconditions": {"run": {"systemAlertHandling": True}},
+                "steps": [{"tap": {"id": "later"}}],
+            }
         ),
         Scenario.model_validate(
-            {"name": "bare", "systemAlertHandling": False, "steps": [{"tap": {"id": "later"}}]}
+            {
+                "name": "bare",
+                "preconditions": {"run": {"systemAlertHandling": False}},
+                "steps": [{"tap": {"id": "later"}}],
+            }
         ),
     ]
 
@@ -1830,7 +1848,7 @@ def test_run_all_alert_guard_for_selects_per_scenario() -> None:
         # One surface only: the scenario-start push refuses a rule claiming both (BE-0461).
         return (
             None
-            if s.system_alert_handling is False
+            if s.preconditions.run.system_alert_handling is False
             else AlertGuardConfig(rules=[guard_rule(in_tree=False)])
         )
 
@@ -2488,7 +2506,7 @@ def test_the_run_resolves_a_system_alert_prompt_against_the_scenario_locale() ->
     scenario = Scenario.model_validate(
         {
             "name": "grant",
-            "preconditions": {"locale": "ja_JP"},  # overrides `_eff()`'s en_US
+            "preconditions": {"runsOn": {"ios": {"locale": "ja_JP"}}},  # overrides `_eff()`'s en_US
             "steps": [
                 {"handleSystemAlert": {"prompt": "notifications", "choice": "grant", "timeout": 5}}
             ],

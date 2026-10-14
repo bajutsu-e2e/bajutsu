@@ -7,6 +7,7 @@ from pathlib import Path
 
 from bajutsu.common.backend_cli import simctl
 from bajutsu.common.config import Effective
+from bajutsu.common.config.preconditions import ResolvedPreconditions
 from bajutsu.common.drivers import base
 from bajutsu.common.evidence.network import TransitionSource, _no_transitions
 
@@ -19,7 +20,6 @@ from bajutsu.common.platform_lifecycle import (
     environment_for,
 )
 from bajutsu.common.runner.recovery import guarded_teardown
-from bajutsu.common.scenario import Preconditions
 
 __all__ = ["ReadinessResult", "await_ready", "launch_driver"]
 
@@ -28,7 +28,7 @@ def launch_driver(
     udid: str,
     eff: Effective,
     actuator: str,
-    preconditions: Preconditions | None = None,
+    preconditions: ResolvedPreconditions | None = None,
     env_run: simctl.RunFn = simctl.real_run,
     extra_env: Mapping[str, str] | None = None,
     record_video_dir: Path | None = None,
@@ -82,7 +82,7 @@ def launch_driver(
     Raises:
         simctl.DeviceError: A simctl step failed, or a web target declares no `baseUrl`.
     """
-    pre = preconditions or Preconditions()
+    pre = preconditions or ResolvedPreconditions()
     # The per-platform startup (iOS simctl sequence, web browser context, …) lives behind the
     # `Environment` seam, so this path no longer branches on the actuator name (BE-0009 Phase 0).
     env = environment if environment is not None else environment_for(actuator, udid, env_run)

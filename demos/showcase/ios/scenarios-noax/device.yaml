@@ -6,7 +6,9 @@
 - name: override the device location and round-trip the clipboard
   tags: [system]
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - wait: { for: { label: "Horse 1" }, timeout: 10 }
     - setLocation: { lat: 35.681, lon: 139.767 }

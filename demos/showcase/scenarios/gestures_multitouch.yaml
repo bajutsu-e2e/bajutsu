@@ -16,7 +16,9 @@
 # does not self-mirror, where re-applying an accumulating gesture would vary its magnitude by run.
 - name: pinch and rotate targets mirror their result
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_GESTURES: "1", BAJUTSU_GESTURE_RETRY: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1", SHOWCASE_GESTURES: "1", BAJUTSU_GESTURE_RETRY: "1" }
   steps:
     - wait: { for: { id: log.pinch }, timeout: 10 }
       capture: [deviceLog]

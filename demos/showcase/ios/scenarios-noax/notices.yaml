@@ -5,7 +5,9 @@
 # ("Details for stable notice number N."). Run over XCUITest (`--backend ios`).
 - name: the list has off-screen rows
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Notices", traits: [button] }
     - wait: { for: { label: "Notice 1" }, timeout: 10 }
@@ -16,7 +18,9 @@
 
 - name: tap a visible notice to open its detail, then pop back
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Notices", traits: [button] }
     - wait: { for: { label: "Notice 2" }, timeout: 10 }
@@ -34,7 +38,9 @@
 # target is still reached where a software-rendered CI Simulator's fling settles shorter.
 - name: scroll to an off-screen notice and open it
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Notices", traits: [button] }
     - wait: { for: { label: "Notice 1" }, timeout: 10 }

@@ -114,7 +114,7 @@ def test_a_scenario_locale_pins_every_member_alike(tmp_path: Path) -> None:
         targets=[["auth", "ja"]],
         primaryTarget="auth",
         installs=["ja"],
-        preconditions={"locale": "en_US"},
+        preconditions={"runsOn": {"ios": {"locale": "en_US"}}},
     )
     _reject_bad_device_groups([s], _effs(tmp_path), checkout_root=None)
 

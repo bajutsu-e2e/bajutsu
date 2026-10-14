@@ -11,9 +11,12 @@
 # correspondence with the shared suite, not because iOS needs a separate gate here.
 - name: grant notification permission
   tags: [permission, system]
-  systemAlertHandling: { rules: [{ prompt: notifications, choice: grant }] }
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
+    run:
+      systemAlertHandling: { rules: [{ prompt: notifications, choice: grant }] }
   steps:
     - tap: { label: "Permissions", traits: [button] }
     - wait: { for: { label: "Request Notifications", traits: [button] }, timeout: 10 }

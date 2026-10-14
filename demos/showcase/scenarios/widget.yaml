@@ -7,7 +7,7 @@
 # records what each screen exposes on iPhone 17 Pro, iOS 26.5, Xcode 27.0). Calendar is the widget
 # because it ships on every Simulator runtime and needs no data or permission to render.
 #
-# `erase: true` is what makes the Home Screen deterministic: it resets the layout to the runtime's
+# `run.erase: true` is what makes the Home Screen deterministic: it resets the layout to the runtime's
 # default (the Home Screen opens on the page the test targets were installed to, which has free
 # space in the top rows), and it drops the widgets an earlier run added — without it, a second
 # Calendar widget would make the final assertion ambiguous rather than proving this run added one.
@@ -28,9 +28,14 @@
 - name: add a Calendar widget from the Home Screen gallery and open it
   tags: [app, springboard]
   preconditions:
-    erase: true
-    locale: en_US
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
+    runsOn:
+      ios:
+        locale: en_US
+    run:
+      erase: true
   steps:
     - wait: { for: { id: stable.row.1 }, timeout: 10 }
     - background: {}

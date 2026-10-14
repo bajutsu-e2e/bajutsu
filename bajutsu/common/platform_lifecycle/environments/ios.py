@@ -10,6 +10,7 @@ from collections.abc import Callable, Mapping
 
 from bajutsu.common.backend_cli import simctl
 from bajutsu.common.config import Effective, require_ios
+from bajutsu.common.config.preconditions import ResolvedPreconditions
 from bajutsu.common.drivers import base
 from bajutsu.common.evidence import intervals
 from bajutsu.common.evidence.network import Collector
@@ -18,7 +19,7 @@ from bajutsu.common.platform_lifecycle import readiness
 from bajutsu.common.platform_lifecycle.device_control import device_control
 from bajutsu.common.platform_lifecycle.protocols import CollectorHost
 from bajutsu.common.platform_lifecycle.relaunchers import device_relauncher
-from bajutsu.common.scenario import Preconditions, Scenario
+from bajutsu.common.scenario import Scenario
 from bajutsu.crawl import AliveCheck, ClearBlocking, Recover, Reset
 
 
@@ -98,7 +99,7 @@ class _DeviceEnvironment:
     def start_member(
         self,
         eff: Effective,  # noqa: ARG002  # Environment shape
-        pre: Preconditions,  # noqa: ARG002
+        pre: ResolvedPreconditions,  # noqa: ARG002
         *,
         extra_env: Mapping[str, str] | None = None,  # noqa: ARG002
         permissions: Mapping[str, str] | None = None,  # noqa: ARG002

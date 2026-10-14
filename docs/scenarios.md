@@ -69,7 +69,7 @@ misinterpret rather than merely reject; a purely additive optional field needs n
 | `primaryTarget` | str | none | The target a step or top-level `expect` entry runs against when it omits `target`; must be the first name in `targets`, the first member of the first group ([below](#targets--target-multi-target-scenarios-be-0428)) |
 | `installs` | list[str] | `[]` | The device-group members that install and launch at the start beside the primary; every other member of a group of two or more installs later through an `installApp` step ([device groups](#device-groups-several-apps-on-one-device-be-0447)) |
 | `data` / `dataFile` | list / str | none | Data-driven rows — inline `data`, or `dataFile` (a CSV path). Expands into one run per row, substituting `${row.col}`. Mutually exclusive ([reuse, data, and tags](#reuse-data-and-tags)) |
-| `preconditions` | object | `{}` | Per-test environment setup (below) |
+| `preconditions` | object | `{}` | Per-test environment setup in the target's own group names, `app`, `runsOn`, and `run`, each merged over the target's ([below](#preconditions-environment-setup)) |
 | `setup` | list | `[]` | Setup steps run as their **own phase** ahead of `steps`; a failure there aborts the scenario ([below](#setup--cleanup-setup-and-teardown-phases)) |
 | `steps` | list | required | The ordered actions (below) |
 | `expect` | list | `[]` | Final assertions after all steps pass ([selectors](selectors.md#assertion-evaluation)) |
@@ -78,15 +78,15 @@ misinterpret rather than merely reject; a purely additive optional field needs n
 | `network` | object | none | `{ filter: { domains: [...] } }` — `filter.domains` scopes which observed requests are interleaved into the report's Steps timeline (by URL host; a parent domain matches subdomains). Unset shows all; the Network tab always lists them all ([reporting](reporting.md#reporthtml)) |
 | `mocks` | list | `[]` | Deterministic network stubs — a matching outgoing request gets a canned response instead of hitting the network ([network mocks](#network-mocks-deterministic-stubs)) |
 | `redact` | object | none | Masking applied before evidence is written ([evidence](evidence.md#masking-redact)) |
-| `systemAlertHandling` | bool / object | none (on) | The reactive **alert guard** — clears OS prompts the iOS backend cannot see, natively on XCUITest (no model, reusing BE-0316); a prompt it cannot name is reported, never guessed at. On by default; `false` disables it, `{ rules: [{ prompt: notifications, choice: grant }] }` keeps it on and answers a named prompt, `{ pollInterval: 2 }` retunes the native poll cadence. CLI `--system-alert-handling`/`--no-system-alert-handling` overrides ([below](#systemalerthandling-the-system-alert-guard)) |
-| `iosTipKitHandling` | bool | none (off) | Dismiss a blocking Apple **TipKit** tip — the framework-owned popover, so that no scenario has to hand-author the same recovery. The guard recognizes a tip by its dismiss scrim (`PopoverDismissRegion`) **and** its own container (`TipView`) together, because a plain `confirmationDialog` installs an identical scrim and must be left alone; an author who does write an `interrupts` entry for a tip keys it on `TipView` for the same reason (`TipView` is TipKit's own container, measured on both the SwiftUI and UIKit presentations). iOS only (inert elsewhere), and **off** by default: a tip is sometimes the very thing a scenario asserts on. CLI `--ios-tipkit-handling`/`--no-ios-tipkit-handling` overrides |
 | `permissions` | dict | `{}` | Declarative OS permission state — `{ <service>: grant \| revoke }` — applied **before the app launches** ([below](#permissions-pre-launch-permission-state)) |
 | `interrupts` | list | `[]` | Handlers for an interstitial screen that surfaces at an **unpredictable** point — each `{ condition, steps }`, checked opportunistically wherever the screen appears ([below](#interrupts-handling-unpredictable-interstitial-screens)) |
 
 ```yaml
 - name: filter narrows the catalog
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Search", traits: [button] }
     - wait: { for: { id: search.field }, timeout: 10 }
@@ -101,32 +101,90 @@ misinterpret rather than merely reject; a purely additive optional field needs n
 
 ## preconditions (environment setup)
 
-Implementation: `scenario/models/scenario.py` `Preconditions`. The runner's `launch_driver` reads this to build
-the launch sequence ([run-loop](run-loop.md#runner-the-run-pipeline)).
+Implementation: `Preconditions` in `scenario/models/scenario/preconditions.py`. The module
+`bajutsu/common/config/preconditions.py` merges it over each target. The runner's `launch_driver`
+reads the merged result to build the launch sequence ([run-loop](run-loop.md#runner-the-run-pipeline)).
 
-| Key | Type | Default | Description | Wired |
-|---|---|---|---|---|
-| `erase` | bool | unset (inherits; off unless the target's `run.erase` sets it) | Wipe the whole simulator (`simctl erase` — apps/data/settings) before the test. Off by default; `reinstall` keeps the app fresh without a full wipe, so set `true` only when a test needs a pristine device | ✅ |
-| `reinstall` | `clean` \| `overwrite` | `clean` | How the app is reinstalled before each run when the target config sets `app.path`: `clean` = uninstall then install (fresh app + data); `overwrite` = install over the existing app (keeps its data) | ✅ |
-| `launchArgs` | list[str] | `[]` | Launch arguments (appended to config's `app.launch.args`) | ✅ |
-| `launchEnv` | dict | `{}` | Launch env (injected via `SIMCTL_CHILD_*`; merged onto config's `app.launch.env`) | ✅ |
-| `deeplink` | str | none | Opened after launch via `simctl openurl` | ✅ |
-| `locale` | str | none | Force the locale/language at launch (`-AppleLocale`/`-AppleLanguages`); overrides the target's `runsOn.locale` | ✅ |
-| `run.inheritSetup` | bool | `true` | `false` skips the `hooks.setup` of every target this scenario declares; their `hooks.cleanup` still runs ([below](#setup--cleanup-setup-and-teardown-phases)) | ✅ |
+A scenario's `preconditions` uses the target's own group names. A field thus has one spelling in the
+config and in the scenario
+([BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)).
+The three groups are `app`, `runsOn`, and `run`. A scenario field overrides the same field of the
+target ([configuration](configuration.md)). Three fields combine with the target's instead:
 
-> **launchEnv resolution order** is **config's `app.launch.env` < preconditions' `launchEnv`** (the
-> one closer to the test wins). `launch_driver` merges `{**eff.launch_env, **pre.launch_env}`.
+- `app.launch.env` merges key by key.
+- `app.launch.args` appends after the target's arguments.
+- The rules of `run.systemAlertHandling` concatenate, and the scenario's come first.
 
-> **`erase` resolution order** is **CLI `--erase`/`--no-erase` > this scenario's own `erase` >
-> the target's `run.erase` > built-in off** ([BE-0177](../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md);
-> [configuration](configuration.md#config-layering-defaults--targets)) — an unset scenario value
-> (the common case) inherits whatever the target config defaults to, which is itself off unless the
-> config sets it. `_filter_scenarios` (`cli/commands/run.py`) resolves this before the run starts.
+```yaml
+preconditions:
+  app:
+    reinstall: overwrite
+    launch: { env: { FEATURE_X: "1" }, args: ["-debug"], deeplink: "showcase://cart" }
+  runsOn:
+    ios: { locale: ja_JP, seedPhotos: [photos/cat.jpg] }
+  run: { erase: true, tipKitHandling: true }
+```
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `app.reinstall` | `clean` \| `overwrite` | unset (the target's `app.reinstall`, then `clean`) | How the app is reinstalled before each run when the target config sets `app.path`: `clean` uninstalls and then installs (fresh app and data); `overwrite` installs over the existing app (keeps its data). iOS and Android |
+| `app.launch.env` | dict | `{}` | Launch environment, merged onto the target's `app.launch.env` key by key. iOS injects it through `SIMCTL_CHILD_*`, Android as intent extras; on the web the Playwright code generator reads it |
+| `app.launch.args` | list[str] | `[]` | Launch arguments, appended after the target's `app.launch.args`. iOS only |
+| `app.launch.deeplink` | str | unset (the target's `app.launch.deeplink`) | A URL the app opens after launch (`simctl openurl` on iOS, an intent on Android) |
+| `runsOn.<platform>` | object | none | The scenario's own `runsOn` for one platform: on iOS `locale` and `seedPhotos`; the device conditions (`model`, `os`, `avd`, `apiLevel`, `browser.engine`, `browser.version`) are accepted but refused at run time until matching devices lands. A block for a platform the run does not drive has no effect |
+| `runsOn.ios.locale` | str | unset (the target's `runsOn.locale`) | Force the locale and language at launch (`-AppleLocale` / `-AppleLanguages`), and pin the Simulator's system language |
+| `runsOn.ios.seedPhotos` | list[str] | unset (the target's `runsOn.seedPhotos`) | Images seeded into the Simulator's photo library on the erase path, in order; paths resolve against the scenario file, and a scenario's list replaces the target's |
+| `run.erase` | bool | unset (the target's `run.erase`, then off) | Wipe the whole device (`simctl erase`: apps, data, settings) before the test. `reinstall` keeps the app fresh without a full wipe, so set `true` only when a test needs a pristine device |
+| `run.systemAlertHandling` | bool / object | unset (on) | The reactive alert guard ([below](#systemalerthandling-the-system-alert-guard)) |
+| `run.tipKitHandling` | bool | unset (the target's `run.tipKitHandling`, then off) | Dismiss a blocking Apple TipKit tip (iOS only; [below](#tipkithandling-a-blocking-tipkit-tip)) |
+| `run.inheritSetup` | bool | `true` | `false` skips the `hooks.setup` of every target this scenario declares; their `hooks.cleanup` still runs ([below](#setup--cleanup-setup-and-teardown-phases)) |
+
+A scenario cannot set `id`, `path`, or `build`. Nor can it set `startWhen` or `idNamespaces`. The
+target owns these fields, which identify or build the app. `runsOn.kind` and `runsOn.emulate` stay
+on the target as well.
+`run.secrets` stays a target-level union, so a scenario cannot set it either.
+
+> **Each field is checked against the targets the scenario drives, before any device work.** An `app`
+> field or an iOS-only `run` field that no driven target's platform has fails the run and names the
+> field, rather than being ignored: `app.launch.args` in a web-only scenario, or `run.tipKitHandling`
+> against an Android target alone. Each target applies the `app` fields its own platform has, so an
+> iOS-and-web scenario can still set `app.launch.args` for its iOS side. A scenario file that
+> several single-platform targets pick up through `paths.scenarios` therefore names its `targets`, or
+> sits in a directory only the matching targets read. A `runsOn` block is keyed by platform, so a
+> block for a platform the run does not drive is not an error.
+
+> **`run.erase` resolution order** is **CLI `--erase` / `--no-erase` > this scenario's own
+> `run.erase` > the target's `run.erase` > built-in off**. An unset scenario value (the common case)
+> inherits whatever the target config sets. `_filter_scenarios` (`run/cli.py`) resolves the order
+> before the run starts. See
+> [BE-0177](../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md) and
+> [configuration](configuration.md#config-layering-defaults--targets).
+
+> **Seeding needs a wiped device.** After merging, a non-empty `seedPhotos` requires the effective
+> `run.erase` (the flag, then the scenario, then the target) to be true, because the photo library
+> is seeded only on the erase path. A target-level `run.erase: true` satisfies the rule.
 
 > **`reinstall: clean` also resets permission state** (`permissions`, below): iOS via `simctl
-> privacy reset all`, Android via `pm clear`. `overwrite` resets neither — it exists to keep a
+> privacy reset all`, Android via `pm clear`. `overwrite` resets neither. `overwrite` exists to keep a
 > scenario's data across runs, and permission grants are part of that same preserved state, so a
 > scenario relying on an earlier one's grant under `overwrite` keeps seeing it.
+
+> **A run stored before BE-0452 still loads.** The scenario loader rejects the old flat keys:
+> `erase`, `reinstall`, `launchEnv`, `launchArgs`, `deeplink`, `locale`, and `seedPhotos`. It
+> rejects the top-level `systemAlertHandling` and `iosTipKitHandling` too. Each message names the
+> key's new home. The offline readers of a run directory translate the old keys in its stored
+> `scenario.yaml` instead. They are the report re-render, `trace`, and `triage`.
+
+## tipKitHandling (a blocking TipKit tip)
+
+Set `preconditions.run.tipKitHandling` to `true` to turn the TipKit guard on. The guard dismisses a
+blocking Apple **TipKit** tip, the framework-owned popover. Each scenario is then spared from
+hand-authoring the same recovery. The guard needs two signs of a tip together. One is its dismiss
+scrim (`PopoverDismissRegion`). The other is its own container (`TipView`). A plain `confirmationDialog` installs an identical scrim, and the guard
+must not touch it. An `interrupts` entry for a tip keys on `TipView` for the same reason. `TipView`
+is TipKit's own container, measured on both the SwiftUI and UIKit presentations. The field applies
+to iOS alone. The guard is **off** by default, because a scenario sometimes asserts on the tip itself. The
+CLI's `--ios-tipkit-handling` / `--no-ios-tipkit-handling` overrides it.
 
 ## systemAlertHandling (the system-alert guard)
 
@@ -140,7 +198,7 @@ wait stopped: for {'id': 'Close'} after 10.4s — no element below the applicati
 
 A scenario opts into this stop by declaring an in-app prompt such as `savePassword` in its `rules`. Without one, a long empty tree may be the app's own unlabelled loading screen. The wait then keeps its own timeout. An app with a slower unlabelled loading screen raises the bound with `frozenScreenTimeout`. A value of `0` turns the stop off. A `gone` or `settled` wait never stops this way, because a frozen tree already satisfies it. A `handleSystemAlert` step does not either: it waits on SpringBoard, which can still raise its prompt.
 
-It is **on by default**. On XCUITest it rides the reads a step already makes, and a step that passes takes no retry, so a passing scenario pays one SpringBoard check per `pollInterval` at most. It needs **no `ANTHROPIC_API_KEY`** and consults none. Use `systemAlertHandling` to change the behavior per scenario:
+It is **on by default**. On XCUITest it rides the reads a step already makes, and a step that passes takes no retry, so a passing scenario pays one SpringBoard check per `pollInterval` at most. It needs **no `ANTHROPIC_API_KEY`** and consults none. To change the behavior per scenario, write `preconditions.run.systemAlertHandling`. It overrides the target's `run.systemAlertHandling`. The CLI's `--system-alert-handling` / `--no-system-alert-handling` overrides both:
 
 **`rules` is the guard's whole declaration**
 ([BE-0406](../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts.md)):
@@ -151,6 +209,8 @@ application vocabulary, so a label licensed a tap on a screen no scenario had de
 `visionInstruction` steered the vision fallback, and now reaches nothing — **`run` rejects it**
 (below), and `record` / `crawl` read the free-text form only from their own
 `--alert-vision-instruction` flag, never from a scenario. The boolean carries on and off, so a mapping always means on.
+
+Each form below sits under `preconditions.run`:
 
 | Form | Meaning |
 |---|---|
@@ -163,10 +223,12 @@ application vocabulary, so a label licensed a tap on a screen no scenario had de
 
 ```yaml
 - name: grant notification permission
-  systemAlertHandling:
-    rules:
-      - prompt: notifications
-        choice: grant       # accept the prompt instead of leaving it alone
+  preconditions:
+    run:
+      systemAlertHandling:
+        rules:
+          - prompt: notifications
+            choice: grant       # accept the prompt instead of leaving it alone
   steps:
     - tap:  { id: sys.requestNotif }
     - wait: { for: { id: sys.notif.authorized }, timeout: 4 }   # the guard taps Allow, then this passes
@@ -292,12 +354,14 @@ tapped:
 
 ```yaml
 - name: onboarding — accept notifications, refuse tracking
-  systemAlertHandling:
-    rules:
-      - prompt: notifications
-        choice: grant
-      - prompt: tracking
-        choice: deny
+  preconditions:
+    run:
+      systemAlertHandling:
+        rules:
+          - prompt: notifications
+            choice: grant
+          - prompt: tracking
+            choice: deny
   steps:
     - tap:  { id: onboarding.start }
     - wait: { for: { id: home.title }, timeout: 10 }
@@ -341,9 +405,11 @@ by `%@`. The `localNetwork` rule names that template, and the `notifications` ru
 real-device target that records network exchanges declares it like any other prompt:
 
 ```yaml
-systemAlertHandling:
-  rules:
-    - { prompt: localNetwork, choice: grant }
+preconditions:
+  run:
+    systemAlertHandling:
+      rules:
+        - { prompt: localNetwork, choice: grant }
 ```
 
 The app raises this prompt during launch, before the scenario's first step. The guard otherwise first looks inside a pending wait. A first `tap` could then land on the
@@ -414,7 +480,8 @@ its replacement, rather than parsing into something that behaves differently fro
 | `instruction: "tap Allow"` | the same rule form — `visionInstruction` is what BE-0401 renamed it to, but BE-0402 left it reaching no command |
 | `enabled: false` | `systemAlertHandling: false` |
 | `enabled: true` | a mapping (or `systemAlertHandling: true`) — a mapping always means on |
-| `alertHandling:` / `dismissAlerts:` | `systemAlertHandling:` |
+| `alertHandling:` / `dismissAlerts:` | `preconditions.run.systemAlertHandling:` |
+| a scenario's top-level `systemAlertHandling:` / `iosTipKitHandling:` | `preconditions.run.systemAlertHandling:` / `preconditions.run.tipKitHandling:` (BE-0452) |
 | `--alert-labels "Allow,OK"` / `--alert-instruction "Allow,OK"` | a scenario or target-config `rules` entry — no flag carries a prompt paired with a choice legibly. A `run` request to the serve HTTP API carrying `alertLabels` is refused with 400, naming `systemAlertHandling.rules` |
 | `--alert-instruction "tap Allow"` | `--alert-vision-instruction "tap Allow"` (`record` / `crawl` only — `run` retired it, BE-0402) |
 | `--alert-handling` / `--dismiss-alerts` | `--system-alert-handling` |
@@ -1053,11 +1120,11 @@ every gap below.
 The constraints come from driving an operating-system screen the scenario does not own:
 
 - **Measured on the iOS Simulator, iOS 26.5.** We checked no real device and no other runtime.
-- **Pin the layout with `erase: true`.** The long press lands on the icon grid's centre, which must
+- **Pin the layout with `run.erase: true`.** The long press lands on the icon grid's centre, which must
   be empty wallpaper. After an erase and reinstall, SpringBoard opens on the page that holds the
   test apps, and that page leaves its lower half free. Erasing also removes the widgets an earlier
   run added, so the assertion on the new widget stays unambiguous.
-- **Pin the language with `preconditions.locale`.** Every label is SpringBoard's own text. Even an
+- **Pin the language with `preconditions.runsOn.ios.locale`.** Every label is SpringBoard's own text. Even an
   icon's `identifier` is its localized name: `Calendar` in English, `カレンダー` in Japanese.
 - **A search result row is absent from the tree.** Once the gallery's search field holds text,
   SpringBoard's snapshot reports the result list as an empty container. The row still shows on
@@ -2250,7 +2317,7 @@ A `group:` step that omits `target` leaves each child to resolve as a hand-writt
 
 ### Data-driven scenarios (`data` / `dataFile`)
 
-A scenario with `data` (inline rows) or `dataFile` (a CSV path — the two are **mutually exclusive**) is expanded into **one scenario per row**, substituting `${row.<column>}` (`expand_data`, `scenario/expand.py`). Each derived scenario is renamed `"<name> [row N: col=val, …]"` and keeps the original preconditions, so every row reinstalls the app fresh and inherits the template's `erase` / `reinstall`.
+A scenario with `data` (inline rows) or `dataFile` (a CSV path — the two are **mutually exclusive**) is expanded into **one scenario per row**, substituting `${row.<column>}` (`expand_data`, `scenario/expand.py`). Each derived scenario is renamed `"<name> [row N: col=val, …]"` and keeps the original preconditions, so every row reinstalls the app fresh and inherits the template's `run.erase` / `app.reinstall`.
 
 ```yaml
 - name: search returns a result

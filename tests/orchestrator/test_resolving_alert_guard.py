@@ -473,7 +473,7 @@ def test_the_tipkit_retry_s_re_run_still_reads_through_the_backend() -> None:
     # A swipe, not a wait: a wait's mid-wait hook would clear the tip itself, while a failed swipe
     # reaches the end-of-step TipKit retry, whose re-run resolves its target again.
     yaml = (
-        "- name: t\n  iosTipKitHandling: true\n  steps:\n"
+        "- name: t\n  preconditions: { run: { tipKitHandling: true } }\n  steps:\n"
         "    - swipe: { on: { id: go }, direction: up }\n"
     )
     result = _run(driver, yaml, guard)

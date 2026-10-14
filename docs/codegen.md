@@ -61,7 +61,7 @@ final class ComponentsUITests: XCTestCase {
 - The helpers `el(id)` / `byLabel(label)` / `matchingId(glob)` bridge the three single-field
   selector forms (id / label / idMatches) to an XCUIElement.
 - Each method sets `launchEnvironment` then `app.launch()` at the top. The env is the merge of
-  **config's `app.launch.env` < the scenario's `preconditions.launchEnv`** (the test side wins).
+  **config's `app.launch.env` < the scenario's `preconditions.app.launch.env`** (the test side wins).
 
 ### Selector mapping (XCUITest)
 
@@ -182,7 +182,7 @@ test.describe('Components', () => {
 ```
 
 - Each test navigates to `BASE_URL` (the app's `app.url`, the web `launch` equivalent of
-  `page.goto`). Config's `app.launch.env` < the scenario's `preconditions.launchEnv` is seeded via
+  `page.goto`). Config's `app.launch.env` < the scenario's `preconditions.app.launch.env` is seeded via
   `page.addInitScript(() => localStorage.setItem(...))`; an app expecting another channel (query
   params / cookies) gets a `// TODO`.
 - All *waiting* uses Playwright's native auto-wait. The only fixed timing emitted is `longPress`'s
@@ -456,7 +456,7 @@ class ComponentsUITest {
   `NullPointerException` that names neither. A read-only assertion still calls `device.findObject` /
   `device.findObjects` directly, unwaited. That matches the driver's own assertions.
 - Each method builds an `extras` map (config's `app.launch.env` < the scenario's
-  `preconditions.launchEnv`) and calls `launch(extras)`, which forwards the env as intent extras —
+  `preconditions.app.launch.env`) and calls `launch(extras)`, which forwards the env as intent extras —
   the reverse of the adb backend's `am start --es`.
 - `launch` waits for the app's first window, then for that window to settle
   (`device.waitForIdle`). The window wait proves some window from the package exists. It does

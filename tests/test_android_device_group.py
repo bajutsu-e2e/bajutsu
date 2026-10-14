@@ -16,13 +16,13 @@ from pathlib import Path
 import pytest
 
 from bajutsu.common.backend_cli import adb
-from bajutsu.common.config import AndroidConfig, Effective
+from bajutsu.common.config import AndroidConfig, Effective, ResolvedPreconditions
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.adb import ActOutcome, AdbDriver, HierarchyRead, slice_hierarchy_root
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.platform_lifecycle import AndroidEnvironment
 from bajutsu.common.platform_lifecycle.protocols import ReadinessResult
-from bajutsu.common.scenario import Preconditions, Redact
+from bajutsu.common.scenario import Redact
 
 _PRIMARY = "com.example.app"
 _AUTH = "com.example.auth"
@@ -95,9 +95,9 @@ def test_an_overwrite_member_installs_over_its_app_without_clearing_it(
     apk.write_bytes(b"apk")
     run = _Adb()
     env = _env(run)
-    primary = env.start(_eff(_PRIMARY), Preconditions())
+    primary = env.start(_eff(_PRIMARY), ResolvedPreconditions())
     run.calls.clear()
-    member = env.start_member(_eff(_AUTH, str(apk)), Preconditions(reinstall="overwrite"))
+    member = env.start_member(_eff(_AUTH, str(apk)), ResolvedPreconditions(reinstall="overwrite"))
     assert run.ran("install", str(apk))
     # Keep-data install: the member's own data survives, so nothing is cleared or uninstalled.
     assert not run.ran("pm", "clear", _AUTH)
@@ -112,8 +112,8 @@ def test_a_clean_member_reinstalls_and_clears_its_own_app(tmp_path: Path) -> Non
     apk.write_bytes(b"apk")
     run = _Adb()
     env = _env(run)
-    env.start(_eff(_PRIMARY), Preconditions())
-    env.start_member(_eff(_AUTH, str(apk)), Preconditions(reinstall="clean"))
+    env.start(_eff(_PRIMARY), ResolvedPreconditions())
+    env.start_member(_eff(_AUTH, str(apk)), ResolvedPreconditions(reinstall="clean"))
     assert run.ran("uninstall", _AUTH)
     assert run.ran("pm", "clear", _AUTH)
 
@@ -123,9 +123,9 @@ def test_a_later_member_starts_without_reinstalling(tmp_path: Path) -> None:
     apk.write_bytes(b"apk")
     run = _Adb()
     env = _env(run)
-    env.start(_eff(_PRIMARY), Preconditions())
+    env.start(_eff(_PRIMARY), ResolvedPreconditions())
     run.calls.clear()
-    env.start_member(_eff(_AUTH, str(apk)), Preconditions(reinstall="clean"), install=False)
+    env.start_member(_eff(_AUTH, str(apk)), ResolvedPreconditions(reinstall="clean"), install=False)
     assert not run.ran("install", str(apk))
     assert not run.ran("uninstall", _AUTH)
     assert run.ran("am", "start", f"{_AUTH}/.Main")
@@ -160,7 +160,7 @@ def test_install_app_refuses_a_missing_build(tmp_path: Path) -> None:
 def test_ending_a_member_stops_its_app() -> None:
     run = _Adb()
     env = _env(run)
-    env.start(_eff(_PRIMARY), Preconditions())
+    env.start(_eff(_PRIMARY), ResolvedPreconditions())
     env.end_member(AdbDriver("emulator-5554", run=run), _eff(_AUTH))
     assert run.ran("force-stop", _AUTH)
 
@@ -191,7 +191,7 @@ def test_foreground_launches_an_app_that_is_not_running_with_its_launch_env() ->
 def test_foreground_relaunches_the_primary_like_relaunch_without_terminating() -> None:
     run = _Adb()
     env = _env(run)
-    env.start(_eff(_PRIMARY), Preconditions())
+    env.start(_eff(_PRIMARY), ResolvedPreconditions())
     # A screen that is ready at once, so the readiness wait the launch ends with returns at once.
     env._drivers[_PRIMARY] = env._primary_driver = FakeDriver([_el("home"), _el("ok")])
     run.calls.clear()
@@ -287,8 +287,10 @@ def test_an_erase_clears_a_starting_member_too(tmp_path: Path) -> None:
     apk.write_bytes(b"apk")
     run = _Adb()
     env = _env(run)
-    env.start(_eff(_PRIMARY), Preconditions(erase=True, reinstall="overwrite"))
-    env.start_member(_eff(_AUTH, str(apk)), Preconditions(erase=True, reinstall="overwrite"))
+    env.start(_eff(_PRIMARY), ResolvedPreconditions(erase=True, reinstall="overwrite"))
+    env.start_member(
+        _eff(_AUTH, str(apk)), ResolvedPreconditions(erase=True, reinstall="overwrite")
+    )
     assert run.ran("uninstall", _AUTH)
     assert run.ran("pm", "clear", _AUTH)
     assert run.ran("force-stop", _AUTH)
@@ -309,7 +311,7 @@ def test_foreground_waits_for_ready_when_only_after_a_launch(
     monkeypatch.setattr("bajutsu.common.platform_lifecycle.readiness.await_ready", await_ready)
     run = _Adb(running={_AUTH} if running else set())
     env = _env(run)
-    env.start(_eff(_PRIMARY), Preconditions())
+    env.start(_eff(_PRIMARY), ResolvedPreconditions())
     env._drivers[_AUTH] = FakeDriver([_el("home"), _el("ok")])
     control = env.controller(replace(_eff(_AUTH), start_when={"id": "home"}))
     assert control is not None
@@ -327,7 +329,7 @@ def test_a_foreground_that_never_reaches_the_front_fails_its_step(
     )
     run = _Adb(running={_AUTH})
     env = _env(run)
-    env.start(_eff(_PRIMARY), Preconditions())
+    env.start(_eff(_PRIMARY), ResolvedPreconditions())
     stuck = AdbDriver(
         "emulator-5554",
         run=lambda args: "",
@@ -348,8 +350,8 @@ def test_ending_a_member_that_shares_the_primarys_package_keeps_the_primarys_dri
     apk = tmp_path / "new.apk"
     apk.write_bytes(b"apk")
     env = _env(_Adb())
-    primary = env.start(_eff(_PRIMARY), Preconditions())
-    member = env.start_member(_eff(_PRIMARY, str(apk)), Preconditions(), install=False)
+    primary = env.start(_eff(_PRIMARY), ResolvedPreconditions())
+    member = env.start_member(_eff(_PRIMARY, str(apk)), ResolvedPreconditions(), install=False)
     env.end_member(primary, _eff(_PRIMARY))  # not the member's driver: nothing leaves the map
     assert env._drivers[_PRIMARY] is member
     env.end_member(member, _eff(_PRIMARY))
@@ -360,9 +362,9 @@ def test_a_same_package_member_leaves_the_displaced_driver_checked(tmp_path: Pat
     # An update journey's old and new builds share a package; the old lease still reads through the
     # driver the new one displaced from the map, so it takes the front check too.
     env = _env(_Adb())
-    old = env.start(_eff(_PRIMARY), Preconditions())
-    env.start_member(_eff(_PRIMARY), Preconditions(), install=False)
-    env.start_member(_eff(_AUTH), Preconditions(), install=False)
+    old = env.start(_eff(_PRIMARY), ResolvedPreconditions())
+    env.start_member(_eff(_PRIMARY), ResolvedPreconditions(), install=False)
+    env.start_member(_eff(_AUTH), ResolvedPreconditions(), install=False)
     assert isinstance(old, AdbDriver)
     assert old._front_check
 
@@ -453,8 +455,8 @@ def test_a_same_package_members_relaunch_moves_only_its_own_crash_bound(
     stamps = iter(range(1, 10))
     env = _env(_Adb())
     monkeypatch.setattr(env, "_read_launch_marker", lambda: ((float(next(stamps)), "x"), "l"))
-    env.start(_eff(_PRIMARY), Preconditions())
-    member = env.start_member(_eff(_PRIMARY), Preconditions(), install=False)
+    env.start(_eff(_PRIMARY), ResolvedPreconditions())
+    member = env.start_member(_eff(_PRIMARY), ResolvedPreconditions(), install=False)
     primary_bound = env._launch_marker
     env.relauncher(_eff(_PRIMARY), Scenario(name="s", steps=[]), member)(Relaunch())
     assert env._launch_marker == primary_bound

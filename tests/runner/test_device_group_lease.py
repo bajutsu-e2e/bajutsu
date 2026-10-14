@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 from _runner import _eff, _el, _web_eff
 
-from bajutsu.common.config import Effective, IosConfig, require_ios
+from bajutsu.common.config import Effective, IosConfig, ResolvedPreconditions, require_ios
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.evidence import NullSink
@@ -26,7 +26,7 @@ from bajutsu.common.platform_lifecycle.environments.web import WebEnvironment
 from bajutsu.common.platform_lifecycle.environments.xcuitest import XcuitestEnvironment
 from bajutsu.common.runner import Lease, device_pool, run_all
 from bajutsu.common.runner.types import LeaseFn, TargetPool
-from bajutsu.common.scenario import Preconditions, Scenario
+from bajutsu.common.scenario import Scenario
 
 _SCREEN = [_el("ok", "OK", ["button"]), _el("other", "Other", ["button"])]
 _EXCHANGE = NetworkExchange(method="GET", path="/a")
@@ -304,7 +304,7 @@ def test_the_simctl_family_refuses_a_member_and_stops_one_by_bundle() -> None:
     env = XcuitestEnvironment("xcuitest", "UDID-1", run)
     # A Simulator this environment never started holds no runner a member could share.
     with pytest.raises(base.UnsupportedAction, match="need a Simulator this environment started"):
-        env.start_member(_eff(), Preconditions())
+        env.start_member(_eff(), ResolvedPreconditions())
     env.end_member(FakeDriver([]), _app_eff("com.example.auth"))
     assert ["xcrun", "simctl", "terminate", "UDID-1", "com.example.auth"] in calls
 
@@ -312,7 +312,7 @@ def test_the_simctl_family_refuses_a_member_and_stops_one_by_bundle() -> None:
 def test_the_web_environment_refuses_a_member() -> None:
     env = WebEnvironment("playwright")
     with pytest.raises(base.UnsupportedAction, match="cannot share a device"):
-        env.start_member(_web_eff(), Preconditions())
+        env.start_member(_web_eff(), ResolvedPreconditions())
     env.end_member(FakeDriver([]), _web_eff())  # no member ever started, so nothing to stop
 
 

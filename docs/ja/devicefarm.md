@@ -228,7 +228,7 @@ def make_proxy_hook() -> ProxyHook:
 
 ### キー衝突ガード
 
-デバイス上のマージ順序は `{**target_env, **preconditions.launch_env}` です——シナリオの `preconditions.launchEnv` が target レベルの値より優先されます。フックが注入したキーとシナリオの preconditions が衝突する場合、注入された値が暗黙的に上書きされます。これを早期に表面化させるため、`submit` はシナリオファイルを確認し、衝突があれば**投入時点でシナリオ名・キー・ファイル名を明示してエラー**を発生させます。アップロードは開始されません。
+デバイス上のマージ順序は `{**target_env, **preconditions.app.launch.env}` です——シナリオの `preconditions.app.launch.env` が target レベルの値より優先されます。フックが注入したキーとシナリオの preconditions が衝突する場合、注入された値が暗黙的に上書きされます。これを早期に表面化させるため、`submit` はシナリオファイルを確認し、衝突があれば**投入時点でシナリオ名・キー・ファイル名を明示してエラー**を発生させます。アップロードは開始されません。
 
 ### checkpoint 再開時の動作
 

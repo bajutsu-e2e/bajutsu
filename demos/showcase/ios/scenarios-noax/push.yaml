@@ -5,7 +5,9 @@
 - name: receive a push notification
   tags: [system]
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - wait: { for: { label: "Horse 1" }, timeout: 10 }
     - push: { payload: { aps: { alert: "You have a new message" } } }

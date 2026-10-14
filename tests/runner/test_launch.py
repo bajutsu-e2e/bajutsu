@@ -18,12 +18,11 @@ import pytest
 from _runner import _el, _ios_eff
 
 from bajutsu.common.backend_cli import simctl
-from bajutsu.common.config import Effective, XcuitestConfig, require_ios
+from bajutsu.common.config import Effective, ResolvedPreconditions, XcuitestConfig, require_ios
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.evidence.network import ScreenTransition
 from bajutsu.common.runner import await_ready, launch_driver
-from bajutsu.common.scenario import Preconditions
 
 
 def _recording_run(calls: list[list[str]]) -> simctl.RunFn:
@@ -79,7 +78,7 @@ def _mock_runner_spawn(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _launch_recording(
-    monkeypatch: pytest.MonkeyPatch, eff: Effective, pre: Preconditions, **kwargs: Any
+    monkeypatch: pytest.MonkeyPatch, eff: Effective, pre: ResolvedPreconditions, **kwargs: Any
 ) -> list[list[str]]:
     _mock_runner_spawn(monkeypatch)
     calls: list[list[str]] = []
@@ -91,7 +90,9 @@ def test_launch_driver_shuts_down_before_erase(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """erase requires a shut-down device, so the sequence is shutdown -> erase -> boot."""
-    calls = _launch_recording(monkeypatch, _xcuitest_eff(tmp_path), Preconditions(erase=True))
+    calls = _launch_recording(
+        monkeypatch, _xcuitest_eff(tmp_path), ResolvedPreconditions(erase=True)
+    )
     verbs = [c[2] for c in calls if c[:2] == ["xcrun", "simctl"]]
     assert verbs.index("shutdown") < verbs.index("erase") < verbs.index("boot")
 
@@ -104,7 +105,7 @@ def test_launch_driver_applies_permissions_after_boot(
     calls = _launch_recording(
         monkeypatch,
         _xcuitest_eff(tmp_path),
-        Preconditions(erase=False),
+        ResolvedPreconditions(erase=False),
         permissions={"camera": "grant", "location": "revoke"},
     )
     bundle_id = require_ios(_ios_eff()).bundle_id
@@ -118,7 +119,9 @@ def test_launch_driver_applies_no_permissions_when_unset(
     `reinstall: clean` still resets whatever TCC state an earlier lease left (`simctl install`/
     `uninstall` never touch TCC.db on their own), so a `privacy reset all` call is still made."""
     bundle_id = require_ios(_ios_eff()).bundle_id
-    calls = _launch_recording(monkeypatch, _xcuitest_eff(tmp_path), Preconditions(erase=False))
+    calls = _launch_recording(
+        monkeypatch, _xcuitest_eff(tmp_path), ResolvedPreconditions(erase=False)
+    )
     assert not any(c[:5] == ["xcrun", "simctl", "privacy", "UDID-1", "grant"] for c in calls)
     assert not any(c[:5] == ["xcrun", "simctl", "privacy", "UDID-1", "revoke"] for c in calls)
     assert ["xcrun", "simctl", "privacy", "UDID-1", "reset", "all", bundle_id] in calls
@@ -131,7 +134,9 @@ def test_launch_driver_reinstall_clean_uninstalls_then_installs(
     app = tmp_path / "X.app"
     app.mkdir()
     eff = _xcuitest_eff(tmp_path, app_path=str(app))
-    calls = _launch_recording(monkeypatch, eff, Preconditions(erase=False))  # reinstall=clean
+    calls = _launch_recording(
+        monkeypatch, eff, ResolvedPreconditions(erase=False)
+    )  # reinstall=clean
     verbs = [c[2] for c in calls if c[:2] == ["xcrun", "simctl"]]
     assert "uninstall" in verbs and "install" in verbs
     assert verbs.index("uninstall") < verbs.index("install")  # remove, then install fresh
@@ -145,7 +150,9 @@ def test_launch_driver_reinstall_overwrite_installs_without_uninstall(
     app = tmp_path / "X.app"
     app.mkdir()
     eff = _xcuitest_eff(tmp_path, app_path=str(app))
-    calls = _launch_recording(monkeypatch, eff, Preconditions(erase=False, reinstall="overwrite"))
+    calls = _launch_recording(
+        monkeypatch, eff, ResolvedPreconditions(erase=False, reinstall="overwrite")
+    )
     verbs = [c[2] for c in calls if c[:2] == ["xcrun", "simctl"]]
     assert "install" in verbs and "uninstall" not in verbs
 
@@ -157,7 +164,9 @@ def test_launch_driver_erase_skips_uninstall(
     app = tmp_path / "X.app"
     app.mkdir()
     eff = _xcuitest_eff(tmp_path, app_path=str(app))
-    calls = _launch_recording(monkeypatch, eff, Preconditions(erase=True))  # reinstall=clean
+    calls = _launch_recording(
+        monkeypatch, eff, ResolvedPreconditions(erase=True)
+    )  # reinstall=clean
     verbs = [c[2] for c in calls if c[:2] == ["xcrun", "simctl"]]
     assert "erase" in verbs and "install" in verbs and "uninstall" not in verbs
 
@@ -170,7 +179,11 @@ def test_launch_driver_errors_on_missing_app_path(
     eff = _xcuitest_eff(tmp_path, app_path="/nope/X.app")
     with pytest.raises(simctl.DeviceError) as excinfo:
         launch_driver(
-            "UDID-1", eff, "xcuitest", Preconditions(erase=False), env_run=_recording_run([])
+            "UDID-1",
+            eff,
+            "xcuitest",
+            ResolvedPreconditions(erase=False),
+            env_run=_recording_run([]),
         )
     assert "app.path not found" in str(excinfo.value)
 
@@ -241,7 +254,7 @@ def test_launch_driver_surfaces_failing_erase_as_device_error(
             "UDID-1",
             _xcuitest_eff(tmp_path),
             "xcuitest",
-            Preconditions(erase=True),
+            ResolvedPreconditions(erase=True),
             env_run=fake_run,
         )
     msg = str(excinfo.value)

@@ -14,6 +14,7 @@ import pytest
 from _runner import _eff, _ios_eff, _web_eff
 
 from bajutsu.common.backend_cli import simctl
+from bajutsu.common.config import ResolvedPreconditions
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.platform_lifecycle import (
@@ -24,7 +25,7 @@ from bajutsu.common.platform_lifecycle import (
     XcuitestEnvironment,
     environment_for,
 )
-from bajutsu.common.scenario import Preconditions, Relaunch, Scenario
+from bajutsu.common.scenario import Relaunch, Scenario
 
 
 def _capture_group_signals(monkeypatch: pytest.MonkeyPatch) -> list[tuple[int, int]]:
@@ -113,7 +114,7 @@ def test_resolve_device_routes_through_the_platform_resolver(
 def test_web_environment_requires_base_url() -> None:
     eff = _web_eff(base_url=None)
     with pytest.raises(simctl.DeviceError, match="baseUrl"):
-        WebEnvironment("playwright").start(eff, Preconditions())
+        WebEnvironment("playwright").start(eff, ResolvedPreconditions())
 
 
 def test_web_environment_navigates_then_returns_the_driver(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -133,7 +134,7 @@ def test_web_environment_navigates_then_returns_the_driver(monkeypatch: pytest.M
     web = _WebDriver()
     monkeypatch.setattr("bajutsu.common.backends.make_driver", lambda *a, **k: web)
     eff = _web_eff(base_url="https://app.test")
-    driver = WebEnvironment("playwright").start(eff, Preconditions())
+    driver = WebEnvironment("playwright").start(eff, ResolvedPreconditions())
     assert driver is web
     assert web.navigated is True  # the web "launch" is navigate()
 
@@ -170,7 +171,7 @@ def test_web_relaunch_forwards_id_namespaces_to_await_ready(
 
 def test_fake_environment_runs_no_lifecycle() -> None:
     # No device lifecycle (no env_run, no simctl): it just yields the fake driver.
-    driver = FakeEnvironment("fake", "UDID").start(_eff(), Preconditions())
+    driver = FakeEnvironment("fake", "UDID").start(_eff(), ResolvedPreconditions())
     assert driver.query() == []  # the real fake driver, constructed without any device step
 
 
@@ -180,14 +181,16 @@ def test_fake_environment_rejects_permissions() -> None:
     # this is the runtime backstop, the same shape as an unsupported gesture.
     with pytest.raises(base.UnsupportedAction):
         FakeEnvironment("fake", "UDID").start(
-            _eff(), Preconditions(), permissions={"camera": "grant"}
+            _eff(), ResolvedPreconditions(), permissions={"camera": "grant"}
         )
 
 
 def test_web_environment_rejects_permissions() -> None:
     eff = _web_eff(base_url="https://app.test")
     with pytest.raises(base.UnsupportedAction):
-        WebEnvironment("playwright").start(eff, Preconditions(), permissions={"camera": "grant"})
+        WebEnvironment("playwright").start(
+            eff, ResolvedPreconditions(), permissions={"camera": "grant"}
+        )
 
 
 def test_ios_environment_surfaces_a_failing_step_as_device_error() -> None:
@@ -200,7 +203,7 @@ def test_ios_environment_surfaces_a_failing_step_as_device_error() -> None:
 
     with pytest.raises(simctl.DeviceError):
         XcuitestEnvironment("xcuitest", "UDID", env_run=fake_run).start(
-            _eff(), Preconditions(erase=True)
+            _eff(), ResolvedPreconditions(erase=True)
         )
 
 
@@ -466,7 +469,7 @@ def test_xcuitest_environment_requires_test_runner_in_config(
     )
     xe = XcuitestEnvironment("xcuitest", "UDID", env_run=lambda a, extra_env: "")
     with pytest.raises(simctl.DeviceError, match="testRunner"):
-        xe.start(_eff(), Preconditions())
+        xe.start(_eff(), ResolvedPreconditions())
 
 
 def test_xcuitest_environment_start_launches_runner_and_creates_driver(
@@ -536,7 +539,7 @@ def test_xcuitest_environment_start_launches_runner_and_creates_driver(
         f.flush()
         eff = _ios_eff(xcuitest=XcuitestConfig(testRunner=f.name), app_path=None)
         xe = XcuitestEnvironment("xcuitest", "UDID-1", env_run=fake_run)
-        driver = xe.start(eff, Preconditions())
+        driver = xe.start(eff, ResolvedPreconditions())
 
     assert driver is fake_driver
     assert fake_driver.ready_called
@@ -603,7 +606,7 @@ def test_xcuitest_environment_applies_permissions_before_the_runner_launches(
         f.flush()
         eff = _ios_eff(xcuitest=XcuitestConfig(testRunner=f.name), app_path=None)
         xe = XcuitestEnvironment("xcuitest", "UDID-1", env_run=fake_run)
-        xe.start(eff, Preconditions(), permissions={"camera": "grant"})
+        xe.start(eff, ResolvedPreconditions(), permissions={"camera": "grant"})
 
     assert popen_started_after_privacy == [True]
     assert any(c[:3] == ["xcrun", "simctl", "privacy"] and c[4] == "grant" for c in simctl_calls)
@@ -829,7 +832,7 @@ def test_spawn_cold_discards_a_never_ready_runner(
         eff = _ios_eff(xcuitest=XcuitestConfig(testRunner=f.name), app_path=None)
         xe = XcuitestEnvironment("xcuitest", "UDID-1", env_run=lambda _a, _e: "")
         with pytest.raises(XcuitestChannelError, match="did not come up"):
-            xe.start(eff, Preconditions())
+            xe.start(eff, ResolvedPreconditions())
 
     # One attempt's live runner was discarded, not orphaned: its group took SIGTERM then the sweep.
     assert signalled == [(4242, signal.SIGTERM), (4242, signal.SIGKILL)]
@@ -895,9 +898,9 @@ def test_xcuitest_environment_forwards_preconditions_to_runner_env(
             launch_args=["-verbose"],
             locale="ja_JP",
         )
-        pre = Preconditions(
-            launchEnv={"SCENARIO_KEY": "val"},
-            launchArgs=["-reset"],
+        pre = ResolvedPreconditions(
+            launch_env={"SCENARIO_KEY": "val"},
+            launch_args=["-reset"],
             locale="fr_FR",
             deeplink="myapp://home",
         )

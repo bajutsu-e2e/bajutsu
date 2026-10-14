@@ -6,7 +6,9 @@
 # unchanged on every target (BE-0221).
 - name: relaunch resets in-app state
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Log", traits: [button] }
       capture: [deviceLog]

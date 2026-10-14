@@ -34,7 +34,9 @@ scenarios:
   - name: Stable catalog matches its visual baseline
     tags: [visual]
     preconditions:
-      launchEnv: { SHOWCASE_UITEST: "1" }
+      app:
+        launch:
+          env: { SHOWCASE_UITEST: "1" }
     steps:
       - wait: { for: { id: stable.row.1 }, timeout: 10 }
     expect:
@@ -43,7 +45,9 @@ scenarios:
   - name: Search matches its visual baseline
     tags: [visual]
     preconditions:
-      launchEnv: { SHOWCASE_UITEST: "1" }
+      app:
+        launch:
+          env: { SHOWCASE_UITEST: "1" }
     steps:
       - tap: { label: "Search", traits: [button] }
       - wait: { for: { id: search.field }, timeout: 10 }
@@ -53,7 +57,9 @@ scenarios:
   - name: Log matches its visual baseline
     tags: [visual]
     preconditions:
-      launchEnv: { SHOWCASE_UITEST: "1" }
+      app:
+        launch:
+          env: { SHOWCASE_UITEST: "1" }
     steps:
       - tap: { label: "Log", traits: [button] }
       - wait: { for: { id: log.submit }, timeout: 10 }
@@ -63,7 +69,9 @@ scenarios:
   - name: Notices matches its visual baseline
     tags: [visual]
     preconditions:
-      launchEnv: { SHOWCASE_UITEST: "1" }
+      app:
+        launch:
+          env: { SHOWCASE_UITEST: "1" }
     steps:
       - tap: { label: "Notices", traits: [button] }
       - wait: { for: { id: notice.row.1 }, timeout: 10 }
@@ -73,7 +81,9 @@ scenarios:
   - name: Permissions matches its visual baseline
     tags: [visual]
     preconditions:
-      launchEnv: { SHOWCASE_UITEST: "1" }
+      app:
+        launch:
+          env: { SHOWCASE_UITEST: "1" }
     steps:
       - tap: { label: "Permissions", traits: [button] }
       - wait: { for: { id: perm.requestNotif }, timeout: 10 }
@@ -83,7 +93,9 @@ scenarios:
   - name: Horse Detail matches its visual baseline
     tags: [visual]
     preconditions:
-      launchEnv: { SHOWCASE_UITEST: "1" }
+      app:
+        launch:
+          env: { SHOWCASE_UITEST: "1" }
     steps:
       - wait: { for: { id: stable.row.1 }, timeout: 10 }
       - tap: { id: stable.row.1 }
@@ -94,7 +106,9 @@ scenarios:
   - name: Notice Detail matches its visual baseline
     tags: [visual]
     preconditions:
-      launchEnv: { SHOWCASE_UITEST: "1" }
+      app:
+        launch:
+          env: { SHOWCASE_UITEST: "1" }
     steps:
       - tap: { label: "Notices", traits: [button] }
       - wait: { for: { id: notice.row.1 }, timeout: 10 }
@@ -106,7 +120,9 @@ scenarios:
   - name: Filter sheet matches its visual baseline
     tags: [visual]
     preconditions:
-      launchEnv: { SHOWCASE_UITEST: "1" }
+      app:
+        launch:
+          env: { SHOWCASE_UITEST: "1" }
     steps:
       - tap: { label: "Log", traits: [button] }
       - wait: { for: { id: log.openFilter }, timeout: 10 }
@@ -118,7 +134,9 @@ scenarios:
   - name: Gallery cover matches its visual baseline
     tags: [visual]
     preconditions:
-      launchEnv: { SHOWCASE_UITEST: "1" }
+      app:
+        launch:
+          env: { SHOWCASE_UITEST: "1" }
     steps:
       - tap: { label: "Log", traits: [button] }
       - wait: { for: { id: log.openGallery }, timeout: 10 }
@@ -130,7 +148,9 @@ scenarios:
   - name: Delete dialog matches its visual baseline
     tags: [visual]
     preconditions:
-      launchEnv: { SHOWCASE_UITEST: "1" }
+      app:
+        launch:
+          env: { SHOWCASE_UITEST: "1" }
     steps:
       - tap: { label: "Log", traits: [button] }
       # Scroll the lower Modals controls clear of the floating tab bar before tapping (see modals.yaml).
@@ -149,7 +169,9 @@ scenarios:
   - name: First catalog row matches its element-scoped baseline
     tags: [visual]
     preconditions:
-      launchEnv: { SHOWCASE_UITEST: "1" }
+      app:
+        launch:
+          env: { SHOWCASE_UITEST: "1" }
     steps:
       - wait: { for: { id: stable.row.1 }, timeout: 10 }
     expect:
@@ -160,7 +182,9 @@ scenarios:
   - name: Catalog matches its baseline with the first row masked by selector
     tags: [visual]
     preconditions:
-      launchEnv: { SHOWCASE_UITEST: "1" }
+      app:
+        launch:
+          env: { SHOWCASE_UITEST: "1" }
     steps:
       - wait: { for: { id: stable.row.1 }, timeout: 10 }
     expect:

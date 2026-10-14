@@ -228,7 +228,7 @@ Builds the environment with `simctl` per the `preconditions`:
 ```
 erase (if pre.erase: shutdown → erase) → boot → bootstatus -b (wait out the boot)
   → terminate(bundle) (for a clean launch state)
-  → launch(bundle, [app.launch.args, *locale_args(locale)], {**app.launch.env, **pre.launchEnv})
+  → launch(bundle, [app.launch.args, *locale_args(locale)], {**app.launch.env, **preconditions.app.launch.env})
   → openurl(deeplink) (if any) → make_driver(actuator, udid)
   → await_ready (poll until query() returns 2+ elements, up to 10s)
 ```
@@ -246,7 +246,7 @@ erase (if pre.erase: shutdown → erase) → boot → bootstatus -b (wait out th
 > the `screenChanged` rung, which has none of its own; it is capped at three, after which the gate
 > returns ready anyway and records `settled: false` in the first-wait diagnostic rather than holding
 > a screen that never holds still. It never turns a ready app into a timeout. `locale` **is**
-> applied at launch (the scenario's `preconditions.locale` overrides the target's `runsOn.locale`, passed as
+> applied at launch (the scenario's `preconditions.runsOn.ios.locale` overrides the target's `runsOn.locale`, passed as
 > launch args via `env.locale_args`). `simctl boot` returns as soon as the boot has been *requested*,
 > so every step that follows it waits the boot out with `bootstatus` first — including the extra boot
 > cycle the system-locale pin runs ([BE-0359](../roadmaps/BE-0359-xcuitest-boot-completion-wait/BE-0359-xcuitest-boot-completion-wait.md)).

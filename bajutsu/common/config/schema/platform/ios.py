@@ -7,7 +7,7 @@ from typing import Any, Literal, Self
 from pydantic import Field, field_validator, model_validator
 
 from .._model import _Model
-from ._shared import AppCommon, check_list, check_range, coerce_range
+from ._shared import AppCommon, Reinstall, check_list, check_range, coerce_range
 
 
 class IosLaunch(_Model):
@@ -15,6 +15,8 @@ class IosLaunch(_Model):
 
     env: dict[str, str] = Field(default_factory=dict)
     args: list[str] = Field(default_factory=list)
+    # A URL the app opens once it has launched (BE-0452); a scenario's own value replaces it.
+    deeplink: str | None = None
 
 
 class IosApp(AppCommon):
@@ -23,6 +25,7 @@ class IosApp(AppCommon):
     id: str = Field(min_length=1)
     path: str | None = None
     build: str | None = None
+    reinstall: Reinstall | None = None
     launch: IosLaunch = Field(default_factory=IosLaunch)
 
 
@@ -37,6 +40,10 @@ class IosRunsOn(_Model):
     os: str | None = None
     kind: Literal["simulator", "device"] = "simulator"
     locale: str | None = None
+    # Images seeded into the Simulator's photo library on the erase path, in order, so
+    # `selectPhotos` addresses a known library (BE-0452). Paths resolve against the config file; a
+    # scenario's own list replaces this one, and the merged list needs an effective `run.erase`.
+    seed_photos: list[str] = Field(default_factory=list, alias="seedPhotos")
 
     @field_validator("os", mode="before")
     @classmethod

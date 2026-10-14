@@ -189,10 +189,7 @@ def load_expanded_scenarios(path: Path, root: Path | None = None) -> list[Scenar
     )
     for s in expanded:
         s.set_source_stem(path.stem)
-        if s.preconditions.seed_photos:
-            s.preconditions.seed_photos = [
-                str(contained_ref(root, base, ref)) for ref in s.preconditions.seed_photos
-            ]
+        s.preconditions.resolve_seed_photos(lambda ref: str(contained_ref(root, base, ref)))
     return expanded
 
 

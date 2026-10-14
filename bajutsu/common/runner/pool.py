@@ -21,7 +21,7 @@ from bajutsu.common.backends import (
     select_actuator_for_scenario,
 )
 from bajutsu.common.backends import make_driver as _make_driver
-from bajutsu.common.config import Effective
+from bajutsu.common.config import Effective, resolve_preconditions
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.webview import WebViewBridge
 from bajutsu.common.evidence import FileSink
@@ -451,7 +451,7 @@ def device_pool(  # noqa: C901, PLR0915
                 udid,
                 eff,
                 actuator,
-                scenario.preconditions,
+                resolve_preconditions(eff, scenario.preconditions),
                 env_run,
                 extra_env,
                 record_video_dir,
@@ -617,7 +617,7 @@ def device_pool(  # noqa: C901, PLR0915
                 """
                 member_driver = lease_env.start_member(
                     member_eff,
-                    member.preconditions,
+                    resolve_preconditions(member_eff, member.preconditions),
                     extra_env=extra_env,
                     permissions=member.permissions,
                     install=fresh,

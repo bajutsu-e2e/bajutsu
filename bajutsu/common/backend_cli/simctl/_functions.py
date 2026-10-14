@@ -249,7 +249,7 @@ def addmedia_cmd(udid: str, media_path: str) -> list[str]:
 
     Unlike `privacy` / `push`, this is device-scoped, not bundle-scoped, and adds a library entry
     on every call rather than being idempotent — a caller that seeds the same path twice gets two
-    entries. `seed_photos` (`Preconditions`) calls this once per path for exactly that reason: the
+    entries. `seedPhotos` (`runsOn`) calls this once per path for exactly that reason: the
     relative order `simctl` assigns to several assets handed to one invocation is unspecified, so
     only a sequence of single-path calls has a measured, reproducible ordering (roadmap item).
     """

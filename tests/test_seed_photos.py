@@ -2,9 +2,10 @@
 
 Unlike `privacy` / `push`, `simctl addmedia` is device-scoped and adds a library entry on every
 call rather than being idempotent, so `Env.add_media` issues one call per path in order — nothing
-documents the relative order a single call handed several paths would assign them. `Preconditions`'s
-own validator requires `erase: true` alongside a non-empty `seedPhotos`, so a scenario can never
-silently seed nothing and fall back to whatever the Simulator's ambient library contains.
+documents the relative order a single call handed several paths would assign them. The run checks
+that a merged, non-empty `seedPhotos` comes with an effective `run.erase` (`check_preconditions`),
+so a scenario can never silently seed nothing and fall back to whatever the Simulator's ambient
+library contains.
 """
 
 from __future__ import annotations
@@ -14,6 +15,13 @@ from collections.abc import Mapping
 import pytest
 
 from bajutsu.common.backend_cli import simctl
+from bajutsu.common.config import (
+    Effective,
+    check_preconditions,
+    load_config,
+    resolve,
+    resolve_preconditions,
+)
 from bajutsu.common.scenario import Preconditions, load_scenarios
 
 
@@ -59,41 +67,68 @@ def test_env_add_media_of_an_empty_list_calls_nothing() -> None:
     assert calls == []
 
 
-# --- Preconditions: seedPhotos requires erase: true ---
+# --- the merged seedPhotos needs an effective erase (BE-0452) ---
 
 
-def test_seed_photos_requires_erase() -> None:
-    with pytest.raises(ValueError, match="requires preconditions"):
-        Preconditions(seedPhotos=["/fixtures/red.png"])
+def _eff(target_lines: str = "") -> Effective:
+    text = (
+        f"targets:\n  app:\n    platform: ios\n    app: {{ id: com.example.app }}\n{target_lines}"
+    )
+    return resolve(load_config(text), "app")
 
 
-def test_seed_photos_with_erase_false_still_rejected() -> None:
-    with pytest.raises(ValueError, match="requires preconditions"):
-        Preconditions(erase=False, seedPhotos=["/fixtures/red.png"])
+def _pre(text: str) -> Preconditions:
+    return load_scenarios(f"- name: t\n  preconditions: {text}\n  steps: []\n")[0].preconditions
 
 
-def test_seed_photos_with_erase_true_is_accepted() -> None:
-    pre = Preconditions(erase=True, seedPhotos=["/fixtures/red.png"])
-    assert pre.seed_photos == ["/fixtures/red.png"]
+_SEED = "runsOn: { ios: { seedPhotos: [/fixtures/red.png] } }"
+
+
+def test_seed_photos_without_erase_is_a_problem() -> None:
+    problems = check_preconditions(_pre(f"{{ {_SEED} }}"), [_eff()])
+    assert len(problems) == 1
+    assert "seedPhotos on target 'app' needs a wiped device" in problems[0]
+
+
+def test_seed_photos_with_the_scenario_erase_is_accepted() -> None:
+    assert check_preconditions(_pre(f"{{ {_SEED}, run: {{ erase: true }} }}"), [_eff()]) == []
+
+
+def test_a_target_erase_satisfies_the_scenario_seed_photos() -> None:
+    eff = _eff("    run: { erase: true }\n")
+    assert check_preconditions(_pre(f"{{ {_SEED} }}"), [eff]) == []
+
+
+def test_the_erase_flag_wins_over_the_scenario() -> None:
+    pre = _pre(f"{{ {_SEED}, run: {{ erase: true }} }}")
+    assert check_preconditions(pre, [_eff()], erase_flag=False)
+    assert check_preconditions(_pre(f"{{ {_SEED} }}"), [_eff()], erase_flag=True) == []
+
+
+def test_target_seed_photos_merge_under_the_scenario() -> None:
+    eff = _eff("    runsOn: { seedPhotos: [/fixtures/green.png] }\n")
+    # The target's own list reaches a scenario that writes none, and needs the same erase.
+    assert resolve_preconditions(eff, _pre("{}")).seed_photos == ["/fixtures/green.png"]
+    assert check_preconditions(_pre("{}"), [eff])
+    # A scenario's list replaces the target's, so an empty one seeds nothing and needs no erase.
+    empty = _pre("{ runsOn: { ios: { seedPhotos: [] } } }")
+    assert resolve_preconditions(eff, empty).seed_photos == []
+    assert check_preconditions(empty, [eff]) == []
 
 
 def test_no_seed_photos_needs_no_erase() -> None:
-    Preconditions()  # no raise: the validator only fires when seedPhotos is non-empty
+    assert check_preconditions(Preconditions(), [_eff()]) == []
 
 
 def test_parse_seed_photos_in_yaml() -> None:
     scenario = load_scenarios(
         "- name: t\n"
-        "  preconditions: { erase: true, seedPhotos: [fixtures/red.png, fixtures/green.png] }\n"
+        "  preconditions:\n"
+        "    run: { erase: true }\n"
+        "    runsOn: { ios: { seedPhotos: [fixtures/red.png, fixtures/green.png] } }\n"
         "  steps:\n    - tap: { id: a }\n"
     )[0]
-    assert scenario.preconditions.seed_photos == ["fixtures/red.png", "fixtures/green.png"]
-
-
-def test_parse_seed_photos_without_erase_rejected_in_yaml() -> None:
-    with pytest.raises(ValueError, match="requires preconditions"):
-        load_scenarios(
-            "- name: t\n"
-            "  preconditions: { seedPhotos: [fixtures/red.png] }\n"
-            "  steps:\n    - tap: { id: a }\n"
-        )
+    assert scenario.preconditions.seed_photos_for("ios") == [
+        "fixtures/red.png",
+        "fixtures/green.png",
+    ]

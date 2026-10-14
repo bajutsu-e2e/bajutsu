@@ -35,7 +35,11 @@ def test_relauncher_relaunches_with_locale_and_overrides() -> None:
 
     # Scenario locale (ja_JP) overrides the app/config default (en_US from _eff()).
     scn = Scenario.model_validate(
-        {"name": "a", "preconditions": {"locale": "ja_JP"}, "steps": [{"tap": {"id": "ok"}}]}
+        {
+            "name": "a",
+            "preconditions": {"runsOn": {"ios": {"locale": "ja_JP"}}},
+            "steps": [{"tap": {"id": "ok"}}],
+        }
     )
     driver = FakeDriver([_el("home.title", "H"), _el("ok", "OK")])  # 2 elems -> ready immediately
     # extra_env (the device's collector url) must survive the relaunch.

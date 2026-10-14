@@ -60,7 +60,7 @@ scenarios:
 | `primaryTarget` | str | なし | `target` を省略したステップやトップレベルの `expect` エントリが動くターゲット。`targets` の最初の名前（最初のグループの最初のメンバー）と一致する必要があります（[下記](#targets--target複数ターゲットシナリオbe-0428)） |
 | `installs` | list[str] | `[]` | プライマリと並んで開始時にインストールして起動するデバイスグループのメンバー。2つ以上のメンバーを持つグループのそれ以外のメンバーは、後から `installApp` ステップでインストールします（[デバイスグループ](#デバイスグループ1台のデバイスで複数のアプリを動かすbe-0447)） |
 | `data` / `dataFile` | list / str | なし | データ駆動の行。インライン `data` か `dataFile`（CSV パス）で指定する。1 行 1 run に展開し `${row.col}` を置換する。両者は排他（[再利用とデータ駆動とタグ](#再利用とデータ駆動とタグ)） |
-| `preconditions` | object | `{}` | テスト前の環境準備（下記） |
+| `preconditions` | object | `{}` | テスト前の環境準備です。ターゲットと同じグループ名 `app`、`runsOn`、`run` で書き、それぞれをターゲットの値に重ねます（[下記](#preconditions環境準備)） |
 | `setup` | list | `[]` | `steps` の前に**独立したフェーズ**として走るセットアップのステップ列。ここで失敗するとシナリオを打ち切る（[下記](#setup--cleanupセットアップとティアダウンのフェーズ)） |
 | `steps` | list | 必須 | アクションの並び（下記） |
 | `expect` | list | `[]` | 全ステップ成功後の最終アサーション（[selectors](selectors.md#アサーション評価)） |
@@ -69,15 +69,15 @@ scenarios:
 | `network` | object | なし | `{ filter: { domains: [...] } }`。`filter.domains` は、レポートの Steps タイムラインに差し込む通信を URL ホストで絞る（親ドメインはサブドメインに一致）。未指定なら全件を表示する。Network タブは常に全件を表示する（[reporting](reporting.md#reporthtml)） |
 | `mocks` | list | `[]` | 決定的なネットワークスタブ。一致する送信リクエストには、ネットワークへ行かず定型レスポンスを返す（[ネットワークモック](#ネットワークモック決定的スタブ)） |
 | `redact` | object | なし | 証跡を書き出す前に適用するマスク（[evidence](evidence.md#マスキングredact)） |
-| `systemAlertHandling` | bool / object | なし（ON） | リアクティブな **アラートガード**。iOS バックエンドから見えない OS プロンプトを、XCUITest ではネイティブに片付ける（モデルなし、BE-0316 を再利用）。名指しできないプロンプトには手を触れず、報告する。既定は ON。`false` で無効化し、`{ rules: [{ prompt: notifications, choice: grant }] }` なら ON のまま名指ししたプロンプトに答え、`{ pollInterval: 2 }` でネイティブのポーリング間隔を変える。CLI の `--system-alert-handling`/`--no-system-alert-handling` が上書きする（[下記](#systemalerthandlingシステムアラートガード)） |
-| `iosTipKitHandling` | bool | なし（オフ） | 操作をブロックしている Apple **TipKit** の tip を閉じます。フレームワークが所有する popover であり、同じ回避策をシナリオごとに手で書かずに済ませるためのガードです。ガードは tip を、閉じるための scrim（`PopoverDismissRegion`）とその tip 自身のコンテナ（`TipView`）の両方で判定します。ごく普通の `confirmationDialog` が同一の scrim を設置するため、そちらには手を触れないようにする必要があるからです。同じ理由で、tip 向けの `interrupts` エントリを手で書く場合は `TipView` を手がかりにします（`TipView` は TipKit 自身のコンテナであり、SwiftUI と UIKit のどちらの表示でも存在を計測で確認済みです）。iOS 専用（他の環境では何もしません）で、既定は**オフ**です。tip 自体がシナリオの検証対象になる場合があるからです。CLI の `--ios-tipkit-handling`/`--no-ios-tipkit-handling` が優先します |
 | `permissions` | dict | `{}` | 宣言的な OS 権限の状態（`{ <service>: grant \| revoke }`）。**アプリの起動前**に適用する（[下記](#permissions起動前の権限状態)） |
 | `interrupts` | list | `[]` | **予測できない時点**で現れる差し込み画面のハンドラ。各エントリは `{ condition, steps }` で、画面が現れた場所を問わず随時判定する（[下記](#interrupts予測できない差し込み画面への対処)） |
 
 ```yaml
 - name: filter narrows the catalog
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Search", traits: [button] }
     - wait: { for: { id: search.field }, timeout: 10 }
@@ -92,31 +92,91 @@ scenarios:
 
 ## preconditions（環境準備）
 
-実装: `scenario/models/scenario.py` の `Preconditions`。runner の `launch_driver` がこれを読んで起動手順を組み立てます（[run-loop](run-loop.md#runner実行パイプライン)）。
+実装は `scenario/models/scenario/preconditions.py` の `Preconditions` です。各ターゲットへの重ね合わせは
+`bajutsu/common/config/preconditions.py` が行います。runner の `launch_driver` は重ね合わせた結果を読んで、
+起動手順を組み立てます（[run-loop](run-loop.md#runner実行パイプライン)）。
 
-| キー | 型 | 既定 | 説明 | 配線 |
-|---|---|---|---|---|
-| `erase` | bool | 未設定（継承。ターゲットの `run.erase` が無ければオフ） | 各テスト前にシミュレータ全体を wipe する（`simctl erase`。アプリ、データ、設定を消去する）。既定はオフ。`reinstall` が全 wipe なしでアプリを新規状態に保つので、まっさらなデバイスが必要なテストだけ `true` にする | ✅ |
-| `reinstall` | `clean` \| `overwrite` | `clean` | ターゲットの config が `app.path` を指定したとき、各 run の前にアプリをどう再インストールするか。`clean` は uninstall してから install する（アプリとデータを fresh にする）。`overwrite` は既存アプリに上書き install する（データコンテナは保持する） | ✅ |
-| `launchArgs` | list[str] | `[]` | 起動引数（config の `app.launch.args` に追記する） | ✅ |
-| `launchEnv` | dict | `{}` | 起動 env（`SIMCTL_CHILD_*` で注入する。config の `app.launch.env` にマージする） | ✅ |
-| `deeplink` | str | なし | 起動後に `simctl openurl` で開く | ✅ |
-| `locale` | str | なし | 起動時に locale/言語を強制する（`-AppleLocale`/`-AppleLanguages`）。ターゲットの `runsOn.locale` を上書きする | ✅ |
-| `run.inheritSetup` | bool | `true` | `false` にすると、このシナリオが宣言する全ターゲットの `hooks.setup` を省く。各ターゲットの `hooks.cleanup` は走る（[後述](#setup--cleanupセットアップとティアダウンのフェーズ)） | ✅ |
+シナリオの `preconditions` はターゲットと同じグループ名を使います。そのため、1 つのフィールドは config
+でもシナリオでも同じ綴りになります
+（[BE-0452](../../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)）。
+グループは `app`、`runsOn`、`run` の 3 つです。シナリオに書いたフィールドは、ターゲットの
+[config](configuration.md) の同じフィールドを上書きします。例外は次の 3 つです。
 
-> `launchEnv` の解決順は **config の `app.launch.env` < preconditions の `launchEnv`** です（テストに近い方が優先）。`launch_driver` は `{**eff.launch_env, **pre.launch_env}` でマージします。
+- `app.launch.env` はキーごとにマージします。
+- `app.launch.args` はターゲットの引数の後ろに追記します。
+- `run.systemAlertHandling` の規則は連結し、シナリオの規則を先に照合します。
 
-> `erase` の解決順は **CLI の `--erase`/`--no-erase` > このシナリオ自身の `erase` > ターゲットの
-> `run.erase` > 組み込みのオフ**です
+```yaml
+preconditions:
+  app:
+    reinstall: overwrite
+    launch: { env: { FEATURE_X: "1" }, args: ["-debug"], deeplink: "showcase://cart" }
+  runsOn:
+    ios: { locale: ja_JP, seedPhotos: [photos/cat.jpg] }
+  run: { erase: true, tipKitHandling: true }
+```
+
+| キー | 型 | 既定 | 説明 |
+|---|---|---|---|
+| `app.reinstall` | `clean` \| `overwrite` | 未設定（ターゲットの `app.reinstall`、次に `clean`） | ターゲットの config が `app.path` を指定したとき、各 run の前にアプリをどう再インストールするかを決めます。`clean` は uninstall してから install します（アプリとデータを fresh にします）。`overwrite` は既存アプリに上書き install します（データを保持します）。iOS と Android で使えます |
+| `app.launch.env` | dict | `{}` | 起動時の環境変数です。ターゲットの `app.launch.env` にキーごとにマージします。iOS は `SIMCTL_CHILD_*` で、Android は intent extra で注入します。Web では Playwright のコード生成が読みます |
+| `app.launch.args` | list[str] | `[]` | 起動引数です。ターゲットの `app.launch.args` の後ろに追記します。iOS 専用です |
+| `app.launch.deeplink` | str | 未設定（ターゲットの `app.launch.deeplink`） | 起動後にアプリが開く URL です（iOS は `simctl openurl`、Android は intent） |
+| `runsOn.<platform>` | object | なし | 1 つのプラットフォームに対するシナリオ自身の `runsOn` です。iOS では `locale` と `seedPhotos` を書けます。デバイスの条件（`model`、`os`、`avd`、`apiLevel`、`browser.engine`、`browser.version`）も受け付けますが、デバイスの照合が実装されるまでは run 時に拒否します。run が動かさないプラットフォームのブロックは効果を持ちません |
+| `runsOn.ios.locale` | str | 未設定（ターゲットの `runsOn.locale`） | 起動時の locale と言語を強制し（`-AppleLocale` / `-AppleLanguages`）、Simulator のシステム言語も固定します |
+| `runsOn.ios.seedPhotos` | list[str] | 未設定（ターゲットの `runsOn.seedPhotos`） | erase の経路で、Simulator の写真ライブラリに順に投入する画像です。パスはシナリオファイルを基準に解決します。シナリオのリストはターゲットのリストを置き換えます |
+| `run.erase` | bool | 未設定（ターゲットの `run.erase`、次にオフ） | 各テストの前にデバイス全体を wipe します（`simctl erase`。アプリ、データ、設定を消去します）。`reinstall` が全 wipe なしでアプリを新しい状態に保つので、まっさらなデバイスが必要なテストだけ `true` にします |
+| `run.systemAlertHandling` | bool / object | 未設定（ON） | リアクティブなアラートガードです（[下記](#systemalerthandlingシステムアラートガード)） |
+| `run.tipKitHandling` | bool | 未設定（ターゲットの `run.tipKitHandling`、次にオフ） | 操作をブロックしている Apple TipKit の tip を閉じます（iOS 専用。[下記](#tipkithandling操作をブロックする-tipkit-の-tip)） |
+| `run.inheritSetup` | bool | `true` | `false` にすると、このシナリオが宣言する全ターゲットの `hooks.setup` を省きます。各ターゲットの `hooks.cleanup` は走ります（[後述](#setup--cleanupセットアップとティアダウンのフェーズ)） |
+
+シナリオは、アプリを識別したりビルドしたりするフィールド（`id`、`path`、`build`、`startWhen`、
+`idNamespaces`）を設定できません。`runsOn.kind` と `runsOn.emulate` も同じです。これらはターゲットが
+持ちます。`run.secrets` はターゲット側の和集合のままなので、シナリオからは設定できません。
+
+> **各フィールドは、デバイスを操作する前に、シナリオが動かすターゲットと照合します。** 動かすどの
+> ターゲットのプラットフォームにもない `app` のフィールドや、iOS 専用の `run` のフィールドは、無視せずに
+> フィールド名を示して run を失敗させます。Web だけのシナリオの `app.launch.args` や、Android
+> ターゲットだけに対する `run.tipKitHandling` が該当します。各ターゲットは自分のプラットフォームが持つ
+> `app` のフィールドだけを適用します。そのため、iOS と Web をまたぐシナリオは、iOS 側のために
+> `app.launch.args` を書けます。単一プラットフォームの複数のターゲットが `paths.scenarios` から同じ
+> シナリオファイルを読む場合、そのファイルは `targets` を宣言するか、該当するターゲットだけが読む
+> ディレクトリに置きます。`runsOn` のブロックはプラットフォームをキーにするので、run が動かさない
+> プラットフォームのブロックはエラーになりません。
+
+> `run.erase` の解決順は **CLI の `--erase` / `--no-erase` > このシナリオ自身の `run.erase` >
+> ターゲットの `run.erase` > 組み込みのオフ**です
 > （[BE-0177](../../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)、
-> [configuration](configuration.md#設定の階層defaults--targets)）。未設定のシナリオ（多くの場合はこれ）は
-> target config の既定を継承し、config 側も指定がなければオフになります。`_filter_scenarios`
-> （`cli/commands/run.py`）が run の開始前にこれを解決します。
+> [configuration](configuration.md#設定の階層defaults--targets)）。未設定のシナリオ（多くの場合はこれ）は、
+> ターゲットの config の値を継承します。`_filter_scenarios`（`run/cli.py`）が run の開始前に
+> この順序を解決します。
+
+> **写真の投入には wipe したデバイスが必要です。** 重ね合わせたあとの `seedPhotos` が空でなければ、
+> 実効の `run.erase`（フラグ、次にシナリオ、次にターゲット）が true である必要があります。写真ライブラリへの
+> 投入は erase の経路でだけ行うからです。ターゲットの `run.erase: true` でも条件を満たします。
 
 > `reinstall: clean` は権限状態（`permissions`。後述）も同時にリセットします。iOS では `simctl privacy
 > reset all`、Android では `pm clear` を使います。`overwrite` はどちらもリセットしません。`overwrite` は
 > シナリオ間でデータを保持するために存在し、権限の許可状態もその保持対象に含まれるため、`overwrite`
 > では前のシナリオが許可した権限がそのまま見え続けます。
+
+> **BE-0452 より前に保存した run も読み込めます。** シナリオのローダーは、古い平坦なキーを拒否します。
+> 対象は `erase`、`reinstall`、`launchEnv`、`launchArgs`、`deeplink`、`locale`、`seedPhotos` です。
+> トップレベルの `systemAlertHandling` と `iosTipKitHandling` も拒否します。どのメッセージも、キーの
+> 移動先を示します。run ディレクトリをオフラインで読む処理は、保存された `scenario.yaml` のほうを
+> 読み替えます。該当するのは、レポートの再描画、`trace`、`triage` です。
+
+## tipKitHandling（操作をブロックする TipKit の tip）
+
+`preconditions.run.tipKitHandling: true` は、操作をブロックしている Apple **TipKit** の tip を閉じます。
+tip はフレームワークが所有する popover です。このガードがあれば、同じ回避策をシナリオごとに手で書かずに
+済みます。ガードは tip を、閉じるための scrim（`PopoverDismissRegion`）とその tip 自身のコンテナ
+（`TipView`）の両方で判定します。ごく普通の `confirmationDialog` も同一の scrim を設置するので、
+そちらには手を触れないようにする必要があるからです。同じ理由で、tip 向けの `interrupts` エントリを
+手で書く場合は `TipView` を手がかりにします。`TipView` は TipKit 自身のコンテナです。SwiftUI と
+UIKit のどちらの表示でも、存在を計測で確認済みです。このフィールドは iOS 専用で、既定は**オフ**です。
+tip 自体がシナリオの検証対象になる場合があるからです。CLI の `--ios-tipkit-handling` /
+`--no-ios-tipkit-handling` が優先します。
 
 ## systemAlertHandling（システムアラートガード）
 
@@ -130,9 +190,11 @@ wait stopped: for {'id': 'Close'} after 10.4s — no element below the applicati
 
 この打ち切りは、`rules` に `savePassword` のようなアプリ内のプロンプトを宣言したシナリオに限ります。それ以外のシナリオでは、長く空のツリーがアプリ自身のラベルのない読み込み画面である可能性があるため、wait は従来どおり自身のタイムアウトまで待ちます。ラベルのない読み込み画面が 10 秒を超えうるアプリでは、`frozenScreenTimeout` で上限を延ばせます。`0` を指定すると打ち切りは無効になります。`gone` と `settled` の wait は、止まったツリーで条件を満たしてしまうため、この打ち切りの対象外です。`handleSystemAlert` ステップも対象外です。このステップは SpringBoard を待っており、プロンプトがあとから出る可能性があるためです。
 
-これは **既定で ON** です。XCUITest ではステップがすでに行う読み取りに相乗りし、成功するステップは再試行を受けません。そのため、成功するシナリオが払うのは `pollInterval` あたり最大 1 回の SpringBoard 確認だけです。`ANTHROPIC_API_KEY` は**不要**で、参照もしません。シナリオごとに動作を変えるには `systemAlertHandling` を使います。
+これは **既定で ON** です。XCUITest ではステップがすでに行う読み取りに相乗りし、成功するステップは再試行を受けません。そのため、成功するシナリオが払うのは `pollInterval` あたり最大 1 回の SpringBoard 確認だけです。`ANTHROPIC_API_KEY` は**不要**で、参照もしません。シナリオごとに動作を変えるには `preconditions.run.systemAlertHandling` を使います。この値はターゲットの `run.systemAlertHandling` を上書きします。CLI の `--system-alert-handling` / `--no-system-alert-handling` は、その両方を上書きします。
 
 **`rules` がガードの宣言のすべてです**（[BE-0406](../../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md)）。シナリオは、現れると見込むプロンプトと、それぞれに返す選択を書きます。どの応答経路も、その宣言だけを見て一致を判定します。BE-0401 が導入した順序付きの `labels` は BE-0406 で削除しました。ボタンのラベルが名指しするのはボタンであって、そのボタンが載っているアラートではありません。「Cancel」も「Close」もアプリの通常の語彙ですから、ラベルはシナリオが記述していない画面へのタップまで許してしまっていたのです。`visionInstruction` は vision フォールバックを方向づけていましたが、いまはどのコマンドにも届きません。**`run` はこれを拒否し**（後述）、`record` と `crawl` は自由記述を自身の `--alert-vision-instruction` フラグからだけ読み、シナリオからは読みません。ON と OFF は真偽値が担うので、マッピングを書けば常に ON です。
+
+次の形は、どれも `preconditions.run` の下に書きます。
 
 | 形 | 意味 |
 |---|---|
@@ -145,10 +207,12 @@ wait stopped: for {'id': 'Close'} after 10.4s — no element below the applicati
 
 ```yaml
 - name: grant notification permission
-  systemAlertHandling:
-    rules:
-      - prompt: notifications
-        choice: grant       # accept the prompt instead of leaving it alone
+  preconditions:
+    run:
+      systemAlertHandling:
+        rules:
+          - prompt: notifications
+            choice: grant       # accept the prompt instead of leaving it alone
   steps:
     - tap:  { id: sys.requestNotif }
     - wait: { for: { id: sys.notif.authorized }, timeout: 4 }   # the guard taps Allow, then this passes
@@ -213,12 +277,14 @@ targets:
 
 ```yaml
 - name: onboarding — accept notifications, refuse tracking
-  systemAlertHandling:
-    rules:
-      - prompt: notifications
-        choice: grant
-      - prompt: tracking
-        choice: deny
+  preconditions:
+    run:
+      systemAlertHandling:
+        rules:
+          - prompt: notifications
+            choice: grant
+          - prompt: tracking
+            choice: deny
   steps:
     - tap:  { id: onboarding.start }
     - wait: { for: { id: home.title }, timeout: 10 }
@@ -243,9 +309,11 @@ targets:
 `localNetwork` は、iOS のローカルネットワークの許可を求めるプロンプトです。実機では、アプリが初めてホストへ報告するときに、Bajutsu 自身のネットワークの collector がこのプロンプトを出させます（[iOS を実機とデバイスクラウドで動かす](ios-device-cloud.md)を参照してください）。ボタンは通知のプロンプトと同じなので、ボタンだけでは 2 つを区別できません。そこでガードはアラートのタイトルも読みます。タイトルは、アプリ名を `%@` に置き換えた Apple の雛形にそろえます。`localNetwork` のルールはこの雛形を識別に使い、`notifications` のルールはこの雛形を除外します。したがって、`notifications` のルールがローカルネットワークのプロンプトに答えることはなく、逆も同じです。ネットワークのやり取りを記録する実機のターゲットは、ほかのプロンプトと同じように宣言します。
 
 ```yaml
-systemAlertHandling:
-  rules:
-    - { prompt: localNetwork, choice: grant }
+preconditions:
+  run:
+    systemAlertHandling:
+      rules:
+        - { prompt: localNetwork, choice: grant }
 ```
 
 アプリはこのプロンプトを起動中に、つまりシナリオの最初の手順より前に出します。ガードが最初に確認するのは本来、保留中の待機の中なので、最初の `tap` がプロンプトに当たることがあります。そこでガードは、最初の手順の前に SpringBoard の照会を 1 回だけ読み、すでに出ている宣言済みのプロンプトに答えます。この確認はネイティブの経路だけを使います。アプリ自身のボタンはタップせず、宣言されていないアラートにも手を出しません。最初の手順が `handleSystemAlert` のときは、その手順のプロンプトを手順自身に残します。手順はルールとは逆の選択をすることもあるからです。手順は `prompt` でプロンプトを名指しするので、見た目の似たプロンプトはタイトルで区別できます。そのため、`notifications` の手順より前に出たローカルネットワークのプロンプトには、これまでどおりルールが答えます。`sel` で書いた手順はプロンプトを名指ししないので、この確認を省きます。
@@ -288,7 +356,8 @@ BE-0401 と BE-0406 は下記のキーをエイリアスなしで削除しまし
 | `instruction: "tap Allow"` | 同じ規則の形。BE-0401 の改名先は `visionInstruction` だが、BE-0402 でどのコマンドにも届かなくなった |
 | `enabled: false` | `systemAlertHandling: false` |
 | `enabled: true` | マッピング（または `systemAlertHandling: true`）。マッピングは常に ON |
-| `alertHandling:` / `dismissAlerts:` | `systemAlertHandling:` |
+| `alertHandling:` / `dismissAlerts:` | `preconditions.run.systemAlertHandling:` |
+| シナリオのトップレベルの `systemAlertHandling:` / `iosTipKitHandling:` | `preconditions.run.systemAlertHandling:` / `preconditions.run.tipKitHandling:`（BE-0452） |
 | `--alert-labels "Allow,OK"` / `--alert-instruction "Allow,OK"` | シナリオまたはターゲット config の `rules` エントリ。プロンプトと選択の組をフラグの値 1 つで読みやすく運べないため、フラグは無い。serve の HTTP API に `alertLabels` を載せた `run` リクエストは、`systemAlertHandling.rules` を名指しする 400 で拒否される |
 | `--alert-instruction "tap Allow"` | `--alert-vision-instruction "tap Allow"`（`record` / `crawl` 専用。`run` は BE-0402 で廃止） |
 | `--alert-handling` / `--dismiss-alerts` | `--system-alert-handling` |
@@ -717,8 +786,8 @@ assertするまで、新しいステップもランナーの変更も要りま�
 シナリオが所有しないOSの画面を扱うので、次の制約があります。
 
 - **実測したのはiOS Simulatorだけです。** iOS 26.5で確かめました。実機とほかのランタイムは確かめていません。
-- **`erase: true`でレイアウトを固定します。** 長押しはアイコングリッドの中心に当たるので、グリッドの中心は空いた壁紙でなければなりません。eraseと再インストールのあと、SpringBoardはテスト用アプリをインストールしたページを開きます。このページは下半分が空いています。eraseは前の実行が追加したウィジェットも消すので、新しいウィジェットへのassertが一意に保たれます。
-- **`preconditions.locale`で言語を固定します。** ラベルはすべてSpringBoard自身の文言です。アイコンの`identifier`でさえローカライズ済みの名前になります（英語では`Calendar`、日本語では`カレンダー`）。
+- **`run.erase: true`でレイアウトを固定します。** 長押しはアイコングリッドの中心に当たるので、グリッドの中心は空いた壁紙でなければなりません。eraseと再インストールのあと、SpringBoardはテスト用アプリをインストールしたページを開きます。このページは下半分が空いています。eraseは前の実行が追加したウィジェットも消すので、新しいウィジェットへのassertが一意に保たれます。
+- **`preconditions.runsOn.ios.locale`で言語を固定します。** ラベルはすべてSpringBoard自身の文言です。アイコンの`identifier`でさえローカライズ済みの名前になります（英語では`Calendar`、日本語では`カレンダー`）。
 - **検索結果の行はツリーに現れません。** ギャラリーの検索欄に文字が入ると、SpringBoardのスナップショットは結果の一覧を空のコンテナとして返します。行は画面に表示されています。検索欄の下の決まった位置にある先頭の行を、`tapPoint`でタップします（iPhone 17 Proでは`{ x: 0.5, y: 0.29 }`）。
 - **サイズの選択には`swipe`ではなく`drag`を使います。** サイズのカルーセルは、弾くように動かしたときだけページが切り替わります。`swipe`は慣性のないスクロールなので、元のページへ戻ってしまいます。
 - **ホストアプリの初回起動でプロンプトが出ることがあります。** Calendarは位置情報と通知の許可を求めます。順序は一定でなく、2つが同時に出ることもあります。その場合、押すべきボタンが1つに決まりません。`widget.yaml`はプロンプトを残したままにし、次の実行の`erase`で消します。
@@ -1765,7 +1834,7 @@ report内で複数の折りたたみに分かれることがあります。そ�
 
 ### データ駆動シナリオ（`data` / `dataFile`）
 
-`data`（インライン行）か `dataFile`（CSV パス。両者は **排他**）を持つシナリオは、`${row.<column>}` を置換して **1 行 1 シナリオ**に展開されます（`expand_data`, `scenario/expand.py`）。派生シナリオは `"<name> [row N: col=val, …]"` に改名され、元の preconditions を保ちます。そのため各行ともアプリを fresh に再インストールし、テンプレートの `erase` / `reinstall` を継承します。
+`data`（インライン行）か `dataFile`（CSV パス。両者は **排他**）を持つシナリオは、`${row.<column>}` を置換して **1 行 1 シナリオ**に展開されます（`expand_data`, `scenario/expand.py`）。派生シナリオは `"<name> [row N: col=val, …]"` に改名され、元の preconditions を保ちます。そのため各行ともアプリを fresh に再インストールし、テンプレートの `run.erase` / `app.reinstall` を継承します。
 
 ```yaml
 - name: search returns a result

@@ -29,7 +29,7 @@ from bajutsu.common.backends import (
 )
 from bajutsu.common.cancellation import CANCELLED_FAILURE, CancelSource, not_cancelled
 from bajutsu.common.capability import capability_preflight
-from bajutsu.common.config import Effective, web_engine
+from bajutsu.common.config import Effective, resolve_preconditions, web_engine
 from bajutsu.common.devices import errors as device_errors
 from bajutsu.common.drivers import base, tracing
 from bajutsu.common.drivers.base import BackendCrashError
@@ -263,12 +263,12 @@ class _ScenarioRunner:
     run_crash_budget: RunCrashRecoveryBudget = field(
         default_factory=lambda: RunCrashRecoveryBudget(None)
     )
-    # Whether a crash-triggered retry (attempt > 1) may force `preconditions.erase=True`. True (the
+    # Whether a crash-triggered retry (attempt > 1) may force `preconditions.run.erase=True`. True (the
     # default) matches every existing caller. `bajutsu run`'s `--no-erase` (an operator override of
-    # every scenario's `preconditions.erase`, applied by `_filter_scenarios` in
+    # every scenario's `preconditions.run.erase`, applied by `_filter_scenarios` in
     # `bajutsu/cli/commands/run.py` before a scenario ever reaches here) is the one signal this
     # forced retry must still honor: by the time a scenario reaches `run_one`, `_filter_scenarios` has
-    # already resolved `preconditions.erase` to a concrete bool for every scenario (most commonly
+    # already resolved `preconditions.run.erase` to a concrete bool for every scenario (most commonly
     # `False`, the built-in default nobody asked for), so a guard reading that field can no longer
     # distinguish "the operator explicitly asked to keep the device as-is" from "nobody said
     # anything" — this flag carries the pre-resolution CLI signal (`erase is not False`) instead, so
@@ -686,7 +686,7 @@ class _ScenarioRunner:
         # attempt already implies both, so folding them in loses nothing on that path.
         can_replace = (
             self.force_erase_on_retry
-            and s.preconditions.reinstall != "overwrite"
+            and resolve_preconditions(self.eff, s.preconditions).reinstall != "overwrite"
             and device_replacement_supported(actuator, self.eff, self.udid_spec)
         )
         replaced = False
@@ -719,11 +719,16 @@ class _ScenarioRunner:
                 if (
                     attempt > 1
                     and self.force_erase_on_retry
-                    and s.preconditions.reinstall != "overwrite"
+                    and resolve_preconditions(self.eff, s.preconditions).reinstall != "overwrite"
                     and erase_precondition_supported(actuator, self.eff, self.udid_spec)
                 ):
+                    pre = s.preconditions
                     retry_scenario = s.model_copy(
-                        update={"preconditions": s.preconditions.model_copy(update={"erase": True})}
+                        update={
+                            "preconditions": pre.model_copy(
+                                update={"run": pre.run.model_copy(update={"erase": True})}
+                            )
+                        }
                     )
                 forced_erase = retry_scenario is not s
                 # Lease *inside* the try so a crash during bring-up — the launch/readiness gate, not only a
@@ -1271,7 +1276,7 @@ class _ScenarioRunner:
             # run's `TargetRoster`, since an entry omitting `target` follows the current primary,
             # which a `setPrimaryTarget` step can move mid-run (BE-0447).
             interrupts=list(pool.eff.run_defaults.interrupts),
-            locale=s.preconditions.resolved_locale(pool.eff.locale),
+            locale=s.preconditions.resolved_locale(pool.eff.locale, pool.eff.schema_platform),
             capture=list(pool.eff.capture),
             channel=collector,
             caps=capabilities_for_run(pool.actuator, pool.eff, pool.udid_spec),
@@ -1412,7 +1417,7 @@ class _ScenarioRunner:
                 # The locale this scenario runs under — the same value the lease pinned the
                 # Simulator's system language to, so a `handleSystemAlert` naming a prompt and a
                 # choice resolves to the label SpringBoard is actually rendering (BE-0320).
-                locale=s.preconditions.resolved_locale(self.eff.locale),
+                locale=s.preconditions.resolved_locale(self.eff.locale, self.eff.schema_platform),
                 # The config's baseline capture guarantee (`defaults.capture`), applied on top of
                 # every step alongside capturePolicy rules and inline `capture:` tokens.
                 capture=self.eff.capture,
@@ -1424,7 +1429,7 @@ class _ScenarioRunner:
                 # the one direction that runs *into* the app, so it has no snapshot to hand over.
                 # A collector that carries no channel is caught at the command, not skipped here.
                 channel=lz.collector,
-                # The target's own `launchEnv`, merged underneath the scenario's own the same way
+                # The target's own `app.launch.env`, merged underneath the scenario's own the same way
                 # the launch itself merges them, so a target-level touch-marker pin is seen here
                 # exactly as the app that launched sees it, not read as if the scenario pinned
                 # nothing (BE-0365 unit 3).
@@ -1916,11 +1921,11 @@ def run_all(
             run is never blocked, the same never-block-the-first-respawn rule
             `crash_recovery_budget` already follows per scenario.
         force_erase_on_retry: Whether a crash-triggered retry (attempt > 1) may force
-            `preconditions.erase=True`, the same recovery a scenario already gets by declaring
+            `preconditions.run.erase=True`, the same recovery a scenario already gets by declaring
             `erase: true` (see `_ScenarioRunner.run_one`). True (the default) preserves every
             existing caller's behavior. `bajutsu run --no-erase` passes False here, carrying the
             operator's explicit opt-out past `_filter_scenarios`'s per-scenario resolution — the CLI
-            resolves every scenario's `preconditions.erase` to a concrete bool before `run_all` ever
+            resolves every scenario's `preconditions.run.erase` to a concrete bool before `run_all` ever
             sees it, so that field alone cannot distinguish "the operator asked to keep the device"
             from "nobody said anything" by the time a retry decides whether to force it.
         cancelled: Reports whether this run has been asked to stop (BE-0370). A scenario the request

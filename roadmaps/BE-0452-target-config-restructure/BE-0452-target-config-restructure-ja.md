@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0452") |
-| 実装 PR | [#2191](https://github.com/bajutsu-e2e/bajutsu/pull/2191)（単位 1〜3）、[#2193](https://github.com/bajutsu-e2e/bajutsu/pull/2193)（単位 4）、PR_PLACEHOLDER19（単位 5） |
+| 実装 PR | [#2191](https://github.com/bajutsu-e2e/bajutsu/pull/2191)（単位 1〜3）、[#2193](https://github.com/bajutsu-e2e/bajutsu/pull/2193)（単位 4）、PR_PLACEHOLDER19（単位 5）、PR_PLACEHOLDER21（単位 6〜7） |
 | トピック | ドライバとバックエンドのアーキテクチャ |
 | 関連 | [BE-0126](../BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config-ja.md)、[BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact-ja.md)、[BE-0228](../BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation-ja.md)、[BE-0076](../BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md)、[BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks-ja.md)、[BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction-ja.md)、[BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch-ja.md)、[BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md)、[BE-0447](../BE-0447-install-app-step/BE-0447-install-app-step-ja.md)、[BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md) |
 <!-- /BE-METADATA -->
@@ -445,8 +445,8 @@ target は、どこで実行するかを持たなくなります。target が書
 - [x] 作業単位 3: プラットフォームのレジストリとモデル
 - [x] 作業単位 4: スキーマの切り替え、固定データ、`demos/`の設定ファイル
 - [x] 作業単位 5: setup と cleanup
-- [ ] 作業単位 6: コマンドラインのフラグ
-- [ ] 作業単位 7: シナリオの preconditions
+- [x] 作業単位 6: コマンドラインのフラグ
+- [x] 作業単位 7: シナリオの preconditions
 - [ ] 作業単位 8: 端末の読み取り
 - [ ] 作業単位 9: 回と結果
 - [ ] 作業単位 10: 報告
@@ -496,6 +496,21 @@ target は、どこで実行するかを持たなくなります。target が書
     - 保存するキーの`before_outcomes`、`after_outcomes`、`after_verdict`は、名前を変えていません。設計が名前を変えるのは保存する値だけです。キーを保つので、古い版の読み手も manifest を解析できます。その場合のオフラインの再描画は、run が書き出したレポートへフォールバックします。
     - `report/load.py`は、`before`、`after`、`error`を使う保存済みの`scenario.yaml`も書き換えて読みます。シナリオのモデルがこれらの名前を拒否するようになったので、書き換えなしでは manifest が読めても以前の run を読み込めないからです。
     - CTRF の記録の`extra`は、フェーズを`setup`と`cleanup`という名前で持ちます。`extra.before`や`extra.after`を読んでいた CTRF の利用側は、新しいキーへ移る必要があります。
+  - この作業単位では、これらの名前を説明しているページを更新しました。文書全体の見直しは作業単位13に残します。
+- PR_PLACEHOLDER21（単位 6〜7）— コマンドラインのフラグが組み直したフィールドを読むようになりました。シナリオの`preconditions`は、target と同じグループ名を使います。
+  - 作業単位6：`--browser`の値と`--browsers`の各要素は、`runsOn.browser.engine`のモデルで読みます（`parse_engine_flag`）。`--browser`はこのフィールドを置き換えるので、リストで書いたエンジンは条件として数えなくなります。`run`、`record`、`crawl`、`repl`のヘルプは、各フラグが上書きするフィールドを示します。`triage --rerun`と MCP の run の docstring も同じです。フラグは引き続き、名前を変えていない`Effective`を通して働きます。
+  - 動作の変更があります。`record`と`crawl`は、`--system-alert-handling`の既定値に target の`run.systemAlertHandling`を使います。そのため、target が`false`と書けば、そこでもガードは止まります。`record`、`crawl`、`repl`の`--erase`は独自の既定値のままで、ヘルプには`run.erase`が効かないと書きました。
+  - 作業単位7：`preconditions`は`app`、`runsOn`、`run`を持ちます。トップレベルの`systemAlertHandling`と`iosTipKitHandling`は、`run.systemAlertHandling`と`run.tipKitHandling`へ移しました。平坦なキーとこの2つのフィールドは、読み込みの時点で失敗し、メッセージが移動先を示します。シナリオの`app.reinstall`は、既定で未設定です。
+  - target は`app.reinstall`、`app.launch.deeplink`（iOS と Android）、`runsOn.seedPhotos`（iOS）を持つようになりました。これらは`Effective.reinstall`、`.deeplink`、`.seed_photos`に解決します。投入する写真のパスは config ファイルを基準に解決します。
+  - `resolve_preconditions`は、1つの target にシナリオを重ねて`ResolvedPreconditions`を作ります。プラットフォームの environment は、シナリオのモデルの代わりにこれを読みます。`record`、`crawl`、`repl`は、target と自身の`--erase`から作ります。
+  - `run`と`audit`は、選んだ各シナリオを、そのシナリオが動かす target と照合します。照合はデバイスを操作する前で、run の既定値を埋める前です。動かすどのプラットフォームにもない`app`のフィールドや、iOS 専用の`run`のフィールドは失敗します。形の誤った`runsOn`のブロックと、実効の`run.erase`を伴わない`seedPhotos`も失敗します。シナリオの`runsOn`に書いた条件は、作業単位4と同じ「not yet supported」で拒否します。`--backend fake`は通知を1回出してこの拒否を飛ばします。
+  - `load_stored_scenario_file`は、保存されたプランの平坦なキーを組み直します。トップレベルの run のフィールドも移すので、以前の run も読み込めます。新しいグループを読むようになった処理は4つあります。Device Farm の`launchEnv`の衝突検査、`analysis/impact`の deeplink の読み取り、コード生成、レポートの preconditions の表です。`demos/`のシナリオとテストの固定データは、すべて移しました。
+  - 設計の記述から外れた点が5つあります。
+    - シナリオのモデルは、`runsOn`の各ブロックを書かれたとおりに保持します。import の契約によりシナリオのスキーマは config を参照できないので、レジストリによる検査は読み込みの時点ではなく、`run`や`audit`がシナリオを解決するときに行います。`bajutsu lint`は、ブロックのフィールドの綴り誤りを検出しません。
+    - `Effective`に`declared_platform`と`schema_platform`プロパティを加えました。`fake`の target は iOS の形の sub-config に解決するので、`platform`では照合に使うモデルを選べないからです。
+    - `ResolvedPreconditions`は、シナリオの起動環境と起動引数を target のものと分けて持ちます。マージと追記は従来どおり environment が行うので、起動の経路は変わっていません。
+    - `_filter_scenarios`は、`run.tipKitHandling`が有効になるときか、フラグが指定したときだけ値を設定します。そのため、iOS の target を動かさないシナリオの保存済みプランに、iOS 専用のフィールドが加わることはありません。
+    - 作業単位6は`--scenarios`フラグを変えていません。`run`が受け取るのは`--scenario`のファイルで、`--scenarios`を持つのは`serve`だけです。`serve`の`--scenarios`は target のフィールドを指しません。また、`crawl`は`--browser`を持ちません。
   - この作業単位では、これらの名前を説明しているページを更新しました。文書全体の見直しは作業単位13に残します。
 
 ## 参考

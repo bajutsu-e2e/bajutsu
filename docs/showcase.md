@@ -64,7 +64,7 @@ build is rarely needed.
 
 ## Launch-environment hooks
 
-Set in the target's `app.launch.env` or a scenario's `preconditions.launchEnv`. They reach the app as `SIMCTL_CHILD_<NAME>` ([drivers](drivers.md#environment-management-simctl)).
+Set in the target's `app.launch.env` or a scenario's `preconditions.app.launch.env`. They reach the app as `SIMCTL_CHILD_<NAME>` ([drivers](drivers.md#environment-management-simctl)).
 BE-0079 removed the launch-env shortcuts to a *data state* and to a *pushed screen*: the catalog is
 fixed (no seed knob), and a deeplink no longer jumps onto a detail — a detail is reached only by
 tapping its row. BE-0107 finished the job by retiring `SHOWCASE_TAB`, the last launch-env shortcut to

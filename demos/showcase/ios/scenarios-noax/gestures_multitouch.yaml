@@ -8,7 +8,9 @@
 - name: pinch and rotate targets mirror their result
   tags: [swiftui]   # SHOWCASE_GESTURES screen exists in SwiftUI (+ Compose), not UIKit
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_GESTURES: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1", SHOWCASE_GESTURES: "1" }
   steps:
     - wait: { for: { label: "Pinch me" }, timeout: 10 }
     - wait: { for: { label: "Rotate me" }, timeout: 10 }

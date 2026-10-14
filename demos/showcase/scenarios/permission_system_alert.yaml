@@ -16,9 +16,12 @@
 #     there; the dedicated `systemalert` tag (not the legacy `xcuitest` tag) keeps it out of them.
 - name: grant the notification prompt with handleSystemAlert
   tags: [systemalert]
-  systemAlertHandling: false
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
+    run:
+      systemAlertHandling: false
   steps:
     - tap: { label: "Permissions", traits: [button] }
     - wait: { for: { id: perm.requestNotif }, timeout: 10 }

@@ -24,7 +24,9 @@
     Pixel-compare the Compose Stable catalog against the recorded Android visual baseline, masking
     the system status bar so the clock does not churn the comparison.
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - wait: { for: { id: stable.row.1 }, timeout: 10 }
       capture: [video, deviceLog]

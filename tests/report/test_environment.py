@@ -40,7 +40,10 @@ def test_html_preconditions_render_in_result_tab() -> None:
     definition = {
         "name": "s1",
         "steps": [{"tap": {"id": "a"}}],
-        "preconditions": {"locale": "ja_JP", "launchEnv": {"SAMPLE_SEED": "5"}},
+        "preconditions": {
+            "runsOn": {"ios": {"locale": "ja_JP"}},
+            "app": {"launch": {"env": {"SAMPLE_SEED": "5"}}},
+        },
     }
     out = html_report("run9", [_passing()], definitions=[definition])
     assert '<details class="pre"' in out

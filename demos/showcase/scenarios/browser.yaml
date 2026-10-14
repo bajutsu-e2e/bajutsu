@@ -15,10 +15,12 @@
 - name: the in-app browser renders its page and takes a click
   tags: [browser]
   preconditions:
-    launchEnv:
-      SHOWCASE_UITEST: "1"
-      # The page `e2e-browser` serves; keep the port in step with BROWSER_PORT in the Makefile.
-      SHOWCASE_BROWSER_URL: "http://localhost:8799/"
+    app:
+      launch:
+        env:
+          SHOWCASE_UITEST: "1"
+          # The page `e2e-browser` serves; keep the port in step with BROWSER_PORT in the Makefile.
+          SHOWCASE_BROWSER_URL: "http://localhost:8799/"
   steps:
     - tap: { label: "Permissions", traits: [button] }
       capture: [deviceLog]

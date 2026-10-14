@@ -138,7 +138,7 @@ id より脆いので、スクロール回数は toolkit ごとにオンデバ�
 
 deeplink scheme はプロダクトごとに分けています（2 つのインストール済みアプリが衝突しないようにするため）：`showcaseswiftui`、
 `showcaseuikit`、および `…noax` 変種です。`bajutsu` は URL をリテラルに開くので、共有シナリオは deeplink では
-なく `launchEnv` ＋ タップ（scheme 非依存）を使います。deeplink はタブを選択するだけで、詳細画面を push する
+なく `app.launch.env` ＋ タップ（scheme 非依存）を使います。deeplink はタブを選択するだけで、詳細画面を push する
 ことはありません（BE-0079）。deeplink を直接行使するには次のようにします:
 
 ```bash

@@ -211,11 +211,15 @@ UI 操作は **最も安定する選択手段から順に試し、成立した�
 
 ```yaml
 - name: ログタブでフィルタを開いて適用する
-  preconditions:
-    erase: true                              # 各テスト前にクリーン化（既定 true・§2）
-    launchEnv: { SHOWCASE_UITEST: "1" }       # 状態注入（launch args / env）
-    deeplink: "showcaseswiftui://log"        # 起動後に開く（任意）
-    locale: "ja_JP"                          # 省略時は config の固定 locale
+  preconditions:                             # ターゲットと同じ app / runsOn / run のグループ（BE-0452）
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }         # 状態注入（launch args / env）
+        deeplink: "showcaseswiftui://log"    # 起動後に開く（任意）
+    runsOn:
+      ios: { locale: "ja_JP" }               # 省略時は config の固定 locale
+    run:
+      erase: true                            # 各テスト前にクリーン化（§2）
   setup:
     - use: { component: _setup.yaml }        # 再利用する前段（任意・§7.1）
   steps:
@@ -243,7 +247,7 @@ UI 操作は **最も安定する選択手段から順に試し、成立した�
 | `sleep` | `sleep: { seconds, reason }` | どの条件でも観測できない遅延のための固定の待機。上限 30 秒、理由は必須で、決定性の監査が列挙します |
 | `assert` | `assert: [ <Assertion>... ]` | ステップ途中の中間検証（DSL は §6.4 と同一） |
 
-> `launch` / `deeplink` / `erase` は基本 `preconditions` で宣言しますが、シナリオ途中で再起動や再注入をしたい場合はステップとしても書けます（`relaunch: { env: {...} }`）。
+> 起動環境、`deeplink`、`erase` は基本 `preconditions`（`app.launch`、`run.erase`）で宣言しますが、シナリオ途中で再起動や再注入をしたい場合はステップとしても書けます（`relaunch: { env: {...} }`）。
 
 ### 6.3 待機（条件待機のみ）
 

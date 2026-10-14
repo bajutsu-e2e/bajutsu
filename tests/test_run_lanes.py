@@ -419,29 +419,29 @@ def test_filter_scenarios_no_match_exits_2() -> None:
 def test_filter_scenarios_erase_override() -> None:
     scenarios = load_scenarios(_one_scenario("a"))
     _filter_scenarios(scenarios, "", "", True, False)  # --erase forces every scenario on
-    assert scenarios[0].preconditions.erase is True
+    assert scenarios[0].preconditions.run.erase is True
 
 
 def test_filter_scenarios_erase_inherits_target_default() -> None:
     # BE-0177: an unset scenario (erase None) inherits the target config default when no flag is given.
     scenarios = load_scenarios(_one_scenario("a"))
-    assert scenarios[0].preconditions.erase is None
+    assert scenarios[0].preconditions.run.erase is None
     _filter_scenarios(scenarios, "", "", None, True)
-    assert scenarios[0].preconditions.erase is True
+    assert scenarios[0].preconditions.run.erase is True
 
 
 def test_filter_scenarios_erase_scenario_beats_target() -> None:
     # BE-0177: a scenario's explicit erase wins over the target default; the flag is unset here.
-    scenarios = load_scenarios(_one_scenario("a") + "  preconditions:\n    erase: false\n")
+    scenarios = load_scenarios(_one_scenario("a") + "  preconditions:\n    run: { erase: false }\n")
     _filter_scenarios(scenarios, "", "", None, True)
-    assert scenarios[0].preconditions.erase is False
+    assert scenarios[0].preconditions.run.erase is False
 
 
 def test_filter_scenarios_erase_flag_beats_scenario_and_target() -> None:
     # BE-0177: `--no-erase` overrides even a scenario that explicitly set erase: true.
-    scenarios = load_scenarios(_one_scenario("a") + "  preconditions:\n    erase: true\n")
+    scenarios = load_scenarios(_one_scenario("a") + "  preconditions:\n    run: { erase: true }\n")
     _filter_scenarios(scenarios, "", "", False, True)
-    assert scenarios[0].preconditions.erase is False
+    assert scenarios[0].preconditions.run.erase is False
 
 
 # `iosTipKitHandling` rides the same BE-0177 precedence as `erase` above, so it gets the same three
@@ -452,21 +452,25 @@ def test_filter_scenarios_erase_flag_beats_scenario_and_target() -> None:
 
 def test_filter_scenarios_ios_tipkit_inherits_target_default() -> None:
     scenarios = load_scenarios(_one_scenario("a"))
-    assert scenarios[0].ios_tip_kit_handling is None
+    assert scenarios[0].preconditions.run.tip_kit_handling is None
     _filter_scenarios(scenarios, "", "", None, False, None, True)
-    assert scenarios[0].ios_tip_kit_handling is True
+    assert scenarios[0].preconditions.run.tip_kit_handling is True
 
 
 def test_filter_scenarios_ios_tipkit_scenario_beats_target() -> None:
-    scenarios = load_scenarios(_one_scenario("a") + "  iosTipKitHandling: false\n")
+    scenarios = load_scenarios(
+        _one_scenario("a") + "  preconditions:\n    run: { tipKitHandling: false }\n"
+    )
     _filter_scenarios(scenarios, "", "", None, False, None, True)
-    assert scenarios[0].ios_tip_kit_handling is False
+    assert scenarios[0].preconditions.run.tip_kit_handling is False
 
 
 def test_filter_scenarios_ios_tipkit_flag_beats_scenario_and_target() -> None:
-    scenarios = load_scenarios(_one_scenario("a") + "  iosTipKitHandling: true\n")
+    scenarios = load_scenarios(
+        _one_scenario("a") + "  preconditions:\n    run: { tipKitHandling: true }\n"
+    )
     _filter_scenarios(scenarios, "", "", None, False, False, True)
-    assert scenarios[0].ios_tip_kit_handling is False
+    assert scenarios[0].preconditions.run.tip_kit_handling is False
 
 
 # --- _alert_guard_factory: build the guard factory, or None when no scenario wants one
@@ -474,7 +478,8 @@ def test_filter_scenarios_ios_tipkit_flag_beats_scenario_and_target() -> None:
 
 def test_alert_guard_factory_none_when_all_disabled() -> None:
     scenarios = load_scenarios(
-        "- name: a\n  systemAlertHandling: false\n" + "  steps:\n    - tap: { id: home.title }\n"
+        "- name: a\n  preconditions: { run: { systemAlertHandling: false } }\n"
+        + "  steps:\n    - tap: { id: home.title }\n"
     )
     assert _alert_guard_factory(scenarios, _eff(), None) is None
 
@@ -491,7 +496,7 @@ def test_alert_guard_factory_scenario_reenables_over_target() -> None:
     # BE-0177: a scenario's explicit `systemAlertHandling: true` wins over the target's `false`, so a
     # guard is still built (it no-ops here only because the test env has no AI credential).
     scenarios = load_scenarios(
-        "- name: a\n  systemAlertHandling: true\n  steps:\n    - tap: { id: home.title }\n"
+        "- name: a\n  preconditions: { run: { systemAlertHandling: true } }\n  steps:\n    - tap: { id: home.title }\n"
     )
     assert _alert_guard_factory(scenarios, _eff(systemAlertHandling="false"), None) is not None
 
@@ -612,7 +617,7 @@ def test_alert_guard_factory_rejects_before_any_scenario_gets_a_guard() -> None:
 def _tap_scenario(name: str, dismiss: dict[str, object] | None = None) -> Scenario:
     body: dict[str, object] = {"name": name, "steps": [{"tap": {"id": "x"}}]}
     if dismiss is not None:
-        body["systemAlertHandling"] = dismiss
+        body["preconditions"] = {"run": {"systemAlertHandling": dismiss}}
     return Scenario.model_validate(body)
 
 
@@ -622,7 +627,11 @@ def test_alert_guard_factory_hands_back_no_guard_for_a_scenario_that_switched_it
     # scenario silently inheriting its neighbours'.
     on = _tap_scenario("a", {"rules": [{"prompt": "notifications", "choice": "grant"}]})
     off = Scenario.model_validate(
-        {"name": "b", "systemAlertHandling": False, "steps": [{"tap": {"id": "x"}}]}
+        {
+            "name": "b",
+            "preconditions": {"run": {"systemAlertHandling": False}},
+            "steps": [{"tap": {"id": "x"}}],
+        }
     )
     factory = _alert_guard_factory([on, off], _eff(), None)
     assert factory is not None
@@ -663,7 +672,7 @@ def test_apply_system_alert_handling_off_replaces_the_whole_field() -> None:
         "a", {"rules": [{"prompt": "notifications", "choice": "grant"}], "pollInterval": 2}
     )
     _apply_system_alert_handling([s], False)
-    assert s.system_alert_handling is False
+    assert s.preconditions.run.system_alert_handling is False
 
 
 def test_apply_system_alert_handling_on_preserves_the_policy_and_re_enables() -> None:
@@ -671,25 +680,29 @@ def test_apply_system_alert_handling_on_preserves_the_policy_and_re_enables() ->
         "a", {"rules": [{"prompt": "notifications", "choice": "grant"}], "pollInterval": 2}
     )
     _apply_system_alert_handling([s], True)
-    assert isinstance(s.system_alert_handling, SystemAlertHandling)
-    assert [(r.prompt, r.choice) for r in s.system_alert_handling.rules] == [
+    assert isinstance(s.preconditions.run.system_alert_handling, SystemAlertHandling)
+    assert [(r.prompt, r.choice) for r in s.preconditions.run.system_alert_handling.rules] == [
         ("notifications", "grant")
     ]
-    assert s.system_alert_handling.poll_interval == 2.0
+    assert s.preconditions.run.system_alert_handling.poll_interval == 2.0
 
     # A scenario that had switched itself off comes back on with the empty policy.
     off = Scenario.model_validate(
-        {"name": "b", "systemAlertHandling": False, "steps": [{"tap": {"id": "x"}}]}
+        {
+            "name": "b",
+            "preconditions": {"run": {"systemAlertHandling": False}},
+            "steps": [{"tap": {"id": "x"}}],
+        }
     )
     _apply_system_alert_handling([off], True)
-    assert off.system_alert_handling == SystemAlertHandling()
+    assert off.preconditions.run.system_alert_handling == SystemAlertHandling()
 
 
 def test_apply_system_alert_handling_unset_flag_is_a_no_op() -> None:
     s = _tap_scenario("a", {"rules": [{"prompt": "notifications", "choice": "grant"}]})
     _apply_system_alert_handling([s], None)
-    assert isinstance(s.system_alert_handling, SystemAlertHandling)
-    assert [(r.prompt, r.choice) for r in s.system_alert_handling.rules] == [
+    assert isinstance(s.preconditions.run.system_alert_handling, SystemAlertHandling)
+    assert [(r.prompt, r.choice) for r in s.preconditions.run.system_alert_handling.rules] == [
         ("notifications", "grant")
     ]
 

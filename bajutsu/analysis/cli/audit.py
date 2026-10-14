@@ -29,9 +29,11 @@ from bajutsu.analysis import audit as _audit
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
     WORKER_CONFIG_HELP,
+    _backends,
     _device_udid_or_exit,
     _load_device_worker_or_exit,
     _load_effective,
+    _refuse_bad_preconditions,
     _select_actuator_or_exit,
     _start_launch_server_or_exit,
     _with_worker_device,
@@ -174,6 +176,13 @@ def _repeat_audit(
         )
         raise typer.Exit(2)
     eff = _load_effective(config, target_name)  # exits 2 on missing config / unknown target
+    # The same precondition checks `run` applies before any device work (BE-0452). Audit has no
+    # `--erase`, so each scenario's own erase, then the target's, decides.
+    _refuse_bad_preconditions(
+        [(s, [eff]) for s in scenarios],
+        erase=None,
+        fake=_backends(backend, eff.backend) == ["fake"],
+    )
     # `with_lifecycle_phases` re-validates its own folded result already, but only `run_all` calls
     # it — deep inside a path whose `finally` below only tears down the device pool / server, not a
     # clean exit 2. A `targets.<name>.hooks` setup/cleanup step carrying a `target` that disagrees

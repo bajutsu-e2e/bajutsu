@@ -101,7 +101,7 @@ def test_reverse_index_maps_a_deeplink_as_a_scenario_level_screen() -> None:
     # The `setup` prelude it once mapped too is gone (BE-0452); a deeplink still reaches a screen
     # before any step.
     idx = _index(
-        "- name: x\n  preconditions: { deeplink: 'app://home' }\n"
+        "- name: x\n  preconditions: { app: { launch: { deeplink: 'app://home' } } }\n"
         "  steps:\n    - tap: { id: home.start }\n"
     )
     screens = {k.value: v for k, v in idx.entries.items() if k.kind == "screen"}

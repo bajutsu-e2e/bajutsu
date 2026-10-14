@@ -5,8 +5,10 @@
     - on: { action: tap }
       capture: [screenshot.after, video]
   preconditions:
-    erase: false
-    reinstall: clean
+    app:
+      reinstall: clean
+    run:
+      erase: false
   steps:
   - tapPoint:
       x: 0.5

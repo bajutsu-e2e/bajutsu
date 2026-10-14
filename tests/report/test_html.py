@@ -240,7 +240,10 @@ def test_merged_steps_show_rich_definition() -> None:
     # steps that never ran (the plan is longer than the outcomes) still appear.
     definition = {
         "name": "s1",
-        "preconditions": {"erase": False, "launchEnv": {"SAMPLE_SEED": "5"}},
+        "preconditions": {
+            "run": {"erase": False},
+            "app": {"launch": {"env": {"SAMPLE_SEED": "5"}}},
+        },
         "steps": [
             {"tap": {"id": "counter.increment"}},
             {"type": {"text": "Item 3", "into": {"id": "home.search"}}},

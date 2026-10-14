@@ -84,16 +84,60 @@ def renamed_outcome(value: Any) -> Any:
 _PHASE_RENAMES = {"before": "setup", "after": "cleanup"}
 
 
+# A flat `preconditions` key BE-0452 regrouped, and the path it moved to inside `preconditions`.
+_PRECONDITION_MOVES: dict[str, tuple[str, ...]] = {
+    "erase": ("run", "erase"),
+    "reinstall": ("app", "reinstall"),
+    "launchEnv": ("app", "launch", "env"),
+    "launchArgs": ("app", "launch", "args"),
+    "deeplink": ("app", "launch", "deeplink"),
+    # Only iOS read a scenario's locale and seeded photos before the regrouping.
+    "locale": ("runsOn", "ios", "locale"),
+    "seedPhotos": ("runsOn", "ios", "seedPhotos"),
+}
+
+# The top-level run-policy keys BE-0452 moved under `preconditions.run`.
+_RUN_MOVES = {"systemAlertHandling": "systemAlertHandling", "iosTipKitHandling": "tipKitHandling"}
+
+
+def _place(tree: dict[str, Any], path: tuple[str, ...], value: Any) -> None:
+    """Set *value* at *path* in *tree*, creating each missing mapping on the way."""
+    *parents, leaf = path
+    for part in parents:
+        child = tree.get(part)
+        if not isinstance(child, dict):
+            child = tree[part] = {}
+        tree = child
+    tree.setdefault(leaf, value)
+
+
+def _upgrade_preconditions(raw: dict[str, Any]) -> None:
+    """Regroup one stored scenario's flat `preconditions` and top-level run policy (BE-0452)."""
+    pre = raw.get("preconditions")
+    if not isinstance(pre, dict):
+        pre = {}
+    for old, path in _PRECONDITION_MOVES.items():
+        if old in pre:
+            _place(pre, path, pre.pop(old))
+    for old, new in _RUN_MOVES.items():
+        if old in raw:
+            _place(pre, ("run", new), raw.pop(old))
+    if pre:
+        raw["preconditions"] = pre
+
+
 def _upgrade_scenario(raw: Any) -> None:
     """Rewrite one stored scenario's pre-BE-0452 spellings in place, so an earlier run still loads.
 
     The scenario model rejects the old keys (BE-0452 reads none of them), but a run directory keeps
     the plan it ran, so only this offline reader translates them: `before` / `after` become `setup`
-    / `cleanup`, and the outcome word `error` in a cleanup rule's `on` and a `capturePolicy`
-    trigger's `result` becomes `failure`.
+    / `cleanup`, the outcome word `error` in a cleanup rule's `on` and a `capturePolicy` trigger's
+    `result` becomes `failure`, and the flat `preconditions` keys and the top-level
+    `systemAlertHandling` / `iosTipKitHandling` move into the `app`, `runsOn`, and `run` groups.
     """
     if not isinstance(raw, dict):
         return
+    _upgrade_preconditions(raw)
     for old, new in _PHASE_RENAMES.items():
         if old in raw and new not in raw:
             raw[new] = raw.pop(old)

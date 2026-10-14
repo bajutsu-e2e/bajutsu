@@ -62,7 +62,7 @@ make -C demos/showcase/android e2e-codegen # Android 版：シナリオ → UI A
 
 ## 起動環境フック
 
-ターゲットの `app.launch.env`（またはシナリオの `preconditions.launchEnv`）で注入し、`SIMCTL_CHILD_<NAME>` として渡します（[drivers](drivers.md#環境管理simctl)）。
+ターゲットの `app.launch.env`（またはシナリオの `preconditions.app.launch.env`）で注入し、`SIMCTL_CHILD_<NAME>` として渡します（[drivers](drivers.md#環境管理simctl)）。
 
 BE-0079 で、*データ状態*と *push で開く画面*への起動時ショートカットを取り除きました。カタログは固定で（シードする
 手段はありません）、deeplink が詳細へ直接飛ぶこともありません（詳細は行のタップでのみ到達します）。

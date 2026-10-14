@@ -40,7 +40,7 @@ def test_test_per_scenario_uses_sanitized_name_and_launch() -> None:
 
 def test_launch_env_merges_config_and_scenario_as_intent_extras() -> None:
     code = _gen(
-        "- name: x\n  preconditions:\n    launchEnv: { SHOWCASE_TAB: log }\n"
+        "- name: x\n  preconditions:\n    app: { launch: { env: { SHOWCASE_TAB: log } } }\n"
         "  steps:\n    - tap: { id: a }\n",
         env={"SHOWCASE_UITEST": "1"},
     )

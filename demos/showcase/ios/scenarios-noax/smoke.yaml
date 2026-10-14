@@ -13,7 +13,9 @@
 # asserting "No matches" is absent.
 - name: stable catalog smoke
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - wait: { for: { label: "Horse 1" }, timeout: 10 }
   expect:

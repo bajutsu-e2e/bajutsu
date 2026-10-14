@@ -19,7 +19,9 @@
 - name: app drives Safari and back, twice, around real showcase navigation
   tags: [app]
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     # Operate the showcase app first: push a catalog row's detail screen (the same flow
     # navigation.yaml exercises on its own), so there is real showcase navigation state — a

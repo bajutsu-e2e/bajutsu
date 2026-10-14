@@ -19,7 +19,7 @@ import pytest
 from conftest import el as _el
 
 from bajutsu.common.backend_cli import simctl
-from bajutsu.common.config import AndroidConfig, Effective, IosConfig
+from bajutsu.common.config import AndroidConfig, Effective, IosConfig, ResolvedPreconditions
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.platform_lifecycle import AndroidEnvironment
 from bajutsu.common.platform_lifecycle.environments import ios as ios_environment
@@ -30,7 +30,7 @@ from bajutsu.common.platform_lifecycle.environments.xcuitest._functions import (
     _read_report,
     _reports_device,
 )
-from bajutsu.common.scenario import Preconditions, Redact
+from bajutsu.common.scenario import Redact
 
 _UDID = "11111111-2222-3333-4444-555555555555"
 _OTHER_UDID = "99999999-8888-7777-6666-555555555555"
@@ -518,7 +518,7 @@ def test_a_cold_spawn_stamps_the_launch_marker_before_spawning_the_runner(
 
     monkeypatch.setattr(xcuitest_environment, "_spawn_cold_with_retry", fake_spawn_with_retry)
 
-    env._spawn_cold(_ios_eff(None), Preconditions(), "simulator", None, None)
+    env._spawn_cold(_ios_eff(None), ResolvedPreconditions(), "simulator", None, None)
 
     assert seen == [env._app_launched_at]
     assert seen[0] is not None
@@ -548,7 +548,7 @@ def test_resume_warm_stamps_the_launch_marker_before_launching_the_app(
 
     monkeypatch.setattr(simctl.Env, "launch", fake_launch)
 
-    env._resume_warm(_ios_eff(None), Preconditions(), None, None, FakeDriver([]))
+    env._resume_warm(_ios_eff(None), ResolvedPreconditions(), None, None, FakeDriver([]))
 
     assert seen == [env._app_launched_at]
     assert seen[0] is not None and seen[0] > 1000.0
@@ -581,7 +581,7 @@ def test_start_stamps_the_launch_marker_before_launching_the_app() -> None:
 
     calls: list[list[str]] = []
     env = AndroidEnvironment("adb", "emulator-5554", adb_run=_resolve_activity_run(calls))
-    env.start(_eff(), Preconditions())
+    env.start(_eff(), ResolvedPreconditions())
 
     joined = [" ".join(c) for c in calls]
     date_index = next(

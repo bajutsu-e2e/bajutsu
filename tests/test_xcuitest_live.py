@@ -18,7 +18,7 @@ from typing import Any
 
 import pytest
 
-from bajutsu.common.config import load_config, resolve
+from bajutsu.common.config import ResolvedPreconditions, load_config, resolve
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.xcuitest_live import (
     BACKSPACE_KEY,
@@ -33,7 +33,7 @@ from bajutsu.common.platform_lifecycle.environments.xcuitest_live import (
     is_webdriver_endpoint,
 )
 from bajutsu.common.platform_lifecycle.factories import environment_for
-from bajutsu.common.scenario import Preconditions, Relaunch
+from bajutsu.common.scenario import Relaunch
 from bajutsu.common.scenario.models.scenario import Scenario
 
 _ENDPOINT = "http://grid.local:4723"
@@ -645,7 +645,7 @@ def _live_eff_with(**kwargs: str) -> Any:
 def test_live_environment_start_opens_a_session_and_returns_a_live_driver() -> None:
     grid = _FakeGrid([])
     env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _endpoint: grid)
-    driver = env.start(_live_eff(), Preconditions())
+    driver = env.start(_live_eff(), ResolvedPreconditions())
     assert isinstance(driver, XcuitestLiveDriver)
     assert grid.session == "sess-1"  # a WebDriver session was opened, no simctl / xcodebuild
     env.teardown(driver, _live_eff())
@@ -667,7 +667,7 @@ def test_live_environment_teardown_suppresses_a_session_delete_failure() -> None
     env = XcuitestLiveEnvironment(
         "xcuitest", _ENDPOINT, transport_factory=lambda _endpoint: flaky_transport
     )
-    driver = env.start(_live_eff(), Preconditions())
+    driver = env.start(_live_eff(), ResolvedPreconditions())
     env.teardown(driver, _live_eff())  # must not raise despite delete_session() failing
     env.teardown(driver, _live_eff())  # a second call is a no-op, not a retry of the same failure
 
@@ -685,7 +685,7 @@ def test_live_environment_passes_the_bundle_id_in_the_session_capabilities() -> 
 
     cap_grid = _CapturingGrid([])
     env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: cap_grid)
-    env.start(_live_eff(), Preconditions())
+    env.start(_live_eff(), ResolvedPreconditions())
     always = captured["body"]["capabilities"]["alwaysMatch"]
     assert always["appium:bundleId"] == "com.x"
 
@@ -695,19 +695,19 @@ def test_live_environment_start_raises_on_erase() -> None:
     # silently no-op'ing (determinism first — the scenario author must know erase had no effect).
     env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: _FakeGrid([]))
     with pytest.raises(base.UnsupportedAction):
-        env.start(_live_eff(), Preconditions(erase=True))
+        env.start(_live_eff(), ResolvedPreconditions(erase=True))
 
 
 def test_live_environment_start_raises_on_permissions() -> None:
     env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: _FakeGrid([]))
     with pytest.raises(base.UnsupportedAction):
-        env.start(_live_eff(), Preconditions(), permissions={"photos": "allow"})
+        env.start(_live_eff(), ResolvedPreconditions(), permissions={"photos": "allow"})
 
 
 def test_live_environment_start_raises_on_extra_env() -> None:
     env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: _FakeGrid([]))
     with pytest.raises(base.UnsupportedAction):
-        env.start(_live_eff(), Preconditions(), extra_env={"FOO": "bar"})
+        env.start(_live_eff(), ResolvedPreconditions(), extra_env={"FOO": "bar"})
 
 
 def test_live_environment_crawl_reset_raises_unsupported_action() -> None:
@@ -792,19 +792,19 @@ def test_live_environment_start_raises_on_deeplink() -> None:
     # `deeplink` is not wired on the live route; the run must fail loudly rather than silently no-op.
     env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: _FakeGrid([]))
     with pytest.raises(base.UnsupportedAction):
-        env.start(_live_eff(), Preconditions(deeplink="myapp://home"))
+        env.start(_live_eff(), ResolvedPreconditions(deeplink="myapp://home"))
 
 
 def test_live_environment_start_raises_on_launch_args() -> None:
     env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: _FakeGrid([]))
     with pytest.raises(base.UnsupportedAction):
-        env.start(_live_eff(), Preconditions(launchArgs=["--reset"]))
+        env.start(_live_eff(), ResolvedPreconditions(launch_args=["--reset"]))
 
 
 def test_live_environment_start_raises_on_launch_env() -> None:
     env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: _FakeGrid([]))
     with pytest.raises(base.UnsupportedAction):
-        env.start(_live_eff(), Preconditions(launchEnv={"MODE": "test"}))
+        env.start(_live_eff(), ResolvedPreconditions(launch_env={"MODE": "test"}))
 
 
 def test_live_environment_start_raises_on_eff_launch_args() -> None:
@@ -825,7 +825,7 @@ def test_live_environment_start_raises_on_eff_launch_args() -> None:
     )
     env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: _FakeGrid([]))
     with pytest.raises(base.UnsupportedAction):
-        env.start(eff, Preconditions())
+        env.start(eff, ResolvedPreconditions())
 
 
 def test_live_environment_start_raises_on_eff_launch_env() -> None:
@@ -844,7 +844,7 @@ def test_live_environment_start_raises_on_eff_launch_env() -> None:
     )
     env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: _FakeGrid([]))
     with pytest.raises(base.UnsupportedAction):
-        env.start(eff, Preconditions())
+        env.start(eff, ResolvedPreconditions())
 
 
 def test_live_environment_start_raises_on_locale() -> None:
@@ -852,7 +852,7 @@ def test_live_environment_start_raises_on_locale() -> None:
     # loudly rather than silently no-op'ing (determinism first — the same guard as erase/deeplink/etc.)
     env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: _FakeGrid([]))
     with pytest.raises(base.UnsupportedAction):
-        env.start(_live_eff(), Preconditions(locale="ja_JP"))
+        env.start(_live_eff(), ResolvedPreconditions(locale="ja_JP"))
 
 
 def test_live_environment_start_closes_session_on_await_ready_failure() -> None:
@@ -870,7 +870,7 @@ def test_live_environment_start_closes_session_on_await_ready_failure() -> None:
     grid = _FailReadyGrid([])
     env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: grid)
     with pytest.raises(WebDriverError):
-        env.start(_live_eff(), Preconditions())
+        env.start(_live_eff(), ResolvedPreconditions())
     assert grid.deleted is True  # session must be released even on await_ready failure
 
 

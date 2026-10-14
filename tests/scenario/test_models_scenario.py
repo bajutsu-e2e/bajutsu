@@ -16,62 +16,80 @@ from bajutsu.common.scenario import (
 def test_preconditions_default() -> None:
     s = Scenario.model_validate({"name": "x", "steps": [{"tap": {"id": "a"}}]})
     assert (
-        s.preconditions.erase is None
+        s.preconditions.run.erase is None
     )  # unset: inherit target config, then built-in off (BE-0177)
-    assert s.preconditions.reinstall == "clean"  # uninstall + install by default
+    assert s.preconditions.app.reinstall is None  # unset: the target, then the built-in clean
 
 
 def test_preconditions_reinstall_validated() -> None:
     s = Scenario.model_validate(
         {
             "name": "x",
-            "preconditions": {"erase": True, "reinstall": "overwrite"},
+            "preconditions": {"run": {"erase": True}, "app": {"reinstall": "overwrite"}},
             "steps": [{"tap": {"id": "a"}}],
         }
     )
-    assert s.preconditions.erase is True and s.preconditions.reinstall == "overwrite"
+    assert s.preconditions.run.erase is True and s.preconditions.app.reinstall == "overwrite"
     with pytest.raises(ValidationError):  # only clean | overwrite are accepted
         Scenario.model_validate(
-            {"name": "x", "preconditions": {"reinstall": "bogus"}, "steps": [{"tap": {"id": "a"}}]}
+            {
+                "name": "x",
+                "preconditions": {"app": {"reinstall": "bogus"}},
+                "steps": [{"tap": {"id": "a"}}],
+            }
         )
 
 
 def test_system_alert_handling_default_unset() -> None:
     # On by default, but kept None when unset so a dumped scenario stays clean.
     s = Scenario.model_validate({"name": "x", "steps": [{"tap": {"id": "a"}}]})
-    assert s.system_alert_handling is None
+    assert s.preconditions.run.system_alert_handling is None
     assert "systemAlertHandling" not in dump_scenarios([s])
 
 
 def test_system_alert_handling_bool_and_object_forms() -> None:
     # BE-0401: the boolean carries on and off, so a mapping always means on.
     off = Scenario.model_validate(
-        {"name": "x", "systemAlertHandling": False, "steps": [{"tap": {"id": "a"}}]}
+        {
+            "name": "x",
+            "preconditions": {"run": {"systemAlertHandling": False}},
+            "steps": [{"tap": {"id": "a"}}],
+        }
     )
-    assert off.system_alert_handling is False
+    assert off.preconditions.run.system_alert_handling is False
 
     on = Scenario.model_validate(
-        {"name": "x", "systemAlertHandling": True, "steps": [{"tap": {"id": "a"}}]}
+        {
+            "name": "x",
+            "preconditions": {"run": {"systemAlertHandling": True}},
+            "steps": [{"tap": {"id": "a"}}],
+        }
     )
-    assert on.system_alert_handling == SystemAlertHandling()  # `true` is the empty policy
+    assert (
+        on.preconditions.run.system_alert_handling == SystemAlertHandling()
+    )  # `true` is the empty policy
 
     instr = Scenario.model_validate(
         {
             "name": "x",
-            "systemAlertHandling": {"visionInstruction": "tap Allow"},
+            "preconditions": {"run": {"systemAlertHandling": {"visionInstruction": "tap Allow"}}},
             "steps": [{"tap": {"id": "a"}}],
         }
     )
-    assert isinstance(instr.system_alert_handling, SystemAlertHandling)
-    assert instr.system_alert_handling.vision_instruction == "tap Allow"
+    assert isinstance(instr.preconditions.run.system_alert_handling, SystemAlertHandling)
+    assert instr.preconditions.run.system_alert_handling.vision_instruction == "tap Allow"
 
     rt = load_scenarios(dump_scenarios([instr]))[0]
-    assert isinstance(rt.system_alert_handling, SystemAlertHandling)
-    assert rt.system_alert_handling.vision_instruction == "tap Allow"
+    assert isinstance(rt.preconditions.run.system_alert_handling, SystemAlertHandling)
+    assert rt.preconditions.run.system_alert_handling.vision_instruction == "tap Allow"
 
     with pytest.raises(ValidationError):  # extra="forbid" rejects unknown keys
         Scenario.model_validate(
-            {"name": "x", "systemAlertHandling": {"bogus": 1}, "steps": [{"tap": {"id": "a"}}]}
+            {
+                "name": "x",
+                "preconditions": {"run": {"systemAlertHandling": {"bogus": 1}}},
+                "steps": [{"tap": {"id": "a"}}],
+            }
         )
 
 
@@ -79,11 +97,15 @@ def test_system_alert_handling_off_round_trips_as_the_bare_boolean() -> None:
     # `false` is now a value of the field itself, not a `{ enabled: false }` mapping, so a dumped
     # scenario must still say `false` — a dump that dropped it would silently re-enable the guard.
     off = Scenario.model_validate(
-        {"name": "x", "systemAlertHandling": False, "steps": [{"tap": {"id": "a"}}]}
+        {
+            "name": "x",
+            "preconditions": {"run": {"systemAlertHandling": False}},
+            "steps": [{"tap": {"id": "a"}}],
+        }
     )
     dumped = dump_scenarios([off])
     assert "systemAlertHandling: false" in dumped
-    assert load_scenarios(dumped)[0].system_alert_handling is False
+    assert load_scenarios(dumped)[0].preconditions.run.system_alert_handling is False
 
 
 @pytest.mark.parametrize(
@@ -103,7 +125,11 @@ def test_system_alert_handling_removed_keys_name_their_replacement(
     # message would name no replacement.
     with pytest.raises(ValidationError) as exc:
         Scenario.model_validate(
-            {"name": "x", "systemAlertHandling": policy, "steps": [{"tap": {"id": "a"}}]}
+            {
+                "name": "x",
+                "preconditions": {"run": {"systemAlertHandling": policy}},
+                "steps": [{"tap": {"id": "a"}}],
+            }
         )
     assert replacement in str(exc.value)
 
@@ -114,7 +140,11 @@ def test_system_alert_handling_rejects_a_non_mapping_value() -> None:
     # Pydantic's own union error rather than raising on the membership test.
     with pytest.raises(ValidationError):
         Scenario.model_validate(
-            {"name": "x", "systemAlertHandling": "on-please", "steps": [{"tap": {"id": "a"}}]}
+            {
+                "name": "x",
+                "preconditions": {"run": {"systemAlertHandling": "on-please"}},
+                "steps": [{"tap": {"id": "a"}}],
+            }
         )
 
 
@@ -138,14 +168,18 @@ def test_system_alert_handling_rules_round_trip() -> None:
     s = Scenario.model_validate(
         {
             "name": "x",
-            "systemAlertHandling": {"rules": [{"prompt": "savePassword", "choice": "deny"}]},
+            "preconditions": {
+                "run": {
+                    "systemAlertHandling": {"rules": [{"prompt": "savePassword", "choice": "deny"}]}
+                }
+            },
             "steps": [{"tap": {"id": "a"}}],
         }
     )
-    assert isinstance(s.system_alert_handling, SystemAlertHandling)
+    assert isinstance(s.preconditions.run.system_alert_handling, SystemAlertHandling)
     rt = load_scenarios(dump_scenarios([s]))[0]
-    assert isinstance(rt.system_alert_handling, SystemAlertHandling)
-    assert [(r.prompt, r.choice) for r in rt.system_alert_handling.rules] == [
+    assert isinstance(rt.preconditions.run.system_alert_handling, SystemAlertHandling)
+    assert [(r.prompt, r.choice) for r in rt.preconditions.run.system_alert_handling.rules] == [
         ("savePassword", "deny")
     ]
 
@@ -157,22 +191,30 @@ def test_system_alert_handling_rejects_empty_values(policy: dict[str, object]) -
     # ambiguous selector fails rather than tapping its first match.
     with pytest.raises(ValidationError):
         Scenario.model_validate(
-            {"name": "x", "systemAlertHandling": policy, "steps": [{"tap": {"id": "a"}}]}
+            {
+                "name": "x",
+                "preconditions": {"run": {"systemAlertHandling": policy}},
+                "steps": [{"tap": {"id": "a"}}],
+            }
         )
 
 
 def test_system_alert_handling_poll_interval() -> None:
     # BE-0315: the native poll interval is a per-scenario knob; a non-positive value is rejected.
     s = Scenario.model_validate(
-        {"name": "x", "systemAlertHandling": {"pollInterval": 2.5}, "steps": [{"tap": {"id": "a"}}]}
+        {
+            "name": "x",
+            "preconditions": {"run": {"systemAlertHandling": {"pollInterval": 2.5}}},
+            "steps": [{"tap": {"id": "a"}}],
+        }
     )
-    assert isinstance(s.system_alert_handling, SystemAlertHandling)
-    assert s.system_alert_handling.poll_interval == 2.5
+    assert isinstance(s.preconditions.run.system_alert_handling, SystemAlertHandling)
+    assert s.preconditions.run.system_alert_handling.poll_interval == 2.5
     with pytest.raises(ValidationError):
         Scenario.model_validate(
             {
                 "name": "x",
-                "systemAlertHandling": {"pollInterval": 0},
+                "preconditions": {"run": {"systemAlertHandling": {"pollInterval": 0}}},
                 "steps": [{"tap": {"id": "a"}}],
             }
         )
@@ -184,17 +226,17 @@ def test_system_alert_handling_frozen_screen_timeout() -> None:
         s = Scenario.model_validate(
             {
                 "name": "x",
-                "systemAlertHandling": {"frozenScreenTimeout": value},
+                "preconditions": {"run": {"systemAlertHandling": {"frozenScreenTimeout": value}}},
                 "steps": [{"tap": {"id": "a"}}],
             }
         )
-        assert isinstance(s.system_alert_handling, SystemAlertHandling)
-        assert s.system_alert_handling.frozen_screen_timeout == value
+        assert isinstance(s.preconditions.run.system_alert_handling, SystemAlertHandling)
+        assert s.preconditions.run.system_alert_handling.frozen_screen_timeout == value
     with pytest.raises(ValidationError, match="frozenScreenTimeout"):
         Scenario.model_validate(
             {
                 "name": "x",
-                "systemAlertHandling": {"frozenScreenTimeout": -1},
+                "preconditions": {"run": {"systemAlertHandling": {"frozenScreenTimeout": -1}}},
                 "steps": [{"tap": {"id": "a"}}],
             }
         )
@@ -202,13 +244,17 @@ def test_system_alert_handling_frozen_screen_timeout() -> None:
 
 def test_system_alert_handling_rules_default_empty_and_pruned() -> None:
     s = Scenario.model_validate({"name": "x", "steps": [{"tap": {"id": "a"}}]})
-    assert s.system_alert_handling is None  # unset entirely, same as today
+    assert s.preconditions.run.system_alert_handling is None  # unset entirely, same as today
 
     on = Scenario.model_validate(
-        {"name": "x", "systemAlertHandling": True, "steps": [{"tap": {"id": "a"}}]}
+        {
+            "name": "x",
+            "preconditions": {"run": {"systemAlertHandling": True}},
+            "steps": [{"tap": {"id": "a"}}],
+        }
     )
-    assert isinstance(on.system_alert_handling, SystemAlertHandling)
-    assert on.system_alert_handling.rules == []
+    assert isinstance(on.preconditions.run.system_alert_handling, SystemAlertHandling)
+    assert on.preconditions.run.system_alert_handling.rules == []
     assert "rules" not in dump_scenarios([on])  # empty list prunes, like `interrupts`
 
 
@@ -216,23 +262,27 @@ def test_system_alert_handling_rules_parse_and_round_trip() -> None:
     s = Scenario.model_validate(
         {
             "name": "x",
-            "systemAlertHandling": {
-                "rules": [
-                    {"prompt": "notifications", "choice": "grant"},
-                    {"prompt": "tracking", "choice": "deny"},
-                ]
+            "preconditions": {
+                "run": {
+                    "systemAlertHandling": {
+                        "rules": [
+                            {"prompt": "notifications", "choice": "grant"},
+                            {"prompt": "tracking", "choice": "deny"},
+                        ]
+                    }
+                }
             },
             "steps": [{"tap": {"id": "a"}}],
         }
     )
-    assert isinstance(s.system_alert_handling, SystemAlertHandling)
-    assert [(r.prompt, r.choice) for r in s.system_alert_handling.rules] == [
+    assert isinstance(s.preconditions.run.system_alert_handling, SystemAlertHandling)
+    assert [(r.prompt, r.choice) for r in s.preconditions.run.system_alert_handling.rules] == [
         ("notifications", "grant"),
         ("tracking", "deny"),
     ]
     rt = load_scenarios(dump_scenarios([s]))[0]
-    assert isinstance(rt.system_alert_handling, SystemAlertHandling)
-    assert [(r.prompt, r.choice) for r in rt.system_alert_handling.rules] == [
+    assert isinstance(rt.preconditions.run.system_alert_handling, SystemAlertHandling)
+    assert [(r.prompt, r.choice) for r in rt.preconditions.run.system_alert_handling.rules] == [
         ("notifications", "grant"),
         ("tracking", "deny"),
     ]
@@ -245,17 +295,21 @@ def test_system_alert_handling_rules_carry_prompts_of_different_reach() -> None:
     s = Scenario.model_validate(
         {
             "name": "x",
-            "systemAlertHandling": {
-                "rules": [
-                    {"prompt": "notifications", "choice": "grant"},
-                    {"prompt": "savePassword", "choice": "deny"},
-                ],
+            "preconditions": {
+                "run": {
+                    "systemAlertHandling": {
+                        "rules": [
+                            {"prompt": "notifications", "choice": "grant"},
+                            {"prompt": "savePassword", "choice": "deny"},
+                        ],
+                    }
+                }
             },
             "steps": [{"tap": {"id": "a"}}],
         }
     )
-    assert isinstance(s.system_alert_handling, SystemAlertHandling)
-    assert [(r.prompt, r.choice) for r in s.system_alert_handling.rules] == [
+    assert isinstance(s.preconditions.run.system_alert_handling, SystemAlertHandling)
+    assert [(r.prompt, r.choice) for r in s.preconditions.run.system_alert_handling.rules] == [
         ("notifications", "grant"),
         ("savePassword", "deny"),
     ]
@@ -268,11 +322,15 @@ def test_system_alert_handling_rules_rejects_duplicate_prompt() -> None:
         Scenario.model_validate(
             {
                 "name": "x",
-                "systemAlertHandling": {
-                    "rules": [
-                        {"prompt": "notifications", "choice": "grant"},
-                        {"prompt": "notifications", "choice": "deny"},
-                    ]
+                "preconditions": {
+                    "run": {
+                        "systemAlertHandling": {
+                            "rules": [
+                                {"prompt": "notifications", "choice": "grant"},
+                                {"prompt": "notifications", "choice": "deny"},
+                            ]
+                        }
+                    }
                 },
                 "steps": [{"tap": {"id": "a"}}],
             }
@@ -284,7 +342,11 @@ def test_system_alert_handling_rules_rejects_unknown_prompt_or_choice() -> None:
         Scenario.model_validate(
             {
                 "name": "x",
-                "systemAlertHandling": {"rules": [{"prompt": "bogus", "choice": "grant"}]},
+                "preconditions": {
+                    "run": {
+                        "systemAlertHandling": {"rules": [{"prompt": "bogus", "choice": "grant"}]}
+                    }
+                },
                 "steps": [{"tap": {"id": "a"}}],
             }
         )
@@ -292,7 +354,13 @@ def test_system_alert_handling_rules_rejects_unknown_prompt_or_choice() -> None:
         Scenario.model_validate(
             {
                 "name": "x",
-                "systemAlertHandling": {"rules": [{"prompt": "notifications", "choice": "bogus"}]},
+                "preconditions": {
+                    "run": {
+                        "systemAlertHandling": {
+                            "rules": [{"prompt": "notifications", "choice": "bogus"}]
+                        }
+                    }
+                },
                 "steps": [{"tap": {"id": "a"}}],
             }
         )

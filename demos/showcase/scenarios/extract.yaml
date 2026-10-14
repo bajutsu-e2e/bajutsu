@@ -19,7 +19,9 @@
 # two halves.
 - name: extract captures the counter's real tree value and feeds a later step
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Log", traits: [button] }
       capture: [deviceLog]

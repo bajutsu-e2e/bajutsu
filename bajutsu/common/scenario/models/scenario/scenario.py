@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal, Self
+from typing import Any, Self
 
 from pydantic import (
-    AliasChoices,
-    BeforeValidator,
     Field,
     PrivateAttr,
     field_validator,
@@ -21,28 +19,15 @@ from bajutsu.common.scenario.models.evidence import CaptureRule, Network, Redact
 from bajutsu.common.scenario.models.mocks import Mock
 from bajutsu.common.scenario.models.steps import CleanupRule, Interrupt, Step
 
-from ._functions import _coerce_system_alert_handling
 from ._group_nesting import _check_no_nested_group
 from ._http_extract import _check_http_extract_vars
 from ._targets import _check_target_requirements, _expand_target_groups
 from .preconditions import Preconditions
-from .system_alert_handling import SystemAlertHandling
 
 # The grant/revoke actions a `permissions` entry may take (BE-0276); the service side of the
 # vocabulary (`PERMISSION_SERVICES`) lives in `drivers.base` since every backend's capability
 # advertisement already depends on it — reused here rather than duplicated.
 _PERMISSION_ACTIONS = ("grant", "revoke")
-
-
-# The on-disk type of a `systemAlertHandling` field, shared by the scenario and the target config so
-# the two layers accept exactly the same forms. The boolean carries on and off (BE-0401): `false`
-# disables the guard, a mapping is on and holds the policy, and `None` (the key absent) inherits the
-# layer above. `{ enabled: false, rules: [...] }` — a policy the runtime discarded without a word —
-# is not representable.
-SystemAlertHandlingField = Annotated[
-    Literal[False] | SystemAlertHandling | None,
-    BeforeValidator(_coerce_system_alert_handling),
-]
 
 
 class Scenario(_Model):
@@ -110,26 +95,6 @@ class Scenario(_Model):
     network: Network | None = None
     mocks: list[Mock] = Field(default_factory=list)
     redact: Redact | None = None
-    # The alert guard runs on by default; unset means "on, tap the prompt's default button" (see
-    # SystemAlertHandling). Kept None when unset so a dumped scenario stays clean. The former
-    # `alertHandling` / `dismissAlerts` spellings were deleted with no alias (BE-0401); the
-    # validator below names the replacement.
-    system_alert_handling: SystemAlertHandlingField = Field(
-        default=None,
-        validation_alias=AliasChoices("systemAlertHandling"),
-        serialization_alias="systemAlertHandling",
-    )
-    # Dismiss a blocking TipKit tip when one is in the way. Off unless asked for, unlike the alert
-    # guard above: a tip is sometimes the very thing a scenario asserts on, and dismissing it by
-    # default would silently break that scenario. None keeps a dumped scenario clean. The `ios`
-    # prefix is load-bearing: TipKit is an Apple framework, so unlike `systemAlertHandling` — whose
-    # OS-prompt idea every platform has some form of — this key is inert on Android and web, and the
-    # name says so at the call site rather than leaving an author to find out from a no-op.
-    ios_tip_kit_handling: bool | None = Field(
-        default=None,
-        validation_alias=AliasChoices("iosTipKitHandling"),
-        serialization_alias="iosTipKitHandling",
-    )
     # Load-time provenance (BE-0417), set by a file loader after parsing. A `PrivateAttr` rather
     # than an ordinary field so it never leaks into `model_dump()` as part of the authored schema.
     _source_stem: str | None = PrivateAttr(default=None)
@@ -189,7 +154,16 @@ class Scenario(_Model):
         # (BE-0317 / BE-0327). Both aliases were deleted rather than carried a third time (BE-0401),
         # so name the canonical key here instead of leaving Pydantic's generic extra-field error.
         for old in ("alertHandling", "dismissAlerts"):
-            reject_renamed_key(data, surface="scenario", old=old, new="systemAlertHandling")
+            reject_renamed_key(
+                data, surface="scenario", old=old, new="preconditions.run.systemAlertHandling"
+            )
+        # The run-policy fields moved under `preconditions.run` (BE-0452), which reads no old key.
+        for old, new in (
+            ("systemAlertHandling", "preconditions.run.systemAlertHandling"),
+            ("iosTipKitHandling", "preconditions.run.tipKitHandling"),
+        ):
+            if isinstance(data, dict) and old in data:
+                raise ValueError(f"scenario field '{old}' moved to '{new}'")
         # The lifecycle phases took the target's words (BE-0452), and old keys are not read.
         reject_renamed_key(data, surface="scenario", old="before", new="setup")
         reject_renamed_key(data, surface="scenario", old="after", new="cleanup")

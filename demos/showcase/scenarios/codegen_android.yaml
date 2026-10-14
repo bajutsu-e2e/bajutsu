@@ -13,7 +13,9 @@
 # the tab tap must be a bare id here. Compose only, matching the XCUITest gate's single-toolkit scope.
 - name: search filters the catalog
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { id: search }
     - wait: { for: { id: search.field }, timeout: 10 }

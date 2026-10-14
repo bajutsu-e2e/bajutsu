@@ -9,6 +9,7 @@ from typing import cast
 from bajutsu.common import backends
 from bajutsu.common.backend_cli import simctl
 from bajutsu.common.config import Effective, require_web
+from bajutsu.common.config.preconditions import ResolvedPreconditions
 from bajutsu.common.drivers import base
 from bajutsu.common.evidence import intervals
 from bajutsu.common.evidence.network import Collector
@@ -16,7 +17,7 @@ from bajutsu.common.orchestrator import DeviceControl, RelaunchFn
 from bajutsu.common.platform_lifecycle import readiness
 from bajutsu.common.platform_lifecycle.protocols import CollectorHost
 from bajutsu.common.platform_lifecycle.relaunchers import _web_relauncher
-from bajutsu.common.scenario import Preconditions, Scenario
+from bajutsu.common.scenario import Scenario
 from bajutsu.crawl import AliveCheck, ClearBlocking, Recover, Reset
 
 
@@ -39,7 +40,7 @@ class WebEnvironment:
     def start(
         self,
         eff: Effective,
-        pre: Preconditions,  # noqa: ARG002  # Environment shape
+        pre: ResolvedPreconditions,  # noqa: ARG002  # Environment shape
         *,
         extra_env: Mapping[str, str] | None = None,  # noqa: ARG002
         record_video_dir: Path | None = None,
@@ -118,7 +119,7 @@ class WebEnvironment:
     def start_member(
         self,
         eff: Effective,  # noqa: ARG002  # Environment shape
-        pre: Preconditions,  # noqa: ARG002
+        pre: ResolvedPreconditions,  # noqa: ARG002
         *,
         extra_env: Mapping[str, str] | None = None,  # noqa: ARG002
         permissions: Mapping[str, str] | None = None,  # noqa: ARG002

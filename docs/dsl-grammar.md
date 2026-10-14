@@ -121,7 +121,7 @@ Scenario ::= {
   installs?:       list(string),            # default []  — device-group members that install and launch at the start beside the primary (BE-0447); every other member of a group of ≥ 2 is a later member, brought up by `installApp` + `foreground` (§4)
   data?:           list(map(string,string)),# inline rows   ┐ XOR
   dataFile?:       string,                  # CSV path      ┘ (§6.3)
-  preconditions?:  <Preconditions>,         # default {}
+  preconditions?:  <Preconditions>,         # default {}  — the target's `app` / `runsOn` / `run`, overridden per scenario (BE-0452)
   setup?:          list(<Step>),            # default []  — setup phase run ahead of `steps`, reported apart from it (BE-0392); each declared target's `hooks.setup` precede these
   steps:           list(<Step>),            # required
   expect?:         list(<Assertion>),       # default []  — final checks
@@ -130,8 +130,6 @@ Scenario ::= {
   network?:        <Network>,
   mocks?:          list(<Mock>),            # default []
   redact?:         <Redact>,
-  systemAlertHandling?: <SystemAlertHandling>,  # alert guard; on when unset
-  iosTipKitHandling?: <bool>,                   # dismiss a blocking TipKit tip; off when unset (iOS only)
   permissions?:    <Permissions>,           # pre-launch OS permission state; default {}
   interrupts?:     list(<Interrupt>),       # default []  — handlers for interstitials that surface at an unpredictable point (BE-0314), appended after the target's `hooks.interrupts`
 }
@@ -149,15 +147,34 @@ Interrupt ::= { condition: <Assertion>, steps: list(<Step>), target?: string }
 CleanupRule ::= { on: "always" | "success" | "failure", steps: list(<Step>) }
 
 # ── Preconditions ──────────────────────────────────────────────────────
+# The target's own group names (BE-0452). Each field overrides the same field of every target the
+# scenario drives; `app.launch.env` merges key by key, `app.launch.args` appends, and the rules of
+# `run.systemAlertHandling` concatenate (the scenario's first). A field no driven target's platform
+# has fails the run before any device work.
 Preconditions ::= {
-  erase?:      boolean,                     # unset inherits the target's `run.erase`, else off (BE-0177); simctl erase first
-  reinstall?:  ("clean" | "overwrite"),     # default "clean" — app reinstall when config sets `app.path`
-  launchArgs?: list(string),                # default []
-  launchEnv?:  map(string,string),          # default {}    — injected as SIMCTL_CHILD_*
-  deeplink?:   string,
-  locale?:     string,
-  run?:        { inheritSetup?: boolean },  # default true — false skips every declared target's `hooks.setup` (BE-0452); their cleanup still runs
+  app?:    {
+    reinstall?: ("clean" | "overwrite"),    # unset: the target's `app.reinstall`, else "clean"; iOS and Android
+    launch?: {
+      env?:      map(string,string),        # default {} — merged over the target's `app.launch.env`
+      args?:     list(string),              # default [] — appended after the target's; iOS only
+      deeplink?: string,                    # unset: the target's `app.launch.deeplink`; iOS and Android
+    },
+  },
+  runsOn?: map(<Platform>, <RunsOn>),       # keyed by platform; a block for an undriven platform has no effect
+  run?:    {
+    erase?:               boolean,          # unset inherits the target's `run.erase`, else off (BE-0177)
+    systemAlertHandling?: <SystemAlertHandling>,  # alert guard; on when unset
+    tipKitHandling?:      boolean,          # dismiss a blocking TipKit tip; off when unset; iOS only
+    inheritSetup?:        boolean,          # default true — false skips every declared target's `hooks.setup`; their cleanup still runs
+  },
 }
+
+# A scenario's `runsOn` block for one platform: the platform's registered `runsOn` model without
+# `kind` and `emulate`, which stay on the target. On iOS `locale` and `seedPhotos` (paths relative to
+# the scenario file) are device state; `model`, `os`, `avd`, `apiLevel`, and `browser.*` are device
+# conditions, refused at run time until matching devices lands. A merged, non-empty `seedPhotos`
+# needs an effective `run.erase`.
+RunsOn ::= { locale?: string, seedPhotos?: list(string), model?: …, os?: …, avd?: …, apiLevel?: …, browser?: { engine?: …, version?: … } }
 
 # ── SystemAlertHandling (reactive system-alert guard; on by default) ───
 # Native SpringBoard query + tap on XCUITest (no model, reusing BE-0316; BE-0315), plus an in-tree
@@ -448,15 +465,15 @@ Omitted optional keys take these values (so a minimal scenario is just `name` + 
 | Field | Default |
 |---|---|
 | `Scenario.tags` / `expect` / `capturePolicy` / `mocks` / `interrupts` / `setup` / `cleanup` | `[]` |
-| `Scenario.preconditions` | `{}` (i.e. `erase` unset — off unless the target's `run.erase` says otherwise — and `reinstall: clean`) |
-| `Scenario.systemAlertHandling` | unset (alert guard on, with no rules — so it answers no prompt of its own) |
-| `Scenario.iosTipKitHandling` | unset (off — a tip is sometimes the assertion; iOS only) |
+| `Scenario.preconditions` | `{}` (every field falls through to the target, then the built-in default) |
 | `Scenario.permissions` | `{}` (no pre-launch permission state applied) |
-| `Preconditions.erase` | unset — inherits the target's `run.erase`, else off (BE-0177) |
+| `Preconditions.run.erase` | unset — inherits the target's `run.erase`, else off (BE-0177) |
+| `Preconditions.run.systemAlertHandling` | unset (alert guard on, with no rules — so it answers no prompt of its own) |
+| `Preconditions.run.tipKitHandling` | unset (the target's `run.tipKitHandling`, else off — a tip is sometimes the assertion; iOS only) |
 | `Preconditions.run.inheritSetup` | `true` (every declared target's `hooks.setup` runs ahead of the scenario's `setup`) |
-| `Preconditions.reinstall` | `clean` |
-| `Preconditions.launchArgs` | `[]` |
-| `Preconditions.launchEnv` | `{}` |
+| `Preconditions.app.reinstall` | unset — the target's `app.reinstall`, else `clean` |
+| `Preconditions.app.launch.args` | `[]` |
+| `Preconditions.app.launch.env` | `{}` |
 | `SystemAlertHandling.rules` | `[]` (no prompt is declared, so the guard answers none; an alert it meets is named on the blocked step's failure) |
 | `SystemAlertHandling.visionInstruction` | unset — and no other value is usable: `run` refuses one (BE-0402) and `record` / `crawl` read the free text only from their own `--alert-vision-instruction` flag |
 | `TypeText.submit` | `false` |
@@ -578,7 +595,7 @@ those bodies. A `group` step's own `target` follows the `use` rule above.
 A scenario with `data` (inline rows) or `dataFile` (a CSV path; mutually exclusive) is expanded into
 **one scenario per row**, substituting `${row.<column>}` (`expand_data`, `scenario/expand.py`). Each
 derived scenario is renamed `"<name> [row N: col=val, …]"` and **keeps the original preconditions**
-(so every row reinstalls the app fresh and inherits the template's `erase` / `reinstall`).
+(so every row reinstalls the app fresh and inherits the template's `run.erase` / `app.reinstall`).
 
 ```yaml
 - name: search returns a result
@@ -628,7 +645,7 @@ load_scenarios        # parse + validate against this grammar
   a sequence of scenarios or a `{description, scenarios}` mapping, and any rule in
   [§4](#4-cardinality--mutual-exclusion-constraints) failing is a load error (`scenario/load.py`).
 - `dump_scenarios(scenarios) -> str` serializes back to YAML, dropping only fields the author never
-  set and emitting alias keys (`idMatches`, `launchEnv`, …). The output **reloads cleanly** — this
+  set and emitting alias keys (`idMatches`, `tipKitHandling`, …). The output **reloads cleanly** — this
   is the round-trip `record` relies on (`scenario/serialize.py`).
 
 For the semantics behind the shapes — how a selector resolves to 0/1/2+ elements, how each assertion compares, how waits time out — see [selectors](selectors.md) and [run-loop](run-loop.md). To start writing scenarios by example, see [scenarios](scenarios.md).

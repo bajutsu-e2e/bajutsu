@@ -3,7 +3,9 @@
 # assertions are ordinary UI checks — the point is the captured evidence, not new behaviour.
 - name: capture video, device log, and app trace around a log interaction
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Log", traits: [button] }
       capture: [deviceLog, appTrace]

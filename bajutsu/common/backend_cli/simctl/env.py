@@ -336,7 +336,7 @@ class Env:
 
         One call per path rather than one call for the whole list: `simctl addmedia` accepts several
         paths at once, but nothing documents the relative order it assigns them, and a caller that
-        needs a reproducible grid order (`seed_photos`, `Preconditions`) can only rely on the order
+        needs a reproducible grid order (`runsOn.seedPhotos`) can only rely on the order
         of *separate* invocations, each landing before the next starts.
         """
         for path in media_paths:
