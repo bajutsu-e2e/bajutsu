@@ -103,6 +103,38 @@ def resolve_actuators(backends: list[str]) -> list[str]:
     return [a for token in backends for a in _expand(token)]
 
 
+def backend_override(override: str, target_backend: list[str]) -> list[str]:
+    """The backend list a command drives a target with: the target's own, or a checked override.
+
+    A target names one platform (BE-0452), so `--backend` is a check rather than a fallback list: it
+    accepts the target's platform, that platform's actuator name (such as `xcuitest`), or `fake`,
+    which runs any target on the fake driver. The same rule holds for a serve request body's
+    `backend`.
+
+    Args:
+        override: The `--backend` value; empty keeps the target's own list.
+        target_backend: The target's resolved backend, `[platform]`.
+
+    Returns:
+        The backend list in force, one token long.
+
+    Raises:
+        ValueError: *override* names anything else, or a comma list; the message names what the
+            target accepts.
+    """
+    token = override.strip()
+    if not token:
+        return list(target_backend)
+    platform = target_backend[0] if target_backend else ""
+    accepted = list(dict.fromkeys([platform, *PLATFORMS.get(platform, ()), "fake"]))
+    if token not in accepted:
+        raise ValueError(
+            f"--backend {override!r} does not match the target's platform {platform!r}: "
+            f"use one of {', '.join(accepted)}"
+        )
+    return [token]
+
+
 def select_actuator(
     backends: list[str], available: Callable[[str], bool] = default_available
 ) -> str:
@@ -250,9 +282,9 @@ def capabilities_for_run(
       truth). This is the narrower of the two, dropping text selection and photo selection on top
       of the real-device narrowing below. The signal is `udid_spec` being a WebDriver URL — the *same*
       `is_webdriver_endpoint` check `environment_for` routes on, so preflight and routing can never
-      disagree (whether the URL arrives from the `appium` provider's endpoint or a raw
-      `--udid https://…` under the local provider).
-    - **A real device via `xcuitest.deviceType: device`** loses the simctl-backed `DeviceControl`
+      disagree. The URL arrives from the `appium` provider's endpoint (BE-0452), which a target's
+      `device_provider` carries before any device is acquired, so it is read from there first.
+    - **A real device via `runsOn.kind: device`** loses the simctl-backed `DeviceControl`
       family and the simctl-privacy permission grants (simctl cannot reach a physical device), the
       same fail-fast the permission preconditions already get in the XCUITest lifecycle (Unit 1). This
       keys on config (`deviceType`), which a udid spec cannot express, so it stays an `eff` check.
@@ -264,6 +296,9 @@ def capabilities_for_run(
     from bajutsu.common.config import xcuitest_targets_real_device
 
     caps = capabilities_for(actuator)
+    provider = eff.device_provider
+    if provider is not None and provider.kind == "appium" and provider.endpoint:
+        udid_spec = provider.endpoint.strip()
     if actuator == "xcuitest":
         # Route on the resolved udid spec with the very predicate `environment_for` uses, so the
         # advertised set and the environment actually chosen stay in lockstep — a capability the
@@ -294,7 +329,7 @@ def erase_precondition_supported(
     """Whether forcing an `erase` precondition is safe on this run's resolved route.
 
     Reuses the exact two routing predicates `capabilities_for_run` above narrows on (BE-0238): a
-    live WebDriver endpoint and a real iOS device (`xcuitest.deviceType: device`) both reject any
+    live WebDriver endpoint and a real iOS device (`runsOn.kind: device`) both reject any
     `erase` precondition outright (`XcuitestLiveEnvironment.start`, `XcuitestEnvironment.start` raise
     rather than honoring it) instead of the silent no-op every other route treats it as. Kept next to
     `capabilities_for_run` — the one place that already classifies a route's capabilities — rather
@@ -534,7 +569,7 @@ def make_driver(
         from bajutsu.common.drivers.playwright import PlaywrightDriver
 
         if not base_url:
-            raise ValueError("web backend requires base_url (set apps.<app>.baseUrl)")
+            raise ValueError("web backend requires base_url (set targets.<name>.app.url)")
         return PlaywrightDriver(
             base_url,
             headless=headless,

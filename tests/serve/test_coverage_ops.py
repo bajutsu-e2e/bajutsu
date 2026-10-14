@@ -29,12 +29,17 @@ def _state(tmp_path: Path, *, id_namespaces: list[str] | None = None) -> ServeSt
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
     (scn_dir / "smoke.yaml").write_text(_SCENARIO, encoding="utf-8")
-    ns = f"    idNamespaces: [{', '.join(id_namespaces)}]\n" if id_namespaces else ""
+    ns = f", idNamespaces: [{', '.join(id_namespaces)}]" if id_namespaces else ""
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "defaults: { backend: [fake] }\ntargets:\n"
-        f"  demo:\n    bundleId: com.example.demo\n    scenarios: {scn_dir}\n{ns}"
-        "  bare: { bundleId: com.example.bare }\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            f"    app: {{id: com.example.demo{ns}}}\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+            "  bare: {platform: ios, app: {id: com.example.bare}}\n"
+        ),
         encoding="utf-8",
     )
     runs = tmp_path / "runs"

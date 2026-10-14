@@ -26,7 +26,9 @@ def _run(coro: Any) -> Any:
 
 def test_create_server_returns_fastmcp(tmp_path: Path) -> None:
     config = tmp_path / "bajutsu.config.yaml"
-    config.write_text("defaults: {}\ntargets:\n  demo:\n    bundleId: com.demo\n", encoding="utf-8")
+    config.write_text(
+        ("targets:\n  demo:\n    platform: ios\n    app: {id: com.demo}\n"), encoding="utf-8"
+    )
     from bajutsu.mcp import create_server
 
     server = create_server(config, tmp_path / "runs")
@@ -39,7 +41,14 @@ def test_create_server_returns_fastmcp(tmp_path: Path) -> None:
 def test_doctor_tool_returns_score(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     config = tmp_path / "bajutsu.config.yaml"
     config.write_text(
-        "defaults: {}\ntargets:\n  demo:\n    bundleId: com.demo\n    idNamespaces: [home]\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.demo\n"
+            "      idNamespaces: [home]\n"
+        ),
         encoding="utf-8",
     )
     from bajutsu.mcp.tools import register_tools
@@ -70,7 +79,9 @@ def test_doctor_tool_reports_probe_config_error(
     # A DoctorProbeError (e.g. a web target with no baseUrl) is a fixable config error, not a
     # crash — the tool returns its message instead of raising through the MCP transport.
     config = tmp_path / "bajutsu.config.yaml"
-    config.write_text("defaults: {}\ntargets:\n  demo:\n    bundleId: com.demo\n", encoding="utf-8")
+    config.write_text(
+        ("targets:\n  demo:\n    platform: ios\n    app: {id: com.demo}\n"), encoding="utf-8"
+    )
     from fastmcp import FastMCP
 
     from bajutsu.common.doctor import DoctorProbeError
@@ -80,7 +91,7 @@ def test_doctor_tool_reports_probe_config_error(
     register_tools(mcp, config)
 
     def boom(actuator: str, udid: str, eff: object) -> list[object]:
-        raise DoctorProbeError("web target needs baseUrl (set targets.<name>.baseUrl)")
+        raise DoctorProbeError("web target needs baseUrl (set targets.<name>.app.url)")
 
     monkeypatch.setattr("bajutsu.mcp.tools.probe_screen", boom)
     monkeypatch.setattr(
@@ -88,7 +99,7 @@ def test_doctor_tool_reports_probe_config_error(
     )
 
     result = _run(mcp.call_tool("bajutsu_doctor", {"target": "demo"}))
-    assert "baseUrl" in result.content[0].text
+    assert "app.url" in result.content[0].text
 
 
 def test_doctor_tool_reports_device_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -96,7 +107,9 @@ def test_doctor_tool_reports_device_error(tmp_path: Path, monkeypatch: pytest.Mo
     # DeviceError from the probe; the tool reports it as a clean message, matching the CLI's UX,
     # rather than an unhandled exception.
     config = tmp_path / "bajutsu.config.yaml"
-    config.write_text("defaults: {}\ntargets:\n  demo:\n    bundleId: com.demo\n", encoding="utf-8")
+    config.write_text(
+        ("targets:\n  demo:\n    platform: ios\n    app: {id: com.demo}\n"), encoding="utf-8"
+    )
     from fastmcp import FastMCP
 
     from bajutsu.common.devices import errors as device_errors
@@ -146,7 +159,9 @@ def test_parse_verdict_empty_stdout_yields_empty_path() -> None:
 
 def test_run_tool_returns_pass(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     config = tmp_path / "bajutsu.config.yaml"
-    config.write_text("defaults: {}\ntargets:\n  demo:\n    bundleId: com.demo\n", encoding="utf-8")
+    config.write_text(
+        ("targets:\n  demo:\n    platform: ios\n    app: {id: com.demo}\n"), encoding="utf-8"
+    )
     runs_dir = tmp_path / "runs"
     runs_dir.mkdir()
     scenario = tmp_path / "test.yaml"
@@ -179,7 +194,9 @@ def test_run_tool_returns_pass(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
 
 def test_run_tool_returns_fail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     config = tmp_path / "bajutsu.config.yaml"
-    config.write_text("defaults: {}\ntargets:\n  demo:\n    bundleId: com.demo\n", encoding="utf-8")
+    config.write_text(
+        ("targets:\n  demo:\n    platform: ios\n    app: {id: com.demo}\n"), encoding="utf-8"
+    )
     runs_dir = tmp_path / "runs"
     runs_dir.mkdir()
 
@@ -216,7 +233,9 @@ def test_run_tool_no_manifest_keeps_stderr_off_the_verdict_line(
     # land in the manifest slot ("FAIL  <stderr>") — the first line stays the verdict, stderr goes
     # on its own line, so the `PASS|FAIL  <manifest>` first-line shape is never faked.
     config = tmp_path / "bajutsu.config.yaml"
-    config.write_text("defaults: {}\ntargets:\n  demo:\n    bundleId: com.demo\n", encoding="utf-8")
+    config.write_text(
+        ("targets:\n  demo:\n    platform: ios\n    app: {id: com.demo}\n"), encoding="utf-8"
+    )
     (tmp_path / "runs").mkdir()
 
     import subprocess as sp
@@ -464,7 +483,7 @@ def test_cli_mcp_starts_server(
         def run(self, *, transport: str) -> None:
             started["transport"] = transport  # record instead of blocking on a real server
 
-    monkeypatch.setattr("bajutsu.mcp.create_server", lambda _cfg, _runs: _FakeServer())
+    monkeypatch.setattr("bajutsu.mcp.create_server", lambda _cfg, _runs, **_kw: _FakeServer())
     config = tmp_path / "bajutsu.config.yaml"
     config.write_text("defaults: {}\ntargets: {}\n", encoding="utf-8")
     r = runner.invoke(app, ["mcp", "--config", str(config), "--transport", transport])

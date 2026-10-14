@@ -15,7 +15,7 @@ Bajutsu の **Playwright** backend（[BE-0041](../../roadmaps/BE-0041-web-playwr
 | `record/goals.txt` | `make -C demos/web record` が記述の起点にする自然言語ゴール |
 | `record/record_offline.py` | `record` のオフライン版（API キー不要）。同じループを keyword agent と FakeDriver で回す |
 | `record/record_handoff_offline.py` | human-in-the-loop ハンドオフデモのオフライン版（キー不要）。実際の一時停止・再開を、台本化したエージェントと応答者で回す |
-| `demo.config.yaml` | `targets.web`（`baseUrl` ＋ `scenarios` ＋ `backend: [web]`、`bundleId` なし） |
+| `demo.config.yaml` | `targets.web`（`platform: web` ＋ `app.url` ＋ `paths.scenarios` ＋ `evidence.redact`、`app.id` なし） |
 | `codegen/smoke.spec.ts` | `scenarios/smoke.yaml` から**生成**してチェックインした Playwright テスト。codegen 実コンパイルゲートのフィクスチャ（[BE-0293](../../roadmaps/BE-0293-codegen-playwright-real-compile/BE-0293-codegen-playwright-real-compile-ja.md)）で、iOS 側の `ComponentsUITests.swift` の web 版です |
 | `codegen/package.json`・`codegen/playwright.config.ts` | `@playwright/test` ランナー（Python の `web` extra と同じ Playwright バージョンにピン留め）とその設定。spec に焼き込まれたポートで `app/` を配信します |
 | `Makefile` | `web-deps` / `app-serve` / `e2e` / `e2e-network` / `codegen-e2e` / `record` / `record-handoff` / `record-offline` / `record-handoff-offline` |

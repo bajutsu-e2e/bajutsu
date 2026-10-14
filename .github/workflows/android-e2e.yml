@@ -255,7 +255,7 @@ jobs:
         run: uv sync --no-dev
 
       # Build both a11y APKs outside the emulator session so the AVD is only alive during the run
-      # itself; bajutsu's launch installs each from the config's appPath. Views joins Compose
+      # itself; bajutsu's launch installs each from the config's app.path. Views joins Compose
       # (BE-0221): the Stable-tab subset drives both toolkits, whose ids differ only in `.`/`-` vs
       # `_` — each scenario's selectors list both forms.
       - name: Build the Compose + Views showcase APKs
@@ -512,7 +512,7 @@ jobs:
       - name: Install the base package (no dev)
         run: uv sync --no-dev
 
-      # The scenario drives the Compose a11y twin; bajutsu's launch installs it from the config's appPath.
+      # The scenario drives the Compose a11y twin; bajutsu's launch installs it from the config's app.path.
       - name: Build the Compose showcase APK
         run: make -C demos/showcase/android compose-build
 
@@ -606,7 +606,7 @@ jobs:
       - name: Install the package with the dev group
         run: uv sync
 
-      # `launch_driver` installs the a11y APK from the config's appPath and boots into ConformanceScreen.
+      # `launch_driver` installs the a11y APK from the config's app.path and boots into ConformanceScreen.
       - name: Build the Compose showcase APK
         run: make -C demos/showcase/android compose-build
 
@@ -713,7 +713,7 @@ jobs:
       - name: Install the package with the dev group
         run: uv sync
 
-      # `launch_driver` installs the a11y APK from the config's appPath and launches it.
+      # `launch_driver` installs the a11y APK from the config's app.path and launches it.
       - name: Build the Compose showcase APK
         run: make -C demos/showcase/android compose-build
 

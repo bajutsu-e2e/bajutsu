@@ -19,7 +19,7 @@ from typing import Any, TypeGuard
 import yaml
 
 from bajutsu.common.backend_cli import simctl as _simctl
-from bajutsu.common.backends import KNOWN_ACTUATORS, PLATFORMS, resolve_actuators
+from bajutsu.common.backends import KNOWN_ACTUATORS, PLATFORMS, backend_override, resolve_actuators
 from bajutsu.common.config import Config, IosConfig, resolve
 from bajutsu.common.devices.id import is_valid_device_id
 from bajutsu.common.run_meta.files import is_soft_deleted
@@ -259,7 +259,7 @@ def _load_serve_config_cached(config_path: Path) -> tuple[Config, dict[str, OrgC
         if cached is not None and cached[0] == stamp:
             return cached[1], cached[2]
     try:
-        config, orgs = load_serve_config(config_path.read_text(encoding="utf-8"))
+        config, orgs = load_serve_config(config_path.read_text(encoding="utf-8"), path=config_path)
     except yaml.YAMLError as e:
         raise ValueError(str(e)) from e  # so callers catching ValueError handle a malformed config
     with _config_cache_lock:
@@ -312,44 +312,74 @@ def target_build_info(config_path: Path, target: str) -> tuple[str | None, str |
     return (ios.app_path, ios.build) if isinstance(ios, IosConfig) else (None, None)
 
 
-def target_batch_info(
-    config_path: Path, target: str
-) -> tuple[str | None, str | None, str | None, int | None]:
-    """``(cloud_batch, platform, app_path, budget)`` for *target* — which registered batch provider
-    its cloud runs use, its resolved platform axis, the app artifact to install on the reserved
-    device (BE-0336 Unit 3), and the per-target device budget K (BE-0336 Unit 4). Each is ``None`` on
-    any load/resolve error, so a fan-out request against an unreadable config fails closed at the
-    endpoint rather than crashing dispatch. Only an iOS/Android target carries an installable
-    ``app_path``; a web target's sub-config has none. ``budget`` is ``None`` when the target sets no
-    `cloudBatchBudget` (unbounded by config)."""
+def target_batch_info(config_path: Path, target: str) -> tuple[str | None, str | None]:
+    """``(platform, app_path)`` for *target* — its resolved platform axis and the app artifact to
+    install on a reserved cloud device (BE-0336 Unit 3). Both ``None`` on any load/resolve error, so a
+    fan-out request against an unreadable config fails closed at the endpoint rather than crashing
+    dispatch. Only an iOS/Android target carries an installable ``app_path``; a web target's
+    sub-config has none. Which provider runs the batch is the request's `environment`, not the
+    target's (BE-0452)."""
     try:
         eff = resolve(_load_config_cached(config_path), target)
     except (OSError, ValueError, KeyError):
-        return (None, None, None, None)
+        return (None, None)
     app_path = getattr(eff.platform_config, "app_path", None)
-    return (eff.cloud_batch, eff.platform, app_path, eff.cloud_batch_budget)
+    return (eff.platform, app_path)
 
 
-def target_capabilities(config_path: Path, target: str) -> list[str]:
+def target_capabilities(config_path: Path, target: str, backend: str = "") -> list[str]:
     """The capability tokens a worker must advertise to run *target* (BE-0166): its resolved
-    platform axis (`platform:ios` / `platform:web`), the host operating system its driver is bound
-    to (`host:darwin` for xcuitest, BE-0450), and the target's deprecated `requires`.
+    platform axis (`platform:ios` / `platform:web`) and the host operating system its driver is bound
+    to (`host:darwin` for xcuitest, BE-0450).
+
+    *backend* is the request's checked `backend` (BE-0452), which picks the driver the run selects,
+    so a run sent to the fake driver requires no host its target's own driver would.
 
     Empty on any load/resolve error, so a job with an unreadable config routes as before: with no
     required capabilities it is servable by any worker (an empty set is always a subset in
     `can_serve`) — including one that can't actually run it — rather than crashing dispatch. In
     practice `start_run` resolves the same config a step earlier (`target_build_info`), so this
-    error path is not reached on the normal dispatch flow."""
+    error path is not reached on the normal dispatch flow.
+
+    Raises:
+        ValueError: *backend* names neither the target's platform, its actuator, nor `fake`. The
+            dispatcher checks the request first (`request_backend_error`), so routing never widens
+            a mismatched pair to any worker.
+    """
     try:
         eff = resolve(_load_config_cached(config_path), target)
     except (OSError, ValueError, KeyError):
         return []
-    # The actuators `run` itself selects from (`eff.backend`), so the routing requirement and the
-    # worker's own check judge the same drivers: a `[fake]` backend runs anywhere whatever the
-    # target's platform, and a `[ios, web]` fallback may resolve to `playwright` (BE-0450).
-    return required_capabilities(
-        eff.platform, eff.requires, host=required_host(resolve_actuators(eff.backend))
-    )
+    backends = backend_override(backend, eff.backend)
+    # The actuators `run` itself selects from, so the routing requirement and the worker's own check
+    # judge the same drivers (BE-0450).
+    return required_capabilities(eff.platform, host=required_host(resolve_actuators(backends)))
+
+
+def request_backend_error(config_path: Path, target: str, backend: str) -> str | None:
+    """Why a request's *backend* cannot drive *target*, or None (BE-0452).
+
+    The same check `--backend` makes: the target's platform, its actuator, or `fake`. An unreadable
+    config or unknown target answers None, leaving that failure to the dispatcher's own checks.
+    """
+    try:
+        eff = resolve(_load_config_cached(config_path), target)
+    except (OSError, ValueError, KeyError):
+        return None
+    try:
+        backend_override(backend, eff.backend)
+    except ValueError as e:
+        return str(e)
+    return None
+
+
+def target_platforms(config_path: Path) -> dict[str, str]:
+    """Each target's declared platform, or an empty mapping on a load error."""
+    try:
+        config = _load_config_cached(config_path)
+    except (OSError, ValueError):
+        return {}
+    return {name: t.platform for name, t in config.targets.items()}
 
 
 def target_scenarios_dir(config_path: Path, target: str) -> Path | None:
@@ -570,10 +600,10 @@ def unique_scenario_path(path: Path, stamp: str | None = None) -> Path:
 
 
 def valid_backend(backend: str) -> bool:
-    """Whether `backend` is a comma-list of known platform/actuator tokens (not free text).
-    Used to reject arbitrary `--backend` strings from a serve client before they reach argv."""
-    tokens = [t.strip() for t in backend.split(",") if t.strip()]
-    return bool(tokens) and all(t in _VALID_BACKENDS for t in tokens)
+    """Whether `backend` is one known platform/actuator token (not free text, not a list).
+    Used to reject arbitrary `--backend` strings from a serve client before they reach argv; the
+    spawned command then checks the token against the target's platform (BE-0452)."""
+    return backend.strip() in _VALID_BACKENDS
 
 
 def valid_udid(udid: str) -> bool:

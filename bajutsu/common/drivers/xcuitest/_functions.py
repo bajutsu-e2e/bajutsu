@@ -258,7 +258,7 @@ def _parse_tap_drain_fold(raw: bytes | None) -> base.DrainedInterruptions | None
     Unlike the standalone drain endpoint, `/tap`'s fold fields are optional in its schema — always
     present on a runner that supports Unit 6 (`withDrain` folds every tap's own drain in, empty
     arrays included), and always absent on one that predates it, such as a pinned older
-    `testRunner` build (`targets.<name>.xcuitest.testRunner`). Absence, not a merely empty fold, is
+    `testRunner` build (`targets.<name>.driver.runner.testRunner`). Absence, not a merely empty fold, is
     therefore what says "this runner never drained anything for this tap" — trusting an empty fold as
     if it meant the same thing would let a pre-Unit-6 runner's real interruptions go unreported the
     caller believes it already asked for.

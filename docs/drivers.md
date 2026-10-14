@@ -5,7 +5,7 @@
 > One `Driver` interface, behind which sit the [backends](glossary.md#driver-backend-actuator-platform) — `xcuitest` (iOS Simulator), `adb` (Android
 > emulator), `playwright` (web browser), plus the in-memory `fake` for tests — with capability
 > differences absorbed on the abstraction side. A platform-aware registry picks the actuator from
-> the `backend` list; on iOS, launching the app (boot/launch) is handled by a `simctl` wrapper, and
+> the target's `platform`; on iOS, launching the app (boot/launch) is handled by a `simctl` wrapper, and
 > on Android by the twin `adb` wrapper.
 >
 > Implementation: `bajutsu/common/drivers/` (`base.py` / `xcuitest.py` / `adb.py` / `playwright.py` / `fake.py`) ·
@@ -157,7 +157,8 @@ or environment, and any number below one.
 | Key | Meaning |
 |---|---|
 | `version` | The schema version. It must be `1`. |
-| `environment` | Where the worker runs jobs: `local` (the default) or a device-cloud provider kind. `devicefarm` is the one provider kind known today. |
+| `environment` | Where the worker runs jobs: `local` (the default), `appium` (a live Appium grid), or a device-cloud provider kind. `devicefarm` is the one provider kind known today. |
+| `appium` | Required with `environment: appium`, refused otherwise: the grid's `endpoint` URL and the one `platform` it serves (`ios` today). |
 | `maxJobConcurrency` | How many jobs the worker may run at once, a positive integer. Omitted means one, and a `local` worker accepts one alone. |
 | `maxTargetsPerJob` | How many targets one scenario may declare, a positive integer. The count spans every driver and device group, so a Simulator target and a browser target count two. Omitted means unbounded. |
 | `drivers` | The drivers the worker offers, from `xcuitest`, `adb`, `playwright`, and `fake`. A driver the list omits is unavailable. |
@@ -171,8 +172,26 @@ environment: local
 drivers: [xcuitest, adb, playwright, fake]
 ```
 
-`bajutsu run` and `bajutsu worker` accept `--worker-config <path>`. The file it names replaces the
-default whole, and the two files never merge. No environment variable or working-directory lookup
+An `appium` environment replaces the target-level `deviceProvider` that
+[BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md) removed.
+The file names the grid and the one platform it serves:
+
+```yaml
+version: 1
+environment: appium
+appium:
+  endpoint: https://grid.example.com/wd/hub
+  platform: ios          # the one value today
+drivers: [xcuitest, adb, playwright, fake]
+```
+
+Targets of the grid's platform take the endpoint as their device, and the scenario's other targets
+stay on this host. Bajutsu refuses a scenario with two grid targets.
+
+`bajutsu worker` accepts `--worker-config <path>`, and so does each command that drives a device
+(`run` / `record` / `crawl` / `repl` / `audit` / `doctor` / `bajutsu mcp`). The file it names replaces the default whole, and the two files never
+merge. A device-driving command refuses a file that names a device-cloud provider. `--udid` no
+longer accepts a URL; an `appium` environment names the grid instead. No environment variable or working-directory lookup
 picks a file. The file in force is always the one on the command line. The host rule applies
 to a `local` worker alone. A device-cloud worker runs the driver on the provider's host.
 
@@ -183,11 +202,11 @@ apply the check:
 
 - **Actuator selection.** Five commands share one selection step: `run`, `record`, `crawl`, `audit`,
   and `repl`.
-  That step first drops every actuator the host cannot run or the worker file omits. A fallback list
-  such as `[ios, web]` thus still resolves to `playwright` on Linux. When no actuator survives, the command
-  exits 2 with a named reason. The old generic reason was `no available actuator`. The new one reads
-  `worker-capability-unsupported: xcuitest runs only on macOS; this worker runs on linux`. Every
-  command other than `run` uses the default file.
+  The target's `platform` names one actuator. The step refuses it when the host cannot run it or the
+  worker file omits it. The command then exits 2 with a named reason. The old generic reason was
+  `no available actuator`. The new one reads
+  `worker-capability-unsupported: xcuitest runs only on macOS; this worker runs on linux`. A command
+  started without `--worker-config` uses the default file.
 - **Per scenario.** Before `run` resolves any target, it checks each scenario's own declared
   targets. A scenario fails when it declares more targets than `maxTargetsPerJob`. It also fails
   when it needs a driver the worker cannot run. Its reason starts with `worker-capability-unsupported:`. `run` acquires no
@@ -203,21 +222,23 @@ job thus requires `host:darwin` and reaches a Mac worker alone.
 At startup, a `local` worker checks each `--platform` against the file and the host. When either
 rules the platform out, the worker exits with the driver's reason. A Linux worker started with
 `--platform ios` thus stops. Its reason reads `xcuitest runs only on macOS; this worker runs on
-linux`. The check judges the platform's drivers, not a target's `backend`. No worker off macOS
-advertises `platform:ios`. An iOS target on the `fake` backend thus still needs a Mac worker. A worker
-whose environment is a device cloud advertises `environment:<name>` and no `platform:*` token.
+linux`. The check judges the platform's drivers, not a request's `backend`. No worker off macOS
+advertises `platform:ios`. An iOS target run on the `fake` backend thus still needs a Mac worker. A
+worker whose environment is a device cloud advertises `environment:<name>` and no `platform:*` token.
+An `appium` worker advertises `environment:appium` alone. A serve run request reaches it by naming
+`environment: appium`.
 
 The file declares no routing token itself. The runtime and device-class tokens (`ios18`, `ipad`)
 come from the Simulator inventory. A declaration could promise a runtime the machine lacks.
 
-Three hand-written inputs now log a deprecation notice. Each still works for this release:
+Two hand-written inputs now log a deprecation notice. Each still works for this release:
 
 - the worker's `--capabilities` flag
 - the `$BAJUTSU_WORKER_CAPABILITIES` environment variable
-- a target's `requires` list
 
-None of the three may carry the reserved `environment:` or `host:` prefix. The worker fills both
-itself.
+Neither input may carry the reserved `environment:` or `host:` prefix. The worker fills both
+itself. BE-0452 removed a third input, a target's `requires` list: a hosted job now requires its
+platform and its driver's host alone.
 
 ## XCUITest (iOS)
 
@@ -271,9 +292,9 @@ than resolving through frame-center coordinates. Needs Xcode's `xcodebuild`.
 
 > The generic runner uses `XCUIApplication(bundleIdentifier:)`, so it drives any installed app with
 > no app-side cooperation. A Simulator run needs no runner config at all: when a target names neither
-> `xcuitest.testRunner` nor `xcuitest.build`, it resolves to the Simulator runner bundled in the wheel
+> `driver.runner.testRunner` nor `driver.runner.build`, it resolves to the Simulator runner bundled in the wheel
 > as package data (BE-0292) — an explicit `testRunner` or `build` still overrides that default, and
-> `deviceType: device` resolves to the runner the user built and signed with `bajutsu runner build
+> `runsOn.kind: device` resolves to the runner the user built and signed with `bajutsu runner build
 > --device` (BE-0456), since Bajutsu cannot ship one signed for the operator's team. The backend is **validated on-device** (iPhone 17 Pro, recent iOS) via
 > `make -C demos/showcase run-swiftui` + the `ios-e2e.yml` CI workflow. The XCUITest backend needs no
 > pip extra — Xcode supplies `xcodebuild`.
@@ -493,7 +514,7 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
   (`am start -a android.intent.action.VIEW`). The run manifest records `backend: "adb"` so the
   selected actuator is disclosed.
 - **Runtime permissions** (BE-0210): the permissions listed in the target's config
-  `grantPermissions` are granted up front with `adb shell pm grant <package> <permission>` at lease
+  `app.grantPermissions` are granted up front with `adb shell pm grant <package> <permission>` at lease
   time — after `pm clear` (which resets grants) and before launch — so a runtime permission prompt
   never blocks a scenario. Granting deterministically up front, rather than tapping the dialog when
   it appears, keeps timing off the run path; the list is app-specific, so it lives in config, not the
@@ -593,7 +614,7 @@ Out of scope (see the roadmap item for the reasoning):
   rooted emulator on adb (as for the native Android apps), and `text_editing` / the `push` half of
   `device` are iOS-only in the native suite too.
 - **Deeplink-to-tab routing.** The Flutter targets register the per-flavor scheme (the Android
-  `VIEW` intent-filter, the iOS `CFBundleURLTypes`, each target's `deeplinkScheme`), but — unlike the
+  `VIEW` intent-filter, the iOS `CFBundleURLTypes`), but — unlike the
   native twins, which route the URI to a tab (select it, pop to root, dismiss any modal) — the
   Flutter app does not yet handle the incoming URI. The scheme is registered so the BE-0007
   deeplink-actuation follow-up can drive `am start -a VIEW -d <scheme>://<tab>` / `simctl openurl`;
@@ -624,10 +645,10 @@ fits the same toolchain as `make check`. Implementation: `common/drivers/playwri
   `screenshot` is `page.screenshot`; `wait_for` is single-shot via `find_all` (like every backend —
   the shared `base.wait_until` supplies the deadline poll).
 - Lifecycle is owned by the driver: a fresh `BrowserContext` is the `erase` equivalent, `navigate()`
-  (`page.goto(baseUrl)`) is the `launch`, and `close()` tears the browser down. There is no simctl
+  (`page.goto(app.url)`) is the `launch`, and `close()` tears the browser down. There is no simctl
   device, so the run uses a dummy lease and no device control.
-- **Device mode** (BE-0228): a web target's `deviceMode` config selects how each `BrowserContext` is
-  created — `desktop` (the default, a plain desktop context, unchanged from before) or a Playwright
+- **Device mode** (BE-0228): a web target's `runsOn.emulate` config selects how each `BrowserContext` is
+  created — `desktop` (the default when omitted, a plain desktop context, unchanged from before) or a Playwright
   device preset name (e.g. `iPhone 13`). A preset is resolved against `playwright.devices` and its
   descriptor (viewport / `device_scale_factor` / `is_mobile` / `has_touch` / `user_agent`) is merged
   into `new_context(**kwargs)` alongside `reduced_motion="reduce"`, so the target is driven as that
@@ -640,10 +661,10 @@ fits the same toolchain as `make check`. Implementation: `common/drivers/playwri
   real device or a device cloud; for a real mobile OS the Android backend is the path.
 - **Directional `swipe` scrolls** (BE-0227): the directional form `swipe: { on, direction }` means
   "scroll", and a mouse drag does not scroll a web page, so the web backend dispatches the input
-  primitive that actually scrolls, keyed on the context's input mode (the `deviceMode` above). On a
+  primitive that actually scrolls, keyed on the context's input mode (the `runsOn.emulate` above). On a
   **desktop** (pointer) context it emits a `page.mouse.wheel(...)` over the gesture's start — the
   wheel is the reverse of the travel, so an `up` swipe scrolls the page **down**, exactly as a
-  trackpad or wheel would. On a **touch** context (a mobile `deviceMode`) it uses a real
+  trackpad or wheel would. On a **touch** context (a mobile `runsOn.emulate`) it uses a real
   single-finger touch drag over CDP (the same path `pinch` / `rotate` take), so the page's touch and
   scroll listeners fire. The **coordinate** form `swipe: { from, to }` is unchanged — it stays a
   literal `page.mouse` drag, the raw-drag last resort for a canvas / map pan / drag handle. `codegen`
@@ -719,10 +740,14 @@ def select_actuator_for_scenario(backends, scenario, available, caps) -> str:  #
 def make_driver(actuator, udid, *, base_url=None, runner_port=None) -> Driver:  # "xcuitest"→XcuitestDriver, "playwright"→PlaywrightDriver, "fake"→FakeDriver
 ```
 
-- A **backend token** is either a **platform** (`ios` / `android` / `web` / `fake`) or a concrete
-  **actuator** (e.g. `xcuitest`). Each platform today resolves to a single actuator — `ios` to
-  `xcuitest` (BE-0290 retired idb, so `--backend ios` and `--backend xcuitest` are equivalent),
-  `android` to `adb`, `web` to `playwright`. The machinery for a **multi-actuator** platform
+- A target's required `platform` (`ios` / `android` / `web` / `fake`) decides its actuator. The
+  `backend:` config key no longer exists
+  ([BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)).
+  Each platform today resolves to a single actuator — `ios` to `xcuitest` (BE-0290 retired idb),
+  `android` to `adb`, `web` to `playwright`. `--backend` (and a serve request body's `backend`) is a
+  check, not an ordered fallback list: it accepts the target's platform, that platform's actuator
+  name, or `fake`, so `--backend ios` and `--backend xcuitest` mean the same. Anything else, or a
+  comma list, exits 2. `serve --backend` and `provision --backend` keep their own meaning. The machinery for a **multi-actuator** platform
   (per-scenario resolution in cost order; BE-0240) stays in place for a future platform, but no
   platform exercises it today.
 - Two orderings answer two questions. **Stability order** (`PLATFORMS`, most-capable-first;
@@ -741,8 +766,7 @@ def make_driver(actuator, udid, *, base_url=None, runner_port=None) -> Driver:  
   platform single-actuator today, is always the case. If none is available, `RuntimeError` (the CLI
   exits with code 2).
 - `web` resolves to `playwright` and `android` resolves to `adb`, both **implemented**
-  ([vision → reach](vision.md#1-reach--more-platforms-and-surfaces)). Truly unknown tokens are
-  skipped (forward-compat: an older build can run a config that lists a future backend).
+  ([vision → reach](vision.md#1-reach--more-platforms-and-surfaces)).
 - The availability check `available` is injectable (swappable in tests). The default is `shutil.which`
   for PATH-backed actuators; `playwright` is gated on whether its Python package is importable, and
   `fake` is always available.

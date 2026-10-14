@@ -14,105 +14,192 @@
 
 `bajutsu.config.yaml` は 2 層で構成されています。値の解決順は **既定 < ターゲット < シナリオ** で、テストに近い方が優先されます。
 
+ターゲットが受け付けるキーは 11 個です。各キーは 1 つの目的の設定をまとめます（[BE-0452](../../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)）。`platform` はすべてのターゲットで必須です。ローダは 11 個以外のキーをエラーにし、ターゲットが受け付けるキーを列挙します。以前のリリースの平坦なキー（`bundleId` や `appPath` など）は読まずに拒否します。
+
+| キー | 目的 | 形が `platform` で変わるか |
+|---|---|---|
+| `platform` | ターゲットを駆動する backend。`ios`、`android`、`web`、`fake` のいずれかです | — |
+| `app` | テスト対象。識別子、ビルドと起動の方法、準備完了の判定、id の規約を持ちます | 変わります |
+| `runsOn` | ターゲットを動かす環境。デバイスの条件、ブラウザ、デバイスの状態を持ちます | 変わります |
+| `driver` | Bajutsu がターゲットを駆動する方法 | 変わります |
+| `services` | run が起動する、または代わりを務めるサーバ | 変わりません |
+| `run` | run の方針 | iOS は `tipKitHandling` が加わります |
+| `hooks` | すべてのシナリオを包むステップ | 変わりません |
+| `evidence` | run が残すものと、マスクするもの | 変わりません |
+| `paths` | ファイルの置き場所 | 変わりません |
+| `ai` | AI 経路を担うプロバイダ | 変わりません |
+| `notify` | 結果の報告先 | 変わりません |
+
 ```yaml
-defaults:                       # 全ターゲット共通の既定
-  platform: ios                 # チーム共通の既定プラットフォーム(ios/android/web)。省略すると各ターゲットの backend から導出
-  backend: [ios]                # 順序付きリスト。プラットフォーム(ios/android/web/fake)か actuator(xcuitest)。単一文字列も可
-  device:  "iPhone 15"
-  locale:  en_US
-  capture: [screenshot.after, elements, actionLog]
-  redact:  { headers: [Authorization, Cookie], fields: [token, password] }
-  secrets: [LOGIN_PASSWORD]         # ${secrets.X} に使える環境変数名（実値は証跡でマスク）
+defaults:                         # 全ターゲット共通の既定
+  evidence:
+    capture: [screenshot.after, elements, actionLog]
+    redact:  { headers: [Authorization, Cookie], fields: [token, password] }
+  run:
+    secrets: [LOGIN_PASSWORD]     # ${secrets.X} に使える環境変数名（実値は証跡でマスク）
   ai:      { provider: api-key, keyEnv: ANTHROPIC_API_KEY }   # AI 経路のプロバイダ / モデル / エンドポイント / キー（下記）
-  reservedNamespaces: [auth, nav]   # 共有フロー / コンポーネントの id 契約（情報用）
+  platforms:                      # プラットフォームで形の変わるグループを、プラットフォームごとに置く
+    ios:
+      runsOn: { locale: en_US }
+reservedNamespaces: [auth, nav]   # チーム共通: 共有フロー / コンポーネントの id 契約（情報用）
 
 targets:
-  showcase-swiftui:             # ← --target showcase-swiftui で選択
-    bundleId:       com.bajutsu.showcase.ios.swiftui     # iOS のターゲット（web で baseUrl を設定する場合を除き必須）
-    deeplinkScheme: showcaseswiftui
-    idNamespaces:   [stable, horse, search, log, notice, perm, sys, net]
-    launchEnv:      { SHOWCASE_UITEST: "1" }
-    scenarios:      demos/showcase/scenarios   # このターゲットのシナリオディレクトリ（run が読み、record が書く）
-    systemAlertHandling:  { rules: [{ prompt: notifications, choice: grant }] }   # アラートガード（後述）のアプリ既定。--system-alert-handling が実行ごとに上書き
-    iosTipKitHandling:    true                       # TipKit の tip ガードのアプリ既定（iOS 専用、ビルトイン既定はオフ）
-    # 任意: erase / network / backend / device / locale / launchArgs / setup / redact / secrets / mockServer / appPath / build
+  showcase-swiftui:               # ← --target showcase-swiftui で選択
+    platform: ios
+    app:
+      id: com.bajutsu.showcase.ios.swiftui
+      path: ios/swiftui/build/Showcase.app     # 存在すれば各シナリオの前にインストール
+      build: make swiftui-build                # path を必要なときにビルドするコマンド
+      launch: { env: { SHOWCASE_UITEST: "1" } }
+      startWhen: { exists: { id: [stable.row.1, stable_row_1] } }
+      idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
+    driver:
+      runner: { testRunner: ../../BajutsuKit/Runner/build/dd/Build/Products/BajutsuRunner.xctestrun }
+    run:
+      systemAlertHandling: { rules: [{ prompt: notifications, choice: grant }] }   # --system-alert-handling が実行ごとに上書き
+      tipKitHandling: true                     # iOS 専用: TipKit の tip ガード（ビルトイン既定はオフ）
+    paths: { scenarios: scenarios }            # このターゲットのシナリオディレクトリ（run が読み、record が書く）
 
-  web:                          # web ターゲット（Playwright backend）は URL で指定する
-    platform:  web                                  # 任意: 通常は backend や baseUrl から導出されるが、明示すると最も明確
-    baseUrl:   "http://127.0.0.1:8787/index.html"   # web では必須（bundleId の代わり）
-    backend:   [web]
-    headless:  true                                 # web のみ: false でブラウザを画面に表示（--headed が実行ごとに上書き）
-    browser:   chromium                             # web のみ: 描画エンジン。chromium / firefox / webkit（--browser が実行ごとに上書き）
-    deviceMode: desktop                             # web のみ: "desktop"（既定）か Playwright のデバイスプリセット名（例 "iPhone 13"）。ターゲットをモバイル端末として駆動する
-    scenarios: demos/web/scenarios
+  web:                            # web ターゲット（Playwright backend）は URL で指定する
+    platform: web
+    app: { url: "http://127.0.0.1:8787/index.html" }
+    runsOn:
+      browser: { engine: chromium }            # chromium / firefox / webkit。--browser が実行ごとに上書き
+      emulate: iPhone 13                       # 省略するとデスクトップのコンテキスト。それ以外は Playwright のデバイスプリセット
+    driver: { headless: true }                 # false でブラウザを画面に表示。--headed が実行ごとに上書き
+    services:
+      server: { cmd: "python -m http.server 8787", readyUrl: "http://127.0.0.1:8787/" }
+    paths: { scenarios: demos/web/scenarios }
 ```
 
-各プラットフォームはターゲットを自分のハンドルで指定します。**iOS** は `bundleId`、**web** は `baseUrl`、**Android** は `package` です。ターゲットの `platform` がどのハンドルを必須にするかを選びます。`platform` は**任意**で、未指定なら `backend` から導かれるプラットフォームに既定化されます（この項目を追加する前の config はそのまま動きます）。曖昧さを避けたいときは明示してください。プラットフォームに対して誤ったハンドルを持つ（あるいは 1 つも持たない）ターゲットは読み込み時に拒否されます。[drivers → Playwright](drivers.md#playwrightweb) と `demos/web` を参照してください。
+4 つのグループは、形がプラットフォームで変わります。各プラットフォームがこれらのグループのモデルを登録するので、別のプラットフォームが受け付けるキーは未知のキーとしてエラーになり、エラーは受け付けるフィールドを列挙します。
+
+| グループ | iOS | Android | Web |
+|---|---|---|---|
+| `app` | `id`、`path`、`build`、`launch.env`、`launch.args`、`startWhen`、`idNamespaces` | `id`、`path`、`build`、`launch.env`、`grantPermissions`、`startWhen`、`idNamespaces` | `url`、`launch.env`、`startWhen`、`idNamespaces` |
+| `runsOn` | `model`、`os`、`kind`、`locale` | `avd`、`apiLevel` | `browser.engine`、`browser.version`、`emulate` |
+| `driver` | `runner.testRunner`、`runner.build`、`runner.hostAddress` | `nativeZ` | `headless` |
+| `run` に加わるフィールド | `tipKitHandling` | — | — |
+
+テスト専用の `fake` プラットフォームは、任意の `app.id`、`app.startWhen`、`app.idNamespaces` だけを受け付け、`runsOn` と `driver` にはフィールドを持ちません。`fake` のターゲットは iOS の形の sub-config に解決します。
+
+どのプラットフォームでも同じフィールドを持つグループは次のとおりです。
+
+| グループ | フィールド |
+|---|---|
+| `services` | `server`（run のためにアプリ自身のホストを起動します。後述）、`mockServer`、`mailbox`（[後述](#mailboxemail-ステップ)） |
+| `run` | `erase`、`network`、`visualCompare`、`secrets`、`systemAlertHandling` |
+| `hooks` | `setup`、`cleanup`、`interrupts` |
+| `evidence` | `capture`、`redact` |
+| `paths` | `scenarios`、`baselines`、`schemas`、`goldens` |
+
+### デフォルト値（`defaults`）
+
+`defaults` は、共通のグループを直下に持ちます。プラットフォームで形の変わるグループは `defaults.platforms.<platform>` の下に置き、そのプラットフォームのターゲットだけに効きます。そのため、1 つのファイルで複数のプラットフォームのデフォルト値を扱えます。ローダはターゲットを検証する前に `defaults` をマージします。`app.id` のようにプラットフォームが必須とするフィールドも、デフォルト値から与えられます。マージは次の 4 つの規則に従います。
+
+- 辞書はキーごとにマージし、ターゲットの値が勝ちます。
+- ターゲットは `null` を書いて、継承した値を消せます。
+- リストは継承した値を置き換えます。ただし `run.secrets` と `evidence.redact` の各リストは和集合を取ります。置き換えにすると、シークレットを 1 つ足したターゲットが、チーム共通のシークレットをすべてマスクしなくなるためです。
+- ターゲットは、和集合を取るこれらのリストにも、`run`、`evidence`、`evidence.redact` にも `null` を書けません。読み込みはそのパスを示して失敗するので、ターゲットがチームのマスクを消すことはありません。
+- `ai` は、[後述](#ai-プロバイダaibe-0047)のとおりフィールドごとにマージします。
+
+`reservedNamespaces` と `doctor` はターゲットごとの設定ではなくチーム共通の設定なので、ファイルのトップレベルに置きます。`notify` もトップレベルに置き、ターゲット自身の `notify` がそれを上書きします。
+
+### デバイスの条件（`runsOn`）
+
+`runsOn` のいくつかのフィールドは、デバイスの条件です。
+
+| プラットフォーム | 条件 |
+|---|---|
+| iOS | `model`、`os` |
+| Android | `avd`、`apiLevel` |
+| Web | `browser.version` と、`browser.engine` に書いたリスト |
+
+`model` と `avd` に書いたリストも条件になります。バージョンの範囲は npm の [node-semver の範囲の文法](https://github.com/npm/node-semver#ranges)で書きます（`">=17 <19"` など）。形が誤った範囲は、ローダが拒否します。YAML は `18.10` を `18.1` として読むので、小数のバージョンは引用符で囲みます。
+
+Bajutsu は、デバイスをこれらの条件とまだ照合しません。条件を宣言したターゲットの run は、デバイスを操作する前に失敗し、メッセージは該当するフィールドを示します。この規則は `run`、`record`、`crawl`、`repl`、`audit`、Model Context Protocol（MCP）のツール、`doctor` の画面のプローブに及びます。fake のドライバには読み取るデバイスがないので、`--backend fake` はこの検査を飛ばし、通知を 1 回だけ出します。`runsOn.kind: device`（物理の iPhone）のターゲットは、`model` と `os` を宣言できません。
+
+`runsOn` の 2 つのフィールドは、条件ではなくデバイスの状態です。`kind`（`simulator` か `device`）は XCUITest の接続先を選びます。`locale` は run が適用する言語を固定します。`locale` が未指定なら、iOS はビルトインの `en_US` を使います。
 
 ### 解決（`resolve` → `Effective`）
 
-`resolve(config, target)` が 1 ターゲット分の有効値 `Effective`（frozen dataclass）を構築します。ターゲットが未定義の場合は `KeyError` となり、CLI は終了コード 2 で終了します。下記の一部のフィールド――各プラットフォーム自身の識別子、および web 限定の `headless` / `browser` / `device_mode`――は `Effective` の平坦なフィールドではありません。`Effective.platform_config` が、解決済みの `platform` に応じて、互いに排他的なプラットフォームごとの 3 つの config（`IosConfig` / `WebConfig` / `AndroidConfig`）のいずれかに絞り込みます（[BE-0126](../../roadmaps/BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config-ja.md)）。読み取るときは `bajutsu/common/config/accessors.py` の絞り込み用ヘルパーを使います。1 つのプラットフォームに決まっているコードは `require_ios` / `require_web` / `require_android` を使い、プラットフォームをまたいで値を安全に読みたいコードは「soft」な `ios_bundle_id` / `web_base_url` / `web_engine` / `android_package` を使います。`Effective` に `bundle_id` のようなフィールドは存在しません。
+`resolve(config, target)` が 1 ターゲット分の有効値 `Effective`（frozen dataclass）を構築します。ターゲットが未定義の場合は `KeyError` となり、CLI は終了コード 2 で終了します。下記の一部のフィールド（各プラットフォーム自身の識別子、および web 限定の `headless` / `browser` / `device_mode`）は `Effective` の平坦なフィールドではありません。`Effective.platform_config` が、ターゲットの `platform` に応じて、互いに排他的なプラットフォームごとの 3 つの config（`IosConfig` / `WebConfig` / `AndroidConfig`）のいずれかに絞り込みます（[BE-0126](../../roadmaps/BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config-ja.md)）。読み取るときは `bajutsu/common/config/accessors.py` の絞り込み用ヘルパーを使います。1 つのプラットフォームに決まっているコードは `require_ios` / `require_web` / `require_android` を使い、プラットフォームをまたいで値を安全に読みたいコードは「soft」な `ios_bundle_id` / `web_base_url` / `web_engine` / `android_package` を使います。`Effective` に `bundle_id` のようなフィールドは存在しません。
 
 | `Effective` フィールド | 由来 | 備考 |
 |---|---|---|
-| `platform` | app < defaults < 導出 | ターゲットのプラットフォーム（`ios`/`android`/`web`）。明示 `platform` が優先、なければターゲットの `backend` が含意、なければ存在する識別子、それも無ければ `ios`。どの識別子を必須にするかを選びます（[BE-0009](../../roadmaps/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md)） |
-| `platform_config.bundle_id`（`IosConfig`） | app | iOS のターゲット識別子。プラットフォームが `ios` のとき必須 |
-| `platform_config.base_url`（`WebConfig`） | app | web のターゲット URL（Playwright backend）。プラットフォームが `web` のとき必須 |
-| `platform_config.package`（`AndroidConfig`） | app | Android のターゲット識別子。プラットフォームが `android` のとき必須 |
-| `platform_config.native_z`（`AndroidConfig`） | app | Android のみ: `nativeZ: true` は、opt-in した各ビュー自身の `View.getZ()` を端末に要求する。`elements.json` は診断用フィールド `nativeZ` として報告する（[BE-0355](../../roadmaps/BE-0355-native-z-position/BE-0355-native-z-position-ja.md)）。指定しなければ off。値を返すノード走査は画面の読み取りごとに走り、20 ミリ秒から 100 ミリ秒かかるうえ、テスト対象のアプリが `BajutsuAndroid` をリンクしてビューを opt-in していなければ何も報告しないためである。on にしたターゲットは、確認が取れたジェスチャの応答が省いてくれるはずだった往復も手放す。その応答は `nativeZ` の値を運べないため、位置がすべて未計測になるツリーを受け取る代わりに、そもそも作らないよう端末へ要求する（[BE-0407](../../roadmaps/BE-0407-step-latency-driver-internal-tuning/BE-0407-step-latency-driver-internal-tuning-ja.md) の作業単位 18〜19）。iOS に対応するフラグはない。レスポンダは BajutsuKit をリンクしたアプリにだけ応答するためである |
-| `platform_config.headless`（`WebConfig`） | app | web backend のみ: `true`（既定）はヘッドレス、`false` はブラウザを画面に表示し低速再生する。`bajutsu run --headed / --no-headed` と Web UI の「show browser」トグルが実行ごとに上書きする。iOS は無視する |
-| `platform_config.browser`（`WebConfig`） | app | web backend のみ: 駆動する Playwright の描画エンジン。`chromium`（既定）、`firefox`、`webkit` から選びます。いずれも Linux 上でヘッドレス実行できます。`bajutsu run/record --browser <engine>` が実行ごとに上書きし（フラグ > config > 既定）、`bajutsu run --browsers <list>` はクロスブラウザマトリクスを実行します（後述）。エンジンのブラウザバイナリが無ければ実行時に取得します。未知の値は config 読み込み時に拒否されます。iOS は無視します（[BE-0076](../../roadmaps/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md)） |
-| `platform_config.device_mode`（`WebConfig`） | app | web backend のみ: ブラウザコンテキストを生成するときのデバイスモード。`deviceMode: desktop`（既定で、今日から変わりません）か、Playwright のデバイスプリセット名（例 `iPhone 13`）です。プリセットは viewport / `device_scale_factor` / `is_mobile` / `has_touch` / `user_agent` をエミュレートし、web ターゲットをそのモバイル端末として駆動します。これはデスクトップ級ブラウザでのエミュレーション（Chrome DevTools のデバイスツールバー）であり、実機ではありません（[drivers → Playwright](drivers.md#playwrightweb)）。ドライバーの中で `playwright.devices` に対して**遅延**して解決するため、config 読み込みが Playwright を import することはありません。不明なプリセットは config 読み込み時ではなくドライバー起動時に明示的なエラーで失敗します。トップレベルの `device`（iOS シミュレータ名で、web ターゲットは無視します）とは別物です。iOS / Android はこれを無視します（[BE-0228](../../roadmaps/BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation-ja.md)） |
-| `device_provider` | app | このターゲットのデバイスの取得元です。`deviceProvider: { kind: local }`（既定で、今日どおりのローカル接続デバイス、`--udid` の経路）か、デバイスクラウドのアダプタが登録する別の `kind`（ホスト外でデバイスを予約し、その serial / endpoint を run に渡します）を指定します。`kind` は device provider の registry に対して **config 読み込み時ではなく実行時に**解決するため、決定的コアがクラウド SDK を import することはありません。未知の `kind` は、run が provider を解決する時点で明示的に失敗します。この解決を行うのは今のところ `bajutsu run` だけで、`record`・`crawl`・`audit --repeat` は従来どおりの方法でデバイスを解決するため、この項目を静かに無視します。seam はデバイスプールの手前にあり、run/CI の判定経路の完全に外側です（provider の仕事はデバイスの取得と解放だけです）。組み込みの provider は現時点で2種類あります。**`local`**（既定。ローカル接続デバイスの `--udid` 経路で、追加フィールド不要）と **`appium`**（セルフホストの Appium / WebDriver グリッドに予約済みの iOS デバイスが存在する場合の live 経路。`endpoint: <url>` が必須です。この endpoint は live の W3C WebDriver トランスポートで端から端まで駆動され、セレクタの解決はローカルの XCUITest backend と同じく Python 側で行います。詳細は[iOS デバイスクラウド](ios-device-cloud.md#ライブ--appium-エンドポイントのプロバイダー)を参照してください）。具象のクラウドアダプタは任意導入の別パッケージとして出荷します（[BE-0236](../../roadmaps/BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction-ja.md)、[BE-0238](../../roadmaps/BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution-ja.md)） |
-| `launch_server` | app | 任意の `launchServer: {cmd, readyUrl, readyTimeout, cwd, env}`。run のために `baseUrl` のホストを起動し、終わったら停止します。`readyUrl`（既定は `baseUrl`）をプローブし、すでに応答すれば再利用、しなければ `cmd` を起動して準備が整うまで待ちます（固定 sleep ではなく条件待ち）。iOS の `build` の web 版です（[BE-0059](../../roadmaps/BE-0059-launch-target-server/BE-0059-launch-target-server-ja.md)）。`serve` 上の**アップロードされた**バンドルでは、ホストが `cmd` を直接実行することはなく、`serve --upload-exec` が統制します（[セルフホスティング](self-hosting.md#アップロードされた-config-のコマンド実行be-0090)を参照）。`sandbox` での実行には、追加フィールドとして `dockerImage`（Docker イメージ参照。例 `node:20-slim`）か `dockerfile`（バンドル相対のパスで、`docker build` でビルドします）のどちらか一方、加えて `port`（コンテナ内の待ち受けポート。ループバックのホストポートへ publish します）が必要です（[BE-0090](../../roadmaps/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution-ja.md)） |
-| `run_defaults.system_alert_handling` / `.erase` / `.network` / `.ios_tip_kit_handling` | app | 本来シナリオ単位や CLI フラグで指定する run のテスト動作設定に、アプリ単位の既定値を与えます（[BE-0177](../../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)）。`systemAlertHandling` はシナリオと同じ形（`false`、または `{ rules, visionInstruction, pollInterval }`）を取りアラートガードの既定値になり、`erase` は `preconditions.erase` の、`network` はアプリのネットワーク収集の既定値になります。`erase` と `network` は **フラグ ＞ シナリオ ＞ これ ＞ ビルトイン既定**（erase は off、network は on）の順で解決し、`--headed`/`headless` と同じ重ね方です。`systemAlertHandling` の ON と OFF も同じ順です（`--system-alert-handling`/`--no-system-alert-handling` ＞ シナリオ ＞ これ ＞ ON）。ただし方針を持つキーは、それぞれの型で合わさります（[BE-0401](../../roadmaps/BE-0401-system-alert-handling-dsl-consolidation/BE-0401-system-alert-handling-dsl-consolidation-ja.md)）。リストである `rules` は内側の層から順に**連結**されるので、シナリオの答えをこの既定より先に試したうえで、どちらの層の宣言も消えません。スカラーである `pollInterval` は、値を持つもっとも内側の層が勝ちます（シナリオ、無ければ `--alert-poll-interval`、無ければこれ）。`visionInstruction` はどの層からも `run` に届きません。BE-0402 がこのキーの操作するフォールバックを取り除いたため、`run` は値を持つシナリオやターゲット config を実行前に拒否します。ここに書いた規則は、別のプロンプトについて規則を書いているシナリオの中でも、自分の名指すプロンプトには答えます。答えるときガードが通知を出し、シナリオ側は同じプロンプトの規則を書けば上書きできます。`labels` は [BE-0406](../../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md) で削除されました。ボタンのラベルが名指すのはボタンであってアラートではないため、ターゲット config が、どのシナリオも記述していない画面へのタップを許してしまうからです。[`systemAlertHandling` の層の重ね方](scenarios.md#層の重ね方1-つのキーは-3-か所から届く)を参照してください。`iosTipKitHandling` は TipKit の tip ガードの既定値です（iOS 専用、ビルトイン既定は**オフ**）。`--ios-tipkit-handling`/`--no-ios-tipkit-handling` で同じ優先順位に従います |
-| `deeplink_scheme` | app | preconditions の deeplink で使う scheme |
-| `backend` | app ?? defaults | プラットフォーム(`ios`/`android`/`web`/`fake`)か actuator(`xcuitest`)の安定度順リスト（単一文字列はリスト化）（[drivers](drivers.md#バックエンド選択と-actuator)） |
-| `device` / `locale` | app ?? defaults | `locale` は launch 時に適用されます（`simctl` の launch 引数）。iOS の XCUITest バックエンドでは、cold spawn のたびに **Simulator 自身のシステム言語**も固定します。デバイスのグローバル設定ドメインに書き込み、SpringBoard がその言語で描画するよう再起動します。そのため、プロセス外の権限プロンプトのボタンのテキストは、Simulator がたまたま持っていた言語ではなく、この `locale` が予測するものになります。`preconditions.locale` が固定済みの値と異なるシナリオは、warm な runner を再利用せず cold respawn を強制します（[BE-0320](../../roadmaps/BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md)）。label の対応表（英語と日本語）にない言語では、`handleSystemAlert` ステップはボタンの位置で答えます。同じ言語の `systemAlertHandling.rules` の規則は、デバイスを操作する前にシナリオを失敗させます（[BE-0445](../../roadmaps/BE-0445-system-alert-locale-agnostic-answer/BE-0445-system-alert-locale-agnostic-answer-ja.md)） |
-| `launch_env` / `launch_args` | app | preconditions が run 時にマージ追記 |
-| `ready_when` | app | 任意の `readyWhen: { id: … }`。run を始める前に launch が出現を待つセレクタで、既定の「アプリが 2 要素以上を描画した」判定の代わりになります。最初の操作画面が常時表示のクロームの上に出るモーダルであるアプリ向けです（要素数の判定はモーダル提示前に返ってしまうことがあります）。`id` / `idMatches` はシナリオのセレクタと同様に OR 候補のリストを受け付けるので（`readyWhen: { id: [stable.row.1, stable_row_1] }`。BE-0221）、native な id 構文が異なる target も 1 つの `readyWhen` で扱えます。固定 sleep ではなく条件待ちです。指定するのは、その target の**すべて**のシナリオが同じ画面から始まるときに限ります。シナリオごとに最初の画面が異なる場合は、各シナリオの先頭に `wait` ステップを置いてください。readiness の最も強いシグナルは引き続き `readyWhen` です。iOS では、`BajutsuKit` の画面遷移 observer（BE-0310）を組み込んだ target が、namespace／要素数のヒューリスティックの上に、起動以降に報告された画面遷移という段を設定不要で得ます。ただし明示的な `readyWhen` はそれより上位で、起動直後の base 画面の遷移が、`readyWhen` が待つモーダルを先取りすることはありません。observer のシグナルが判定を担うのは、`readyWhen` が設定されていないときだけです |
-| `id_namespaces` | app | doctor が参照 |
-| `reserved_namespaces` | defaults | 情報用（doctor は app の `idNamespaces` のみで採点） |
-| `mock_server` | app | ⚠️ スキーマのみ · 未配線 |
-| `setup` | app | 既定の再利用前段（その steps を各シナリオの本編前に実行） |
-| `evidence_dirs.scenarios` | app | このターゲットのシナリオディレクトリ。`run --target` は配下の `*.yaml` を全件読み、`record` は新規をここへ書く。config ファイル自身のディレクトリ基準の相対パス（`appPath` や兄弟の `evidence_dirs.baselines` / `.schemas` / `.goldens` も同様）で、`bajutsu` をどこから実行しても config は同じ挙動になる（BE-0242）。`run --scenario` / `record --out` で上書き |
-| `capture` | defaults | 既定証跡（[evidence の注記](evidence.md#証跡の指示方法3-つ)） |
-| `redact` | defaults ∪ app | マージ（下記） |
-| `secrets` | defaults ∪ app | `${secrets.X}` を宣言する環境変数名。実値は証跡でマスク（[evidence](evidence.md#マスキングredact)） |
-| `requires` | defaults ∪ app | ホスト型バックエンドでこのターゲットを実行するために、ワーカーが広告していなければならない capability トークン（[self-hosting](self-hosting.md#能力に基づくキューの振り分けbe-0166)、[BE-0166](../../roadmaps/BE-0166-capability-routed-queues/BE-0166-capability-routed-queues-ja.md)）。たとえば `[ios18, ipad]`。プラットフォーム軸は自動で加わるので、ランタイムやデバイス種別を固定したいときだけここにトークンを足します。今回のリリースでは非推奨です（[BE-0450](../../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability-ja.md)）。プラットフォーム軸に加え、macOS 専用のドライバが必要とするホストの OS も自動で加わります。ターゲットの `device` からランタイムやデバイス種別の要件を導けるようになるまでは、1 回だけの通知とともに引き続き効きます。予約済みの接頭辞 `environment:` や `host:` を持つトークンは、読み込み時にエラーになります。通知は読み込み時に出るので、ローカルの `bajutsu run` でも表示されます。ローカルの単一ワーカー実行では無視されます |
-| `ai` | defaults < app（フィールドごと） | AI 経路のプロバイダ / モデル / エンドポイント / キー（[下記](#ai-プロバイダaibe-0047)）。省略（`None`）なら環境だけで決まります |
-| `defaults.doctor.idCoverageOk` / `defaults.doctor.idCoverageFail` | defaults | doctor のグレード判定に使う id カバレッジのしきい値（[下記](#しきい値の設定defaultsdoctorbe-0024)）。既定は 0.9 / 0.7 です |
-
-`backend` フィールドの検証で `_norm` が「単一文字列 → 1 要素リスト」に正規化します（defaults / app の両方に適用）。
+| `platform` | `platform` | ターゲットのプラットフォーム（`ios`/`android`/`web`）です。`fake` のターゲットは iOS の形の sub-config に解決するので、`ios` として読めます |
+| `backend` | `platform` | ターゲットのプラットフォームを 1 要素のリストにしたもので、actuator はここから選びます（[drivers](drivers.md#バックエンド選択と-actuator)）。`--backend` で置き換えられるのは、同じプラットフォーム、その actuator、`fake` のいずれかに限ります |
+| `platform_config.bundle_id`（`IosConfig`） | `app.id` | iOS のターゲット識別子です |
+| `platform_config.base_url`（`WebConfig`） | `app.url` | web のターゲット URL（Playwright backend）です |
+| `platform_config.package`（`AndroidConfig`） | `app.id` | Android のターゲット識別子です |
+| `platform_config.app_path` / `.build`（`IosConfig`、`AndroidConfig`） | `app.path` / `app.build` | run が各シナリオの前に（未インストールなら）インストールするビルド済みアプリと、それを必要なときにビルドするシェルコマンドです |
+| `platform_config.xcuitest`（`IosConfig`） | `driver.runner` と `runsOn.kind` | XCUITest の runner です。`testRunner`（ビルド済みの `.xctestrun`）、`build`（それをビルドするコマンド）、`hostAddress`（[後述](#実機のホストアドレスdriverrunnerhostaddress)）、接続先の `kind` を持ちます |
+| `platform_config.grant_permissions`（`AndroidConfig`） | `app.grantPermissions` | Android のみ: 起動前に付与する実行時の権限です（`pm grant`）。権限のプロンプトがシナリオを止めないようにします |
+| `platform_config.native_z`（`AndroidConfig`） | `driver.nativeZ` | Android のみ: `nativeZ: true` は、opt-in した各ビュー自身の `View.getZ()` を端末に要求します。`elements.json` は診断用フィールド `nativeZ` として報告します（[BE-0355](../../roadmaps/BE-0355-native-z-position/BE-0355-native-z-position-ja.md)）。指定しなければ off です。値を返すノード走査は画面の読み取りごとに走り、20 ミリ秒から 100 ミリ秒かかるうえ、テスト対象のアプリが `BajutsuAndroid` をリンクしてビューを opt-in していなければ何も報告しないためです。on にしたターゲットは、確認が取れたジェスチャの応答が省いてくれるはずだった往復も手放します。その応答は `nativeZ` の値を運べないため、位置がすべて未計測になるツリーを受け取る代わりに、そもそも作らないよう端末へ要求します（[BE-0407](../../roadmaps/BE-0407-step-latency-driver-internal-tuning/BE-0407-step-latency-driver-internal-tuning-ja.md) の作業単位 18〜19）。iOS に対応するフラグはありません。レスポンダは BajutsuKit をリンクしたアプリにだけ応答するためです |
+| `platform_config.headless`（`WebConfig`） | `driver.headless` | web のみ: `true`（既定）はヘッドレス、`false` はブラウザを画面に表示し低速再生します。`bajutsu run --headed / --no-headed` と Web UI の「show browser」トグルが実行ごとに上書きします |
+| `platform_config.browser`（`WebConfig`） | `runsOn.browser.engine` | web のみ: 駆動する Playwright の描画エンジンです。`chromium`（既定）、`firefox`、`webkit` から選びます。いずれも Linux 上でヘッドレス実行できます。`bajutsu run/record --browser <engine>` が実行ごとに上書きし（フラグ > config > 既定）、`bajutsu run --browsers <list>` はクロスブラウザマトリクスを実行します（後述）。エンジンのブラウザバイナリが無ければ実行時に取得します。未知の値は config 読み込み時に拒否されます（[BE-0076](../../roadmaps/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md)） |
+| `platform_config.device_mode`（`WebConfig`） | `runsOn.emulate` | web のみ: ブラウザコンテキストを生成するときのデバイスモードです。省略するとデスクトップのコンテキストになり、Playwright のデバイスプリセット名（例 `iPhone 13`）を指定すると、viewport / `device_scale_factor` / `is_mobile` / `has_touch` / `user_agent` をエミュレートし、web ターゲットをそのモバイル端末として駆動します。これはデスクトップ級ブラウザでのエミュレーション（Chrome DevTools のデバイスツールバー）であり、実機ではありません（[drivers → Playwright](drivers.md#playwrightweb)）。ドライバーの中で `playwright.devices` に対して**遅延**して解決するため、config 読み込みが Playwright を import することはありません。不明なプリセットは config 読み込み時ではなくドライバー起動時に明示的なエラーで失敗します（[BE-0228](../../roadmaps/BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation-ja.md)） |
+| `conditions` | `runsOn` | ターゲットが宣言するデバイスの条件です（[前述](#デバイスの条件runson)）。照合の機能が入るまで、条件を宣言したターゲットを run は拒否します |
+| `device_provider` | `--worker-config` | このターゲットのデバイスの取得元です。config はこれを指定しなくなりました。コマンドが従う `worker.yaml` の `appium` environment が、グリッドのエンドポイントを、グリッドのプラットフォームのターゲットに渡します（[マシンが実行できるもの](#マシンが実行できるもの設定の外be-0450)）。ほかのターゲットはビルトインの `local` provider（`--udid` の経路）を使います。このエンドポイントは live の W3C WebDriver トランスポートで端から端まで駆動します（[iOS デバイスクラウド](ios-device-cloud.md#ライブ--appium-エンドポイントのプロバイダー)、[BE-0236](../../roadmaps/BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction-ja.md)、[BE-0238](../../roadmaps/BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution-ja.md)） |
+| `launch_server` | `services.server` | 任意の `{cmd, readyUrl, readyTimeout, cwd, env}` です。run のためにアプリのホストを起動し、終わったら停止します。`readyUrl`（既定は `app.url`）をプローブし、すでに応答すれば再利用、しなければ `cmd` を起動して準備が整うまで待ちます（固定 sleep ではなく条件待ち）。`app.build` の web 版です（[BE-0059](../../roadmaps/BE-0059-launch-target-server/BE-0059-launch-target-server-ja.md)）。`serve` 上の**アップロードされた**バンドルでは、ホストが `cmd` を直接実行することはなく、`serve --upload-exec` が統制します（[セルフホスティング](self-hosting.md#アップロードされた-config-のコマンド実行be-0090)を参照）。`sandbox` での実行には、追加フィールドとして `dockerImage`（Docker イメージ参照。例 `node:20-slim`）か `dockerfile`（バンドル相対のパスで、`docker build` でビルドします）のどちらか一方、加えて `port`（コンテナ内の待ち受けポート。ループバックのホストポートへ publish します）が必要です（[BE-0090](../../roadmaps/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution-ja.md)） |
+| `run_defaults.system_alert_handling` / `.erase` / `.network` / `.ios_tip_kit_handling` | `run` | 本来シナリオ単位や CLI フラグで指定する run のテスト動作設定に、アプリ単位の既定値を与えます（[BE-0177](../../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)）。`run.systemAlertHandling` はシナリオと同じ形（`false`、または `{ rules, visionInstruction, pollInterval }`）を取りアラートガードの既定値になり、`run.erase` は `preconditions.erase` の、`run.network` はアプリのネットワーク収集の既定値になります。`erase` と `network` は **フラグ ＞ シナリオ ＞ これ ＞ ビルトイン既定**（erase は off、network は on）の順で解決し、`--headed`/`headless` と同じ重ね方です。`systemAlertHandling` の ON と OFF も同じ順です（`--system-alert-handling`/`--no-system-alert-handling` ＞ シナリオ ＞ これ ＞ ON）。ただし方針を持つキーは、それぞれの型で合わさります（[BE-0401](../../roadmaps/BE-0401-system-alert-handling-dsl-consolidation/BE-0401-system-alert-handling-dsl-consolidation-ja.md)）。リストである `rules` は内側の層から順に**連結**されるので、シナリオの答えをこの既定より先に試したうえで、どちらの層の宣言も消えません。スカラーである `pollInterval` は、値を持つもっとも内側の層が勝ちます（シナリオ、無ければ `--alert-poll-interval`、無ければこれ）。`visionInstruction` はどの層からも `run` に届きません。BE-0402 がこのキーの操作するフォールバックを取り除いたため、`run` は値を持つシナリオやターゲット config を実行前に拒否します。ここに書いた規則は、別のプロンプトについて規則を書いているシナリオの中でも、自分の名指すプロンプトには答えます。答えるときガードが通知を出し、シナリオ側は同じプロンプトの規則を書けば上書きできます。`labels` は [BE-0406](../../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md) で削除されました。ボタンのラベルが名指すのはボタンであってアラートではないため、ターゲット config が、どのシナリオも記述していない画面へのタップを許してしまうからです。[`systemAlertHandling` の層の重ね方](scenarios.md#層の重ね方1-つのキーは-3-か所から届く)を参照してください。`run.tipKitHandling` は TipKit の tip ガードの既定値です（iOS 専用、ビルトイン既定は**オフ**）。`--ios-tipkit-handling`/`--no-ios-tipkit-handling` で同じ優先順位に従います |
+| `run_defaults.before` / `.after` / `.interrupts` | `hooks.setup` / `hooks.cleanup` / `hooks.interrupts` | ターゲットのすべてのシナリオを包むステップです。`setup` はシナリオ自身の `before` より先に、`cleanup` はシナリオ自身の `after` より後に動き（規則は引き続き `on: always`、`success`、`error` を取ります）、`interrupts` はシナリオのものより先に確認します。hook のステップは `use: { component: <file>, with: … }` でコンポーネントを呼べます。ローダは config を読み込むときに、config ファイルのディレクトリを基準にコンポーネントを解決し、スイートのルートの外を指す参照を拒否します（[BE-0174](../../roadmaps/BE-0174-scenario-ref-path-containment/BE-0174-scenario-ref-path-containment-ja.md)）。`group:` と `setMocks` は引き続き hook では使えません。シナリオは `preconditions.run.inheritSetup: false` で、宣言したすべてのターゲットの `hooks.setup` を飛ばせます。cleanup はその場合も動きます |
+| `locale` | `runsOn.locale` | iOS: launch 時に適用されます（`simctl` の launch 引数）。ビルトイン既定は `en_US` です。XCUITest バックエンドでは、cold spawn のたびに **Simulator 自身のシステム言語**も固定します。デバイスのグローバル設定ドメインに書き込み、SpringBoard がその言語で描画するよう再起動します。そのため、プロセス外の権限プロンプトのボタンのテキストは、Simulator がたまたま持っていた言語ではなく、この `locale` が予測するものになります。`preconditions.locale` が固定済みの値と異なるシナリオは、warm な runner を再利用せず cold respawn を強制します（[BE-0320](../../roadmaps/BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md)）。label の対応表（英語と日本語）にない言語では、`handleSystemAlert` ステップはボタンの位置で答えます。同じ言語の `systemAlertHandling.rules` の規則は、デバイスを操作する前にシナリオを失敗させます（[BE-0445](../../roadmaps/BE-0445-system-alert-locale-agnostic-answer/BE-0445-system-alert-locale-agnostic-answer-ja.md)） |
+| `launch_env` / `launch_args` | `app.launch.env` / `app.launch.args` | preconditions が run 時にマージ、追記します。`launch.args` は iOS 専用です |
+| `start_when` | `app.startWhen` | 任意の `startWhen: { exists: { id: … } }` です。run を始める前に launch が出現を待つセレクタで、既定の「アプリが 2 要素以上を描画した」判定の代わりになります。`interrupts` のエントリが `condition` に使う形で書き、`negate` は付けません。最初の操作画面が常時表示のクロームの上に出るモーダルであるアプリ向けです（要素数の判定はモーダル提示前に返ってしまうことがあります）。`id` / `idMatches` はシナリオのセレクタと同様に OR 候補のリストを受け付けるので（`startWhen: { exists: { id: [stable.row.1, stable_row_1] } }`。BE-0221）、native な id 構文が異なる target も 1 つの `startWhen` で扱えます。固定 sleep ではなく条件待ちです。指定するのは、その target の**すべて**のシナリオが同じ画面から始まるときに限ります。シナリオごとに最初の画面が異なる場合は、各シナリオの先頭に `wait` ステップを置いてください。readiness の最も強いシグナルは引き続き `startWhen` です。iOS では、`BajutsuKit` の画面遷移 observer（BE-0310）を組み込んだ target が、namespace／要素数のヒューリスティックの上に、起動以降に報告された画面遷移という段を設定不要で得ます。ただし明示的な `startWhen` はそれより上位です。observer のシグナルが判定を担うのは、`startWhen` が設定されていないときだけです |
+| `id_namespaces` | `app.idNamespaces` | doctor が参照します |
+| `reserved_namespaces` | トップレベルの `reservedNamespaces` | 情報用です（doctor は app の `idNamespaces` のみで採点します） |
+| `mock_server` | `services.mockServer` | ⚠️ スキーマのみ · 未配線 |
+| `evidence_dirs.scenarios` | `paths.scenarios` | このターゲットのシナリオディレクトリです。`run --target` は配下の `*.yaml` を全件読み、`record` は新規をここへ書きます。config ファイル自身のディレクトリ基準の相対パス（`app.path` や兄弟の `paths.baselines` / `.schemas` / `.goldens` も同様）で、`bajutsu` をどこから実行しても config は同じ挙動になります（BE-0242）。`run --scenario` / `record --out` で上書きします |
+| `capture` | `evidence.capture` | 既定証跡です（[evidence の注記](evidence.md#証跡の指示方法3-つ)） |
+| `redact` | `evidence.redact`（defaults ∪ ターゲット） | マージします（下記） |
+| `secrets` | `run.secrets`（defaults ∪ ターゲット） | `${secrets.X}` を宣言する環境変数名です。実値は証跡でマスクします（[evidence](evidence.md#マスキングredact)） |
+| `ai` | `ai`（defaults < ターゲット、フィールドごと） | AI 経路のプロバイダ / モデル / エンドポイント / キー（[下記](#ai-プロバイダaibe-0047)）です。省略（`None`）なら環境だけで決まります |
+| `doctor_thresholds` | トップレベルの `doctor.idCoverageOk` / `doctor.idCoverageFail` | doctor のグレード判定に使う id カバレッジのしきい値（[下記](#しきい値の設定doctorbe-0024)）です。既定は 0.9 / 0.7 です |
 
 ### redact のマージ
 
-config の `defaults.redact` と `targets.<name>.redact` は **union** されます（`_merge_redact` が `labels`/`headers`/`fields` を個別に和集合します）。さらにシナリオの `redact`（[evidence](evidence.md#マスキングredact)）が重なります。
+`defaults.evidence.redact` と `targets.<name>.evidence.redact` は、リストごとに **union** されます。`labels`、`headers`、`fields`、`unmaskHeaders` のそれぞれで和集合を取ります。さらにシナリオの `redact`（[evidence](evidence.md#マスキングredact)）が重なります。
 
-### シークレット（`secrets:`）
+### シークレット（`run.secrets`）
 
-`secrets:` は **環境変数名のリスト**で（`defaults` と `targets.<name>` の両方で宣言でき、`resolve` が和集合にします）、シナリオが入力に使える `${secrets.X}` 変数の宣言元です。`bajutsu run` は実行時に、宣言された各名前を環境から解決し、その値を action に展開（`${secrets.X}`）したうえで、**証跡に現れる箇所すべてでその実値をマスク**します（[evidence](evidence.md#マスキングredact)）。シナリオ source には `${secrets.X}` トークンだけが残り、実値は残りません。
+`run.secrets` は **環境変数名のリスト**で（`defaults.run` と `targets.<name>.run` の両方で宣言でき、ローダがマージするときに和集合にします）、シナリオが入力に使える `${secrets.X}` 変数の宣言元です。`bajutsu run` は実行時に、宣言された各名前を環境から解決し、その値を action に展開（`${secrets.X}`）したうえで、**証跡に現れる箇所すべてでその実値をマスク**します（[evidence](evidence.md#マスキングredact)）。シナリオ source には `${secrets.X}` トークンだけが残り、実値は残りません。
 
 ### 実機用 runner の署名（設定の外、BE-0456）
 
 iOS の実機では、ユーザー自身の Apple Developer チームで署名した XCUITest runner が必要です。ターゲットの設定には、この署名に関する値を意図して入れていません。設定はリポジトリとともに共有されるので、そこに書いた Team ID がほかのすべてのユーザーに届いてしまうためです。代わりに、リポジトリの外に置くユーザーごとの署名ファイルが、bundle identifier、チーム、署名方式を持ちます。
 
-`bajutsu runner build --device` がこのファイルを読みます。以後、`xcuitest.deviceType: device` を指定して `xcuitest.testRunner` を指定しないターゲットは、そのビルドに解決します。ファイルの形式と探索順は [iOS の実機](ios-device-cloud.md#署名ファイル)で説明しています。
+`bajutsu runner build --device` がこのファイルを読みます。以後、`runsOn.kind: device` を指定して `driver.runner.testRunner` を指定しないターゲットは、そのビルドに解決します。ファイルの形式と探索順は [iOS の実機](ios-device-cloud.md#署名ファイル)で説明しています。
 
 ### マシンが実行できるもの（設定の外、BE-0450）
 
 設定ファイルはターゲットを記述し、アプリケーションのチームが書きます。1 台のマシンで何を実行できるかは別の事実で、それを知っているのはマシンの運用者です。そこで、別のファイル `worker.yaml` がこの事実を記述します。内容は、ワーカーの environment、ワーカーが提供するドライバ、1 つのシナリオが持てるターゲットの数です。設定ファイルはこれらのキーを持ちません。サーバのワーカーは、ジョブをリースしてから設定ファイルを読みます。それでは、どのジョブのために何を広告するかを決めるのに間に合いません。ファイルは `bajutsu run --worker-config <path>` と `bajutsu worker --worker-config <path>` で指定します。指定しなければ、同梱の既定のファイルを使います。ファイルの形式と検査は、[このマシンで何を実行できるか](drivers.md#worker-の能力検査be-0450)で説明しています。
 
-### 実機のホストアドレス（`xcuitest.hostAddress`）
+run をどこで実行するかも同じ種類の事実なので、ターゲットの外へ移りました（[BE-0452](../../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)）。1 つのプラットフォームのデバイスを提供する Appium のグリッドは、`worker.yaml` の `appium` environment として書きます。
 
-実機の iOS デバイスは、ホストとループバックを共有しません。そのため実機上のアプリは、ホストのアドレスを使ってネットワークの collector に接続します。デフォルトでは、実行のたびに、ホストの有効なインタフェースが持つ経路のあるアドレスをすべてアプリに渡します。アプリは、最初に応答したアドレスを使います。ホストのインタフェースには、実機から届かないものも含まれる場合があります。`xcuitest.hostAddress` は、渡すアドレスを指定したもの（カンマ区切り）に絞ります。
+```yaml
+version: 1
+environment: appium
+appium:
+  endpoint: https://grid.example.com/wd/hub   # グリッドの Appium / WebDriver のアドレス
+  platform: ios                               # 現時点で取れる値はこれだけ
+drivers: [xcuitest, adb, playwright, fake]
+```
+
+デバイスを駆動するコマンドは、いずれも `--worker-config` でこのファイルを受け付けます。`run`、`record`、`crawl`、`repl`、`audit`、`doctor`、`bajutsu mcp` です。グリッドのプラットフォームのターゲットは、エンドポイントをデバイスとして使います。同じシナリオのほかのターゲットは、このマシンに残ります。エンドポイントは 1 台のデバイスとして数えるので、グリッドのターゲットを 2 つ持つシナリオを run は拒否します。`--udid` は URL を受け付けなくなりました。Device Farm のファンアウトは、バッチの provider を serve のリクエストの `environment` で指定します。ターゲットの旧 `cloudBatch` は使いません（[Device Farm](devicefarm.md)）。
+
+### 実機のホストアドレス（`driver.runner.hostAddress`）
+
+実機の iOS デバイスは、ホストとループバックを共有しません。そのため実機上のアプリは、ホストのアドレスを使ってネットワークの collector に接続します。デフォルトでは、実行のたびに、ホストの有効なインタフェースが持つ経路のあるアドレスをすべてアプリに渡します。アプリは、最初に応答したアドレスを使います。ホストのインタフェースには、実機から届かないものも含まれる場合があります。`driver.runner.hostAddress` は、渡すアドレスを指定したもの（カンマ区切り）に絞ります。
 
 ```yaml
 targets:
   my-app:
-    xcuitest:
-      deviceType: device
-      hostAddress: 192.168.1.20
+    platform: ios
+    app: { id: com.example.app }
+    runsOn: { kind: device }
+    driver:
+      runner: { hostAddress: 192.168.1.20 }
 ```
 
 環境変数 `BAJUTSU_HOST_ADDRESS` は、この設定より優先します。ジョブごとにアドレスが変わるホストでは、設定を書き換えず、実行ごとに環境変数で指定できます。シミュレータでは、この設定は何もしません。取り決めの仕組みは [iOS を実機とデバイスクラウドで動かす](ios-device-cloud.md) で説明しています。
@@ -158,18 +245,21 @@ defaults:
 
 ### mailbox（`email` ステップ）
 
-`targets.<name>.mailbox` は、[`email`](scenarios.md#emailメールで届くコードをメールボックスから取得) ステップが 2FA / 検証コードを取得するためにポーリングする汎用 HTTP メールボックスを設定します。エンドポイントと認証情報をシナリオではなく config に置くためのものです。
+`targets.<name>.services.mailbox` は、[`email`](scenarios.md#emailメールで届くコードをメールボックスから取得) ステップが 2FA / 検証コードを取得するためにポーリングする汎用 HTTP メールボックスを設定します。エンドポイントと認証情報をシナリオではなく config に置くためのものです。
 
 ```yaml
 targets:
   myapp:
-    mailbox:
-      kind: http                                          # トランスポートアダプタ。省略時は http
-      url: "${secrets.MAILBOX_URL}"                       # 受信箱エンドポイント（GET）。${secrets.*} は実行時に解決
-      headers: { Authorization: "Bearer ${secrets.MAILBOX_TOKEN}" }
-      # 任意のレスポンスマッピング。プロバイダ固有コードなしで任意の JSON を読むため:
-      messages: "items"                                   # メッセージ配列へのドット区切りパス（既定: レスポンス自体が配列）
-      fields: { to: to, subject: subject, body: text, receivedAt: receivedAt, id: id }
+    platform: ios
+    app: { id: com.example.myapp }
+    services:
+      mailbox:
+        kind: http                                        # トランスポートアダプタ。省略時は http
+        url: "${secrets.MAILBOX_URL}"                     # 受信箱エンドポイント（GET）。${secrets.*} は実行時に解決
+        headers: { Authorization: "Bearer ${secrets.MAILBOX_TOKEN}" }
+        # 任意のレスポンスマッピング。プロバイダ固有コードなしで任意の JSON を読むため:
+        messages: "items"                                 # メッセージ配列へのドット区切りパス（既定: レスポンス自体が配列）
+        fields: { to: to, subject: subject, body: text, receivedAt: receivedAt, id: id }
 ```
 
 既定値はよくある形（`to` / `subject` / `body` / `receivedAt` / `id` を持つメッセージの配列）に合わせるので、準拠 API では `messages` / `fields` のマッピングは不要です。`email` ステップは受信箱を HTTP で読み、ステップ開始より新しいメッセージ（`id` で判定）だけを残し、一致するものを待ってコードを取り出します。決定的で LLM 非依存です（[BE-0046](../../roadmaps/BE-0046-otp-email-steps/BE-0046-otp-email-steps-ja.md)）。
@@ -235,7 +325,7 @@ GitHub OAuth を構成すると、org メンバーシップがアクセスも決
 
 ## CLI からの選択
 
-CLI（コマンドラインインターフェース）のすべてのコマンドは、`--target <name>` で 1 つのターゲットを選択し、`--config`（既定 `bajutsu.config.yaml`）で config を指定します。`--backend ios`（またはプラットフォーム/actuator のカンマ区切り）で解決順序を上書きできます（[cli](cli.md)）。
+CLI（コマンドラインインターフェース）のすべてのコマンドは、`--target <name>` で 1 つのターゲットを選択し、`--config`（既定 `bajutsu.config.yaml`）で config を指定します。`--backend` はターゲットのプラットフォームを上書きせず、確認します。受け付けるのは、そのプラットフォーム、その actuator（`xcuitest` など）、`fake` のいずれかで、それ以外の値やカンマ区切りのリストは終了コード 2 で終了します（[cli](cli.md)）。ターゲットが 1 つのプラットフォームを指定するようになったので、[BE-0452](../../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md) は順序付きのフォールバックのリストを取り除きました。
 
 ### クロスブラウザマトリクス（`--browsers`、BE-0076）
 
@@ -255,8 +345,8 @@ git+https://<host>/<owner>/<repo>.git[@<ref>][#<path>]          # 一般形（�
 - **現状で実装済みのホストは GitHub だけです。** 一般形 `git+https://<host>/…` は解析します（GitHub Enterprise / GitLab などへの拡張の余地を残すため）が、`github.com` 以外のホストは今のところ、黙って github.com を叩くのではなく明確なエラーで失敗します。
 - Git ソースから実行した run は、解決したコミットを `manifest.json` の provenance（`configSource: { host, owner, repo, ref, sha }`）に**記録**します。ブランチ指定の run でも、実際に実行した正確なコミットが分かり、後から再現できます（[reporting](reporting.md#manifestjson)）。
 - `<ref>` はブランチ、タグ、コミット SHA（既定はリポジトリのデフォルトブランチ）、`<path>` はリポジトリ内の config パス（既定はルートの `bajutsu.config.yaml`）です。スキームを認識できない値は、従来どおり**ローカルパス**として扱います。
-- ref を不変のコミット SHA に解決し、その部分木を content-addressed なキャッシュ（`~/.cache/bajutsu/gitsrc/<host>/<owner>/<repo>/<sha>/`）に展開して、そこから config を読みます。config の `scenarios` / `baselines` / `schemas` / `appPath` は相対パスで、**チェックアウトのルート**を基準に解決します。これはローカル config が自身のディレクトリを基準にするのと同じ「config の置き場所を基準にする」ルールで、基準点が取得したツリーのルートになるだけです。YAML だけでなくツリー全体が付いてきます。取得してきた config は信頼できないので、パスはチェックアウト配下に**閉じ込め**ます。絶対パスや `../` による逸脱は拒否します。一方、operator が信頼できるローカルファイルは config ファイル自身のディレクトリを基準に解決し、閉じ込めません（兄弟ディレクトリを指してよい）。
-- 取得したばかりのチェックアウトにはビルド済みバイナリが無く、手元で先にビルドする「最初の一回」もありません。そこで Git ソースの `run` は**アプリをオンデマンドでビルド**します。`appPath` が設定されていてバイナリが無いとき、config の `build` コマンドを**チェックアウトのルート**から実行し（`make -C demos/showcase swiftui-build` のような `build` の相対パスはそこを基準にします）、その後に実行を続けます。ビルドが失敗すれば明快に終了します。ローカルパスの `run` は従来どおりで、ビルドはせず、バイナリが無ければエラーになります。
+- ref を不変のコミット SHA に解決し、その部分木を content-addressed なキャッシュ（`~/.cache/bajutsu/gitsrc/<host>/<owner>/<repo>/<sha>/`）に展開して、そこから config を読みます。config の `paths.scenarios` / `paths.baselines` / `paths.schemas` / `app.path` は相対パスで、**チェックアウトのルート**を基準に解決します。これはローカル config が自身のディレクトリを基準にするのと同じ「config の置き場所を基準にする」ルールで、基準点が取得したツリーのルートになるだけです。YAML だけでなくツリー全体が付いてきます。取得してきた config は信頼できないので、パスはチェックアウト配下に**閉じ込め**ます。絶対パスや `../` による逸脱は拒否します。一方、operator が信頼できるローカルファイルは config ファイル自身のディレクトリを基準に解決し、閉じ込めません（兄弟ディレクトリを指してよい）。
+- 取得したばかりのチェックアウトにはビルド済みバイナリが無く、手元で先にビルドする「最初の一回」もありません。そこで Git ソースの `run` は**アプリをオンデマンドでビルド**します。`app.path` が設定されていてバイナリが無いとき、config の `app.build` コマンドを**チェックアウトのルート**から実行し（`make -C demos/showcase swiftui-build` のようなコマンドの相対パスはそこを基準にします）、その後に実行を続けます。ビルドが失敗すれば明快に終了します。ローカルパスの `run` は従来どおりで、ビルドはせず、バイナリが無ければエラーになります。
 - **固定コミット SHA**（`@<sha>`）は再現可能で、初回取得後はオフラインで動きます。ブランチ（やタグ）は毎回解決し直します。
 - **非公開リポジトリには資格情報が要ります**（[BE-0224](../../roadmaps/BE-0224-github-private-repo-config-auth/BE-0224-github-private-repo-config-auth-ja.md)）。トークンは**取得のたびに**解決するので、ローテーションした秘密も再起動なしで反映されます。解決の順序は、設定済みの **GitHub App installation**（`BAJUTSU_GITHUB_APP_ID` と秘密鍵）、次に serve で入力した資格情報（`BAJUTSU_GIT_CONFIG_TOKEN`）、次に `GITHUB_TOKEN` / `GH_TOKEN`、次に `gh auth token`、それも無ければ匿名です。トークンはログに出しません。付与は**最小権限**にしてください。すべての非公開リポジトリに読み書きを与えてしまう classic の広い `repo` スコープの個人アクセストークン（PAT）ではなく、対象のリポジトリだけに **Contents: read** 権限で絞った**細粒度（fine-grained）**の PAT、または App installation を選びます。無人で動く self-hosted の `serve` は、人ではなくサービスに紐づく短命な installation トークンである **GitHub App** で認証してください（[self-hosting の非公開リポジトリへのアクセス](self-hosting.md#git-config-source-の非公開リポジトリへのアクセスbe-0224)を参照）。アクセスが無いときの取得失敗は、素の 404 ではなく、レート制限、組織のシングルサインオン（SSO）の認可不足、トークンの拒否、あるいは「`<owner>/<repo>` に Contents: read を持つ資格情報を用意してください」といった、**本当の原因**を名指すメッセージで報告します。
 - `bajutsu run` にはゲート向けスイッチが 2 つあります。**`--config-offline`** はキャッシュを使いネットワークに触れません（オフラインでは解決できないので固定 `@<sha>` が必要）。**`--require-pinned-config`** は Git config がコミット SHA を固定していなければ失敗します。ゲートではブランチもタグも動きうるので、SHA だけを認めます。
@@ -270,9 +360,8 @@ git+https://<host>/<owner>/<repo>.git[@<ref>][#<path>]          # 一般形（�
 
 1. **実装規約を適用する**。主要要素に `accessibilityIdentifier` を（アプリの名前空間で）付け、状態を
    label / traits / value に露出させ、launch hook を用意し、アニメーションを無効化します。
-2. **`targets.<name>` を追加する**。`bundleId`（必須）/ `deeplinkScheme` / 既定 `launchEnv` /
-   `idNamespaces` などです。
-3. **（任意）再利用前段を用意する**。ログインなどを `setup:` シナリオに切り出し、その steps を各シナリオの本編前に実行します（app 単位かシナリオ単位で指定）。
+2. **`targets.<name>` を追加する**。`platform` と `app.id`（どちらも必須で、web のターゲットでは `app.url`）に加え、必要に応じて `app.launch.env` や `app.idNamespaces` などを書きます。
+3. **（任意）共通のセットアップを用意する**。ログインなどをコンポーネントのファイルに切り出し、ターゲットの `hooks.setup` から `use: { component: <file> }` で呼びます。すると、各シナリオ自身のステップより前に実行されます。シナリオは `preconditions.run.inheritSetup: false` でこれを外せます。
 4. **`bajutsu doctor --target <name>` で検証する**。規約充足度スコアを見ます（下記）。
 5. **シナリオを配置する**。識別子はそのアプリの名前空間で書きます。
 
@@ -299,7 +388,7 @@ showcase の id カタログは [showcase](showcase.md)（全体は `demos/showc
 
 実装: `bajutsu/common/doctor.py`。**AI 非依存で決定的**です。1 画面の `query()`（CLI は actuator で取得した現在画面）を解析してスコアを出します。
 
-> `doctor` はまず**実行可能ゲート**（`preflight.py`）を確認し、その後でスコアを出します。ゲートが確認する内容は、選んだバックエンドが必要とするものです。iOS（XCUITest）バックエンドなら `xcodebuild` / `xcrun`、および起動済みシミュレータ。web（Playwright）バックエンドなら Playwright パッケージとその Chromium ブラウザ（`uv sync --extra web` と `playwright install chromium`）です。続いて現在画面を採点します。web ターゲットでは新しいブラウザをターゲットの `baseUrl` に遷移させてそのページを採点し、iOS では起動済みシミュレータの画面を採点します。スコアの対象は、依然として現在表示されている画面だけです（入口や現在画面のみで、全画面は網羅しません）。
+> `doctor` はまず**実行可能ゲート**（`preflight.py`）を確認し、その後でスコアを出します。ゲートが確認する内容は、選んだバックエンドが必要とするものです。iOS（XCUITest）バックエンドなら `xcodebuild` / `xcrun`、および起動済みシミュレータ。web（Playwright）バックエンドなら Playwright パッケージとその Chromium ブラウザ（`uv sync --extra web` と `playwright install chromium`）です。続いて現在画面を採点します。web ターゲットでは新しいブラウザをターゲットの `app.url` に遷移させてそのページを採点し、iOS では起動済みシミュレータの画面を採点します。スコアの対象は、依然として現在表示されている画面だけです（入口や現在画面のみで、全画面は網羅しません）。
 
 ### 指標（`Score`）
 
@@ -317,15 +406,14 @@ showcase の id カタログは [showcase](showcase.md)（全体は `demos/showc
 - **Ready**: `idCoverage` ≥ `idCoverageOk`（既定 0.9）**かつ** `namespaceConformance` == 1.0。
 - **Partial**: それ以外（実行はできるが、座標フォールバックやフレーキーの予告）。
 
-### しきい値の設定（`defaults.doctor`、BE-0024）
+### しきい値の設定（`doctor`、BE-0024）
 
-グレード判定に使う id カバレッジのしきい値は `defaults.doctor` で変更できます。テスト用 id を付ける必要のない装飾的要素が多いアプリでは、しきい値を下げる（`idCoverageOk` や `idCoverageFail` を低めに設定する）ことで、ツール本体を変更せずに判定を緩められます。
+グレード判定に使う id カバレッジのしきい値は、トップレベルの `doctor` ブロックで変更できます。テスト用 id を付ける必要のない装飾的要素が多いアプリでは、しきい値を下げる（`idCoverageOk` や `idCoverageFail` を低めに設定する）ことで、ツール本体を変更せずに判定を緩められます。
 
 ```yaml
-defaults:
-  doctor:
-    idCoverageOk:   0.85   # 既定 0.9。カバレッジがこの値以上で "Ready" の候補になります
-    idCoverageFail: 0.6    # 既定 0.7。カバレッジがこの値未満で "Blocked" になります
+doctor:
+  idCoverageOk:   0.85   # 既定 0.9。カバレッジがこの値以上で "Ready" の候補になります
+  idCoverageFail: 0.6    # 既定 0.7。カバレッジがこの値未満で "Blocked" になります
 ```
 
 両方とも [0, 1] の範囲で指定し、`idCoverageOk` は `idCoverageFail` 以上でなければなりません。範囲外の値は config 読み込み時に拒否されます。省略すると既定値（0.9 / 0.7）が適用されるため、既存の config はそのまま動きます。

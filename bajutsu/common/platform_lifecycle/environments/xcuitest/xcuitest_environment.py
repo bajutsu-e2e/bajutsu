@@ -352,18 +352,18 @@ class XcuitestEnvironment(_DeviceEnvironment):
             if pre.erase:
                 raise simctl.DeviceError(
                     "erase is a simctl operation and does not apply to a real device "
-                    "(xcuitest.deviceType: device)"
+                    "(runsOn.kind: device)"
                 )
             if ios.app_path:
                 raise simctl.DeviceError(
-                    "installing appPath through simctl does not apply to a real device "
-                    "(xcuitest.deviceType: device); install the app and its device-build test "
+                    "installing app.path through simctl does not apply to a real device "
+                    "(runsOn.kind: device); install the app and its device-build test "
                     "runner out of band"
                 )
             if permissions:
                 raise simctl.DeviceError(
                     "permission grants use simctl and do not apply to a real device "
-                    "(xcuitest.deviceType: device)"
+                    "(runsOn.kind: device)"
                 )
             return self._spawn_cold(eff, pre, device_type, extra_env, permissions)
 
@@ -828,26 +828,28 @@ class XcuitestEnvironment(_DeviceEnvironment):
         Raises:
             DeviceError: if no replacement can be created — chiefly a host that lost its iOS runtimes
                 along with the device, where there is nothing left to run on — or if the target
-                configures no `appPath`, since a blank replacement would have no app to install.
+                configures no `app.path`, since a blank replacement would have no app to install.
         """
         old = self._udid
-        # A replacement is a blank device, so without an `appPath` to install onto it the retry has
+        # A replacement is a blank device, so without an `app.path` to install onto it the retry has
         # nothing to launch: say so here rather than spending the create, the boot and a full cold
         # ceiling proving it.
         if require_ios(eff).app_path is None:
             raise simctl.DeviceError(
-                f"Simulator {old} {why} and this target configures no appPath, so a replacement "
-                "device would have no app to launch; set appPath so the recovery can install it, "
+                f"Simulator {old} {why} and this target configures no app.path, so a replacement "
+                "device would have no app to launch; set app.path so the recovery can install it, "
                 "or bring a fresh Simulator up with the app installed and re-run"
             )
-        device_type = self._replacement_device_type(eff)
-        if device_type is None:
+        if self._device_type_id is None or self._device_runtime_id is None:
+            # A replacement of another model or OS would change what the run observes, so one that
+            # cannot keep the vanished device's own type and runtime fails rather than guesses
+            # (BE-0452).
             raise simctl.DeviceError(
-                f"Simulator {old} {why} and no device type matching {eff.device} is available to "
-                "replace it; the host's Simulator runtimes may be gone, or the configured device "
-                "name doesn't exactly match a simctl device type"
+                f"Simulator {old} {why} and its device type and runtime were never read, so no "
+                "replacement of the same model and OS can be created; bring a fresh Simulator up "
+                "and re-run"
             )
-        return device_type
+        return self._device_type_id
 
     def _create_replacement(self, device_type: str) -> str:
         """Create, boot, and adopt a fresh Simulator of `device_type`; the diagnostic note.
@@ -882,8 +884,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # operator reading `simctl list` afterwards tell which recovery minted which device.
         name = f"{simctl.device_type_label(device_type)} (bajutsu-recovered-{old})"
         # Pinning the replaced device's own runtime keeps the replacement on the same iOS version a
-        # scenario was written against; `create_device` retries unpinned if that runtime is itself
-        # gone, so this only trades away version fidelity in the case it has to.
+        # scenario was written against; when that runtime is itself gone, the create fails the run.
         requested_runtime = self._device_runtime_id
         replacement = simctl.create_device(
             device_type, self._run, name=name, runtime=requested_runtime
@@ -892,36 +893,11 @@ class XcuitestEnvironment(_DeviceEnvironment):
         self._replaced_from = old
         self._pinned_locale = None  # a fresh device: nothing has pinned its SpringBoard yet
         self._installed_app_digest = None  # a fresh device: nothing is installed on it yet
-        # Cleared, not set: `create_device` falls back to an unpinned create when the pinned runtime
-        # is gone, so what it got is not necessarily what was asked for. `_finish_repair`'s prep
-        # re-reads both from the replacement itself.
+        # Cleared, not set: `_finish_repair`'s prep re-reads both from the replacement itself, so the
+        # recorded facts come from the device rather than from what was asked for.
         self._device_type_id = self._device_runtime_id = None
         self._await_boot()
-        return (
-            f"created replacement {replacement} "
-            f"({device_type}, requested runtime {requested_runtime or 'any'})"
-        )
-
-    def _replacement_device_type(self, eff: Effective) -> str | None:
-        """The device type a replacement is created from, or None when no matching type is available.
-
-        Prefers the vanished device's own type, so the replacement is the device the run was written
-        against; falls back to the configured model, then — only for an iPhone target — to whichever
-        iPhone this host's Xcode ships, since the config may name a model a later Xcode dropped and
-        any iPhone beats failing the run. The fallback is scoped to an iPhone target because it is not
-        scoped to a device *class*: `eff.device` matches simctl's device-type name exactly, and an
-        iPad's name carries parentheses (`iPad Pro (12.9-inch) (6th generation)`), so a near-miss is
-        ordinary rather than exotic — substituting an iPhone for a missed iPad would finish the run on
-        a layout the scenario was never written against, silently.
-        """
-        if self._device_type_id is not None:
-            return self._device_type_id
-        configured = simctl.device_type_identifier(eff.device, self._run)
-        if configured is not None:
-            return configured
-        if "iphone" not in eff.device.lower():
-            return None
-        return simctl.newest_iphone_device_type(self._run)
+        return f"created replacement {replacement} ({device_type}, runtime {requested_runtime})"
 
     def _spawn_runner(
         self, runner_path: Path, forwarded_base: Mapping[str, str], device_type: str
@@ -1164,7 +1140,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
                 app_path = Path(ios.app_path)
                 if not app_path.exists():
                     raise simctl.DeviceError(
-                        f"appPath not found: {ios.app_path} (build the app first)"
+                        f"app.path not found: {ios.app_path} (build the app first)"
                     )
                 if clean_reinstall:
                     e.uninstall(ios.bundle_id)
@@ -1615,7 +1591,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
         if not app_path:
             return
         if not Path(app_path).exists():
-            raise simctl.DeviceError(f"appPath not found: {app_path} (build the app first)")
+            raise simctl.DeviceError(f"app.path not found: {app_path} (build the app first)")
         if pre.reinstall == "clean":
             e.uninstall(bundle_id)
         e.install(app_path)
@@ -1631,7 +1607,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
         """
         ios = require_ios(eff)
         if not ios.app_path or not Path(ios.app_path).exists():
-            raise simctl.DeviceError(f"appPath not found: {ios.app_path} (build the app first)")
+            raise simctl.DeviceError(f"app.path not found: {ios.app_path} (build the app first)")
         e = simctl.Env(self._udid, run=self._run)
         try:
             e.terminate(ios.bundle_id)
@@ -1688,11 +1664,11 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # group shares keeps the old behaviour, with no wait at all.
         if driver is None or (self._group is None and not launched):
             return
-        # `readyWhen` names the app's launch screen, so it gates a launch alone: a resumed app comes
+        # `startWhen` names the app's launch screen, so it gates a launch alone: a resumed app comes
         # back on whatever screen it left, and waiting there for the launch screen would time out.
         result = readiness.await_ready(
             driver,
-            ready_sel=eff.ready_when if launched else None,
+            ready_sel=eff.start_when if launched else None,
             id_namespaces=eff.id_namespaces,
         )
         if not result.ready and self._group is not None:
@@ -1947,7 +1923,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
         it. Every cold spawn that leaves one behind narrows what the next spawn can obtain, which is
         one way a device reaches the state where the runner never comes up at all. The ids come from
         the resolved `.xctestrun` (`_runner_host_bundle_ids`) rather than the bundled runner's known
-        id, so an explicit `xcuitest.testRunner` is cleaned up just as readily. Failures are ignored
+        id, so an explicit `driver.runner.testRunner` is cleaned up just as readily. Failures are ignored
         for the same reason as the app under test: the common case is one that is not running — and
         a deadline exceeded is excluded for that same reason, being a wedged device rather than an
         absent app (BE-0363).
@@ -2001,7 +1977,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
         if not found.addresses:
             raise simctl.DeviceError(
                 "the network collector needs a host address a real device can reach, and none was "
-                f"found ({found.source}); set xcuitest.hostAddress or {HOST_ADDRESS_ENV}"
+                f"found ({found.source}); set driver.runner.hostAddress or {HOST_ADDRESS_ENV}"
             )
         return CollectorHost(bind="::", advertised=found.addresses)
 

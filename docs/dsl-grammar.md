@@ -122,10 +122,10 @@ Scenario ::= {
   data?:           list(map(string,string)),# inline rows   ┐ XOR
   dataFile?:       string,                  # CSV path      ┘ (§6.3)
   preconditions?:  <Preconditions>,         # default {}
-  before?:         list(<Step>),            # default []  — setup phase run ahead of `steps`, reported apart from it (BE-0392); the target config's own precede these
+  before?:         list(<Step>),            # default []  — setup phase run ahead of `steps`, reported apart from it (BE-0392); each declared target's `hooks.setup` precede these
   steps:           list(<Step>),            # required
   expect?:         list(<Assertion>),       # default []  — final checks
-  after?:          list(<AfterRule>),       # default []  — teardown rules run once the verdict exists (BE-0392); the target config's own follow these
+  after?:          list(<AfterRule>),       # default []  — teardown rules run once the verdict exists (BE-0392); each declared target's `hooks.cleanup` follow these
   capturePolicy?:  list(<CaptureRule>),     # default []
   network?:        <Network>,
   mocks?:          list(<Mock>),            # default []
@@ -133,7 +133,7 @@ Scenario ::= {
   systemAlertHandling?: <SystemAlertHandling>,  # alert guard; on when unset
   iosTipKitHandling?: <bool>,                   # dismiss a blocking TipKit tip; off when unset (iOS only)
   permissions?:    <Permissions>,           # pre-launch OS permission state; default {}
-  interrupts?:     list(<Interrupt>),       # default []  — handlers for interstitials that surface at an unpredictable point (BE-0314), appended after the target config's own
+  interrupts?:     list(<Interrupt>),       # default []  — handlers for interstitials that surface at an unpredictable point (BE-0314), appended after the target's `hooks.interrupts`
 }
 
 Component ::= { params?: list(string), steps: list(<Step>) }
@@ -150,13 +150,13 @@ AfterRule ::= { on: "always" | "success" | "error", steps: list(<Step>) }
 
 # ── Preconditions ──────────────────────────────────────────────────────
 Preconditions ::= {
-  erase?:      boolean,                     # unset inherits the target config's erase, else off (BE-0177); simctl erase first
-  reinstall?:  ("clean" | "overwrite"),     # default "clean" — app reinstall when config sets appPath
+  erase?:      boolean,                     # unset inherits the target's `run.erase`, else off (BE-0177); simctl erase first
+  reinstall?:  ("clean" | "overwrite"),     # default "clean" — app reinstall when config sets `app.path`
   launchArgs?: list(string),                # default []
   launchEnv?:  map(string,string),          # default {}    — injected as SIMCTL_CHILD_*
   deeplink?:   string,
   locale?:     string,
-  setup?:      string,                      # a reusable prelude file (§6.4)
+  run?:        { inheritSetup?: boolean },  # default true — false skips every declared target's `hooks.setup` (BE-0452); their cleanup still runs
 }
 
 # ── SystemAlertHandling (reactive system-alert guard; on by default) ───
@@ -432,7 +432,7 @@ error). This table is the **authoritative list of "exactly one / at least one / 
 | `Step.target` / `Assertion.target` (`expect` only) | omitted or matching the one entry when `len(target_names) ≤ 1`; **required** — including on an `if`/`forEach`/`web` wrapper, not only a leaf action — naming a declared target, when `len(target_names) ≥ 2` and `primaryTarget` is unset; **optional** when `len(target_names) ≥ 2` and `primaryTarget` is set, an omitted one running against the primary at every nesting depth (BE-0436) — the current primary, which a `setPrimaryTarget` step moves (BE-0447); **rejected** on a step nested inside `web:`, and on an `Assertion` reached through an inline `assert:` list, an `if`'s `condition`, or an `interrupts` entry's `condition` (BE-0428) | `scenario/models/scenario/_targets.py` |
 | `Step.target` on a `use:` / `group:` step | **optional** at any `len(target_names)`, even with no `primaryTarget`, and never resolved itself; one that is set must name a declared target. Expansion stamps it onto every step the call produces that omits one, and refuses a produced step naming a different target (BE-0446) | `scenario/models/scenario/_targets.py`, `scenario/expand.py` |
 | `Interrupt.target`, and `Step.target` in an `interrupts` entry's `steps` | **optional** at any `len(target_names)`, regardless of `primaryTarget`: an omitted entry `target` watches the primary target, and an omitted recovery-step `target` runs on the entry's own target (or an enclosing `if`/`forEach` step's when that step names one); a value that is set follows the `Step.target` rule above for naming a declared target (BE-0438) | `scenario/models/scenario/_targets.py` |
-| `Interrupt.target`, and `Step.target` in its `steps`, under `targets.<name>.interrupts` | **rejected** — the entry already belongs to the target that config block configures (BE-0438) | `config/schema/target_config.py` |
+| `Interrupt.target`, and `Step.target` in its `steps`, under `targets.<name>.hooks.interrupts` | **rejected** — the entry already belongs to the target that config block configures (BE-0438) | `config/schema/target_config.py` |
 | every mapping | **no unknown keys** (`extra="forbid"`) | `scenario/models/_base.py` |
 
 `exists` is special: its selector is written **inline** (`exists: { id: home.title }`), and an
@@ -448,11 +448,12 @@ Omitted optional keys take these values (so a minimal scenario is just `name` + 
 | Field | Default |
 |---|---|
 | `Scenario.tags` / `expect` / `capturePolicy` / `mocks` / `interrupts` / `before` / `after` | `[]` |
-| `Scenario.preconditions` | `{}` (i.e. `erase` unset — off unless the target config says otherwise — and `reinstall: clean`) |
+| `Scenario.preconditions` | `{}` (i.e. `erase` unset — off unless the target's `run.erase` says otherwise — and `reinstall: clean`) |
 | `Scenario.systemAlertHandling` | unset (alert guard on, with no rules — so it answers no prompt of its own) |
 | `Scenario.iosTipKitHandling` | unset (off — a tip is sometimes the assertion; iOS only) |
 | `Scenario.permissions` | `{}` (no pre-launch permission state applied) |
-| `Preconditions.erase` | unset — inherits the target config's `erase`, else off (BE-0177) |
+| `Preconditions.erase` | unset — inherits the target's `run.erase`, else off (BE-0177) |
+| `Preconditions.run.inheritSetup` | `true` (every declared target's `hooks.setup` runs ahead of `before`) |
 | `Preconditions.reinstall` | `clean` |
 | `Preconditions.launchArgs` | `[]` |
 | `Preconditions.launchEnv` | `{}` |
@@ -495,7 +496,7 @@ trimmed). Substitution is **type-preserving at the edges**:
   only its own namespace.
 
 Namespaces: `params.*` (components, §6.2), `row.*` (data-driven, §6.3), `secrets.*` (declared
-via config `secrets:`, resolved from the environment by the run loop at action time, §6.4), and
+via config `run.secrets`, resolved from the environment by the run loop at action time, §6.4), and
 `vars.*` (runtime capture via `extract`, §6.5).
 
 ### 6.2 Components (`use` → reusable steps)
@@ -590,15 +591,16 @@ derived scenario is renamed `"<name> [row N: col=val, …]"` and **keeps the ori
     - label: { sel: { id: home.status }, equals: "${row.expect}" }
 ```
 
-### 6.4 `setup` preludes, secrets, and tag selection
+### 6.4 Shared setup, secrets, and tag selection
 
-- **`setup`** (a `Preconditions` key, or the app/config default): names a reusable scenario file
-  whose steps are **prepended** to this scenario's own (`apply_setups`, `scenario/expand.py`) — a shared
-  login / navigation flow written once. The prelude's own `use` steps expand **before** the splice,
-  in the prelude's own scope. Its bare names resolve against the prelude's `components:`, not the
-  calling file's (§6.5). A path ref inside a prelude resolves against the prelude's own directory
-  too.
-- **`secrets`** (declared in config as `secrets:` — a list of environment-variable names): each
+- **Shared setup**: a login / navigation flow written once is a component (§6.2). A `use` step
+  calls it from the scenario's own `before`, or from a target's `hooks.setup` in config. A target's
+  component resolves when the config loads, against the config file's directory. It must stay
+  inside the suite root (BE-0174).
+  [BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)
+  removed the former `preconditions.setup` prelude file.
+  A scenario that must not run its targets' `hooks.setup` sets `preconditions.run.inheritSetup: false`.
+- **`secrets`** (declared in config as `run.secrets` — a list of environment-variable names): each
   declared name `X` is resolved from `os.environ[X]` and bound to `${secrets.X}`, substituted into the
   executed step **at action time** (`cli/commands/run.py`, `orchestrator/substitution.py` `_interp_step`). The scenario keeps the
   `${secrets.X}` token, never the value, and the literal values are auto-masked in evidence
@@ -613,7 +615,6 @@ The load pipeline (`cli/commands/run.py`) applies these deterministically, in or
 ```
 load_scenarios        # parse + validate against this grammar
   → select_scenarios  # --tag / --exclude
-  → apply_setups      # prepend the setup prelude (already expanded in its own scope, §6.4)
   → expand_components  # `use` → component steps  (${params.*})
   → expand_data        # one scenario per row     (${row.*})
   → run               # the deterministic loop sees only expanded scenarios

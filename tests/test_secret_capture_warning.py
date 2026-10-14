@@ -13,18 +13,16 @@ import pytest
 from bajutsu.cli._shared import _warn_onscreen_secrets
 from bajutsu.common.config import load_config, resolve
 
-_WITH_SECRETS = """
-targets:
-  app:
-    bundleId: com.example.app
-    secrets: [LOGIN_PASSWORD, LOGIN_OTP]
-"""
+_WITH_SECRETS = (
+    "targets:\n"
+    "  app:\n"
+    "    platform: ios\n"
+    "    app: {id: com.example.app}\n"
+    "    run:\n"
+    "      secrets: [LOGIN_PASSWORD, LOGIN_OTP]\n"
+)
 
-_NO_SECRETS = """
-targets:
-  app:
-    bundleId: com.example.app
-"""
+_NO_SECRETS = "targets:\n  app:\n    platform: ios\n    app: {id: com.example.app}\n"
 
 
 def test_warns_when_secrets_bound(capsys: pytest.CaptureFixture[str]) -> None:

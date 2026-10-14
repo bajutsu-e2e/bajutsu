@@ -22,7 +22,7 @@ FLUTTER := $(HERE)/flutter
 RUNNER  := $(ROOT)/BajutsuKit/Runner
 
 # A built scheme lands at build/dd/Build/Products/Debug-iphonesimulator/<Scheme>.app,
-# which is exactly the appPath each iOS targets.<name> entry in showcase.config.yaml points to.
+# which is exactly the app.path each iOS targets.<name> entry in showcase.config.yaml points to.
 # (The Android targets' APKs are built by demos/showcase/android/Makefile — see SPEC §2.1.)
 define build_scheme
 	cd $(1) && xcodegen generate
@@ -393,7 +393,7 @@ SHOWCASE_WEB_PORT ?= 8789
 
 e2e-multi-target-web: swiftui-build runner-build
 	@grep -q "http://127.0.0.1:$(SHOWCASE_WEB_PORT)/index.html" $(CONFIG) || \
-	  { echo "SHOWCASE_WEB_PORT=$(SHOWCASE_WEB_PORT) does not match targets.web's baseUrl in $(CONFIG)" >&2; exit 1; }
+	  { echo "SHOWCASE_WEB_PORT=$(SHOWCASE_WEB_PORT) does not match targets.web's app.url in $(CONFIG)" >&2; exit 1; }
 	python3 -m http.server --directory $(ROOT)/demos/web/app $(SHOWCASE_WEB_PORT) >/dev/null 2>&1 & srv=$$!; \
 	trap 'kill $$srv 2>/dev/null' EXIT; \
 	ready=0; for i in $$(seq 1 100); do \

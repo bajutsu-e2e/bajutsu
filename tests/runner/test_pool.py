@@ -798,7 +798,7 @@ def test_device_pool_fails_before_any_device_work_without_a_host_address(
 
     def configure(env: _RecordingEnv) -> None:
         def _raise(eff: Effective) -> CollectorHost:
-            raise simctl.DeviceError("set xcuitest.hostAddress")
+            raise simctl.DeviceError("set driver.runner.hostAddress")
 
         env.collector_host = _raise  # type: ignore[method-assign]
 

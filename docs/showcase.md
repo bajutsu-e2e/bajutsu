@@ -32,7 +32,7 @@ The showcase makes visible the two axes on which Bajutsu's design rests:
   [`demos/showcase/scenarios/`](../demos/showcase/scenarios) runs unchanged against either. What
   differs is the element tree the backend sees, which is exactly what a cross-toolkit driver must absorb.
 - **Accessibility axis** (no suffix ↔ `-noax`) — the `-noax` builds carry **no** identifiers
-  (`idNamespaces: []`). They are the controlled experiment for selector stability (DESIGN §5): the
+  (`app.idNamespaces: []`). They are the controlled experiment for selector stability (DESIGN §5): the
   same goal recorded against both shows the value of accessibility work as a concrete diff, and they
   are the `record` / `doctor` "missing accessibility" subjects.
 
@@ -42,7 +42,7 @@ The four core iOS targets keep the original bundle ids
 (`com.bajutsu.showcase.ios.{swiftui,uikit}[.noax]`) and deeplink schemes
 (`showcase{swiftui,uikit}[noax]`). They build with XcodeGen + xcodebuild (`project.yml` is the
 source of truth; `.xcodeproj` / `build/` are gitignored). A fifth iOS target,
-`showcase-swiftui-bundled`, runs the same SwiftUI app with no `xcuitest:` sub-config. A Simulator
+`showcase-swiftui-bundled`, runs the same SwiftUI app with no `driver.runner` block. A Simulator
 run for it resolves to the wheel-bundled runner (BE-0292) instead of the locally built one, and
 `bajutsu doctor --target showcase-swiftui-bundled` reports which one that is. The remaining seven
 targets are the Android twins ([`android/`](../demos/showcase/android), Jetpack Compose and Views,
@@ -59,12 +59,12 @@ make -C demos/showcase run-flutter-android # the Flutter twin on Android: build 
 make -C demos/showcase/android e2e-codegen # the Android twin: scenario → UI Automator → connectedAndroidTest (needs a booted emulator, BE-0294)
 ```
 
-`bajutsu run` / `serve` also build the app on demand via each target's `build` command, so a manual
+`bajutsu run` / `serve` also build the app on demand via each target's `app.build` command, so a manual
 build is rarely needed.
 
 ## Launch-environment hooks
 
-Driven via `launchEnv` and passed as `SIMCTL_CHILD_<NAME>` ([drivers](drivers.md#environment-management-simctl)).
+Set in the target's `app.launch.env` or a scenario's `preconditions.launchEnv`. They reach the app as `SIMCTL_CHILD_<NAME>` ([drivers](drivers.md#environment-management-simctl)).
 BE-0079 removed the launch-env shortcuts to a *data state* and to a *pushed screen*: the catalog is
 fixed (no seed knob), and a deeplink no longer jumps onto a detail — a detail is reached only by
 tapping its row. BE-0107 finished the job by retiring `SHOWCASE_TAB`, the last launch-env shortcut to

@@ -50,7 +50,9 @@ def _macos_host(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("bajutsu.cli._shared.current_host_os", lambda: "darwin")
 
 
-_EFF = resolve(load_config("targets: { demo: { bundleId: com.example.demo } }"), "demo")
+_EFF = resolve(
+    load_config("targets:\n  demo:\n    platform: ios\n    app: {id: com.example.demo}\n"), "demo"
+)
 
 
 def _el(
@@ -912,11 +914,30 @@ def test_repl_needs_a_target() -> None:
 def _fake_config(tmp_path: Path) -> Path:
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "defaults: { backend: [fake] }\n"
-        "targets:\n  demo: { bundleId: com.example.demo, idNamespaces: [home] }\n",
-        encoding="utf-8",
+        "targets:\n  demo: { platform: fake, app: { id: com.example.demo } }\n", encoding="utf-8"
     )
     return cfg
+
+
+def _ios_config(tmp_path: Path) -> Path:
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "targets:\n  demo: { platform: ios, app: { id: com.example.demo } }\n", encoding="utf-8"
+    )
+    return cfg
+
+
+def _grid_worker(tmp_path: Path) -> Path:
+    """A worker.yaml whose `appium` environment hands the iOS targets its grid (BE-0452)."""
+    worker = tmp_path / "worker.yaml"
+    worker.write_text(
+        "version: 1\n"
+        "environment: appium\n"
+        "appium: { endpoint: 'https://grid.example/wd/hub', platform: ios }\n"
+        "drivers: [xcuitest, adb, playwright, fake]\n",
+        encoding="utf-8",
+    )
+    return worker
 
 
 def _stub_launch(
@@ -955,8 +976,14 @@ def test_repl_never_resolves_a_udid_for_the_web_backend(
     # resolve at all, so the guard must skip the call rather than merely tolerate its result.
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "defaults: { backend: [playwright] }\n"
-        "targets:\n  demo: { baseUrl: 'http://localhost:9999', idNamespaces: [home] }\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: web\n"
+            "    app:\n"
+            "      url: http://localhost:9999\n"
+            "      idNamespaces: [home]\n"
+        ),
         encoding="utf-8",
     )
     monkeypatch.setattr("bajutsu.cli._shared.ensure_web_runtime", lambda *a, **k: None)
@@ -1011,7 +1038,7 @@ def test_repl_resolves_a_udid_through_the_selected_environment_for_adb(
 def test_repl_defaults_to_no_erase_on_the_live_webdriver_route(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # The live `--udid https://…` route's device is already booted with its build installed
+    # The live route's device behind an `appium` grid is already booted with its build installed
     # (BE-0238); its environment explicitly rejects `Preconditions(erase=True)`, so an unset
     # `--erase` must default to off there rather than the local route's on.
     monkeypatch.setattr("bajutsu.cli._shared.select_actuator", lambda *a, **k: "xcuitest")
@@ -1034,10 +1061,10 @@ def test_repl_defaults_to_no_erase_on_the_live_webdriver_route(
             "repl",
             "--target",
             "demo",
-            "--udid",
-            "https://grid.example/wd/hub",
+            "--worker-config",
+            str(_grid_worker(tmp_path)),
             "--config",
-            str(_fake_config(tmp_path)),
+            str(_ios_config(tmp_path)),
         ],
         input="exit\n",
     )
@@ -1066,11 +1093,11 @@ def test_repl_rejects_explicit_erase_on_the_live_webdriver_route(
             "repl",
             "--target",
             "demo",
-            "--udid",
-            "https://grid.example/wd/hub",
+            "--worker-config",
+            str(_grid_worker(tmp_path)),
             "--erase",
             "--config",
-            str(_fake_config(tmp_path)),
+            str(_ios_config(tmp_path)),
         ],
     )
     assert result.exit_code == 2
@@ -1255,11 +1282,12 @@ def test_a_teardown_failure_never_masks_a_real_bug_from_the_session(
 # --- `--attach`: connect to the app already running on a booted Simulator (BE-0455) -----------
 
 
-def _attach_config(tmp_path: Path, xcuitest: str = "") -> Path:
+def _attach_config(tmp_path: Path, runs_on: str = "") -> Path:
     cfg = tmp_path / "bajutsu.config.yaml"
-    extra = f", xcuitest: {{ {xcuitest} }}" if xcuitest else ""
+    extra = f", runsOn: {{ {runs_on} }}" if runs_on else ""
     cfg.write_text(
-        f"targets:\n  demo: {{ bundleId: com.example.demo, idNamespaces: [home]{extra} }}\n",
+        "targets:\n"
+        f"  demo: {{ platform: ios, app: {{ id: com.example.demo, idNamespaces: [home] }}{extra} }}\n",
         encoding="utf-8",
     )
     return cfg
@@ -1387,12 +1415,12 @@ def _refuse_device_access(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.parametrize(
-    ("actuator", "args", "xcuitest"),
+    ("actuator", "args", "runs_on"),
     [
         ("adb", [], ""),
         ("playwright", [], ""),
-        ("xcuitest", ["--udid", "https://grid.example/wd/hub"], ""),
-        ("xcuitest", [], "deviceType: device"),
+        ("xcuitest", ["--worker-config", "GRID"], ""),
+        ("xcuitest", [], "kind: device"),
     ],
 )
 def test_attach_outside_the_local_simulator_exits_2_before_any_device_is_touched(
@@ -1400,11 +1428,12 @@ def test_attach_outside_the_local_simulator_exits_2_before_any_device_is_touched
     monkeypatch: pytest.MonkeyPatch,
     actuator: str,
     args: list[str],
-    xcuitest: str,
+    runs_on: str,
 ) -> None:
     monkeypatch.setattr("bajutsu.cli._shared.select_actuator", lambda *a, **k: actuator)
     _refuse_device_access(monkeypatch)
-    cfg = _attach_config(tmp_path, xcuitest)
+    args = [str(_grid_worker(tmp_path)) if a == "GRID" else a for a in args]
+    cfg = _attach_config(tmp_path, runs_on)
     result = runner.invoke(
         app, ["repl", "--target", "demo", "--attach", *args, "--config", str(cfg)]
     )

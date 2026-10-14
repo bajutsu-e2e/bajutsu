@@ -9,6 +9,8 @@ computed (prime directive 1).
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from _orch import FakeClock, _scenario
 from conftest import el
@@ -16,7 +18,7 @@ from pydantic import ValidationError
 
 from bajutsu.common.cancellation import RunCancelled, cancelled_teardown_seconds, grace_seconds
 from bajutsu.common.capability.capability_preflight import unsupported
-from bajutsu.common.config import load_config, resolve
+from bajutsu.common.config import load_config, load_config_file, resolve
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.orchestrator import run_scenario
@@ -82,16 +84,17 @@ def test_unknown_outcome_word_is_rejected() -> None:
 
 def test_target_config_carries_both_phases() -> None:
     cfg = load_config(
-        """
-targets:
-  app:
-    bundleId: com.example.app
-    before:
-      - tap: { id: a }
-    after:
-      - on: always
-        steps: [{ tap: { id: c } }]
-"""
+        "targets:\n"
+        "  app:\n"
+        "    platform: ios\n"
+        "    app: {id: com.example.app}\n"
+        "    hooks:\n"
+        "      setup:\n"
+        "      - tap: {id: a}\n"
+        "      cleanup:\n"
+        "      - 'on': always\n"
+        "        steps:\n"
+        "        - tap: {id: c}\n"
     )
     eff = resolve(cfg, "app")
     assert len(eff.run_defaults.before) == 1
@@ -290,46 +293,58 @@ def test_a_failing_rule_does_not_skip_the_remaining_cleanup() -> None:
 # --- the two merge orders (Unit 2) ----------------------------------------------------------
 
 
-_MERGE_CONFIG = """
-targets:
-  app:
-    bundleId: com.example.app
-    before:
-      - tap: { id: a }
-    after:
-      - on: always
-        steps: [{ tap: { id: b } }]
-"""
+_MERGE_CONFIG = (
+    "targets:\n"
+    "  app:\n"
+    "    platform: ios\n"
+    "    app: {id: com.example.app}\n"
+    "    hooks:\n"
+    "      setup:\n"
+    "      - tap: {id: a}\n"
+    "      cleanup:\n"
+    "      - 'on': always\n"
+    "        steps:\n"
+    "        - tap: {id: b}\n"
+)
 
 
-_WEB_HOOKS_CONFIG = """
-targets:
-  app:
-    bundleId: com.example.app
-    before:
-      - tap: { id: a }
-    after:
-      - on: always
-        steps: [{ tap: { id: b } }]
-  web:
-    baseUrl: http://localhost:1/
-    before:
-      - tap: { id: w }
-    after:
-      - on: always
-        steps: [{ tap: { id: z } }]
-"""
+_WEB_HOOKS_CONFIG = (
+    "targets:\n"
+    "  app:\n"
+    "    platform: ios\n"
+    "    app: {id: com.example.app}\n"
+    "    hooks:\n"
+    "      setup:\n"
+    "      - tap: {id: a}\n"
+    "      cleanup:\n"
+    "      - 'on': always\n"
+    "        steps:\n"
+    "        - tap: {id: b}\n"
+    "  web:\n"
+    "    platform: web\n"
+    "    app: {url: 'http://localhost:1/'}\n"
+    "    hooks:\n"
+    "      setup:\n"
+    "      - tap: {id: w}\n"
+    "      cleanup:\n"
+    "      - 'on': always\n"
+    "        steps:\n"
+    "        - tap: {id: z}\n"
+)
 
-_STRAY_TARGET_HOOK_CONFIG = """
-targets:
-  app:
-    bundleId: com.example.app
-    before:
-      - target: staging
-        tap: { id: a }
-  web:
-    baseUrl: http://localhost:1/
-"""
+_STRAY_TARGET_HOOK_CONFIG = (
+    "targets:\n"
+    "  app:\n"
+    "    platform: ios\n"
+    "    app: {id: com.example.app}\n"
+    "    hooks:\n"
+    "      setup:\n"
+    "      - target: staging\n"
+    "        tap: {id: a}\n"
+    "  web:\n"
+    "    platform: web\n"
+    "    app: {url: 'http://localhost:1/'}\n"
+)
 
 
 def _merged(scenario: dict[str, object]) -> Scenario:
@@ -357,7 +372,10 @@ def test_after_merges_the_scenarios_own_first_then_config() -> None:
 
 
 def test_a_config_with_no_phases_leaves_the_scenarios_untouched() -> None:
-    eff = resolve(load_config("targets:\n  app:\n    bundleId: com.example.app\n"), "app")
+    eff = resolve(
+        load_config("targets:\n  app:\n    platform: ios\n    app: {id: com.example.app}\n"),
+        "app",
+    )
     scenarios = [_scenario({"name": "s", "steps": [{"tap": {"id": "a"}}]})]
     assert with_lifecycle_phases(eff, scenarios) is scenarios
 
@@ -406,31 +424,35 @@ def test_folding_config_hooks_re_checks_target_requirements() -> None:
         with_lifecycle_phases(effs["app"], [scenario], effs)
 
 
-_NESTED_HOOK_CONFIG = """
-targets:
-  a:
-    bundleId: com.example.app
-  b:
-    baseUrl: http://localhost:1/
-    before:
-      - if:
-          condition: { exists: { id: x } }
-          then:
-            - tap: { id: omitted }
-            - target: a
-              tap: { id: named }
-          else:
-            - tap: { id: else_step }
-      - forEach:
-          sel: { idMatches: "row.*" }
-          as: row
-          steps:
-            - tap: { id: for_each_step }
-      - web:
-          within: { id: webview }
-          steps:
-            - tap: { id: web_step }
-"""
+_NESTED_HOOK_CONFIG = (
+    "targets:\n"
+    "  a:\n"
+    "    platform: ios\n"
+    "    app: {id: com.example.app}\n"
+    "  b:\n"
+    "    platform: web\n"
+    "    app: {url: 'http://localhost:1/'}\n"
+    "    hooks:\n"
+    "      setup:\n"
+    "      - if:\n"
+    "          condition:\n"
+    "            exists: {id: x}\n"
+    "          then:\n"
+    "          - tap: {id: omitted}\n"
+    "          - target: a\n"
+    "            tap: {id: named}\n"
+    "          else:\n"
+    "          - tap: {id: else_step}\n"
+    "      - forEach:\n"
+    "          sel: {idMatches: row.*}\n"
+    "          as: row\n"
+    "          steps:\n"
+    "          - tap: {id: for_each_step}\n"
+    "      - web:\n"
+    "          within: {id: webview}\n"
+    "          steps:\n"
+    "          - tap: {id: web_step}\n"
+)
 
 
 def _fold_nested_hook(targets: list[str]) -> Scenario:
@@ -658,19 +680,73 @@ def test_a_use_step_inside_either_phase_is_expanded() -> None:
     assert [o.action for o in r.after_outcomes] == ["tap"]
 
 
-def test_an_app_wide_phase_cannot_use_a_component() -> None:
-    # `use` is expanded per scenario file, which a target config never passes through: an app-wide
-    # one would reach the step loop with no action and abort the whole run rather than fail one
-    # scenario. Rejected at load, loudly, instead of degrading mid-run.
-    with pytest.raises(ValidationError, match="cannot use a component"):
+def _hooks_config(tmp_path: Path, hooks: str) -> Path:
+    """A config file in *tmp_path* whose `app` target carries *hooks*, for `load_config_file`."""
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "targets:\n  app:\n    platform: ios\n    app: {id: com.example.app}\n    hooks:\n" + hooks,
+        encoding="utf-8",
+    )
+    return cfg
+
+
+def test_an_app_wide_phase_resolves_a_component_against_the_config_file(tmp_path: Path) -> None:
+    # BE-0452: a target's hooks may call a component, resolved when the config loads against the
+    # config file's directory, so no `use:` reaches the step loop unexpanded.
+    (tmp_path / "components").mkdir()
+    (tmp_path / "components" / "login.yaml").write_text(
+        "params: [user]\nsteps:\n  - type: { text: '${params.user}', into: { id: login.user } }\n"
+        "  - tap: { id: login.go }\n",
+        encoding="utf-8",
+    )
+    cfg = _hooks_config(
+        tmp_path,
+        "      setup:\n"
+        "      - use: { component: components/login.yaml, with: { user: alice } }\n"
+        "      cleanup:\n"
+        "      - 'on': always\n"
+        "        steps:\n"
+        "        - use: { component: components/login.yaml, with: { user: bob } }\n",
+    )
+    eff = resolve(load_config_file(cfg), "app")
+    setup = eff.run_defaults.before
+    assert [st.use for st in setup] == [None, None]
+    assert setup[0].type is not None and setup[0].type.text == "alice"  # `with` at load
+    assert eff.run_defaults.after[0].steps[0].type is not None
+
+
+def test_a_component_in_hooks_needs_the_config_files_path() -> None:
+    # A document with no file has nothing to resolve a component against, so it fails loudly.
+    with pytest.raises(ValidationError, match="loaded without its path"):
         load_config(
             "targets:\n"
             "  app:\n"
-            "    bundleId: com.example.app\n"
-            "    after:\n"
-            "      - on: always\n"
-            "        steps: [{ use: { component: c } }]\n"
+            "    platform: ios\n"
+            "    app: {id: com.example.app}\n"
+            "    hooks:\n"
+            "      cleanup:\n"
+            "      - 'on': always\n"
+            "        steps:\n"
+            "        - use: {component: c.yaml}\n"
         )
+
+
+def test_a_hooks_component_cannot_escape_the_suite_root(tmp_path: Path) -> None:
+    # The same containment `contained_ref` gives a scenario's refs (BE-0174): a config serve
+    # receives untrusted cannot read beyond its tree.
+    (tmp_path / "secret.yaml").write_text("steps:\n  - tap: { id: TOP }\n", encoding="utf-8")
+    suite = tmp_path / "suite"
+    suite.mkdir()
+    cfg = _hooks_config(suite, "      setup:\n      - use: { component: ../secret.yaml }\n")
+    with pytest.raises(ValidationError, match="outside the suite root"):
+        load_config_file(cfg)
+
+
+def test_a_hooks_component_cannot_bring_in_a_stub_swap(tmp_path: Path) -> None:
+    (tmp_path / "swap.yaml").write_text("steps:\n  - setMocks: []\n", encoding="utf-8")
+    cfg = _hooks_config(tmp_path, "      setup:\n      - use: { component: swap.yaml }\n")
+    with pytest.raises(ValidationError, match=r"cannot use setMocks \(through a component\)"):
+        load_config_file(cfg)
 
 
 def test_an_app_wide_phase_cannot_use_a_group() -> None:
@@ -679,25 +755,27 @@ def test_an_app_wide_phase_cannot_use_a_group() -> None:
         load_config(
             "targets:\n"
             "  app:\n"
-            "    bundleId: com.example.app\n"
-            "    before:\n"
-            "      - group: { name: setup, steps: [{ tap: { id: a } }] }\n"
+            "    platform: ios\n"
+            "    app: {id: com.example.app}\n"
+            "    hooks:\n"
+            "      setup:\n"
+            "      - group:\n"
+            "          name: setup\n"
+            "          steps:\n"
+            "          - tap: {id: a}\n"
         )
 
 
-def test_a_use_hidden_inside_an_app_wide_hooks_target_group_is_caught_too() -> None:
-    # BE-0437: a target group is never flattened at `TargetConfig`-parse time either, so a `use:`
-    # one level inside it is exactly as unresolvable as a bare one above — the same load-time
-    # refusal must see through it.
-    with pytest.raises(ValidationError, match="cannot use a component"):
-        load_config(
-            "targets:\n"
-            "  app:\n"
-            "    bundleId: com.example.app\n"
-            "    before:\n"
-            "      - target: app\n"
-            "        steps: [{ use: { component: c } }]\n"
-        )
+def test_a_use_inside_an_app_wide_hooks_target_group_is_resolved_too(tmp_path: Path) -> None:
+    # BE-0437: a target group is never flattened at `TargetConfig`-parse time, so the resolution
+    # must still reach a `use:` one level inside it.
+    (tmp_path / "c.yaml").write_text("steps:\n  - tap: { id: from.c }\n", encoding="utf-8")
+    cfg = _hooks_config(
+        tmp_path,
+        "      setup:\n      - target: app\n        steps:\n        - use: {component: c.yaml}\n",
+    )
+    setup = resolve(load_config_file(cfg), "app").run_defaults.before
+    assert not any(st.use is not None for top in setup for st in [top, *(top.steps or [])])
 
 
 def test_a_group_hidden_inside_an_app_wide_hooks_target_group_is_caught_too() -> None:
@@ -706,26 +784,34 @@ def test_a_group_hidden_inside_an_app_wide_hooks_target_group_is_caught_too() ->
         load_config(
             "targets:\n"
             "  app:\n"
-            "    bundleId: com.example.app\n"
-            "    before:\n"
+            "    platform: ios\n"
+            "    app: {id: com.example.app}\n"
+            "    hooks:\n"
+            "      setup:\n"
             "      - target: app\n"
-            "        steps: [{ group: { name: setup, steps: [{ tap: { id: a } }] } }]\n"
+            "        steps:\n"
+            "        - group:\n"
+            "            name: setup\n"
+            "            steps:\n"
+            "            - tap: {id: a}\n"
         )
 
 
-def test_an_app_wide_phase_rejects_use_nested_inside_if() -> None:
-    # BE-0438 review: the walker descends into `if`/`forEach`/`web`/`app` too, so a `use:` nested
-    # under one of those still loads cleanly rather than reaching the step loop unexpanded.
-    with pytest.raises(ValidationError, match="cannot use a component"):
-        load_config(
-            "targets:\n"
-            "  app:\n"
-            "    bundleId: com.example.app\n"
-            "    before:\n"
-            "      - if:\n"
-            "          condition: { exists: { id: a } }\n"
-            "          then: [{ use: { component: c } }]\n"
-        )
+def test_an_app_wide_phase_resolves_a_use_nested_inside_if(tmp_path: Path) -> None:
+    # BE-0438 review: the resolution descends into `if`/`forEach`/`web`/`app` bodies too.
+    (tmp_path / "c.yaml").write_text("steps:\n  - tap: { id: from.c }\n", encoding="utf-8")
+    cfg = _hooks_config(
+        tmp_path,
+        "      setup:\n"
+        "      - if:\n"
+        "          condition:\n"
+        "            exists: {id: a}\n"
+        "          then:\n"
+        "          - use: {component: c.yaml}\n",
+    )
+    (step,) = resolve(load_config_file(cfg), "app").run_defaults.before
+    assert step.if_ is not None
+    assert [s.tap.id for s in step.if_.then if s.tap is not None] == ["from.c"]
 
 
 def test_the_capability_preflight_sees_a_hook_steps_construct() -> None:
@@ -765,15 +851,18 @@ def test_an_interval_capture_on_a_hook_step_opens_its_interval() -> None:
     assert set(requested_intervals(scenario)) == {"video", "deviceLog"}
 
 
-@pytest.mark.parametrize("field", ["before", "interrupts"])
+@pytest.mark.parametrize("field", ["setup", "interrupts"])
 def test_an_app_wide_phase_cannot_replace_the_stub_table(field: str) -> None:
     # `run` arms the control channel from a scenario's own steps (BE-0365 unit 4), so an app-wide
     # swap would reach the app unarmed; refused at load instead of timing out mid-run.
     step = "{ setMocks: [] }"
     block = (
-        f"    before:\n      - {step}\n"
-        if field == "before"
-        else f"    interrupts:\n      - condition: {{ exists: {{ id: x }} }}\n        steps: [{step}]\n"
+        f"    hooks:\n      setup:\n      - {step}\n"
+        if field == "setup"
+        else "    hooks:\n      interrupts:\n"
+        f"      - condition: {{ exists: {{ id: x }} }}\n        steps: [{step}]\n"
     )
     with pytest.raises(ValidationError, match="cannot use setMocks"):
-        load_config("targets:\n  app:\n    bundleId: com.example.app\n" + block)
+        load_config(
+            ("targets:\n  app:\n    platform: ios\n    app: {id: com.example.app}\n") + block
+        )

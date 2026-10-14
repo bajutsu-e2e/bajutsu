@@ -25,9 +25,11 @@ from bajutsu.serve import handler as handler_mod
 from bajutsu.serve.state import SessionManager
 
 _CONFIG = (
-    "defaults: { backend: [ios] }\n"
     "targets:\n"
-    "  demo: { bundleId: com.example.demo, scenarios: ./scenarios }\n"
+    "  demo:\n"
+    "    platform: ios\n"
+    "    app: {id: com.example.demo}\n"
+    "    paths: {scenarios: ./scenarios}\n"
 )
 _SCENARIO = "- name: alpha\n  steps:\n    - tap: { id: home.title }\n"
 
@@ -218,13 +220,11 @@ def test_run_off_bundle_never_builds_from_uploaded_config(tmp_path: Path) -> Non
     # An uploaded config that declares a `build` must never have it executed on the host (DESIGN §1):
     # the bundle ships a prebuilt binary, so only one process — the run — is ever spawned.
     cfg = (
-        "defaults: { backend: [ios] }\n"
         "targets:\n"
         "  demo:\n"
-        "    bundleId: com.example.demo\n"
-        "    scenarios: ./scenarios\n"
-        "    appPath: ./Missing.app\n"
-        "    build: touch /tmp/bajutsu-pwned\n"
+        "    platform: ios\n"
+        "    app: {id: com.example.demo, path: ./Missing.app, build: touch /tmp/bajutsu-pwned}\n"
+        "    paths: {scenarios: ./scenarios}\n"
     )
     spawned: list[list[str]] = []
 
@@ -369,8 +369,19 @@ def test_upload_rejects_config_path_outside_bundle(tmp_path: Path) -> None:
     server, port = _serve(_state(tmp_path))
     try:
         for cfg in (
-            "targets:\n  demo: { bundleId: com.example.demo, scenarios: /etc }\n",
-            "targets:\n  demo: { bundleId: com.example.demo, appPath: ../../../etc/passwd }\n",
+            (
+                "targets:\n"
+                "  demo:\n"
+                "    platform: ios\n"
+                "    app: {id: com.example.demo}\n"
+                "    paths: {scenarios: /etc}\n"
+            ),
+            (
+                "targets:\n"
+                "  demo:\n"
+                "    platform: ios\n"
+                "    app: {id: com.example.demo, path: ../../../etc/passwd}\n"
+            ),
         ):
             status, resp = _post_bytes(
                 port,

@@ -18,23 +18,26 @@ import pytest
 from bajutsu.serve.operations.composition import CompositionError, materialize_composition
 
 _SCENARIOS_CONFIG = (
-    "defaults: { backend: [ios] }\n"
     "targets:\n"
-    "  demo: { bundleId: com.example.demo, scenarios: ./scenarios }\n"
+    "  demo:\n"
+    "    platform: ios\n"
+    "    app: {id: com.example.demo}\n"
+    "    paths: {scenarios: ./scenarios}\n"
 )
 _FULL_CONFIG = (
-    "defaults: { backend: [ios] }\n"
     "targets:\n"
-    "  demo: { bundleId: com.example.demo, scenarios: ./scenarios, appPath: ./build/Demo.app }\n"
+    "  demo:\n"
+    "    platform: ios\n"
+    "    app: {id: com.example.demo, path: ./build/Demo.app}\n"
+    "    paths: {scenarios: ./scenarios}\n"
 )
 _IPA_CONFIG = (
-    "defaults: { backend: [ios] }\n"
     "targets:\n"
-    "  demo: { bundleId: com.example.demo, appPath: ./build/Demo.ipa }\n"
+    "  demo:\n"
+    "    platform: ios\n"
+    "    app: {id: com.example.demo, path: ./build/Demo.ipa}\n"
 )
-_NO_ARTIFACTS_CONFIG = (
-    "defaults: { backend: [ios] }\ntargets:\n  demo: { bundleId: com.example.demo }\n"
-)
+_NO_ARTIFACTS_CONFIG = "targets:\n  demo:\n    platform: ios\n    app: {id: com.example.demo}\n"
 
 
 def _write(tmp_path: Path, name: str, blob: bytes) -> Path:
@@ -212,7 +215,9 @@ def test_scenarios_zip_cannot_clobber_the_trusted_config(tmp_path: Path) -> None
         _zip(
             {
                 "scenarios/smoke.yaml": b"- name: a\n  steps: []\n",
-                "bajutsu.config.yaml": b"targets:\n  evil: { bundleId: com.evil.app }\n",
+                "bajutsu.config.yaml": (
+                    b"targets:\n  evil:\n    platform: ios\n    app: {id: com.evil.app}\n"
+                ),
             }
         ),
     )

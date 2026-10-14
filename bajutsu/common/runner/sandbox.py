@@ -178,7 +178,7 @@ def start_sandboxed_server(
     assert ls is not None, "start_sandboxed_server requires a launchServer (caller must guard)"
     ready_url = ls.ready_url or web_base_url(eff)
     if not ready_url:
-        raise SandboxError("launchServer needs readyUrl (or set the target's baseUrl to probe)")
+        raise SandboxError("launchServer needs readyUrl (or set the target's app.url to probe)")
 
     if _probe(ready_url):
         say(f"launchServer(sandbox): {ready_url} already serving — reusing it (no container)")
@@ -197,7 +197,7 @@ def start_sandboxed_server(
         raise SandboxError(f"sandbox launchServer: invalid port in {ready_url}") from e
     if host_port is None:
         raise SandboxError(
-            f"sandbox launchServer needs a port in baseUrl/readyUrl to publish to ({ready_url})"
+            f"sandbox launchServer needs a port in app.url/readyUrl to publish to ({ready_url})"
         )
 
     container = _container_name()

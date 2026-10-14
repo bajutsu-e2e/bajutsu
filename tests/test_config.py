@@ -30,38 +30,42 @@ def _web(eff: Effective) -> WebConfig:
     return eff.platform_config
 
 
-CONFIG_YAML = """
-defaults:
-  backend: [ios]
-  device: "iPhone 15"
-  locale: ja_JP
-  capture: [screenshot.after, elements, actionLog]
-  redact: { headers: [Authorization, Cookie], fields: [token, password] }
-  reservedNamespaces: [auth, nav]
-
-targets:
-  sample:
-    bundleId: com.bajutsu.sample
-    deeplinkScheme: bajutsusample
-    launchEnv: { SAMPLE_UITEST: "1" }
-    idNamespaces: [home, list, counter, settings]
-    mockServer: { cmd: "serve", port: 8080, stubs: ./mocks/sample }
-    setup: ./scenarios/sample/_setup.yaml
-    redact: { labels: ["カード番号"] }
-"""
+CONFIG_YAML = (
+    "defaults:\n"
+    "  platforms:\n"
+    "    ios:\n"
+    "      runsOn: {locale: ja_JP}\n"
+    "  evidence:\n"
+    "    capture: [screenshot.after, elements, actionLog]\n"
+    "    redact:\n"
+    "      headers: [Authorization, Cookie]\n"
+    "      fields: [token, password]\n"
+    "targets:\n"
+    "  sample:\n"
+    "    platform: ios\n"
+    "    app:\n"
+    "      id: com.bajutsu.sample\n"
+    "      launch:\n"
+    "        env: {SAMPLE_UITEST: '1'}\n"
+    "      idNamespaces: [home, list, counter, settings]\n"
+    "    services:\n"
+    "      mockServer: {cmd: serve, port: 8080, stubs: ./mocks/sample}\n"
+    "    evidence:\n"
+    "      redact:\n"
+    "        labels: [カード番号]\n"
+    "reservedNamespaces: [auth, nav]\n"
+)
 
 
 def test_resolve_sample() -> None:
     eff = resolve(load_config(CONFIG_YAML), "sample")
     assert _ios(eff).bundle_id == "com.bajutsu.sample"
-    assert eff.backend == ["ios"]  # from defaults
-    assert eff.device == "iPhone 15"
-    assert eff.locale == "ja_JP"
+    assert eff.backend == ["ios"]  # derived from `platform`
+    assert eff.locale == "ja_JP"  # from defaults.platforms.ios
     assert eff.launch_env == {"SAMPLE_UITEST": "1"}
     assert eff.id_namespaces == ["home", "list", "counter", "settings"]
     assert eff.reserved_namespaces == ["auth", "nav"]
     assert eff.mock_server is not None and eff.mock_server.port == 8080
-    assert eff.setup == "./scenarios/sample/_setup.yaml"
 
 
 def test_redact_is_merged() -> None:
@@ -76,34 +80,18 @@ def test_redact_unmask_headers_is_merged() -> None:
     # declared at either level survives the merge rather than being silently dropped.
     cfg = load_config(
         "defaults:\n"
-        "  redact: { unmaskHeaders: [authorization] }\n"
+        "  evidence:\n"
+        "    redact:\n"
+        "      unmaskHeaders: [authorization]\n"
         "targets:\n"
         "  s:\n"
-        "    bundleId: com.x\n"
-        "    redact: { unmaskHeaders: [cookie] }\n"
+        "    platform: ios\n"
+        "    app: {id: com.x}\n"
+        "    evidence:\n"
+        "      redact:\n"
+        "        unmaskHeaders: [cookie]\n"
     )
     assert resolve(cfg, "s").redact.unmask_headers == ["authorization", "cookie"]
-
-
-# BE-0166: `requires` (the capability tokens routing needs) resolves as a union of the team-wide
-# default and the target's own list — the target adds requirements, never replaces them.
-
-
-def test_requires_resolves_as_union_of_defaults_and_target() -> None:
-    cfg = load_config(
-        "defaults:\n"
-        "  requires: [ios18]\n"
-        "targets:\n"
-        "  s:\n"
-        "    bundleId: com.x\n"
-        "    requires: [ipad]\n"
-    )
-    assert sorted(resolve(cfg, "s").requires) == ["ios18", "ipad"]
-
-
-def test_requires_defaults_to_empty() -> None:
-    cfg = load_config("targets:\n  s:\n    bundleId: com.x\n")
-    assert resolve(cfg, "s").requires == []
 
 
 # BE-0047: the `ai` block resolves like any other setting (defaults overridden per target) into
@@ -113,12 +101,11 @@ def test_requires_defaults_to_empty() -> None:
 def test_ai_block_resolves_from_defaults() -> None:
     cfg = load_config(
         "defaults:\n"
-        "  ai:\n"
-        "    provider: api-key\n"
-        "    model: claude-opus-4-8\n"
-        "    baseUrl: https://gw.internal/v1\n"
-        "    keyEnv: MY_KEY\n"
-        "targets:\n  s:\n    bundleId: com.x\n"
+        "  ai: {provider: api-key, model: claude-opus-4-8, baseUrl: 'https://gw.internal/v1', keyEnv: MY_KEY}\n"
+        "targets:\n"
+        "  s:\n"
+        "    platform: ios\n"
+        "    app: {id: com.x}\n"
     )
     ai = resolve(cfg, "s").ai
     assert ai is not None
@@ -130,8 +117,13 @@ def test_ai_block_resolves_from_defaults() -> None:
 
 def test_ai_block_target_overrides_defaults() -> None:
     cfg = load_config(
-        "defaults:\n  ai: { provider: api-key, model: claude-opus-4-8, keyEnv: TEAM_KEY }\n"
-        "targets:\n  s:\n    bundleId: com.x\n    ai: { model: claude-sonnet-x, keyEnv: APP_KEY }\n"
+        "defaults:\n"
+        "  ai: {provider: api-key, model: claude-opus-4-8, keyEnv: TEAM_KEY}\n"
+        "targets:\n"
+        "  s:\n"
+        "    platform: ios\n"
+        "    app: {id: com.x}\n"
+        "    ai: {model: claude-sonnet-x, keyEnv: APP_KEY}\n"
     )
     ai = resolve(cfg, "s").ai
     assert ai is not None
@@ -141,7 +133,7 @@ def test_ai_block_target_overrides_defaults() -> None:
 
 
 def test_ai_block_absent_resolves_to_none() -> None:
-    cfg = load_config("targets:\n  s:\n    bundleId: com.x\n")
+    cfg = load_config("targets:\n  s:\n    platform: ios\n    app: {id: com.x}\n")
     assert resolve(cfg, "s").ai is None
 
 
@@ -153,8 +145,11 @@ def test_ai_usage_ledger_and_pricing_resolve() -> None:
         "    provider: api-key\n"
         "    usageLedger: runs/mine.jsonl\n"
         "    pricing:\n"
-        "      api-key/sonnet: { input: 3.0, output: 15.0, cacheWrite: 3.75, cacheRead: 0.3 }\n"
-        "targets:\n  s:\n    bundleId: com.x\n"
+        "      api-key/sonnet: {input: 3.0, output: 15.0, cacheWrite: 3.75, cacheRead: 0.3}\n"
+        "targets:\n"
+        "  s:\n"
+        "    platform: ios\n"
+        "    app: {id: com.x}\n"
     )
     ai = resolve(cfg, "s").ai
     assert ai is not None
@@ -167,10 +162,16 @@ def test_ai_usage_ledger_and_pricing_resolve() -> None:
 def test_ai_language_resolves_and_target_overrides() -> None:
     # BE-0188: `ai.language` merges like effort — defaults resolve, a target overrides field-wise.
     cfg = load_config(
-        "defaults:\n  ai: { provider: api-key, language: en }\n"
+        "defaults:\n"
+        "  ai: {provider: api-key, language: en}\n"
         "targets:\n"
-        "  s:\n    bundleId: com.x\n    ai: { language: ja }\n"
-        "  t:\n    bundleId: com.y\n"
+        "  s:\n"
+        "    platform: ios\n"
+        "    app: {id: com.x}\n"
+        "    ai: {language: ja}\n"
+        "  t:\n"
+        "    platform: ios\n"
+        "    app: {id: com.y}\n"
     )
     s_ai = resolve(cfg, "s").ai
     assert s_ai is not None and s_ai.language == "ja"  # override
@@ -182,24 +183,140 @@ def test_ai_block_keys_in_config_are_rejected() -> None:
     # A literal key in config is a foot-gun the schema forbids: only keyEnv (a NAME) is allowed.
     with pytest.raises(ValidationError):
         load_config(
-            "defaults:\n  ai: { apiKey: sk-ant-secret }\ntargets:\n  s:\n    bundleId: com.x\n"
+            "defaults:\n"
+            "  ai: {apiKey: sk-ant-secret}\n"
+            "targets:\n"
+            "  s:\n"
+            "    platform: ios\n"
+            "    app: {id: com.x}\n"
         )
 
 
-def test_backend_single_string_normalized() -> None:
-    cfg = load_config("defaults: { backend: xcuitest }\ntargets: { x: { bundleId: com.x } }")
-    assert resolve(cfg, "x").backend == ["xcuitest"]
+def test_backend_is_derived_from_platform() -> None:
+    # A target names one platform (BE-0452), so its backend is that platform as a one-entry list.
+    cfg = load_config("targets:\n  x:\n    platform: ios\n    app: {id: com.x}\n")
+    assert resolve(cfg, "x").backend == ["ios"]
 
 
-def test_app_overrides_defaults() -> None:
+def test_target_overrides_platform_defaults() -> None:
     cfg = load_config(
-        "defaults: { backend: [fake], device: 'iPhone 15' }\n"
-        "targets: { x: { bundleId: com.x, backend: xcuitest, locale: en_US } }"
+        "defaults:\n"
+        "  platforms:\n"
+        "    ios:\n"
+        "      runsOn: {locale: ja_JP}\n"
+        "targets:\n"
+        "  x:\n"
+        "    platform: ios\n"
+        "    app: {id: com.x}\n"
+        "    runsOn: {locale: en_GB}\n"
+        "  y:\n"
+        "    platform: ios\n"
+        "    app: {id: com.y}\n"
+    )
+    assert resolve(cfg, "x").locale == "en_GB"  # the target wins
+    assert resolve(cfg, "y").locale == "ja_JP"  # falls through to defaults
+
+
+def test_platform_defaults_apply_to_their_platform_alone() -> None:
+    # `defaults.platforms.ios` holds a field a web target does not have; it must not reach one.
+    cfg = load_config(
+        "defaults:\n"
+        "  platforms:\n"
+        "    ios:\n"
+        "      app: {launch: {args: [-x]}}\n"
+        "targets:\n"
+        "  w:\n"
+        "    platform: web\n"
+        "    app: {url: 'http://x/'}\n"
+    )
+    assert resolve(cfg, "w").launch_args == []
+
+
+def test_a_required_field_may_come_from_platform_defaults() -> None:
+    # Defaults merge before the target is validated, so `app.id` may come from the defaults.
+    cfg = load_config(
+        "defaults:\n"
+        "  platforms:\n"
+        "    android:\n"
+        "      app: {id: com.shared}\n"
+        "targets:\n"
+        "  a: {platform: android}\n"
+    )
+    assert resolve(cfg, "a").app_identifier == "com.shared"
+
+
+def test_a_target_clears_an_inherited_value_with_null() -> None:
+    cfg = load_config(
+        "defaults:\n"
+        "  run: {erase: true}\n"
+        "targets:\n"
+        "  x:\n"
+        "    platform: ios\n"
+        "    app: {id: com.x}\n"
+        "    run: {erase: null}\n"
+    )
+    assert resolve(cfg, "x").run_defaults.erase is False  # back to the built-in
+
+
+def test_lists_replace_except_the_two_unions() -> None:
+    cfg = load_config(
+        "defaults:\n"
+        "  run: {secrets: [TEAM]}\n"
+        "  evidence: {capture: [screenshot.after], redact: {fields: [password]}}\n"
+        "targets:\n"
+        "  x:\n"
+        "    platform: ios\n"
+        "    app: {id: com.x}\n"
+        "    run: {secrets: [OWN]}\n"
+        "    evidence: {capture: [elements], redact: {fields: [token]}}\n"
     )
     eff = resolve(cfg, "x")
-    assert eff.backend == ["xcuitest"]  # app override
-    assert eff.device == "iPhone 15"  # falls through to defaults
-    assert eff.locale == "en_US"
+    assert eff.secrets == ["TEAM", "OWN"]  # union: a target never unmasks a team-wide secret
+    assert eff.redact.fields == ["password", "token"]  # union
+    assert eff.capture == ["elements"]  # replaced
+
+
+def test_unknown_defaults_platform_field_is_rejected() -> None:
+    with pytest.raises(ValidationError, match=r"defaults\.platforms\.ios\.runsOn"):
+        load_config(
+            "defaults:\n  platforms:\n    ios:\n      runsOn: {browser: chromium}\ntargets: {}\n"
+        )
+
+
+def test_unknown_defaults_platform_is_rejected() -> None:
+    with pytest.raises(ValidationError, match="invalid platform"):
+        load_config("defaults:\n  platforms:\n    martian: {}\ntargets: {}\n")
+
+
+@pytest.mark.parametrize(
+    "removed",
+    [
+        "bundleId: com.x",
+        "backend: [ios]",
+        "deviceProvider: {kind: appium, endpoint: 'http://grid.local:4723'}",
+        "cloudBatch: devicefarm",
+        "cloudBatchBudget: 2",
+        "requires: [ios18]",
+        "setup: ./prelude.yaml",
+        "device: iPhone 15",
+    ],
+)
+def test_a_flat_or_removed_target_key_is_rejected(removed: str) -> None:
+    # BE-0452 regrouped the keys and moved where a run happens out of the target; the error names
+    # the eleven keys a target accepts rather than Pydantic's generic extra-field message.
+    with pytest.raises(ValidationError, match="a target accepts platform, app, runsOn"):
+        load_config(f"targets:\n  s:\n    platform: ios\n    app: {{id: com.x}}\n    {removed}\n")
+
+
+@pytest.mark.parametrize("removed", ["backend: [ios]", "device: iPhone 15", "requires: [ios18]"])
+def test_a_removed_defaults_key_is_rejected(removed: str) -> None:
+    with pytest.raises(ValidationError, match="defaults accepts services, run"):
+        load_config(f"defaults:\n  {removed}\ntargets: {{}}\n")
+
+
+def test_a_target_needs_platform() -> None:
+    with pytest.raises(ValidationError, match="needs `platform`"):
+        load_config("targets:\n  s:\n    app: {id: com.x}\n")
 
 
 def test_unknown_app_raises() -> None:
@@ -208,40 +325,64 @@ def test_unknown_app_raises() -> None:
 
 
 def test_minimal_defaults() -> None:
-    cfg = load_config("targets: { x: { bundleId: com.x } }")
+    cfg = load_config("targets:\n  x:\n    platform: ios\n    app: {id: com.x}\n")
     eff = resolve(cfg, "x")
-    assert eff.backend == ["ios"]  # the default (BE-0290)
-    assert eff.device == "iPhone 15"
+    assert eff.backend == ["ios"]
+    assert eff.locale == "en_US"  # the built-in iOS locale (BE-0320)
     assert eff.capture == ["screenshot.after", "elements", "actionLog"]
     assert _ios(eff).app_path is None  # absent unless configured
     assert eff.evidence_dirs.scenarios is None  # absent unless configured
 
 
 def test_app_path_parsed() -> None:
-    cfg = load_config("targets: { x: { bundleId: com.x, appPath: build/X.app } }")
+    cfg = load_config(
+        "targets:\n  x:\n    platform: ios\n    app: {id: com.x, path: build/X.app}\n"
+    )
     assert _ios(resolve(cfg, "x")).app_path == "build/X.app"
 
 
 def test_scenarios_parsed() -> None:
-    cfg = load_config("targets: { x: { bundleId: com.x, scenarios: scn/dir } }")
+    cfg = load_config(
+        "targets:\n  x:\n    platform: ios\n    app: {id: com.x}\n    paths: {scenarios: scn/dir}\n"
+    )
     assert resolve(cfg, "x").evidence_dirs.scenarios == "scn/dir"
 
 
 def test_ready_when_selector_parsed() -> None:
-    cfg = load_config("targets: { x: { bundleId: com.x, readyWhen: { id: onboarding.start } } }")
-    assert resolve(cfg, "x").ready_when == {"id": "onboarding.start"}
+    cfg = load_config(
+        "targets:\n"
+        "  x:\n"
+        "    platform: ios\n"
+        "    app:\n"
+        "      id: com.x\n"
+        "      startWhen:\n"
+        "        exists: {id: onboarding.start}\n"
+    )
+    assert resolve(cfg, "x").start_when == {"id": "onboarding.start"}
 
 
 def test_ready_when_defaults_to_none() -> None:
-    assert resolve(load_config("targets: { x: { bundleId: com.x } }"), "x").ready_when is None
+    assert (
+        resolve(
+            load_config("targets:\n  x:\n    platform: ios\n    app: {id: com.x}\n"), "x"
+        ).start_when
+        is None
+    )
 
 
 def test_ready_when_candidate_list_parsed() -> None:
     # A readyWhen with a canonical-first candidate list (BE-0221) is accepted, like a scenario step.
     cfg = load_config(
-        "targets: { x: { bundleId: com.x, readyWhen: { id: [stable.row.1, stable_row_1] } } }"
+        "targets:\n"
+        "  x:\n"
+        "    platform: ios\n"
+        "    app:\n"
+        "      id: com.x\n"
+        "      startWhen:\n"
+        "        exists:\n"
+        "          id: [stable.row.1, stable_row_1]\n"
     )
-    assert resolve(cfg, "x").ready_when == {"id": ["stable.row.1", "stable_row_1"]}
+    assert resolve(cfg, "x").start_when == {"id": ["stable.row.1", "stable_row_1"]}
 
 
 def test_ready_when_misordered_candidate_list_rejected() -> None:
@@ -249,22 +390,41 @@ def test_ready_when_misordered_candidate_list_rejected() -> None:
     # canonical dotted form not leading) fails loudly at load, not silently (BE-0221).
     with pytest.raises(ValidationError, match="canonical"):
         load_config(
-            "targets: { x: { bundleId: com.x, readyWhen: { id: [stable_row_1, stable.row.1] } } }"
+            "targets:\n"
+            "  x:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.x\n"
+            "      startWhen:\n"
+            "        exists:\n"
+            "          id: [stable_row_1, stable.row.1]\n"
         )
 
 
 def test_ready_when_idmatches_misordered_candidate_list_rejected() -> None:
     # idMatches in readyWhen is validated on its own branch, the same way as id (BE-0221).
     with pytest.raises(ValidationError, match="canonical"):
-        load_config("targets: { x: { bundleId: com.x, readyWhen: { idMatches: [a_b, a.b] } } }")
+        load_config(
+            "targets:\n"
+            "  x:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.x\n"
+            "      startWhen:\n"
+            "        exists:\n"
+            "          idMatches: [a_b, a.b]\n"
+        )
 
 
 def test_web_app_baseurl_no_bundleid() -> None:
     # A web app identifies its target by baseUrl and needs no bundleId — it carries a WebConfig,
     # which has no bundle_id field at all (the point of the per-platform split, BE-0126).
     cfg = load_config(
-        "defaults: { backend: [web] }\n"
-        "targets: { web: { baseUrl: 'http://127.0.0.1:8787/index.html', scenarios: demos/web/scenarios } }"
+        "targets:\n"
+        "  web:\n"
+        "    platform: web\n"
+        "    app: {url: 'http://127.0.0.1:8787/index.html'}\n"
+        "    paths: {scenarios: demos/web/scenarios}\n"
     )
     eff = resolve(cfg, "web")
     assert _web(eff).base_url == "http://127.0.0.1:8787/index.html"
@@ -277,20 +437,35 @@ def test_web_app_baseurl_no_bundleid() -> None:
 def test_web_app_headless_override() -> None:
     # A web app can opt into a headed (visible) browser via `headless: false`; the
     # `bajutsu run --headed` flag and the Web UI's "show browser" toggle do the same per run.
-    cfg = load_config("targets: { web: { baseUrl: 'http://127.0.0.1:8787/', headless: false } }")
+    cfg = load_config(
+        "targets:\n"
+        "  web:\n"
+        "    platform: web\n"
+        "    app: {url: 'http://127.0.0.1:8787/'}\n"
+        "    driver: {headless: false}\n"
+    )
     assert _web(resolve(cfg, "web")).headless is False
 
 
 def test_web_app_browser_defaults_to_chromium() -> None:
     # The browser engine defaults to chromium, preserving today's single-engine behaviour (BE-0076).
-    cfg = load_config("targets: { web: { baseUrl: 'http://127.0.0.1:8787/' } }")
+    cfg = load_config(
+        "targets:\n  web:\n    platform: web\n    app: {url: 'http://127.0.0.1:8787/'}\n"
+    )
     assert _web(resolve(cfg, "web")).browser == "chromium"
 
 
 def test_web_app_browser_config_resolves() -> None:
     # A target can pin its engine via `browser`; it resolves straight onto the web sub-config (a
     # per-target knob, like headless).
-    cfg = load_config("targets: { web: { baseUrl: 'http://127.0.0.1:8787/', browser: firefox } }")
+    cfg = load_config(
+        "targets:\n"
+        "  web:\n"
+        "    platform: web\n"
+        "    app: {url: 'http://127.0.0.1:8787/'}\n"
+        "    runsOn:\n"
+        "      browser: {engine: firefox}\n"
+    )
     assert _web(resolve(cfg, "web")).browser == "firefox"
 
 
@@ -298,13 +473,22 @@ def test_web_app_unknown_browser_rejected_at_load() -> None:
     # A typo'd engine fails loudly at config load (the field_validator), not as a mid-run
     # AttributeError when the driver does getattr(pw, engine).
     with pytest.raises(ValidationError, match="invalid browser"):
-        load_config("targets: { web: { baseUrl: 'http://x/', browser: safari } }")
+        load_config(
+            "targets:\n"
+            "  web:\n"
+            "    platform: web\n"
+            "    app: {url: 'http://x/'}\n"
+            "    runsOn:\n"
+            "      browser: {engine: safari}\n"
+        )
 
 
 def test_web_app_device_mode_defaults_to_desktop() -> None:
     # No deviceMode = desktop: the web backend keeps today's plain desktop context, so an existing
     # web config is unchanged (BE-0228).
-    cfg = load_config("targets: { web: { baseUrl: 'http://127.0.0.1:8787/' } }")
+    cfg = load_config(
+        "targets:\n  web:\n    platform: web\n    app: {url: 'http://127.0.0.1:8787/'}\n"
+    )
     assert _web(resolve(cfg, "web")).device_mode == "desktop"
 
 
@@ -313,94 +497,20 @@ def test_web_app_device_mode_config_resolves() -> None:
     # the web sub-config (a per-target knob, like browser). The preset name itself is resolved
     # lazily in the driver, so config load never imports Playwright.
     cfg = load_config(
-        "targets: { web: { baseUrl: 'http://127.0.0.1:8787/', deviceMode: 'iPhone 13' } }"
+        "targets:\n"
+        "  web:\n"
+        "    platform: web\n"
+        "    app: {url: 'http://127.0.0.1:8787/'}\n"
+        "    runsOn: {emulate: iPhone 13}\n"
     )
     assert _web(resolve(cfg, "web")).device_mode == "iPhone 13"
 
 
 def test_device_provider_defaults_to_none() -> None:
-    # No deviceProvider = the built-in local device path; Effective carries None so acquire_device
-    # falls back to the `local` provider (BE-0236), leaving every existing target unchanged.
-    cfg = load_config("targets: { app: { bundleId: com.example.app } }")
+    # The config names no device provider (BE-0452): only an `appium` environment of the worker config
+    # fills one, so a resolved target carries None and `acquire_device` takes the `local` provider.
+    cfg = load_config("targets:\n  app:\n    platform: ios\n    app: {id: com.example.app}\n")
     assert resolve(cfg, "app").device_provider is None
-
-
-def test_device_provider_config_resolves() -> None:
-    # A target selects a device provider by `kind`; it resolves straight onto Effective (a per-target
-    # knob, like mailbox). The kind is validated against the registry at runtime, not config load, so
-    # the deterministic core never imports a cloud SDK (BE-0236 / BE-0112).
-    cfg = load_config(
-        "targets: { app: { bundleId: com.example.app, deviceProvider: {kind: firebase-streaming} } }"
-    )
-    provider = resolve(cfg, "app").device_provider
-    assert provider is not None
-    assert provider.kind == "firebase-streaming"
-
-
-def test_device_provider_kind_defaults_to_local() -> None:
-    # A deviceProvider block with no `kind` means the explicit local provider — the same default the
-    # schema carries, so writing the block without a kind is a no-op over omitting it entirely.
-    cfg = load_config("targets: { app: { bundleId: com.example.app, deviceProvider: {} } }")
-    provider = resolve(cfg, "app").device_provider
-    assert provider is not None
-    assert provider.kind == "local"
-
-
-def test_cloud_batch_defaults_to_none() -> None:
-    # No cloudBatch = the target runs on local devices; Effective carries None so serve's fan-out
-    # dispatches local jobs, leaving every existing target unchanged (BE-0336 Unit 3).
-    cfg = load_config("targets: { app: { bundleId: com.example.app } }")
-    assert resolve(cfg, "app").cloud_batch is None
-
-
-def test_cloud_batch_names_the_batch_provider_kind() -> None:
-    # A target declares which registered batch provider its cloud runs use; the kind resolves straight
-    # onto Effective (like device_provider). The kind is validated against the batch-provider registry
-    # at runtime, not config load, so the deterministic core imports no cloud SDK (BE-0336 / BE-0112).
-    cfg = load_config("targets: { app: { bundleId: com.example.app, cloudBatch: devicefarm } }")
-    assert resolve(cfg, "app").cloud_batch == "devicefarm"
-
-
-def test_cloud_batch_budget_defaults_to_none() -> None:
-    # No cloudBatchBudget = no device budget from config; serve's fan-out is then unbounded by this
-    # target (the registry treats an absent cap as unlimited), so an existing target is unchanged
-    # (BE-0336 Unit 4).
-    cfg = load_config("targets: { app: { bundleId: com.example.app, cloudBatch: devicefarm } }")
-    assert resolve(cfg, "app").cloud_batch_budget is None
-
-
-def test_cloud_batch_budget_resolves_the_device_count() -> None:
-    # The per-target device budget K — how many of this target's cloud-batch runs may reserve a
-    # device at once — resolves straight onto Effective, where serve's fan-out reads it and keys the
-    # job registry's concurrency cap on the batch device pool (BE-0336 Unit 4).
-    cfg = load_config(
-        "targets: { app: { bundleId: com.example.app, cloudBatch: devicefarm, cloudBatchBudget: 3 } }"
-    )
-    assert resolve(cfg, "app").cloud_batch_budget == 3
-
-
-def test_cloud_batch_budget_rejects_a_non_positive_value() -> None:
-    # A non-positive budget (a "disable" typo, or a negative) is rejected at config load rather than
-    # silently meaning "unlimited" — the loud-failure directive applied to a resource cap (BE-0336
-    # Unit 4).
-    with pytest.raises(ValueError, match="greater than 0"):
-        load_config(
-            "targets: { app: { bundleId: com.example.app, cloudBatch: devicefarm, cloudBatchBudget: 0 } }"
-        )
-
-
-def test_appium_provider_endpoint_round_trips_through_config() -> None:
-    # The `endpoint` field on `deviceProvider` must survive the YAML → `load_config` → `resolve`
-    # path; a field-name or alias mismatch in `_Model` (which sets `extra="forbid"`) would only
-    # surface here, not in the direct-construction tests in `test_device_provider.py`.
-    cfg = load_config(
-        "targets: { app: { bundleId: com.example.app,"
-        " deviceProvider: { kind: appium, endpoint: 'http://grid.local:4723' } } }"
-    )
-    provider = resolve(cfg, "app").device_provider
-    assert provider is not None
-    assert provider.kind == "appium"
-    assert provider.endpoint == "http://grid.local:4723"
 
 
 def test_web_app_launch_server_parsed() -> None:
@@ -408,8 +518,12 @@ def test_web_app_launch_server_parsed() -> None:
     # (run falls back to baseUrl), readyTimeout to 30s.
     eff = resolve(
         load_config(
-            "targets: { web: { baseUrl: 'http://127.0.0.1:8799/', "
-            "launchServer: { cmd: 'uv run bajutsu serve --port 8799', readyTimeout: 60 } } }"
+            "targets:\n"
+            "  web:\n"
+            "    platform: web\n"
+            "    app: {url: 'http://127.0.0.1:8799/'}\n"
+            "    services:\n"
+            "      server: {cmd: uv run bajutsu serve --port 8799, readyTimeout: 60}\n"
         ),
         "web",
     )
@@ -418,15 +532,18 @@ def test_web_app_launch_server_parsed() -> None:
     assert eff.launch_server.ready_timeout == 60.0
     assert eff.launch_server.ready_url is None  # run falls back to baseUrl
     assert (
-        resolve(load_config("targets: { web: { baseUrl: 'http://x/' } }"), "web").launch_server
+        resolve(
+            load_config("targets:\n  web:\n    platform: web\n    app: {url: 'http://x/'}\n"),
+            "web",
+        ).launch_server
         is None
     )
 
 
 def test_app_without_bundleid_or_baseurl_rejected() -> None:
-    # Dropping bundleId's required-ness must not silently accept a target-less app.
-    with pytest.raises(ValidationError, match="needs bundleId"):
-        load_config("targets: { x: { scenarios: scn/dir } }")
+    # Each platform's `app` model requires its own identifier (BE-0452).
+    with pytest.raises(ValidationError, match=r"app\.id: Field required"):
+        load_config("targets:\n  x:\n    platform: ios\n    paths: {scenarios: scn/dir}\n")
 
 
 def test_legacy_apps_key_is_rejected() -> None:
@@ -438,19 +555,25 @@ def test_legacy_apps_key_is_rejected() -> None:
 
 def test_ios_app_carries_no_base_url() -> None:
     # An iOS target carries an IosConfig, which has no base_url field (BE-0126).
-    cfg = load_config("targets: { x: { bundleId: com.x } }")
+    cfg = load_config("targets:\n  x:\n    platform: ios\n    app: {id: com.x}\n")
     eff = resolve(cfg, "x")
     assert isinstance(eff.platform_config, IosConfig)
     assert not hasattr(eff.platform_config, "base_url")
 
 
 def test_baselines_parsed() -> None:
-    cfg = load_config("targets: { x: { bundleId: com.x, baselines: baselines/x } }")
+    cfg = load_config(
+        "targets:\n"
+        "  x:\n"
+        "    platform: ios\n"
+        "    app: {id: com.x}\n"
+        "    paths: {baselines: baselines/x}\n"
+    )
     assert resolve(cfg, "x").evidence_dirs.baselines == "baselines/x"
 
 
 def test_baselines_defaults_to_none() -> None:
-    cfg = load_config("targets: { x: { bundleId: com.x } }")
+    cfg = load_config("targets:\n  x:\n    platform: ios\n    app: {id: com.x}\n")
     assert resolve(cfg, "x").evidence_dirs.baselines is None
 
 
@@ -458,8 +581,19 @@ def test_baselines_resolution_order() -> None:
     """_resolve_dir for baselines respects: --baselines flag > config > scenario-local default."""
     from bajutsu.run.cli import _resolve_dir
 
-    eff_with = resolve(load_config("targets: { x: { bundleId: com.x, baselines: cfg/bl } }"), "x")
-    eff_without = resolve(load_config("targets: { x: { bundleId: com.x } }"), "x")
+    eff_with = resolve(
+        load_config(
+            "targets:\n"
+            "  x:\n"
+            "    platform: ios\n"
+            "    app: {id: com.x}\n"
+            "    paths: {baselines: cfg/bl}\n"
+        ),
+        "x",
+    )
+    eff_without = resolve(
+        load_config("targets:\n  x:\n    platform: ios\n    app: {id: com.x}\n"), "x"
+    )
     scenario_file = Path("/scenarios/app/smoke.yaml")
 
     # flag wins over everything
@@ -482,12 +616,14 @@ def test_baselines_resolution_order() -> None:
 
 
 def test_schemas_parsed() -> None:
-    cfg = load_config("targets: { x: { bundleId: com.x, schemas: schemas/x } }")
+    cfg = load_config(
+        "targets:\n  x:\n    platform: ios\n    app: {id: com.x}\n    paths: {schemas: schemas/x}\n"
+    )
     assert resolve(cfg, "x").evidence_dirs.schemas == "schemas/x"
 
 
 def test_schemas_defaults_to_none() -> None:
-    cfg = load_config("targets: { x: { bundleId: com.x } }")
+    cfg = load_config("targets:\n  x:\n    platform: ios\n    app: {id: com.x}\n")
     assert resolve(cfg, "x").evidence_dirs.schemas is None
 
 
@@ -495,8 +631,19 @@ def test_schemas_resolution_order() -> None:
     """_resolve_dir for schemas respects: --schemas flag > config > scenario-local default."""
     from bajutsu.run.cli import _resolve_dir
 
-    eff_with = resolve(load_config("targets: { x: { bundleId: com.x, schemas: cfg/sc } }"), "x")
-    eff_without = resolve(load_config("targets: { x: { bundleId: com.x } }"), "x")
+    eff_with = resolve(
+        load_config(
+            "targets:\n"
+            "  x:\n"
+            "    platform: ios\n"
+            "    app: {id: com.x}\n"
+            "    paths: {schemas: cfg/sc}\n"
+        ),
+        "x",
+    )
+    eff_without = resolve(
+        load_config("targets:\n  x:\n    platform: ios\n    app: {id: com.x}\n"), "x"
+    )
     scenario_file = Path("/scenarios/app/smoke.yaml")
 
     assert _resolve_dir(
@@ -511,12 +658,14 @@ def test_schemas_resolution_order() -> None:
 
 
 def test_goldens_parsed() -> None:
-    cfg = load_config("targets: { x: { bundleId: com.x, goldens: goldens/x } }")
+    cfg = load_config(
+        "targets:\n  x:\n    platform: ios\n    app: {id: com.x}\n    paths: {goldens: goldens/x}\n"
+    )
     assert resolve(cfg, "x").evidence_dirs.goldens == "goldens/x"
 
 
 def test_goldens_defaults_to_none() -> None:
-    cfg = load_config("targets: { x: { bundleId: com.x } }")
+    cfg = load_config("targets:\n  x:\n    platform: ios\n    app: {id: com.x}\n")
     assert resolve(cfg, "x").evidence_dirs.goldens is None
 
 
@@ -524,8 +673,19 @@ def test_goldens_resolution_order() -> None:
     """_resolve_dir for goldens respects: --goldens flag > config > scenario-local default."""
     from bajutsu.run.cli import _resolve_dir
 
-    eff_with = resolve(load_config("targets: { x: { bundleId: com.x, goldens: cfg/gl } }"), "x")
-    eff_without = resolve(load_config("targets: { x: { bundleId: com.x } }"), "x")
+    eff_with = resolve(
+        load_config(
+            "targets:\n"
+            "  x:\n"
+            "    platform: ios\n"
+            "    app: {id: com.x}\n"
+            "    paths: {goldens: cfg/gl}\n"
+        ),
+        "x",
+    )
+    eff_without = resolve(
+        load_config("targets:\n  x:\n    platform: ios\n    app: {id: com.x}\n"), "x"
+    )
     scenario_file = Path("/scenarios/app/smoke.yaml")
 
     # flag wins over everything
@@ -551,7 +711,11 @@ def test_rebased_resolves_relative_paths_under_the_checkout_root() -> None:
     """Effective.rebased makes a Git config's relative path fields absolute under the checkout (BE-0063)."""
     eff = resolve(
         load_config(
-            "targets:\n  x:\n    bundleId: com.x\n    scenarios: e2e/scn\n    appPath: build/A.app\n    goldens: golden/data\n"
+            "targets:\n"
+            "  x:\n"
+            "    platform: ios\n"
+            "    app: {id: com.x, path: build/A.app}\n"
+            "    paths: {scenarios: e2e/scn, goldens: golden/data}\n"
         ),
         "x",
     )
@@ -564,8 +728,12 @@ def test_rebased_resolves_relative_paths_under_the_checkout_root() -> None:
 def test_rebased_resolves_xcuitest_test_runner() -> None:
     eff = resolve(
         load_config(
-            "targets:\n  x:\n    bundleId: com.x\n    xcuitest:\n"
-            "      testRunner: build/Runner.xctestrun\n"
+            "targets:\n"
+            "  x:\n"
+            "    platform: ios\n"
+            "    app: {id: com.x}\n"
+            "    driver:\n"
+            "      runner: {testRunner: build/Runner.xctestrun}\n"
         ),
         "x",
     )
@@ -580,8 +748,13 @@ def test_rebased_preserves_xcuitest_device_type() -> None:
     # `device` target would silently fall back to the Simulator in a checkout/upload run (BE-0238).
     eff = resolve(
         load_config(
-            "targets:\n  x:\n    bundleId: com.x\n    xcuitest:\n"
-            "      testRunner: build/Runner.xctestrun\n      deviceType: device\n"
+            "targets:\n"
+            "  x:\n"
+            "    platform: ios\n"
+            "    app: {id: com.x}\n"
+            "    driver:\n"
+            "      runner: {testRunner: build/Runner.xctestrun}\n"
+            "    runsOn: {kind: device}\n"
         ),
         "x",
     )
@@ -594,7 +767,14 @@ def test_rebased_refuses_a_path_field_escaping_the_checkout() -> None:
     """A config path that climbs out of the checkout (`..` or absolute) is refused — confinement (BE-0051)."""
     for bad in ("../../etc", "/etc/passwd"):
         eff = resolve(
-            load_config(f"targets:\n  x:\n    bundleId: com.x\n    scenarios: {bad}\n"), "x"
+            load_config(
+                "targets:\n"
+                "  x:\n"
+                "    platform: ios\n"
+                f"    app: {{id: com.x}}\n"
+                f"    paths: {{scenarios: {bad}}}\n"
+            ),
+            "x",
         )
         with pytest.raises(ValueError, match="escapes the confinement root"):
             eff.rebased(Path("/co"))
@@ -604,8 +784,11 @@ def test_rebased_without_confinement_keeps_paths_outside_the_root() -> None:
     """`confine=False` (an operator-trusted local config, BE-0242) joins a `..`/absolute path instead of refusing it."""
     eff = resolve(
         load_config(
-            "targets:\n  x:\n    bundleId: com.x\n    scenarios: ../sibling/scn\n"
-            "    appPath: /opt/App.app\n"
+            "targets:\n"
+            "  x:\n"
+            "    platform: ios\n"
+            "    app: {id: com.x, path: /opt/App.app}\n"
+            "    paths: {scenarios: ../sibling/scn}\n"
         ),
         "x",
     )
@@ -621,35 +804,28 @@ def test_rebased_without_confinement_keeps_paths_outside_the_root() -> None:
 
 def test_platform_explicit_resolves_into_effective() -> None:
     # An explicit `platform` on the target is authoritative and reaches Effective.
-    cfg = load_config(
-        "targets:\n  s:\n    platform: ios\n    bundleId: com.x\n    backend: [ios]\n"
-    )
+    cfg = load_config("targets:\n  s:\n    platform: ios\n    app: {id: com.x}\n")
     assert resolve(cfg, "s").platform == "ios"
 
 
 def test_platform_defaults_apply_when_target_omits_it() -> None:
     # A team-wide `defaults.platform` flows to a target that doesn't override it.
-    cfg = load_config(
-        "defaults:\n  platform: web\ntargets:\n  s:\n    baseUrl: https://app.test\n"
-        "    backend: [playwright]\n"
-    )
+    cfg = load_config("targets:\n  s:\n    platform: web\n    app: {url: 'https://app.test'}\n")
     assert resolve(cfg, "s").platform == "web"
 
 
 def test_platform_derived_from_backend_when_unset() -> None:
     # With no explicit platform anywhere, it's derived from the backend (today's implicit behavior),
     # so existing configs are unchanged: playwright -> web, xcuitest -> ios.
-    web = load_config("targets:\n  s:\n    baseUrl: https://app.test\n    backend: [playwright]\n")
+    web = load_config("targets:\n  s:\n    platform: web\n    app: {url: 'https://app.test'}\n")
     assert resolve(web, "s").platform == "web"
-    ios = load_config("targets:\n  s:\n    bundleId: com.x\n    backend: [xcuitest]\n")
+    ios = load_config("targets:\n  s:\n    platform: ios\n    app: {id: com.x}\n")
     assert resolve(ios, "s").platform == "ios"
 
 
 def test_package_resolves_into_effective() -> None:
     # The Android identifier (peer of bundleId / baseUrl) resolves onto the Android sub-config.
-    cfg = load_config(
-        "targets:\n  s:\n    platform: android\n    package: com.x.app\n    backend: [adb]\n"
-    )
+    cfg = load_config("targets:\n  s:\n    platform: android\n    app: {id: com.x.app}\n")
     eff = resolve(cfg, "s")
     assert eff.platform == "android"
     assert isinstance(eff.platform_config, AndroidConfig)
@@ -662,16 +838,16 @@ def test_package_resolves_into_effective() -> None:
 def test_ios_target_yields_ios_sub_config() -> None:
     # An iOS target's platform-specific knobs land on an IosConfig, not on the common core.
     cfg = load_config(
-        "targets:\n  s:\n    platform: ios\n    bundleId: com.x\n"
-        "    deeplinkScheme: myscheme\n    appPath: build/Demo.app\n"
-        "    build: make app\n    backend: [ios]\n"
+        "targets:\n"
+        "  s:\n"
+        "    platform: ios\n"
+        "    app: {id: com.x, path: build/Demo.app, build: make app}\n"
     )
     eff = resolve(cfg, "s")
     assert eff.platform == "ios"
     assert isinstance(eff.platform_config, IosConfig)
     ios = eff.platform_config
     assert ios.bundle_id == "com.x"
-    assert ios.deeplink_scheme == "myscheme"
     assert ios.app_path == "build/Demo.app"
     assert ios.build == "make app"
 
@@ -679,8 +855,13 @@ def test_ios_target_yields_ios_sub_config() -> None:
 def test_web_target_yields_web_sub_config() -> None:
     # A web target's Playwright knobs land on a WebConfig.
     cfg = load_config(
-        "targets:\n  s:\n    platform: web\n    baseUrl: https://app.test\n"
-        "    browser: firefox\n    headless: false\n    backend: [playwright]\n"
+        "targets:\n"
+        "  s:\n"
+        "    platform: web\n"
+        "    app: {url: 'https://app.test'}\n"
+        "    runsOn:\n"
+        "      browser: {engine: firefox}\n"
+        "    driver: {headless: false}\n"
     )
     eff = resolve(cfg, "s")
     assert eff.platform == "web"
@@ -692,9 +873,7 @@ def test_web_target_yields_web_sub_config() -> None:
 
 
 def test_android_target_yields_android_sub_config() -> None:
-    cfg = load_config(
-        "targets:\n  s:\n    platform: android\n    package: com.x.app\n    backend: [adb]\n"
-    )
+    cfg = load_config("targets:\n  s:\n    platform: android\n    app: {id: com.x.app}\n")
     eff = resolve(cfg, "s")
     assert isinstance(eff.platform_config, AndroidConfig)
     assert eff.platform_config.package == "com.x.app"
@@ -705,8 +884,11 @@ def test_android_native_z_flows_into_the_sub_config() -> None:
     # answering it costs every Android read whether or not the app opted a view in. The alias and the
     # default both matter — a wrong alias would ship as a silently ignored config line.
     cfg = load_config(
-        "targets:\n  s:\n    platform: android\n    package: com.x.app\n    backend: [adb]\n"
-        "    nativeZ: true\n"
+        "targets:\n"
+        "  s:\n"
+        "    platform: android\n"
+        "    app: {id: com.x.app}\n"
+        "    driver: {nativeZ: true}\n"
     )
     assert resolve(cfg, "s").platform_config == AndroidConfig(package="com.x.app", native_z=True)
 
@@ -714,9 +896,7 @@ def test_android_native_z_flows_into_the_sub_config() -> None:
 def test_android_native_z_defaults_off() -> None:
     # Off unless asked for: the walk reports nothing at all for an app that opted no view in, which
     # is every app but the ones BE-0355 was built for.
-    cfg = load_config(
-        "targets:\n  s:\n    platform: android\n    package: com.x.app\n    backend: [adb]\n"
-    )
+    cfg = load_config("targets:\n  s:\n    platform: android\n    app: {id: com.x.app}\n")
     platform_config = resolve(cfg, "s").platform_config
     assert isinstance(platform_config, AndroidConfig)
     assert platform_config.native_z is False
@@ -725,8 +905,12 @@ def test_android_native_z_defaults_off() -> None:
 def test_android_grant_permissions_flow_into_the_sub_config() -> None:
     # BE-0210: runtime permissions to pre-grant live in config (app-specific), reaching AndroidConfig.
     cfg = load_config(
-        "targets:\n  s:\n    platform: android\n    package: com.x.app\n    backend: [adb]\n"
-        "    grantPermissions: [android.permission.POST_NOTIFICATIONS, android.permission.CAMERA]\n"
+        "targets:\n"
+        "  s:\n"
+        "    platform: android\n"
+        "    app:\n"
+        "      id: com.x.app\n"
+        "      grantPermissions: [android.permission.POST_NOTIFICATIONS, android.permission.CAMERA]\n"
     )
     eff = resolve(cfg, "s")
     assert isinstance(eff.platform_config, AndroidConfig)
@@ -737,7 +921,7 @@ def test_android_grant_permissions_flow_into_the_sub_config() -> None:
 
 
 def test_android_grant_permissions_default_empty() -> None:
-    cfg = load_config("targets:\n  s:\n    platform: android\n    package: com.x.app\n")
+    cfg = load_config("targets:\n  s:\n    platform: android\n    app: {id: com.x.app}\n")
     eff = resolve(cfg, "s")
     assert isinstance(eff.platform_config, AndroidConfig)
     assert eff.platform_config.grant_permissions == []
@@ -745,14 +929,14 @@ def test_android_grant_permissions_default_empty() -> None:
 
 def test_web_target_carries_no_ios_fields() -> None:
     # The whole point of the split: a web target's config never exposes iOS-only knobs.
-    cfg = load_config("targets:\n  s:\n    baseUrl: https://app.test\n    backend: [playwright]\n")
+    cfg = load_config("targets:\n  s:\n    platform: web\n    app: {url: 'https://app.test'}\n")
     eff = resolve(cfg, "s")
     assert not isinstance(eff.platform_config, IosConfig)
     assert not hasattr(eff.platform_config, "bundle_id")
 
 
 def test_ios_target_carries_no_web_fields() -> None:
-    cfg = load_config("targets:\n  s:\n    bundleId: com.x\n    backend: [ios]\n")
+    cfg = load_config("targets:\n  s:\n    platform: ios\n    app: {id: com.x}\n")
     eff = resolve(cfg, "s")
     assert not isinstance(eff.platform_config, WebConfig)
     assert not hasattr(eff.platform_config, "base_url")
@@ -760,7 +944,9 @@ def test_ios_target_carries_no_web_fields() -> None:
 
 def test_rebased_rebases_app_path_inside_ios_config() -> None:
     # rebased() confines the iOS appPath to the checkout root, inside the sub-config.
-    cfg = load_config("targets:\n  s:\n    bundleId: com.x\n    appPath: build/Demo.app\n")
+    cfg = load_config(
+        "targets:\n  s:\n    platform: ios\n    app: {id: com.x, path: build/Demo.app}\n"
+    )
     eff = resolve(cfg, "s").rebased(Path("/co"))
     assert isinstance(eff.platform_config, IosConfig)
     assert eff.platform_config.app_path == str(Path("/co") / "build/Demo.app")
@@ -768,24 +954,25 @@ def test_rebased_rebases_app_path_inside_ios_config() -> None:
 
 def test_unknown_platform_is_rejected_at_load() -> None:
     with pytest.raises(ValidationError, match="platform"):
-        load_config("targets:\n  s:\n    platform: martian\n    bundleId: com.x\n")
+        load_config("targets:\n  s:\n    platform: martian\n    app: {id: com.x}\n")
 
 
 def test_ios_platform_requires_bundle_id() -> None:
-    # An iOS target carrying the wrong identifier (baseUrl, no bundleId) is rejected with a
-    # platform-aware message — distinct from the "no identifier at all" check.
-    with pytest.raises(ValidationError, match="bundleId"):
-        load_config("targets:\n  s:\n    platform: ios\n    baseUrl: https://app.test\n")
+    with pytest.raises(ValidationError, match=r"app\.id: Field required"):
+        load_config("targets:\n  s: {platform: ios}\n")
 
 
 def test_web_platform_requires_base_url() -> None:
-    with pytest.raises(ValidationError, match="baseUrl"):
-        load_config("targets:\n  s:\n    platform: web\n    bundleId: com.x\n")
+    with pytest.raises(ValidationError, match=r"app\.url: Field required"):
+        load_config("targets:\n  s: {platform: web}\n")
 
 
-def test_android_platform_requires_package() -> None:
-    with pytest.raises(ValidationError, match="package"):
-        load_config("targets:\n  s:\n    platform: android\n    bundleId: com.x\n")
+def test_android_platform_rejects_another_platforms_field() -> None:
+    # A key another platform takes fails as unknown, listing what the block accepts (BE-0452).
+    with pytest.raises(ValidationError, match="allowed fields: startWhen, idNamespaces, id"):
+        load_config(
+            "targets:\n  s:\n    platform: android\n    app: {id: com.x, url: 'http://x/'}\n"
+        )
 
 
 # --- BE-0019: xcuitest config fields ---
@@ -795,10 +982,10 @@ def test_xcuitest_config_resolves() -> None:
     cfg = load_config(
         "targets:\n"
         "  s:\n"
-        "    bundleId: com.x\n"
-        "    xcuitest:\n"
-        "      testRunner: build/Runner.xctestrun\n"
-        "      build: xcodebuild build-for-testing\n"
+        "    platform: ios\n"
+        "    app: {id: com.x}\n"
+        "    driver:\n"
+        "      runner: {testRunner: build/Runner.xctestrun, build: xcodebuild build-for-testing}\n"
     )
     eff = resolve(cfg, "s")
     xcuitest = _ios(eff).xcuitest
@@ -808,15 +995,19 @@ def test_xcuitest_config_resolves() -> None:
 
 
 def test_xcuitest_config_defaults_to_none() -> None:
-    cfg = load_config("targets:\n  s:\n    bundleId: com.x\n")
+    cfg = load_config("targets:\n  s:\n    platform: ios\n    app: {id: com.x}\n")
     assert _ios(resolve(cfg, "s")).xcuitest is None
 
 
 def test_xcuitest_device_type_defaults_to_simulator() -> None:
     # An omitted deviceType keeps the pre-BE-0238 behaviour: drive the Simulator (BE-0019).
     cfg = load_config(
-        "targets:\n  s:\n    bundleId: com.x\n    xcuitest:\n"
-        "      testRunner: build/Runner.xctestrun\n"
+        "targets:\n"
+        "  s:\n"
+        "    platform: ios\n"
+        "    app: {id: com.x}\n"
+        "    driver:\n"
+        "      runner: {testRunner: build/Runner.xctestrun}\n"
     )
     xcuitest = _ios(resolve(cfg, "s")).xcuitest
     assert xcuitest is not None
@@ -825,8 +1016,13 @@ def test_xcuitest_device_type_defaults_to_simulator() -> None:
 
 def test_xcuitest_device_type_resolves_device() -> None:
     cfg = load_config(
-        "targets:\n  s:\n    bundleId: com.x\n    xcuitest:\n"
-        "      testRunner: build/Runner.xctestrun\n      deviceType: device\n"
+        "targets:\n"
+        "  s:\n"
+        "    platform: ios\n"
+        "    app: {id: com.x}\n"
+        "    driver:\n"
+        "      runner: {testRunner: build/Runner.xctestrun}\n"
+        "    runsOn: {kind: device}\n"
     )
     xcuitest = _ios(resolve(cfg, "s")).xcuitest
     assert xcuitest is not None
@@ -836,8 +1032,13 @@ def test_xcuitest_device_type_resolves_device() -> None:
 def test_xcuitest_device_type_invalid_rejected() -> None:
     with pytest.raises(ValidationError):
         load_config(
-            "targets:\n  s:\n    bundleId: com.x\n    xcuitest:\n"
-            "      testRunner: build/Runner.xctestrun\n      deviceType: physical\n"
+            "targets:\n"
+            "  s:\n"
+            "    platform: ios\n"
+            "    app: {id: com.x}\n"
+            "    driver:\n"
+            "      runner: {testRunner: build/Runner.xctestrun}\n"
+            "    runsOn: {kind: physical}\n"
         )
 
 
@@ -845,17 +1046,17 @@ def test_xcuitest_device_type_invalid_rejected() -> None:
 
 
 def test_xcuitest_targets_real_device_true_for_device() -> None:
-    # `xcuitest.deviceType: device` is the one shape that drives a physical device — the accessor the
+    # `runsOn.kind: device` is the one shape that drives a physical device — the accessor the
     # Unit 3 capability narrowing consults to drop the simctl-backed DeviceControl / permission tokens.
     cfg = load_config(
-        "targets:\n  s:\n    bundleId: com.x\n    xcuitest:\n      deviceType: device\n"
+        "targets:\n  s:\n    platform: ios\n    app: {id: com.x}\n    runsOn: {kind: device}\n"
     )
     assert xcuitest_targets_real_device(resolve(cfg, "s")) is True
 
 
 def test_xcuitest_targets_real_device_false_for_simulator() -> None:
     cfg = load_config(
-        "targets:\n  s:\n    bundleId: com.x\n    xcuitest:\n      deviceType: simulator\n"
+        "targets:\n  s:\n    platform: ios\n    app: {id: com.x}\n    runsOn: {kind: simulator}\n"
     )
     assert xcuitest_targets_real_device(resolve(cfg, "s")) is False
 
@@ -863,13 +1064,13 @@ def test_xcuitest_targets_real_device_false_for_simulator() -> None:
 def test_xcuitest_targets_real_device_false_when_xcuitest_omitted() -> None:
     # An iOS target with no xcuitest block keeps the Simulator default (BE-0019), so it is not a real
     # device — the accessor must not raise on the missing block.
-    cfg = load_config("targets:\n  s:\n    bundleId: com.x\n")
+    cfg = load_config("targets:\n  s:\n    platform: ios\n    app: {id: com.x}\n")
     assert xcuitest_targets_real_device(resolve(cfg, "s")) is False
 
 
 def test_xcuitest_targets_real_device_false_for_non_ios_target() -> None:
     # deviceType is iOS-only; an Android target can never target a real iOS device through XCUITest.
-    cfg = load_config("targets:\n  s:\n    package: com.example.app\n")
+    cfg = load_config("targets:\n  s:\n    platform: android\n    app: {id: com.example.app}\n")
     assert xcuitest_targets_real_device(resolve(cfg, "s")) is False
 
 
@@ -878,11 +1079,11 @@ def test_xcuitest_targets_real_device_false_for_non_ios_target() -> None:
 
 def test_doctor_thresholds_resolve_from_defaults() -> None:
     cfg = load_config(
-        "defaults:\n"
-        "  doctor:\n"
-        "    idCoverageOk: 0.85\n"
-        "    idCoverageFail: 0.6\n"
-        "targets:\n  s:\n    bundleId: com.x\n"
+        "targets:\n"
+        "  s:\n"
+        "    platform: ios\n"
+        "    app: {id: com.x}\n"
+        "doctor: {idCoverageOk: 0.85, idCoverageFail: 0.6}\n"
     )
     eff = resolve(cfg, "s")
     assert eff.doctor_thresholds.ok_coverage == 0.85
@@ -890,7 +1091,7 @@ def test_doctor_thresholds_resolve_from_defaults() -> None:
 
 
 def test_doctor_thresholds_default_to_hardcoded_values() -> None:
-    cfg = load_config("targets:\n  s:\n    bundleId: com.x\n")
+    cfg = load_config("targets:\n  s:\n    platform: ios\n    app: {id: com.x}\n")
     eff = resolve(cfg, "s")
     assert eff.doctor_thresholds.ok_coverage == 0.9
     assert eff.doctor_thresholds.fail_coverage == 0.7
@@ -899,18 +1100,18 @@ def test_doctor_thresholds_default_to_hardcoded_values() -> None:
 def test_doctor_ok_below_fail_is_rejected() -> None:
     with pytest.raises(ValidationError):
         load_config(
-            "defaults:\n"
-            "  doctor:\n"
-            "    idCoverageOk: 0.5\n"
-            "    idCoverageFail: 0.8\n"
-            "targets:\n  s:\n    bundleId: com.x\n"
+            "targets:\n"
+            "  s:\n"
+            "    platform: ios\n"
+            "    app: {id: com.x}\n"
+            "doctor: {idCoverageOk: 0.5, idCoverageFail: 0.8}\n"
         )
 
 
 def test_doctor_threshold_out_of_range_is_rejected() -> None:
     with pytest.raises(ValidationError):
         load_config(
-            "defaults:\n  doctor:\n    idCoverageOk: 1.5\ntargets:\n  s:\n    bundleId: com.x\n"
+            "targets:\n  s:\n    platform: ios\n    app: {id: com.x}\ndoctor: {idCoverageOk: 1.5}\n"
         )
 
 
@@ -920,10 +1121,13 @@ def test_doctor_threshold_out_of_range_is_rejected() -> None:
 def test_notify_config_resolves() -> None:
     cfg = load_config(
         "notify:\n"
-        "  - format: slack\n"
-        "    url: '${secrets.SLACK_WEBHOOK_URL}'\n"
-        "    on: [failure, change]\n"
-        "targets:\n  s:\n    bundleId: com.x\n"
+        "- format: slack\n"
+        "  url: ${secrets.SLACK_WEBHOOK_URL}\n"
+        "  'on': [failure, change]\n"
+        "targets:\n"
+        "  s:\n"
+        "    platform: ios\n"
+        "    app: {id: com.x}\n"
     )
     eff = resolve(cfg, "s")
     assert len(eff.notify) == 1
@@ -936,9 +1140,11 @@ def test_notify_config_resolves() -> None:
 def test_notify_defaults_to_failure_event() -> None:
     cfg = load_config(
         "notify:\n"
-        "  - format: slack\n"
-        "    url: '${secrets.URL}'\n"
-        "targets:\n  s:\n    bundleId: com.x\n"
+        "- {format: slack, url: '${secrets.URL}'}\n"
+        "targets:\n"
+        "  s:\n"
+        "    platform: ios\n"
+        "    app: {id: com.x}\n"
     )
     assert resolve(cfg, "s").notify[0].on == ["failure"]
 
@@ -946,10 +1152,13 @@ def test_notify_defaults_to_failure_event() -> None:
 def test_notify_with_targets_filter() -> None:
     cfg = load_config(
         "notify:\n"
-        "  - format: slack\n"
-        "    url: '${secrets.URL}'\n"
-        "    targets: [checkout, login]\n"
-        "targets:\n  s:\n    bundleId: com.x\n"
+        "- format: slack\n"
+        "  url: ${secrets.URL}\n"
+        "  targets: [checkout, login]\n"
+        "targets:\n"
+        "  s:\n"
+        "    platform: ios\n"
+        "    app: {id: com.x}\n"
     )
     assert resolve(cfg, "s").notify[0].targets == ["checkout", "login"]
 
@@ -958,9 +1167,11 @@ def test_notify_unknown_format_rejected() -> None:
     with pytest.raises(ValidationError, match="unknown notify format"):
         load_config(
             "notify:\n"
-            "  - format: teams\n"
-            "    url: '${secrets.URL}'\n"
-            "targets:\n  s:\n    bundleId: com.x\n"
+            "- {format: teams, url: '${secrets.URL}'}\n"
+            "targets:\n"
+            "  s:\n"
+            "    platform: ios\n"
+            "    app: {id: com.x}\n"
         )
 
 
@@ -968,25 +1179,28 @@ def test_notify_unknown_event_rejected() -> None:
     with pytest.raises(ValidationError, match="unknown notify event"):
         load_config(
             "notify:\n"
-            "  - format: slack\n"
-            "    url: '${secrets.URL}'\n"
-            "    on: [bogus]\n"
-            "targets:\n  s:\n    bundleId: com.x\n"
+            "- format: slack\n"
+            "  url: ${secrets.URL}\n"
+            "  'on': [bogus]\n"
+            "targets:\n"
+            "  s:\n"
+            "    platform: ios\n"
+            "    app: {id: com.x}\n"
         )
 
 
 def test_notify_target_override() -> None:
     cfg = load_config(
         "notify:\n"
-        "  - format: slack\n"
-        "    url: '${secrets.A}'\n"
+        "- {format: slack, url: '${secrets.A}'}\n"
         "targets:\n"
         "  s:\n"
-        "    bundleId: com.x\n"
+        "    platform: ios\n"
+        "    app: {id: com.x}\n"
         "    notify:\n"
-        "      - format: slack\n"
-        "        url: '${secrets.B}'\n"
-        "        on: [always]\n"
+        "    - format: slack\n"
+        "      url: ${secrets.B}\n"
+        "      'on': [always]\n"
     )
     eff = resolve(cfg, "s")
     assert len(eff.notify) == 1
@@ -995,17 +1209,18 @@ def test_notify_target_override() -> None:
 
 
 def test_notify_absent_resolves_to_empty() -> None:
-    cfg = load_config("targets:\n  s:\n    bundleId: com.x\n")
+    cfg = load_config("targets:\n  s:\n    platform: ios\n    app: {id: com.x}\n")
     assert resolve(cfg, "s").notify == []
 
 
 def test_notify_on_accepts_single_string() -> None:
     cfg = load_config(
         "notify:\n"
-        "  - format: slack\n"
-        "    url: '${secrets.URL}'\n"
-        "    on: always\n"
-        "targets:\n  s:\n    bundleId: com.x\n"
+        "- {format: slack, url: '${secrets.URL}', 'on': always}\n"
+        "targets:\n"
+        "  s:\n"
+        "    platform: ios\n"
+        "    app: {id: com.x}\n"
     )
     assert resolve(cfg, "s").notify[0].on == ["always"]
 
@@ -1014,33 +1229,55 @@ def test_notify_on_accepts_single_string() -> None:
 
 
 def test_visual_compare_defaults_to_exact() -> None:
-    cfg = load_config("targets:\n  s:\n    bundleId: com.x\n")
+    cfg = load_config("targets:\n  s:\n    platform: ios\n    app: {id: com.x}\n")
     assert resolve(cfg, "s").visual_compare == "exact"
 
 
 def test_visual_compare_from_defaults() -> None:
     cfg = load_config(
-        "defaults:\n  visualCompare: pixelmatch\ntargets:\n  s:\n    bundleId: com.x\n"
+        "defaults:\n"
+        "  run: {visualCompare: pixelmatch}\n"
+        "targets:\n"
+        "  s:\n"
+        "    platform: ios\n"
+        "    app: {id: com.x}\n"
     )
     assert resolve(cfg, "s").visual_compare == "pixelmatch"
 
 
 def test_visual_compare_target_overrides_defaults() -> None:
     cfg = load_config(
-        "defaults:\n  visualCompare: pixelmatch\n"
-        "targets:\n  s:\n    bundleId: com.x\n    visualCompare: exact\n"
+        "defaults:\n"
+        "  run: {visualCompare: pixelmatch}\n"
+        "targets:\n"
+        "  s:\n"
+        "    platform: ios\n"
+        "    app: {id: com.x}\n"
+        "    run: {visualCompare: exact}\n"
     )
     assert resolve(cfg, "s").visual_compare == "exact"
 
 
 def test_visual_compare_target_only() -> None:
-    cfg = load_config("targets:\n  s:\n    bundleId: com.x\n    visualCompare: pixelmatch\n")
+    cfg = load_config(
+        "targets:\n"
+        "  s:\n"
+        "    platform: ios\n"
+        "    app: {id: com.x}\n"
+        "    run: {visualCompare: pixelmatch}\n"
+    )
     assert resolve(cfg, "s").visual_compare == "pixelmatch"
 
 
 def test_visual_compare_invalid_rejected() -> None:
     with pytest.raises(ValidationError):
-        load_config("targets:\n  s:\n    bundleId: com.x\n    visualCompare: ssim\n")
+        load_config(
+            "targets:\n"
+            "  s:\n"
+            "    platform: ios\n"
+            "    app: {id: com.x}\n"
+            "    run: {visualCompare: ssim}\n"
+        )
 
 
 def test_load_config_drops_top_level_orgs() -> None:
@@ -1048,8 +1285,14 @@ def test_load_config_drops_top_level_orgs() -> None:
     # in the hosted topology reads an org-bearing config, so the core loader must drop `orgs:` and
     # keep resolving targets rather than reject the whole document.
     cfg = load_config(
-        "targets:\n  demo: { bundleId: com.example.demo }\n"
-        "orgs:\n  acme:\n    members: [alice]\n    targets: [demo]\n"
+        "targets:\n"
+        "  demo:\n"
+        "    platform: ios\n"
+        "    app: {id: com.example.demo}\n"
+        "orgs:\n"
+        "  acme:\n"
+        "    members: [alice]\n"
+        "    targets: [demo]\n"
     )
     assert not hasattr(cfg, "orgs")
     assert _ios(resolve(cfg, "demo")).bundle_id == "com.example.demo"
@@ -1057,7 +1300,10 @@ def test_load_config_drops_top_level_orgs() -> None:
 
 def test_parse_config_dict_drops_orgs() -> None:
     cfg = parse_config_dict(
-        {"targets": {"demo": {"bundleId": "com.example.demo"}}, "orgs": {"acme": {}}}
+        {
+            "targets": {"demo": {"platform": "ios", "app": {"id": "com.example.demo"}}},
+            "orgs": {"acme": {}},
+        }
     )
     assert not hasattr(cfg, "orgs")
     assert "demo" in cfg.targets
@@ -1067,7 +1313,11 @@ def test_load_config_drops_top_level_ui() -> None:
     # `ui.default_theme` is a serve-only presentation setting (BE-0191); like `orgs`, the core run
     # path must ignore it rather than reject the document under extra="forbid".
     cfg = load_config(
-        "targets:\n  demo: { bundleId: com.example.demo }\nui:\n  default_theme: daylight\n"
+        "targets:\n"
+        "  demo:\n"
+        "    platform: ios\n"
+        "    app: {id: com.example.demo}\n"
+        "ui: {default_theme: daylight}\n"
     )
     assert not hasattr(cfg, "ui")
     assert _ios(resolve(cfg, "demo")).bundle_id == "com.example.demo"
@@ -1093,7 +1343,7 @@ def test_scalar_root_containing_orgs_raises_validationerror_not_attributeerror()
 def test_run_behavior_defaults_when_unset() -> None:
     # An unset target resolves to the built-in defaults: guard on (system_alert_handling None → on
     # with the built-in dismissive labels), erase off, network on.
-    eff = resolve(load_config("targets:\n  s:\n    bundleId: com.x\n"), "s")
+    eff = resolve(load_config("targets:\n  s:\n    platform: ios\n    app: {id: com.x}\n"), "s")
     assert eff.run_defaults.system_alert_handling is None
     assert eff.run_defaults.erase is False
     assert eff.run_defaults.network is True
@@ -1102,16 +1352,29 @@ def test_run_behavior_defaults_when_unset() -> None:
 def test_target_ios_tip_kit_handling_resolves_and_defaults_off() -> None:
     # Off unless a target asks: a tip is sometimes the very thing a scenario asserts on, so the
     # built-in default must not dismiss it.
-    plain = resolve(load_config("targets:\n  s:\n    bundleId: com.x\n"), "s")
+    plain = resolve(load_config("targets:\n  s:\n    platform: ios\n    app: {id: com.x}\n"), "s")
     assert plain.run_defaults.ios_tip_kit_handling is False
     opted_in = resolve(
-        load_config("targets:\n  s:\n    bundleId: com.x\n    iosTipKitHandling: true\n"), "s"
+        load_config(
+            "targets:\n"
+            "  s:\n"
+            "    platform: ios\n"
+            "    app: {id: com.x}\n"
+            "    run: {tipKitHandling: true}\n"
+        ),
+        "s",
     )
     assert opted_in.run_defaults.ios_tip_kit_handling is True
 
 
 def test_target_erase_and_network_resolve() -> None:
-    cfg = load_config("targets:\n  s:\n    bundleId: com.x\n    erase: true\n    network: false\n")
+    cfg = load_config(
+        "targets:\n"
+        "  s:\n"
+        "    platform: ios\n"
+        "    app: {id: com.x}\n"
+        "    run: {erase: true, network: false}\n"
+    )
     eff = resolve(cfg, "s")
     assert eff.run_defaults.erase is True
     assert eff.run_defaults.network is False
@@ -1120,16 +1383,29 @@ def test_target_erase_and_network_resolve() -> None:
 def test_target_system_alert_handling_bool_carries_off() -> None:
     # BE-0401: the bare boolean is the only spelling of off, on a target as on a scenario.
     eff = resolve(
-        load_config("targets:\n  s:\n    bundleId: com.x\n    systemAlertHandling: false\n"), "s"
+        load_config(
+            "targets:\n"
+            "  s:\n"
+            "    platform: ios\n"
+            "    app: {id: com.x}\n"
+            "    run: {systemAlertHandling: false}\n"
+        ),
+        "s",
     )
     assert eff.run_defaults.system_alert_handling is False
 
 
 def test_target_system_alert_handling_object_form() -> None:
     cfg = load_config(
-        "targets:\n  s:\n    bundleId: com.x\n"
-        "    systemAlertHandling: { rules: [{ prompt: notifications, choice: grant }],"
-        " visionInstruction: tap Allow }\n"
+        "targets:\n"
+        "  s:\n"
+        "    platform: ios\n"
+        "    app: {id: com.x}\n"
+        "    run:\n"
+        "      systemAlertHandling:\n"
+        "        rules:\n"
+        "        - {prompt: notifications, choice: grant}\n"
+        "        visionInstruction: tap Allow\n"
     )
     eff = resolve(cfg, "s")
     policy = eff.run_defaults.system_alert_handling
@@ -1140,8 +1416,10 @@ def test_target_system_alert_handling_object_form() -> None:
 
 @pytest.mark.parametrize("old", ["alertHandling", "dismissAlerts"])
 def test_target_renamed_alert_keys_fail_naming_the_canonical_key(old: str) -> None:
-    # BE-0401 deleted both aliases rather than carrying them a third time, so each now fails to load
-    # pointing at `systemAlertHandling` instead of Pydantic's generic extra-field error.
+    # BE-0401 deleted both aliases rather than carrying them a third time; under `run` (BE-0452)
+    # each fails as an unknown key whose message lists `systemAlertHandling`.
     with pytest.raises(ValidationError) as exc:
-        load_config(f"targets:\n  s:\n    bundleId: com.x\n    {old}: false\n")
+        load_config(
+            f"targets:\n  s:\n    platform: ios\n    app: {{id: com.x}}\n    run: {{{old}: false}}\n"
+        )
     assert "systemAlertHandling" in str(exc.value)

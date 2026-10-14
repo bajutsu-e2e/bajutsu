@@ -38,12 +38,15 @@ from bajutsu.run.cli import (
     _TargetSetup,
 )
 
-_CONFIG = """
-defaults: { backend: [fake] }
-targets:
-  app: { bundleId: com.example.app }
-  site: { baseUrl: 'http://localhost:1/' }
-"""
+_CONFIG = (
+    "targets:\n"
+    "  app:\n"
+    "    platform: ios\n"
+    "    app: {id: com.example.app}\n"
+    "  site:\n"
+    "    platform: web\n"
+    "    app: {url: 'http://localhost:1/'}\n"
+)
 
 
 def _effs() -> dict[str, Effective]:
@@ -236,10 +239,13 @@ def test_the_web_flags_are_refused_across_two_web_targets(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     cfg = load_config(
-        "defaults: { backend: [fake] }\n"
         "targets:\n"
-        "  a: { baseUrl: 'http://localhost:1/' }\n"
-        "  b: { baseUrl: 'http://localhost:2/' }\n"
+        "  a:\n"
+        "    platform: web\n"
+        "    app: {url: 'http://localhost:1/'}\n"
+        "  b:\n"
+        "    platform: web\n"
+        "    app: {url: 'http://localhost:2/'}\n"
     )
     effs = {"a": resolve(cfg, "a"), "b": resolve(cfg, "b")}
     with pytest.raises(typer.Exit) as exc:
@@ -255,10 +261,13 @@ def test_the_web_flags_pass_with_one_web_target() -> None:
 
 def test_two_web_targets_without_the_flags_are_fine() -> None:
     cfg = load_config(
-        "defaults: { backend: [fake] }\n"
         "targets:\n"
-        "  a: { baseUrl: 'http://localhost:1/' }\n"
-        "  b: { baseUrl: 'http://localhost:2/' }\n"
+        "  a:\n"
+        "    platform: web\n"
+        "    app: {url: 'http://localhost:1/'}\n"
+        "  b:\n"
+        "    platform: web\n"
+        "    app: {url: 'http://localhost:2/'}\n"
     )
     effs = {"a": resolve(cfg, "a"), "b": resolve(cfg, "b")}
     _reject_web_flags_across_targets(effs, headed=None, browser="", browsers="")

@@ -78,6 +78,7 @@ def test_every_registered_model_forbids_extra_keys(platform: str, group: Group) 
         ("android", "driver", {"nativeZ": True}),
         ("fake", "app", {}),
         ("fake", "app", {"id": "anything"}),
+        ("fake", "app", {"idNamespaces": ["home"]}),
         ("fake", "runsOn", {}),
         ("fake", "driver", None),
     ],
@@ -253,15 +254,44 @@ def test_allowed_fields_spells_aliases() -> None:
     )
 
 
-def test_the_existing_target_schema_is_unchanged() -> None:
-    # Unit 3 adds the models without wiring them in: today's flat keys still load as before.
+def test_the_target_validates_its_groups_with_the_registered_models() -> None:
+    # Unit 4 wires the registry in: each platform-shaped group is an instance of its platform's model.
     from bajutsu.common.config.schema import WEB_ENGINES, TargetConfig
+    from bajutsu.common.config.schema.platform.web import WebApp, WebRunsOn
 
     target = TargetConfig.model_validate(
-        {"platform": "web", "baseUrl": "http://x", "browser": "webkit"}
+        {"platform": "web", "app": {"url": "http://x"}, "runsOn": {"browser": {"engine": "webkit"}}}
     )
-    assert target.browser == "webkit"
+    assert isinstance(target.app, WebApp)
+    assert isinstance(target.runs_on, WebRunsOn)
+    assert target.runs_on.browser.engine == "webkit"
     assert WEB_ENGINES == ("chromium", "firefox", "webkit")
+
+
+def test_an_unknown_key_in_a_target_group_lists_the_allowed_fields() -> None:
+    from pydantic import ValidationError
+
+    from bajutsu.common.config import load_config
+
+    with pytest.raises(ValidationError, match=r"runsOn\.browser: unknown field for platform 'ios'"):
+        load_config(
+            "targets:\n  s: { platform: ios, app: { id: com.x }, runsOn: { browser: webkit } }\n"
+        )
+
+
+def test_the_run_group_lists_the_shared_and_the_platform_fields() -> None:
+    from pydantic import ValidationError
+
+    from bajutsu.common.config import load_config
+
+    with pytest.raises(ValidationError, match=r"allowed fields: erase, network.*tipKitHandling"):
+        load_config("targets:\n  s: { platform: ios, app: { id: com.x }, run: { bogus: 1 } }\n")
+    # A field of another platform's run extension is unknown on this one.
+    with pytest.raises(ValidationError, match=r"run\.tipKitHandling: unknown field for platform"):
+        load_config(
+            "targets:\n  s: { platform: web, app: { url: 'http://x/' }, "
+            "run: { tipKitHandling: true } }\n"
+        )
 
 
 @pytest.mark.parametrize(

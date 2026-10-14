@@ -23,7 +23,7 @@ class ReadinessResult:
 
     ready: bool
     # `skipped`: the caller asked for no wait at all — `repl --attach`, whose app is wherever the
-    # operator left it rather than on the launch screen `readyWhen` names (BE-0455).
+    # operator left it rather than on the launch screen `startWhen` names (BE-0455).
     signal: Literal["screenChanged", "readyWhen", "namespace", "count", "timeout", "skipped"]
     elapsed_s: float
     # Whether the tree stopped changing before the gate returned. A signal fires as soon as the app's

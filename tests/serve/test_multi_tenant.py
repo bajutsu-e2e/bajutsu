@@ -22,20 +22,25 @@ from bajutsu.serve.server.oauth import Identity
 from bajutsu.serve.server.object_store import org_prefix
 from bajutsu.serve.state import SessionManager, StoreBundle
 
-CONFIG = """
-targets:
-  demo: { bundleId: com.example.demo }
-  checkout: { bundleId: com.example.checkout }
-  other: { bundleId: com.example.other }
-
-orgs:
-  acme:
-    members: [alice]
-    targets: [demo, checkout]
-  globex:
-    members: [bob]
-    targets: [other]
-"""
+CONFIG = (
+    "targets:\n"
+    "  demo:\n"
+    "    platform: ios\n"
+    "    app: {id: com.example.demo}\n"
+    "  checkout:\n"
+    "    platform: ios\n"
+    "    app: {id: com.example.checkout}\n"
+    "  other:\n"
+    "    platform: ios\n"
+    "    app: {id: com.example.other}\n"
+    "orgs:\n"
+    "  acme:\n"
+    "    members: [alice]\n"
+    "    targets: [demo, checkout]\n"
+    "  globex:\n"
+    "    members: [bob]\n"
+    "    targets: [other]\n"
+)
 
 
 def _state(
@@ -115,11 +120,11 @@ def test_target_scoped_run_picker_offers_nothing_for_another_orgs_app(
         serve_engine,
         tmp_path,
         CONFIG.replace(
-            "  demo: { bundleId: com.example.demo }",
-            f"  demo: {{ bundleId: com.example.demo, scenarios: {suites} }}",
+            "    app: {id: com.example.demo}\n",
+            f"    app: {{id: com.example.demo}}\n    paths: {{scenarios: {suites}}}\n",
         ).replace(
-            "  other: { bundleId: com.example.other }",
-            f"  other: {{ bundleId: com.example.other, scenarios: {suites} }}",
+            "    app: {id: com.example.other}\n",
+            f"    app: {{id: com.example.other}}\n    paths: {{scenarios: {suites}}}\n",
         ),
     )
     assert state.repository is not None
@@ -181,7 +186,13 @@ def test_save_scenario_records_an_audit_entry(
     scn_dir.mkdir()
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        f"targets:\n  demo: {{ bundleId: com.example.demo, scenarios: {scn_dir} }}\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            f"    app: {{id: com.example.demo}}\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     engine = serve_engine()
@@ -219,7 +230,15 @@ def test_no_orgs_block_keeps_a_single_tenant(
     # matching what oauth_callback would assign from this config.
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "targets:\n  demo: { bundleId: com.example.demo }\n  other: { bundleId: com.example.other }\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app: {id: com.example.demo}\n"
+            "  other:\n"
+            "    platform: ios\n"
+            "    app: {id: com.example.other}\n"
+        ),
         encoding="utf-8",
     )
     engine = serve_engine()
@@ -278,8 +297,16 @@ def test_oauth_login_assigns_the_org_from_github_org_membership(
     # A login with no explicit member listing is mapped to a bajutsu org by its GitHub org.
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "targets:\n  demo: { bundleId: com.example.demo }\n"
-        "orgs:\n  acme:\n    githubOrgs: [acme-gh]\n    targets: [demo]\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app: {id: com.example.demo}\n"
+            "orgs:\n"
+            "  acme:\n"
+            "    githubOrgs: [acme-gh]\n"
+            "    targets: [demo]\n"
+        ),
         encoding="utf-8",
     )
     engine = serve_engine()
@@ -378,7 +405,10 @@ def test_request_resolves_the_org_once(serve_engine: Callable[..., Engine], tmp_
     inner.upsert_user("alice", org_id="default", github_login="alice", email="a@x")
     repo = _CountingRepo(inner)
     cfg = tmp_path / "bajutsu.config.yaml"
-    cfg.write_text("targets:\n  demo: { bundleId: com.example.demo }\n", encoding="utf-8")
+    cfg.write_text(
+        ("targets:\n  demo:\n    platform: ios\n    app: {id: com.example.demo}\n"),
+        encoding="utf-8",
+    )
     state = srv.ServeState(runs_dir=tmp_path / "runs", config=cfg, repository=repo)  # type: ignore[arg-type]
 
     ops.list_scenarios(state, "demo", actor="alice")
@@ -409,12 +439,24 @@ def test_usage_dashboard_reads_only_the_actors_orgs_ledgers(
     state = _state(
         serve_engine,
         tmp_path,
-        "targets:\n"
-        f"  demo: {{ bundleId: com.example.demo, ai: {{ usageLedger: {acme_ledger} }} }}\n"
-        f"  other: {{ bundleId: com.example.other, ai: {{ usageLedger: {globex_ledger} }} }}\n"
-        "\norgs:\n"
-        "  acme:\n    members: [alice]\n    targets: [demo]\n"
-        "  globex:\n    members: [bob]\n    targets: [other]\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            f"    app: {{id: com.example.demo}}\n"
+            f"    ai: {{usageLedger: {acme_ledger}}}\n"
+            "  other:\n"
+            "    platform: ios\n"
+            f"    app: {{id: com.example.other}}\n"
+            f"    ai: {{usageLedger: {globex_ledger}}}\n"
+            "orgs:\n"
+            "  acme:\n"
+            "    members: [alice]\n"
+            "    targets: [demo]\n"
+            "  globex:\n"
+            "    members: [bob]\n"
+            "    targets: [other]\n"
+        ),
     )
 
     alice_html, code = ops.usage_html(state, actor="alice")

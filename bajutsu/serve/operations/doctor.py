@@ -8,12 +8,12 @@ from typing import Any
 
 from bajutsu.common import doctor
 from bajutsu.common.backend_cli import adb, simctl
-from bajutsu.common.backends import IMPLEMENTED, resolve_actuators
+from bajutsu.common.backends import IMPLEMENTED, backend_override, resolve_actuators
 from bajutsu.common.config import (
     Effective,
     android_package,
     ios_bundle_id,
-    load_config,
+    load_config_file,
     require_ios,
     resolve,
     web_base_url,
@@ -27,6 +27,25 @@ from bajutsu.serve.state import ServeState
 # (actuator, udid, effective config) -> the current screen's elements. Injectable so the score
 # path is testable without a device — the device query is the one external dependency here.
 ScreenQuery = Callable[[str, str, Effective], list[base.Element]]
+
+
+def _intended_actuator(backend: str, eff: Effective) -> tuple[str, tuple[Any, int] | None]:
+    """The actuator a doctor check diagnoses, installed or not: ``(actuator, error)``."""
+    # Resolve the *intended* actuator without requiring it to be installed — select_actuator
+    # raises when the tool is absent, but doctor's purpose is to *report* what's missing, so we
+    # resolve the first implemented actuator and let the runnability checks surface the absent
+    # tool. A request-level `backend` is checked like the CLI's `--backend` (BE-0452): the target's
+    # platform, its actuator, or `fake`. Filtering against IMPLEMENTED (not KNOWN_ACTUATORS) avoids
+    # picking a planned-but-unimplemented backend whose preflight would fall through to generic
+    # checks.
+    try:
+        backends_list = backend_override(backend, eff.backend)
+    except ValueError as e:
+        return "", ({"error": str(e)}, 400)
+    implemented = [a for a in resolve_actuators(backends_list) if a in IMPLEMENTED]
+    if not implemented:
+        return "", ({"error": f"no implemented backend among {backends_list}"}, 400)
+    return implemented[0], None
 
 
 def doctor_check(
@@ -62,27 +81,16 @@ def doctor_check(
     if err is not None:
         return err
 
-    config = load_config(cfg.read_text(encoding="utf-8"))
+    config = load_config_file(cfg)
     target_cfg = config.targets.get(target)
     if target_cfg is None:
         return {"error": f"unknown target: {target}"}, 400
 
     eff = resolve(config, target)
 
-    # Resolve the *intended* actuator without requiring it to be installed — select_actuator
-    # raises when the tool is absent, but doctor's purpose is to *report* what's missing, so we
-    # resolve the first implemented actuator and let the runnability checks surface the absent
-    # tool. A request-level `backend` overrides the config's list (the CLI's `--backend`), so a
-    # user can diagnose a target against a specific backend. Filtering against IMPLEMENTED (not
-    # KNOWN_ACTUATORS) avoids picking a planned-but-unimplemented backend whose preflight would
-    # fall through to generic checks.
-    # `backend` may be a comma-list (valid_backend accepts "idb,fake"); split it as the CLI does so
-    # resolve_actuators expands individual tokens rather than treating the whole string as one name.
-    backends_list = [b.strip() for b in backend.split(",") if b.strip()] if backend else eff.backend
-    implemented = [a for a in resolve_actuators(backends_list) if a in IMPLEMENTED]
-    if not implemented:
-        return {"error": f"no implemented backend among {backends_list}"}, 400
-    actuator = implemented[0]
+    actuator, actuator_err = _intended_actuator(backend, eff)
+    if actuator_err is not None:
+        return actuator_err
 
     from bajutsu.common.capability import preflight
 

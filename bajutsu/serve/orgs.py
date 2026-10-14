@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 import re
 from collections.abc import Iterable, Sequence
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from pydantic import Field, ValidationError, model_validator
@@ -482,12 +483,15 @@ def seed_orgs_from_config(repository: Repository, orgs: dict[str, OrgConfig]) ->
     return stale
 
 
-def load_serve_config(text: str) -> tuple[Config, dict[str, OrgConfig]]:
+def load_serve_config(
+    text: str, *, path: Path | None = None, root: Path | None = None
+) -> tuple[Config, dict[str, OrgConfig]]:
     """Parse a raw config into the core `Config` plus its org model (BE-0129).
 
     The document is parsed once: `serve` validates the `orgs:` block locally, while
-    `parse_config_dict` builds the org-agnostic `Config` (dropping `orgs:` itself).
+    `parse_config_dict` builds the org-agnostic `Config` (dropping `orgs:` itself). *path* and *root*
+    are `parse_config_dict`'s, for a component a target's hooks call.
     """
     data = _yaml.safe_load(text) or {}
     orgs = parse_orgs(data.get("orgs") if isinstance(data, dict) else None)
-    return parse_config_dict(data), orgs
+    return parse_config_dict(data, path=path, root=root), orgs

@@ -97,10 +97,27 @@ def _match_tap_label(rules: list[ResolvedAlertRule], buttons: list[str]) -> str 
     return None
 
 
+# The group each config field these tests set sits under (BE-0452); `ai` stays at the target's top.
+_GROUP = {
+    "baselines": "paths",
+    "schemas": "paths",
+    "goldens": "paths",
+    "secrets": "run",
+    "systemAlertHandling": "run",
+}
+
+
 def _eff(**target: str) -> Effective:
-    # A minimal iOS-shaped target; pass baselines/schemas/goldens/setup to fill those config fields.
-    fields = "".join(f"    {k}: {v}\n" for k, v in target.items())
-    cfg = load_config(f"targets:\n  x:\n    bundleId: com.x\n{fields}")
+    # A minimal iOS target; pass baselines/schemas/goldens/secrets/ai to fill those config fields.
+    groups: dict[str, str] = {}
+    top = ""
+    for k, v in target.items():
+        if k in _GROUP:
+            groups[_GROUP[k]] = groups.get(_GROUP[k], "") + f"      {k}: {v}\n"
+        else:
+            top += f"    {k}: {v}\n"
+    fields = top + "".join(f"    {g}:\n{body}" for g, body in groups.items())
+    cfg = load_config(f"targets:\n  x:\n    platform: ios\n    app: {{id: com.x}}\n{fields}")
     return resolve(cfg, "x")
 
 
@@ -162,29 +179,29 @@ def test_expand_file_returns_scenarios_and_file_description(tmp_path: Path) -> N
         "description: a suite\nscenarios:\n  - name: demo\n    steps:\n      - tap: { id: home.title }\n",
         encoding="utf-8",
     )
-    scenarios, description, plan_sources = _expand_file(path, _eff(), root=tmp_path)
+    scenarios, description, plan_sources = _expand_file(path, root=tmp_path)
     assert description == "a suite"
     assert [s.name for s in scenarios] == ["demo"]
     assert plan_sources["demo"].file_name == "s.yaml"
     assert plan_sources["demo"].step_lines == [5]
 
 
-def test_expand_file_setup_expansion_drops_step_lines(tmp_path: Path) -> None:
-    # A `setup` prelude prepends steps, so the pre-expansion step count no longer matches the
-    # executed one — line numbers would misattribute, so they're dropped; the verbatim text (with
-    # its comments) is kept regardless, since it is still accurate as authored.
-    (tmp_path / "setup.yaml").write_text(
-        "- name: setup\n  steps:\n    - tap: { id: login }\n", encoding="utf-8"
+def test_expand_file_component_expansion_drops_step_lines(tmp_path: Path) -> None:
+    # A component's steps replace the one `use:` step, so the pre-expansion step count no longer
+    # matches the executed one — line numbers would misattribute, so they're dropped; the verbatim
+    # text (with its comments) is kept regardless, since it is still accurate as authored.
+    (tmp_path / "login.yaml").write_text(
+        "steps:\n  - tap: { id: login }\n  - tap: { id: ok }\n", encoding="utf-8"
     )
     path = tmp_path / "s.yaml"
     path.write_text(
-        "- name: demo  # the scenario under test\n  steps:\n    - tap: { id: home.title }\n",
+        "- name: demo  # the scenario under test\n"
+        "  steps:\n"
+        "    - use: { component: ./login.yaml }\n",
         encoding="utf-8",
     )
-    scenarios, _description, plan_sources = _expand_file(
-        path, _eff(setup="setup.yaml"), root=tmp_path
-    )
-    assert len(scenarios[0].steps) == 2  # the setup step, then the scenario's own
+    scenarios, _description, plan_sources = _expand_file(path, root=tmp_path)
+    assert len(scenarios[0].steps) == 2  # the component's two steps
     plan = plan_sources["demo"]
     assert plan.step_lines == []
     assert plan.text is not None
@@ -194,7 +211,7 @@ def test_expand_file_setup_expansion_drops_step_lines(tmp_path: Path) -> None:
 def test_expand_file_target_group_drops_step_lines(tmp_path: Path) -> None:
     # BE-0437: a target group expands one raw `steps:` item into several parsed steps, so the raw
     # per-item line numbers no longer line up with the executed steps either — the same guard that
-    # catches a setup prelude's step-count change must catch this one too.
+    # catches a component's step-count change must catch this one too.
     path = tmp_path / "s.yaml"
     path.write_text(
         "- name: demo\n"
@@ -206,7 +223,7 @@ def test_expand_file_target_group_drops_step_lines(tmp_path: Path) -> None:
         "        - tap: { id: b }\n",
         encoding="utf-8",
     )
-    scenarios, _description, plan_sources = _expand_file(path, _eff(), root=tmp_path)
+    scenarios, _description, plan_sources = _expand_file(path, root=tmp_path)
     assert len(scenarios[0].steps) == 2  # the group's two children, flattened
     plan = plan_sources["demo"]
     assert plan.step_lines == []
@@ -230,7 +247,7 @@ def test_expand_file_data_driven_scenario_drops_verbatim_text(tmp_path: Path) ->
         '    - type: { into: { id: email }, text: "${row.email}" }\n',
         encoding="utf-8",
     )
-    scenarios, _description, plan_sources = _expand_file(path, _eff(), root=tmp_path)
+    scenarios, _description, plan_sources = _expand_file(path, root=tmp_path)
     assert len(scenarios) == 2  # one per data row
     assert all("checkout" in s.name for s in scenarios)
     plan = plan_sources["checkout"]
@@ -246,7 +263,7 @@ def test_expand_file_sets_source_stem_from_the_file_name(tmp_path: Path) -> None
         "- name: Login succeeds with a valid password\n  steps:\n    - tap: { id: ok }\n",
         encoding="utf-8",
     )
-    scenarios, _description, _plan_sources = _expand_file(path, _eff(), root=tmp_path)
+    scenarios, _description, _plan_sources = _expand_file(path, root=tmp_path)
     assert [s.source_stem for s in scenarios] == ["login_flow"]
 
 
@@ -259,18 +276,9 @@ def test_expand_file_data_driven_rows_all_share_the_source_stem(tmp_path: Path) 
         '  steps:\n    - tap: { id: "${row.target}" }\n',
         encoding="utf-8",
     )
-    scenarios, _description, _plan_sources = _expand_file(path, _eff(), root=tmp_path)
+    scenarios, _description, _plan_sources = _expand_file(path, root=tmp_path)
     assert len(scenarios) == 2
     assert [s.source_stem for s in scenarios] == ["login_flow", "login_flow"]
-
-
-def test_expand_file_missing_setup_ref_exits_2(tmp_path: Path) -> None:
-    # A setup prelude resolved relative to the file's dir; a missing file is a usage error (exit 2).
-    path = tmp_path / "s.yaml"
-    path.write_text("- name: demo\n  steps:\n    - tap: { id: home.title }\n", encoding="utf-8")
-    with pytest.raises(typer.Exit) as exc:
-        _expand_file(path, _eff(setup="missing.yaml"), root=tmp_path)
-    assert exc.value.exit_code == 2
 
 
 def test_expand_file_missing_component_ref_exits_2(tmp_path: Path) -> None:
@@ -279,7 +287,7 @@ def test_expand_file_missing_component_ref_exits_2(tmp_path: Path) -> None:
         "- name: demo\n  steps:\n    - use: { component: missing.yaml }\n", encoding="utf-8"
     )
     with pytest.raises(typer.Exit) as exc:
-        _expand_file(path, _eff(), root=tmp_path)
+        _expand_file(path, root=tmp_path)
     assert exc.value.exit_code == 2
 
 
@@ -290,7 +298,7 @@ def test_expand_file_missing_data_file_exits_2(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     with pytest.raises(typer.Exit) as exc:
-        _expand_file(path, _eff(), root=tmp_path)
+        _expand_file(path, root=tmp_path)
     assert exc.value.exit_code == 2
 
 
@@ -380,7 +388,7 @@ def test_expand_file_skips_a_name_that_only_looks_like_a_data_row(tmp_path: Path
     path.write_text(
         "- name: demo [row 1]\n  steps:\n    - tap: { id: home.title }\n", encoding="utf-8"
     )
-    scenarios, _description, plan_sources = _expand_file(path, _eff(), root=tmp_path)
+    scenarios, _description, plan_sources = _expand_file(path, root=tmp_path)
     assert [s.name for s in scenarios] == ["demo [row 1]"]
     assert plan_sources == {}
 

@@ -63,7 +63,7 @@ def test_unknown_target_returns_400(tmp_path: Path) -> None:
 def test_fake_backend_passes_all_checks(tmp_path: Path) -> None:
     state = _state(
         tmp_path,
-        "defaults: { backend: [fake] }\ntargets:\n  demo: { bundleId: com.demo }\n",
+        ("targets:\n  demo:\n    platform: fake\n    app: {id: com.demo}\n"),
     )
     payload, status = ops.doctor_check(state, {"target": "demo"})
     assert status == 200
@@ -78,7 +78,7 @@ def test_ios_backend_reports_config_check(tmp_path: Path) -> None:
     # The iOS backend (XCUITest) needs a bundleId — with it set, that config check passes.
     state = _state(
         tmp_path,
-        "defaults: { backend: [xcuitest] }\ntargets:\n  demo: { bundleId: com.demo }\n",
+        ("targets:\n  demo:\n    platform: ios\n    app: {id: com.demo}\n"),
     )
     # Stub the live screen so the check assembly never spawns a real runner — otherwise a locally
     # staged bundled runner (`make runner-bundle`) would have the probe launch xcodebuild and hang
@@ -89,24 +89,6 @@ def test_ios_backend_reports_config_check(tmp_path: Path) -> None:
     config_checks = [c for c in payload["checks"] if "bundleId" in c["name"]]
     assert config_checks
     assert all(c["ok"] for c in config_checks)
-
-
-def test_playwright_backend_missing_base_url_fails_check(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # A web target without baseUrl should fail the config check.
-    monkeypatch.setattr(
-        "bajutsu.common.capability.preflight.doctor_environment_checks", lambda *a, **k: _NO_BROWSER
-    )
-    state = _state(
-        tmp_path,
-        "defaults: { backend: [playwright] }\ntargets:\n  webapp: { bundleId: com.example }\n",
-    )
-    payload, status = ops.doctor_check(state, {"target": "webapp"})
-    assert status == 200
-    assert payload["ok"] is False
-    failed = [c for c in payload["checks"] if not c["ok"]]
-    assert any("baseUrl" in c["name"] for c in failed)
 
 
 def test_playwright_backend_with_base_url_passes_config_check(
@@ -121,7 +103,7 @@ def test_playwright_backend_with_base_url_passes_config_check(
     )
     state = _state(
         tmp_path,
-        "defaults: { backend: [playwright] }\ntargets:\n  webapp: { baseUrl: 'http://localhost:3000' }\n",
+        ("targets:\n  webapp:\n    platform: web\n    app: {url: 'http://localhost:3000'}\n"),
     )
     payload, status = ops.doctor_check(state, {"target": "webapp"}, screen_query=lambda *a: [])
     assert status == 200
@@ -137,7 +119,7 @@ def test_xcuitest_panel_reports_xcode_tools(tmp_path: Path) -> None:
     # single actuator (BE-0290).
     state = _state(
         tmp_path,
-        "defaults: { backend: [xcuitest] }\ntargets:\n  demo: { bundleId: com.demo }\n",
+        ("targets:\n  demo:\n    platform: ios\n    app: {id: com.demo}\n"),
     )
     # Stub the live screen (see test_ios_backend_reports_config_check) so a staged bundled runner
     # can't turn this tool-name check into a real xcodebuild spawn.
@@ -157,7 +139,10 @@ def test_current_screen_maps_probe_error_to_value_error(tmp_path: Path) -> None:
     from bajutsu.serve.operations.doctor import _current_screen
 
     eff = dataclasses.replace(
-        resolve(load_config("targets: { web: { baseUrl: 'http://x' } }"), "web"),
+        resolve(
+            load_config("targets:\n  web:\n    platform: web\n    app: {url: 'http://x'}\n"),
+            "web",
+        ),
         platform_config=WebConfig(base_url=None),
     )
     with pytest.raises(ValueError, match="baseUrl"):
@@ -172,13 +157,15 @@ def test_screen_probe_failure_is_reported_not_raised(tmp_path: Path) -> None:
     # caught branch is backend-agnostic.
     state = _state(
         tmp_path,
-        "defaults: { backend: [fake] }\ntargets:\n  demo: { bundleId: com.example.demo }\n",
+        ("targets:\n  demo:\n    platform: ios\n    app: {id: com.example.demo}\n"),
     )
 
     def screen_query(actuator: str, udid: str, eff: object) -> list[base.Element]:
         raise simctl.DeviceError("web browser fault (recoverable wedge): ERR_CONNECTION_REFUSED")
 
-    payload, status = ops.doctor_check(state, {"target": "demo"}, screen_query=screen_query)
+    payload, status = ops.doctor_check(
+        state, {"target": "demo", "backend": "fake"}, screen_query=screen_query
+    )
     assert status == 200
     assert payload["ok"] is False
     assert payload["score"] is None
@@ -190,7 +177,7 @@ def test_check_shape_has_name_ok_detail(tmp_path: Path) -> None:
     """Every check in the response has the expected keys."""
     state = _state(
         tmp_path,
-        "defaults: { backend: [xcuitest] }\ntargets:\n  demo: { bundleId: com.demo }\n",
+        ("targets:\n  demo:\n    platform: ios\n    app: {id: com.demo}\n"),
     )
     # Stub the live screen (see test_ios_backend_reports_config_check) so a staged bundled runner
     # can't turn this shape check into a real xcodebuild spawn.
@@ -239,7 +226,7 @@ def test_backend_override_selects_actuator(tmp_path: Path) -> None:
     # The config declares xcuitest, but the request overrides to fake.
     state = _state(
         tmp_path,
-        "defaults: { backend: [xcuitest] }\ntargets:\n  demo: { bundleId: com.demo }\n",
+        ("targets:\n  demo:\n    platform: ios\n    app: {id: com.demo}\n"),
     )
     payload, status = ops.doctor_check(
         state,
@@ -250,19 +237,25 @@ def test_backend_override_selects_actuator(tmp_path: Path) -> None:
     assert payload["backend"] == "fake"
 
 
-def test_comma_list_backend_resolves_first_implemented(tmp_path: Path) -> None:
-    # A comma-list backend (like the CLI's --backend) is split, not treated as one token.
+def test_a_backend_override_is_checked_against_the_targets_platform(tmp_path: Path) -> None:
+    # A request's `backend` is checked like the CLI's `--backend` (BE-0452): the target's platform,
+    # its actuator, or `fake`; another platform or a comma list is a 400.
     state = _state(
         tmp_path,
-        "defaults: { backend: [xcuitest] }\ntargets:\n  demo: { bundleId: com.demo }\n",
+        ("targets:\n  demo:\n    platform: ios\n    app: {id: com.demo}\n"),
     )
     payload, status = ops.doctor_check(
-        state,
-        {"target": "demo", "backend": "fake,xcuitest"},
-        screen_query=lambda actuator, udid, eff: [],
+        state, {"target": "demo", "backend": "fake"}, screen_query=lambda actuator, udid, eff: []
     )
     assert status == 200
     assert payload["backend"] == "fake"
+    for bad in ("web", "fake,xcuitest"):
+        payload, status = ops.doctor_check(state, {"target": "demo", "backend": bad})
+        assert status == 400
+        assert (
+            "does not match the target's platform" in payload["error"]
+            or "unknown backend" in (payload["error"])
+        )
 
 
 def test_ios_reports_booted_simulator_check(tmp_path: Path) -> None:
@@ -270,7 +263,7 @@ def test_ios_reports_booted_simulator_check(tmp_path: Path) -> None:
     # Linux gate never shells out to a real xcrun.
     state = _state(
         tmp_path,
-        "defaults: { backend: [xcuitest] }\ntargets:\n  demo: { bundleId: com.demo }\n",
+        ("targets:\n  demo:\n    platform: ios\n    app: {id: com.demo}\n"),
     )
     state.simctl = lambda args, extra_env: '{"devices": {}}'  # no booted device
     payload, status = ops.doctor_check(state, {"target": "demo"})
@@ -283,8 +276,14 @@ def test_score_present_when_runnable(tmp_path: Path) -> None:
     # fake backend has no runnability gate, so the score is computed from the current screen.
     state = _state(
         tmp_path,
-        "defaults: { backend: [fake] }\n"
-        "targets:\n  demo: { bundleId: com.demo, idNamespaces: [auth] }\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: fake\n"
+            "    app:\n"
+            "      id: com.demo\n"
+            "      idNamespaces: [auth]\n"
+        ),
     )
     screen = [
         _element("auth.email", ["textField"]),
@@ -310,7 +309,7 @@ def test_fake_score_does_not_shell_out_to_simctl(tmp_path: Path) -> None:
     # No screen_query is injected here, so this exercises the real _current_screen fake path.
     state = _state(
         tmp_path,
-        "defaults: { backend: [fake] }\ntargets:\n  demo: { bundleId: com.demo }\n",
+        ("targets:\n  demo:\n    platform: fake\n    app: {id: com.demo}\n"),
     )
 
     def boom(args: list[str], extra_env: object = None) -> str:
@@ -325,8 +324,14 @@ def test_fake_score_does_not_shell_out_to_simctl(tmp_path: Path) -> None:
 def test_score_reports_gaps(tmp_path: Path) -> None:
     state = _state(
         tmp_path,
-        "defaults: { backend: [fake] }\n"
-        "targets:\n  demo: { bundleId: com.demo, idNamespaces: [auth] }\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: fake\n"
+            "    app:\n"
+            "      id: com.demo\n"
+            "      idNamespaces: [auth]\n"
+        ),
     )
     screen = [
         _element("auth.email", ["textField"]),
@@ -353,7 +358,7 @@ def test_score_null_when_runnability_fails(tmp_path: Path, monkeypatch: pytest.M
     )
     state = _state(
         tmp_path,
-        "defaults: { backend: [playwright] }\ntargets:\n  webapp: { bundleId: com.example }\n",
+        ("targets:\n  webapp:\n    platform: ios\n    app: {id: com.example}\n"),
     )
     called = False
 
@@ -384,8 +389,13 @@ def test_a_real_device_target_checks_usbmuxd_instead_of_a_booted_simulator(
     )
     state = _state(
         tmp_path,
-        "defaults: { backend: [xcuitest] }\ntargets:\n"
-        "  demo: { bundleId: com.demo, xcuitest: { deviceType: device } }\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app: {id: com.demo}\n"
+            "    runsOn: {kind: device}\n"
+        ),
     )
     payload, status = ops.doctor_check(state, {"target": "demo", "udid": "00008120-AAAA"})
     assert status == 200

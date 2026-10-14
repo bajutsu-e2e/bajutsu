@@ -1,305 +1,120 @@
-"""One app's block under `targets.<name>` — where every per-app difference is declared."""
+"""One app's block under `targets.<name>` — where every per-app difference is declared (BE-0452)."""
 
 from __future__ import annotations
 
-from collections.abc import Iterator
-from typing import Any, Literal, Self
+from collections.abc import Callable
+from functools import cache, partial
+from typing import Any, cast
 
-from pydantic import AliasChoices, Field, field_validator, model_validator
+from pydantic import Field, ValidationError, ValidationInfo, create_model, model_validator
 
-from bajutsu.common.deprecations import reject_renamed_key, warn_server_batch_budget
-from bajutsu.common.drivers import base
-from bajutsu.common.scenario import AfterRule, Interrupt, Redact, Step, SystemAlertHandlingField
-
-from ._functions import _as_list, _check_platform, _check_requires
 from ._model import _Model
 from .ai_settings import AiSettings
-from .device_provider import DeviceProvider
-from .launch_server import LaunchServer
-from .mailbox import Mailbox
-from .mock_server import MockServer
+from .evidence import Evidence
+from .hooks import Hooks
 from .notify_endpoint import NotifyEndpoint
-from .platform.web import WEB_ENGINES
-from .xcuitest_config import XcuitestConfig
+from .paths import Paths
+from .platform.registry import schema_for, validate_group, validate_model
+from .run_policy import RunPolicy
+from .services import Services
+
+# The eleven keys a target accepts, in the order the documentation lists them.
+TARGET_KEYS: tuple[str, ...] = (
+    "platform",
+    "app",
+    "runsOn",
+    "driver",
+    "services",
+    "run",
+    "hooks",
+    "evidence",
+    "paths",
+    "ai",
+    "notify",
+)
 
 
-def _nested_steps(steps: list[Step]) -> Iterator[Step]:
-    for step in steps:
-        yield step
-        if step.if_ is not None:
-            yield from _nested_steps(step.if_.then)
-            yield from _nested_steps(step.if_.else_ or [])
-        if step.for_each is not None:
-            yield from _nested_steps(step.for_each.steps)
-        if step.web is not None:
-            yield from _nested_steps(step.web.steps)
-        if step.app is not None:
-            yield from _nested_steps(step.app.steps)
+@cache
+def run_model(platform: str) -> type[RunPolicy]:
+    """The model of a `platform` target's `run`: the shared run policy joined to the platform's fields.
+
+    Raises:
+        ValueError: No platform of that name is registered.
+    """
+    extension = schema_for(platform).run
+    joined = create_model(f"{extension.__name__}Policy", __base__=(extension, RunPolicy))
+    return cast("type[RunPolicy]", joined)
+
+
+def _validated(where: str, validate: Callable[[], _Model]) -> _Model:
+    # A group's own failure (a missing `app.id`, say) reads as `app.id: Field required` rather than
+    # as a nested Pydantic report, so the target's location prefix stays the only one shown.
+    try:
+        return validate()
+    except ValidationError as exc:
+        raise ValueError(
+            "\n".join(
+                f"{'.'.join(str(p) for p in (where, *e['loc']))}: {e['msg']}" for e in exc.errors()
+            )
+        ) from None
 
 
 class TargetConfig(_Model):
-    """One app's config under `targets.<name>`, overriding `defaults` for that target."""
+    """One app's config under `targets.<name>`, after `defaults` has been merged into it.
 
-    # The platform this target runs on (ios / android / web). None derives it from the backend
-    # (BE-0009 Slice 4), so a config written before this field is unchanged; an explicit value is
-    # authoritative and selects which identifier below is required.
-    platform: str | None = None
-    # Each platform identifies the target by its own handle: iOS by bundleId, web by baseUrl, Android
-    # by package. The required one is validated for the resolved platform (see Config below); defaulting
-    # the string ones to "" keeps every `eff.bundle_id` / `eff.package` call site a plain `str`.
-    bundle_id: str = Field(default="", alias="bundleId")
-    base_url: str | None = Field(
-        default=None, alias="baseUrl"
-    )  # web target (e.g. http://host/page)
-    package: str = Field(default="", alias="package")  # Android target (e.g. com.example.app)
-    # Android only: runtime permissions granted up front (`pm grant`) before launch, so a permission
-    # prompt never blocks a scenario (BE-0210). App-specific, so it lives in config, not the driver.
-    grant_permissions: list[str] = Field(default_factory=list, alias="grantPermissions")
-    # Android only: ask the device to measure each opted-in view's own `View.getZ()` (BE-0355), which
-    # `elements.json` reports as `nativeZ`. Off by default because the walk that answers it covers
-    # every node on every read — 20-100ms — and returns nothing at all unless the app under test links
-    # `BajutsuAndroid` and opts views in, which is why the cost belongs to the targets that read the
-    # value rather than to every Android run (BE-0407 unit 18).
-    native_z: bool = Field(default=False, alias="nativeZ")
-    # Web backend only: run with a visible (headed) browser instead of headless. iOS ignores it.
-    # The `bajutsu run --headed/--no-headed` flag (and the Web UI's "Show browser" toggle) override.
-    headless: bool = True
-    # Web backend only: which Playwright engine to drive — chromium (default) / firefox / webkit.
-    # iOS ignores it. The `bajutsu run/record --browser <engine>` flag overrides per run (BE-0076).
-    browser: str = "chromium"
-    # Web backend only: the device mode a context is created with (BE-0228). "desktop" (default) is
-    # the plain desktop context of before; any other value is a Playwright device preset name
-    # (`playwright.devices`, e.g. "iPhone 13") that emulates its viewport / touch / scale / user
-    # agent. Resolved lazily in the driver so config load never imports Playwright — an unknown
-    # preset fails loudly at driver start, not here. Distinct from the top-level `device` (the iOS
-    # simulator name), which a web target ignores.
-    device_mode: str = Field(default="desktop", alias="deviceMode")
-    # How to bring up baseUrl's host for a run (start → readiness probe → teardown). See LaunchServer.
-    launch_server: LaunchServer | None = Field(default=None, alias="launchServer")
-    deeplink_scheme: str | None = Field(default=None, alias="deeplinkScheme")
-    backend: list[str] | None = None
-    # Where this target's devices come from (BE-0236). None = the built-in local provider (today's
-    # `--udid` path), so an existing target is unchanged; a device-cloud `kind` reserves a device
-    # off-host. Validated against the registry at runtime, not here (the core imports no cloud SDK).
-    device_provider: DeviceProvider | None = Field(default=None, alias="deviceProvider")
-    # Which registered batch provider serve's per-scenario fan-out submits this target's cloud runs
-    # to (BE-0336 Unit 3). None = the target runs on local devices; a value (e.g. "devicefarm") names
-    # a kind in the batch-provider registry. Validated at runtime, not here, so the deterministic
-    # core imports no cloud SDK (BE-0112). Distinct from `deviceProvider` (the live-device topology).
-    cloud_batch: str | None = Field(default=None, alias="cloudBatch")
-    # The device budget K for cloud-batch fan-out dispatched from this target (BE-0336 Unit 4). None =
-    # no cap from this target's config (the fan-out is unbounded by config; a per-request
-    # `deviceBudget` may still lower it). When set, serve keys the job registry's concurrency cap on
-    # the batch *provider* (the shared Device Farm device pool), so at most K runs reserve devices on
-    # that provider at once — across all targets and orgs sharing it. A target with `cloudBatch:
-    # devicefarm` and K=2 means "dispatch a fan-out only when fewer than 2 devicefarm runs are
-    # in-flight total, not just for this target." This is intentional: the cap bounds the real device
-    # quota, not each target's slice of it. Must be a positive integer — a non-positive literal is
-    # rejected at config load rather than silently meaning "unlimited" (determinism first).
-    # Deprecated since the worker owns the budget as `maxJobConcurrency` (BE-0448): still honored
-    # for one release, with a notice, and removed by the target-config restructure.
-    cloud_batch_budget: int | None = Field(default=None, alias="cloudBatchBudget", gt=0)
-    device: str | None = None
-    locale: str | None = None
-    # Capability tokens this target requires of the worker that runs it (BE-0166), added to the
-    # team-wide `defaults.requires`. On the hosted backend a job is routed only to a worker that
-    # advertises all of them (e.g. `ios18`, `ipad`); ignored by local single-worker runs. Deprecated
-    # like `defaults.requires` (BE-0450).
-    requires: list[str] = Field(default_factory=list)
-    launch_env: dict[str, str] = Field(default_factory=dict, alias="launchEnv")
-    launch_args: list[str] = Field(default_factory=list, alias="launchArgs")
-    # Selector the launch waits for before a run starts (e.g. `{ id: onboarding.start }`). For an app
-    # whose first interactive screen is a modal over always-present chrome, the default element-count
-    # readiness can return before the modal presents; `readyWhen` makes the gate wait for that screen
-    # (a condition wait, no fixed sleep). None keeps the element-count heuristic.
-    ready_when: base.Selector | None = Field(default=None, alias="readyWhen")
-    id_namespaces: list[str] = Field(default_factory=list, alias="idNamespaces")
-    mock_server: MockServer | None = Field(default=None, alias="mockServer")
-    mailbox: Mailbox | None = None
-    setup: str | None = None
-    # Path to the built .app. When set, a run installs it on each device before launch (if
-    # missing) — so a freshly-picked/booted simulator works without a manual `simctl install`.
-    app_path: str | None = Field(default=None, alias="appPath")
-    # Shell command that builds `app_path`. When set, `bajutsu serve` runs it before the
-    # scenario if the binary is missing (so the Web UI builds on demand). Run from the run's
-    # working directory; e.g. "make -C demos/showcase swiftui-build".
-    build: str | None = None
-    # Directory of this target's scenario *.yaml files. `run` reads them all; `record` writes new
-    # ones here. Relative to the run's working directory (like app_path/build).
-    scenarios: str | None = None
-    # Directory of baseline images for `visual` assertions. Relative to the run's
-    # working directory. Overrides the default (baselines/ beside the scenario file).
-    baselines: str | None = None
-    # Directory of JSON Schema files for `responseSchema` assertions. Relative to the run's
-    # working directory. Overrides the default (schemas/ beside the scenario file).
-    schemas: str | None = None
-    # Directory of golden JSON files for `golden` assertions (BE-0006). Relative to the run's
-    # working directory. Overrides the default (goldens/ beside the scenario file).
-    goldens: str | None = None
-    redact: Redact = Field(default_factory=Redact)
-    secrets: list[str] = Field(default_factory=list)
-    # XCUITest runner config (BE-0019): prebuilt test runner path and/or build command.
-    xcuitest: XcuitestConfig | None = None
-    # Per-target AI provider/model/endpoint/key (BE-0047), overriding defaults.ai field by field.
+    `platform` decides the actuator and selects the models that validate the four platform-shaped
+    groups (`app`, `runsOn`, `driver`, and the platform's fields of `run`) from the registry, so the
+    core names no platform here. Every model forbids extra keys, so a key another platform takes
+    fails as unknown, with the accepted fields listed.
+    """
+
+    platform: str
+    # Validated by the registered model for `platform`; the concrete type is that model.
+    app: _Model
+    runs_on: _Model = Field(alias="runsOn")
+    driver: _Model
+    services: Services = Field(default_factory=Services)
+    # The shared run policy joined to the platform's own fields (`run_model`).
+    run: RunPolicy = Field(default_factory=RunPolicy)
+    hooks: Hooks = Field(default_factory=Hooks)
+    evidence: Evidence = Field(default_factory=Evidence)
+    paths: Paths = Field(default_factory=Paths)
+    # Per-target AI provider/model/endpoint/key (BE-0047), overriding `defaults.ai` field by field.
     ai: AiSettings | None = None
     # Per-target webhook notification override (BE-0099). None inherits the top-level `notify:`.
     notify: list[NotifyEndpoint] | None = None
-    visual_compare: Literal["exact", "pixelmatch"] | None = Field(
-        default=None, alias="visualCompare"
-    )
-    # Per-app defaults for the run-behavior knobs that otherwise live per-scenario or on a CLI flag
-    # (BE-0177). Each sits *between* the per-scenario value and the built-in default: the flag still
-    # overrides for one run, then the scenario's own value, then this, then the built-in — mirroring
-    # `--headed`/`headless`. None = unset (fall through to the built-in default).
-    # The former `alertHandling` / `dismissAlerts` spellings were deleted with no alias (BE-0401);
-    # the validator below names the replacement.
-    system_alert_handling: SystemAlertHandlingField = Field(
-        default=None,
-        validation_alias=AliasChoices("systemAlertHandling"),
-        serialization_alias="systemAlertHandling",
-    )
-    erase: bool | None = None  # default for preconditions.erase (built-in: off)
-    # Default for a scenario's iosTipKitHandling (built-in: off — a tip is sometimes the assertion).
-    ios_tip_kit_handling: bool | None = Field(default=None, alias="iosTipKitHandling")
-    network: bool | None = None  # collect the app's network exchanges (built-in: on)
-    # App-wide interstitial-screen handlers (BE-0314): the same `{ condition, steps }` shape a
-    # scenario's `interrupts` uses, applied to every scenario for this target. A scenario's own
-    # `interrupts` is appended after these (config entries checked first), mirroring how
-    # `systemAlertHandling` layers a config default under a per-scenario value. Empty = no app-wide
-    # handler.
-    interrupts: list[Interrupt] = Field(default_factory=list)
-    # App-wide setup and teardown phases (BE-0392): the same `before` / `after` shapes a scenario
-    # takes, applied to every scenario for this target. `before` runs *ahead* of a scenario's own
-    # (config-then-scenario, like `interrupts`); `after` runs *behind* it (scenario-then-config), so
-    # a scenario releases what it created before the app-wide teardown closes around it. Both empty
-    # = no app-wide phase. `before` does not replace `setup` above: only `before` is its own report
-    # phase, and it runs ahead of the prelude `setup` splices onto `steps`.
-    before: list[Step] = Field(default_factory=list)
-    after: list[AfterRule] = Field(default_factory=list)
-
-    @model_validator(mode="after")
-    def _no_component_in_target_steps(self) -> Self:
-        # `use` and `group` are both expanded when a *scenario* file loads, which a target config
-        # never passes through: an app-wide `use` or `group` would reach the step loop with no
-        # action on it and abort the whole run with an `AssertionError` rather than fail one
-        # scenario. Reject both here, loudly and at load time, until config-level component
-        # resolution exists. Every field that takes the step grammar is covered, not only the
-        # lifecycle phases (BE-0392): `interrupts` (BE-0314) skips the same expansion pass for the
-        # same reason. `_nested_steps` descends into `if` / `forEach` / `web` / `app` too, so a
-        # `use:`/`group:` nested inside one of those still loads cleanly rather than reaching the
-        # step loop unexpanded (BE-0438 review).
-        field_steps = {
-            "before / after": [
-                *_nested_steps(self.before),
-                *(s for rule in self.after for s in _nested_steps(rule.steps)),
-            ],
-            "interrupts": [s for entry in self.interrupts for s in _nested_steps(entry.steps)],
-        }
-
-        def _nested(s: Step) -> list[Step]:
-            # A target group (BE-0437) is never flattened at `TargetConfig`-parse time — unlike a
-            # scenario's own top-level `use` or `group` — so a `use:` or `group:` hidden one level
-            # inside it (its own `steps`) is just as unresolvable here as a bare one.
-            return [s, *(s.steps or [])]
-
-        for field, steps in field_steps.items():
-            reachable = [c for s in steps for c in _nested(s)]
-            if any(s.use is not None for s in reachable):
-                raise ValueError(
-                    f"targets.<name>.{field} cannot use a component (`use`): components are "
-                    "expanded per scenario file, so an app-wide one is never resolved"
-                )
-            if any(s.group is not None for s in reachable):
-                raise ValueError(
-                    f"targets.<name>.{field} cannot use a group (`group`): groups are "
-                    "expanded per scenario file, so an app-wide one is never resolved"
-                )
-            if any(s.set_mocks is not None for s in reachable):
-                # `run` arms the control channel per scenario, from the scenario's own steps
-                # (BE-0365 unit 4); an app-wide swap would reach the app unarmed and fail on its
-                # acknowledgement timeout instead of being refused before the run.
-                raise ValueError(
-                    f"targets.<name>.{field} cannot use setMocks: a stub table belongs to one "
-                    "scenario, so replace it from that scenario's own steps"
-                )
-        return self
-
-    @model_validator(mode="after")
-    def _no_target_in_target_interrupts(self) -> Self:
-        # An entry here already belongs to the target this block configures, so a `target` on it
-        # could only repeat that name or contradict it (BE-0438). Its recovery steps are checked
-        # too, nested ones included: a target config never passes through the scenario-side
-        # `_check_target_requirements`, so an unchecked `steps[0].target: ios` under a web target
-        # would load cleanly and `_StepRunner._route` would then dispatch it to the ios runner.
-        for entry in self.interrupts:
-            if entry.target is not None:
-                raise ValueError(
-                    "targets.<name>.interrupts entries cannot set `target`: the entry already "
-                    "belongs to the target this block configures"
-                )
-            if any(s.target is not None for s in _nested_steps(entry.steps)):
-                raise ValueError(
-                    "a step under targets.<name>.interrupts cannot set `target`: recovery steps "
-                    "run on the target this block configures"
-                )
-        return self
 
     @model_validator(mode="before")
     @classmethod
-    def _reject_renamed_alert_keys(cls, data: Any) -> Any:
-        # `systemAlertHandling` renamed `alertHandling`, which had itself renamed `dismissAlerts`
-        # (BE-0317 / BE-0327). Both aliases were deleted rather than carried a third time (BE-0401),
-        # so name the canonical key here instead of leaving Pydantic's generic extra-field error.
-        for old in ("alertHandling", "dismissAlerts"):
-            reject_renamed_key(data, surface="config", old=old, new="systemAlertHandling")
-        return data
-
-    @field_validator("cloud_batch_budget")
-    @classmethod
-    def _deprecated_budget(cls, v: int | None) -> int | None:
-        # Runs only when the key is written, since Pydantic does not validate the omitted default.
-        warn_server_batch_budget("config field 'cloudBatchBudget'")
-        return v
-
-    @field_validator("backend", mode="before")
-    @classmethod
-    def _norm(cls, v: Any) -> Any:
-        return _as_list(v) if v is not None else v
-
-    @field_validator("platform")
-    @classmethod
-    def _valid_platform(cls, v: str | None) -> str | None:
-        return _check_platform(v)
-
-    @field_validator("requires")
-    @classmethod
-    def _deprecated_requires(cls, v: list[str]) -> list[str]:
-        return _check_requires(v, "config field 'targets.<name>.requires'")
-
-    @field_validator("browser")
-    @classmethod
-    def _valid_browser(cls, v: str) -> str:
-        # Reject a typo'd engine at load time (the loud, right place) rather than letting it surface
-        # as an AttributeError when the driver does `getattr(pw, engine)` mid-run (BE-0076).
-        if v not in WEB_ENGINES:
-            raise ValueError(f"invalid browser {v!r}: use one of {', '.join(WEB_ENGINES)}")
-        return v
-
-    @field_validator("ready_when")
-    @classmethod
-    def _valid_ready_when(cls, v: base.Selector | None) -> base.Selector | None:
-        # A `readyWhen` id/idMatches candidate list is checked the same way a scenario-step selector
-        # is — empty/blank/non-canonical-first fails loudly at load, not silently (BE-0221).
-        if v is not None:
-            base.validate_id_candidates("id", v.get("id"))
-            base.validate_id_candidates("idMatches", v.get("idMatches"))
-        return v
-
-    @model_validator(mode="after")
-    def _need_target(self) -> TargetConfig:
-        # A malformed target entry (no identifier at all) still fails fast. The platform-aware check
-        # that the *right* identifier is present for the resolved platform lives on Config (it needs
-        # defaults to derive the platform).
-        if not self.bundle_id and not self.base_url and not self.package:
-            raise ValueError("target needs bundleId (iOS), baseUrl (web), or package (Android)")
-        return self
+    def _platform_groups(cls, data: Any, info: ValidationInfo) -> Any:
+        if not isinstance(data, dict):
+            return data
+        unknown = [k for k in data if k not in TARGET_KEYS]
+        if unknown:
+            raise ValueError(
+                f"unknown target field(s) {', '.join(map(repr, unknown))}; a target accepts "
+                f"{', '.join(TARGET_KEYS)} (BE-0452 regrouped the flat keys)"
+            )
+        platform = data.get("platform")
+        if not isinstance(platform, str):
+            raise ValueError(  # noqa: TRY004 - Pydantic turns only ValueError into a field error
+                "a target needs `platform`: one of ios, android, web, or fake"
+            )
+        schema_for(platform)  # an unknown platform fails here, listing the registered ones
+        out = dict(data)
+        for group in ("app", "runsOn", "driver"):
+            out[group] = _validated(
+                group, partial(validate_group, platform, group, data.get(group), where=group)
+            )
+        out["run"] = _validated(
+            "run",
+            partial(
+                validate_model,
+                run_model(platform),
+                data.get("run"),
+                platform=platform,
+                where="run",
+                context=info.context,
+            ),
+        )
+        return out

@@ -106,19 +106,19 @@ the launch sequence ([run-loop](run-loop.md#runner-the-run-pipeline)).
 
 | Key | Type | Default | Description | Wired |
 |---|---|---|---|---|
-| `erase` | bool | unset (inherits; off unless the config sets it) | Wipe the whole simulator (`simctl erase` — apps/data/settings) before the test. Off by default; `reinstall` keeps the app fresh without a full wipe, so set `true` only when a test needs a pristine device | ✅ |
-| `reinstall` | `clean` \| `overwrite` | `clean` | How the app is reinstalled before each run when the app config sets `appPath`: `clean` = uninstall then install (fresh app + data); `overwrite` = install over the existing app (keeps its data) | ✅ |
-| `launchArgs` | list[str] | `[]` | Launch arguments (appended to config's `launchArgs`) | ✅ |
-| `launchEnv` | dict | `{}` | Launch env (injected via `SIMCTL_CHILD_*`; merged onto config's `launchEnv`) | ✅ |
+| `erase` | bool | unset (inherits; off unless the target's `run.erase` sets it) | Wipe the whole simulator (`simctl erase` — apps/data/settings) before the test. Off by default; `reinstall` keeps the app fresh without a full wipe, so set `true` only when a test needs a pristine device | ✅ |
+| `reinstall` | `clean` \| `overwrite` | `clean` | How the app is reinstalled before each run when the target config sets `app.path`: `clean` = uninstall then install (fresh app + data); `overwrite` = install over the existing app (keeps its data) | ✅ |
+| `launchArgs` | list[str] | `[]` | Launch arguments (appended to config's `app.launch.args`) | ✅ |
+| `launchEnv` | dict | `{}` | Launch env (injected via `SIMCTL_CHILD_*`; merged onto config's `app.launch.env`) | ✅ |
 | `deeplink` | str | none | Opened after launch via `simctl openurl` | ✅ |
-| `locale` | str | none | Force the locale/language at launch (`-AppleLocale`/`-AppleLanguages`); overrides the app/config default | ✅ |
-| `setup` | str | none | A reusable prelude scenario file (resolved relative to this scenario); its steps run before this scenario's own | ✅ |
+| `locale` | str | none | Force the locale/language at launch (`-AppleLocale`/`-AppleLanguages`); overrides the target's `runsOn.locale` | ✅ |
+| `run.inheritSetup` | bool | `true` | `false` skips the `hooks.setup` of every target this scenario declares; their `hooks.cleanup` still runs ([below](#before--after-setup-and-teardown-phases)) | ✅ |
 
-> **launchEnv resolution order** is **config's `launchEnv` < preconditions' `launchEnv`** (the
+> **launchEnv resolution order** is **config's `app.launch.env` < preconditions' `launchEnv`** (the
 > one closer to the test wins). `launch_driver` merges `{**eff.launch_env, **pre.launch_env}`.
 
 > **`erase` resolution order** is **CLI `--erase`/`--no-erase` > this scenario's own `erase` >
-> the target config's `run_defaults.erase` > built-in off** ([BE-0177](../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md);
+> the target's `run.erase` > built-in off** ([BE-0177](../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md);
 > [configuration](configuration.md#config-layering-defaults--targets)) — an unset scenario value
 > (the common case) inherits whatever the target config defaults to, which is itself off unless the
 > config sets it. `_filter_scenarios` (`cli/commands/run.py`) resolves this before the run starts.
@@ -213,13 +213,15 @@ single run, between the scenario and the target config (see [layering](#layering
 
 A prompt the app never raises needs no answer. The supported way for an app to skip its own prompts
 under test is a launch argument or environment variable in the target's config, `targets.<name>`
-(`launchArgs` and `launchEnv`), which the app reads at start-up:
+(`app.launch.args` and `app.launch.env`), which the app reads at start-up:
 
 ```yaml
 targets:
   my-app:
-    bundleId: com.example.myapp
-    launchEnv: { UITEST_SKIP_ONBOARDING_PROMPTS: "1" }   # the app checks this and asks nothing
+    platform: ios
+    app:
+      id: com.example.myapp
+      launch: { env: { UITEST_SKIP_ONBOARDING_PROMPTS: "1" } }   # the app checks this and asks nothing
 ```
 
 Prevention makes the guard's work rarer, but it cannot replace the guard. Three prompts stay
@@ -444,7 +446,7 @@ To dismiss the prompt rather than accept it, target the dismissive button
 - **`sel` is label-based only.** A SpringBoard alert button carries no app-assigned identifier, trait,
   or value — only its visible text — so `sel` accepts `label` / `labelMatches` / `index` and rejects
   `id` / `idMatches` / `traits` / `value` / `within` at parse time.
-- **The label a run must match is the one the target's [`locale`](configuration.md#config-layering-defaults--targets)
+- **The label a run must match is the one the target's [`runsOn.locale`](configuration.md#config-layering-defaults--targets)
   renders.** SpringBoard owns the prompt, so it used to render in whatever system language the
   Simulator happened to carry — making `label: "Allow"` work by accident on an English machine and
   fail on a Japanese one. A run now pins the Simulator's own system language to that `locale` before
@@ -538,7 +540,7 @@ does not cover it still fails the scenario loudly before any device work, naming
 
 Two limits are worth knowing before reaching for it:
 
-- **The Simulator only.** The pin is a `simctl` operation, so a target on `xcuitest.deviceType:
+- **The Simulator only.** The pin is a `simctl` operation, so a target on `runsOn.kind:
   device` runs against whatever system language the physical device carries — the intent form would
   resolve a label nothing guarantees is on screen. Name the button with `sel.label` there.
 - **The interruption monitor carries no English assumption either.** A `rules` entry resolves its
@@ -577,7 +579,7 @@ Each backend maps a service to its own native mechanism:
 - **iOS** drives `simctl privacy <udid> <grant|revoke> <tcc-service> <bundle>` — the same TCC
   (Transparency, Consent, and Control) database SpringBoard's permission prompts read.
 - **Android** drives `pm grant` / `pm revoke`, reusing the plumbing behind the config-level
-  `grantPermissions` list ([drivers](drivers.md)); a scenario's `permissions` layers on top of that
+  `app.grantPermissions` list ([drivers](drivers.md)); a scenario's `permissions` layers on top of that
   config-level default and can revoke what it grants.
 
 **iOS has no TCC service for `notifications`** (iOS notification authorization is not part of
@@ -616,10 +618,11 @@ author no longer has to predict the one spot to place an `if`.
 # config.yaml — an app-wide default: this app's onboarding screen, on every scenario
 targets:
   myapp:
-    interrupts:
-      - condition: { exists: { id: onboarding.skip } }
-        steps:
-          - tap: { id: onboarding.skip }
+    hooks:
+      interrupts:
+        - condition: { exists: { id: onboarding.skip } }
+          steps:
+            - tap: { id: onboarding.skip }
 ```
 
 ```yaml
@@ -634,13 +637,13 @@ targets:
     - wait: { for: { id: home.title }, timeout: 10 }   # an interstitial mid-flow is cleared, then this passes
 ```
 
-An `interrupts` list set at the **config** level (`targets.<name>.interrupts`) is an app-wide
+An `interrupts` list set at the **config** level (`targets.<name>.hooks.interrupts`) is an app-wide
 default; a scenario's own `interrupts` is **appended** to it, config entries checked first — the
 same config-then-scenario layering `systemAlertHandling` follows. An entry's `steps` share the
 enclosing scenario's `vars.*` bindings, exactly as `if`'s branches do. A handler may itself `use` a
-[component](#reuse-data-and-tags), which expands before the run. A config-level entry may not: a
-target config never goes through component expansion. A `use` under `targets.<name>.interrupts`
-fails the config load. Inline the steps there, or move the handler to the scenario. If a handler's
+[component](#reuse-data-and-tags), which expands before the run. A config-level entry may too: a
+`use` under `targets.<name>.hooks.interrupts` resolves when the config loads, against the config
+file's directory ([reuse](#reuse-data-and-tags)). If a handler's
 own `steps` never clear its `condition` (a broken selector, a screen that re-renders identically),
 the entry fires only a small bounded number of times per step and then the step falls back to its
 ordinary outcome (pass, fail, or timeout) — a mis-set entry fails the step cleanly rather than
@@ -696,11 +699,9 @@ configured condition rather than generating code for it — `bajutsu run` is the
 
 ## `before` / `after` (setup and teardown phases)
 
-`preconditions.setup` ([above](#preconditions-environment-setup)) names a prelude scenario file, and
-the runner prepends that prelude's steps onto this scenario's own `steps` before the run starts. The
-prelude then runs indistinguishably from the scenario's own steps: the report lists them in one
-numbered sequence, and a prelude failure surfaces as an ordinary step failure with no marker showing
-it came from setup. Teardown has no mechanism at all. The only place to put cleanup is the tail of
+Setup written at the front of `steps` runs indistinguishably from the scenario's own steps: the
+report lists them in one numbered sequence, and a setup failure surfaces as an ordinary step failure
+with no marker showing it came from setup. Teardown has no mechanism at all. The only place to put cleanup is the tail of
 `steps`, and the step loop breaks on the first failure ([the run loop](run-loop.md)), so a trailing
 cleanup step runs only when every preceding step already passed — exactly the run that needed
 cleanup least. A scenario that signs up a test user, then hits a broken button three steps later,
@@ -751,19 +752,23 @@ A cancelled run (`SIGTERM`, the `serve` Web UI's Cancel button) reaches the phas
 window to run in. Once that slice is spent, the remaining rules are abandoned so the shutdown tail
 that writes the report still fits inside the window.
 
-### Both fields at the target-config level
+### The target's hooks: `hooks.setup` and `hooks.cleanup`
 
-`targets.<name>.before` and `targets.<name>.after` take the same shapes as an app-wide default, and
-the two merge in opposite orders:
+`targets.<name>.hooks.setup` takes the shape of `before` as an app-wide default.
+`targets.<name>.hooks.cleanup` takes the shape of `after`. Each merges with the scenario's own field,
+in opposite orders:
 
 | Field | Merge order | Why |
 |---|---|---|
-| `before` | config, then scenario | The app-wide prelude seeds the state this scenario's own setup then builds on — the same config-then-scenario layering `interrupts` follows |
-| `after` | scenario, then config | This scenario releases what it created before the app-wide teardown closes around it, the last-acquired-first-released order a fixture-based teardown pair gives |
+| `before` | config (`hooks.setup`), then scenario | The app-wide setup seeds the state this scenario's own setup then builds on — the same config-then-scenario layering `interrupts` follows |
+| `after` | scenario, then config (`hooks.cleanup`) | This scenario releases what it created before the app-wide teardown closes around it, the last-acquired-first-released order a fixture-based teardown pair gives |
 
-`targets.<name>.before` does not replace `targets.<name>.setup`: only `before` is its own report
-phase, and a `before` phase runs ahead of the prelude that `setup` splices onto `steps`. A `before`
-step therefore must not depend on a screen the prelude reaches.
+With `use:`, a hook step calls a [component](#reuse-data-and-tags). A login flow that every
+scenario of a target shares then lives in one file.
+[BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)
+removed the `setup` prelude file, at the target level and as `preconditions.setup` alike. A
+scenario that must not run its targets' setup sets `preconditions.run.inheritSetup: false`. Their
+`hooks.cleanup` still runs, since cleanup runs on every path out of a scenario.
 
 ### When to reach for which
 
@@ -772,7 +777,7 @@ Three fields sit near this ground, and each answers a different question:
 | Field | Runs | Reported as | For |
 |---|---|---|---|
 | `before` / `after` | as its own phase, before `steps` / after the verdict | its own Before / After block | setup and teardown the reader must be able to tell apart from the scenario under test |
-| `preconditions.setup` | spliced onto the front of `steps` | more numbered steps | a reusable prelude shared by several scenarios, where no separation is wanted |
+| `use` (a component) | expanded in place, where the step calls it | more numbered steps | a reusable flow shared by several scenarios, where no separation is wanted |
 | `capturePolicy` | throughout the step loop, per step | evidence attached to a step | capturing extra evidence when a step fails, not running steps |
 
 `capturePolicy`'s `on: { result: error }` trigger and an `after` rule's `on: error` share the word
@@ -1071,7 +1076,7 @@ is a validation error).
 
 The **directional** form means "scroll", and each backend realizes it with the primitive that
 actually scrolls: a real OS drag on iOS / Android, and — since a mouse drag does not scroll a web
-page — a wheel event (desktop) or a touch drag (a mobile [`deviceMode`](drivers.md#playwright-web))
+page — a wheel event (desktop) or a touch drag (a mobile [`runsOn.emulate`](drivers.md#playwright-web))
 on web (BE-0227). The **coordinate** form is a literal pointer drag for its own sake (a canvas / map
 pan / drag handle), the same raw-drag last resort on every backend.
 
@@ -1310,7 +1315,7 @@ function of the secret and the clock ([BE-0046](../roadmaps/BE-0046-otp-email-st
 ```
 
 `email` waits for a 2FA / verification code delivered by email: it polls a generic HTTP mailbox
-(configured under `targets.<name>.mailbox`, see [configuration](configuration.md#mailbox-the-email-step))
+(configured under `targets.<name>.services.mailbox`, see [configuration](configuration.md#mailbox-the-email-step))
 until a message that arrived **after the step started** satisfies `match`, then extracts the value
 from its body by the `bodyMatches` regex (first capturing group, or the whole match) into
 `${vars.<var>}`. The wait is a **condition wait with a mandatory `timeout`** (no fixed sleep): a
@@ -1408,7 +1413,7 @@ freeze the clock and signal bars for a stable image.
 - An app that is not running, as after an `installApp`, launches the way `relaunch` would launch it.
   `foreground` then waits on a condition until the app is ready.
 - On Android, and on iOS inside a device group, a running app gets the same condition wait. When the app never reaches the front, the step fails with `AppNotInFront`.
-  The wait looks for the app's own screen, not the target's `readyWhen`: `readyWhen` names the
+  The wait looks for the app's own screen, not the target's `app.startWhen`: `app.startWhen` names the
   screen a launch lands on, and a resumed app comes back on whatever screen it left.
 
 `setClipboard` seeds the pasteboard for a paste flow ([BE-0052](../roadmaps/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)).
@@ -1581,18 +1586,18 @@ Each declared target keeps its own config, not the primary target's. Resolution 
 
 | Reads that target's own config | Why |
 |---|---|
-| `before` / `after` lifecycle steps | Each target's own hooks fold in, in declared order, stamped with that target's name — so an app-side teardown and a web-side one each run against the right driver |
-| `mailbox` | An `email` or `totp` step polls the inbox its own target configured |
-| `locale`, `launchEnv`, `capture`, `interrupts` | Each is a property of the app under test, not of the run |
-| `baselines` / `schemas` / `goldens` | A `visual` or `golden` assertion compares against its own target's directory when that target configures one, else the run's |
+| `hooks.setup` / `hooks.cleanup` lifecycle steps | Each target's own hooks fold in, in declared order, stamped with that target's name — so an app-side teardown and a web-side one each run against the right driver |
+| `services.mailbox` | An `email` or `totp` step polls the inbox its own target configured |
+| `runsOn.locale`, `app.launch.env`, `evidence.capture`, `hooks.interrupts` | Each is a property of the app under test, not of the run |
+| `paths.baselines` / `paths.schemas` / `paths.goldens` | A `visual` or `golden` assertion compares against its own target's directory when that target configures one, else the run's |
 | Backend capabilities | Each target's steps are checked against its own backend before any device is leased, so a construct only one platform supports fails the right one |
 
-A nested `if` / `forEach` step from a target config's own `before` / `after` list omits `target`
+A nested `if` / `forEach` step from a target's own `hooks.setup` / `hooks.cleanup` list omits `target`
 too. It resolves to that config's own target, never to the scenario's `primaryTarget`. The flat,
 every-nesting-depth default above applies to a scenario's own steps alone.
 
 Two run-wide values stay shared. The `redact` secret set unions every declared target's own
-secrets. That union scrubs every target's evidence, since scrubbing too widely is the safer error.
+`run.secrets`. That union scrubs every target's evidence, since scrubbing too widely is the safer error.
 The run directory is a run-level artifact, never per target.
 
 The web engine flags still apply to a run's single web target. Those flags are `--headed`,
@@ -1613,19 +1618,18 @@ device instead:
 A **device group** expresses both. A device group is an entry of `targets` that holds two or more
 names. Its members share one device.
 
-The config does not change. Two builds of one app become two targets. They share a bundle identifier
-or an Android package, and each has its own `appPath`. A companion app is a target of its own:
+The config does not change. Two builds of one app become two targets. They share an `app.id` (a
+bundle identifier or an Android package), and each has its own `app.path`. A companion app is a
+target of its own:
 
 ```yaml
 targets:
   showcase-previous:                      # the old build the scenario starts on
-    backend: xcuitest
-    bundleId: com.example.showcase
-    appPath: build/Showcase-1.app
+    platform: ios
+    app: { id: com.example.showcase, path: build/Showcase-1.app }
   showcase:                               # the current build
-    backend: xcuitest
-    bundleId: com.example.showcase
-    appPath: build/Showcase-2.app
+    platform: ios
+    app: { id: com.example.showcase, path: build/Showcase-2.app }
 ```
 
 A bare name in `targets` stays a group of one. A scenario that writes no array runs as before. The
@@ -1643,7 +1647,7 @@ the primary:
 
 | Member | At the start |
 |---|---|
-| The primary (the first member of the first group) | Installs its `appPath` and launches. Listing it in `installs` is optional |
+| The primary (the first member of the first group) | Installs its `app.path` and launches. Listing it in `installs` is optional |
 | A group of one (a bare name) | Installs and launches, as in any multi-target scenario |
 | A member listed in `installs` | Installs and launches |
 | Any other member of a group of two or more | A **later member**: nothing installs or launches until an `installApp` step and a `foreground` step bring it up |
@@ -1731,10 +1735,10 @@ adds a second app beside the first and retires nothing.
 `run` exits with status 2. The check refuses these cases:
 
 - Members of one group differ in platform, backend, device route, or effective `locale`. The device route is
-  `deviceProvider`, `device`, and `xcuitest.deviceType`.
+  the device provider (an `appium` environment named by `--worker-config`) and `runsOn.kind`.
 - A web target sits in a group of two or more, since a browser has no device to share.
 - Two starting members of one group share an identifier. The second install would replace the first.
-- An `installApp.from` target has no `appPath`, or its `appPath` does not exist. A Git-sourced config
+- An `installApp.from` target has no `app.path`, or its `app.path` does not exist. A Git-sourced config
   builds the binary on demand, as it does for the primary.
 - A `setPrimaryTarget` names a member that an earlier `installApp` retired.
 
@@ -1853,7 +1857,7 @@ are in [selectors](selectors.md#assertion-evaluation).
 - `clipboard` reads the device pasteboard (`simctl pbpaste`) and checks **exactly one** of `equals` / `matches` (regex) — the read-back half of `setClipboard`, for verifying a "copy" action. It needs the per-device control channel, so it is unavailable on the fake driver / in parallel runs and fails cleanly there ([BE-0052](../roadmaps/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)).
 
 > **Locale caveat**: string comparisons on `label`/`value` and assertions that look at visible
-> text break under translation. Write these against config's fixed locale, and write the selector
+> text break under translation. Write these against the target's fixed `runsOn.locale`, and write the selector
 > itself by `id`.
 
 ### `request` (network assertion)
@@ -1939,7 +1943,7 @@ check the screen can't express ([BE-0048](../roadmaps/BE-0048-behavioral-protoco
 It is a pure, deterministic check over the observed timeline plus a stored schema file (needs the
 `--network` run flag), so the verdict stays machine-only. `request` selects the exchange (the same
 matcher fields) whose response is validated; `schema` is a file path resolved within the target's
-**schemas directory** (`--schemas` flag, config `targets.<name>.schemas`, or `schemas/` beside the
+**schemas directory** (`--schemas` flag, config `targets.<name>.paths.schemas`, or `schemas/` beside the
 scenario). Validation uses the `jsonschema` library — install the `schema` extra
 (`pip install bajutsu[schema]`).
 
@@ -1974,8 +1978,8 @@ The comparison engine is selectable via `compare` (BE-0165):
 | `exact` | Pixel-perfect — any channel difference counts as a changed pixel. | Yes (backward-compatible) |
 | `pixelmatch` | Perceptual YIQ color distance with anti-aliasing detection. Tolerates sub-pixel rendering noise and one-pixel edge shifts. | No |
 
-When `compare` is omitted, the engine falls back to the target's `visualCompare` config
-(under `defaults:` or `targets.<name>`), and then to `exact`.
+When `compare` is omitted, the engine falls back to the target's `run.visualCompare` config
+(under `defaults.run` or `targets.<name>.run`), and then to `exact`.
 
 `threshold` is the allowed percentage of differing pixels (default `0.0` = exact match), shared
 by all engines. `colorTolerance` (0–1, default `0.1`) sets the per-pixel perceptual color
@@ -2139,7 +2143,7 @@ A scenario file carries `components:` in its `{description, scenarios}` mapping 
 
 A bare name the map does not define is an error naming the ref. No fallback opens a file. The map is **scoped to one file**. The loader reads it per file and never merges it across a suite directory. A name declared in one file stays invisible from its siblings. Reuse that spans files stays the component file's job. Crossing into a component file drops the map entirely. A component file declares no `components:`, so a bare `use` inside one is always undefined. A file-scoped component's own steps expand in the declaring file's scope. One may `use` another by bare name, or `use` a file by path.
 
-A `setup` prelude is a scenario-file-shaped document, so it may carry its own `components:`. The loader expands a prelude's `use` steps in the prelude's own scope before prepending them. A same-named entry in the calling scenario file cannot capture them. A path ref inside a prelude resolves against the prelude's own directory too, not the calling scenario file's.
+A target's `hooks` may call a component too ([above](#the-targets-hooks-hookssetup-and-hookscleanup)). Such a `use` resolves when the config loads. It resolves against the config file's directory, confined to the suite root. A config declares no `components:` map, so a hook's `use` names a component file by path. Its `with` values substitute at load, and `${secrets.*}` and `${vars.*}` still resolve when the step runs. A hook may not use `group:` or `setMocks`, directly or through a component.
 
 #### Components in a multi-target scenario
 
@@ -2286,10 +2290,10 @@ uv run bajutsu run --target showcase-swiftui --tag smoke --exclude wip   # run @
 
 ### Secrets (`${secrets.X}`)
 
-Declare secret environment-variable names in config (`secrets: [API_TOKEN, ...]`). Each declared name `X` is resolved from the environment and substituted into the executed step **at action time** as `${secrets.X}`. The scenario file stores the **token**, never the value, and literal values are **auto-masked** in evidence, making secrets safe to commit and review. Unlike `${params.*}` / `${row.*}` (load-time expansion), this namespace is resolved by the run loop.
+Declare secret environment-variable names in config (`run: { secrets: [API_TOKEN, ...] }`). Each declared name `X` is resolved from the environment and substituted into the executed step **at action time** as `${secrets.X}`. The scenario file stores the **token**, never the value, and literal values are **auto-masked** in evidence, making secrets safe to commit and review. Unlike `${params.*}` / `${row.*}` (load-time expansion), this namespace is resolved by the run loop.
 
 ```yaml
-# config declares: secrets: [API_TOKEN]
+# config declares: run: { secrets: [API_TOKEN] }
 steps:
   - type: { text: "${secrets.API_TOKEN}", into: { id: auth.token } }   # real value typed; token kept in the report
 ```

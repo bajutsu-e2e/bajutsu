@@ -85,8 +85,13 @@ def _project(tmp_path: Path) -> Path:
     )
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "defaults: { backend: [fake] }\ntargets:\n"
-        f"  demo: {{ bundleId: com.example.demo, scenarios: {scn} }}\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            f"    app: {{id: com.example.demo}}\n"
+            f"    paths: {{scenarios: {scn}}}\n"
+        ),
         encoding="utf-8",
     )
     _write_failed_run(tmp_path / "runs")
@@ -312,7 +317,9 @@ def test_a_stored_key_under_another_variable_does_not_count(tmp_path: Path) -> N
     # variable would not get it, so the check still refuses the job.
     cfg = _project(tmp_path)
     cfg.write_text(
-        cfg.read_text("utf-8").replace("bundleId:", "ai: { keyEnv: OTHER_AI_KEY }, bundleId:"),
+        cfg.read_text("utf-8").replace(
+            "    platform: ios\n", "    platform: ios\n    ai: { keyEnv: OTHER_AI_KEY }\n"
+        ),
         encoding="utf-8",
     )
     state = _local_start(tmp_path, cfg)

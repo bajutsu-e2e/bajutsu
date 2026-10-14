@@ -85,9 +85,10 @@ orchestrator、証跡、config、レポート）は [`bajutsu/common/`](bajutsu/
 実装済み・テスト済みです（Simulator 不要で実行できます）。
 
 - ドライバ抽象と **セレクタ解決**（決定性の核）
-- **プラットフォーム対応の backend レジストリ**。`--backend` / `backend:` は `ios` / `android` /
-  `web` / `fake` を受け取り、それぞれが安定度順に actuator へ展開されます（`ios` は idb 廃止以降
-  唯一の iOS actuator である `xcuitest` に展開されます）
+- **プラットフォーム対応の backend レジストリ**。ターゲットの必須キー `platform:` が actuator を
+  決めます。`ios` は、BE-0290 で idb を撤去して以来唯一の iOS actuator である `xcuitest` に解決します。
+  `android` / `web` / `fake` も、それぞれの actuator に解決します。`--backend` は検査であり、
+  ターゲットのプラットフォーム、その actuator、`fake` のいずれかを受け付けます
 - **シナリオスキーマ**: ステップ（tap / type / swipe / drag / scroll / double-tap / pinch / rotate、
   WebView コンテンツ向けの `web`、デバイス制御、`http` / `totp` / `email` / `generate` /
   `manual` など）、待機、ステップ内の `assert`、再利用可能なコンポーネント（`use`）、制御フロー
@@ -102,8 +103,8 @@ orchestrator、証跡、config、レポート）は [`bajutsu/common/`](bajutsu/
   `appTrace` の区間証跡、ネットワーク観測 + `mocks`、**ビジュアルリグレッション**（baseline +
   `approve`）、golden 要素ツリー比較、`capturePolicy` トリガールール、シークレットの **redaction**
 - **レポート**（`manifest.json` + JUnit XML + CTRF JSON + 自己完結のインタラクティブ HTML）
-- **config 解決**（チーム既定 × アプリ別。iOS は `bundleId`、web は `baseUrl`）と **backend 選択**
-  （安定度順）
+- **config 解決**（チーム既定 × アプリ別。iOS と Android は `app.id`、web は `app.url`）と
+  **backend 選択**（ターゲットの `platform`）
 - **backend コマンド層**（iOS 向け simctl、Android 向け adb）、**XCUITest チャネル**（常駐ランナーの
   要素スナップショット）、**Playwright web ドライバ**、**adb ドライバ**（常駐の UI Automator サーバ、
   フォールバックとして `uiautomator dump`）、**doctor** 規約スコアと環境 preflight
@@ -164,7 +165,7 @@ Android エミュレータで検証済みです（Linux・Mac 不要）。
   コンテナに対して走らせて確認済みです。参考情報の任意チェック（signal）として着地し、安定が
   確認された後に**必須チェック**へ昇格しました。
 
-未配線: 外部 `mockServer` コマンド（シナリオ内 `mocks` で代替済み）、web backend 上の `appTrace`
+未配線: 外部 `services.mockServer` コマンド（シナリオ内 `mocks` で代替済み）、web backend 上の `appTrace`
 区間証跡（iOS 専用で、web backend は独自の `video` / `deviceLog` 相当の証跡を持ちます）、
 SwiftUI / Compose 画面での `nativeZ` z-order レポート（宣言的ツールキット側の制約であり、
 Bajutsu 側の欠落ではありません）。完全な「実装済み vs 未配線」表は
@@ -236,28 +237,32 @@ bajutsu schema                                            # エディタ連携�
 
 アプリ別・プラットフォーム別の設定は、`--config` で渡す config ファイルに置きます。デモにはすぐ動く
 ものが同梱されています（例: [`demos/showcase/showcase.config.yaml`](demos/showcase/showcase.config.yaml)、
-[`demos/web/demo.config.yaml`](demos/web/demo.config.yaml)）。アプリは `bundleId` で iOS を、`baseUrl`
-で web を対象にします。
+[`demos/web/demo.config.yaml`](demos/web/demo.config.yaml)）。各ターゲットは `platform` を名指しし、
+それが actuator を決めます。iOS アプリは `app.id` で、web アプリは `app.url` で特定します。
 
 ```yaml
 defaults:
-  backend: [ios]            # 安定度順; 最初に利用可能な backend が actuator
-  device: "iPhone 17 Pro"
-  locale: en_US
+  platforms:
+    ios:
+      runsOn: { locale: en_US }
 
 targets:
   showcase-swiftui:         # iOS アプリ — XCUITest 経由で Simulator を操作
-    bundleId: com.bajutsu.showcase.ios.swiftui
-    deeplinkScheme: showcaseswiftui
-    launchEnv: { SHOWCASE_UITEST: "1" }
-    idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
-    scenarios: demos/showcase/scenarios
+    platform: ios
+    app:
+      id: com.bajutsu.showcase.ios.swiftui
+      launch: { env: { SHOWCASE_UITEST: "1" } }
+      idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
+    paths: { scenarios: demos/showcase/scenarios }
 
   web:                      # web アプリ — Playwright 経由でブラウザを操作
-    baseUrl: "http://127.0.0.1:8787/index.html"
-    backend: [web]
-    scenarios: demos/web/scenarios
+    platform: web
+    app: { url: "http://127.0.0.1:8787/index.html" }
+    paths: { scenarios: demos/web/scenarios }
 ```
+
+ターゲットのキーとそのまとめ方は
+[BE-0452](roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md) にあります。
 
 ## デモ
 

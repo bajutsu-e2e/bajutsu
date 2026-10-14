@@ -17,7 +17,7 @@ toolchain as `make check`.
 | `record/goals.txt` | the natural-language goal `make -C demos/web record` authors from |
 | `record/record_offline.py` | the offline, API-key-free twin of `record` — the same loop, a keyword agent + FakeDriver |
 | `record/record_handoff_offline.py` | the offline, key-free twin of the human-in-the-loop handoff demo — the real pause/resume with a scripted agent + responder |
-| `demo.config.yaml` | `targets.web` with `baseUrl` + `scenarios` + `backend: [web]` (no `bundleId`) |
+| `demo.config.yaml` | `targets.web` with `platform: web` + `app.url` + `paths.scenarios` + `evidence.redact` (no `app.id`) |
 | `codegen/smoke.spec.ts` | the checked-in Playwright test **generated** from `scenarios/smoke.yaml` — the codegen real-compile gate's fixture ([BE-0293](../../roadmaps/BE-0293-codegen-playwright-real-compile/BE-0293-codegen-playwright-real-compile.md)), the web twin of the iOS `ComponentsUITests.swift` |
 | `codegen/package.json` · `codegen/playwright.config.ts` | the `@playwright/test` runner (pinned to the Python `web` extra's Playwright version) and its config — serves `app/` on the spec's baked-in port |
 | `Makefile` | `web-deps` / `app-serve` / `e2e` / `e2e-network` / `codegen-e2e` / `record` / `record-handoff` / `record-offline` / `record-handoff-offline` |

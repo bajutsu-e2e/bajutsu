@@ -170,7 +170,7 @@ class _DeviceEnvironment:
         def reset(driver: base.Driver) -> None:
             e.terminate(bundle_id)
             e.launch(bundle_id, [*eff.launch_args, *simctl.locale_args(eff.locale)], eff.launch_env)
-            readiness.await_ready(driver, ready_sel=eff.ready_when, id_namespaces=eff.id_namespaces)
+            readiness.await_ready(driver, ready_sel=eff.start_when, id_namespaces=eff.id_namespaces)
 
         return reset
 

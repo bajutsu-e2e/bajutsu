@@ -276,15 +276,12 @@ def _android_request_with_config(
     work.mkdir()
 
     config: dict[str, Any] = {
-        "targets": {
-            "demo": {
-                "platform": "android",
-                "package": "com.example.app",
-            }
-        }
+        "targets": {"demo": {"platform": "android", "app": {"id": "com.example.app"}}}
     }
     if existing_launch_env:
-        config["targets"]["demo"]["launchEnv"] = existing_launch_env
+        config["targets"]["demo"].setdefault("app", {}).setdefault("launch", {})["env"] = (
+            existing_launch_env
+        )
     (work / "bajutsu.config.yaml").write_text(
         yaml.dump(config, allow_unicode=True), encoding="utf-8"
     )
@@ -356,20 +353,20 @@ def test_no_launch_env_injection_preserves_existing_config(tmp_path: Path) -> No
     # byte-for-byte match below can then only mean the no-hooks path skipped the extra_texts
     # overlay entirely, not that the overlay happened to re-serialize to equivalent-looking bytes.
     non_canonical = (
-        "# operator note: demo target\n"
         "targets:\n"
         "  demo:\n"
         "    platform: android\n"
-        "    package: com.example.app\n"
-        "    launchEnv:\n"
-        "      EXISTING: value\n"
+        "    app:\n"
+        "      id: com.example.app\n"
+        "      launch:\n"
+        "        env: {EXISTING: value}\n"
     )
     (work / "bajutsu.config.yaml").write_text(non_canonical, encoding="utf-8")
 
     provider.submit(request, work_dir=work, dest=tmp_path / "d")
 
     config = _read_config_from_package(transfer.packages)
-    assert config["targets"]["demo"].get("launchEnv", {}).get("EXISTING") == "value"
+    assert config["targets"]["demo"]["app"]["launch"].get("env", {}).get("EXISTING") == "value"
     # No hooks means ctx.launch_env stays empty, so the extra_texts overlay never fires
     # (device_farm_batch_provider.py's `if ctx.launch_env:` guard) — the packaged bytes must be
     # exactly the config as written on disk, not a re-serialization that happens to look
@@ -397,7 +394,7 @@ def test_before_submit_launch_env_merged_into_packaged_config(tmp_path: Path) ->
     provider.submit(request, work_dir=work, dest=tmp_path / "d")
 
     config = _read_config_from_package(transfer.packages)
-    launch_env = config["targets"]["demo"]["launchEnv"]
+    launch_env = config["targets"]["demo"]["app"]["launch"]["env"]
     assert launch_env["PROXY_HOST"] == "proxy.example.com"
     assert launch_env["PROXY_PORT"] == "3128"
     # The merge lands via build_package's extra_texts overlay, never by rewriting work_dir — the
@@ -420,7 +417,7 @@ def test_injected_keys_win_over_existing_config_launch_env(tmp_path: Path) -> No
     provider.submit(request, work_dir=work, dest=tmp_path / "d")
 
     config = _read_config_from_package(transfer.packages)
-    launch_env = config["targets"]["demo"]["launchEnv"]
+    launch_env = config["targets"]["demo"]["app"]["launch"]["env"]
     assert launch_env["SHARED_KEY"] == "from_hook"
     assert launch_env["OTHER"] == "kept"
 

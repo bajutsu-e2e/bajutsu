@@ -41,8 +41,11 @@ def _scenarios_zip() -> bytes:
 
 def _composed_config() -> bytes:
     return (
-        b"defaults: { backend: [ios] }\n"
-        b"targets:\n  demo: { bundleId: com.example.demo, scenarios: ./scenarios }\n"
+        b"targets:\n"
+        b"  demo:\n"
+        b"    platform: ios\n"
+        b"    app: {id: com.example.demo}\n"
+        b"    paths: {scenarios: ./scenarios}\n"
     )
 
 

@@ -89,9 +89,10 @@ breakdown is in [`docs/`](docs/README.md).
 Implemented and covered by tests (run without a Simulator):
 
 - Driver abstraction and **selector resolution** (the determinism core)
-- **Platform-aware backend registry** — `--backend` / `backend:` accept `ios` / `android` / `web` /
-  `fake`, each expanding to its actuator in stability order (`ios` expands to `xcuitest`, the sole
-  iOS actuator since idb was retired)
+- **Platform-aware backend registry** — a target's required `platform:` decides its actuator:
+  `ios` resolves to `xcuitest` (the sole iOS actuator since BE-0290 retired idb), and `android` /
+  `web` / `fake` each to their own. `--backend` checks the target's platform, that platform's
+  actuator, or `fake`
 - **Scenario schema**: steps — tap / type / swipe / drag / scroll / double-tap / pinch / rotate /
   `web` for WebView content / device control / `http` / `totp` / `email` / `generate` / `manual` —
   waits, mid-step `assert`, reusable components (`use`), control flow (`if` / `forEach`), variables
@@ -106,8 +107,8 @@ Implemented and covered by tests (run without a Simulator):
   (baselines + `approve`), a golden element-tree comparison, `capturePolicy` trigger rules, and
   secret **redaction**
 - **Reporting** (`manifest.json` + JUnit XML + CTRF JSON + self-contained interactive HTML)
-- **Config resolution** (team defaults × per-target; iOS `bundleId` or web `baseUrl`) and
-  **backend selection** (stability order)
+- **Config resolution** (team defaults × per-target; iOS or Android `app.id`, web `app.url`) and
+  **backend selection** (the target's `platform`)
 - The **backend command layer** (simctl for iOS, adb for Android), the **XCUITest channel** (the
   resident runner's element snapshot), the **Playwright web driver**, the **adb driver**
   (a resident UI Automator server, with a `uiautomator dump` fallback), and the **doctor**
@@ -169,7 +170,7 @@ Validated against a real Postgres (Linux, no Mac):
   [`serve-db.yml`](.github/workflows/serve-db.yml) — a **required check**, promoted from signal
   once it proved stable.
 
-Not yet wired: the external `mockServer` command (superseded by in-scenario `mocks`); `appTrace`
+Not yet wired: the external `services.mockServer` command (superseded by in-scenario `mocks`); `appTrace`
 interval evidence on the web backend (iOS-only; the web backend has its own `video` /
 `deviceLog`-equivalent captures instead); `nativeZ` z-order reporting on SwiftUI/Compose screens
 (a declarative-toolkit limitation, not a Bajutsu gap). See [`docs/architecture.md`](docs/architecture.md#implementation-status)
@@ -244,28 +245,32 @@ backend) round out this walkthrough. The CLI also wires `audit` / `coverage` / `
 
 Per-app (and per-platform) settings live in a config file you pass with `--config`; the demos
 ship ready-to-run ones (e.g. [`demos/showcase/showcase.config.yaml`](demos/showcase/showcase.config.yaml),
-[`demos/web/demo.config.yaml`](demos/web/demo.config.yaml)). An app targets iOS by `bundleId` or
-the web by `baseUrl`:
+[`demos/web/demo.config.yaml`](demos/web/demo.config.yaml)). Each target names its `platform`,
+which picks the actuator. `app.id` names an iOS app, and `app.url` names a web app:
 
 ```yaml
 defaults:
-  backend: [ios]            # stability order; first available backend is the actuator
-  device: "iPhone 17 Pro"
-  locale: en_US
+  platforms:
+    ios:
+      runsOn: { locale: en_US }
 
 targets:
   showcase-swiftui:         # iOS app — driven on the Simulator via XCUITest
-    bundleId: com.bajutsu.showcase.ios.swiftui
-    deeplinkScheme: showcaseswiftui
-    launchEnv: { SHOWCASE_UITEST: "1" }
-    idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
-    scenarios: demos/showcase/scenarios
+    platform: ios
+    app:
+      id: com.bajutsu.showcase.ios.swiftui
+      launch: { env: { SHOWCASE_UITEST: "1" } }
+      idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
+    paths: { scenarios: demos/showcase/scenarios }
 
   web:                      # web app — driven in a browser via Playwright
-    baseUrl: "http://127.0.0.1:8787/index.html"
-    backend: [web]
-    scenarios: demos/web/scenarios
+    platform: web
+    app: { url: "http://127.0.0.1:8787/index.html" }
+    paths: { scenarios: demos/web/scenarios }
 ```
+
+[BE-0452](roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md) explains
+the target keys and their grouping.
 
 ## Demos
 

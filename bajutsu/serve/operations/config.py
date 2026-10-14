@@ -31,7 +31,7 @@ from bajutsu.common.agents.anthropic_client import ANT_BINARY, ANT_CLI_MISSING, 
 from bajutsu.common.ai import credential_gap, resolved_provider, selectable_providers
 from bajutsu.common.ai.registry import DISABLED_PROVIDER
 from bajutsu.common.backends import IMPLEMENTED
-from bajutsu.common.config import load_config, resolve, xcuitest_pins_runner
+from bajutsu.common.config import load_config_file, resolve, xcuitest_pins_runner
 from bajutsu.common.config_source import (
     config_source_record,
     config_spec_from_record,
@@ -110,7 +110,7 @@ def active_key_env(state: ServeState) -> str:
     launch = state.binding
     if launch.config is not None:
         try:
-            cfg = load_config(launch.config.read_text(encoding="utf-8"))
+            cfg = load_config_file(launch.config)
             ai_settings = cfg.defaults.ai if cfg.defaults else None
             if ai_settings and ai_settings.key_env:
                 if _valid_key_env_name(ai_settings.key_env):
@@ -318,7 +318,7 @@ def config_content(
 
 
 def _config_overrides_ios_runner(binding: ConfigBinding) -> bool:
-    """Whether the bound config names an explicit ``xcuitest.testRunner`` on any iOS target (BE-0318).
+    """Whether the bound config names an explicit ``driver.runner.testRunner`` on any iOS target (BE-0318).
 
     A config can carry several iOS targets; the server-wide readiness line reports "overridden" when
     *any* of them sets a runner, since such a target never falls back to the bundled one. No config
@@ -332,10 +332,10 @@ def _config_overrides_ios_runner(binding: ConfigBinding) -> bool:
     if binding.config is None:
         return False
     try:
-        cfg = load_config(binding.config.read_text(encoding="utf-8"))
+        cfg = load_config_file(binding.config)
     except Exception:
         logging.getLogger(__name__).debug(
-            "cannot load config to check the xcuitest.testRunner override", exc_info=True
+            "cannot load config to check the driver.runner.testRunner override", exc_info=True
         )
         return False
     for name in cfg.targets:
@@ -344,7 +344,7 @@ def _config_overrides_ios_runner(binding: ConfigBinding) -> bool:
                 return True
         except Exception:
             logging.getLogger(__name__).debug(
-                "cannot resolve target %r to check the xcuitest.testRunner override",
+                "cannot resolve target %r to check the driver.runner.testRunner override",
                 name,
                 exc_info=True,
             )
@@ -362,7 +362,7 @@ def _ios_runner_status(binding: ConfigBinding) -> dict[str, Any]:
     Fields: ``bundled`` (this build ships the generic runner as package data — the fallback a
     runner-less Simulator run resolves to), ``buildInfo`` (the ``{"xcode", "sdk"}`` toolchain the
     runner was built against, or ``None`` when no bundle / no metadata), and ``override`` (the bound
-    config names an explicit ``xcuitest.testRunner``, so the bundle isn't the runner that would run).
+    config names an explicit ``driver.runner.testRunner``, so the bundle isn't the runner that would run).
     """
     return {
         "bundled": bundled_products_dir() is not None,
@@ -744,7 +744,7 @@ def bind_config(
     if not target.is_file():
         return {"error": "config not found"}, 404
     try:
-        cfg = load_config(target.read_text(encoding="utf-8"))
+        cfg = load_config_file(target)
     except (OSError, ValueError, yaml.YAMLError) as e:
         return {"error": f"invalid config: {e}"}, 400
     # Validate path fields stay within `--root` (BE-0051): resolved against the config's own
@@ -823,7 +823,7 @@ def bind_git_config(
             "error": f"config not found in the repository at {spec.path or 'bajutsu.config.yaml'}"
         }, 404
     try:
-        cfg = load_config(mat.config_path.read_text(encoding="utf-8"))
+        cfg = load_config_file(mat.config_path)
         # Confine every target's path fields to the checkout: a fetched config that points
         # `scenarios`/`appPath`/… at an absolute or `../` path outside the tree is rejected here, so
         # serve's (unconfined) scenario/build resolution only ever sees in-checkout paths (BE-0051).
@@ -944,7 +944,7 @@ def declared_secret_names(
     if binding.config is None:
         return []
     try:
-        cfg = load_config(binding.config.read_text(encoding="utf-8"))
+        cfg = load_config_file(binding.config)
         names: dict[str, None] = {}
         for target in cfg.targets:
             for name in resolve(cfg, target).secrets:

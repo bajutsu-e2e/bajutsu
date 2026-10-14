@@ -628,7 +628,7 @@ def _destination(device_type: str, udid: str) -> str:
 
 
 def effective_device_type(xcfg: XcuitestConfig | None) -> str:
-    """The target's `xcuitest.deviceType`, defaulting to `"simulator"` when unconfigured.
+    """The target's `runsOn.kind`, defaulting to `"simulator"` when unconfigured.
 
     The one place this default lives, so `XcuitestEnvironment.start` and `runner_source`'s caller
     (BE-0292's doctor disclosure) read the same value instead of each re-deriving it.
@@ -675,7 +675,9 @@ def _resolve_runner(xcfg: XcuitestConfig | None, device_type: str) -> Path:
 
     if tier == "misconfigured":
         # Fail loudly rather than silently ignoring the configured build.
-        raise simctl.DeviceError("xcuitest.build requires xcuitest.testRunner (the path it builds)")
+        raise simctl.DeviceError(
+            "driver.runner.build requires driver.runner.testRunner (the path it builds)"
+        )
 
     if tier == "explicit":
         assert test_runner is not None  # guaranteed by _classify_runner's "explicit" tier
@@ -698,7 +700,7 @@ def _resolve_runner(xcfg: XcuitestConfig | None, device_type: str) -> Path:
     products = bundled_products_dir()
     if products is None:
         raise simctl.DeviceError(
-            "xcuitest backend requires xcuitest.testRunner in the target config "
+            "xcuitest backend requires driver.runner.testRunner in the target config "
             "(no bundled runner is present in this build)"
         )
     try:
@@ -719,7 +721,7 @@ def runner_source(xcfg: XcuitestConfig | None, device_type: str) -> str:
     tier, test_runner, build = _classify_runner(xcfg, device_type)
 
     if tier == "misconfigured":
-        return "misconfigured: xcuitest.build requires xcuitest.testRunner"
+        return "misconfigured: driver.runner.build requires driver.runner.testRunner"
     if tier == "explicit":
         assert test_runner is not None  # guaranteed by _classify_runner's "explicit" tier
         if Path(test_runner).exists():
@@ -736,7 +738,7 @@ def runner_source(xcfg: XcuitestConfig | None, device_type: str) -> str:
             return f"none: {exc}"
         if signing_path is None:
             return (
-                "none: xcuitest.deviceType: device needs xcuitest.testRunner or a signing file "
+                "none: runsOn.kind: device needs driver.runner.testRunner or a signing file "
                 f"({describe_lookup()})"
             )
         return (
@@ -744,7 +746,7 @@ def runner_source(xcfg: XcuitestConfig | None, device_type: str) -> str:
             f"(signing file {signing_path}; not validated here)"
         )
     if bundled_products_dir() is None:
-        return "none: no bundled runner in this build (set xcuitest.testRunner)"
+        return "none: no bundled runner in this build (set driver.runner.testRunner)"
     return "bundled (wheel-shipped Simulator runner)"
 
 
@@ -788,7 +790,7 @@ def bundled_runner_toolchain_warning(
     return (
         "bundled runner toolchain mismatch: "
         + "; ".join(mismatches)
-        + " — if it fails to launch, set xcuitest.testRunner or xcuitest.build to build a "
+        + " — if it fails to launch, set driver.runner.testRunner or driver.runner.build to build a "
         "matching runner"
     )
 
@@ -833,7 +835,7 @@ def _runner_host_bundle_ids(runner_path: Path) -> tuple[str, ...]:
 
     Each target names its own runner app as `TestHostBundleIdentifier` (the built test bundle's id
     with `.xctrunner` appended), so reading it here covers the bundled runner and an explicit
-    `xcuitest.testRunner` alike — neither path has to know the other's id. Duplicates are dropped,
+    `driver.runner.testRunner` alike — neither path has to know the other's id. Duplicates are dropped,
     since several targets in one file can share a runner app. Best-effort: a plist that cannot be
     read yields nothing rather than failing the spawn that asked, the same posture as the terminate
     this feeds (in practice `_patch_xctestrun_env` has already parsed the same file by then).

@@ -131,16 +131,19 @@ def test_html_after_block_discloses_the_steps_a_failing_rule_never_reached() -> 
     assert "always·—" in html  # …and the step it never reached is disclosed, without a number
 
 
-_APP_WIDE_CONFIG = """
-targets:
-  app:
-    bundleId: com.example.app
-    before:
-      - tap: { id: a }
-    after:
-      - on: always
-        steps: [{ tap: { id: c } }]
-"""
+_APP_WIDE_CONFIG = (
+    "targets:\n"
+    "  app:\n"
+    "    platform: ios\n"
+    "    app: {id: com.example.app}\n"
+    "    hooks:\n"
+    "      setup:\n"
+    "      - tap: {id: a}\n"
+    "      cleanup:\n"
+    "      - 'on': always\n"
+    "        steps:\n"
+    "        - tap: {id: c}\n"
+)
 
 
 def test_an_app_wide_phase_reports_against_its_own_step_definition() -> None:

@@ -8,6 +8,7 @@ import subprocess
 import sys
 from dataclasses import replace
 from pathlib import Path
+from typing import Annotated
 
 import typer
 
@@ -72,6 +73,13 @@ def triage(
     backend: str = typer.Option("", "--backend", help="actuator backend, for --rerun"),
     udid: str = typer.Option("booted", "--udid", help="simulator udid, for --rerun"),
     config: str = typer.Option(DEFAULT_CONFIG, "--config", help="config path, for --rerun"),
+    worker_config: Annotated[
+        Path | None,
+        typer.Option(
+            "--worker-config",
+            help="worker capability file for --rerun, passed to the run it starts (BE-0452)",
+        ),
+    ] = None,
 ) -> None:
     """Diagnose a failed run and suggest a minimal fix (advisory — never the pass/fail judge)."""
     if flaky:
@@ -139,7 +147,7 @@ def triage(
         elif not target_name:
             typer.echo("\n--rerun needs --target to run the patched scenario.")
         else:
-            _verify_rerun(apply, target_name, backend, udid, config)
+            _verify_rerun(apply, target_name, backend, udid, config, worker_config)
 
 
 def _split_flaky_runs(
@@ -280,14 +288,12 @@ def _ai_effective(config: str, target_name: str) -> Effective:
         target="",
         platform_config=IosConfig(),
         backend=["ios"],
-        device="",
         locale="",
         launch_env={},
         launch_args=[],
         id_namespaces=[],
         reserved_namespaces=[],
         mock_server=None,
-        setup=None,
         capture=[],
         redact=Redact(),
     )
@@ -322,12 +328,18 @@ def _apply_fix(result: _triage.Triage, target: str, write: bool) -> bool:
 
 
 def _rerun_command(
-    target: str, target_name: str, backend: str, udid: str, config: str
+    target: str,
+    target_name: str,
+    backend: str,
+    udid: str,
+    config: str,
+    worker_config: Path | None = None,
 ) -> list[str]:
     """The `bajutsu run` invocation that re-checks a patched scenario.
 
     Kept `--no-erase` to reuse the current device state. Built as a list so it is easy to assert in
-    tests.
+    tests. The `--worker-config` is forwarded like `--udid`, so a rerun reaches the same `appium`
+    grid the failed run did (BE-0452).
     """
     # The internal run module, not the public wrapper: this caller may kill the run, and the kill must
     # reach the run itself, not a wrapper whose child lives on in a session of its own (BE-0449).
@@ -347,12 +359,21 @@ def _rerun_command(
         cmd += ["--backend", backend]
     if udid:
         cmd += ["--udid", udid]
+    if worker_config is not None:
+        cmd += ["--worker-config", str(worker_config)]
     return cmd
 
 
-def _verify_rerun(target: str, target_name: str, backend: str, udid: str, config: str) -> None:
+def _verify_rerun(
+    target: str,
+    target_name: str,
+    backend: str,
+    udid: str,
+    config: str,
+    worker_config: Path | None = None,
+) -> None:
     """Run the patched scenario and report whether the fix holds."""
-    cmd = _rerun_command(target, target_name, backend, udid, config)
+    cmd = _rerun_command(target, target_name, backend, udid, config, worker_config)
     typer.echo(f"\nre-running {target} to verify the fix ...")
     code = subprocess.call(cmd)
     typer.echo(

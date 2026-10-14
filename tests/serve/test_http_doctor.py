@@ -28,7 +28,7 @@ def test_doctor_returns_checks_for_target(tmp_path: Path) -> None:
     _scn_dir, _cfg, runs = project(tmp_path)
     cfg = tmp_path / "fake.config.yaml"
     cfg.write_text(
-        "defaults: { backend: [fake] }\ntargets:\n  demo: { bundleId: com.example.demo }\n",
+        ("targets:\n  demo:\n    platform: ios\n    app: {id: com.example.demo}\n"),
         encoding="utf-8",
     )
     state = srv.ServeState(config=cfg, runs_dir=runs, cwd=tmp_path)
@@ -100,8 +100,13 @@ def test_doctor_fake_backend_returns_ok(tmp_path: Path) -> None:
     scn_dir.mkdir()
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "defaults: { backend: [fake] }\ntargets:\n"
-        f"  demo: {{ bundleId: com.example.demo, scenarios: {scn_dir} }}\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: fake\n"
+            f"    app: {{id: com.example.demo}}\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     runs = tmp_path / "runs"
@@ -121,38 +126,6 @@ def test_doctor_fake_backend_returns_ok(tmp_path: Path) -> None:
         server.server_close()
 
 
-def test_doctor_web_target_missing_base_url(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A web target without baseUrl fails the config check."""
-    monkeypatch.setattr(
-        "bajutsu.common.capability.preflight.doctor_environment_checks", lambda *a, **k: _NO_BROWSER
-    )
-    scn_dir = tmp_path / "scenarios"
-    scn_dir.mkdir()
-    cfg = tmp_path / "bajutsu.config.yaml"
-    cfg.write_text(
-        "defaults: { backend: [playwright] }\ntargets:\n"
-        f"  webapp: {{ bundleId: com.example, scenarios: {scn_dir} }}\n",
-        encoding="utf-8",
-    )
-    runs = tmp_path / "runs"
-    runs.mkdir()
-    state = srv.ServeState(config=cfg, runs_dir=runs, cwd=tmp_path)
-    server, port = _serve(state)
-    try:
-        status, resp = _post(port, "/api/doctor", {"target": "webapp"})
-        assert status == 200
-        assert resp["ok"] is False
-        # At least one check failed (the baseUrl config check)
-        failed = [c for c in resp["checks"] if not c["ok"]]
-        assert len(failed) >= 1
-        assert any("baseUrl" in c["name"] for c in failed)
-    finally:
-        server.shutdown()
-        server.server_close()
-
-
 def test_doctor_score_present_for_fake_backend(tmp_path: Path) -> None:
     """A runnable backend also returns the convention score (BE-0148). The fake driver's screen is
     empty, so the score grades it Blocked — but the point is the score section is present."""
@@ -160,8 +133,13 @@ def test_doctor_score_present_for_fake_backend(tmp_path: Path) -> None:
     scn_dir.mkdir()
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "defaults: { backend: [fake] }\ntargets:\n"
-        f"  demo: {{ bundleId: com.example.demo, scenarios: {scn_dir} }}\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: fake\n"
+            f"    app: {{id: com.example.demo}}\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     runs = tmp_path / "runs"
@@ -188,8 +166,13 @@ def test_doctor_score_null_when_unrunnable(tmp_path: Path, monkeypatch: pytest.M
     scn_dir.mkdir()
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "defaults: { backend: [playwright] }\ntargets:\n"
-        f"  webapp: {{ bundleId: com.example, scenarios: {scn_dir} }}\n",
+        (
+            "targets:\n"
+            "  webapp:\n"
+            "    platform: ios\n"
+            f"    app: {{id: com.example}}\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     runs = tmp_path / "runs"
@@ -231,8 +214,13 @@ def test_doctor_web_target_with_base_url(tmp_path: Path, monkeypatch: pytest.Mon
     scn_dir.mkdir()
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "defaults: { backend: [playwright] }\ntargets:\n"
-        f"  webapp: {{ baseUrl: 'http://localhost:3000', scenarios: {scn_dir} }}\n",
+        (
+            "targets:\n"
+            "  webapp:\n"
+            "    platform: web\n"
+            f"    app: {{url: 'http://localhost:3000'}}\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     runs = tmp_path / "runs"

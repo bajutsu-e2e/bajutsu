@@ -18,8 +18,11 @@ from bajutsu.common.runner import sandbox
 
 
 def _eff(ls_body: str, base: str = "http://127.0.0.1:3000/") -> config.Effective:
-    """A resolved web Effective with a `launchServer:` block and a port-bearing baseUrl."""
-    cfg = f"targets: {{ web: {{ baseUrl: '{base}', launchServer: {{ {ls_body} }} }} }}"
+    """A resolved web Effective with a `services.server` block and a port-bearing `app.url`."""
+    cfg = (
+        f"targets: {{ web: {{ platform: web, app: {{ url: '{base}' }}, "
+        f"services: {{ server: {{ {ls_body} }} }} }} }}"
+    )
     return config.resolve(config.load_config(cfg), "web")
 
 

@@ -1494,8 +1494,14 @@ _cli = CliRunner()
 def _crawl_config(tmp_path: Path) -> Path:
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "defaults: { backend: [fake] }\n"
-        "targets:\n  demo: { bundleId: com.example.demo, idNamespaces: [home] }\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.example.demo\n"
+            "      idNamespaces: [home]\n"
+        ),
         encoding="utf-8",
     )
     return cfg
@@ -1531,8 +1537,16 @@ def test_cli_crawl_refuses_under_provider_none(
     )
     cfg = tmp_path / "kill-switch.config.yaml"
     cfg.write_text(
-        "defaults: { backend: [fake], ai: { provider: none } }\n"
-        "targets:\n  demo: { bundleId: com.example.demo, idNamespaces: [home] }\n",
+        (
+            "defaults:\n"
+            "  ai: {provider: none}\n"
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.example.demo\n"
+            "      idNamespaces: [home]\n"
+        ),
         encoding="utf-8",
     )
     r = _cli.invoke(app, ["crawl", "--target", "demo", "--config", str(cfg)])

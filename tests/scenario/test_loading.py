@@ -7,7 +7,6 @@ import pytest
 from bajutsu.common.scenario import (
     Scenario,
     Step,
-    apply_setups,
     dump_scenario_file,
     dump_scenarios,
     load_scenario_file,
@@ -272,66 +271,6 @@ def test_a_fieldless_step_action_round_trips() -> None:
 
 def _step(sid: str) -> Step:
     return Step.model_validate({"tap": {"id": sid}})
-
-
-def test_apply_setups_prepends_prelude_steps() -> None:
-    scns = [
-        Scenario.model_validate(
-            {"name": "a", "preconditions": {"setup": "login.yaml"}, "steps": [{"tap": {"id": "x"}}]}
-        ),
-        Scenario.model_validate({"name": "b", "steps": [{"tap": {"id": "y"}}]}),  # no setup
-    ]
-    seen: list[str] = []
-
-    def resolve(ref: str) -> list[Step]:
-        seen.append(ref)
-        return [_step("auth.email"), _step("auth.submit")]
-
-    apply_setups(scns, default_setup=None, resolve=resolve)
-    assert [s.tap.id for s in scns[0].steps if s.tap] == ["auth.email", "auth.submit", "x"]
-    assert [s.tap.id for s in scns[1].steps if s.tap] == ["y"]  # untouched
-    assert seen == ["login.yaml"]
-
-
-def test_apply_setups_default_is_shared_and_resolved_once() -> None:
-    scns = [
-        Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "x"}}]}),
-        Scenario.model_validate({"name": "b", "steps": [{"tap": {"id": "y"}}]}),
-    ]
-    count = 0
-
-    def resolve(ref: str) -> list[Step]:
-        nonlocal count
-        count += 1
-        return [_step("prelude")]
-
-    apply_setups(scns, default_setup="common.yaml", resolve=resolve)
-    assert scns[0].steps[0].tap and scns[0].steps[0].tap.id == "prelude"
-    assert scns[1].steps[0].tap and scns[1].steps[0].tap.id == "prelude"
-    assert count == 1  # the shared default is resolved once and cached
-
-
-def test_apply_setups_re_checks_target_requirements() -> None:
-    # BE-0428: at load time, the scenario's own `steps` sets `target` correctly, so the initial
-    # validator never sees the prelude's own steps. Once `apply_setups` splices them in, the
-    # re-check must catch what the load-time pass could not — here, a prelude step whose own
-    # `target` doesn't match the scenario's one declared target.
-    scns = [
-        Scenario.model_validate(
-            {
-                "name": "a",
-                "targets": ["app"],
-                "preconditions": {"setup": "login.yaml"},
-                "steps": [{"target": "app", "tap": {"id": "x"}}],
-            }
-        )
-    ]
-
-    def resolve(ref: str) -> list[Step]:
-        return [Step.model_validate({"target": "other", "tap": {"id": "auth.submit"}})]
-
-    with pytest.raises(ValueError, match="does not match"):
-        apply_setups(scns, default_setup=None, resolve=resolve)
 
 
 def test_redact_totp_secrets_masks_a_literal_seed() -> None:

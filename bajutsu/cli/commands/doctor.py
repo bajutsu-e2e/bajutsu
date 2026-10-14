@@ -6,10 +6,21 @@ import re
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
+from typing import Annotated
 
 import typer
 
-from bajutsu.cli._shared import DEFAULT_CONFIG, _backends, _load_effective
+from bajutsu.cli._shared import (
+    DEFAULT_CONFIG,
+    WORKER_CONFIG_HELP,
+    _backends,
+    _device_udid_or_exit,
+    _load_device_worker_or_exit,
+    _load_effective,
+    _refuse_conditions,
+    _with_worker_device,
+    _worker_backends,
+)
 from bajutsu.common.agents import availability as ai_availability
 from bajutsu.common.ai import credential_gap
 from bajutsu.common.backend_cli import adb as _adb
@@ -193,7 +204,7 @@ def real_device_host_addresses(
     if found.addresses:
         return [f"collector host addresses ({found.source}): {', '.join(found.addresses)}"]
     return [
-        f"  ✘ no collector host address ({found.source}); set xcuitest.hostAddress or "
+        f"  ✘ no collector host address ({found.source}); set driver.runner.hostAddress or "
         f"{HOST_ADDRESS_ENV} for a scenario that records network exchanges"
     ]
 
@@ -261,6 +272,9 @@ def doctor(
     config: str = typer.Option(DEFAULT_CONFIG),
     scenario: str = typer.Option("", "--scenario"),
     environment_only: bool = typer.Option(False, "--environment-only"),
+    worker_config: Annotated[
+        Path | None, typer.Option("--worker-config", help=WORKER_CONFIG_HELP)
+    ] = None,
 ) -> None:
     """Check the environment is runnable, then score the app's current screen.
 
@@ -271,7 +285,13 @@ def doctor(
     the runner's own startup flakiness included.
     """
     eff = _load_effective(config, target_name)
-    backends = _backends(backend, eff.backend)
+    worker = _load_device_worker_or_exit(worker_config)
+    eff = _with_worker_device(eff, worker)
+    # The same capability check `run` makes against the worker's drivers and host (BE-0450).
+    backends = _worker_backends(_backends(backend, eff.backend), worker)
+    # The device comes through the target's provider, as in `run`: the `--udid` pool, or the grid
+    # an `appium` environment names (BE-0452).
+    udid = _device_udid_or_exit(eff, udid)
     try:
         actuator = select_actuator(backends)
     except RuntimeError as e:
@@ -280,8 +300,8 @@ def doctor(
     # Config gate first: a target missing the field its backend needs (iOS bundleId / web baseUrl)
     # is a usage/config error — fixable without any tool or device — so it exits 2 (distinct from a
     # genuine environment/tool failure, which exits 1) and is surfaced before any doomed probe
-    # (BE-0024). `_need_target` rejects a target with neither field at parse time; this catches the
-    # wrong field for the selected backend.
+    # (BE-0024). The platform's `app` model requires its own identifier at parse time; this catches
+    # a `--backend` override whose actuator needs another platform's field.
     cfg_checks = preflight.config_checks(
         actuator,
         target=target_name,
@@ -337,6 +357,8 @@ def doctor(
     # whose app server is down still faults on navigate (ERR_CONNECTION_REFUSED). Report it as a
     # fixable error and exit non-zero rather than surfacing a stack trace — doctor diagnoses, it
     # does not crash.
+    # The screen probe is the device path, which matches no runsOn condition until BE-0452 unit 11.
+    _refuse_conditions(eff, backends)
     try:
         elements = _current_screen(actuator, udid, eff)
     except device_errors.DeviceError as e:

@@ -21,10 +21,10 @@ track finishes the same loop against a browser (the `web` / Playwright backend),
 Linux, Windows, or macOS alike — the exact backend that drives Bajutsu's own web demo on the Linux
 gate ([`demos/web`](../../demos/web/README.md)).
 
-The vocabulary here follows the [glossary](../glossary.md): a **backend** is the token you pass to
-`--backend` (here `web`), it resolves to an **actuator** (the Playwright engine that performs the
-taps and types), and a **target** is one `targets.<name>` config entry describing the app under
-test — for the web, identified by a `baseUrl` rather than an iOS `bundleId`.
+The vocabulary here follows the [glossary](../glossary.md). A **backend** is the platform a target
+declares with `platform:` (here `web`). It resolves to an **actuator**, the Playwright engine that
+performs the taps and types. A **target** is one `targets.<name>` config entry describing the app
+under test. A web target names its app by `app.url`, where an iOS target names it by `app.id`.
 
 ## What you'll need
 
@@ -99,9 +99,10 @@ uv run bajutsu run --scenario demos/web/scenarios/smoke.yaml --target web --back
 What the flags mean:
 
 - `--target web` selects `targets.web` from [`demos/web/demo.config.yaml`](../../demos/web/demo.config.yaml)
-  (its `baseUrl` and scenarios dir). The tool itself is app-agnostic; all per-target differences
+  (its `platform: web`, `app.url`, and scenarios dir). The tool itself is app-agnostic; all per-target differences
   live in config ([configuration](../configuration.md)).
-- `--backend web` picks the actuator: the Playwright engine driving Chromium. No Xcode, no
+- `--backend web` checks the backend. The target's `platform: web` already picks the actuator, the
+  Playwright engine driving Chromium. A value that disagrees with it exits 2. No Xcode, no
   Simulator is involved.
 - Omit `--scenario` to run the target's whole scenarios directory (what `make -C demos/web e2e`
   does).
@@ -137,5 +138,5 @@ With no key and no browser, the offline twin reproduces the same record loop det
 
 ## Onboard your own web app
 
-Point a new `targets.<name>` entry at your app's `baseUrl` and give its elements stable
-`data-testid` ids — see [configuration](../configuration.md#onboarding-a-new-target).
+Add a `targets.<name>` entry with `platform: web` and your app's URL as `app.url`. Then give the
+app's elements stable `data-testid` ids — see [configuration](../configuration.md#onboarding-a-new-target).

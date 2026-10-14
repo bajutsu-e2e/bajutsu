@@ -33,14 +33,12 @@ def _eff(package: str, app_path: str | None = None) -> Effective:
         target=package,
         platform_config=AndroidConfig(package=package, app_path=app_path),
         backend=["android"],
-        device="booted",
         locale="en_US",
         launch_env={"FROM_CONFIG": "1"},
         launch_args=[],
         id_namespaces=[],
         reserved_namespaces=[],
         mock_server=None,
-        setup=None,
         capture=[],
         redact=Redact(),
     )
@@ -155,7 +153,7 @@ def test_a_downgrade_that_keeps_data_is_named(tmp_path: Path) -> None:
 
 
 def test_install_app_refuses_a_missing_build(tmp_path: Path) -> None:
-    with pytest.raises(adb.DeviceError, match="appPath not found"):
+    with pytest.raises(adb.DeviceError, match=r"app\.path not found"):
         _env(_Adb()).install_member(_eff(_PRIMARY, str(tmp_path / "gone.apk")), keep_data=True)
 
 
@@ -313,7 +311,7 @@ def test_foreground_waits_for_ready_when_only_after_a_launch(
     env = _env(run)
     env.start(_eff(_PRIMARY), Preconditions())
     env._drivers[_AUTH] = FakeDriver([_el("home"), _el("ok")])
-    control = env.controller(replace(_eff(_AUTH), ready_when={"id": "home"}))
+    control = env.controller(replace(_eff(_AUTH), start_when={"id": "home"}))
     assert control is not None
     control.foreground()
     assert seen == [expected]
@@ -338,7 +336,7 @@ def test_a_foreground_that_never_reaches_the_front_fails_its_step(
     )
     stuck.require_front_app()
     env._drivers[_AUTH] = stuck
-    control = env.controller(replace(_eff(_AUTH), ready_when=base.Selector(id="ok")))
+    control = env.controller(replace(_eff(_AUTH), start_when=base.Selector(id="ok")))
     assert control is not None
     with pytest.raises(base.AppNotInFront, match="did not come to the front"):
         control.foreground()

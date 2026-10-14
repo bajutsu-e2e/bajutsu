@@ -15,9 +15,16 @@ Related: [run-loop](run-loop.md) · [recording](recording.md) · [codegen](codeg
 
 - Every command loads `.env` first (`_bootstrap`, below).
 - Missing config / undefined app / no actuator → prints a message and exits with **code 2**.
-- `--backend` is a comma-separated list (e.g. `ios`). Empty uses config's `backend`. It checks
-  availability in order and the **first usable one is the actuator**
-  ([drivers](drivers.md#backend-selection-and-the-actuator)).
+- `--backend` is a check, not a choice. A target names one `platform`, which decides the actuator
+  ([drivers](drivers.md#backend-selection-and-the-actuator)). The flag accepts three values:
+  - the target's platform, such as `ios`;
+  - that platform's actuator name: `xcuitest`, `adb`, or `playwright`;
+  - `fake`.
+
+  Any other value exits 2, and so does a comma list. Empty uses the target's own platform
+  ([BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)).
+- `--udid` takes no URL. A command that drives a device through an Appium grid names the grid in an
+  `appium` environment of its `--worker-config` file instead (see [`run`](#run)).
 
 ## `run`
 
@@ -29,7 +36,7 @@ bajutsu run --scenario <self-declaring.yaml> [options]          # --target optio
 ```
 
 By default `run` loads **every `*.yaml`** in the app's configured scenarios dir
-(`targets.<name>.scenarios`, see [configuration](configuration.md)) — so the config alone is enough
+(`targets.<name>.paths.scenarios`, see [configuration](configuration.md)) — so the config alone is enough
 to run. Pass `--scenario <file>` to run one file instead, or repeat the flag to run several
 specific files in one process, sharing a single warm runner.
 
@@ -89,24 +96,24 @@ uses it as always. Each self-declaring file has it checked for membership instea
 | Option | Default | Description |
 |---|---|---|
 | `--target` | (required, unless every `--scenario` file declares its own `targets`) | the target app (config's `targets.<name>`); see [when `--target` is optional](#when---target-is-optional) |
-| `--scenario` | config's `scenarios` dir | run these `*.yaml` files instead of the app's whole scenarios dir; repeat the flag to run several in one process, sharing one warm runner |
-| `--backend` | config | actuator order (comma-separated; first usable wins) |
+| `--scenario` | config's `paths.scenarios` dir | run these `*.yaml` files instead of the app's whole scenarios dir; repeat the flag to run several in one process, sharing one warm runner |
+| `--backend` | the target's `platform` | a check against the target's platform: the platform, its actuator name, or `fake` (see [Common](#common)) |
 | `--tag` | "" | comma list; run only scenarios carrying any of these tags |
 | `--exclude` | "" | comma list; skip scenarios carrying any of these tags |
-| `--udid` | `booted` | the target Simulator (comma list = a device pool for `--workers`) |
-| `--erase / --no-erase` | scenario › config › off | override every scenario's `preconditions.erase` (wipe the simulator first); omit and it resolves each scenario's value, then the target's `erase` config, then off ([BE-0177](../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md)). The app is reinstalled fresh either way (config `appPath` + `preconditions.reinstall`) |
-| `--system-alert-handling / --no-system-alert-handling` | scenario › config › on | override every scenario's `systemAlertHandling` — the reactive guard that dismisses system alerts the iOS backend cannot see, natively on XCUITest (no model, BE-0315). An alert no deterministic path can clear is left alone. A guarded `wait` names what the guard saw in its own timeout; a blocked step outside one names it when the native query enumerated the alert, and on a backend with no native query fails as it always did (BE-0402); omit and it resolves each scenario's value, then the target's `systemAlertHandling` config, then on. No AI credential is needed ([recording](recording.md#dismissing-system-alerts-automatically)) |
-| `--ios-tipkit-handling / --no-ios-tipkit-handling` | scenario › config › off | override every scenario's `iosTipKitHandling` — dismiss a blocking Apple **TipKit** tip, the framework-owned popover, so that no scenario has to hand-author the same recovery. The guard recognizes a tip by its dismiss scrim (`PopoverDismissRegion`) **and** its own container (`TipView`) together, because a `confirmationDialog` installs an identical scrim and must be left alone; an author who does write an `interrupts` entry for a tip keys it on `TipView` for the same reason. iOS only (inert on other backends) and **off** unless asked for, since a tip is sometimes the assertion's own subject; omit and it resolves each scenario's value, then the target's `iosTipKitHandling` config, then off. Needs no credential ([scenarios](scenarios.md)) |
+| `--udid` | `booted` | the target Simulator (comma list = a device pool for `--workers`); a URL exits 2 |
+| `--erase / --no-erase` | scenario › config › off | override every scenario's `preconditions.erase` (wipe the simulator first); omit and it resolves each scenario's value, then the target's `run.erase` config, then off ([BE-0177](../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md)). The app is reinstalled fresh either way (config `app.path` + `preconditions.reinstall`) |
+| `--system-alert-handling / --no-system-alert-handling` | scenario › config › on | override every scenario's `systemAlertHandling` — the reactive guard that dismisses system alerts the iOS backend cannot see, natively on XCUITest (no model, BE-0315). An alert no deterministic path can clear is left alone. A guarded `wait` names what the guard saw in its own timeout; a blocked step outside one names it when the native query enumerated the alert, and on a backend with no native query fails as it always did (BE-0402); omit and it resolves each scenario's value, then the target's `run.systemAlertHandling` config, then on. No AI credential is needed ([recording](recording.md#dismissing-system-alerts-automatically)) |
+| `--ios-tipkit-handling / --no-ios-tipkit-handling` | scenario › config › off | override every scenario's `iosTipKitHandling` — dismiss a blocking Apple **TipKit** tip, the framework-owned popover, so that no scenario has to hand-author the same recovery. The guard recognizes a tip by its dismiss scrim (`PopoverDismissRegion`) **and** its own container (`TipView`) together, because a `confirmationDialog` installs an identical scrim and must be left alone; an author who does write an `interrupts` entry (or a target `hooks.interrupts` entry) for a tip keys it on `TipView` for the same reason. iOS only (inert on other backends) and **off** unless asked for, since a tip is sometimes the assertion's own subject; omit and it resolves each scenario's value, then the target's `run.tipKitHandling` config, then off. Needs no credential ([scenarios](scenarios.md)) |
 | `--alert-poll-interval` | unset | seconds between the native system-alert presence queries, below a scenario's own `pollInterval` and above the target's. The guard's only other key, `rules`, carries no flag: an entry pairs a prompt with a choice, which one flag value cannot carry legibly, so it stays a scenario-file and target-config declaration ([BE-0406](../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts.md)) |
 | `--log-predicate` | "" | an NSPredicate narrowing the `deviceLog` stream (e.g. subsystem) |
-| `--log-subsystem` | "" | the os_log subsystem for `appTrace` (defaults to the app's `bundleId`) |
-| `--network / --no-network` | config › on | collect the app's network exchanges for `request` assertions; omit and it resolves the target's `network` config, then on ([BE-0177](../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md)). iOS needs BajutsuKit in the app; web observes natively via Playwright, and stubs scenario `mocks` in-process |
+| `--log-subsystem` | "" | the os_log subsystem for `appTrace` (defaults to the app's `app.id`) |
+| `--network / --no-network` | config › on | collect the app's network exchanges for `request` assertions; omit and it resolves the target's `run.network` config, then on ([BE-0177](../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md)). iOS needs BajutsuKit in the app; web observes natively via Playwright, and stubs scenario `mocks` in-process |
 | `--workers` | 1 | parallel scenarios over a device pool. A scenario declaring several targets holds one device per target for its whole length, so `run` caps this to what the pools can serve without starving a worker. On iOS, needs `--udid u1,u2,…` and is capped to that pool size. On web, `--workers N` alone is N parallel browser-context lanes — no `--udid` needed ([BE-0054](../roadmaps/BE-0054-web-backend-completion/BE-0054-web-backend-completion.md)). Each lane carries its own network collector, interval recordings, and (iOS) device control, so network / video / `setLocation` / `push` work the same as a single-device run |
-| `--baselines` | config's `baselines`, then `baselines/` beside the scenario | directory of baseline images for `visual` assertions; `baseline: home.png` resolves inside it |
-| `--schemas` | config's `schemas`, then `schemas/` beside the scenario | directory of JSON Schema files for `responseSchema` assertions; `schema: items.json` resolves inside it (needs the `schema` extra) |
-| `--goldens` | config's `goldens`, then `goldens/` beside the scenario | directory of golden JSON files for `golden` assertions; `golden: response.json` resolves inside it |
-| `--headed / --no-headed` | app `headless` (headless) | web backend: show the run in a visible, slow-motion Chromium window instead of headless, so you can watch each step (the window opens on the machine running the command). Omit to use the app's `headless` config; iOS ignores it |
-| `--browser` | app `browser` (chromium) | web backend: the Playwright rendering engine to drive for this run — `chromium` / `firefox` / `webkit`; omit to use the target's `browser` config ([configuration](configuration.md), [BE-0076](../roadmaps/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md)) |
+| `--baselines` | config's `paths.baselines`, then `baselines/` beside the scenario | directory of baseline images for `visual` assertions; `baseline: home.png` resolves inside it |
+| `--schemas` | config's `paths.schemas`, then `schemas/` beside the scenario | directory of JSON Schema files for `responseSchema` assertions; `schema: items.json` resolves inside it (needs the `schema` extra) |
+| `--goldens` | config's `paths.goldens`, then `goldens/` beside the scenario | directory of golden JSON files for `golden` assertions; `golden: response.json` resolves inside it |
+| `--headed / --no-headed` | target `driver.headless` (headless) | web backend: show the run in a visible, slow-motion Chromium window instead of headless, so you can watch each step (the window opens on the machine running the command). Omit to use the target's `driver.headless` config; iOS ignores it |
+| `--browser` | target `runsOn.browser.engine` (chromium) | web backend: the Playwright rendering engine to drive for this run — `chromium` / `firefox` / `webkit`; omit to use the target's `runsOn.browser.engine` config ([configuration](configuration.md), [BE-0076](../roadmaps/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md)) |
 | `--browsers` | "" | web backend: run the **cross-browser matrix** — a comma list of engines (e.g. `chromium,firefox,webkit`); each scenario runs once per engine and the run is green only if every engine passes ([configuration](configuration.md#cross-browser-matrix---browsers-be-0076)). A single engine is exactly `--browser` |
 | `--progress / --no-progress` | off | stream per-scenario / per-step progress lines to stderr (the `serve` UI consumes these) |
 | `--score / --no-score` | off | print the app's entry-screen convention score (doctor's Ready/Partial/Blocked grade) to stderr, computed from this run's own first launch — so CI reads the tell without a separate `doctor` step that cold-spawns a second runner. Diagnostic only; never affects pass/fail |
@@ -121,7 +128,7 @@ uses it as always. Each self-declaring file has it checked for membership instea
 | `--label` | the config's own name | tag this run's history entry with a short free-text label, so the runs of two configs stay readable apart in the run list, Replay, and the run-stats dashboard ([BE-0404](../roadmaps/BE-0404-collapse-project-layer/BE-0404-collapse-project-layer.md)). Opaque to the tool: never parsed, never matched against config, never consulted by authorization. A value longer than 120 characters is refused rather than shortened |
 | `--config-offline` | off | for a Git `--config` ([configuration](configuration.md#config-from-a-git-repository-be-0063)): use the local cache and never touch the network — needs a pinned `@<sha>`, since a branch can't be resolved offline |
 | `--require-pinned-config` | off | for a Git `--config`: fail unless it pins a commit SHA — a branch or tag can move under a gate, so only a SHA is accepted |
-| `--worker-config` | the shipped default (`bajutsu/common/capability/worker.yaml`) | the worker capability file `run` checks each scenario against; it replaces the default and never merges with it ([BE-0450](../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability.md)); see [what this machine can run](drivers.md#worker-capability-check-be-0450). `run` drives devices on its own host, so a file whose `environment` is not `local` exits 2 |
+| `--worker-config` | the shipped default (`bajutsu/common/capability/worker.yaml`) | the worker capability file `run` checks each scenario against; it replaces the default and never merges with it ([BE-0450](../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability.md)); see [what this machine can run](drivers.md#worker-capability-check-be-0450). `run` drives devices on its own host or through an Appium grid, so the file's `environment` is `local` or `appium`; a device-cloud environment such as `devicefarm` exits 2. An `appium` file names the grid's `endpoint` and its one `platform` (today `ios`): targets of that platform take the endpoint as their device, the scenario's other targets stay on this machine, and a scenario with two grid targets is refused ([BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)). `record`, `crawl`, `repl`, `audit`, `doctor`, and `bajutsu mcp` take the same flag |
 
 - Evidence is written to `FileSink(runs/<runId>, udid=..., log_predicate=...)`
   ([evidence](evidence.md#sinks-where-evidence-goes)).
@@ -134,6 +141,12 @@ uses it as always. Each self-declaring file has it checked for membership instea
   `worker-capability-unsupported:`. The run's results and report record it like any other
   scenario that did not pass. `run` acquires no device for that scenario and runs the rest. When no scenario
   can run, `run` exits 2 and lists each reason.
+- **Device conditions are not yet matched (BE-0452).** A target may declare a device condition:
+  `runsOn.model`, `runsOn.os`, `runsOn.avd`, `runsOn.apiLevel`, `runsOn.browser.version`, or a list
+  on `model`, `avd`, or `browser.engine`. The config loads, but `run` cannot yet match a device
+  against one, so a run against such a target fails with "not yet supported" and exits 2. `record`,
+  `crawl`, `repl`, `audit`, an MCP run, and `doctor`'s screen probe do the same. `--backend fake`
+  skips the check with one notice. The cross-browser matrix flag `--browsers` keeps working.
 - No `AI usage:` line: `run` spends no tokens under any flag (BE-0402), so it installs no usage
   ledger and reports none. `record`, `crawl`, and `triage --ai` still do.
 
@@ -141,6 +154,18 @@ uses it as always. Each self-declaring file has it checked for membership instea
 bajutsu run --target showcase-swiftui --udid <UDID> --backend ios --no-erase            # the app's whole scenarios dir
 bajutsu run --scenario demos/showcase/scenarios/smoke.yaml --target showcase-swiftui --no-erase   # one file
 bajutsu run --scenario cross-platform.yaml --config both-targets.yaml                   # the file names its own targets
+bajutsu run --target showcase-swiftui --worker-config worker.yaml                         # iOS targets on an Appium grid
+```
+
+The `worker.yaml` behind the last line names the grid in an `appium` environment:
+
+```yaml
+version: 1
+environment: appium
+appium:
+  endpoint: https://grid.example.com/wd/hub
+  platform: ios          # the one value today
+drivers: [xcuitest, adb, playwright, fake]
 ```
 
 ### Stepping through a scenario
@@ -171,7 +196,7 @@ A **runnability gate** + the **convention score** for the current screen (AI-ind
 [configuration](configuration.md#doctor-the-convention-score)).
 
 ```bash
-bajutsu doctor --target <name> [--udid booted] [--backend ...] [--config ...] [--scenario <file.yaml>] [--environment-only]
+bajutsu doctor --target <name> [--udid booted] [--backend ...] [--config ...] [--scenario <file.yaml>] [--environment-only] [--worker-config <worker.yaml>]
 ```
 
 - First the env gate (`preflight.py`): the required CLIs for the actuator (`xcrun` / `xcodebuild`
@@ -185,7 +210,9 @@ bajutsu doctor --target <name> [--udid booted] [--backend ...] [--config ...] [-
 - `--scenario <file.yaml>` runs a device-free **capability preflight** (BE-0024): before the screen
   probe, it checks whether the scenario uses constructs the chosen backend can't perform and **exits
   1** if any are unsupported.
-- Otherwise, `query()`s via the actuator and renders `score(elements, idNamespaces)`. **Exits 1 when
+- `--worker-config` takes the same worker capability file as [`run`](#run). An `appium` file sends
+  the screen probe of a target on the grid's platform to the grid.
+- Otherwise, `query()`s via the actuator and renders `score(elements, app.idNamespaces)`. **Exits 1 when
   the grade is Blocked, 0 otherwise.**
 
 ## `audit`
@@ -216,7 +243,7 @@ bajutsu audit <scenario.yaml> [--json]
 Two further modes prove determinism by *observation* rather than static grading:
 
 ```bash
-bajutsu audit <scenario.yaml> --repeat K --target <name>   # run K times, diff the outcomes
+bajutsu audit <scenario.yaml> --repeat K --target <name>   # run K times, diff the outcomes (takes --worker-config, like run)
 bajutsu audit --history <runs-dir>                         # mine past runs for flakiness
 ```
 
@@ -247,9 +274,9 @@ bajutsu audit --history <runs-dir>                         # mine past runs for 
 A **static e2e coverage map** for a suite — the read-only cousin of `doctor`'s convention score
 (AI-independent; [BE-0050](../roadmaps/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map.md)).
 Where `doctor` grades the ids one screen *exposes*, this grades the ids a whole *suite* exercises:
-it walks every `*.yaml` in the app's configured `scenarios` dir (expanding components / data), groups
+it walks every `*.yaml` in the app's configured `paths.scenarios` dir (expanding components / data), groups
 the stable ids they reference by namespace, and measures them against the app's declared
-`idNamespaces` ([configuration](configuration.md#doctor-the-convention-score)) — without running anything.
+`app.idNamespaces` ([configuration](configuration.md#doctor-the-convention-score)) — without running anything.
 
 ```bash
 bajutsu coverage --target <name> [--config ...] [--runs <dir>] [--crawl <screenmap>] [--json] [--html <path>]
@@ -470,7 +497,7 @@ bajutsu trace --explain <scenario.yaml>     # pre-run dry run (no device)
   runtime-conditional; and a heavy capture (`video` / `deviceLog` / `appTrace` / `network`) on a
   broadly-matching rule is flagged with ⚠ so you can tighten the match before a run pays for it.
   Read-only and deterministic — no device, no LLM. (Components and data rows are expanded;
-  config `setup` preludes are not included.) **Exits 2** if the scenario file is missing.
+  a target's `hooks.setup` is not included.) **Exits 2** if the scenario file is missing.
 
 ## `report`
 
@@ -568,7 +595,7 @@ bajutsu triage --flaky --scenario <name> --history <runs-dir> --ai [--apply <fil
 
 Explores toward a goal with AI and **writes the recorded scenario** (Tier 1; [recording](recording.md)).
 By default it auto-names a `*.yaml` under the app's configured scenarios dir
-(`targets.<name>.scenarios`); pass `--out` to write a specific path instead.
+(`targets.<name>.paths.scenarios`); pass `--out` to write a specific path instead.
 
 ```bash
 bajutsu record --target <name> --goal "<natural-language goal>" [--out <file.yaml>] [options]
@@ -578,25 +605,26 @@ bajutsu record --target <name> --goal "<natural-language goal>" [--out <file.yam
 |---|---|---|
 | `--target` | (required) | the target app |
 | `--goal` | (required) | the goal to author (natural language) |
-| `--out` | auto-named in config's `scenarios` dir | explicit output path (overrides the app's scenarios dir) |
+| `--out` | auto-named in config's `paths.scenarios` dir | explicit output path (overrides the app's scenarios dir) |
 | `--name` | (from the goal) | file name for the auto-named scenario (ignored when `--out` is given) |
 | `--udid` | `booted` | the target Simulator |
-| `--backend` | config | actuator order |
+| `--backend` | the target's `platform` | a check against the target's platform (see [Common](#common)) |
 | `--erase / --no-erase` | `--erase` | erase before launch (the app must be installed) |
 | `--system-alert-handling` | on | clear prompts during authoring (needs an API key) |
 | `--max-steps` | `30` | cap the number of authoring turns (and therefore worst-case token spend) ([BE-0194](../roadmaps/BE-0194-record-turn-payload-diet/BE-0194-record-turn-payload-diet.md)) |
 | `--screenshot / --no-screenshot` | `--screenshot` | send a screenshot each turn; `--no-screenshot` records elements-only (cheaper), for an app fully instrumented with ids ([BE-0194](../roadmaps/BE-0194-record-turn-payload-diet/BE-0194-record-turn-payload-diet.md)) |
-| `--headed / --no-headed` | app `headless` | web backend: author against a visible (headed, slow-motion) browser instead of headless; omit to use the app's `headless` config |
-| `--browser` | app `browser` (chromium) | web backend: the Playwright rendering engine to author against — `chromium` / `firefox` / `webkit`; omit to use the target's `browser` config |
+| `--headed / --no-headed` | target `driver.headless` | web backend: author against a visible (headed, slow-motion) browser instead of headless; omit to use the target's `driver.headless` config |
+| `--browser` | target `runsOn.browser.engine` (chromium) | web backend: the Playwright rendering engine to author against — `chromium` / `firefox` / `webkit`; omit to use the target's `runsOn.browser.engine` config |
 | `--alert-vision-instruction` | "" | free text the vision guard reads instead of dismissing the prompt |
 | `--language` | config `ai.language` (`auto`) | AI output language for the authored prose (`from:` provenance, reasoning) — `ja` / `en` / `auto`; overrides `ai.language`, `auto` follows the goal ([BE-0188](../roadmaps/BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language.md)) |
 | `--config` | `bajutsu.config.yaml` | config |
+| `--worker-config` | the shipped default | the worker capability file, as in [`run`](#run); an `appium` file authors a target of the grid's platform on the grid |
 
 - Internally `launch_driver` → `record_loop(driver, goal, ClaudeAgent(), ...)` → `dump_scenarios`.
 - Output: `recorded <N> steps -> <path>`. **Needs `ANTHROPIC_API_KEY`** (`ClaudeAgent`).
 - **A Git `--config` is read-only input** ([BE-0063](../roadmaps/BE-0063-git-config-source/BE-0063-git-config-source.md)):
   `record` reads the config from the fetched checkout, but the authored scenario goes **local** — with
-  no `--out` it auto-names under the **current directory** (not the checkout's `scenarios` dir, which
+  no `--out` it auto-names under the **current directory** (not the checkout's `paths.scenarios` dir, which
   is the read-only SHA-keyed cache), and an `--out` inside the checkout is refused. Review the file
   and commit it to the repository through normal git.
 - An `AI usage:` line with the tokens the authoring (and any alert-guard) AI consumed follows on
@@ -624,16 +652,17 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
 | `--prune-global / --no-prune-global` | on | explore a global control (a tab/nav reused across screens) once instead of from every screen that shows it; the Web UI lets you resume a pruned branch on demand (see `--resume-src`/`--resume-key`) |
 | `--udid` | `booted` | the target Simulator — or a comma list (`A,B,C`) for a parallel pool (see `--workers`) |
 | `--workers` | `1` | crawl with this many workers at once, sharing one screen map: across this many simulators on iOS ([BE-0064](../roadmaps/BE-0064-parallel-crawl/BE-0064-parallel-crawl.md), capped to the `--udid` devices) or this many browser processes on web ([BE-0077](../roadmaps/BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl.md)). `1` = single-worker crawl |
-| `--backend` | config | actuator order |
+| `--backend` | the target's `platform` | a check against the target's platform (see [Common](#common)) |
 | `--erase / --no-erase` | `--erase` | erase before launch (the app must be installed) |
 | `--system-alert-handling / --no-system-alert-handling` | `--system-alert-handling` | dismiss unexpected OS prompts while crawling (so they aren't read as crashes; uses the configured AI provider — `ANTHROPIC_API_KEY`, or AWS credentials for Bedrock) |
 | `--alert-vision-instruction` | "" | free text the vision guard reads instead of dismissing the prompt |
-| `--headed / --no-headed` | app `headless` | web backend: crawl a visible (headed, slow-motion) browser instead of headless; omit to use the app's `headless` config |
+| `--headed / --no-headed` | target `driver.headless` | web backend: crawl a visible (headed, slow-motion) browser instead of headless; omit to use the target's `driver.headless` config |
 | `--language` | config `ai.language` (`auto`) | AI output language for the guide's streamed reasoning — `ja` / `en` / `auto`; overrides `ai.language`, `auto` stays English for crawl ([BE-0188](../roadmaps/BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language.md)) |
 | `--out` | `runs/<timestamp>` | run dir the screen map is written into |
 | `--resume-src` / `--resume-key` | "" | resume one pruned branch (from the Web UI's "tap to resume"): `--resume-src` is the screen fingerprint it was pruned on, `--resume-key` its replay key, both with `--out` pointing at the existing run. Mutually exclusive with `--continue` |
 | `--continue` | off | continue a past run (point `--out` at it) — re-explore **every** screen it left with untried operations, not one branch; raise `--max-screens`/`--max-steps` to go deeper, and `--workers`/`--udid` run the continuation in parallel ([BE-0181](../roadmaps/BE-0181-crawl-continuation/BE-0181-crawl-continuation.md)). Mutually exclusive with `--resume-src`/`--resume-key` |
 | `--config` | `bajutsu.config.yaml` | config |
+| `--worker-config` | the shipped default | the worker capability file, as in [`run`](#run); an `appium` file crawls a target of the grid's platform on the grid |
 
 - **A Git `--config` is read-only input** ([BE-0063](../roadmaps/BE-0063-git-config-source/BE-0063-git-config-source.md)):
   `crawl` reads the config from the fetched checkout, but the screen map / screenshots go to the local
@@ -754,13 +783,13 @@ hashes to the same value. Each node records both the fingerprint and its `kind`.
 
 The crawl runs against a web app the same way it runs against the Simulator — the exploration
 engine is platform-neutral, so `bajutsu crawl --target <web-app> --backend web` produces the same
-`screenmap.json`, screenshots, and crash list. The web app is identified by `baseUrl` (not
-`bundleId`), and because a browser needs no Mac or emulator a web crawl runs on the Linux
+`screenmap.json`, screenshots, and crash list. The web app is identified by `app.url` (not
+`app.id`), and because a browser needs no Mac or emulator a web crawl runs on the Linux
 `make check` / CI gate. Three things differ from iOS, and all stay deterministic
 ([BE-0066](../roadmaps/BE-0066-web-crawl/BE-0066-web-crawl.md)):
 
 - **Clean start = re-navigate.** There is no app process to relaunch; returning to a clean state
-  is `page.goto(baseUrl)` against a fresh browser context (the `erase` equivalent, ~free), the
+  is `page.goto(app.url)` against a fresh browser context (the `erase` equivalent, ~free), the
   same lifecycle seam `run` uses.
 - **Crash detection.** The iOS signal (the accessibility tree collapsing) does not exist on the
   web, so the crawl uses the browser's own deterministic signals instead: an uncaught JS exception
@@ -788,13 +817,14 @@ bajutsu repl --target <name> [options]
 | Option | Default | Description |
 |---|---|---|
 | `--target` | (required) | the target app |
-| `--udid` | `booted` | the target Simulator (or a WebDriver endpoint on the live route) |
-| `--backend` | config | actuator order |
-| `--erase / --no-erase` | erase, except on the live route | erase before launch (the app must be installed); the live `--udid https://…` route rejects erase outright, so the default there is off, and an explicit `--erase` on that route exits with a CLI error instead |
-| `--headed / --no-headed` | app `headless` | web backend: inspect a visible (headed, slow-motion) browser instead of headless; omit to use the app's `headless` config |
-| `--browser` | app `browser` (chromium) | web backend: the Playwright rendering engine to inspect — `chromium` / `firefox` / `webkit`; omit to use the target's `browser` config |
+| `--udid` | `booted` | the target Simulator; a URL exits 2 (an Appium grid comes from `--worker-config`) |
+| `--backend` | the target's `platform` | a check against the target's platform (see [Common](#common)) |
+| `--erase / --no-erase` | erase, except on the live route | erase before launch (the app must be installed); the live route to an `appium` grid rejects erase outright, so the default there is off, and an explicit `--erase` on that route exits with a CLI error instead |
+| `--headed / --no-headed` | target `driver.headless` | web backend: inspect a visible (headed, slow-motion) browser instead of headless; omit to use the target's `driver.headless` config |
+| `--browser` | target `runsOn.browser.engine` (chromium) | web backend: the Playwright rendering engine to inspect — `chromium` / `firefox` / `webkit`; omit to use the target's `runsOn.browser.engine` config |
 | `--attach` | off | local iOS Simulator (`xcuitest`) alone: connect to the app already running on the booted Simulator and leave it as it is — no erase, install, or relaunch (see *Attaching to a running app*, below) |
 | `--config` | `bajutsu.config.yaml` | config |
+| `--worker-config` | the shipped default | the worker capability file, as in [`run`](#run); an `appium` file opens the shell on the grid (the live route) for a target of the grid's platform |
 
 Once the app is up, the shell prompts with `bajutsu>`:
 
@@ -852,9 +882,9 @@ or starts with `@` or `label:`, and none of them reaches `idMatches`, `labelMatc
   platform-specific action (`setPickerValue`, `selectOption`), through `step` instead.
 - **Leaving the shell leaves the app running.** A Simulator- or device-backed app stays where you
   left it, so you can keep inspecting it by hand. The two sessions the command itself owns are
-  closed: the web backend's browser, and the WebDriver session on the `--udid https://…` live route,
+  closed: the web backend's browser, and the WebDriver session on the live route to an `appium` grid,
   which would otherwise stay reserved on the grid until it expires.
-- A target declaring `launchServer` has its server started before the shell opens and stopped when
+- A target declaring `services.server` has its server started before the shell opens and stopped when
   it exits — without that, a web target would open the browser on a host that is not listening and
   every `tree` would read the error page.
 
@@ -909,7 +939,7 @@ The attach start touches nothing device-wide:
   pin, the permission grants, and the deeplink. `--attach` turns `--erase` off by default.
   `--attach --erase` exits 2.
 - **No readiness wait.** The app sits wherever the operator left it. The shell does not wait for the
-  target's `readyWhen` screen.
+  target's `app.startWhen` screen.
 - **No retry.** The runner starts once, with no recovery ladder. A retry or a repair would end the app
   or reboot the Simulator. A runner that does not come up exits 2 with its log tail.
 - **No app teardown.** Leaving the shell stops the runner and leaves the app running.
@@ -927,8 +957,8 @@ Before the runner starts, the shell checks the device. Before it serves, the run
 On every other route, `--attach` exits 2 before touching any device. Those routes are:
 
 - the `playwright` and `adb` backends;
-- the live `--udid https://…` route;
-- a target with `xcuitest.deviceType: device`.
+- the live route to an `appium` grid;
+- a target with `runsOn.kind: device`.
 
 `--target` stays required. The bundle id and the id namespaces come from the target's config.
 
@@ -946,10 +976,11 @@ bajutsu codegen <scenario.yaml> --target <name> [--emit xcuitest | playwright | 
 | `--emit` | `xcuitest` | output format: `xcuitest`, `playwright`, or `uiautomator` (others exit with code 2) |
 | `-o, --out` | `-` | output file. `-` for stdout |
 
-- Config's `launchEnv` goes into the generated test: `app.launchEnvironment` (XCUITest) or seeded
+- Config's `app.launch.env` goes into the generated test: `app.launchEnvironment` (XCUITest) or seeded
   `localStorage` (Playwright).
-- `--emit playwright` requires the app to be a web target (`targets.<name>.baseUrl`); `--emit
-  uiautomator` requires an Android target (`targets.<name>.package`); otherwise it exits with code 2.
+- `--emit playwright` requires a web target (`platform: web`, with `app.url`); `--emit
+  uiautomator` requires an Android target (`platform: android`, with `app.id`); otherwise it exits
+  with code 2.
 - On file output: `wrote <N> scenario(s) -> <out>`.
 
 ## `approve`
@@ -1015,7 +1046,7 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   `--config` also accepts a Git source (`github:owner/repo@ref:path`), and the "Open config" dialog
   has a **From a Git repository** field for the same spec: serve materializes the repo subtree at the
   ref into its cache, binds that config, and serves from the checkout root — so the config's relative
-  `scenarios` / `appPath` / `build` resolve against the fetched tree. This Git binding is the self-hosted payoff
+  `paths.scenarios` / `app.path` / `app.build` resolve against the fetched tree. This Git binding is the self-hosted payoff
   ([BE-0016](../roadmaps/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) Tier A):
   point serve at the team's test repository instead of hand-syncing files, and switch branches in the
   UI rather than redeploying. The file browser stays confined to `--root`; the checkout is a managed
@@ -1061,18 +1092,18 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
 - **Upload a bundle ([BE-0073](../roadmaps/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md)).**
   The "Open config" dialog has a third source, **Upload a bundle**, that lets a browser user **bring
   their own suite** to a hosted `serve` with no file-system access to the host. Drop a `.zip` whose
-  layout is just a working local checkout — a `bajutsu.config.yaml`, its `scenarios` tree, and the
-  built app binary the config's `appPath` names (a `.app` dir, a zipped `.app`, or an `.ipa`).
+  layout is just a working local checkout — a `bajutsu.config.yaml`, its `paths.scenarios` tree, and the
+  built app binary the config's `app.path` names (a `.app` dir, a zipped `.app`, or an `.ipa`).
   `serve` extracts it into a confined sandbox (a sibling of `runs/`, never `--root`) and **binds it
   as the active config**, exactly like the file-browser and Git sources — so the **Replay / Record /
-  Crawl** tabs then run from the extracted tree (the config's relative `appPath` / `scenarios` /
-  `baselines` resolve against the bundle). Runs land in `serve`'s own store (`--runs-dir`), not the
+  Crawl** tabs then run from the extracted tree (the config's relative `app.path` / `paths.scenarios` /
+  `paths.baselines` resolve against the bundle). Runs land in `serve`'s own store (`--runs-dir`), not the
   sandbox, so they survive in **History**; the upload's file name and the zip's **sha256** are
   recorded into each run's `manifest.json` (`provenance`), so "what did this run execute?" stays
   answerable. Only one bundle is bound at a time — opening another config (any source) removes the
   sandbox. The bundle carries **no secrets**: `${secrets.*}` resolve from the `serve` host's
   environment as on any run ([BE-0032](../roadmaps/BE-0032-secret-variables/BE-0032-secret-variables.md)),
-  and an uploaded config's `build` command is **never** executed on the host (the bundle ships a
+  and an uploaded config's `app.build` command is **never** executed on the host (the bundle ships a
   prebuilt binary; DESIGN §1). Extraction is hardened against zip-slip (absolute / `..` / symlink
   entries are rejected) and zip-bombs (entry-count, total-uncompressed, and per-entry
   compression-ratio caps); every target's path fields are confined to the bundle at bind; and binding
@@ -1088,15 +1119,15 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   again. The "Open config" dialog's fourth source, **Compose from artifacts**, splits the bundle
   into three **independently uploadable, content-addressed** parts — **Config**, **Scenarios** (a
   `.zip` of the scenario tree **or** a single `.yaml`, told apart by content and, for a single file,
-  written into the config's `scenarios` directory with its extension normalized to `.yaml`), and
+  written into the config's `paths.scenarios` directory with its extension normalized to `.yaml`), and
   **Binary** (a zipped `.app`, an `.ipa`, or an Android `.apk`, extracted or written raw by the
-  config's `appPath` suffix) — each stored by the sha256 of
+  config's `app.path` suffix) — each stored by the sha256 of
   its bytes (`POST /api/artifacts/{config,scenarios,binary}`). Because a part is addressed by its
   content, an **unchanged** part is skipped entirely: the browser hashes the file and asks
   `GET /api/artifacts/exists` before uploading, so the same binary never travels the wire twice.
   **Compose & load** (`POST /api/compose`) then assembles a chosen `(config, scenarios, binary)`
   **triple** into exactly the same confined tree a combined bundle produces — the **config is the
-  sole layout authority**, naming via its own relative `scenarios` / `appPath` where each part lands —
+  sole layout authority**, naming via its own relative `paths.scenarios` / `app.path` where each part lands —
   and binds it as the active config, so the **Replay / Record / Crawl** tabs run from it just as with
   a bundle. A triple whose config needs a part you did not supply is **rejected** before any run
   (never a half-built tree). Swapping one leg and composing again runs a new **combination** (binary A
@@ -1128,9 +1159,9 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   also drives lightweight key completion (Ctrl/⌘+Space) and hover descriptions. Deterministic and
   AI-free — no device or model runs; Save keeps its own validation guard, so the inline layer only
   surfaces failures earlier.
-- If the app's built binary (config `appPath`) is missing, the app's `build` command runs first
+- If the app's built binary (config `app.path`) is missing, the app's `app.build` command runs first
   (its output streams into the job log); a build failure aborts the run before it spawns. Set
-  `targets.<name>.build` to the shell command that produces `appPath` (e.g. `make -C demos/showcase
+  `targets.<name>.app.build` to the shell command that produces `app.path` (e.g. `make -C demos/showcase
   swiftui-build`) to build on demand from the UI without a manual build first.
 - A **History** list under the controls shows past runs (newest first, with a pass/fail dot and
   scenario summary); click one to reopen its report. `GET /api/runs` backs it.
@@ -1140,12 +1171,17 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
 - **Input validation on `/api/run`.** The scenario must be an existing `*.yaml` **inside the
   selected app's scenarios dir** (no arbitrary host paths or `..` traversal), and `backend` / `udid`
   must be known tokens, not free text — so a request can't run an arbitrary file or smuggle
-  surprising argv. This hardening is the prerequisite for hosting `serve` beyond loopback
+  surprising argv. `backend` follows the same check as `run --backend`, and any other value is a 400.
+  This hardening is the prerequisite for
+  hosting `serve` beyond loopback
   ([BE-0015](../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) / [BE-0016](../roadmaps/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md));
   it still binds `127.0.0.1` and has no auth, so don't expose it to an untrusted network yet.
+- **Running on an Appium grid from `/api/run` (BE-0452).** The request takes an optional
+  `environment: appium`, which routes the job to a worker whose worker capability file names an
+  `appium` environment. Such a job requires `environment:appium` alone. Any other value is a 400.
 - **Per-job artifact overrides on `/api/run` (BE-0431).** Hosted, `POST /api/run` takes two
   more fields. `binaryArtifact` and `scenariosArtifact` each hold the sha256 of an artifact stored
-  for the org. One job installs that binary at its target's `appPath`. The same job runs against
+  for the org. One job installs that binary at its target's `app.path`. The same job runs against
   that scenarios zip. The org's active config keeps its binding. The run's `manifest.json` records
   each overridden sha256 under `provenance`. A server with no job queue refuses both fields. See
   [self-hosting](self-hosting.md#per-job-artifact-overrides-for-a-ci-run-be-0431).
@@ -1190,9 +1226,9 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   your command lines.
 - **Hosting flags (advanced).** `--emit-launchagent` prints a launchd plist to run `serve` as a
   token-authenticated LaunchAgent on a single Mac; `--upload-exec` (or `$BAJUTSU_UPLOAD_EXEC`) governs whether an
-  **uploaded bundle**'s `launchServer` command may run (`deny` / `reuse` / `sandbox`, default
+  **uploaded bundle**'s `services.server` command may run (`deny` / `reuse` / `sandbox`, default
   `sandbox`); `--allow-remote-build` (or `$BAJUTSU_ALLOW_REMOTE_BUILD`) opts a UI-bound **Git**
-  config's `build` command into running on the host (off by default). All are covered in
+  config's `app.build` command into running on the host (off by default). All are covered in
   [self-hosting](self-hosting.md).
 
 ## `mcp`
@@ -1201,7 +1237,7 @@ Starts an **MCP (Model Context Protocol) server** so an agent (Claude Desktop / 
 scenarios and read run evidence. Needs the optional `bajutsu[mcp]` extra (`fastmcp`).
 
 ```bash
-bajutsu mcp [--config bajutsu.config.yaml] [--runs runs] [--transport stdio]
+bajutsu mcp [--config bajutsu.config.yaml] [--runs runs] [--transport stdio] [--worker-config <worker.yaml>]
 ```
 
 | Option | Default | Description |
@@ -1209,6 +1245,7 @@ bajutsu mcp [--config bajutsu.config.yaml] [--runs runs] [--transport stdio]
 | `--config` | `bajutsu.config.yaml` | config the tools resolve targets against |
 | `--runs` | `runs` | the runs dir exposed as resources |
 | `--transport` | `stdio` | `stdio` (a local agent) or `sse` (HTTP) |
+| `--worker-config` | the shipped default | the worker capability file the tools run under, as in [`run`](#run); an `appium` file sends `bajutsu_run` and `bajutsu_doctor` for a target of the grid's platform to the grid |
 
 - **Tools**: `bajutsu_run` (deterministic run) and `bajutsu_doctor` (convention score) — both mirror
   the CLI, and no AI enters the verdict.
@@ -1236,8 +1273,8 @@ starts one. The lease response hands a worker two more fields:
   browser login gets none.
 - The spec's `cwd` names the bound config's directory, for a job that ships no files of its own.
   A run on a local start is such a job: it names its config, scenario, runs, and baselines by path.
-  The worker builds and runs the job from that directory. The config's relative `appPath` and
-  `build:` then resolve as in the server's process. A worker on another machine lacks the
+  The worker builds and runs the job from that directory. The config's relative `app.path` and
+  `app.build` then resolve as in the server's process. A worker on another machine lacks the
   directory, so it fails the job with a message saying the job needs a worker on the server's
   machine.
 
@@ -1263,13 +1300,13 @@ bajutsu worker --once <spec.json> [--worker-config <worker.yaml>]
 | `--once` | off | execute the one job spec in this JSON file on this machine, with no server, and exit with the job's exit code; see below |
 | `--server-url` | `$BAJUTSU_SERVER_URL` or `http://localhost:8765` | the control plane's URL |
 | `--token` | "" | operator token for auth (the control plane's `--token` / `$BAJUTSU_SERVE_TOKEN`) |
-| `--platform` | `ios` | comma list of backends this worker can drive (`ios` / `web` / `android`) — the axis the control plane routes jobs on. A local worker exits at startup, naming the driver, when its worker capability file omits a listed platform's driver or its host cannot run that driver, so `--platform ios` stops a Linux worker ([BE-0450](../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability.md)). A device-cloud worker takes none |
+| `--platform` | `ios` | comma list of backends this worker can drive (`ios` / `web` / `android`) — the axis the control plane routes jobs on. A local worker exits at startup, naming the driver, when its worker capability file omits a listed platform's driver or its host cannot run that driver, so `--platform ios` stops a Linux worker ([BE-0450](../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability.md)). A device-cloud or `appium` worker takes none |
 | `--capabilities` | "" (also `$BAJUTSU_WORKER_CAPABILITIES`) | **deprecated** ([BE-0450](../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability.md)): extra capability tokens to advertise beyond the platform, the host, and the Simulator inventory (for example `ios18,ipad`). Still honored for this release, with a one-time notice, and removed in the next; the inventory and the worker capability file now supply these tokens. A token with the reserved `environment:` or `host:` prefix stops the worker at startup |
 | `--poll-interval` | `2.0` | seconds between lease attempts while idle |
 | `--heartbeat-interval` | `30.0` | seconds between lease heartbeats during a run (kept under the control plane's lease timeout, so a long run is never mistaken for a dead worker and reclaimed) |
 | `--worker-id` | "" (auto) | worker identifier |
 | `--workdir` | a new temporary directory | where leased jobs run: their materials, fetched bundles, and run trees before upload. The default directory is removed when the worker stops, so a worker started inside a project never writes into it |
-| `--worker-config` | the shipped default | the worker capability file this worker runs under ([BE-0450](../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability.md); see [drivers](drivers.md#worker-capability-check-be-0450)). The worker validates it at startup and exits before leasing anything when the file does not load. A file whose `environment` names a device cloud makes the worker register that provider and advertise `environment:<name>` ([Device Farm](devicefarm.md)). The worker passes the file's absolute path to every `bajutsu run` it spawns, so each leased run is checked against the same file; the server never reads it |
+| `--worker-config` | the shipped default | the worker capability file this worker runs under ([BE-0450](../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability.md); see [drivers](drivers.md#worker-capability-check-be-0450)). The worker validates it at startup and exits before leasing anything when the file does not load. A file whose `environment` names a device cloud makes the worker register that provider and advertise `environment:<name>` ([Device Farm](devicefarm.md)). An `appium` file makes the worker advertise `environment:appium` alone and take no `--platform`; it runs each job as a local `bajutsu run` that drives the grid ([BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)). The worker passes the file's absolute path to every `bajutsu run` it spawns, so each leased run is checked against the same file; the server never reads it |
 
 `--once` executes one job spec without a server
 ([BE-0449](../roadmaps/BE-0449-server-runs-no-jobs/BE-0449-server-runs-no-jobs.md)). The spec has
@@ -1289,8 +1326,8 @@ differences:
 - a spec that names an uploaded bundle or artifact overrides, or asks for visual baselines
   (`materialize_baselines`), since those arrive by signed URL and a one-shot job has no server to
   sign one; point `--baselines` at a directory on disk instead
-- a Device Farm batch spec
-- a `--worker-config` whose `environment` is not `local`
+- a spec the `--worker-config` environment does not run: a Device Farm batch spec under a `local` or
+  `appium` file, or a plain run spec under a device-cloud file
 - a `udids` that is not a list of strings, or `materials` that do not map paths to strings
 - a `cmd` that names a run in neither form a worker recognises (`python -m bajutsu.run.internal …`
   or the older `python -m bajutsu run …`)
@@ -1335,7 +1372,7 @@ Builds the generic XCUITest runner.
 
 Its one subcommand today, `build --device`, signs the runner for a real iPhone or iPad. The signing
 comes from the per-user signing file, and the build lands in a cache. A target with
-`xcuitest.deviceType: device` and no `testRunner` then resolves to that cache. The build is an
+`runsOn.kind: device` and no `driver.runner.testRunner` then resolves to that cache. The build is an
 authoring step on macOS with Xcode, and never runs inside `bajutsu run`.
 [iOS on a real device](ios-device-cloud.md#the-signed-device-runner) covers the signing file, the
 cache key, and the errors a run reports.

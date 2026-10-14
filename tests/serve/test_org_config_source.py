@@ -21,7 +21,7 @@ from sqlalchemy import Engine
 from bajutsu import serve as srv
 from bajutsu.serve import operations as ops
 
-_CONFIG = "targets:\n  docs: { baseUrl: 'https://example.test/', backend: [web] }\n"
+_CONFIG = "targets:\n  docs:\n    platform: web\n    app: {url: 'https://example.test/'}\n"
 
 
 def _bundle(tmp_path: Path) -> tuple[Path, str]:
@@ -128,7 +128,10 @@ def test_a_second_bind_replaces_the_first_locator(
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:
-        zf.writestr("bajutsu.config.yaml", _CONFIG + "  extra: { baseUrl: 'https://x.test/' }\n")
+        zf.writestr(
+            "bajutsu.config.yaml",
+            _CONFIG + "  extra: { platform: web, app: { url: 'https://x.test/' } }\n",
+        )
     blob = buf.getvalue()
     second = tmp_path / "second.zip"
     second.write_bytes(blob)
@@ -151,12 +154,20 @@ def test_the_comparison_ranks_only_the_targets_the_org_owns(
 
     config = tmp_path / "bajutsu.config.yaml"
     config.write_text(
-        "targets:\n"
-        "  acme-web: { baseUrl: 'https://a.test/', backend: [web] }\n"
-        "  globex-web: { baseUrl: 'https://g.test/', backend: [web] }\n"
-        "orgs:\n"
-        "  acme: { targets: [acme-web] }\n"
-        "  globex: { targets: [globex-web] }\n",
+        (
+            "targets:\n"
+            "  acme-web:\n"
+            "    platform: web\n"
+            "    app: {url: 'https://a.test/'}\n"
+            "  globex-web:\n"
+            "    platform: web\n"
+            "    app: {url: 'https://g.test/'}\n"
+            "orgs:\n"
+            "  acme:\n"
+            "    targets: [acme-web]\n"
+            "  globex:\n"
+            "    targets: [globex-web]\n"
+        ),
         encoding="utf-8",
     )
     state = _state(serve_engine, tmp_path, object_store=FakeObjectStore())

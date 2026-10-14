@@ -20,16 +20,19 @@ from pydantic import ValidationError
 
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
+    WORKER_CONFIG_HELP,
     LoadedConfig,
     _backends,
     _effective_for,
     _load_config_with_source,
-    _load_worker_capability_or_exit,
+    _load_device_worker_or_exit,
     _log_subsystem_default,
+    _reject_url_udid,
     _resolve_browser,
     _select_actuator_or_exit,
     _start_launch_server_or_exit,
     _with_headed,
+    _with_worker_device,
     resolve_system_alert_handling_flag,
 )
 from bajutsu.common.assertions import GoldenContext
@@ -75,14 +78,12 @@ from bajutsu.common.scenario import (
     SystemAlertHandlingField,
     SystemAlertRule,
     _scenarios_declaring_targets,
-    apply_setups,
     contained_ref,
     declared_name,
     dump_mocks,
     expand_components,
     expand_data,
     load_scenario_file,
-    parse_yaml_named,
     read_csv,
     scenario_sources,
     select_scenarios,
@@ -261,16 +262,16 @@ def _scenario_files(
 
 
 def _expand_file(
-    path: Path, eff: Effective, root: Path
+    path: Path, root: Path
 ) -> tuple[list[Scenario], str | None, dict[str, ScenarioPlanSource]]:
-    """Load one scenario file and expand its setup/component/data refs.
+    """Load one scenario file and expand its component and data refs.
 
     Each ref is resolved relative to THIS file's directory, so a multi-file dir run keeps every
     file's refs local. Component and data refs are confined to *root* (the suite dir, or the file's
     own dir for a single-file run), so a scenario cannot read outside its suite (BE-0174). Returns
     the expanded scenarios, the file-level description, and — keyed by each *expanded* scenario's
     declared name — its report plan source: the scenario's own verbatim YAML as authored
-    in *path*, and its steps' original line numbers there. A scenario whose setup/component
+    in *path*, and its steps' original line numbers there. A scenario whose component
     expansion changed its step count keeps the verbatim text but drops its line numbers, since a
     wrong line would be worse than none. A data-driven scenario (`data`/`dataFile`) drops the
     verbatim text entirely: `expand_data` substitutes `${row.*}` per row without changing the step
@@ -290,37 +291,9 @@ def _expand_file(
     plan_by_name = {
         s.name: _plan_source(s, raw) for s, raw in zip(scenarios, raw_sources, strict=True)
     }
-    # Refs (setup/use/data) resolve relative to this scenario file's own directory.
+    # Refs (use/data) resolve relative to this scenario file's own directory.
     base_dir = path.parent
 
-    def _setup_steps(ref: str) -> list[Step]:
-        """The prelude's own steps, its `use` steps already expanded in the prelude's own scope.
-
-        A prelude is a scenario-file-shaped document and carries a `components:` map of its own, so
-        its bare refs must resolve there — never against whichever scenario file happened to name it
-        as `setup` (BE-0422). Expanding before `apply_setups` splices is what guarantees that: no
-        unexpanded `use` ever crosses from a prelude into the scenario including it.
-
-        The prelude path itself stays inside the suite root (BE-0174), the same as every other ref
-        this function resolves — a scenario file is untrusted input under `serve`, so `setup` gets no
-        exemption from the containment every `use`/`dataFile` ref already has.
-        """
-        prelude = contained_ref(root, base_dir, ref)
-        prelude_file = parse_yaml_named(prelude, load_scenario_file)
-        scenario = prelude_file.scenarios[0]
-        expand_components(
-            [scenario],
-            ComponentResolver(
-                prelude_file.components, root=root, base=prelude.parent, source=prelude
-            ),
-        )
-        return scenario.steps
-
-    try:
-        apply_setups(scenarios, eff.setup, _setup_steps)
-    except (OSError, ValueError, IndexError) as e:
-        typer.echo(f"setup の読み込みに失敗: {e}")
-        raise typer.Exit(2) from None
     try:
         expand_components(
             scenarios,
@@ -352,7 +325,7 @@ def _expand_file(
             # strips to a name `plan_by_name` never had. That is a valid scenario file, not a bug
             # here, so this scenario simply gets no recovered plan rather than crashing the run.
             continue
-        # A target group (BE-0437), and `apply_setups`/`expand_components`, can each change the
+        # A target group (BE-0437), and `expand_components`, can each change the
         # step count against `plan.step_lines`'s raw, one-entry-per-YAML-item count (captured
         # before any of that ran) — when they do, this scenario's line numbers no longer line up
         # with its executed steps (data-row expansion never changes the count, so a row keeps
@@ -454,7 +427,7 @@ def _load_scenarios(
     # rather than let one file's source silently attach to the other file's scenario.
     ambiguous: set[str] = set()
     for path in files:
-        expanded, file_desc, file_plan_sources = _expand_file(path, eff, root)
+        expanded, file_desc, file_plan_sources = _expand_file(path, root)
         scenarios.extend(expanded)
         ambiguous.update(file_plan_sources.keys() & plan_sources.keys())
         plan_sources.update(file_plan_sources)
@@ -510,22 +483,6 @@ def _reject_legacy_without_target(
             "give them a `targets:` field"
         )
         raise typer.Exit(2)
-
-
-def _load_local_worker_or_exit(path: Path | None) -> WorkerCapability:
-    """The `--worker-config` file in force for `run`, refusing a device-cloud environment (BE-0450).
-
-    `run` drives devices on its own host and never submits to a cloud, so a file naming a provider
-    environment describes a different kind of worker and is a usage error, not a silent override.
-    """
-    worker = _load_worker_capability_or_exit(path)
-    if not worker.is_local:
-        typer.echo(
-            f"--worker-config: environment '{worker.environment}' is a device cloud; "
-            "`bajutsu run` drives devices on its own host and needs `environment: local`"
-        )
-        raise typer.Exit(2)
-    return worker
 
 
 def _uses_target(scenarios: list[Scenario], target: str) -> bool:
@@ -593,6 +550,33 @@ def _resolve_target_effs(
                     _with_headed(_effective_for(loaded, name), headed), browser
                 )
     return effs
+
+
+def _reject_two_grid_targets(
+    scenarios: list[Scenario], target_effs: Mapping[str, Effective], primary: str
+) -> None:
+    """Refuse a scenario that sends two targets to one Appium grid, which counts as one device.
+
+    How many sessions one endpoint holds is left to a later item (BE-0452), so a second grid target
+    would share the first one's device without saying so.
+
+    Raises:
+        typer.Exit: A scenario declares more than one target the grid serves (exit code 2).
+    """
+    for s in scenarios:
+        names = s.target_names or [primary]
+        grid = [
+            n
+            for n in names
+            if (provider := target_effs[n].device_provider) is not None
+            and provider.kind == "appium"
+        ]
+        if len(grid) > 1:
+            typer.echo(
+                f"scenario '{s.name}' sends targets {', '.join(grid)} to one appium grid, whose "
+                "endpoint counts as one device; split the scenario"
+            )
+            raise typer.Exit(2)
 
 
 def _reject_web_flags_across_targets(
@@ -829,7 +813,6 @@ def _sharing_problems(
             # nothing counted.
             tuple(eff.backend),
             eff.device_provider,
-            eff.device,
             xcuitest.device_type if xcuitest is not None else None,
         )
 
@@ -840,7 +823,7 @@ def _sharing_problems(
         if route(effs[member]) != route(effs[first]):
             yield (
                 f"device group [{', '.join(group)}]: {member!r} differs from {first!r} in platform, "
-                "backend, or device route (deviceProvider, device, xcuitest.deviceType), so they "
+                "backend, or device route (device provider, runsOn.kind), so they "
                 "cannot share a device"
             )
         if locale(effs[member]) != locale(effs[first]):
@@ -2397,10 +2380,7 @@ def run_body(
         Path | None,
         typer.Option(
             "--worker-config",
-            help=(
-                "the worker capability file (worker.yaml) this machine runs under, used in place "
-                "of the shipped default (BE-0450); its environment must be `local`"
-            ),
+            help=WORKER_CONFIG_HELP,
         ),
     ] = None,
     tag: str = typer.Option(
@@ -2601,7 +2581,8 @@ def run_body(
     # the primary target is resolved first, from the flag or from the `--scenario` files themselves;
     # everything below — the config load, the pool, the evidence dirs — is unchanged once it has one.
     explicit_target = bool(target_name)
-    worker = _load_local_worker_or_exit(worker_config)
+    worker = _load_device_worker_or_exit(worker_config)
+    _reject_url_udid(udid)
     target_name = _resolve_primary_target(target_name, scenario or [])
     loaded, eff, config_source, engines = _resolve_config_and_engines(
         config,
@@ -2683,9 +2664,16 @@ def run_body(
         all_scenarios = scenarios
         worker_failures = _worker_capability_failures(loaded, scenarios, eff, backend, worker)
         scenarios = [s for i, s in enumerate(scenarios) if i not in worker_failures]
-    target_effs = _resolve_target_effs(
-        loaded, scenarios, target_name, eff, headed=headed, browser=browser
-    )
+    # An `appium` environment hands its grid to the targets of its platform (BE-0452), before any
+    # check below reads which route a target's device takes.
+    target_effs = {
+        name: _with_worker_device(target_eff, worker)
+        for name, target_eff in _resolve_target_effs(
+            loaded, scenarios, target_name, eff, headed=headed, browser=browser
+        ).items()
+    }
+    eff = target_effs.get(target_name, eff)
+    _reject_two_grid_targets(scenarios, target_effs, target_name)
     # Every declared target's own `secrets` names, not only the primary's — a `${secrets.X}` a step
     # routed elsewhere uses may be declared only on that target's own config (BE-0428).
     secret_bindings, secret_values = _resolve_secrets(target_effs.values())

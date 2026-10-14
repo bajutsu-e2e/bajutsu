@@ -1,4 +1,4 @@
-"""End-to-end faked-AWS coverage of the cloud-batch fan-out and the device budget (BE-0336 Unit 6).
+"""End-to-end faked-AWS coverage of the cloud-batch fan-out (BE-0336 Unit 6).
 
 `test_run_set` asserts the fan-out at the dispatch layer (one `BatchRequest` per scenario) with a
 recording executor, and `test_batch_provider` drives one scenario through the in-memory Device Farm
@@ -6,8 +6,7 @@ fake. Neither connects the two: nothing runs a *fan-out* through the real `Devic
 against the fake to a landed run and a verdict. These tests close that gap — `start_run_set` fans a
 scenario set out into jobs that execute through the provider seam against the same in-memory fake the
 CLI submitter uses, so the gate exercises fan-out → provider → landing → verdict without reaching
-real AWS. The cap is covered directly by `test_job_registry_caps_concurrent_batch_by_provider_pool`
-and `test_fan_out_stops_at_the_device_budget`; here it is exercised together with real faked runs.
+real AWS.
 """
 
 from __future__ import annotations
@@ -111,7 +110,7 @@ class _RunningExecutor:
 
 
 class _RecordingExecutor:
-    """Captures dispatched jobs without running them, so the device-budget cap sees them stay in
+    """Captures dispatched jobs without running them, so they stay in
     flight (mirrors test_run_set); the test runs the captured jobs afterwards."""
 
     def __init__(self) -> None:
@@ -121,11 +120,8 @@ class _RecordingExecutor:
         self.jobs.append(job)
 
 
-def _android_batch_project(
-    tmp_path: Path, *, scenarios: list[str], budget: int | None = None
-) -> tuple[Path, Path]:
-    """A scenarios dir + config for an Android target wired for cloud-batch runs, plus an APK to
-    install. *budget* sets the target's `cloudBatchBudget` (the device budget K); None omits it."""
+def _android_batch_project(tmp_path: Path, *, scenarios: list[str]) -> tuple[Path, Path]:
+    """A scenarios dir + config for an Android target, plus an APK a device cloud installs."""
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
     body = "- name: a\n  steps:\n    - tap: { id: x }\n"
@@ -133,17 +129,15 @@ def _android_batch_project(
         (scn_dir / name).write_text(body, encoding="utf-8")
     apk = tmp_path / "app.apk"
     apk.write_text("APK", encoding="utf-8")
-    budget_line = f"    cloudBatchBudget: {budget}\n" if budget is not None else ""
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "targets:\n"
-        "  demo:\n"
-        "    platform: android\n"
-        "    package: com.example.demo\n"
-        f"    scenarios: {scn_dir}\n"
-        "    cloudBatch: devicefarm\n"
-        f"{budget_line}"
-        f"    appPath: {apk}\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: android\n"
+            f"    app: {{id: com.example.demo, path: {apk}}}\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     return scn_dir, cfg
@@ -173,13 +167,13 @@ def test_relative_app_path_travels_as_a_logical_reference(tmp_path: Path) -> Non
     (tmp_path / "app.apk").write_text("APK", encoding="utf-8")
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "targets:\n"
-        "  demo:\n"
-        "    platform: android\n"
-        "    package: com.example.demo\n"
-        f"    scenarios: {scn_dir}\n"
-        "    cloudBatch: devicefarm\n"
-        "    appPath: app.apk\n",  # relative to the config's own directory (tmp_path)
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: android\n"
+            f"    app: {{id: com.example.demo, path: app.apk}}\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),  # relative to the config's own directory (tmp_path)
         encoding="utf-8",
     )
     client, _ = _register_devicefarm(manifest_ok=True)
@@ -193,7 +187,7 @@ def test_relative_app_path_travels_as_a_logical_reference(tmp_path: Path) -> Non
         repository=queue_repository(),
     )
 
-    _payload, status = start_run_set(state, {"target": "demo"})
+    _payload, status = start_run_set(state, {"target": "demo", "environment": "devicefarm"})
 
     assert status == 200
     (job,) = executor.jobs
@@ -213,8 +207,13 @@ def test_request_paths_are_relative_to_the_config_directory(tmp_path: Path) -> N
     )
     cfg = proj / "bajutsu.config.yaml"
     cfg.write_text(
-        "targets:\n  demo:\n    platform: android\n    package: com.example.demo\n"
-        f"    scenarios: {scn_dir}\n    cloudBatch: devicefarm\n    appPath: app.apk\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: android\n"
+            f"    app: {{id: com.example.demo, path: app.apk}}\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     executor = _RecordingExecutor()
@@ -227,7 +226,7 @@ def test_request_paths_are_relative_to_the_config_directory(tmp_path: Path) -> N
         repository=queue_repository(),
     )
 
-    _payload, status = start_run_set(state, {"target": "demo"})
+    _payload, status = start_run_set(state, {"target": "demo", "environment": "devicefarm"})
 
     assert status == 200
     (job,) = executor.jobs
@@ -248,8 +247,13 @@ def test_a_scenario_outside_the_config_directory_is_refused(tmp_path: Path) -> N
     proj.mkdir()
     cfg = proj / "bajutsu.config.yaml"
     cfg.write_text(
-        "targets:\n  demo:\n    platform: android\n    package: com.example.demo\n"
-        f"    scenarios: {scn_dir}\n    cloudBatch: devicefarm\n    appPath: app.apk\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: android\n"
+            f"    app: {{id: com.example.demo, path: app.apk}}\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     executor = _RecordingExecutor()
@@ -262,7 +266,7 @@ def test_a_scenario_outside_the_config_directory_is_refused(tmp_path: Path) -> N
         repository=queue_repository(),
     )
 
-    payload, status = start_run_set(state, {"target": "demo"})
+    payload, status = start_run_set(state, {"target": "demo", "environment": "devicefarm"})
 
     assert status == 400
     assert "not under the config's directory" in payload["error"]
@@ -288,7 +292,7 @@ def test_fan_out_runs_every_scenario_through_the_device_farm_fake(tmp_path: Path
         repository=queue_repository(),
     )
 
-    payload, status = start_run_set(state, {"target": "demo"})
+    payload, status = start_run_set(state, {"target": "demo", "environment": "devicefarm"})
 
     assert status == 200
     assert len(payload["jobIds"]) == 3
@@ -318,7 +322,7 @@ def test_fan_out_surfaces_a_failing_manifest_from_the_fake(tmp_path: Path) -> No
         repository=queue_repository(),
     )
 
-    payload, status = start_run_set(state, {"target": "demo"})
+    payload, status = start_run_set(state, {"target": "demo", "environment": "devicefarm"})
 
     assert status == 200
     assert len(payload["jobIds"]) == 1
@@ -327,13 +331,12 @@ def test_fan_out_surfaces_a_failing_manifest_from_the_fake(tmp_path: Path) -> No
     assert view["status"] == "done" and view["exitCode"] == 1 and view["ok"] is False
 
 
-def test_device_budget_bounds_a_faked_fan_out(tmp_path: Path) -> None:
-    # The cap and real faked runs together: with K=2 and three scenarios the fan-out dispatches two
-    # (the third is deferred while the two hold their devices — the routine partial dispatch), and
-    # running those two through the fake lands two runs with PASS verdicts. The recording executor
-    # keeps the jobs "running" during the fan-out so the third actually hits the cap.
+def test_every_scenario_of_a_faked_fan_out_lands(tmp_path: Path) -> None:
+    # The fan-out and real faked runs together: no server-side budget defers a scenario (BE-0452;
+    # the worker's `maxJobConcurrency` bounds its jobs), so three scenarios dispatch three jobs, and
+    # running them through the fake lands three runs.
     scn_dir, cfg = _android_batch_project(
-        tmp_path, scenarios=["one.yaml", "two.yaml", "three.yaml"], budget=2
+        tmp_path, scenarios=["one.yaml", "two.yaml", "three.yaml"]
     )
     client, _ = _register_devicefarm(manifest_ok=True)
     executor = _RecordingExecutor()
@@ -346,18 +349,18 @@ def test_device_budget_bounds_a_faked_fan_out(tmp_path: Path) -> None:
         repository=queue_repository(),
     )
 
-    payload, status = start_run_set(state, {"target": "demo"})
+    payload, status = start_run_set(state, {"target": "demo", "environment": "devicefarm"})
 
     assert status == 200
-    assert len(payload["jobIds"]) == 2  # K=2 bounds the fan-out; the third is deferred
-    assert len(executor.jobs) == 2
+    assert len(payload["jobIds"]) == 3
+    assert len(executor.jobs) == 3
 
-    # Now run the two dispatched jobs through the fake: each schedules its own run and lands a verdict.
+    # Now run the dispatched jobs through the fake: each schedules its own run and lands a verdict.
     for job in executor.jobs:
         srv.run_job(state, job)
-    assert client.schedule_calls == 2
+    assert client.schedule_calls == 3
     landed = sorted(p.parent.name for p in (tmp_path / "runs").glob("*/manifest.json"))
-    assert landed == ["20260101-1", "20260101-2"]
+    assert landed == ["20260101-1", "20260101-2", "20260101-3"]
     for job in executor.jobs:
         view = job.view()
         assert view["status"] == "done" and view["exitCode"] == 0 and view["ok"] is True

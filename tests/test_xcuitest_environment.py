@@ -12,11 +12,11 @@ from __future__ import annotations
 
 import os
 import plistlib
-import re
 import signal
 import subprocess
 import time
 from collections.abc import Callable, Mapping
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -24,7 +24,7 @@ import pytest
 
 from bajutsu.common import backends, stall_diagnostics
 from bajutsu.common.backend_cli import simctl
-from bajutsu.common.config import Effective, load_config, resolve
+from bajutsu.common.config import DeviceProvider, Effective, load_config, resolve
 from bajutsu.common.devices.os import DeviceOS
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.drivers.xcuitest import XcuitestChannelError
@@ -95,12 +95,12 @@ def _fake_usbmux(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _device_eff(*, app_path: str | None = None, test_runner: str | None = None) -> Effective:
-    lines = ["targets:", "  s:", "    bundleId: com.x"]
+    lines = ["targets:", "  s:", "    platform: ios", "    app:", "      id: com.x"]
     if app_path is not None:
-        lines.append(f"    appPath: {app_path}")
-    lines += ["    xcuitest:", "      deviceType: device"]
+        lines.append(f"      path: {app_path}")
+    lines += ["    runsOn: {kind: device}"]
     if test_runner is not None:
-        lines.append(f"      testRunner: {test_runner}")
+        lines += ["    driver:", f"      runner: {{testRunner: {test_runner}}}"]
     return resolve(load_config("\n".join(lines) + "\n"), "s")
 
 
@@ -472,7 +472,9 @@ def test_a_real_device_with_no_host_address_fails_naming_the_fix(
         lambda: "",
     )
     env = XcuitestEnvironment("xcuitest", _DEVICE_UDID, env_run=lambda *_a, **_k: "")
-    with pytest.raises(simctl.DeviceError, match=r"xcuitest\.hostAddress or BAJUTSU_HOST_ADDRESS"):
+    with pytest.raises(
+        simctl.DeviceError, match=r"driver\.runner\.hostAddress or BAJUTSU_HOST_ADDRESS"
+    ):
         env.collector_host(_device_eff())
 
 
@@ -527,10 +529,14 @@ def test_appium_lease_endpoint_routes_to_the_live_environment() -> None:
     from bajutsu.common.runner import device_provider as dp
 
     cfg = load_config(
-        "targets:\n  s:\n    bundleId: com.x\n    xcuitest:\n      deviceType: device\n"
-        "    deviceProvider:\n      kind: appium\n      endpoint: http://grid.local:4723\n"
+        "targets:\n  s:\n    platform: ios\n    app: {id: com.x}\n    runsOn: {kind: device}\n"
     )
-    lease = dp.acquire_device(resolve(cfg, "s"), "booted")
+    # The grid comes from an `appium` environment of the worker config (BE-0452), not the target.
+    eff = replace(
+        resolve(cfg, "s"),
+        device_provider=DeviceProvider(kind="appium", endpoint="http://grid.local:4723"),
+    )
+    lease = dp.acquire_device(eff, "booted")
     assert lease.udid_spec == "http://grid.local:4723"  # the endpoint, not the --udid flag
     env = environment_for("xcuitest", lease.udid_spec)
     assert isinstance(env, XcuitestLiveEnvironment)
@@ -547,10 +553,10 @@ def test_appium_lease_endpoint_routes_to_the_live_environment() -> None:
 
 
 def _sim_eff(*, test_runner: str, app_path: str | None = None) -> Effective:
-    lines = ["targets:", "  s:", "    bundleId: com.x"]
+    lines = ["targets:", "  s:", "    platform: ios", "    app:", "      id: com.x"]
     if app_path is not None:
-        lines.append(f"    appPath: {app_path}")
-    lines += ["    xcuitest:", f"      testRunner: {test_runner}"]
+        lines.append(f"      path: {app_path}")
+    lines += ["    driver:", f"      runner: {{testRunner: {test_runner}}}"]
     return resolve(load_config("\n".join(lines) + "\n"), "s")
 
 
@@ -742,8 +748,16 @@ def test_start_reuses_a_healthy_runner_across_leases(
 
 def _sim_eff_locale(*, test_runner: str, locale: str) -> Effective:
     cfg = (
-        f"defaults:\n  locale: {locale}\n"
-        f"targets:\n  s:\n    bundleId: com.x\n    xcuitest:\n      testRunner: {test_runner}\n"
+        "defaults:\n"
+        "  platforms:\n"
+        "    ios:\n"
+        f"      runsOn: {{locale: {locale}}}\n"
+        "targets:\n"
+        "  s:\n"
+        "    platform: ios\n"
+        f"    app: {{id: com.x}}\n"
+        "    driver:\n"
+        f"      runner: {{testRunner: {test_runner}}}\n"
     )
     return resolve(load_config(cfg), "s")
 
@@ -1623,8 +1637,12 @@ def test_warm_resume_reapplies_the_per_scenario_reset(
     app = tmp_path / "App.app"
     app.mkdir()
     cfg = (
-        f"targets:\n  s:\n    bundleId: com.x\n    appPath: {app}\n"
-        f"    xcuitest:\n      testRunner: {_write_runner(tmp_path)}\n"
+        "targets:\n"
+        "  s:\n"
+        "    platform: ios\n"
+        f"    app: {{id: com.x, path: {app}}}\n"
+        "    driver:\n"
+        f"      runner: {{testRunner: {_write_runner(tmp_path)}}}\n"
     )
     eff = resolve(load_config(cfg), "s")
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
@@ -1655,8 +1673,12 @@ def test_clean_reinstall_resets_permissions_even_when_the_scenario_names_none(
     app = tmp_path / "App.app"
     app.mkdir()
     cfg = (
-        f"targets:\n  s:\n    bundleId: com.x\n    appPath: {app}\n"
-        f"    xcuitest:\n      testRunner: {_write_runner(tmp_path)}\n"
+        "targets:\n"
+        "  s:\n"
+        "    platform: ios\n"
+        f"    app: {{id: com.x, path: {app}}}\n"
+        "    driver:\n"
+        f"      runner: {{testRunner: {_write_runner(tmp_path)}}}\n"
     )
     eff = resolve(load_config(cfg), "s")
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
@@ -1709,8 +1731,12 @@ def test_overwrite_reinstall_does_not_reset_permissions(
     app = tmp_path / "App.app"
     app.mkdir()
     cfg = (
-        f"targets:\n  s:\n    bundleId: com.x\n    appPath: {app}\n"
-        f"    xcuitest:\n      testRunner: {_write_runner(tmp_path)}\n"
+        "targets:\n"
+        "  s:\n"
+        "    platform: ios\n"
+        f"    app: {{id: com.x, path: {app}}}\n"
+        "    driver:\n"
+        f"      runner: {{testRunner: {_write_runner(tmp_path)}}}\n"
     )
     eff = resolve(load_config(cfg), "s")
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
@@ -1734,8 +1760,12 @@ def test_warm_resume_skips_reinstall_under_overwrite_when_the_bundle_is_unchange
     app.mkdir()
     (app / "App").write_bytes(b"binary")
     cfg = (
-        f"targets:\n  s:\n    bundleId: com.x\n    appPath: {app}\n"
-        f"    xcuitest:\n      testRunner: {_write_runner(tmp_path)}\n"
+        "targets:\n"
+        "  s:\n"
+        "    platform: ios\n"
+        f"    app: {{id: com.x, path: {app}}}\n"
+        "    driver:\n"
+        f"      runner: {{testRunner: {_write_runner(tmp_path)}}}\n"
     )
     eff = resolve(load_config(cfg), "s")
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
@@ -1756,8 +1786,12 @@ def test_warm_resume_reinstalls_under_overwrite_when_the_bundle_changed(
     app.mkdir()
     (app / "App").write_bytes(b"binary")
     cfg = (
-        f"targets:\n  s:\n    bundleId: com.x\n    appPath: {app}\n"
-        f"    xcuitest:\n      testRunner: {_write_runner(tmp_path)}\n"
+        "targets:\n"
+        "  s:\n"
+        "    platform: ios\n"
+        f"    app: {{id: com.x, path: {app}}}\n"
+        "    driver:\n"
+        f"      runner: {{testRunner: {_write_runner(tmp_path)}}}\n"
     )
     eff = resolve(load_config(cfg), "s")
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
@@ -2733,6 +2767,12 @@ def test_an_unreadable_booted_listing_also_earns_no_fresh_budget() -> None:
     assert _verb_seq(calls) == ["list", "shutdown", "list"]
 
 
+def _capture_device(env: XcuitestEnvironment) -> None:
+    """Record the device type and runtime a cold prep reads, which a replacement must keep (BE-0452)."""
+    env._device_type_id = "com.apple.x.iPhone-17-Pro"
+    env._device_runtime_id = "com.apple.CoreSimulator.SimRuntime.iOS-26-0"
+
+
 def test_a_vanished_device_is_replaced_and_reported_to_the_pool(tmp_path: Path) -> None:
     # The exit-70 case: simctl no longer lists the device, so retrying onto it cannot work. The run
     # continues on a replacement, and `replaced_device()` is how the pool learns to re-key by it.
@@ -2740,6 +2780,7 @@ def test_a_vanished_device_is_replaced_and_reported_to_the_pool(tmp_path: Path) 
     app.mkdir()
     calls, run = _ladder_run([])  # the leased device is gone from the listing
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    _capture_device(env)
     recovery = env._recover_between_attempts(
         _AttemptFailure("run-ended", "the xctest run ended"),
         _eff_for_ladder(app_path=str(app)),
@@ -2749,8 +2790,7 @@ def test_a_vanished_device_is_replaced_and_reported_to_the_pool(tmp_path: Path) 
     assert recovery is not None and recovery.fresh_budget == _runner_startup_timeout()
     assert env._udid == "UDID-NEW" and env.replaced_device() == "UDID-NEW"
     # Created, then booted to completion *before* the prep, so the first boot is not charged to the
-    # next attempt's readiness ceiling. The listings ahead of `create` are the probe and the
-    # device-type lookup (this environment never cold-prepped, so it captured no type to clone).
+    # next attempt's readiness ceiling. The listing ahead of `create` is the probe.
     seq = _verb_seq(calls)
     assert seq[0] == "list" and "create" in seq
     assert seq[seq.index("create") + 1] == "bootstatus"
@@ -2828,11 +2868,9 @@ def test_a_replacement_clones_the_type_captured_while_the_device_was_healthy(
 
 
 def test_a_replacement_re_reads_its_actual_type_and_runtime(tmp_path: Path) -> None:
-    # create_device retries unpinned when the requested runtime is gone, so a replacement can land on
-    # a different iOS version than _device_runtime_id named — caching the *requested* type/runtime
-    # after create would leave the environment believing it got what it asked for. Clearing both
-    # instead lets _finish_repair's prep (which runs `device_type_of` when _device_type_id is None)
-    # re-read them from the device that actually exists.
+    # The recorded type and runtime come from the device, not from what the create asked for:
+    # clearing both lets _finish_repair's prep (which runs `device_type_of` when _device_type_id is
+    # None) re-read them from the device that actually exists.
     app = tmp_path / "App.app"
     app.mkdir()
     _calls, run = _ladder_run([])  # the leased device is gone; devicetypes default to iPhone 17 Pro
@@ -2871,29 +2909,39 @@ def test_a_probe_that_could_not_run_changes_nothing() -> None:
     assert "could not probe" in recovery.note
 
 
-def test_a_vanished_device_with_no_replaceable_type_fails_loudly(tmp_path: Path) -> None:
-    # A host that lost its runtimes along with the device: nothing is left to run on, so this is a
-    # device fault rather than another doomed attempt.
-    import json
-
+def test_a_vanished_device_whose_type_was_never_read_fails_loudly(tmp_path: Path) -> None:
+    # A replacement of another model or OS would change what the run observes (BE-0452), so with no
+    # captured type and runtime to keep, the recovery fails rather than guesses one from the host.
     app = tmp_path / "App.app"
     app.mkdir()
-
-    def run(argv: list[str], env: Mapping[str, str] | None = None) -> str:
-        if argv[2:4] == ["list", "devicetypes"]:
-            return json.dumps({"devicetypes": []})  # no iPhone type at all
-        if argv[2:3] == ["list"]:
-            return _device_json([])
-        return ""
-
+    calls, run = _ladder_run([])  # the host still ships an iPhone type the recovery must not take
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
-    with pytest.raises(simctl.DeviceError, match="no device type matching iPhone 15 is available"):
+    with pytest.raises(simctl.DeviceError, match="device type and runtime were never read"):
         env._recover_between_attempts(
             _AttemptFailure("run-ended", "ended"),
             _eff_for_ladder(app_path=str(app)),
             Preconditions(),
             None,
         )
+    assert not any(c[2:3] == ["create"] for c in calls)
+
+
+def test_a_vanished_device_whose_runtime_was_never_read_fails_loudly(tmp_path: Path) -> None:
+    # The type alone is not enough: a replacement on whichever runtime simctl picks could run another
+    # iOS version than the one the scenario observed.
+    app = tmp_path / "App.app"
+    app.mkdir()
+    calls, run = _ladder_run([])
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    env._device_type_id = "com.apple.x.iPhone-17-Pro"
+    with pytest.raises(simctl.DeviceError, match="never read"):
+        env._recover_between_attempts(
+            _AttemptFailure("run-ended", "ended"),
+            _eff_for_ladder(app_path=str(app)),
+            Preconditions(),
+            None,
+        )
+    assert not any(c[2:3] == ["create"] for c in calls)
 
 
 def test_a_vanished_device_with_no_app_path_fails_loudly() -> None:
@@ -2901,7 +2949,7 @@ def test_a_vanished_device_with_no_app_path_fails_loudly() -> None:
     # onto a device with no app to launch. Fail before paying the create/boot/re-prep proving that.
     calls, run = _ladder_run([])  # the leased device is gone from the listing
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
-    with pytest.raises(simctl.DeviceError, match="configures no appPath"):
+    with pytest.raises(simctl.DeviceError, match=r"configures no app\.path"):
         env._recover_between_attempts(
             _AttemptFailure("run-ended", "ended"),
             _eff_for_ladder(),  # no appPath
@@ -2911,63 +2959,6 @@ def test_a_vanished_device_with_no_app_path_fails_loudly() -> None:
     assert not any(
         c[2:3] == ["create"] for c in calls
     )  # no device was minted for nothing to run on
-
-
-def test_a_replacement_prefers_the_configured_model_over_the_newest_iphone(tmp_path: Path) -> None:
-    # Tier 2 of the fallback ladder (the configured device model) sits between tier 1 (the vanished
-    # device's own captured type) and tier 3 (whichever iPhone this host ships) — and only shows up
-    # when the host has more than one iPhone type, since a single-entry listing can't tell "the
-    # configured model happens to be newest" from "tier 3 fired instead of tier 2".
-    app = tmp_path / "App.app"
-    app.mkdir()
-    devicetypes = [
-        {"name": "iPhone 15", "identifier": "com.apple.x.iPhone-15", "productFamily": "iPhone"},
-        {
-            "name": "iPhone 17 Pro",
-            "identifier": "com.apple.x.iPhone-17-Pro",
-            "productFamily": "iPhone",
-        },
-    ]
-    calls, run = _ladder_run([], devicetypes=devicetypes)  # the leased device is gone
-    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
-    env._recover_between_attempts(
-        _AttemptFailure("run-ended", "ended"),
-        _eff_for_ladder(app_path=str(app)),  # defaults.device is "iPhone 15"
-        Preconditions(),
-        None,
-    )
-    created = next(c for c in calls if c[2:3] == ["create"])
-    # The configured identifier, not the newest-iPhone fallback — tier 2 wins over tier 3.
-    assert created[4] == "com.apple.x.iPhone-15"
-
-
-def test_an_ipad_target_is_never_replaced_with_an_iphone(tmp_path: Path) -> None:
-    # "Any iPhone beats failing" only holds for an iPhone target. `device_type_identifier` matches
-    # simctl's device-type name exactly, and iPad names carry parentheses (e.g. "iPad Pro
-    # (12.9-inch) (6th generation)"), so an exact-match miss is ordinary rather than exotic —
-    # substituting an iPhone for a missed iPad would finish the run on a layout the scenario was
-    # never written against, silently. This must fail loudly instead.
-    app = tmp_path / "App.app"
-    app.mkdir()
-    cfg = (
-        'defaults:\n  device: "iPad Pro (12.9-inch) (6th generation)"\n'
-        f"targets:\n  s:\n    bundleId: com.x\n    appPath: {app}\n"
-        "    xcuitest:\n      testRunner: /nonexistent.xctestrun\n"
-    )
-    ipad_eff = resolve(load_config(cfg), "s")
-    calls, run = _ladder_run([])  # devicetypes lists only "iPhone 17 Pro" — never an iPad match
-    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
-    with pytest.raises(
-        simctl.DeviceError,
-        match=re.escape("no device type matching iPad Pro (12.9-inch) (6th generation)"),
-    ):
-        env._recover_between_attempts(
-            _AttemptFailure("run-ended", "ended"),
-            ipad_eff,
-            Preconditions(),
-            None,
-        )
-    assert not any(c[2:3] == ["create"] for c in calls)  # no iPhone replacement was minted
 
 
 # --- the crash retry's replacement rung (BE-0354) --- #
@@ -3171,9 +3162,13 @@ def test_a_real_device_start_clears_a_replacement_request_without_serving_it(
     _fake_toolchain(monkeypatch)
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=lambda argv, e: "")
     cfg = (
-        "targets:\n  s:\n    bundleId: com.x\n"
-        "    xcuitest:\n      deviceType: device\n"
-        f"      testRunner: {_write_runner(tmp_path)}\n"
+        "targets:\n"
+        "  s:\n"
+        "    platform: ios\n"
+        f"    app: {{id: com.x}}\n"
+        f"    runsOn: {{kind: device}}\n"
+        "    driver:\n"
+        f"      runner: {{testRunner: {_write_runner(tmp_path)}}}\n"
     )
     device_eff = resolve(load_config(cfg), "s")
     env.request_device_replacement()
@@ -3256,6 +3251,7 @@ def test_a_replacement_device_earns_the_full_cold_ceiling(tmp_path: Path) -> Non
     app.mkdir()
     _calls, run = _ladder_run([])  # the leased device is gone, so a replacement is created
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    _capture_device(env)
     recovery = env._recover_between_attempts(
         _AttemptFailure("run-ended", "ended"),
         _eff_for_ladder(app_path=str(app)),
@@ -3283,6 +3279,7 @@ def test_the_recovery_bound_covers_a_rung_that_changes_nothing(
     app.mkdir()
     _calls, run = _ladder_run(list(present))
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    _capture_device(env)
     with pytest.raises(simctl.DeviceError, match="recovery exceeded"):
         env._recover_between_attempts(
             _AttemptFailure(kind, "why"),  # type: ignore[arg-type]
@@ -3323,6 +3320,7 @@ def test_a_replacements_name_keeps_its_capability_token_and_report_row(tmp_path:
     old_udid = "2A6DC5A9-CE8C-4BC5-959D-F98D5F4BD9AA"
     calls, run = _ladder_run([])
     env = XcuitestEnvironment("xcuitest", old_udid, env_run=run)
+    _capture_device(env)
     env._recover_between_attempts(
         _AttemptFailure("run-ended", "ended"),
         _eff_for_ladder(app_path=str(app)),

@@ -262,7 +262,7 @@ class _HealthEnv:
 def _eff() -> object:
     from bajutsu.common.config import load_config, resolve
 
-    return resolve(load_config("targets:\n  x:\n    bundleId: com.x\n"), "x")
+    return resolve(load_config("targets:\n  x:\n    platform: ios\n    app: {id: com.x}\n"), "x")
 
 
 def _redactor() -> object:
@@ -362,7 +362,7 @@ def _plan_for_lane(tmp_path: Path, *, actuator: str = "xcuitest") -> object:
     from bajutsu.common.platform_lifecycle import environment_for
     from bajutsu.crawl.cli import _CrawlPlan
 
-    eff = resolve(load_config("targets:\n  s:\n    bundleId: com.x\n"), "s")
+    eff = resolve(load_config("targets:\n  s:\n    platform: ios\n    app: {id: com.x}\n"), "s")
     return _CrawlPlan(
         eff=eff,
         actuator=actuator,

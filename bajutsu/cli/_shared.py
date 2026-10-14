@@ -18,6 +18,7 @@ from bajutsu.common.agents import ai_config, anthropic_client
 from bajutsu.common.ai import credential_gap
 from bajutsu.common.ai import disabled as ai_disabled
 from bajutsu.common.backends import (
+    backend_override,
     current_host_os,
     ensure_web_runtime,
     resolve_actuators,
@@ -36,7 +37,7 @@ from bajutsu.common.config import (
     Effective,
     WebConfig,
     ios_bundle_id,
-    load_config,
+    load_config_file,
     resolve,
     web_engine,
 )
@@ -49,6 +50,7 @@ from bajutsu.common.config_source import (
     parse_config_spec,
     source_provenance,
 )
+from bajutsu.common.deprecations import warn_once
 from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.common.github import GitHubAccessError
 from bajutsu.common.run_meta.files import is_soft_deleted
@@ -245,7 +247,7 @@ def _load_effective_with_source(
     Exits 2 (via ``typer.Exit``) for the user-friendly failures: a missing config file, an unknown
     target name, a private-repo access/auth failure (``GitHubAccessError``, BE-0224), and (with
     `require_pinned`) a Git source that isn't pinned to a commit SHA. Other errors — YAML parse /
-    schema validation from ``load_config`` — propagate as exceptions.
+    schema validation from ``load_config_file`` — propagate as exceptions.
     """
     loaded = _load_config_with_source(config, offline=offline, require_pinned=require_pinned)
     return _effective_for(loaded, target_name), loaded.source, loaded.root
@@ -300,7 +302,9 @@ def _load_config_with_source(
     if not cfg_path.exists():
         typer.echo(f"config not found: {config}")
         raise typer.Exit(2)
-    cfg = load_config(cfg_path.read_text(encoding="utf-8"))
+    # A component the target's hooks call stays inside the checkout for a Git source, and inside the
+    # config file's own directory for a local file (BE-0452).
+    cfg = load_config_file(cfg_path, root=root)
     return LoadedConfig(config=cfg, path=cfg_path, source=source, root=root)
 
 
@@ -356,8 +360,44 @@ def _refuse_out_in_checkout(out_path: Path, checkout_root: Path | None) -> None:
 
 
 def _backends(backend: str, fallback: list[str]) -> list[str]:
-    """Parse a comma-separated backend string into a list, or return *fallback* when the string is empty."""
-    return [b.strip() for b in backend.split(",") if b.strip()] if backend else fallback
+    """The backend list in force: *fallback* (the target's), or the checked `--backend`, or exit 2.
+
+    `--backend` accepts the target's platform, its actuator, or `fake` (BE-0452,
+    `backends.backend_override`).
+    """
+    try:
+        return backend_override(backend, fallback)
+    except ValueError as e:
+        typer.echo(str(e))
+        raise typer.Exit(2) from None
+
+
+def _refuse_conditions(eff: Effective, backends: list[str]) -> None:
+    """Refuse a target whose `runsOn` declares a device condition, which no command matches yet.
+
+    Matching devices against `model`, `os`, `avd`, `apiLevel`, `browser.version`, or a list lands
+    with BE-0452 unit 9; until then a condition fails before any device work rather than being
+    written and ignored. The fake driver has no device to read, so `--backend fake` skips the check
+    and says so once.
+
+    Raises:
+        typer.Exit: The target declares a condition and the backend is not `fake` (exit code 2).
+    """
+    if not eff.conditions:
+        return
+    named = ", ".join(f"runsOn.{field}" for field in eff.conditions)
+    if backends == ["fake"]:
+        warn_once(
+            "conditions.fake",
+            f"note: --backend fake evaluates no device condition; {named} of target "
+            f"'{eff.target}' is not checked",
+        )
+        return
+    typer.echo(
+        f"target '{eff.target}' declares {named}: matching devices by runsOn conditions is not "
+        "yet supported (BE-0452); remove the condition, or run with --backend fake"
+    )
+    raise typer.Exit(2)
 
 
 def _resolve_browser(eff: Effective, browser: str) -> Effective:
@@ -449,6 +489,7 @@ def _select_actuator_or_exit(
         The resolved actuator and the ordered backend list.
     """
     backends = _worker_backends(_backends(backend, eff.backend), worker)
+    _refuse_conditions(eff, backends)
     try:
         # A matrix provisions every listed engine (each install idempotent); with no engines the
         # single resolved default (with one, it already equals that).
@@ -489,6 +530,75 @@ def _load_worker_capability_or_exit(path: Path | None) -> WorkerCapability:
     try:
         return load_worker_capability(path)
     except WorkerCapabilityError as e:
+        typer.echo(str(e))
+        raise typer.Exit(2) from None
+
+
+WORKER_CONFIG_HELP = (
+    "the worker capability file (worker.yaml) this machine runs under, used in place of the shipped "
+    "default (BE-0450); its environment is `local`, or `appium` to drive one platform's targets on "
+    "the grid it names (BE-0452)"
+)
+
+
+def _load_device_worker_or_exit(path: Path | None) -> WorkerCapability:
+    """The `--worker-config` in force for a command that drives a device, or exit 2 (BE-0450).
+
+    Such a command drives devices on its own host, or through an `appium` grid (BE-0452), and never
+    submits to a device cloud, so a file naming a batch provider describes a different kind of
+    worker and is a usage error, not a silent override.
+    """
+    worker = _load_worker_capability_or_exit(path)
+    if worker.is_batch:
+        typer.echo(
+            f"--worker-config: environment '{worker.environment}' is a device cloud; this command "
+            "drives devices on its own host or through an appium grid, and needs "
+            "`environment: local` or `environment: appium`"
+        )
+        raise typer.Exit(2)
+    return worker
+
+
+def _reject_url_udid(udid: str) -> None:
+    """Refuse a URL as `--udid`: an Appium grid is named by an `appium` environment (BE-0452).
+
+    Raises:
+        typer.Exit: *udid* holds an http(s) URL (exit code 2).
+    """
+    if any(t.strip().startswith(("http://", "https://")) for t in udid.split(",")):
+        typer.echo(
+            "--udid no longer takes a URL: name the grid in an `appium` environment of the "
+            "--worker-config file (BE-0452)"
+        )
+        raise typer.Exit(2)
+
+
+def _with_worker_device(eff: Effective, worker: WorkerCapability) -> Effective:
+    """*eff* with the device provider the worker's environment gives its platform (BE-0452).
+
+    An `appium` environment hands its grid to the targets of the grid's platform; every other
+    target keeps the built-in local provider. The platform is the target's declared one, so a target
+    run under `--backend fake` still reads as its own platform here.
+    """
+    provider = worker.device_provider_for(eff.backend[0] if eff.backend else eff.platform)
+    return replace(eff, device_provider=provider) if provider is not None else eff
+
+
+def _device_udid_or_exit(eff: Effective, udid: str) -> str:
+    """The udid spec *eff*'s device provider hands back for *udid*, or exit 2 (BE-0236, BE-0452).
+
+    The single route every device-driving command takes to its device, as `run` does: the `--udid`
+    pool for the local provider, the grid's endpoint for an `appium` one. Neither reserves anything,
+    so there is no lease to release.
+    """
+    _reject_url_udid(udid)
+    # Imported here: the provider registry reaches the platform environments, which only a command
+    # that drives a device needs.
+    from bajutsu.common.runner.device_provider import acquire_device
+
+    try:
+        return acquire_device(eff, udid).udid_spec
+    except ValueError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
 

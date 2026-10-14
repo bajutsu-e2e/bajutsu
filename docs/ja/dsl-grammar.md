@@ -120,10 +120,10 @@ Scenario ::= {
   data?:           list(map(string,string)),# インライン行  ┐ XOR
   dataFile?:       string,                  # CSV パス      ┘ （§6.3）
   preconditions?:  <Preconditions>,         # 既定 {}
-  before?:         list(<Step>),            # 既定 []  — steps の前に独立したフェーズとして走るセットアップ（BE-0392）。target config 自身のものの後に連結される
+  before?:         list(<Step>),            # 既定 []  — steps の前に独立したフェーズとして走るセットアップ（BE-0392）。宣言した各ターゲットの `hooks.setup` の後に連結される
   steps:           list(<Step>),            # 必須
   expect?:         list(<Assertion>),       # 既定 []  — 最終チェック
-  after?:          list(<AfterRule>),       # 既定 []  — 判定が出たあとに走るティアダウンのルール（BE-0392）。target config 自身のものはこの後に続く
+  after?:          list(<AfterRule>),       # 既定 []  — 判定が出たあとに走るティアダウンのルール（BE-0392）。宣言した各ターゲットの `hooks.cleanup` はこの後に続く
   capturePolicy?:  list(<CaptureRule>),     # 既定 []
   network?:        <Network>,
   mocks?:          list(<Mock>),            # 既定 []
@@ -131,7 +131,7 @@ Scenario ::= {
   systemAlertHandling?: <SystemAlertHandling>,  # アラートガード; 未指定で ON
   iosTipKitHandling?: <bool>,                   # ブロックしている TipKit の tip を閉じる; 未指定で OFF（iOS のみ）
   permissions?:    <Permissions>,           # 起動前の OS 権限状態; 既定 {}
-  interrupts?:     list(<Interrupt>),       # 既定 []  — 予測できないタイミングで現れる中断画面のハンドラ（BE-0314）。target config 自身のものの後に追加される
+  interrupts?:     list(<Interrupt>),       # 既定 []  — 予測できないタイミングで現れる中断画面のハンドラ（BE-0314）。ターゲットの `hooks.interrupts` の後に追加される
 }
 
 Component ::= { params?: list(string), steps: list(<Step>) }
@@ -148,13 +148,13 @@ AfterRule ::= { on: "always" | "success" | "error", steps: list(<Step>) }
 
 # ── Preconditions ──────────────────────────────────────────────────────
 Preconditions ::= {
-  erase?:      boolean,                     # 未設定は target config の erase を継承し、それもなければオフ（BE-0177）。先頭で simctl erase
-  reinstall?:  ("clean" | "overwrite"),     # 既定 "clean" — config が appPath 指定時の再インストール
+  erase?:      boolean,                     # 未設定はターゲットの `run.erase` を継承し、それもなければオフ（BE-0177）。先頭で simctl erase
+  reinstall?:  ("clean" | "overwrite"),     # 既定 "clean" — config が `app.path` 指定時の再インストール
   launchArgs?: list(string),                # 既定 []
   launchEnv?:  map(string,string),          # 既定 {}    — SIMCTL_CHILD_* として注入
   deeplink?:   string,
   locale?:     string,
-  setup?:      string,                      # 再利用プレリュードファイル（§6.4）
+  run?:        { inheritSetup?: boolean },  # 既定 true — false で、宣言した全ターゲットの `hooks.setup` を省く（BE-0452）。cleanup は走る
 }
 
 # ── SystemAlertHandling（リアクティブなシステムアラートガード; 既定 ON）─
@@ -421,7 +421,7 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 | `Step.target` / `Assertion.target`（`expect` のみ） | `len(target_names) ≤ 1` なら省略可、または宣言済みの1つと一致。`len(target_names) ≥ 2` で `primaryTarget` が未設定なら**必須**（`if`/`forEach`/`web` ラッパーも含み、末端のアクションだけではない）で、宣言済みターゲットの1つを名指し。`len(target_names) ≥ 2` で `primaryTarget` を設定していれば**省略可**で、省略したものは入れ子の深さによらず主ターゲットに対して走る（BE-0436）。この主ターゲットは現在のプライマリで、`setPrimaryTarget` ステップが移す（BE-0447）。`web` ブロック内に入れ子になったステップと、インラインの `assert:` リスト・`if` の `condition`・`interrupts` エントリの `condition` を通して届く `Assertion` では**拒否**（BE-0428） | `scenario/models/scenario/_targets.py` |
 | `use:` / `group:` ステップの `Step.target` | `len(target_names)` によらず、`primaryTarget` がなくても**省略可**で、ステップ自身は解決しない。指定した値は宣言済みターゲットを名指しする。展開は、呼び出しが生むステップのうち `target` を省略したものへその値を刻印し、異なるターゲットを名指しするステップを拒否する（BE-0446） | `scenario/models/scenario/_targets.py`、`scenario/expand.py` |
 | `Interrupt.target` と、`interrupts` エントリの `steps` にある `Step.target` | `primaryTarget` の有無にかかわらず、`len(target_names)` にかかわらず**省略可**。エントリの `target` を省略するとプライマリターゲットを監視し、リカバリ用ステップの `target` を省略するとエントリ自身のターゲットで実行する(ただし、`target` を指定した `if`/`forEach` ステップの内側では、そのステップのターゲットで実行する)。指定した値は、宣言済みターゲットの名指しについて上の `Step.target` の規則に従う（BE-0438） | `scenario/models/scenario/_targets.py` |
-| `targets.<name>.interrupts` の `Interrupt.target` と、その `steps` にある `Step.target` | **拒否**。エントリは、その config ブロックが設定するターゲットにすでに属している（BE-0438） | `config/schema/target_config.py` |
+| `targets.<name>.hooks.interrupts` の `Interrupt.target` と、その `steps` にある `Step.target` | **拒否**。エントリは、その config ブロックが設定するターゲットにすでに属している（BE-0438） | `config/schema/target_config.py` |
 | すべてのマッピング | **未知キー不可**（`extra="forbid"`） | `scenario/models/_base.py` |
 
 `exists` は特別です。セレクタを **インライン**で書き（`exists: { id: home.title }`）、任意の `negate: true` で不在を確認します。ローダは検証前にこれを `{ sel, negate }` へ書き換えます（`Exists._inline`, `scenario/models/assertions.py`）。
@@ -435,11 +435,12 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 | フィールド | 既定値 |
 |---|---|
 | `Scenario.tags` / `expect` / `capturePolicy` / `mocks` / `interrupts` / `before` / `after` | `[]` |
-| `Scenario.preconditions` | `{}`（= `erase` は未設定 — target config が指定しない限りオフ、`reinstall: clean`） |
+| `Scenario.preconditions` | `{}`（= `erase` は未設定 — ターゲットの `run.erase` が指定しない限りオフ、`reinstall: clean`） |
 | `Scenario.systemAlertHandling` | 未指定（アラートガード ON。ただし規則が無いので、自分からはどのプロンプトにも答えない） |
 | `Scenario.iosTipKitHandling` | 未指定（OFF — tip 自体が検証対象になる場合があるため。iOS のみ） |
 | `Scenario.permissions` | `{}`（起動前の権限状態を適用しない） |
-| `Preconditions.erase` | 未設定 — target config の `erase` を継承し、それもなければオフ（BE-0177） |
+| `Preconditions.erase` | 未設定 — ターゲットの `run.erase` を継承し、それもなければオフ（BE-0177） |
+| `Preconditions.run.inheritSetup` | `true`（宣言した各ターゲットの `hooks.setup` が `before` の前に走る） |
 | `Preconditions.reinstall` | `clean` |
 | `Preconditions.launchArgs` | `[]` |
 | `Preconditions.launchEnv` | `{}` |
@@ -477,7 +478,7 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 - 大きな文字列に **埋め込まれた**トークンはテキストとして差し込まれます（`"item-${row.id}"`）。
 - いま置換していない名前空間のトークンは **そのまま残る**ため、各層は自分の名前空間だけを埋めます。
 
-名前空間は次の 4 つです。`params.*`（コンポーネント、§6.2）、`row.*`（データ駆動、§6.3）、`secrets.*`（config の `secrets:` で宣言し、run ループがアクション時に環境変数から解決する、§6.4）、`vars.*`（ランタイムキャプチャ。`extract` 経由、§6.5）。
+名前空間は次の 4 つです。`params.*`（コンポーネント、§6.2）、`row.*`（データ駆動、§6.3）、`secrets.*`（config の `run.secrets` で宣言し、run ループがアクション時に環境変数から解決する、§6.4）、`vars.*`（ランタイムキャプチャ。`extract` 経由、§6.5）。
 
 ### 6.2 コンポーネント（`use` → 再利用ステップ）
 
@@ -540,10 +541,10 @@ scenarios:
     - label: { sel: { id: home.status }, equals: "${row.expect}" }
 ```
 
-### 6.4 `setup` プレリュード、secrets、タグ選択
+### 6.4 共有のセットアップ、secrets、タグ選択
 
-- **`setup`**（`Preconditions` のキー、またはアプリや config の既定）：再利用シナリオファイルを指し、その steps をこのシナリオ自身の前に **前置**します（`apply_setups`, `scenario/expand.py`）。共有のログインやナビゲーション手順を 1 度だけ記述する用途に使います。プレリュード自身の `use` ステップは、前置の**前**に、プレリュード自身のスコープで展開されます。素の名前はプレリュードの `components:` を引き、`setup` に指定した側のシナリオファイルは参照しません（§6.5）。プレリュードの中のパス参照も、呼び出す側ではなくプレリュード自身のディレクトリを基準に解決します。
-- **`secrets`**（config の `secrets:` で宣言する、環境変数名のリスト）：宣言した各名 `X` は `os.environ[X]` から解決され `${secrets.X}` に束縛され、**アクション時**に実行ステップへ置換されます（`cli/commands/run.py`, `orchestrator/substitution.py` `_interp_step`）。シナリオは `${secrets.X}` トークンを保ち値は持たず、リテラル値は証跡で自動マスクされます（`Redactor`）。`params.*` / `row.*` と異なり、この名前空間はロード時ではなく run ループが解決します。
+- **共有のセットアップ**：1 度だけ記述するログインやナビゲーションの手順は、コンポーネント（§6.2）にします。シナリオ自身の `before` か、config にあるターゲットの `hooks.setup` から `use` で呼び出します。ターゲットの hooks が呼ぶコンポーネントは config のロード時に config ファイルのディレクトリを基準に解決し、スイートのルートの内側に収まっている必要があります（BE-0174）。以前の `preconditions.setup` プレリュードファイルは廃止しました（[BE-0452](../../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)）。ターゲットの `hooks.setup` を走らせたくないシナリオは、`preconditions.run.inheritSetup: false` を指定します。
+- **`secrets`**（config の `run.secrets` で宣言する、環境変数名のリスト）：宣言した各名 `X` は `os.environ[X]` から解決され `${secrets.X}` に束縛され、**アクション時**に実行ステップへ置換されます（`cli/commands/run.py`, `orchestrator/substitution.py` `_interp_step`）。シナリオは `${secrets.X}` トークンを保ち値は持たず、リテラル値は証跡で自動マスクされます（`Redactor`）。`params.*` / `row.*` と異なり、この名前空間はロード時ではなく run ループが解決します。
 - **`tags`** と CLI の `--tag` / `--exclude` で実行対象を絞ります。`exclude` が `include` より優先されます（`select_scenarios`, `scenario/select.py`）。
 
 ### 6.5 展開順
@@ -553,7 +554,6 @@ scenarios:
 ```
 load_scenarios        # この文法に対しパース + 検証
   → select_scenarios  # --tag / --exclude
-  → apply_setups      # setup プレリュードを前置（自身のスコープで展開済み。§6.4）
   → expand_components  # use → コンポーネントステップ（${params.*}）
   → expand_data        # 1 行 1 シナリオ（${row.*}）
   → run               # 決定的ループは展開済みシナリオだけを見る

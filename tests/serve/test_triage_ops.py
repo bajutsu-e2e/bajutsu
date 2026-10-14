@@ -121,8 +121,15 @@ def test_start_triage_ai_refuses_under_provider_none(tmp_path: Path, monkeypatch
     )
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "defaults: { backend: [ios], ai: { provider: none } }\n"
-        f"targets:\n  demo: {{ bundleId: com.example.demo, scenarios: {scn_dir} }}\n",
+        (
+            "defaults:\n"
+            f"  ai: {{provider: none}}\n"
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            f"    app: {{id: com.example.demo}}\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     runs = tmp_path / "runs"

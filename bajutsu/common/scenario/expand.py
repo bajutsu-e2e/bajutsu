@@ -21,14 +21,12 @@ from bajutsu.common.scenario.models import (
     _expand_target_groups,
 )
 
-# A `group` invocation's id must stay unique across every `expand_components` call for one
-# scenario, not just within one call: a `setup` prelude expands through its own, separate call
-# (`run/cli.py`'s `_setup_steps`) before `apply_setups` splices its steps onto the scenario's own,
-# which then expands through a second call. A counter scoped to one call would hand out the same
-# id to the prelude's last group and the scenario's first, and `_fold_groups` (report/rows.py)
-# would merge the two if they land adjacent. A module-wide counter never repeats a value, so this
-# never happens; the exact numbers need not be stable across runs, since nothing outside one
-# render depends on them.
+# A `group` invocation's id must stay unique across every expansion call for one scenario, not
+# just within one call: a component called from the target's `hooks` expands when the config loads,
+# apart from the scenario's own expansion. A counter scoped to one call would hand out the same id
+# twice, and `_fold_groups` (report/rows.py) would merge two groups that land adjacent. A
+# module-wide counter never repeats a value; the exact numbers need not be stable across runs, since
+# nothing outside one render depends on them.
 _group_id_counter = itertools.count()
 
 
@@ -145,35 +143,9 @@ def _expand_bodies(
     return updates
 
 
-# The count folds in the nested `expand` recursion, which closes over `max_depth`; the outer body
-# only drives it over each scenario's step lists (BE-0386).
-def expand_components(  # noqa: C901
-    scenarios: list[Scenario],
-    resolve: Callable[[str], Component],
-    max_depth: int = 25,
-) -> None:
-    """Replace every `use` step with the referenced component's steps, recursively and in place.
-
-    Pure compile-time expansion: a component may itself `use` another, and after this no `use`
-    steps remain — inside an `if` / `forEach` / `web` / `app` body too — so the run loop is
-    unaffected. A `use:` or `group:` step naming `target` stamps it onto every step it produces
-    that omits its own, down through `if` / `forEach` bodies and nested calls, stopping at a
-    `web:` / `app:` block (BE-0446).
-
-    Args:
-        scenarios: The scenarios to expand; their `steps`, their `before` / `after` lifecycle
-            steps, and every `interrupts` entry's recovery `steps` are rewritten in place.
-        resolve: Maps a component name to its `Component` (e.g. by loading a shared file). One that
-            also satisfies `ScopedResolve` re-scopes each ref's nested expansion, and owns whatever
-            caching it needs — this function itself resolves every occurrence.
-        max_depth: The deepest `use` nesting allowed before giving up on a runaway chain.
-
-    Raises:
-        ValueError: A required param is missing, an unknown param is passed, a `${params.*}` token
-            references an undeclared param, a reference cycle is detected, nesting exceeds
-            `max_depth`, an expanded step names a target other than its caller's, or a `group`
-            lands inside a body or another `group`.
-    """
+# The count folds in the nested `expand` recursion, which closes over `max_depth` (BE-0386).
+def _step_expander(max_depth: int) -> Callable[..., list[Step]]:  # noqa: C901
+    """The recursive `use` / `group` expander `expand_components` and `expand_steps` share."""
 
     def expand(
         steps: list[Step],
@@ -305,6 +277,37 @@ def expand_components(  # noqa: C901
             )
         return out
 
+    return expand
+
+
+def expand_components(
+    scenarios: list[Scenario],
+    resolve: Callable[[str], Component],
+    max_depth: int = 25,
+) -> None:
+    """Replace every `use` step with the referenced component's steps, recursively and in place.
+
+    Pure compile-time expansion: a component may itself `use` another, and after this no `use`
+    steps remain — inside an `if` / `forEach` / `web` / `app` body too — so the run loop is
+    unaffected. A `use:` or `group:` step naming `target` stamps it onto every step it produces
+    that omits its own, down through `if` / `forEach` bodies and nested calls, stopping at a
+    `web:` / `app:` block (BE-0446).
+
+    Args:
+        scenarios: The scenarios to expand; their `steps`, their `before` / `after` lifecycle
+            steps, and every `interrupts` entry's recovery `steps` are rewritten in place.
+        resolve: Maps a component name to its `Component` (e.g. by loading a shared file). One that
+            also satisfies `ScopedResolve` re-scopes each ref's nested expansion, and owns whatever
+            caching it needs — this function itself resolves every occurrence.
+        max_depth: The deepest `use` nesting allowed before giving up on a runaway chain.
+
+    Raises:
+        ValueError: A required param is missing, an unknown param is passed, a `${params.*}` token
+            references an undeclared param, a reference cycle is detected, nesting exceeds
+            `max_depth`, an expanded step names a target other than its caller's, or a `group`
+            lands inside a body or another `group`.
+    """
+    expand = _step_expander(max_depth)
     for scenario in scenarios:
         scenario.steps = expand(scenario.steps, [], resolve)
         # The lifecycle phases (BE-0392) and an `interrupts` handler's recovery steps (BE-0314)
@@ -324,6 +327,29 @@ def expand_components(  # noqa: C901
         _expand_target_groups(scenario)
         _check_target_requirements(scenario)
         _check_http_extract_vars(scenario)
+
+
+def expand_steps(
+    steps: list[Step], resolve: Callable[[str], Component], max_depth: int = 25
+) -> list[Step]:
+    """One step list with every `use` replaced by its component's steps, as `expand_components` does.
+
+    For a step list that belongs to no scenario: a target's `hooks` in the config, whose components
+    resolve when the config loads (BE-0452). The scenario-level checks `expand_components` runs
+    afterwards are the caller's to make, since a config hook has rules of its own.
+
+    Args:
+        steps: The steps to expand.
+        resolve: Maps a component reference to its `Component`.
+        max_depth: The deepest `use` nesting allowed before giving up on a runaway chain.
+
+    Returns:
+        The expanded steps; *steps* itself is left unchanged.
+
+    Raises:
+        ValueError: As `expand_components` does.
+    """
+    return _step_expander(max_depth)(steps, [], resolve)
 
 
 def read_csv(text: str) -> list[dict[str, str]]:
@@ -411,44 +437,3 @@ def expand_data(
             continue
         out.extend(_instantiate_rows(s, rows))
     return out
-
-
-def apply_setups(
-    scenarios: list[Scenario],
-    default_setup: str | None,
-    resolve: Callable[[str], list[Step]],
-) -> None:
-    """Prepend each scenario's reusable setup prelude, in place.
-
-    A scenario's `setup` precondition (falling back to the app/config default) names a reusable
-    prelude; those steps run before the scenario's own, so a shared login / navigation flow is
-    written once and reused. The same reference is resolved at most once.
-
-    Args:
-        scenarios: The scenarios to prepend setups to; their `steps` are rewritten in place.
-        default_setup: The setup reference used when a scenario declares none. None means none.
-        resolve: Maps a setup reference to its list of steps (e.g. by loading a shared file).
-    """
-    cache: dict[str, list[Step]] = {}
-    for scenario in scenarios:
-        ref = scenario.preconditions.setup or default_setup
-        if not ref:
-            continue
-        if ref not in cache:
-            cache[ref] = resolve(ref)
-        # A fresh copy per scenario: validation stamps each omitted-`target` step with this
-        # scenario's own `primaryTarget` (BE-0436), and a shared instance would carry whichever
-        # scenario sharing the setup happened to be validated last.
-        scenario.steps = [*(st.model_copy(deep=True) for st in cache[ref]), *scenario.steps]
-        # A plain attribute write, which Pydantic never re-runs a `model_validator` against — a
-        # prelude's own steps, authored with no notion of this scenario's `targets`, would
-        # otherwise splice in a `target` the load-time pass never saw (BE-0428), or a target group
-        # it never expanded (BE-0437; see `models/scenario/_targets.py`). The `extractBody`/
-        # `saveBody` re-check (BE-0440; see `models/scenario/_http_extract.py`) is the same
-        # defense for a `resolve` that hands back steps no full `Scenario.model_validate` ever
-        # saw: the check is purely intra-step, so it can never fire *between* the prelude and this
-        # scenario's own steps — only against a `var` collision inside one of the prelude's own
-        # `http` steps that skipped validation this way.
-        _expand_target_groups(scenario)
-        _check_target_requirements(scenario)
-        _check_http_extract_vars(scenario)

@@ -5,7 +5,7 @@ forbidden; a direct child must omit target, which also rejects a nested group; r
 `web:`/`app:`) and `_expand_target_groups` — that a group-authored scenario produces the same
 flat, stamped step list a hand-written one would, on every step list it walks (`steps`, `before`,
 `after`, `interrupts`), through `if`/`forEach`/`web`/`app` nesting, and that the expansion survives
-`expand_components`, `apply_setups`, and config hook-folding the same way `_check_target_requirements`
+`expand_components` and config hook-folding the same way `_check_target_requirements`
 already does (see `test_target_routing.py`, `test_components.py`, `tests/orchestrator/test_before_after.py`).
 """
 
@@ -17,7 +17,6 @@ from pydantic import ValidationError
 from bajutsu.common.config import load_config, resolve
 from bajutsu.common.runner.pipeline import with_lifecycle_phases
 from bajutsu.common.scenario import Component, Scenario, expand_components, load_scenarios
-from bajutsu.common.scenario.expand import apply_setups
 from bajutsu.common.scenario.models import Step
 
 
@@ -440,7 +439,7 @@ def test_group_nested_inside_for_each_body_is_its_own_fresh_scope() -> None:
     assert fe_step.for_each is not None and fe_step.for_each.steps[0].target == "web"
 
 
-# --- re-expansion survives expand_components / apply_setups / hook-folding --------------------
+# --- re-expansion survives expand_components / hook-folding --------------------
 
 
 LOGIN_GROUP = Component(
@@ -478,43 +477,27 @@ def test_expand_components_expands_a_group_the_component_carries() -> None:
     ]
 
 
-def test_apply_setups_expands_a_group_the_prelude_carries() -> None:
-    scns = load_scenarios(
-        """
-- name: s
-  targets: [app, web]
-  preconditions: { setup: login }
-  steps:
-    - target: app
-      tap: { id: own }
-"""
-    )
-    prelude = [Step.model_validate(_group("web", [{"tap": {"id": "setup1"}}]))]
-    apply_setups(scns, None, lambda ref: prelude)
-    assert [(st.target, _tap_id(st)) for st in scns[0].steps] == [
-        ("web", "setup1"),
-        ("app", "own"),
-    ]
-
-
-_GROUPED_HOOK_CONFIG = """
-targets:
-  app:
-    bundleId: com.example.app
-    before:
-      - target: app
-        steps:
-          - tap: { id: a1 }
-          - tap: { id: a2 }
-    after:
-      - on: always
-        steps:
-          - target: app
-            steps:
-              - tap: { id: a3 }
-  web:
-    baseUrl: http://localhost:1/
-"""
+_GROUPED_HOOK_CONFIG = (
+    "targets:\n"
+    "  app:\n"
+    "    platform: ios\n"
+    "    app: {id: com.example.app}\n"
+    "    hooks:\n"
+    "      setup:\n"
+    "      - target: app\n"
+    "        steps:\n"
+    "        - tap: {id: a1}\n"
+    "        - tap: {id: a2}\n"
+    "      cleanup:\n"
+    "      - 'on': always\n"
+    "        steps:\n"
+    "        - target: app\n"
+    "          steps:\n"
+    "          - tap: {id: a3}\n"
+    "  web:\n"
+    "    platform: web\n"
+    "    app: {url: 'http://localhost:1/'}\n"
+)
 
 
 def test_hook_folding_expands_a_group_a_config_level_hook_carries() -> None:

@@ -139,8 +139,15 @@ def test_cli_reports_coverage_for_an_app(tmp_path: Path) -> None:
     )
     config = tmp_path / "bajutsu.config.yaml"
     config.write_text(
-        "targets:\n  demo:\n    bundleId: com.example.demo\n"
-        f"    scenarios: {scn_dir}\n    idNamespaces: [home, auth]\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.example.demo\n"
+            "      idNamespaces: [home, auth]\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     result = runner.invoke(app, ["coverage", "--target", "demo", "--config", str(config)])
@@ -157,8 +164,15 @@ def test_cli_json_output(tmp_path: Path) -> None:
     )
     config = tmp_path / "bajutsu.config.yaml"
     config.write_text(
-        "targets:\n  demo:\n    bundleId: com.example.demo\n"
-        f"    scenarios: {scn_dir}\n    idNamespaces: [home, auth]\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.example.demo\n"
+            "      idNamespaces: [home, auth]\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     result = runner.invoke(app, ["coverage", "--target", "demo", "--config", str(config), "--json"])
@@ -172,7 +186,14 @@ def test_cli_json_output(tmp_path: Path) -> None:
 def test_cli_app_without_scenarios_dir_exits_2(tmp_path: Path) -> None:
     config = tmp_path / "bajutsu.config.yaml"
     config.write_text(
-        "targets:\n  demo:\n    bundleId: com.example.demo\n    idNamespaces: [home]\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.example.demo\n"
+            "      idNamespaces: [home]\n"
+        ),
         encoding="utf-8",
     )
     result = runner.invoke(app, ["coverage", "--target", "demo", "--config", str(config)])
@@ -188,8 +209,15 @@ def test_cli_malformed_scenario_exits_2_and_names_the_file(tmp_path: Path) -> No
     (scn_dir / "broken.yaml").write_text("- name: a\n  steps: { id\n", encoding="utf-8")
     config = tmp_path / "bajutsu.config.yaml"
     config.write_text(
-        "targets:\n  demo:\n    bundleId: com.example.demo\n"
-        f"    scenarios: {scn_dir}\n    idNamespaces: [home]\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.example.demo\n"
+            "      idNamespaces: [home]\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     result = runner.invoke(app, ["coverage", "--target", "demo", "--config", str(config)])
@@ -307,8 +335,15 @@ def test_cli_skips_a_malformed_run_file_and_still_reports(
     (step / filename).write_text(content, encoding="utf-8")
     config = tmp_path / "bajutsu.config.yaml"
     config.write_text(
-        "targets:\n  demo:\n    bundleId: com.example.demo\n"
-        f"    scenarios: {scn_dir}\n    idNamespaces: [home, auth]\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.example.demo\n"
+            "      idNamespaces: [home, auth]\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     result = runner.invoke(
@@ -337,8 +372,15 @@ def test_cli_runs_path_missing_warns_and_proceeds(tmp_path: Path) -> None:
     )
     config = tmp_path / "bajutsu.config.yaml"
     config.write_text(
-        "targets:\n  demo:\n    bundleId: com.example.demo\n"
-        f"    scenarios: {scn_dir}\n    idNamespaces: [home]\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.example.demo\n"
+            "      idNamespaces: [home]\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     result = runner.invoke(
@@ -373,8 +415,15 @@ def test_cli_endpoint_coverage_with_runs(tmp_path: Path) -> None:
     )
     config = tmp_path / "bajutsu.config.yaml"
     config.write_text(
-        "targets:\n  demo:\n    bundleId: com.example.demo\n"
-        f"    scenarios: {scn_dir}\n    idNamespaces: [home]\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.example.demo\n"
+            "      idNamespaces: [home]\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     result = runner.invoke(
@@ -412,8 +461,15 @@ def test_cli_endpoint_coverage_finds_a_non_primary_targets_own_network_json(
     (net / "network.json").write_text('[{"method":"GET","path":"/a"}]', encoding="utf-8")
     config = tmp_path / "bajutsu.config.yaml"
     config.write_text(
-        "targets:\n  demo:\n    bundleId: com.example.demo\n"
-        f"    scenarios: {scn_dir}\n    idNamespaces: [home]\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.example.demo\n"
+            "      idNamespaces: [home]\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     result = runner.invoke(
@@ -442,8 +498,15 @@ def test_cli_without_runs_omits_endpoint_section(tmp_path: Path) -> None:
     )
     config = tmp_path / "bajutsu.config.yaml"
     config.write_text(
-        "targets:\n  demo:\n    bundleId: com.example.demo\n"
-        f"    scenarios: {scn_dir}\n    idNamespaces: [home]\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.example.demo\n"
+            "      idNamespaces: [home]\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     result = runner.invoke(app, ["coverage", "--target", "demo", "--config", str(config), "--json"])
@@ -528,8 +591,15 @@ def test_cli_observed_id_coverage_with_runs(tmp_path: Path) -> None:
     _write_elements(tmp_path / "runs" / "20260101-000000" / "01-x", ["auth.email"])
     config = tmp_path / "bajutsu.config.yaml"
     config.write_text(
-        "targets:\n  demo:\n    bundleId: com.example.demo\n"
-        f"    scenarios: {scn_dir}\n    idNamespaces: [home, auth, cart]\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.example.demo\n"
+            "      idNamespaces: [home, auth, cart]\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     result = runner.invoke(
@@ -567,8 +637,15 @@ def test_cli_observed_id_coverage_finds_elements_at_the_real_per_step_depth(
     _write_elements(tmp_path / "runs" / "20260101-000000" / "00-x" / "step0", ["home.start"])
     config = tmp_path / "bajutsu.config.yaml"
     config.write_text(
-        "targets:\n  demo:\n    bundleId: com.example.demo\n"
-        f"    scenarios: {scn_dir}\n    idNamespaces: [home, auth]\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.example.demo\n"
+            "      idNamespaces: [home, auth]\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     result = runner.invoke(
@@ -599,8 +676,15 @@ def test_cli_observed_id_coverage_ignores_empty_identifiers(tmp_path: Path) -> N
     _write_elements(tmp_path / "runs" / "20260101-000000" / "00-x", ["home.start", ""])
     config = tmp_path / "bajutsu.config.yaml"
     config.write_text(
-        "targets:\n  demo:\n    bundleId: com.example.demo\n"
-        f"    scenarios: {scn_dir}\n    idNamespaces: [home]\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.example.demo\n"
+            "      idNamespaces: [home]\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     result = runner.invoke(
@@ -631,8 +715,15 @@ def test_cli_observed_id_coverage_text_output(tmp_path: Path) -> None:
     _write_elements(tmp_path / "runs" / "20260101-000000" / "00-x", ["home.start"])
     config = tmp_path / "bajutsu.config.yaml"
     config.write_text(
-        "targets:\n  demo:\n    bundleId: com.example.demo\n"
-        f"    scenarios: {scn_dir}\n    idNamespaces: [home, auth]\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.example.demo\n"
+            "      idNamespaces: [home, auth]\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     result = runner.invoke(
@@ -653,8 +744,15 @@ def test_cli_skips_malformed_elements_json(tmp_path: Path) -> None:
     (step / "elements.json").write_text("null", encoding="utf-8")  # a scalar, not a list
     config = tmp_path / "bajutsu.config.yaml"
     config.write_text(
-        "targets:\n  demo:\n    bundleId: com.example.demo\n"
-        f"    scenarios: {scn_dir}\n    idNamespaces: [home]\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.example.demo\n"
+            "      idNamespaces: [home]\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     result = runner.invoke(
@@ -690,8 +788,15 @@ def test_cli_without_runs_omits_observed_id_section(tmp_path: Path) -> None:
     )
     config = tmp_path / "bajutsu.config.yaml"
     config.write_text(
-        "targets:\n  demo:\n    bundleId: com.example.demo\n"
-        f"    scenarios: {scn_dir}\n    idNamespaces: [home]\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.example.demo\n"
+            "      idNamespaces: [home]\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     result = runner.invoke(app, ["coverage", "--target", "demo", "--config", str(config), "--json"])
@@ -751,8 +856,15 @@ def test_cli_writes_html_file(tmp_path: Path) -> None:
     )
     config = tmp_path / "bajutsu.config.yaml"
     config.write_text(
-        "targets:\n  demo:\n    bundleId: com.example.demo\n"
-        f"    scenarios: {scn_dir}\n    idNamespaces: [home, auth]\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.example.demo\n"
+            "      idNamespaces: [home, auth]\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     out = tmp_path / "coverage.html"
@@ -773,8 +885,15 @@ def _html_only_config(tmp_path: Path) -> Path:
     (scn_dir / "smoke.yaml").write_text("- name: x\n  steps:\n    - tap: { id: home.a }\n", "utf-8")
     config = tmp_path / "bajutsu.config.yaml"
     config.write_text(
-        "targets:\n  demo:\n    bundleId: com.example.demo\n"
-        f"    scenarios: {scn_dir}\n    idNamespaces: [home]\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.example.demo\n"
+            "      idNamespaces: [home]\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     return config
@@ -899,8 +1018,15 @@ def test_cli_screen_coverage_with_crawl_and_runs(tmp_path: Path) -> None:
     )
     config = tmp_path / "bajutsu.config.yaml"
     config.write_text(
-        "targets:\n  demo:\n    bundleId: com.example.demo\n"
-        f"    scenarios: {scn_dir}\n    idNamespaces: [home]\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.example.demo\n"
+            "      idNamespaces: [home]\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     result = runner.invoke(
@@ -949,8 +1075,15 @@ def test_cli_screen_coverage_finds_elements_at_the_real_per_step_depth(tmp_path:
     _screenmap(screenmap, [{"fingerprint": visited_fp, "kind": "id", "ids": ["home.a"]}])
     config = tmp_path / "bajutsu.config.yaml"
     config.write_text(
-        "targets:\n  demo:\n    bundleId: com.example.demo\n"
-        f"    scenarios: {scn_dir}\n    idNamespaces: [home]\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.example.demo\n"
+            "      idNamespaces: [home]\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     result = runner.invoke(
@@ -984,8 +1117,15 @@ def test_cli_accepts_a_crawl_run_dir_for_screenmap(tmp_path: Path) -> None:
     )
     config = tmp_path / "bajutsu.config.yaml"
     config.write_text(
-        "targets:\n  demo:\n    bundleId: com.example.demo\n"
-        f"    scenarios: {scn_dir}\n    idNamespaces: [home]\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.example.demo\n"
+            "      idNamespaces: [home]\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     result = runner.invoke(
@@ -1014,8 +1154,15 @@ def test_cli_crawl_without_runs_warns_and_skips(tmp_path: Path) -> None:
     _screenmap(tmp_path / "screenmap.json", [{"fingerprint": "aaa", "kind": "id", "ids": ["home"]}])
     config = tmp_path / "bajutsu.config.yaml"
     config.write_text(
-        "targets:\n  demo:\n    bundleId: com.example.demo\n"
-        f"    scenarios: {scn_dir}\n    idNamespaces: [home]\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.example.demo\n"
+            "      idNamespaces: [home]\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     result = runner.invoke(
@@ -1045,8 +1192,15 @@ def test_cli_missing_screenmap_warns_and_skips(tmp_path: Path) -> None:
     (scn_dir / "smoke.yaml").write_text("- name: x\n  steps:\n    - tap: { id: home.a }\n", "utf-8")
     config = tmp_path / "bajutsu.config.yaml"
     config.write_text(
-        "targets:\n  demo:\n    bundleId: com.example.demo\n"
-        f"    scenarios: {scn_dir}\n    idNamespaces: [home]\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.example.demo\n"
+            "      idNamespaces: [home]\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     result = runner.invoke(
@@ -1076,8 +1230,15 @@ def test_cli_malformed_screenmap_warns_and_skips(tmp_path: Path) -> None:
     bad.write_text("{not json", encoding="utf-8")  # invalid JSON — must not crash the command
     config = tmp_path / "bajutsu.config.yaml"
     config.write_text(
-        "targets:\n  demo:\n    bundleId: com.example.demo\n"
-        f"    scenarios: {scn_dir}\n    idNamespaces: [home]\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.example.demo\n"
+            "      idNamespaces: [home]\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     result = runner.invoke(
@@ -1112,8 +1273,15 @@ def test_cli_screenmap_unexpected_shape_skips_bad_nodes(tmp_path: Path) -> None:
     )
     config = tmp_path / "bajutsu.config.yaml"
     config.write_text(
-        "targets:\n  demo:\n    bundleId: com.example.demo\n"
-        f"    scenarios: {scn_dir}\n    idNamespaces: [home]\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.example.demo\n"
+            "      idNamespaces: [home]\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     base_args = [
@@ -1140,8 +1308,15 @@ def test_cli_without_crawl_omits_screen_section(tmp_path: Path) -> None:
     (scn_dir / "smoke.yaml").write_text("- name: x\n  steps:\n    - tap: { id: home.a }\n", "utf-8")
     config = tmp_path / "bajutsu.config.yaml"
     config.write_text(
-        "targets:\n  demo:\n    bundleId: com.example.demo\n"
-        f"    scenarios: {scn_dir}\n    idNamespaces: [home]\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.example.demo\n"
+            "      idNamespaces: [home]\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     result = runner.invoke(app, ["coverage", "--target", "demo", "--config", str(config), "--json"])

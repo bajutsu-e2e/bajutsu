@@ -112,10 +112,17 @@ def _ios_state(tmp_path: Path) -> ServeState:
     scn_dir.mkdir()
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "defaults: { backend: [ios] }\n"
-        "targets:\n"
-        f"  ios: {{ bundleId: com.example.ios, backend: [ios], scenarios: {scn_dir} }}\n"
-        f"  xcuitest_only: {{ bundleId: com.example.x, backend: [xcuitest], scenarios: {scn_dir} }}\n",
+        (
+            "targets:\n"
+            "  ios:\n"
+            "    platform: ios\n"
+            f"    app: {{id: com.example.ios}}\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+            "  xcuitest_only:\n"
+            "    platform: ios\n"
+            f"    app: {{id: com.example.x}}\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     runs = tmp_path / "runs"
@@ -146,7 +153,7 @@ def test_start_capture_ios_target_resolves_to_xcuitest(tmp_path: Path) -> None:
 
 
 def test_start_capture_single_actuator_target_unchanged(tmp_path: Path) -> None:
-    # A single-actuator target is a hard pin: capture hands the factory exactly its backend list.
+    # A target names one platform (BE-0452), so the factory receives that platform as its backend.
     seen: list[list[str]] = []
 
     def factory(_eff: object, backends_list: list[str], _udid: str) -> tuple[FakeDriver, object]:
@@ -156,7 +163,7 @@ def test_start_capture_single_actuator_target_unchanged(tmp_path: Path) -> None:
     state = _ios_state(tmp_path)
     _payload, status = ops.start_capture(state, {"target": "xcuitest_only"}, driver_factory=factory)
     assert status == 200
-    assert seen == [["xcuitest"]]
+    assert seen == [["ios"]]
 
 
 def test_start_capture_explicit_body_backend_wins(tmp_path: Path) -> None:
@@ -194,7 +201,7 @@ def test_start_capture_rebases_app_path_against_state_cwd(tmp_path: Path) -> Non
     # `state.binding.cwd` (an uploaded bundle's root, a Git checkout root, or a local config's own directory,
     # BE-0063/BE-0073/BE-0242) before handing the Effective to the driver factory — otherwise an
     # uploaded config's `appPath` resolves against wherever `bajutsu serve` happens to be running from
-    # instead of the bundle, and iOS bring-up fails with "appPath not found".
+    # instead of the bundle, and iOS bring-up fails with "app.path not found".
     bundle = tmp_path / "bundle"
     scn_dir = bundle / "scenarios"
     scn_dir.mkdir(parents=True)
@@ -202,9 +209,13 @@ def test_start_capture_rebases_app_path_against_state_cwd(tmp_path: Path) -> Non
     app_dir.mkdir(parents=True)
     cfg = bundle / "bajutsu.config.yaml"
     cfg.write_text(
-        "defaults: { backend: [ios] }\n"
-        "targets:\n"
-        f"  demo: {{ bundleId: com.example.demo, appPath: app/MyApp.app, scenarios: {scn_dir} }}\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            f"    app: {{id: com.example.demo, path: app/MyApp.app}}\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     runs = tmp_path / "runs"

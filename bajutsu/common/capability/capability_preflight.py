@@ -300,8 +300,9 @@ def actuator_unavailable_reason(
 ) -> str | None:
     """Why *worker* on *host* cannot run *actuator*'s driver, or None when it can (rules 1 and 2).
 
-    Rule 1, the host requirement, applies only to a `local` worker: on a device cloud the driver
-    runs on the provider's host, not this one.
+    Rule 1, the host requirement, applies only to a driver that runs on this host: on a device cloud
+    the driver runs on the provider's host, and on an `appium` grid its platform's driver runs on the
+    grid's (BE-0452).
 
     Args:
         actuator: The actuator (driver) name.
@@ -309,7 +310,7 @@ def actuator_unavailable_reason(
         host: The machine's host operating system (`backends.current_host_os()`).
         host_os_for: The driver host-requirement lookup; `backends.host_os_for` when None.
     """
-    if worker.is_local:
+    if worker.drives_on_host(actuator):
         if host_os_for is None:
             from bajutsu.common.backends import host_os_for as default_host_os_for
 

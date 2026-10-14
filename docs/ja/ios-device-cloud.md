@@ -19,17 +19,18 @@ XCUITest バックエンドは、既定ではシミュレータを対象にし�
 ```yaml
 targets:
   my-app:
-    xcuitest:
-      deviceType: device   # "simulator"（既定）または "device"
+    platform: ios
+    runsOn:
+      kind: device   # "simulator"（既定）または "device"
 ```
 
-`deviceType: device` にすると、バックエンドは `xcodebuild` の `-destination` を、名前を指定したシミュレータから `platform=iOS` へ一般化します。これにより、同じ `xcodebuild test-without-building` の駆動層が実機に対して走ります。この destination が解決するデバイスは、実行時の udid から決まります。ローカル接続のデバイスの udid か、デバイスクラウドが実行に渡す udid です。
+`runsOn.kind: device` にすると、バックエンドは `xcodebuild` の `-destination` を、名前を指定したシミュレータから `platform=iOS` へ一般化します。これにより、同じ `xcodebuild test-without-building` の駆動層が実機に対して走ります。この destination が解決するデバイスは、実行時の udid から決まります。ローカル接続のデバイスの udid か、デバイスクラウドが実行に渡す udid です。
 
-実機ではさらに、`simctl` が行うシミュレータの起動準備を省きます。この省略により、シミュレータの経路が当然としている 3 つの前提が落ちます。デバイスの消去、ローカルの `appPath` からのアプリのインストール、そして権限の事前付与です。実機でこれらのいずれかを必要とするシナリオは、黙って何もしないのではなく、はっきりと失敗します。後述の Device Farm ルートでは、代わりにクラウドがアプリをインストールします。この同じキーはローカル接続の iPhone や iPad も駆動するので、実機対応の作業は、クラウドが関わる前から単体で役立ちます。
+実機ではさらに、`simctl` が行うシミュレータの起動準備を省きます。この省略により、シミュレータの経路が当然としている 3 つの前提が落ちます。デバイスの消去、ローカルの `app.path` からのアプリのインストール、そして権限の事前付与です。実機でこれらのいずれかを必要とするシナリオは、黙って何もしないのではなく、はっきりと失敗します。後述の Device Farm ルートでは、代わりにクラウドがアプリをインストールします。この同じキーはローカル接続の iPhone や iPad も駆動するので、実機対応の作業は、クラウドが関わる前から単体で役立ちます。
 
 ## 実機のチャネルへの到達
 
-シミュレータでは、ホストとアプリが 1 つのループバックアドレス `127.0.0.1` を共有します。Bajutsu と iOS アプリの間のチャネルは、どれもこの共有を前提にしています。実機は自分専用のループバックを持ちます。そこで `deviceType: device` のときは、各チャネルが別の手段でホストと実機の境界を越えます。手段は次の表のとおりです。
+シミュレータでは、ホストとアプリが 1 つのループバックアドレス `127.0.0.1` を共有します。Bajutsu と iOS アプリの間のチャネルは、どれもこの共有を前提にしています。実機は自分専用のループバックを持ちます。そこで `runsOn.kind: device` のときは、各チャネルが別の手段でホストと実機の境界を越えます。手段は次の表のとおりです。
 
 | チャネル | 待ち受ける側 | 向き | 実機での手段 |
 |---|---|---|---|
@@ -53,7 +54,7 @@ usbmuxd は、Xcode や `iproxy` が実機と通信する際に使う macOS の�
 Bajutsu は候補を実行のたびに解決するので、ホストのアドレスが変わっても動き続けます。候補は、次のうち値のある最初の手段から決まります。
 
 1. 環境変数 `BAJUTSU_HOST_ADDRESS`
-2. ターゲットの `xcuitest.hostAddress`（[設定](configuration.md)を参照してください）
+2. ターゲットの `driver.runner.hostAddress`（[設定](configuration.md)を参照してください）
 3. ホストの有効なインタフェースが持つ、経路のある IPv4 と IPv6 のアドレスすべて。この一覧には、CoreDevice トンネルの IPv6 アドレスも含まれます。Xcode 自身も、実機のテストにこのトンネルを使います。
 
 ネットワークのやり取りを記録する実行で候補が 1 つもないときは、実機を操作する前に失敗し、エラーで 2 つの設定を示します。どの候補にも届かない実機では、やり取りが 1 件も記録されません。その場合、ネットワークのアサーションは空の記録に対して失敗します。
@@ -81,11 +82,11 @@ Bajutsu は、署名方式を使うことを起動環境で知らせます。`BA
 
 ### 実行前のチャネルの確認
 
-`deviceType: device` のターゲットに対して `bajutsu doctor --udid <udid> --environment-only` を実行すると、両方の経路を報告します。実機には起動中のシミュレータが要らないので、doctor はその代わりに、usbmuxd が実機を列挙しているかと、どの接続方式かを確認します。usbmuxd が列挙しない実機ではこの確認が失敗し、doctor は 0 以外の終了コードで終わります。doctor は、アプリが受け取るホストアドレスの一覧も示します。この一覧は情報の表示だけです。必要になるのは、ネットワークのやり取りを記録するシナリオだけだからです。デバイスクラウドのジョブでは、`bajutsu run` の前に doctor を実行すると、ホストに欠けている経路がわかります。Device Farm のルートも同じ 2 つの経路に依存します。この 2 つは、Device Farm ではまだ誰も検証していません。
+`runsOn.kind: device` のターゲットに対して `bajutsu doctor --udid <udid> --environment-only` を実行すると、両方の経路を報告します。実機には起動中のシミュレータが要らないので、doctor はその代わりに、usbmuxd が実機を列挙しているかと、どの接続方式かを確認します。usbmuxd が列挙しない実機ではこの確認が失敗し、doctor は 0 以外の終了コードで終わります。doctor は、アプリが受け取るホストアドレスの一覧も示します。この一覧は情報の表示だけです。必要になるのは、ネットワークのやり取りを記録するシナリオだけだからです。デバイスクラウドのジョブでは、`bajutsu run` の前に doctor を実行すると、ホストに欠けている経路がわかります。Device Farm のルートも同じ 2 つの経路に依存します。この 2 つは、Device Farm ではまだ誰も検証していません。
 
 ## 署名済みの実機用 runner
 
-実機にインストールできる XCUITest runner は、その実機が信頼するチームで署名したものに限られます。そのため Bajutsu は、Simulator 用 runner と違って、実機用 runner をビルド済みで同梱できません。各ユーザーは自分の Apple Developer アカウントで、`bajutsu runner build --device` を使って実機用 runner をビルドします。ビルドが必要になるのは、後述のビルドの入力の組み合わせごとに 1 回です。以後、`deviceType: device` を指定して `xcuitest.testRunner` を指定しないターゲットは、そのビルドに解決します。ターゲットの設定には、特定のユーザーに固有の値が入りません。
+実機にインストールできる XCUITest runner は、その実機が信頼するチームで署名したものに限られます。そのため Bajutsu は、Simulator 用 runner と違って、実機用 runner をビルド済みで同梱できません。各ユーザーは自分の Apple Developer アカウントで、`bajutsu runner build --device` を使って実機用 runner をビルドします。ビルドが必要になるのは、後述のビルドの入力の組み合わせごとに 1 回です。以後、`runsOn.kind: device` を指定して `driver.runner.testRunner` を指定しないターゲットは、そのビルドに解決します。ターゲットの設定には、特定のユーザーに固有の値が入りません。
 
 ### 署名ファイル
 
@@ -95,7 +96,7 @@ Bajutsu は、署名方式を使うことを起動環境で知らせます。`BA
 2. 環境変数 `BAJUTSU_SIGNING_FILE`
 3. `$XDG_CONFIG_HOME/bajutsu/signing.yaml`（未設定なら `~/.config/bajutsu/signing.yaml`）
 
-実行時に参照するのは 2 と 3 だけです。`--signing` でビルドしたユーザーは、実行時に `BAJUTSU_SIGNING_FILE` で同じファイルを指定する必要があります。もう 1 つの方法は、`--out` で成果物をコピーし、そのパスを `testRunner` に指定することです。
+実行時に参照するのは 2 と 3 だけです。`--signing` でビルドしたユーザーは、実行時に `BAJUTSU_SIGNING_FILE` で同じファイルを指定する必要があります。もう 1 つの方法は、`--out` で成果物をコピーし、そのパスを `driver.runner.testRunner` に指定することです。
 
 ```yaml
 bundleIdPrefix: com.acme           # host app = com.acme.bajutsu.runner-host,
@@ -151,7 +152,7 @@ bajutsu runner build --device [--signing PATH] [--out DIR] [--force]
 
 ### 実行時の動作
 
-`deviceType: device` を指定し `testRunner` を指定しない実行は、署名ファイルを読んで同じキーを計算し、キャッシュ済みの `.xctestrun` を使います。明示した `testRunner` は、引き続きキャッシュより優先します。
+`runsOn.kind: device` を指定し `driver.runner.testRunner` を指定しない実行は、署名ファイルを読んで同じキーを計算します。そのうえで、キャッシュ済みの `.xctestrun` を使います。明示した `testRunner` は、引き続きキャッシュより優先します。
 
 実行中に runner をビルドすることはありません。署名付きのビルドは時間がかかり、キーチェインのプロンプトを出すことがあり、Apple に識別子を登録することもあるからです。キャッシュが使えない場合は、すぐに失敗して対処法を示します。
 
@@ -173,19 +174,22 @@ AWS Device Farm は**バッチ**サービスです。デバイスをネットワ
 
 ### ライブ — Appium エンドポイントのプロバイダー
 
-クラウドが 1 台の iOS デバイスを予約し、それを Appium / WebDriver の**エンドポイント**の先に公開する場合（たとえば自前ホストのグリッド）、Bajutsu はその予約を、ライブの継ぎ目（[BE-0236](../../roadmaps/BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction-ja.md)）上のデバイスプロバイダーとしてモデル化します。組み込みの `appium` プロバイダーは、ローカル接続の udid の代わりに、予約されたデバイスの固定エンドポイントを実行へ渡します。
+クラウドが 1 台の iOS デバイスを予約し、それを Appium / WebDriver の**エンドポイント**の先に公開する場合（たとえば自前ホストのグリッド）、Bajutsu はその予約を、ライブの継ぎ目（[BE-0236](../../roadmaps/BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction-ja.md)）上のデバイスプロバイダーとしてモデル化します。どのグリッドが実行を受け持つかは、ターゲットの性質ではなくインフラの事情です。そのため、エンドポイントは worker のケーパビリティファイル（`worker.yaml`）の `appium` 環境に書きます（[BE-0452](../../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)）。
 
 ```yaml
-targets:
-  my-app:
-    deviceProvider:
-      kind: appium
-      endpoint: https://grid.example.com/wd/hub   # 予約されたデバイスの Appium / WebDriver アドレス
+version: 1
+environment: appium
+appium:
+  endpoint: https://grid.example.com/wd/hub   # 予約されたデバイスの Appium / WebDriver アドレス
+  platform: ios                               # 現在指定できる値はこれだけです
+drivers: [xcuitest, adb, playwright, fake]
 ```
 
-このプロバイダーは、予約を、Bajutsu が `simctl` で起動もインストールもしないデバイスとして扱います。デバイスはビルドが入った状態で準備済みと報告し、解放するものは何もありません。予約はグリッドのものだからです。`endpoint` が欠けている場合は、実行がプロバイダーを解決する時点で fail-closed になり、未知のプロバイダー `kind` に対するガードと同じ挙動になります。
+このファイルは、`run`、`record`、`crawl`、`repl`、`audit`、`doctor`、`bajutsu mcp` に `--worker-config` で渡します。実行は、グリッドのプラットフォームに属する各ターゲットへ、ローカル接続の udid の代わりにこのエンドポイントをデバイスとして渡します。シナリオのほかのターゲットは、このホストに残ります。グリッドのプラットフォームのターゲットを 2 つ持つシナリオは拒否します。`--udid` は URL を受け付けなくなったので、グリッドはこのファイルで指定します。
 
-Bajutsu はこのエンドポイントを、ライブの **W3C WebDriver トランスポート**で駆動します。エンドポイントの `http(s)://` スキームがルーティングの信号です。これは共有の `device_id` の文字集合がちょうど拒否する値（URL は `/` を含みます）なので、実機の `simctl` udid と衝突することはありません。実行はこの値を `simctl` / `xcodebuild` の udid の仕組みから**迂回**させます。その仕組みは構造的に URL を運べないからです。タップしてアサートする一連の流れは、エンドツーエンドで動きます。ローカルのランナーがネイティブに駆動する意味的な操作は、そのエンドポイント越しに Appium の XCUITest `mobile:` コマンドへ写像されます。`tap`、`query`、スクリーンショット、条件待ち、入力ステップ（`type` / `delete`、`swipe` / `scroll`）、そして 2 本指の `pinch` / `rotate` ジェスチャーです。ローカルのバックエンドと同じく、曖昧なセレクターは**操作を始める前に**失敗します。セレクターの解決はグリッドではなく Bajutsu 側で行うからです。
+Bajutsu は、予約したデバイスを `simctl` で起動せず、アプリのインストールもしません。予約はグリッドのものです。デバイスはビルドが入った状態で届き、解放するものは何もありません。
+
+Bajutsu はこのエンドポイントを、ライブの **W3C WebDriver トランスポート**で駆動します。実行はこの値を `simctl` / `xcodebuild` の udid の仕組みから**迂回**させます。その仕組みは構造的に URL を運べないからです。タップしてアサートする一連の流れは、エンドツーエンドで動きます。ローカルのランナーがネイティブに駆動する意味的な操作は、そのエンドポイント越しに Appium の XCUITest `mobile:` コマンドへ写像されます。`tap`、`query`、スクリーンショット、条件待ち、入力ステップ（`type` / `delete`、`swipe` / `scroll`）、そして 2 本指の `pinch` / `rotate` ジェスチャーです。ローカルのバックエンドと同じく、曖昧なセレクターは**操作を始める前に**失敗します。セレクターの解決はグリッドではなく Bajutsu 側で行うからです。
 
 WebDriver トランスポートが駆動できないものは、実機の経路が `simctl` に支えられた各系統を縮退させるのと同じように、前もって取り除かれます。
 
@@ -194,15 +198,16 @@ WebDriver トランスポートが駆動できないものは、実機の経路�
 
 そのためライブルートでは、preflight（[BE-0082](../../roadmaps/BE-0082-capability-preflight-check/BE-0082-capability-preflight-check-ja.md)）はトランスポートが実際に駆動するものだけを宣言し、縮退したケーパビリティのいずれかを必要とするシナリオは、デバイス操作を始める前に明確な理由とともに**スキップ**します。実行の途中で `UnsupportedAction` として遅れて失敗することはありません。
 
-動く例の設定は [`demos/showcase/live/showcase.live.config.yaml`](../../demos/showcase/live/showcase.live.config.yaml) にあります。ローカルの `showcase-swiftui` ターゲットを写し取りつつ、kind が `appium` の `deviceProvider` を持ち、ローカルの `appPath` / `xcuitest.testRunner` は持ちません。予約されたデバイスはすでにビルドを抱えており、ライブルートはランナーチャネルではなく WebDriver で話すからです。その `endpoint` を自分のグリッドに向けてから、共有の showcase スイートをそれに対して実行します。
+動く例の設定は [`demos/showcase/live/showcase.live.config.yaml`](../../demos/showcase/live/showcase.live.config.yaml) にあります。ローカルの `showcase-swiftui` ターゲットを写し取りつつ、ローカルの `app.path` と `driver.runner.testRunner` は持ちません。予約されたデバイスはすでにビルドを抱えており、ライブルートはランナーチャネルではなく WebDriver で話すからです。グリッドは、隣の [`demos/showcase/live/worker.yaml`](../../demos/showcase/live/worker.yaml) で指定します。このファイルの `endpoint` を自分のグリッドに向けてから、共有の showcase スイートをそれに対して実行します。
 
 ```bash
-bajutsu run --target showcase-swiftui-live --config demos/showcase/live/showcase.live.config.yaml
+bajutsu run --target showcase-swiftui-live --config demos/showcase/live/showcase.live.config.yaml \
+  --worker-config demos/showcase/live/worker.yaml
 ```
 
 ## 実機の注意点：再署名とケーパビリティの縮退
 
-シミュレータではなく実機で動かすと、Bajutsu が前もって織り込む点が 2 つ変わります。いずれも特定のクラウドの性質ではなく物理ハードウェアの性質なので、XCUITest バックエンドが駆動するあらゆる実機に当てはまります。`xcuitest.deviceType: device`（Device Farm でもローカル接続のデバイスでも）で到達する場合も、上のライブ WebDriver ルートで到達する場合も同じです。
+シミュレータではなく実機で動かすと、Bajutsu が前もって織り込む点が 2 つ変わります。いずれも特定のクラウドの性質ではなく物理ハードウェアの性質なので、XCUITest バックエンドが駆動するあらゆる実機に当てはまります。`runsOn.kind: device`（Device Farm でもローカル接続のデバイスでも）で到達する場合も、上のライブ WebDriver ルートで到達する場合も同じです。
 
 - **再署名でエンタイトルメントが剥がれます。** デバイスクラウドは、アップロードされたアプリを自前のプロビジョニングプロファイルで再署名し、予約されたデバイスにインストールできるようにします。この再署名では、新しいプロファイルが持たないエンタイトルメント（多くは Push と App Groups）が落ちます。剥がれたエンタイトルメントに依存するアプリの機能は再署名後のビルドの挙動になるため、そうした機能をアサートするシナリオは、App Store 版ではなく再署名後の挙動を前提にしてください。
 - **`simctl` のデバイス制御と権限付与は適用されません。** Bajutsu の iOS デバイス制御（`setLocation`、クリップボード系のステップ、`push`、`clearKeychain`、`background` / `foreground`、ステータスバーの上書き）と権限付与は、いずれも `simctl` に支えられ、届くのはシミュレータだけです。実機では XCUITest バックエンドはこれらを宣言しないため、いずれかを使うシナリオは、デバイス操作を始める前に **preflight でスキップ**され（BE-0082）、実行の途中で `simctl` エラーとして遅れて失敗する代わりに、明確な理由とともに弾かれます。XCTest ランナー自身が駆動する実機側のケーパビリティ（query、elements、スクリーンショット、タップ、2 本指ジェスチャー）は影響を受けません。
@@ -213,7 +218,8 @@ bajutsu run --target showcase-swiftui-live --config demos/showcase/live/showcase
 
 - [AWS Device Farm](devicefarm.md) — バッチルート。サブミッター、テスト仕様、手動の実証。
 - [ドライバー](drivers.md) — `Driver` インターフェースと、その背後のバックエンド（XCUITest を含む）。
-- [設定](configuration.md) — ターゲットの `xcuitest.deviceType` と `deviceProvider` のキー。
+- [設定](configuration.md) — ターゲットの `runsOn.kind` のキー。
+- [セルフホスティング](self-hosting.md) — worker のケーパビリティファイルの `appium` 環境。
 - [コマンドリファレンス](cli.md#runner) — `bajutsu runner build --device`。
 - [BE-0019 — XCUITest バックエンド](../../roadmaps/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md)
 - [BE-0236 — デバイスクラウドのプロバイダー抽象化](../../roadmaps/BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction-ja.md)

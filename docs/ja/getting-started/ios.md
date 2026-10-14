@@ -43,7 +43,7 @@ Simulator を boot します。
 xcrun simctl boot "iPhone 15"                 # または Xcode > Open Developer Tool > Simulator から
 ```
 
-XCUITest backend は、**事前ビルドしたオンデバイスの runner**（target の `xcuitest.testRunner`）
+XCUITest backend は、**事前ビルドしたオンデバイスの runner**（target の `driver.runner.testRunner`）
 を通してアプリを駆動します。showcase の config はその runner を配線し、下の一発 `make` ターゲット
 の一部として（`make runner-build`）ビルドまで済ませるので、追加でインストールするものはありません。
 Xcode だけで十分です。
@@ -65,9 +65,9 @@ uv run bajutsu run --scenario demos/showcase/scenarios/smoke.yaml --target showc
 各フラグの意味は次のとおりです。
 
 - `--target showcase-swiftui` は [`demos/showcase/showcase.config.yaml`](../../../demos/showcase/showcase.config.yaml) の `targets.showcase-swiftui` を選びます
-  （bundle id、launch env、許可された id 名前空間を含みます）。ツール自体はアプリ非依存で、アプリ
+  （`platform: ios`、bundle id、launch env、許可された id 名前空間を含みます）。ツール自体はアプリ非依存で、アプリ
   ごとの差分はすべて config に置きます（[configuration](../configuration.md)）。
-- `--backend ios` で iOS の actuator（XCUITest。`--backend xcuitest` と明示することもできます）を選び、`--udid booted` で現在 boot 中の Simulator を対象にします。
+- `--backend ios` は backend を確かめます。iOS の actuator（XCUITest。`--backend xcuitest` でも明示できます）は、ターゲットの `platform: ios` がすでに選んでいます。食い違う値を渡すと終了コード 2 で終わります。`--udid booted` で現在 boot 中の Simulator を対象にします。
 - `--no-erase` は最初に `simctl erase` をかけず、install 済みのアプリをそのまま使います。
 
 成功すると、次のような行が出ます。

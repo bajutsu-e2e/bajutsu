@@ -14,20 +14,25 @@ from bajutsu.serve.orgs import (
     targets_for_org,
 )
 
-CONFIG_YAML = """
-targets:
-  demo: { bundleId: com.example.demo }
-  checkout: { bundleId: com.example.checkout }
-  other: { bundleId: com.example.other }
-
-orgs:
-  acme:
-    members: [alice, bob]
-    targets: [demo, checkout]
-  globex:
-    members: [carol]
-    targets: [other]
-"""
+CONFIG_YAML = (
+    "targets:\n"
+    "  demo:\n"
+    "    platform: ios\n"
+    "    app: {id: com.example.demo}\n"
+    "  checkout:\n"
+    "    platform: ios\n"
+    "    app: {id: com.example.checkout}\n"
+    "  other:\n"
+    "    platform: ios\n"
+    "    app: {id: com.example.other}\n"
+    "orgs:\n"
+    "  acme:\n"
+    "    members: [alice, bob]\n"
+    "    targets: [demo, checkout]\n"
+    "  globex:\n"
+    "    members: [carol]\n"
+    "    targets: [other]\n"
+)
 
 
 def test_an_explicit_member_resolves_to_its_org() -> None:
@@ -53,24 +58,31 @@ def test_targets_for_default_org_are_the_unassigned_ones() -> None:
 def test_targets_for_org_excludes_undeclared_target_names() -> None:
     # An org listing a target that has no `targets:` entry doesn't conjure a runnable target.
     cfg, orgs = load_serve_config(
-        "targets:\n  demo: { bundleId: com.example.demo }\n"
-        "orgs:\n  acme:\n    members: [alice]\n    targets: [demo, ghost]\n"
+        "targets:\n"
+        "  demo:\n"
+        "    platform: ios\n"
+        "    app: {id: com.example.demo}\n"
+        "orgs:\n"
+        "  acme:\n"
+        "    members: [alice]\n"
+        "    targets: [demo, ghost]\n"
     )
     assert targets_for_org(orgs, cfg.targets, "acme") == ["demo"]
 
 
-IDENTITY_YAML = """
-targets:
-  demo: { bundleId: com.example.demo }
-
-orgs:
-  acme:
-    members: [alice]
-    githubOrgs: [acme-gh]
-    targets: [demo]
-  globex:
-    githubOrgs: [globex-gh]
-"""
+IDENTITY_YAML = (
+    "targets:\n"
+    "  demo:\n"
+    "    platform: ios\n"
+    "    app: {id: com.example.demo}\n"
+    "orgs:\n"
+    "  acme:\n"
+    "    members: [alice]\n"
+    "    githubOrgs: [acme-gh]\n"
+    "    targets: [demo]\n"
+    "  globex:\n"
+    "    githubOrgs: [globex-gh]\n"
+)
 
 
 def test_org_for_identity_prefers_an_explicit_member() -> None:
@@ -104,7 +116,7 @@ def test_identity_matches_org_gates_sign_in() -> None:
 
 def test_identity_matches_org_rejects_everyone_without_an_orgs_block() -> None:
     # No `orgs:` block → an empty mapping → nobody matches, so an OAuth deployment must declare one.
-    _, orgs = load_serve_config("targets:\n  demo: { bundleId: com.x }\n")
+    _, orgs = load_serve_config("targets:\n  demo:\n    platform: ios\n    app: {id: com.x}\n")
     assert identity_matches_org(orgs, "alice", ["any-gh"], []) is False
 
 
@@ -113,7 +125,13 @@ def test_identity_matches_org_handles_an_org_literally_named_default() -> None:
     # wrongly reject a deployment that names an org "default" — its members legitimately resolve to
     # that sentinel string, which the naive check would confuse with "matched nothing."
     _, orgs = load_serve_config(
-        "targets:\n  demo: { bundleId: com.x }\norgs:\n  default:\n    members: [alice]\n"
+        "targets:\n"
+        "  demo:\n"
+        "    platform: ios\n"
+        "    app: {id: com.x}\n"
+        "orgs:\n"
+        "  default:\n"
+        "    members: [alice]\n"
     )
     assert identity_matches_org(orgs, "alice", [], []) is True
     assert identity_matches_org(orgs, "stranger", [], []) is False
@@ -123,14 +141,25 @@ def test_editor_teams_parse_from_the_editor_teams_alias() -> None:
     # BE-0313: `editorTeams` on an org names the flat Teams whose members are editors — a list since
     # BE-0375 unit 9, so an org spanning several GitHub organizations can name one Team in each.
     _, orgs = load_serve_config(
-        "targets:\n  demo: { bundleId: com.x }\n"
-        "orgs:\n  acme:\n    githubOrgs: [acme-gh]\n"
+        "targets:\n"
+        "  demo:\n"
+        "    platform: ios\n"
+        "    app: {id: com.x}\n"
+        "orgs:\n"
+        "  acme:\n"
+        "    githubOrgs: [acme-gh]\n"
         "    editorTeams: [acme-gh/scenario-maintainers, other-gh/leads]\n"
     )
     assert orgs["acme"].editor_teams == ["acme-gh/scenario-maintainers", "other-gh/leads"]
     # Empty by default.
     _, plain = load_serve_config(
-        "targets:\n  demo: { bundleId: com.x }\norgs:\n  acme:\n    githubOrgs: [acme-gh]\n"
+        "targets:\n"
+        "  demo:\n"
+        "    platform: ios\n"
+        "    app: {id: com.x}\n"
+        "orgs:\n"
+        "  acme:\n"
+        "    githubOrgs: [acme-gh]\n"
     )
     assert plain["acme"].editor_teams == []
 
@@ -141,38 +170,54 @@ def test_the_retired_singular_editor_team_key_folds_into_editor_teams() -> None:
     # failure with no org model at all — every login of a deployment that missed one key would be
     # turned away, the silent lockout BE-0352's retired-name warning exists to prevent.
     _, orgs = load_serve_config(
-        "targets:\n  demo: { bundleId: com.x }\n"
-        "orgs:\n  acme:\n    editorTeam: acme-gh/scenario-maintainers\n"
+        "targets:\n"
+        "  demo:\n"
+        "    platform: ios\n"
+        "    app: {id: com.x}\n"
+        "orgs:\n"
+        "  acme: {editorTeam: acme-gh/scenario-maintainers}\n"
     )
     assert orgs["acme"].editor_teams == ["acme-gh/scenario-maintainers"]
     # Both spellings set is the likelier partial rename; neither Team loses its role to the other.
     _, both = load_serve_config(
-        "targets:\n  demo: { bundleId: com.x }\n"
-        "orgs:\n  acme:\n    editorTeams: [acme-gh/new]\n    editorTeam: acme-gh/old\n"
+        "targets:\n"
+        "  demo:\n"
+        "    platform: ios\n"
+        "    app: {id: com.x}\n"
+        "orgs:\n"
+        "  acme:\n"
+        "    editorTeams: [acme-gh/new]\n"
+        "    editorTeam: acme-gh/old\n"
     )
     assert both["acme"].editor_teams == ["acme-gh/new", "acme-gh/old"]
     # `editorTeam: ""` meant "no editor Team" before the rename and still does: folding it in would
     # leave an entry matching no Team that nonetheless makes this org look like it declares a roster.
     _, empty = load_serve_config(
-        'targets:\n  demo: { bundleId: com.x }\norgs:\n  acme:\n    editorTeam: ""\n'
+        "targets:\n"
+        "  demo:\n"
+        "    platform: ios\n"
+        "    app: {id: com.x}\n"
+        "orgs:\n"
+        "  acme: {editorTeam: ''}\n"
     )
     assert empty["acme"].editor_teams == []
     assert orgs_declaring_membership(empty) == []
 
 
-TEAM_YAML = """
-targets:
-  demo: { bundleId: com.example.demo }
-
-orgs:
-  acme:
-    githubOrgs: [acme-gh]
-    targets: [demo]
-  globex:
-    githubTeams: [globex-gh/qa, globex-gh/ops]
-  initech:
-    editorTeams: [initech-gh/scenario-maintainers, initech-gh/leads]
-"""
+TEAM_YAML = (
+    "targets:\n"
+    "  demo:\n"
+    "    platform: ios\n"
+    "    app: {id: com.example.demo}\n"
+    "orgs:\n"
+    "  acme:\n"
+    "    githubOrgs: [acme-gh]\n"
+    "    targets: [demo]\n"
+    "  globex:\n"
+    "    githubTeams: [globex-gh/qa, globex-gh/ops]\n"
+    "  initech:\n"
+    "    editorTeams: [initech-gh/scenario-maintainers, initech-gh/leads]\n"
+)
 
 
 def test_github_teams_admit_and_place_a_login() -> None:
@@ -213,8 +258,13 @@ def test_team_matching_stops_at_ascii_case() -> None:
     # `str.lower`, not `str.casefold`: full folding equates `gruß` with `gruss`, which GitHub keeps
     # distinct, so a Team anyone in that organization can create would clear the sign-in gate.
     _, orgs = load_serve_config(
-        "targets:\n  demo: { bundleId: com.x }\n"
-        "orgs:\n  acme:\n    githubTeams: [acme-gh/gru\u00df]\n"
+        "targets:\n"
+        "  demo:\n"
+        "    platform: ios\n"
+        "    app: {id: com.x}\n"
+        "orgs:\n"
+        "  acme:\n"
+        "    githubTeams: [acme-gh/gruß]\n"
     )
     assert identity_matches_org(orgs, "mallory", [], ["acme-gh/gruss"]) is False
     assert identity_matches_org(orgs, "erin", [], ["ACME-GH/GRU\u00df"]) is True
@@ -249,25 +299,31 @@ def test_github_teams_parse_from_the_github_teams_alias() -> None:
 def test_malformed_orgs_block_fails_loudly() -> None:
     # An `orgs:` that isn't a mapping (org name -> config) is a config error, not silently ignored.
     with pytest.raises(ValueError, match="orgs: must be a mapping"):
-        load_serve_config("targets:\n  demo: { bundleId: com.x }\norgs:\n  - not-a-mapping\n")
+        load_serve_config(
+            "targets:\n  demo:\n    platform: ios\n    app: {id: com.x}\norgs: [not-a-mapping]\n"
+        )
 
 
 def test_present_but_falsy_orgs_block_fails_loudly() -> None:
     # A present-but-non-mapping scalar (e.g. `orgs: ""`) must not silently collapse to single-tenant;
     # only a missing/null block or an empty mapping is treated as "no orgs".
     with pytest.raises(ValueError, match="orgs: must be a mapping"):
-        load_serve_config('targets:\n  demo: { bundleId: com.x }\norgs: ""\n')
+        load_serve_config("targets:\n  demo:\n    platform: ios\n    app: {id: com.x}\norgs: ''\n")
 
 
 def test_empty_orgs_mapping_is_single_tenant() -> None:
     # An empty mapping (`orgs: {}`) is a legitimate "no orgs", not an error.
-    cfg, orgs = load_serve_config("targets:\n  demo: { bundleId: com.x }\norgs: {}\n")
+    cfg, orgs = load_serve_config(
+        "targets:\n  demo:\n    platform: ios\n    app: {id: com.x}\norgs: {}\n"
+    )
     assert orgs == {}
     assert targets_for_org(orgs, cfg.targets, "default") == ["demo"]
 
 
 def test_no_orgs_block_is_single_tenant() -> None:
-    cfg, orgs = load_serve_config("targets:\n  demo: { bundleId: com.example.demo }\n")
+    cfg, orgs = load_serve_config(
+        "targets:\n  demo:\n    platform: ios\n    app: {id: com.example.demo}\n"
+    )
     assert orgs == {}
     assert org_for_identity(orgs, "alice", [], []) == "default"
     # With no orgs declared, the default org owns every target.

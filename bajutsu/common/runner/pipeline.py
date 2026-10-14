@@ -118,7 +118,7 @@ def _launch_unconfirmed(readiness: ReadinessResult | None) -> bool:
     `count` is the gate's weakest rung — a bare `len(elements) >= 2`, which a slow cold boot's
     SpringBoard icons satisfy before the app itself foregrounds — so a `ready` answer there is no
     evidence the app rendered. It is also the *ordinary* rung rather than a rare one: `launch_driver`
-    passes no `id_namespaces`, so every target declaring no `readyWhen` lands on it at every launch.
+    passes no `id_namespaces`, so every target declaring no `startWhen` lands on it at every launch.
 
     This is the first consumer to decide behavior from a `ReadinessResult` rather than word a
     diagnostic message, which is why `ReadinessResult`'s own docstring now names the use. It stays
@@ -1711,14 +1711,19 @@ def _hooks_for(
     them. Each folded step is stamped with its own target's name — for an `after` entry, every step
     inside the rule rather than the rule itself, which carries no target of its own — so a hook is
     exactly as unambiguous about which target it acts on as an author-written step already has to be.
+
+    A scenario with `preconditions.run.inheritSetup: false` folds in no target's setup (BE-0452); the
+    targets' cleanup still runs, since cleanup runs on every path out of a scenario.
     """
+    inherit = s.preconditions.run.inherit_setup
     if not s.targets:
-        return list(eff.run_defaults.before), list(eff.run_defaults.after)
+        return list(eff.run_defaults.before) if inherit else [], list(eff.run_defaults.after)
     before: list[Step] = []
     after: list[AfterRule] = []
     for name in s.target_names:
         target_eff = (target_effs or {}).get(name, eff)
-        before += [_stamped(h, name) for h in target_eff.run_defaults.before]
+        if inherit:
+            before += [_stamped(h, name) for h in target_eff.run_defaults.before]
         after += [
             rule.model_copy(update={"steps": [_stamped(h, name) for h in rule.steps]})
             for rule in target_eff.run_defaults.after

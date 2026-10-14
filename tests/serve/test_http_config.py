@@ -154,8 +154,13 @@ def test_http_open_local_config_from_subdir_binds_config_dir(tmp_path: Path) -> 
     )
     cfg = proj / "bajutsu.config.yaml"
     cfg.write_text(
-        "defaults: { backend: [ios] }\n"
-        "targets:\n  demo: { bundleId: com.example.demo, scenarios: scn }\n",  # relative to the config
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app: {id: com.example.demo}\n"
+            "    paths: {scenarios: scn}\n"
+        ),  # relative to the config
         encoding="utf-8",
     )
     runs = tmp_path / "runs"
@@ -196,8 +201,13 @@ def test_http_open_config_from_git_binds_checkout(
     )
     git_cfg = checkout / "bajutsu.config.yaml"
     git_cfg.write_text(
-        "defaults: { backend: [ios] }\n"
-        "targets:\n  fromgit: { bundleId: com.example.fromgit, scenarios: e2e }\n",
+        (
+            "targets:\n"
+            "  fromgit:\n"
+            "    platform: ios\n"
+            "    app: {id: com.example.fromgit}\n"
+            "    paths: {scenarios: e2e}\n"
+        ),
         encoding="utf-8",
     )
     monkeypatch.setattr(
@@ -250,7 +260,7 @@ def test_http_config_content_returns_local_yaml_without_provenance(tmp_path: Pat
         assert d["provenance"] is None  # a local file has no commit to point at
         # The parsed structure powers the UI's collapsible tree; it mirrors the file faithfully
         # (targets keyed by name), with no env interpolation applied.
-        assert set(d["parsed"]) == {"defaults", "targets"}
+        assert set(d["parsed"]) == {"targets"}
         assert set(d["parsed"]["targets"]) == {"demo", "other"}
     finally:
         server.shutdown()
@@ -264,7 +274,7 @@ def test_http_config_content_uses_restricted_loader_and_stays_json_safe(tmp_path
     # reads state.binding.config directly (no schema re-validation), so a tricky file exercises both.
     _, _, runs = project(tmp_path)
     cfg = tmp_path / "tricky.yaml"
-    cfg.write_text("on: 1\nreleased: 2020-01-02\ndefaults: { backend: [ios] }\n", encoding="utf-8")
+    cfg.write_text("{'on': 1, released: 2020-01-02}\n", encoding="utf-8")
     server, port = _serve(srv.ServeState(config=cfg, runs_dir=runs, cwd=tmp_path))
     try:
         d = _get_json(port, "/api/config/content")  # would raise on a 500 (non-JSON-safe payload)
@@ -301,7 +311,13 @@ def test_http_git_config_with_escaping_path_is_refused(
     checkout.mkdir()
     git_cfg = checkout / "bajutsu.config.yaml"
     git_cfg.write_text(
-        "targets:\n  evil: { bundleId: com.example.evil, scenarios: ../../../etc }\n",
+        (
+            "targets:\n"
+            "  evil:\n"
+            "    platform: ios\n"
+            "    app: {id: com.example.evil}\n"
+            "    paths: {scenarios: ../../../etc}\n"
+        ),
         encoding="utf-8",
     )
     monkeypatch.setattr(
@@ -325,7 +341,9 @@ def test_http_config_rejects_absolute_traversal_outside_root(tmp_path: Path) -> 
     root = tmp_path / "root"
     root.mkdir()
     secret = tmp_path / "secret.yaml"  # outside root, but inside tmp_path
-    secret.write_text("targets: {evil: {bundleId: x}}\n", encoding="utf-8")
+    secret.write_text(
+        ("targets:\n  evil:\n    platform: ios\n    app: {id: x}\n"), encoding="utf-8"
+    )
     _, _, runs = project(tmp_path)
     server, port = _serve(srv.ServeState(runs_dir=runs, root=root, cwd=tmp_path))
     try:
@@ -350,7 +368,13 @@ def test_http_local_config_with_escaping_path_is_refused(tmp_path: Path) -> None
     secret.mkdir()
     local_cfg = config_dir / "bajutsu.config.yaml"
     local_cfg.write_text(
-        "targets:\n  evil: { bundleId: com.example.evil, scenarios: ../../secret }\n",
+        (
+            "targets:\n"
+            "  evil:\n"
+            "    platform: ios\n"
+            "    app: {id: com.example.evil}\n"
+            "    paths: {scenarios: ../../secret}\n"
+        ),
         encoding="utf-8",
     )
     _, _, runs = project(tmp_path)
@@ -379,7 +403,13 @@ def test_http_local_config_sibling_within_root_is_accepted(tmp_path: Path) -> No
     )
     local_cfg = config_dir / "bajutsu.config.yaml"
     local_cfg.write_text(
-        "targets:\n  demo: { bundleId: com.example.demo, scenarios: ../scenarios }\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app: {id: com.example.demo}\n"
+            "    paths: {scenarios: ../scenarios}\n"
+        ),
         encoding="utf-8",
     )
     _, _, runs = project(tmp_path)
@@ -434,7 +464,10 @@ def test_http_hosted_refuses_path_bind_but_git_still_binds(
     checkout = tmp_path / "gitsrc"
     checkout.mkdir()
     git_cfg = checkout / "bajutsu.config.yaml"
-    git_cfg.write_text("targets:\n  fromgit: { bundleId: com.example.fromgit }\n", encoding="utf-8")
+    git_cfg.write_text(
+        ("targets:\n  fromgit:\n    platform: ios\n    app: {id: com.example.fromgit}\n"),
+        encoding="utf-8",
+    )
     monkeypatch.setattr(
         ops, "materialize", lambda spec, **kw: Materialized(git_cfg, checkout, "sha")
     )

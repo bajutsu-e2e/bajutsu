@@ -70,10 +70,17 @@ def _ios_state(tmp_path: Path) -> ServeState:
     )
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "defaults: { backend: [ios] }\n"
-        "targets:\n"
-        f"  ios: {{ bundleId: com.example.ios, backend: [ios], scenarios: {scn_dir} }}\n"
-        f"  xcuitest_only: {{ bundleId: com.example.x, backend: [xcuitest], scenarios: {scn_dir} }}\n",
+        (
+            "targets:\n"
+            "  ios:\n"
+            "    platform: ios\n"
+            f"    app: {{id: com.example.ios}}\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+            "  xcuitest_only:\n"
+            "    platform: ios\n"
+            f"    app: {{id: com.example.x}}\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     runs = tmp_path / "runs"
@@ -120,9 +127,13 @@ def test_start_enrich_rebases_app_path_against_state_cwd(tmp_path: Path) -> None
     app_dir.mkdir(parents=True)
     cfg = bundle / "bajutsu.config.yaml"
     cfg.write_text(
-        "defaults: { backend: [ios] }\n"
-        "targets:\n"
-        f"  demo: {{ bundleId: com.example.demo, appPath: app/MyApp.app, scenarios: {scn_dir} }}\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            f"    app: {{id: com.example.demo, path: app/MyApp.app}}\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     runs = tmp_path / "runs"
@@ -181,7 +192,7 @@ def test_start_enrich_ios_target_resolves_to_xcuitest(tmp_path: Path) -> None:
 
 
 def test_start_enrich_single_actuator_target_unchanged(tmp_path: Path) -> None:
-    # A single-actuator target is a hard pin: enrich hands the factory exactly its backend list.
+    # A target names one platform (BE-0452), so the factory receives that platform as its backend.
     seen: list[list[str]] = []
 
     def factory(_eff: object, backends_list: list[str], _udid: str) -> tuple[FakeDriver, object]:
@@ -197,7 +208,7 @@ def test_start_enrich_single_actuator_target_unchanged(tmp_path: Path) -> None:
         agent_factory=lambda: agent,
     )
     assert status == 200
-    assert seen == [["xcuitest"]]
+    assert seen == [["ios"]]
 
 
 def test_start_enrich_explicit_body_backend_wins(tmp_path: Path) -> None:
@@ -257,8 +268,15 @@ def test_start_enrich_refuses_under_provider_none(
     )
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "defaults: { backend: [fake], ai: { provider: none } }\n"
-        f"targets:\n  demo: {{ bundleId: com.example.demo, scenarios: {scn_dir} }}\n",
+        (
+            "defaults:\n"
+            f"  ai: {{provider: none}}\n"
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            f"    app: {{id: com.example.demo}}\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     runs = tmp_path / "runs"

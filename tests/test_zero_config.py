@@ -96,9 +96,14 @@ def _fake_config(tmp_path: Path) -> tuple[Path, Path]:
     scn.write_text("- name: demo\n  steps:\n    - tap: { id: home.title }\n", encoding="utf-8")
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "defaults: { backend: [fake] }\n"
-        "targets:\n"
-        "  demo: { bundleId: com.example.demo, idNamespaces: [home] }\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.example.demo\n"
+            "      idNamespaces: [home]\n"
+        ),
         encoding="utf-8",
     )
     return cfg, scn

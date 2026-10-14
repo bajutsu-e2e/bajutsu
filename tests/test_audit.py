@@ -321,7 +321,10 @@ def _audit_project(tmp_path: Path) -> tuple[Path, Path]:
     scn = tmp_path / "s.yaml"
     scn.write_text("- name: x\n  steps:\n    - tap: { id: home.start }\n", encoding="utf-8")
     cfg = tmp_path / "bajutsu.config.yaml"
-    cfg.write_text("targets:\n  demo:\n    bundleId: com.example.demo\n", encoding="utf-8")
+    cfg.write_text(
+        ("targets:\n  demo:\n    platform: ios\n    app: {id: com.example.demo}\n"),
+        encoding="utf-8",
+    )
     return scn, cfg
 
 
@@ -353,7 +356,10 @@ def test_repeat_cli_rejects_a_multi_target_scenario(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     cfg = tmp_path / "bajutsu.config.yaml"
-    cfg.write_text("targets:\n  demo:\n    bundleId: com.example.demo\n", encoding="utf-8")
+    cfg.write_text(
+        ("targets:\n  demo:\n    platform: ios\n    app: {id: com.example.demo}\n"),
+        encoding="utf-8",
+    )
     result = runner.invoke(
         app,
         ["audit", str(scn), "--repeat", "2", "--target", "demo", "--config", str(cfg)],
@@ -379,7 +385,15 @@ def test_repeat_cli_rejects_a_target_mismatched_single_declared_target(tmp_path:
     )
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "targets:\n  ios:\n    bundleId: com.example.ios\n  web: { baseUrl: 'http://x/' }\n",
+        (
+            "targets:\n"
+            "  ios:\n"
+            "    platform: ios\n"
+            "    app: {id: com.example.ios}\n"
+            "  web:\n"
+            "    platform: web\n"
+            "    app: {url: 'http://x/'}\n"
+        ),
         encoding="utf-8",
     )
     result = runner.invoke(
@@ -409,7 +423,10 @@ def test_repeat_cli_allows_a_matching_single_declared_target(
         encoding="utf-8",
     )
     cfg = tmp_path / "bajutsu.config.yaml"
-    cfg.write_text("targets:\n  demo:\n    bundleId: com.example.demo\n", encoding="utf-8")
+    cfg.write_text(
+        ("targets:\n  demo:\n    platform: ios\n    app: {id: com.example.demo}\n"),
+        encoding="utf-8",
+    )
     result = runner.invoke(
         app,
         ["audit", str(scn), "--repeat", "2", "--target", "demo", "--config", str(cfg)],
@@ -426,12 +443,16 @@ def test_repeat_cli_rejects_a_bad_target_config_hook(tmp_path: Path) -> None:
     scn.write_text("- name: x\n  steps:\n    - tap: { id: home.start }\n", encoding="utf-8")
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "targets:\n"
-        "  demo:\n"
-        "    bundleId: com.example.demo\n"
-        "    before:\n"
-        "      - target: web\n"
-        "        tap: { id: home.start }\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app: {id: com.example.demo}\n"
+            "    hooks:\n"
+            "      setup:\n"
+            "      - target: web\n"
+            "        tap: {id: home.start}\n"
+        ),
         encoding="utf-8",
     )
     result = runner.invoke(
@@ -461,7 +482,7 @@ def test_repeat_cli_unavailable_backend_exits_two(tmp_path: Path) -> None:
             str(cfg),
         ],
     )
-    assert result.exit_code == 2 and "no available actuator" in result.output
+    assert result.exit_code == 2 and "does not match the target's platform" in result.output
 
 
 def test_repeat_audit_still_stops_the_server_when_shutdown_raises(
@@ -493,7 +514,7 @@ def test_repeat_audit_still_stops_the_server_when_shutdown_raises(
     monkeypatch.setattr(
         audit_command,
         "_select_actuator_or_exit",
-        lambda backend, eff, available: ("fake", ["fake"]),
+        lambda backend, eff, available, worker=None: ("fake", ["fake"]),
     )
     monkeypatch.setattr(audit_command, "environment_for", lambda actuator, udid: _FakeEnv())
     monkeypatch.setattr(audit_command, "device_pool", fake_device_pool)

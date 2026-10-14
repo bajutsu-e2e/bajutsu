@@ -22,10 +22,10 @@ bajutsu codegen <scenario.yaml> --target <name> [--emit xcuitest | playwright | 
 ```
 
 `--emit` は `xcuitest`（既定）、`playwright`、`uiautomator` のいずれかです。`-o -`（既定）なら標準出力に、
-ファイルパスならそのファイルに書き出します。`--emit playwright` は web ターゲット（`targets.<name>.baseUrl` の設定）を、
-`--emit uiautomator` は Android ターゲット（`targets.<name>.package` の設定）を要求します。
+ファイルパスならそのファイルに書き出します。`--emit playwright` は web ターゲット（`platform: web` と `targets.<name>.app.url` の設定）を、
+`--emit uiautomator` は Android ターゲット（`platform: android` と `targets.<name>.app.id` の設定）を要求します。
 対応するターゲットでなければ終了コード 2 で終わります。config の
-`launchEnv` は生成テストに引き継がれます（[cli](cli.md#codegen)）。XCUITest では `app.launchEnvironment` に、
+`app.launch.env` は生成テストに引き継がれます（[cli](cli.md#codegen)）。XCUITest では `app.launchEnvironment` に、
 Playwright では `localStorage` のシードに反映され、UI Automator では intent extra として渡されます。
 
 ## XCUITest の出力の形
@@ -60,7 +60,7 @@ final class ComponentsUITests: XCTestCase {
 
 - ヘルパ `el(id)` / `byLabel(label)` / `matchingId(glob)` が、単一フィールドのセレクタ 3 形（id / label /
   idMatches）を XCUIElement に橋渡しします。
-- 各メソッドは冒頭で `launchEnvironment` を設定してから `app.launch()` を呼びます。env は **config の `launchEnv` <
+- 各メソッドは冒頭で `launchEnvironment` を設定してから `app.launch()` を呼びます。env は **config の `app.launch.env` <
   シナリオの `preconditions.launchEnv`** のマージで、テスト側が勝ちます。
 
 ### セレクタのマッピング（XCUITest）
@@ -179,8 +179,8 @@ test.describe('Components', () => {
 });
 ```
 
-- 各テストは `BASE_URL`（アプリの `baseUrl`。web では `page.goto` が `launch` に相当）へ遷移します。config の
-  `launchEnv` < シナリオの `preconditions.launchEnv` は `page.addInitScript(() => localStorage.setItem(...))` で
+- 各テストは `BASE_URL`（アプリの `app.url`。web では `page.goto` が `launch` に相当）へ遷移します。config の
+  `app.launch.env` < シナリオの `preconditions.launchEnv` は `page.addInitScript(() => localStorage.setItem(...))` で
   シードします。別のチャネル（クエリパラメータやクッキー）を期待するアプリには `// TODO` を出します。
 - 待機はすべて Playwright の自動待機を使います。出力する固定の時間は `longPress` の `delay` だけで、これは
   ジェスチャ固有のものです。iOS 側が `press(forDuration:)` に対して取るのと同じ扱いです。方向指定の
@@ -448,7 +448,7 @@ class ComponentsUITest {
   は、セレクタではなくパッケージと試行回数の上限を名指しして失敗します。
   読み取り専用のアサーションは、従来どおり `device.findObject` /
   `device.findObjects` を直接呼び、待機しません。これはドライバ自身のアサーションと同じ挙動です。
-- 各メソッドは `extras` マップ（config の `launchEnv` < シナリオの `preconditions.launchEnv`）を組み立て、
+- 各メソッドは `extras` マップ（config の `app.launch.env` < シナリオの `preconditions.launchEnv`）を組み立て、
   `launch(extras)` を呼びます。この関数は env を intent extra として渡します。adb backend の `am start --es` の
   逆向きです。
 - `launch` はアプリの最初のウィンドウを待ってから、そのウィンドウの描画が落ち着くまで待ちます

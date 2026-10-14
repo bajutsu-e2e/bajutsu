@@ -51,7 +51,7 @@ a `uiautomator dump` exposes (Compose's `stateDescription` is not in the dump). 
 
 ## Launch-env hooks and deeplinks
 
-`launchEnv` (SPEC §3) arrives as **intent extras** on the launcher Activity — BE-0007's launch
+The launch env (`app.launch.env`, SPEC §3) arrives as **intent extras** on the launcher Activity — BE-0007's launch
 sequence passes them via `am start` — read once at launch: `SHOWCASE_UITEST`, `SHOWCASE_TAB`,
 `SHOWCASE_API_URL`, `SHOWCASE_HTTP_BASE`, `SHOWCASE_GESTURES`. `SHOWCASE_GESTURES` (BE-0232) swaps the
 whole five-tab UI for a flat, scroll-free pinch/rotate screen (`log.pinch` / `log.rotate`), mirroring
@@ -79,6 +79,6 @@ make -C demos/showcase/android views-noax-build   # just the Views no-a11y produ
 ```
 
 Each APK lands at `<module>/build/outputs/apk/<flavor>/debug/`, exactly where
-[`../showcase.config.yaml`](../showcase.config.yaml)'s android targets point their `appPath`.
+[`../showcase.config.yaml`](../showcase.config.yaml)'s android targets point their `app.path`.
 `run` / `doctor` against these targets need the BE-0007 adb backend; until it lands,
 `--backend android` fails with the registry's "not implemented yet".

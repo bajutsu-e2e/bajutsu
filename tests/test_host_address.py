@@ -57,7 +57,7 @@ def test_the_config_overrides_the_interfaces() -> None:
 
     found = host_candidates("10.0.0.2", environ={}, read_interfaces=_no_ifconfig)
     assert found.addresses == ("10.0.0.2",)
-    assert found.source == "xcuitest.hostAddress"
+    assert found.source == "driver.runner.hostAddress"
 
 
 def test_without_an_explicit_address_the_interfaces_are_offered() -> None:
@@ -78,7 +78,7 @@ def test_an_explicit_entry_is_normalized_or_refused_naming_its_source() -> None:
     found = host_candidates("[fd00::1], build-host.local", environ={}, read_interfaces=str)
     assert found.addresses == ("fd00::1", "build-host.local")
     for bad in ("192.168.1.20:8080", "fe80::1%en0", "fe80::1", "10.0.0.0/8"):
-        with pytest.raises(HostAddressError, match=r"xcuitest\.hostAddress"):
+        with pytest.raises(HostAddressError, match=r"driver\.runner\.hostAddress"):
             host_candidates(bad, environ={}, read_interfaces=str)
     with pytest.raises(HostAddressError, match=HOST_ADDRESS_ENV):
         host_candidates(None, environ={HOST_ADDRESS_ENV: "1.2.3.4:5"}, read_interfaces=str)

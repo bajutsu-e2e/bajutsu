@@ -236,7 +236,7 @@ def test_a_server_without_a_queue_refuses_a_fan_out(tmp_path: Path) -> None:
     cfg.write_text("targets: {}\n", encoding="utf-8")
     state = ServeState(config=cfg, runs_dir=tmp_path / "runs", cwd=tmp_path)
     assert isinstance(state.executor, UnqueuedExecutor)
-    payload, status = start_run_set(state, {"target": "demo"})
+    payload, status = start_run_set(state, {"target": "demo", "environment": "devicefarm"})
     assert status == 400
     assert "needs a queue and a worker" in payload["error"]
 
@@ -320,8 +320,13 @@ def _storage_state(
     cfg = tmp_path / "server" / "bajutsu.config.yaml"
     cfg.parent.mkdir()
     cfg.write_text(
-        "targets:\n  demo:\n    platform: android\n    package: com.example.demo\n"
-        f"    scenarios: scenarios\n    cloudBatch: devicefarm\n    appPath: {app_path}\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: android\n"
+            f"    app: {{id: com.example.demo, path: {app_path}}}\n"
+            f"    paths: {{scenarios: scenarios}}\n"
+        ),
         encoding="utf-8",
     )
     (cfg.parent / "app.apk").write_bytes(b"APK")
@@ -373,7 +378,7 @@ def test_a_leased_fan_out_job_runs_on_the_worker_from_its_own_workspace(
     monkeypatch.delenv("BAJUTSU_DATABASE_URL", raising=False)
     executor = _Recording()
     state = _storage_state(tmp_path, executor)
-    _payload, status = start_run_set(state, {"target": "demo"})
+    _payload, status = start_run_set(state, {"target": "demo", "environment": "devicefarm"})
     assert status == 200
     (job,) = executor.jobs
     spec = job_spec(job)

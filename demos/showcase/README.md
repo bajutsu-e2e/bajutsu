@@ -58,7 +58,7 @@ make -C demos/showcase uikit-noax-build   # just the UIKit no-a11y product
 ```
 
 Each build lands at `…/build/dd/Build/Products/Debug-iphonesimulator/<Scheme>.app`, exactly
-where `showcase.config.yaml`'s `appPath` expects it. Generated `*.xcodeproj` and `build/` are
+where `showcase.config.yaml`'s `app.path` expects it. Generated `*.xcodeproj` and `build/` are
 gitignored.
 
 ## Run (on a booted Simulator)

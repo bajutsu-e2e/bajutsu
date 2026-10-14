@@ -316,39 +316,6 @@ def test_device_type_of_reads_the_unfiltered_listing() -> None:
     assert simctl.device_type_of("CCC", run=run) is None
 
 
-def test_device_type_identifier_and_newest_iphone() -> None:
-    import json
-
-    payload = json.dumps(
-        {
-            "devicetypes": [
-                {
-                    "name": "iPhone 16",
-                    "identifier": "com.apple.x.iPhone-16",
-                    "productFamily": "iPhone",
-                },
-                {"name": "iPad Pro", "identifier": "com.apple.x.iPad-Pro", "productFamily": "iPad"},
-                {
-                    "name": "iPhone 17 Pro",
-                    "identifier": "com.apple.x.iPhone-17-Pro",
-                    "productFamily": "iPhone",
-                },
-            ]
-        }
-    )
-    run = lambda args, e=None: payload  # noqa: E731
-    assert simctl.device_type_identifier("iPhone 17 Pro", run=run) == "com.apple.x.iPhone-17-Pro"
-    assert simctl.device_type_identifier("iPhone 99", run=run) is None
-    # simctl lists devicetypes oldest first, so the last iPhone is the newest installed one.
-    assert simctl.newest_iphone_device_type(run=run) == "com.apple.x.iPhone-17-Pro"
-
-    def boom(args: list[str], e: Mapping[str, str] | None = None) -> str:
-        raise OSError("simctl not found")
-
-    assert simctl.device_type_identifier("iPhone 17 Pro", run=boom) is None
-    assert simctl.newest_iphone_device_type(run=boom) is None
-
-
 def test_create_device_returns_the_new_udid() -> None:
     calls: list[list[str]] = []
 
@@ -380,68 +347,30 @@ def test_create_device_pins_the_given_runtime() -> None:
     ]
 
 
-def test_create_device_falls_back_when_the_pinned_runtime_is_gone() -> None:
+def test_create_device_never_falls_back_to_an_unpinned_create() -> None:
+    # A replacement on another runtime would change the OS a run observes (BE-0452), so a pinned
+    # create that fails is the end of the recovery rather than a retry on whatever simctl picks.
     calls: list[list[str]] = []
 
     def run(args: list[str], e: Mapping[str, str] | None = None) -> str:
         calls.append(args)
-        if len(calls) == 1:
-            raise subprocess.CalledProcessError(1, args, stderr="Invalid runtime")
-        return "AAAA-BBBB\n"
+        raise subprocess.CalledProcessError(1, args, stderr="Invalid runtime")
 
-    udid = simctl.create_device(
-        "com.apple.x.iPhone-17", run=run, runtime="com.apple.CoreSimulator.SimRuntime.iOS-19-0"
-    )
-    assert udid == "AAAA-BBBB"
-    # Falls back to an unpinned create rather than failing the run over a dropped runtime.
-    assert calls == [
-        simctl.create_cmd(
-            "bajutsu-recovered",
-            "com.apple.x.iPhone-17",
-            "com.apple.CoreSimulator.SimRuntime.iOS-19-0",
-        ),
-        simctl.create_cmd("bajutsu-recovered", "com.apple.x.iPhone-17"),
-    ]
-
-
-def test_create_device_warns_when_it_falls_back_to_unpinned(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    # A caller that only logs the *requested* runtime next to the replacement can read as a claim
-    # about what it actually got, so the fallback logs its own warning here, next to the decision.
-    calls: list[list[str]] = []
-
-    def run(args: list[str], e: Mapping[str, str] | None = None) -> str:
-        calls.append(args)
-        if len(calls) == 1:
-            raise subprocess.CalledProcessError(1, args, stderr="Invalid runtime")
-        return "AAAA-BBBB\n"
-
-    with caplog.at_level("WARNING"):
+    with pytest.raises(simctl.DeviceError, match="Invalid runtime"):
         simctl.create_device(
             "com.apple.x.iPhone-17", run=run, runtime="com.apple.CoreSimulator.SimRuntime.iOS-19-0"
         )
-    assert "could not create" in caplog.text
-    assert "com.apple.CoreSimulator.SimRuntime.iOS-19-0" in caplog.text
-    assert "unpinned" in caplog.text
+    assert len(calls) == 1
 
 
-def test_create_device_wraps_an_oserror_from_the_unpinned_retry() -> None:
-    # The pinned create's CalledProcessError handler owns the fallback call, so its own except
-    # OSError does not apply there — the fallback needs (and had been missing) its own.
-    calls: list[list[str]] = []
-
+def test_create_device_wraps_an_oserror() -> None:
     def run(args: list[str], e: Mapping[str, str] | None = None) -> str:
-        calls.append(args)
-        if len(calls) == 1:
-            raise subprocess.CalledProcessError(1, args, stderr="Invalid runtime")
         raise OSError("cannot fork")
 
     with pytest.raises(simctl.DeviceError, match="cannot fork"):
         simctl.create_device(
             "com.apple.x.iPhone-17", run=run, runtime="com.apple.CoreSimulator.SimRuntime.iOS-19-0"
         )
-    assert len(calls) == 2
 
 
 def test_create_device_fails_loudly_when_no_runtime_remains() -> None:
@@ -940,17 +869,15 @@ def test_a_probe_folds_a_timeout_into_its_fallback(caplog: pytest.LogCaptureFixt
     assert simctl.device_catalog(run=_timing_out) == {}
     assert simctl.device_available("AAA", run=_timing_out) is None
     assert simctl.device_type_of("AAA", run=_timing_out) is None
-    assert simctl.device_type_identifier("iPhone 17 Pro", run=_timing_out) is None
-    assert simctl.newest_iphone_device_type(run=_timing_out) is None
     assert simctl.Env("UDID", run=_timing_out).system_locale_matches("ja_JP") is None
     assert simctl.Env("UDID", run=_timing_out).is_installed("com.x") is False
 
     logged = [r.getMessage() for r in caplog.records]
-    assert len(logged) == 10  # one trace per probe, none of them silent
+    assert len(logged) == 8  # one trace per probe, none of them silent
     assert all("timed out" in message for message in logged)
     # Each names the fallback it reported, so a trace says what the caller was told, not only that
     # something timed out.
-    assert len(set(logged)) == 10
+    assert len(set(logged)) == 8
 
 
 def test_a_timeout_is_not_absorbed_by_the_idempotent_calls() -> None:

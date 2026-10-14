@@ -62,9 +62,9 @@ alone, and the two never cross. Every worker also advertises `host:<os>` for its
 job requires `host:darwin`, so it reaches a Mac worker alone (BE-0450).
 
 A worker capability file declares what one machine can run. It lists the drivers and caps the
-targets one scenario may hold. Pass it with `bajutsu worker --worker-config <worker.yaml>`. A target's
-`requires:` list can still pin an iOS runtime or a device class. The list now logs a deprecation
-notice. The worker's `--capabilities` goes away in the next release. See [capability-routed
+targets one scenario may hold. Pass it with `bajutsu worker --worker-config <worker.yaml>`. BE-0452
+removed a target's `requires:` list, so no job can pin an iOS runtime or a device class yet. The
+worker's `--capabilities` logs a deprecation notice and goes away in the next release. See [capability-routed
 queues](../../docs/self-hosting.md#capability-routed-queues-be-0166).
 
 > The compose stack and images are **not exercised by CI** (no Docker on the gate). Verify a

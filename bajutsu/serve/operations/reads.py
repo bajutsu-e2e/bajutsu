@@ -14,7 +14,7 @@ from bajutsu.analysis import stats as _stats
 from bajutsu.common import handoff
 from bajutsu.common.analytics import ledger as _usage_ledger
 from bajutsu.common.analytics import stats as _usage_stats
-from bajutsu.common.config import Config, load_config, resolve
+from bajutsu.common.config import Config, load_config_file, resolve
 from bajutsu.common.devices import os as device_os
 from bajutsu.common.drivers import base as driver_base
 from bajutsu.common.evidence import StepView, step_view
@@ -78,12 +78,9 @@ def list_scenarios(
 
 
 def _primary_backend(config: Config, name: str) -> str:
-    """The target's first (effective) backend token, so the Web UI can tell web from iOS apps."""
+    """The target's platform, so the Web UI can tell web from iOS apps (BE-0452: one per target)."""
     target = config.targets.get(name)
-    if target is None:
-        return ""
-    backends = target.backend or config.defaults.backend
-    return backends[0] if backends else ""
+    return target.platform if target is not None else ""
 
 
 def list_targets_payload(
@@ -1197,11 +1194,10 @@ def resolve_scenario_pick(  # noqa: C901, PLR0911
     if forbidden:
         return forbidden
 
-    config = load_config(cfg.read_text(encoding="utf-8"))
-    target_cfg = config.targets.get(target)
-    if target_cfg is None:
+    config = load_config_file(cfg)
+    if target not in config.targets:
         return {"error": f"unknown target: {target}"}, 400
-    namespaces: list[str] = list(target_cfg.id_namespaces)
+    namespaces: list[str] = list(resolve(config, target).id_namespaces)
 
     try:
         raw_elements = state.for_org(_org).artifacts.open_bytes(f"{run_id}/{step_id}/elements.json")

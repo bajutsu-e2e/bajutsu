@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0452") |
-| 実装 PR | [#2191](https://github.com/bajutsu-e2e/bajutsu/pull/2191)（単位 1〜3） |
+| 実装 PR | [#2191](https://github.com/bajutsu-e2e/bajutsu/pull/2191)（単位 1〜3）、PR_PLACEHOLDER18（単位 4） |
 | トピック | ドライバとバックエンドのアーキテクチャ |
 | 関連 | [BE-0126](../BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config-ja.md)、[BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact-ja.md)、[BE-0228](../BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation-ja.md)、[BE-0076](../BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md)、[BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks-ja.md)、[BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction-ja.md)、[BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch-ja.md)、[BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md)、[BE-0447](../BE-0447-install-app-step/BE-0447-install-app-step-ja.md)、[BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md) |
 <!-- /BE-METADATA -->
@@ -443,7 +443,7 @@ target は、どこで実行するかを持たなくなります。target が書
 - [x] 作業単位 1: `VersionSpec`
 - [x] 作業単位 2: 未確定の事実の確認
 - [x] 作業単位 3: プラットフォームのレジストリとモデル
-- [ ] 作業単位 4: スキーマの切り替え、固定データ、`demos/`の設定ファイル
+- [x] 作業単位 4: スキーマの切り替え、固定データ、`demos/`の設定ファイル
 - [ ] 作業単位 5: setup と cleanup
 - [ ] 作業単位 6: コマンドラインのフラグ
 - [ ] 作業単位 7: シナリオの preconditions
@@ -466,6 +466,27 @@ target は、どこで実行するかを持たなくなります。target が書
     前置きの説明は、`DESIGN.md`、`docs/configuration.md`、`docs/dsl-grammar.md`にあります。target の`setup:`を設定する設定ファイルがないので、シナリオのディレクトリによって別のファイルに解決される参照もありません。
   - 作業単位2では AVD 名も確かめました。リポジトリには、AVD 名を読むコードがまだありません。Android の CI が起動するのは API レベル34だけで、この作業単位では読み取れるエミュレータもありませんでした。エミュレータは、AVD 名をカーネルのコマンドラインで渡します。API レベル31以降のイメージは`ro.boot.qemu.avd_name`として公開し、それより古いイメージは`ro.kernel.qemu.avd_name`として公開します。この区別は、端末から読んだ結果ではなく、エミュレータの既知の動作に基づきます。そのため確度は中程度です。作業単位8では両方のプロパティを読み、どちらも返さないエミュレータでは失敗させるべきです。そうすれば、`avd`の条件がメッセージなしに外れることはありません。この読み取りは未完了の項目として残し、作業単位8で各 API レベルの実際のエミュレータを使って確かめます。手元のエミュレータなら、`adb emu avd name`でエミュレータのコンソールに問い合わせる方法も、さらなる代替になります。
   - 設計の記述から外れた点が2つあります。1つ目は`xcuitest.hostAddress`で、設計の記述より後に加わったキーです。runner の他のキーと一緒に`driver.runner.hostAddress`へ移すことにし、2つの表に記載しました。2つ目は Web のエンジンの一覧`WEB_ENGINES`で、Web のモデルの隣へ移しました。現在のローダーは、そこから読み込みます。
+- PR_PLACEHOLDER18（単位 4）— スキーマの切り替えが入りました。ローダーは用途別の11個のキーだけを読みます。設定ファイル、デモ、テストの固定データも、すべて新しい形へ移しました。
+  - `Config`は、検証の前に`defaults`を各 target の生の値へマージします。そのあと`TargetConfig`が、`app`、`runsOn`、`driver`を`validate_group`で検証します。target の`run`は、プラットフォームごとに1つのモデルで検証します。このモデルは、共通の`RunPolicy`にプラットフォームのフィールドを加えたものです。そのため未知のキーのエラーは、両方のフィールドを並べます。範囲は文字列のまま持ち、iOS の`en_US`の既定値は`resolve`が与えます。
+  - ローダーは、設定ファイルのパスとスイートのルートを受け取ります。`load_config(text, path=, root=)`と`load_config_file(path, root=)`です。Git のソースを指す`--config`は、チェックアウトをルートとして渡します。ほかの呼び出し元はファイルだけを渡し、そのときのルートは設定ファイル自身のディレクトリです。
+  - target は、`run.secrets`、`evidence.redact`の各リスト、それらを含むブロックに`null`を書けません。読み込みはそのパスを示して失敗するので、target がチームのマスクを消すことはありません。
+  - 動作の変更です。設定の`evidence.redact.unmaskSecureFields`と`unmaskCredentialNames`が効くようになりました。以前の解決処理は両方を捨てていたので、マスクは常に有効でした。`defaults`に書いた値は、すべての target に届きます。
+  - serve は、run、record、crawl のリクエストの`backend`を target と照らし合わせ、合わなければ400を返します。振り分けが、そのような組をどのワーカーにも広げることはありません。`environment: appium`の run で、グリッドの target とローカルの target を混ぜたシナリオは、設計のとおり振り分けの時点で400になります。
+  - `deviceProvider`、`cloudBatch`、`cloudBatchBudget`、`requires`を取り除き、サーバー側の予算の仕組みも取り除きました。`run-set`はバッチの provider を指す`environment`を必須とし、`deviceBudget`を含むリクエストには400を返します。通常の run のリクエストは`environment: appium`を受け付けます。端末を操作するすべてのコマンドが`appium`の environment を持つ`--worker-config`を受け付け、`triage --rerun`はそれを引き継ぎます。`--udid`は URL を受け付けなくなりました。
+  - 未対応の検査です。`_select_actuator_or_exit`は、`runsOn`に条件を持つ target を`run`、`record`、`crawl`、`repl`、`audit`で拒否します。MCP の doctor ツールと`doctor`の画面の検査も拒否します。`--backend fake`はこの検査を飛ばし、通知を1回だけ出します。宣言されたフィールドは、作業単位9のために`Effective.conditions`が持ちます。
+  - `preconditions.setup`と`apply_setups`を取り除き、`preconditions.run.inheritSetup`を加えました。前置きは、作業単位2が挙げた8つのテストのファイルの外にはありませんでした。それらのテストは、代わりにコンポーネントの解決を確かめます。target の hook の`use:`は、新しい`expand_steps`で読み込み時に解決します。`hooks.cleanup`は引き続き`on: error`を受け付けます。
+  - 置き換えの Simulator は、記録した端末の種類とランタイムを保つか、run を失敗させます。`simctl.create_device`は、ランタイムを指定しない作成を再試行しなくなりました。設定の端末と最新の iPhone への代替も取り除きました。
+  - 設計の記述から外れた点が10個あり、それぞれをここに記録します。
+    - `worker.yaml`は、グリッドを`environment: appium`の隣の`appium:`ブロックに書きます。`environment`は現在スカラーの値だからです。このブロックは`endpoint`と`platform`を持ちます。
+    - serve のリクエストの`backend`は、1つのトークンに限ります。capture、enrich、doctor は、それをプロセスの中で確かめます。run、record、crawl は、起動したコマンドに確認を任せます。振り分けは確認済みの値を読むので、`backend: fake`のジョブは macOS のホストを要求しません。設定の`backend: [fake]`と同じ扱いです。
+    - `backends.py`のコスト順の選択と、`doctor`の actuator の解決の表示は残しました。backend のトークンが1つなので、どちらも常に固定の経路を通ります。そのため取り除いても動作は変わらず、後の整理に回します。
+    - `fake`プラットフォームの`app`は、`startWhen`と`idNamespaces`も受け付けます。fake のドライバは、準備完了の判定と`doctor`の採点で id の規約を読むからです。
+    - run の manifest に記録する準備完了のシグナルは`readyWhen`のまま残し、古い manifest も同じように読めるようにしました。
+    - doctor の設定の検査（`preflight.config_checks`）は、防御のための検査として残しました。スキーマがあるので、コマンドラインからはもう届きません。対処の案内は`app.id`と`app.url`を示します。
+    - 文書全体の見直しは作業単位13に残します。この作業単位では`docs/configuration.md`を書き直し、削除したキーを現行のものとして説明していたほかのページを更新しました。
+    - serve の設定の表示は、アップロードのバンドルのルートや束縛のディレクトリではなく、設定ファイル自身のディレクトリをスイートのルートにします。serve が起動する run は設定をローカルのファイルとして読むので、両者が同じ hook のコンポーネントを受け付けます。
+    - コンポーネントのファイルの中のパス参照は、ほかのコンポーネントと同じく、呼び出したシナリオのディレクトリを基準に解決します。そのため、コンポーネントに書き直した前置きは、自分のディレクトリを基準にできなくなります。作業単位2はテストの外に前置きを見つけなかったので、変わる設定はありません。
+    - `serve --backend`の意味は変えません。BE-0449 がすでに非推奨にしています。
 
 ## 参考
 

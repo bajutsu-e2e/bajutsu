@@ -4,12 +4,11 @@ The fan-out is driven end to end: `start_run_set` queues one job per scenario in
 the worker's slot loop leases them over the real worker operations, submits each to an in-memory
 Device Farm fake, and posts the verdicts back. The budget is the worker file's `maxJobConcurrency`;
 a shutdown lets in-flight leases lapse, and a restarted worker resumes each run from its stored ARN.
-The server-side budget settings still cap the fan-out for one release, with a notice.
+The server-side budget settings that capped the fan-out for one release are gone (BE-0452).
 """
 
 from __future__ import annotations
 
-import logging
 import threading
 import time
 from collections.abc import Callable, Iterator
@@ -23,7 +22,6 @@ from typer.testing import CliRunner
 
 from bajutsu.cli import app
 from bajutsu.common import deprecations
-from bajutsu.common.config import load_config
 from bajutsu.serve import batch_provider as bp
 from bajutsu.serve import operations as ops
 from bajutsu.serve.cli import worker as worker_mod
@@ -34,7 +32,6 @@ from bajutsu.serve.server.db_executor import DbQueueExecutor
 from bajutsu.serve.server.models import Base
 from bajutsu.serve.server.worker_job import execute_job_spec
 from bajutsu.serve.state import Job, ServeState
-from bajutsu.serve.state.job_registry import JobRegistry
 
 runner = CliRunner()
 
@@ -136,7 +133,7 @@ def _register(cloud: _Cloud) -> None:
     )
 
 
-def _fan_out_state(tmp_path: Path, scenarios: dict[str, str], *, budget: str = "") -> ServeState:
+def _fan_out_state(tmp_path: Path, scenarios: dict[str, str]) -> ServeState:
     """A database-backed server whose `demo` target fans out to Device Farm from its own directory."""
     project = tmp_path / "project"
     (project / "scenarios").mkdir(parents=True)
@@ -145,8 +142,13 @@ def _fan_out_state(tmp_path: Path, scenarios: dict[str, str], *, budget: str = "
     (project / "app.apk").write_bytes(b"APK")
     config = project / "bajutsu.config.yaml"
     config.write_text(
-        "targets:\n  demo:\n    platform: android\n    package: com.example.demo\n"
-        "    scenarios: scenarios\n    cloudBatch: devicefarm\n    appPath: app.apk\n" + budget,
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: android\n"
+            "    app: {id: com.example.demo, path: app.apk}\n"
+            "    paths: {scenarios: scenarios}\n"
+        ),
         encoding="utf-8",
     )
     # A file, not the in-memory database: every slot thread opens its own connection.
@@ -263,7 +265,7 @@ def test_a_full_worker_sends_no_lease_request_until_a_result_is_posted(
 ) -> None:
     names = ("one.yaml", "two.yaml", "three.yaml")
     state = _fan_out_state(tmp_path, {n: _SCENARIO.format(name=n[:-5]) for n in names})
-    payload, code = start_run_set(state, {"target": "demo"})
+    payload, code = start_run_set(state, {"target": "demo", "environment": "devicefarm"})
     assert code == 200 and "warnings" not in payload
     first, second, third = payload["jobIds"]
     cloud = _Cloud()
@@ -321,7 +323,7 @@ def test_a_shutdown_lets_leases_lapse_and_a_restarted_worker_resumes_every_run(
     state = _fan_out_state(
         tmp_path, {n: _SCENARIO.format(name=n[:-5]) for n in ("one.yaml", "two.yaml")}
     )
-    payload, _code = start_run_set(state, {"target": "demo"})
+    payload, _code = start_run_set(state, {"target": "demo", "environment": "devicefarm"})
     job_ids = payload["jobIds"]
     cloud = _Cloud()
     _register(cloud)
@@ -603,7 +605,7 @@ def test_the_worker_picks_its_loop_from_max_job_concurrency(
         assert seen["slots"] == 2
 
 
-# --- unit 5: the worker capability check, and the deprecated server-side budget ------------------
+# --- unit 5: the worker capability check -----------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -622,7 +624,7 @@ def test_a_scenario_the_worker_cannot_run_fails_before_anything_is_submitted(
     words: str,
 ) -> None:
     state = _fan_out_state(tmp_path, {"one.yaml": scenario})
-    payload, _code = start_run_set(state, {"target": "demo"})
+    payload, _code = start_run_set(state, {"target": "demo", "environment": "devicefarm"})
     (job_id,) = payload["jobIds"]
     cloud = _Cloud()
     _register(cloud)
@@ -679,52 +681,3 @@ def test_a_local_worker_file_checks_no_batch_job(tmp_path: Path) -> None:
     assert _batch_worker_capability({}, _worker_file(tmp_path, slots=1)) is None
     checked = _batch_worker_capability({"batch": {}}, _worker_file(tmp_path, slots=1))
     assert checked is not None and checked.environment == "devicefarm"
-
-
-def test_the_server_side_budget_is_still_honored_with_a_notice(
-    tmp_path: Path, caplog: pytest.LogCaptureFixture
-) -> None:
-    names = ("one.yaml", "two.yaml", "three.yaml")
-    with caplog.at_level(logging.WARNING, logger="bajutsu.common.deprecations"):
-        state = _fan_out_state(
-            tmp_path,
-            {n: _SCENARIO.format(name=n[:-5]) for n in names},
-            budget="    cloudBatchBudget: 3\n",
-        )
-        payload, code = start_run_set(state, {"target": "demo", "deviceBudget": 2})
-
-    assert code == 200
-    assert len(payload["jobIds"]) == 2  # still capped this release
-    assert [w.split(" is deprecated")[0] for w in payload["warnings"]] == [
-        "cloudBatchBudget",
-        "deviceBudget",
-    ]
-    assert all("maxJobConcurrency" in w for w in payload["warnings"])
-    logged = [r.getMessage() for r in caplog.records if r.name == deprecations.logger.name]
-    assert any("'cloudBatchBudget' is deprecated" in m for m in logged)
-    assert any("'deviceBudget' is deprecated" in m for m in logged)
-    assert all("maxJobConcurrency" in m for m in logged)
-
-
-def test_the_config_field_warns_once_and_still_loads(caplog: pytest.LogCaptureFixture) -> None:
-    text = "targets:\n  demo:\n    package: com.example.demo\n    cloudBatchBudget: 2\n"
-    with caplog.at_level(logging.WARNING, logger="bajutsu.common.deprecations"):
-        first = load_config(text)
-        load_config(text)
-    assert first.targets["demo"].cloud_batch_budget == 2
-    assert [r.name for r in caplog.records].count(deprecations.logger.name) == 1
-
-
-def test_the_registry_cap_still_caps_and_leaves_the_notice_to_the_dispatcher() -> None:
-    registry = JobRegistry(logbus=InMemoryLogBus())
-    request = bp.BatchRequest(
-        provider="devicefarm",
-        scenario="s.yaml",
-        target="demo",
-        config="c.yaml",
-        platform="android",
-        app_path="a.apk",
-    )
-    assert registry.try_register(Job(batch=request), max_concurrent_batch=1) is not None
-    assert registry.try_register(Job(batch=request), max_concurrent_batch=1) is None
-    assert deprecations._emitted == set()

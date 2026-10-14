@@ -16,9 +16,9 @@
 |---|---|---|
 | **A. ルール（`capturePolicy`）** ★中心 | 「特定動作の **たびに**」自動取得 | `settings.*` を tap するたびにネットワーク通信 |
 | **B. ステップ単体（`capture:`）** | この 1 ステップだけ | 特定の wait 後に video + deviceLog |
-| **C. 既定ポリシー** | 全体の最低保証 | config の `capture: [screenshot.after, elements, actionLog]` |
+| **C. 既定ポリシー** | 全体の最低保証 | config の `evidence: { capture: [screenshot.after, elements, actionLog] }` |
 
-> C（config 既定）の `capture` は `Effective.capture` に解決されます（[configuration](configuration.md)）。この値は、シナリオの `capturePolicy` やステップごとの `capture` と並んで、すべてのステップに適用されます。他の2つとは異なり、条件によって発火するのではなく常に適用されるため、ルールではなく最低保証として働きます。
+> C（config 既定）の `evidence.capture` は `Effective.capture` に解決されます（[configuration](configuration.md)）。この値は、シナリオの `capturePolicy` やステップごとの `capture` と並んで、すべてのステップに適用されます。他の2つとは異なり、条件によって発火するのではなく常に適用されるため、ルールではなく最低保証として働きます。
 >
 > この 3 つはいずれも、各ステップが動作の前後ですでに記録している証跡に**上乗せ**して指示するものです。
 > したがって、どれかで `screenshot.after` や `elements` を挙げても結果は変わらず、挙げなくても失うものは
@@ -50,7 +50,7 @@
 >
 > **iOS の `app:` ブロックの中では、すべての要素の値が `null` になります。** レスポンダはテスト対象アプリの中で動きます。別のアプリが画面を持っているあいだ、テスト対象アプリはバックグラウンドで停止しています。そのため、テスト対象アプリの位置情報は、ブロックが読んでいるツリーとは別のツリーのものです。さらに、停止中のアプリに溜まった問い合わせは、アプリの再開時に `SIGPIPE` でアプリを終了させることを実測で確かめました（[ホーム画面ウィジェットのスパイク](../specs/ios-home-screen-widget-feasibility.md)）。ドライバはブロックが終わるまで、この問い合わせを行いません。
 >
-> **Android では、ターゲット側でも `targets.<name>` に `nativeZ: true` を書いて要求する必要があります。** 値を得るために、resident server は画面の読み取りごとに全ノードを走査します。走査にかかる時間は 20 ミリ秒から 100 ミリ秒で、アプリがビューを1つも opt-in していなくても変わりません（[BE-0407](../../roadmaps/BE-0407-step-latency-driver-internal-tuning/BE-0407-step-latency-driver-internal-tuning-ja.md) の作業単位 18）。`BajutsuZOrder.report(view)` を呼んでいても `nativeZ: true` を書かなければ、値は `null` になります。報告されない他の場合と同じ、正直な欠落です。iOS に対応するフラグはありません。レスポンダはアプリが BajutsuKit をリンクしているときだけ応答するので、opt-in していないターゲットが問い合わせの費用を払うことはないからです。
+> **Android では、ターゲット側でも `targets.<name>` に `driver: { nativeZ: true }` を書いて要求する必要があります。** 値を得るために、resident server は画面の読み取りごとに全ノードを走査します。走査にかかる時間は 20 ミリ秒から 100 ミリ秒で、アプリがビューを1つも opt-in していなくても変わりません（[BE-0407](../../roadmaps/BE-0407-step-latency-driver-internal-tuning/BE-0407-step-latency-driver-internal-tuning-ja.md) の作業単位 18）。`BajutsuZOrder.report(view)` を呼んでいても `nativeZ: true` を書かなければ、値は `null` になります。報告されない他の場合と同じ、正直な欠落です。iOS に対応するフラグはありません。レスポンダはアプリが BajutsuKit をリンクしているときだけ応答するので、opt-in していないターゲットが問い合わせの費用を払うことはないからです。
 
 > `rawTree` は、デバイス・runner 自身が返した応答をそのまま `hierarchy.raw<suffix>` として書き出します。adb なら `uiautomator dump` または resident channel の XML（`.xml`）、XCUITest なら `GET /elements` の未デコードのボディ（`.json`）で、いずれも bajutsu 側の加工を経ていません。adb の resident channel で narrowing が何かを変えた場合に限り、パーサーが実際に消費したデータ（SystemUI の装飾ウィンドウを取り除いた後のダンプ）も `hierarchy.parsed-input<suffix>` として併せて書き出します。XCUITest はこの種の変換を一切行わないため、2 つ目のファイルを書き出すことはありません。狙いは、解決した座標と実際の画面がずれたときに、デバイス側・runner 側の応答がすでにおかしかったのか、bajutsu 側のパースで変わったのかを切り分けることです。既定の capture リストには含まれず、シナリオが `capture: [rawTree, ...]` で明示的に指定したときだけ取得します。
 >
@@ -255,11 +255,10 @@ BajutsuKit のポーリングが動くのは、実際に動作する Simulator �
 調査者はそのシナリオのタッチの証跡を失います。このチャネルが取り除こうとしているのは、まさにその
 トレードオフであり、運べる場面では取り除き、運べない場面ではこれまでどおり払うことになります。
 
-`--backend` に候補を複数渡した run では、actuator の条件を二重に満たす必要があります。collector を
-前もって立てるのは run 全体の actuator ですが、actuator の解決自体はシナリオごとに走るからです
-（BE-0240）。`--backend web,ios` の run は collector を 1 つも立てません。この run のなかで
-`xcuitest` へ切り替わったシナリオには、コマンドを運ぶ先がありません。そのため、そのシナリオも
-マーカーを描かないままになります。
+`--backend` が名指しするのはターゲットの platform 1 つで、順序付きのフォールバックリストではありません
+（[BE-0452](../../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)）。
+そのため、run 全体の actuator からリストの次の actuator へ切り替わり、前もって立てた collector を
+持たないシナリオは生じません。
 
 マーカーを描かないという扱いは、その扱いを受けたシナリオの内側にとどまります。あるシナリオが
 チャネルを起動し、次のシナリオはマーカーなしのまま、という組み合わせも起こります。run は
@@ -273,7 +272,7 @@ BajutsuKit のポーリングが動くのは、実際に動作する Simulator �
 マーカーの写った画像を比較する代わりに、2 つの関門を挙げて失敗します。
 
 run ループが読むのは起動環境の 2 つの値だけで、`--touch-markers` が組にした値なのか、シナリオが
-自分で置いた値なのかを見分けられません。ここで言う起動環境は、ターゲット自身の `launchEnv` と
+自分で置いた値なのかを見分けられません。ここで言う起動環境は、ターゲット自身の `app.launch.env` と
 シナリオ自身の `launchEnv` を、起動処理と同じ順序で重ね合わせた値です。ターゲットがどちらかの値を
 全シナリオに固定している場合も、実際に起動したアプリが受け取る値のとおりに判定します。この起動環境に
 `BAJUTSU_CONTROL_CHANNEL=1` がすでに置かれているシナリオが、スクリーンショットを読む判定を持たない
@@ -307,7 +306,7 @@ class EvidenceSink(Protocol):
 
 | フィールド | 何を答えるか |
 |---|---|
-| `readiness` | 起動後の準備完了ゲートを通過したか、どのシグナル（`readyWhen` / `namespace` / `count`、あるいは通過せず `timeout`）で通過したか、そして画面が静止していたか（`settled`）です。「ゲートがコンテンツより先に返った」のか「コンテンツは描画されたが待機対象の要素が現れなかった」のかを切り分けます。`settled: false` は、ツリーがまだ変化している最中にゲートが返ったことを示します。合成されたタッチが取りこぼされるのはこの状態なので、「この wait の手前の操作が届いていない可能性がある」と読みます。取りこぼされたタップも配送済みとして報告されるためです。準備完了結果を持たないレーンでは `null` になります。 |
+| `readiness` | 起動後の準備完了ゲートを通過したか、どのシグナル（ターゲットの `app.startWhen` の条件を表す `readyWhen` / `namespace` / `count`、あるいは通過せず `timeout`）で通過したか、そして画面が静止していたか（`settled`）です。「ゲートがコンテンツより先に返った」のか「コンテンツは描画されたが待機対象の要素が現れなかった」のかを切り分けます。`settled: false` は、ツリーがまだ変化している最中にゲートが返ったことを示します。合成されたタッチが取りこぼされるのはこの状態なので、「この wait の手前の操作が届いていない可能性がある」と読みます。取りこぼされたタップも配送済みとして報告されるためです。準備完了結果を持たないレーンでは `null` になります。 |
 | `trace` | ポーリングの時系列です。何回ポーリングしたか、ツリーが最初に空でなくなった時刻（`firstNonemptySeconds`、一度も空でなくならなければ `null`）、タイムアウト時点で要素がいくつあったかを記録し、「何も描画されなかった / 一時的に空」「描画されたが待機対象の要素が無い」「コールドブートで描画が遅い」を切り分けます。 |
 | `provenance` | [BE-0049](../../roadmaps/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md) のスタンプ（シナリオハッシュ、ツールバージョン、git リビジョン）です。run から独立して証跡を識別できるようにします。この `scenarioHash` は**このシナリオ単体**のフィンガープリントです。run マニフェストの `scenarioHash` は、存在すればファイルレベルの `description` を取り込みますが、こちらはそれを含みません。そのため、スイートやマトリクスの run に限らず、単一シナリオの run でもマニフェストのハッシュと一致しないことがあります。 |
 | `elements` | タイムアウトした瞬間の要素ツリー（マスキング済み）です。 |
@@ -331,7 +330,7 @@ class EvidenceSink(Protocol):
 
 | バックエンド | `app-crash/` に入るもの | クラッシュの確認方法 |
 |---|---|---|
-| iOS（XCUITest）、**シミュレータのみ** | macOS の `ReportCrash` が異常終了したプロセスに対して書いた `.ips` レポート（ファイル名はそのまま）。レポートがないときは、代わりに `unified-log.txt` を保存します。中身は、アプリの起動以降についてシミュレータ自身が記録したユニファイドログで、末尾 256 KB に制限します。GitHub がホストする macOS ランナーがこの場合に当たり、`ReportCrash` はシミュレータのアプリについてレポートを書きません | `XCUIApplication.state` が `notRunning` を返すこと。実機（`xcuitest.deviceType: device`）では何も確認しません。同じ答えが OS のメモリ逼迫による kill を意味することがあり、実機のレポートはこのホストに届かないためです |
+| iOS（XCUITest）、**シミュレータのみ** | macOS の `ReportCrash` が異常終了したプロセスに対して書いた `.ips` レポート（ファイル名はそのまま）。レポートがないときは、代わりに `unified-log.txt` を保存します。中身は、アプリの起動以降についてシミュレータ自身が記録したユニファイドログで、末尾 256 KB に制限します。GitHub がホストする macOS ランナーがこの場合に当たり、`ReportCrash` はシミュレータのアプリについてレポートを書きません | `XCUIApplication.state` が `notRunning` を返すこと。実機（`runsOn.kind: device`）では何も確認しません。同じ答えが OS のメモリ逼迫による kill を意味することがあり、実機のレポートはこのホストに届かないためです |
 | Android（adb）、**API 30 以上** | `logcat-crash.txt`（このプロセス向けのクラッシュバッファのブロック。マネージド `FATAL EXCEPTION` またはネイティブ `Fatal signal`）と、デバイスが `adb root` を許すときは `tombstone_NN` | `pidof` がプロセスを報告せず、かつ `dumpsys activity exit-info` がこの起動以降の `CRASH` / `CRASH_NATIVE` を報告すること。API 30 未満では `ApplicationExitInfo` が存在しないので、何も確認しません |
 | web（Playwright） | なし | 後続の項目に委ねています |
 
@@ -424,11 +423,11 @@ class Artifact:
 
 `visual` アサーションは `VisualEvidence` レコードを生成し、manifest とレポートに反映します。run ディレクトリからの相対パスとして、baseline コピー、実際のスクリーンショット、差分画像（差分が見つかった場合）を持ち、`diff_pct`（差分ピクセルの割合）と `engine`（判定を行った比較エンジン、`"exact"` または `"pixelmatch"`。[BE-0165](../../roadmaps/BE-0165-visual-compare-engines/BE-0165-visual-compare-engines-ja.md)）を記録します。
 
-エンジンはアサーション単位（`compare:`）で選択でき、ターゲットレベルの config（`visualCompare`）にフォールバックします。使用されたエンジンは manifest に記録されるため、各判定がどのアルゴリズムで行われたかを追跡できます。実装: `bajutsu/assertions/visual.py` `VisualEvidence`。
+エンジンはアサーション単位（`compare:`）で選択でき、ターゲットレベルの config（`run.visualCompare`）にフォールバックします。使用されたエンジンは manifest に記録されるため、各判定がどのアルゴリズムで行われたかを追跡できます。実装: `bajutsu/assertions/visual.py` `VisualEvidence`。
 
 ## マスキング（redact）
 
-スクリーンショット、ログ、ネットワークデータには、PII（個人情報）やトークンが写り込む可能性があります。保存前に、マスクする対象を宣言してください。実装: `scenario/models/evidence.py` `Redact`。config の `redact` とシナリオの `redact` はマージ（union）されます（[configuration](configuration.md#redact-のマージ)）。
+スクリーンショット、ログ、ネットワークデータには、PII（個人情報）やトークンが写り込む可能性があります。保存前に、マスクする対象を宣言してください。実装: `scenario/models/evidence.py` `Redact`。config の `evidence.redact` とシナリオの `redact` はマージ（union）されます（[configuration](configuration.md#redact-のマージ)）。
 
 ```yaml
 redact:
@@ -514,7 +513,7 @@ run ディレクトリへの書き込みは、すべて1つのシンクを通り
 
 > redact は証跡の書き出し前に **適用されます**（`evidence/redaction.py` `Redactor`）。device log と app trace は key→value パターンでスクラブし、要素ツリーは label が設定済みなら value をマスクします（または埋め込まれた secret をスクラブします）。各 network exchange は構造的にマスクします。ヘッダ値は名前で処理し、url / request / response の body はフリーテキストとして処理するので、クエリパラメータや `token` / `password` の body フィールドも捕捉します。画像（スクリーンショット / video）はマスクできず、そのまま残ります。
 >
-> redact は **secret の入力値** にも及びます。`${secrets.X}` の背後にある実値（環境から解決し、config の `secrets:` で宣言します。[configuration](configuration.md#シークレットsecrets)）は、設定済みの `labels` / `headers` / `fields` だけでなく、証跡に現れる箇所すべてでマスクします。長い値から先にマスクするため、ある値が別の値の部分文字列であっても、部分的な漏れは起きません。
+> redact は **secret の入力値** にも及びます。`${secrets.X}` の背後にある実値（環境から解決し、config の `run.secrets` で宣言します。[configuration](configuration.md#シークレットrunsecrets)）は、設定済みの `labels` / `headers` / `fields` だけでなく、証跡に現れる箇所すべてでマスクします。長い値から先にマスクするため、ある値が別の値の部分文字列であっても、部分的な漏れは起きません。
 >
 > 値の照合は **エンコードを考慮** します。同じ秘密値でも、証跡に現れるときは多くの場合エンコードされており、そのままのバイト列は現れません。redact は、生の値に加えて、よくあるエンコード形もマスクします。パーセントエンコード（URL のクエリやフォームフィールド。たとえば `p@ss` は `p%40ss` になります）、HTML エスケープと JSON エスケープの形、そして `Authorization: Basic <base64(user:pass)>` トークンのうちデコードした認証情報がその値を含むもの、の三種です。これは既知の値に対して固定された変換を適用する方式（値をエンコードしてから検索します）であり、証跡内のあらゆる文字列をデコードして総当たりする方式ではないので、コストと誤検出の範囲は限定的なままです。一つ制約が残ります。redact が動く前に証跡が実際に断片化している場合（ストリーミングのチャンクにまたがって分割され、redact が一つの連続した文字列として見られない値）は、照合がベストエフォートになります。組み立て済みの全文の証跡という通常のケースには影響しません。
 >

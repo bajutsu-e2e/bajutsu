@@ -1,6 +1,6 @@
 """Tests for the wheel-bundled XCUITest runner resolution (BE-0292).
 
-BE-0019 required `xcuitest.testRunner` (or a `build` command) in config; this adds a third,
+BE-0019 required `driver.runner.testRunner` (or a `build` command) in config; this adds a third,
 lowest-priority tier — a runner shipped in the wheel — so a Simulator run with neither configured
 resolves to it. The resolution and the version-keyed materialize-to-cache are pure file-path logic,
 so both are exercised here without a Simulator (the sanctioned gate boundary). A real device stays
@@ -91,7 +91,9 @@ def test_build_without_a_test_runner_fails_instead_of_using_the_bundle(
     bundle = _products(tmp_path / "bundle")
     monkeypatch.setattr(xcuitest_impl, "bundled_products_dir", lambda: bundle)
     cfg = XcuitestConfig.model_validate({"build": "make runner"})
-    with pytest.raises(simctl.DeviceError, match=r"xcuitest\.build requires xcuitest\.testRunner"):
+    with pytest.raises(
+        simctl.DeviceError, match=r"driver\.runner\.build requires driver\.runner\.testRunner"
+    ):
         xcuitest._resolve_runner(cfg, "simulator")
 
 
@@ -696,7 +698,7 @@ def test_runner_source_reports_bundled(monkeypatch: pytest.MonkeyPatch, tmp_path
 def test_runner_source_reports_no_bundle_present(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(xcuitest_impl, "bundled_products_dir", lambda: None)
     assert xcuitest.runner_source(None, "simulator") == (
-        "none: no bundled runner in this build (set xcuitest.testRunner)"
+        "none: no bundled runner in this build (set driver.runner.testRunner)"
     )
 
 
@@ -709,7 +711,7 @@ def test_runner_source_reports_a_device_without_a_signing_file(
     monkeypatch.delenv(SIGNING_FILE_ENV, raising=False)
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
     source = xcuitest.runner_source(None, "device")
-    assert source.startswith("none: xcuitest.deviceType: device needs xcuitest.testRunner")
+    assert source.startswith("none: runsOn.kind: device needs driver.runner.testRunner")
     assert str(tmp_path / "xdg" / "bajutsu" / "signing.yaml") in source
 
 
@@ -769,7 +771,7 @@ def test_runner_source_reports_a_missing_test_runner_without_build(tmp_path: Pat
 def test_runner_source_reports_build_without_test_runner_as_misconfigured() -> None:
     cfg = XcuitestConfig.model_validate({"build": "make runner"})
     assert xcuitest.runner_source(cfg, "simulator") == (
-        "misconfigured: xcuitest.build requires xcuitest.testRunner"
+        "misconfigured: driver.runner.build requires driver.runner.testRunner"
     )
 
 
@@ -856,7 +858,7 @@ def test_toolchain_warning_flags_an_xcode_major_mismatch() -> None:
     assert warning is not None
     assert "Xcode 16.0 (bundled runner) vs 15.4 (host)" in warning
     # Names the escape hatch so a mismatched host has a concrete next step.
-    assert "xcuitest.testRunner" in warning and "xcuitest.build" in warning
+    assert "driver.runner.testRunner" in warning and "driver.runner.build" in warning
 
 
 def test_toolchain_warning_flags_an_sdk_major_mismatch() -> None:

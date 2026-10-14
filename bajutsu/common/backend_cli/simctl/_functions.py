@@ -592,47 +592,6 @@ def device_type_of(udid: str, run: RunFn = real_run) -> tuple[str, str] | None:
     return None
 
 
-def device_type_identifier(name: str, run: RunFn = real_run) -> str | None:
-    """The devicetype identifier a human device name resolves to ('iPhone 17 Pro' -> com.apple…).
-
-    None when this host's Xcode ships no such type — the caller then falls back rather than failing,
-    since a config default outliving the Xcode that had it is ordinary.
-    """
-    try:
-        data = json.loads(run(list_devicetypes_cmd(), None))
-    except DeviceTimeout as exc:
-        _probe_timed_out(exc, "no such device type on this host")
-        return None
-    except (subprocess.CalledProcessError, json.JSONDecodeError, OSError, ValueError):
-        return None
-    for dev_type in data.get("devicetypes") or []:
-        if dev_type.get("name") == name and dev_type.get("identifier"):
-            return str(dev_type["identifier"])
-    return None
-
-
-def newest_iphone_device_type(run: RunFn = real_run) -> str | None:
-    """The last iPhone devicetype simctl lists (None when it lists none).
-
-    simctl orders devicetypes oldest to newest, so the last iPhone is the newest one installed —
-    the same "whichever iPhone this host actually has" choice the CI boot action makes when no
-    model is pinned.
-    """
-    try:
-        data = json.loads(run(list_devicetypes_cmd(), None))
-    except DeviceTimeout as exc:
-        _probe_timed_out(exc, "no iPhone device type")
-        return None
-    except (subprocess.CalledProcessError, json.JSONDecodeError, OSError, ValueError):
-        return None
-    iphones = [
-        str(d["identifier"])
-        for d in data.get("devicetypes") or []
-        if d.get("productFamily") == "iPhone" and d.get("identifier")
-    ]
-    return iphones[-1] if iphones else None
-
-
 def create_device(
     device_type: str,
     run: RunFn = real_run,
@@ -643,33 +602,17 @@ def create_device(
     """Create a Simulator of `device_type` and return its udid.
 
     `runtime`, when given, pins the replacement to the vanished device's own iOS version instead of
-    whichever one simctl would pick. If the pinned create fails, retries once unpinned — the named
-    runtime may be exactly what the host degradation dropped, and any compatible runtime beats
-    failing the run outright over one that no longer exists. A caller that only logs the *requested*
-    runtime alongside the replacement can read as a claim about what it actually got, so the fallback
-    logs its own warning here, next to the decision that made it.
+    whichever one simctl would pick. A pinned create that fails is not retried unpinned: a
+    replacement on another OS would change what the run observes (BE-0452).
 
     Raises:
-        DeviceError: if simctl could not create the device even unpinned — chiefly a host whose iOS
-            runtimes have gone with the device we are replacing, where no replacement is possible at
-            all.
+        DeviceError: if simctl could not create the device — chiefly a host whose iOS runtimes have
+            gone with the device we are replacing, where no replacement is possible at all.
     """
     try:
         out = run(create_cmd(name, device_type, runtime), None)
     except subprocess.CalledProcessError as exc:
-        if runtime is None:
-            raise device_error(exc) from exc
-        try:
-            out = run(create_cmd(name, device_type), None)
-        except subprocess.CalledProcessError as exc2:
-            raise device_error(exc2) from exc2
-        except OSError as exc2:
-            raise DeviceError(f"could not create a replacement Simulator: {exc2}") from exc2
-        _logger.warning(
-            "could not create %s pinned to runtime %s; created it unpinned instead",
-            device_type,
-            runtime,
-        )
+        raise device_error(exc) from exc
     except OSError as exc:
         raise DeviceError(f"could not create a replacement Simulator: {exc}") from exc
     udid = out.strip().splitlines()[-1].strip() if out.strip() else ""

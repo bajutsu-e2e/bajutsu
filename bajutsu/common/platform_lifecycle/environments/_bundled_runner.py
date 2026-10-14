@@ -1,7 +1,7 @@
 """Locate and materialize the wheel-bundled generic XCUITest Simulator runner (BE-0292).
 
 The XCUITest runner is app-agnostic (BE-0019): one built ``.xctestrun`` plus its products drives
-whatever app a run targets. Shipping that runner as wheel package data lets ``xcuitest.testRunner``
+whatever app a run targets. Shipping that runner as wheel package data lets ``driver.runner.testRunner``
 be optional — a Simulator run that names no runner resolves to the bundled one here. The products
 are inert on any non-macOS install (the runner only ever runs against a Simulator), so the base
 wheel stays pure-Python; the bytes ride along as unused data.
@@ -283,7 +283,7 @@ def bundled_runner_is_stale() -> bool:
 def ensure_bundled_runner_fresh() -> None:
     """Rebuild the wheel-bundled runner when this checkout's BajutsuKit source has moved past it.
 
-    A Simulator run with no explicit ``xcuitest.testRunner`` falls back to this bundle (BE-0292); in
+    A Simulator run with no explicit ``driver.runner.testRunner`` falls back to this bundle (BE-0292); in
     a dev checkout, that fallback must track BajutsuKit's own source rather than whatever a past
     ``make serve`` or release build last staged. No-ops when ``runner_source_present()`` is false (a
     wheel install has no BajutsuKit source to compare against, so the shipped bundle is definitionally

@@ -78,9 +78,15 @@ def test_scenario_secrets_delegate_to_operations(
     (scn_dir / "smoke.yaml").write_text(SCENARIO, encoding="utf-8")
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "defaults: { backend: [ios] }\n"
-        "targets:\n"
-        f"  demo: {{ bundleId: com.example.demo, scenarios: {scn_dir}, secrets: [LOGIN_PASSWORD] }}\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            f"    app: {{id: com.example.demo}}\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+            "    run:\n"
+            "      secrets: [LOGIN_PASSWORD]\n"
+        ),
         encoding="utf-8",
     )
     runs = tmp_path / "runs"
@@ -156,8 +162,13 @@ def test_upload_route_binds_bundle_like_stdlib(tmp_path: Path) -> None:
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr(
             "bajutsu.config.yaml",
-            "defaults: { backend: [fake] }\n"
-            "targets:\n  demo: { bundleId: com.example.demo, scenarios: ./scenarios }\n",
+            (
+                "targets:\n"
+                "  demo:\n"
+                "    platform: ios\n"
+                "    app: {id: com.example.demo}\n"
+                "    paths: {scenarios: ./scenarios}\n"
+            ),
         )
         zf.writestr("scenarios/smoke.yaml", "- name: alpha\n  steps:\n    - tap: { id: x }\n")
     zip_bytes = buf.getvalue()
@@ -264,7 +275,13 @@ def test_compose_route_binds_like_stdlib(tmp_path: Path) -> None:
     )
     (tmp_path / "runs").mkdir()
     client = _client(state)
-    config = b"defaults: { backend: [ios] }\ntargets:\n  demo: { bundleId: com.example.demo, scenarios: ./scenarios }\n"
+    config = (
+        b"targets:\n"
+        b"  demo:\n"
+        b"    platform: ios\n"
+        b"    app: {id: com.example.demo}\n"
+        b"    paths: {scenarios: ./scenarios}\n"
+    )
     scenarios = _zip({"scenarios/smoke.yaml": b"- name: a\n  steps: []\n"})
     config_sha = client.post(
         "/api/artifacts/config",
@@ -904,8 +921,13 @@ def test_doctor_endpoint_returns_checks(tmp_path: Path) -> None:
     scn_dir.mkdir()
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "defaults: { backend: [fake] }\ntargets:\n"
-        f"  demo: {{ bundleId: com.example.demo, scenarios: {scn_dir} }}\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: fake\n"
+            f"    app: {{id: com.example.demo}}\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     runs = tmp_path / "runs"

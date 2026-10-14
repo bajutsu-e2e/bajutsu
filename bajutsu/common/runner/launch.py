@@ -72,7 +72,7 @@ def launch_driver(
             unchanged BE-0218 fallback ladder.
         skip_readiness: Return as soon as the environment has started, recording the wait as
             `skipped`. For `repl --attach` (BE-0455), whose app is wherever the operator left it, so
-            waiting for the launch screen `readyWhen` names would only time out.
+            waiting for the launch screen `startWhen` names would only time out.
 
     Returns:
         The driver bound to the launched app (already polled until its UI has rendered, unless
@@ -105,7 +105,7 @@ def launch_driver(
         readiness = (
             ReadinessResult(True, "skipped", 0.0)
             if skip_readiness
-            else await_ready(driver, ready_sel=eff.ready_when, transitions=transitions)
+            else await_ready(driver, ready_sel=eff.start_when, transitions=transitions)
         )
     except BaseException:
         if driver is not None:

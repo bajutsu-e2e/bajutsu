@@ -49,8 +49,8 @@ What each target's own bundle carries:
 | `network` / `transitions` / `channel` | that target's own collector |
 | `webview_bridge` | that target's WebView bridge, so a `web:` block opens the right app |
 | `control` / `relaunch` | that target's device |
-| `mailbox` / `locale` / `capture` / `interrupts` | that target's own config |
-| `ctx` | that target's baselines / schemas / goldens directories |
+| `mailbox` / `locale` / `capture` / `interrupts` | that target's own config (`services.mailbox`, `runsOn.locale`, `evidence.capture`, `hooks.interrupts`) |
+| `ctx` | that target's `paths.baselines` / `paths.schemas` / `paths.goldens` directories |
 
 Three consequences follow from the shared loop state:
 
@@ -157,7 +157,7 @@ Decides whether each `capturePolicy` rule fires for this step ([evidence](eviden
   screenChanged` / `on.result == error`. The action name is mapped to the DSL name
   (`long_press`→`longPress`, `assert_`→`assert`).
 - `_collect_captures`: leads with `elements`, then gathers the inline `step.capture` + the fired
-  rules' captures + the config's `defaults.capture` baseline (applied unconditionally, unlike the
+  rules' captures + the target's `evidence.capture` baseline (applied unconditionally, unlike the
   other two) and dedupes. Leading with `elements` is what gives every step the post-action tree
   whatever the three sources asked for; the pre-step baseline writes no tree of its own (BE-0407),
   so this read is the step's only one, into `elements.json`'s single filename.
@@ -226,14 +226,14 @@ Builds the environment with `simctl` per the `preconditions`:
 ```
 erase (if pre.erase: shutdown → erase) → boot → bootstatus -b (wait out the boot)
   → terminate(bundle) (for a clean launch state)
-  → launch(bundle, [launchArgs, *locale_args(locale)], {**config.launchEnv, **pre.launchEnv})
+  → launch(bundle, [app.launch.args, *locale_args(locale)], {**app.launch.env, **pre.launchEnv})
   → openurl(deeplink) (if any) → make_driver(actuator, udid)
   → await_ready (poll until query() returns 2+ elements, up to 10s)
 ```
 
-> `await_ready` polls for the strongest readiness signal available, in order: an explicit `readyWhen`
-> selector, then an app-reported screen-transition event ([BE-0310](../roadmaps/BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness.md), opt-in via `BajutsuKit`), then any
-> element whose id belongs to a declared `idNamespaces`, falling back to "the app has rendered a UI
+> `await_ready` polls for the strongest readiness signal available, in order: an explicit `app.startWhen`
+> condition, then an app-reported screen-transition event ([BE-0310](../roadmaps/BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness.md), opt-in via `BajutsuKit`), then any
+> element whose id belongs to a declared `app.idNamespaces`, falling back to "the app has rendered a UI
 > (more than the root element)" — up to 10s ([configuration](configuration.md) documents each rung in
 > full). Whichever rung fires, the gate then waits for the screen to **stop moving**: it returns once
 > two consecutive queries report the same element identifiers, labels, and frames. Every rung answers
@@ -244,7 +244,7 @@ erase (if pre.erase: shutdown → erase) → boot → bootstatus -b (wait out th
 > the `screenChanged` rung, which has none of its own; it is capped at three, after which the gate
 > returns ready anyway and records `settled: false` in the first-wait diagnostic rather than holding
 > a screen that never holds still. It never turns a ready app into a timeout. `locale` **is**
-> applied at launch (the scenario's `preconditions.locale` overrides the config default, passed as
+> applied at launch (the scenario's `preconditions.locale` overrides the target's `runsOn.locale`, passed as
 > launch args via `env.locale_args`). `simctl boot` returns as soon as the boot has been *requested*,
 > so every step that follows it waits the boot out with `bootstatus` first — including the extra boot
 > cycle the system-locale pin runs ([BE-0359](../roadmaps/BE-0359-xcuitest-boot-completion-wait/BE-0359-xcuitest-boot-completion-wait.md)).
@@ -336,8 +336,8 @@ The CLI's `run` calls this `run_and_report` ([cli](cli.md#run)).
 > `erase: true` — a Simulator restart on XCUITest, an app-level clean state on adb — instead of a bare
 > in-place respawn onto the very device that just crashed it, unless the scenario declares
 > `reinstall: overwrite` to keep its app's data across the lease, or the route itself rejects any
-> `erase` precondition outright (a real device, `xcuitest.deviceType: device`, or the live WebDriver
-> endpoint). A plain `erase: false` does *not* skip the forced retry: the CLI (`_filter_scenarios` in
+> `erase` precondition outright (a real device, `runsOn.kind: device`, or the live route to an `appium`
+> grid). A plain `erase: false` does *not* skip the forced retry: the CLI (`_filter_scenarios` in
 > `bajutsu/cli/commands/run.py`) resolves every scenario's `erase` to a concrete bool, most commonly
 > `false`, before the pipeline ever sees it, so a guard on that value alone would disable the forced
 > retry on the very production path it exists for — only `reinstall: overwrite` genuinely protects a
@@ -373,13 +373,15 @@ The CLI's `run` calls this `run_and_report` ([cli](cli.md#run)).
 > and the retry reproducing the first attempt exactly. So a retry that already ran with a forced erase
 > and crashed again asks its lease's environment for a device that has never run anything, created
 > through the same path a vanished device's replacement uses; the degraded device is shut down and
-> never handed out again. The attempt's own video evidence can select that rung directly: when the
+> never handed out again. That path gives the new device the old device's own device type and
+> runtime, or fails the run; it never falls back to a configured model or to the newest iPhone
+> ([BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)). The attempt's own video evidence can select that rung directly: when the
 > recording never confirms it started writing — the wedge's earliest symptom — the *first* crash
 > escalates, skipping the erase whose remedy that signal has already ruled out. A replacement attempt
 > drops the forced erase, since a device about to be created has nothing to erase. The rung is scoped
 > to an unpinned run (`--udid` names a device the operator meant, and a replacement would silently
 > move the run off it — and an unpinned run is a pool of one device served by one worker, so the
-> escalated retry necessarily leases back the device that asked for the swap) with an `appPath` (a
+> escalated retry necessarily leases back the device that asked for the swap) with an `app.path` (a
 > blank device has nothing to install), and it honors both
 > opt-outs the erase rung honors — `reinstall: overwrite` and `bajutsu run --no-erase` — because a
 > replacement resets strictly more than an erase does. Every other route ignores the request and

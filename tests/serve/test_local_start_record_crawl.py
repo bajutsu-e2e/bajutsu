@@ -105,8 +105,13 @@ def _project(tmp_path: Path) -> Path:
     scn.mkdir()
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "defaults: { backend: [fake] }\ntargets:\n"
-        f"  demo: {{ bundleId: com.example.demo, scenarios: {scn} }}\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            f"    app: {{id: com.example.demo}}\n"
+            f"    paths: {{scenarios: {scn}}}\n"
+        ),
         encoding="utf-8",
     )
     (tmp_path / "runs").mkdir()
@@ -308,7 +313,9 @@ def test_a_worker_records_and_the_handoff_goes_page_to_worker_and_back(
     work.mkdir()
     monkeypatch.chdir(work)
 
-    started = client.post("/api/record", json={"target": "demo", "goal": "log in", "name": "login"})
+    started = client.post(
+        "/api/record", json={"target": "demo", "goal": "log in", "name": "login", "backend": "fake"}
+    )
     assert started.status_code == 200, started.text
     job_id = started.json()["jobId"]
     events: list[tuple[str, str]] = []
@@ -377,7 +384,7 @@ def test_cancelling_a_record_that_waits_on_a_person_stops_it(
     work.mkdir()
     monkeypatch.chdir(work)
     job_id = client.post(
-        "/api/record", json={"target": "demo", "goal": "log in", "name": "login"}
+        "/api/record", json={"target": "demo", "goal": "log in", "name": "login", "backend": "fake"}
     ).json()["jobId"]
     # A heartbeat far longer than the test: the cancel must reach the worker through the handoff
     # poll, not wait for the next beat.
@@ -408,7 +415,7 @@ def _leased_record(tmp_path: Path, *, token: str | None = None) -> tuple[srv.Ser
     client = TestClient(make_app(state))
     headers = {"Authorization": f"Bearer {token}"} if token else {}
     job_id = client.post(
-        "/api/record", json={"target": "demo", "goal": "log in"}, headers=headers
+        "/api/record", json={"target": "demo", "goal": "log in", "backend": "fake"}, headers=headers
     ).json()["jobId"]
     leased, code = ops.worker_lease(state, "w1", ["platform:ios"])
     assert code == 200 and leased["job_id"] == job_id

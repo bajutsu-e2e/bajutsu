@@ -361,8 +361,15 @@ def test_http_provider_settings_still_reads_available_under_a_config_kill_switch
     )
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "defaults: { backend: [ios], ai: { provider: none } }\n"
-        f"targets:\n  demo: {{ bundleId: com.example.demo, scenarios: {scn_dir} }}\n",
+        (
+            "defaults:\n"
+            f"  ai: {{provider: none}}\n"
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            f"    app: {{id: com.example.demo}}\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     runs = tmp_path / "runs"

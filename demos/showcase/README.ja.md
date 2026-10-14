@@ -57,7 +57,7 @@ make -C demos/showcase uikit-noax-build   # UIKit no-a11y プロダクトのみ
 ```
 
 各ビルドは `…/build/dd/Build/Products/Debug-iphonesimulator/<Scheme>.app` に出力され、これは
-`showcase.config.yaml` の `appPath` が期待する場所そのものです。生成される `*.xcodeproj` と `build/` は
+`showcase.config.yaml` の `app.path` が期待する場所そのものです。生成される `*.xcodeproj` と `build/` は
 gitignore 済みです。
 
 ## 実行（起動済み Simulator 上）

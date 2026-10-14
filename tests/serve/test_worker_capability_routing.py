@@ -15,13 +15,11 @@ from pathlib import Path
 
 import pytest
 import typer
-from pydantic import ValidationError
 from sqlalchemy import Engine
 
 from bajutsu.common import deprecations
 from bajutsu.common.backend_cli import simctl
 from bajutsu.common.capability.worker_capability import WorkerCapability
-from bajutsu.common.config import load_config, resolve
 from bajutsu.serve import capabilities as cap
 from bajutsu.serve.cli import worker as worker_mod
 from bajutsu.serve.helpers import target_capabilities
@@ -87,16 +85,23 @@ def test_required_capabilities_adds_the_host_token() -> None:
 def test_a_target_requires_the_host_of_the_drivers_run_selects_from(tmp_path: Path) -> None:
     cfg = _config(
         tmp_path,
-        "targets:\n"
-        "  app: { bundleId: com.example.app }\n"
-        "  fallback: { bundleId: com.example.app, backend: [ios, web] }\n"
-        "  faked: { bundleId: com.example.app, backend: [fake] }\n"
-        "  site: { baseUrl: 'https://example.com', backend: [web] }\n",
+        (
+            "targets:\n"
+            "  app:\n"
+            "    platform: ios\n"
+            "    app: {id: com.example.app}\n"
+            "  faked:\n"
+            "    platform: fake\n"
+            "    app: {id: com.example.app}\n"
+            "  site:\n"
+            "    platform: web\n"
+            "    app: {url: 'https://example.com'}\n"
+        ),
     )
     assert target_capabilities(cfg, "app") == ["host:darwin", "platform:ios"]
-    # The same actuators `run` selects from: a fallback that may resolve to `playwright`, or the
-    # fake backend, runs anywhere, so neither requires macOS.
-    assert target_capabilities(cfg, "fallback") == ["platform:ios"]
+    # The same actuators `run` selects from: the fake driver runs anywhere, so neither a fake target
+    # nor a request that sends an iOS target to the fake driver (BE-0452) requires macOS.
+    assert target_capabilities(cfg, "app", "fake") == ["platform:ios"]
     assert target_capabilities(cfg, "faked") == ["platform:ios"]
     assert target_capabilities(cfg, "site") == ["platform:web"]
 
@@ -113,7 +118,9 @@ def test_an_xcuitest_job_routes_only_to_a_darwin_worker(
 ) -> None:
     # The lease, the unroutable count, and the no-worker notice all read `can_serve`, so the job's
     # derived host requirement holds in each alike.
-    cfg = _config(tmp_path, "targets:\n  app: { bundleId: com.example.app }\n")
+    cfg = _config(
+        tmp_path, ("targets:\n  app:\n    platform: ios\n    app: {id: com.example.app}\n")
+    )
     required = target_capabilities(cfg, "app")
     # A Linux worker that still claims `platform:ios` through the deprecated override.
     linux = worker_mod._advertised_capabilities("web", "platform:ios", _local(), "linux")
@@ -178,39 +185,6 @@ def test_no_override_means_no_notice(caplog: pytest.LogCaptureFixture) -> None:
     with caplog.at_level(logging.WARNING, logger="bajutsu.common.deprecations"):
         worker_mod._advertised_capabilities("web", "", _local(), "linux")
     assert caplog.text == ""
-
-
-@pytest.mark.parametrize("where", ["defaults", "target"])
-def test_requires_warns_and_is_still_honored(where: str, caplog: pytest.LogCaptureFixture) -> None:
-    body = (
-        "defaults:\n  requires: [ios18]\ntargets:\n  s: { bundleId: com.x }\n"
-        if where == "defaults"
-        else "targets:\n  s: { bundleId: com.x, requires: [ios18] }\n"
-    )
-    with caplog.at_level(logging.WARNING, logger="bajutsu.common.deprecations"):
-        cfg = load_config(body)
-    assert resolve(cfg, "s").requires == ["ios18"]
-    assert "requires' is deprecated (BE-0450)" in caplog.text
-    assert "device" in caplog.text
-    assert "config load" in caplog.text
-
-
-def test_an_empty_requires_says_nothing(caplog: pytest.LogCaptureFixture) -> None:
-    with caplog.at_level(logging.WARNING, logger="bajutsu.common.deprecations"):
-        load_config("targets:\n  s: { bundleId: com.x, requires: [] }\n")
-    assert caplog.text == ""
-
-
-@pytest.mark.parametrize("token", ["environment:devicefarm", "host:darwin"])
-@pytest.mark.parametrize("where", ["defaults", "target"])
-def test_requires_refuses_the_reserved_prefixes(token: str, where: str) -> None:
-    body = (
-        f"defaults:\n  requires: [{token}]\ntargets:\n  s: {{ bundleId: com.x }}\n"
-        if where == "defaults"
-        else f"targets:\n  s: {{ bundleId: com.x, requires: [ios18, '{token}'] }}\n"
-    )
-    with pytest.raises(ValidationError, match="host: prefixes are reserved"):
-        load_config(body)
 
 
 @pytest.mark.parametrize("token", ["environment:devicefarm", "host:darwin"])

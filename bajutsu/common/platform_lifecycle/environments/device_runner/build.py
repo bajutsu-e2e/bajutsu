@@ -472,7 +472,7 @@ def resolve_device_runner(
     toolchain: Toolchain | None = None,
     cache_root: Path | None = None,
 ) -> Path:
-    """The cached device runner a run with no ``xcuitest.testRunner`` uses.
+    """The cached device runner a run with no ``driver.runner.testRunner`` uses.
 
     Never builds: a signing build is slow, can raise a Keychain prompt, and can register identifiers
     with Apple, none of which belongs in the middle of a pooled run. A miss names the exact command
@@ -486,7 +486,7 @@ def resolve_device_runner(
     path = find_signing_file(None, env)
     if path is None:
         raise DeviceRunnerError(
-            "xcuitest.deviceType: device with no xcuitest.testRunner needs a signing file at "
+            "runsOn.kind: device with no driver.runner.testRunner needs a signing file at "
             f"{describe_lookup(env)} (then run `{BUILD_COMMAND}`)"
         )
     signing = load_signing(path)
@@ -494,7 +494,7 @@ def resolve_device_runner(
     if source_root is None:
         raise DeviceRunnerError(
             "this install ships no XCUITest runner sources, so no device runner can be keyed; "
-            "set xcuitest.testRunner to a signed runner"
+            "set driver.runner.testRunner to a signed runner"
         )
     key = compute_key(signing, source_root, toolchain)
     runner = cached_xctestrun(key, cache_root or default_cache_root())

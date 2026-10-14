@@ -101,7 +101,7 @@ The `bajutsu/` package (Python 3.13+, pydantic v2 / typer / anthropic / pyyaml /
 | `common/scenario/interp.py` | `${ns.key}` interpolation primitive (`params.` / `row.` / `secrets.` / `vars.`) | [scenarios](scenarios.md) |
 | `common/mailbox.py` | Pure, network-free matching/extraction logic for the `email` step (BE-0046): normalize a mailbox provider's messages, match on `to`/`subject`/`subjectMatches`, select only a message that arrived after the step started, and extract a value by regex into `${vars.*}` | [scenarios](scenarios.md) |
 | `common/totp.py` | RFC 6238 time-based one-time password (TOTP) for the `totp` step (BE-0046): a pure, deterministic function of the shared secret and the time, so a code is derivable with no network and no device | [scenarios](scenarios.md) |
-| `common/config/` | Team defaults × per-target resolution (`Effective`) (package: `schema` / `effective` / `resolve` / `accessors`) | [configuration](configuration.md) |
+| `common/config/` | Team defaults × per-target resolution (`Effective`) (package: `schema` / `effective` / `resolve` / `accessors`). `schema` holds one model per target group (`services`, `run_policy`, `hooks`, `evidence`, `paths`), the `_merge` step that folds `defaults` into each target before validation, and the `platform/` registry that supplies each platform's `app` / `runsOn` / `driver` / `run` models; `load_config(text, path=, root=)` / `load_config_file(path, root=)` take the config's own path and the suite root so a `use:` component under `hooks` resolves at load ([BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)) | [configuration](configuration.md) |
 | `common/config_source/` | Acquire a config (and its scenario tree) from a Git source at an immutable commit SHA into a content-addressed cache (BE-0063) — where a config comes from, distinct from `common/config/`'s schema and resolution | [configuration](configuration.md) |
 | `common/backends.py` | Backend availability check · actuator selection (platform-aware registry: `ios` / `android` / `web` / `fake`) · driver construction | [drivers](drivers.md#backend-selection-and-the-actuator) |
 | `common/devices/` | Device-identity helpers shared across backends (package): `os.py` (the parsed device OS — platform/major/minor — read from the `device_runtime` label, BE-0358), `id.py` (the device-id validator every backend's `--udid`/config path shares, guarding against argv option injection), `errors.py` (the platform-neutral `DeviceError` base `simctl`/`adb` subclass, BE-0260, plus the `DeviceTimeout` beneath it that every backend raises when a device operation exceeded its deadline rather than failing, BE-0374) | [drivers](drivers.md) |
@@ -110,7 +110,7 @@ The `bajutsu/` package (Python 3.13+, pydantic v2 / typer / anthropic / pyyaml /
 | `common/capability/preflight.py` · `common/capability/capability_preflight.py` · `common/capability/capabilities.py` · `common/capability/worker_capability.py` | Runnability gate, per backend (iOS: required CLIs + a booted Simulator; web: Playwright + its Chromium browser), plus a scenario step's declared-capability preflight and the capability set each backend actually supports; `worker_capability.py` loads and validates the worker capability file (`worker.yaml`, with the shipped default beside it), and `capability_preflight` judges each scenario against it and the host operating system before any device is acquired (BE-0450) | [configuration](configuration.md) · [drivers](drivers.md#worker-capability-check-be-0450) |
 | `common/provisioning/requirements` | One declarative mapping: backend/capability → pip extra + external-tool probe + install method (BE-0164), shared by `preflight` and `provision` | — |
 | `common/provisioning/provision` | Config-aware environment installer (BE-0164): resolve a config's backends + AI provider, install only their extras/tools idempotently (`make install`, `python -m bajutsu.common.provisioning.provision`) | — |
-| `common/runner/` | config + scenarios → report; device pool + launch sequence; `device_provider` seam resolves where the run's devices come from — the built-in `local` pass-through, plus an `appium` provider driving a reserved iOS device end to end behind a live Appium/WebDriver endpoint (BE-0238); a further cloud-vendor kind (e.g. Firebase Device Streaming) stays a future addition; `recovery` holds the backend-crash retry-count/wall-clock-budget decision shared with the on-device driver conformance suite (BE-0334), plus the two predicates that classify a failure for it — `recovers_by_respawn` decides a retry, `is_host_fault` diagnoses a failure the host caused, and a wedged device answers the two differently (BE-0378) — the latter naming the platform-neutral `DeviceTimeout` so every backend that adopts it is covered (BE-0374); `recovery` also holds the run-level latch that stops later scenarios, carrying *why* recovery was abandoned (a spent budget or a wedged host), and the guarded-teardown policy that the pool's teardown sites, `launch_driver`, and the on-device suites' lease discard all share (BE-0342); `mailbox` resolves the `email` step's transport by a registry keyed on `kind` (the shipped `http` JSON adapter; BE-0186), mirroring `common/ai/registry.py`'s shape (package: `pipeline` / `pool` / `launch` / `device_provider` / `recovery` / `mailbox`) | [run-loop](run-loop.md#runner-the-run-pipeline) |
+| `common/runner/` | config + scenarios → report; device pool + launch sequence; `device_provider` seam resolves where the run's devices come from — the built-in `local` pass-through, plus an `appium` provider driving a reserved iOS device end to end behind a live Appium/WebDriver endpoint (BE-0238), selected by an `appium` environment in `worker.yaml` rather than a target key (BE-0452); a further cloud-vendor kind (e.g. Firebase Device Streaming) stays a future addition; `recovery` holds the backend-crash retry-count/wall-clock-budget decision shared with the on-device driver conformance suite (BE-0334), plus the two predicates that classify a failure for it — `recovers_by_respawn` decides a retry, `is_host_fault` diagnoses a failure the host caused, and a wedged device answers the two differently (BE-0378) — the latter naming the platform-neutral `DeviceTimeout` so every backend that adopts it is covered (BE-0374); `recovery` also holds the run-level latch that stops later scenarios, carrying *why* recovery was abandoned (a spent budget or a wedged host), and the guarded-teardown policy that the pool's teardown sites, `launch_driver`, and the on-device suites' lease discard all share (BE-0342); `mailbox` resolves the `email` step's transport by a registry keyed on `kind` (the shipped `http` JSON adapter; BE-0186), mirroring `common/ai/registry.py`'s shape (package: `pipeline` / `pool` / `launch` / `device_provider` / `recovery` / `mailbox`) | [run-loop](run-loop.md#runner-the-run-pipeline) |
 | `common/run_meta/` | Run-metadata helpers shared across features (package): `files.py` (the runs-root name + path-free reads of a run directory — listing, manifests), `id.py` (run id generation/parsing), `root.py` (the run directory's write provider, BE-0331 — see the import contract below), `artifact_perms.py` (owner-only `0700`/`0600` permissions for a run's artifacts, BE-0131), `object_store.py` (a backend-agnostic `ObjectStore` — local/S3/GCS — for evidence upload and server storage, BE-0110/BE-0204) | [configuration](configuration.md) |
 | `run/notify` | Run-completion notifications (e.g. Slack), sent after `bajutsu run` finishes | — |
 | `common/doctor/` | Convention score (id coverage, etc.) | [configuration](configuration.md#doctor-the-convention-score) |
@@ -441,10 +441,10 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
 #### Drivers and backend selection
 
 - Selector resolution and ambiguity detection (the determinism core)
-- Platform-aware backend registry: `--backend` / `backend:` accept `ios` / `android` / `web` /
-  `fake` tokens, each expanding to its actuators (`common/backends.py`) — `ios` expands to `xcuitest`, the
-  sole iOS actuator since BE-0290 retired idb (`--backend ios` and `--backend xcuitest` are
-  equivalent). A platform with more than one actuator would resolve **per scenario** in cost order
+- Platform-aware backend registry (`common/backends.py`): a target's required `platform` decides
+  its actuator. `ios` resolves to `xcuitest`, the sole iOS actuator since BE-0290 retired idb, and
+  `android` / `web` / `fake` each resolve to their own. `--backend` is a check, not a fallback list: it accepts the
+  target's platform, that platform's actuator, or `fake`, and exits 2 on anything else (BE-0452). A platform with more than one actuator would resolve **per scenario** in cost order
   (BE-0240); with iOS now single-actuator, no platform's cost order differs from its stability order
 - The **XCUITest backend** (`common/drivers/xcuitest`): the sole iOS actuator (BE-0290) — a resident
   on-device runner (`BajutsuKit`) driven over a loopback HTTP channel, providing semantic
@@ -452,10 +452,10 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   gestures, and reading the XCTest automation snapshot (which descends into group containers, so it
   renders a fully-expanded element tree). The generic runner (`XCUIApplication(bundleIdentifier:)`)
   drives an arbitrary app by bundle id with no app-side integration; it needs Xcode's `xcodebuild`
-  (BE-0019). A Simulator target needs no runner config at all: when neither `xcuitest.testRunner` nor
-  `xcuitest.build` is named, the environment resolves to the Simulator runner bundled in the wheel as
+  (BE-0019). A Simulator target needs no runner config at all: when neither `driver.runner.testRunner` nor
+  `driver.runner.build` is named, the environment resolves to the Simulator runner bundled in the wheel as
   package data, materialized into a content-hash-keyed writable cache on first use — an explicit
-  `testRunner`/`build` still overrides it (BE-0292). A real device (`deviceType: device`) with no
+  `testRunner`/`build` still overrides it (BE-0292). A real device (`runsOn.kind: device`) with no
   `testRunner` resolves instead to the per-user signed build that `bajutsu runner build --device`
   cached (`environments/device_runner/`, BE-0456), and fails with the build command when none
   exists; a run never builds a signed runner itself. A real device does not share the host's
@@ -487,7 +487,7 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   on the Linux gate (`demos/web`), raised to the rich end of the capability model (BE-0054) — native
   `network` observation + stubbing (`page.route()`), `video` and `deviceLog`-equivalent console /
   page-error interval evidence through the shared `driver_interval` seam, emulated `multiTouch`
-  (pinch / rotate), parallel runs across N `BrowserContext` lanes, and a target-level `deviceMode`
+  (pinch / rotate), parallel runs across N `BrowserContext` lanes, and a target-level `runsOn.emulate`
   (desktop default, or a Playwright device preset for mobile emulation; BE-0228); `appTrace` stays
   iOS-only (`os_log`/simctl-based)
 - The **Android adb backend** (`common/drivers/adb` + `common/backend_cli/adb`): `tap`/`long_press`/`double_tap` send
@@ -563,9 +563,9 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   repeating `target:` on each of them. A load-time pass (`_expand_target_groups`) replaces every
   group with its own stamped, flat children before the per-step `target` rule validates them, so
   nothing that executes a step learns the new shape: `bajutsu run` never observes a target group,
-  only the same per-step `target` form BE-0428 already runs. The pass runs at the same four points
-  `_check_target_requirements` does — `Scenario`'s own validator, plus `apply_setups`,
-  `expand_components`, and the pipeline's config-level `before`/`after` folding, none of which
+  only the same per-step `target` form BE-0428 already runs. The pass runs at the same three points
+  `_check_target_requirements` does — `Scenario`'s own validator, plus `expand_components` and the
+  pipeline's folding of a target's `hooks.setup` / `hooks.cleanup`, neither of which
   Pydantic re-validates — and `bajutsu run`'s CLI matches its step-line count against the raw
   YAML's one-entry-per-item count rather than a snapshot of its own, since a group is expanded
   inside `Scenario`'s validator, before the CLI could take one
@@ -625,7 +625,7 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   it: the CLI resolves every scenario's `erase` to a concrete bool, most commonly `false`, before the
   pipeline ever sees it, so a guard on that value would disable the forced retry on the very path it
   was written for), and on the two XCUITest routes that reject any `erase` precondition outright (a
-  real device, `xcuitest.deviceType: device`; the live WebDriver endpoint) — forcing it there would
+  real device, `runsOn.kind: device`; the live WebDriver endpoint) — forcing it there would
   abort the run instead of retrying the one scenario. If the forced-erase lease itself fails with a
   device-level fault (`simctl.DeviceError`/`adb.DeviceError`, a sibling type to
   `BackendCrashError`, not a subclass of it), the retry degrades to that same bare in-place respawn
@@ -656,7 +656,7 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   recording never confirmed it started writing escalates from its *first* crash, since that symptom
   identifies the degradation class the erase does not clear. The replacement attempt drops the forced
   erase (a device about to be created has nothing to erase), and the rung is scoped to an unpinned
-  run with an `appPath` to install, so `--udid` keeps the erase-level retry on the device the
+  run with an `app.path` to install, so `--udid` keeps the erase-level retry on the device the
   operator named. Because a replacement resets strictly more than an erase does, it also honors the
   two opt-outs the erase rung honors: `reinstall: overwrite` and `bajutsu run --no-erase`
 - **Per-scenario iOS crash-report capture** (BE-0421): a scenario that fails on an exhausted
@@ -682,7 +682,8 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
 #### DSL authoring, control flow, and data
 
 - DSL: the `within` selector (geometric scoping), the `relaunch` step (validated on-device),
-  reusable `setup` preludes, `locale` applied at launch, and parallel runs (`--workers`) over a
+  a target's `hooks.setup` (which calls a former prelude as a `use:` component; BE-0452), `locale`
+  applied at launch, and parallel runs (`--workers`) over a
   device pool
 - DSL authoring reuse: reusable parameterized components (`use` / `${params.*}`, resolved by a ref
   holding a `/` or ending in `.yaml` / `.yml` as a cross-file component file (BE-0030), or by a
@@ -697,7 +698,7 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   into `${vars.*}`)
 - DSL `totp` and `email` steps (BE-0046): `totp` generates an RFC 6238 one-time password from a
   shared secret (commonly `${secrets.*}`) into `${vars.*}`, local and deterministic — no network, no
-  model; `email` polls a mailbox (config `targets.<name>.mailbox`, a registry-based transport —
+  model; `email` polls a mailbox (config `targets.<name>.services.mailbox`, a registry-based transport —
   `http` is the shipped adapter, BE-0186) until a message matching `to` / `subject` /
   `subjectMatches` arrives after the step started, then extracts a value via a `bodyMatches` regex
   into `${vars.*}` — a condition wait bounded by `timeout`, never a fixed sleep
@@ -720,7 +721,7 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   `app` too) and grades a scenario Moderate past ten seconds of total fixed pause, `triage`'s laxer
   guard warns on a fix that adds one, every codegen emitter translates it with the reason as a
   comment, and `record`/`crawl` never offer it to the authoring model
-- DSL `interrupts` (BE-0314): a config-level (app-wide default) and scenario-level (appended) list
+- DSL `interrupts` (BE-0314): a config-level (`hooks.interrupts`, app-wide default) and scenario-level (appended) list
   of `{ condition, steps }` entries, checked opportunistically — reusing the assertion-DSL
   `condition` shape `if` already uses — for a screen that can surface at an unpredictable point (an
   onboarding step, a permission prompt the accessibility tree can see) rather than one known spot in
@@ -740,8 +741,9 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   run's own machine-checked verdict (`always` / `success` / `error`), reached on every path out of
   `steps` — including the failing one a trailing cleanup step could never reach, and a cancelled one,
   where the phase runs under a slice of the cancellation grace window instead of the latched cancel
-  source. Both fields also exist on the target config, merging config-then-scenario for `before` and
-  scenario-then-config for `after`; both phases report as their own blocks and reach every export
+  source. The target config carries the same two phases as `hooks.setup` and `hooks.cleanup` (BE-0452),
+  merging config-then-scenario for `before` and scenario-then-config for `after`; a scenario's
+  `preconditions.run.inheritSetup: false` skips its targets' `hooks.setup`; both phases report as their own blocks and reach every export
 
 #### DSL gestures, text entry, and device actions
 
@@ -1050,8 +1052,8 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   every `NavigationStack` push, sheet presentation, and tab switch is `UIHostingController`-backed),
   independent of the network-exchange store it shares a process with. The
   post-launch readiness gate (`await_ready`) consults it as a new rung above the BE-0218
-  namespace/count heuristics (an explicit `readyWhen` still outranks it, so a base-screen transition
-  never preempts the modal `readyWhen` waits for), and the `settled` wait consults it as a
+  namespace/count heuristics (an explicit `app.startWhen` still outranks it, so a base-screen transition
+  never preempts the modal `app.startWhen` waits for), and the `settled` wait consults it as a
   quiescence-window debounce, in place of tree-diff polling; a target that doesn't link the observer
   (or hasn't yet transitioned) gets the unchanged tree-diff behavior on both. Fast-gate tested with a fake signal source; on-device confirmation
   across UIKit and SwiftUI is this item's own gate, tracked in
@@ -1123,7 +1125,7 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   ([BE-0431](../roadmaps/BE-0431-job-scoped-artifact-override/BE-0431-job-scoped-artifact-override.md)):
   on a hosted deployment, `POST /api/run` accepts `binaryArtifact` and `scenariosArtifact`, each the
   sha256 of an already-stored artifact (BE-0268). A named leg resolves against that artifact alone —
-  the binary placed at the job's own target `appPath`, a `scenarios` zip replacing that target's
+  the binary placed at the job's own target `app.path`, a `scenarios` zip replacing that target's
   scenarios directory — while an unnamed leg keeps resolving through the org's active config binding
   untouched, so two concurrent CI dispatches against one deployment no longer contend for the
   deployment's fallback binding or write the org's remembered configuration. The worker keys the
@@ -1232,7 +1234,7 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
 
 | Feature | Status | Location |
 |---|---|---|
-| `mockServer` (external mock command) | config schema only; the `cmd`/`port` external server is **not implemented** — superseded by scenario `mocks` (declarative in-protocol stubs, implemented) | `common/config/schema/mock_server.py` `MockServer` |
+| `services.mockServer` (external mock command) | config schema only; the `cmd`/`port` external server is **not implemented** — superseded by scenario `mocks` (declarative in-protocol stubs, implemented) | `common/config/schema/mock_server.py` `MockServer` |
 | `appTrace` interval evidence on the **web** backend | `appTrace` is `os_log`/simctl-based (iOS only); the Playwright backend implements the `video` and `deviceLog`-equivalent (console / page-error) interval kinds instead (BE-0054), but has no `appTrace` analogue | `common/evidence/intervals` · `common/drivers/playwright` |
 | `nativeZ` on a **SwiftUI** or **Jetpack Compose** screen | Both reporting paths are shipped (BE-0355), but each declarative toolkit generates its own accessibility elements and exposes no underlying one to measure: SwiftUI materializes its elements only for an assistive technology attached to the process, so the app's own view tree carries no identifiers, and Compose forwards no app-declared extra-data key through its node generation. UIKit and Android `View` screens in an opted-in app report a position; SwiftUI and Compose screens read `None`. Diagnostic only — no selector or occlusion check reads it | `BajutsuKit/Sources/BajutsuKit/BajutsuZOrder.swift` · `BajutsuAndroid/…/BajutsuZOrder.kt` |
 

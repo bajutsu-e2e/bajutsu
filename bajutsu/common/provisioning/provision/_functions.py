@@ -11,7 +11,7 @@ from collections.abc import Callable, Iterable, Iterator
 from pathlib import Path
 
 from bajutsu.common.backends import resolve_actuators
-from bajutsu.common.config import Config, load_config, resolve, web_engine
+from bajutsu.common.config import Config, load_config_file, resolve, web_engine
 from bajutsu.common.config_source import DEFAULT_CONFIG
 from bajutsu.common.provisioning import requirements
 from bajutsu.common.provisioning.requirements import Brew, Extra, Manual, Playwright, Tool
@@ -166,7 +166,7 @@ def _load(config_arg: str | None) -> Config:
             raise SystemExit(f"config not found: {config_arg}")
         # No config in cwd: nothing backend-specific to install (the base toolchain is `make setup`).
         return Config()
-    return load_config(path.read_text(encoding="utf-8"))
+    return load_config_file(path)
 
 
 def main(argv: list[str] | None = None) -> int:

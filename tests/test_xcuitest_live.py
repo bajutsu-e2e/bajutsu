@@ -613,8 +613,7 @@ def test_environment_for_keeps_a_udid_on_the_simulator_path() -> None:
 def _live_eff() -> Any:
     return resolve(
         load_config(
-            "targets:\n  s:\n    bundleId: com.x\n    xcuitest:\n      deviceType: device\n"
-            "    deviceProvider:\n      kind: appium\n      endpoint: http://grid.local:4723\n"
+            "targets:\n  s:\n    platform: ios\n    app: {id: com.x}\n    runsOn: {kind: device}\n"
         ),
         "s",
     )
@@ -632,9 +631,12 @@ def _live_eff_with(**kwargs: str) -> Any:
         extra += f"    launchEnv:\n      {k}: {v}\n"
     return resolve(
         load_config(
-            "targets:\n  s:\n    bundleId: com.x\n    xcuitest:\n      deviceType: device\n"
-            f"{extra}"
-            "    deviceProvider:\n      kind: appium\n      endpoint: http://grid.local:4723\n"
+            "targets:\n"
+            "  s:\n"
+            "    platform: ios\n"
+            f"    app: {{id: com.x}}\n"
+            f"    runsOn: {{kind: device}}\n"
+            f"{extra}    deviceProvider: {{kind: appium, endpoint: 'http://grid.local:4723'}}\n"
         ),
         "s",
     )
@@ -810,9 +812,14 @@ def test_live_environment_start_raises_on_eff_launch_args() -> None:
     # loud-fail rule that pre.launch_args already applies, extended to the target-level counterpart.
     eff = resolve(
         load_config(
-            "targets:\n  s:\n    bundleId: com.x\n    xcuitest:\n      deviceType: device\n"
-            '    launchArgs: ["--test-mode"]\n'
-            "    deviceProvider:\n      kind: appium\n      endpoint: http://grid.local:4723\n"
+            "targets:\n"
+            "  s:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.x\n"
+            "      launch:\n"
+            "        args: [--test-mode]\n"
+            "    runsOn: {kind: device}\n"
         ),
         "s",
     )
@@ -824,9 +831,14 @@ def test_live_environment_start_raises_on_eff_launch_args() -> None:
 def test_live_environment_start_raises_on_eff_launch_env() -> None:
     eff = resolve(
         load_config(
-            "targets:\n  s:\n    bundleId: com.x\n    xcuitest:\n      deviceType: device\n"
-            "    launchEnv:\n      MODE: test\n"
-            "    deviceProvider:\n      kind: appium\n      endpoint: http://grid.local:4723\n"
+            "targets:\n"
+            "  s:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.x\n"
+            "      launch:\n"
+            "        env: {MODE: test}\n"
+            "    runsOn: {kind: device}\n"
         ),
         "s",
     )

@@ -28,14 +28,12 @@ def _eff(*, device_provider: DeviceProvider | None = None) -> Effective:
         target="app",
         platform_config=AndroidConfig(package="com.example.app"),
         backend=["android"],
-        device="booted",
         locale="en_US",
         launch_env={},
         launch_args=[],
         id_namespaces=[],
         reserved_namespaces=[],
         mock_server=None,
-        setup=None,
         capture=[],
         redact=Redact(),
         device_provider=device_provider,
@@ -182,7 +180,10 @@ def test_run_warns_and_keeps_its_verdict_when_release_raises(
                 udid_spec=requested_udid, provision=ProvisionProfile(), release=_boom
             )
 
-    dp.register("raising", _RaisingReleaseProvider())
+    # The config names no provider (BE-0452), so the raising one stands in for the built-in local.
+    dp._ensure_builtins()
+    builtin_local = dp._PROVIDERS["local"]
+    dp.register("local", _RaisingReleaseProvider())
     try:
         # Dispatch returns one passing scenario so `_finish` emits PASS and exits 0 before the
         # `finally` invokes the raising release — no device is touched.
@@ -200,12 +201,14 @@ def test_run_warns_and_keeps_its_verdict_when_release_raises(
         scn.write_text("- name: demo\n  steps:\n    - tap: { id: home.title }\n", encoding="utf-8")
         cfg = tmp_path / "bajutsu.config.yaml"
         cfg.write_text(
-            "defaults: { backend: [fake] }\n"
-            "targets:\n"
-            "  demo:\n"
-            "    bundleId: com.example.demo\n"
-            "    idNamespaces: [home]\n"
-            "    deviceProvider: { kind: raising }\n",
+            (
+                "targets:\n"
+                "  demo:\n"
+                "    platform: ios\n"
+                "    app:\n"
+                "      id: com.example.demo\n"
+                "      idNamespaces: [home]\n"
+            ),
             encoding="utf-8",
         )
 
@@ -227,7 +230,7 @@ def test_run_warns_and_keeps_its_verdict_when_release_raises(
             ],
         )
     finally:
-        dp._PROVIDERS.pop("raising", None)
+        dp.register("local", builtin_local)
 
     assert result.exit_code == 0, result.output  # PASS verdict survives the release failure
     assert "PASS" in result.output

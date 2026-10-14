@@ -8,12 +8,14 @@ never a model call (prime directive 1) — so the whole feature is covered here 
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from _orch import FakeClock, _scenario, _tap_ids
 from conftest import AlertingDriver, el, guard_rule
 from pydantic import ValidationError
 
-from bajutsu.common.config import load_config, resolve
+from bajutsu.common.config import load_config, load_config_file, resolve
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.evidence import Artifact, intervals
@@ -95,75 +97,63 @@ def test_empty_interrupts_prunes_from_dump() -> None:
 
 def test_config_interrupts_resolve() -> None:
     cfg = load_config(
-        """
-        defaults: { backend: [web] }
-        targets:
-          myapp:
-            baseUrl: http://x
-            interrupts:
-              - condition: { exists: { id: onboarding.skip } }
-                steps:
-                  - tap: { id: onboarding.skip }
-        """
+        "targets:\n"
+        "  myapp:\n"
+        "    platform: web\n"
+        "    app: {url: 'http://x'}\n"
+        "    hooks:\n"
+        "      interrupts:\n"
+        "      - condition:\n"
+        "          exists: {id: onboarding.skip}\n"
+        "        steps:\n"
+        "        - tap: {id: onboarding.skip}\n"
     )
     eff = resolve(cfg, "myapp")
     assert len(eff.run_defaults.interrupts) == 1
     assert eff.run_defaults.interrupts[0].condition.exists is not None
 
 
-def test_config_interrupts_reject_component_use() -> None:
-    # `use` is expanded over scenarios only, and a target config never goes through that pass — so
-    # it is rejected at load time rather than reaching the run loop as an action-less step.
-    with pytest.raises(ValidationError, match="interrupts cannot use a component"):
-        load_config(
-            """
-            defaults: { backend: [web] }
-            targets:
-              myapp:
-                baseUrl: http://x
-                interrupts:
-                  - condition: { exists: { id: onboarding.title } }
-                    steps:
-                      - use: { component: skip-onboarding.yaml }
-            """
-        )
+def test_config_interrupts_resolve_a_component(tmp_path: Path) -> None:
+    # BE-0452: a component an interrupt's recovery calls resolves when the config loads, against the
+    # config file's directory, so no `use:` reaches the run loop as an action-less step.
+    (tmp_path / "skip-onboarding.yaml").write_text(
+        "steps:\n  - tap: { id: onboarding.skip }\n", encoding="utf-8"
+    )
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "targets:\n"
+        "  myapp:\n"
+        "    platform: web\n"
+        "    app: {url: 'http://x'}\n"
+        "    hooks:\n"
+        "      interrupts:\n"
+        "      - condition:\n"
+        "          exists: {id: onboarding.title}\n"
+        "        steps:\n"
+        "        - use: {component: skip-onboarding.yaml}\n",
+        encoding="utf-8",
+    )
+    (entry,) = resolve(load_config_file(cfg), "myapp").run_defaults.interrupts
+    assert [st.tap.id for st in entry.steps if st.tap is not None] == ["onboarding.skip"]
 
 
 def test_config_interrupts_reject_group() -> None:
     # Same reason as `use:` above — `group` is expanded over scenarios only, too.
-    with pytest.raises(ValidationError, match="interrupts cannot use a group"):
+    with pytest.raises(ValidationError, match="hooks cannot use a group"):
         load_config(
-            """
-            defaults: { backend: [web] }
-            targets:
-              myapp:
-                baseUrl: http://x
-                interrupts:
-                  - condition: { exists: { id: onboarding.title } }
-                    steps:
-                      - group: { name: skip, steps: [{ tap: { id: skip.btn } }] }
-            """
-        )
-
-
-def test_config_interrupts_reject_component_use_nested_inside_if() -> None:
-    # BE-0438 review: the walker descends into `if`/`forEach`/`web`/`app` too, so a `use:` nested
-    # under one of those still loads cleanly rather than reaching the step loop unexpanded.
-    with pytest.raises(ValidationError, match="interrupts cannot use a component"):
-        load_config(
-            """
-            defaults: { backend: [web] }
-            targets:
-              myapp:
-                baseUrl: http://x
-                interrupts:
-                  - condition: { exists: { id: onboarding.title } }
-                    steps:
-                      - if:
-                          condition: { exists: { id: a } }
-                          then:
-                            - use: { component: skip-onboarding.yaml }
-            """
+            "targets:\n"
+            "  myapp:\n"
+            "    platform: web\n"
+            "    app: {url: 'http://x'}\n"
+            "    hooks:\n"
+            "      interrupts:\n"
+            "      - condition:\n"
+            "          exists: {id: onboarding.title}\n"
+            "        steps:\n"
+            "        - group:\n"
+            "            name: skip\n"
+            "            steps:\n"
+            "            - tap: {id: skip.btn}\n"
         )
 
 
@@ -172,17 +162,17 @@ def test_config_interrupts_reject_an_entry_target() -> None:
     # so naming a target there could only repeat or contradict it.
     with pytest.raises(ValidationError, match="interrupts entries cannot set `target`"):
         load_config(
-            """
-            defaults: { backend: [web] }
-            targets:
-              myapp:
-                baseUrl: http://x
-                interrupts:
-                  - target: other
-                    condition: { exists: { id: onboarding.skip } }
-                    steps:
-                      - tap: { id: onboarding.skip }
-            """
+            "targets:\n"
+            "  myapp:\n"
+            "    platform: web\n"
+            "    app: {url: 'http://x'}\n"
+            "    hooks:\n"
+            "      interrupts:\n"
+            "      - target: other\n"
+            "        condition:\n"
+            "          exists: {id: onboarding.skip}\n"
+            "        steps:\n"
+            "        - tap: {id: onboarding.skip}\n"
         )
 
 
@@ -202,16 +192,15 @@ def test_config_interrupts_reject_an_entry_target() -> None:
 def test_config_interrupts_reject_a_recovery_step_target(step: str) -> None:
     with pytest.raises(ValidationError, match="recovery steps run on the target"):
         load_config(
-            f"""
-            defaults: {{ backend: [web] }}
-            targets:
-              myapp:
-                baseUrl: http://x
-                interrupts:
-                  - condition: {{ exists: {{ id: onboarding.skip }} }}
-                    steps:
-                      - {step}
-            """
+            "targets:\n"
+            "  myapp:\n"
+            "    platform: web\n"
+            f"    app: {{url: 'http://x'}}\n"
+            "    hooks:\n"
+            "      interrupts:\n"
+            "      - condition:\n"
+            f"          exists: {{id: onboarding.skip}}\n"
+            f"        steps: [{step}]\n"
         )
 
 

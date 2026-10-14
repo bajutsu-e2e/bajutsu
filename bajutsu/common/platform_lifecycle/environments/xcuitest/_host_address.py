@@ -116,8 +116,8 @@ def host_candidates(
     env = os.environ if environ is None else environ
     if explicit := _split(env.get(HOST_ADDRESS_ENV, ""), HOST_ADDRESS_ENV):
         return HostCandidates(explicit, HOST_ADDRESS_ENV)
-    if configured and (explicit := _split(configured, "xcuitest.hostAddress")):
-        return HostCandidates(explicit, "xcuitest.hostAddress")
+    if configured and (explicit := _split(configured, "driver.runner.hostAddress")):
+        return HostCandidates(explicit, "driver.runner.hostAddress")
     try:
         table = (read_interfaces or _ifconfig)()
     except OSError as exc:

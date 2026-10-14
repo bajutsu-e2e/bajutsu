@@ -63,7 +63,6 @@ def _eff() -> Effective:
         target="showcase-swiftui",
         platform_config=IosConfig(bundle_id="com.bajutsu.showcase.ios.swiftui"),
         backend=["fake"],
-        device="FakeDriver",
         locale="en_US",
         launch_env={},
         launch_args=[],
@@ -71,7 +70,6 @@ def _eff() -> Effective:
         reserved_namespaces=[],
         mock_server=None,
         mailbox=None,
-        setup=None,
         capture=["screenshot.after", "elements.after"],
         redact=Redact(),
     )

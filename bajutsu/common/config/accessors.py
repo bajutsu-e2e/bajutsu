@@ -77,7 +77,7 @@ def android_package(eff: Effective) -> str:
 
 
 def xcuitest_targets_real_device(eff: Effective) -> bool:
-    """True when the target drives a real iOS device via XCUITest (`xcuitest.deviceType: device`).
+    """True when the target drives a real iOS device via XCUITest (`runsOn.kind: device`).
 
     The Simulator default — and every non-iOS target — is False. Consulted by the capability
     narrowing that drops the simctl-backed DeviceControl / permission tokens on a real device
@@ -93,7 +93,7 @@ def xcuitest_targets_real_device(eff: Effective) -> bool:
 
 
 def xcuitest_pins_runner(eff: Effective) -> bool:
-    """True when the target pins an explicit XCUITest runner (`xcuitest.testRunner`).
+    """True when the target pins an explicit XCUITest runner (`driver.runner.testRunner`).
 
     Every non-iOS target — and an iOS target that names no runner — is False. Such a target resolves
     to the wheel-bundled generic runner instead (BE-0292); consulted by the serve Server settings tab

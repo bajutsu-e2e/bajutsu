@@ -97,6 +97,9 @@ def test_record_flag_surface_is_fully_classified() -> None:
         "language",
         "max_steps",
         "screenshot",
+        # Only the run request reaches an appium grid through serve (BE-0452); a hosted record
+        # stays local, so serve passes no worker file.
+        "worker_config",
     }
     pass_through = {"backend", "udid", "erase", "system_alert_handling", "headed", "upload_exec"}
     # serve forces --handoff to `stream` (a human at the browser answers over SSE), never a knob (BE-0179).
@@ -107,7 +110,9 @@ def test_record_flag_surface_is_fully_classified() -> None:
 def test_crawl_flag_surface_is_fully_classified() -> None:
     base_handled = {"target_name", "out", "config", "max_screens", "max_steps"}
     # language (BE-0188) is env-driven for serve (BAJUTSU_AI_LANGUAGE), like effort — see record above.
-    not_serve_exposed = {"prune_global", "alert_vision_instruction", "language"}
+    # Only the run request reaches an appium grid through serve (BE-0452); a hosted crawl stays
+    # local, so serve passes no worker file.
+    not_serve_exposed = {"prune_global", "alert_vision_instruction", "language", "worker_config"}
     pass_through = {
         "backend",
         "udid",
@@ -140,6 +145,7 @@ def test_triage_flag_surface_is_fully_classified() -> None:
         "scenario",
         "flaky",
         "history",
+        "worker_config",  # forwarded to --rerun's run, which serve never asks for (BE-0452)
     }
     pass_through = {"target_name", "ai", "apply", "json_out"}
     assert base_handled | not_serve_exposed | pass_through == _option_names("triage")

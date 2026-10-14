@@ -49,7 +49,7 @@ iOS on Device Farm runs on real devices, which adds the two constraints in
 
 This shift to a real device changes two things Bajutsu accounts for up front (BE-0238). Both are
 properties of a physical device rather than of Device Farm's classification, so they hold for any
-real iOS device the XCUITest backend drives (`xcuitest.deviceType: device`) — Device Farm or a
+real iOS device the XCUITest backend drives (`runsOn.kind: device`) — Device Farm or a
 locally attached device.
 
 - **Re-signing strips entitlements.** Device Farm re-signs the uploaded `.ipa` with its own
@@ -127,7 +127,7 @@ uv run python scripts/devicefarm_submit.py \
 ```
 
 The run uses `showcase.devicefarm.config.yaml`, a Device-Farm variant of the `showcase-compose`
-target that carries **no `appPath`**: Device Farm installs the uploaded APK on the reserved device
+target that carries **no `app.path`**: Device Farm installs the uploaded APK on the reserved device
 itself, so the adb backend launches the pre-installed app rather than `adb install`ing a local file
 (a None `app_path` is the runner's "run against the already-installed app" path). This is a
 per-environment difference, so it lives in config, not in the tool.
@@ -168,11 +168,11 @@ uv run python scripts/devicefarm_submit.py \
   --package-only
 ```
 
-`showcase.devicefarm.ios.config.yaml` sets `xcuitest.deviceType: device` (the XCUITest backend
-drives a physical device instead of a Simulator) and carries no `appPath` (Device Farm installs the
+`showcase.devicefarm.ios.config.yaml` sets `runsOn.kind: device` (the XCUITest backend
+drives a physical device instead of a Simulator) and carries no `app.path` (Device Farm installs the
 uploaded `.ipa` on the reserved device itself). The `--package
 BajutsuKit/Runner/build/dd-device/Build/Products=.` line places the device-signed `.xctestrun` and
-its test bundles at the package root, where the config's `testRunner: BajutsuRunner.xctestrun`
+its test bundles at the package root, where the config's `driver.runner.testRunner: BajutsuRunner.xctestrun`
 resolves them. The re-signing and simctl caveats described [above](#ios-re-signing-and-real-device-capabilities)
 apply to this run.
 
@@ -196,19 +196,20 @@ the shape. Instead of one serialized run, serve **fans the suite out one Device 
 scenario**, so scenarios run in parallel. The Device Farm workers' job budget, not a single device,
 bounds how many run at once.
 
-One per-target config field under `targets.<name>` drives the fan-out. Config thus holds the
-difference between environments, and the tool stays unchanged (prime directive 3).
-**`cloudBatch: devicefarm`** selects the batch provider a target's cloud runs use. A target without
-the field is a local target, and the cloud fan-out refuses it.
+The target names no batch provider. Where a run happens is a choice per run, not a property of the
+target. The fan-out request names the provider instead, as its `environment`
+([BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)). The
+target needs nothing beyond an `app.path`, the binary Device Farm installs on the reserved device:
 
 ```yaml
 targets:
   showcase-compose:
     platform: android
-    package: com.example.showcase
-    scenarios: demos/showcase/scenarios
-    appPath: app-debug.apk        # the APK Device Farm installs on the reserved device
-    cloudBatch: devicefarm        # dispatch this target's cloud runs through Device Farm
+    app:
+      id: com.example.showcase
+      path: app-debug.apk         # the APK Device Farm installs on the reserved device
+    paths:
+      scenarios: demos/showcase/scenarios
 ```
 
 The server does not submit these runs itself (BE-0448). Each fan-out job waits in the queue for a
@@ -247,8 +248,7 @@ token `environment:devicefarm`, beside the `host:<os>` token every worker advert
 A fan-out job requires `environment:devicefarm` and no other token. A worker
 advertising the token leases no other job. Local jobs and Device Farm jobs never cross. Serving
 both on one machine takes two workers. This registration alone may advertise the `environment:`
-prefix. `--capabilities` and `$BAJUTSU_WORKER_CAPABILITIES` refuse it at startup. A config's
-`requires` refuses it at load. A fan-out job
+prefix. `--capabilities` and `$BAJUTSU_WORKER_CAPABILITIES` refuse it at startup. A fan-out job
 that no live worker can serve stays queued as unroutable, like any other job. A server with no
 queue refuses `POST /api/run-set`. Unlike the headless submitter, the worker reserves one device per run through a
 device-selection filter. It needs no device-pool ARN.
@@ -258,14 +258,14 @@ device-selection filter. It needs no device-pool ARN.
 > The bundle directory is the config's own directory, an uploaded bundle, or the config and scenario
 > the scenario store ships with the job. The request names the config and the scenario relative to
 > that directory. A scenario outside the config's directory makes `POST /api/run-set` return a 400
-> error. The target's `appPath` travels as written, and the worker resolves a relative one against
+> error. The target's `app.path` travels as written, and the worker resolves a relative one against
 > the same directory. A missing binary fails the job before the worker uploads anything.
 >
 > **Application delivery.** A job whose config and scenario travel with it still needs the binary.
-> When no uploaded bundle carries the binary, the server stores the file that `appPath` names in its
+> When no uploaded bundle carries the binary, the server stores the file that `app.path` names in its
 > object store during the fan-out. The lease then carries a signed download link for that file. The
-> worker downloads the binary to the same `appPath` inside the job's directory. It then checks the
-> file's digest against the one the job names. Such an `appPath` must name a file inside the config's directory, and the server
+> worker downloads the binary to the same `app.path` inside the job's directory. It then checks the
+> file's digest against the one the job names. Such an `app.path` must name a file inside the config's directory, and the server
 > needs an object store. Otherwise `POST /api/run-set` returns a 400 error.
 
 ### The job budget
@@ -301,26 +301,18 @@ job then fails with a `worker-capability-unsupported:` reason. The worker posts 
 the ordinary result route. Device Farm receives nothing. A job that resumes a stored run skips the
 check, since an earlier attempt already submitted that run.
 
-Four server-side budget settings remain for one release as deprecated:
-
-- a target's `cloudBatchBudget`;
-- a `run-set` request's `deviceBudget`;
-- the job registry's `max_concurrent_batch`;
-- `try_register(device_budget=…)`, which passes the other two on to the registry.
-
-They bounded the fan-out while the server ran the dispatch. During that release, all four still cap
-the fan-out as before. The first two are the ones an operator writes. Each logs a deprecation notice
-that names `maxJobConcurrency`, once per server process. The last two are internal and log nothing.
-A later release removes all four, together with the target-config restructure. The server's global, per-user,
+The server holds no budget of its own. It used to read a target's `cloudBatchBudget` and a request's
+`deviceBudget`; BE-0452 removed both. A request that still names
+`deviceBudget` gets a 400 error that points at `maxJobConcurrency`. The server's global, per-user,
 and per-org caps count queued jobs too. Those caps may still cut a large fan-out short.
 
 ### Fanning a target out
 
-A `POST /api/run-set` request fans a target out. Its body names the `target` and, optionally, a
-`scenarios` subset:
+A `POST /api/run-set` request fans a target out. Its body names the `target` and the batch provider
+as `environment` (today `devicefarm`). An optional `scenarios` subset narrows the run:
 
 ```json
-{ "target": "showcase-compose", "scenarios": ["firstlook.yaml", "controls.yaml"] }
+{ "target": "showcase-compose", "environment": "devicefarm", "scenarios": ["firstlook.yaml", "controls.yaml"] }
 ```
 
 Omitting `scenarios` runs every scenario in the target's directory. Every requested name resolves to
@@ -329,15 +321,11 @@ fanning out the good ones and erroring on the bad one. serve queues one job per 
 Farm workers lease the jobs as their budgets allow. serve refuses the request outright when it
 cannot honor it at all:
 
+- a missing `environment`, or one that names no batch provider. `appium` is one of these: the plain
+  run request reaches a grid ([self-hosting](self-hosting.md));
 - a web target, which has no device to reserve;
-- a target with no `cloudBatch` provider or no `appPath`;
+- a target with no `app.path`;
 - a config or scenario outside the config's directory, which the worker packages.
-
-A request that still sends the deprecated `deviceBudget` may *lower* the target's `cloudBatchBudget`.
-It may never raise it. When that cap is full, serve defers the surplus scenarios rather than
-rejecting them. The response then lists the jobs serve did start. Whenever either deprecated setting
-applied, the response also carries a `warnings` list. Each warning names the setting and
-`maxJobConcurrency`.
 
 ### Restart and lease loss
 
@@ -370,7 +358,7 @@ lease in flight lapses. A restart or another worker then picks the jobs up. The 
 slots to leave their runs and for uploads already under way. Then it exits. A second SIGINT exits
 without waiting.
 `bajutsu worker --once <spec.json>` with the same `worker.yaml` submits one batch spec with no
-server. Its `appPath` is a path on that machine, and it stores no ARN. A SIGINT, SIGTERM, or SIGHUP
+server. Its `batch.app_path` is a path on that machine, and it stores no ARN. A SIGINT, SIGTERM, or SIGHUP
 stops its scheduled run the same way a cancel does.
 
 None of this touches the verdict. Each Device Farm run reports pass or fail from Bajutsu's own
@@ -386,14 +374,14 @@ directive 1).
 
 `BatchLifecycleHook` covers that gap. A hook runs in the worker whose environment is `devicefarm`, around one `DeviceFarmBatchProvider.submit` call. The server runs none:
 
-- **`before_submit(ctx)`** — called before the package is built. May populate `ctx.launch_env` with key/value pairs that are merged into the packaged config's `targets.<target>.launchEnv` before upload, so the app receives them as launch environment variables.
+- **`before_submit(ctx)`** — called before the package is built. May populate `ctx.launch_env` with key/value pairs that are merged into the packaged config's `targets.<target>.app.launch.env` before upload, so the app receives them as launch environment variables.
 - **`after_run(ctx, verdict)`** — called in a `finally` after the verdict is collected (or with `verdict=None` when the run fails before a verdict is available), in reverse hook order so teardown mirrors setup. A hook whose `after_run` raises does not stop the remaining hooks. Once `submit` collects a verdict, it logs every teardown error and raises none. A failed credential release thus never discards a finished run. Without a verdict, `submit` raises one teardown error and logs the others. The raised one comes from the last-registered hook that raised.
 
 `BatchContext` carries the run's `request`, `work_dir`, `job_id` (the stable per-job identifier, useful for looking up per-job state across a restart), and the mutable `launch_env` dict.
 
 Since the worker dispatch (BE-0448), `work_dir` is the job's bundle directory. The request names
 `request.config` and `request.scenario` by their paths inside it. `request.app_path` keeps the
-target's `appPath` as written. A hook that reads the binary resolves a relative value against
+target's `app.path` as written. A hook that reads the binary resolves a relative value against
 `ctx.work_dir`, not its own working directory. A worker that runs from a source checkout puts the
 bundle under `bundle/` inside the package. A `pre_test_commands` command that names a file beside
 the config needs the `bundle/` prefix on the Device Farm machine.

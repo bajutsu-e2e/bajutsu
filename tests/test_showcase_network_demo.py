@@ -70,7 +70,7 @@ _TARGET = "showcase-swiftui"
 
 def _showcase_redact() -> Redact:
     cfg = yaml.safe_load((_SHOWCASE / "showcase.config.yaml").read_text(encoding="utf-8"))
-    return Redact.model_validate(cfg["targets"][_TARGET].get("redact", {}))
+    return Redact.model_validate(cfg["targets"][_TARGET].get("evidence", {}).get("redact", {}))
 
 
 def _log_view_source() -> str:

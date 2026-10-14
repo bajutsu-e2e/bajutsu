@@ -109,24 +109,20 @@ def parse_capabilities(raw: str | None) -> set[str]:
     return {token for token in _SPLIT.split(raw.strip()) if token}
 
 
-def required_capabilities(
-    platform: str, requires: Iterable[str] = (), *, host: str | None = None
-) -> list[str]:
-    """The capability set a job needs: its platform axis, its host, and any operator-declared tokens.
+def required_capabilities(platform: str, *, host: str | None = None) -> list[str]:
+    """The capability set a job needs: its platform axis and its host.
 
     Returned sorted and de-duplicated so the value stored on the job row is canonical — two jobs
     with the same requirements always serialize identically.
 
     Args:
         platform: The target's platform axis; empty adds no ``platform:*`` token.
-        requires: The deprecated operator-declared tokens (`requires`), added verbatim.
         host: The host operating system the target's driver is bound to (`required_host`); None
             adds no ``host:*`` token.
     """
     tokens = {platform_capability(platform)} if platform else set()
     if host:
         tokens.add(host_capability(host))
-    tokens.update(t for t in requires if t)
     return sorted(tokens)
 
 
