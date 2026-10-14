@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0452") |
-| 実装 PR | [#2191](https://github.com/bajutsu-e2e/bajutsu/pull/2191)（単位 1〜3）、[#2193](https://github.com/bajutsu-e2e/bajutsu/pull/2193)（単位 4）、PR_PLACEHOLDER19（単位 5） |
+| 実装 PR | [#2191](https://github.com/bajutsu-e2e/bajutsu/pull/2191)（単位 1〜3）、[#2193](https://github.com/bajutsu-e2e/bajutsu/pull/2193)（単位 4）、[#2194](https://github.com/bajutsu-e2e/bajutsu/pull/2194)（単位 5） |
 | トピック | ドライバとバックエンドのアーキテクチャ |
 | 関連 | [BE-0126](../BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config-ja.md)、[BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact-ja.md)、[BE-0228](../BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation-ja.md)、[BE-0076](../BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md)、[BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks-ja.md)、[BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction-ja.md)、[BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch-ja.md)、[BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md)、[BE-0447](../BE-0447-install-app-step/BE-0447-install-app-step-ja.md)、[BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md) |
 <!-- /BE-METADATA -->
@@ -487,7 +487,7 @@ target は、どこで実行するかを持たなくなります。target が書
     - serve の設定の表示は、アップロードのバンドルのルートや束縛のディレクトリではなく、設定ファイル自身のディレクトリをスイートのルートにします。serve が起動する run は設定をローカルのファイルとして読むので、両者が同じ hook のコンポーネントを受け付けます。
     - コンポーネントのファイルの中のパス参照は、ほかのコンポーネントと同じく、呼び出したシナリオのディレクトリを基準に解決します。そのため、コンポーネントに書き直した前置きは、自分のディレクトリを基準にできなくなります。作業単位2はテストの外に前置きを見つけなかったので、変わる設定はありません。
     - `serve --backend`の意味は変えません。BE-0449 がすでに非推奨にしています。
-- PR_PLACEHOLDER19（単位 5）— シナリオのフェーズを、target の hook と同じ`setup`と`cleanup`という名前にしました。失敗の結末を表す語も、どこでも`failure`になりました。
+- [#2194](https://github.com/bajutsu-e2e/bajutsu/pull/2194)（単位 5）— シナリオのフェーズを、target の hook と同じ`setup`と`cleanup`という名前にしました。失敗の結末を表す語も、どこでも`failure`になりました。
   - シナリオの`before`と`after`は、`setup`と`cleanup`になりました。cleanup の規則の`on`と、`capturePolicy`のトリガーの`result`は、`error`の代わりに`failure`を受け付けます。「範囲外」に書いたとおり、ローダーは古い名前を読みません。`before`や`after`を書いたシナリオと、`error`を書いた規則やトリガーは、読み込みの時点で失敗します。そのメッセージは新しい名前を示します。
   - コードの名前も揃えました。`AfterRule`は`CleanupRule`になり、`RunDefaults`は`setup`と`cleanup`を持ちます。showcase の固定データは`demos/showcase/scenarios/setup_cleanup.yaml`へ移しました。
   - レポートは、2つのフェーズを`setup`と`cleanup`と表示します。対象は、HTML のブロックとその`data-phase`、失敗の接頭辞（`setup: …`と`cleanup: …`）、JUnit の本文です。hook のステップの証跡のディレクトリも同じ接頭辞を使い、`codegen`は`// setup`の区切りを出力します。
