@@ -777,7 +777,7 @@ def worker_platforms(config: Path | None, host: str | None = None) -> str:
         config: The bound config, or None.
         host: The host operating system; `backends.current_host_os()` when None (for tests).
     """
-    from bajutsu.common.backends import PLATFORMS, current_host_os, host_os_for
+    from bajutsu.common.backends import IMPLEMENTED, PLATFORMS, current_host_os, host_os_for
     from bajutsu.serve.capabilities import PLATFORM_PREFIX
     from bajutsu.serve.helpers import target_capabilities
 
@@ -786,8 +786,10 @@ def worker_platforms(config: Path | None, host: str | None = None) -> str:
     # its worker with no `--worker-config`; the host is the one fact that can rule a platform out.
 
     def drivable(platform: str) -> bool:
+        # An actuator with no driver yet drives nothing, as `filter_actuators` skips it too, and
+        # `host_os_for` would raise for it.
         return any(
-            (hosts := host_os_for(a)) is None or machine in hosts
+            a in IMPLEMENTED and ((hosts := host_os_for(a)) is None or machine in hosts)
             for a in PLATFORMS.get(platform, ())
         )
 

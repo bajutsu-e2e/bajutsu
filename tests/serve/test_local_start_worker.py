@@ -682,6 +682,18 @@ def test_the_startup_note_leaves_out_a_platform_the_host_cannot_drive(tmp_path: 
     assert srv.worker_platforms(cfg, "linux") == "android,web"
 
 
+def test_a_platform_with_no_driver_yet_is_left_out_rather_than_raising(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A planned platform lands in PLATFORMS before its driver does; `serve` must still start.
+    from bajutsu.common import backends
+    from bajutsu.serve import helpers
+
+    monkeypatch.setitem(backends.PLATFORMS, "flutter", ("flutter-bridge",))
+    monkeypatch.setattr(helpers, "target_capabilities", lambda *_a: ["platform:flutter"])
+    assert srv.worker_platforms(_fake_project(tmp_path), "linux") == "android,web"
+
+
 def test_a_worker_without_the_servers_files_fails_the_job_clearly(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

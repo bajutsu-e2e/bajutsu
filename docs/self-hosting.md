@@ -1157,9 +1157,9 @@ deterministic `run` verdict.
   host. A fallback list such as `[ios, web]` requires none either, because `playwright` runs
   anywhere. A worker on the matching host leases the job. The worker's own check still judges each
   scenario before any device work.
-- **Two hand-written inputs now log a deprecation notice.** A worker's `--capabilities` and
+- **Three hand-written inputs now log a deprecation notice.** A worker's `--capabilities` and
   `$BAJUTSU_WORKER_CAPABILITIES` add tokens verbatim. A target's `requires:` list (or
-  `defaults.requires`) adds tokens to the job's required set. Both still work for this release,
+  `defaults.requires`) adds tokens to the job's required set. All three still work for this release,
   each with a one-time notice. The worker's override goes away in the next release. The inventory
   and the worker capability file now supply what the override was for. An override can also claim
   a runtime the machine lacks. `requires:` stays until a later item derives a runtime or
