@@ -411,9 +411,7 @@ def test_a_stored_git_credential_reaches_the_servers_fetch(
         seen.update(kw)
         raise ValueError("stop here")
 
-    import bajutsu.serve.operations.config as config_ops
-
-    monkeypatch.setattr(config_ops, "materialize", materialize)
+    monkeypatch.setattr("bajutsu.serve.operations.config.materialize", materialize)
     resp = client.post("/api/config", json={"git": "github:acme/private@main"})
     assert resp.status_code == 400
     assert seen["credential"] == "ghp_stored0003"

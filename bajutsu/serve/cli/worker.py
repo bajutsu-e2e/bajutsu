@@ -1936,13 +1936,13 @@ class _LeaseCheckpoint:
         give_up_at = self._clock() + self._deadline
         delay = _CHECKPOINT_RETRY_INITIAL
         while True:
-            # Checked on every attempt, so a cancel or a lost lease never waits out the backoff.
+            # Checked on every attempt, so a cancel never waits out the backoff.
             if self._cancelled():
                 raise RunInterrupted("stop", run_arn)
-            if self._lost.is_set():
-                raise _CheckpointLostError(
-                    f"lease on job {self._job_id} lost before run {run_arn} was stored"
-                )
+            # A lost lease still asks once more: the route answers 200 for an ARN it already holds,
+            # so a save whose answer was lost before a reclaim must not stop a run the next
+            # holder's lease already carries (`worker_batch_run`). The 409 or the check below the
+            # refusals then ends it without waiting out the backoff.
             code, body = self._post(run_arn)
             if code == 200:
                 self._stored = run_arn
@@ -1965,6 +1965,10 @@ class _LeaseCheckpoint:
                 raise _CheckpointRefusedError(
                     f"server or configuration error storing run {run_arn} for job "
                     f"{self._job_id}: HTTP {code}: {body!s:.200}"
+                )
+            if self._lost.is_set():
+                raise _CheckpointLostError(
+                    f"lease on job {self._job_id} lost before run {run_arn} was stored"
                 )
             if self._clock() + delay > give_up_at:
                 raise _CheckpointTimeoutError(
