@@ -453,6 +453,28 @@ def test_the_save_gives_up_once_the_lease_is_lost(monkeypatch: pytest.MonkeyPatc
         checkpoint.save("arn:run/1")
 
 
+def test_a_lost_lease_still_asks_whether_the_run_was_already_stored(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The first save landed but its answer was lost; the heartbeat then saw the reclaim. The retry
+    # must still ask, and the route's 200 for the stored ARN keeps the run from being stopped.
+    lost = threading.Event()
+    answers = iter([(None, "connection reset"), (200, {})])
+
+    def post(_url: str, _body: dict[str, Any], **_k: Any) -> tuple[Any, Any]:
+        return next(answers)
+
+    def sleep(_s: float) -> None:
+        lost.set()
+
+    monkeypatch.setattr(worker_mod, "_post_json", post)
+    checkpoint = _checkpoint("j1", "w1", None, lost)
+    checkpoint._sleep = sleep
+
+    checkpoint.save("arn:run/1")
+    assert checkpoint._stored == "arn:run/1"
+
+
 def _answering(monkeypatch: pytest.MonkeyPatch, *answers: tuple[int, Any]) -> list[int]:
     """Make the route answer *answers* in turn, repeating the last; returns the attempt log."""
     attempts: list[int] = []

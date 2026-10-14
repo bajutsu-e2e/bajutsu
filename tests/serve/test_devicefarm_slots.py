@@ -452,6 +452,44 @@ def test_a_slot_that_fails_frees_its_place(monkeypatch: pytest.MonkeyPatch, tmp_
     assert dirs.acquire() == tmp_path / ".slots" / "0"
 
 
+def test_a_slot_whose_run_raises_leaves_no_batch_tree_behind(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The job's tree holds the uploaded binary; the reused slot directory must not keep it.
+    def boom(*_a: Any, work: Path, **_k: Any) -> Any:
+        tree = work / ".batch" / "j1"
+        tree.mkdir(parents=True)
+        (tree / "app.apk").write_bytes(b"APK")
+        raise RuntimeError("unexpected")
+
+    monkeypatch.setattr(worker_mod, "_run_with_heartbeat", boom)
+    dirs = worker_mod._SlotDirs(tmp_path)
+    worker_mod._run_slot(
+        body={"job_id": "j1", "spec": {}},
+        dirs=dirs,
+        free=lambda: None,
+        shutdown=worker_mod._SlotShutdown(),
+        url="http://server",
+        auth_token=None,
+        wid="w1",
+        heartbeat_interval=0.05,
+        worker_file=None,
+        environment="devicefarm",
+    )
+    assert not (tmp_path / ".slots" / "0" / ".batch").exists()
+
+
+def test_a_runner_already_done_under_a_shutdown_leaves_the_lease_to_lapse() -> None:
+    runner = threading.Thread(target=lambda: None)
+    runner.start()
+    runner.join()
+    lost = threading.Event()
+    lost.set()
+    assert worker_mod._beat_until_done(
+        runner, beat=lambda: 200, interval=0.01, lost=lost, streamer=None
+    )
+
+
 def test_a_malformed_lease_frees_its_place_and_takes_no_workspace(tmp_path: Path) -> None:
     freed: list[bool] = []
     dirs = worker_mod._SlotDirs(tmp_path)

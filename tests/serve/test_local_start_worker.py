@@ -1,7 +1,7 @@
 """A local start queues `run` for a worker (BE-0449 unit 5, part 2).
 
-The local backend is now the server shape: a run goes through the queue to a `bajutsu worker`, and
-every other job kind still runs in the server's own process. These tests lock the move end to end
+The local start is the server shape: every job, a `run` included, goes through the queue to a
+`bajutsu worker`, and the server runs none itself. These tests lock the move end to end
 on the fake backend, the stored secrets the lease relays to the worker (and nowhere else), the
 server's own private-repository fetch reading a credential kept in the database, and the notice a
 queued job carries while no worker can take it.
@@ -405,9 +405,7 @@ def test_a_stored_git_credential_reaches_the_servers_fetch(
         seen.update(kw)
         raise ValueError("stop here")
 
-    import bajutsu.serve.operations.config as config_ops
-
-    monkeypatch.setattr(config_ops, "materialize", materialize)
+    monkeypatch.setattr("bajutsu.serve.operations.config.materialize", materialize)
     resp = client.post("/api/config", json={"git": "github:acme/private@main"})
     assert resp.status_code == 400
     assert seen["credential"] == "ghp_stored0003"

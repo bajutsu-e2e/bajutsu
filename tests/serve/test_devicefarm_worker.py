@@ -642,6 +642,27 @@ def test_a_shipped_job_may_not_upload_a_binary_outside_its_workspace(
     assert client.schedule_calls == 0 and transfer.uploads == {}
 
 
+@pytest.mark.parametrize(("inherit_stdio", "one_shot"), [(True, False), (False, True)])
+def test_only_the_one_shot_flag_lifts_a_batch_jobs_path_confinement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, inherit_stdio: bool, one_shot: bool
+) -> None:
+    # Console passthrough says where output goes; it must never decide where a binary may come from.
+    from bajutsu.serve import jobs
+    from bajutsu.serve.jobs import run_job
+    from bajutsu.serve.state import Job
+
+    seen: dict[str, bool] = {}
+
+    def fake_batch(_state: Any, _job: Any, *, one_shot: bool = False) -> None:
+        seen["one_shot"] = one_shot
+
+    monkeypatch.setattr(jobs, "_run_batch_job", fake_batch)
+    state = ServeState(runs_dir=tmp_path / "runs")
+    job = state.register(Job(cmd=[], batch=_request()))
+    run_job(state, job, inherit_stdio=inherit_stdio, one_shot=one_shot)
+    assert seen == {"one_shot": one_shot}
+
+
 def test_a_host_directory_job_may_name_a_binary_anywhere_on_its_machine(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -692,3 +713,11 @@ def test_worker_once_may_name_a_binary_outside_the_current_directory(
 
     assert result.exit_code == 0, result.output
     assert client.schedule_calls == 1
+
+
+def test_only_a_cloud_batch_spec_may_leave_its_cmd_out() -> None:
+    from bajutsu.serve.server.worker_job import _spec_argv
+
+    assert _spec_argv({"batch": asdict(_request())}) == []
+    with pytest.raises(KeyError):
+        _spec_argv({"job_id": "j"})

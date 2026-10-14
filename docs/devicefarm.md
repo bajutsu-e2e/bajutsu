@@ -244,14 +244,17 @@ startup, the worker exits with the reason unless all three conditions below hold
 
 Once registered, the worker prints `provider registered: devicefarm`. It advertises the routing
 token `environment:devicefarm`, beside the `host:<os>` token every worker advertises for its machine.
-A fan-out job requires `environment:devicefarm` and no other token. A worker
-advertising the token leases no other job. Local jobs and Device Farm jobs never cross. Serving
-both on one machine takes two workers. This registration alone may advertise the `environment:`
-prefix. `--capabilities` and `$BAJUTSU_WORKER_CAPABILITIES` refuse it at startup. A config's
-`requires` refuses it at load. A fan-out job
-that no live worker can serve stays queued as unroutable, like any other job. A server with no
-queue refuses `POST /api/run-set`. Unlike the headless submitter, the worker reserves one device per run through a
-device-selection filter. It needs no device-pool ARN.
+A fan-out job requires `environment:devicefarm` and no other token. A worker advertising the token
+leases nothing else. Local jobs and Device Farm jobs thus never reach each other's workers. Serving
+both on one machine takes two workers. Registration alone puts an `environment:` token on a worker.
+`--capabilities` and `$BAJUTSU_WORKER_CAPABILITIES` refuse that prefix at startup. A config's
+`requires` refuses it at load.
+
+A fan-out job that no live worker can serve stays queued as unroutable, like any other job. A server
+with no queue has no worker to take the fan-out, so it refuses `POST /api/run-set`.
+
+Unlike the headless submitter, the worker reserves one device per run through a device-selection
+filter. It needs no device-pool ARN.
 
 > **Config and scenario placement.** The worker composes a separate package for each job. The
 > package holds the source checkout's three parts, plus the job's bundle directory under `bundle/`.
@@ -345,9 +348,10 @@ A run is **durable across a restart** of the server or the worker. Device Farm n
 run by an Amazon Resource Name (ARN). The worker sends that ARN to the server over HTTP as soon as
 Device Farm accepts the run. The server stores the ARN for the worker that holds the job's lease. It
 refuses every other worker. A repeat of the ARN it already holds succeeds from any worker. The
-worker retries a transport error or a `5xx` for up to six minutes. A worker that leases the job later receives the stored ARN with its lease. That worker resumes
-polling the same run and uploads and schedules nothing again. The job thus holds one device for the
-whole 150-minute poll. No worker needs a database connection for it.
+worker retries a transport error or a `5xx` for up to six minutes. A worker that leases the job
+later receives the stored ARN with its lease. That worker resumes polling the same run without
+uploading or scheduling anything again. The job thus holds one device for the whole 150-minute
+poll. No worker needs a database connection for it.
 
 Each run carries its job id as its name on Device Farm, so an operator can find the run of a job.
 A worker may stop after Device Farm schedules a run but before the server stores the run's ARN.
