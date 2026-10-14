@@ -27,6 +27,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Protocol
 
+from bajutsu.common.capability.worker_capability import LOCAL
 from bajutsu.run import INTERNAL_MODULE
 from bajutsu.serve.server.worker_job import CancelRelay, _run_argv_head, execute_job_spec
 from bajutsu.serve.state import Job
@@ -65,31 +66,29 @@ class LocalWorkerIO:
         """Leave the authored scenario at its output path; nothing is persisted elsewhere."""
 
 
-def refusal(spec: Any, work: Path | None = None) -> str | None:
+def refusal(spec: Any, work: Path | None = None, *, environment: str = LOCAL) -> str | None:
     """Why *spec* cannot run as a one-shot job in workspace *work*, or None when it can.
 
     Checked before anything runs. An uploaded bundle, artifact overrides, and visual baselines
-    arrive only by signed URL, which a one-shot job has none of; a Device Farm batch needs a
-    device-cloud worker, which BE-0448 adds. The materials a server ships are written into the
-    workspace, which for a one-shot job is the caller's own directory, so a material that would
-    overwrite a different file there is refused rather than written over it; *work* None skips that
-    check.
+    arrive only by signed URL, which a one-shot job has none of. A Device Farm batch runs only under
+    a worker file whose *environment* is that provider, and such a worker runs nothing else
+    (BE-0448); its application reference is a path on this machine. The materials a server ships
+    are written into the workspace, which for a one-shot job is the caller's own directory, so a
+    material that would overwrite a different file there is refused rather than written over it;
+    *work* None skips that check.
     """
     if not isinstance(spec, dict):
         return "a job spec must be a JSON object"
     if (reason := _needs_a_server(spec)) is not None:
         return reason
-    cmd = spec.get("cmd")
-    if not (isinstance(cmd, list) and cmd and all(isinstance(arg, str) for arg in cmd)):
-        return "the spec needs a `cmd`: a non-empty list of strings"
-    if _run_argv_head(cmd) is None and ("run" in cmd[:4] or INTERNAL_MODULE in cmd[:3]):
-        # The worker places `--worker-config` after a recognised run head; any other run argv would
-        # fail at spawn time instead of here, before anything runs.
-        return (
-            "the spec's `cmd` names a run in a form a worker does not recognise: "
-            f"{' '.join(cmd[:4])} — use `python -m {INTERNAL_MODULE} …` "
-            "(or the older `python -m bajutsu run …`)"
-        )
+    if (reason := environment_refusal(spec, environment)) is not None:
+        return reason
+    if spec.get("batch") is not None:
+        reason = _batch_problem(spec["batch"])
+    else:
+        reason = _cmd_problem(spec.get("cmd"))
+    if reason is not None:
+        return reason
     if (reason := _shape_problem(spec)) is not None:
         return reason
     udids = spec.get("udids")
@@ -121,6 +120,73 @@ def refusal(spec: Any, work: Path | None = None) -> str | None:
     return None
 
 
+def _cmd_problem(cmd: Any) -> str | None:
+    """Why *cmd* is not a command line a worker can spawn, or None when it is."""
+    if not (isinstance(cmd, list) and cmd and all(isinstance(arg, str) for arg in cmd)):
+        return "the spec needs a `cmd`: a non-empty list of strings"
+    if _run_argv_head(cmd) is None and ("run" in cmd[:4] or INTERNAL_MODULE in cmd[:3]):
+        # The worker places `--worker-config` after a recognised run head; any other run argv would
+        # fail at spawn time instead of here, before anything runs.
+        return (
+            "the spec's `cmd` names a run in a form a worker does not recognise: "
+            f"{' '.join(cmd[:4])} — use `python -m {INTERNAL_MODULE} …` "
+            "(or the older `python -m bajutsu run …`)"
+        )
+    return None
+
+
+# The fields of a spec's `batch`, which `worker_job._batch_from_spec` turns into a `BatchRequest`.
+_BATCH_FIELDS = frozenset({"provider", "scenario", "target", "config", "platform", "app_path"})
+
+
+def _batch_problem(batch: Any) -> str | None:
+    """Why *batch* is not a cloud-batch request a worker can submit, or None when it is."""
+    if not (isinstance(batch, dict) and all(isinstance(v, str) and v for v in batch.values())):
+        return "the spec's `batch` must be an object of non-empty strings"
+    if set(batch) != _BATCH_FIELDS:
+        return f"the spec's `batch` must name exactly {', '.join(sorted(_BATCH_FIELDS))}"
+    if batch["platform"] not in ("android", "ios"):
+        return f"the spec's `batch.platform` must be android or ios, not {batch['platform']!r}"
+    escaping = sorted(key for key in ("scenario", "config") if _escapes(None, batch[key]))
+    if escaping:
+        # The provider packages the bundle directory, so a path outside it would be missing on the
+        # provider's host and fail there, far from this cause.
+        return (
+            "the spec's `batch` paths must be relative to the workspace: "
+            f"{', '.join(f'batch.{key}' for key in escaping)} is absolute or climbs out with `..`"
+        )
+    return None
+
+
+def environment_refusal(spec: dict[str, Any], environment: str) -> str | None:
+    """Why a worker whose environment is *environment* must not run *spec*, or None (BE-0448).
+
+    A cloud-batch spec belongs to the worker that registered its provider, and that worker drives
+    no device of its own, so it runs nothing but its provider's batches. Routing already keeps the
+    two apart; this holds the line for a spec that reaches the wrong worker anyway.
+    """
+    batch = spec.get("batch")
+    provider = batch.get("provider") if isinstance(batch, dict) else None
+    if environment == LOCAL:
+        if batch is not None:
+            return (
+                "the spec is a cloud-batch job, which needs a worker whose worker.yaml environment "
+                f"is its provider ({provider!r}); pass --worker-config naming one"
+            )
+        return None
+    if batch is None:
+        return (
+            f"a worker whose environment is '{environment}' runs only that provider's batch jobs; "
+            "run this spec on a local worker"
+        )
+    if provider != environment:
+        return (
+            f"the spec's batch names provider {provider!r}, but this worker's environment is "
+            f"'{environment}'"
+        )
+    return None
+
+
 def _needs_a_server(spec: dict[str, Any]) -> str | None:
     """Why *spec* names something only a server supplies, or None when it names nothing of the kind."""
     if spec.get("bundle") is not None:
@@ -137,11 +203,6 @@ def _needs_a_server(spec: dict[str, Any]) -> str | None:
         return (
             "the spec asks for visual baselines, which a worker fetches by signed URL; a one-shot "
             "run has no server to sign one — point `--baselines` at a directory on disk instead"
-        )
-    if spec.get("batch") is not None:
-        return (
-            "the spec is a Device Farm batch, which needs a device-cloud worker; submitting one "
-            "without a server arrives with BE-0448"
         )
     return None
 
@@ -220,6 +281,7 @@ def run_spec_once(
     keep_caller_path: bool = False,
     cwd: Path | None = None,
     popen: Any = subprocess.Popen,
+    environment: str = LOCAL,
 ) -> int:
     """Run *spec* to completion on this machine and return the exit code for the caller.
 
@@ -233,6 +295,8 @@ def run_spec_once(
             run` alone; `worker --once` leaves it False so its run resolves tools as a leased one.
         cwd: The workspace the job runs in; the current directory when None.
         popen: The process factory, injectable for tests.
+        environment: The worker file's environment; a device cloud runs the spec's batch through
+            the provider the caller registered, with no checkpoint, so no ARN is stored (BE-0448).
 
     Returns:
         The child's exit code; 128 plus the signal number when the child died of a signal, or when
@@ -243,7 +307,7 @@ def run_spec_once(
     """
     # Enforced here as well as by the CLI, so a caller that skipped `refusal` cannot have the spec's
     # materials written outside the workspace. The public wrapper's own spec always passes.
-    if (reason := refusal(spec, cwd or Path.cwd())) is not None:
+    if (reason := refusal(spec, cwd or Path.cwd(), environment=environment)) is not None:
         raise ValueError(f"a one-shot job spec its caller did not vet: {reason}")
     relay = CancelRelay()
     with cancel_on_signals(relay) as signalled:

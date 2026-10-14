@@ -210,9 +210,11 @@ def test_a_local_start_queues_a_run_and_a_worker_runs_it(
 def test_a_local_start_runs_the_other_kinds_in_process(tmp_path: Path) -> None:
     state = _local_start(tmp_path, _fake_project(tmp_path))
     assert isinstance(state.executor, srv.RoutingExecutor)
-    for kind in ("record", "crawl", "triage", "run-set"):
+    for kind in ("record", "crawl", "triage"):
         assert state.executor.routes_locally(kind)
+    # A Device Farm fan-out needs a worker that registered the provider (BE-0448).
     assert not state.executor.routes_locally("run")
+    assert not state.executor.routes_locally("run-set")
 
 
 # --- the lease relays the stored secrets, and nothing else does ---------------------------------

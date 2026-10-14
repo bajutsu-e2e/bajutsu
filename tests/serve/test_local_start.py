@@ -420,7 +420,6 @@ def test_serve_switches_a_local_start_to_the_fastapi_transport(
 
     monkeypatch.setattr(srv, "make_asgi_server", lambda *_a, **_k: _Server())
     monkeypatch.setattr(srv, "make_server", lambda *_a, **_k: pytest.fail("stdlib transport"))
-    monkeypatch.setattr(srv, "register_batch_providers", list)
     # Leave the process-wide logging configuration to the tests that own it.
     monkeypatch.setattr(srv, "_configure_oplog", lambda _state: None)
     _scn, cfg, runs = project(tmp_path)
@@ -622,3 +621,28 @@ def test_a_run_soft_deleted_under_the_server_backend_stays_hidden_locally(tmp_pa
     assert [r["id"] for r in list_runs(runs)] == ["20260101-000000"]
     assert [r["id"] for r in list_crawl_runs(runs)] == ["20260101-000000"]
     assert len(read_manifests(runs)) == 1
+
+
+def test_serve_registers_no_batch_provider_even_with_a_project_named(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The AWS role lives in a Device Farm worker alone (BE-0448): a server started with the project
+    # ARN in its environment still registers nothing, so it can submit nothing.
+    from bajutsu.serve import batch_provider as bp
+
+    class _Server:
+        def run(self) -> None:
+            pass
+
+    monkeypatch.setenv("DEVICEFARM_PROJECT_ARN", "arn:aws:devicefarm:us-west-2:1:project:p")
+    monkeypatch.setattr(srv, "make_asgi_server", lambda *_a, **_k: _Server())
+    monkeypatch.setattr(srv, "_configure_oplog", lambda _state: None)
+    saved = dict(bp._PROVIDERS)
+    bp._PROVIDERS.clear()
+    try:
+        _scn, cfg, runs = project(tmp_path)
+        srv.serve("127.0.0.1", 8798, None, cfg, runs, root=tmp_path, backend="server")
+        assert bp._PROVIDERS == {}
+    finally:
+        bp._PROVIDERS.clear()
+        bp._PROVIDERS.update(saved)

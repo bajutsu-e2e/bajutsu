@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -44,7 +45,7 @@ _INTERNAL = [sys.executable, "-m", INTERNAL_MODULE]
         ({"cmd": ["x"], "bundle": {"id": "a" * 64}}, "uploaded bundle"),
         ({"cmd": ["x"], "overrides": {"binary": "b"}}, "artifact overrides"),
         ({"cmd": ["x"], "materialize_baselines": True}, "visual baselines"),
-        ({"batch": {"provider": "devicefarm"}}, "BE-0448"),
+        ({"batch": {"provider": "devicefarm"}}, "worker.yaml environment"),
         ({"cmd": []}, "non-empty list"),
         ({"cmd": ["x", 1]}, "non-empty list"),
         ({}, "non-empty list"),
@@ -478,7 +479,10 @@ def test_worker_once_refuses_an_unreadable_spec(tmp_path: Path) -> None:
         assert "cannot read the job spec" in result.output
 
 
-def test_worker_once_refuses_a_device_cloud_worker_file(tmp_path: Path) -> None:
+def test_worker_once_refuses_a_device_cloud_worker_file_without_a_provider(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("DEVICEFARM_PROJECT_ARN", raising=False)
     worker_file = tmp_path / "w.yaml"
     worker_file.write_text(
         "version: 1\nenvironment: devicefarm\ndrivers: [adb]\n", encoding="utf-8"
@@ -488,7 +492,9 @@ def test_worker_once_refuses_a_device_cloud_worker_file(tmp_path: Path) -> None:
         app, ["worker", "--once", str(spec), "--worker-config", str(worker_file)]
     )
     assert result.exit_code == 2
-    assert "BE-0448" in result.output
+    assert "registered no provider" in re.sub(
+        r"[\s│]+", " ", re.sub(r"\x1b\[[0-9;]*m", "", result.output)
+    )
 
 
 # --- the public `bajutsu run` wrapper -----------------------------------------------------------

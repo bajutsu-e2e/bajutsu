@@ -14,6 +14,7 @@ from bajutsu.common.run_meta.id import new_run_id
 from bajutsu.serve import oplog
 from bajutsu.serve.authz import _record_audit
 from bajutsu.serve.batch_provider import BatchRequest
+from bajutsu.serve.capabilities import environment_capability
 from bajutsu.serve.commands import _float, _int, crawl_command, record_command, run_command
 from bajutsu.serve.executor import runs_in_process
 from bajutsu.serve.helpers import (
@@ -534,19 +535,21 @@ def _batch_requests(
     scope: ScenarioScope,
     names: list[str],
     *,
-    work_dir: Path,
+    bundle_dir: Path,
     provider: str,
     target: str,
     config_arg: str,
     platform: Platform,
     app_path: str,
-) -> tuple[list[BatchRequest], tuple[Any, int] | None]:
-    """Resolve every named scenario to a packageable `BatchRequest`, or the first refusal.
+) -> tuple[list[tuple[BatchRequest, dict[str, str]]], tuple[Any, int] | None]:
+    """Resolve every named scenario to a `BatchRequest` and the materials it ships, or the refusal.
 
-    All-or-nothing, so `start_run_set` never dispatches a partial fan-out for a set that names one
-    bad scenario.
+    Paths are relative to the job's bundle directory (BE-0448): a scenario that travels as materials
+    already names its place in the worker's workspace, and one on disk is made relative to
+    *bundle_dir*, the config's own directory. All-or-nothing, so `start_run_set` never dispatches a
+    partial fan-out for a set that names one bad scenario.
     """
-    requests: list[BatchRequest] = []
+    requests: list[tuple[BatchRequest, dict[str, str]]] = []
     for name in names:
         runnable = scope.runnable(name)
         if runnable is None:
@@ -556,32 +559,45 @@ def _batch_requests(
                 },
                 400,
             )
-        if runnable.materials:
-            # The batch provider packages work_dir at the zip root; a scenario whose text travels as
-            # out-of-band materials (the server-backed store) can't be packaged from an on-disk path.
+        scenario_arg = (
+            runnable.arg if runnable.materials else os.path.relpath(runnable.arg, bundle_dir)
+        )
+        if _escapes(scenario_arg):
             return [], (
-                {
-                    "error": (
-                        f"scenario '{name}' is not an on-disk file — cloud-batch fan-out requires "
-                        "scenarios to be on the local filesystem (materials not supported)"
-                    )
-                },
+                {"error": f"scenario '{name}' is not under the config's directory"},
                 400,
             )
-        scenario_arg = os.path.relpath(runnable.arg, work_dir)
-        if _escapes(scenario_arg):
-            return [], ({"error": f"scenario '{name}' is not under the run directory"}, 400)
         requests.append(
-            BatchRequest(
-                provider=provider,
-                scenario=scenario_arg,
-                target=target,
-                config=config_arg,
-                platform=platform,
-                app_path=app_path,
+            (
+                BatchRequest(
+                    provider=provider,
+                    scenario=scenario_arg,
+                    target=target,
+                    config=config_arg,
+                    platform=platform,
+                    app_path=app_path,
+                ),
+                dict(runnable.materials),
             )
         )
     return requests, None
+
+
+def _run_set_refusal(state: ServeState, body: dict[str, Any]) -> tuple[Any, int] | None:
+    """Why `run-set` refuses *body* on this server before reading any target, or None."""
+    # Refused rather than ignored: mapping an override onto a Device Farm request is separate work,
+    # so an override here would silently install nothing (BE-0448).
+    for field in _OVERRIDE_FIELDS:
+        if body.get(field) is not None:
+            return {"error": f"{field} is not supported by run-set (BE-0431)"}, 400
+    if runs_in_process(state.executor, "run-set"):
+        # The server registers no batch provider (BE-0448), so a fan-out it would run itself could
+        # only fail at submit; say where it has to run instead.
+        return {
+            "error": "run-set needs a queue and a worker whose environment is the target's "
+            "cloudBatch provider; this server runs jobs in its own process"
+        }, 400
+    return None
 
 
 # Each return is a distinct HTTP status from a validation guard — the early-return shape RET505
@@ -597,8 +613,12 @@ def start_run_set(  # noqa: C901, PLR0911
     its cloud runs use (`cloudBatch`); the request never names a provider, so the executor kind is a
     config decision, not a client one. Each scenario becomes its own Job carrying a per-scenario
     `BatchRequest`, registered and dispatched through the same concurrency-capped tail as every other
-    run. Returns the dispatched job ids. The device budget that bounds how many of these reserve a
-    device at once arrives in a later unit; here the fan-out simply enumerates and registers.
+    run. Returns the dispatched job ids.
+
+    Each job requires exactly `environment:<provider>` (BE-0448), so only a worker that registered
+    the provider leases it, and it ships what a worker without the project needs: the config and
+    scenario as materials when the scenario store yields them, else the bound bundle or the config's
+    directory, which the job names as its own.
     """
     binding = state.binding_for(session, state.org_of(actor))
     cfg = binding.config
@@ -606,11 +626,8 @@ def start_run_set(  # noqa: C901, PLR0911
         return {"error": "open a config first"}, 400
     if not body.get("target"):
         return {"error": "target is required"}, 400
-    # Refused rather than ignored: this fan-out does not run on the split serve/worker topology at
-    # all yet (`jobs.py`'s batch dispatcher), so an override here would silently install nothing.
-    for field in _OVERRIDE_FIELDS:
-        if body.get(field) is not None:
-            return {"error": f"{field} is not supported by run-set (BE-0431)"}, 400
+    if refused := _run_set_refusal(state, body):
+        return refused
     target = str(body["target"])
     org, forbidden = _resolve_org_or_forbid(state, target, actor, session)
     if forbidden:
@@ -640,32 +657,16 @@ def start_run_set(  # noqa: C901, PLR0911
         return {"error": f"target '{target}' has no scenarios to run"}, 400
     # Resolve every scenario to its trusted runnable *before* dispatching any, so an unknown name
     # fails the whole request closed rather than leaving a partial fan-out behind (BE-0051 confines
-    # each to the target's own dir).
-    # The provider packages work_dir at the zip root, so the config and scenarios below it travel as
-    # package-relative paths; devicefarm_package_root roots that at the source tree (see its field),
-    # falling back to the session's bound cwd for the in-process tests.
-    work_dir = state.devicefarm_package_root or binding.cwd
-    # A relative appPath resolves against the config's own directory (the binding's cwd) like every other
-    # config path (BE-0242) — not against the package root or serve's process cwd. The batch provider
-    # reads the APK/IPA in-process, against the process cwd, so resolve it to an absolute path here —
-    # otherwise a relative appPath is read from serve's launch dir and the upload fails opaquely on
-    # the cloud host with "No such file". An absolute appPath is left as the operator wrote it.
-    app_path = app_path if Path(app_path).is_absolute() else str(binding.cwd / app_path)
-    config_arg = os.path.relpath(cfg, work_dir)
+    # each to the target's own dir). The config's directory is the bundle the worker packages, so
+    # the request's paths are relative to it. The appPath stays as the config writes it, a logical
+    # reference the worker resolves against the same directory (BE-0448).
+    config_arg = os.path.relpath(cfg, binding.cwd)
     if _escapes(config_arg):
-        # The provider packages work_dir at the package root, so a config outside it would travel as
-        # a `../…` path that won't exist in the package and would fail opaquely on the cloud host.
-        # Fail loud here instead (determinism first): this target's config isn't under work_dir.
-        return {
-            "error": (
-                f"config is not under the cloud-batch package root {work_dir}; "
-                "the config and its scenarios must live inside that directory"
-            )
-        }, 400
+        return {"error": f"config is not under its bundle directory {binding.cwd}"}, 400
     requests, requests_err = _batch_requests(
         scope,
         names,
-        work_dir=work_dir,
+        bundle_dir=binding.cwd,
         provider=provider,
         target=target,
         config_arg=config_arg,
@@ -686,10 +687,22 @@ def start_run_set(  # noqa: C901, PLR0911
         return budget_err
     device_budget = _device_budget(config_budget, request_budget)
     dispatched: list[str] = []
-    for request in requests:
+    config_text = cfg.read_text(encoding="utf-8")
+    for request, materials in requests:
+        if materials:
+            # The scenario store ships the scenario text, so the worker has no project on disk: the
+            # config travels too, at the bundle-relative path the request names.
+            materials[request.config] = config_text
         job, capped = _register_and_dispatch(
             state,
-            Job(batch=request, actor=actor, org=org, label=label),
+            Job(
+                batch=request,
+                materials=materials,
+                actor=actor,
+                org=org,
+                label=label,
+                capabilities=[environment_capability(provider)],
+            ),
             binding=binding,
             device_budget=device_budget,
         )

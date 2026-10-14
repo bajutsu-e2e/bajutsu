@@ -1131,7 +1131,7 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   and reuses the cached bundle tree rather than re-fetching it. Refused for a job the server runs in
   its own process (`LocalExecutor`, which owns no workspace to isolate the placement into; a `run`
   goes to a worker on every backend since BE-0449 unit 5) and on the cloud-batch
-  `run-set` fan-out, which does not run on the split worker topology this item targets; each
+  `run-set` fan-out, whose Device Farm worker (BE-0448) maps no override onto its request; each
   overridden sha256 is recorded on the run's manifest provenance
 - The **cross-target comparison dashboard** (BE-0226, repointed to the target axis by BE-0404): a `serve` **Comparison** tab that ranks the bound config's targets side by side — pass-rate, flaky-rate, and p50/p95 run duration, plus a per-target trend sparkline — reusing BE-0102's per-config aggregation computed once per target (`GET /api/metrics/targets`); read-only and advisory, like BE-0102. A row opens that target's run history read-only, by pointer or by keyboard. The view writes nothing: a target is not a binding, so there is nothing on it to activate
 - AI **crawl** (`crawl/`): autonomous breadth-first exploration of an app → a screen map (`screenmap.json`)

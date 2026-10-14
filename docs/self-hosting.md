@@ -540,8 +540,8 @@ The control plane checks the request before any job exists:
 - `binaryArtifact` on a target with no `appPath`, such as a web target, returns `400`.
 - A single-process `serve` refuses both fields. It runs the job in the operator's own project
   directory, which no override may overwrite.
-- `POST /api/run-set` refuses both fields. Its cloud-batch fan-out does not run on the split
-  serve-and-worker topology yet.
+- `POST /api/run-set` refuses both fields. Its cloud-batch fan-out runs on a Device Farm worker,
+  and mapping an override onto a Device Farm request is separate work.
 
 The lease signs one presigned HTTP GET URL per named override: `binary_url` and `scenarios_url`.
 It signs each under the leased job's org. The worker checks each download against its sha256. It

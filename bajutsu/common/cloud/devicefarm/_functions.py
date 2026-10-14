@@ -73,6 +73,15 @@ _PACKAGE_EXCLUDES = frozenset(
         "runs",
         "tmp",
         ".DS_Store",
+        # A Bajutsu process's own state, which a bundle directory may hold when it is a project or a
+        # worker's workspace: the local start's keys and queue (`.bajutsu`), the worker's bundle,
+        # override, and batch caches, and its owner and process-group files (BE-0448).
+        ".bajutsu",
+        ".bundles",
+        ".overrides",
+        ".batch",
+        ".owner-pid",
+        ".job-pgid",
     }
 )
 

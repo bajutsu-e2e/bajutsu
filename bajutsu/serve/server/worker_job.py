@@ -168,8 +168,9 @@ def job_spec(job: Job) -> dict[str, Any]:
         # org's provider/model/effort without the worker holding any provider settings of its own.
         "env_overlay": dict(job.env_overlay),
         # The cloud-batch request (BE-0336 Unit 5), so a batch job dispatched through the DB queue is
-        # reconstructed as a batch run on the worker instead of degrading to a local subprocess. None
-        # for a normal (local-subprocess) job.
+        # reconstructed as a batch run on the worker instead of degrading to a local subprocess. Its
+        # paths are relative to the job's bundle directory and its app is a logical reference, so
+        # the spec names nothing on the server's host (BE-0448). None for a normal job.
         "batch": _batch_spec(job.batch),
         # The per-job artifact overrides (BE-0431): the worker places each named artifact into this
         # job's own workspace before running. None for a job naming none.
@@ -269,6 +270,16 @@ def _repository_from_env_or_none() -> Any:
     except ImportError:
         return None
     return repository_from_env()
+
+
+def _spec_argv(spec: dict[str, Any]) -> list[str]:
+    """The argv the spec names: empty only for a cloud-batch spec, which spawns nothing (BE-0448).
+
+    Any other spec without a `cmd` still fails loudly here, before a device boots or an app builds.
+    """
+    if spec.get("batch") is not None:
+        return list(spec.get("cmd") or [])
+    return list(spec["cmd"])
 
 
 def _local_interpreter(cmd: list[str]) -> list[str]:
@@ -411,9 +422,9 @@ def execute_job_spec(
     job = Job(
         id=str(spec["job_id"]),  # keep the control plane's id so logs/results line up
         cmd=(
-            _with_worker_config(_local_interpreter(list(spec["cmd"])), worker_config)
+            _with_worker_config(_local_interpreter(_spec_argv(spec)), worker_config)
             if apply_worker_config
-            else _local_interpreter(list(spec["cmd"]))
+            else _local_interpreter(_spec_argv(spec))
         ),
         udids=list(spec.get("udids") or []),
         app_path=spec.get("app_path"),
@@ -445,7 +456,7 @@ def execute_job_spec(
         on_job(job)
     with oplog.job_context(job_id=job.id, org=org, actor=spec.get("actor")):
         oplog.log_event(_logger, "worker.job.started", "worker started job")
-        run_job(state, job, inherit_stdio=one_shot)
+        run_job(state, job, inherit_stdio=one_shot, one_shot=one_shot)
         # Bind run_id for correlation only: the run resolves `${secrets.X}` inside the `bajutsu run`
         # subprocess, so those values aren't in this process to seed a run-scoped redactor here.
         with oplog.run_context(job.run_id) if job.run_id else nullcontext():

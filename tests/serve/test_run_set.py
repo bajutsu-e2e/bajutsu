@@ -215,8 +215,8 @@ def test_fan_out_rejects_an_empty_scenario_subset(tmp_path: Path) -> None:
 
 
 def test_fan_out_rejects_a_config_outside_the_run_directory(tmp_path: Path) -> None:
-    # The provider packages the run directory (state.binding.cwd) at the package root, so a config living
-    # outside it would travel as a `../…` path the cloud host can't find. Fail loud at the endpoint.
+    # The worker packages the job's bundle directory (state.binding.cwd), so a config living outside
+    # it would travel as a `../…` path the cloud host can't find. Fail loud at the endpoint.
     scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml"])
     run_dir = tmp_path / "elsewhere"
     run_dir.mkdir()
@@ -232,7 +232,7 @@ def test_fan_out_rejects_a_config_outside_the_run_directory(tmp_path: Path) -> N
     payload, status = start_run_set(state, {"target": "demo"})
 
     assert status == 400
-    assert "cloud-batch package root" in payload["error"]
+    assert "not under its bundle directory" in payload["error"]
     assert executor.jobs == []
 
 
@@ -362,12 +362,10 @@ def test_fan_out_unbounded_without_a_budget(tmp_path: Path) -> None:
     assert len(payload["jobIds"]) == 3
 
 
-def test_fan_out_rejects_scenarios_that_travel_as_materials(tmp_path: Path) -> None:
-    # The batch provider packages work_dir (the on-disk run directory) and names the scenario as a
-    # relpath inside it. On the server-backed scenario store, runnable.arg is already workspace-
-    # relative and runnable.materials is non-empty (the scenario text is shipped out-of-band). In
-    # that case `os.path.relpath(arg, work_dir)` can produce a wrong result. Fail loud rather than
-    # packaging a scenario path that won't exist inside the zip.
+def test_fan_out_ships_scenarios_that_travel_as_materials(tmp_path: Path) -> None:
+    # On the server-backed scenario store, runnable.arg is already workspace-relative and the
+    # scenario text travels as materials (BE-0448). The job ships it with the config, and the
+    # request names both by their place in the worker's workspace, which is the bundle it packages.
     from bajutsu.serve.scenarios import Runnable
 
     scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml"])
@@ -404,18 +402,24 @@ def test_fan_out_rejects_scenarios_that_travel_as_materials(tmp_path: Path) -> N
     with unittest.mock.patch.object(state, "for_org", return_value=mock_bundle):
         payload, status = start_run_set(state, {"target": "demo"})
 
-    assert status == 400
-    assert "materials" in payload["error"].lower() or "on-disk" in payload["error"].lower()
-    assert executor.jobs == []
+    assert status == 200, payload
+    (job,) = executor.jobs
+    assert job.batch is not None
+    assert (job.batch.scenario, job.batch.config) == ("one.yaml", "bajutsu.config.yaml")
+    assert job.materials["one.yaml"].startswith("- name: a")
+    assert job.materials["bajutsu.config.yaml"] == cfg.read_text(encoding="utf-8")
 
 
 def test_run_set_endpoint_is_wired(tmp_path: Path) -> None:
     # The POST /api/run-set route reaches start_run_set end to end through the real server: a
-    # scenario-set request returns one job id per scenario. The async jobs then fail (no provider is
-    # registered in this process), but that is downstream of the dispatch response asserted here.
+    # scenario-set request returns one job id per scenario, queued for a worker to lease.
     scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml", "two.yaml"])
     state = srv.ServeState(
-        scenarios_dir=scn_dir, config=cfg, runs_dir=tmp_path / "runs", cwd=tmp_path
+        scenarios_dir=scn_dir,
+        config=cfg,
+        runs_dir=tmp_path / "runs",
+        cwd=tmp_path,
+        executor=_RecordingExecutor(),
     )
     server, port = _serve(state)
     try:

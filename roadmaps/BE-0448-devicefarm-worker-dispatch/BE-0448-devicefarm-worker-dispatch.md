@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0448](BE-0448-devicefarm-worker-dispatch.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0448") |
+| Implementing PR | [#2184](https://github.com/bajutsu-e2e/bajutsu/pull/2184) (Units 1–2 and part of 3) |
 | Topic | Device-cloud execution |
 <!-- /BE-METADATA -->
 
@@ -185,14 +186,50 @@ This item removes the in-process dispatch of the server (`_run_batch_job` and th
 > *Detailed design* (one entry per unit of work), and the log records what changed and when, oldest
 > first, each with a link to its PR.
 
-- [ ] Provider registration on the worker
-- [ ] Routing
+- [x] Provider registration on the worker
+- [x] Routing
 - [ ] Package root and application delivery
 - [ ] Concurrent slots
 - [ ] Budget from the declaration
 - [ ] Checkpoint over HTTP
 - [ ] Result path
 - [ ] Tests and documentation
+
+Log:
+
+- [#2184](https://github.com/bajutsu-e2e/bajutsu/pull/2184) (Units 1–2 and part of 3) — `bajutsu worker` now registers the provider that its
+  `worker.yaml` names as `environment`, together with the `BAJUTSU_BATCH_HOOKS` hooks, and advertises
+  `environment:devicefarm`. A worker that cannot register it exits at startup with the reason: no
+  `DEVICEFARM_PROJECT_ARN`, a hook that fails to load, or no source checkout. A device-cloud worker
+  advertises no `platform:*` token and refuses an explicit `--platform`; the flag now defaults to
+  empty, which a local worker still reads as `ios`. The worker's `--capabilities` and `$BAJUTSU_WORKER_CAPABILITIES` refuse an
+  `environment:` token. The server no longer calls `register_batch_providers`, and
+  `ServeState.devicefarm_package_root` no longer exists. `--backend local` now queues `run-set` beside `run`.
+  A server that runs `run-set` in its own process answers `400`. A fan-out job requires
+  `environment:<cloudBatch>` and no other token. `can_serve` gains the rule that a worker advertising an
+  `environment:*` token serves no job that lacks it, so the lease, the unroutable count, and the
+  no-worker notice apply it alike. The fan-out names the request's config and scenario by
+  their paths inside the config's directory, which is the job's bundle directory. It accepts scenarios that
+  travel as materials, and ships the config beside them. `BatchRequest.app_path` keeps its name for
+  the hooks' sake, but now carries the target's `appPath` as written. The provider resolves a
+  relative one against the bundle directory and fails before any upload when the file is missing.
+  With a source root, the provider composes each job's package from `pyproject.toml`, `tests/`, and
+  `bajutsu/`, plus the bundle directory under `bundle/`, without the binary or earlier runs, and
+  writes into neither tree. A batch job that ships no bundle gets a workspace of its own under the
+  worker's `.batch/`, removed after its evidence uploads. A worker refuses a job outside its
+  environment before fetching anything. `bajutsu worker --once` under a `devicefarm` file submits
+  one batch spec, resolves its `appPath` locally, stores no ARN, and prints the verdict lines. The
+  dispatch keeps working end to end until units 6 and 7: the worker lands and uploads the run
+  through the existing path, and a worker with `BAJUTSU_DATABASE_URL` still checkpoints the ARN.
+  The package leaves out a process's own state directories (`.bajutsu`, the worker's `.bundles`,
+  `.overrides`, and `.batch`) and its owner and process-group files. A job that ships its files
+  fails when its `appPath` resolves outside its workspace, through `..` or a symbolic link
+  included. A job naming a host directory, and `--once`, may name any local path. Unit 3 stays
+  open on one gap. The binary reaches the worker inside an uploaded bundle or the config's
+  directory, but a job whose scenarios travel as materials gets no presigned binary URL in its
+  lease (BE-0413), so its relative `appPath` is missing on a remote worker. Until unit 6, a
+  SIGINT to `--once` does not stop a scheduled Device Farm run. A worker that reaches the server
+  over HTTP alone stores no ARN, so a job it re-leases submits again.
 
 ## References
 
