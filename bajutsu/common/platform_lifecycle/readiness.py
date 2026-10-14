@@ -109,7 +109,8 @@ def await_ready(
     when the app takes longer to start.
 
     Returns:
-        Whether the app became ready, which signal decided it (`screenChanged` / `startWhen` /
+        Whether the app became ready, which signal decided it (`screenChanged` / `readyWhen`, the
+        signal an `app.startWhen` selector sets /
         `namespace` / `count`, or `timeout` when the deadline passed first), the elapsed time —
         recorded on a first-wait timeout so the failure is diagnosable from artifacts (BE-0231) —
         and whether the tree settled before the gate returned.
