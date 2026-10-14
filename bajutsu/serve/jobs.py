@@ -461,7 +461,9 @@ def _build_app(state: ServeState, job: Job) -> bool:
     return True
 
 
-def run_job(state: ServeState, job: Job, *, inherit_stdio: bool = False) -> None:
+def run_job(
+    state: ServeState, job: Job, *, inherit_stdio: bool = False, one_shot: bool = False
+) -> None:
     """Boot the job's devices (if any), build the app if its binary is missing, then run
     ``job.cmd``, capturing combined output line-by-line and the produced run id. The job's live
     log channel is closed on every exit path, so an ``/events`` subscriber's stream always ends.
@@ -475,9 +477,12 @@ def run_job(state: ServeState, job: Job, *, inherit_stdio: bool = False) -> None
             caller's standard output and an interactive `--step` prompt reads the caller's
             terminal. The run id then comes from the run tree the child wrote, since no output is
             read here.
+        one_shot: The job comes from the caller's own command line, not a server's lease, so a
+            cloud-batch job may upload an `appPath` from anywhere on this host (BE-0448). Kept
+            apart from *inherit_stdio*, which governs where output goes and nothing else.
     """
     try:
-        _run_job(state, job, inherit_stdio=inherit_stdio)
+        _run_job(state, job, inherit_stdio=inherit_stdio, one_shot=one_shot)
     finally:
         _finish_job(state, job)
 
@@ -827,11 +832,13 @@ def _run_summary(
     }
 
 
-def _run_job(state: ServeState, job: Job, *, inherit_stdio: bool = False) -> None:
+def _run_job(
+    state: ServeState, job: Job, *, inherit_stdio: bool = False, one_shot: bool = False
+) -> None:
     if job.batch is not None:
         # A cloud-batch job runs its scenario on a remote reserved device, not a local subprocess
         # (BE-0336). No device to boot, no app to build here — the provider packages and submits.
-        _run_batch_job(state, job, one_shot=inherit_stdio)
+        _run_batch_job(state, job, one_shot=one_shot)
         _echo_lines(job, inherit_stdio)
         return
     if not (_boot_devices(state, job) and _build_app(state, job)):
