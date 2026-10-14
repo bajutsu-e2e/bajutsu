@@ -49,12 +49,12 @@ def test_removed_key_rejected_even_alongside_the_canonical_one(removed: str) -> 
 
 _VISION_ERROR = {
     "error": "'alertVisionInstruction' is not supported by run (BE-0402); "
-    "write the scenario's own systemAlertHandling.rules instead"
+    "write the scenario's own preconditions.run.systemAlertHandling.rules instead"
 }
 
 _LABELS_ERROR = {
     "error": "'alertLabels' is not supported by run (BE-0406); name the prompts you expect "
-    "with the scenario's own systemAlertHandling.rules instead"
+    "with the scenario's own preconditions.run.systemAlertHandling.rules instead"
 }
 
 

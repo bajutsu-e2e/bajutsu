@@ -27,6 +27,7 @@ from bajutsu.cli._shared import (
     _load_config_with_source,
     _load_device_worker_or_exit,
     _log_subsystem_default,
+    _precondition_checks,
     _refuse_bad_preconditions,
     _reject_url_udid,
     _resolve_browser,
@@ -34,6 +35,7 @@ from bajutsu.cli._shared import (
     _start_launch_server_or_exit,
     _with_headed,
     _with_worker_device,
+    _without_engine_condition,
     parse_engine_flag,
     resolve_system_alert_handling_flag,
 )
@@ -384,6 +386,8 @@ def _resolve_config_and_engines(
     engines = _parse_browsers(browsers)
     if len(engines) == 1:
         eff = _resolve_browser(eff, engines[0])
+    elif engines:
+        eff = _without_engine_condition(eff)  # each matrix pass sets its own engine (`run_pass`)
     return loaded, eff, config_source, engines
 
 
@@ -983,20 +987,12 @@ def _check_preconditions_or_exit(
     """Refuse a scenario whose preconditions no driven target can honor, before any device work.
 
     Each scenario is checked against every target it drives: its declared `targets`, else the run's
-    own (`_refuse_bad_preconditions` says what is checked).
+    own (`_precondition_checks`; `_refuse_bad_preconditions` says what is checked).
 
     Raises:
         typer.Exit: Any scenario has a problem (exit code 2).
     """
-    effs = {target_name: eff}
-    checks: list[tuple[Scenario, list[Effective]]] = []
-    for s in scenarios:
-        # An unknown name is left to the target checks that follow, which say what is wrong with it.
-        known = [n for n in s.target_names if n in effs or n in loaded.config.targets]
-        for name in known:
-            if name not in effs:
-                effs[name] = _effective_for(loaded, name)
-        checks.append((s, [effs[name] for name in known] if s.target_names else [eff]))
+    checks = _precondition_checks(loaded, scenarios, target_name, eff)
     # Read, not validated: the primary may be a stale inference that `--tag` / `--exclude` is about
     # to replace, and `--backend` is checked against the primary the run settles on.
     fake = [b.strip() for b in backend.split(",") if b.strip()] == ["fake"]

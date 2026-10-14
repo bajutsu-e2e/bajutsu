@@ -681,9 +681,10 @@ class _ScenarioRunner:
         # escalation condition below, because a replacement resets strictly *more* than an erase
         # does — a blank device carries no app data at all. Reading them only where `forced_erase` is
         # computed would leave the stall signal free to swap the device out from under a scenario
-        # that declared `reinstall: overwrite` to keep its data, or from under an operator who asked
-        # for `--no-erase`, which is the opposite of what either opt-out means. A `forced_erase`
-        # attempt already implies both, so folding them in loses nothing on that path.
+        # whose merged `reinstall` is `overwrite` to keep its data — its own, or its target's
+        # `app.reinstall` default (BE-0452) — or from under an operator who asked for `--no-erase`,
+        # which is the opposite of what either opt-out means. A `forced_erase` attempt already
+        # implies both, so folding them in loses nothing on that path.
         can_replace = (
             self.force_erase_on_retry
             and resolve_preconditions(self.eff, s.preconditions).reinstall != "overwrite"
@@ -708,10 +709,11 @@ class _ScenarioRunner:
                 # relaunches the whole set, so the previous attempt's drivers are already gone.
                 others: dict[str, Lease] = {}
                 # A retry forces the device recovery `erase: true` would give: respawning onto the
-                # device that just wedged reproduces the crash. Skipped on `reinstall: overwrite`
-                # (the scenario needs its app data preserved), on `not self.force_erase_on_retry`
-                # (the operator's `--no-erase`), and wherever forcing `erase` would itself raise
-                # (`erase_precondition_supported`, which would abort the whole run). `erase: false`
+                # device that just wedged reproduces the crash. Skipped on a merged `reinstall:
+                # overwrite`, from the scenario or its target's default (the app data must survive),
+                # on `not self.force_erase_on_retry` (the operator's `--no-erase`), and wherever
+                # forcing `erase` would itself raise (`erase_precondition_supported`, which would
+                # abort the whole run). `erase: false`
                 # is NOT a skip signal: the CLI has already collapsed it to a concrete bool by here.
                 # An escalated attempt keeps this forced erase; the environment serving a replacement
                 # drops it. Every one of these choices is argued in BE-0353.
