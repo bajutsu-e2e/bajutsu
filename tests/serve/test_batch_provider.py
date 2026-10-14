@@ -118,6 +118,9 @@ class _FakeClient:
     def list_artifacts(self, *, arn: str, type: str) -> dict[str, Any]:
         return {"artifacts": [{"name": "runs", "extension": "zip", "url": "https://s3/runs.zip"}]}
 
+    def stop_run(self, *, arn: str) -> dict[str, Any]:
+        return {"run": {"arn": arn, "status": "STOPPING"}}
+
 
 class _FakeTransfer:
     def __init__(self, *, manifest_ok: bool) -> None:

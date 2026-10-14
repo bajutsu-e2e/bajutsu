@@ -653,6 +653,9 @@ class _FakeClient:
     def get_run(self, *, arn: str) -> dict[str, Any]:
         return {"run": {"arn": arn, "status": self.run_status, "result": "PASSED"}}
 
+    def stop_run(self, *, arn: str) -> dict[str, Any]:
+        return {"run": {"arn": arn, "status": "STOPPING"}}
+
     def list_artifacts(self, *, arn: str, type: str) -> dict[str, Any]:
         return {
             "artifacts": [

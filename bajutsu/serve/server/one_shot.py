@@ -199,6 +199,11 @@ def _needs_a_server(spec: dict[str, Any]) -> str | None:
             "the spec names artifact overrides, which a worker fetches by signed URL; a one-shot "
             "run has no server to sign one — place the artifacts in the workspace instead"
         )
+    if spec.get("batch_app") is not None:
+        return (
+            "the spec names a stored application, which a worker fetches by signed URL; a one-shot "
+            "run has no server to sign one — name a local `batch.app_path` instead"
+        )
     if spec.get("materialize_baselines"):
         return (
             "the spec asks for visual baselines, which a worker fetches by signed URL; a one-shot "

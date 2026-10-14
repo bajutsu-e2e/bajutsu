@@ -497,6 +497,11 @@ ROUTES: tuple[Route, ...] = (
         lambda state, ctx: ops.worker_log(state, ctx.body()),
         max_body=WORKER_LOG_MAX_BODY_BYTES,
     ),
+    Route(
+        "POST",
+        "/api/worker/batch-run",
+        lambda state, ctx: ops.worker_batch_run(state, ctx.body()),
+    ),
     Route("POST", "/api/worker/result", lambda state, ctx: ops.worker_result(state, ctx.body())),
     Route(
         "POST",

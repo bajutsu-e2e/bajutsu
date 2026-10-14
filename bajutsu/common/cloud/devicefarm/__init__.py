@@ -48,6 +48,7 @@ from ._functions import (
     collect_run,
     device_selection_for,
     render_test_spec,
+    stop_run,
     submit_and_collect,
     verdict_from_manifest,
 )
@@ -63,6 +64,7 @@ from ._shared import REQUIREMENTS_TXT
 from .device_farm_client import DeviceFarmClient
 from .device_farm_error import DeviceFarmError
 from .http_transfer import HttpTransfer
+from .run_interrupted import Interrupt, RunInterrupted
 from .transfer import Transfer
 from .verdict import Verdict
 
@@ -72,13 +74,16 @@ __all__ = [
     "DeviceFarmClient",
     "DeviceFarmError",
     "HttpTransfer",
+    "Interrupt",
     "Platform",
+    "RunInterrupted",
     "Transfer",
     "Verdict",
     "build_package",
     "collect_run",
     "device_selection_for",
     "render_test_spec",
+    "stop_run",
     "submit_and_collect",
     "verdict_from_manifest",
 ]

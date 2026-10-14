@@ -267,6 +267,13 @@ filter. It needs no device-pool ARN.
 > that directory. A scenario outside the config's directory makes `POST /api/run-set` return a 400
 > error. The target's `appPath` travels as written, and the worker resolves a relative one against
 > the same directory. A missing binary fails the job before the worker uploads anything.
+>
+> **Application delivery.** A job whose config and scenario travel with it still needs the binary.
+> When no uploaded bundle carries the binary, the server stores the file that `appPath` names in its
+> object store during the fan-out. The lease then carries a signed download link for that file. The
+> worker downloads the binary to the same `appPath` inside the job's directory. It then checks the
+> file's digest against the one the job names. Such an `appPath` must name a file inside the config's directory, and the server
+> needs an object store. Otherwise `POST /api/run-set` returns a 400 error.
 
 A `POST /api/run-set` request fans a target out. Its body names the `target` and, optionally, a
 `scenarios` subset and a `deviceBudget`:
@@ -285,17 +292,38 @@ start. serve refuses the request loudly, though, when it cannot honor it at all 
 device to reserve), a target with no `cloudBatch` provider or no `appPath`, or a config or scenario
 outside the config's directory, which the worker packages.
 
-A worker with a database connection (`BAJUTSU_DATABASE_URL`) makes the run **durable across a
-restart**. The worker checkpoints the scheduled run's Amazon Resource Name (ARN) the moment Device
-Farm accepts it. A worker that re-leases the job resumes polling that same run. It uploads and
-schedules nothing again. The reserved device stays owned during the 150-minute poll. A worker
-that reaches the server over HTTP alone stores no ARN yet. A job it re-leases submits again.
+A run is **durable across a restart** of the server or the worker. Device Farm names each scheduled
+run by an Amazon Resource Name (ARN). The worker sends that ARN to the server over HTTP as soon as
+Device Farm accepts the run. The server stores the ARN for the worker that holds the job's lease. It
+refuses every other worker. A repeat of the ARN it already holds succeeds from any worker. The
+worker retries a transport error or a `5xx` for up to six minutes. A worker that leases the job
+later receives the stored ARN with its lease. That worker resumes polling the same run without
+uploading or scheduling anything again. The job thus holds one device for the whole 150-minute
+poll. No worker needs a database connection for it.
+
+Each run carries its job id as its name on Device Farm, so an operator can find the run of a job.
+A worker may stop after Device Farm schedules a run but before the server stores the run's ARN.
+That run then has no owner. The job submits again, and the first run keeps its device until Device
+Farm ends it.
+
+A worker gives a run up in four ways:
+
+| Event | What happens to the run | What the worker posts |
+|---|---|---|
+| The server relays the job's cancel to the worker, or a stop signal reaches the worker | The worker stops the run through Device Farm's `StopRun` call | The job, as cancelled |
+| The lease is lost after the server stored the ARN | The run continues, and the next worker to lease the job resumes it | Nothing; the next worker posts the result |
+| The server answers `409` to the ARN because the lease is gone | No worker could resume the run, so the worker stops it | A result the server ignores, since the lease moved on |
+| The server refuses the ARN with another `4xx` (a server or configuration error), or six minutes of retries run out | The server holds no ARN to resume from, so the worker stops the run and logs the error | The job's error, so the job ends without a verdict |
+
+A cancel that arrives while the worker is still uploading schedules no run at all.
 `bajutsu worker --once <spec.json>` with the same `worker.yaml` submits one batch spec with no
-server. Its `appPath` is a path on that machine, and it stores no ARN.
+server. Its `appPath` is a path on that machine, and it stores no ARN. A SIGINT, SIGTERM, or SIGHUP
+stops its scheduled run the same way a cancel does.
 
 None of this touches the verdict. Each Device Farm run reports pass or fail from Bajutsu's own
 `manifest.json`, exactly as a local run does. The worker lands the downloaded run and uploads it.
-serve's report viewer and history then render it like any other run. The submission and polling
+serve's report viewer and history then render it like any other run. A submission that fails before
+any verdict posts its reason as the job's error. The submission and polling
 machinery stays off the `run`/CI verdict path, with no large language model (LLM) call on it (prime
 directive 1).
 

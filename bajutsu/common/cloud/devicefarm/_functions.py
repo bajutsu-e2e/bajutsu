@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import logging
 import shlex
 import stat
 import time
@@ -17,8 +18,11 @@ import yaml
 from ._platform_run import _PlatformRun
 from .device_farm_client import DeviceFarmClient
 from .device_farm_error import DeviceFarmError
+from .run_interrupted import Interrupt, RunInterrupted
 from .transfer import Transfer
 from .verdict import Verdict
+
+_logger = logging.getLogger(__name__)
 
 # Device Farm caps one custom-environment execution at 150 minutes; poll no longer than that before
 # giving up rather than blocking a CI job indefinitely.
@@ -372,22 +376,56 @@ def _wait_run(
     run_arn: str,
     *,
     sleep: Callable[[float], None],
+    interrupt: Callable[[], Interrupt | None] | None = None,
 ) -> None:
     """Poll the scheduled run until Device Farm reports it COMPLETED.
 
     Device Farm's own ``result`` (PASSED/FAILED) is deliberately ignored — the verdict is Bajutsu's,
     read from the downloaded manifest. This only waits for the batch execution to finish.
+    *interrupt* is asked before every poll, so a cancel or a lost lease ends the wait within one
+    poll interval (BE-0448).
 
     Raises:
         DeviceFarmError: If the run does not complete within the 150-minute hard cap.
+        RunInterrupted: *interrupt* answered; a ``stop`` has already asked Device Farm to stop it.
     """
     deadline = time.monotonic() + _HARD_CAP_SECONDS
     delay: float = _POLL_INITIAL_SECONDS
-    while client.get_run(arn=run_arn)["run"]["status"] != "COMPLETED":
+    while True:
+        _check_interrupt(client, interrupt, run_arn)
+        if client.get_run(arn=run_arn)["run"]["status"] == "COMPLETED":
+            return
         if time.monotonic() >= deadline:
             raise DeviceFarmError("run did not complete within the 150-minute cap")
         sleep(delay)
         delay = _next_poll_delay(delay)
+
+
+def _check_interrupt(
+    client: DeviceFarmClient,
+    interrupt: Callable[[], Interrupt | None] | None,
+    run_arn: str | None,
+) -> None:
+    """Raise `RunInterrupted` when *interrupt* answers, stopping *run_arn* first on a ``stop``."""
+    asked = interrupt() if interrupt is not None else None
+    if asked is None:
+        return
+    if asked == "stop" and run_arn is not None:
+        stop_run(client, run_arn)
+    raise RunInterrupted(asked, run_arn)
+
+
+def stop_run(client: DeviceFarmClient, run_arn: str) -> None:
+    """Ask Device Farm to stop *run_arn*, logging rather than raising when it refuses.
+
+    Best effort: the caller is already giving the run up, and a refusal (a run that completed a
+    moment ago, a throttled call) must not hide why it did. The run's name is its job id, so an
+    operator can still find and stop one this call could not.
+    """
+    try:
+        client.stop_run(arn=run_arn)
+    except Exception:  # boto3 raises its own ClientError family; any failure is logged alike
+        _logger.warning("could not stop Device Farm run %s", run_arn, exc_info=True)
 
 
 def device_selection_for(platform: Platform, *, max_devices: int = 1) -> dict[str, Any]:
@@ -423,6 +461,7 @@ def submit_and_collect(
     run_name: str = "bajutsu",
     sleep: Callable[[float], None] = time.sleep,
     on_scheduled: Callable[[str], None] | None = None,
+    interrupt: Callable[[], Interrupt | None] | None = None,
 ) -> Verdict:
     """Upload the payload, schedule the run, wait for it, download artifacts, and return the verdict.
 
@@ -441,11 +480,18 @@ def submit_and_collect(
             `.apk`, ``IOS_APP`` for an `.ipa`) — Device Farm rejects a mismatched artifact.
         on_scheduled: Called with the run ARN the moment the run is scheduled, before the long poll —
             serve persists it so a worker that re-leases the job after a restart resumes that run
-            through `collect_run` instead of resubmitting (BE-0336 Unit 5).
+            through `collect_run` instead of resubmitting (BE-0336 Unit 5). When it raises, the run
+            has no record anyone could resume it from, so it is stopped before the error propagates
+            (BE-0448).
+        run_name: The run's name on Device Farm; the serve fan-out passes the job id, so an operator
+            can find the run of a job (BE-0448).
+        interrupt: Asked before scheduling and before every poll; an answer raises `RunInterrupted`,
+            and a ``stop`` once the run is scheduled stops it first (BE-0448).
 
     Raises:
         DeviceFarmError: If neither or both of `device_pool_arn` / `device_selection` are given, if any
             upload fails, or if the run does not complete within the hard cap.
+        RunInterrupted: *interrupt* answered before the verdict was collected.
     """
     if (device_pool_arn is None) == (device_selection is None):
         raise DeviceFarmError(
@@ -478,6 +524,9 @@ def submit_and_collect(
         path=spec_yaml,
         sleep=sleep,
     )
+    # Checked once more after the uploads: they can take minutes, and a run scheduled now would hold a
+    # device for a caller that already gave it up.
+    _check_interrupt(client, interrupt, None)
     # ScheduleRun accepts the static pool or the selection, never both (validated above).
     where = (
         {"devicePoolArn": device_pool_arn}
@@ -495,8 +544,14 @@ def submit_and_collect(
     # Persist the run ARN before the long poll, so a restart mid-poll resumes this run rather than
     # orphaning it and scheduling a new one (BE-0336 Unit 5).
     if on_scheduled is not None:
-        on_scheduled(run_arn)
-    return collect_run(client, transfer, run_arn=run_arn, dest=dest, sleep=sleep)
+        try:
+            on_scheduled(run_arn)
+        except BaseException:
+            stop_run(client, run_arn)
+            raise
+    return collect_run(
+        client, transfer, run_arn=run_arn, dest=dest, sleep=sleep, interrupt=interrupt
+    )
 
 
 def collect_run(
@@ -506,17 +561,20 @@ def collect_run(
     run_arn: str,
     dest: Path,
     sleep: Callable[[float], None] = time.sleep,
+    interrupt: Callable[[], Interrupt | None] | None = None,
 ) -> Verdict:
     """Wait for an already-scheduled run, download its artifacts under `dest`, and return the verdict.
 
     Split from `submit_and_collect` so a resumed cloud-batch job (BE-0336 Unit 5) polls and collects a
     run scheduled before a restart — reached from the persisted run ARN — without re-uploading or
     rescheduling. The verdict is Bajutsu's own, read from the downloaded ``manifest.json`` tree.
+    *interrupt* is asked before every poll, as `submit_and_collect` describes.
 
     Raises:
         DeviceFarmError: If the run does not complete within the 150-minute hard cap.
+        RunInterrupted: *interrupt* answered before the run completed.
     """
-    _wait_run(client, run_arn, sleep=sleep)
+    _wait_run(client, run_arn, sleep=sleep, interrupt=interrupt)
     dest.mkdir(parents=True, exist_ok=True)
     for index, artifact in enumerate(client.list_artifacts(arn=run_arn, type="FILE")["artifacts"]):
         _store_artifact(artifact, transfer.download(artifact["url"]), dest, index=index)

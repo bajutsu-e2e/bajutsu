@@ -80,6 +80,9 @@ class _FakeClient:
     def list_artifacts(self, *, arn: str, type: str) -> dict[str, Any]:
         return {"artifacts": [{"name": "runs", "extension": "zip", "url": "https://s3/runs.zip"}]}
 
+    def stop_run(self, *, arn: str) -> dict[str, Any]:
+        return {"run": {"arn": arn, "status": "STOPPING"}}
+
 
 class _CapturingTransfer:
     """Keeps every uploaded file's bytes (the staging directory is gone once submit returns)."""
@@ -285,9 +288,17 @@ def test_an_application_missing_from_the_bundle_fails_before_any_upload(tmp_path
     assert client.schedule_calls == 0 and transfer.uploads == {}
 
 
-def _storage_state(tmp_path: Path, executor: Any) -> ServeState:
-    """A server whose scenario store ships scenario text as materials, as the hosted store does."""
+def _storage_state(
+    tmp_path: Path, executor: Any, *, app_path: str = "app.apk", store: bool = True
+) -> ServeState:
+    """A server whose scenario store ships scenario text as materials, as the hosted store does.
+
+    The config's directory holds the binary its `appPath` names, and the server has an object store
+    to deliver it through unless *store* is False.
+    """
     from unittest import mock
+
+    from conftest import FakeObjectStore
 
     from bajutsu.serve.scenarios import Runnable
 
@@ -295,9 +306,10 @@ def _storage_state(tmp_path: Path, executor: Any) -> ServeState:
     cfg.parent.mkdir()
     cfg.write_text(
         "targets:\n  demo:\n    platform: android\n    package: com.example.demo\n"
-        "    scenarios: scenarios\n    cloudBatch: devicefarm\n    appPath: app.apk\n",
+        f"    scenarios: scenarios\n    cloudBatch: devicefarm\n    appPath: {app_path}\n",
         encoding="utf-8",
     )
+    (cfg.parent / "app.apk").write_bytes(b"APK")
 
     class _Scope:
         def list(self) -> list[dict[str, str]]:
@@ -311,6 +323,8 @@ def _storage_state(tmp_path: Path, executor: Any) -> ServeState:
             return _Scope()
 
     state = ServeState(config=cfg, runs_dir=tmp_path / "runs", cwd=cfg.parent, executor=executor)
+    if store:
+        state.object_store = FakeObjectStore()
     bundle = mock.MagicMock()
     bundle.scenarios = _Store()
     state.for_org = lambda *_a, **_k: bundle  # type: ignore[method-assign]
@@ -328,9 +342,11 @@ class _Recording:
 def test_a_leased_fan_out_job_runs_on_the_worker_from_its_own_workspace(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # The whole unit-3 path: the server queues a job whose scenario travels as materials, the worker
-    # gives it a workspace of its own, places the binary the lease delivered, and the provider
-    # packages that workspace and lands the run there.
+    # The whole unit-3 path: the server queues a job whose scenario travels as materials and stores
+    # the binary, the worker gives the job a workspace of its own and places the binary the lease's
+    # signed URL delivers, and the provider packages that workspace and lands the run there.
+    import hashlib
+
     from bajutsu.serve.server.worker_job import job_spec
 
     monkeypatch.delenv("BAJUTSU_DATABASE_URL", raising=False)
@@ -343,14 +359,28 @@ def test_a_leased_fan_out_job_runs_on_the_worker_from_its_own_workspace(
     assert spec["batch"]["app_path"] == "app.apk"
     assert spec["cwd"] is None  # it ships its files, so it names nothing on the server's disk
     assert job.capabilities == ["environment:devicefarm"]
+    assert spec["batch_app"] == hashlib.sha256(b"APK").hexdigest()
+    assert state.object_store is not None
+    (key,) = state.object_store.objects  # type: ignore[attr-defined]
+    assert key.endswith(f"binary/{spec['batch_app']}")
 
+    fetched: list[str] = []
+
+    def fake_get(url: str, dest: Path, *, timeout: float | None = None) -> None:
+        fetched.append(url)
+        dest.write_bytes(b"APK")
+
+    monkeypatch.setattr(worker_mod, "_get_file", fake_get)
     work = tmp_path / "worker"
     work.mkdir()
     (work / "stray.txt").write_text("another job's file", encoding="utf-8")
-    job_work, failure = worker_mod._workspace_or_failure(work, spec, None)
+    job_work, failure = worker_mod._workspace_or_failure(
+        work, spec, None, app_url="https://signed/app"
+    )
     assert failure is None
     assert job_work == work / ".batch" / job.id
-    (job_work / "app.apk").write_bytes(b"APK")  # what the lease's signed URL delivers
+    assert fetched == ["https://signed/app"]
+    assert (job_work / "app.apk").read_bytes() == b"APK"
     source = _source_tree(tmp_path / "src")
     provider, client, transfer = _provider(source)
     bp.register("devicefarm", provider)
@@ -469,10 +499,16 @@ class _RecordingProvider:
         dest: Path,
         checkpoint: Any = None,
         job_id: str = "",
+        interrupt: Any = None,
     ) -> Verdict:
         self.checkpoints.append(checkpoint)
         return self.inner.submit(
-            request, work_dir=work_dir, dest=dest, checkpoint=checkpoint, job_id=job_id
+            request,
+            work_dir=work_dir,
+            dest=dest,
+            checkpoint=checkpoint,
+            job_id=job_id,
+            interrupt=interrupt,
         )
 
 
