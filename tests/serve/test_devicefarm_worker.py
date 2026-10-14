@@ -563,7 +563,9 @@ def test_worker_once_refuses_a_plain_spec_under_a_device_farm_file(
         app, ["worker", "--once", str(spec_file), "--worker-config", str(worker_file)]
     )
     assert result.exit_code == 2
-    assert "runs only that provider's batch jobs" in re.sub(r"[\s│]+", " ", result.output)
+    assert "runs only that provider's batch jobs" in re.sub(
+        r"[\s│]+", " ", re.sub(r"\x1b\[[0-9;]*m", "", result.output)
+    )
 
 
 # --- review follow-ups: state directories and the application's reach ---------------------------
