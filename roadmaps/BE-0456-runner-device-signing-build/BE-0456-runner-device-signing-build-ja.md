@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0456") |
-| 実装 PR | [#2140](https://github.com/bajutsu-e2e/bajutsu/pull/2140)（単位 2〜8） |
+| 実装 PR | [#2140](https://github.com/bajutsu-e2e/bajutsu/pull/2140)（単位 2〜8）、[#2176](https://github.com/bajutsu-e2e/bajutsu/pull/2176)（単位 1） |
 | トピック | デバイスクラウド実行 |
 | 関連 | [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md), [BE-0238](../BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution-ja.md), [BE-0288](../BE-0288-ios-device-signing-batch-build/BE-0288-ios-device-signing-batch-build-ja.md), [BE-0292](../BE-0292-xcuitest-bundled-runner/BE-0292-xcuitest-bundled-runner-ja.md) |
 <!-- /BE-METADATA -->
@@ -284,6 +284,21 @@ bajutsu runner build --device [--signing PATH] [--out DIR] [--force]
     キーの計算には `xcodebuild -version` と、手動署名では `security` の実行が必要になるためです。
   - `runner` コマンドグループには、ヘルプパネルの分類を別途追加しました。これまでのパネル分けは、
     通常のコマンドしか対象にしていなかったためです。
+- 2026-10-13：[#2176](https://github.com/bajutsu-e2e/bajutsu/pull/2176) で、iPhone 14 Pro と Xcode 27.0 を使ってスパイクを行い、自動署名の経路を実機で
+  確認しました。自動署名では、Xcode 自身が管理するワイルドカードのプロファイル
+  `iOS Team Provisioning Profile: *` で両方の成果物に署名します。`.xctrunner` アプリの識別子は設計どおり
+  `<uitests の識別子>.xctrunner` でした。ステージング済みマニフェストと生成 spec の方式も設計どおりに
+  ビルドできました。一方、手動署名ではこのワイルドカードを流用できません。Xcode は自身が管理する
+  プロファイルを拒否しますが、その拒否は `xcodebuild` の奥で起きます。そこで事前チェックで、指定された
+  各プロファイルの `IsXcodeManaged` を読み、該当するプロファイルをビルド前に弾くようにしました。エラーには
+  2 つの対処を示します。また Xcode 16 以降はプロファイルを
+  `~/Library/Developer/Xcode/UserData/Provisioning Profiles/` に置くため、ドキュメントに両方の
+  ディレクトリを記載しました。実機での確認は半分まで進みました。利用者自身の識別子と自動署名でビルドした
+  runner を使い、`testRunner` を書かないターゲットから、USB 接続の実機で `smoke.yaml` を実行して成功しました。
+  残る 2 つの確認には、このマシンにない資源が必要です。手動署名のビルドには Apple Developer ポータルで作った
+  プロファイルが、別チームの確認には 2 つ目のチームが要ります。そのため実機確認の単位は未完了のまま残します。
+  スパイクの単位も未完了のままです。手動ビルドに必要なプロファイルの構成という問いが、同じポータルの
+  プロファイルを待っているためです。
 
 ## 参考
 

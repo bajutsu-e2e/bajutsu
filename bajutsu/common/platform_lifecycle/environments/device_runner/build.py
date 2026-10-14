@@ -97,6 +97,8 @@ class Profile:
     name: str
     uuid: str
     expires: datetime
+    # Xcode's own team profiles; a manual build refuses them deep inside `xcodebuild`.
+    xcode_managed: bool = False
 
 
 def read_profile(path: Path) -> Profile:
@@ -126,7 +128,7 @@ def read_profile(path: Path) -> Profile:
         raise DeviceRunnerError(
             f"unreadable provisioning profile {path}: ExpirationDate is no date"
         )
-    return Profile(path, name, uuid, expires)
+    return Profile(path, name, uuid, expires, info.get("IsXcodeManaged") is True)
 
 
 def _installed_profiles(toolchain: Toolchain) -> tuple[list[Profile], list[str]]:
@@ -245,6 +247,13 @@ def _manual_problems(signing: SigningConfig, toolchain: Toolchain) -> list[str]:
             problems.append(
                 f"provisioning profile {name!r} expired on {profile.expires:%Y-%m-%d} — renew it "
                 "in the Apple Developer portal and install the new one"
+            )
+        # Independent of expiry: renewing an Xcode-managed profile cannot fix a manual build.
+        if profile is not None and profile.xcode_managed:
+            problems.append(
+                f"provisioning profile {name!r} is managed by Xcode, which manual signing cannot "
+                "use — create a development profile in the Apple Developer portal, or set "
+                "`signing: automatic`"
             )
     return problems
 

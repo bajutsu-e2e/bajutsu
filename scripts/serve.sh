@@ -24,7 +24,8 @@
 # starts a local `bajutsu worker` beside it, polling the server on its loopback address with the same
 # token, from a temporary workspace this script removes when it exits. A run names the config,
 # runs, and baselines by their paths on this machine, so the worker reads and writes the same ones
-# the server does. The worker stops when serve
+# the server does, and it advertises the server's machine identity (`.bajutsu/machine-id` beside the
+# runs directory) so such a run is routed to it and to no worker elsewhere. The worker stops when serve
 # stops. Set SERVE_WORKER=0 to start the server alone (to attach workers of your own), and
 # `--emit-launchagent` starts nothing.
 #
@@ -34,9 +35,11 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 # Extract the values of the flags this script reads (both `--flag X` and `--flag=X`), without
-# disturbing the original argv forwarded to `serve` verbatim below. The worker needs the bind and the
-# token; the provisioning below needs the config.
+# disturbing the original argv forwarded to `serve` verbatim below. The worker needs the bind, the
+# token, and the runs directory beside which the server keeps its state; the provisioning below needs
+# the config.
 config=""
+runs="runs"
 port="8765"
 host="127.0.0.1"
 token="${BAJUTSU_SERVE_TOKEN-}"
@@ -45,6 +48,7 @@ prev=""
 for arg in "$@"; do
   case "$arg" in
     --config=*) config="${arg#--config=}" ;;
+    --runs=*) runs="${arg#--runs=}" ;;
     --port=*) port="${arg#--port=}" ;;
     --host=*) host="${arg#--host=}" ;;
     --token=*) token="${arg#--token=}" ;;
@@ -52,6 +56,7 @@ for arg in "$@"; do
     *)
       case "$prev" in
         --config) config="$arg" ;;
+        --runs) runs="$arg" ;;
         --port) port="$arg" ;;
         --host) host="$arg" ;;
         --token) token="$arg" ;;
@@ -160,6 +165,10 @@ if [ -z "$platforms" ]; then
   esac
 fi
 
+# The server's state directory (`local_keys.local_state_dir`): `.bajutsu` beside the runs directory,
+# resolved from this script's working directory as the server resolves `--runs`.
+state_dir="$(dirname "$runs")/.bajutsu"
+
 tcp_host="${worker_host#[}"
 tcp_host="${tcp_host%]}"
 
@@ -227,7 +236,8 @@ trap 'exit 143' TERM HUP
   done
   # The token travels in the environment, not argv, so it stays out of the process list.
   BAJUTSU_TOKEN="$token" exec "$python_bin" -m bajutsu worker \
-    --server-url "http://$url_host:$port" --platform "$platforms" --workdir "$worker_dir"
+    --server-url "http://$url_host:$port" --platform "$platforms" --workdir "$worker_dir" \
+    --server-state-dir "$state_dir"
 ) &
 worker_pid=$!
 echo "$worker_pid" >>"$worker_dir/.owner-pid"
