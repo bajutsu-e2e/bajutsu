@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal, Self
+from typing import Literal, Self
 
 from pydantic import Field, field_validator, model_validator
 
 from .._model import _Model
-from ._shared import AppCommon, check_list, check_range, coerce_range
+from ._shared import AppCommon, RangeField, check_list
 
 
 class IosLaunch(_Model):
@@ -34,19 +34,9 @@ class IosRunsOn(_Model):
     """
 
     model: str | list[str] | None = None
-    os: str | None = None
+    os: RangeField = None
     kind: Literal["simulator", "device"] = "simulator"
     locale: str | None = None
-
-    @field_validator("os", mode="before")
-    @classmethod
-    def _valid_os_number(cls, v: Any) -> Any:
-        return coerce_range(v)
-
-    @field_validator("os")
-    @classmethod
-    def _valid_os(cls, v: str | None) -> str | None:
-        return check_range(v)
 
     @field_validator("model")
     @classmethod
@@ -61,8 +51,11 @@ class IosRunsOn(_Model):
         if self.kind == "device":
             declared = [f for f in ("model", "os") if getattr(self, f) is not None]
             if declared:
+                # Every offending field at once, so removing one never uncovers the next.
+                names = " and ".join(f"runsOn.{f}" for f in declared)
+                verb = "is a device condition" if len(declared) == 1 else "are device conditions"
                 raise ValueError(
-                    f"runsOn.{declared[0]} is a device condition, which a target with "
+                    f"{names} {verb}, which a target with "
                     "kind: device cannot declare: a physical device has no pool to match"
                 )
         return self
