@@ -19,11 +19,8 @@ from .launch_server import LaunchServer
 from .mailbox import Mailbox
 from .mock_server import MockServer
 from .notify_endpoint import NotifyEndpoint
+from .platform.web import WEB_ENGINES
 from .xcuitest_config import XcuitestConfig
-
-# Playwright rendering engines a web target can drive (BE-0076). Chromium is the default,
-# preserving today's single-engine behaviour; all three run headless on Linux.
-WEB_ENGINES = ("chromium", "firefox", "webkit")
 
 
 def _nested_steps(steps: list[Step]) -> Iterator[Step]:
