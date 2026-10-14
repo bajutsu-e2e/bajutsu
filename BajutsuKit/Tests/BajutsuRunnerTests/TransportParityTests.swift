@@ -185,7 +185,7 @@ final class TransportParityTests: XCTestCase {
                 // the legacy `Router`, which never gains it — pinned separately in `TapDrainFoldTests`.
                 ignoringKeys: [
                     "labels", "unmatched", "banners", "tappedAlerts", "tappedSurfaces", "unidentified",
-                    "gaveUp",
+                    "gaveUp", "tappedSynthesisIds", "bannerSynthesisIds",
                 ]
             )
             try assertSame(
@@ -223,7 +223,7 @@ final class TransportParityTests: XCTestCase {
             "/tap (coordinate)",
             ignoringKeys: [
                     "labels", "unmatched", "banners", "tappedAlerts", "tappedSurfaces", "unidentified",
-                    "gaveUp",
+                    "gaveUp", "tappedSynthesisIds", "bannerSynthesisIds",
                 ]
         )
         XCTAssertEqual(provider.tapPointCalls.count, 1, "the coordinate path must reach the provider")

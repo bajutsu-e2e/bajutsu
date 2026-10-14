@@ -61,6 +61,8 @@ final class APIHandlerParityTests: XCTestCase {
         payload["tappedSurfaces"] = nil
         payload["unidentified"] = nil
         payload["gaveUp"] = nil
+        payload["tappedSynthesisIds"] = nil
+        payload["bannerSynthesisIds"] = nil
         return payload
     }
 

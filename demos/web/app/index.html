@@ -170,13 +170,18 @@
       document.querySelector('[data-testid="sync.button"]').addEventListener("click", async () => {
         syncStatus.textContent = "syncing";
         try {
-          const res = await fetch("/api/sync", {
+          const res = await fetch("/api/sync?source=home&v=2", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
               Authorization: "Bearer sk-demo-secret-token-abc123",
             },
-            body: JSON.stringify({ account: "a@b.com", password: "hunter2-demo-secret" }),
+            body: JSON.stringify({
+              account: "a@b.com",
+              password: "hunter2-demo-secret",
+              client: { platform: "web", build: 7 },
+              tags: ["sync", "manual"],
+            }),
           });
           const data = await res.json();
           syncStatus.textContent = data.ok ? "synced" : "error";

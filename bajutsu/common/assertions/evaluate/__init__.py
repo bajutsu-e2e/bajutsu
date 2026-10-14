@@ -36,9 +36,7 @@ from ._functions import _eval_state as _eval_state
 from ._functions import _eval_text as _eval_text
 from ._functions import _Evaluator as _Evaluator
 from ._functions import _evaluator as _evaluator
-from ._functions import _event_body_matches as _event_body_matches
 from ._functions import _event_label as _event_label
-from ._functions import _json_text as _json_text
 from ._functions import _text_cmp as _text_cmp
 from ._functions import _text_op as _text_op
 from ._functions import evaluate, evaluate_one, passed
