@@ -354,21 +354,30 @@ outright (§4).
 RequestMatch ::= {              # ≥1 of the match fields below
   method?:      string,
   url?:         string,         # exact full URL (the endpoint)
-  urlMatches?:  string,         # regex/substring over the URL (query strings live here)
+  urlMatches?:  string,         # regex/substring over the full URL
   path?:        string,         # exact path (query ignored)
   pathMatches?: string,         # regex over the path
+  query?:       DictMatch,      # URL-decoded query parameters; values: string | operator map (BE-0463)
+  body?:        DictMatch,      # parsed JSON request body; values: any DictValue (BE-0463)
   status?:      integer,
   bodyMatches?: string,         # regex/substring over the request body
   count?:       integer,        # assertion → exact count; wait → lower bound
 }
 
-EventMatch ::= {                # ≥1 of an endpoint field (method/url/urlMatches/path/pathMatches) or body
+DictMatch ::= map(string, DictValue)   # non-empty; a key starting `$$` names a field starting `$`
+DictValue ::= string                   # equals the JSON value's text form (quoted: no bare 1/true/null)
+  | { $matches?: string, $exists?: boolean }   # operator map (≥1 operator)
+  | map(string, DictValue)             # subset of a JSON object
+  | list(DictValue)                    # JSON array of the same length, element by element
+
+EventMatch ::= {                # ≥1 of an endpoint field (method/url/urlMatches/path/pathMatches), query, or body
   method?:      string,
   url?:         string,
   urlMatches?:  string,
   path?:        string,
   pathMatches?: string,
-  body?:        map(string,string),  # each key must be present and equal (as text) to the request body's JSON value
+  query?:       DictMatch,      # same grammar as RequestMatch.query
+  body?:        DictMatch,      # same grammar as RequestMatch.body
   count?:       <CountOp>,           # expected multiplicity (default: at least one)
 }
 
@@ -435,8 +444,8 @@ error). This table is the **authoritative list of "exactly one / at least one / 
 | `TextMatch` (`value`/`label`) | **exactly one** of `equals` / `contains` / `matches` | `scenario/models/assertions.py` |
 | `CountMatch` (`count`) | **exactly one** of `equals` / `atLeast` / `atMost` | `scenario/models/assertions.py` |
 | `ClipboardMatch` (`clipboard`) | **exactly one** of `equals` / `matches` | `scenario/models/assertions.py` |
-| `RequestMatch` | **≥ 1** of `method`/`url`/`urlMatches`/`path`/`pathMatches`/`status`/`bodyMatches` (`count` is not a match field) | `scenario/models/assertions.py` |
-| `EventMatch` (`event`) | **≥ 1** of `method`/`url`/`urlMatches`/`path`/`pathMatches`/`body` | `scenario/models/assertions.py` |
+| `RequestMatch` | **≥ 1** of `method`/`url`/`urlMatches`/`path`/`pathMatches`/`query`/`body`/`status`/`bodyMatches` (`count` is not a match field); a `query`/`body` dictionary is non-empty and holds only quoted scalars, `$matches`/`$exists` operator maps, and (in `body`) nested maps and lists | `scenario/models/assertions.py` |
+| `EventMatch` (`event`) | **≥ 1** of `method`/`url`/`urlMatches`/`path`/`pathMatches`/`query`/`body` | `scenario/models/assertions.py` |
 | `CountOp` (`event.count`) | **exactly one** of `equals` / `atLeast` / `atMost` | `scenario/models/assertions.py` |
 | `Assertion.requestSequence` | **≥ 1** item | `scenario/models/assertions.py` |
 | `Trigger` (`capturePolicy[].on`) | **exactly one** of `action` / `event` / `result`; `idMatches` only **with** `action` | `scenario/models/evidence.py` |

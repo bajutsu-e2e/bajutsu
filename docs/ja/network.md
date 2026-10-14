@@ -91,11 +91,13 @@ expect:
 |---|---|
 | `method` | HTTP メソッド（大文字小文字を区別しない） |
 | `url` | 完全な URL の完全一致（エンドポイント） |
-| `urlMatches` | URL に対する正規表現/部分一致（クエリ文字列はここで照合する） |
+| `urlMatches` | URL 全体に対する正規表現/部分一致 |
 | `path` | URL パスの完全一致（クエリは無視する） |
 | `pathMatches` | パスに対する正規表現 |
+| `query` | URL デコードしたクエリパラメータに対するキーと値の辞書。順序に依存しない（BE-0463） |
+| `body` | JavaScript Object Notation（JSON）のリクエストボディに対するキーと値の辞書。入れ子の map とリストも含む（BE-0463） |
 | `status` | レスポンスのステータスコード |
-| `bodyMatches` | リクエストボディに対する正規表現/部分一致 |
+| `bodyMatches` | 生のリクエストボディに対する正規表現/部分一致 |
 | `count` | 一致する通信の正確な件数。集計であり一対一の規則の対象外（省略すると 1 件以上） |
 
 ## 決定的なモック
@@ -121,7 +123,8 @@ mocks:
 ```
 
 最初に一致したルールが採用されます。`match` はリクエスト側の照合フィールド（`method` /
-`url` / `urlMatches` / `path` / `pathMatches` / `bodyMatches`）をそのまま使います。モックは観測と同じ
+`url` / `urlMatches` / `path` / `pathMatches` / `bodyMatches`）をそのまま使います。アプリ内のマッチャが
+無視してしまうため、`query` / `body` の辞書はモックでは拒否します。モックは観測と同じ
 経路に乗るため、`--network` が必要です。iOS では、ルールは `BAJUTSU_MOCKS` 起動環境変数を介してアプリに
 注入します（`BAJUTSU_COLLECTOR` と同様です）。Web には起動するアプリが存在しないため、
 `network_collector()` がシナリオの `mocks` を直接受け取り、インプロセスで解決します。

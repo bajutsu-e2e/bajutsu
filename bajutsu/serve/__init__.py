@@ -391,7 +391,7 @@ def _build_server_state(  # noqa: C901
     from bajutsu.serve.server.baselines import ObjectBaselineStore
     from bajutsu.serve.server.db import engine_from_url, repository_from_env
     from bajutsu.serve.server.db_executor import DbQueueExecutor
-    from bajutsu.serve.server.local_keys import ensure_state_dir, local_state_dir
+    from bajutsu.serve.server.local_keys import ensure_state_dir, local_state_dir, machine_id
     from bajutsu.serve.server.local_start import (
         artifact_store,
         default_database_url,
@@ -610,8 +610,10 @@ def _build_server_state(  # noqa: C901
         # the file browser (BE-0108) and refuses the device takeover (BE-0185); a local start keeps
         # both.
         hosted=hosted,
-        # Every job goes to the queue for a worker; the server never runs one itself (BE-0449).
-        executor=DbQueueExecutor(repo),
+        # Every job goes to the queue for a worker; the server never runs one itself (BE-0449). On a
+        # local start, a job naming files by their paths here is routed to a worker on this machine
+        # by its identity; a bucket-backed deployment keeps no state directory to hold one.
+        executor=DbQueueExecutor(repo, machine_id=machine_id(state_dir) if local_layout else None),
         # Workers post their log lines while a queued job runs, so the bus accepts writes (in
         # memory, or Redis across replicas) and falls back to the uploaded console.log (BE-0449).
         logbus=QueueLogBus(

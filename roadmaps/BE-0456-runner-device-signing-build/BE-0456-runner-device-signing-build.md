@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0456") |
-| Implementing PR | [#2140](https://github.com/bajutsu-e2e/bajutsu/pull/2140) (units 2–8) |
+| Implementing PR | [#2140](https://github.com/bajutsu-e2e/bajutsu/pull/2140) (units 2–8), [#2176](https://github.com/bajutsu-e2e/bajutsu/pull/2176) (unit 1) |
 | Topic | Device-cloud execution |
 | Related | [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md), [BE-0238](../BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md), [BE-0288](../BE-0288-ios-device-signing-batch-build/BE-0288-ios-device-signing-batch-build.md), [BE-0292](../BE-0292-xcuitest-bundled-runner/BE-0292-xcuitest-bundled-runner.md) |
 <!-- /BE-METADATA -->
@@ -293,6 +293,21 @@ Log:
     the key needs `xcodebuild -version` and, for manual signing, `security`.
   - The `runner` command group needed its own help-panel classification, because the panel
     grouping previously walked plain commands alone.
+- 2026-10-13 — [#2176](https://github.com/bajutsu-e2e/bajutsu/pull/2176) ran most of the spike on an iPhone 14 Pro with Xcode 27.0, and proved
+  the automatic path on the device. Automatic signing signs both products with Xcode's own wildcard
+  profile, `iOS Team Provisioning Profile: *`, and the `.xctrunner` app takes
+  `<uitests identifier>.xctrunner`, as designed. The staged manifest and the generated spec build
+  as designed. Manual signing cannot reuse that wildcard: Xcode rejects a profile it manages, but
+  only deep inside `xcodebuild`. The preflight now reads `IsXcodeManaged` from each named profile
+  and rejects such a profile up front, naming the two fixes. The docs now name both profile
+  directories, since Xcode 16 and later keep profiles under
+  `~/Library/Developer/Xcode/UserData/Provisioning Profiles/`. The proof itself is half done. A
+  runner built with automatic signing under the user's own identifiers ran `smoke.yaml` on the
+  USB-attached device from a target with no `testRunner`, and passed. Two checks still need
+  resources this machine lacks: a manual build needs a profile created in the Apple Developer
+  portal, and the second-team check needs a second team. The real-device proof unit stays open
+  for them, and so does the spike, whose question of which profiles a manual build
+  needs waits on the same portal profile.
 
 ## References
 
