@@ -296,9 +296,10 @@ A run is **durable across a restart** of the server or the worker. Device Farm n
 run by an Amazon Resource Name (ARN). The worker sends that ARN to the server over HTTP as soon as
 Device Farm accepts the run. The server stores the ARN for the worker that holds the job's lease. It
 refuses every other worker. A repeat of the ARN it already holds succeeds from any worker. The
-worker retries a transport error or a `5xx` for up to six minutes. A worker that leases the job later receives the stored ARN with its lease. That worker resumes
-polling the same run and uploads and schedules nothing again. The job thus holds one device for the
-whole 150-minute poll. No worker needs a database connection for it.
+worker retries a transport error or a `5xx` for up to six minutes. A worker that leases the job
+later receives the stored ARN with its lease. That worker resumes polling the same run without
+uploading or scheduling anything again. The job thus holds one device for the whole 150-minute
+poll. No worker needs a database connection for it.
 
 Each run carries its job id as its name on Device Farm, so an operator can find the run of a job.
 A worker may stop after Device Farm schedules a run but before the server stores the run's ARN.
