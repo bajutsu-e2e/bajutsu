@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 from _shared import (
     FakeProc,
+    WorkerStandIn,
     _get_json,
     _post,
     _serve,
@@ -25,6 +26,7 @@ from bajutsu import serve as srv
 def test_http_run_then_job_status(tmp_path: Path) -> None:
     scn_dir, cfg, runs = project(tmp_path)
     state = srv.ServeState(
+        executor=WorkerStandIn(),
         scenarios_dir=scn_dir,
         config=cfg,
         runs_dir=runs,
@@ -65,6 +67,7 @@ def test_a_machine_dispatched_run_audits_the_ci_job(tmp_path: Path) -> None:
     repository.ensure_org("default", slug="default", name="default")
     scn_dir, cfg, runs = project(tmp_path)
     state = srv.ServeState(
+        executor=WorkerStandIn(),
         scenarios_dir=scn_dir,
         config=cfg,
         runs_dir=runs,
@@ -102,6 +105,7 @@ def test_http_run_boots_pool_and_passes_workers(tmp_path: Path) -> None:
 
     server, port = _serve(
         srv.ServeState(
+            executor=WorkerStandIn(),
             scenarios_dir=scn_dir,
             config=cfg,
             runs_dir=runs,
@@ -136,7 +140,9 @@ def test_http_run_boots_pool_and_passes_workers(tmp_path: Path) -> None:
 def test_http_run_requires_scenario_and_app(tmp_path: Path) -> None:
     scn_dir, cfg, runs = project(tmp_path)
     server, port = _serve(
-        srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+        srv.ServeState(
+            executor=WorkerStandIn(), scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path
+        )
     )
     try:
         body = json.dumps({"scenario": "s.yaml"}).encode()  # missing app
@@ -154,7 +160,9 @@ def test_http_run_requires_scenario_and_app(tmp_path: Path) -> None:
 
 def test_http_run_requires_open_config(tmp_path: Path) -> None:
     _, _, runs = project(tmp_path)
-    server, port = _serve(srv.ServeState(runs_dir=runs, root=tmp_path, cwd=tmp_path))  # no config
+    server, port = _serve(
+        srv.ServeState(executor=WorkerStandIn(), runs_dir=runs, root=tmp_path, cwd=tmp_path)
+    )  # no config
     try:
         status, resp = _post(port, "/api/run", {"scenario": "smoke.yaml", "target": "demo"})
         assert status == 400 and "open a config" in resp["error"]
@@ -165,7 +173,11 @@ def test_http_run_requires_open_config(tmp_path: Path) -> None:
 
 def _run_server(tmp_path: Path) -> tuple[Any, int]:
     scn_dir, cfg, runs = project(tmp_path)
-    return _serve(srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path))
+    return _serve(
+        srv.ServeState(
+            executor=WorkerStandIn(), scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path
+        )
+    )
 
 
 def test_http_run_rejects_scenario_outside_dir(tmp_path: Path) -> None:
@@ -238,7 +250,12 @@ def test_run_cmd_always_points_runs_dir_at_the_store(tmp_path: Path) -> None:
         return FakeProc(["PASS  runs/p/manifest.json\n"])
 
     state = srv.ServeState(
-        scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path, popen=popen
+        executor=WorkerStandIn(),
+        scenarios_dir=scn_dir,
+        config=cfg,
+        runs_dir=runs,
+        cwd=tmp_path,
+        popen=popen,
     )
     server, port = _serve(state)
     try:

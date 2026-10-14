@@ -7,9 +7,9 @@
 |---|---|
 | 提案 | [BE-0449](BE-0449-server-runs-no-jobs-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0449") |
-| 実装 PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167)（単位 1 の 3 分割のうち 1）、[#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168)（単位 1 の 3 分割のうち 2）、[#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170)（単位 1 の 3 分割のうち 3）、[#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171)（単位 2）、[#2172](https://github.com/bajutsu-e2e/bajutsu/pull/2172)（単位 4）、[#2173](https://github.com/bajutsu-e2e/bajutsu/pull/2173)（単位 3）、[#2182](https://github.com/bajutsu-e2e/bajutsu/pull/2182)（単位 5 の 2 分割のうち 1：機能を失わないローカル起動）、[#2183](https://github.com/bajutsu-e2e/bajutsu/pull/2183)（単位 5 の 2 分割のうち 2：worker で動く `run`）、[#2184](https://github.com/bajutsu-e2e/bajutsu/pull/2184)、[#2185](https://github.com/bajutsu-e2e/bajutsu/pull/2185)、[#2186](https://github.com/bajutsu-e2e/bajutsu/pull/2186)（単位 6。BE-0448 が実装）、[#2187](https://github.com/bajutsu-e2e/bajutsu/pull/2187)（単位 7）、[#2188](https://github.com/bajutsu-e2e/bajutsu/pull/2188)（単位 8） |
+| 実装 PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167)（単位 1 の 3 分割のうち 1）、[#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168)（単位 1 の 3 分割のうち 2）、[#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170)（単位 1 の 3 分割のうち 3）、[#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171)（単位 2）、[#2172](https://github.com/bajutsu-e2e/bajutsu/pull/2172)（単位 4）、[#2173](https://github.com/bajutsu-e2e/bajutsu/pull/2173)（単位 3）、[#2182](https://github.com/bajutsu-e2e/bajutsu/pull/2182)（単位 5 の 2 分割のうち 1：機能を失わないローカル起動）、[#2183](https://github.com/bajutsu-e2e/bajutsu/pull/2183)（単位 5 の 2 分割のうち 2：worker で動く `run`）、[#2184](https://github.com/bajutsu-e2e/bajutsu/pull/2184)、[#2185](https://github.com/bajutsu-e2e/bajutsu/pull/2185)、[#2186](https://github.com/bajutsu-e2e/bajutsu/pull/2186)（単位 6。BE-0448 が実装）、[#2187](https://github.com/bajutsu-e2e/bajutsu/pull/2187)（単位 7）、[#2188](https://github.com/bajutsu-e2e/bajutsu/pull/2188)（単位 8）、[#2189](https://github.com/bajutsu-e2e/bajutsu/pull/2189)（単位 9） |
 | トピック | Hosting the web UI |
 <!-- /BE-METADATA -->
 
@@ -21,7 +21,7 @@ server は、制御を担うだけの存在になります。リクエストを�
 
 ## 動機
 
-local バックエンドは、既定で `LocalExecutor` を使います（[`serve_state.py:138`](../../bajutsu/serve/state/serve_state.py)）。server バックエンドは、`BAJUTSU_DATABASE_URL` が設定されていれば `DbQueueExecutor` を選び、なければ `LocalExecutor` に戻ります（[`serve/__init__.py:582`](../../bajutsu/serve/__init__.py)）。local の executor は、ジョブごとにスレッドを起こし、`run_job` が `python -m bajutsu run`（または `record`、`crawl` など）をサブプロセスとして起動します（[`local_executor.py`](../../bajutsu/serve/executor/local_executor.py)、[`jobs.py`](../../bajutsu/serve/jobs.py)）。worker の経路は、`execute_job_spec` を通じて同じ `run_job` に届きます（[`worker_job.py`](../../bajutsu/serve/server/worker_job.py)）。ただしその周りには、lease、ハートビート、署名付きアップロード、データベースを往復しなければならないジョブ仕様という、もう 1 組の仕組みがあります。
+local バックエンドは、既定で `LocalExecutor` を使います（[`serve_state.py:138`](../../bajutsu/serve/state/serve_state.py)）。server バックエンドは、`BAJUTSU_DATABASE_URL` が設定されていれば `DbQueueExecutor` を選び、なければ `LocalExecutor` に戻ります（[`serve/__init__.py:582`](../../bajutsu/serve/__init__.py)）。local の executor は、ジョブごとにスレッドを起こし、`run_job` が `python -m bajutsu run`（または `record`、`crawl` など）をサブプロセスとして起動します（`local_executor.py`、[`jobs.py`](../../bajutsu/serve/jobs.py)）。worker の経路は、`execute_job_spec` を通じて同じ `run_job` に届きます（[`worker_job.py`](../../bajutsu/serve/server/worker_job.py)）。ただしその周りには、lease、ハートビート、署名付きアップロード、データベースを往復しなければならないジョブ仕様という、もう 1 組の仕組みがあります。
 
 2 つの経路を持ち続けると、どの機能も 2 つの経路にまたがる機能になり、2 つ目の経路が遅れます。3 つの例があります。
 
@@ -154,7 +154,7 @@ local バックエンドと server バックエンドの違いは、これらの
 - [x] `run-set`（Device Farm の batch）の移行
 - [x] `triage` の移行（ローカル起動。ホスト型の triage と同じホストへの割り当ては後続の作業。ログを参照）
 - [x] `record` と `crawl` の移行
-- [ ] local の executor の削除
+- [x] local の executor の削除
 
 ログ：
 
@@ -405,6 +405,35 @@ local バックエンドと server バックエンドの違いは、これらの
   スナップショット、ページに届く要求、record に届く回答、record が待つあいだの取り消しを確かめます。
   ホスト型のデプロイには2つの課題が残ります。そこでの crawl は、単位 7 の後続の作業と同じくサーバの
   パスを指定します。また、ホスト型の起動ではデバイスの引き継ぎ（BE-0185）を引き続き拒否します。
+- [#2189](https://github.com/bajutsu-e2e/bajutsu/pull/2189)（単位 9）— サーバは、どの形で起動しても自分のプロセスで job を実行しません。
+  `LocalExecutor`、`RoutingExecutor`、`runs_in_process`、`run_job_in_process`、`LOCAL_QUEUED_KINDS`
+  を取り除き、`bajutsu serve` は `DbQueueExecutor` だけを配線します。プロセス内で実行する最後の形は、
+  バケットを指定してデータベースを指定しないデプロイでした。この形は起動を拒否するようになり、
+  そのメッセージは `BAJUTSU_DATABASE_URL` を挙げます。レプリカごとに SQLite のファイルを持つと
+  キューが分かれるので、この形にはローカルのデフォルト値を用意しません。そのため、どの起動もデータベースを
+  持ちます。サーバは常に SQL のセッションストア、データベースのシークレットストア、キューのログバスを
+  使います。起動時の警告 `oidc_without_database` は、対象の形とともに取り除きました。`ServeState` の
+  デフォルト値は新しい `UnqueuedExecutor` になりました。`UnqueuedExecutor` は、各 job を dispatch の時点で
+  失敗させ、理由を1行で示します。job の後処理は引き続き走るので、ストリームは閉じ、枠も空きます。
+  このデフォルト値を受け取るのは、dispatch しない worker 自身の状態と、executor を配線しないテストです。
+  `run-set` と成果物の差し替えは、キューのない状態を拒否します。終着点の「1つの実装」とは異なり、
+  `UnqueuedExecutor` は、この2つだけが到達する fail-closed なデフォルトの executor として残ります。
+  狭めた拒否の分岐も、同じ理由で残ります。`--backend` フラグは非推奨です。
+  `local` か `server` を渡すと、フラグに代わるものを示す警告を表示し、サーバはその値を無視します。
+  未知の値ではこれまでどおり終了コード 2 で終わり、次のリリースでフラグを取り除きます。`_build_state`
+  と `serve` は backend を受け取らなくなりました。セルフホスティングのイメージと compose ファイルからは
+  `--backend=server` を外しました。`make serve` は変わりません。`serve.sh` は worker を起動し、
+  もともとフラグを渡していないからです。ガードのテストは3つの形を組み立てます。ローカル起動、
+  バケットのないデータベース、データベースを指定したバケットです。それぞれで、失敗するように差し替えた
+  `subprocess.Popen` のもとで各種類の job を1つずつ dispatch し、どの job もキューに入ることを
+  確かめます。リクエストが job に何をさせるかを確かめるテストは、テスト用の executor を配線します。
+  その executor は、worker が実行するのと同じ本体である `run_job` をスレッドで走らせます。プロセス内の
+  スレッドとルーティング用の executor を固定していたテストは取り除きました。これですべての単位が
+  終わりました。本項目の外に、後続の作業が4つ残ります。
+  - ホスト型の triage です。その run はオブジェクトストレージにあります（単位 7）。
+  - サーバのパスを指定する job を、サーバのマシンに結び付ける capability です（単位 5 と 7）。
+  - ホスト型の起動での crawl です。こちらもサーバのパスを指定します（単位 8）。
+  - 再接続したページへ、画面マップの最新のスナップショットだけを送り直す変更です（単位 8）。
 
 ## 参考
 

@@ -58,8 +58,8 @@ SERVE_WORKER=0 make serve
 A queued run says why it waits. The Replay status line shows a notice that no worker is
 available. `GET /api/jobs/<id>` carries the same text as `notice`. The notice
 clears once a worker that can serve the run polls the server. Triage, record, and crawl jobs go
-through the same worker. A local start runs no job in the server process (BE-0449). A
-deployment with a bucket and no database still runs jobs in process until a later unit removes it. While a crawl runs, the Crawl
+through the same worker. The server runs no job in its own process (BE-0449). A deployment with a
+bucket must name a database for its queue, or the server refuses to start. While a crawl runs, the Crawl
 tab draws its graph from the screen map the worker relays. A record that pauses for a person shows
 its request as before. The answer then travels back to the worker.
 
@@ -654,7 +654,7 @@ dimension.
 By default `make serve` binds `127.0.0.1` with no authentication — safe only on the loopback
 interface. To expose it beyond your own machine you need a token (`--token`), which turns on
 authentication and CSRF protection; binding a non-loopback `--host` requires one. Team hosting on a
-single Mac (`--emit-launchagent`) or the full control-plane backend (`--backend server`), together
+single Mac (`--emit-launchagent`) or the full hosted control plane (a bucket and a database), together
 with `--max-concurrent-runs` and `--evidence-store`, are covered in the
 [CLI reference](cli.md#serve) and [self-hosting](self-hosting.md).
 

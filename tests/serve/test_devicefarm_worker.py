@@ -27,7 +27,7 @@ from bajutsu.common.cloud.devicefarm import DeviceFarmError, Verdict
 from bajutsu.serve import batch_bootstrap
 from bajutsu.serve import batch_provider as bp
 from bajutsu.serve.cli import worker as worker_mod
-from bajutsu.serve.executor import LocalExecutor
+from bajutsu.serve.executor import UnqueuedExecutor
 from bajutsu.serve.logbus import InMemoryLogBus
 from bajutsu.serve.operations.dispatch import start_run_set
 from bajutsu.serve.server import one_shot
@@ -216,12 +216,12 @@ def test_the_environment_prefix_is_reserved_in_the_override(
         worker_mod._advertised_capabilities("", "", environment)
 
 
-def test_a_server_running_jobs_itself_refuses_a_fan_out(tmp_path: Path) -> None:
-    # No provider is registered in the server, so a fan-out it ran itself could only fail at submit.
+def test_a_server_without_a_queue_refuses_a_fan_out(tmp_path: Path) -> None:
+    # No provider is registered in the server and it runs no job itself, so a fan-out needs a queue.
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text("targets: {}\n", encoding="utf-8")
     state = ServeState(config=cfg, runs_dir=tmp_path / "runs", cwd=tmp_path)
-    assert isinstance(state.executor, LocalExecutor)
+    assert isinstance(state.executor, UnqueuedExecutor)
     payload, status = start_run_set(state, {"target": "demo"})
     assert status == 400
     assert "needs a queue and a worker" in payload["error"]
@@ -298,6 +298,7 @@ def _storage_state(
     """
     from unittest import mock
 
+    from _shared import queue_repository
     from conftest import FakeObjectStore
 
     from bajutsu.serve.scenarios import Runnable
@@ -322,7 +323,13 @@ def _storage_state(
         def scope(self, *_a: Any, **_k: Any) -> _Scope:
             return _Scope()
 
-    state = ServeState(config=cfg, runs_dir=tmp_path / "runs", cwd=cfg.parent, executor=executor)
+    state = ServeState(
+        config=cfg,
+        runs_dir=tmp_path / "runs",
+        cwd=cfg.parent,
+        executor=executor,
+        repository=queue_repository(),
+    )
     if store:
         state.object_store = FakeObjectStore()
     bundle = mock.MagicMock()

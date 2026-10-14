@@ -129,7 +129,7 @@ orchestrator、証跡、config、レポート）は [`bajutsu/common/`](bajutsu/
   あらゆる証跡の閲覧、ビジュアル baseline の承認、SSE によるジョブのライブ配信、usage / flakiness /
   coverage の各ダッシュボードです。各タブの操作方法は [docs/ja/web-ui.md](docs/ja/web-ui.md) を
   参照してください
-- **ホスティング可能なサーバ backend**（`serve --backend server`、`bajutsu worker`）: FastAPI、
+- **ホスティング可能なサーバ backend**（バケットとデータベースを設定した `bajutsu serve`、`bajutsu worker`）: FastAPI、
   Postgres、S3 互換オブジェクトストレージ、GitHub OAuth ログイン、RBAC（ロールベースアクセス
   制御）、クォータを備えた、自前でホスティングできる制御プレーンです。Mac / Linux ワーカーは制御
   プレーンの URL とトークンだけを持ち、クラウド SDK やオブジェクトストレージの認証情報は要りま
@@ -332,7 +332,7 @@ bajutsu/
 │                         #   flakiness / impact / stats / trace
 ├── serve/                # ローカル Web UI（オーサリング + 実行 + レポート; Tier 1）、および
 │                         #   server/ 配下にホスティング制御プレーン（FastAPI + Postgres +
-│                         #   OAuth）。`serve --backend server` の背後にあります
+│                         #   OAuth）。すべてのジョブは `bajutsu worker` が実行します
 ├── mcp/                  # MCP サーバ（エージェント連携用のツール + リソース）
 ├── templates/            # Jinja のレポート / ダッシュボードテンプレート + Web UI 自身の JS / CSS
 ├── cli/                  # CLI (typer) — コマンドごとに 1 ファイル

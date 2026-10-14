@@ -907,8 +907,8 @@ def job_view(state: ServeState, job_id: str, *, machine_org: str | None = None) 
     if job is None or (machine_org is not None and job.org != machine_org):
         return {"error": "no such job"}, 404
     view = job.view()
-    # Locally the job ran in-process, so its own view (with the log buffer) is authoritative. On the
-    # server backend it ran on a worker and the control-plane Job stays "running"; fall back to the
+    # A job that ended on this process's own `Job` (one failed at dispatch) has an authoritative
+    # view. A job that ran on a worker leaves the control-plane Job "running"; fall back to the
     # bus's terminal status then (BE-0015 W2).
     if view["status"] != "done":
         final = state.logbus.final(job_id)
@@ -1005,12 +1005,12 @@ def cancel_job(
     actor: str | None = None,
     machine_org: str | None = None,
 ) -> tuple[Any, int]:
-    """Cancel a job, whether it runs in this process or waits for or runs on a worker.
+    """Cancel a job, whether it waits for or runs on a worker.
 
     A job in the jobs table is cancelled there (BE-0449), so a job queued before a restart can still
     be cancelled: a queued job is marked ``cancelled`` and never leased, and a leased job is flagged
     for its worker, which stops the run on its next heartbeat and reports the cancel. A job with no
-    row runs in process (`LocalExecutor`) and is stopped here, as before. A cancel that arrives
+    row is stopped through its own `Job`, which holds no process on the server. A cancel that arrives
     after the job finished changes nothing and reports the job's terminal status.
 
     The cancel reaches jobs this process never registered (queued before a restart, or by another

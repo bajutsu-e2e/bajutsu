@@ -1,7 +1,7 @@
 """Tests for the queue-based RunExecutor + worker entrypoint (BE-0015 server phase).
 
-`QueueExecutor` is a server implementation of the `RunExecutor` seam: instead of running `run_job`
-in-process (like `LocalExecutor`), it serializes the job and enqueues it; a remote `bajutsu worker`
+`QueueExecutor` is a server implementation of the `RunExecutor` seam: rather than running `run_job`
+itself, it serializes the job and enqueues it; a remote `bajutsu worker`
 later reconstructs the job and runs the *unchanged* `run_job`. These tests drive both ends with a
 fake queue and an injected Popen, so the Linux gate needs neither Redis nor RQ installed. The two
 worker-side cases that record into a repository run against in-memory SQLite in the gate and, behind

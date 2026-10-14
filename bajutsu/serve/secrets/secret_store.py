@@ -21,8 +21,8 @@ class SecretStore(Protocol):
     def values_for_job(self) -> dict[str, str]:
         """Every secret this store holds, by logical name, in plaintext — for a job's environment.
 
-        The one plaintext read (BE-0449). It exists so a job the server runs in its own process gets
-        the values a user set in the UI, and a later worker lease can carry them the same way. It
+        The one plaintext read (BE-0449). It exists so a worker's lease can carry the values a user
+        set in the UI to the job it runs, since the server runs no job itself. It
         is called only on the job-execution path (`serve.jobs`), never by an HTTP handler, so no
         response can disclose a value (BE-0136); a test locks that boundary.
         """

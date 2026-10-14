@@ -53,7 +53,7 @@ worker-web = ["bajutsu[web,visual,schema]"]
 # closure is just the run-reached `visual` / `schema` extras (idb + its `fb-idb` client retired,
 # BE-0290).
 worker-ios = ["bajutsu[visual,schema]"]
-# The hosted-backend control plane (`serve --backend=server`). FastAPI and uvicorn moved to the base
+# The hosted control plane (`bajutsu serve` with a bucket). FastAPI and uvicorn moved to the base
 # dependencies (BE-0449), so this extra now adds only boto3 for an `s3://` BAJUTSU_SERVER_STORE. Kept
 # so an existing `pip install 'bajutsu[server]'` still resolves and still installs what it did.
 server = ["boto3>=1.34"]

@@ -1117,12 +1117,11 @@ Bedrock を、`claude_code.py` が Claude Code のコマンドラインインタ
 **`serve/`** はブラウザ用のアプリケーションです。`state.py` の `ServeState` がプロセス全体の状態を
 束ねます。ジョブレジストリ、セッション管理、シナリオストア、プロバイダ設定が入ります。`routes.py` は
 経路をデータとして宣言します。そのため標準ライブラリのハンドラ（`handler.py`）と FastAPI の
-アプリケーション（`server/app.py`）が同じ経路表を配れます。`executor.py` は `RunExecutor` という
-接続面を宣言します。ローカル配置とホスティング配置が分かれるのはここだけです。`LocalExecutor` は
-各ジョブをデーモンスレッドで走らせ、`DbQueueExecutor` は遠隔の `bajutsu worker` 向けに積みます。
-ジョブの種類は、サーバーから worker へ 1 つずつ移します（BE-0449）。その移行の間は、
-`RoutingExecutor` が `Job.kind` を読み、種類ごとに 2 つの executor のどちらかを選びます。
-実行の本体である `jobs.py` は、どちらの側でも同じです。
+アプリケーション（`server/app.py`）が同じ経路表を配れます。`executor/` パッケージは `RunExecutor` という
+接続面を宣言します。作成したジョブを、それを実行するものへ渡す接続面です。サーバ自身はジョブを実行しません
+（BE-0449）。`bajutsu serve` が配線する `DbQueueExecutor` は、すべてのジョブを `bajutsu worker` 向けに
+積みます。worker は `jobs.py` の実行本体でジョブを走らせます。キューを持たずに組み立てた状態には
+`UnqueuedExecutor` が入り、各ジョブを起動せずに dispatch の時点で失敗させます。
 
 **`mcp/`** は `run` と `doctor` を Model Context Protocol（MCP）のツールとして、run の証跡を MCP の
 リソースとして公開します。エディタ側のエージェントが、シェルを介さず決定的な経路に届きます。

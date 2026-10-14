@@ -7,9 +7,9 @@
 |---|---|
 | Proposal | [BE-0449](BE-0449-server-runs-no-jobs.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0449") |
-| Implementing PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167) (Unit 1, part 1 of 3), [#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168) (Unit 1, part 2 of 3), [#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170) (Unit 1, part 3 of 3), [#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171) (Unit 2), [#2172](https://github.com/bajutsu-e2e/bajutsu/pull/2172) (Unit 4), [#2173](https://github.com/bajutsu-e2e/bajutsu/pull/2173) (Unit 3), [#2182](https://github.com/bajutsu-e2e/bajutsu/pull/2182) (Unit 5, part 1 of 2: a lossless local start), [#2183](https://github.com/bajutsu-e2e/bajutsu/pull/2183) (Unit 5, part 2 of 2: `run` on a worker), [#2184](https://github.com/bajutsu-e2e/bajutsu/pull/2184), [#2185](https://github.com/bajutsu-e2e/bajutsu/pull/2185), [#2186](https://github.com/bajutsu-e2e/bajutsu/pull/2186) (Unit 6, through BE-0448), [#2187](https://github.com/bajutsu-e2e/bajutsu/pull/2187) (Unit 7), and [#2188](https://github.com/bajutsu-e2e/bajutsu/pull/2188) (Unit 8) |
+| Implementing PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167) (Unit 1, part 1 of 3), [#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168) (Unit 1, part 2 of 3), [#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170) (Unit 1, part 3 of 3), [#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171) (Unit 2), [#2172](https://github.com/bajutsu-e2e/bajutsu/pull/2172) (Unit 4), [#2173](https://github.com/bajutsu-e2e/bajutsu/pull/2173) (Unit 3), [#2182](https://github.com/bajutsu-e2e/bajutsu/pull/2182) (Unit 5, part 1 of 2: a lossless local start), [#2183](https://github.com/bajutsu-e2e/bajutsu/pull/2183) (Unit 5, part 2 of 2: `run` on a worker), [#2184](https://github.com/bajutsu-e2e/bajutsu/pull/2184), [#2185](https://github.com/bajutsu-e2e/bajutsu/pull/2185), [#2186](https://github.com/bajutsu-e2e/bajutsu/pull/2186) (Unit 6, through BE-0448), [#2187](https://github.com/bajutsu-e2e/bajutsu/pull/2187) (Unit 7), [#2188](https://github.com/bajutsu-e2e/bajutsu/pull/2188) (Unit 8), and [#2189](https://github.com/bajutsu-e2e/bajutsu/pull/2189) (Unit 9) |
 | Topic | Hosting the web UI |
 <!-- /BE-METADATA -->
 
@@ -21,7 +21,7 @@ Today the server has two ways to run a job. The local backend runs it inside the
 
 ## Motivation
 
-The local backend takes `LocalExecutor` by default ([`serve_state.py:138`](../../bajutsu/serve/state/serve_state.py)). The server backend picks `DbQueueExecutor` when `BAJUTSU_DATABASE_URL` is set and falls back to `LocalExecutor` otherwise ([`serve/__init__.py:582`](../../bajutsu/serve/__init__.py)). The local executor starts a thread per job, and `run_job` spawns `python -m bajutsu run` (or `record`, `crawl`, and so on) as a subprocess ([`local_executor.py`](../../bajutsu/serve/executor/local_executor.py), [`jobs.py`](../../bajutsu/serve/jobs.py)). The worker path reaches the same `run_job` through `execute_job_spec` ([`worker_job.py`](../../bajutsu/serve/server/worker_job.py)), but around it sits a second set of mechanisms: leases, heartbeats, presigned uploads, and a job spec that must round-trip through the database.
+The local backend takes `LocalExecutor` by default ([`serve_state.py:138`](../../bajutsu/serve/state/serve_state.py)). The server backend picks `DbQueueExecutor` when `BAJUTSU_DATABASE_URL` is set and falls back to `LocalExecutor` otherwise ([`serve/__init__.py:582`](../../bajutsu/serve/__init__.py)). The local executor starts a thread per job, and `run_job` spawns `python -m bajutsu run` (or `record`, `crawl`, and so on) as a subprocess (`local_executor.py`, [`jobs.py`](../../bajutsu/serve/jobs.py)). The worker path reaches the same `run_job` through `execute_job_spec` ([`worker_job.py`](../../bajutsu/serve/server/worker_job.py)), but around it sits a second set of mechanisms: leases, heartbeats, presigned uploads, and a job spec that must round-trip through the database.
 
 Keeping both paths makes every feature a two-path feature, and the second path lags. Three cases show it.
 
@@ -154,7 +154,7 @@ This item does not change what a job does, how a verdict is decided, or the run 
 - [x] Move `run-set` (the Device Farm batch)
 - [x] Move `triage` (on a local start; hosted triage and same-machine affinity are follow-ups, see the log)
 - [x] Move `record` and `crawl`
-- [ ] Remove the local executor
+- [x] Remove the local executor
 
 Log:
 
@@ -406,6 +406,35 @@ Log:
   page, the answer at the record, and a cancel while the record waits. Hosted deployments keep two
   gaps. A crawl there names server paths, as the unit 7 follow-up describes. The device takeover
   stays refused on a hosted start (BE-0185).
+- [#2189](https://github.com/bajutsu-e2e/bajutsu/pull/2189) (Unit 9) — the server runs no job in its own process, on any shape it starts
+  in. This unit deletes the in-process executor, `LocalExecutor`, with its thread body
+  `run_job_in_process`. The routing that kept kinds in process went with it: `RoutingExecutor`,
+  `runs_in_process`, and `LOCAL_QUEUED_KINDS`. `bajutsu serve` wires `DbQueueExecutor` alone. The last
+  in-process shape was a deployment with a bucket and no database. That shape now refuses to start,
+  and the message names `BAJUTSU_DATABASE_URL`. It gets no local default, since a SQLite file per
+  replica would split its queue. Every start thus has a database. The server always uses the SQL
+  session store, the database secret store, and the queue log bus. The `oidc_without_database`
+  startup warning went with the shape it described. `ServeState` now defaults to a new
+  `UnqueuedExecutor`, which fails each job at dispatch with a line that says why. The job's tail
+  still runs, so its stream closes and its slot frees. A worker's own state, which never
+  dispatches, gets that default, as does a test that wires no executor. `run-set` and the
+  artifact overrides refuse a state with no queue. Unlike the end state's "one implementation",
+  `UnqueuedExecutor` stays as a fail-closed default that those two alone reach, and the narrowed
+  refusal branch stays for the same reason. We deprecate the `--backend` flag. A passed
+  `local` or `server` prints a warning that names what replaced the flag, and the server ignores
+  the value. An unknown value still exits 2, and the next release removes the flag.
+  `_build_state` and `serve` no longer take a backend. The self-hosting image and compose file
+  drop `--backend=server`. `make serve` keeps working, because `serve.sh` starts the worker and
+  never passed the flag. A guard test builds three shapes: a local start, a database with no
+  bucket, and a bucket with a database. On each, it dispatches one job of every kind with
+  `subprocess.Popen` patched to fail, and checks that every job lands queued. Tests of what a
+  request makes a job do now wire a test executor. That executor runs `run_job` on a thread, the
+  body a worker runs. This unit removes the tests that pinned the in-process thread and the routing
+  executor. Every unit is now done. Four follow-ups stay open outside this item:
+  - Hosted triage, whose run lives in object storage (unit 7).
+  - A capability that ties a job naming server paths to the server's machine (units 5 and 7).
+  - A crawl on a hosted start, which names server paths too (unit 8).
+  - Replaying the latest screen-map snapshot alone to a page that reconnects (unit 8).
 
 ## References
 

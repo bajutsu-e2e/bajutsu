@@ -13,6 +13,7 @@ import pytest
 from _shared import (
     SCENARIO,
     FakeProc,
+    WorkerStandIn,
     _get_json,
     _post,
     _serve,
@@ -35,7 +36,14 @@ def test_http_record_authors_scenario(tmp_path: Path) -> None:
         return FakeProc(["[1] -> tap #x\n", "recorded 1 steps (api agent) -> " + out + "\n"])
 
     server, port = _serve(
-        srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path, popen=popen)
+        srv.ServeState(
+            executor=WorkerStandIn(),
+            scenarios_dir=scn_dir,
+            config=cfg,
+            runs_dir=runs,
+            cwd=tmp_path,
+            popen=popen,
+        )
     )
     try:
         body = json.dumps({"goal": "tap x", "target": "demo", "name": "authored"}).encode()
@@ -66,7 +74,9 @@ def test_http_record_authors_scenario(tmp_path: Path) -> None:
 def test_http_record_requires_goal_and_app(tmp_path: Path) -> None:
     scn_dir, cfg, runs = project(tmp_path)
     server, port = _serve(
-        srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+        srv.ServeState(
+            executor=WorkerStandIn(), scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path
+        )
     )
     try:
         body = json.dumps({"goal": "tap x"}).encode()  # missing app
@@ -85,7 +95,9 @@ def test_http_record_requires_goal_and_app(tmp_path: Path) -> None:
 def test_http_record_rejects_unknown_backend(tmp_path: Path) -> None:
     scn_dir, cfg, runs = project(tmp_path)
     server, port = _serve(
-        srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+        srv.ServeState(
+            executor=WorkerStandIn(), scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path
+        )
     )
     try:
         status, resp = _post(
@@ -100,7 +112,9 @@ def test_http_record_rejects_unknown_backend(tmp_path: Path) -> None:
 def test_http_record_rejects_invalid_udid(tmp_path: Path) -> None:
     scn_dir, cfg, runs = project(tmp_path)
     server, port = _serve(
-        srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+        srv.ServeState(
+            executor=WorkerStandIn(), scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path
+        )
     )
     try:
         status, resp = _post(

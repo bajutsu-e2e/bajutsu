@@ -982,10 +982,10 @@ gate**. Four top-level tabs over the CLI: **Record** authors a scenario from a g
 (`python -m bajutsu crawl ...`), and **Stats** shows the aggregate run-stats dashboard across the
 run history (`bajutsu stats`). All run against the **active config**, which you open from
 the file browser, a Git repository, or an uploaded `.zip` bundle (see "Open config" below).
-Each request spawns the CLI per request on a background thread,
-streams its output, and serves the produced `runs/<id>/` tree so the report's relative asset
-links (and the crawl's `screenmap.json`) resolve. Stdlib only (no web framework); binds
-`127.0.0.1`.
+Each request queues a job. A `bajutsu worker` runs it, since the server runs none itself
+(BE-0449). The server streams the job's output. It serves the produced `runs/<id>/` tree. The
+report's relative asset links resolve against it, as does the crawl's `screenmap.json`. The server
+binds `127.0.0.1`.
 
 ```bash
 bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs runs] [--baselines <dir>]
@@ -1134,8 +1134,9 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   swiftui-build`) to build on demand from the UI without a manual build first.
 - A **History** list under the controls shows past runs (newest first, with a pass/fail dot and
   scenario summary); click one to reopen its report. `GET /api/runs` backs it.
-- The run subprocess inherits the launch environment (the venv `bin` is prepended to `PATH`). Run
-  it from the project root so `bajutsu.config.yaml` resolves.
+- The worker spawns the run subprocess. The subprocess inherits the worker's environment, with the
+  venv `bin` prepended to `PATH`. It also gets the stored secrets the lease relays. A local job
+  runs from its config's directory, so `bajutsu.config.yaml` resolves.
 - **Input validation on `/api/run`.** The scenario must be an existing `*.yaml` **inside the
   selected app's scenarios dir** (no arbitrary host paths or `..` traversal), and `backend` / `udid`
   must be known tokens, not free text — so a request can't run an arbitrary file or smuggle
@@ -1146,7 +1147,7 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   more fields. `binaryArtifact` and `scenariosArtifact` each hold the sha256 of an artifact stored
   for the org. One job installs that binary at its target's `appPath`. The same job runs against
   that scenarios zip. The org's active config keeps its binding. The run's `manifest.json` records
-  each overridden sha256 under `provenance`. A single-process `serve` refuses both fields. See
+  each overridden sha256 under `provenance`. A server with no job queue refuses both fields. See
   [self-hosting](self-hosting.md#per-job-artifact-overrides-for-a-ci-run-be-0431).
 
 ### Run limits, evidence, and hosting
@@ -1166,10 +1167,9 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   the run id is always in the key and runs never collide. Upload runs after the verdict, so a failure
   only warns. Needs the `s3` or `gcs` extra **on the server** (the worker needs neither). See
   [self-hosting](self-hosting.md) for the topology.
-- **`--backend` — which jobs a worker runs.** Both backends keep a queue for a `bajutsu worker`
-  (BE-0449). Both now queue every kind of job, and the `serve` process runs none of them. A queued
-  job waits for a worker. With no live worker able to take it, the job carries a
-  notice that no worker is available. `make serve` starts a worker beside the server. A bare
+- **Every job runs on a worker (BE-0449).** `serve` queues every kind of job for a
+  `bajutsu worker`. The `serve` process runs none of them. A queued job waits for a worker. With
+  no live worker able to take it, the job carries a notice that no worker is available. `make serve` starts a worker beside the server. A bare
   `bajutsu serve` needs `bajutsu worker` beside it. The lease hands the worker the stored secrets
   of the job's org. On one machine, with no `BAJUTSU_SERVER_STORE`, a server needs no environment
   variables. It keeps a
@@ -1180,8 +1180,14 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   indexes the runs already under `runs/` into its history. An admin's `POST /api/runs/rescan` picks
   up later ones. `BAJUTSU_DATABASE_URL`, `BAJUTSU_SECRETS_KEY`, `BAJUTSU_SERVER_STORE`, and
   `BAJUTSU_HOSTED` override those defaults. A server with no bucket uses the FastAPI
-  transport, as `--asgi` does, and needs a fixed `--port`. See
+  transport, as `--asgi` does, and needs a fixed `--port`. A server with a bucket must also set
+  `BAJUTSU_DATABASE_URL`. Without it, the server would have no queue and refuses to start. See
   [self-hosting → The server backend on one machine](self-hosting.md#the-server-backend-on-one-machine-be-0449).
+- **`--backend` (deprecated).** The flag once chose between two backends. The `local` backend ran
+  jobs in the `serve` process, and the `server` backend queued them. Both values now start the
+  same server. `serve` accepts either value, prints a warning, and ignores it. An unknown value
+  still stops the start with a usage error. The next release removes the flag, so drop it from
+  your command lines.
 - **Hosting flags (advanced).** `--emit-launchagent` prints a launchd plist to run `serve` as a
   token-authenticated LaunchAgent on a single Mac; `--upload-exec` (or `$BAJUTSU_UPLOAD_EXEC`) governs whether an
   **uploaded bundle**'s `launchServer` command may run (`deny` / `reuse` / `sandbox`, default
@@ -1211,8 +1217,8 @@ bajutsu mcp [--config bajutsu.config.yaml] [--runs runs] [--transport stdio]
 
 ## `worker`
 
-Polls the hosted control plane (`serve --backend=server`) for queued runs and executes them — the
-execution half of the hosted server backend
+Polls the control plane (`bajutsu serve`) for queued jobs and runs them. A worker is the half of
+every deployment that runs jobs, on one machine as on the hosted server backend
 ([BE-0015](../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md);
 [self-hosting](self-hosting.md)). It leases a job from `/api/worker/lease` over plain HTTP (**no
 Redis or RQ**, BE-0106), runs it with the unchanged `run_job`, and posts the result back to

@@ -125,8 +125,8 @@ def _stored_ai_key_reaches(state: ServeState, org: str, ai_config: AiConfig | No
     """Whether *org*'s stored AI key reaches the triage job under the variable it reads.
 
     A store that keeps the key out of this process's environment (the database store of a local
-    start, BE-0449) still hands it to the job: the lease relays it to the worker, and the in-process
-    thread lays it over the child's environment. Only the masked description is read here, never the
+    start, BE-0449) still hands it to the job: the lease relays it to the worker, which lays it
+    over the child's environment. Only the masked description is read here, never the
     plaintext, and a store that cannot be read counts as holding none. The key travels under the bound config's ``ai.keyEnv``, so a target that names
     another variable does not count it.
     """

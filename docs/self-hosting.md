@@ -10,8 +10,8 @@
 > [BE-0051](../roadmaps/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)'s
 > auth + input validation:
 >
-> - **Tier A — a single Mac.** One `bajutsu serve` process, token-authenticated, on one Mac. The
->   rest of this page up to *Tier B* covers it.
+> - **Tier A — a single Mac.** A token-authenticated `bajutsu serve` and a local `bajutsu worker`
+>   that runs its jobs, both on one Mac. The rest of this page up to *Tier B* covers it.
 > - **Tier B — a self-hosted server backend.** BE-0015's control plane (FastAPI + Postgres +
 >   S3-compatible storage + GitHub OAuth + RBAC + quotas) on a Linux node, with Mac workers. It runs
 >   single-tenant by default and supports **multiple orgs** when you declare them in config (see
@@ -83,8 +83,8 @@ PLIST=~/Library/LaunchAgents/com.bajutsu.serve.plist
 /usr/libexec/PlistBuddy -c "Add :EnvironmentVariables:PATH string $(brew --prefix)/bin:/usr/bin:/bin:/usr/sbin:/sbin:$(pwd)/.venv/bin" "$PLIST"
 ```
 
-The agent starts the server alone. The server queues each run for a `bajutsu worker` and does not
-drive a device itself (BE-0449). Run a worker beside it as a second LaunchAgent:
+The agent starts the server alone. The server queues every job for a `bajutsu worker` and runs none
+itself (BE-0449). Run a worker beside it as a second LaunchAgent:
 
 1. Copy the plist under another label.
 2. Change its `ProgramArguments` to `python -m bajutsu worker --platform ios`. Add
@@ -93,7 +93,7 @@ drive a device itself (BE-0449). Run a worker beside it as a second LaunchAgent:
 4. Leave the working directory unchanged. The worker runs each job in a temporary directory.
    Pass `--workdir <dir>` to keep that workspace in one fixed place.
 
-Until a worker polls, every run stays queued, and the UI says that no worker is available.
+Until a worker polls, every job stays queued, and the UI says that no worker is available.
 
 serve stays bound to `127.0.0.1`; the next step is what makes it reachable.
 
@@ -248,14 +248,14 @@ credential with Contents: read for `<owner>/<repo>`") rather than a bare 404.
 
 ## Tier B — self-hosting the server backend
 
-Tier A is one process on one Mac. **Tier B** runs BE-0015's **server backend** — the FastAPI control
+Tier A is a server and its local worker on one Mac. **Tier B** runs BE-0015's **server backend** — the FastAPI control
 plane with Postgres, S3-compatible storage (MinIO), GitHub OAuth, RBAC, and a per-user quota — on a
 Linux node, with one or more Macs as workers. It runs **single-tenant** by default (every
 user in one default org) and supports **multiple orgs** once you declare them in config — see
 *[Multiple orgs](#multiple-orgs)* below. The ready-to-run stack is in
 [`deploy/self-host/`](../deploy/self-host/) (compose + Dockerfile + `.env.example`).
 
-![Tier B topology diagram: team laptops reach the Linux control-plane node (bajutsu serve --asgi --backend=server, Postgres, MinIO) over HTTPS via Tailscale or Caddy; the control plane dispatches jobs over HTTP to a pool of bare-metal Mac iOS (XCUITest) workers and, over the same Tailscale tailnet, to containerized Linux web (Playwright/Chromium) workers, both returning results to the control plane.](assets/diagrams/self-hosting-tier-b-topology.svg)
+![Tier B topology diagram: team laptops reach the Linux control-plane node (bajutsu serve --asgi, Postgres, MinIO) over HTTPS via Tailscale or Caddy; the control plane dispatches jobs over HTTP to a pool of bare-metal Mac iOS (XCUITest) workers and, over the same Tailscale tailnet, to containerized Linux web (Playwright/Chromium) workers, both returning results to the control plane.](assets/diagrams/self-hosting-tier-b-topology.svg)
 
 <details>
 <summary>Mermaid source</summary>
@@ -264,7 +264,7 @@ user in one default org) and supports **multiple orgs** once you declare them in
 ```mermaid
 flowchart TB
     laptops(["team laptops"])
-    control["Linux node — docker compose<br/>bajutsu serve --asgi --backend=server<br/>postgres · minio<br/>[+ Linux web worker container(s)]"]
+    control["Linux node — docker compose<br/>bajutsu serve --asgi<br/>postgres · minio<br/>[+ Linux web worker container(s)]"]
     macWorker["Mac worker × N (bare)<br/>bajutsu worker (iOS · XCUITest)<br/>bajutsu run · Simulator"]
     webWorker["Linux web worker (web)<br/>bajutsu worker · Chromium"]
 
@@ -292,7 +292,7 @@ over the serve host's `--root`**. On the server backend (this tier) the file bro
 both hidden in the UI and refused server-side (`/api/fs` and the path branch of `POST /api/config`
 return `403`) — leaving only Git and upload. A hosted user has no filesystem relationship to the
 shared worker, so browsing the operator's `--root` could bind nothing they own; removing it also
-avoids handing every logged-in user a directory listing of that tree. The local backend (Tier A, a
+avoids handing every logged-in user a directory listing of that tree. A local start (Tier A, a
 self-hosted single Mac) keeps all three: there the filesystem is the operator's own.
 
 ### Local vs. hosted, across config, scenario, and the app binary
@@ -320,7 +320,8 @@ below, covers that case.
   Hosted mode never offers the local-file source, so every hosted config ends up confined — a side
   effect of dropping the file browser, not a separate rule.
 - **Scenario and run artifacts.** Locally, the scenario store and the run history read and write a
-  plain directory tree (`scenarios/`, `runs/`); a soft-deleted run moves to `runs/.trash/`. Hosted, both
+  plain directory tree (`scenarios/`, `runs/`); a soft-deleted run keeps its tree and gains a
+  `.deleted` marker. Hosted, both
   live in the control plane's object store (`BAJUTSU_SERVER_STORE`, S3-compatible or GCS) plus a
   Postgres row per run, so a soft-delete sets `deleted_at` instead of moving bytes on disk (see
   *Deleting runs, and how long the trash is kept*, below).
@@ -353,18 +354,21 @@ below, covers that case.
 
 ### The server backend on one machine (BE-0449)
 
-`bajutsu serve` starts on one machine with no cloud service, on either backend. It needs no
-environment variables there. The server queues jobs. A `bajutsu worker` on the same machine leases
-them and runs them, and `make serve` starts that worker for you. The two backends once differed in
-which jobs they queue, and now queue the same ones:
+`bajutsu serve` starts on one machine with no cloud service and needs no environment variables
+there. The server runs no job itself. It queues each kind of job for a worker:
 
-| Backend | Queued for a worker | Run inside the server process |
-|---|---|---|
-| `local` (the default) | every job | none |
-| `server` | every job | none |
+- a `run`, with its build phase
+- a `run-set`, the Device Farm fan-out
+- a `triage`, a `record`, or a `crawl`
 
-Both backends now queue every kind of job, so the flag no longer changes where a job runs. A later
-unit of BE-0449 removes the flag and the in-process executor behind it.
+A `bajutsu worker` on the same machine leases each job and runs it. `make serve` starts that
+worker for you. Without a worker, a job stays queued, and the UI says that no worker is available.
+
+We deprecate the `--backend` flag. The flag once chose between two backends. The `local` backend
+ran jobs inside the server process, and the `server` backend queued them. Both values now start
+the same server, so the flag changes nothing. `bajutsu serve` still accepts either value and
+prints a warning. The next release removes the flag. Drop it from a command line, a LaunchAgent,
+or a container command. An unknown value still stops the start.
 
 A `triage` job reads the run it diagnoses from the server's runs directory. Its command line names
 the run directory by its absolute path on the server's disk. The bound config and the scenario
@@ -403,9 +407,10 @@ Three rules guard the relay routes:
 For each setting left
 unset, the server supplies a local default. Every default lives in a `.bajutsu/` directory beside
 the runs directory. The server creates that directory owner-only (`0700`), and Git ignores it.
-These defaults apply when `BAJUTSU_SERVER_STORE` is unset. A deployment with a bucket and no
-database has no queue and runs jobs in its own process, as before: a SQLite file per replica would
-split the queue across them.
+These defaults apply when `BAJUTSU_SERVER_STORE` is unset. A deployment with a bucket gets no
+default database. A SQLite file per replica would split the queue across the replicas. Such a
+deployment must set `BAJUTSU_DATABASE_URL`, or the server refuses to start. The server runs no job
+itself, so a server with no queue could run nothing.
 
 A plain `pip install bajutsu` is enough for this shape. The base dependencies carry the server
 stack, such as FastAPI, SQLAlchemy, and `cryptography`. SQLite ships with Python.
@@ -440,18 +445,18 @@ never changes its mode. A symlinked `runs/`, such as one moved to a larger disk,
 key is confined to the resolved directory, so none reaches outside it. Only `.bajutsu/objects/`,
 which the server owns, is made owner-only (`0700`), and a symlink there is refused.
 
-The two backends share the runs tree. A run deleted under the server backend stays at
-`runs/<run id>/` with a `.deleted` marker, rather than moving to `runs/.trash/`. The local
-backend's history, `bajutsu flakiness --history`, and `bajutsu triage --flaky` skip a tree that
-holds the marker, so the run stays deleted under either backend.
+The server and the command line share the runs tree. A run deleted through the server stays at
+`runs/<run id>/` with a `.deleted` marker. Both `bajutsu flakiness --history` and
+`bajutsu triage --flaky` skip a tree that holds the marker. The run thus stays deleted for the command
+line as well.
 
 The browser and the worker reach a stored file through a signed URL. The server signs each URL with
 an HMAC key. That key lives in `.bajutsu/store-signing.key`, under the same `0600` rules. Each URL
 names the `--host` the server was given, or `127.0.0.1` for a wildcard bind. The FastAPI transport alone
-serves these routes. A server backend without a bucket switches itself to `--asgi` and says so at
+serves these routes. A server without a bucket switches itself to `--asgi` and says so at
 startup. The URLs carry the port fixed at startup, and such a server refuses `--port 0`.
 
-With a database, the run history comes from the runs table and not from the directory listing. At
+The run history comes from the runs table and not from the directory listing. At
 startup the server indexes every run tree under `runs/` into the runs table, under the `default`
 org. The index skips a tree with no readable `manifest.json`. It also skips a run that a job is
 still writing. The index never updates a row. A run the table already holds keeps the row its job
@@ -468,25 +473,24 @@ device takeover of `record` (BE-0185), since the author sits at the device.
 
 #### What a local start keeps from the earlier local backend
 
-The `local` backend now has the shape of a local start. It keeps the features the earlier in-process
-backend offered. Each item applies to the default org of a local start. That org is the one whose
+A local start keeps the features of the earlier local backend. That backend ran jobs inside the
+server process. Each item applies to the default org of a local start. That org is the one whose
 runs already live in the runs tree.
 
 | Feature | Where a local start keeps it |
 |---|---|
 | Capture mode and the live step picker of the editor | The FastAPI app serves `/api/capture/*` and `/api/ant/login` on any deployment that is not hosted. The UI offers Capture as on the local backend. |
-| Secrets set in the UI | The database keeps them encrypted. A job the server runs in its own process reads them when it starts. A queued job receives them in the worker's lease. Either way the job gets the AI key and every `${secrets.X}` value in its environment. |
+| Secrets set in the UI | The database keeps them encrypted. A job receives them in the worker's lease, so it gets the AI key and every `${secrets.X}` value in its environment. |
 | Scenarios | Saved to the scenarios directory of the bound config, the same directory the scenario list reads. |
 | Visual baselines | Approved into the `--baselines` directory, the one a run is pointed at. The file store mounts that directory at `baselines/`, so a worker downloads the same files. The start refuses a `--baselines` directory that holds the runs directory or `.bajutsu/`. |
 | AI provider settings | Read from and written to `provider-settings.json` beside the runs directory, the file the earlier local backend used (BE-0184). |
 | A run's files | A run names the bound config, its scenario, the runs directory, and the `--baselines` directory by their paths on this machine. The worker on the same machine builds and runs it from the config's directory, and writes the run tree straight into `runs/`. |
 
-The server reads a stored secret in plaintext on three paths. No HTTP response carries the value
+The server reads a stored secret in plaintext on two paths. No HTTP response carries the value
 (BE-0136).
 
 | Path | What the value is for |
 |---|---|
-| The server starts a job in its own process | That job's environment |
 | A worker leases a job | The lease response, which the worker receives |
 | The server binds a config from a private Git repository | That fetch's credential |
 
@@ -521,8 +525,8 @@ A worker counts as live when it polled or sent a heartbeat within the lease time
 `bajutsu_unroutable_jobs` metric uses the same window. The notice clears as soon as such a worker
 polls, or a worker leases the run.
 
-The provider settings stay in the file rather than moving into the database. A server on either
-backend then reads and writes one copy, so a user who switches backends sees the same choice.
+The provider settings stay in the file rather than moving into the database. A local start then
+reads and writes the copy the earlier local backend wrote. A user who upgrades sees the same choice.
 
 Another org on a local start keeps the bucket layout under `.bajutsu/objects/`. Its scenarios and
 baselines reach the worker the way they do on a hosted deployment. No tenant writes into the
@@ -787,12 +791,12 @@ deliberately no default: leaving it unset switches the caller shape off rather t
 
 **The exchange needs a database, and the `oauth` extra.** Each token's `jti` is spent in the
 shared system of record, so single-use holds across control-plane replicas rather than only within
-one process — with no `BAJUTSU_DATABASE_URL` the exchange refuses every request. The token
-signature is verified with `joserfc`, which ships in the `oauth` extra (`uv sync --extra oauth`),
-the same extra GitHub OAuth needs. `serve` warns about either at boot rather than letting a
-pipeline discover it one failed run at a time. A server on one machine with no bucket is the
-exception: its default SQLite is its database, so its exchange works within that single process
-(see *The server backend on one machine*, above).
+one process. Every server has that database, and a deployment with a bucket must name one. A
+server on one machine with no bucket keeps a default SQLite. Its exchange then works within that
+single process (see *The server backend on one machine*, above). The token signature is verified
+with `joserfc`, which ships in the `oauth` extra (`uv sync --extra oauth`), the same extra GitHub
+OAuth needs. `serve` warns at boot when the extra is missing. A pipeline then need not discover
+the gap one failed run at a time.
 
 Then list the repositories each org admits, under `allowedRepositories`:
 
@@ -934,10 +938,9 @@ export BAJUTSU_SECRETS_KEY=…
 ```
 
 A database-backed control plane **requires** `BAJUTSU_SECRETS_KEY` and refuses to start without one,
-rather than silently degrading to holding the secret only in process memory. Without a database,
-secrets stay in the serve process's environment (the local-backend shape) and no key is needed. A
-server on one machine with no bucket keeps its secrets in its default SQLite instead. It encrypts
-them under a key it generates into `.bajutsu/secrets.key`. Treat
+rather than silently degrading to holding the secret only in process memory. A server on one
+machine with no bucket keeps its secrets in its default SQLite. It encrypts them under a key it
+generates into `.bajutsu/secrets.key`. Treat
 the key like the database password: losing it makes the stored secrets unrecoverable, and a rotated
 key cannot decrypt values written under the old one, so re-enter each secret after rotating.
 
@@ -1053,8 +1056,7 @@ live lines in memory. Replicas behind a load balancer need a shared store instea
 
 A worker's post and a browser's stream then meet in Redis, whatever replica each one reaches.
 Without Redis, a browser misses the lines a worker posted to another replica. Each replica applies
-the cap to its own tally. A deployment with a bucket and no database runs jobs in its own process. That
-deployment ignores `BAJUTSU_REDIS_URL`.
+the cap to its own tally.
 
 A cancel reaches a job whether the job waits in the queue or runs on a worker. The control plane
 finds the job in the jobs table. A cancel thus reaches a job queued before a restart too.
@@ -1393,8 +1395,8 @@ state it already tracks (the jobs table and lease/heartbeat records) — so it a
 `/metrics` is **not** a public surface: it sits behind the same auth gate as the rest of serve
 (BE-0051), so with a token configured a scraper must send `Authorization: Bearer <token>`. The
 output carries only counts, ages, and org / worker identifiers — never a job spec, a result, or the
-token — so a scrape cannot leak a secret. On local serve (no database) only the in-flight and
-capacity series appear; the queue / lease / worker series are added when a database is wired.
+token — so a scrape cannot leak a secret. Every server keeps its queue in a database. Every server
+thus reports the queue, lease, and worker series too.
 
 The compose stack ships an **optional** Prometheus + Grafana profile (like `caddy`):
 

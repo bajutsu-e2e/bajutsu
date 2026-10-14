@@ -1,6 +1,6 @@
 """`bajutsu worker` — lease queued runs from the control plane and execute them (BE-0106).
 
-The hosted control plane (`serve --backend=server`) inserts a job row per run; this command polls
+The control plane (`bajutsu serve`) inserts a job row per run; this command polls
 the `/api/worker/lease` endpoint over HTTP, executes the unchanged `run_job`, uploads the run tree
 (including `console.log`), and posts the result back to `/api/worker/result`. No Redis or RQ, and
 **no cloud credentials** (BE-0160): every object-store touch — downloading baselines before a run,

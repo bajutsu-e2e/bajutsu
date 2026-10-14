@@ -250,8 +250,7 @@ other's workers. Serving both on one machine takes two workers. Registration alo
 prefix at startup.
 
 A fan-out job that no live worker can serve stays queued as unroutable, like any other job. A server
-that keeps no queue runs jobs in its own process. Such a server has no worker to take the fan-out,
-so it refuses `POST /api/run-set` outright.
+with no queue has no worker to take the fan-out, so it refuses `POST /api/run-set`.
 
 Unlike the headless submitter, the worker reserves one device per run through a device-selection
 filter. It needs no device-pool ARN.

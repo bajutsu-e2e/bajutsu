@@ -9,8 +9,8 @@
 > [BE-0051](../../roadmaps/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting-ja.md)
 > の認証と入力検証で公開を安全にしています。
 >
-> - **Tier A、単一 Mac。** トークン認証付きの `bajutsu serve` を 1 プロセス、1 台の Mac で動かします。本ページの
->   「Tier B」節より前がこれを扱います。
+> - **Tier A、単一 Mac。** トークン認証付きの `bajutsu serve` と、その job を実行するローカルの
+>   `bajutsu worker` を、1 台の Mac で動かします。本ページの「Tier B」節より前がこれを扱います。
 > - **Tier B、セルフホストのサーバ backend。** BE-0015 のコントロールプレーン（FastAPI、Postgres、
 >   S3 互換ストレージ、GitHub OAuth、RBAC、クォータ）を Linux ノードで動かし、Mac をワーカーにします。既定では
 >   シングルテナントで動き、config で org を宣言すれば**複数 org**に対応します（後述の「Tier B、サーバ backend の
@@ -82,8 +82,8 @@ PLIST=~/Library/LaunchAgents/com.bajutsu.serve.plist
 /usr/libexec/PlistBuddy -c "Add :EnvironmentVariables:PATH string $(brew --prefix)/bin:/usr/bin:/bin:/usr/sbin:/sbin:$(pwd)/.venv/bin" "$PLIST"
 ```
 
-エージェントが起動するのはサーバだけです。サーバは run を `bajutsu worker` のキューに積み、自分では
-デバイスを操作しません（BE-0449）。2つ目の LaunchAgent として worker を横で動かします。
+エージェントが起動するのはサーバだけです。サーバはすべての job を `bajutsu worker` のキューに積み、
+自分では1つも実行しません（BE-0449）。2つ目の LaunchAgent として worker を横で動かします。
 
 1. plist を別のラベルで複製します。
 2. その `ProgramArguments` を `python -m bajutsu worker --platform ios` に変えます。サーバが 8765
@@ -92,7 +92,7 @@ PLIST=~/Library/LaunchAgents/com.bajutsu.serve.plist
 4. 作業ディレクトリはそのままにします。worker は job ごとに専用の一時ディレクトリで実行します。
    作業場所を固定したいときは `--workdir <ディレクトリ>` を渡します。
 
-worker が問い合わせるまで run はすべてキューに残り、UI は使える worker がないことを示します。
+worker が問い合わせるまで job はすべてキューに残り、UI は使える worker がないことを示します。
 
 serve のバインドは `127.0.0.1` のままで、これを到達可能にするのは次の手順です。
 
@@ -237,13 +237,13 @@ App トークンを入力すると、serve の秘密ストアを通じて **writ
 
 ## Tier B、サーバ backend のセルフホスティング
 
-Tier A は 1 台の Mac で動く 1 プロセスです。**Tier B** は BE-0015 の**サーバ backend**、すなわち FastAPI の
+Tier A は、1 台の Mac で動くサーバとそのローカルの worker です。**Tier B** は BE-0015 の**サーバ backend**、すなわち FastAPI の
 コントロールプレーン（Postgres、S3 互換ストレージ（MinIO）、GitHub OAuth、RBAC、per-user クォータ）を Linux
 ノードで動かし、1 台以上の Mac をワーカーにします。既定では**シングルテナント**（全ユーザが 1 つの
 default org）で動き、config で org を宣言すれば**複数 org**に対応します（後述の「複数 org」を参照）。すぐ動かせる
 一式は [`deploy/self-host/`](../../deploy/self-host/)（compose、Dockerfile、`.env.example`）にあります。
 
-![Tier B トポロジー図。チームの端末は Tailscale または Caddy 経由の HTTPS で Linux コントロールプレーンノード（bajutsu serve --asgi --backend=server、Postgres、MinIO）に到達します。コントロールプレーンは HTTP で job をベアメタルの Mac iOS（XCUITest）ワーカー群へ、同じ Tailscale tailnet 経由でコンテナ化された Linux web（Playwright/Chromium）ワーカーへ振り分け、どちらも結果をコントロールプレーンへ返します。](assets/diagrams/self-hosting-tier-b-topology-ja.svg)
+![Tier B トポロジー図。チームの端末は Tailscale または Caddy 経由の HTTPS で Linux コントロールプレーンノード（bajutsu serve --asgi、Postgres、MinIO）に到達します。コントロールプレーンは HTTP で job をベアメタルの Mac iOS（XCUITest）ワーカー群へ、同じ Tailscale tailnet 経由でコンテナ化された Linux web（Playwright/Chromium）ワーカーへ振り分け、どちらも結果をコントロールプレーンへ返します。](assets/diagrams/self-hosting-tier-b-topology-ja.svg)
 
 <details>
 <summary>Mermaid ソース</summary>
@@ -252,7 +252,7 @@ default org）で動き、config で org を宣言すれば**複数 org**に対�
 ```mermaid
 flowchart TB
     laptops(["チームの端末"])
-    control["Linux ノード — docker compose<br/>bajutsu serve --asgi --backend=server<br/>postgres・minio<br/>[+ Linux web ワーカーのコンテナ]"]
+    control["Linux ノード — docker compose<br/>bajutsu serve --asgi<br/>postgres・minio<br/>[+ Linux web ワーカーのコンテナ]"]
     macWorker["Mac ワーカー × N（ベアメタル）<br/>bajutsu worker（iOS・XCUITest）<br/>bajutsu run・Simulator"]
     webWorker["Linux web ワーカー（web）<br/>bajutsu worker・Chromium"]
 
@@ -281,7 +281,7 @@ serve ホストの `--root` を辿る**ファイルブラウザ**です。サー
 を返します）、Git とアップロードの2つだけを残します。ホスト型のユーザは共有ワーカーのファイルシステムと
 関係を持たないため、オペレータの `--root` を辿っても自分が所有する config はバインドできません。ファイル
 ブラウザを外すことで、ログイン済みの全ユーザにそのツリーのディレクトリ一覧を見せてしまう露出も避けられ
-ます。ローカル backend（Tier A、セルフホストの単一 Mac）では3つのソースすべてを残します。そこではファイル
+ます。ローカル起動（Tier A、セルフホストの単一 Mac）では3つのソースすべてを残します。そこではファイル
 システムがオペレータ自身のものだからです。
 
 ### config、シナリオ、アプリバイナリ全体で見る、ローカルとホスト型の違い
@@ -309,7 +309,8 @@ serve ホストの `--root` を辿る**ファイルブラウザ**です。サー
   ホスト型ではローカルファイルのソースをそもそも提供しないため、ホスト型の config は結果としてすべて閉じ込め
   られます。これはファイルブラウザを外したことの副作用であり、別立てのルールではありません。
 - **シナリオと run の成果物。** ローカルでは、シナリオストアと run の履歴がふつうのディレクトリツリー
-  （`scenarios/`、`runs/`）を読み書きします。ソフトデリートした run は `runs/.trash/` へ移動します。ホスト型
+  （`scenarios/`、`runs/`）を読み書きします。ソフトデリートすると、run のツリーに `.deleted` の
+  目印が付きます。ホスト型
   では、両方ともコントロールプレーンのオブジェクトストレージ（`BAJUTSU_SERVER_STORE`。S3 互換または GCS）と、
   run ごとの Postgres の行に置かれます。そのためソフトデリートは、ディスク上でバイトを移動させる代わりに
   `deleted_at` を設定するだけです（後述の「run の削除と、ゴミ箱の保持期間」を参照してください）。
@@ -341,18 +342,17 @@ serve ホストの `--root` を辿る**ファイルブラウザ**です。サー
 
 ### 1台のマシンで動かすサーバ backend（BE-0449）
 
-`bajutsu serve` は、どちらの backend でも、クラウドのサービスがない1台のマシンで起動します。環境変数も
-要りません。サーバは job をキューに積みます。同じマシンで動く `bajutsu worker` がキューの job をリースして
-実行し、`make serve` はその worker を起動します。2つの backend は、以前はキューに積む job が異なっていましたが、
-今は同じ job を積みます。
+`bajutsu serve` は、クラウドのサービスがない1台のマシンで起動し、そこでは環境変数も要りません。
+サーバ自身は job を1つも実行しません。ビルドの段階を含む `run`、`run-set`、`triage`、`record`、`crawl`
+のすべてを、キューに積みます。同じマシンで動く `bajutsu worker` が各 job をリースして実行し、
+`make serve` はその worker を起動します。worker がいなければ job はキューで待ち、UI は利用できる
+worker がないことを表示します。
 
-| backend | worker のキューに積む job | サーバのプロセス内で実行する job |
-|---|---|---|
-| `local`（デフォルト） | すべての job | なし |
-| `server` | すべての job | なし |
-
-どちらの backend も、すべての種類の job をキューへ積みます。そのため、このフラグは job の
-実行場所を変えません。フラグとその背後にあるプロセス内の executor は、BE-0449 の後の単位で取り除きます。
+`--backend` フラグは非推奨です。以前のサーバには、サーバのプロセス内で job を実行する `local` backend と、
+job をキューに積む `server` backend がありました。今はどちらの値でも同じサーバが起動するので、このフラグは
+何も変えません。`bajutsu serve` は `local` と `server` を受け付けて警告を表示し、次のリリースでフラグを
+取り除きます。コマンドライン、LaunchAgent、コンテナのコマンドから外してください。未知の値を渡すと、
+これまでどおり起動を止めます。
 
 `triage` の job は、診断する run をサーバの runs ディレクトリから読みます。job はそのディレクトリ、
 バインドした設定、シナリオのソースを、サーバのディスク上の絶対パスで指定します。結果の `triage.json` は
@@ -389,9 +389,10 @@ worker はその要求を `POST /api/worker/handoff` に送り、ページは従
 デプロイが設定しなかった項目ごとに、サーバは
 ローカルの既定値を補います。既定値はすべて、runs ディレクトリの隣の `.bajutsu/` ディレクトリに置きます。
 サーバはこのディレクトリを所有者だけが使える権限（`0700`）で作り、Git はこのディレクトリを無視します。
-これらの既定値を使うのは、`BAJUTSU_SERVER_STORE` が未設定のときです。バケットを指定してデータベースを
-指定しないデプロイは、キューを持たず、これまでどおり自分のプロセスで job を実行します。レプリカごとに
-SQLite のファイルを持つと、キューが分かれてしまうためです。
+これらの既定値を使うのは、`BAJUTSU_SERVER_STORE` が未設定のときです。バケットを指定したデプロイには、
+デフォルトのデータベースを用意しません。レプリカごとに SQLite のファイルを持つと、キューが分かれてしまうためです。
+そうしたデプロイは `BAJUTSU_DATABASE_URL` を設定する必要があり、設定しなければサーバは起動を拒否します。
+サーバ自身は job を実行しないので、キューのないサーバは何も実行できないからです。
 
 この形には、通常の `pip install bajutsu` だけで足ります。FastAPI、uvicorn、SQLAlchemy、Alembic、
 `cryptography` は基本の依存に含まれ、SQLite は Python に同梱されています。`server` の extra は S3 の
@@ -426,19 +427,18 @@ Tier B のイメージと同じく、これらの extra を引き続きインス
 各キーは解決した先のディレクトリの中に閉じ込めるので、その外には届きません。所有者だけが使える権限
 （`0700`）にしてシンボリックリンクを拒否するのは、サーバが所有する `.bajutsu/objects/` だけです。
 
-2つの backend は同じ runs のツリーを使います。サーバ backend で削除した run は `runs/.trash/` へ移らず、
-`.deleted` という目印を置いたまま `runs/<run id>/` に残ります。ローカル backend の履歴、
-`bajutsu flakiness --history`、`bajutsu triage --flaky` はこの目印のあるツリーを読み飛ばします。
-そのため、どちらの backend から見ても、その run は削除したままです。
+サーバとコマンドラインは同じ runs のツリーを使います。サーバで削除した run は、`.deleted` という目印を
+置いたまま `runs/<run id>/` に残ります。`bajutsu flakiness --history` と `bajutsu triage --flaky` は
+この目印のあるツリーを読み飛ばします。そのため、コマンドラインから見ても、その run は削除したままです。
 
 ブラウザとワーカーは、保存したファイルに署名付き URL でアクセスします。サーバは各 URL に、ハッシュベースの
 メッセージ認証コード（HMAC）のキーで署名します。このキーは `.bajutsu/store-signing.key` にあり、
 同じ `0600` の規則で扱います。各 URL は、サーバに渡した `--host` を指します。ワイルドカードで bind
-したときは `127.0.0.1` を使います。これらのルートを配信するのは FastAPI のトランスポートだけです。そのため、バケットのないサーバ backend は自動で
+したときは `127.0.0.1` を使います。これらのルートを配信するのは FastAPI のトランスポートだけです。そのため、バケットのないサーバは自動で
 `--asgi` に切り替え、起動時にその旨を表示します。URL には起動時に決めたポートが入るので、このサーバは
 `--port 0` を拒否します。
 
-データベースがあると、run の履歴はディレクトリの一覧ではなく runs テーブルから読みます。そこでサーバは
+run の履歴は、ディレクトリの一覧ではなく runs テーブルから読みます。そこでサーバは
 起動時に、`runs/` の下の run のツリーをすべて `default` org の runs テーブルへ登録します。読める
 `manifest.json` がないツリーと、job がまだ書いている run は登録しません。登録は行の追加だけなので、
 テーブルにすでにある run は、完了した job が書いたときの行のまま残ります。サーバの稼働中に `bajutsu run` が書いた run は、再スキャンで拾います。
@@ -454,24 +454,23 @@ admin が `POST /api/runs/rescan` を呼ぶと、新しいツリーを登録し�
 
 #### ローカル起動が以前のローカル backend から引き継ぐもの
 
-`local` backend は、ローカル起動の形になりました。以前のプロセス内で動く backend が提供していた機能は
-残ります。下の各項目は、ローカル起動の default org に当てはまります。default org は、run が
+ローカル起動は、サーバのプロセス内で job を実行していたころのローカル backend が提供していた機能を
+残します。下の各項目は、ローカル起動の default org に当てはまります。default org は、run が
 もともと runs のツリーにある org です。
 
 | 機能 | ローカル起動での置き場所 |
 |---|---|
 | キャプチャモードと、エディタのライブなステップ選択 | hosted でないデプロイでは、FastAPI のアプリが `/api/capture/*` と `/api/ant/login` を配信します。UI もローカル backend と同じく Capture を提供します。 |
-| UI で設定した secret | データベースに暗号化して保存します。サーバが自分のプロセスで実行する job は、開始時に値を読みます。キューに入った job は、worker の lease で値を受け取ります。どちらの場合も、job は AI のキーと `${secrets.X}` の値を環境変数で受け取ります。 |
+| UI で設定した secret | データベースに暗号化して保存します。job は worker の lease で値を受け取るので、AI のキーと `${secrets.X}` の値を環境変数で受け取ります。 |
 | シナリオ | 割り当てた config のシナリオディレクトリに保存します。シナリオの一覧が読むのと同じディレクトリです。 |
 | ビジュアルのベースライン | 承認すると `--baselines` のディレクトリに入ります。run が参照するディレクトリと同じです。ファイルストアはこのディレクトリを `baselines/` に割り当てるので、worker も同じファイルをダウンロードします。runs ディレクトリや `.bajutsu/` を含む `--baselines` のディレクトリは、起動時に拒否します。 |
 | AI プロバイダの設定 | runs ディレクトリの隣にある `provider-settings.json` を読み書きします。以前のローカル backend が使っていたファイルと同じです（BE-0184）。 |
 | run のファイル | run は、bind した config、シナリオ、runs ディレクトリ、`--baselines` のディレクトリを、このマシン上のパスで指定します。同じマシンの worker は、config のディレクトリで run をビルドして実行し、run のツリーを `runs/` に直接書きます。 |
 
-サーバが保存した secret を平文で読む経路は3つです。どの HTTP レスポンスにも値は載りません（BE-0136）。
+サーバが保存した secret を平文で読む経路は2つです。どの HTTP レスポンスにも値は載りません（BE-0136）。
 
 | 経路 | 値の使い道 |
 |---|---|
-| サーバが自分のプロセスで job を始める | その job の環境変数 |
 | worker が job を lease する | lease の応答。受け取るのはその worker です |
 | サーバが非公開の Git リポジトリから config を bind する | その取得処理の資格情報 |
 
@@ -505,8 +504,8 @@ lease のタイムアウトの範囲内に問い合わせかハートビート�
 `bajutsu_unroutable_jobs` のメトリクスも同じ範囲を使います。この通知は、そうした worker が問い合わせた
 時点か、worker が run を lease した時点で消えます。
 
-プロバイダの設定は、データベースへ移さずファイルに残します。こうすると、どちらの backend のサーバも
-1つのファイルを読み書きするので、backend を切り替えた利用者にも同じ選択が見えます。
+プロバイダの設定は、データベースへ移さずファイルに残します。こうすると、ローカル起動は以前のローカル
+backend が書いたファイルを読み書きするので、更新した利用者にも同じ選択が見えます。
 
 ローカル起動の他の org は、`.bajutsu/objects/` の下でバケットと同じ配置を使います。その org の
 シナリオとベースラインは hosted のデプロイと同じ方法でワーカーに届くので、どのテナントも default org の
@@ -754,11 +753,12 @@ jobs:
 
 **交換にはデータベースと `oauth` extra が必要です。** 各トークンの `jti` は共有の記録先で使用済みにします。
 単一プロセスの中だけでなく、コントロールプレーンのレプリカをまたいで一度きりにするためです。
-`BAJUTSU_DATABASE_URL` がなければ交換はすべて拒否されます。トークンの署名の検証には `joserfc` を使い、これは
-GitHub OAuth と同じ `oauth` extra に入っています（`uv sync --extra oauth`）。どちらが欠けていても `serve` は
-起動時に警告します。パイプラインが失敗を1回ずつ積み上げて気付く形にはなりません。例外は、バケットを
-指定せずに1台のマシンで動かすサーバです。既定の SQLite がそのデータベースになるので、交換はその1つの
-プロセスの中で機能します（前述の「1台のマシンで動かすサーバ backend」を参照してください）。
+どのサーバもこのデータベースを持ちます。バケットを指定したデプロイはデータベースの指定が必須で、
+バケットを指定せずに1台のマシンで動かすサーバはデフォルトの SQLite を使います。後者では、交換はその1つの
+プロセスの中で機能します（前述の「1台のマシンで動かすサーバ backend」を参照してください）。トークンの
+署名の検証には `joserfc` を使い、これは GitHub OAuth と同じ `oauth` extra に入っています
+（`uv sync --extra oauth`）。この extra が欠けていると、`serve` は起動時に警告します。パイプラインが
+失敗を1回ずつ積み上げて気付く形にはなりません。
 
 続いて、各 org が受け入れるリポジトリを `allowedRepositories` に列挙します。
 
@@ -900,9 +900,8 @@ export BAJUTSU_SECRETS_KEY=…
 ```
 
 データベースを使うコントロールプレーンは `BAJUTSU_SECRETS_KEY` を**必須**とし、設定されていなければ
-起動を拒否します。シークレットをプロセスのメモリだけで保持する形へ黙って後退しないためです。データベースが
-なければシークレットは serve プロセスの環境に残り（ローカルバックエンドと同じ形）、キーは不要です。
-バケットを指定せずに1台のマシンで動かすサーバは、代わりにシークレットを既定の SQLite に保存します。
+起動を拒否します。シークレットをプロセスのメモリだけで保持する形へ黙って後退しないためです。
+バケットを指定せずに1台のマシンで動かすサーバは、シークレットをデフォルトの SQLite に保存します。
 暗号化には、サーバが `.bajutsu/secrets.key` に生成するキーを使います。この
 キーはデータベースのパスワードと同様に扱ってください。失うと保存済みのシークレットは復元できず、更新した
 キーは古いキーで書いた値を復号できないので、更新後は各シークレットを入力し直します。
@@ -1018,8 +1017,7 @@ Server-Sent Events（SSE）のストリームへ流し、worker の結果がそ�
 
 Redis を置くと、worker の送信とブラウザのストリームは、どのレプリカに着いても同じ Redis で出会います。
 Redis を置かないと、ブラウザは別のレプリカへ送られた行を受け取れません。この上限は、
-レプリカごとに別々に適用します。バケットがあってデータベースのない構成は、job を自身のプロセスで実行します。
-その構成は `BAJUTSU_REDIS_URL` を読みません。
+レプリカごとに別々に適用します。
 
 job のキャンセルは、job がキューで待っていても、すでに worker で動いていても同じように働きます。
 コントロールプレーンは jobs テーブルから job を探すので、再起動の前にキューへ入った job もキャンセルできます。
@@ -1309,8 +1307,8 @@ org が消費しているか、run がふだんより長引いていないか、
 `/metrics` は公開の面ではありません。serve の他の面と同じ認証ゲート（BE-0051）の背後に置かれるので、
 トークンを設定していればスクレイパは `Authorization: Bearer <token>` を送る必要があります。出力に含まれるのは
 カウント、経過時間、org やワーカーの識別子だけで、job の spec や結果、トークンは一切含みません。したがって
-スクレイプが秘密を漏らすことはありません。ローカル serve（データベースなし）では実行中と上限の系列だけが
-現れ、キュー・リース・ワーカーの系列はデータベースを配線したときに加わります。
+スクレイプが秘密を漏らすことはありません。どのサーバもキューをデータベースに置くので、1台のマシンでも
+Tier B でも、実行中と上限の系列に加えてキュー、リース、ワーカーの系列が現れます。
 
 compose スタックには、Prometheus と Grafana の**任意**のプロファイルを（`caddy` と同じように）同梱しています。
 

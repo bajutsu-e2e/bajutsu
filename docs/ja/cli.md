@@ -763,10 +763,10 @@ record ...`）、**Replay** はシナリオを実行してレポートを表示�
 アプリを探索して画面マップをリアルタイムに描き（`python -m bajutsu crawl ...`）、**Stats** は run 履歴を
 横断した集計 run 統計ダッシュボードを表示します（`bajutsu stats`）。いずれも**アクティブな
 config** に対して動きます。config はファイルブラウザ、Git リポジトリ、アップロードした `.zip` バンドルの
-いずれかから開きます（後述の「Open config」を参照）。リクエストごとに CLI を
-バックグラウンドスレッドで起動し、出力をストリームし、生成された `runs/<id>/` ツリーを配信します（report の
-相対アセットリンクと crawl の `screenmap.json` が解決します）。stdlib のみ（Web フレームワーク不要）、
-`127.0.0.1` バインド。
+いずれかから開きます（後述の「Open config」を参照）。リクエストごとに job をキューに積み、
+`bajutsu worker` がその job を実行します。サーバ自身は job を実行しません（BE-0449）。サーバは job の出力を
+ストリームし、生成された `runs/<id>/` ツリーを配信します（report の相対アセットリンクと crawl の
+`screenmap.json` が解決します）。バインド先は `127.0.0.1` です。
 
 ```bash
 bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs runs] [--baselines <dir>]
@@ -902,8 +902,9 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   手動ビルド無しに UI からオンデマンドでビルドできます。
 - 操作 UI の下の **History** リストに過去の run（新しい順、pass/fail ドット、シナリオ要約）が並び、
   クリックでそのレポートを再表示します。`GET /api/runs` が裏側です。
-- run サブプロセスは起動環境を継承します（venv の `bin` を `PATH` 先頭に付与）。
-  `bajutsu.config.yaml` が解決するようプロジェクトルートから実行してください。
+- run サブプロセスは worker が起動し、worker の環境（venv の `bin` を `PATH` 先頭に付与）と、lease が
+  中継する保存済みのシークレットを受け取ります。ローカルの job は config のディレクトリで動くので、
+  `bajutsu.config.yaml` が解決します。
 - **`/api/run` の入力検証。** scenario は**選択中アプリの scenarios dir 内**に実在する `*.yaml` でなければ
   なりません（任意のホストパスや `..` トラバーサル不可）。`backend` / `udid` も既知のトークンに限定され、
   自由入力は拒否されます。これにより、リクエストが任意ファイルを実行したり想定外の argv を紛れ込ませたりするのを防ぎます。
@@ -915,7 +916,7 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   `binaryArtifact` と `scenariosArtifact` も受け付けます。どちらも、org に保存済みのアーティファクトの sha256 です。
   その job だけが、指定したバイナリを target の `appPath` に置き、指定した scenarios の zip で実行します。
   org のアクティブな config は、バインドされたまま変わりません。run の `manifest.json` は、差し替えた sha256 を
-  `provenance` の下に記録します。単一プロセスの `serve` は、どちらのフィールドも拒否します。
+  `provenance` の下に記録します。job のキューを持たないサーバは、どちらのフィールドも拒否します。
   詳しくは [self-hosting](self-hosting.md#ci-の-run-に-job-単位でアーティファクトを差し替えるbe-0431) を参照してください。
 
 ### 同時実行数、証跡、ホスティング
@@ -923,7 +924,8 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
 - **`--max-concurrent-runs`（既定 4）** は同時実行できる run/record ジョブ数の上限です。1 呼び出し元が
   希少なデバイスを独占しないようにします（BE-0051）。上限超過の dispatch は **429** を返します。`0` で無制限。
 - **`--evidence-store <uri>`（または `$BAJUTSU_EVIDENCE_STORE`）。各 run の証跡をアップロードします（[BE-0110](../../roadmaps/BE-0110-evidence-store-uri/BE-0110-evidence-store-uri-ja.md)）。** `s3://bucket/prefix` または `gs://bucket/prefix` を指定すると、完了した run のツリーがそこへアップロードされます。キーは `<prefix><evidence_prefix><runId>/…` の形になるので、パスによってクラウドのライフサイクルポリシーが切り替わります。スタンドアロンの `run --evidence-store`（Runner 自身の認証情報で直接アップロードする）と違い、**`serve` は認証情報を保持し、Worker には渡しません**。コントロールプレーンがファイルごとに presigned PUT URL を発行し、Worker はクラウド SDK も認証情報も持たずに平文 HTTP でアップロードします。呼び出し元は `POST /api/run` のボディに `evidence_prefix`（安全な相対セグメントとして検証されます）を渡して run ごとのパスを選びます。サーバが自分のバケットとベースプレフィックスを前置するので、run ID が必ずキーに含まれ、run 同士が衝突しません。アップロードは判定の後に走るため、失敗しても警告のみです。**サーバ側**に `s3` または `gcs` extra が必要です（Worker には不要）。トポロジは [self-hosting](self-hosting.md) を参照してください。
-- **`--backend`（worker が実行する job）。** どちらの backend も、`bajutsu worker` に渡す job のキューを持ちます（BE-0449）。どちらも、すべての job をキューに積みます。対象は、ビルド段階を含む各 run、Device Farm への展開、triage、record、crawl です。`serve` のプロセスは、どの job も実行しません。キューの job は worker を待ちます。その job を実行できる稼働中の worker がないあいだ、job には使える worker がないという通知が付きます。`make serve` はサーバの横で worker を起動します。`bajutsu serve` を直接起動したときは、横で `bajutsu worker` を起動する必要があります。lease は、その job の org に保存されたシークレットを worker に渡します。1台のマシンで `BAJUTSU_SERVER_STORE` を設定しなければ、サーバに環境変数は要りません。キューは runs ディレクトリの隣の `.bajutsu/queue.db`（SQLite）に置きます。キーも同じ場所に `0600` の権限で生成します。1つは署名付き URL 用で、もう1つは保存するシークレット用です（`BAJUTSU_SECRETS_KEY` を設定したときは生成しません）。アーティファクトのストアは default org の run を runs のツリーから直接、サーバが署名した URL で読み、それ以外のオブジェクトは `.bajutsu/objects/` に置きます。起動時には、すでに `runs/` の下にある run を履歴に登録します。その後の run は、admin が `POST /api/runs/rescan` を呼ぶと登録されます。`BAJUTSU_DATABASE_URL`、`BAJUTSU_SECRETS_KEY`、`BAJUTSU_SERVER_STORE`、`BAJUTSU_HOSTED` を設定すると、これらの既定値を上書きします。バケットのないサーバは、`--asgi` と同じく FastAPI のトランスポートを使います。また、`--port 0` ではなく固定のポートが必要です。詳しくは [self-hosting の「1台のマシンで動かすサーバ backend」](self-hosting.md#1台のマシンで動かすサーバ-backendbe-0449)を参照してください。
+- **すべての job を worker が実行します（BE-0449）。** `serve` は `bajutsu worker` に渡す job のキューを持ち、すべての job をキューに積みます。対象は、ビルド段階を含む各 run、Device Farm への展開、triage、record、crawl です。`serve` のプロセスは、どの job も実行しません。キューの job は worker を待ちます。その job を実行できる稼働中の worker がないあいだ、job には使える worker がないという通知が付きます。`make serve` はサーバの横で worker を起動します。`bajutsu serve` を直接起動したときは、横で `bajutsu worker` を起動する必要があります。lease は、その job の org に保存されたシークレットを worker に渡します。1台のマシンで `BAJUTSU_SERVER_STORE` を設定しなければ、サーバに環境変数は要りません。キューは runs ディレクトリの隣の `.bajutsu/queue.db`（SQLite）に置きます。キーも同じ場所に `0600` の権限で生成します。1つは署名付き URL 用で、もう1つは保存するシークレット用です（`BAJUTSU_SECRETS_KEY` を設定したときは生成しません）。アーティファクトのストアは default org の run を runs のツリーから直接、サーバが署名した URL で読み、それ以外のオブジェクトは `.bajutsu/objects/` に置きます。起動時には、すでに `runs/` の下にある run を履歴に登録します。その後の run は、admin が `POST /api/runs/rescan` を呼ぶと登録されます。`BAJUTSU_DATABASE_URL`、`BAJUTSU_SECRETS_KEY`、`BAJUTSU_SERVER_STORE`、`BAJUTSU_HOSTED` を設定すると、これらの既定値を上書きします。バケットのないサーバは、`--asgi` と同じく FastAPI のトランスポートを使います。また、`--port 0` ではなく固定のポートが必要です。バケットを指定したサーバは、`BAJUTSU_DATABASE_URL` も設定する必要があります。設定しなければ、キューを持たないので起動を拒否します。詳しくは [self-hosting の「1台のマシンで動かすサーバ backend」](self-hosting.md#1台のマシンで動かすサーバ-backendbe-0449)を参照してください。
+- **`--backend`（非推奨）。** 以前このフラグは、2つの backend を選んでいました。`local` backend は `serve` のプロセス内で job を実行し、`server` backend は job をキューに積みました。今はどちらの値でも同じサーバが起動します。`serve` は `local` と `server` を受け付けて警告を表示し、値を無視します。未知の値を渡すと、これまでどおり終了コード 2 で終わります。次のリリースでフラグを取り除くので、コマンドラインから外してください。
 - **ホスティング向けフラグ（応用）。** `--emit-launchagent` は `serve` を単一 Mac 上でトークン認証付きの LaunchAgent として動かす launchd plist を出力します。`--upload-exec`（または環境変数 `BAJUTSU_UPLOAD_EXEC`）は、アップロードされたバンドルの `launchServer` コマンドを実行してよいかを決めます（`deny` / `reuse` / `sandbox`、既定は `sandbox`）。`--allow-remote-build`（または環境変数 `BAJUTSU_ALLOW_REMOTE_BUILD`）は、UI で bind した **Git** ソースの config の `build` コマンドをホスト上で実行することを許可します（既定はオフ）。いずれも [self-hosting](self-hosting.md) で扱います。
 
 ## `mcp`
@@ -945,8 +947,8 @@ bajutsu mcp [--config bajutsu.config.yaml] [--runs runs] [--transport stdio]
 
 ## `worker`
 
-ホスト型コントロールプレーン（`serve --backend=server`）にキュー済みの run をポーリングし、実行します。
-ホスティング用サーバ backend の実行側です（[BE-0015](../../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)、[self-hosting](self-hosting.md)）。
+コントロールプレーン（`bajutsu serve`）にキュー済みの job をポーリングし、実行します。1台のマシンでも
+ホスティング用サーバ backend でも、すべてのデプロイの実行側です（[BE-0015](../../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)、[self-hosting](self-hosting.md)）。
 
 `/api/worker/lease` を単純な HTTP でポーリングして job をリースします。Redis や RQ には頼りません（BE-0106）。リースした job はそのまま `run_job` で実行し、結果を `/api/worker/result` に返します。worker は cloud の資格情報を一切持ちません。run 前のベースラインのダウンロードも、run 後の run ツリーのアップロードも、コントロールプレーンが発行する署名付き URL（presigned URL）を経由します（BE-0160）。そのため worker に必要なのは HTTP クライアントだけです。
 

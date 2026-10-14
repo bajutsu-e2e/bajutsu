@@ -2,8 +2,7 @@
 
 The worker posts its log lines to ``/api/worker/log`` while the job runs, the server publishes them
 to a bus that accepts writes, and the result route closes the stream. The uploaded ``console.log``
-stays the fallback. The executor that routes each job kind to the queue or the in-process thread is
-covered here too, since it lands in the same unit. Every server-side case runs on a file-backed
+stays the fallback. `Job.kind`, which lands in the same unit, is covered here too. Every server-side case runs on a file-backed
 SQLite, the store a local start uses, so FastAPI's threadpool sees the same database.
 """
 
@@ -56,9 +55,7 @@ def _state(
     artifacts = _Artifacts(files or {})
     return srv.ServeState(
         runs_dir=tmp_path / "runs",
-        executor=srv.RoutingExecutor(
-            DbQueueExecutor(repo), srv.LocalExecutor(), queued_kinds=srv.JOB_KINDS
-        ),
+        executor=DbQueueExecutor(repo),
         logbus=QueueLogBus(repo, srv.InMemoryLogBus(), lambda _org: artifacts, poll_interval=0.01),
         repository=repo,
     )
@@ -306,39 +303,12 @@ def test_a_redis_url_without_the_redis_package_fails_clearly(
         live_log_bus_from_env()
 
 
-# --- the bucket-only shape keeps its in-process seams ----------------------------------------------
-
-
-def test_the_bucket_only_shape_is_unchanged(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.delenv("BAJUTSU_DATABASE_URL", raising=False)
-    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
-    monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
-    # Even a Redis URL does not change it: with no queue there is no worker to post lines.
-    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://cache:6379/0")
-    (tmp_path / "runs").mkdir()
-    state = srv._build_state(
-        runs_dir=tmp_path / "runs",
-        config=None,
-        scenarios_dir=None,
-        root=tmp_path,
-        baselines_dir=None,
-        max_concurrent=4,
-        token=None,
-        backend="server",
-    )
-    assert state.repository is None
-    assert type(state.executor) is srv.LocalExecutor
-    assert type(state.logbus) is srv.InMemoryLogBus
-
-
-# --- job kind and the routing executor --------------------------------------------------------------
+# --- job kind ---------------------------------------------------------------------------------------
 
 
 def test_every_dispatched_command_has_a_kind() -> None:
-    # A guard for the routing executor: a builder whose argv stops naming its subcommand the way
-    # `Job.kind` reads it (unit 3 changes the `run` argv) would yield None and silently queue.
+    # A builder whose argv stops naming its subcommand the way `Job.kind` reads it (unit 3 changes
+    # the `run` argv) would yield None, and the queue would match the job to no kind's workers.
     from bajutsu.serve.batch_provider import BatchRequest
 
     commands = [
@@ -365,42 +335,6 @@ def test_a_batch_request_is_a_run_set() -> None:
 
     request = BatchRequest.__new__(BatchRequest)  # the kind reads only that a request is present
     assert srv.Job(batch=request).kind == "run-set"
-
-
-class _Recorder:
-    def __init__(self) -> None:
-        self.jobs: list[srv.Job] = []
-
-    def dispatch(self, state: srv.ServeState, job: srv.Job) -> None:
-        self.jobs.append(job)
-
-
-def test_the_routing_executor_routes_by_kind(tmp_path: Path) -> None:
-    queue, local = _Recorder(), _Recorder()
-    executor = srv.RoutingExecutor(queue, local, queued_kinds={"run", "triage"})
-    state = srv.ServeState(runs_dir=tmp_path)
-    jobs = {
-        kind: srv.Job(id=kind, cmd=[sys.executable, "-m", "bajutsu", kind])
-        for kind in ("run", "record", "crawl", "triage")
-    }
-    for job in jobs.values():
-        executor.dispatch(state, job)
-    unknown = srv.Job(id="other", cmd=["echo"])
-    executor.dispatch(state, unknown)
-    # An unrecognized command fails closed: it is queued, never run in the server's process.
-    assert [j.id for j in queue.jobs] == ["run", "triage", "other"]
-    assert [j.id for j in local.jobs] == ["record", "crawl"]
-    assert executor.queued_kinds == frozenset({"run", "triage"})
-
-
-def test_runs_in_process_reads_the_route_not_the_type() -> None:
-    from bajutsu.serve.executor import runs_in_process
-
-    routed = srv.RoutingExecutor(_Recorder(), srv.LocalExecutor(), queued_kinds={"record"})
-    assert runs_in_process(routed, "run") is True
-    assert runs_in_process(routed, "record") is False
-    assert runs_in_process(srv.LocalExecutor(), "run") is True
-    assert runs_in_process(_Recorder(), "run") is False
 
 
 # --- the worker side: batched, flushed at the end, best-effort ---------------------------------------

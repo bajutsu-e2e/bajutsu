@@ -157,14 +157,14 @@ def test_a_request_naming_neither_field_dispatches_exactly_as_before(tmp_path: P
     assert str(tmp_path / "scenarios" / "bound.yaml") in job.cmd
 
 
-def test_a_single_process_serve_refuses_either_field(tmp_path: Path) -> None:
-    # A LocalExecutor runs the job in the operator's own project directory, which no override may
-    # overwrite; the refusal leaves their appPath and scenarios untouched.
+def test_a_state_without_a_queue_refuses_either_field(tmp_path: Path) -> None:
+    # Nothing would run the job (BE-0449), so the override is refused before any job exists, and
+    # the operator's appPath and scenarios stay untouched.
     state, store = _hosted(tmp_path, local=True)
     sha = _store(store, "binary", b"bin")
     resp, code = _run(state, binaryArtifact=sha)
     assert code == 400
-    assert "hosted" in resp["error"]
+    assert "no queue" in resp["error"]
     assert not state.jobs
     resp, code = _run(state, scenariosArtifact=sha)
     assert code == 400
@@ -177,33 +177,8 @@ def test_an_executor_without_the_lease_worker_refuses_either_field(tmp_path: Pat
     state.repository = None
     resp, code = _run(state, binaryArtifact=_store(store, "binary", b"bin"))
     assert code == 400
-    assert "hosted" in resp["error"]
+    assert "no queue" in resp["error"]
     assert not state.executor.jobs  # type: ignore[attr-defined]
-
-
-def test_a_routing_executor_refuses_while_run_still_routes_in_process(tmp_path: Path) -> None:
-    # BE-0449: the refusal keys on where a `run` job goes, not on the executor's type, so a routing
-    # executor that keeps `run` local still protects the operator's project directory.
-    state, store = _hosted(tmp_path)
-    queue, local = _Recorder(), _Recorder()
-    state.executor = srv.RoutingExecutor(queue, local, queued_kinds={"record", "crawl"})
-    resp, code = _run(state, binaryArtifact=_store(store, "binary", b"bin"))
-    assert code == 400
-    assert "hosted" in resp["error"]
-    assert not queue.jobs and not local.jobs
-
-
-def test_a_routing_executor_that_queues_run_accepts_an_override(tmp_path: Path) -> None:
-    state, store = _hosted(tmp_path)
-    queue, local = _Recorder(), _Recorder()
-    state.executor = srv.RoutingExecutor(queue, local, queued_kinds=srv.JOB_KINDS)
-    sha = _store(store, "binary", b"bin")
-    _resp, code = _run(state, binaryArtifact=sha)
-    assert code == 200
-    assert not local.jobs
-    assert [job.kind for job in queue.jobs] == ["run"]
-    assert queue.jobs[0].overrides is not None
-    assert queue.jobs[0].overrides.binary == sha
 
 
 def test_a_malformed_digest_is_refused(tmp_path: Path) -> None:

@@ -93,7 +93,6 @@ services:
       - bajutsu
       - serve
       - --asgi
-      - --backend=server
       - --host=0.0.0.0
       - --port=8765
       - --config=/config/bajutsu.config.yaml

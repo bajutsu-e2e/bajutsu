@@ -58,8 +58,8 @@ SERVE_WORKER=0 make serve
 キューで待つ run は、待っている理由を示します。Replay のステータス行には、使える worker がないという
 通知が出ます。`GET /api/jobs/<id>` は同じ文を `notice` として返します。この通知は、run を実行できる
 worker がサーバに問い合わせると消えます。triage、record、crawl のジョブも同じ worker が実行し、
-ローカル起動ではサーバのプロセスがジョブを実行しません（BE-0449）。バケットがあってデータベースがない
-デプロイは、後の単位で取り除くまで、引き続きプロセス内でジョブを実行します。Crawl タブは、crawl の実行中に worker が中継する画面マップから
+サーバのプロセスはジョブを実行しません（BE-0449）。バケットを指定したデプロイは、キューのためにデータベースを
+指定する必要があり、指定しなければサーバは起動を拒否します。Crawl タブは、crawl の実行中に worker が中継する画面マップから
 グラフを描きます。人の助けを求めて一時停止した record は、従来どおり要求を表示し、回答は worker に戻ります。
 
 `make serve` は内部で `python -m bajutsu serve`、すなわち [CLI リファレンス](cli.md#serve) が説明する
@@ -615,7 +615,7 @@ run の証跡に基づく次元には `&runs=<id>,<id>` を、screens-visited �
 既定の `make serve` は `127.0.0.1` に無認証で bind します。loopback インターフェースでのみ安全です。
 自分のマシンの外に公開するにはトークン（`--token`）が要ります。トークンは認証と CSRF 対策を有効にし、
 非 loopback の `--host` への bind にはトークンが必須です。単一 Mac でのチーム向けホスティング
-（`--emit-launchagent`）や本格的なコントロールプレーンの backend（`--backend server`）、そして
+（`--emit-launchagent`）や本格的なホスティング用コントロールプレーン（バケットとデータベース）、そして
 `--max-concurrent-runs` と `--evidence-store` は、[CLI リファレンス](cli.md#serve) と
 [self-hosting](self-hosting.md) で扱います。
 

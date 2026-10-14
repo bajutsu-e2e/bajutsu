@@ -15,7 +15,7 @@ from bajutsu.common.backend_cli import simctl as _simctl
 from bajutsu.common.run_meta.object_store import EvidenceTarget, ObjectStore
 from bajutsu.serve.artifacts import ArtifactStore, LocalArtifactStore
 from bajutsu.serve.baselines import BaselineStore, LocalBaselineStore
-from bajutsu.serve.executor import LocalExecutor, RunExecutor
+from bajutsu.serve.executor import RunExecutor, UnqueuedExecutor
 from bajutsu.serve.helpers import load_serve_config_file
 from bajutsu.serve.logbus import InMemoryLogBus, LiveLineBudget, LogBus
 from bajutsu.serve.oidc import JwksCache
@@ -131,10 +131,10 @@ class ServeState:
     # a hosted deployment (BE-0449). The boot read's `capture` capability reads it (issue 1721).
     serves_local_routes: bool = True
     popen: Popen = subprocess.Popen
-    # How a created job gets executed. Defaults to in-process threads (LocalExecutor); a server
-    # backend swaps in a queue-based executor without touching the handler or run_job (BE-0015),
-    # routed per job kind while kinds move to the workers (`RoutingExecutor`, BE-0449).
-    executor: RunExecutor = field(default_factory=LocalExecutor)
+    # How a created job gets executed. `bajutsu serve` always queues it for a worker
+    # (`DbQueueExecutor`); the server never runs a job itself (BE-0449), so a state built without a
+    # queue fails each job rather than spawning it here.
+    executor: RunExecutor = field(default_factory=UnqueuedExecutor)
     # Live-log delivery. In-memory buffer by default; a server backend with a queue swaps in
     # `QueueLogBus` (BE-0449), which relays the lines workers post and falls back to the jobs table +
     # the uploaded console.log.
@@ -360,7 +360,7 @@ class ServeState:
 
     def env_var_for_secret(self, name: str) -> str:
         """The env var the local secret store reads/writes for logical secret *name* (BE-0136), and
-        the one an in-process job receives the value under from any store (BE-0449).
+        the one a job receives the value under from any store, through its lease (BE-0449).
 
         The Claude API key honors the bound config's ``ai.keyEnv`` (BE-0097); the `claude-code`
         provider's OAuth token maps to its fixed CLI variable (BE-0215) — the `claude` CLI names it,
@@ -557,8 +557,8 @@ class ServeState:
         A deployment that dispatches to remote workers (`DbQueueExecutor`) never learns a job's end
         in process, so the jobs table is the only place its terminal status exists. Reads
         `self.repository` per call rather than closing over it, so a repository wired after
-        construction is still consulted. None finished without one: local serve runs every job
-        in-process and observes each one finish, and an id with no row is a job registered but not
+        construction is still consulted. None finished without one: a state with no queue fails each
+        job at dispatch, which `status` already records, and an id with no row is a job registered but not
         yet enqueued (`_register_and_dispatch` registers first), which is still running.
         """
         repository = self.repository

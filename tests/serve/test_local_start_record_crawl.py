@@ -1,4 +1,4 @@
-"""`--backend local` queues `record` and `crawl` for a worker (BE-0449 unit 8).
+"""A local start queues `record` and `crawl` for a worker (BE-0449 unit 8).
 
 Both are AI authoring and exploration paths, never a verdict: moving them to a worker changes where
 the agent runs and nothing the deterministic `run` decides. These tests lock the move end to end on
@@ -237,11 +237,10 @@ def _awaiting_human(state: srv.ServeState, job_id: str) -> bool:
 
 
 def test_a_local_start_queues_record_and_crawl(tmp_path: Path) -> None:
+    from bajutsu.serve.server.db_executor import DbQueueExecutor
+
     state = _local_start(tmp_path)
-    assert isinstance(state.executor, srv.RoutingExecutor)
-    for kind in ("record", "crawl"):
-        assert kind in srv.LOCAL_QUEUED_KINDS
-        assert not state.executor.routes_locally(kind)
+    assert type(state.executor) is DbQueueExecutor
 
 
 # --- crawl: the live screen map reaches the page through the artifact stream --------------------
@@ -772,19 +771,6 @@ def test_a_server_without_a_cipher_holds_no_answer(tmp_path: Path) -> None:
     assert ops.respond_human(state, job_id, {"values": [_OTP]})[1] == 503
     body, code = ops.worker_handoff_response(state, {"worker_id": "w1", "job_id": job_id})
     assert code == 200 and "response" not in body
-
-
-def test_a_job_the_server_runs_itself_carries_no_worker_notice(tmp_path: Path) -> None:
-    from bajutsu.serve.operations._common import no_worker_notice
-    from bajutsu.serve.server.db_executor import DbQueueExecutor
-
-    state = _local_start(tmp_path)
-    assert state.repository is not None
-    state.executor = srv.RoutingExecutor(
-        DbQueueExecutor(state.repository), srv.LocalExecutor(), queued_kinds={"run"}
-    )
-    record = Job(cmd=[sys.executable, "-m", "bajutsu", "record"])
-    assert no_worker_notice(state, record) is None
 
 
 def test_the_handoff_relay_writes_the_answer_to_the_record(tmp_path: Path) -> None:

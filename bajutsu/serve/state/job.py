@@ -18,8 +18,8 @@ if TYPE_CHECKING:
     from bajutsu.serve.upload_artifacts import ArtifactOverrides
 
 
-# What a job does, which decides where it executes while job kinds move from the server to the
-# workers one at a time (BE-0449, `RoutingExecutor`).
+# What a job does: the subcommand a worker runs, which the queue matches against a worker's
+# capabilities and the server reads to tell a job's handling apart (BE-0449).
 JobKind = Literal["run", "run-set", "record", "crawl", "triage"]
 JOB_KINDS: frozenset[JobKind] = frozenset(get_args(JobKind))
 
@@ -55,8 +55,8 @@ class Job:
     # that ran on a remote worker keeps `status == "running"` on the control plane by design
     # (BE-0015 W2) — its terminal state lives in the jobs table, and `job_view` falls back to the
     # bus for it — so without a second signal the cap counts a finished job until serve restarts.
-    # Set by `JobRegistry._release_finished` from the jobs table; an in-process job's `status`
-    # already answers this, so nothing sets it on the local path.
+    # Set by `JobRegistry._release_finished` from the jobs table; a job that ends on this process's
+    # own `Job` (a worker's, or one failed at dispatch) answers through `status` instead.
     released: bool = False
     exit_code: int | None = None
     run_id: str | None = None  # the runs/<id> a `run` job produced, parsed from its output
@@ -144,9 +144,8 @@ class Job:
     # so a remote worker needs no settings of its own. Empty when no provider is selected (the
     # zero-config path, BE-0101, then falls back to the job's inherited env unchanged).
     env_overlay: dict[str, str] = field(default_factory=dict)
-    # The requesting org's stored secrets as environment variables (BE-0449), for a job the server
-    # runs in its own process: `LocalExecutor`'s thread fills it from the org's secret store, and
-    # `_spawn_env` merges it onto the child env. Never part of the job spec the queue stores, and
+    # The requesting org's stored secrets as environment variables (BE-0449): the worker fills it
+    # from the secrets its lease relayed, and `_spawn_env` merges it onto the child env. Never part of the job spec the queue stores, and
     # kept out of `repr` so a logged `Job` cannot print a value.
     secret_env: dict[str, str] = field(default_factory=dict, repr=False)
     # A cloud-batch run request (BE-0336): when set, this job runs one scenario on a batch device
