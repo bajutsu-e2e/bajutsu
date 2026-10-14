@@ -1,7 +1,7 @@
 """A local start queues `run` for a worker (BE-0449 unit 5, part 2).
 
-The local backend is now the server shape: a run goes through the queue to a `bajutsu worker`, and
-every other job kind still runs in the server's own process. These tests lock the move end to end
+The local start is the server shape: every job, a `run` included, goes through the queue to a
+`bajutsu worker`, and the server runs none itself. These tests lock the move end to end
 on the fake backend, the stored secrets the lease relays to the worker (and nowhere else), the
 server's own private-repository fetch reading a credential kept in the database, and the notice a
 queued job carries while no worker can take it.
@@ -405,9 +405,7 @@ def test_a_stored_git_credential_reaches_the_servers_fetch(
         seen.update(kw)
         raise ValueError("stop here")
 
-    import bajutsu.serve.operations.config as config_ops
-
-    monkeypatch.setattr(config_ops, "materialize", materialize)
+    monkeypatch.setattr("bajutsu.serve.operations.config.materialize", materialize)
     resp = client.post("/api/config", json={"git": "github:acme/private@main"})
     assert resp.status_code == 400
     assert seen["credential"] == "ghp_stored0003"
@@ -682,6 +680,18 @@ def test_the_startup_note_leaves_out_a_platform_the_host_cannot_drive(tmp_path: 
     # that way: the iOS runs wait with the no-worker notice, and the worker serves what it can.
     cfg = _fake_project(tmp_path)
     assert srv.worker_platforms(cfg, "linux") == "android,web"
+
+
+def test_a_platform_with_no_driver_yet_is_left_out_rather_than_raising(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A planned platform lands in PLATFORMS before its driver does; `serve` must still start.
+    from bajutsu.common import backends
+    from bajutsu.serve import helpers
+
+    monkeypatch.setitem(backends.PLATFORMS, "flutter", ("flutter-bridge",))
+    monkeypatch.setattr(helpers, "target_capabilities", lambda *_a: ["platform:flutter"])
+    assert srv.worker_platforms(_fake_project(tmp_path), "linux") == "android,web"
 
 
 def test_a_worker_without_the_servers_files_fails_the_job_clearly(

@@ -378,8 +378,8 @@ as it runs a local `run`. A worker on another machine fails the job. Its message
 a worker on the server's machine. A triage with `--ai` reads the AI key from the lease, like every
 queued job. A key set in the UI thus reaches the investigator and never enters the job spec.
 
-A `crawl` or `record` job follows the same same-machine rule. A crawl writes its screen map into
-the server's runs directory. A record writes its scenario into the target's scenarios directory.
+A `crawl` or `record` job also needs a worker on the server's machine. A crawl writes its screen
+map into the server's runs directory. A record writes its scenario into the target's scenarios directory.
 While a crawl runs, its worker posts each new screen map to `POST /api/worker/artifact`. The
 server relays each snapshot to the Crawl tab as an `artifact` event on the job's event stream. The
 graph thus grows as the worker explores. The file stays the durable copy, and the page reads it
@@ -1157,9 +1157,9 @@ deterministic `run` verdict.
   host. A fallback list such as `[ios, web]` requires none either, because `playwright` runs
   anywhere. A worker on the matching host leases the job. The worker's own check still judges each
   scenario before any device work.
-- **Two hand-written inputs now log a deprecation notice.** A worker's `--capabilities` and
+- **Three hand-written inputs now log a deprecation notice.** A worker's `--capabilities` and
   `$BAJUTSU_WORKER_CAPABILITIES` add tokens verbatim. A target's `requires:` list (or
-  `defaults.requires`) adds tokens to the job's required set. Both still work for this release,
+  `defaults.requires`) adds tokens to the job's required set. All three still work for this release,
   each with a one-time notice. The worker's override goes away in the next release. The inventory
   and the worker capability file now supply what the override was for. An override can also claim
   a runtime the machine lacks. `requires:` stays until a later item derives a runtime or
