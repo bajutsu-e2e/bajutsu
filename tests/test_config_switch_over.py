@@ -474,6 +474,8 @@ def test_doctor_refuses_a_condition_on_its_device_path(
     monkeypatch.setattr(
         "bajutsu.common.capability.preflight.doctor_environment_checks", lambda *a, **k: []
     )
+    # An iOS machine: the BE-0450 worker check refuses xcuitest on any other host.
+    monkeypatch.setattr("bajutsu.cli._shared.current_host_os", lambda: "darwin")
     monkeypatch.setattr("bajutsu.cli.commands.doctor.select_actuator", lambda _b: "xcuitest")
     monkeypatch.setattr("bajutsu.cli.commands.doctor._host_toolchain", lambda: (None, None))
     cfg = tmp_path / "bajutsu.config.yaml"
