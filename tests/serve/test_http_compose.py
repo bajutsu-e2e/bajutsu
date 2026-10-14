@@ -20,11 +20,19 @@ from bajutsu import serve as srv
 from bajutsu.serve import operations as ops
 
 _FULL_CONFIG = (
-    b"defaults: { backend: [ios] }\n"
     b"targets:\n"
-    b"  demo: { bundleId: com.example.demo, scenarios: ./scenarios, appPath: ./build/Demo.app }\n"
+    b"  demo:\n"
+    b"    platform: ios\n"
+    b"    app: {id: com.example.demo, path: ./build/Demo.app}\n"
+    b"    paths: {scenarios: ./scenarios}\n"
 )
-_SCENARIOS_ONLY_CONFIG = b"defaults: { backend: [ios] }\ntargets:\n  demo: { bundleId: com.example.demo, scenarios: ./scenarios }\n"
+_SCENARIOS_ONLY_CONFIG = (
+    b"targets:\n"
+    b"  demo:\n"
+    b"    platform: ios\n"
+    b"    app: {id: com.example.demo}\n"
+    b"    paths: {scenarios: ./scenarios}\n"
+)
 
 
 def _zip(entries: dict[str, bytes]) -> bytes:

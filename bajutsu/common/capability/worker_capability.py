@@ -29,25 +29,32 @@ from pydantic import (
 )
 
 from bajutsu.common import _yaml
-from bajutsu.common.backends import IMPLEMENTED
+from bajutsu.common.backends import IMPLEMENTED, PLATFORMS
+from bajutsu.common.config.schema import DeviceProvider
 
 DEFAULT_WORKER_CONFIG = Path(__file__).with_name("worker.yaml")
 
 LOCAL = "local"
 
-# `local` plus every batch-provider kind Bajutsu can register (`serve/batch_provider`). The kinds
-# are listed here rather than read from the provider registry, which the server package fills at
-# runtime and the deterministic core may not import; a test keeps the two in step.
-ENVIRONMENTS: frozenset[str] = frozenset({LOCAL, "devicefarm"})
+# A self-hosted or cloud Appium grid that serves one platform's devices behind a WebDriver endpoint
+# (BE-0452). Unlike a batch provider it submits nothing: a run on this worker drives the grid's
+# targets through the endpoint and its other targets on the host.
+APPIUM = "appium"
+
+# Every batch-provider kind Bajutsu can register (`serve/batch_provider`). The kinds are listed here
+# rather than read from the provider registry, which the server package fills at runtime and the
+# deterministic core may not import; a test keeps the two in step.
+BATCH_PROVIDERS: frozenset[str] = frozenset({"devicefarm"})
+
+ENVIRONMENTS: frozenset[str] = frozenset({LOCAL, APPIUM, *BATCH_PROVIDERS})
 
 # The routing-token prefixes a worker fills in itself: `environment:<name>` for a provider it
 # registered (BE-0448), `host:<os>` for the operating system it runs on (BE-0450), and
 # `machine:<id>` for the server machine it shares, whose jobs name files by their paths there
-# (BE-0449). Reserved, so every
-# hand-written token input — a worker's override and a target's `requires` — rejects them: a
+# (BE-0449). Reserved, so every hand-written token input — a worker's override — rejects them: a
 # hand-written one could pull a job onto a worker that cannot run it, or route a job nowhere. Defined
-# here, beside the environment names, so the configuration schema can check them without importing
-# the server package.
+# here, beside the environment names, so the core can check them without importing the server
+# package.
 ENVIRONMENT_ROUTING_PREFIX = "environment:"
 HOST_ROUTING_PREFIX = "host:"
 MACHINE_ROUTING_PREFIX = "machine:"
@@ -71,12 +78,35 @@ class WorkerCapabilityError(ValueError):
     """A `worker.yaml` that cannot be read or does not match the schema."""
 
 
+class AppiumGrid(BaseModel):
+    """The grid an `appium` environment drives, as written under `appium:` in `worker.yaml` (BE-0452).
+
+    Attributes:
+        endpoint: The grid's Appium / WebDriver address, handed to the run as its device.
+        platform: The platform whose targets go to the grid; the others of a scenario stay local.
+            `ios` is the one value today.
+    """
+
+    model_config = ConfigDict(populate_by_name=True, extra="forbid", frozen=True)
+
+    endpoint: str = Field(min_length=1)
+    platform: Literal["ios"] = "ios"
+
+    @field_validator("endpoint")
+    @classmethod
+    def _url(cls, value: str) -> str:
+        if not value.strip().startswith(("http://", "https://")):
+            raise ValueError(f"appium.endpoint {value!r} is not an http(s) URL")
+        return value.strip()
+
+
 class WorkerCapability(BaseModel):
     """One worker's declared limits, loaded from `worker.yaml` (BE-0450).
 
     Attributes:
         version: The file's schema version; only `1` exists.
-        environment: Where the worker runs jobs: `local`, or a device-cloud provider kind.
+        environment: Where the worker runs jobs: `local`, `appium`, or a device-cloud provider kind.
+        appium: The grid an `appium` environment drives; required with that environment alone.
         max_job_concurrency: Jobs the worker may have in flight at once.
         max_targets_per_job: Targets one scenario may declare, counted across every driver; None
             means unbounded.
@@ -87,6 +117,7 @@ class WorkerCapability(BaseModel):
 
     version: Literal[1]
     environment: str = LOCAL
+    appium: AppiumGrid | None = None
     max_job_concurrency: PositiveInt = Field(default=1, alias="maxJobConcurrency")
     max_targets_per_job: PositiveInt | None = Field(default=None, alias="maxTargetsPerJob")
     drivers: tuple[str, ...]
@@ -109,6 +140,16 @@ class WorkerCapability(BaseModel):
         return value
 
     @model_validator(mode="after")
+    def _appium_names_its_grid(self) -> WorkerCapability:
+        if self.environment == APPIUM and self.appium is None:
+            raise ValueError("environment 'appium' needs an `appium:` block naming its endpoint")
+        if self.environment != APPIUM and self.appium is not None:
+            raise ValueError(
+                f"an `appium:` block belongs to environment 'appium', not '{self.environment}'"
+            )
+        return self
+
+    @model_validator(mode="after")
     def _local_runs_one_job(self) -> WorkerCapability:
         # Several local jobs at once need a device allocated to each job, which is separate work;
         # `run --workers` lanes are a different mechanism and stay unaffected.
@@ -123,6 +164,30 @@ class WorkerCapability(BaseModel):
     def is_local(self) -> bool:
         """Whether this worker drives devices on its own host."""
         return self.environment == LOCAL
+
+    @property
+    def is_batch(self) -> bool:
+        """Whether this worker submits to a device-cloud batch provider instead of running jobs."""
+        return self.environment in BATCH_PROVIDERS
+
+    def drives_on_host(self, actuator: str) -> bool:
+        """Whether *actuator*'s driver runs on this worker's own host, so the host rule applies.
+
+        A batch provider runs every driver on its own host; an `appium` grid runs its platform's
+        driver, and the scenario's other targets stay on this host (BE-0452).
+        """
+        if self.is_batch:
+            return False
+        return self.appium is None or actuator not in PLATFORMS.get(self.appium.platform, ())
+
+    def device_provider_for(self, platform: str) -> DeviceProvider | None:
+        """The device provider a target of *platform* takes from this worker, or None for local.
+
+        An `appium` environment hands its grid to the targets of the grid's platform alone (BE-0452).
+        """
+        if self.appium is not None and platform == self.appium.platform:
+            return DeviceProvider(kind=APPIUM, endpoint=self.appium.endpoint)
+        return None
 
 
 def parse_worker_capability(text: str, *, source: str = "worker.yaml") -> WorkerCapability:

@@ -5,14 +5,18 @@ from __future__ import annotations
 import atexit
 import os
 from pathlib import Path
+from typing import Annotated
 
 import typer
 
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
+    WORKER_CONFIG_HELP,
     _ai_redactor,
     _build_alert_guard,
+    _device_udid_or_exit,
     _install_usage_ledger,
+    _load_device_worker_or_exit,
     _load_effective_with_source,
     _refuse_out_in_checkout,
     _require_ai_credential,
@@ -22,6 +26,7 @@ from bajutsu.cli._shared import (
     _start_launch_server_or_exit,
     _warn_onscreen_secrets,
     _with_headed,
+    _with_worker_device,
     resolve_system_alert_handling_flag,
 )
 from bajutsu.cli.handoff import make_handoff
@@ -29,7 +34,6 @@ from bajutsu.common.agents.claude import MODEL as _RECORD_MODEL
 from bajutsu.common.agents.factory import make_agent
 from bajutsu.common.ai import announce_ai
 from bajutsu.common.analytics import usage as _usage
-from bajutsu.common.backend_cli import simctl as _simctl
 from bajutsu.common.config import WEB_ENGINES, Effective
 from bajutsu.common.devices import errors as device_errors
 from bajutsu.common.handoff import HumanHandoffUnavailable
@@ -166,6 +170,9 @@ def record(
         help="human-in-the-loop handoff responder (BE-0179): auto (interactive when stdin is a TTY, "
         "else none) | prompt | stream (serve sets this) | off",
     ),
+    worker_config: Annotated[
+        Path | None, typer.Option("--worker-config", help=WORKER_CONFIG_HELP)
+    ] = None,
     config: str = typer.Option(DEFAULT_CONFIG),
 ) -> None:
     """Explore the app with AI toward a goal and write the recorded scenario.
@@ -197,15 +204,19 @@ def record(
     # process; the screenshot is sent as-is — images cannot be pixel-masked (BE-0047).
     redactor = _ai_redactor(eff)
     authoring_agent = make_agent(ai=eff.ai, redactor=redactor)
-    actuator, _ = _select_actuator_or_exit(backend, eff, [])
+    worker = _load_device_worker_or_exit(worker_config)
+    eff = _with_worker_device(eff, worker)
+    actuator, _ = _select_actuator_or_exit(backend, eff, [], worker)
+    # The device comes through the target's provider, as in `run`: the `--udid` pool, or the grid
+    # an `appium` environment names (BE-0452).
+    udid = _device_udid_or_exit(eff, udid)
     alert_guard = None
     # On by default while authoring (there is no scenario yet to carry its own setting).
     if resolve_system_alert_handling_flag(system_alert_handling, default=True):
         alert_guard = _build_alert_guard(eff, redactor, alert_vision_instruction)
-    # Web has no simctl udid (launch_driver ignores it for playwright); resolving "booted" would
-    # shell out to simctl and crash off-macOS, so skip it for the web backend.
-    if actuator != "playwright":
-        udid = _simctl.resolve_udid(udid)
+    # Resolve through the selected environment's own device lookup, as `repl` does: simctl for the
+    # local iOS route, the endpoint as is for an `appium` grid, and no device at all for the web.
+    udid = environment_for(actuator, udid).resolve_device(udid)
 
     # Bring up the app's target server (the web baseUrl host) if it declares launchServer — reused
     # if already serving, started otherwise. Stopped when this command exits (atexit).

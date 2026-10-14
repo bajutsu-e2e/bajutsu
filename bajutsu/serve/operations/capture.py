@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from bajutsu.common.config import load_config
+from bajutsu.common.config import load_config_file
 from bajutsu.common.drivers import base
 from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.serve.operations._common import (
     _default_driver_factory,
-    _device_args,
     _resolve_org_or_forbid,
+    _session_device,
     _session_effective,
 )
 from bajutsu.serve.state import CaptureSession, ServeState
@@ -44,20 +44,14 @@ def start_capture(
     if forbidden:
         return forbidden
 
-    config = load_config(cfg.read_text(encoding="utf-8"))
+    config = load_config_file(cfg)
     target_cfg = config.targets.get(target)
     if target_cfg is None:
         return {"error": f"unknown target: {target}"}, 400
 
-    backend, udid, err = _device_args(body)
+    backends_list, udid, err = _session_device(body, target_cfg.platform)
     if err:
         return err
-    # An explicit body `backend` is passed through as-is: a single actuator stays a hard pin, while
-    # a platform token like `ios` is still cost-ordered by the selector; otherwise the target's full
-    # backend list is used, cost-ordered the same way (BE-0267).
-    backends_list = [backend] if backend else list(target_cfg.backend or config.defaults.backend)
-    if not udid:
-        udid = "booted"
 
     factory = driver_factory or _default_driver_factory
     effective = _session_effective(state, config, target, session, state.org_of(actor))
@@ -72,7 +66,7 @@ def start_capture(
         from bajutsu.common.drivers.elements import screen_size_from_elements
 
         screen_size = screen_size_from_elements(elements)
-        namespaces: list[str] = list(target_cfg.id_namespaces)
+        namespaces: list[str] = list(effective.id_namespaces)
 
         # Deliberately outside the `ArtifactStore` seam (BE-0258): a capture session is a live,
         # in-process object whose driver and HTTP handler share the same process for its lifetime,

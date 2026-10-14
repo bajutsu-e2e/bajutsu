@@ -20,9 +20,11 @@ import pytest
 from bajutsu.serve.cli import worker as worker_cli
 
 _CONFIG = (
-    "defaults: { backend: [ios] }\n"
     "targets:\n"
-    "  demo: { bundleId: com.example.demo, scenarios: ./scenarios, appPath: ./build/Demo.app }\n"
+    "  demo:\n"
+    "    platform: ios\n"
+    "    app: {id: com.example.demo, path: ./build/Demo.app}\n"
+    "    paths: {scenarios: ./scenarios}\n"
 )
 _SCENARIO = b"- name: a\n  steps: []\n"
 

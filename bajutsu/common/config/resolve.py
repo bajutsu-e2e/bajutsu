@@ -1,18 +1,17 @@
 """Resolution — team defaults overlaid by per-target config, producing an `Effective`.
 
-`resolve()` produces the effective config for one target: the target entry overrides defaults.
-`backend` may be a single string or a list (normalized to a list). `redact` is merged (union).
-Scenario-level overrides (preconditions) are applied later by the runner. This is the only config
-submodule that depends on `bajutsu.common.backends` (to derive a target's platform from its backend), so
-its import stays a plain top-level one confined here.
+`resolve()` produces the effective config for one target. The loader has already merged `defaults`
+into each target (`schema/_merge.py`), so resolution reads one validated target and builds today's
+`Effective` from the regrouped keys (BE-0452); only `ai` merges field by field here. Scenario-level
+overrides (preconditions) are applied later by the runner.
 """
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from bajutsu.common import _yaml
-from bajutsu.common.backends import platform_of, resolve_actuators
 from bajutsu.common.config.effective import (
     AiConfig,
     AndroidConfig,
@@ -24,20 +23,23 @@ from bajutsu.common.config.effective import (
     RunDefaults,
     WebConfig,
 )
-from bajutsu.common.config.schema import AiSettings, Config, Defaults, TargetConfig
-from bajutsu.common.scenario import Redact
-
-
-def _merge_redact(base: Redact, over: Redact) -> Redact:
-    def union(a: list[str], b: list[str]) -> list[str]:
-        return list(dict.fromkeys([*a, *b]))
-
-    return Redact(
-        labels=union(base.labels, over.labels),
-        headers=union(base.headers, over.headers),
-        fields=union(base.fields, over.fields),
-        unmaskHeaders=union(base.unmask_headers, over.unmask_headers),
-    )
+from bajutsu.common.config.schema import (
+    AiSettings,
+    Config,
+    TargetConfig,
+    XcuitestConfig,
+    _Model,
+)
+from bajutsu.common.config.schema.platform._shared import AppCommon, LaunchEnv
+from bajutsu.common.config.schema.platform.android import AndroidApp, AndroidDriver, AndroidRunsOn
+from bajutsu.common.config.schema.platform.ios import (
+    IosApp,
+    IosDriver,
+    IosLaunch,
+    IosRun,
+    IosRunsOn,
+)
+from bajutsu.common.config.schema.platform.web import WebApp, WebDriver, WebRunsOn
 
 
 def _merge_ai(base: AiSettings | None, over: AiSettings | None) -> AiConfig | None:
@@ -65,133 +67,158 @@ def _merge_ai(base: AiSettings | None, over: AiSettings | None) -> AiConfig | No
     )
 
 
-def _platform_for_backend(backend: list[str]) -> str | None:
-    """The platform a backend list implies, or None.
+# The built-in locale a target runs under when `runsOn.locale` is unset. iOS pins the Simulator's
+# own system language to it (BE-0320); the other platforms read it nowhere but carry it for the report.
+DEFAULT_LOCALE = "en_US"
 
-    A token may be a platform alias (`web`) or a bare actuator (`playwright`), so it is expanded to
-    an actuator before the reverse lookup.
+
+def _conditions(runs_on: _Model) -> dict[str, str | list[str]]:
+    """The device conditions *runs_on* declares, keyed by the field that declares each.
+
+    A single web engine is how the target is driven rather than a condition; a listed one multiplies
+    runs, so it counts.
     """
-    actuators = resolve_actuators(backend)
-    return platform_of(actuators[0]) if actuators else None
+    if isinstance(runs_on, IosRunsOn):
+        candidates: dict[str, str | list[str] | None] = {"model": runs_on.model, "os": runs_on.os}
+    elif isinstance(runs_on, AndroidRunsOn):
+        candidates = {"avd": runs_on.avd, "apiLevel": runs_on.api_level}
+    elif isinstance(runs_on, WebRunsOn):
+        engine = runs_on.browser.engine
+        candidates = {
+            "browser.engine": engine if isinstance(engine, list) else None,
+            "browser.version": runs_on.browser.version,
+        }
+    else:
+        candidates = {}
+    return {name: value for name, value in candidates.items() if value is not None}
 
 
-def _effective_platform(a: TargetConfig, d: Defaults, backend: list[str]) -> str:
-    """The target's platform (BE-0009 Slice 4), preserving the pre-`platform` behavior.
-
-    Precedence: an explicit `platform` (target then defaults) wins; else an explicit *target* backend
-    implies it; else the identifier the target carries (baseUrl -> web, package -> android, bundleId
-    -> ios), so a web target written as just `baseUrl` is web even though the default backend is idb;
-    else the (possibly defaulted) backend; else `ios`.
-    """
-    explicit = a.platform or d.platform
-    if explicit:
-        return explicit
-    if a.backend is not None:
-        from_backend = _platform_for_backend(a.backend)
-        if from_backend:
-            return from_backend
-    if a.base_url:
-        return "web"
-    if a.package:
-        return "android"
-    if a.bundle_id:
-        return "ios"
-    return _platform_for_backend(backend) or "ios"
-
-
-# The identifier each platform requires on its target, as (config field name, TargetConfig attr);
-# `fake` (and any platform absent here) needs none. Used by Config validation to reject a target
-# carrying the wrong handle for its platform.
-_PLATFORM_IDENTIFIER: dict[str, tuple[str, str]] = {
-    "ios": ("bundleId", "bundle_id"),
-    "web": ("baseUrl", "base_url"),
-    "android": ("package", "package"),
-}
-
-
-def _platform_config(platform: str, a: TargetConfig) -> PlatformConfig:
-    """Build the platform-specific sub-config for the resolved platform (BE-0126)."""
-    if platform == "web":
-        return WebConfig(
-            base_url=a.base_url,
-            headless=a.headless,
-            browser=a.browser,
-            device_mode=a.device_mode,
-        )
-    if platform == "android":
-        return AndroidConfig(
-            package=a.package,
-            app_path=a.app_path,
-            build=a.build,
-            grant_permissions=a.grant_permissions,
-            native_z=a.native_z,
-        )
-    return IosConfig(
-        bundle_id=a.bundle_id,
-        deeplink_scheme=a.deeplink_scheme,
-        app_path=a.app_path,
-        build=a.build,
-        xcuitest=a.xcuitest,
+def _xcuitest(driver: _Model, runs_on: _Model) -> XcuitestConfig | None:
+    """Today's resolved runner block, built from `driver.runner` and `runsOn.kind`, or None if unset."""
+    runner = driver.runner if isinstance(driver, IosDriver) else None
+    kind = runs_on.kind if isinstance(runs_on, IosRunsOn) else "simulator"
+    if runner is None or (
+        runner.test_runner is None
+        and runner.build is None
+        and runner.host_address is None
+        and kind == "simulator"
+    ):
+        return None
+    return XcuitestConfig(
+        testRunner=runner.test_runner,
+        build=runner.build,
+        deviceType=kind,
+        hostAddress=runner.host_address,
     )
+
+
+def _platform_config(a: TargetConfig) -> PlatformConfig:
+    """Build the platform-specific sub-config for the target's platform (BE-0126).
+
+    A `fake` target resolves to the iOS-shaped sub-config, as it did before BE-0452.
+    """
+    app = a.app
+    if isinstance(app, WebApp):
+        runs_on = a.runs_on
+        assert isinstance(runs_on, WebRunsOn)
+        driver = a.driver
+        assert isinstance(driver, WebDriver)
+        engine = runs_on.browser.engine
+        return WebConfig(
+            base_url=app.url,
+            headless=driver.headless,
+            # A listed engine is a condition the run refuses until BE-0452 unit 9; the first stands
+            # in so the resolved type stays one engine.
+            browser=engine[0] if isinstance(engine, list) else engine,
+            device_mode=runs_on.emulate,
+        )
+    if isinstance(app, AndroidApp):
+        driver = a.driver
+        assert isinstance(driver, AndroidDriver)
+        return AndroidConfig(
+            package=app.id,
+            app_path=app.path,
+            build=app.build,
+            grant_permissions=list(app.grant_permissions),
+            native_z=driver.native_z,
+        )
+    if isinstance(app, IosApp):
+        return IosConfig(
+            bundle_id=app.id,
+            app_path=app.path,
+            build=app.build,
+            xcuitest=_xcuitest(a.driver, a.runs_on),
+        )
+    return IosConfig(bundle_id=getattr(app, "id", None) or "")
+
+
+def _launch(app: _Model) -> tuple[dict[str, str], list[str]]:
+    """The app's launch environment and arguments; a platform with no arguments gives none."""
+    launch = getattr(app, "launch", None)
+    if isinstance(launch, IosLaunch):
+        return dict(launch.env), list(launch.args)
+    if isinstance(launch, LaunchEnv):
+        return dict(launch.env), []
+    return {}, []
 
 
 def resolve(config: Config, target: str) -> Effective:
-    """Resolve the effective config for one target (the target entry overrides defaults)."""
+    """Resolve the effective config for one target, whose `defaults` the loader already merged."""
     if target not in config.targets:
         raise KeyError(f"unknown target: {target!r} (define targets.{target} in config)")
-    d = config.defaults
     a = config.targets[target]
-    backend = a.backend or d.backend
+    app = a.app
+    start_when = app.start_when if isinstance(app, AppCommon) else None
+    launch_env, launch_args = _launch(app)
+    runs_on = a.runs_on
+    locale = (runs_on.locale if isinstance(runs_on, IosRunsOn) else None) or DEFAULT_LOCALE
+    run = a.run
+    tip_kit = run.tip_kit_handling if isinstance(run, IosRun) else None
     return Effective(
         target=target,
-        platform_config=_platform_config(_effective_platform(a, d, backend), a),
-        launch_server=a.launch_server,
-        ready_when=a.ready_when,
-        backend=backend,
-        device=a.device or d.device,
-        locale=a.locale or d.locale,
-        launch_env=dict(a.launch_env),
-        launch_args=list(a.launch_args),
-        id_namespaces=list(a.id_namespaces),
-        reserved_namespaces=list(d.reserved_namespaces),
-        mock_server=a.mock_server,
-        mailbox=a.mailbox,
-        device_provider=a.device_provider,
-        cloud_batch=a.cloud_batch,
-        cloud_batch_budget=a.cloud_batch_budget,
-        setup=a.setup,
-        capture=list(d.capture),
-        redact=_merge_redact(d.redact, a.redact),
-        secrets=list(dict.fromkeys([*d.secrets, *a.secrets])),
-        requires=list(dict.fromkeys([*d.requires, *a.requires])),
-        ai=_merge_ai(d.ai, a.ai),
+        platform_config=_platform_config(a),
+        launch_server=a.services.server,
+        start_when=start_when.exists.sel.as_selector() if start_when is not None else None,
+        conditions=_conditions(runs_on),
+        backend=[a.platform],
+        locale=locale,
+        launch_env=launch_env,
+        launch_args=launch_args,
+        id_namespaces=list(app.id_namespaces) if isinstance(app, AppCommon) else [],
+        reserved_namespaces=list(config.reserved_namespaces),
+        mock_server=a.services.mock_server,
+        mailbox=a.services.mailbox,
+        capture=list(a.evidence.capture),
+        redact=a.evidence.redact,
+        secrets=list(run.secrets),
+        ai=_merge_ai(config.defaults.ai, a.ai),
         evidence_dirs=EvidenceDirs(
-            scenarios=a.scenarios,
-            baselines=a.baselines,
-            schemas=a.schemas,
-            goldens=a.goldens,
+            scenarios=a.paths.scenarios,
+            baselines=a.paths.baselines,
+            schemas=a.paths.schemas,
+            goldens=a.paths.goldens,
         ),
         doctor_thresholds=DoctorThresholds(
-            ok_coverage=d.doctor.id_coverage_ok,
-            fail_coverage=d.doctor.id_coverage_fail,
+            ok_coverage=config.doctor.id_coverage_ok,
+            fail_coverage=config.doctor.id_coverage_fail,
         ),
         notify=a.notify if a.notify is not None else list(config.notify),
-        visual_compare=a.visual_compare or d.visual_compare or "exact",
+        visual_compare=run.visual_compare or "exact",
         run_defaults=RunDefaults(
-            system_alert_handling=a.system_alert_handling,
-            erase=a.erase if a.erase is not None else False,
-            network=a.network if a.network is not None else True,
-            ios_tip_kit_handling=a.ios_tip_kit_handling
-            if a.ios_tip_kit_handling is not None
-            else False,
-            interrupts=list(a.interrupts),
-            before=list(a.before),
-            after=list(a.after),
+            system_alert_handling=run.system_alert_handling,
+            erase=run.erase if run.erase is not None else False,
+            network=run.network if run.network is not None else True,
+            ios_tip_kit_handling=tip_kit if tip_kit is not None else False,
+            interrupts=list(a.hooks.interrupts),
+            before=list(a.hooks.setup),
+            after=list(a.hooks.cleanup),
         ),
     )
 
 
-def parse_config_dict(data: dict[str, Any]) -> Config:
+def parse_config_dict(
+    data: dict[str, Any], *, path: Path | None = None, root: Path | None = None
+) -> Config:
     """Validate an already-parsed config document into a `Config`.
 
     Top-level `orgs:` and `ui:` keys are dropped before validation: the hosted multi-tenancy org
@@ -200,15 +227,38 @@ def parse_config_dict(data: dict[str, Any]) -> Config:
     carrying them, so the core must ignore the keys rather than reject them under `extra="forbid"`.
     `bajutsu.serve.orgs` / `bajutsu.serve.themes` parse those blocks separately. Every other unknown
     key still fails loudly, preserving the typo guard.
+
+    Args:
+        data: The parsed YAML document.
+        path: The config file, which a component called from a target's `hooks` resolves against.
+            None for a document with no file, whose hooks may then call no component.
+        root: The suite root a component reference must stay inside (BE-0174): the checkout of a
+            Git source, the bundle root of an upload or a composition. None means the config file's
+            own directory.
     """
     # Only drop from an actual mapping; a non-dict document (a YAML scalar/list) flows unchanged
     # into model_validate, which raises a pydantic ValidationError (a ValueError) rather than the
     # AttributeError a `.items()` on a scalar would throw and escape the callers' handling.
     if isinstance(data, dict):
         data = {k: v for k, v in data.items() if k not in ("orgs", "ui")}
-    return Config.model_validate(data)
+    context: dict[str, Path] = {}
+    if path is not None:
+        context["config_path"] = path
+        context["suite_root"] = root if root is not None else path.parent
+    return Config.model_validate(data, context=context)
 
 
-def load_config(text: str) -> Config:
+def load_config(text: str, *, path: Path | None = None, root: Path | None = None) -> Config:
     """Parse a YAML config string into a `Config` (see `parse_config_dict`)."""
-    return parse_config_dict(_yaml.safe_load(text) or {})
+    return parse_config_dict(_yaml.safe_load(text) or {}, path=path, root=root)
+
+
+def load_config_file(path: Path, *, root: Path | None = None) -> Config:
+    """Read and parse the config file at *path*, resolving hook components against it.
+
+    Raises:
+        OSError: The file cannot be read.
+        ValueError: The document does not match the schema (a pydantic `ValidationError`) or is not
+            valid YAML.
+    """
+    return load_config(path.read_text(encoding="utf-8"), path=path, root=root)

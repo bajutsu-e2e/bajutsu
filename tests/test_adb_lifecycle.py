@@ -319,14 +319,12 @@ def _eff(
             package=package, app_path=app_path, grant_permissions=grant_permissions or []
         ),
         backend=["android"],
-        device="booted",
         locale="en_US",
         launch_env={"SHOWCASE_UITEST": "1"},
         launch_args=[],
         id_namespaces=[],
         reserved_namespaces=[],
         mock_server=None,
-        setup=None,
         capture=[],
         redact=Redact(),
     )

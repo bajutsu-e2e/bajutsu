@@ -124,9 +124,31 @@ def validate_group(platform: str, group: Group, data: Any, *, where: str) -> _Mo
             message lists the fields the block accepts, and any other failure beside it.
         ValidationError: Any other validation failure, unchanged.
     """
-    model = schema_for(platform).model(group)
+    return validate_model(schema_for(platform).model(group), data, platform=platform, where=where)
+
+
+def validate_model(
+    model: type[_Model], data: Any, *, platform: str, where: str, context: Any = None
+) -> _Model:
+    """Validate *data* with *model*, rewriting an unknown-key error to list the accepted fields.
+
+    `validate_group` for a model the caller composes itself, such as a target's `run`, which joins
+    the shared run policy to the platform's own fields.
+
+    Args:
+        model: The model to validate with.
+        data: The block's value, as read from YAML; None reads as an empty block.
+        platform: The target's platform, named in the error.
+        where: How the error names the block's location.
+        context: The Pydantic validation context passed through to nested validators.
+
+    Raises:
+        ValueError: A key is unknown to the model; the message lists the fields the block accepts,
+            and any other failure beside it.
+        ValidationError: Any other validation failure, unchanged.
+    """
     try:
-        return model.model_validate(data if data is not None else {})
+        return model.model_validate(data if data is not None else {}, context=context)
     except ValidationError as exc:
         unknown = [e for e in exc.errors() if e["type"] == "extra_forbidden"]
         if not unknown:

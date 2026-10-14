@@ -444,8 +444,13 @@ def test_load_effective_rebases_paths_against_git_checkout(
     root = tmp_path / "co"
     (root / "e2e" / "scenarios").mkdir(parents=True)
     (root / "e2e" / "bajutsu.config.yaml").write_text(
-        "targets:\n  demo:\n    bundleId: com.example.demo\n"
-        "    scenarios: e2e/scenarios\n    appPath: build/Demo.app\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app: {id: com.example.demo, path: build/Demo.app}\n"
+            "    paths: {scenarios: e2e/scenarios}\n"
+        ),
         encoding="utf-8",
     )
 
@@ -471,8 +476,13 @@ def test_load_effective_local_config_rebases_against_the_config_dir(
     cfg_dir = tmp_path / "proj"
     (cfg_dir / "scn").mkdir(parents=True)
     (cfg_dir / "bajutsu.config.yaml").write_text(
-        "targets:\n  demo:\n    bundleId: com.example.demo\n"
-        "    scenarios: scn\n    appPath: build/Demo.app\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app: {id: com.example.demo, path: build/Demo.app}\n"
+            "    paths: {scenarios: scn}\n"
+        ),
         encoding="utf-8",
     )
     monkeypatch.chdir(tmp_path)  # deliberately not the config's directory
@@ -492,7 +502,13 @@ def test_load_effective_local_config_allows_a_path_outside_its_dir(tmp_path: Pat
     proj = tmp_path / "proj"
     proj.mkdir()
     (proj / "bajutsu.config.yaml").write_text(
-        "targets:\n  demo:\n    bundleId: com.example.demo\n    scenarios: ../shared/scn\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app: {id: com.example.demo}\n"
+            "    paths: {scenarios: ../shared/scn}\n"
+        ),
         encoding="utf-8",
     )
     eff = _shared._load_effective(str(proj / "bajutsu.config.yaml"), "demo")
@@ -508,7 +524,13 @@ def test_load_effective_local_config_returns_no_checkout_root(tmp_path: Path) ->
     proj = tmp_path / "proj"
     (proj / "scn").mkdir(parents=True)
     (proj / "bajutsu.config.yaml").write_text(
-        "targets:\n  demo:\n    bundleId: com.example.demo\n    scenarios: scn\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app: {id: com.example.demo}\n"
+            "    paths: {scenarios: scn}\n"
+        ),
         encoding="utf-8",
     )
     _eff, source, checkout_root = _shared._load_effective_with_source(
@@ -568,7 +590,8 @@ def test_require_pinned_allows_a_full_sha(tmp_path: Path, monkeypatch: pytest.Mo
     root = tmp_path / "co"
     root.mkdir()
     (root / "bajutsu.config.yaml").write_text(
-        "targets:\n  demo:\n    bundleId: com.example.demo\n", encoding="utf-8"
+        ("targets:\n  demo:\n    platform: ios\n    app: {id: com.example.demo}\n"),
+        encoding="utf-8",
     )
     monkeypatch.setattr(
         _shared,
@@ -594,7 +617,13 @@ def test_load_effective_git_config_escaping_path_exits_cleanly(
     root = tmp_path / "co"
     root.mkdir()
     (root / "bajutsu.config.yaml").write_text(
-        "targets:\n  demo:\n    bundleId: com.example.demo\n    scenarios: ../../../etc\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app: {id: com.example.demo}\n"
+            "    paths: {scenarios: ../../../etc}\n"
+        ),
         encoding="utf-8",
     )
     monkeypatch.setattr(
@@ -619,12 +648,13 @@ def test_run_builds_a_git_sourced_app_from_the_checkout_root(
     root = tmp_path / "co"
     (root / "e2e").mkdir(parents=True)
     (root / "bajutsu.config.yaml").write_text(
-        "targets:\n"
-        "  demo:\n"
-        "    bundleId: com.example.demo\n"
-        "    appPath: build/Demo.app\n"  # relative → rebased under the checkout root
-        "    build: mkdir -p build/Demo.app\n"  # rooted at the checkout, not the test's cwd
-        "    scenarios: e2e\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app: {id: com.example.demo, path: build/Demo.app, build: mkdir -p build/Demo.app}\n"
+            "    paths: {scenarios: e2e}\n"
+        ),
         encoding="utf-8",
     )
     monkeypatch.setattr(

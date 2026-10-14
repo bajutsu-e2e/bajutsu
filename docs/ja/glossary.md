@@ -40,7 +40,7 @@
 extract の修飾子を持ちません。定義は `bajutsu/scenario/models/steps.py` の `Step` です。
 
 **precondition（前提条件）**：run の前に適用する、シナリオ単位の環境準備です。`erase`、`reinstall`、
-`launchArgs`、`launchEnv`、`deeplink`、`locale`、`setup` があります。実行時の関心事（`mocks` /
+`launchArgs`、`launchEnv`、`deeplink`、`locale`、`run.inheritSetup` があります。実行時の関心事（`mocks` /
 `network`）とも、config 側の `defaults` / `targets` とも別物です。定義は
 `bajutsu/scenario/models/scenario.py` の `Preconditions` です。
 
@@ -88,12 +88,12 @@ AND で結合されるフィールドの集合（`id`、`idMatches`、`label`、
 | 語 | 意味 |
 |---|---|
 | **driver** | 抽象的な `Driver` インターフェース（`bajutsu/common/drivers/base.py` の `Protocol`）です。唯一のプラットフォーム依存の継ぎ目で、どの actuator もこれを実装します。 |
-| **backend** | `--backend` と config の `backend:` が受け付けるユーザー向けのトークンです。platform の別名（`ios`）か、actuator の名前そのもの（`xcuitest`）のどちらかです。「backend」は入力トークンの総称で、解決されて actuator になります。 |
+| **backend** | `--backend` と serve のリクエストの `backend` が受け付けるユーザー向けのトークンです。ターゲットの platform の別名（`ios`）、その platform の actuator の名前そのもの（`xcuitest`）、`fake` のいずれかです。それ以外は終了コード 2 になります。このトークンは複数の候補から選ぶのではなく、ターゲットの `platform` と合っているかを検査するためです（[BE-0452](../../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)）。「backend」は入力トークンの総称で、解決されて actuator になります。 |
 | **actuator** | 実際に操作（tap / type / swipe / query）を担う具体的なエンジンで、driver が実装するものです。backend のトークンは一つの actuator に解決され、run の開始時に確定して以後は固定されます。 |
-| **platform** | 対象の種類を表す粗いトークン（`ios` / `android` / `web` / `fake`）で、安定度順（最も安定するものが先）の actuator のリストに展開されます。 |
+| **platform** | 対象の種類を表す粗いトークン（`ios` / `android` / `web` / `fake`）で、安定度順（最も安定するものが先）の actuator のリストに展開されます。どのターゲットも、必須の `platform` キーで1つを宣言します。 |
 
-`backend:` のリストは安定度順で書きます。選択は各トークンを actuator に展開し、既知でこのマシンで利用で
-きる最初の一つを選びます。現在コードに組み込まれている platform から actuator への対応は次のとおりです
+選択はターゲットの `platform` を actuator に展開し、既知でこのマシンで利用できる最初の一つを
+選びます。現在コードに組み込まれている platform から actuator への対応は次のとおりです
 （四つの actuator はすべて `IMPLEMENTED` に含まれます）。
 
 | platform | actuator（安定度順） | 利用可否の条件 |
@@ -118,9 +118,9 @@ AND で結合されるフィールドの集合（`id`、`idMatches`、`label`、
 
 | 語 | 意味 |
 |---|---|
-| **target（ターゲット）** | `targets.<name>` の下にある、テスト対象のアプリを記述する config エントリ一つです。プラットフォームごとの識別子（iOS の `bundleId`、web の `baseUrl`、Android の `package`）に加え、`backend`・`device`・`appPath` などを持ちます。config の単位です。定義は `bajutsu/common/config/schema.py` の `TargetConfig` です。 |
+| **target（ターゲット）** | `targets.<name>` の下にある、テスト対象のアプリを記述する config エントリ一つです。必須の `platform`、プラットフォームごとの識別子（iOS と Android の `app.id`、web の `app.url`）に加え、`app.path`、`runsOn`、`driver` などを持ちます。config の単位です。定義は `bajutsu/common/config/schema/target_config.py` の `TargetConfig` です。 |
 | **app（アプリ）** | テスト対象のアプリケーションそのものです。target が指し示し、device にインストールされるソフトウェアです。 |
-| **device（デバイス）** | target を駆動する具体的な実行時インスタンスです。Simulator、emulator、ブラウザコンテキストで、`device`（たとえば `iPhone 15`）で名付け、実行時には `udid` で指します。 |
+| **device（デバイス）** | target を駆動する具体的な実行時インスタンスです。Simulator、emulator、ブラウザコンテキストで、実行時には `udid` で指します。target の `runsOn` グループがデバイスを記述します。デバイス条件（`runsOn.model`、`runsOn.os` など）は読み込めますが、まだデバイスとは照合しません。 |
 
 つまり、config の **target** が、ソフトウェアである **app** を指し、それを実行時インスタンスである
 **device** の上で駆動します。

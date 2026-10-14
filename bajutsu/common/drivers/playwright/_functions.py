@@ -52,7 +52,7 @@ def _device_context_kwargs(pw: Any, device_mode: str) -> dict[str, Any]:
         # Only the lookup is guarded: a KeyError raised while *copying* the descriptor below would be
         # a real fault, not a bad name, and must not be mislabelled as an unknown preset.
         raise ValueError(
-            f"unknown deviceMode {device_mode!r}: use 'desktop' or a Playwright device preset name "
+            f"unknown runsOn.emulate {device_mode!r}: use 'desktop' or a Playwright device preset name "
             "(e.g. 'iPhone 13'); see playwright.devices for the full list"
         ) from None
     return dict(descriptor)

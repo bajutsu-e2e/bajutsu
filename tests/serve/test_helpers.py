@@ -32,7 +32,10 @@ def test_load_config_cached_reuses_an_unchanged_file(tmp_path: Path) -> None:
     from bajutsu.serve import helpers
 
     cfg = tmp_path / "bajutsu.config.yaml"
-    cfg.write_text("targets:\n  demo: { bundleId: com.example.demo }\n", encoding="utf-8")
+    cfg.write_text(
+        ("targets:\n  demo:\n    platform: ios\n    app: {id: com.example.demo}\n"),
+        encoding="utf-8",
+    )
     first = helpers._load_config_cached(cfg)
     # An unchanged file isn't re-parsed: the same object comes back.
     assert helpers._load_config_cached(cfg) is first
@@ -44,11 +47,22 @@ def test_load_config_cached_reparses_when_the_file_changes(tmp_path: Path) -> No
     from bajutsu.serve import helpers
 
     cfg = tmp_path / "bajutsu.config.yaml"
-    cfg.write_text("targets:\n  demo: { bundleId: com.example.demo }\n", encoding="utf-8")
+    cfg.write_text(
+        ("targets:\n  demo:\n    platform: ios\n    app: {id: com.example.demo}\n"),
+        encoding="utf-8",
+    )
     assert list(helpers._load_config_cached(cfg).targets) == ["demo"]
     # Rewrite with new content; bump mtime so the freshness key changes deterministically.
     cfg.write_text(
-        "targets:\n  demo: { bundleId: com.example.demo }\n  other: { bundleId: com.example.other }\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app: {id: com.example.demo}\n"
+            "  other:\n"
+            "    platform: ios\n"
+            "    app: {id: com.example.other}\n"
+        ),
         encoding="utf-8",
     )
     future = cfg.stat().st_mtime_ns + 1_000_000_000
@@ -85,7 +99,10 @@ def test_load_config_cached_keys_on_the_resolved_path(tmp_path: Path) -> None:
     from bajutsu.serve import helpers
 
     cfg = tmp_path / "bajutsu.config.yaml"
-    cfg.write_text("targets:\n  demo: { bundleId: com.example.demo }\n", encoding="utf-8")
+    cfg.write_text(
+        ("targets:\n  demo:\n    platform: ios\n    app: {id: com.example.demo}\n"),
+        encoding="utf-8",
+    )
     # A relative path and the absolute path to the same file share one cache entry (same object).
     cwd = Path.cwd()
     try:
@@ -100,10 +117,21 @@ def test_list_targets_reflects_an_edited_config(tmp_path: Path) -> None:
     import os
 
     cfg = tmp_path / "bajutsu.config.yaml"
-    cfg.write_text("targets:\n  demo: { bundleId: com.example.demo }\n", encoding="utf-8")
+    cfg.write_text(
+        ("targets:\n  demo:\n    platform: ios\n    app: {id: com.example.demo}\n"),
+        encoding="utf-8",
+    )
     assert srv.list_targets(cfg) == ["demo"]
     cfg.write_text(
-        "targets:\n  demo: { bundleId: com.example.demo }\n  other: { bundleId: com.example.other }\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app: {id: com.example.demo}\n"
+            "  other:\n"
+            "    platform: ios\n"
+            "    app: {id: com.example.other}\n"
+        ),
         encoding="utf-8",
     )
     future = cfg.stat().st_mtime_ns + 1_000_000_000
@@ -640,7 +668,7 @@ def test_list_simulators_folds_a_wedged_host(caplog: pytest.LogCaptureFixture) -
     [
         ("xcuitest", True),
         ("ios", True),
-        ("ios,fake", True),  # comma list of known tokens
+        ("ios,fake", False),  # a list: `--backend` is a check, not a fallback (BE-0452)
         ("xcuitest,bogus", False),  # one unknown token -> reject
         ("rm -rf /", False),  # free text -> reject
     ],

@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+from bajutsu.common.backends import backend_override
 from bajutsu.common.config import Effective, resolve
 from bajutsu.common.config.schema import Config
 from bajutsu.common.drivers import base as driver_base
@@ -33,6 +34,24 @@ def _device_args(body: dict[str, Any]) -> tuple[str, str, tuple[Any, int] | None
     if udid and not valid_udid(udid):
         return backend, udid, ({"error": "invalid udid"}, 400)
     return backend, udid, None
+
+
+def _session_device(
+    body: dict[str, Any], platform: str
+) -> tuple[list[str], str, tuple[Any, int] | None]:
+    """The backends and udid an in-process session (capture, enrich) drives: ``(backends, udid, error)``.
+
+    The body's `backend` is checked like `--backend` (BE-0452): the target's platform, its actuator,
+    or `fake`; omitted, the target's own platform drives it. An omitted `udid` is the booted device.
+    """
+    backend, udid, err = _device_args(body)
+    if err:
+        return [], udid, err
+    try:
+        backends = backend_override(backend, [platform])
+    except ValueError as e:
+        return [], udid, ({"error": str(e)}, 400)
+    return backends, udid or "booted", None
 
 
 def _resolve_org_or_forbid(

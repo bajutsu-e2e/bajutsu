@@ -65,9 +65,15 @@ def _project(tmp_path: Path) -> Path:
     """The shared project, with the `demo` target declaring a scenario secret."""
     scn_dir, cfg, _runs = project(tmp_path)
     cfg.write_text(
-        "defaults: { backend: [ios] }\ntargets:\n"
-        f"  demo: {{ bundleId: com.example.demo, scenarios: {scn_dir}, "
-        "secrets: [LOGIN_PASSWORD] }\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            f"    app: {{id: com.example.demo}}\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+            "    run:\n"
+            "      secrets: [LOGIN_PASSWORD]\n"
+        ),
         encoding="utf-8",
     )
     return scn_dir
@@ -353,8 +359,13 @@ def test_a_worker_downloads_the_baseline_an_approve_wrote(tmp_path: Path) -> Non
     # start those URLs read the `--baselines` directory an approve writes, so both name one file.
     scn_dir, cfg, _runs = project(tmp_path)
     cfg.write_text(
-        "defaults: { backend: [ios] }\ntargets:\n"
-        f"  demo: {{ bundleId: com.example.demo, appPath: build/Demo.app, scenarios: {scn_dir} }}\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            f"    app: {{id: com.example.demo, path: build/Demo.app}}\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     state = _local(tmp_path)
@@ -408,7 +419,15 @@ def test_a_config_org_named_like_a_store_folder_is_never_seeded(
     from bajutsu.serve.operations.config import seed_orgs_from_bound_config
     from bajutsu.serve.orgs import load_serve_config
 
-    text = "targets:\n  demo: { bundleId: com.example.demo }\norgs:\n  baselines: { members: [alice] }\n"
+    text = (
+        "targets:\n"
+        "  demo:\n"
+        "    platform: ios\n"
+        "    app: {id: com.example.demo}\n"
+        "orgs:\n"
+        "  baselines:\n"
+        "    members: [alice]\n"
+    )
     with pytest.raises(ValueError, match="'baselines' is reserved"):
         load_serve_config(text)
     _project(tmp_path)

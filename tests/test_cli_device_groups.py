@@ -9,6 +9,7 @@ retired. Every refusal exits 2 before any device is acquired.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -24,19 +25,19 @@ def _effs(tmp_path: Path, extra: str = "") -> dict[str, Effective]:
     build.mkdir()
     cfg = load_config(
         f"""
-defaults: {{ backend: [fake] }}
 targets:
-  old: {{ bundleId: com.example.showcase }}
-  new: {{ bundleId: com.example.showcase, appPath: {build} }}
-  auth: {{ bundleId: com.example.auth }}
-  ja: {{ bundleId: com.example.ja, locale: ja_JP }}
-  phone: {{ bundleId: com.example.phone, device: "iPhone 16" }}
-  droid: {{ package: com.example.droid }}
-  site: {{ baseUrl: "http://localhost:1/" }}
-  nobuild: {{ bundleId: com.example.showcase }}
+  old: {{ platform: ios, app: {{ id: com.example.showcase }} }}
+  new: {{ platform: ios, app: {{ id: com.example.showcase, path: {build} }} }}
+  auth: {{ platform: ios, app: {{ id: com.example.auth }} }}
+  ja: {{ platform: ios, app: {{ id: com.example.ja }}, runsOn: {{ locale: ja_JP }} }}
+  phone: {{ platform: ios, app: {{ id: com.example.phone }}, runsOn: {{ kind: device }} }}
+  droid: {{ platform: android, app: {{ id: com.example.droid }} }}
+  site: {{ platform: web, app: {{ url: "http://localhost:1/" }} }}
+  nobuild: {{ platform: ios, app: {{ id: com.example.showcase }} }}
 {extra}"""
     )
-    return {name: resolve(cfg, name) for name in cfg.targets}
+    # Every target runs on the fake driver, as `--backend fake` would have it, keeping its own shape.
+    return {name: replace(resolve(cfg, name), backend=["fake"]) for name in cfg.targets}
 
 
 def _scenario(**fields: object) -> Scenario:
@@ -139,8 +140,10 @@ def test_an_install_whose_build_is_missing_is_refused(
     missing = tmp_path / "Gone.app"
     effs = _effs(tmp_path)
     cfg = load_config(
-        f"defaults: {{ backend: [fake] }}\ntargets:\n  gone: {{ bundleId: com.example.showcase, "
-        f"appPath: {missing} }}\n"
+        "targets:\n"
+        "  gone:\n"
+        "    platform: ios\n"
+        f"    app: {{id: com.example.showcase, path: {missing}}}\n"
     )
     effs["gone"] = resolve(cfg, "gone")
     s = _scenario(
@@ -189,8 +192,10 @@ def test_a_git_sourced_install_builds_on_demand_and_reports_a_failed_build(
     missing = tmp_path / "Built.app"
     effs = _effs(tmp_path)
     cfg = load_config(
-        f"defaults: {{ backend: [fake] }}\ntargets:\n  built: {{ bundleId: com.example.showcase, "
-        f"appPath: {missing}, build: 'false' }}\n"
+        "targets:\n"
+        "  built:\n"
+        "    platform: ios\n"
+        f"    app: {{id: com.example.showcase, path: {missing}, build: 'false'}}\n"
     )
     effs["built"] = resolve(cfg, "built")
     s = _scenario(
@@ -269,8 +274,10 @@ def test_a_nested_install_still_needs_its_build(
 ) -> None:
     effs = _effs(tmp_path)
     cfg = load_config(
-        f"defaults: {{ backend: [fake] }}\ntargets:\n  gone: {{ bundleId: com.example.showcase, "
-        f"appPath: {tmp_path / 'Gone.app'} }}\n"
+        "targets:\n"
+        "  gone:\n"
+        "    platform: ios\n"
+        f"    app: {{id: com.example.showcase, path: {tmp_path / 'Gone.app'}}}\n"
     )
     effs["gone"] = resolve(cfg, "gone")
     s = _scenario(targets=[["old", "gone"]], primaryTarget="old", **placement)
@@ -284,10 +291,12 @@ def test_a_starting_members_missing_build_is_refused(
 ) -> None:
     effs = _effs(tmp_path)
     cfg = load_config(
-        f"defaults: {{ backend: [fake] }}\ntargets:\n  auth2: {{ bundleId: com.example.auth2, "
-        f"appPath: {tmp_path / 'Auth2.app'} }}\n"
+        "targets:\n"
+        "  auth2:\n"
+        "    platform: ios\n"
+        f"    app: {{id: com.example.auth2, path: {tmp_path / 'Auth2.app'}}}\n"
     )
-    effs["auth2"] = resolve(cfg, "auth2")
+    effs["auth2"] = replace(resolve(cfg, "auth2"), backend=["fake"])
     s = _scenario(targets=[["old", "auth2"]], primaryTarget="old", installs=["auth2"])
     with pytest.raises(typer.Exit):
         _reject_bad_device_groups([s], effs, checkout_root=None)
@@ -298,10 +307,8 @@ def test_members_on_different_backends_cannot_share_a_device(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     effs = _effs(tmp_path)
-    cfg = load_config(
-        "defaults: { backend: [xcuitest] }\ntargets:\n  other: { bundleId: com.example.other }\n"
-    )
-    effs["other"] = resolve(cfg, "other")
+    cfg = load_config("targets:\n  other:\n    platform: ios\n    app: {id: com.example.other}\n")
+    effs["other"] = resolve(cfg, "other")  # its own `[ios]`, not the others' `[fake]`
     s = _scenario(targets=[["auth", "other"]], primaryTarget="auth", installs=["other"])
     with pytest.raises(typer.Exit):
         _reject_bad_device_groups([s], effs, checkout_root=None)
@@ -309,8 +316,6 @@ def test_members_on_different_backends_cannot_share_a_device(
 
 
 def test_an_install_with_no_identifier_retires_nothing(tmp_path: Path) -> None:
-    from dataclasses import replace
-
     from bajutsu.common.config import IosConfig
 
     effs = _effs(tmp_path)

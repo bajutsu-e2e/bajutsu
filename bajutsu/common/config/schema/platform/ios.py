@@ -66,8 +66,8 @@ class IosRunner(_Model):
 
     test_runner: str | None = Field(default=None, alias="testRunner")
     build: str | None = None
-    # The host address(es) a real device reaches the network collector on, comma-separated; today's
-    # `xcuitest.hostAddress`, which moves with the rest of the runner block.
+    # The host address(es) a real device reaches the network collector on, comma-separated; the
+    # former `xcuitest.hostAddress`, which moved with the rest of the runner block (BE-0452).
     host_address: str | None = Field(default=None, alias="hostAddress")
 
 

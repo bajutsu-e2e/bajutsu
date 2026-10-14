@@ -12,7 +12,7 @@ from machine assertions, never an LLM.
 
 | Path | Purpose |
 |---|---|
-| `dogfood.config.yaml` | `targets.webui` with `baseUrl` (the running serve) + `backend: [web]` (no `bundleId`) |
+| `dogfood.config.yaml` | `targets.webui` with `platform: web` + `app.url` (the running serve) + `services.server` (no `app.id`) |
 | `scenarios/shell-navigation.yaml` | the top tabs (Record / Replay / Crawl / Author / Stats / Coverage) swap the visible view |
 | `scenarios/theme.yaml` | the theme toggle follows the OS preference and flips on click |
 | `scenarios/crawl-form.yaml` | the Crawl form holds the bound target and the default exploration budget |

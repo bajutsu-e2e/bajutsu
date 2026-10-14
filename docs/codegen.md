@@ -23,9 +23,9 @@ bajutsu codegen <scenario.yaml> --target <name> [--emit xcuitest | playwright | 
 
 `--emit` is `xcuitest` (default), `playwright`, or `uiautomator`. `-o -` (default) writes to stdout;
 a file path writes to the file. `--emit playwright` requires the app to be a web target
-(`targets.<name>.baseUrl` set) and `--emit uiautomator` an Android target
-(`targets.<name>.package` set); without the matching target the command exits with code 2. Config's
-`launchEnv` is carried into the generated test ([cli](cli.md#codegen)) — `app.launchEnvironment` for
+(`platform: web` with `targets.<name>.app.url` set) and `--emit uiautomator` an Android target
+(`platform: android` with `targets.<name>.app.id` set); without the matching target the command
+exits with code 2. Config's `app.launch.env` is carried into the generated test ([cli](cli.md#codegen)) — `app.launchEnvironment` for
 XCUITest, seeded `localStorage` for Playwright, and forwarded as intent extras for UI Automator.
 
 ## XCUITest output shape
@@ -61,7 +61,7 @@ final class ComponentsUITests: XCTestCase {
 - The helpers `el(id)` / `byLabel(label)` / `matchingId(glob)` bridge the three single-field
   selector forms (id / label / idMatches) to an XCUIElement.
 - Each method sets `launchEnvironment` then `app.launch()` at the top. The env is the merge of
-  **config's `launchEnv` < the scenario's `preconditions.launchEnv`** (the test side wins).
+  **config's `app.launch.env` < the scenario's `preconditions.launchEnv`** (the test side wins).
 
 ### Selector mapping (XCUITest)
 
@@ -181,8 +181,8 @@ test.describe('Components', () => {
 });
 ```
 
-- Each test navigates to `BASE_URL` (the app's `baseUrl`, the web `launch` equivalent of
-  `page.goto`). Config's `launchEnv` < the scenario's `preconditions.launchEnv` is seeded via
+- Each test navigates to `BASE_URL` (the app's `app.url`, the web `launch` equivalent of
+  `page.goto`). Config's `app.launch.env` < the scenario's `preconditions.launchEnv` is seeded via
   `page.addInitScript(() => localStorage.setItem(...))`; an app expecting another channel (query
   params / cookies) gets a `// TODO`.
 - All *waiting* uses Playwright's native auto-wait. The only fixed timing emitted is `longPress`'s
@@ -455,7 +455,7 @@ class ComponentsUITest {
   package and the attempt budget instead. `findObject` alone would instead throw a bare
   `NullPointerException` that names neither. A read-only assertion still calls `device.findObject` /
   `device.findObjects` directly, unwaited. That matches the driver's own assertions.
-- Each method builds an `extras` map (config's `launchEnv` < the scenario's
+- Each method builds an `extras` map (config's `app.launch.env` < the scenario's
   `preconditions.launchEnv`) and calls `launch(extras)`, which forwards the env as intent extras —
   the reverse of the adb backend's `am start --es`.
 - `launch` waits for the app's first window, then for that window to settle

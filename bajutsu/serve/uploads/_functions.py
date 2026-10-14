@@ -10,7 +10,7 @@ import zlib
 from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 
-from bajutsu.common.config import load_config, resolve
+from bajutsu.common.config import load_config_file, resolve
 
 from .bundle_error import BundleError
 
@@ -298,7 +298,7 @@ def validate_bundle_config(root: Path) -> None:
     guard the Git source applies to a fetched checkout (BE-0051): a config pointing
     appPath/scenarios/baselines at an absolute or `..` path outside the tree is rejected here, so
     serve's resolution only ever sees in-bundle paths. Raises `BundleError` (no config file) or a
-    `load_config`/`rebased` failure (`OSError` / `ValueError` / `yaml.YAMLError`) — both are
+    `load_config_file`/`rebased` failure (`OSError` / `ValueError` / `yaml.YAMLError`) — both are
     `ValueError` subclasses, so one `except ValueError` at the call site covers either.
 
     Shared by `bind_upload_config`'s legacy single-zip bind and `materialize_composition`'s
@@ -306,6 +306,8 @@ def validate_bundle_config(root: Path) -> None:
     config_path = find_bundle_config(root)
     if config_path is None:
         raise BundleError("has no bajutsu.config.yaml")
-    cfg = load_config(config_path.read_text(encoding="utf-8"))
+    # No suite root: the spawned run reads this config as a local file, so a hook component resolves
+    # inside the config's own directory here too, and serve never accepts one the run refuses.
+    cfg = load_config_file(config_path)
     for name in cfg.targets:
         resolve(cfg, name).rebased(config_path.parent, confine=True)

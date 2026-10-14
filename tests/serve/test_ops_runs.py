@@ -385,10 +385,20 @@ def _target_state(tmp_path: Path) -> ServeState:
         )
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "defaults: { backend: [fake] }\ntargets:\n"
-        f"  demo: {{ bundleId: com.example.demo, scenarios: {tmp_path / 'demo'} }}\n"
-        f"  other: {{ bundleId: com.example.other, scenarios: {tmp_path / 'other'} }}\n"
-        "  bare: { bundleId: com.example.bare }\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            f"    app: {{id: com.example.demo}}\n"
+            f"    paths: {{scenarios: {tmp_path / 'demo'}}}\n"
+            "  other:\n"
+            "    platform: ios\n"
+            f"    app: {{id: com.example.other}}\n"
+            f"    paths: {{scenarios: {tmp_path / 'other'}}}\n"
+            "  bare:\n"
+            "    platform: ios\n"
+            f"    app: {{id: com.example.bare}}\n"
+        ),
         encoding="utf-8",
     )
     return ServeState(runs_dir=tmp_path / "runs", config=cfg, cwd=tmp_path)

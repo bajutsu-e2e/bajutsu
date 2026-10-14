@@ -172,8 +172,8 @@ Stats、Flaky、Usage、Coverage）は AI の設定なしで動きます。
   デフォルトブランチ）。部分木ごと取得するので、config のシナリオやビルド済みアプリも一緒に来ます。
 - **Upload a bundle (.zip)。** **Choose a .zip…** を押す（またはボックスにファイルをドロップする）と、
   ホストのファイルシステムに触れないまま、自分のスイートをホスト型のサーバへ持ち込めます。zip の中身は
-  動くローカル checkout そのもの、つまり `bajutsu.config.yaml`、その `scenarios` ツリー、config の
-  `appPath` が指すビルド済みアプリバイナリです。秘匿情報は運びません。`${secrets.*}` はサーバの環境から
+  動くローカル checkout そのもの、つまり `bajutsu.config.yaml`、その `paths.scenarios` ツリー、config の
+  `app.path` が指すビルド済みアプリバイナリです。秘匿情報は運びません。`${secrets.*}` はサーバの環境から
   解決されます。
 - **or browse the server。** サーバの `--root` 配下に限定されたファイルブラウザで、ローカルの
   `.yml`/`.yaml` の config を選びます。リモートの利用者はホストのファイルシステムと関係を持たないため、
@@ -277,7 +277,7 @@ provider だけで、Anthropic API と `ant` の実装にはこの仕組みが�
 （[BE-0188](../../roadmaps/BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language-ja.md)）は
 AI が生成する文章、すなわち `record` の `from:` 由来と `crawl` が逐次出力する推論テキストを、どの言語で書くかを固定します。
 既定の *auto* は現状の挙動を保ちます（`record` はゴールに追従し、`crawl` は英語のままです）。決定論的な
-`run` の判定には触れず、対象のデバイス `locale` とは別物です。
+`run` の判定には触れず、対象のデバイスのロケール（`runsOn.locale`）とは別物です。
 
 **Claude API key**（Anthropic API provider を選ぶと現れます）は **write-once** です。キーを入力して **Save** すると、以後はマスクした表示だけになり、
 内容が再表示されることはありません。変更するには新しいキーを設定します。**Clear** で削除します。これは
@@ -289,14 +289,14 @@ Anthropic API プロバイダで使われます（Bedrock は代わりに AWS �
 
 **Scenario secrets**（[BE-0274](../../roadmaps/BE-0274-serve-scenario-secrets/BE-0274-serve-scenario-secrets-ja.md)）
 は、バインド中の config が宣言するシークレット、つまりシナリオが `${secrets.X}` として参照する
-`secrets:` の環境変数名を一覧します（[シークレット](configuration.md#シークレットsecrets)、
+`run.secrets` の環境変数名を一覧します（[シークレット](configuration.md#シークレットrunsecrets)、
 [BE-0032](../../roadmaps/BE-0032-secret-variables/BE-0032-secret-variables-ja.md)）。宣言された名前ごと
 に **write-once** のフィールドを並べ、API キーと同じくマスク表示だけで再表示はされません。これにより、
 `serve` を起動する前に環境変数を export したり `.env` を手で編集したりしなくても、シナリオが必要とする
 認証情報を Web UI から用意できます。ここで設定した値はその宣言済みの名前の環境変数に入り、spawn される
 **Replay** / **Record** / **Crawl** が引き継ぐので、run のなかで `${secrets.X}` が解決します。バインド中の
 config がシークレットを宣言していないときも、このセクション自体は表示されたままで、機能を説明する
-案内文が代わりに現れます。`secrets:` の内容が異なる config に切り替えると、一覧は更新されます。設定
+案内文が代わりに現れます。`run.secrets` の内容が異なる config に切り替えると、一覧は更新されます。設定
 できるのは config 自身が宣言している名前だけで、任意の環境変数を設定することはできません。ロールで
 保護されたデプロイでは、設定は **admin** の操作です。
 
@@ -308,7 +308,7 @@ backend、runs と baselines のディレクトリ、ゴミ箱の保持期間、
 ランナー
 （[BE-0292](../../roadmaps/BE-0292-xcuitest-bundled-runner/BE-0292-xcuitest-bundled-runner-ja.md)）
 を含むかどうか、含む場合はビルド対象の Xcode と Simulator SDK のバージョン、そしてバインド中の config が
-明示的な `xcuitest.testRunner` でランナーを上書きしているかを示します。iOS の Simulator の run が
+明示的な `driver.runner.testRunner` でランナーを上書きしているかを示します。iOS の Simulator の run が
 始まるかどうかは、この行だけで決まります。ホスト型のデプロイではホストのパス（config のパス、runs と
 baselines のディレクトリ）を伏せますが、それ以外の行はどちらでも表示されます。このタブは入力を受け付けず、
 起動コマンドと環境からすでに解決された値を報告するだけで、何も書き戻しません。
@@ -583,7 +583,7 @@ ledger 上の決定的な合計で、モデルは使いません。サブスク�
 ## Coverage — E2E カバレッジマップ
 
 **何をする画面か。** ターゲットの E2E カバレッジマップを描きます。`coverage` コマンドをブラウザにした
-ものです。シナリオスイートが参照する安定 id を、アプリが宣言した `idNamespaces` と突き合わせ、名前空間
+ものです。シナリオスイートが参照する安定 id を、アプリが宣言した `app.idNamespaces` と突き合わせ、名前空間
 ごとのカバレッジ、不足の一覧（どのシナリオも触れていない宣言済み名前空間）、名前空間から外れた id を
 示します。run が実行時に束縛するセレクタ、つまり `totp` や `email` ステップの出力を受け取る
 `${vars.*}` プレースホルダは、どの要素も指していません。マップはプレースホルダの文字列を id として

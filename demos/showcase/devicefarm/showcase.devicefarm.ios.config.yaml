@@ -3,17 +3,13 @@
 # It mirrors the `showcase-swiftui` target from ../showcase.config.yaml with the deliberate,
 # per-environment differences a real device on Device Farm needs — all of which live in config, not
 # in the tool (the app-agnostic principle):
-#   * **`xcuitest.deviceType: device`.** This is the one key that generalizes the XCUITest backend's
+#   * **`runsOn.kind: device`.** This is the one key that generalizes the XCUITest backend's
 #     `xcodebuild -destination` from a named Simulator to `platform=iOS`, so the same driving layer
 #     runs against the reserved physical device. It also skips the Simulator bring-up (erase, local
 #     install, up-front permission grants) that only `simctl` can perform.
-#   * **No `appPath` / `build`.** Device Farm installs the uploaded `.ipa` on the reserved device
+#   * **No `app.path` / `app.build`.** Device Farm installs the uploaded `.ipa` on the reserved device
 #     itself, so the run must not try to assemble or install a local `.app`; it drives the
 #     already-installed build (a None `app_path` is the runner's "run against the installed app" path).
-#   * **`backend: [xcuitest]`, not the local target's `[ios]` ladder.** The retired idb backend
-#     (BE-0290) had no real-device reach, so the capability-aware ladder could not escalate from it here;
-#     XCUITest is the only backend a real device offers, so the target pins it directly instead of
-#     letting the ladder choose.
 #
 # Submit with the iOS platform selected, which picks the XCUITest backend, the
 # `--udid "$DEVICEFARM_DEVICE_UDID"` argument, and the iOS app upload type:
@@ -38,24 +34,23 @@
 #     push, clearKeychain, background/foreground, status-bar overrides, or a permission grant) is
 #     skipped by the preflight (BE-0082) with a clear reason, before any device work. Query, elements,
 #     screenshots, taps, and two-finger gestures — driven by the XCTest runner itself — are unaffected.
-defaults:
-  backend: [xcuitest]
-
 targets:
   showcase-swiftui:
-    bundleId: com.bajutsu.showcase.ios.swiftui
-    deeplinkScheme: showcaseswiftui
-    launchEnv: { SHOWCASE_UITEST: "1" }
-    idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
-    readyWhen: { id: [stable.row.1, stable_row_1] }
-    scenarios: scenarios
-    backend: [xcuitest]
-    xcuitest:
-      deviceType: device
-      # The XCUITest runner channel still drives the batch route, so it needs a device-built, signed
-      # `.xctestrun` — Device Farm re-signs the app `.ipa` but not the test runner. Build it for a real
-      # device with `make -C demos/showcase runner-build-device` (the device twin of `runner-build`,
-      # signed from your signing file — see docs/ios-device-cloud.md), then package its whole Products dir — the `.xctestrun` references its
-      # test bundles by `__TESTROOT__` beside them — and point `testRunner` at its path inside the
-      # uploaded package. The app `.ipa` comes from `make -C demos/showcase swiftui-ipa-device`.
-      testRunner: BajutsuRunner.xctestrun
+    platform: ios
+    app:
+      id: com.bajutsu.showcase.ios.swiftui
+      launch: { env: { SHOWCASE_UITEST: "1" } }
+      idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
+      startWhen: { exists: { id: [stable.row.1, stable_row_1] } }
+    runsOn: { kind: device }
+    driver:
+      runner:
+        # The XCUITest runner channel still drives the batch route, so it needs a device-built, signed
+        # `.xctestrun` — Device Farm re-signs the app `.ipa` but not the test runner. Build it for a real
+        # device with `make -C demos/showcase runner-build-device` (the device twin of `runner-build`,
+        # signed from your signing file — see docs/ios-device-cloud.md), then package its whole
+        # Products dir — the `.xctestrun` references its test bundles by `__TESTROOT__` beside them —
+        # and point `testRunner` at its path inside the uploaded package. The app `.ipa` comes from `make -C demos/showcase swiftui-ipa-device`.
+        testRunner: BajutsuRunner.xctestrun
+    paths:
+      scenarios: scenarios

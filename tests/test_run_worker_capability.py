@@ -17,24 +17,26 @@ from run_cli import invoke
 from typer.testing import CliRunner
 
 from bajutsu.cli import app
-from bajutsu.cli._shared import LoadedConfig, _worker_backends
+from bajutsu.cli._shared import LoadedConfig, _load_device_worker_or_exit, _worker_backends
 from bajutsu.common.capability.worker_capability import WorkerCapability
 from bajutsu.common.config import load_config, resolve
 from bajutsu.common.scenario import Scenario
 from bajutsu.run.cli import (
     _acquire_targets,
-    _load_local_worker_or_exit,
     _worker_capability_failures,
 )
 
 runner = CliRunner()
 
-_CONFIG = """
-defaults: { backend: [fake] }
-targets:
-  app: { bundleId: com.example.app }
-  site: { baseUrl: 'http://localhost:1/' }
-"""
+_CONFIG = (
+    "targets:\n"
+    "  app:\n"
+    "    platform: ios\n"
+    "    app: {id: com.example.app}\n"
+    "  site:\n"
+    "    platform: web\n"
+    "    app: {url: 'http://localhost:1/'}\n"
+)
 
 
 def _worker(**fields: object) -> WorkerCapability:
@@ -51,6 +53,12 @@ def _sc(name: str, **body: object) -> Scenario:
 def on_linux(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("bajutsu.cli._shared.current_host_os", lambda: "linux")
     monkeypatch.setattr("bajutsu.run.cli.current_host_os", lambda: "linux")
+
+
+@pytest.fixture
+def on_macos(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("bajutsu.cli._shared.current_host_os", lambda: "darwin")
+    monkeypatch.setattr("bajutsu.run.cli.current_host_os", lambda: "darwin")
 
 
 # --- the shared backend filter ------------------------------------------------------------------
@@ -93,9 +101,25 @@ def test_run_refuses_a_device_cloud_worker_file(
     path = tmp_path / "df.worker.yaml"
     path.write_text("version: 1\nenvironment: devicefarm\ndrivers: [adb]\n", encoding="utf-8")
     with pytest.raises(typer.Exit) as exc:
-        _load_local_worker_or_exit(path)
+        _load_device_worker_or_exit(path)
     assert exc.value.exit_code == 2
     assert "environment 'devicefarm' is a device cloud" in capsys.readouterr().out
+
+
+def test_run_accepts_an_appium_worker_file(tmp_path: Path) -> None:
+    # An `appium` grid drives one platform's targets through its endpoint while the run itself stays
+    # on this host (BE-0452), so a device-driving command takes the file.
+    path = tmp_path / "grid.worker.yaml"
+    path.write_text(
+        "version: 1\nenvironment: appium\n"
+        "appium: { endpoint: 'https://grid.example/wd/hub' }\ndrivers: [xcuitest]\n",
+        encoding="utf-8",
+    )
+    worker = _load_device_worker_or_exit(path)
+    assert worker.environment == "appium"
+    provider = worker.device_provider_for("ios")
+    assert provider is not None and provider.endpoint == "https://grid.example/wd/hub"
+    assert worker.device_provider_for("web") is None
 
 
 def test_run_refuses_an_invalid_worker_file(tmp_path: Path) -> None:
@@ -119,6 +143,7 @@ def _loaded() -> LoadedConfig:
     )
 
 
+@pytest.mark.usefixtures("on_macos")
 def test_only_the_scenario_over_the_target_limit_fails() -> None:
     scenarios = [_sc("single"), _sc("cross", targets=["app", "site"]), _sc("other")]
     eff = resolve(load_config(_CONFIG), "app")
@@ -133,7 +158,7 @@ def test_only_the_scenario_over_the_target_limit_fails() -> None:
 
 @pytest.mark.usefixtures("on_linux")
 def test_each_scenario_is_judged_on_its_own_targets() -> None:
-    config = _CONFIG.replace("app: { bundleId", "app: { backend: [ios], bundleId")
+    config = _CONFIG
     loaded = LoadedConfig(
         config=load_config(config), path=Path("bajutsu.config.yaml"), source=None, root=None
     )
@@ -180,6 +205,9 @@ def _write(tmp_path: Path, worker: str) -> list[str]:
         str(two),
         "--worker-config",
         str(wfile),
+        # Both targets run on the fake driver, whatever their own platform (BE-0452).
+        "--backend",
+        "fake",
         "--config",
         str(cfg),
         "--runs-dir",
@@ -258,7 +286,8 @@ def test_a_primary_only_failed_scenarios_use_is_not_acquired(
     # run defaults would reach execution with erase off.
     (tmp_path / "bajutsu.config.yaml").write_text(
         _CONFIG.replace(
-            "{ bundleId: com.example.app }", "{ bundleId: com.example.app, erase: true }"
+            "    app: {id: com.example.app}\n",
+            "    app: {id: com.example.app}\n    run: {erase: true}\n",
         ),
         encoding="utf-8",
     )
@@ -275,9 +304,15 @@ def test_a_primary_only_failed_scenarios_use_is_not_acquired(
 def test_the_browser_matrix_still_refuses_a_failed_multi_target_scenario(tmp_path: Path) -> None:
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "targets:\n"
-        "  app: { bundleId: com.example.app, backend: [fake] }\n"
-        "  site: { baseUrl: 'http://localhost:1/', backend: [web] }\n",
+        (
+            "targets:\n"
+            "  app:\n"
+            "    platform: fake\n"
+            "    app: {id: com.example.app}\n"
+            "  site:\n"
+            "    platform: web\n"
+            "    app: {url: 'http://localhost:1/'}\n"
+        ),
         encoding="utf-8",
     )
     legacy = tmp_path / "legacy.yaml"

@@ -165,16 +165,21 @@ def test_start_run_carries_a_valid_evidence_prefix_end_to_end(tmp_path: Path) ->
 
 
 def test_start_run_derives_the_jobs_required_capabilities(tmp_path: Path) -> None:
-    # BE-0166: the dispatched job carries the target's required capabilities (its platform axis plus
-    # any `requires:`), so the DB router leases it only to a capable worker. `demo` is an iOS
-    # target and declares `requires: [ios18]`.
+    # BE-0166: the dispatched job carries the target's required capabilities (its platform axis and
+    # its driver's host), so the DB router leases it only to a capable worker. `demo` is an iOS
+    # target; the hand-written `requires` is gone (BE-0452).
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
     (scn_dir / "smoke.yaml").write_text(SCENARIO, encoding="utf-8")
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "defaults: { backend: [ios] }\ntargets:\n"
-        f"  demo: {{ bundleId: com.example.demo, scenarios: {scn_dir}, requires: [ios18] }}\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            f"    app: {{id: com.example.demo}}\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     runs = tmp_path / "runs"
@@ -196,7 +201,42 @@ def test_start_run_derives_the_jobs_required_capabilities(tmp_path: Path) -> Non
     _, code = ops.start_run(state, {"scenario": "smoke.yaml", "target": "demo"})
     assert code == 200
     # xcuitest runs only on macOS, so the job requires the host too (BE-0450).
-    assert dispatched[0].capabilities == ["host:darwin", "ios18", "platform:ios"]
+    assert dispatched[0].capabilities == ["host:darwin", "platform:ios"]
+
+
+def test_start_run_routes_an_appium_environment_to_its_grid(tmp_path: Path) -> None:
+    # BE-0452: a run request naming `environment: appium` requires that environment alone — the
+    # grid owns the device and its host — and any other environment is a 400.
+    scn_dir = tmp_path / "scenarios"
+    scn_dir.mkdir()
+    (scn_dir / "smoke.yaml").write_text(SCENARIO, encoding="utf-8")
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        f"targets:\n  demo: {{ platform: ios, app: {{ id: com.x }}, paths: {{ scenarios: {scn_dir} }} }}\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "runs").mkdir()
+    dispatched: list[Any] = []
+
+    class _CapturingExecutor:
+        def dispatch(self, state: Any, job: Any) -> None:
+            dispatched.append(job)
+
+    state = srv.ServeState(
+        scenarios_dir=scn_dir,
+        config=cfg,
+        runs_dir=tmp_path / "runs",
+        cwd=tmp_path,
+        executor=_CapturingExecutor(),
+    )
+    body = {"scenario": "smoke.yaml", "target": "demo"}
+    _, code = ops.start_run(state, {**body, "environment": "appium"})
+    assert code == 200
+    assert dispatched[0].capabilities == ["environment:appium"]
+    for bad in ("devicefarm", "local"):
+        payload, code = ops.start_run(state, {**body, "environment": bad})
+        assert code == 400
+        assert "environment must be 'appium'" in payload["error"]
 
 
 def test_execute_job_spec_records_the_run_into_an_injected_repository(
@@ -401,7 +441,7 @@ def test_execute_job_spec_materializes_files_into_the_workspace(tmp_path: Path) 
         "build": None,
         "materials": {
             "scenarios/smoke.yaml": "- name: a\n  steps: []\n",
-            "bajutsu.config.yaml": "targets: {demo: {bundleId: x}}\n",
+            "bajutsu.config.yaml": ("targets:\n  demo:\n    platform: ios\n    app: {id: x}\n"),
             "../escape.yaml": "nope",  # must not be written outside the workspace
             "": "root",  # resolves to the workspace root — must be ignored, not write_text a dir
             "scenarios/..": "root2",  # also the workspace root via traversal — ignored

@@ -7,6 +7,7 @@ own tour/features scenarios so they stay loadable as the schema evolves; needs n
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 from pathlib import Path
 
 from conftest import json_list
@@ -68,7 +69,6 @@ def test_showcase_config_resolves() -> None:
     ios = eff.platform_config
     assert isinstance(ios, IosConfig)
     assert ios.bundle_id == "com.bajutsu.showcase.ios.swiftui"
-    assert ios.deeplink_scheme == "showcaseswiftui"
     # BE-0447: plus `saved`, the SHOWCASE_SAVED_NOTE screen (SPEC §5.6) the menu scenarios never visit.
     assert set(eff.id_namespaces) == NAMESPACES | {"saved"}
 
@@ -78,7 +78,7 @@ def test_showcase_config_resolves() -> None:
     # candidate list mirrors the scenario selector (BE-0221): dotted iOS form first, underscore form
     # second. `saved.build` is the saved-note screen's launch element, which device_group_update.yaml's
     # `foreground` waits on after installing this build (BE-0447).
-    assert eff.ready_when == {"id": ["stable.row.1", "stable_row_1", "saved.build"]}
+    assert eff.start_when == {"id": ["stable.row.1", "stable_row_1", "saved.build"]}
 
     # Guard the platform-scoped id rename (com.bajutsu.showcase.<platform>.<toolkit>) on the
     # other two toolkits, not just showcase-swiftui above.
@@ -141,12 +141,13 @@ def test_showcase_android_targets_have_anr_interrupt() -> None:
 
 
 def test_showcase_live_config_routes_to_the_live_transport() -> None:
-    # The BE-0238 live-route example config resolves, and its `appium` provider surfaces the reserved
-    # device's endpoint as the run's udid spec — the same WebDriver-URL signal `environment_for` routes
-    # on — so the how-to's `bajutsu run … --config …/showcase.live…` invocation stays valid as the
-    # schema evolves. The endpoint is a placeholder (no grid on the gate), so this only checks
-    # resolution and the run-time capability narrowing, never a live run.
+    # The BE-0238 live-route example resolves, and the `appium` environment of the worker.yaml beside
+    # it (BE-0452) surfaces the reserved device's endpoint as the run's udid spec — the same
+    # WebDriver-URL signal `environment_for` routes on — so the how-to's `bajutsu run … --config …
+    # --worker-config …` invocation stays valid as the schema evolves. The endpoint is a placeholder
+    # (no grid on the gate), so this only checks resolution and the capability narrowing.
     from bajutsu.common.backends import capabilities_for, capabilities_for_run
+    from bajutsu.common.capability.worker_capability import load_worker_capability
     from bajutsu.common.drivers import base
     from bajutsu.common.platform_lifecycle.environments.xcuitest_live import is_webdriver_endpoint
     from bajutsu.common.runner.device_provider import acquire_device
@@ -155,6 +156,8 @@ def test_showcase_live_config_routes_to_the_live_transport() -> None:
     eff = resolve(cfg, "showcase-swiftui-live")
     assert isinstance(eff.platform_config, IosConfig)
     assert eff.platform_config.bundle_id == "com.bajutsu.showcase.ios.swiftui"
+    worker = load_worker_capability(LIVE_CONFIG.with_name("worker.yaml"))
+    eff = replace(eff, device_provider=worker.device_provider_for(eff.platform))
 
     # The provider hands the run the endpoint as its udid spec; that URL is the live-route signal.
     udid_spec = acquire_device(eff, "booted").udid_spec

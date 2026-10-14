@@ -15,14 +15,15 @@ from bajutsu.common.scenario import Redact, Scenario, Selector, Step, TypeText
 
 def test_secrets_union_defaults_and_app() -> None:
     cfg = load_config(
-        """
-defaults:
-  secrets: [globalKey]
-targets:
-  demo:
-    bundleId: com.demo
-    secrets: [appToken]
-"""
+        "defaults:\n"
+        "  run:\n"
+        "    secrets: [globalKey]\n"
+        "targets:\n"
+        "  demo:\n"
+        "    platform: ios\n"
+        "    app: {id: com.demo}\n"
+        "    run:\n"
+        "      secrets: [appToken]\n"
     )
     eff = resolve(cfg, "demo")
     assert eff.secrets == ["globalKey", "appToken"]

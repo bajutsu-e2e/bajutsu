@@ -9,6 +9,18 @@ from pydantic import Field, model_validator
 from bajutsu.common.scenario.models._base import _Model
 
 
+class PreconditionsRun(_Model):
+    """`preconditions.run`: the scenario's own run policy (BE-0452).
+
+    Holds `inheritSetup` alone until BE-0452 unit 7 moves the scenario's other run-policy fields here.
+    """
+
+    # False skips the `hooks.setup` of every target the scenario declares (the target it runs
+    # against, when it declares none). The targets' cleanup still runs, since cleanup runs on every
+    # path out of a scenario.
+    inherit_setup: bool = Field(default=True, alias="inheritSetup")
+
+
 class Preconditions(_Model):
     """Per-test environment setup."""
 
@@ -26,7 +38,7 @@ class Preconditions(_Model):
     launch_env: dict[str, str] = Field(default_factory=dict, alias="launchEnv")
     deeplink: str | None = None
     locale: str | None = None
-    setup: str | None = None
+    run: PreconditionsRun = Field(default_factory=PreconditionsRun)
     # Image files to seed into the iOS Simulator's photo library before `selectPhotos` addresses it
     # by ordinal position (`Env.add_media`, one `simctl addmedia` call per path, in order). Paths are
     # scenario-file-relative, resolved the same way `dataFile` is (`contained_ref`). Lives here,

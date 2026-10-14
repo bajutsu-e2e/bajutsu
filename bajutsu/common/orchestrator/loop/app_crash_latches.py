@@ -56,7 +56,7 @@ class AppCrashLatches:
     # The app has not been observed answering since it was last launched. Seeded from the lease's own
     # readiness gate, because a `ready` answer on the bare-count rung cannot tell the app apart from
     # SpringBoard's icons — and that rung is the *ordinary* one for any target declaring no
-    # `readyWhen`. Unlike the flag above it clears, on the first step whose success required the app to
+    # `startWhen`. Unlike the flag above it clears, on the first step whose success required the app to
     # answer: latching it for a whole scenario would disable this check outright for that whole class
     # of targets, not merely protect their first step.
     unconfirmed_launch: bool = False

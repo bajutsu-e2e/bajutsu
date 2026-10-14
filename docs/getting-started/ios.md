@@ -44,7 +44,7 @@ xcrun simctl boot "iPhone 15"                 # or boot one from Xcode > Open De
 ```
 
 The XCUITest backend drives the app through a **prebuilt on-device runner** (the target's
-`xcuitest.testRunner`). The showcase config wires that runner and builds it for you as part of the
+`driver.runner.testRunner`). The showcase config wires that runner and builds it for you as part of the
 one-shot `make` target below (`make runner-build`), so there is nothing extra to install — Xcode
 alone is enough.
 
@@ -65,9 +65,10 @@ uv run bajutsu run --scenario demos/showcase/scenarios/smoke.yaml --target showc
 What the flags mean:
 
 - `--target showcase-swiftui` selects `targets.showcase-swiftui` from [`demos/showcase/showcase.config.yaml`](../../demos/showcase/showcase.config.yaml)
-  (bundle id, launch env, allowed id namespaces). The tool itself is app-agnostic; all per-target
+  (`platform: ios`, bundle id, launch env, allowed id namespaces). The tool itself is app-agnostic; all per-target
   differences live in config ([configuration](../configuration.md)).
-- `--backend ios` picks the iOS actuator (XCUITest; `--backend xcuitest` names it explicitly);
+- `--backend ios` checks the backend. The target's `platform: ios` already picks the iOS actuator
+  (XCUITest; `--backend xcuitest` names it explicitly). A value that disagrees exits 2.
   `--udid booted` targets the currently booted Simulator.
 - `--no-erase` keeps the already-installed app instead of `simctl erase`-ing first.
 

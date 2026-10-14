@@ -178,11 +178,10 @@ class DeviceFarmBatchProvider:
 
                     targets = config_data.setdefault("targets", {})
                     target = targets.setdefault(request.target, {})
-                    # ctx.launch_env wins over pre-existing config values on collision.
-                    target["launchEnv"] = {
-                        **target.get("launchEnv", {}),
-                        **ctx.launch_env,
-                    }
+                    launch = target.setdefault("app", {}).setdefault("launch", {})
+                    # ctx.launch_env wins over pre-existing config values on collision; it lands in
+                    # the target's `app.launch.env` (BE-0452).
+                    launch["env"] = {**launch.get("env", {}), **ctx.launch_env}
                     extra_texts[config_arc] = yaml.dump(config_data, allow_unicode=True)
                     exclude_arcnames.add(config_arc)
 

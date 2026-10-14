@@ -59,13 +59,9 @@ def reverse_index(scenarios: list[Scenario]) -> ReverseIndex:
                 add("endpoint", ep, ref)
                 step_endpoints.add(ep)
 
-        # Scenario-level screens: a `setup` routine and a `deeplink` reach a screen before any step.
-        for kind, value in (
-            ("screen", s.preconditions.setup),
-            ("screen", s.preconditions.deeplink),
-        ):
-            if value:
-                add(kind, value, StepRef(s.name, 0, kind))
+        # Scenario-level screen: a `deeplink` reaches a screen before any step.
+        if s.preconditions.deeplink:
+            add("screen", s.preconditions.deeplink, StepRef(s.name, 0, "screen"))
         # Scenario-level `expect`: ids / endpoints referenced by no step belong to the scenario itself.
         expect_ref = StepRef(s.name, 0, "expect")
         for rid in scenario_matchable_ids(s) - step_ids:

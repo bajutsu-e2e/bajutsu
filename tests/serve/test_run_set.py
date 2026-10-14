@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from _shared import _post, _serve, queue_repository
 
 from bajutsu import serve as srv
@@ -27,11 +28,8 @@ class _RecordingExecutor:
         self.jobs.append(job)
 
 
-def _android_batch_project(
-    tmp_path: Path, *, scenarios: list[str], budget: int | None = None
-) -> tuple[Path, Path]:
-    """A scenarios dir + config for an Android target wired for cloud-batch runs. *budget* sets the
-    target's `cloudBatchBudget` (the device budget K); None omits it (unbounded by config)."""
+def _android_batch_project(tmp_path: Path, *, scenarios: list[str]) -> tuple[Path, Path]:
+    """A scenarios dir + config for an Android target with an app a device cloud can install."""
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
     body = "- name: a\n  steps:\n    - tap: { id: x }\n"
@@ -39,20 +37,22 @@ def _android_batch_project(
         (scn_dir / name).write_text(body, encoding="utf-8")
     apk = tmp_path / "app.apk"
     apk.write_text("APK", encoding="utf-8")
-    budget_line = f"    cloudBatchBudget: {budget}\n" if budget is not None else ""
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "targets:\n"
-        "  demo:\n"
-        "    platform: android\n"
-        "    package: com.example.demo\n"
-        f"    scenarios: {scn_dir}\n"
-        "    cloudBatch: devicefarm\n"
-        f"{budget_line}"
-        f"    appPath: {apk}\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: android\n"
+            f"    app: {{id: com.example.demo, path: {apk}}}\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     return scn_dir, cfg
+
+
+# Where the runs go is the request's choice (BE-0452), named as a batch-provider environment.
+_DF = {"target": "demo", "environment": "devicefarm"}
 
 
 def _state(tmp_path: Path, cfg: Path, scn_dir: Path) -> tuple[ServeState, _RecordingExecutor]:
@@ -74,7 +74,7 @@ def test_fan_out_registers_one_batch_job_per_scenario(tmp_path: Path) -> None:
     )
     state, executor = _state(tmp_path, cfg, scn_dir)
 
-    payload, status = start_run_set(state, {"target": "demo"})
+    payload, status = start_run_set(state, _DF)
 
     assert status == 200
     assert len(payload["jobIds"]) == 3
@@ -104,7 +104,7 @@ def test_fan_out_honours_an_explicit_scenario_subset(tmp_path: Path) -> None:
     )
     state, executor = _state(tmp_path, cfg, scn_dir)
 
-    payload, status = start_run_set(state, {"target": "demo", "scenarios": ["two.yaml"]})
+    payload, status = start_run_set(state, {**_DF, "scenarios": ["two.yaml"]})
 
     assert status == 200
     assert len(payload["jobIds"]) == 1
@@ -112,25 +112,43 @@ def test_fan_out_honours_an_explicit_scenario_subset(tmp_path: Path) -> None:
     assert batch is not None and batch.scenario == "scenarios/two.yaml"
 
 
-def test_fan_out_rejects_a_target_not_wired_for_cloud_batch(tmp_path: Path) -> None:
-    # A target with no cloudBatch provider is a local target; the cloud fan-out surface refuses it
-    # loudly rather than silently dispatching nothing.
-    scn_dir = tmp_path / "scenarios"
-    scn_dir.mkdir()
-    (scn_dir / "one.yaml").write_text(
-        "- name: a\n  steps:\n    - tap: { id: x }\n", encoding="utf-8"
-    )
-    cfg = tmp_path / "bajutsu.config.yaml"
-    cfg.write_text(
-        f"targets: {{ demo: {{ platform: android, package: com.example.demo, scenarios: {scn_dir} }} }}\n",
-        encoding="utf-8",
-    )
+@pytest.mark.parametrize(
+    ("environment", "why"),
+    [
+        (None, "missing"),
+        ("appium", "an appium grid is reached through the plain run request"),
+        ("local", "not a batch provider"),
+        ("firebase", "unknown"),
+    ],
+)
+def test_fan_out_needs_a_batch_provider_environment(
+    tmp_path: Path, environment: str | None, why: str
+) -> None:
+    # The fan-out packages the app for a device cloud, so it takes a batch-provider kind alone; the
+    # target no longer names one (BE-0452).
+    scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml"])
+    state, executor = _state(tmp_path, cfg, scn_dir)
+    body: dict[str, object] = {"target": "demo"}
+    if environment is not None:
+        body["environment"] = environment
+
+    payload, status = start_run_set(state, body)
+
+    assert status == 400, why
+    assert "environment naming a device-cloud batch provider" in payload["error"]
+    assert executor.jobs == []
+
+
+def test_fan_out_rejects_the_removed_device_budget(tmp_path: Path) -> None:
+    # The worker's `maxJobConcurrency` bounds a device cloud's jobs (BE-0448); a request still
+    # naming `deviceBudget` fails loudly rather than having its cap silently ignored (BE-0452).
+    scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml"])
     state, executor = _state(tmp_path, cfg, scn_dir)
 
-    payload, status = start_run_set(state, {"target": "demo"})
+    payload, status = start_run_set(state, {**_DF, "deviceBudget": 1})
 
     assert status == 400
-    assert "cloudBatch" in payload["error"]
+    assert "maxJobConcurrency" in payload["error"]
     assert executor.jobs == []
 
 
@@ -143,17 +161,18 @@ def test_fan_out_rejects_a_web_target(tmp_path: Path) -> None:
     )
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "targets:\n"
-        "  demo:\n"
-        "    platform: web\n"
-        "    baseUrl: http://localhost:8080\n"
-        f"    scenarios: {scn_dir}\n"
-        "    cloudBatch: devicefarm\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: web\n"
+            f"    app: {{url: 'http://localhost:8080'}}\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     state, executor = _state(tmp_path, cfg, scn_dir)
 
-    payload, status = start_run_set(state, {"target": "demo"})
+    payload, status = start_run_set(state, _DF)
 
     assert status == 400
     assert "android or ios" in payload["error"]
@@ -166,9 +185,7 @@ def test_fan_out_rejects_an_unknown_scenario_before_dispatching_any(tmp_path: Pa
     scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml", "two.yaml"])
     state, executor = _state(tmp_path, cfg, scn_dir)
 
-    payload, status = start_run_set(
-        state, {"target": "demo", "scenarios": ["one.yaml", "ghost.yaml"]}
-    )
+    payload, status = start_run_set(state, {**_DF, "scenarios": ["one.yaml", "ghost.yaml"]})
 
     assert status == 400
     assert "ghost.yaml" in payload["error"]
@@ -176,8 +193,8 @@ def test_fan_out_rejects_an_unknown_scenario_before_dispatching_any(tmp_path: Pa
 
 
 def test_fan_out_rejects_a_target_with_no_app_to_install(tmp_path: Path) -> None:
-    # A cloud-batch run installs an app on the reserved device; a target wired for cloudBatch but
-    # with no appPath is refused loudly rather than submitting a run that can't install anything.
+    # A cloud-batch run installs an app on the reserved device; a target with no app.path is refused
+    # loudly rather than submitting a run that can't install anything.
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
     (scn_dir / "one.yaml").write_text(
@@ -185,20 +202,21 @@ def test_fan_out_rejects_a_target_with_no_app_to_install(tmp_path: Path) -> None
     )
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "targets:\n"
-        "  demo:\n"
-        "    platform: android\n"
-        "    package: com.example.demo\n"
-        f"    scenarios: {scn_dir}\n"
-        "    cloudBatch: devicefarm\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: android\n"
+            f"    app: {{id: com.example.demo}}\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     state, executor = _state(tmp_path, cfg, scn_dir)
 
-    payload, status = start_run_set(state, {"target": "demo"})
+    payload, status = start_run_set(state, _DF)
 
     assert status == 400
-    assert "appPath" in payload["error"]
+    assert "app.path" in payload["error"]
     assert executor.jobs == []
 
 
@@ -208,7 +226,7 @@ def test_fan_out_rejects_an_empty_scenario_subset(tmp_path: Path) -> None:
     scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml"])
     state, executor = _state(tmp_path, cfg, scn_dir)
 
-    payload, status = start_run_set(state, {"target": "demo", "scenarios": []})
+    payload, status = start_run_set(state, {**_DF, "scenarios": []})
 
     assert status == 400
     assert "no scenarios" in payload["error"]
@@ -231,7 +249,7 @@ def test_fan_out_rejects_a_config_outside_the_run_directory(tmp_path: Path) -> N
         repository=queue_repository(),
     )
 
-    payload, status = start_run_set(state, {"target": "demo"})
+    payload, status = start_run_set(state, _DF)
 
     assert status == 400
     assert "not under its bundle directory" in payload["error"]
@@ -245,7 +263,7 @@ def test_fan_out_requires_an_open_config(tmp_path: Path) -> None:
         executor=_RecordingExecutor(),
         repository=queue_repository(),
     )
-    payload, status = start_run_set(state, {"target": "demo"})
+    payload, status = start_run_set(state, _DF)
     assert status == 400
     assert "config" in payload["error"]
 
@@ -269,102 +287,20 @@ def test_fan_out_returns_429_when_cap_rejects_the_first_job(tmp_path: Path) -> N
         repository=queue_repository(),
     )
     with unittest.mock.patch.object(state, "try_register", return_value=None):
-        payload, status = start_run_set(state, {"target": "demo"})
+        payload, status = start_run_set(state, _DF)
 
     assert status == 429
     assert "too many concurrent" in payload["error"]
 
 
-def test_fan_out_stops_at_the_device_budget(tmp_path: Path) -> None:
-    # The device budget K bounds how many of a target's cloud-batch runs reserve a device at once
-    # (BE-0336 Unit 4). With K=2 and three scenarios, the fan-out registers two (each holding a
-    # device) and stops at the third — a partial dispatch, the routine outcome the cap governs, not
-    # an error. The recording executor never finishes its jobs, so both registered runs stay in
-    # flight and the third hits the cap.
-    scn_dir, cfg = _android_batch_project(
-        tmp_path, scenarios=["one.yaml", "two.yaml", "three.yaml"], budget=2
-    )
-    state, executor = _state(tmp_path, cfg, scn_dir)
-
-    payload, status = start_run_set(state, {"target": "demo"})
-
-    assert status == 200
-    assert len(payload["jobIds"]) == 2
-    assert len(executor.jobs) == 2
-
-
-def test_request_can_lower_the_device_budget(tmp_path: Path) -> None:
-    # A request may lower the target's budget (never raise it): with a config budget of 3 and a
-    # per-request deviceBudget of 1, only one scenario is dispatched before the cap stops the fan-out.
-    scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml", "two.yaml"], budget=3)
-    state, executor = _state(tmp_path, cfg, scn_dir)
-
-    payload, status = start_run_set(state, {"target": "demo", "deviceBudget": 1})
-
-    assert status == 200
-    assert len(payload["jobIds"]) == 1
-    assert len(executor.jobs) == 1
-
-
-def test_request_cannot_raise_the_device_budget(tmp_path: Path) -> None:
-    # The per-request override only tightens: a deviceBudget above the config budget leaves the
-    # config budget in force, so K=1 still stops the fan-out at one dispatched run.
-    scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml", "two.yaml"], budget=1)
-    state, executor = _state(tmp_path, cfg, scn_dir)
-
-    payload, status = start_run_set(state, {"target": "demo", "deviceBudget": 5})
-
-    assert status == 200
-    assert len(payload["jobIds"]) == 1
-    assert len(executor.jobs) == 1
-
-
-def test_request_budget_bounds_a_target_with_no_config_budget(tmp_path: Path) -> None:
-    # A target with no configured budget is unbounded by config; a per-request deviceBudget still
-    # bounds that dispatch (it lowers from "unbounded"), stopping the fan-out at the requested count.
-    scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml", "two.yaml"])
-    state, _ = _state(tmp_path, cfg, scn_dir)
-
-    payload, status = start_run_set(state, {"target": "demo", "deviceBudget": 1})
-
-    assert status == 200
-    assert len(payload["jobIds"]) == 1
-
-
-def test_request_rejects_a_non_positive_device_budget(tmp_path: Path) -> None:
-    # A resource cap the caller asked for must fail loudly, not silently evaporate into "unbounded":
-    # a non-positive deviceBudget is a 400, and nothing is dispatched (BE-0336 Unit 4).
-    scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml"])
-    state, executor = _state(tmp_path, cfg, scn_dir)
-
-    payload, status = start_run_set(state, {"target": "demo", "deviceBudget": 0})
-
-    assert status == 400
-    assert "deviceBudget" in payload["error"]
-    assert executor.jobs == []
-
-
-def test_request_rejects_a_malformed_device_budget(tmp_path: Path) -> None:
-    # A non-integer deviceBudget (string, float, bool) is a client error, not a silent truncation to
-    # "no request bound" — reject it with a 400 before any dispatch.
-    scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml"])
-    state, executor = _state(tmp_path, cfg, scn_dir)
-
-    for bad in ("two", 1.9, True):
-        payload, status = start_run_set(state, {"target": "demo", "deviceBudget": bad})
-        assert status == 400
-        assert "deviceBudget" in payload["error"]
-    assert executor.jobs == []
-
-
-def test_fan_out_unbounded_without_a_budget(tmp_path: Path) -> None:
-    # No config budget and no request override = the pre-Unit-4 behavior: every scenario dispatches.
+def test_fan_out_dispatches_every_scenario(tmp_path: Path) -> None:
+    # No server-side budget remains (BE-0452): the worker's `maxJobConcurrency` bounds its jobs.
     scn_dir, cfg = _android_batch_project(
         tmp_path, scenarios=["one.yaml", "two.yaml", "three.yaml"]
     )
     state, _ = _state(tmp_path, cfg, scn_dir)
 
-    payload, status = start_run_set(state, {"target": "demo"})
+    payload, status = start_run_set(state, _DF)
 
     assert status == 200
     assert len(payload["jobIds"]) == 3
@@ -379,7 +315,7 @@ def test_fan_out_ships_scenarios_that_travel_as_materials(tmp_path: Path) -> Non
     from bajutsu.serve.scenarios import Runnable
 
     scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml"])
-    # A worker without the project receives the binary by signed URL, so the appPath names a file
+    # A worker without the project receives the binary by signed URL, so the app.path names a file
     # inside the config's directory and the server has an object store to deliver it through.
     cfg.write_text(
         cfg.read_text(encoding="utf-8").replace(str(tmp_path / "app.apk"), "app.apk"),
@@ -418,7 +354,7 @@ def test_fan_out_ships_scenarios_that_travel_as_materials(tmp_path: Path) -> Non
     mock_bundle = unittest.mock.MagicMock()
     mock_bundle.scenarios = _MaterialsStore()
     with unittest.mock.patch.object(state, "for_org", return_value=mock_bundle):
-        payload, status = start_run_set(state, {"target": "demo"})
+        payload, status = start_run_set(state, _DF)
 
     assert status == 200, payload
     (job,) = executor.jobs
@@ -443,7 +379,7 @@ def test_run_set_endpoint_is_wired(tmp_path: Path) -> None:
     )
     server, port = _serve(state)
     try:
-        status, payload = _post(port, "/api/run-set", {"target": "demo"})
+        status, payload = _post(port, "/api/run-set", _DF)
         assert status == 200
         assert len(payload["jobIds"]) == 2
     finally:

@@ -96,18 +96,18 @@ scenarios:
 
 | キー | 型 | 既定 | 説明 | 配線 |
 |---|---|---|---|---|
-| `erase` | bool | 未設定（継承。config が無ければオフ） | 各テスト前にシミュレータ全体を wipe する（`simctl erase`。アプリ、データ、設定を消去する）。既定はオフ。`reinstall` が全 wipe なしでアプリを新規状態に保つので、まっさらなデバイスが必要なテストだけ `true` にする | ✅ |
-| `reinstall` | `clean` \| `overwrite` | `clean` | config が `appPath` を指定したとき、各 run の前にアプリをどう再インストールするか。`clean` は uninstall してから install する（アプリとデータを fresh にする）。`overwrite` は既存アプリに上書き install する（データコンテナは保持する） | ✅ |
-| `launchArgs` | list[str] | `[]` | 起動引数（config の `launchArgs` に追記する） | ✅ |
-| `launchEnv` | dict | `{}` | 起動 env（`SIMCTL_CHILD_*` で注入する。config の `launchEnv` にマージする） | ✅ |
+| `erase` | bool | 未設定（継承。ターゲットの `run.erase` が無ければオフ） | 各テスト前にシミュレータ全体を wipe する（`simctl erase`。アプリ、データ、設定を消去する）。既定はオフ。`reinstall` が全 wipe なしでアプリを新規状態に保つので、まっさらなデバイスが必要なテストだけ `true` にする | ✅ |
+| `reinstall` | `clean` \| `overwrite` | `clean` | ターゲットの config が `app.path` を指定したとき、各 run の前にアプリをどう再インストールするか。`clean` は uninstall してから install する（アプリとデータを fresh にする）。`overwrite` は既存アプリに上書き install する（データコンテナは保持する） | ✅ |
+| `launchArgs` | list[str] | `[]` | 起動引数（config の `app.launch.args` に追記する） | ✅ |
+| `launchEnv` | dict | `{}` | 起動 env（`SIMCTL_CHILD_*` で注入する。config の `app.launch.env` にマージする） | ✅ |
 | `deeplink` | str | なし | 起動後に `simctl openurl` で開く | ✅ |
-| `locale` | str | なし | 起動時に locale/言語を強制する（`-AppleLocale`/`-AppleLanguages`）。app/config の既定を上書きする | ✅ |
-| `setup` | str | なし | 再利用する前段シナリオファイル（このシナリオからの相対で解決）。その steps を本編の前に実行する | ✅ |
+| `locale` | str | なし | 起動時に locale/言語を強制する（`-AppleLocale`/`-AppleLanguages`）。ターゲットの `runsOn.locale` を上書きする | ✅ |
+| `run.inheritSetup` | bool | `true` | `false` にすると、このシナリオが宣言する全ターゲットの `hooks.setup` を省く。各ターゲットの `hooks.cleanup` は走る（[後述](#before--afterセットアップとティアダウンのフェーズ)） | ✅ |
 
-> `launchEnv` の解決順は **config の `launchEnv` < preconditions の `launchEnv`** です（テストに近い方が優先）。`launch_driver` は `{**eff.launch_env, **pre.launch_env}` でマージします。
+> `launchEnv` の解決順は **config の `app.launch.env` < preconditions の `launchEnv`** です（テストに近い方が優先）。`launch_driver` は `{**eff.launch_env, **pre.launch_env}` でマージします。
 
-> `erase` の解決順は **CLI の `--erase`/`--no-erase` > このシナリオ自身の `erase` > target config の
-> `run_defaults.erase` > 組み込みのオフ**です
+> `erase` の解決順は **CLI の `--erase`/`--no-erase` > このシナリオ自身の `erase` > ターゲットの
+> `run.erase` > 組み込みのオフ**です
 > （[BE-0177](../../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)、
 > [configuration](configuration.md#設定の階層defaults--targets)）。未設定のシナリオ（多くの場合はこれ）は
 > target config の既定を継承し、config 側も指定がなければオフになります。`_filter_scenarios`
@@ -170,13 +170,15 @@ CLI の `--system-alert-handling` / `--no-system-alert-handling` フラグは**�
 
 ### プロンプトに答える代わりに出さないようにする
 
-アプリが出さないプロンプトには、答える必要がありません。テスト中にアプリが自分のプロンプトを省くための方法として、ターゲットの config（`targets.<name>`）の起動引数または環境変数（`launchArgs` と `launchEnv`）を用意しています。アプリは起動時にそれを読みます。
+アプリが出さないプロンプトには、答える必要がありません。テスト中にアプリが自分のプロンプトを省くための方法として、ターゲットの config（`targets.<name>`）の起動引数または環境変数（`app.launch.args` と `app.launch.env`）を用意しています。アプリは起動時にそれを読みます。
 
 ```yaml
 targets:
   my-app:
-    bundleId: com.example.myapp
-    launchEnv: { UITEST_SKIP_ONBOARDING_PROMPTS: "1" }   # the app checks this and asks nothing
+    platform: ios
+    app:
+      id: com.example.myapp
+      launch: { env: { UITEST_SKIP_ONBOARDING_PROMPTS: "1" } }   # the app checks this and asks nothing
 ```
 
 出さないようにすればガードの出番は減りますが、ガードの代わりにはなりません。次の 3 つのプロンプトは、引き続きリアクティブに答えます。
@@ -310,7 +312,7 @@ BE-0401 と BE-0406 は下記のキーをエイリアスなしで削除しまし
 許可ではなく拒否するには、拒否側のボタンを指定します（`handleSystemAlert: { sel: { label: "Don't Allow" }, timeout: 5 }`）。
 
 - **`sel` は label 系のみです。** SpringBoard のアラートボタンは、アプリが割り当てた identifier も trait も value も持たず、見えているテキストしか持ちません。そのため `sel` は `label` / `labelMatches` / `index` を受け付け、`id` / `idMatches` / `traits` / `value` / `within` はパース時に拒否します。
-- **run が一致させるべき label は、ターゲットの [`locale`](configuration.md#設定の階層defaults--targets) が描画するものです。** プロンプトを所有しているのは SpringBoard なので、以前は Simulator がたまたま持っていたシステム言語で描画されていました。つまり `label: "Allow"` が通るのは英語の環境だけで、日本語の環境では失敗しました。現在は、アプリを起動する前に Simulator 自身のシステム言語をその `locale` に固定するため、CI でも、同僚の Mac でも、コントリビューターの Simulator でも、`label` / `labelMatches` は同じように解決します（[BE-0320](../../roadmaps/BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md)）。
+- **run が一致させるべき label は、ターゲットの [`runsOn.locale`](configuration.md#設定の階層defaults--targets) が描画するものです。** プロンプトを所有しているのは SpringBoard なので、以前は Simulator がたまたま持っていたシステム言語で描画されていました。つまり `label: "Allow"` が通るのは英語の環境だけで、日本語の環境では失敗しました。現在は、アプリを起動する前に Simulator 自身のシステム言語をその `locale` に固定するため、CI でも、同僚の Mac でも、コントリビューターの Simulator でも、`label` / `labelMatches` は同じように解決します（[BE-0320](../../roadmaps/BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md)）。
 - **`timeout` は必須です。** `wait` とまったく同じで、プロンプトを待つ条件待機には明示的な上限が要ります。ステップはプロンプトを待ち込んでから tap します。固定の sleep はありません。
 - **待っているあいだもリアクティブなガードが動きます**（[BE-0406](../../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md)）。この待機を持っているのはバックエンドではなくランナー自身です。そのため `systemAlertHandling` は、ステップがタイムアウトして失敗したあとではなく、ステップの最中に割り込みを片付けます。これが効くのは、別のプロンプトが先に画面を取ってしまった場面です。iOS のパスワード保存アラートはアプリ自身のプロセスから出るので SpringBoard の照会からは見えず、画面を覆ったまま、このステップが待っているプロンプトを iOS に出させません。ここでガードが動かなければ、ステップは `timeout` を使い切り、一度も見ていない権限プロンプトを名指しして失敗します。ガードはこのステップ自身のプロンプトには手を触れないので、シナリオが同じプロンプトに反対の `choice` を持つ `rules` を書いていても、決めるのはステップのほうです。
 - **0 件のときと複数件のときは、どちらも失敗します。** `timeout` 以内にプロンプトが現れなければステップは失敗します。label に一致するボタンを複数見つけたときは曖昧と見なし、`index` で n 番目を選んだ場合を除いてタップしません。あらゆる[セレクタ](selectors.md)が従う規則を、アラートのボタンに当てはめたものです。曖昧さは即座の失敗にはせず、期限までポーリングします。再描画で解消することがあるからです。期限の時点でも重複が残っていれば、ステップはその旨を述べて失敗します。タイムアウトは**ステップが実際に見たもの**を名指しします。何も出ていなかったのか、セレクタの名指ししないアラートだったのか、label を 2 つ持つアラートだったのかを、次のように書き分けます。
@@ -348,7 +350,7 @@ label の対応表が扱う言語は英語と日本語です。それ以外の�
 
 使う前に知っておきたい制限が 2 つあります。
 
-- **Simulator 専用です。** 言語の固定は `simctl` の操作なので、`xcuitest.deviceType: device` の target は実機が持つシステム言語のまま動きます。この形では、画面に出ている保証のない label を解決してしまいます。実機ではボタンを `sel.label` で指定してください。
+- **Simulator 専用です。** 言語の固定は `simctl` の操作なので、`runsOn.kind: device` の target は実機が持つシステム言語のまま動きます。この形では、画面に出ている保証のない label を解決してしまいます。実機ではボタンを `sel.label` で指定してください。
 - **割り込み監視も英語を前提としていません。** `rules` の 1 エントリは、監視に届く前に固定した言語向けラベルへ解決されており、その背後にはもう組み込みのフォールバック一覧がありません。どの規則も同定しないアラートは、どの `locale` でも常に辞退されます。その割り込みに遭遇したステップや `expect` は、ボタンを推測する代わりに、差し出されたボタン名を添えて失敗します。run 自身に決めさせたいプロンプトには、規則を書いてください。
 
 （実物は [`demos/showcase/scenarios/permission_system_alert.yaml`](../../demos/showcase/scenarios/permission_system_alert.yaml) と [`demos/showcase/scenarios/paste_system_alert.yaml`](../../demos/showcase/scenarios/paste_system_alert.yaml)）
@@ -370,7 +372,7 @@ label の対応表が扱う言語は英語と日本語です。それ以外の�
 各エントリは `<service>: grant | revoke` の形を取ります。`<service>` はバックエンドに依存しない小さな語彙で、`location`、`camera`、`microphone`、`contacts`、`photos`、`calendar`、`notifications` のいずれかです。各バックエンドは、この語彙をそれぞれのネイティブな仕組みにマップします。
 
 - **iOS** は `simctl privacy <udid> <grant|revoke> <tcc-service> <bundle>` を実行します。SpringBoard の権限プロンプトが参照するのと同じ TCC（Transparency, Consent, and Control）データベースです。
-- **Android** は `pm grant` / `pm revoke` を実行し、config レベルの `grantPermissions` リスト（[drivers](drivers.md)）を支える仕組みを再利用します。シナリオの `permissions` は、この config レベルの既定の上に重なり、config が許可した権限を取り消すこともできます。
+- **Android** は `pm grant` / `pm revoke` を実行し、config レベルの `app.grantPermissions` リスト（[drivers](drivers.md)）を支える仕組みを再利用します。シナリオの `permissions` は、この config レベルの既定の上に重なり、config が許可した権限を取り消すこともできます。
 
 **iOS には `notifications` に対応する TCC サービスがありません**（iOS の通知許可は TCC の管轄外です）。そのため、iOS をターゲットにしたシナリオが `notifications` を指定すると、デバイスを一切操作する前の **preflight** が対応していない権限として個別に名指しして失敗します。そのプロンプト自体への対処は、引き続き `systemAlertHandling` が担います。Android の `POST_NOTIFICATIONS` は実行時権限です（API 33 以降）。そのため Android は語彙のすべてに対応します。選んだバックエンドが対応しないサービスの組み合わせも、同じように preflight が個別に名指しして失敗させます。
 
@@ -386,10 +388,11 @@ label の対応表が扱う言語は英語と日本語です。それ以外の�
 # config.yaml — アプリ全体の既定。このアプリのオンボーディング画面を全シナリオで扱う
 targets:
   myapp:
-    interrupts:
-      - condition: { exists: { id: onboarding.skip } }
-        steps:
-          - tap: { id: onboarding.skip }
+    hooks:
+      interrupts:
+        - condition: { exists: { id: onboarding.skip } }
+          steps:
+            - tap: { id: onboarding.skip }
 ```
 
 ```yaml
@@ -404,7 +407,7 @@ targets:
     - wait: { for: { id: home.title }, timeout: 10 }   # 途中で差し込み画面が出ても片付けてから、この wait が通る
 ```
 
-**config** レベル（`targets.<name>.interrupts`）に置いた `interrupts` リストはアプリ全体の既定です。シナリオ独自の `interrupts` はその後ろに**連結**され、config のエントリを先に判定します。`systemAlertHandling` が従うのと同じ、config が先でシナリオが後という重ね方です。エントリの `steps` は、`if` の分岐とまったく同じように、囲んでいるシナリオの `vars.*` バインディングを共有します。シナリオ側のハンドラの `steps` では、ほかのステップと同じように[コンポーネント](#再利用とデータ駆動とタグ)を `use` で呼び出せます。展開は run の前に済みます。config レベルのエントリでは `use` を使えません。ターゲットの config はコンポーネント展開を通らないため、`targets.<name>.interrupts` の下に置いた `use` は config の読み込み時に拒否されます。ステップを直接書くか、ハンドラをシナリオ側へ移してください。ハンドラ自身の `steps` が `condition` を解消しないとき（セレクタの誤りや、同じ内容で再描画され続ける画面）は、エントリはステップごとに小さな上限回数までしか発火しません。そのあとはステップが本来の結末（成功、失敗、タイムアウト）へ戻ります。設定を誤ったエントリは、実行をハングさせずに、ステップをきれいに失敗させます。
+**config** レベル（`targets.<name>.hooks.interrupts`）に置いた `interrupts` リストはアプリ全体の既定です。シナリオ独自の `interrupts` はその後ろに**連結**され、config のエントリを先に判定します。`systemAlertHandling` が従うのと同じ、config が先でシナリオが後という重ね方です。エントリの `steps` は、`if` の分岐とまったく同じように、囲んでいるシナリオの `vars.*` バインディングを共有します。シナリオ側のハンドラの `steps` では、ほかのステップと同じように[コンポーネント](#再利用とデータ駆動とタグ)を `use` で呼び出せます。展開は run の前に済みます。config レベルのエントリでも `use` を使えます。`targets.<name>.hooks.interrupts` の下に置いた `use` は、config の読み込み時に config ファイルのディレクトリを基準に解決します（[再利用](#再利用とデータ駆動とタグ)）。ハンドラ自身の `steps` が `condition` を解消しないとき（セレクタの誤りや、同じ内容で再描画され続ける画面）は、エントリはステップごとに小さな上限回数までしか発火しません。そのあとはステップが本来の結末（成功、失敗、タイムアウト）へ戻ります。設定を誤ったエントリは、実行をハングさせずに、ステップをきれいに失敗させます。
 
 シナリオが2つ以上の[ターゲット](#targets--target複数ターゲットシナリオbe-0428)を宣言すると、`interrupts` の各エントリはそのうち1つを監視します。
 エントリは自身の `target` フィールドで監視先を指定します。`target` を省略したエントリは、プライマリターゲットを監視します。
@@ -450,7 +453,7 @@ config の読み込みは、そうしたエントリと、その `steps` にあ�
 
 ## `before` / `after`（セットアップとティアダウンのフェーズ）
 
-`preconditions.setup`（[上記](#preconditions環境準備)）は前置きのシナリオファイルを指名し、ランナーはその前置きのステップを、run が始まる前にこのシナリオ自身の `steps` の先頭へ連結します。連結された前置きのステップは、シナリオ自身のステップと見分けが付きません。レポートは 1 つの連番の並びとして表示し、前置きの失敗も、セットアップ由来であるという印のない、ふつうのステップ失敗として現れます。ティアダウンにいたっては仕組みそのものがありません。後片付けを置ける場所は `steps` の末尾だけです。しかしステップループは最初の失敗で打ち切られる（[run ループ](run-loop.md)）ため、末尾の後片付けのステップが走るのは、それより前のステップがすべて成功した run に限られます。つまり、後片付けをもっとも必要としなかった run でしか走らないのです。テストユーザーを作ってから 3 ステップ先の壊れたボタンで失敗したシナリオは、そのユーザーを残したままになります。
+`steps` の先頭に書いたセットアップは、シナリオ自身のステップと見分けが付きません。レポートは 1 つの連番の並びとして表示し、セットアップの失敗も、セットアップ由来であるという印のない、ふつうのステップ失敗として現れます。ティアダウンにいたっては仕組みそのものがありません。後片付けを置ける場所は `steps` の末尾だけです。しかしステップループは最初の失敗で打ち切られる（[run ループ](run-loop.md)）ため、末尾の後片付けのステップが走るのは、それより前のステップがすべて成功した run に限られます。つまり、後片付けをもっとも必要としなかった run でしか走らないのです。テストユーザーを作ってから 3 ステップ先の壊れたボタンで失敗したシナリオは、そのユーザーを残したままになります。
 
 `before` と `after` は、この 2 つの穴を塞ぎます。`before` は最初に走る順序付きのステップ列で、レポートでは独立したセクションになり、ここで失敗すると `steps` と `expect` をまったく実行せずにシナリオを打ち切ります。`after` はルールのリストで、各ルールは結末（`always`、`success`、`error`）と、その結末のときに走らせる `steps` を組にします。ランナーはシナリオの判定が出てからルールを評価し、失敗した経路も含め、`steps` を抜けるすべての経路でこのフェーズに到達します。どちらのフィールドも通常のステップ文法とアサーション DSL をそのまま使うので、フックのステップはシナリオ自身のステップと同じだけマシンチェック可能です。また、どちらも run の `${vars.*}` バインディングを共有します（[実行時変数](#実行時変数vars)）。
 
@@ -480,16 +483,16 @@ config の読み込みは、そうしたエントリと、その `steps` にあ�
 
 キャンセルされた run（`SIGTERM`、`serve` Web UI のキャンセルボタン）もこのフェーズに到達し、`after` は `error` の結末として振り分けられます。後片付けのルールには、キャンセルの猶予時間のうち一定の割合が与えられます。その持ち時間を使い切ると残りのルールは打ち切られます。レポートを書き出すシャットダウンの後始末を、猶予時間のうちに収めるためです。
 
-### ターゲット設定にも同じ 2 つのフィールドがある
+### ターゲットのフック：`hooks.setup` と `hooks.cleanup`
 
-`targets.<name>.before` と `targets.<name>.after` はシナリオと同じ形を取り、アプリ全体の既定になります。2 つの重ね方は逆向きです。
+`targets.<name>.hooks.setup` は `before` と、`targets.<name>.hooks.cleanup` は `after` と同じ形を取り、アプリ全体の既定になります。シナリオ自身のフィールドとの重ね方は、2 つで逆向きです。
 
 | フィールド | 重ね方 | 理由 |
 |---|---|---|
-| `before` | config が先、シナリオが後 | アプリ全体の前置きが用意した状態の上に、このシナリオ自身のセットアップが積み上がる。`interrupts` が従うのと同じ、config が先でシナリオが後という重ね方 |
-| `after` | シナリオが先、config が後 | このシナリオが作ったものを解放してから、アプリ全体のティアダウンがその外側を閉じる。フィクスチャ方式のテストフレームワークのセットアップとティアダウンの対が与える、後から確保したものを先に解放する順序 |
+| `before` | config（`hooks.setup`）が先、シナリオが後 | アプリ全体のセットアップが用意した状態の上に、このシナリオ自身のセットアップが積み上がる。`interrupts` が従うのと同じ、config が先でシナリオが後という重ね方 |
+| `after` | シナリオが先、config（`hooks.cleanup`）が後 | このシナリオが作ったものを解放してから、アプリ全体のティアダウンがその外側を閉じる。フィクスチャ方式のテストフレームワークのセットアップとティアダウンの対が与える、後から確保したものを先に解放する順序 |
 
-`targets.<name>.before` は `targets.<name>.setup` を置き換えるものではありません。独立したレポートのフェーズになるのは `before` だけであり、`before` フェーズは `setup` が `steps` へ連結する前置きよりも先に走ります。したがって `before` のステップは、前置きが到達する画面に依存させてはいけません。
+フックのステップは `use:` で[コンポーネント](#再利用とデータ駆動とタグ)を呼び出せます。ターゲットの全シナリオで共有するログイン手順は、この形で 1 度だけ記述します。`setup` プレリュードファイルは、ターゲットレベルと `preconditions.setup` の両方で廃止しました（[BE-0452](../../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)）。ターゲットのセットアップを走らせたくないシナリオは、`preconditions.run.inheritSetup: false` を指定します。その場合も `hooks.cleanup` は走ります。後片付けは、シナリオを抜けるすべての経路で走るからです。
 
 ### どれを選ぶか
 
@@ -498,7 +501,7 @@ config の読み込みは、そうしたエントリと、その `steps` にあ�
 | フィールド | 走る位置 | レポートでの扱い | 対象 |
 |---|---|---|---|
 | `before` / `after` | 独立したフェーズとして、`steps` の前と判定の後 | 独立した Before / After のブロック | 検証対象のシナリオと読み手が区別できる必要のあるセットアップとティアダウン |
-| `preconditions.setup` | `steps` の先頭へ連結 | 連番のステップの一部 | 複数のシナリオで共有する再利用可能な前置きで、区別が要らない場合 |
+| `use`（コンポーネント） | 呼び出したステップの位置で展開 | 連番のステップの一部 | 複数のシナリオで共有する再利用可能な手順で、区別が要らない場合 |
 | `capturePolicy` | ステップループ全体を通してステップごとに | ステップに紐づく証跡 | ステップが失敗したときに追加の証跡を取ること。ステップを走らせることではない |
 
 `capturePolicy` の `on: { result: error }` トリガーと `after` ルールの `on: error` は、同じ考え方に同じ語を当てたもので、粒度だけが違います。`capturePolicy` のトリガーは、run のどこで起きたかを問わず 1 つのステップの失敗ごとに発火します。`after` のルールはシナリオ全体の判定に対して一度だけ発火します。
@@ -727,7 +730,7 @@ assertするまで、新しいステップもランナーの変更も要りま�
 
 `{on,direction}` と `{from,to}` は、**どちらか一方だけ**でなければなりません（混在や片側の欠落は検証エラーになります）。
 
-**方向指定**形式の意味は「スクロール」であり、各バックエンドは実際にスクロールを起こすプリミティブで実現します。iOS や Android では OS の本物のドラッグで、web ではマウスドラッグがページをスクロールしないため wheel イベント（デスクトップ）かタッチドラッグ（モバイルの [`deviceMode`](drivers.md#playwrightweb)）で実現します（BE-0227）。**座標**形式は、それ自体を目的とする素のポインタドラッグ（canvas やマップのパン、ドラッグハンドル）であり、どのバックエンドでも素のドラッグの最終手段です。
+**方向指定**形式の意味は「スクロール」であり、各バックエンドは実際にスクロールを起こすプリミティブで実現します。iOS や Android では OS の本物のドラッグで、web ではマウスドラッグがページをスクロールしないため wheel イベント（デスクトップ）かタッチドラッグ（モバイルの [`runsOn.emulate`](drivers.md#playwrightweb)）で実現します（BE-0227）。**座標**形式は、それ自体を目的とする素のポインタドラッグ（canvas やマップのパン、ドラッグハンドル）であり、どのバックエンドでも素のドラッグの最終手段です。
 
 ### `drag`
 
@@ -883,7 +886,7 @@ assertするまで、新しいステップもランナーの変更も要りま�
 - type: { text: "${vars.code}", into: { id: auth.otp } }
 ```
 
-`email` はメールで届く 2FA / 検証コードを待ちます。汎用 HTTP メールボックス（`targets.<name>.mailbox` で設定。[configuration](configuration.md#mailboxemail-ステップ) 参照）をポーリングし、**ステップ開始後に届いた**メッセージのうち `match` を満たすものが現れるまで待って、その本文から `bodyMatches` の正規表現（最初のキャプチャグループ、無ければマッチ全体）で値を `${vars.<var>}` に取り出します。待機は **`timeout` 必須の条件待機**です（固定 sleep なし）。タイムアウト、本文に正規表現が当たらない一致メッセージ、到達不能 / 2xx 以外のメールボックスは、いずれもクリーンなステップ失敗で、黙って誤った値を返すことはありません。対象はステップ開始より新しいメールだけ（メッセージ id で判定するので、以前の run の古いコードには一致しません）で、新着の一致が複数あれば最新を採ります。決定的で LLM 非依存、エンドポイントと認証情報は config 参照の `${secrets.*}` に置くのでシナリオはアプリ非依存のままです（[BE-0046](../../roadmaps/BE-0046-otp-email-steps/BE-0046-otp-email-steps-ja.md)）。
+`email` はメールで届く 2FA / 検証コードを待ちます。汎用 HTTP メールボックス（`targets.<name>.services.mailbox` で設定。[configuration](configuration.md#mailboxemail-ステップ) 参照）をポーリングし、**ステップ開始後に届いた**メッセージのうち `match` を満たすものが現れるまで待って、その本文から `bodyMatches` の正規表現（最初のキャプチャグループ、無ければマッチ全体）で値を `${vars.<var>}` に取り出します。待機は **`timeout` 必須の条件待機**です（固定 sleep なし）。タイムアウト、本文に正規表現が当たらない一致メッセージ、到達不能 / 2xx 以外のメールボックスは、いずれもクリーンなステップ失敗で、黙って誤った値を返すことはありません。対象はステップ開始より新しいメールだけ（メッセージ id で判定するので、以前の run の古いコードには一致しません）で、新着の一致が複数あれば最新を採ります。決定的で LLM 非依存、エンドポイントと認証情報は config 参照の `${secrets.*}` に置くのでシナリオはアプリ非依存のままです（[BE-0046](../../roadmaps/BE-0046-otp-email-steps/BE-0046-otp-email-steps-ja.md)）。
 
 ### `generate`（実行時に計算する値）
 
@@ -961,7 +964,7 @@ iOS では、これらのステップは `setLocation` / `push` と同じく `si
 - iOS でデバイスグループに入っていない場合、動いているアプリはまったく待たずに復帰します。必要なら直後に具体的な要素を待ってください。
 - `installApp` の直後のように動いていないアプリは、`relaunch` と同じように起動します。`foreground` はその後、アプリの準備が整うまで条件待ちをします。
 - Android と、デバイスグループ内の iOS では、動いているアプリにも条件待ちをします。アプリが前面に来なければ、ステップは `AppNotInFront` で失敗します。
-  この待ちは、ターゲットの `readyWhen` ではなく、そのアプリ自身の画面が出るのを待ちます。`readyWhen` は
+  この待ちは、ターゲットの `app.startWhen` ではなく、そのアプリ自身の画面が出るのを待ちます。`app.startWhen` は
   起動直後の画面を指しますが、再開したアプリは離れたときの画面に戻るからです。
 
 `setClipboard` はペースト操作のためペーストボードに値を投入します（[BE-0052](../../roadmaps/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md)）。
@@ -1144,17 +1147,17 @@ run を止めます。ファイルが外したターゲットを選ぶことは�
 
 | そのターゲット自身の config を読むもの | 理由 |
 |---|---|
-| `before` / `after` のライフサイクルステップ | 各ターゲット自身のものが宣言順に畳み込まれ、そのターゲット名が刻まれます。アプリ側のティアダウンと web 側のティアダウンが、それぞれ正しいドライバに対して走ります |
-| `mailbox` | `email` や `totp` のステップは、自分のターゲットが設定した受信箱をポーリングします |
-| `locale`、`launchEnv`、`capture`、`interrupts` | どれも run ではなく、テスト対象アプリの性質です |
-| `baselines` / `schemas` / `goldens` | `visual` や `golden` のアサーションは、そのターゲットが自分でディレクトリを設定していればそちらと、していなければ run のものと比較します |
+| `hooks.setup` / `hooks.cleanup` のライフサイクルステップ | 各ターゲット自身のものが宣言順に畳み込まれ、そのターゲット名が刻まれます。アプリ側のティアダウンと web 側のティアダウンが、それぞれ正しいドライバに対して走ります |
+| `services.mailbox` | `email` や `totp` のステップは、自分のターゲットが設定した受信箱をポーリングします |
+| `runsOn.locale`、`app.launch.env`、`evidence.capture`、`hooks.interrupts` | どれも run ではなく、テスト対象アプリの性質です |
+| `paths.baselines` / `paths.schemas` / `paths.goldens` | `visual` や `golden` のアサーションは、そのターゲットが自分でディレクトリを設定していればそちらと、していなければ run のものと比較します |
 | バックエンドの capability | 各ターゲットのステップは、デバイスを1つも確保する前に、そのターゲット自身のバックエンドに対して検査されます。片方のプラットフォームだけが対応する構文は、正しいほうを落とします |
 
 フック自身の `if` や `forEach` のステップが `target` を省略すると、そのフック自身のターゲットに
 解決されます。シナリオの `primaryTarget` には解決されません。上で述べた、入れ子の深さによらない
 省略時の解決は、シナリオ自身のステップにだけ働きます。
 
-run 全体で共有されるものが2つあります。`redact` の秘密情報の集合は、宣言済みの各ターゲット自身の秘密情報
+run 全体で共有されるものが2つあります。`redact` の秘密情報の集合は、宣言済みの各ターゲット自身の秘密情報（`run.secrets`）
 の和集合を取ります。その和集合が、すべてのターゲットの証跡をマスクします。広くマスクしすぎるほうが安全な
 誤りだからです。run ディレクトリは run 単位の成果物で、もともとターゲットごとではありません。
 
@@ -1176,19 +1179,17 @@ run へ広げるのは、別の作業です。
 エントリのことで、そのメンバーは1台のデバイスを共有します。
 
 config は変わりません。1つのアプリの2つのビルドは、2つのターゲットになります。2つのターゲットは
-バンドル識別子（Android ではパッケージ）を共有し、それぞれ自分の `appPath` を持ちます。コンパニオン
+`app.id`（バンドル識別子。Android ではパッケージ）を共有し、それぞれ自分の `app.path` を持ちます。コンパニオン
 アプリは、独立した1つのターゲットです。
 
 ```yaml
 targets:
   showcase-previous:                      # シナリオの開始時に動かす旧ビルド
-    backend: xcuitest
-    bundleId: com.example.showcase
-    appPath: build/Showcase-1.app
+    platform: ios
+    app: { id: com.example.showcase, path: build/Showcase-1.app }
   showcase:                               # 現行ビルド
-    backend: xcuitest
-    bundleId: com.example.showcase
-    appPath: build/Showcase-2.app
+    platform: ios
+    app: { id: com.example.showcase, path: build/Showcase-2.app }
 ```
 
 `targets` に書いた素の名前は、メンバーが1つだけのグループとして扱われます。配列を書かないシナリオは、
@@ -1206,7 +1207,7 @@ targets:
 
 | メンバー | 開始時の扱い |
 |---|---|
-| プライマリ（最初のグループの最初のメンバー） | `appPath` をインストールして起動します。`installs` への記載は任意です |
+| プライマリ（最初のグループの最初のメンバー） | `app.path` をインストールして起動します。`installs` への記載は任意です |
 | メンバーが1つのグループ（素の名前） | 複数ターゲットシナリオと同じく、インストールして起動します |
 | `installs` に書いたメンバー | インストールして起動します |
 | 2つ以上のメンバーを持つグループの、それ以外のメンバー | **後から入るメンバー**です。`installApp` ステップと `foreground` ステップが立ち上げるまで、インストールも起動もしません |
@@ -1297,11 +1298,11 @@ targets:
 `run` は終了コード 2 で終わります。拒むのは次の場合です。
 
 - 1つのグループのメンバーの間で、プラットフォーム、バックエンド、デバイスの経路、実効 `locale` の
-  いずれかが異なります。デバイスの経路とは `deviceProvider`、`device`、`xcuitest.deviceType` のことです。
+  いずれかが異なります。デバイスの経路とは、デバイスプロバイダ（`--worker-config` で指定する `appium` 環境）と `runsOn.kind` のことです。
 - 2つ以上のメンバーを持つグループに web ターゲットがあります。ブラウザには共有するデバイスがないためです。
 - 1つのグループで開始時に動かす2つのメンバーが、識別子を共有しています。2つ目のインストールが
   1つ目を置き換えてしまいます。
-- `installApp.from` のターゲットに `appPath` がないか、その `appPath` が存在しません。Git から
+- `installApp.from` のターゲットに `app.path` がないか、その `app.path` が存在しません。Git から
   取得する config では、プライマリと同じく必要なときにバイナリをビルドします。
 - `setPrimaryTarget` が、先行する `installApp` で退いたメンバーを指しています。
 
@@ -1424,7 +1425,7 @@ showcase のデモは、この 2 つの流れを iOS と Android の両方で実
 - `visual` はスクリーンショットを baseline 画像とピクセル比較します（[下記](#visualビジュアルリグレッション)）。
 - `clipboard` はデバイスのペーストボードを `simctl pbpaste` で読み戻し、`equals` / `matches`（正規表現）の **いずれか 1 つ**を検証します。`setClipboard` の読み戻し側で、「コピー」操作の検証に使います。デバイスごとの制御チャネルが必要なため、fake ドライバや並列実行では利用できず、その場合はクリーンに失敗します（[BE-0052](../../roadmaps/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md)）。
 
-> **ロケール注意**: `label`/`value` の文字列比較や、可視テキストを見るアサーションは翻訳で壊れます。これらは config の固定 locale を前提に書き、セレクタ自体は `id` で書いてください。
+> **ロケール注意**: `label`/`value` の文字列比較や、可視テキストを見るアサーションは翻訳で壊れます。これらはターゲットの固定 `runsOn.locale` を前提に書き、セレクタ自体は `id` で書いてください。
 
 ### `request`（ネットワークアサーション）
 
@@ -1566,7 +1567,7 @@ expect:
 表現できない契約の検査です（[BE-0048](../../roadmaps/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions-ja.md)）。
 観測済みタイムラインと保存済みのスキーマファイルに対する純粋で決定的な検査なので（`--network` 実行フラグが
 必要）、判定は機械のみです。`request`（同じマッチャフィールド）で検証対象の交信を選び、`schema` はターゲットの
-**スキーマディレクトリ**（`--schemas` フラグ、config の `targets.<name>.schemas`、またはシナリオ脇の
+**スキーマディレクトリ**（`--schemas` フラグ、config の `targets.<name>.paths.schemas`、またはシナリオ脇の
 `schemas/`）内で解決するファイルパスです。検証には `jsonschema` ライブラリを使うので、`schema` extra を
 インストールしてください（`pip install bajutsu[schema]`）。
 
@@ -1600,7 +1601,7 @@ expect:
 | `exact` | ピクセル完全一致。いずれかのチャネルが異なればそのピクセルは「差分」として計上されます。 | はい（後方互換） |
 | `pixelmatch` | 知覚的 YIQ 色差 + アンチエイリアシング検出。サブピクセルレンダリングノイズや 1 ピクセルのエッジシフトを許容します。 | いいえ |
 
-`compare` を省略すると、ターゲットの `visualCompare` 設定（`defaults:` または `targets.<name>` で指定）にフォールバックし、さらに未設定なら `exact` になります。
+`compare` を省略すると、ターゲットの `run.visualCompare` 設定（`defaults.run` または `targets.<name>.run` で指定）にフォールバックし、さらに未設定なら `exact` になります。
 
 `threshold` は許容する差分ピクセルの割合（既定 `0.0` = 完全一致）で、すべてのエンジン共通です。`colorTolerance`（0–1、既定 `0.1`）は `pixelmatch` のピクセル単位の知覚的色差許容値、`antialiasing`（既定 `true`）はアンチエイリアスされたピクセルを差分から除外します。`exclude` は比較前にマスクする領域のリストで、ステータスバーや時計などに使います。各要素は、スクリーンショットのピクセル座標で表す矩形（`{ x, y, w, h }`）か、マスク対象の要素を指す `{ selector: <Selector> }`（BE-0171）のどちらかです。後者は評価時に要素のフレームへ解決されます。baseline は `approve` コマンド（[cli](cli.md#approve)）か `serve` UI で作成・更新します。baseline が無いとアサーションは失敗します。`overrideStatusBar` と併用すると時計やバッテリーを固定できます。差分は `report.html` に表示されます。`pixelmatch` では、除外されなかった（非 AA）ピクセルのみが差分画像に表示されます。`approve` とレポートの差分ストリップが読むのは、シナリオ末尾の `expect` の結果だけです。ステップ自身の `assert` に含めた `visual` エントリは、最初の baseline を手動で用意してください（上記の[`assert`](#assert中間検証)を参照）。
 
@@ -1723,7 +1724,7 @@ scenarios:
 
 `components:` にない素の名前は、ref を名指ししたエラーになります。代わりにファイルを開こうとするフォールバックは起きません。`components:` の有効範囲は**1ファイル**です。ファイルごとに読み、スイートディレクトリをまたいで統合しません。あるファイルで宣言した名前は、隣のファイルからは見えません。ファイルをまたぐ再利用はコンポーネントファイルの役目のままです。コンポーネントファイルへ入ると `components:` は完全に外れます。コンポーネントファイルは `components:` を持たないため、その中の素の `use` は常に未定義です。参照元のファイルが何を宣言していても変わりません。一方、ファイルスコープのコンポーネント自身の steps は宣言元ファイルのスコープで展開されます。別のファイルスコープのコンポーネントを素の名前で `use` できますし、パスでファイルも `use` できます。
 
-`setup` プレリュードもシナリオファイルと同じ形をした文書なので、自分の `components:` を持てます。プレリュードの `use` ステップは、steps が前置される前に、プレリュード自身のスコープで展開されます。呼び出す側のシナリオファイルに同じ名前のエントリがあっても、そちらへ横取りされません。プレリュードの中のパス参照も、呼び出す側ではなくプレリュード自身のディレクトリを基準に解決します。
+ターゲットの `hooks` もコンポーネントを呼び出せます（[上記](#ターゲットのフックhookssetup-と-hookscleanup)）。この `use` は config のロード時に、config ファイルのディレクトリを基準に、スイートのルートの内側で解決します。config は `components:` マップを持たないので、フックの `use` はコンポーネントファイルをパスで指定します。`with` の値はロード時に置換され、`${secrets.*}` と `${vars.*}` はステップの実行時に解決します。フックでは、直接でもコンポーネント経由でも、`group:` と `setMocks` を使えません。
 
 #### 複数ターゲットシナリオでのコンポーネント
 
@@ -1866,10 +1867,10 @@ uv run bajutsu run --target showcase-swiftui --tag smoke --exclude wip   # run @
 
 ### シークレット（`${secrets.X}`）
 
-シークレットの環境変数名を config で宣言します（`secrets: [API_TOKEN, ...]`）。宣言した各名 `X` は環境から解決され、**アクション時**に実行ステップへ `${secrets.X}` として置換されます。シナリオファイルは **トークン**を保持し、実値は持ちません。さらにリテラル値は証跡で **自動マスク**されるため、シークレットはコミットしてもレビューしても安全です。`${params.*}` / `${row.*}`（ロード時の展開）と異なり、この名前空間は run ループが解決します。
+シークレットの環境変数名を config で宣言します（`run: { secrets: [API_TOKEN, ...] }`）。宣言した各名 `X` は環境から解決され、**アクション時**に実行ステップへ `${secrets.X}` として置換されます。シナリオファイルは **トークン**を保持し、実値は持ちません。さらにリテラル値は証跡で **自動マスク**されるため、シークレットはコミットしてもレビューしても安全です。`${params.*}` / `${row.*}`（ロード時の展開）と異なり、この名前空間は run ループが解決します。
 
 ```yaml
-# config が宣言: secrets: [API_TOKEN]
+# config が宣言: run: { secrets: [API_TOKEN] }
 steps:
   - type: { text: "${secrets.API_TOKEN}", into: { id: auth.token } }   # real value typed; token kept in the report
 ```

@@ -58,6 +58,15 @@ def _tool_available(monkeypatch: pytest.MonkeyPatch, tool: str) -> None:
     )
 
 
+def _macos_host(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin the host to macOS for a test that models an iOS machine (BE-0450).
+
+    The worker capability check refuses xcuitest on any other host, so on the Linux `check` runner
+    the command would exit 2 before reaching the behavior the test is about.
+    """
+    monkeypatch.setattr("bajutsu.cli._shared.current_host_os", lambda: "darwin")
+
+
 def _forbid_probe(monkeypatch: pytest.MonkeyPatch) -> None:
     """Make the screen probe blow up: every test here must exit before reaching a device."""
 
@@ -73,18 +82,19 @@ def _forbid_probe(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_a_target_carrying_the_wrong_field_for_its_backend_exits_2(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """An iOS-shaped target run on Android is a config error — fixable without any tool or device.
+    """An iOS target run on Android is a config error — fixable without any tool or device.
 
     It exits 2, distinct from the 1 a genuine environment failure uses, and is surfaced before any
-    doomed probe.
+    doomed probe: `--backend` is checked against the target's platform (BE-0452).
     """
     _forbid_probe(monkeypatch)
     _tool_available(monkeypatch, "adb")
-    cfg = _config(tmp_path, "targets:\n  demo:\n    bundleId: com.example.app\n")
+    cfg = _config(
+        tmp_path, ("targets:\n  demo:\n    platform: ios\n    app: {id: com.example.app}\n")
+    )
     r = runner.invoke(app, ["doctor", "--target", "demo", "--backend", "adb", "--config", str(cfg)])
     assert r.exit_code == 2
-    assert "environment:" in r.stdout
-    assert "✗ target package" in r.stdout
+    assert "does not match the target's platform 'ios'" in r.stdout
 
 
 def test_an_unrunnable_scenario_exits_1_and_names_every_reason(
@@ -109,7 +119,9 @@ def test_an_unrunnable_scenario_exits_1_and_names_every_reason(
         "    - selectOption: { sel: { id: nav.theme }, option: midnight }\n",
         encoding="utf-8",
     )
-    cfg = _config(tmp_path, "targets:\n  demo:\n    package: com.example.app\n")
+    cfg = _config(
+        tmp_path, ("targets:\n  demo:\n    platform: android\n    app: {id: com.example.app}\n")
+    )
     r = runner.invoke(
         app,
         [
@@ -145,7 +157,9 @@ def test_a_runnable_scenario_leaves_the_capability_gate_silent(
     )
     scenario = tmp_path / "tap.yaml"
     scenario.write_text("- name: tap\n  steps:\n    - tap: { id: ok }\n", encoding="utf-8")
-    cfg = _config(tmp_path, "targets:\n  demo:\n    package: com.example.app\n")
+    cfg = _config(
+        tmp_path, ("targets:\n  demo:\n    platform: android\n    app: {id: com.example.app}\n")
+    )
     r = runner.invoke(
         app,
         [
@@ -193,7 +207,9 @@ def test_android_counts_attached_adb_devices(
         "bajutsu.common.backend_cli.simctl.booted_udids",
         lambda: pytest.fail("Android must not ask simctl"),
     )
-    cfg = _config(tmp_path, "targets:\n  demo:\n    package: com.example.app\n")
+    cfg = _config(
+        tmp_path, ("targets:\n  demo:\n    platform: android\n    app: {id: com.example.app}\n")
+    )
     r = runner.invoke(
         app,
         [
@@ -214,6 +230,7 @@ def test_android_counts_attached_adb_devices(
 def test_ios_counts_booted_simulators(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _forbid_probe(monkeypatch)
     seen = _counted(monkeypatch)
+    _macos_host(monkeypatch)
     monkeypatch.setattr("bajutsu.cli.commands.doctor.select_actuator", lambda _b: "xcuitest")
     # No `xcuitest:` block resolves to the bundled tier, whose mismatch note probes the host
     # toolchain — an external dependency this test is not about.
@@ -222,7 +239,9 @@ def test_ios_counts_booted_simulators(tmp_path: Path, monkeypatch: pytest.Monkey
     monkeypatch.setattr(
         "bajutsu.common.backend_cli.adb.booted_serials", lambda: pytest.fail("iOS must not ask adb")
     )
-    cfg = _config(tmp_path, "targets:\n  demo:\n    bundleId: com.example.app\n")
+    cfg = _config(
+        tmp_path, ("targets:\n  demo:\n    platform: ios\n    app: {id: com.example.app}\n")
+    )
     r = runner.invoke(
         app,
         ["doctor", "--target", "demo", "--config", str(cfg), "--environment-only"],
@@ -234,9 +253,10 @@ def test_ios_counts_booted_simulators(tmp_path: Path, monkeypatch: pytest.Monkey
 # --- per-scenario actuator resolution (BE-0240) ---------------------------------------------------
 
 
-def _eff(tmp_path: Path, **target: str) -> Effective:
-    fields = "".join(f"    {k}: {v}\n" for k, v in target.items())
-    cfg = load_config(f"targets:\n  x:\n    bundleId: com.x\n{fields}")
+def _eff(tmp_path: Path, scenarios: str) -> Effective:
+    cfg = load_config(
+        f"targets:\n  x: {{ platform: ios, app: {{ id: com.x }}, paths: {{ scenarios: {scenarios} }} }}\n"
+    )
     return resolve(cfg, "x").rebased(tmp_path)
 
 
@@ -274,34 +294,19 @@ def test_a_multi_actuator_ladder_tallies_each_scenario(tmp_path: Path) -> None:
     assert sum(int(line.split(":")[1].split()[0]) for line in lines[1:]) == 3
 
 
-def test_the_command_prints_the_actuator_resolution_summary(
+def test_the_command_refuses_a_backend_fallback_list(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # A target names one platform, so `--backend` is a check, not an ordered fallback (BE-0452).
     _forbid_probe(monkeypatch)
-    _tool_available(monkeypatch, "adb")
-    scenarios = tmp_path / "e2e"
-    scenarios.mkdir()
-    (scenarios / "a.yaml").write_text("- name: one\n  steps:\n    - tap: { id: ok }\n", "utf-8")
     cfg = _config(
-        tmp_path,
-        "targets:\n  demo:\n    package: com.example.app\n    scenarios: e2e\n",
+        tmp_path, "targets:\n  demo: { platform: android, app: { id: com.example.app } }\n"
     )
     r = runner.invoke(
-        app,
-        [
-            "doctor",
-            "--target",
-            "demo",
-            "--backend",
-            "fake,adb",
-            "--config",
-            str(cfg),
-            "--environment-only",
-        ],
+        app, ["doctor", "--target", "demo", "--backend", "fake,adb", "--config", str(cfg)]
     )
-    assert r.exit_code == 0
-    assert "actuator resolution (per scenario, BE-0240):" in r.stdout
-    assert "1 scenario(s)" in r.stdout
+    assert r.exit_code == 2
+    assert "does not match the target's platform" in r.stdout
 
 
 # --- the xcuitest runner tier (BE-0292) -----------------------------------------------------------
@@ -312,6 +317,7 @@ def test_the_command_prints_the_xcuitest_runner_tier(
 ) -> None:
     """An xcuitest target discloses which runner it would use — without building or materializing it."""
     _forbid_probe(monkeypatch)
+    _macos_host(monkeypatch)
     monkeypatch.setattr("bajutsu.cli.commands.doctor.select_actuator", lambda _b: "xcuitest")
     monkeypatch.setattr(
         "bajutsu.common.capability.preflight.doctor_environment_checks",
@@ -319,11 +325,14 @@ def test_the_command_prints_the_xcuitest_runner_tier(
     )
     cfg = _config(
         tmp_path,
-        "targets:\n"
-        "  demo:\n"
-        "    bundleId: com.example.app\n"
-        "    xcuitest:\n"
-        "      testRunner: /nonexistent/Bajutsu.xctestrun\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app: {id: com.example.app}\n"
+            "    driver:\n"
+            "      runner: {testRunner: /nonexistent/Bajutsu.xctestrun}\n"
+        ),
     )
     r = runner.invoke(
         app,

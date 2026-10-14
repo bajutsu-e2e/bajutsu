@@ -9,10 +9,10 @@ change to one rarely touches the others (BE-0043). The full public API is re-exp
 from __future__ import annotations
 
 from bajutsu.common.scenario.expand import (
-    apply_setups,
     declared_name,
     expand_components,
     expand_data,
+    expand_steps,
     read_csv,
 )
 from bajutsu.common.scenario.load import load_component, load_scenario_file, load_scenarios
@@ -224,7 +224,6 @@ __all__ = [
     "WaitRequest",
     "Web",
     "alert_surfaces",
-    "apply_setups",
     "contained_ref",
     "covered_languages",
     "declared_name",
@@ -234,6 +233,7 @@ __all__ = [
     "dump_scenarios",
     "expand_components",
     "expand_data",
+    "expand_steps",
     "labels_cover",
     "load_component",
     "load_expanded_scenarios",

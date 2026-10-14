@@ -4,16 +4,22 @@ from __future__ import annotations
 
 import atexit
 import sys
+from pathlib import Path
+from typing import Annotated
 
 import typer
 
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
+    WORKER_CONFIG_HELP,
+    _device_udid_or_exit,
+    _load_device_worker_or_exit,
     _load_effective,
     _resolve_browser,
     _select_actuator_or_exit,
     _start_launch_server_or_exit,
     _with_headed,
+    _with_worker_device,
 )
 from bajutsu.common.config import WEB_ENGINES, Effective, IosConfig, require_ios
 from bajutsu.common.devices import errors as device_errors
@@ -43,7 +49,7 @@ def _close_owned_session(env: Environment, driver: base.Driver, eff: Effective) 
     An operator who leaves the shell expects the Simulator or handset still showing the screen they
     were inspecting, so the local `xcuitest` / `adb` teardown — which terminates the app — is
     deliberately not run. The two sessions this process does own would otherwise outlive it: the
-    web backend's browser, and the WebDriver session on the `--udid https://…` live route, which
+    web backend's browser, and the WebDriver session on the live route to an `appium` grid, which
     stays reserved on the grid until it expires. Each is closed through its own environment's
     `teardown`, the very call a run makes, rather than a second spelling of it here.
     """
@@ -57,7 +63,7 @@ def _close_owned_session(env: Environment, driver: base.Driver, eff: Effective) 
 def _check_attach_or_exit(actuator: str, udid: str, eff: Effective, erase: bool | None) -> None:
     """Exit 2 on an `--attach` combination it cannot honor, before any device is touched (BE-0455).
 
-    Reads only the raw `--udid` and the target config, so an unsupported backend never gets as far as
+    Reads only the udid spec and the target config, so an unsupported backend never gets as far as
     querying its own device tooling — `resolve_device` for `adb` would, and fail with an adb error.
     """
     platform = eff.platform_config
@@ -84,7 +90,7 @@ def repl(
         None,
         "--erase/--no-erase",
         help="erase the device before launching (app must be installed); default: erase locally, "
-        "no-erase on the live `--udid https://…` route, which does not support it",
+        "no-erase on the live route to an `appium` grid, which does not support it",
     ),
     headed: bool | None = typer.Option(
         None,
@@ -105,6 +111,9 @@ def repl(
         "Simulator without erasing, installing, or relaunching it; an app that is not running is "
         "launched, still without erasing or installing anything",
     ),
+    worker_config: Annotated[
+        Path | None, typer.Option("--worker-config", help=WORKER_CONFIG_HELP)
+    ] = None,
     config: str = typer.Option(DEFAULT_CONFIG),
 ) -> None:
     """Open a manual shell against the running app: read the element tree, act on an id.
@@ -118,12 +127,17 @@ def repl(
     # this shell than for `record` — see `_with_headed` / `_resolve_browser` for the precedence.
     eff = _with_headed(eff, headed)
     eff = _resolve_browser(eff, browser)
-    actuator, _ = _select_actuator_or_exit(backend, eff, [])
+    worker = _load_device_worker_or_exit(worker_config)
+    eff = _with_worker_device(eff, worker)
+    actuator, _ = _select_actuator_or_exit(backend, eff, [], worker)
+    # The device comes through the target's provider, as in `run`: the `--udid` pool, or the grid
+    # an `appium` environment names (BE-0452).
+    udid = _device_udid_or_exit(eff, udid)
     if attach:
         _check_attach_or_exit(actuator, udid, eff, erase)
         erase = False
     # Resolve through the selected environment's own device lookup — ios/fake via simctl, adb via
-    # its serial resolver, web and the live `--udid https://…` route passing the value straight
+    # its serial resolver, web and the live route to an `appium` grid passing the value straight
     # through — rather than hard-coding simctl here, which would shell out to `simctl`/`xcodebuild`
     # tooling for `--backend adb` and crash off-macOS, or reject the live route's URL outright.
     udid = environment_for(actuator, udid).resolve_device(udid)
@@ -135,7 +149,7 @@ def repl(
     if erase is None:
         erase = not is_live_route
     elif erase and is_live_route:
-        typer.echo("repl: --erase is not supported on the live `--udid https://…` route")
+        typer.echo("repl: --erase is not supported on the live route to an appium grid")
         raise typer.Exit(2)
     # Bring the app's target server up if the config declares launchServer — without it a web
     # target opens the browser on a host that is not listening, and every `tree` reads the error
@@ -165,7 +179,7 @@ def repl(
             actuator,
             Preconditions(erase=erase),
             environment=env,
-            # The attached app is wherever the operator left it, not on the `readyWhen` screen.
+            # The attached app is wherever the operator left it, not on the `startWhen` screen.
             skip_readiness=attach,
         )
     except (device_errors.DeviceError, XcuitestChannelError) as e:

@@ -21,9 +21,11 @@ import pytest
 from bajutsu.serve.cli import worker as worker_cli
 
 _CONFIG = (
-    "defaults: { backend: [ios] }\n"
     "targets:\n"
-    "  demo: { bundleId: com.example.demo, scenarios: ./scenarios, appPath: ./build/Demo.app }\n"
+    "  demo:\n"
+    "    platform: ios\n"
+    "    app: {id: com.example.demo, path: ./build/Demo.app}\n"
+    "    paths: {scenarios: ./scenarios}\n"
 )
 # A stand-in bundle id for the cases that never complete a download — a refusal before the fetch,
 # a signing gap, a cached tree — plus a composed bind, whose id is a composition key rather than any

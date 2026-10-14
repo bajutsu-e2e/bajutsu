@@ -10,19 +10,24 @@ import zipfile
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+import yaml
+
+from bajutsu.common.capability.worker_capability import APPIUM, BATCH_PROVIDERS
 from bajutsu.common.cloud.devicefarm import Platform
-from bajutsu.common.deprecations import SERVER_BATCH_BUDGET_REPLACEMENT, warn_server_batch_budget
 from bajutsu.common.report.manifest import MAX_LABEL_LENGTH
 from bajutsu.common.run_meta.id import new_run_id
+from bajutsu.common.scenario import load_scenario_file
 from bajutsu.serve import oplog
 from bajutsu.serve.authz import _record_audit
 from bajutsu.serve.batch_provider import BatchRequest
 from bajutsu.serve.capabilities import environment_capability
 from bajutsu.serve.commands import _float, _int, crawl_command, record_command, run_command
 from bajutsu.serve.helpers import (
+    request_backend_error,
     target_batch_info,
     target_build_info,
     target_capabilities,
+    target_platforms,
     target_scenarios_dir,
     valid_relative_key,
     valid_run_id,
@@ -175,33 +180,18 @@ def _reject_run_alert_labels(body: dict[str, Any]) -> tuple[Any, int] | None:
     }, 400
 
 
-def _request_device_budget(
-    body: dict[str, Any],
-) -> tuple[int | None, tuple[Any, int] | None]:
-    """The per-request ``deviceBudget`` override, validated (BE-0336 Unit 4). None when absent (no
-    override). A present value must be a positive integer: a resource cap the caller asked for must
-    fail loudly with a 400 rather than silently evaporate into "unbounded" (determinism first), so a
-    non-int, a float, a bool, or a non-positive value is rejected. Returns ``(budget, None)`` or
-    ``(None, (error, 400))``."""
-    raw = body.get("deviceBudget")
-    if raw is None:
-        return None, None
-    # bool is an int subclass, so guard it out first — a boolean device budget is a client error, not
-    # the integer 1. A float ("1.9") is likewise rejected rather than silently truncated.
-    if isinstance(raw, bool) or not isinstance(raw, int) or raw <= 0:
-        return None, ({"error": "deviceBudget must be a positive integer"}, 400)
-    return raw, None
+def _target_device_args(
+    cfg: Path, target: str, body: dict[str, Any]
+) -> tuple[str, str, tuple[Any, int] | None]:
+    """`_device_args`, with the request's `backend` checked against *target* like `--backend`.
 
-
-def _device_budget(config_budget: int | None, request_budget: int | None) -> int:
-    """The effective cloud-batch device budget K for a fan-out: the more restrictive of the target's
-    configured budget and a validated per-request override (BE-0336 Unit 4). A request may only
-    *lower* the budget, never raise it — so this is the minimum of the two, treating None on either
-    side as "no bound from that side". Both are positive when set (config via schema `gt=0`, request
-    via `_request_device_budget`). Returns 0 (unbounded, the registry's convention) when neither
-    side sets a cap."""
-    candidates = [b for b in (config_budget, request_budget) if b is not None]
-    return min(candidates) if candidates else 0
+    A mismatched pair (a web backend on an iOS target, say) is a 400 here rather than a job that
+    routes to any worker and fails on it (BE-0452).
+    """
+    backend, udid, err = _device_args(body)
+    if err is None and backend and (why := request_backend_error(cfg, target, backend)):
+        err = ({"error": why}, 400)
+    return backend, udid, err
 
 
 def _register_and_dispatch(
@@ -209,14 +199,11 @@ def _register_and_dispatch(
     job: Job,
     *,
     binding: ConfigBinding | None = None,
-    device_budget: int = 0,
     ship_bundle: bool = True,
 ) -> tuple[Job | None, tuple[Any, int] | None]:
     """Register *job* under the concurrency cap and dispatch it, the tail shared by every start_*
     endpoint. Returns ``(job, None)`` once dispatched, or ``(None, (error, 429))`` when the cap is
     hit. The atomic count+create in `try_register` is what keeps concurrent dispatches under the cap.
-    *device_budget* is the per-target cloud-batch device cap (BE-0336 Unit 4), 0 for the local run
-    paths that reserve no cloud device.
 
     *binding* is the configuration the caller resolved for its own session, whose `cwd` the job is
     frozen against (BE-0393 unit 2). Passing it here rather than in each dispatcher keeps the freeze
@@ -241,7 +228,7 @@ def _register_and_dispatch(
             # bundle's identity as well, and the lease signs a GET for its stored zip — without it
             # the run starts against an `appPath` no worker ever received.
             job.bundle = binding.upload.worker_ref
-    registered = state.try_register(job, device_budget=device_budget)
+    registered = state.try_register(job)
     if registered is None:
         oplog.log_event(
             _logger,
@@ -307,8 +294,8 @@ def _artifact_overrides(
         if not present:
             return None, ({"error": f"{field} {raw} is not stored for this org"}, 400)
         shas[kind] = raw
-    if "binary" in shas and target_batch_info(cfg, target)[2] is None:
-        return None, ({"error": f"binaryArtifact needs target '{target}' to name an appPath"}, 400)
+    if "binary" in shas and target_batch_info(cfg, target)[1] is None:
+        return None, ({"error": f"binaryArtifact needs target '{target}' to name an app.path"}, 400)
     return ArtifactOverrides(
         target, binary=shas.get("binary"), scenarios=shas.get("scenarios")
     ), None
@@ -418,9 +405,16 @@ def start_run(  # noqa: C901, PLR0911
         return {
             "error": "scenario must be an existing .yaml inside the target's scenarios dir"
         }, 400
-    backend, udid, err = _device_args(body)
+    backend, udid, err = _target_device_args(cfg, target, body)
     if err:
         return err
+    grid_capabilities, environment_err = _run_environment(body)
+    if environment_err is None and grid_capabilities is not None:
+        environment_err = _grid_mix_refusal(
+            cfg, target, _scenario_text(state, org, session, target, body, overrides)
+        )
+    if environment_err:
+        return environment_err
     system_alert_handling, alert_err = _run_alert_flags(body)
     if alert_err:
         return alert_err
@@ -512,7 +506,9 @@ def start_run(  # noqa: C901, PLR0911
             actor=actor,
             org=org,
             evidence_prefix=evidence_prefix,
-            capabilities=target_capabilities(cfg, target),
+            capabilities=grid_capabilities
+            if grid_capabilities is not None
+            else target_capabilities(cfg, target, backend),
             # Resolve the label once, at enqueue, and carry it on the job (BE-0404 unit 2): the run
             # keeps the partition it started under even if `serve` is rebound before it finishes, and
             # a remote worker's `_persist_run` stamps it without consulting anything.
@@ -650,31 +646,105 @@ def _run_set_refusal(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]
     for field in _OVERRIDE_FIELDS:
         if body.get(field) is not None:
             return {"error": f"{field} is not supported by run-set (BE-0431)"}, 400
+    if body.get("deviceBudget") is not None:
+        return {
+            "error": "deviceBudget was removed (BE-0452): the device-cloud worker bounds its jobs "
+            "with maxJobConcurrency in its worker.yaml"
+        }, 400
+    environment = body.get("environment")
+    if environment not in BATCH_PROVIDERS:
+        # A fan-out packages the app for a device cloud, so it takes a batch-provider kind alone; an
+        # `appium` grid is reached through the plain run request instead (BE-0452).
+        return {
+            "error": "run-set needs an environment naming a device-cloud batch provider: "
+            f"one of {', '.join(sorted(BATCH_PROVIDERS))}"
+        }, 400
     if state.repository is None:
         # The server registers no batch provider (BE-0448) and runs no job itself (BE-0449), so a
         # fan-out needs the queue; say where it has to run instead.
         return {
-            "error": "run-set needs a queue and a worker whose environment is the target's "
-            "cloudBatch provider; this server has no queue"
+            "error": f"run-set needs a queue and a worker whose environment is {environment!r}; "
+            "this server has no queue"
         }, 400
     return None
+
+
+def _scenario_text(
+    state: ServeState,
+    org: str,
+    session: str | None,
+    target: str,
+    body: dict[str, Any],
+    overrides: ArtifactOverrides | None,
+) -> str | None:
+    """The requested scenario file's text from the target's own store, or None when unreadable.
+
+    An override's scenarios travel as a stored artifact the server does not open here, so it gives
+    None too.
+    """
+    if overrides is not None and overrides.scenarios is not None:
+        return None
+    scope = state.for_org(org).scenarios.scope(target, session=session, org=org)
+    return scope.read(str(body["scenario"])) if scope is not None else None
+
+
+def _grid_mix_refusal(cfg: Path, target: str, text: str | None) -> tuple[Any, int] | None:
+    """Why an `appium` run of *text* cannot dispatch: a scenario mixing a grid and a local target.
+
+    The job routes by `environment:appium` alone, so a worker the grid serves has no claim on the
+    host a local target needs; such a scenario runs through `--worker-config` on a machine that has
+    both (BE-0452). The grid serves iOS targets today.
+    """
+    if text is None:
+        return None
+    try:
+        scenarios = load_scenario_file(text).scenarios
+    except (ValueError, yaml.YAMLError):
+        return None  # the run itself reports a malformed file
+    platforms = target_platforms(cfg)
+    for scenario in scenarios:
+        local = [n for n in scenario.target_names or [target] if platforms.get(n, "ios") != "ios"]
+        if local:
+            return {
+                "error": f"scenario '{scenario.name}' mixes the appium grid's iOS targets with "
+                f"local target(s) {', '.join(local)}; run it with --worker-config on a machine "
+                "that has both"
+            }, 400
+    return None
+
+
+def _run_environment(body: dict[str, Any]) -> tuple[list[str] | None, tuple[Any, int] | None]:
+    """The routing the plain run request's `environment` asks for: ``(capabilities, error)``.
+
+    Absent, the job stays local and routes as before (None). `appium` alone is accepted (BE-0452):
+    the job then requires `environment:appium` and no `platform:*` or `host:*` token, since the grid
+    owns the device and its host, as for a Device Farm job.
+    """
+    environment = body.get("environment")
+    if environment is None:
+        return None, None
+    if environment != APPIUM:
+        return None, (
+            {"error": f"environment must be {APPIUM!r} on a run request, not {environment!r}"},
+            400,
+        )
+    return [environment_capability(APPIUM)], None
 
 
 # Each return is a distinct HTTP status from a validation guard — the early-return shape RET505
 # itself asks for (BE-0386). Those guards are also what the complexity and branch counts tally, so
 # C901 and PLR0912 are exempted for the same reason; the self-contained steps, `_batch_requests` and
 # `_batch_application`, are already split.
-def start_run_set(  # noqa: C901, PLR0911, PLR0912
+def start_run_set(  # noqa: C901, PLR0911
     state: ServeState, body: dict[str, Any], *, actor: str | None = None, session: str | None = None
 ) -> tuple[Any, int]:
     """Fan out a scenario-set request into one cloud-batch job per scenario (BE-0336 Unit 3).
 
-    A neutral dispatch surface: the request names a `target` and, optionally, a `scenarios` subset
-    (omitted = every scenario in the target's dir). The target's config declares which batch provider
-    its cloud runs use (`cloudBatch`); the request never names a provider, so the executor kind is a
-    config decision, not a client one. Each scenario becomes its own Job carrying a per-scenario
-    `BatchRequest`, registered and dispatched through the same concurrency-capped tail as every other
-    run. Returns the dispatched job ids.
+    A neutral dispatch surface: the request names a `target`, the batch provider its runs go to as
+    `environment` (BE-0452: where a run happens is a choice per run, not a property of the target),
+    and, optionally, a `scenarios` subset (omitted = every scenario in the target's dir). Each
+    scenario becomes its own Job carrying a per-scenario `BatchRequest`, registered and dispatched
+    through the same concurrency-capped tail as every other run. Returns the dispatched job ids.
 
     Each job requires exactly `environment:<provider>` (BE-0448), so only a worker that registered
     the provider leases it, and it ships what a worker without the project needs: the config and
@@ -696,16 +766,13 @@ def start_run_set(  # noqa: C901, PLR0911, PLR0912
     scope = state.for_org(org).scenarios.scope(target, session=session, org=org)
     if scope is None:
         return {"error": f"target '{target}' has no scenarios dir"}, 400
-    provider, platform, app_path, config_budget = target_batch_info(cfg, target)
-    if not provider:
-        return {
-            "error": f"target '{target}' is not configured for cloud-batch runs (set cloudBatch)"
-        }, 400
+    provider = str(body["environment"])
+    platform, app_path = target_batch_info(cfg, target)
     if platform not in ("android", "ios"):
         return {"error": f"cloud-batch runs support android or ios, not {platform!r}"}, 400
     batch_platform: Platform = "android" if platform == "android" else "ios"
     if not app_path:
-        return {"error": f"target '{target}' has no appPath to install on the cloud device"}, 400
+        return {"error": f"target '{target}' has no app.path to install on the cloud device"}, 400
     # Which scenarios to fan out: the requested subset, or every scenario in the target's dir.
     requested = body.get("scenarios")
     if requested is None:
@@ -739,22 +806,6 @@ def start_run_set(  # noqa: C901, PLR0911, PLR0912
     label, label_err = _run_label(binding, body)
     if label_err:
         return label_err
-    # The device budget K bounds how many of this target's runs reserve a device at once (BE-0336
-    # Unit 4): the target's configured `cloudBatchBudget`, which a per-request `deviceBudget` may
-    # lower. Keyed on the batch provider (the device pool) inside `try_register`, so the (K+1)th job
-    # is rejected and the fan-out stops there. Both are deprecated for the worker's
-    # `maxJobConcurrency` (BE-0448) and still honored for one release; the response says so.
-    request_budget, budget_err = _request_device_budget(body)
-    if budget_err:
-        return budget_err
-    device_budget = _device_budget(config_budget, request_budget)
-    deprecated = [
-        name
-        for name, value in (("cloudBatchBudget", config_budget), ("deviceBudget", request_budget))
-        if value is not None
-    ]
-    if request_budget is not None:
-        warn_server_batch_budget("the run-set request field 'deviceBudget'")
     # Last of the checks: snapshotting the binary reads and copies it whole, so every plain body
     # refusal above stays free.
     ships_files = bool(requests[0][1])
@@ -780,28 +831,17 @@ def start_run_set(  # noqa: C901, PLR0911, PLR0912
                 batch_app=batch_app,
             ),
             binding=binding,
-            device_budget=device_budget,
         )
         if capped:
-            # The concurrency cap (global/per-user/per-org) or the device budget stops the fan-out
-            # here; a partially-dispatched set is the routine outcome of the device budget rather than
-            # an error (BE-0336 Unit 4). But if the cap rejected the *first* job, nothing was
-            # dispatched — surface the 429 rather than returning a silent 200 with an empty jobIds
-            # list (like the other start_* endpoints).
+            # The concurrency cap (global/per-user/per-org) stops the fan-out here. If the cap
+            # rejected the *first* job, nothing was dispatched — surface the 429 rather than returning
+            # a silent 200 with an empty jobIds list (like the other start_* endpoints).
             if not dispatched:
                 return capped
             break
         assert job is not None
         dispatched.append(job.id)
     _record_audit(state, actor, org, "run-set", target, {"count": len(dispatched)})
-    if deprecated:
-        return {
-            "jobIds": dispatched,
-            "warnings": [
-                f"{name} is deprecated (BE-0448): {SERVER_BATCH_BUDGET_REPLACEMENT}"
-                for name in deprecated
-            ],
-        }, 200
     return {"jobIds": dispatched}, 200
 
 
@@ -826,7 +866,7 @@ def start_record(
     authored = scope.authored(str(body.get("name") or "generated"))
     # Validate the device args the same way start_run does (BE-0051): no free-text backend or udid
     # reaches the spawned `bajutsu record` argv. The output path is confined by `authored` above.
-    backend, udid, err = _device_args(body)
+    backend, udid, err = _target_device_args(cfg, target, body)
     if err:
         return err
     system_alert_handling, alert_err = _system_alert_handling_flag(body)
@@ -866,7 +906,7 @@ def start_record(
             record_save=authored.save,
             actor=actor,
             org=org,
-            capabilities=target_capabilities(cfg, str(body["target"])),
+            capabilities=target_capabilities(cfg, str(body["target"]), backend),
         ),
         binding=binding,
     )
@@ -917,7 +957,7 @@ def start_crawl(
     # `runs_dir / run_id` (the crawl's --out) can't escape runs_dir (BE-0051).
     if reuse_run and not valid_run_id(run_id):
         return {"error": "invalid runId"}, 400
-    backend, udid, err = _device_args(body)
+    backend, udid, err = _target_device_args(cfg, target, body)
     if err:
         return err
     system_alert_handling, alert_err = _system_alert_handling_flag(body)
@@ -952,7 +992,7 @@ def start_crawl(
             build=build,
             actor=actor,
             org=org,
-            capabilities=target_capabilities(cfg, target),
+            capabilities=target_capabilities(cfg, target, backend),
         ),
         binding=binding,
     )

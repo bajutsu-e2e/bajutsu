@@ -193,7 +193,7 @@ class AndroidEnvironment:
             if android.app_path and not self._provision.app_preinstalled:
                 if not Path(android.app_path).exists():
                     raise adb.DeviceError(
-                        f"appPath not found: {android.app_path} (build the app first)"
+                        f"app.path not found: {android.app_path} (build the app first)"
                     )
                 # Only where the data is going anyway. A clean reinstall may cross a signing key or
                 # drop a component the old build had, and `install -r` cannot express either — but on
@@ -506,7 +506,7 @@ class AndroidEnvironment:
             # again — a separate seam from the cache invalidation above, which every ordinary gesture
             # also triggers and which would therefore clear this latch far too eagerly (BE-0424).
             _reset_exit_info_poll(driver)
-            readiness.await_ready(driver, ready_sel=eff.ready_when, id_namespaces=eff.id_namespaces)
+            readiness.await_ready(driver, ready_sel=eff.start_when, id_namespaces=eff.id_namespaces)
 
         return relaunch
 
@@ -554,11 +554,11 @@ class AndroidEnvironment:
             return
         if isinstance(driver, base.SettledCacheInvalidator):
             driver.invalidate_settled_cache()
-        # `readyWhen` names the app's launch screen, so it gates a launch alone: a resumed app comes
+        # `startWhen` names the app's launch screen, so it gates a launch alone: a resumed app comes
         # back on whatever screen it left, and waiting there for the launch screen would time out.
         result = readiness.await_ready(
             driver,
-            ready_sel=None if resumed else eff.ready_when,
+            ready_sel=None if resumed else eff.start_when,
             id_namespaces=eff.id_namespaces,
         )
         if not result.ready:
@@ -627,7 +627,7 @@ class AndroidEnvironment:
         fresh = pre.erase or pre.reinstall == "clean"
         if app_path and not self._provision.app_preinstalled:
             if not Path(app_path).exists():
-                raise adb.DeviceError(f"appPath not found: {app_path} (build the app first)")
+                raise adb.DeviceError(f"app.path not found: {app_path} (build the app first)")
             if fresh:
                 e.uninstall(package)
             e.install(app_path)
@@ -646,7 +646,7 @@ class AndroidEnvironment:
         # process stops first, so the step's outcome does not depend on whether the install kills it.
         android = require_android(eff)
         if not android.app_path or not Path(android.app_path).exists():
-            raise adb.DeviceError(f"appPath not found: {android.app_path} (build the app first)")
+            raise adb.DeviceError(f"app.path not found: {android.app_path} (build the app first)")
         e = adb.Env(self._serial, run=self._run)
         try:
             e.force_stop(android.package)
@@ -836,7 +836,7 @@ class AndroidEnvironment:
             # And the same second seam: a crawl builds one driver for the whole walk, so without this
             # the first unconfirmed detection would latch the poll off for every later one (BE-0424).
             _reset_exit_info_poll(driver)
-            readiness.await_ready(driver, ready_sel=eff.ready_when, id_namespaces=eff.id_namespaces)
+            readiness.await_ready(driver, ready_sel=eff.start_when, id_namespaces=eff.id_namespaces)
 
         return reset
 

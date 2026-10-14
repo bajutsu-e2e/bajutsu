@@ -82,19 +82,26 @@ def _no_server_env(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(var, raising=False)
 
 
-def _fake_project(tmp_path: Path, identifier: str = "bundleId: com.example.demo") -> Path:
-    """A fake-backend project whose `demo` target declares a scenario secret; returns its config.
+def _fake_project(tmp_path: Path, platform: str = "ios") -> Path:
+    """A project whose `demo` target declares a scenario secret; returns its config.
 
-    *identifier* picks the target's platform: the default is iOS, and `package: ...` makes it an
-    Android target that a worker on any host may serve (BE-0450).
+    The runs below pass `backend: fake`. *platform* is the target's own: the default is iOS, and
+    `android` makes it a target that a worker on any host may serve (BE-0450).
     """
     scn = tmp_path / "scenarios"
     scn.mkdir()
     (scn / "pass.yaml").write_text("- name: ok\n  steps: []\n", encoding="utf-8")
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "defaults: { backend: [fake] }\ntargets:\n"
-        f"  demo: {{ {identifier}, scenarios: {scn}, secrets: [LOGIN_PASSWORD] }}\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            f"    platform: {platform}\n"
+            "    app: {id: com.example.demo}\n"
+            f"    paths: {{scenarios: {scn}}}\n"
+            "    run:\n"
+            "      secrets: [LOGIN_PASSWORD]\n"
+        ),
         encoding="utf-8",
     )
     (tmp_path / "runs").mkdir()
@@ -573,7 +580,7 @@ def test_sigterm_to_a_worker_cancels_its_leased_run_and_ends_the_child(
 
     # An Android fake target: a real worker refuses `--platform ios` off macOS (BE-0450), and this
     # test spawns one on whatever host runs the suite.
-    cfg = _fake_project(tmp_path, "package: com.example.demo")
+    cfg = _fake_project(tmp_path, "android")
     slow = tmp_path / "scenarios" / "slow-signal.yaml"
     slow.write_text(
         "- name: slow\n  steps:\n"
@@ -782,8 +789,13 @@ def test_an_uploaded_bundle_runs_on_a_same_machine_worker(
     with zipfile.ZipFile(buf, "w") as zf:
         zf.writestr(
             "bajutsu.config.yaml",
-            "defaults: { backend: [fake] }\n"
-            "targets:\n  demo: { bundleId: com.example.demo, scenarios: ./scenarios }\n",
+            (
+                "targets:\n"
+                "  demo:\n"
+                "    platform: ios\n"
+                "    app: {id: com.example.demo}\n"
+                "    paths: {scenarios: ./scenarios}\n"
+            ),
         )
         zf.writestr("scenarios/pass.yaml", "- name: ok\n  steps: []\n")
     state = _local_start(tmp_path, _fake_project(tmp_path))
@@ -921,8 +933,16 @@ def test_an_unsafe_ai_key_env_warns_that_the_server_reads_another(
 
     cfg = _fake_project(tmp_path)
     cfg.write_text(
-        "defaults: { backend: [fake], ai: { keyEnv: BAJUTSU_AI_KEY_X } }\n"
-        "targets:\n  demo: { bundleId: com.example.demo, secrets: [LD_AUDIT_X] }\n",
+        (
+            "defaults:\n"
+            "  ai: {keyEnv: BAJUTSU_AI_KEY_X}\n"
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app: {id: com.example.demo}\n"
+            "    run:\n"
+            "      secrets: [LD_AUDIT_X]\n"
+        ),
         encoding="utf-8",
     )
     state = _local_start(tmp_path, cfg)

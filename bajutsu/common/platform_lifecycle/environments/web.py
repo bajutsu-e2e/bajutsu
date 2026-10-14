@@ -53,7 +53,7 @@ class WebEnvironment:
             raise base.UnsupportedAction("permissions is not supported on the web backend")
         web = require_web(eff)
         if not web.base_url:
-            raise simctl.DeviceError("web backend requires baseUrl (set targets.<name>.baseUrl)")
+            raise simctl.DeviceError("web backend requires baseUrl (set targets.<name>.app.url)")
         driver = backends.make_driver(
             self._actuator,
             "",
@@ -107,7 +107,7 @@ class WebEnvironment:
         *,
         extra_env: Mapping[str, str] | None = None,  # noqa: ARG002
     ) -> RelaunchFn:
-        return _web_relauncher(driver, ready_sel=eff.ready_when, id_namespaces=eff.id_namespaces)
+        return _web_relauncher(driver, ready_sel=eff.start_when, id_namespaces=eff.id_namespaces)
 
     def controller(self, eff: Effective) -> DeviceControl | None:  # noqa: ARG002  # Environment shape
         return None  # the driver owns the browser; no simctl device control
@@ -173,7 +173,7 @@ class WebEnvironment:
         # carried across visits, so a path recorded in one worker's browser replays in another.
         def reset(driver: base.Driver) -> None:
             cast(base.BackendLifecycle, driver).reset_context()  # web-only (fresh context)
-            readiness.await_ready(driver, ready_sel=eff.ready_when, id_namespaces=eff.id_namespaces)
+            readiness.await_ready(driver, ready_sel=eff.start_when, id_namespaces=eff.id_namespaces)
 
         return reset
 

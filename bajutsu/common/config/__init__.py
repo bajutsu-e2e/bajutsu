@@ -31,7 +31,12 @@ from bajutsu.common.config.effective import (
     RunDefaults,
     WebConfig,
 )
-from bajutsu.common.config.resolve import load_config, parse_config_dict, resolve
+from bajutsu.common.config.resolve import (
+    load_config,
+    load_config_file,
+    parse_config_dict,
+    resolve,
+)
 from bajutsu.common.config.schema import (
     WEB_ENGINES,
     AiSettings,
@@ -77,6 +82,7 @@ __all__ = [
     "android_package",
     "ios_bundle_id",
     "load_config",
+    "load_config_file",
     "parse_config_dict",
     "require_android",
     "require_ios",

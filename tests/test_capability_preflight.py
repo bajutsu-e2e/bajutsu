@@ -619,9 +619,14 @@ def test_doctor_scenario_flag_rejects_directory(
 
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "defaults: { backend: [ios] }\n"
-        "targets:\n"
-        "  demo: { bundleId: com.example.demo, idNamespaces: [home] }\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.example.demo\n"
+            "      idNamespaces: [home]\n"
+        ),
         encoding="utf-8",
     )
     # The sandbox has no device tooling, so skip the actuator-availability gate to reach the scenario check.

@@ -1,4 +1,4 @@
-"""Tests for the target-server lifecycle (`targets.<name>.launchServer`)."""
+"""Tests for the target-server lifecycle (`targets.<name>.services.server`)."""
 
 from __future__ import annotations
 
@@ -16,8 +16,8 @@ from bajutsu.common.runner import launch_server as ls
 
 
 def _eff(extra: str = "") -> config.Effective:
-    """A resolved web Effective, optionally with a `launchServer:` block."""
-    body = "baseUrl: 'http://127.0.0.1:8/'"
+    """A resolved web Effective, optionally with a `services.server` block."""
+    body = "platform: web, app: { url: 'http://127.0.0.1:8/' }"
     if extra:
         body += ", " + extra
     return config.resolve(config.load_config(f"targets: {{ web: {{ {body} }} }}"), "web")
@@ -36,13 +36,13 @@ class _FakeProc:
 
 
 def test_no_launch_server_is_noop(monkeypatch: pytest.MonkeyPatch) -> None:
-    # No `launchServer` declared: never shells out, and the stop callable is a no-op.
+    # No `services.server` declared: never shells out, and the stop callable is a no-op.
     started: list[Any] = []
     monkeypatch.setattr(subprocess, "Popen", lambda *a, **k: started.append(a))
     stop, decision = ls.start_launch_server(_eff())
     stop()
     assert started == []
-    assert decision is None  # no launchServer → nothing governed
+    assert decision is None  # no services.server → nothing governed
 
 
 def test_reuses_already_serving(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -50,7 +50,7 @@ def test_reuses_already_serving(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(ls, "_probe", lambda url, timeout=2.0: True)
     started: list[Any] = []
     monkeypatch.setattr(subprocess, "Popen", lambda *a, **k: started.append(a))
-    stop, decision = ls.start_launch_server(_eff("launchServer: { cmd: 'serve it' }"))
+    stop, decision = ls.start_launch_server(_eff("services: { server: { cmd: 'serve it' } }"))
     stop()
     assert started == []
     assert decision is None  # ungoverned (local/Git) reuse records no policy decision
@@ -64,7 +64,7 @@ def test_starts_and_waits_until_ready(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(subprocess, "Popen", lambda *a, **k: fake)
     terminated: list[Any] = []
     monkeypatch.setattr(ls, "_terminate", lambda proc, say: terminated.append(proc))
-    stop, _decision = ls.start_launch_server(_eff("launchServer: { cmd: 'serve it' }"))
+    stop, _decision = ls.start_launch_server(_eff("services: { server: { cmd: 'serve it' } }"))
     assert terminated == []  # not torn down until we stop it
     stop()
     assert terminated == [fake]
@@ -81,7 +81,7 @@ def test_timeout_raises_and_terminates(monkeypatch: pytest.MonkeyPatch) -> None:
     times = iter([100.0, 100.0, 200.0])  # deadline=101; enter once, then past it
     monkeypatch.setattr(time, "monotonic", lambda: next(times))
     with pytest.raises(RuntimeError, match="not ready"):
-        ls.start_launch_server(_eff("launchServer: { cmd: 'serve it', readyTimeout: 1 }"))
+        ls.start_launch_server(_eff("services: { server: { cmd: 'serve it', readyTimeout: 1 } }"))
     assert terminated == [fake]
 
 
@@ -92,13 +92,21 @@ def test_command_exit_before_ready_raises(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setattr(time, "sleep", lambda s: None)
     monkeypatch.setattr(time, "monotonic", iter([0.0, 0.0]).__next__)
     with pytest.raises(RuntimeError, match="exited"):
-        ls.start_launch_server(_eff("launchServer: { cmd: 'serve it' }"))
+        ls.start_launch_server(_eff("services: { server: { cmd: 'serve it' } }"))
 
 
 def test_missing_ready_url_raises() -> None:
     # No baseUrl to fall back to and no readyUrl → can't probe, so refuse up front.
     eff = config.resolve(
-        config.load_config("targets: { x: { bundleId: com.x, launchServer: { cmd: 'srv' } } }"), "x"
+        config.load_config(
+            "targets:\n"
+            "  x:\n"
+            "    platform: ios\n"
+            "    app: {id: com.x}\n"
+            "    services:\n"
+            "      server: {cmd: srv}\n"
+        ),
+        "x",
     )
     with pytest.raises(RuntimeError, match="readyUrl"):
         ls.start_launch_server(eff)
@@ -139,7 +147,7 @@ def test_upload_exec_reuse_accepts_an_external_server(monkeypatch: pytest.Monkey
     started: list[Any] = []
     monkeypatch.setattr(subprocess, "Popen", lambda *a, **k: started.append(a))
     stop, decision = ls.start_launch_server(
-        _eff("launchServer: { cmd: 'serve it' }"), upload_exec="reuse"
+        _eff("services: { server: { cmd: 'serve it' } }"), upload_exec="reuse"
     )
     stop()
     assert started == []  # uploaded cmd never runs
@@ -157,13 +165,17 @@ def test_upload_exec_deny_fails_loud_with_no_server(monkeypatch: pytest.MonkeyPa
     started: list[Any] = []
     monkeypatch.setattr(subprocess, "Popen", lambda *a, **k: started.append(a))
     with pytest.raises(RuntimeError, match="deny"):
-        ls.start_launch_server(_eff("launchServer: { cmd: 'serve it' }"), upload_exec="deny")
+        ls.start_launch_server(
+            _eff("services: { server: { cmd: 'serve it' } }"), upload_exec="deny"
+        )
     assert started == []  # never reaches the bare-host Popen
 
 
 def test_upload_exec_unknown_mode_fails_loud() -> None:
     with pytest.raises(RuntimeError, match="unknown --upload-exec"):
-        ls.start_launch_server(_eff("launchServer: { cmd: 'serve it' }"), upload_exec="bogus")
+        ls.start_launch_server(
+            _eff("services: { server: { cmd: 'serve it' } }"), upload_exec="bogus"
+        )
 
 
 def test_fail_loud_message_escapes_untrusted_cmd(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -172,7 +184,7 @@ def test_fail_loud_message_escapes_untrusted_cmd(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(ls, "_probe", lambda url, timeout=2.0: False)
     with pytest.raises(RuntimeError) as exc:
         ls.start_launch_server(
-            _eff('launchServer: { cmd: "serve\\nINJECTED" }'), upload_exec="deny"
+            _eff('services: { server: { cmd: "serve\\nINJECTED" } }'), upload_exec="deny"
         )
     msg = str(exc.value)
     assert "\\nINJECTED" in msg  # repr-escaped
@@ -193,7 +205,7 @@ def test_upload_exec_sandbox_delegates_to_sandbox(monkeypatch: pytest.MonkeyPatc
     started: list[Any] = []
     monkeypatch.setattr(subprocess, "Popen", lambda *a, **k: started.append(a))
     _stop, decision = ls.start_launch_server(
-        _eff("launchServer: { cmd: 'serve it', port: 8080, dockerImage: 'img' }"),
+        _eff("services: { server: { cmd: 'serve it', port: 8080, dockerImage: 'img' } }"),
         upload_exec="sandbox",
     )
     assert len(called) == 1 and started == []

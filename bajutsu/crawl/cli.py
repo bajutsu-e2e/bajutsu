@@ -25,15 +25,19 @@ import json
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Annotated
 
 import typer
 
 from bajutsu import crawl as crawl_engine
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
+    WORKER_CONFIG_HELP,
     _ai_redactor,
     _build_alert_guard,
+    _device_udid_or_exit,
     _install_usage_ledger,
+    _load_device_worker_or_exit,
     _load_effective_with_source,
     _refuse_out_in_checkout,
     _require_ai_credential,
@@ -41,6 +45,7 @@ from bajutsu.cli._shared import (
     _select_actuator_or_exit,
     _start_launch_server_or_exit,
     _with_headed,
+    _with_worker_device,
     resolve_system_alert_handling_flag,
 )
 from bajutsu.common.ai import announce_ai
@@ -506,6 +511,9 @@ def crawl(
         help="internal: serve sets this for an uploaded bundle to govern its launchServer command "
         "(deny | reuse | sandbox); empty = ungoverned local/Git run (BE-0090)",
     ),
+    worker_config: Annotated[
+        Path | None, typer.Option("--worker-config", help=WORKER_CONFIG_HELP)
+    ] = None,
     config: str = typer.Option(DEFAULT_CONFIG),
 ) -> None:
     """Explore the app breadth-first and write a screen map (`screenmap.json`).
@@ -531,7 +539,12 @@ def crawl(
     def say(msg: str) -> None:
         typer.echo(msg, err=True)
 
-    actuator, _ = _select_actuator_or_exit(backend, eff, [])
+    worker = _load_device_worker_or_exit(worker_config)
+    eff = _with_worker_device(eff, worker)
+    actuator, _ = _select_actuator_or_exit(backend, eff, [], worker)
+    # The device comes through the target's provider, as in `run`: the `--udid` pool, or the grid
+    # an `appium` environment names (BE-0452).
+    udid = _device_udid_or_exit(eff, udid)
     # Fail closed (BE-0097 / BE-0047): the guide and the alert guard both reach the model via the
     # resolved SDK provider (Anthropic / Bedrock / ant), so a missing credential is an actionable
     # error, not a quiet fallback. Placed after backend selection so a config/backend error surfaces

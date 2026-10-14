@@ -28,7 +28,7 @@ import tempfile
 import zipfile
 from pathlib import Path, PurePosixPath
 
-from bajutsu.common.config import Effective, WebConfig, load_config, resolve
+from bajutsu.common.config import Effective, WebConfig, load_config_file, resolve
 from bajutsu.serve.uploads import extract_bundle, validate_bundle_config
 
 # Everything a single-file `scenarios` artifact's basename may NOT contain. The dropped filename is
@@ -91,7 +91,7 @@ def _place_scenarios_and_binaries_and_check_coherence(
     `resolve(...).rebased(root)` already confines every path to *root*. A supplied-but-unused artifact
     is not an error — one artifact may be composed against several configs that don't all need it."""
     config_path = root / "bajutsu.config.yaml"
-    cfg = load_config(config_path.read_text(encoding="utf-8"))
+    cfg = load_config_file(config_path)
     placed: set[Path] = set()
     for name in cfg.targets:
         eff = resolve(cfg, name).rebased(root)
@@ -146,7 +146,7 @@ def materialize_composition(
 
     Raises `CompositionError` (a config field names an artifact not supplied), `BundleError` (an
     invalid zip, zip-slip, or a resource bound crossed while extracting `scenarios`/`binary`), or a
-    `load_config`/`rebased` failure (`OSError` / `ValueError` / `yaml.YAMLError`). `OSError` and
+    `load_config_file`/`rebased` failure (`OSError` / `ValueError` / `yaml.YAMLError`). `OSError` and
     `yaml.YAMLError` are not `ValueError` subclasses, so the call site catches the three explicitly
     (`except (OSError, ValueError, yaml.YAMLError)`) rather than a bare `except ValueError`. A
     failure leaves no partial cache entry.
@@ -242,10 +242,10 @@ def place_overrides(
     `appPath` only, replacing whatever was there. Every path is confined to *root* (BE-0051).
 
     Raises `CompositionError` when *target* names no place for a supplied leg, `BundleError` for an
-    unextractable zip, or a `load_config`/`rebased` failure.
+    unextractable zip, or a `load_config_file`/`rebased` failure.
     """
-    config_text = (root / "bajutsu.config.yaml").read_text(encoding="utf-8")
-    eff = resolve(load_config(config_text), target).rebased(root, confine=True)
+    config = load_config_file(root / "bajutsu.config.yaml")
+    eff = resolve(config, target).rebased(root, confine=True)
     if scenarios is not None:
         if eff.evidence_dirs.scenarios is None:
             raise CompositionError(f"target {target!r} names no scenarios dir for the override")

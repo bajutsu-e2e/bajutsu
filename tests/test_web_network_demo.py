@@ -42,7 +42,7 @@ _ENDPOINT = "/api/sync"
 
 def _web_redact() -> Redact:
     cfg = yaml.safe_load((_DEMO / "demo.config.yaml").read_text(encoding="utf-8"))
-    return Redact.model_validate(cfg["targets"]["web"].get("redact", {}))
+    return Redact.model_validate(cfg["targets"]["web"].get("evidence", {}).get("redact", {}))
 
 
 def test_network_scenario_mocks_and_asserts_the_app_endpoint() -> None:

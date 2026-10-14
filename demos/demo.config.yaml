@@ -1,32 +1,32 @@
 # Self-contained config for the top-level demo menu (the `tour` and `features` targets in
 # demos/Makefile). Runs the showcase SwiftUI accessibility app (demos/showcase/ios/swiftui/) on a
-# booted Simulator via XCUITest, and pins `appPath` so `bajutsu run` installs the freshly-built app
+# booted Simulator via XCUITest, and pins `app.path` so `bajutsu run` installs the freshly-built app
 # automatically before each scenario. It mirrors the canonical demos/showcase/showcase.config.yaml
-# entry for showcase-swiftui, adding only the demo-specific `secrets` knob the `features` tour
+# entry for showcase-swiftui, adding only the demo-specific `run.secrets` knob the `features` tour
 # uses to show masked-secret redaction.
 defaults:
-  backend: [ios]   # platform token -> the XCUITest actuator (see docs/drivers.md)
-  device: "iPhone 17 Pro"
-  capture: [screenshot.after, elements, actionLog]
+  evidence: { capture: [screenshot.after, elements, actionLog] }
 targets:
   showcase-swiftui:
-    bundleId: com.bajutsu.showcase.ios.swiftui
-    deeplinkScheme: showcaseswiftui
-    idNamespaces: [stable, horse, search, log, notice, perm, net]
-    # The app reads SHOWCASE_UITEST to disable animations so condition waits stay tight.
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    platform: ios   # the XCUITest actuator (see docs/drivers.md)
+    app:
+      id: com.bajutsu.showcase.ios.swiftui
+      # Built by `make -C demos/showcase swiftui-build`; path is relative to this config's
+      # directory (demos/), not the run's cwd (BE-0242).
+      path: showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app
+      build: make -C demos/showcase swiftui-build
+      # The app reads SHOWCASE_UITEST to disable animations so condition waits stay tight.
+      launch: { env: { SHOWCASE_UITEST: "1" } }
+      idNamespaces: [stable, horse, search, log, notice, perm, net]
+    driver:
+      # The XCUITest runner (`make -C demos/showcase runner-build`); path relative to this config's
+      # directory (demos/), like app.path above.
+      runner:
+        testRunner: ../BajutsuKit/Runner/build/dd/Build/Products/BajutsuRunner.xctestrun
+        build: make -C demos/showcase runner-build
     # `${secrets.PASSWORD}` in the features tour resolves from the environment; its literal
     # value is masked in every run artifact.
-    secrets: [PASSWORD]
-    # Built by `make -C demos/showcase swiftui-build`; path is relative to this config's directory
-    # (demos/), not the run's cwd (BE-0242).
-    appPath: showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app
-    build: make -C demos/showcase swiftui-build
-    # The XCUITest runner (`make -C demos/showcase runner-build`); path relative to this config's
-    # directory (demos/), like appPath above.
-    xcuitest:
-      testRunner: ../BajutsuKit/Runner/build/dd/Build/Products/BajutsuRunner.xctestrun
-      build: make -C demos/showcase runner-build
+    run: { secrets: [PASSWORD] }
     # The canonical showcase scenarios; the menu's own tour/features scenarios live under the
     # non-globbed scenarios/menu/ subdir and are passed explicitly via --scenario.
-    scenarios: showcase/scenarios
+    paths: { scenarios: showcase/scenarios }

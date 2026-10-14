@@ -42,14 +42,12 @@ def _eff(bundle: str, app_path: str | None = None, **xcuitest: Any) -> Effective
             xcuitest=XcuitestConfig(**xcuitest) if xcuitest else None,
         ),
         backend=["xcuitest"],
-        device="iPhone 15",
         locale="en_US",
         launch_env={"FROM_CONFIG": "1"},
         launch_args=[],
         id_namespaces=[],
         reserved_namespaces=[],
         mock_server=None,
-        setup=None,
         capture=[],
         redact=Redact(),
     )
@@ -254,7 +252,7 @@ def test_install_app_refuses_a_missing_build(tmp_path: Path) -> None:
     from bajutsu.common.backend_cli import simctl
 
     env = XcuitestEnvironment("xcuitest", _UDID, _Simctl())
-    with pytest.raises(simctl.DeviceError, match="appPath not found"):
+    with pytest.raises(simctl.DeviceError, match=r"app\.path not found"):
         env.install_member(_eff(_APP, str(tmp_path / "Gone.app")), keep_data=True)
 
 
@@ -327,7 +325,7 @@ def test_foreground_waits_for_ready_when_only_after_a_launch(
         return ReadinessResult(True, "count", 0.0)
 
     monkeypatch.setattr("bajutsu.common.platform_lifecycle.readiness.await_ready", await_ready)
-    control = env.controller(replace(_eff(_AUTH), ready_when={"id": "home"}))
+    control = env.controller(replace(_eff(_AUTH), start_when={"id": "home"}))
     assert control is not None
     control.foreground()
     assert seen == [expected]
@@ -432,7 +430,7 @@ def test_a_member_with_a_missing_build_is_refused(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     env = _started(_Simctl(), _Runner(), monkeypatch)
-    with pytest.raises(simctl.DeviceError, match="appPath not found"):
+    with pytest.raises(simctl.DeviceError, match=r"app\.path not found"):
         env.start_member(_eff(_AUTH, str(tmp_path / "Gone.app")), Preconditions())
 
 

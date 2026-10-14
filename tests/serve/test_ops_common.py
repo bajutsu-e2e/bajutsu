@@ -33,7 +33,10 @@ class _ClosingDriver(FakeDriver):
 
 
 def _eff() -> Effective:
-    return resolve(load_config("targets:\n  demo:\n    bundleId: com.example.demo\n"), "demo")
+    return resolve(
+        load_config("targets:\n  demo:\n    platform: ios\n    app: {id: com.example.demo}\n"),
+        "demo",
+    )
 
 
 # --- releasing a driver that owns no separate resource ---------------------------------------------

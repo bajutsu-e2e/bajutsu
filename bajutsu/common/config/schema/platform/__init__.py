@@ -1,7 +1,7 @@
 """Per-platform models for a target's platform-shaped groups, and the registry that holds them (BE-0452).
 
-Not yet read by the config loader: the schema switch-over (BE-0452 unit 4) validates each target's
-`app`, `runsOn`, `driver`, and `run` extension through `validate_group`.
+`TargetConfig` validates each target's `app`, `runsOn`, and `driver`, and the platform's fields of
+`run`, through these models after merging `defaults` into the target.
 """
 
 from .registry import (
@@ -12,6 +12,7 @@ from .registry import (
     allowed_fields,
     schema_for,
     validate_group,
+    validate_model,
 )
 
 __all__ = [
@@ -22,4 +23,5 @@ __all__ = [
     "allowed_fields",
     "schema_for",
     "validate_group",
+    "validate_model",
 ]

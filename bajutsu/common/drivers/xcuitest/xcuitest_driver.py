@@ -125,7 +125,7 @@ class XcuitestDriver:
         is_real_device: bool = False,
         zorder: ZOrderSource | None = None,
     ) -> None:
-        # Whether this drives a real iPhone rather than a Simulator (`xcuitest.deviceType: device`).
+        # Whether this drives a real iPhone rather than a Simulator (`runsOn.kind: device`).
         # Read only by `app_crash_signal`, which scopes itself out on one: a real device jetsam-kills
         # a foreground app under memory pressure, so `notRunning` there is not the proof it is on the
         # Simulator — and its crash reports never reach this host to be attached anyway (BE-0424).
@@ -934,7 +934,7 @@ class XcuitestDriver:
         or unexpected tree is equally consistent with a system alert covering the app or a deliberate
         `background` step, while a backgrounded-but-alive app reports one of the running states here.
 
-        Simulator only. On a real device (`xcuitest.deviceType: device`) the same `notRunning` can
+        Simulator only. On a real device (`runsOn.kind: device`) the same `notRunning` can
         mean an OS memory-pressure kill instead, and there is no `.ips` report on this host to attach
         anyway — so this answers `None` outright, the same "cannot confirm" a backend with no signal
         at all gives, rather than misreading an OS kill as an app crash.

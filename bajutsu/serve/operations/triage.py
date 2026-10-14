@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
-from bajutsu.common.config import load_config, resolve
+from bajutsu.common.config import load_config_file, resolve
 from bajutsu.serve.authz import _record_audit
 from bajutsu.serve.commands import triage_command
 from bajutsu.serve.helpers import valid_run_id
@@ -110,7 +110,7 @@ def _ai_credential_refusal(
     from bajutsu.common.agents import availability as ai_availability
     from bajutsu.common.ai import credential_gap
 
-    config = load_config(cfg.read_text(encoding="utf-8"))
+    config = load_config_file(cfg)
     ai_config = resolve(config, target).ai
     gap = credential_gap(ai_config)
     if gap == "anthropic-key" and _stored_ai_key_reaches(state, org, ai_config):

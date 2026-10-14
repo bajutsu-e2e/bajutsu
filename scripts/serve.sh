@@ -76,12 +76,13 @@ serve_uses_xcuitest() {
   fi
   uv run python - "$config" <<'PY'
 import sys
+from pathlib import Path
 
 from bajutsu.common.backends import resolve_actuators
-from bajutsu.common.config import load_config, resolve
+from bajutsu.common.config import load_config_file, resolve
 
 try:
-    cfg = load_config(open(sys.argv[1], encoding="utf-8").read())
+    cfg = load_config_file(Path(sys.argv[1]))
     actuators = {a for name in cfg.targets for a in resolve_actuators(resolve(cfg, name).backend)}
 except Exception:
     # A malformed config is install.sh's problem to report below, not this probe's; treat it as

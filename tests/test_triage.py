@@ -443,6 +443,8 @@ def test_rerun_command_builder() -> None:
         "--udid",
         "DEAD-BEEF",
     ]
+    with_worker = _rerun_command("s.yaml", "demo", "", "", "cfg.yaml", Path("w.yaml"))
+    assert with_worker[-2:] == ["--worker-config", "w.yaml"]  # forwarded like --udid (BE-0452)
     bare = _rerun_command("s.yaml", "demo", "", "", "cfg.yaml")  # no backend, empty udid omitted
     assert "--backend" not in bare and "--udid" not in bare
 

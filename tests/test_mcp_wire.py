@@ -127,7 +127,7 @@ def wire(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Any]:
     root = tmp_path_factory.mktemp("mcp_wire")
     config = root / "bajutsu.config.yaml"
     config.write_text(
-        "defaults: {}\ntargets:\n  demo:\n    bundleId: com.demo\n    backend: [fake]\n",
+        ("targets:\n  demo:\n    platform: fake\n    app: {id: com.demo}\n"),
         encoding="utf-8",
     )
     runs = root / "runs"

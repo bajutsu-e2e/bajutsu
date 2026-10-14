@@ -15,6 +15,7 @@ import pytest
 from bajutsu.common import backends
 from bajutsu.common.capability import capability_preflight as cp
 from bajutsu.common.capability.worker_capability import (
+    BATCH_PROVIDERS,
     DEFAULT_WORKER_CONFIG,
     ENVIRONMENTS,
     WorkerCapability,
@@ -119,7 +120,8 @@ def test_environments_match_the_registrable_batch_providers(
         {"DEVICEFARM_PROJECT_ARN": "arn:aws:devicefarm:us-west-2:1:project:abc"}
     )
     assert set(registered) == kinds
-    assert ENVIRONMENTS - {"local"} == kinds
+    # `appium` registers no batch provider: its grid submits nothing (BE-0452).
+    assert ENVIRONMENTS - {"local", "appium"} == kinds == BATCH_PROVIDERS
 
 
 # --- driver host requirement --------------------------------------------------------------------

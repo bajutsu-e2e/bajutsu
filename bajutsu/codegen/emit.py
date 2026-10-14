@@ -42,7 +42,7 @@ def generate_test(
     if emit == "playwright":
         base_url = web_base_url(eff)
         if not base_url:
-            raise CodegenError("playwright codegen needs a web target (baseUrl)")
+            raise CodegenError("playwright codegen needs a web target (app.url)")
         code = to_playwright(scenarios, describe_name_for(stem), base_url, eff.launch_env)
         return code, f"{stem}.spec.ts"
     if emit == "uiautomator":

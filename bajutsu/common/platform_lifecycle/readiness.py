@@ -21,7 +21,7 @@ from bajutsu.common.platform_lifecycle.protocols import ReadinessResult
 
 _logger = logging.getLogger(__name__)
 
-# A readyWhen selector is a usable readiness signal only if it carries a per-element condition;
+# A startWhen selector is a usable readiness signal only if it carries a per-element condition;
 # positional-only fields (`index`, `within`) match every element via find_all, so they fall back to
 # the element-count heuristic rather than declaring the app ready on the first element.
 _READY_MATCH_KEYS = ("id", "idMatches", "label", "labelMatches", "traits", "value")
@@ -74,17 +74,17 @@ def await_ready(
 
     Readiness is decided by the strongest signal available, in order:
 
-    - `ready_sel` (a target's `readyWhen`): wait for that element to appear — the signal for an app
+    - `ready_sel` (a target's `startWhen`): wait for that element to appear — the signal for an app
       whose first interactive screen is a modal over always-present chrome, where a count heuristic
       would return before the modal presents. This is an explicit author declaration of the exact
       element to wait for, so it outranks even the `transitions` signal below (BE-0310): for a
-      `readyWhen` target that also links `BajutsuKit`, an earlier *base-screen* transition must not
-      preempt the modal `readyWhen` is there to wait for — that would reintroduce the very race
-      `readyWhen` exists to close.
+      `startWhen` target that also links `BajutsuKit`, an earlier *base-screen* transition must not
+      preempt the modal `startWhen` is there to wait for — that would reintroduce the very race
+      `startWhen` exists to close.
     - `transitions` (BE-0310): an app linking `BajutsuKit`'s screen-transition observer (a
       `UIViewController.viewDidAppear` hook) that has reported a completed appearance since this wait
       started — a positive signal from the transition itself, needing no heuristic, so it outranks the
-      namespace/count heuristics below. Consulted only when no `readyWhen` match selector is set (see
+      namespace/count heuristics below. Consulted only when no `startWhen` match selector is set (see
       above). A target that doesn't link the SDK (or whose cold-launch first screen reports nothing)
       reports none, and falls through
       unchanged to the rungs below.
@@ -109,8 +109,9 @@ def await_ready(
     when the app takes longer to start.
 
     Returns:
-        Whether the app became ready, which signal decided it (`screenChanged` / `readyWhen` /
-        `namespace` / `count`, or `timeout` when the deadline passed first), the elapsed time —
+        Whether the app became ready, which signal decided it (`screenChanged` / `readyWhen`, the
+        signal an `app.startWhen` selector sets / `namespace` / `count`, or `timeout` when the
+        deadline passed first), the elapsed time —
         recorded on a first-wait timeout so the failure is diagnosable from artifacts (BE-0231) —
         and whether the tree settled before the gate returned.
         Callers that only need the side effect (the relaunch paths) may ignore the return.
@@ -125,8 +126,8 @@ def await_ready(
         "readyWhen" if match_sel is not None else "namespace" if declared else "count"
     )
     for _ in base.deadline_ticks(timeout, poll_init, poll_max):
-        # A `readyWhen` match selector keeps its guarantee: the transition shortcut applies only when
-        # none is set, so an earlier base-screen transition can't preempt the modal `readyWhen` waits
+        # A `startWhen` match selector keeps its guarantee: the transition shortcut applies only when
+        # none is set, so an earlier base-screen transition can't preempt the modal `startWhen` waits
         # for. The signal still outranks the namespace/count heuristics below. Only a transition
         # received since this wait started counts — one left over from a prior launch (a mid-scenario
         # relaunch reuses the same collector) must not satisfy readiness for a launch it predates. A

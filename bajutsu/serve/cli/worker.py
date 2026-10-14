@@ -32,6 +32,7 @@ import typer
 from bajutsu.common.backend_cli import simctl
 from bajutsu.common.backends import PLATFORMS
 from bajutsu.common.capability.worker_capability import (
+    APPIUM,
     LOCAL,
     RESERVED_ROUTING_REASON,
     WorkerCapability,
@@ -238,6 +239,15 @@ def _advertised_capabilities(
             param_hint="--capabilities",
         )
     host_token = host_capability(machine)
+    if cap.environment == APPIUM:
+        if platform:
+            raise typer.BadParameter(
+                "an appium worker takes no --platform: its grid's platform is in worker.yaml",
+                param_hint="--platform",
+            )
+        # The grid owns the device and its host, so a job routed here requires the environment
+        # alone (BE-0452); advertising more would only let a stray local job match.
+        return [environment_capability(APPIUM)]
     if not cap.is_local:
         if platform:
             raise typer.BadParameter(
@@ -251,7 +261,7 @@ def _advertised_capabilities(
     platforms = [p.strip() for p in (platform or "ios").split(",") if p.strip()]
     # Fail loudly on a typo'd platform (e.g. `--platform iso`) rather than silently advertising a
     # `platform:iso` token that matches no job — the worker would otherwise poll forever leasing
-    # nothing (BE-0166, "determinism first"). Same known set config's `_check_platform` validates.
+    # nothing (BE-0166, "determinism first"). The same known set the config schema registry validates.
     if unknown := [p for p in platforms if p not in PLATFORMS]:
         raise typer.BadParameter(
             f"invalid --platform {', '.join(unknown)}: use one of {', '.join(PLATFORMS)}"
@@ -1077,9 +1087,10 @@ def _register_environment_or_exit(environment: str) -> None:
 
     The provider and its lifecycle hooks (BE-0435) live in the worker that submits, so the AWS role
     is held here and never by the server. A worker that cannot register it would lease jobs only to
-    fail each one, so it exits at startup instead, with the reason. A `local` worker registers none.
+    fail each one, so it exits at startup instead, with the reason. A `local` worker registers none,
+    and neither does an `appium` one, whose grid submits nothing (BE-0452).
     """
-    if environment == LOCAL:
+    if environment in (LOCAL, APPIUM):
         return
     from bajutsu.serve.batch_bootstrap import register_batch_providers
 

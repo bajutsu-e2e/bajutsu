@@ -402,9 +402,19 @@ def _cli_setup(tmp_path: Path) -> tuple[Path, Path]:
     """A config with one web app (baseUrl) and one iOS app (bundleId), plus a scenario file."""
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "targets:\n"
-        "  web: { baseUrl: 'http://localhost:3000', idNamespaces: [home] }\n"
-        "  ios: { bundleId: com.example.ios, idNamespaces: [home] }\n",
+        (
+            "targets:\n"
+            "  web:\n"
+            "    platform: web\n"
+            "    app:\n"
+            "      url: http://localhost:3000\n"
+            "      idNamespaces: [home]\n"
+            "  ios:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.example.ios\n"
+            "      idNamespaces: [home]\n"
+        ),
         encoding="utf-8",
     )
     scn = tmp_path / "s.yaml"
@@ -442,7 +452,7 @@ def test_cli_emit_playwright_without_base_url_exits(tmp_path: Path) -> None:
         app, ["codegen", str(scn), "--target", "ios", "--emit", "playwright", "--config", str(cfg)]
     )
     assert r.exit_code == 2
-    assert "baseUrl" in r.output
+    assert "app.url" in r.output
 
 
 def test_cli_unsupported_emit_exits(tmp_path: Path) -> None:

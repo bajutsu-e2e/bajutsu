@@ -31,7 +31,7 @@ showcase は、Bajutsu の設計が依って立つ 2 つの軸を可視化しま
   [`demos/showcase/scenarios/`](../../demos/showcase/scenarios) がどちらに対しても変更なしで動きます。
   異なるのは backend が見る要素ツリーで、これこそクロスツールキットのドライバが吸収すべき差異です。
 - **アクセシビリティ軸**（サフィックス無し ↔ `-noax`）：`-noax` ビルドは識別子を**一切**持ちません
-  （`idNamespaces: []`）。これはセレクタ安定性の対照実験です（DESIGN §5）。同じゴールを両方に対して記録すると、
+  （`app.idNamespaces: []`）。これはセレクタ安定性の対照実験です（DESIGN §5）。同じゴールを両方に対して記録すると、
   アクセシビリティ作業の価値が具体的な差分として現れます。また `record` / `doctor` の「アクセシビリティ欠如」の
   題材でもあります。
 
@@ -40,7 +40,7 @@ showcase は、Bajutsu の設計が依って立つ 2 つの軸を可視化しま
 中核となる iOS の 4 ターゲットは、もとの bundle id（`com.bajutsu.showcase.ios.{swiftui,uikit}[.noax]`）と
 deeplink scheme（`showcase{swiftui,uikit}[noax]`）をそのまま使います。XcodeGen ＋ xcodebuild でビルドします
 （`project.yml` が信頼できる唯一の情報源で、`.xcodeproj` / `build/` は gitignore 対象です）。5 つめの iOS
-ターゲット `showcase-swiftui-bundled` は同じ SwiftUI アプリを使いますが、`xcuitest:` の設定を持ちません。
+ターゲット `showcase-swiftui-bundled` は同じ SwiftUI アプリを使いますが、`driver.runner` の設定を持ちません。
 そのため Simulator 上の実行はローカルビルドのランナーではなく、wheel に同梱されたランナー（BE-0292）に
 解決されます。`bajutsu doctor --target showcase-swiftui-bundled` を実行すると、実際にどちらのランナーが
 使われているかを確認できます。残る 7 ターゲットは、Android の双子アプリ（[`android/`](../../demos/showcase/android)、
@@ -57,12 +57,12 @@ make -C demos/showcase run-flutter-android # Flutter の Android 版：ビルド
 make -C demos/showcase/android e2e-codegen # Android 版：シナリオ → UI Automator → connectedAndroidTest（起動済みエミュレータが必要、BE-0294）
 ```
 
-`bajutsu run` / `serve` は各ターゲットの `build` コマンドでアプリを必要時にビルドするので、先に手動で
+`bajutsu run` / `serve` は各ターゲットの `app.build` コマンドでアプリを必要時にビルドするので、先に手動で
 ビルドする必要はほとんどありません。
 
 ## 起動環境フック
 
-`launchEnv` で注入し、`SIMCTL_CHILD_<NAME>` として渡します（[drivers](drivers.md#環境管理simctl)）。
+ターゲットの `app.launch.env`（またはシナリオの `preconditions.launchEnv`）で注入し、`SIMCTL_CHILD_<NAME>` として渡します（[drivers](drivers.md#環境管理simctl)）。
 
 BE-0079 で、*データ状態*と *push で開く画面*への起動時ショートカットを取り除きました。カタログは固定で（シードする
 手段はありません）、deeplink が詳細へ直接飛ぶこともありません（詳細は行のタップでのみ到達します）。

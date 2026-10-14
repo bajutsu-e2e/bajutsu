@@ -76,7 +76,7 @@ def device_relauncher(
                 *simctl.locale_args(locale),
             ]
             e.launch(bundle_id, launch_args, launch_env)
-            readiness.await_ready(driver, ready_sel=eff.ready_when, id_namespaces=eff.id_namespaces)
+            readiness.await_ready(driver, ready_sel=eff.start_when, id_namespaces=eff.id_namespaces)
 
         return relaunch
 

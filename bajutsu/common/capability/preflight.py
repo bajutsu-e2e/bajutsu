@@ -82,13 +82,11 @@ def config_checks(
         return []
     if backend == "playwright":
         return [
-            Check("target baseUrl", bool(base_url), base_url or f"set targets.{target}.baseUrl")
+            Check("target baseUrl", bool(base_url), base_url or f"set targets.{target}.app.url")
         ]
     if backend == "adb":
-        return [Check("target package", bool(package), package or f"set targets.{target}.package")]
-    return [
-        Check("target bundleId", bool(bundle_id), bundle_id or f"set targets.{target}.bundleId")
-    ]
+        return [Check("target package", bool(package), package or f"set targets.{target}.app.id")]
+    return [Check("target bundleId", bool(bundle_id), bundle_id or f"set targets.{target}.app.id")]
 
 
 def runnability(
@@ -203,7 +201,7 @@ def doctor_environment_checks(
     answer "is this target healthy?".
 
     Args:
-        real_device: For a real-device target (`xcuitest.deviceType: device`), whether the host
+        real_device: For a real-device target (`runsOn.kind: device`), whether the host
             reaches that device. It replaces the booted-Simulator check, which such a target never
             needs.
     """

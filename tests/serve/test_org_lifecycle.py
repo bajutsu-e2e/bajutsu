@@ -36,22 +36,25 @@ if TYPE_CHECKING:
 
 # Two orgs that each claim a target named `checkout` — the collision an admin who creates tenants
 # from the web UI cannot see coming, and `default` left owning the one target neither claims.
-_COLLIDING_YAML = """
-targets:
-  checkout: { bundleId: com.example.checkout }
-  spare: { bundleId: com.example.spare }
-
-orgs:
-  acme:
-    members: [alice]
-    githubOrgs: [acme-gh]
-    githubTeams: [acme-gh/qa]
-    editorTeams: [acme-gh/scenario-maintainers]
-    targets: [checkout]
-  globex:
-    members: [bob]
-    targets: [checkout]
-"""
+_COLLIDING_YAML = (
+    "targets:\n"
+    "  checkout:\n"
+    "    platform: ios\n"
+    "    app: {id: com.example.checkout}\n"
+    "  spare:\n"
+    "    platform: ios\n"
+    "    app: {id: com.example.spare}\n"
+    "orgs:\n"
+    "  acme:\n"
+    "    members: [alice]\n"
+    "    githubOrgs: [acme-gh]\n"
+    "    githubTeams: [acme-gh/qa]\n"
+    "    editorTeams: [acme-gh/scenario-maintainers]\n"
+    "    targets: [checkout]\n"
+    "  globex:\n"
+    "    members: [bob]\n"
+    "    targets: [checkout]\n"
+)
 
 
 # The config a bind site brings with it: one org the seeded state has never heard of, so the row
@@ -174,7 +177,11 @@ def test_orgs_from_db_reads_a_row_with_no_membership_as_empty(
     # A row that predates the membership columns, or one `ensure_org` created at sign-in, holds NULL
     # rather than `[]` — the model's Python-side default never reached it. Reading that as `None`
     # would break `identity_matches_org`'s membership scan on the first such row.
-    state = _state(serve_engine, tmp_path, body="targets:\n  checkout: { bundleId: com.x }\n")
+    state = _state(
+        serve_engine,
+        tmp_path,
+        body=("targets:\n  checkout:\n    platform: ios\n    app: {id: com.x}\n"),
+    )
     assert state.repository is not None
     state.repository.ensure_org("legacy", slug="legacy", name="legacy")
     assert orgs_from_db(state.repository)["legacy"].members == []
@@ -236,7 +243,9 @@ def test_a_membershipless_orgs_table_is_the_operator_actionable_denial(
     state = _state(
         serve_engine,
         tmp_path,
-        body="targets:\n  checkout: { bundleId: com.x }\n",  # no orgs: block, so nothing to seed
+        body=(
+            "targets:\n  checkout:\n    platform: ios\n    app: {id: com.x}\n"
+        ),  # no orgs: block, so nothing to seed
         oauth=_FakeOAuth("mallory", teams=["ops-gh/root"]),
         admin_teams=["ops-gh/root"],
     )
@@ -309,8 +318,17 @@ def test_an_org_literally_named_default_owns_nothing_it_declares(
         serve_engine,
         tmp_path,
         body=(
-            "targets:\n  checkout: { bundleId: com.x }\n  spare: { bundleId: com.y }\n"
-            "orgs:\n  default:\n    members: [alice]\n    targets: [checkout]\n"
+            "targets:\n"
+            "  checkout:\n"
+            "    platform: ios\n"
+            "    app: {id: com.x}\n"
+            "  spare:\n"
+            "    platform: ios\n"
+            "    app: {id: com.y}\n"
+            "orgs:\n"
+            "  default:\n"
+            "    members: [alice]\n"
+            "    targets: [checkout]\n"
         ),
     )
     assert _target_forbidden(state, "default", "checkout") is True
@@ -332,8 +350,14 @@ def test_an_uploaded_bundle_belongs_to_the_org_that_bound_it(
     import zipfile
 
     body = (
-        "targets:\n  docs: { baseUrl: 'https://example.test/', backend: [web] }\n"
-        "orgs:\n  sansaninc:\n    githubOrgs: [sansaninc]\n    targets: [docs]\n"
+        "targets:\n"
+        "  docs:\n"
+        "    platform: web\n"
+        "    app: {url: 'https://example.test/'}\n"
+        "orgs:\n"
+        "  sansaninc:\n"
+        "    githubOrgs: [sansaninc]\n"
+        "    targets: [docs]\n"
     )
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:
@@ -373,8 +397,15 @@ def test_a_git_bound_config_belongs_to_the_org_that_bound_it(
     checkout.mkdir()
     git_config = checkout / "bajutsu.config.yaml"
     git_config.write_text(
-        "targets:\n  docs: { baseUrl: 'https://example.test/', backend: [web] }\n"
-        "orgs:\n  someone-else:\n    targets: [docs]\n",
+        (
+            "targets:\n"
+            "  docs:\n"
+            "    platform: web\n"
+            "    app: {url: 'https://example.test/'}\n"
+            "orgs:\n"
+            "  someone-else:\n"
+            "    targets: [docs]\n"
+        ),
         encoding="utf-8",
     )
     # Patched by dotted path rather than through a second import of a module this file already
@@ -768,8 +799,17 @@ def test_seeding_reports_nothing_for_an_entry_that_only_declares_targets(
     state = _state(serve_engine, tmp_path)
     assert state.binding.config is not None
     state.binding.config.write_text(
-        "targets:\n  checkout: { bundleId: com.x }\n"
-        "orgs:\n  acme:\n    targets: [checkout]\n  globex:\n    targets: [checkout]\n",
+        (
+            "targets:\n"
+            "  checkout:\n"
+            "    platform: ios\n"
+            "    app: {id: com.x}\n"
+            "orgs:\n"
+            "  acme:\n"
+            "    targets: [checkout]\n"
+            "  globex:\n"
+            "    targets: [checkout]\n"
+        ),
         encoding="utf-8",
     )
     with caplog.at_level(logging.WARNING):
@@ -788,15 +828,31 @@ def test_a_targets_only_entry_is_left_unseeded_so_a_restored_roster_still_seeds(
     state = _state(
         serve_engine,
         tmp_path,
-        body="targets:\n  checkout: { bundleId: com.x }\norgs:\n  acme:\n    targets: [checkout]\n",
+        body=(
+            "targets:\n"
+            "  checkout:\n"
+            "    platform: ios\n"
+            "    app: {id: com.x}\n"
+            "orgs:\n"
+            "  acme:\n"
+            "    targets: [checkout]\n"
+        ),
     )
     assert state.repository is not None
     assert orgs_from_db(state.repository) == {}
 
     assert state.binding.config is not None
     state.binding.config.write_text(
-        "targets:\n  checkout: { bundleId: com.x }\n"
-        "orgs:\n  acme:\n    members: [alice]\n    targets: [checkout]\n",
+        (
+            "targets:\n"
+            "  checkout:\n"
+            "    platform: ios\n"
+            "    app: {id: com.x}\n"
+            "orgs:\n"
+            "  acme:\n"
+            "    members: [alice]\n"
+            "    targets: [checkout]\n"
+        ),
         encoding="utf-8",
     )
     seed_orgs_from_bound_config(state)
@@ -1043,7 +1099,7 @@ def test_the_admin_team_bypass_admits_a_sign_in_against_an_empty_table_and_creat
     state = _state(
         serve_engine,
         tmp_path,
-        body="targets:\n  checkout: { bundleId: com.x }\n",
+        body=("targets:\n  checkout:\n    platform: ios\n    app: {id: com.x}\n"),
         oauth=_FakeOAuth("root", teams=["ops-gh/root"]),
         admin_teams=["ops-gh/root"],
     )

@@ -41,8 +41,12 @@ launch.await_ready = _quick
 """
 
 _CONFIG = (
-    "defaults: { backend: [fake] }\n"
-    "targets:\n  demo: { bundleId: com.example.demo, idNamespaces: [home] }\n"
+    "targets:\n"
+    "  demo:\n"
+    "    platform: ios\n"
+    "    app:\n"
+    "      id: com.example.demo\n"
+    "      idNamespaces: [home]\n"
 )
 
 _SCENARIOS = {

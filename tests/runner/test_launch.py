@@ -172,7 +172,7 @@ def test_launch_driver_errors_on_missing_app_path(
         launch_driver(
             "UDID-1", eff, "xcuitest", Preconditions(erase=False), env_run=_recording_run([])
         )
-    assert "appPath not found" in str(excinfo.value)
+    assert "app.path not found" in str(excinfo.value)
 
 
 def test_launch_driver_tears_down_when_await_ready_raises(

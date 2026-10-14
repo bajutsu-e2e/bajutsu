@@ -172,7 +172,7 @@ three sources:
   branch); the whole subtree is fetched, so the config's scenarios and built app come with it.
 - **Upload a bundle (.zip).** Click **Choose a .zip…** (or drop a file on the box) to bring your own
   suite to a hosted server with no file-system access. The zip is a working local checkout — a
-  `bajutsu.config.yaml`, its `scenarios` tree, and the built app binary the config's `appPath` names.
+  `bajutsu.config.yaml`, its `paths.scenarios` tree, and the built app binary the config's `app.path` names.
   It carries no secrets; `${secrets.*}` resolve from the server's environment.
 - **or browse the server.** A file browser, confined to the server's `--root`, for picking a local
   `.yml`/`.yaml` config. A hosted deployment hides this source, since a remote user has no
@@ -294,7 +294,7 @@ and **Output language** ([BE-0188](../roadmaps/BE-0188-configurable-ai-output-la
 fixes the language the AI writes its generated prose in — `record`'s `from:` provenance and
 `crawl`'s streamed reasoning. Its default *auto* keeps today's behavior (record follows the goal,
 crawl stays English); it never affects the deterministic `run` verdict, and it is separate from a
-target's device `locale`.
+target's device locale (`runsOn.locale`).
 
 **Claude API key** (shown when the Anthropic API provider is selected) is **write-once**: enter a
 key and **Save**, and it is shown only masked and never
@@ -306,15 +306,15 @@ its alert guard is the native path alone (BE-0315), which clears the common prom
 consults none.
 
 **Scenario secrets** ([BE-0274](../roadmaps/BE-0274-serve-scenario-secrets/BE-0274-serve-scenario-secrets.md))
-lists the secrets the *bound config* declares — the environment-variable names under its `secrets:`
+lists the secrets the *bound config* declares — the environment-variable names under its `run.secrets`
 list that a scenario references as `${secrets.X}`
-([Secrets](configuration.md#secrets-secrets), [BE-0032](../roadmaps/BE-0032-secret-variables/BE-0032-secret-variables.md)). The panel shows
+([Secrets](configuration.md#secrets-runsecrets), [BE-0032](../roadmaps/BE-0032-secret-variables/BE-0032-secret-variables.md)). The panel shows
 one **write-once** field per declared name (masked, never displayed again, just like the API key), so
 you can provision a scenario's credentials from the Web UI instead of `export`ing them or hand-editing
 a `.env` before launching `serve`. A value set here materializes under its own declared name, and a
 spawned **Replay** / **Record** / **Crawl** inherits it so `${secrets.X}` resolves in the run. The
 panel always shows, with an empty-state message explaining the feature when the bound config
-declares no secrets, and it refreshes when you switch to a config with a different `secrets:` list —
+declares no secrets, and it refreshes when you switch to a config with a different `run.secrets` list —
 only names the config itself declares are settable, never an arbitrary environment variable. Setting
 one is an **admin** action on a role-gated deployment.
 
@@ -326,7 +326,7 @@ version. Its sharpest row is the **iOS test runner**: whether this build ships t
 Simulator runner
 ([BE-0292](../roadmaps/BE-0292-xcuitest-bundled-runner/BE-0292-xcuitest-bundled-runner.md)), the
 Xcode and Simulator SDK versions it was built against when it does, and whether the bound config
-overrides it with an explicit `xcuitest.testRunner` — the one fact that decides whether an iOS
+overrides it with an explicit `driver.runner.testRunner` — the one fact that decides whether an iOS
 Simulator run can start at all. A hosted deployment withholds the host paths (the config path, the
 runs and baselines directories); every other row shows either way. The tab takes no input: it reports
 what the launch command and environment already resolved, and never writes anything back.
@@ -621,7 +621,7 @@ is involved.
 ## Coverage — the E2E coverage map
 
 **What it does.** Renders the E2E coverage map for a target — the `coverage` command in the browser.
-It measures the scenario suite's stable-id references against the app's declared `idNamespaces`,
+It measures the scenario suite's stable-id references against the app's declared `app.idNamespaces`,
 showing per-namespace coverage, the gap list (declared namespaces no scenario touches), and
 off-namespace ids. A selector the run binds later — a `${vars.*}` placeholder carrying a `totp` or
 `email` step's output — names no element, so the map leaves the placeholder out instead of counting

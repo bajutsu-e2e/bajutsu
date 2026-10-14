@@ -64,11 +64,26 @@ def _write(tmp_path: Path) -> tuple[Path, Path]:
     empty_dir.mkdir()
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "defaults: { backend: [ios] }\n"
-        "targets:\n"
-        f"  demo: {{ bundleId: com.example.demo, idNamespaces: [home], scenarios: {scn_dir} }}\n"
-        "  bare: { bundleId: com.example.bare, idNamespaces: [home] }\n"
-        f"  empty: {{ bundleId: com.example.empty, idNamespaces: [home], scenarios: {empty_dir} }}\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.example.demo\n"
+            "      idNamespaces: [home]\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+            "  bare:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.example.bare\n"
+            "      idNamespaces: [home]\n"
+            "  empty:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.example.empty\n"
+            "      idNamespaces: [home]\n"
+            f"    paths: {{scenarios: {empty_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     scn = tmp_path / "s.yaml"
@@ -147,8 +162,16 @@ def test_record_fails_closed_uses_configured_key_env(
     monkeypatch.delenv("MY_GATEWAY_KEY", raising=False)
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "defaults:\n  ai: { keyEnv: MY_GATEWAY_KEY }\n"
-        "targets:\n  demo: { bundleId: com.example.demo, idNamespaces: [home] }\n",
+        (
+            "defaults:\n"
+            "  ai: {keyEnv: MY_GATEWAY_KEY}\n"
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.example.demo\n"
+            "      idNamespaces: [home]\n"
+        ),
         encoding="utf-8",
     )
     r = invoke(
@@ -175,8 +198,16 @@ def _kill_switch_config(tmp_path: Path) -> Path:
     """A config whose `defaults.ai` disables every AI path (BE-0394)."""
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "defaults:\n  ai: { provider: none }\n"
-        "targets:\n  demo: { bundleId: com.example.demo, idNamespaces: [home] }\n",
+        (
+            "defaults:\n"
+            "  ai: {provider: none}\n"
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.example.demo\n"
+            "      idNamespaces: [home]\n"
+        ),
         encoding="utf-8",
     )
     return cfg
@@ -274,7 +305,9 @@ def test_credential_gap_messages_for_ant_are_actionable() -> None:
     from bajutsu.common.agents.anthropic_client import ANT_CLI_MISSING, ANT_CLI_UNAUTHENTICATED
     from bajutsu.common.config import load_config, resolve
 
-    eff = resolve(load_config("targets: { demo: { bundleId: com.x } }"), "demo")
+    eff = resolve(
+        load_config("targets:\n  demo:\n    platform: ios\n    app: {id: com.x}\n"), "demo"
+    )
     assert "ant auth login" in _credential_gap_message(ANT_CLI_MISSING, eff)
     assert "ant auth login" in _credential_gap_message(ANT_CLI_UNAUTHENTICATED, eff)
 
@@ -304,7 +337,7 @@ def test_no_backend_available_exits_cleanly(
         _argv(command, cfg=cfg, scn=scn, out=tmp_path / "rec.yaml", app="demo", backend="nope"),
     )
     assert r.exit_code == 2
-    assert "no available actuator" in r.output
+    assert "does not match the target's platform" in r.output
 
 
 def test_record_exposes_token_budget_flags() -> None:
@@ -350,7 +383,7 @@ def test_run_reads_configured_dir(tmp_path: Path) -> None:
     cfg, _ = _write(tmp_path)
     r = invoke(runner, app, ["run", "--target", "demo", "--backend", "nope", "--config", str(cfg)])
     assert r.exit_code == 2
-    assert "no available actuator" in r.output
+    assert "does not match the target's platform" in r.output
 
 
 def test_run_no_scenarios_dir(tmp_path: Path) -> None:
@@ -386,8 +419,14 @@ def _fake_run(tmp_path: Path, *, tags: str = "") -> tuple[Path, Path]:
     )
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "defaults: { backend: [fake] }\n"
-        "targets:\n  demo: { bundleId: com.example.demo, idNamespaces: [home] }\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.example.demo\n"
+            "      idNamespaces: [home]\n"
+        ),
         encoding="utf-8",
     )
     return cfg, scn
@@ -418,8 +457,14 @@ def test_record_writes_the_authored_scenario(
 
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "defaults: { backend: [fake] }\n"
-        "targets:\n  demo: { bundleId: com.example.demo, idNamespaces: [home] }\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.example.demo\n"
+            "      idNamespaces: [home]\n"
+        ),
         encoding="utf-8",
     )
     out = tmp_path / "rec.yaml"
@@ -501,8 +546,14 @@ def test_record_needs_human_handoff_exits_3(
 def _fake_record_config(tmp_path: Path) -> Path:
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "defaults: { backend: [fake] }\n"
-        "targets:\n  demo: { bundleId: com.example.demo, idNamespaces: [home] }\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.example.demo\n"
+            "      idNamespaces: [home]\n"
+        ),
         encoding="utf-8",
     )
     return cfg
@@ -937,14 +988,22 @@ def test_a_pool_too_small_for_the_scenario_still_releases_every_device(tmp_path:
                 udid_spec=requested_udid, provision=ProvisionProfile(), release=_release
             )
 
-    dp.register("counting-local", _CountingLocal())
+    # The config names no provider (BE-0452), so the counting one stands in for the built-in local.
+    dp._ensure_builtins()
+    builtin_local = dp._PROVIDERS["local"]
+    dp.register("local", _CountingLocal())
     try:
         cfg = tmp_path / "bajutsu.config.yaml"
         cfg.write_text(
-            "defaults: { backend: [fake] }\n"
-            "targets:\n"
-            "  app: { bundleId: com.example.app, deviceProvider: { kind: counting-local } }\n"
-            "  other: { bundleId: com.example.other, deviceProvider: { kind: counting-local } }\n",
+            (
+                "targets:\n"
+                "  app:\n"
+                "    platform: ios\n"
+                "    app: {id: com.example.app}\n"
+                "  other:\n"
+                "    platform: ios\n"
+                "    app: {id: com.example.other}\n"
+            ),
             encoding="utf-8",
         )
         scn = tmp_path / "cross.yaml"
@@ -981,7 +1040,7 @@ def test_a_pool_too_small_for_the_scenario_still_releases_every_device(tmp_path:
         assert "--udid" in r.output
         assert sorted(released) == ["app", "other"]
     finally:
-        dp._PROVIDERS.pop("counting-local", None)
+        dp.register("local", builtin_local)
 
 
 def test_run_rejects_a_bad_target_config_hook_end_to_end(tmp_path: Path) -> None:
@@ -990,13 +1049,16 @@ def test_run_rejects_a_bad_target_config_hook_end_to_end(tmp_path: Path) -> None
     # `run_all` — the multi-target guard above only covers `len(targets) >= 2`.
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "defaults: { backend: [fake] }\n"
-        "targets:\n"
-        "  demo:\n"
-        "    bundleId: com.example.demo\n"
-        "    before:\n"
-        "      - target: web\n"
-        "        tap: { id: home.start }\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app: {id: com.example.demo}\n"
+            "    hooks:\n"
+            "      setup:\n"
+            "      - target: web\n"
+            "        tap: {id: home.start}\n"
+        ),
         encoding="utf-8",
     )
     scn = tmp_path / "s.yaml"
@@ -1031,16 +1093,19 @@ def test_run_rejects_a_duplicate_extract_body_var_in_a_target_config_hook(tmp_pa
     # `http` steps must still fail at load time, the same as one written directly into the scenario.
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "defaults: { backend: [fake] }\n"
-        "targets:\n"
-        "  demo:\n"
-        "    bundleId: com.example.demo\n"
-        "    before:\n"
-        "      - http:\n"
-        "          url: https://api.test/data\n"
-        "          extractBody:\n"
-        "            - { var: a, path: p1 }\n"
-        "            - { var: a, path: p2 }\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app: {id: com.example.demo}\n"
+            "    hooks:\n"
+            "      setup:\n"
+            "      - http:\n"
+            "          url: https://api.test/data\n"
+            "          extractBody:\n"
+            "          - {var: a, path: p1}\n"
+            "          - {var: a, path: p2}\n"
+        ),
         encoding="utf-8",
     )
     scn = tmp_path / "s.yaml"
@@ -1075,8 +1140,14 @@ def test_run_tag_filtering_away_a_multi_target_scenario_lets_the_rest_run(
     # rather than a suite-wide exit 2 just because *some* file in it declares `targets`.
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "defaults: { backend: [fake] }\n"
-        "targets:\n  demo: { bundleId: com.example.demo, idNamespaces: [home] }\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.example.demo\n"
+            "      idNamespaces: [home]\n"
+        ),
         encoding="utf-8",
     )
     scn = tmp_path / "s.yaml"
@@ -1121,9 +1192,15 @@ def test_run_tag_filtering_away_a_multi_target_scenario_lets_the_rest_run(
 def _suite_dir_with_a_cross_target_file(tmp_path: Path) -> Path:
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "defaults: { backend: [fake] }\n"
-        "targets:\n"
-        "  demo: { bundleId: com.example.demo, idNamespaces: [home], scenarios: scenarios }\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.example.demo\n"
+            "      idNamespaces: [home]\n"
+            "    paths: {scenarios: scenarios}\n"
+        ),
         encoding="utf-8",
     )
     suite = tmp_path / "scenarios"
@@ -1232,7 +1309,14 @@ def test_codegen_rejects_a_multi_target_scenario(tmp_path: Path) -> None:
     # plausible-looking test that acts on the wrong app.
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "targets:\n  demo: { bundleId: com.example.demo, idNamespaces: [home] }\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.example.demo\n"
+            "      idNamespaces: [home]\n"
+        ),
         encoding="utf-8",
     )
     scn = tmp_path / "cross.yaml"
@@ -1251,7 +1335,14 @@ def test_codegen_rejects_a_multi_target_scenario(tmp_path: Path) -> None:
 
 
 def _web_eff(browser: str) -> Effective:
-    cfg = load_config(f"targets: {{ web: {{ baseUrl: 'http://x/', browser: {browser} }} }}")
+    cfg = load_config(
+        "targets:\n"
+        "  web:\n"
+        "    platform: web\n"
+        f"    app: {{url: 'http://x/'}}\n"
+        "    runsOn:\n"
+        f"      browser: {{engine: {browser}}}\n"
+    )
     return resolve(cfg, "web")
 
 
@@ -1273,13 +1364,17 @@ def test_resolve_browser_empty_flag_keeps_config() -> None:
 
 def test_resolve_browser_default_is_chromium() -> None:
     # No flag and no config: chromium, today's behaviour.
-    eff = resolve(load_config("targets: { web: { baseUrl: 'http://x/' } }"), "web")
+    eff = resolve(
+        load_config("targets:\n  web:\n    platform: web\n    app: {url: 'http://x/'}\n"), "web"
+    )
     assert _browser_of(_resolve_browser(eff, "")) == "chromium"
 
 
 def test_resolve_language_flag_overrides_config() -> None:
     # BE-0188: an explicit --language flag wins over the target's `ai.language` config.
-    cfg = load_config("defaults:\n  ai: { language: en }\ntargets:\n  s:\n    bundleId: com.x\n")
+    cfg = load_config(
+        "defaults:\n  ai: {language: en}\ntargets:\n  s:\n    platform: ios\n    app: {id: com.x}\n"
+    )
     eff = resolve(cfg, "s")
     assert eff.ai is not None and eff.ai.language == "en"  # config says en
     overridden = _resolve_language(eff, "ja")
@@ -1289,13 +1384,15 @@ def test_resolve_language_flag_overrides_config() -> None:
 def test_resolve_language_flag_is_normalized() -> None:
     # BE-0188: the flag is normalized (strip + lowercase) like the config/serve paths, so the three
     # input surfaces agree on `JA` / ` ja `.
-    eff = resolve(load_config("targets:\n  s:\n    bundleId: com.x\n"), "s")
+    eff = resolve(load_config("targets:\n  s:\n    platform: ios\n    app: {id: com.x}\n"), "s")
     overridden = _resolve_language(eff, " JA ")
     assert overridden.ai is not None and overridden.ai.language == "ja"
 
 
 def test_resolve_language_empty_flag_keeps_config() -> None:
-    cfg = load_config("defaults:\n  ai: { language: ja }\ntargets:\n  s:\n    bundleId: com.x\n")
+    cfg = load_config(
+        "defaults:\n  ai: {language: ja}\ntargets:\n  s:\n    platform: ios\n    app: {id: com.x}\n"
+    )
     eff = resolve(cfg, "s")
     kept = _resolve_language(eff, "")  # no flag
     assert kept.ai is not None and kept.ai.language == "ja"
@@ -1303,7 +1400,7 @@ def test_resolve_language_empty_flag_keeps_config() -> None:
 
 def test_resolve_language_flag_without_ai_config() -> None:
     # No `ai:` block at all: the flag still applies, constructing the config it overrides.
-    eff = resolve(load_config("targets:\n  s:\n    bundleId: com.x\n"), "s")
+    eff = resolve(load_config("targets:\n  s:\n    platform: ios\n    app: {id: com.x}\n"), "s")
     assert eff.ai is None
     overridden = _resolve_language(eff, "ja")
     assert overridden.ai is not None and overridden.ai.language == "ja"
@@ -1369,14 +1466,12 @@ def test_doctor_web_target_requires_base_url() -> None:
         target="web",
         platform_config=WebConfig(base_url=None),  # web target missing its baseUrl
         backend=["playwright"],
-        device="",
         locale="en_US",
         launch_env={},
         launch_args=[],
         id_namespaces=[],
         reserved_namespaces=[],
         mock_server=None,
-        setup=None,
         capture=[],
         redact=Redact(),
     )
@@ -1397,14 +1492,12 @@ def test_doctor_non_web_target_on_playwright_exits_cleanly() -> None:
         target="app",
         platform_config=IosConfig(bundle_id="com.example.demo"),
         backend=["playwright"],
-        device="",
         locale="en_US",
         launch_env={},
         launch_args=[],
         id_namespaces=[],
         reserved_namespaces=[],
         mock_server=None,
-        setup=None,
         capture=[],
         redact=Redact(),
     )
@@ -1424,14 +1517,12 @@ def test_doctor_xcuitest_uses_a_short_lived_runner_for_screen_query(
         target="app",
         platform_config=IosConfig(bundle_id="com.example.demo"),
         backend=["ios"],
-        device="booted",
         locale="en_US",
         launch_env={},
         launch_args=[],
         id_namespaces=[],
         reserved_namespaces=[],
         mock_server=None,
-        setup=None,
         capture=[],
         redact=Redact(),
     )
@@ -1493,14 +1584,12 @@ def test_xcuitest_runner_summary_reports_the_resolved_source(tmp_path: Path) -> 
             xcuitest=XcuitestConfig(testRunner=str(runner)),
         ),
         backend=["xcuitest"],
-        device="",
         locale="en_US",
         launch_env={},
         launch_args=[],
         id_namespaces=[],
         reserved_namespaces=[],
         mock_server=None,
-        setup=None,
         capture=[],
         redact=Redact(),
     )
@@ -1511,14 +1600,19 @@ def test_xcuitest_runner_summary_empty_for_other_actuators() -> None:
     # No other backend resolves a runner this way, so there is nothing to disclose.
     from bajutsu.cli.commands.doctor import xcuitest_runner_summary
 
-    eff = resolve(load_config("targets: { demo: { bundleId: com.x } }"), "demo")
+    eff = resolve(
+        load_config("targets:\n  demo:\n    platform: ios\n    app: {id: com.x}\n"), "demo"
+    )
     assert xcuitest_runner_summary(eff, "idb") == []
 
 
-def _device_target(extra: str = "") -> Effective:
+def _device_target(runner: str = "") -> Effective:
+    driver = f", driver: {{ runner: {{ {runner} }} }}" if runner else ""
     return resolve(
         load_config(
-            "targets: { demo: { bundleId: com.x, xcuitest: { deviceType: device" + extra + " } } }"
+            "targets: { demo: { platform: ios, app: { id: com.x }, runsOn: { kind: device }"
+            + driver
+            + " } }"
         ),
         "demo",
     )
@@ -1578,14 +1672,12 @@ def test_xcuitest_runner_summary_warns_on_a_bundled_toolchain_mismatch(
         target="app",
         platform_config=IosConfig(bundle_id="com.example.demo", xcuitest=XcuitestConfig()),
         backend=["xcuitest"],
-        device="",
         locale="en_US",
         launch_env={},
         launch_args=[],
         id_namespaces=[],
         reserved_namespaces=[],
         mock_server=None,
-        setup=None,
         capture=[],
         redact=Redact(),
     )
@@ -1594,7 +1686,7 @@ def test_xcuitest_runner_summary_warns_on_a_bundled_toolchain_mismatch(
     assert len(lines) == 2
     assert "⚠" in lines[1]
     assert "Xcode 16.0 (bundled runner) vs 15.4 (host)" in lines[1]
-    assert "xcuitest.testRunner" in lines[1]
+    assert "driver.runner.testRunner" in lines[1]
 
 
 def _bundled_tier_eff() -> Effective:
@@ -1605,14 +1697,12 @@ def _bundled_tier_eff() -> Effective:
         target="app",
         platform_config=IosConfig(bundle_id="com.example.demo", xcuitest=XcuitestConfig()),
         backend=["xcuitest"],
-        device="",
         locale="en_US",
         launch_env={},
         launch_args=[],
         id_namespaces=[],
         reserved_namespaces=[],
         mock_server=None,
-        setup=None,
         capture=[],
         redact=Redact(),
     )
@@ -1670,7 +1760,7 @@ def test_xcuitest_runner_summary_warns_on_a_fresh_clone_with_no_bundle_staged_ye
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # A dev checkout that has never run `make runner-bundle` resolves `runner_source` to "none: ...
-    # (set xcuitest.testRunner)" — advice that was correct before this change but is now wrong, since
+    # (set driver.runner.testRunner)" — advice that was correct before this change but is now wrong, since
     # ensure_bundled_runner_fresh builds the bundle automatically on the next real run. The staleness
     # note must fire here too, not just for "staged but stale", so doctor doesn't send a contributor
     # on a fresh clone to configure a testRunner they don't actually need.
@@ -1689,7 +1779,7 @@ def test_xcuitest_runner_summary_warns_on_a_fresh_clone_with_no_bundle_staged_ye
 
     assert (
         lines[0]
-        == "xcuitest runner: none: no bundled runner in this build (set xcuitest.testRunner)"
+        == "xcuitest runner: none: no bundled runner in this build (set driver.runner.testRunner)"
     )
     assert any("stale" in line and "⚠" in line for line in lines[1:])
 
@@ -1702,7 +1792,9 @@ def test_current_screen_fake_backend_queries_the_driver(monkeypatch: pytest.Monk
     monkeypatch.setattr(
         "bajutsu.common.backend_cli.simctl.resolve_udid", lambda u, run=None: "FAKE-UDID"
     )
-    eff = resolve(load_config("targets: { demo: { bundleId: com.x } }"), "demo")
+    eff = resolve(
+        load_config("targets:\n  demo:\n    platform: ios\n    app: {id: com.x}\n"), "demo"
+    )
     assert _current_screen("fake", "booted", eff) == []  # the fake's screen starts empty
 
 
@@ -1743,7 +1835,7 @@ def test_check_scenarios_missing_file_raises(tmp_path: Path) -> None:
 
 def test_check_scenarios_narrows_on_a_real_ios_device(tmp_path: Path) -> None:
     # BE-0238 Unit 3: doctor's capability check runs against the run-narrowed capabilities, so a real
-    # iOS device (xcuitest.deviceType: device) reports a setLocation scenario as unsupported — the
+    # iOS device (runsOn.kind: device) reports a setLocation scenario as unsupported — the
     # same simctl-backed capability the run preflight drops — instead of the stale "supported" the
     # static set gives. Guards doctor against the drift this item's motivation calls out.
     from bajutsu.cli.commands.doctor import check_scenarios
@@ -1755,12 +1847,19 @@ def test_check_scenarios_narrows_on_a_real_ios_device(tmp_path: Path) -> None:
     )
     dev = resolve(
         load_config(
-            "targets: { demo: { bundleId: com.x,"
-            " xcuitest: { deviceType: device, testRunner: Runner.xctestrun } } }"
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app: {id: com.x}\n"
+            "    runsOn: {kind: device}\n"
+            "    driver:\n"
+            "      runner: {testRunner: Runner.xctestrun}\n"
         ),
         "demo",
     )
-    sim = resolve(load_config("targets: { demo: { bundleId: com.x } }"), "demo")
+    sim = resolve(
+        load_config("targets:\n  demo:\n    platform: ios\n    app: {id: com.x}\n"), "demo"
+    )
     reasons = check_scenarios(scn, capabilities_for_run("xcuitest", dev))
     assert len(reasons) == 1 and "setLocation" in reasons[0]
     # The Simulator keeps the simctl-backed capability, so the same scenario is supported there.
@@ -1774,7 +1873,9 @@ def test_claude_readiness_reachable_with_a_credential(monkeypatch: pytest.Monkey
 
     monkeypatch.delenv("BAJUTSU_AI_PROVIDER", raising=False)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
-    eff = resolve(load_config("targets: { demo: { bundleId: com.x } }"), "demo")
+    eff = resolve(
+        load_config("targets:\n  demo:\n    platform: ios\n    app: {id: com.x}\n"), "demo"
+    )
     line = _claude_readiness(eff)
     assert "reachable" in line and "✓" in line
 
@@ -1788,7 +1889,9 @@ def test_claude_readiness_not_configured_without_a_credential(
 
     monkeypatch.delenv("BAJUTSU_AI_PROVIDER", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    eff = resolve(load_config("targets: { demo: { bundleId: com.x } }"), "demo")
+    eff = resolve(
+        load_config("targets:\n  demo:\n    platform: ios\n    app: {id: com.x}\n"), "demo"
+    )
     line = _claude_readiness(eff)
     assert "not configured (optional)" in line and "–" in line
 
@@ -1803,8 +1906,14 @@ def test_doctor_fake_backend_scores_the_current_screen(
     )
     cfg, _ = _write(tmp_path)
     cfg.write_text(
-        "defaults: { backend: [fake] }\n"
-        "targets:\n  demo: { bundleId: com.example.demo, idNamespaces: [home] }\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.example.demo\n"
+            "      idNamespaces: [home]\n"
+        ),
         encoding="utf-8",
     )
     r = invoke(
@@ -1830,8 +1939,14 @@ def test_doctor_reports_unreachable_screen_instead_of_crashing(
     monkeypatch.setattr("bajutsu.cli.commands.doctor._current_screen", boom)
     cfg, _ = _write(tmp_path)
     cfg.write_text(
-        "defaults: { backend: [fake] }\n"
-        "targets:\n  demo: { bundleId: com.example.demo, idNamespaces: [home] }\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.example.demo\n"
+            "      idNamespaces: [home]\n"
+        ),
         encoding="utf-8",
     )
     r = invoke(
@@ -1847,8 +1962,14 @@ def test_doctor_scenario_not_found_exits_2(tmp_path: Path) -> None:
     # A --scenario path that doesn't exist is a usage error surfaced before any capability work.
     cfg, _ = _write(tmp_path)
     cfg.write_text(
-        "defaults: { backend: [fake] }\n"
-        "targets:\n  demo: { bundleId: com.example.demo, idNamespaces: [home] }\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.example.demo\n"
+            "      idNamespaces: [home]\n"
+        ),
         encoding="utf-8",
     )
     r = invoke(
@@ -1897,7 +2018,10 @@ def test_serve_config_from_git_binds_checkout(
     checkout = tmp_path / "co"
     checkout.mkdir()
     cfg = checkout / "bajutsu.config.yaml"
-    cfg.write_text("targets: { demo: { bundleId: com.example.demo } }\n", encoding="utf-8")
+    cfg.write_text(
+        ("targets:\n  demo:\n    platform: ios\n    app: {id: com.example.demo}\n"),
+        encoding="utf-8",
+    )
     monkeypatch.setattr(
         cs, "materialize", lambda spec, **kw: cs.Materialized(cfg, checkout, "sha1")
     )
@@ -1936,7 +2060,10 @@ def test_serve_local_config_binds_the_config_directory(
     cfg_dir = tmp_path / "proj"
     cfg_dir.mkdir()
     cfg = cfg_dir / "bajutsu.config.yaml"
-    cfg.write_text("targets: { demo: { bundleId: com.example.demo } }\n", encoding="utf-8")
+    cfg.write_text(
+        ("targets:\n  demo:\n    platform: ios\n    app: {id: com.example.demo}\n"),
+        encoding="utf-8",
+    )
     captured: dict[str, object] = {}
     monkeypatch.setattr(srv, "serve", lambda **kw: captured.update(kw))  # don't start a server
     r = invoke(runner, app, ["serve", "--config", str(cfg)])
@@ -1958,7 +2085,10 @@ def test_serve_local_relative_config_is_resolved_to_absolute(
     cfg_dir = tmp_path / "proj"
     cfg_dir.mkdir()
     cfg = cfg_dir / "bajutsu.config.yaml"
-    cfg.write_text("targets: { demo: { bundleId: com.example.demo } }\n", encoding="utf-8")
+    cfg.write_text(
+        ("targets:\n  demo:\n    platform: ios\n    app: {id: com.example.demo}\n"),
+        encoding="utf-8",
+    )
     launch_dir = tmp_path / "elsewhere"
     launch_dir.mkdir()
     monkeypatch.chdir(launch_dir)
@@ -2051,7 +2181,7 @@ def test_crawl_no_backend_available(tmp_path: Path) -> None:
         ["crawl", "--target", "demo", "--backend", "nope", "--out", str(out), "--config", str(cfg)],
     )
     assert r.exit_code == 2
-    assert "no available actuator" in r.output
+    assert "does not match the target's platform" in r.output
     assert not out.exists()
 
 
@@ -2206,7 +2336,12 @@ def test_crawl_web_builds_one_browser_lane_per_worker(
 
     monkeypatch.setattr(crawl_engine, "crawl", fake_crawl)
 
-    cfg, _ = _write(tmp_path)
+    # A web target: `--backend` checks against the target's own platform (BE-0452).
+    cfg = tmp_path / "web.config.yaml"
+    cfg.write_text(
+        "targets:\n  demo: { platform: web, app: { url: 'http://127.0.0.1:1/' } }\n",
+        encoding="utf-8",
+    )
     out = tmp_path / "crawlrun"
     r = invoke(
         runner,
@@ -3258,7 +3393,9 @@ def test_an_unreachable_real_device_fails_the_check_with_its_reason() -> None:
 def test_the_real_device_check_is_absent_off_a_real_device() -> None:
     from bajutsu.common.platform_lifecycle.environments.xcuitest import real_device_check
 
-    sim = resolve(load_config("targets: { demo: { bundleId: com.x } }"), "demo")
+    sim = resolve(
+        load_config("targets:\n  demo:\n    platform: ios\n    app: {id: com.x}\n"), "demo"
+    )
     assert real_device_check(sim.platform_config.xcuitest, "xcuitest", "booted") is None  # type: ignore[union-attr]
     xcfg = _device_target().platform_config.xcuitest  # type: ignore[union-attr]
     assert real_device_check(xcfg, "fake", "booted") is None
@@ -3285,9 +3422,11 @@ def test_real_device_host_addresses_lists_or_flags_them() -> None:
         _device_target(), "xcuitest", candidates=lambda c: HostCandidates((), "host interfaces")
     )
     assert "BAJUTSU_HOST_ADDRESS" in missing
-    (bad,) = real_device_host_addresses(_device_target(", hostAddress: '1.2.3.4:5'"), "xcuitest")
-    assert bad.startswith("  ✘ xcuitest.hostAddress: '1.2.3.4:5'")
-    sim = resolve(load_config("targets: { demo: { bundleId: com.x } }"), "demo")
+    (bad,) = real_device_host_addresses(_device_target("hostAddress: '1.2.3.4:5'"), "xcuitest")
+    assert bad.startswith("  ✘ driver.runner.hostAddress: '1.2.3.4:5'")
+    sim = resolve(
+        load_config("targets:\n  demo:\n    platform: ios\n    app: {id: com.x}\n"), "demo"
+    )
     assert real_device_host_addresses(sim, "xcuitest") == []
     assert real_device_host_addresses(_device_target(), "fake") == []
 

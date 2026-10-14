@@ -21,15 +21,20 @@ from __future__ import annotations
 import dataclasses
 import json
 from pathlib import Path
+from typing import Annotated
 
 import typer
 
 from bajutsu.analysis import audit as _audit
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
+    WORKER_CONFIG_HELP,
+    _device_udid_or_exit,
+    _load_device_worker_or_exit,
     _load_effective,
     _select_actuator_or_exit,
     _start_launch_server_or_exit,
+    _with_worker_device,
     read_manifests,
 )
 from bajutsu.common.backends import select_actuator_for_scenario
@@ -59,6 +64,9 @@ def audit(
     backend: str = typer.Option("", "--backend"),
     udid: str = typer.Option("booted", "--udid"),
     config: str = typer.Option(DEFAULT_CONFIG, "--config"),
+    worker_config: Annotated[
+        Path | None, typer.Option("--worker-config", help=WORKER_CONFIG_HELP)
+    ] = None,
 ) -> None:
     """Score a scenario's determinism — statically, by repeated execution, or over run history.
 
@@ -105,7 +113,7 @@ def audit(
         )
         raise typer.Exit(2)
     if repeat >= 2:
-        _repeat_audit(scenarios, repeat, target_name, backend, udid, config, as_json)
+        _repeat_audit(scenarios, repeat, target_name, backend, udid, config, as_json, worker_config)
         return
 
     reports = [_audit.audit_scenario(s) for s in scenarios]
@@ -136,6 +144,7 @@ def _repeat_audit(
     udid: str,
     config: str,
     as_json: bool,
+    worker_config: Path | None = None,
 ) -> None:
     """Run each scenario `repeat` times through a real device pool and diff the outcomes."""
     if not target_name:
@@ -167,7 +176,7 @@ def _repeat_audit(
     eff = _load_effective(config, target_name)  # exits 2 on missing config / unknown target
     # `with_lifecycle_phases` re-validates its own folded result already, but only `run_all` calls
     # it — deep inside a path whose `finally` below only tears down the device pool / server, not a
-    # clean exit 2. A `targets.<name>.before`/`after` hook step carrying a `target` that disagrees
+    # clean exit 2. A `targets.<name>.hooks` setup/cleanup step carrying a `target` that disagrees
     # with a 0- or 1-target scenario here (the check above only covers `len(targets) >= 2`) would
     # otherwise reach the operator as a raw traceback (BE-0428). Calling it again here, discarding
     # the result, is cheap and means passing this check guarantees `run_all` will too.
@@ -178,7 +187,12 @@ def _repeat_audit(
         raise typer.Exit(2) from None
     # Mirror `run`/`doctor`: validate the backend before touching device CLIs, so an unknown /
     # unavailable actuator exits cleanly instead of crashing later.
-    actuator, backends = _select_actuator_or_exit(backend, eff, [])
+    worker = _load_device_worker_or_exit(worker_config)
+    eff = _with_worker_device(eff, worker)
+    actuator, backends = _select_actuator_or_exit(backend, eff, [], worker)
+    # The device comes through the target's provider, as in `run`: the `--udid` pool, or the grid
+    # an `appium` environment names (BE-0452).
+    udid = _device_udid_or_exit(eff, udid)
     try:
         # How a device handle resolves is the platform's, behind the Environment seam (BE-0256); web
         # has no device, so its lane is the synthetic "web".
@@ -214,11 +228,9 @@ def _repeat_audit(
                     # Mirror `run`: resolve the actuator per scenario (BE-0240), so the preflight and
                     # the pool's lease agree on the cheapest actuator each repeat runs against.
                     resolve_actuator=lambda scn: select_actuator_for_scenario(backends, scn),
-                    # Pass the raw `--udid` as the live-route narrowing signal (BE-0238): a
-                    # `--udid https://…` audits against the live capability set, keeping preflight in
-                    # lockstep with routing. Unlike `run`, `audit --repeat` never calls
-                    # `acquire_device`, so an `appium` provider's endpoint is not reflected here
-                    # unless passed explicitly via `--udid`.
+                    # The provider's udid spec is the live-route narrowing signal (BE-0238): an
+                    # `appium` grid's endpoint audits against the live capability set, keeping
+                    # preflight in lockstep with routing.
                     lease_udid_spec=udid,
                 )
             )

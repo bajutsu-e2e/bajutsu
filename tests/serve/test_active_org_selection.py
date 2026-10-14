@@ -27,20 +27,21 @@ if TYPE_CHECKING:
 
 # Two orgs that both claim `alice`: `acme` by an explicit member entry, `globex` through a GitHub org
 # she also belongs to. `zenith` claims nobody she can reach, so it is the org a refused switch names.
-_ORGS_YAML = """
-targets:
-  demo: { bundleId: com.example.demo }
-
-orgs:
-  acme:
-    members: [alice]
-    targets: [demo]
-  globex:
-    githubOrgs: [globex-gh]
-    editorTeams: [globex-gh/writers]
-  zenith:
-    githubOrgs: [zenith-gh]
-"""
+_ORGS_YAML = (
+    "targets:\n"
+    "  demo:\n"
+    "    platform: ios\n"
+    "    app: {id: com.example.demo}\n"
+    "orgs:\n"
+    "  acme:\n"
+    "    members: [alice]\n"
+    "    targets: [demo]\n"
+    "  globex:\n"
+    "    githubOrgs: [globex-gh]\n"
+    "    editorTeams: [globex-gh/writers]\n"
+    "  zenith:\n"
+    "    githubOrgs: [zenith-gh]\n"
+)
 
 
 class FakeOAuthClient:

@@ -13,20 +13,14 @@ from bajutsu.common.backend_cli import simctl
 from bajutsu.serve import capabilities as cap
 
 
-def test_required_capabilities_is_platform_axis_plus_declared_sorted() -> None:
-    # The platform axis is always present; declared tokens add to it; the result is sorted + deduped
-    # so the routing key stored on a job row is canonical.
-    assert cap.required_capabilities("ios", ["ipad", "ios18", "ipad"]) == [
-        "ios18",
-        "ipad",
-        "platform:ios",
-    ]
+def test_required_capabilities_is_the_platform_axis_and_the_host_sorted() -> None:
+    # The result is sorted so the routing key stored on a job row is canonical. The hand-declared
+    # `requires` tokens are gone with the target-config restructure (BE-0452).
+    assert cap.required_capabilities("ios", host="darwin") == ["host:darwin", "platform:ios"]
 
 
-def test_required_capabilities_without_platform_is_just_declared() -> None:
-    # A job with no resolvable platform (e.g. a config load error) carries only what was declared —
-    # never a bogus `platform:` token.
-    assert cap.required_capabilities("", ["ios18"]) == ["ios18"]
+def test_required_capabilities_without_platform_is_empty() -> None:
+    # A job with no resolvable platform (e.g. a config load error) carries no bogus `platform:` token.
     assert cap.required_capabilities("") == []
 
 

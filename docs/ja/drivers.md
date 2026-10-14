@@ -4,7 +4,7 @@
 
 > ひとつの `Driver` インターフェースの裏に[バックエンド](glossary.md#driver-backend-actuator-platform)（`xcuitest`（iOS Simulator）、`adb`（Android
 > エミュレータ）、`playwright`（web ブラウザ）、それにテスト用のインメモリ `fake`）を置き、能力差を
-> 抽象側で吸収します。プラットフォーム対応のレジストリが `backend` リストから actuator を選びます。
+> 抽象側で吸収します。プラットフォーム対応のレジストリが target の `platform` から actuator を選びます。
 > iOS ではアプリの起動（boot/launch）を `simctl` ラッパが担い、Android ではその双子である `adb`
 > ラッパが担います。
 >
@@ -99,7 +99,8 @@ class Driver(Protocol):
 | キー | 意味 |
 |---|---|
 | `version` | スキーマのバージョンです。`1` でなければなりません。 |
-| `environment` | worker が job を実行する場所です。`local`（既定）か、device cloud のプロバイダ種別を書きます。現在わかっているプロバイダ種別は `devicefarm` だけです。 |
+| `environment` | worker が job を実行する場所です。`local`（既定）、`appium`（稼働中の Appium グリッド）、device cloud のプロバイダ種別のいずれかを書きます。現在わかっているプロバイダ種別は `devicefarm` だけです。 |
+| `appium` | `environment: appium` のときに必須で、それ以外では拒否します。グリッドの `endpoint` の URL と、グリッドが受け持つ 1 つの `platform`（現在は `ios`）を書きます。 |
 | `maxJobConcurrency` | worker が同時に実行できる job の数で、正の整数です。省くと 1 になり、`local` の worker は 1 しか受け付けません。 |
 | `maxTargetsPerJob` | 1 つのシナリオが宣言できる target の数で、正の整数です。すべてのドライバとデバイスグループをまたいで数えるので、Simulator の target とブラウザの target は合わせて 2 です。省くと上限なしになります。 |
 | `drivers` | worker が提供するドライバを `xcuitest`、`adb`、`playwright`、`fake` から選んで並べます。リストにないドライバは使えません。 |
@@ -113,8 +114,26 @@ environment: local
 drivers: [xcuitest, adb, playwright, fake]
 ```
 
-`bajutsu run` と `bajutsu worker` の `--worker-config <path>` は、既定のファイルを丸ごと置き換えます。2 つの
-ファイルをマージすることはありません。環境変数や作業ディレクトリの探索でファイルを選ぶ仕組みはないので、
+`appium` の environment は、[BE-0452](../../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)
+が target から取り除いた `deviceProvider` に代わるものです。ファイルにはグリッドと、グリッドが受け持つ
+1 つのプラットフォームを書きます。
+
+```yaml
+version: 1
+environment: appium
+appium:
+  endpoint: https://grid.example.com/wd/hub
+  platform: ios          # 現在の値はこれだけです
+drivers: [xcuitest, adb, playwright, fake]
+```
+
+グリッドのプラットフォームに属する target はエンドポイントをデバイスとして使い、シナリオのほかの target は
+このホストにとどまります。グリッドの target を 2 つ持つシナリオは拒否します。
+
+`bajutsu worker`、`run`、`record`、`crawl`、`repl`、`audit`、`doctor`、`bajutsu mcp` は
+`--worker-config <path>` を受け付けます。指定したファイルは既定のファイルを丸ごと置き換え、2 つの
+ファイルをマージすることはありません。デバイスを駆動するコマンドは、device cloud のプロバイダを書いた
+ファイルを拒否します。`--udid` はもう URL を受け付けません。グリッドは `appium` の environment で指定します。環境変数や作業ディレクトリの探索でファイルを選ぶ仕組みはないので、
 効力を持つファイルは常にコマンドラインで指定したファイルです。ホストの要件は `local` の worker にだけ
 適用します。device cloud の worker では、ドライバはプロバイダ側のホストで動くからです。
 
@@ -124,11 +143,11 @@ drivers: [xcuitest, adb, playwright, fake]
 使わないので、決定的な経路にとどまります。検査は次の 2 か所で働きます。
 
 - **actuator の選択。** `run`、`record`、`crawl`、`audit`、`repl` は 1 つの選択処理を共有しています。
-  この処理は、ホストで動かせないドライバや worker 能力ファイルにないドライバの actuator を除いてから、
-  残りの中から選びます。そのため、`[ios, web]` のようなフォールバックのリストは、Linux でも `playwright`
-  に解決されます。候補が 1 つも残らなければ、コマンドは理由を示して終了コード 2 で終了します。理由の例は
-  `worker-capability-unsupported: xcuitest runs only on macOS; this worker runs on linux` です。
-  以前は汎用の `no available actuator` で終了していました。`run` 以外のコマンドは常に既定のファイルを使います。
+  target の `platform` が 1 つの actuator を決めます。ホストで動かせないドライバや worker 能力ファイルに
+  ないドライバであれば、この処理はその actuator を拒否し、コマンドは理由を示して終了コード 2 で終了します。
+  理由の例は `worker-capability-unsupported: xcuitest runs only on macOS; this worker runs on linux` です。
+  以前は汎用の `no available actuator` で終了していました。`--worker-config` を付けずに起動したコマンドは
+  既定のファイルを使います。
 - **シナリオごと。** `run` は target を解決する前に、各シナリオが自分で宣言した target を検査します。
   `maxTargetsPerJob` を超えるシナリオや、worker で動かせないドライバを必要とするシナリオは、
   `worker-capability-unsupported:` で始まる理由で失敗します。そのシナリオのためにデバイスは確保せず、
@@ -142,15 +161,18 @@ OS を表す `host:<os>` を広告します。target のドライバがすべて
 必要とし、Mac の worker にだけ届きます。`local` の worker は起動時に、各 `--platform` を worker 能力
 ファイルとホストに照らして検査します。どちらかがそのプラットフォームを除外する場合は、ドライバの理由を
 示して終了します。たとえば `--platform ios` で起動した Linux の worker は止まります。理由は
-`xcuitest runs only on macOS; this worker runs on linux` です。この検査は target の `backend` ではなく
+`xcuitest runs only on macOS; this worker runs on linux` です。この検査はリクエストの `backend` ではなく
 プラットフォームのドライバを判定します。そのため、`fake` の backend で動く iOS の target も Mac の worker を
 必要とします。macOS 以外の worker は `platform:ios` を広告しないからです。environment が device cloud の
-worker は、`environment:<name>` を広告します。`platform:*` のトークンは広告しません。worker 能力ファイル自体は
+worker は、`environment:<name>` を広告します。`platform:*` のトークンは広告しません。`appium` の worker は
+`environment:appium` だけを広告し、サーバの run リクエストは `environment: appium` でこの worker に届きます。worker 能力ファイル自体は
 ルーティング用のトークンを宣言しません。ランタイムやデバイス種別のトークン（`ios18`、`ipad`）は Simulator の
 在庫から得ます。宣言では、マシンにないランタイムまで約束できてしまうからです。
 
-worker の `--capabilities` フラグ、`$BAJUTSU_WORKER_CAPABILITIES`、target の `requires` リストは非推奨です。
-いずれも今回のリリースでは、1 回だけの通知とともに引き続き効きます。3 つのいずれも、予約済みの接頭辞
+worker の `--capabilities` フラグと `$BAJUTSU_WORKER_CAPABILITIES` は非推奨です。
+どちらも今回のリリースでは、1 回だけの通知とともに引き続き効きます。target の `requires` リストは
+BE-0452 で取り除きました。ホストで実行する job が必要とするのは、そのプラットフォームとドライバのホストだけです。
+2 つのどちらも、予約済みの接頭辞
 `environment:` と `host:` を含められません。worker がどちらも自分で埋めるからです。
 
 ## XCUITest（iOS）
@@ -173,7 +195,7 @@ worker の `--capabilities` フラグ、`$BAJUTSU_WORKER_CAPABILITIES`、target 
   確実に前面化することを確かめました
   （[`docs/specs/ios-cross-app-ui-control-feasibility.md`](../specs/ios-cross-app-ui-control-feasibility.md)）。
 
-> 汎用の runner は `XCUIApplication(bundleIdentifier:)` を使うので、アプリ側の協力なしにインストール済みの任意のアプリを駆動します。Simulator の実行は runner の config を一切必要としません。target が `xcuitest.testRunner` も `xcuitest.build` も指定しないときは、wheel にパッケージデータとして同梱された Simulator 用 runner に解決します（BE-0292）。明示的な `testRunner` や `build` は依然としてこの既定より優先し、`deviceType: device` は、ユーザーが `bajutsu runner build --device` でビルドして署名した runner に解決します（BE-0456）。オペレーターのチーム向けに署名した runner を、Bajutsu は同梱できないためです。この backend は `make -C demos/showcase run-swiftui` ＋ `ios-e2e.yml` CI ワークフローで**実機検証済みです**（iPhone 17 Pro、最近の iOS）。XCUITest backend は pip extra を必要とせず、`xcodebuild` は Xcode が供給します。
+> 汎用の runner は `XCUIApplication(bundleIdentifier:)` を使うので、アプリ側の協力なしにインストール済みの任意のアプリを駆動します。Simulator の実行は runner の config を一切必要としません。target が `driver.runner.testRunner` も `driver.runner.build` も指定しないときは、wheel にパッケージデータとして同梱された Simulator 用 runner に解決します（BE-0292）。明示的な `testRunner` や `build` は依然としてこの既定より優先し、`runsOn.kind: device` は、ユーザーが `bajutsu runner build --device` でビルドして署名した runner に解決します（BE-0456）。オペレーターのチーム向けに署名した runner を、Bajutsu は同梱できないためです。この backend は `make -C demos/showcase run-swiftui` ＋ `ios-e2e.yml` CI ワークフローで**実機検証済みです**（iPhone 17 Pro、最近の iOS）。XCUITest backend は pip extra を必要とせず、`xcodebuild` は Xcode が供給します。
 
 ## adb（Android）
 
@@ -200,7 +222,7 @@ worker の `--capabilities` フラグ、`$BAJUTSU_WORKER_CAPABILITIES`、target 
 - **マルチタッチ**（BE-0232）: `pinch` / `rotate` は 2 スロットの protocol-B `sendevent` スイープで駆動します（`pinch_contacts` / `rotate_contacts` が 2 接点の座標を計算し、`rotate` は両端点を結ぶ直線の弦を掃きます。円弧の線形近似で、web バックエンドの rotate と同じです）。rooted device でタッチスクリーンを検出できることが前提で、`_two_finger_gesture` はそれ以外では `UnsupportedAction` で明確に失敗します。下の double-tap 経路と異なり、単一タッチへのフォールバックはありません。`MULTI_TOUCH` は root の有無にかかわらず能力集合で静的に宣言するので、preflight は adb 上の `gestures_multitouch` を通します。root のチェックは能力集合ではなく実行時に課します。
 - `screenshot` は `adb exec-out screencap -p` の PNG バイト列（バイナリを崩さない stdout）を書き出します。
 - ライフサイクル（`AndroidEnvironment`、iOS の `simctl` シーケンスの双子）: 起動完了待ち（`getprop sys.boot_completed` を有界の期限まで polling する条件待機で、固定 sleep も、無期限にブロックする `adb wait-for-device` もありません）→ 必要に応じて APK インストール → `pm clear` によるクリーン状態（`erase` 相当）→ `am force-stop` → ランタイム権限の事前付与（`pm grant`、後述）→ `am start`（起動アクティビティはパッケージマネージャで解決し、launch env は intent extras として渡します）→ deeplink（`am start -a android.intent.action.VIEW`）。run の manifest は `backend: "adb"` を記録するので、選ばれた actuator が開示されます。
-- **ランタイム権限**（BE-0210）: ターゲットの config `grantPermissions` に列挙した権限を、lease 時に `adb shell pm grant <package> <permission>` で事前付与します。`pm clear`（付与をリセットします）のあと、起動の前に付与するので、ランタイムの権限プロンプトがシナリオを止めることがありません。ダイアログが現れてからタップするのではなく、事前に決定論的に付与することで、タイミングを run の経路に持ち込みません。列挙する権限はアプリごとに異なるので、ドライバではなく config に置きます。
+- **ランタイム権限**（BE-0210）: ターゲットの config `app.grantPermissions` に列挙した権限を、lease 時に `adb shell pm grant <package> <permission>` で事前付与します。`pm clear`（付与をリセットします）のあと、起動の前に付与するので、ランタイムの権限プロンプトがシナリオを止めることがありません。ダイアログが現れてからタップするのではなく、事前に決定論的に付与することで、タイミングを run の経路に持ち込みません。列挙する権限はアプリごとに異なるので、ドライバではなく config に置きます。
 - **区間証跡**（BE-0007 の Unit 4）: `video` は `adb shell screenrecord` で録画し、`deviceLog` は `adb logcat` をストリームします。simctl の provider の双子です。`screenrecord` はデバイス側に書き込む（ホストのファイルへは流せない）ので、録画は停止時に SIGINT で確定させてから `adb pull` で回収し、`logcat` はファイルへストリームして SIGTERM で停止します。どちらも web バックエンドと同じ driver の `driver_interval` seam から供給するので、バックエンド非依存の `capture` ポリシーがそのまま両方を運びます（[evidence](evidence.md)を参照）。
 - **ネットワーク**はネイティブには観測しません（`NETWORK` 能力を持ちません）。iOS と同じモックで対応し、アプリ側の collector の URL を launch env 経由で intent extra として渡すので、新しいコードパスなしに `mocks` が動きます。デバイス制御は、エミュレータが実現できるサブセットとして `setLocation`（`emu geo fix`、BE-0211）とクリップボード操作に対応します。一族の残りは未対応のままです。クリップボードは `cmd clipboard` ではなくアプリ内のレシーバ（`BajutsuAndroid`、BE-0233）を経由します。このコマンドは実機では黙って何もせず、Android 10 以降はフォアグラウンドのアプリと既定の IME しかクリップボードを触れないためです。そこで bajutsu は順序付き `am broadcast` を送り、アプリの内側のレシーバがアプリプロセスからこれを処理します（両方向を base64 で運ぶので argv に引用符付けは要らず、レシーバがなければ空のクリップを読むのではなく明確に失敗します）。XCUITest がクリップボードを simctl 経由で実現するのと同じく、協調するアプリがあればバックエンドが駆動できるので、adb は `clipboard` を公開し続けます。[`BajutsuAndroid`](../../BajutsuAndroid/README.ja.md) を参照してください。
 
@@ -233,7 +255,7 @@ id 規約は、上の iOS と Android のものと並べて記します（Flutte
   - **Android の device-control `clipboard`** は `BajutsuAndroid` のアプリ内レシーバ（BE-0233）を往復するので、`device.yaml` の `setClipboard`／`clipboard` ステップは Flutter Android ターゲットで失敗します。iOS の device-control クリップボードはアプリの協力なしに simctl を通るので、Flutter iOS ターゲットでは動きます。この差は Android だけのものです。
 
   これらを除けば、Flutter ターゲットはネイティブ双子が回すのと同じ実機シナリオ群を通ります。Flutter とは無関係にプラットフォームで制限されるものだけが外れます。マルチタッチ（`gestures_multitouch`）は adb では root 化したエミュレータを要し（ネイティブ Android アプリと同様）、`text_editing` と `device` の `push` 部分はネイティブのスイートでも iOS 専用です。
-- **ディープリンクからタブへのルーティング。** Flutter ターゲットはフレーバごとのスキームを登録します（Android の `VIEW` intent-filter、iOS の `CFBundleURLTypes`、各ターゲットの `deeplinkScheme`）。ただし、URI をタブへルーティングする（タブを選び、ルートまで戻し、開いているモーダルを閉じる）ネイティブ双子とは違い、Flutter アプリはまだ受け取った URI を処理しません。スキームを登録しているのは、BE-0007 のディープリンク実行の後続スライスが `am start -a VIEW -d <scheme>://<tab>` や `simctl openurl` で駆動できるようにするためで、アプリ側のハンドラはそのスライスで入ります。リテラルスキームのディープリンクを駆動する共有シナリオは今はなく（`navigation.yaml` や `notices.yaml` は launch env とタップだけで駆動します）、実機検証には影響しません。
+- **ディープリンクからタブへのルーティング。** Flutter ターゲットはフレーバごとのスキームを登録します（Android の `VIEW` intent-filter、iOS の `CFBundleURLTypes`）。ただし、URI をタブへルーティングする（タブを選び、ルートまで戻し、開いているモーダルを閉じる）ネイティブ双子とは違い、Flutter アプリはまだ受け取った URI を処理しません。スキームを登録しているのは、BE-0007 のディープリンク実行の後続スライスが `am start -a VIEW -d <scheme>://<tab>` や `simctl openurl` で駆動できるようにするためで、アプリ側のハンドラはそのスライスで入ります。リテラルスキームのディープリンクを駆動する共有シナリオは今はなく（`navigation.yaml` や `notices.yaml` は launch env とタップだけで駆動します）、実機検証には影響しません。
 - **Flutter Web（CanvasKit）。** canvas へ描き、要素を DOM に出さないので、Playwright バックエンドでは解決できません。
 - **iOS の `noax` 双子。** a11y ビルドが公開の実証です。identifier を持たない別の iOS バンドルには Flutter フレーバによる bundle id の分離が要り、後続作業とします。Android の `noax` 双子は同梱します（`showcase-flutter-android-noax`）。Gradle のプロダクトフレーバでビルドします。
 
@@ -244,9 +266,9 @@ Playwright（Python）によるヘッドレス Chromium です。Mac も Simulat
 - `query()`: 1 本の `page.evaluate()` が、可視、操作可能、アクセシビリティ関連の DOM ノードを走査し、純粋なパーサ（`parse_dom`）が各ノードを `Element` に写像します。id 規約は iOS の accessibilityIdentifier の web 版です。`data-testid` → `Selector.id`、ARIA `role`（またはタグ）→ `traits`、accessible name / `aria-label` / テキスト → `label`、input の `value` → `value`。
 - `tap(sel)`: adb バックエンドと同様、`query()` のスナップショットに対し共有の `resolve_unique`/`find_all` で要素を**一意に**確定し、**frame 中心**を座標クリック（`page.mouse.click`）します。Playwright 自身の `get_by_test_id().click()` は**あえて使いません**。これによりセレクタの意味が他のどの backend ともバイト単位で一致します。
 - `type_text` は `page.keyboard` で入力します（オーケストレータが先に `into` をタップしてフィールドにフォーカスします）。`screenshot` は `page.screenshot`、`wait_for` は `find_all` による単発です（どの backend も同様で、締め切りまでのポーリングは共有ヘルパ `base.wait_until` が担います）。
-- ライフサイクルは driver が所有します。新しい `BrowserContext` が `erase` 相当、`navigate()`（`page.goto(baseUrl)`）が `launch`、`close()` でブラウザを破棄します。simctl のデバイスは無いので、run はダミーのリースを使い、device control は持ちません。
-- **デバイスモード**（BE-0228）: web ターゲットの `deviceMode` 設定が、各 `BrowserContext` の生成のしかたを選びます。`desktop`（既定で、素のデスクトップコンテキスト。従来と変わりません）か、Playwright のデバイスプリセット名（例 `iPhone 13`）です。プリセットは `playwright.devices` に対して解決し、その記述子（viewport / `device_scale_factor` / `is_mobile` / `has_touch` / `user_agent`）を `reduced_motion="reduce"` と並べて `new_context(**kwargs)` にマージするので、ターゲットをそのモバイル端末として駆動します。記述子は**遅延**して解決し（config 読み込みが Playwright を import することはありません）、記憶するので、`reset_context`（クロールのクリーンな起点）と `relaunch`（BE-0077）は同一のコンテキストを組み直します。モードはブラウザのライフサイクル全体を通して安定し、エンジンや `reduced_motion` が既に守っているのと同じ不変条件です。不明なプリセットはドライバー起動時に `ValueError` で明示的に失敗します。これは**デスクトップ級ブラウザでのエミュレーション**であり（デスクトップ級ブラウザの中でモバイルの viewport とタッチ入力を用いる、Chrome DevTools のデバイスツールバーが行うのと同じもの）、実機のモバイルブラウザやデバイスクラウドではありません。本物のモバイル OS が必要なら Android バックエンドが経路です。
-- **方向指定の `swipe` はスクロールになる**（BE-0227）: 方向指定形式 `swipe: { on, direction }` の意味は「スクロール」であり、マウスドラッグは web ページをスクロールしません。そこで web バックエンドは、実際にスクロールを起こす入力プリミティブへ、コンテキストの入力モード（上記の `deviceMode`）に応じて振り分けます。**デスクトップ**（ポインター）コンテキストでは、ジェスチャーの起点で `page.mouse.wheel(...)` を発火します。wheel の移動量は travel の符号を反転したものなので、`up` の swipe はページを**下へ**スクロールさせ、トラックパッドやホイールとまったく同じ挙動になります。**タッチ**コンテキスト（モバイルの `deviceMode`）では、CDP による 1 本指の本物のタッチドラッグ（`pinch` / `rotate` と同じ経路）を使い、ページのタッチリスナとスクロールリスナが発火します。**座標**形式 `swipe: { from, to }` は変わりません。canvas やマップのパン、ドラッグハンドルのための素のドラッグの最終手段として、`page.mouse` のドラッグのままです。`codegen` も方向指定形式にはデスクトップの wheel スクロールを出力するので、生成された Playwright テストは、従来の何も動かないドラッグではなく、物理的に正しい向きへスクロールします（codegen には `amount` を掛ける viewport がないため、距離は既定の固定値です）。別途用意した `drag` アクション（要素アンカーのポインタドラッグ。リサイズ用の仕切りやスライダーなど）はドライバーの `swipe` に振り分けられるので、web では掴んだ要素を実際に**動かす** `page.mouse` のドラッグになります。スクロールするだけの方向指定 `swipe` とは対照的です。
+- ライフサイクルは driver が所有します。新しい `BrowserContext` が `erase` 相当、`navigate()`（`page.goto(app.url)`）が `launch`、`close()` でブラウザを破棄します。simctl のデバイスは無いので、run はダミーのリースを使い、device control は持ちません。
+- **デバイスモード**（BE-0228）: web ターゲットの `runsOn.emulate` 設定が、各 `BrowserContext` の生成のしかたを選びます。`desktop`（省略時の既定で、素のデスクトップコンテキスト。従来と変わりません）か、Playwright のデバイスプリセット名（例 `iPhone 13`）です。プリセットは `playwright.devices` に対して解決し、その記述子（viewport / `device_scale_factor` / `is_mobile` / `has_touch` / `user_agent`）を `reduced_motion="reduce"` と並べて `new_context(**kwargs)` にマージするので、ターゲットをそのモバイル端末として駆動します。記述子は**遅延**して解決し（config 読み込みが Playwright を import することはありません）、記憶するので、`reset_context`（クロールのクリーンな起点）と `relaunch`（BE-0077）は同一のコンテキストを組み直します。モードはブラウザのライフサイクル全体を通して安定し、エンジンや `reduced_motion` が既に守っているのと同じ不変条件です。不明なプリセットはドライバー起動時に `ValueError` で明示的に失敗します。これは**デスクトップ級ブラウザでのエミュレーション**であり（デスクトップ級ブラウザの中でモバイルの viewport とタッチ入力を用いる、Chrome DevTools のデバイスツールバーが行うのと同じもの）、実機のモバイルブラウザやデバイスクラウドではありません。本物のモバイル OS が必要なら Android バックエンドが経路です。
+- **方向指定の `swipe` はスクロールになる**（BE-0227）: 方向指定形式 `swipe: { on, direction }` の意味は「スクロール」であり、マウスドラッグは web ページをスクロールしません。そこで web バックエンドは、実際にスクロールを起こす入力プリミティブへ、コンテキストの入力モード（上記の `runsOn.emulate`）に応じて振り分けます。**デスクトップ**（ポインター）コンテキストでは、ジェスチャーの起点で `page.mouse.wheel(...)` を発火します。wheel の移動量は travel の符号を反転したものなので、`up` の swipe はページを**下へ**スクロールさせ、トラックパッドやホイールとまったく同じ挙動になります。**タッチ**コンテキスト（モバイルの `runsOn.emulate`）では、CDP による 1 本指の本物のタッチドラッグ（`pinch` / `rotate` と同じ経路）を使い、ページのタッチリスナとスクロールリスナが発火します。**座標**形式 `swipe: { from, to }` は変わりません。canvas やマップのパン、ドラッグハンドルのための素のドラッグの最終手段として、`page.mouse` のドラッグのままです。`codegen` も方向指定形式にはデスクトップの wheel スクロールを出力するので、生成された Playwright テストは、従来の何も動かないドラッグではなく、物理的に正しい向きへスクロールします（codegen には `amount` を掛ける viewport がないため、距離は既定の固定値です）。別途用意した `drag` アクション（要素アンカーのポインタドラッグ。リサイズ用の仕切りやスライダーなど）はドライバーの `swipe` に振り分けられるので、web では掴んだ要素を実際に**動かす** `page.mouse` のドラッグになります。スクロールするだけの方向指定 `swipe` とは対照的です。
 - **マルチタッチ**（BE-0054）: `pinch` / `rotate` は Chromium DevTools プロトコル（`Input.dispatchTouchEvent`）で 2 本指のドラッグとして合成します。`mouse` は単一ポインタなので、ジェスチャは CDP 経由（実際のタッチと同じ経路）で送り、ページのタッチリスナが発火します。要素の中心を 2 本指の基準点とし、`scale` が指の間隔を広げ/狭め、`radians` がその中心まわりに回転させます。
 - **ネイティブネットワーク**（BE-0054）: Playwright はページが出すすべてのリクエストを見られるので、`--network` はアプリ側の協力なしに web でも動きます。`network_collector()` がページの `requestfinished` イベントを iOS と同じ `NetworkExchange` に変換するため、`request` アサーションも `network.json` 証跡もそのまま使えます。シナリオの `mocks` は `page.route` でその場で fulfill します。一致したリクエストには既定のレスポンスを返し、`mocked: true` を立てて記録します。一致判定は決定論的な `request` マッチャを再利用し、モデルは一切使いません。
 - **コンソール / ページエラー、動画の証跡**（BE-0054）: `deviceLog` キャプチャ種別はブラウザのコンソールと未捕捉のページエラーを `<scenario>/device.log` にストリームし、`video` はシナリオ全体を録画します。どちらも simctl ではなく Playwright ネイティブで、iOS の os_log / simctl 動画に相当します。録画はシナリオの `capture` に `video` がある時だけ有効化し（`BrowserContext` を `record_video_dir` 付きで生成）、`video` インターバルが context クローズ時に `<scenario>/scenario.webm` へ確定させます。Playwright の録画機能は常に Matroska/WebM を書き出します。そのため `PlaywrightDriver.video_extension` は、他のバックエンドが使う `.mp4` を借用せず、実際のコンテナに合わせてアーティファクト名を決めます。simctl と adb は本物の mp4 を書き出すため、そちらは従来どおり `.mp4` のままです。プールはドライバの `driver_interval`（adb バックエンドと共有する、driver 供給の区間証跡 seam）を `FileSink` に注入します。`video_extension` も同様に注入するので、バックエンド非依存の同じ `capture` ポリシーが両方を運びつつ、各アーティファクトは自分の中身を正直に名乗ります。
@@ -291,10 +313,10 @@ def select_actuator_for_scenario(backends, scenario, available, caps) -> str:  #
 def make_driver(actuator, udid, *, base_url=None, runner_port=None) -> Driver:  # "xcuitest"→XcuitestDriver, "playwright"→PlaywrightDriver, "fake"→FakeDriver
 ```
 
-- **バックエンドトークン**は、**プラットフォーム**（`ios` / `android` / `web` / `fake`）か、具体的な **actuator**（例: `xcuitest`）のどちらかです。現状はどのプラットフォームも単一の actuator に解決します。`ios` は `xcuitest`（BE-0290 で idb を撤去したので `--backend ios` と `--backend xcuitest` は等価）、`android` は `adb`、`web` は `playwright` です。**actuator を複数持つ**プラットフォームのための仕組み（シナリオごとのコスト順解決。BE-0240）は将来のプラットフォームに備えて残していますが、今それを使うプラットフォームはありません。
+- target の必須キー `platform`（`ios` / `android` / `web` / `fake`）が actuator を決めます。config の `backend:` キーは [BE-0452](../../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md) で取り除きました。現状はどのプラットフォームも単一の actuator に解決します。`ios` は `xcuitest`（BE-0290 で idb を撤去しました）、`android` は `adb`、`web` は `playwright` です。`--backend`（とサーバのリクエスト本文の `backend`）は順序付きのフォールバックのリストではなく、検査です。target のプラットフォーム、そのプラットフォームの actuator 名、`fake` のいずれかを受け付けるので、`--backend ios` と `--backend xcuitest` は等価です。それ以外の値やカンマ区切りのリストは終了コード 2 で終了します。`serve --backend` と `provision --backend` は、それぞれ独自の意味を保ちます。**actuator を複数持つ**プラットフォームのための仕組み（シナリオごとのコスト順解決。BE-0240）は将来のプラットフォームに備えて残していますが、今それを使うプラットフォームはありません。
 - 二つの順序が二つの問いに答えます。**安定度順**（`PLATFORMS`、最も高機能なものから。[concepts](concepts.md#5-安定度順ラダーstability-ladder)）は `select_actuator` を駆動します。これは、まだシナリオが手元に無くコストも問わない場面（`doctor`、プールの起動時セットアップ、明示的な単一 actuator の固定）で使う、可用性だけの選択です。**コスト順**（`COST_ORDER`、最も安いものから）は `select_actuator_for_scenario` と `select_actuator_cost_first` の両方を駆動し、両者は候補解決の前段（`_cost_ordered_available`）を共有します。`COST_ORDER` が空になった今、プラットフォームのコスト順は安定度順そのものなので、いずれも単一候補に落ち着きます。`select_actuator_for_scenario` はさらに `capability_preflight.unsupported`（BE-0082）を各候補の能力集合に対して再利用し、利用可能かつそのシナリオのステップに十分な最初の候補を返します。`select_actuator_cost_first` は同じコスト優先の選択をシナリオ無しで行うもので、能力の昇格判定なしに「立ち上げられる中で最も安い actuator」だけが必要な場面（serve の Author タブの **Capture** と **Enrich**。BE-0267）で使います。どちらも、解決した候補が 1 つに収まる場合は `select_actuator` に委譲し（その診断メッセージを保ちます）、現状はどのプラットフォームも単一 actuator なので常にそうなります。利用可能なものが無ければ `RuntimeError`（CLI は終了コード 2）。
 - `web` は `playwright` に、`android` は `adb` に解決され、どちらも**実装済み**です
-  （[vision → reach](vision.md#1-reachより多くのプラットフォームと面)）。本当に未知のトークンはスキップされます（前方互換: 古いビルドでも、将来のバックエンドを列挙した config を実行できます）。
+  （[vision → reach](vision.md#1-reachより多くのプラットフォームと面)）。
 - 可用性判定 `available` は注入可能です（テストで差し替え可）。既定は `shutil.which`（`fake` は実行ファイル不要で常に利用可能）。
 - actuator は**シナリオごと**に 1 つ確定し、そのシナリオの実行のあいだ固定です（BE-0240）。どの瞬間もリースしたデバイスを操作する actuator はちょうど 1 つで、実行の途中で切り替わりません。これは従来の「run ごとに固定」という単位をシナリオ単位へ狭めたもので、単一 actuator の規則を緩めるものではありません。
 

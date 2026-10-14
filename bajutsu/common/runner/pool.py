@@ -632,11 +632,11 @@ def device_pool(  # noqa: C901, PLR0915
 
                 try:
                     # The member's own namespaces and the device's transition signal, as the lease's
-                    # own readiness gate reads them: without them a member with no `readyWhen`
+                    # own readiness gate reads them: without them a member with no `startWhen`
                     # could pass on the tree of the app that was in front before it.
                     member_readiness = await_ready(
                         member_driver,
-                        ready_sel=member_eff.ready_when,
+                        ready_sel=member_eff.start_when,
                         id_namespaces=member_eff.id_namespaces,
                         transitions=(
                             collector.transitions_snapshot_timed

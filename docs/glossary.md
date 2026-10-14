@@ -35,7 +35,7 @@ schema. A **control-flow step** (`if` / `forEach`) is the exception: it carries 
 extract modifiers. Defined by `Step` in `bajutsu/scenario/models/steps.py`.
 
 **precondition** — Per-scenario environment setup applied before the run: `erase`, `reinstall`,
-`launchArgs`, `launchEnv`, `deeplink`, `locale`, `setup`. Distinct from runtime concerns
+`launchArgs`, `launchEnv`, `deeplink`, `locale`, `run.inheritSetup`. Distinct from runtime concerns
 (`mocks` / `network`) and from config-level `defaults` / `targets`. Defined by `Preconditions` in
 `bajutsu/scenario/models/scenario.py`.
 
@@ -82,12 +82,12 @@ easy to blur, so here is the whole relationship in one place. The source of trut
 | Term | What it is |
 |---|---|
 | **driver** | The abstract `Driver` interface (a `Protocol` in `bajutsu/common/drivers/base.py`) — the single platform-specific seam. Every actuator implements it. |
-| **backend** | The user-facing token accepted by `--backend` and config `backend:`. It is *either* a platform alias (`ios`) *or* a bare actuator name (`xcuitest`). "backend" is the umbrella word for the input token; it resolves to an actuator. |
+| **backend** | The user-facing token accepted by `--backend` and by a serve request's `backend`. It is the target's platform alias (`ios`), that platform's bare actuator name (`xcuitest`), or `fake`; anything else exits 2, because the token checks the target's `platform` rather than choosing among several ([BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)). "backend" is the umbrella word for the input token; it resolves to an actuator. |
 | **actuator** | The concrete engine that actually performs actions (tap / type / swipe / query) — what a driver implements. Selection resolves a backend token to one actuator, and the chosen actuator is fixed once at the start of a run and held for the whole run. |
-| **platform** | A coarse token naming a class of target — `ios` / `android` / `web` / `fake` — that expands to an ordered, most-stable-first list of actuators. |
+| **platform** | A coarse token naming a class of target — `ios` / `android` / `web` / `fake` — that expands to an ordered, most-stable-first list of actuators. Every target declares one, as its required `platform` key. |
 
-The `backend:` list is written most-stable-first; selection expands each token to its actuators
-and picks the first one that is both known and available on this machine. Platform → actuator, as
+Selection expands the target's `platform` to its actuators and picks the first one that is both
+known and available on this machine. Platform → actuator, as
 wired in code today (all four actuators are in `IMPLEMENTED`):
 
 | Platform | Actuator(s), most-stable-first | Availability gate |
@@ -112,9 +112,9 @@ is why BE-0057 renamed the config concept from `app` to `target`.
 
 | Term | What it is |
 |---|---|
-| **target** | One config entry under `targets.<name>` describing an app to test: its per-platform identifier (iOS `bundleId`, web `baseUrl`, Android `package`), plus `backend`, `device`, `appPath`, and so on. A *config unit*. Defined by `TargetConfig` in `bajutsu/common/config/schema.py`. |
+| **target** | One config entry under `targets.<name>` describing an app to test: its required `platform`, its per-platform identifier (iOS and Android `app.id`, web `app.url`), plus `app.path`, `runsOn`, `driver`, and so on. A *config unit*. Defined by `TargetConfig` in `bajutsu/common/config/schema/target_config.py`. |
 | **app** | The application under test itself — the software the target points at and that gets installed on a device. |
-| **device** | The concrete runtime instance the target is driven on — a Simulator / emulator / browser context, named by `device` (e.g. `iPhone 15`) and addressed at runtime by `udid`. |
+| **device** | The concrete runtime instance the target is driven on — a Simulator / emulator / browser context, addressed at runtime by `udid`. A target's `runsOn` group describes it; its device conditions (`runsOn.model`, `runsOn.os`, and the like) load but are not yet matched against a device. |
 
 So a **target** (config) points at an **app** (software) driven on a **device** (runtime instance).
 

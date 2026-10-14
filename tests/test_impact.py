@@ -88,13 +88,24 @@ def test_reverse_index_maps_endpoint_literals_not_regex() -> None:
     assert keys == {Reference("endpoint", "/api/session")}  # the regex form is not a literal
 
 
-def test_reverse_index_maps_setup_and_deeplink_as_scenario_level_screens() -> None:
+def test_a_scenario_level_expect_endpoint_attaches_to_a_scenario_level_ref() -> None:
     idx = _index(
-        "- name: x\n  preconditions: { setup: warm_cart, deeplink: 'app://home' }\n"
+        "- name: x\n  steps:\n    - tap: { id: home.start }\n"
+        "  expect:\n    - request: { path: /api/order }\n"
+    )
+    (steps,) = [v for k, v in idx.entries.items() if k == Reference("endpoint", "/api/order")]
+    assert steps[0].index == 0 and steps[0].label == "expect"
+
+
+def test_reverse_index_maps_a_deeplink_as_a_scenario_level_screen() -> None:
+    # The `setup` prelude it once mapped too is gone (BE-0452); a deeplink still reaches a screen
+    # before any step.
+    idx = _index(
+        "- name: x\n  preconditions: { deeplink: 'app://home' }\n"
         "  steps:\n    - tap: { id: home.start }\n"
     )
     screens = {k.value: v for k, v in idx.entries.items() if k.kind == "screen"}
-    assert set(screens) == {"warm_cart", "app://home"}
+    assert set(screens) == {"app://home"}
     assert all(v[0].index == 0 for v in screens.values())  # no single step owns them
 
 

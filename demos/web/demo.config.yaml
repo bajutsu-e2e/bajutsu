@@ -1,15 +1,13 @@
-# Config for the web demo. The app is identified by `baseUrl` (no bundleId) and driven by the
-# Playwright backend. `make -C demos/web e2e` serves demos/web/app and points a run at it.
-defaults:
-  backend: [web]
-
+# Config for the web demo. The app is identified by `app.url` and driven by the Playwright backend.
+# `make -C demos/web e2e` serves demos/web/app and points a run at it.
 targets:
   web:
-    baseUrl: "http://127.0.0.1:8787/index.html"
-    backend: [web]
-    scenarios: scenarios
+    platform: web
+    app: { url: "http://127.0.0.1:8787/index.html" }
+    paths: { scenarios: scenarios }
     # Mask the Sync request's secret in captured network evidence (BE-0282). The Authorization
     # header is masked by default (BE-0130); the `password` body field is app-specific, so it is
     # named here. network.yaml exercises this; assert_redaction.py checks the persisted evidence.
-    redact:
-      fields: [password]
+    evidence:
+      redact:
+        fields: [password]

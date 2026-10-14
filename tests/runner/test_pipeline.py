@@ -393,7 +393,7 @@ def test_run_all_forces_erase_on_a_crash_triggered_retry() -> None:
 
 def test_run_all_forces_erase_on_a_crash_triggered_retry_against_an_xcuitest_simulator() -> None:
     # The production route this unit was written for: XCUITest against a Simulator (no
-    # `xcuitest.deviceType: device`, no live WebDriver udid spec). The test above passes
+    # `runsOn.kind: device`, no live WebDriver udid spec). The test above passes
     # `actuator=None`, which short-circuits `erase_precondition_supported` at its very first branch
     # (`actuator != "xcuitest" -> True`) without ever exercising `xcuitest_targets_real_device` /
     # `is_webdriver_endpoint` — so it proves nothing about the iOS lane specifically. This pins the
@@ -628,7 +628,7 @@ def test_run_all_still_propagates_a_device_error_from_a_bare_lease() -> None:
     # above once *it* also fails) is unrelated to this item's forced-erase retry, so it keeps its
     # pre-existing behavior: it is not swallowed, it propagates out of run_all.
     def lease(eff: Effective, scenario: Scenario) -> Lease:
-        raise simctl.DeviceError("appPath not found (test)")
+        raise simctl.DeviceError("app.path not found (test)")
 
     scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
     with pytest.raises(simctl.DeviceError):
@@ -898,7 +898,7 @@ def test_run_all_honors_an_explicit_no_erase_override_on_a_crash_triggered_retry
 
 
 def test_run_all_skips_forced_erase_on_a_real_device() -> None:
-    # A real device (`xcuitest.deviceType: device`) raises loudly on any `erase` precondition
+    # A real device (`runsOn.kind: device`) raises loudly on any `erase` precondition
     # (`XcuitestEnvironment.start`) instead of honoring it — simctl cannot reach a physical device.
     # Forcing `erase` on a crash-triggered retry there would raise past this loop's own
     # `except BackendCrashError` and abort the whole run, not just fail the one scenario.

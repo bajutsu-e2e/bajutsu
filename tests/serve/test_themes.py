@@ -110,7 +110,10 @@ def test_unreadable_css_is_skipped_not_fatal(tmp_path: Path) -> None:
 def test_read_default_theme(tmp_path: Path) -> None:
     assert read_default_theme(None) is None
     plain = tmp_path / "plain.yaml"
-    plain.write_text("targets:\n  demo:\n    baseUrl: https://example.test\n", encoding="utf-8")
+    plain.write_text(
+        ("targets:\n  demo:\n    platform: web\n    app: {url: 'https://example.test'}\n"),
+        encoding="utf-8",
+    )
     assert read_default_theme(plain) is None
     themed = tmp_path / "themed.yaml"
     themed.write_text("ui:\n  default_theme: daylight\n", encoding="utf-8")

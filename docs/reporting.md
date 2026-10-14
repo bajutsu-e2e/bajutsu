@@ -289,7 +289,7 @@ Bajutsu merges the scenario definition and its execution into one **Steps tab**.
 column) / `action` (a colored badge) / `detail` (the target description) / `at` / `view` (screenshot +
 an **in-report element-tree viewer**: the captured elements open in an in-page overlay, no new tab) /
 `reason`. The `#` column also carries the step's own line number in the scenario file when
-available. For example, it can read `2:15`. A `setup`/component expansion that changed the step
+available. For example, it can read `2:15`. A component expansion that changed the step
 list's shape drops it instead. A wrong line would mislead more than none. The `at` cell also shows
 the step's own elapsed time in parentheses, at the cell's end. For example, `3.2s (1.1s)`. That
 parenthetical shows whenever the duration rounds to something other than 0.0s. A slow `wait` or a
@@ -326,7 +326,7 @@ tokens. A **Rich / YAML toggle** switches the same tab between this structured v
 scenario YAML. For a freshly baked `bajutsu run` report, that YAML is the scenario's own text, as
 authored. Comments and formatting stay intact: the report slices this text straight from the
 source file. It never re-serializes the parsed model. A literal `totp.secret` still gets masked in
-place. A scenario whose `setup`/component expansion changed its step count keeps this verbatim
+place. A scenario whose component expansion changed its step count keeps this verbatim
 text — still accurate as authored — but loses the `#` column's line numbers, which the expansion
 would leave pointing at the wrong steps. A `data`/`dataFile`-driven scenario always shows the
 structured re-dump instead. It never shows the verbatim text. Every row shares one authored

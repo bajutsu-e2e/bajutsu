@@ -27,7 +27,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Protocol
 
-from bajutsu.common.capability.worker_capability import LOCAL
+from bajutsu.common.capability.worker_capability import APPIUM, LOCAL
 from bajutsu.run import INTERNAL_MODULE
 from bajutsu.serve.server.worker_job import CancelRelay, _run_argv_head, execute_job_spec
 from bajutsu.serve.state import Job
@@ -162,11 +162,21 @@ def environment_refusal(spec: dict[str, Any], environment: str) -> str | None:
     """Why a worker whose environment is *environment* must not run *spec*, or None (BE-0448).
 
     A cloud-batch spec belongs to the worker that registered its provider, and that worker drives
-    no device of its own, so it runs nothing but its provider's batches. Routing already keeps the
-    two apart; this holds the line for a spec that reaches the wrong worker anyway.
+    no device of its own, so it runs nothing but its provider's batches. An `appium` worker runs
+    plain run specs through its grid and no batch (BE-0452). Routing already keeps them apart; this
+    holds the line for a spec that reaches the wrong worker anyway.
     """
     batch = spec.get("batch")
     provider = batch.get("provider") if isinstance(batch, dict) else None
+    if environment == APPIUM:
+        # An appium worker runs a local `bajutsu run` that drives the grid through --worker-config
+        # (BE-0452), so it takes a run spec, never a batch.
+        if batch is not None:
+            return (
+                "a worker whose environment is 'appium' runs jobs through its grid and submits no "
+                f"cloud batch; the spec's batch names provider {provider!r}"
+            )
+        return None
     if environment == LOCAL:
         if batch is not None:
             return (

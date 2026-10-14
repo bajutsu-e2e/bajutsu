@@ -813,7 +813,10 @@ def test_uiautomator_is_a_registered_emit_target() -> None:
 
 
 def test_generate_test_on_android_target_returns_kt_file() -> None:
-    eff = resolve(load_config("targets:\n  droid:\n    package: com.example.app\n"), "droid")
+    eff = resolve(
+        load_config("targets:\n  droid:\n    platform: android\n    app: {id: com.example.app}\n"),
+        "droid",
+    )
     code, filename = generate_test(
         "uiautomator", load_scenarios("- name: x\n  steps:\n    - tap: { id: a }\n"), "login", eff
     )
@@ -822,7 +825,12 @@ def test_generate_test_on_android_target_returns_kt_file() -> None:
 
 
 def test_generate_test_uiautomator_on_non_android_target_fails() -> None:
-    eff = resolve(load_config("targets:\n  web:\n    baseUrl: http://localhost:3000\n"), "web")
+    eff = resolve(
+        load_config(
+            "targets:\n  web:\n    platform: web\n    app: {url: 'http://localhost:3000'}\n"
+        ),
+        "web",
+    )
     with pytest.raises(CodegenError, match="Android target"):
         generate_test(
             "uiautomator", load_scenarios("- name: x\n  steps:\n    - tap: { id: a }\n"), "x", eff
@@ -833,9 +841,19 @@ def _cli_setup(tmp_path: Path) -> tuple[Path, Path]:
     """A config with one Android app (package) and one web app (baseUrl), plus a scenario file."""
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "targets:\n"
-        "  droid: { package: com.example.app, idNamespaces: [home] }\n"
-        "  web: { baseUrl: 'http://localhost:3000', idNamespaces: [home] }\n",
+        (
+            "targets:\n"
+            "  droid:\n"
+            "    platform: android\n"
+            "    app:\n"
+            "      id: com.example.app\n"
+            "      idNamespaces: [home]\n"
+            "  web:\n"
+            "    platform: web\n"
+            "    app:\n"
+            "      url: http://localhost:3000\n"
+            "      idNamespaces: [home]\n"
+        ),
         encoding="utf-8",
     )
     scn = tmp_path / "s.yaml"
@@ -867,13 +885,13 @@ def test_cli_emit_uiautomator_writes_kt(tmp_path: Path) -> None:
     assert 'act(byId("home.title")).click()' in code
 
 
-def test_cli_emit_uiautomator_without_package_exits(tmp_path: Path) -> None:
+def test_cli_emit_uiautomator_without_app_id_exits(tmp_path: Path) -> None:
     cfg, scn = _cli_setup(tmp_path)
     r = runner.invoke(
         app, ["codegen", str(scn), "--target", "web", "--emit", "uiautomator", "--config", str(cfg)]
     )
     assert r.exit_code == 2
-    assert "package" in r.output
+    assert "targets.web.app.id (an Android target)" in r.output
 
 
 def test_manual_step_is_a_labeled_todo() -> None:

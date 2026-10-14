@@ -1,0 +1,10 @@
+# The worker capability for the showcase live route (BE-0452): an `appium` environment whose grid
+# serves the iOS targets of a run, while any other target of the same scenario stays on this host.
+# Pass it with `--worker-config` to `run`, `record`, `crawl`, `repl`, `audit`, `doctor`, or the MCP
+# server; point `endpoint` at your own grid first.
+version: 1
+environment: appium
+appium:
+  endpoint: https://grid.example.com/wd/hub   # the reserved device's Appium / WebDriver address
+  platform: ios
+drivers: [xcuitest, adb, playwright, fake]

@@ -31,8 +31,15 @@ def _target(tmp_path: Path, scenario: str) -> Path:
     (scn_dir / "smoke.yaml").write_text(scenario, encoding="utf-8")
     config = tmp_path / "bajutsu.config.yaml"
     config.write_text(
-        "targets:\n  demo:\n    bundleId: com.example.demo\n"
-        f"    scenarios: {scn_dir}\n    idNamespaces: [login, home]\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.example.demo\n"
+            "      idNamespaces: [login, home]\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     return config
@@ -174,8 +181,15 @@ def test_malformed_scenario_exits_2(tmp_path: Path) -> None:
     (scn_dir / "bad.yaml").write_text("- name: x\n  steps: not-a-list\n", encoding="utf-8")
     config = tmp_path / "bajutsu.config.yaml"
     config.write_text(
-        "targets:\n  demo:\n    bundleId: com.example.demo\n"
-        f"    scenarios: {scn_dir}\n    idNamespaces: [home]\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.example.demo\n"
+            "      idNamespaces: [home]\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     result = runner.invoke(
@@ -188,7 +202,14 @@ def test_malformed_scenario_exits_2(tmp_path: Path) -> None:
 def test_missing_scenarios_dir_exits_2(tmp_path: Path) -> None:
     config = tmp_path / "bajutsu.config.yaml"
     config.write_text(
-        "targets:\n  demo:\n    bundleId: com.example.demo\n    idNamespaces: [home]\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app:\n"
+            "      id: com.example.demo\n"
+            "      idNamespaces: [home]\n"
+        ),
         encoding="utf-8",
     )
     result = runner.invoke(

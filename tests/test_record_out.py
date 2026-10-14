@@ -13,14 +13,20 @@ from bajutsu.record.cli import _record_out_path, _secret_tokens
 
 
 def _eff(scenarios: str) -> Effective:
-    cfg = load_config(f"targets:\n  x:\n    bundleId: com.x\n    scenarios: {scenarios}\n")
+    cfg = load_config(
+        "targets:\n"
+        "  x:\n"
+        "    platform: ios\n"
+        f"    app: {{id: com.x}}\n"
+        f"    paths: {{scenarios: {scenarios}}}\n"
+    )
     return resolve(cfg, "x")
 
 
 def test_record_no_out_and_no_scenarios_dir_exits_2() -> None:
     # With neither --out nor a configured scenarios dir there is nowhere to auto-name: a usage
     # error (exit 2), not a guess.
-    eff = resolve(load_config("targets:\n  x:\n    bundleId: com.x\n"), "x")
+    eff = resolve(load_config("targets:\n  x:\n    platform: ios\n    app: {id: com.x}\n"), "x")
     with pytest.raises(typer.Exit) as exc:
         _record_out_path(eff, "", "name", "goal", "x", checkout_root=None)
     assert exc.value.exit_code == 2
@@ -81,8 +87,13 @@ def test_record_auto_name_inside_the_checkout_is_refused(
 
 
 def _eff_with_secrets(*names: str) -> Effective:
-    decl = "".join(f"      - {n}\n" for n in names)
-    return resolve(load_config(f"targets:\n  x:\n    bundleId: com.x\n    secrets:\n{decl}"), "x")
+    decl = "".join(f"        - {n}\n" for n in names)
+    return resolve(
+        load_config(
+            f"targets:\n  x:\n    platform: ios\n    app: {{id: com.x}}\n    run:\n      secrets:\n{decl}"
+        ),
+        "x",
+    )
 
 
 def test_secret_tokens_maps_set_env_vars_to_their_tokens(monkeypatch: pytest.MonkeyPatch) -> None:

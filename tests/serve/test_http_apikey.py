@@ -182,12 +182,14 @@ def test_http_api_key_honours_key_env_from_config(
     (scn_dir / "smoke.yaml").write_text("- name: a\n  steps:\n    - tap: { id: x }\n")
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "defaults:\n"
-        "  backend: [ios]\n"
-        "  ai:\n"
-        "    keyEnv: MY_CUSTOM_KEY\n"
-        "targets:\n"
-        "  demo: { bundleId: com.example.demo }\n",
+        (
+            "defaults:\n"
+            "  ai: {keyEnv: MY_CUSTOM_KEY}\n"
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app: {id: com.example.demo}\n"
+        ),
         encoding="utf-8",
     )
     runs = tmp_path / "runs"
@@ -223,12 +225,14 @@ def test_http_api_key_rejects_unsafe_key_env(
     (scn_dir / "smoke.yaml").write_text("- name: a\n  steps:\n    - tap: { id: x }\n")
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "defaults:\n"
-        "  backend: [ios]\n"
-        "  ai:\n"
-        "    keyEnv: PATH\n"
-        "targets:\n"
-        "  demo: { bundleId: com.example.demo }\n",
+        (
+            "defaults:\n"
+            "  ai: {keyEnv: PATH}\n"
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            "    app: {id: com.example.demo}\n"
+        ),
         encoding="utf-8",
     )
     runs = tmp_path / "runs"

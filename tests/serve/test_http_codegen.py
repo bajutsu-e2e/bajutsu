@@ -24,10 +24,21 @@ def _project(tmp_path: Path) -> tuple[Path, Path, Path]:
     (scn_dir / "smoke.yaml").write_text(SCENARIO, encoding="utf-8")
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "defaults: { backend: [ios] }\ntargets:\n"
-        f"  demo: {{ bundleId: com.example.demo, scenarios: {scn_dir} }}\n"
-        f"  site: {{ baseUrl: 'http://127.0.0.1:8787/', backend: [web], scenarios: {scn_dir} }}\n"
-        f"  droid: {{ package: com.example.droid, backend: [adb], scenarios: {scn_dir} }}\n",
+        (
+            "targets:\n"
+            "  demo:\n"
+            "    platform: ios\n"
+            f"    app: {{id: com.example.demo}}\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+            "  site:\n"
+            "    platform: web\n"
+            f"    app: {{url: 'http://127.0.0.1:8787/'}}\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+            "  droid:\n"
+            "    platform: android\n"
+            f"    app: {{id: com.example.droid}}\n"
+            f"    paths: {{scenarios: {scn_dir}}}\n"
+        ),
         encoding="utf-8",
     )
     runs = tmp_path / "runs"

@@ -130,9 +130,12 @@ def test_absent_runner_reported(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
 def test_testrunner_override_is_reflected(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _no_bundle(monkeypatch)
     config_text = (
-        "defaults: { backend: [ios] }\n"
         "targets:\n"
-        "  demo: { bundleId: com.example.demo, xcuitest: { testRunner: /r/App.xctestrun } }\n"
+        "  demo:\n"
+        "    platform: ios\n"
+        "    app: {id: com.example.demo}\n"
+        "    driver:\n"
+        "      runner: {testRunner: /r/App.xctestrun}\n"
     )
     payload, _ = ops.server_settings(_state(tmp_path, config_text))
     assert payload["iosRunner"]["override"] is True
@@ -145,10 +148,13 @@ def test_testrunner_override_survives_an_unresolvable_target(
     # per-target resolve is guarded, so a raise on the first target is skipped, not fatal to the row.
     _no_bundle(monkeypatch)
     config_text = (
-        "defaults: { backend: [ios] }\n"
         "targets:\n"
-        "  broken: { bundleId: com.example.broken }\n"
-        "  pinned: { bundleId: com.example.pinned }\n"
+        "  broken:\n"
+        "    platform: ios\n"
+        "    app: {id: com.example.broken}\n"
+        "  pinned:\n"
+        "    platform: ios\n"
+        "    app: {id: com.example.pinned}\n"
     )
 
     def fake_resolve(cfg: object, name: str) -> str:
@@ -169,10 +175,10 @@ def test_unloadable_config_reads_as_no_override(
     # so a broken config reads as "no override" rather than 500-ing the whole tab.
     _no_bundle(monkeypatch)
 
-    def _boom(_text: str) -> object:
+    def _boom(_path: Path, **_kw: object) -> object:
         raise ValueError("bad config")
 
-    monkeypatch.setattr(config_ops, "load_config", _boom)
+    monkeypatch.setattr(config_ops, "load_config_file", _boom)
     payload, _ = ops.server_settings(_state(tmp_path))
     assert payload["iosRunner"]["override"] is False
 
@@ -183,10 +189,15 @@ def test_testrunner_override_true_when_any_target_pins_it(
     # Any iOS target with an explicit testRunner flips the server-wide flag to True (BE-0318).
     _no_bundle(monkeypatch)
     config_text = (
-        "defaults: { backend: [ios] }\n"
         "targets:\n"
-        "  plain: { bundleId: com.example.plain }\n"
-        "  pinned: { bundleId: com.example.pinned, xcuitest: { testRunner: /r/App.xctestrun } }\n"
+        "  plain:\n"
+        "    platform: ios\n"
+        "    app: {id: com.example.plain}\n"
+        "  pinned:\n"
+        "    platform: ios\n"
+        "    app: {id: com.example.pinned}\n"
+        "    driver:\n"
+        "      runner: {testRunner: /r/App.xctestrun}\n"
     )
     payload, _ = ops.server_settings(_state(tmp_path, config_text))
     assert payload["iosRunner"]["override"] is True
