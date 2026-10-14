@@ -14,6 +14,7 @@ from bajutsu.cli._shared import (
     WORKER_CONFIG_HELP,
     _ai_redactor,
     _build_alert_guard,
+    _command_preconditions_or_exit,
     _device_udid_or_exit,
     _install_usage_ledger,
     _load_device_worker_or_exit,
@@ -34,7 +35,7 @@ from bajutsu.common.agents.claude import MODEL as _RECORD_MODEL
 from bajutsu.common.agents.factory import make_agent
 from bajutsu.common.ai import announce_ai
 from bajutsu.common.analytics import usage as _usage
-from bajutsu.common.config import WEB_ENGINES, Effective, command_preconditions
+from bajutsu.common.config import WEB_ENGINES, Effective
 from bajutsu.common.devices import errors as device_errors
 from bajutsu.common.handoff import HumanHandoffUnavailable
 from bajutsu.common.platform_lifecycle import environment_for
@@ -244,13 +245,12 @@ def record(
     except ValueError as e:
         typer.echo(str(e), err=True)
         raise typer.Exit(2) from None
+    preconditions = _command_preconditions_or_exit(eff, erase=erase)
     say(
         f"⚙️  preparing the simulator — installing and launching {target_name} (this can take a moment) …"
     )
     try:
-        driver, _readiness = launch_driver(
-            udid, eff, actuator, command_preconditions(eff, erase=erase)
-        )
+        driver, _readiness = launch_driver(udid, eff, actuator, preconditions)
     except device_errors.DeviceError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None

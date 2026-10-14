@@ -162,7 +162,10 @@ on the target as well.
 
 > **Seeding needs a wiped device.** After merging, a non-empty `seedPhotos` requires the effective
 > `run.erase` (the flag, then the scenario, then the target) to be true, because the photo library
-> is seeded only on the erase path. A target-level `run.erase: true` satisfies the rule.
+> is seeded only on the erase path. A target-level `run.erase: true` satisfies the rule. In a
+> scenario that drives several targets, the primary alone seeds photos. A non-primary target with
+> a merged `seedPhotos` fails the run. `record`, `crawl`, and `repl` refuse `--no-erase` on a
+> target that seeds photos. Both refusals exit 2 before any device work.
 
 > **`reinstall: clean` also resets permission state** (`permissions`, below): iOS via `simctl
 > privacy reset all`, Android via `pm clear`. `overwrite` resets neither. `overwrite` exists to keep a

@@ -507,11 +507,12 @@ target は、どこで実行するかを持たなくなります。target が書
   - `run`と`audit`は、選んだ各シナリオを、そのシナリオが動かす target と照合します。照合はデバイスを操作する前で、run の既定値を埋める前です。動かすどのプラットフォームにもない`app`のフィールドや、iOS 専用の`run`のフィールドは失敗します。形の誤った`runsOn`のブロックと、実効の`run.erase`を伴わない`seedPhotos`も失敗します。シナリオの`runsOn`に書いた条件は、作業単位4と同じ「not yet supported」で拒否します。`--backend fake`は通知を1回出してこの拒否を飛ばします。
   - `load_stored_scenario_file`は、保存されたプランの平坦なキーを組み直します。トップレベルの run のフィールドも移すので、以前の run も読み込めます。新しいグループを読むようになった処理は4つあります。Device Farm の`launchEnv`の衝突検査、`analysis/impact`の deeplink の読み取り、コード生成、レポートの preconditions の表です。`demos/`のシナリオとテストの固定データは、すべて移しました。
   - 設計の記述から外れた点が5つあります。
-    - シナリオのモデルは、`runsOn`の各ブロックを書かれたとおりに保持します。import の契約によりシナリオのスキーマは config を参照できないので、レジストリによる検査は読み込みの時点ではなく、`run`や`audit`がシナリオを解決するときに行います。`bajutsu lint`は、ブロックのフィールドの綴り誤りを検出しません。
+    - シナリオのモデルは、`runsOn`の各ブロックを書かれたとおりに保持します。import の契約によりシナリオのスキーマは config を参照できないので、そのため、形の誤ったブロックは、読み込みの時点ではなく、`run`、`audit`、`bajutsu lint`（serve のエディタの lint を含む）で失敗します。
     - `Effective`に`declared_platform`と`schema_platform`プロパティを加えました。`fake`の target は iOS の形の sub-config に解決するので、`platform`では照合に使うモデルを選べないからです。
     - `ResolvedPreconditions`は、シナリオの起動環境と起動引数を target のものと分けて持ちます。マージと追記は従来どおり environment が行うので、起動の経路は変わっていません。
     - `_filter_scenarios`は、`run.tipKitHandling`が有効になるときか、フラグが指定したときだけ値を設定します。そのため、iOS の target を動かさないシナリオの保存済みプランに、iOS 専用のフィールドが加わることはありません。
     - 作業単位6は`--scenarios`フラグを変えていません。`run`が受け取るのは`--scenario`のファイルで、`--scenarios`を持つのは`serve`だけです。`serve`の`--scenarios`は target のフィールドを指しません。また、`crawl`は`--browser`を持ちません。
+  - 投入する写真が無視されないよう、拒否を2つ加えました。複数のターゲットを動かすシナリオで、プライマリ以外のターゲットが重ね合わせたあとの`seedPhotos`を持つと失敗します。run が`run.erase`を決めて写真を投入するのは、プライマリだけだからです。`record`、`crawl`、`repl`は、写真を投入するターゲットに対する`--no-erase`を終了コード2で拒否します。`fake`の target は、平坦な`locale`のときと同じく、シナリオの iOS のロケールを読みます。
   - この作業単位では、これらの名前を説明しているページを更新しました。文書全体の見直しは作業単位13に残します。
 
 ## 参考

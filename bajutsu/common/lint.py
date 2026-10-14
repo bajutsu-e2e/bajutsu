@@ -13,6 +13,7 @@ import yaml
 from pydantic import ValidationError
 
 from bajutsu.common import _yaml
+from bajutsu.common.config import runs_on_problems
 from bajutsu.common.scenario import Scenario, load_scenario_file
 
 
@@ -25,15 +26,23 @@ class Diagnostic(TypedDict):
     severity: str  # "error" — the only level lint emits today.
 
 
+def _runs_on_findings(scenarios: list[Scenario]) -> list[str]:
+    # The scenario model keeps each `preconditions.runsOn` block as written (BE-0452), so the platform
+    # registry checks the blocks here, as `run` and `audit` do before any device work.
+    return [
+        f"{s.name}: {problem}" for s in scenarios for problem in runs_on_problems(s.preconditions)
+    ]
+
+
 def lint_text(text: str) -> list[str]:
     """Validate scenario YAML text. Returns a list of error messages (empty = ok)."""
     try:
-        load_scenario_file(text)
+        scenario_file = load_scenario_file(text)
     except (ValidationError, ValueError) as e:
         return _format_validation_error(e)
     except yaml.YAMLError as e:
         return [f"YAML parse error: {e}"]
-    return []
+    return _runs_on_findings(scenario_file.scenarios)
 
 
 def lint_file(path: Path) -> list[str]:
@@ -55,14 +64,17 @@ def lint_diagnostics(text: str) -> list[Diagnostic]:
     walking the YAML node tree, falling back to `line: None` when the path cannot be followed.
     """
     try:
-        load_scenario_file(text)
+        scenario_file = load_scenario_file(text)
     except ValidationError as e:
         return _diagnostics_from_validation(text, e)
     except yaml.YAMLError as e:
         return [_diagnostic_from_yaml_error(e)]
     except ValueError as e:
         return [Diagnostic(line=None, column=None, message=str(e), severity="error")]
-    return []
+    return [
+        Diagnostic(line=None, column=None, message=message, severity="error")
+        for message in _runs_on_findings(scenario_file.scenarios)
+    ]
 
 
 def provenance_coverage(scenarios: list[Scenario]) -> str | None:

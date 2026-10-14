@@ -687,7 +687,9 @@ _PER_PLATFORM_CONFIG = (
 )
 
 
-def _per_platform_files(tmp_path: Path) -> tuple[Path, list[str]]:
+def _per_platform_files(
+    tmp_path: Path, preconditions: dict[str, str] | None = None
+) -> tuple[Path, list[str]]:
     # The shape of demos/showcase's device_group_*.yaml: each file carries one device-group
     # scenario per platform, iOS first, tagged so each lane selects its own with `--tag`.
     cfg = tmp_path / "bajutsu.config.yaml"
@@ -702,7 +704,12 @@ def _per_platform_files(tmp_path: Path) -> tuple[Path, list[str]]:
                 f"  targets: [[{prefix}-main, {prefix}-companion]]\n"
                 f"  primaryTarget: {prefix}-main\n"
                 f"  installs: [{prefix}-companion]\n"
-                "  steps:\n    - tap: { id: a }\n"
+                + (
+                    f"  preconditions: {(preconditions or {})[prefix]}\n"
+                    if prefix in (preconditions or {})
+                    else ""
+                )
+                + "  steps:\n    - tap: { id: a }\n"
                 for prefix, tag in (("ios", "ios"), ("droid", "android"))
             ),
             encoding="utf-8",
@@ -744,6 +751,35 @@ def test_an_inferred_primary_follows_the_scenarios_the_tag_leaves(
     assert r.exit_code == 7, r.output
     assert seen["targets"] == {f"{prefix}-main", f"{prefix}-companion"}
     assert seen["scenarios"] == [f"update ({prefix})", f"companion ({prefix})"]
+
+
+def test_preconditions_are_checked_against_the_re_inferred_primary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The precondition check runs inside the selection, under the inferred iOS primary the tag is
+    # about to replace (BE-0452 unit 7). It must neither validate `--backend android` against that
+    # stale primary nor refuse the iOS-only fields of the scenario the tag selects away.
+    monkeypatch.setattr("bajutsu.common.backends.current_host_os", lambda *_: "linux")
+    monkeypatch.setattr("bajutsu.run.cli.current_host_os", lambda *_: "linux")
+    seen: dict[str, object] = {}
+
+    def stop(scenarios: list[Scenario], *_: object) -> None:
+        seen["scenarios"] = [s.name for s in scenarios]
+        raise typer.Exit(7)
+
+    monkeypatch.setattr("bajutsu.run.cli._reject_unshareable_groups", stop)
+    cfg, files = _per_platform_files(
+        tmp_path,
+        {
+            "ios": "{ app: { launch: { args: [-x] } }, run: { tipKitHandling: true } }",
+            "droid": "{ app: { launch: { env: { A: '1' } } }, run: { erase: true } }",
+        },
+    )
+    argv = ["run", *(a for f in files for a in ("--scenario", f)), "--tag", "android"]
+    argv += ["--backend", "android", "--udid", "booted", "--config", str(cfg)]
+    r = invoke(CliRunner(), app, argv)
+    assert r.exit_code == 7, r.output
+    assert seen["scenarios"] == ["update (droid)", "companion (droid)"]
 
 
 def test_a_backend_for_another_platform_is_still_refused(tmp_path: Path) -> None:

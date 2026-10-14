@@ -128,10 +128,11 @@ class Effective:
         """A copy with the relative path fields resolved against `root`.
 
         The common path fields — `scenarios` / `baselines` / `schemas` / `goldens` — the iOS or
-        Android sub-config's `app_path`, and an iOS target's `seed_photos` are rebased; a future path field is rebased by adding it here. `build`
-        (a shell command) is intentionally absent, and a component the target's hooks call was
-        already resolved against the config file when it loaded. Called for a Git checkout (BE-0063), for an uploaded bundle, and — `root`
-        the config file's own directory — for a local config (BE-0242), so the caller's working
+        Android sub-config's `app_path`, and an iOS target's `seed_photos` are rebased; a future
+        path field is rebased by adding it here. `build` (a shell command) is intentionally absent,
+        and a component the target's hooks call was already resolved against the config file when
+        it loaded. Called for a Git checkout (BE-0063), for an uploaded bundle, and — `root` the
+        config file's own directory — for a local config (BE-0242), so the caller's working
         directory no longer decides where a config's paths point.
 
         `confine` gates the escape check: when true, an absolute or `../` value that would leave the

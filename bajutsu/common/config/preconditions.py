@@ -67,7 +67,9 @@ def resolve_preconditions(
         pre: The scenario's preconditions; None for a command that runs no scenario.
     """
     pre = pre or Preconditions()
-    platform = eff.schema_platform
+    # The platform the target is driven as, not the one it declares: a `fake` target resolves to the
+    # iOS-shaped sub-config and runs under the scenario's iOS locale, as the flat `locale` did.
+    platform = eff.platform
     seed = pre.seed_photos_for(platform)
     locale = pre.runs_on_for(platform).get("locale")
     return ResolvedPreconditions(
@@ -86,8 +88,17 @@ def command_preconditions(eff: Effective, *, erase: bool) -> ResolvedPreconditio
 
     The command's `--erase` decides the wipe; the target's `app.reinstall`, `app.launch.deeplink`,
     and `runsOn.seedPhotos` still apply.
+
+    Raises:
+        ValueError: The target seeds photos but the command does not erase, which would seed none.
     """
-    return replace(resolve_preconditions(eff), erase=erase)
+    merged = replace(resolve_preconditions(eff), erase=erase)
+    if merged.seed_photos and not erase:
+        raise ValueError(
+            f"target {eff.target!r} sets runsOn.seedPhotos, which seeds only a wiped device: "
+            "drop --no-erase, or clear the target's seedPhotos"
+        )
+    return merged
 
 
 def _app_fields(pre: Preconditions) -> list[tuple[str, ...]]:
@@ -113,8 +124,15 @@ def _run_fields(pre: Preconditions) -> list[str]:
     return [name for name, written in candidates if written]
 
 
-def _runs_on_problems(pre: Preconditions) -> list[str]:
-    """Each `runsOn` block's problems: an unknown platform, a target-only field, or a bad value."""
+def runs_on_problems(pre: Preconditions) -> list[str]:
+    """Each `runsOn` block's problems: an unknown platform, a target-only field, or a bad value.
+
+    Needs no target, so `bajutsu lint` runs it as well as `run` and `audit`: the scenario model keeps
+    the blocks as written, because the scenario schema may not import the platform registry.
+
+    Returns:
+        One message per problem, each naming the field; empty when every block is sound.
+    """
     problems: list[str] = []
     for platform, block in pre.runs_on.items():
         where = f"preconditions.runsOn.{platform}"
@@ -168,15 +186,18 @@ def check_preconditions(
     `run.erase` (the flag, then the scenario, then the target), because seeding happens only on the
     erase path.
 
+    A non-primary target with seeded photos is a problem too: the run stamps `run.erase` and seeds
+    the photo library for the primary alone.
+
     Args:
         pre: The scenario's preconditions, as written (before a command fills in run defaults).
-        targets: Every target the scenario drives.
+        targets: Every target the scenario drives, the primary first.
         erase_flag: The `--erase` / `--no-erase` flag, or None when absent.
 
     Returns:
         One message per problem, each naming the field; empty when the scenario is sound.
     """
-    problems = _runs_on_problems(pre)
+    problems = runs_on_problems(pre)
     platforms = list(dict.fromkeys(eff.schema_platform for eff in targets))
     driven = ", ".join(platforms)
     for path in _app_fields(pre):
@@ -191,8 +212,15 @@ def check_preconditions(
                 f"preconditions.run.{name} applies to no target this scenario drives "
                 f"(platform {driven}); remove it, or name a target whose platform has it"
             )
-    for eff in targets:
+    for i, eff in enumerate(targets):
         merged = resolve_preconditions(eff, pre)
+        if i and merged.seed_photos:
+            # The run resolves `run.erase` and seeds the photo library for the primary alone.
+            problems.append(
+                f"seedPhotos on target {eff.target!r} applies to the primary target alone; clear "
+                "it for this scenario, or make the target the scenario's primary"
+            )
+            continue
         erase = erase_flag if erase_flag is not None else merged.erase
         if merged.seed_photos and not erase:
             problems.append(

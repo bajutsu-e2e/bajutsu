@@ -7,6 +7,7 @@ stored before the regrouping loadable.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -15,7 +16,7 @@ from run_cli import invoke
 from typer.testing import CliRunner
 
 from bajutsu.cli import app
-from bajutsu.cli._shared import _refuse_bad_preconditions
+from bajutsu.cli._shared import _command_preconditions_or_exit, _refuse_bad_preconditions
 from bajutsu.common import _yaml
 from bajutsu.common.config import (
     Effective,
@@ -26,6 +27,7 @@ from bajutsu.common.config import (
     resolve_preconditions,
     scenario_conditions,
 )
+from bajutsu.common.lint import lint_diagnostics, lint_text
 from bajutsu.common.report.rows import _preconditions_rows
 from bajutsu.common.scenario import Preconditions, Scenario, load_scenarios
 from bajutsu.common.scenario.load import _upgraded_scenario_text, load_stored_scenario_file
@@ -187,8 +189,57 @@ def test_a_block_for_another_platform_has_no_effect() -> None:
 
 
 def test_a_command_with_no_scenario_takes_the_target_and_its_own_erase() -> None:
-    merged = command_preconditions(_effs()["phone"], erase=False)
-    assert (merged.erase, merged.deeplink) == (False, "app://home")
+    merged = command_preconditions(_effs()["phone"], erase=True)
+    assert (merged.erase, merged.deeplink, merged.seed_photos) == (
+        True,
+        "app://home",
+        ["photos/red.png"],
+    )
+    assert command_preconditions(_effs()["droid"], erase=False).erase is False
+
+
+def test_a_command_refuses_no_erase_on_a_target_that_seeds_photos(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # `record`, `crawl`, and `repl` seed only on the erase path, so `--no-erase` would seed nothing.
+    with pytest.raises(typer.Exit) as exc:
+        _command_preconditions_or_exit(_effs()["phone"], erase=False)
+    assert exc.value.exit_code == 2
+    assert "runsOn.seedPhotos" in capsys.readouterr().out
+
+
+def test_a_fake_target_runs_under_the_scenario_ios_locale() -> None:
+    # A `fake` target resolves to the iOS-shaped sub-config, so the scenario's iOS block applies.
+    pre = _pre("{ runsOn: { ios: { locale: ja_JP } } }")
+    fake = _effs()["fake"]
+    assert resolve_preconditions(fake, pre).locale == "ja_JP"
+    assert pre.resolved_locale(fake.locale, fake.platform) == "ja_JP"
+
+
+def test_seed_photos_on_a_non_primary_target_are_refused() -> None:
+    effs = _effs()
+    other = replace(effs["phone"], target="phone-2", seed_photos=[])
+    pre = _pre("{ run: { erase: true } }")
+    # The primary seeds; a second target with photos of its own would seed nothing.
+    assert check_preconditions(pre, [effs["phone"], other]) == []
+    (problem,) = check_preconditions(pre, [other, effs["phone"]])
+    assert "seedPhotos on target 'phone' applies to the primary target alone" in problem
+
+
+def test_lint_reports_a_malformed_runs_on_block() -> None:
+    text = (
+        "- name: s\n  preconditions: { runsOn: { ios: { modle: x }, flutter: {} } }\n  steps: []\n"
+    )
+    errors = lint_text(text)
+    assert any("preconditions.runsOn.ios.modle" in e for e in errors)
+    assert any("invalid platform 'flutter'" in e for e in errors)
+    assert [d["message"] for d in lint_diagnostics(text)] == errors
+    assert (
+        lint_text(
+            "- name: s\n  preconditions: { runsOn: { ios: { locale: ja_JP } } }\n  steps: []\n"
+        )
+        == []
+    )
 
 
 # --- the checks against the driven platforms ---

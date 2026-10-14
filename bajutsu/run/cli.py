@@ -820,7 +820,7 @@ def _sharing_problems(
         )
 
     def locale(eff: Effective) -> str:
-        return s.preconditions.resolved_locale(eff.locale, eff.schema_platform)
+        return s.preconditions.resolved_locale(eff.locale, eff.platform)
 
     for member in rest:
         if route(effs[member]) != route(effs[first]):
@@ -1267,7 +1267,7 @@ def _alert_guard_factory(
         # the target's *own* rules, which would make a scenario that declares nothing look like one
         # answering for itself.
         _warn_target_rules_reach(s, scenario_rules, target_rules)
-        locale = s.preconditions.resolved_locale(eff.locale, eff.schema_platform)
+        locale = s.preconditions.resolved_locale(eff.locale, eff.platform)
         rules = _resolve_rules([*scenario_rules, *target_rules], locale)
 
         frozen_screen_timeout = next(

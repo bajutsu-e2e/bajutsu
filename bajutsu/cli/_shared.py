@@ -36,8 +36,10 @@ from bajutsu.common.config import (
     AiConfig,
     Config,
     Effective,
+    ResolvedPreconditions,
     WebConfig,
     check_preconditions,
+    command_preconditions,
     ios_bundle_id,
     load_config_file,
     resolve,
@@ -83,9 +85,9 @@ def resolve_system_alert_handling_flag(
     """Resolve the `--system-alert-handling` flag against each command's own unset behavior.
 
     `run` leaves it None (each scenario's own value applies), while `record` and `crawl` pass the
-    target's `run.systemAlertHandling` as the default, on unless the target turns it off (BE-0452). Shared by all three so the flag
-    behaves identically on each. The `--alert-handling` / `--dismiss-alerts` aliases this once merged
-    were deleted with no replacement (BE-0401).
+    target's `run.systemAlertHandling` as the default, on unless the target turns it off (BE-0452).
+    Shared by all three so the flag behaves identically on each. The `--alert-handling` /
+    `--dismiss-alerts` aliases this once merged were deleted with no replacement (BE-0401).
     """
     return default if system_alert_handling is None else system_alert_handling
 
@@ -471,6 +473,22 @@ def _refuse_bad_preconditions(
         for problem in problems:
             typer.echo(problem)
         raise typer.Exit(2)
+
+
+def _command_preconditions_or_exit(eff: Effective, *, erase: bool) -> ResolvedPreconditions:
+    """The target's preconditions for `record`, `crawl`, or `repl`, or a clean exit 2.
+
+    A target that seeds photos needs the wipe its `--no-erase` turned off; seeding nothing would
+    ignore a field the config wrote (BE-0452), so the command refuses before any device work.
+
+    Raises:
+        typer.Exit: The target seeds photos and *erase* is false (exit code 2).
+    """
+    try:
+        return command_preconditions(eff, erase=erase)
+    except ValueError as e:
+        typer.echo(str(e))
+        raise typer.Exit(2) from None
 
 
 def _resolve_browser(eff: Effective, browser: str) -> Effective:

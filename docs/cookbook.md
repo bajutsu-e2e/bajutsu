@@ -101,8 +101,9 @@ from a scenario, so `run` refuses it outright rather than running with a policy 
 ```yaml
 - name: grant notification permission
   tags: [permission, system]
-  systemAlertHandling: { rules: [{ prompt: notifications, choice: grant }] }
   preconditions:
+    run:
+      systemAlertHandling: { rules: [{ prompt: notifications, choice: grant }] }
     app:
       launch:
         env: { SHOWCASE_UITEST: "1" }

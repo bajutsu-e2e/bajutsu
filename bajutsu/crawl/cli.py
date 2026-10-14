@@ -35,6 +35,7 @@ from bajutsu.cli._shared import (
     WORKER_CONFIG_HELP,
     _ai_redactor,
     _build_alert_guard,
+    _command_preconditions_or_exit,
     _device_udid_or_exit,
     _install_usage_ledger,
     _load_device_worker_or_exit,
@@ -599,6 +600,8 @@ def crawl(
         system_alert_handling, default=eff.run_defaults.system_alert_handling is not False
     )
 
+    # Refused here, before any lane starts, rather than inside a lane's own launch.
+    _command_preconditions_or_exit(eff, erase=erase)
     plan = _CrawlPlan(
         eff=eff,
         actuator=actuator,

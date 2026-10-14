@@ -1030,8 +1030,8 @@ batch provider that packages `launchEnv`, `common/report/rows.py`, `templates/se
     scenario under `demos/` moved, as did every test fixture.
   - Five departures from the design text:
     - The scenario model keeps each `runsOn` block as written. The import contract keeps the
-      scenario schema off the config. The registry thus checks the blocks when `run` or `audit`
-      resolves the scenario, not at load. `bajutsu lint` misses a misspelled block field.
+      scenario schema off the config. A malformed block thus fails at `run`, `audit`, and
+      `bajutsu lint` (and the serve editor's lint), not when the scenario loads.
     - `Effective` gains `declared_platform` and the `schema_platform` property. A `fake` target
       resolves to the iOS-shaped sub-config. Its `platform` thus cannot pick the models to check.
     - `ResolvedPreconditions` keeps the scenario's launch environment and arguments apart. The
@@ -1040,6 +1040,11 @@ batch provider that packages `launchEnv`, `common/report/rows.py`, `templates/se
       A scenario that drives no iOS target never gains the iOS field in its stored plan.
     - Unit 6 changes no `--scenarios` flag. `run` takes `--scenario` files. `serve` alone has
       `--scenarios`, which names no target field. `crawl` has no `--browser`.
+  - Two further refusals keep a seeded photo from going ignored. A non-primary target of a
+    multi-target scenario with a merged `seedPhotos` fails, because the run stamps `run.erase` and
+    seeds for the primary alone. `record`, `crawl`, and `repl` exit 2 on `--no-erase` against a
+    target that seeds photos. A `fake` target keeps reading the scenario's iOS locale, as the flat
+    `locale` let it.
   - This unit updated the pages that describe these names. The full docs pass stays with unit 13.
 
 ## References

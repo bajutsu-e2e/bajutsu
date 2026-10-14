@@ -1140,7 +1140,7 @@ Bajutsu のコメントは、すでに「何を」ではなく「なぜ」を書
 # Skipped when the scenario declares `reinstall: overwrite` — its explicit declaration that it
 # needs its app's data container preserved across a lease — since forcing `erase` would silently
 # override exactly the precondition the scenario was written against. NOT skipped on
-# `preconditions.erase is False`: by the time a scenario reaches here, the CLI has already resolved
+# `preconditions.run.erase is False`: by the time a scenario reaches here, the CLI has already resolved
 # every scenario's `erase` to a concrete bool — most commonly `False`, the built-in default a
 # scenario never asked for — so a guard on that value would silently disable this whole unit on the
 # one path it was written for (see *Alternatives considered*: only `reinstall: overwrite` actually

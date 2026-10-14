@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import atexit
 import sys
+from dataclasses import replace
 from pathlib import Path
 from typing import Annotated
 
@@ -12,6 +13,7 @@ import typer
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
     WORKER_CONFIG_HELP,
+    _command_preconditions_or_exit,
     _device_udid_or_exit,
     _load_device_worker_or_exit,
     _load_effective,
@@ -25,8 +27,8 @@ from bajutsu.common.config import (
     WEB_ENGINES,
     Effective,
     IosConfig,
-    command_preconditions,
     require_ios,
+    resolve_preconditions,
 )
 from bajutsu.common.devices import errors as device_errors
 from bajutsu.common.drivers import base
@@ -169,6 +171,12 @@ def repl(
     def say(msg: str) -> None:
         typer.echo(msg)
 
+    # Attaching keeps the device as the operator left it, so it neither erases nor seeds photos.
+    preconditions = (
+        replace(resolve_preconditions(eff), erase=False, seed_photos=[])
+        if attach
+        else _command_preconditions_or_exit(eff, erase=erase)
+    )
     say(f"⚙️  preparing {target_name} on {actuator} (this can take a moment) …")
     # One environment drives both the launch and the exit, as `crawl`'s lane builder does: a second
     # one built from the raw udid would close whichever device that udid still names, which stops
@@ -183,7 +191,7 @@ def repl(
             udid,
             eff,
             actuator,
-            command_preconditions(eff, erase=erase),
+            preconditions,
             environment=env,
             # The attached app is wherever the operator left it, not on the `startWhen` screen.
             skip_readiness=attach,

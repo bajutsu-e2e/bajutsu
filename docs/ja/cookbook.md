@@ -102,8 +102,9 @@ uv run bajutsu run --scenario <path-to-file> --target showcase-swiftui --backend
 ```yaml
 - name: grant notification permission
   tags: [permission, system]
-  systemAlertHandling: { rules: [{ prompt: notifications, choice: grant }] }
   preconditions:
+    run:
+      systemAlertHandling: { rules: [{ prompt: notifications, choice: grant }] }
     app:
       launch:
         env: { SHOWCASE_UITEST: "1" }

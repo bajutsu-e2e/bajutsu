@@ -528,8 +528,8 @@ class XcuitestEnvironment(_DeviceEnvironment):
         if device_type != "device":
             self._prepare_simulator(eff, pre, permissions, cold=True)
 
-        # The runner launches the app via XCUIApplication.launch(). ResolvedPreconditions are forwarded
-        # through env vars: the runner reads BAJUTSU_LAUNCH_ENV_* and sets them on
+        # The runner launches the app via XCUIApplication.launch(). The resolved preconditions are
+        # forwarded through env vars: the runner reads BAJUTSU_LAUNCH_ENV_* and sets them on
         # launchEnvironment, BAJUTSU_LAUNCH_ARGS as launchArguments, and opens BAJUTSU_DEEPLINK.
         launch_env, launch_args = self._launch_params(eff, pre, extra_env)
         runner_path = _resolve_runner(ios.xcuitest, device_type)

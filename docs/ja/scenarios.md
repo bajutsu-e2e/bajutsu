@@ -154,6 +154,10 @@ preconditions:
 > **写真の投入には wipe したデバイスが必要です。** 重ね合わせたあとの `seedPhotos` が空でなければ、
 > 実効の `run.erase`（フラグ、次にシナリオ、次にターゲット）が true である必要があります。写真ライブラリへの
 > 投入は erase の経路でだけ行うからです。ターゲットの `run.erase: true` でも条件を満たします。
+> 複数のターゲットを動かすシナリオでは、写真を投入するのはプライマリだけです。重ね合わせたあとの
+> `seedPhotos` を持つプライマリ以外のターゲットは、run を失敗させます。`record`、`crawl`、`repl` は、
+> 写真を投入するターゲットに対する `--no-erase` を拒否します。どちらの拒否も、デバイスを操作する前に
+> 終了コード 2 で終わります。
 
 > `reinstall: clean` は権限状態（`permissions`。後述）も同時にリセットします。iOS では `simctl privacy
 > reset all`、Android では `pm clear` を使います。`overwrite` はどちらもリセットしません。`overwrite` は

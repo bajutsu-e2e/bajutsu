@@ -1276,7 +1276,7 @@ class _ScenarioRunner:
             # run's `TargetRoster`, since an entry omitting `target` follows the current primary,
             # which a `setPrimaryTarget` step can move mid-run (BE-0447).
             interrupts=list(pool.eff.run_defaults.interrupts),
-            locale=s.preconditions.resolved_locale(pool.eff.locale, pool.eff.schema_platform),
+            locale=s.preconditions.resolved_locale(pool.eff.locale, pool.eff.platform),
             capture=list(pool.eff.capture),
             channel=collector,
             caps=capabilities_for_run(pool.actuator, pool.eff, pool.udid_spec),
@@ -1417,7 +1417,7 @@ class _ScenarioRunner:
                 # The locale this scenario runs under — the same value the lease pinned the
                 # Simulator's system language to, so a `handleSystemAlert` naming a prompt and a
                 # choice resolves to the label SpringBoard is actually rendering (BE-0320).
-                locale=s.preconditions.resolved_locale(self.eff.locale, self.eff.schema_platform),
+                locale=s.preconditions.resolved_locale(self.eff.locale, self.eff.platform),
                 # The config's baseline capture guarantee (`defaults.capture`), applied on top of
                 # every step alongside capturePolicy rules and inline `capture:` tokens.
                 capture=self.eff.capture,
