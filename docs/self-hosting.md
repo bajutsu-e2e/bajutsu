@@ -89,7 +89,7 @@ itself (BE-0449). Run a worker beside it as a second LaunchAgent:
 1. Copy the plist under another label.
 2. Change its `ProgramArguments` to `python -m bajutsu worker --platform ios`. Append
    `--server-state-dir <project>/.bajutsu`, where `<project>` holds the server's runs directory.
-   The second flag lets the worker take the jobs that name files on this machine. See
+   `--server-state-dir` lets the worker take the jobs that name files on this machine. See
    [the server backend on one machine](#the-server-backend-on-one-machine-be-0449). Add
    `--server-url http://127.0.0.1:<port>` when the server listens on a port other than 8765.
 3. Put the same token in its `EnvironmentVariables`, as `BAJUTSU_TOKEN`.
@@ -374,9 +374,9 @@ when it starts with `--machine-id <id>`. It can read the identity instead, with
 `--server-state-dir <dir>`. `make serve` passes `--server-state-dir` to the worker it starts. A
 worker on another machine never leases such a job, nor does a Device Farm worker. The UI keeps
 saying that no worker is available until a worker on the server's machine polls. A job that ships
-its files requires no machine token and goes to any worker. A run off an uploaded bundle is one. A
-worker that holds the identity but lacks the server's files still fails the job. Its message says
-the job needs a worker on the server's machine.
+its files, such as a run off an uploaded bundle, requires no machine token and goes to any worker. A
+worker that holds the identity but lacks the server's files still fails the job. The worker reports
+that the job needs a worker on the server's machine.
 
 We deprecate the `--backend` flag. The flag once chose between two backends. The `local` backend
 ran jobs inside the server process, and the `server` backend queued them. Both values now start

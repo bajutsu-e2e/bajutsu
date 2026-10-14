@@ -287,6 +287,10 @@ def test_the_worker_reads_the_servers_machine_id(
     assert _caps_for(server_state_dir=state) == f"machine:{ident}"
     with pytest.raises(typer.BadParameter, match="not both"):
         _caps_for(machine_id="m1", server_state_dir=state)
+    # An exported variable is a fallback for the flag, so it never stops the worker `make serve`
+    # starts with the state directory.
+    monkeypatch.setenv(cap.MACHINE_ID_ENV, "m2")
+    assert _caps_for(server_state_dir=state) == f"machine:{ident}"
 
 
 def test_the_worker_refuses_a_malformed_machine_id(monkeypatch: pytest.MonkeyPatch) -> None:

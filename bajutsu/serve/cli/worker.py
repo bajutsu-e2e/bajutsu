@@ -277,8 +277,8 @@ def _machine_token(
 ) -> str | None:
     """The ``machine:<id>`` token this worker advertises, or None when it names no server machine.
 
-    The identity comes from ``--machine-id`` (or `MACHINE_ID_ENV`), or is read from the server's
-    state directory; never both, so the two cannot disagree. A device-cloud worker takes neither: it
+    The identity comes from ``--machine-id``, or is read from the server's state directory; never
+    both, so the two cannot disagree. `MACHINE_ID_ENV` stands in for the flag when neither is given. A device-cloud worker takes neither: it
     serves only its environment's jobs (`can_serve`), so the token could route it nothing.
 
     Raises:
@@ -287,12 +287,16 @@ def _machine_token(
     """
     from bajutsu.serve.server.local_keys import read_machine_id
 
-    given = machine_id or os.environ.get(MACHINE_ID_ENV, "")
-    if given and server_state_dir is not None:
+    if machine_id and server_state_dir is not None:
         raise typer.BadParameter(
             "give the machine id or the state directory to read it from, not both",
             param_hint="--machine-id",
         )
+    # The variable is a fallback for `--machine-id` alone, so an exported one never fights the
+    # `--server-state-dir` that `make serve` passes.
+    given = machine_id or (
+        "" if server_state_dir is not None else os.environ.get(MACHINE_ID_ENV, "")
+    )
     if not given and server_state_dir is None:
         return None
     if not capability.is_local:

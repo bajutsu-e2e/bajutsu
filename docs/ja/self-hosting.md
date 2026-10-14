@@ -88,7 +88,7 @@ PLIST=~/Library/LaunchAgents/com.bajutsu.serve.plist
 1. plist を別のラベルで複製します。
 2. その `ProgramArguments` を `python -m bajutsu worker --platform ios` に変えます。続けて
    `--server-state-dir <プロジェクト>/.bajutsu` を加えます。`<プロジェクト>` は、サーバの runs ディレクトリを
-   置くディレクトリです。2つ目のフラグを渡すと、このマシン上のファイルを指定する job を worker が受け取れます
+   置くディレクトリです。`--server-state-dir` を渡すと、このマシン上のファイルを指定する job を worker が受け取れます
    （[1台のマシンで動かすサーバ backend](#1台のマシンで動かすサーバ-backendbe-0449)）。サーバが 8765 以外のポートで待ち受けるときは、
    `--server-url http://127.0.0.1:<ポート>` も加えます。
 3. 同じトークンを、その `EnvironmentVariables` に `BAJUTSU_TOKEN` として入れます。

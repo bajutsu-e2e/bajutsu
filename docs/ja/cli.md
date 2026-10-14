@@ -979,7 +979,7 @@ bajutsu worker --once <spec.json> [--worker-config <worker.yaml>]
 | `--poll-interval` | `2.0` | 空き時間にリースを試みる間隔（秒） |
 | `--heartbeat-interval` | `30.0` | run 中にリースのハートビートを送る間隔（秒）。コントロールプレーンのリースタイムアウトより短く保つことで、長時間の run を停止した worker と誤認して回収されないようにしています |
 | `--machine-id` | "" (`$BAJUTSU_WORKER_MACHINE_ID` も可) | サーバのマシンの識別子です。サーバの `.bajutsu/machine-id` に保存されています。worker はこれを `machine:<id>` として広告し、サーバのマシン上のパスでファイルを指定する job を受け取ります。対象は、ローカルで起動したサーバの `run`、`triage`、`record`、`crawl` です（[self-hosting](self-hosting.md#1台のマシンで動かすサーバ-backendbe-0449)）。そのパスを読める worker にだけ渡します。デバイスクラウドの worker は受け付けません |
-| `--server-state-dir` | なし | `--machine-id` を読むサーバの状態ディレクトリ（runs ディレクトリの隣の `.bajutsu`）です。サーバと同じマシンの worker に使い、`make serve` はこれを渡します。ディレクトリにまだ識別子がなければ、worker は起動時に終了します。このフラグと `--machine-id` は、どちらか一方だけを渡します |
+| `--server-state-dir` | なし | `--machine-id` を読むサーバの状態ディレクトリ（runs ディレクトリの隣の `.bajutsu`）です。サーバと同じマシンの worker に使い、`make serve` はこれを渡します。ディレクトリにまだ識別子がなければ、worker は起動時に終了します。このフラグと `--machine-id` は、どちらか一方だけを渡します。`$BAJUTSU_WORKER_MACHINE_ID` は `--machine-id` の代わりにだけ使うので、このフラグを渡したときは読みません |
 | `--workdir` | 新しい一時ディレクトリ | lease した job を実行する場所です。job の materials、取得したバンドル、アップロード前の run のツリーを置きます。既定のディレクトリは worker の停止時に削除するので、プロジェクトの中で起動した worker がプロジェクトに書き込むことはありません |
 | `--worker-id` | "" (自動生成) | worker の識別子 |
 | `--worker-config` | 同梱の既定 | この worker が従う worker 能力ファイル（[BE-0450](../../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability-ja.md)。[drivers](drivers.md#worker-の能力検査be-0450) を参照）。worker は起動時にファイルを検証し、不正なら job をリースする前に終了します。`environment` に device cloud を指定したファイルでは、worker はそのプロバイダを登録し、`environment:<name>` を広告します（[Device Farm](devicefarm.md)）。worker は起動するすべての `bajutsu run` にファイルの絶対パスを渡すので、リースした run はどれも同じファイルで検査されます。サーバーはこのファイルを読みません |
