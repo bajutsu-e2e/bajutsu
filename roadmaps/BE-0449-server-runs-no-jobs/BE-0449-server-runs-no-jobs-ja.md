@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0449") |
-| 実装 PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167)（単位 1 の 3 分割のうち 1）、[#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168)（単位 1 の 3 分割のうち 2）、[#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170)（単位 1 の 3 分割のうち 3）、[#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171)（単位 2）、[#2172](https://github.com/bajutsu-e2e/bajutsu/pull/2172)（単位 4）、[#2173](https://github.com/bajutsu-e2e/bajutsu/pull/2173)（単位 3）、[#2182](https://github.com/bajutsu-e2e/bajutsu/pull/2182)（単位 5 の 2 分割のうち 1：機能を失わないローカル起動）、[#2183](https://github.com/bajutsu-e2e/bajutsu/pull/2183)（単位 5 の 2 分割のうち 2：worker で動く `run`）、[#2184](https://github.com/bajutsu-e2e/bajutsu/pull/2184)、[#2185](https://github.com/bajutsu-e2e/bajutsu/pull/2185)、[#2186](https://github.com/bajutsu-e2e/bajutsu/pull/2186)（単位 6。BE-0448 が実装）、[#2187](https://github.com/bajutsu-e2e/bajutsu/pull/2187)（単位 7） |
+| 実装 PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167)（単位 1 の 3 分割のうち 1）、[#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168)（単位 1 の 3 分割のうち 2）、[#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170)（単位 1 の 3 分割のうち 3）、[#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171)（単位 2）、[#2172](https://github.com/bajutsu-e2e/bajutsu/pull/2172)（単位 4）、[#2173](https://github.com/bajutsu-e2e/bajutsu/pull/2173)（単位 3）、[#2182](https://github.com/bajutsu-e2e/bajutsu/pull/2182)（単位 5 の 2 分割のうち 1：機能を失わないローカル起動）、[#2183](https://github.com/bajutsu-e2e/bajutsu/pull/2183)（単位 5 の 2 分割のうち 2：worker で動く `run`）、[#2184](https://github.com/bajutsu-e2e/bajutsu/pull/2184)、[#2185](https://github.com/bajutsu-e2e/bajutsu/pull/2185)、[#2186](https://github.com/bajutsu-e2e/bajutsu/pull/2186)（単位 6。BE-0448 が実装）、[#2187](https://github.com/bajutsu-e2e/bajutsu/pull/2187)（単位 7）、[#2188](https://github.com/bajutsu-e2e/bajutsu/pull/2188)（単位 8） |
 | トピック | Hosting the web UI |
 <!-- /BE-METADATA -->
 
@@ -153,7 +153,7 @@ local バックエンドと server バックエンドの違いは、これらの
 - [x] `run` の移行
 - [x] `run-set`（Device Farm の batch）の移行
 - [x] `triage` の移行（ローカル起動。ホスト型の triage と同じホストへの割り当ては後続の作業。ログを参照）
-- [ ] `record` と `crawl` の移行
+- [x] `record` と `crawl` の移行
 - [ ] local の executor の削除
 
 ログ：
@@ -371,6 +371,40 @@ local バックエンドと server バックエンドの違いは、これらの
   run のツリーをダウンロードし、`triage.json` をアップロードして戻す仕組みが先に要ります。2つ目として、
   サーバのパスを指定する job（`run` と `triage`）は、サーバのホストに結び付く能力を持ちません。別の
   マシンの worker がその job を lease してから失敗させることがあります。
+- [#2188](https://github.com/bajutsu-e2e/bajutsu/pull/2188)（単位 8）— ローカル起動は `record` と `crawl` もキューへ積むので、
+  `LOCAL_QUEUED_KINDS` はすべての種類を含みます。キューがあれば、サーバは自分のプロセスで job を実行しません。
+  バケットがあってデータベースがないデプロイは引き続き `LocalExecutor` を使い、単位 9 でこれを取り除きます。
+  crawl の worker は、crawl の `--out` ディレクトリにある画面マップを監視します。変化したスナップショットが
+  JSON として読めれば、新しい `POST /api/worker/artifact` に送ります。このルートが受け付けるのは、lease を
+  持つ worker からの、`screenmap.json` という名前の 2 MiB 以下の JSON オブジェクトだけです。サーバは
+  スナップショットを専用の行プレフィックスで job のログバスに流し、イベントストリームはそれを `artifact`
+  イベントとして送ります。スナップショットには、job ごとに 16 MiB の別のライブ予算があります。予算を超えると、
+  サーバは `truncated` のスナップショットを一度だけ流し、worker に送信をやめさせます。Crawl タブはこれらの
+  イベントからグラフを描き、job の終了時に `screenmap.json` を読みます。予算を超えたあとは、従来どおり
+  ログの行ごとにファイルを読みます。一時停止した record の worker は、要求の行を `POST /api/worker/handoff`
+  に送ります。このルートは `record` の job だけを受け付け、要求は一度に1つで、job ごとに 64 MiB の別のライブ予算に
+  収めます。サーバ自身のプロセスでも、handoff を開けるのは `record` だけです。サーバは行に `handoff_pending` を立て（マイグレーション `0023`）、要求を `human-request`
+  イベントとして流します。`respond-human` は回答をシークレットのキーで暗号化し、`handoff_response` に
+  置きます。置くのは、job が lease 中で、人を待っていて、取り消しを受けていないときだけです。record が
+  待つあいだ、worker は毎秒 `POST /api/worker/handoff-response` に問い合わせます。条件付きの更新が、
+  回答を1回の問い合わせだけに渡します。worker は回答を record の標準入力に書き込みます。サーバは、
+  record の待ち時間（5 分）より古い回答を捨てます。問い合わせは取り消しも運ぶので、待っている record には
+  30 秒のハートビートを待たずに取り消しが届きます。結果、回収、取り消しのいずれでも、2つの列は空に戻ります。
+  設計はハートビートの応答で回答を運ぶとしていましたが、中継は独自の問い合わせを使います。
+  30 秒の間隔では、ページの前の人を待たせすぎるからです。3つの中継の
+  ルートは、lease を持たない worker に `409` を返し、ブラウザやマシンのセッションで来た呼び出しに `403` を
+  返します。`respond-human` は、取り消しのルートと同じ方法で job の org を確かめるようになり、呼び出し元の
+  org の外の job には `404` を返します。handoff の要求やスナップショットの形をしたログの行は、ログのルートでも
+  サーバ自身のプロセスでも捨てるので、run はどちらも偽造できません。job のビューは `awaitingHuman` を行から読むので、どのレプリカでも一致します。再接続したページには、
+  job がもう待っていない要求を送りません。画面マップのスナップショットは引き続きすべて再送するので、最新の
+  1つだけを送る変更は後続の作業です。出力の行き先は従来と
+  同じです。crawl はサーバの runs ディレクトリに、record はターゲットのシナリオディレクトリに書きます。
+  どちらも同じマシンの worker が実行します。AI キーは lease だけを通ってエージェントに届きます。
+  端から端までのテストは、crawl と record を本物の worker のループに通します。それぞれの子プロセスには
+  スタブを使うので、モデルにもデバイスにも触れません。テストは、イベントストリームのクライアントに届く
+  スナップショット、ページに届く要求、record に届く回答、record が待つあいだの取り消しを確かめます。
+  ホスト型のデプロイには2つの課題が残ります。そこでの crawl は、単位 7 の後続の作業と同じくサーバの
+  パスを指定します。また、ホスト型の起動ではデバイスの引き継ぎ（BE-0185）を引き続き拒否します。
 
 ## 参考
 

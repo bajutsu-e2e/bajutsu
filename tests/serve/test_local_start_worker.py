@@ -207,14 +207,12 @@ def test_a_local_start_queues_a_run_and_a_worker_runs_it(
     assert _PASSWORD not in json.dumps(finished)
 
 
-def test_a_local_start_runs_the_other_kinds_in_process(tmp_path: Path) -> None:
+def test_a_local_start_runs_no_kind_in_process(tmp_path: Path) -> None:
     state = _local_start(tmp_path, _fake_project(tmp_path))
     assert isinstance(state.executor, srv.RoutingExecutor)
-    for kind in ("record", "crawl"):
-        assert state.executor.routes_locally(kind)
-    # A Device Farm fan-out needs a worker that registered the provider (BE-0448), and a triage
-    # moved in unit 7.
-    queued: tuple[JobKind, ...] = ("run", "run-set", "triage")
+    # A Device Farm fan-out needs a worker that registered the provider (BE-0448), a triage moved in
+    # unit 7, and a record and a crawl in unit 8.
+    queued: tuple[JobKind, ...] = ("run", "run-set", "triage", "record", "crawl")
     for kind in queued:
         assert not state.executor.routes_locally(kind)
 

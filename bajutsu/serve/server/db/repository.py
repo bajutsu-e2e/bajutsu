@@ -285,6 +285,28 @@ class Repository(Protocol):
         next beat. False once the worker no longer holds the lease.
         """
 
+    def open_handoff(self, job_id: str, worker_id: str) -> bool:
+        """Mark the job *worker_id* holds as waiting on a person, dropping any earlier answer.
+
+        The worker calls this when its `record` asks for a person (BE-0449 unit 8). False once the
+        worker no longer holds the lease, so a stale worker cannot open a handoff on the job's next
+        attempt, and while an earlier request still waits on a person.
+        """
+
+    def answer_handoff(self, job_id: str, token: str) -> bool:
+        """Store a person's answer, as an encrypted *token*, for the worker to take.
+
+        Accepted only while the job is leased, waits on a person, and has no cancel pending, so an
+        answer never lands on a finished job or one whose handoff already closed. Clears the wait.
+        """
+
+    def take_handoff_response(self, job_id: str, worker_id: str) -> str | None:
+        """The stored answer of the job *worker_id* holds, removed as it is read; None when none.
+
+        One conditional update decides the read, so the answer reaches one poll alone, and only
+        the lease holder takes it.
+        """
+
     def reclaim_expired_leases(
         self, timeout: timedelta, *, max_attempts: int = DEFAULT_LEASE_MAX_ATTEMPTS
     ) -> list[str]:
@@ -332,8 +354,9 @@ class Repository(Protocol):
         """
 
     def get_job(self, job_id: str) -> dict[str, Any] | None:
-        """Return the job's status, result, org_id, current lease holder (``leased_by``), and
-        ``spec``, or None if it does not exist.
+        """Return the job's status, result, org_id, current lease holder (``leased_by``), ``spec``,
+        and ``awaiting_human`` (whether a leased `record` waits on a person), or None if it does not
+        exist.
 
         The spec rides along because a worker's result carries no `actor` / `label` of its own:
         `worker_result` records the finished run under the identity and run-history partition the

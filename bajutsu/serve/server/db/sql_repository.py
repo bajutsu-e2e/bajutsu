@@ -825,6 +825,73 @@ class SqlRepository:
             )
             return bool(flag)
 
+    def open_handoff(self, job_id: str, worker_id: str) -> bool:
+        from sqlalchemy import update
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import JobRecord
+
+        with Session(self._engine) as session:
+            # An answer left from an earlier request is dropped, so the worker takes only an answer
+            # to the request it just made. A request still waiting on a person keeps the handoff:
+            # one at a time, so a looping worker cannot stack prompts on the page.
+            opened = session.execute(
+                update(JobRecord)
+                .where(
+                    JobRecord.id == job_id,
+                    JobRecord.status == "leased",
+                    JobRecord.leased_by == worker_id,
+                    JobRecord.handoff_pending.is_(False),
+                )
+                .values(handoff_pending=True, handoff_response=None)
+            )
+            session.commit()
+            return _rowcount(opened) == 1
+
+    def answer_handoff(self, job_id: str, token: str) -> bool:
+        from sqlalchemy import update
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import JobRecord
+
+        with Session(self._engine) as session:
+            answered = session.execute(
+                update(JobRecord)
+                .where(
+                    JobRecord.id == job_id,
+                    JobRecord.status == "leased",
+                    JobRecord.handoff_pending.is_(True),
+                    JobRecord.cancel_requested.is_(False),
+                )
+                .values(handoff_pending=False, handoff_response=token)
+            )
+            session.commit()
+            return _rowcount(answered) == 1
+
+    def take_handoff_response(self, job_id: str, worker_id: str) -> str | None:
+        from sqlalchemy import select, update
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import JobRecord
+
+        owned = (
+            JobRecord.id == job_id,
+            JobRecord.status == "leased",
+            JobRecord.leased_by == worker_id,
+        )
+        with Session(self._engine) as session:
+            token = session.scalar(select(JobRecord.handoff_response).where(*owned))
+            if token is None:
+                return None
+            # Cleared on the value read, so two polls racing for one answer cannot both take it.
+            taken = session.execute(
+                update(JobRecord)
+                .where(*owned, JobRecord.handoff_response == token)
+                .values(handoff_response=None)
+            )
+            session.commit()
+            return token if _rowcount(taken) == 1 else None
+
     def reclaim_expired_leases(
         self, timeout: timedelta, *, max_attempts: int = DEFAULT_LEASE_MAX_ATTEMPTS
     ) -> list[str]:
@@ -877,7 +944,15 @@ class SqlRepository:
                         JobRecord.attempts == previous_attempts,
                         JobRecord.cancel_requested == cancelling,
                     )
-                    .values(attempts=attempts, leased_by=None, leased_at=None, **outcome)
+                    .values(
+                        attempts=attempts,
+                        leased_by=None,
+                        leased_at=None,
+                        # The paused `record` died with the lease, so its handoff ends too.
+                        handoff_pending=False,
+                        handoff_response=None,
+                        **outcome,
+                    )
                 )
                 if _rowcount(reclaimed) == 1 and outcome["status"] == "queued":
                     requeued.append(job_id)
@@ -913,7 +988,10 @@ class SqlRepository:
             conditions.append(JobRecord.leased_by == worker_id)
         with Session(self._engine) as session:
             finished = session.execute(
-                update(JobRecord).where(*conditions).values(status=status, result=payload)
+                update(JobRecord)
+                .where(*conditions)
+                # A finished job keeps no handoff answer: it may hold a one-time password.
+                .values(status=status, result=payload, handoff_pending=False, handoff_response=None)
             )
             session.commit()
             return _rowcount(finished) == 1
@@ -974,6 +1052,7 @@ class SqlRepository:
                 "org_id": row.org_id,
                 "leased_by": row.leased_by,
                 "spec": dict(row.spec),
+                "awaiting_human": bool(row.handoff_pending),
             }
 
     def finished_job_ids(self, job_ids: Iterable[str]) -> set[str]:

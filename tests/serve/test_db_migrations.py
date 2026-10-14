@@ -310,3 +310,32 @@ def test_0022_adds_an_unset_cancel_flag_to_existing_jobs(migration_db_url: str) 
             assert [tuple(r) for r in rows] == [("j1", "leased"), ("j2", "failed")]
     finally:
         engine.dispose()
+
+
+@pytest.mark.parametrize("migration_db_url", _DIALECTS, indirect=True)
+def test_0023_adds_an_idle_handoff_to_existing_jobs(migration_db_url: str) -> None:
+    """0023 lands under a live queue: a job leased before it waits on nobody and holds no answer.
+    The downgrade's table rebuild on SQLite must keep every job."""
+    from alembic import command
+
+    cfg = _alembic_config()
+    command.upgrade(cfg, "0022")
+    engine = create_engine(migration_db_url)
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO jobs (id, org_id, spec, capabilities, status, attempts, result, "
+                    "batch_state) VALUES ('j1', 'o', '{}', '[]', 'leased', 0, '{}', '{}')"
+                )
+            )
+        command.upgrade(cfg, "0023")
+        with engine.begin() as conn:
+            rows = conn.execute(text("SELECT handoff_pending, handoff_response FROM jobs"))
+            assert [tuple(r) for r in rows] == [(False, None)]
+        command.downgrade(cfg, "0022")
+        with engine.begin() as conn:
+            rows = conn.execute(text("SELECT id, status FROM jobs"))
+            assert [tuple(r) for r in rows] == [("j1", "leased")]
+    finally:
+        engine.dispose()

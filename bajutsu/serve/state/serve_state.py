@@ -35,6 +35,8 @@ from .session_manager import SessionManager
 from .store_bundle import StoreBundle
 
 if TYPE_CHECKING:
+    from cryptography.fernet import Fernet
+
     from bajutsu.serve.server.db import Repository
 
 Popen = Callable[..., Any]
@@ -45,6 +47,10 @@ Popen = Callable[..., Any]
 # members on one process — far past what a serve deployment fans out to — while still bounding a
 # process that never sees those sessions end.
 MAX_SESSION_BINDINGS = 2048
+
+# One job's handoff requests together: a few dozen prompts with full-screen screenshots, far past a
+# real recording session's needs (BE-0449 unit 8).
+_HANDOFF_BYTES_PER_JOB = 64 * 1024 * 1024
 
 
 @dataclass
@@ -136,6 +142,19 @@ class ServeState:
     # How many live lines each queued job has posted through `/api/worker/log` (BE-0449), so one
     # job cannot fill the bus without bound.
     live_log_budget: LiveLineBudget = field(default_factory=LiveLineBudget)
+    # The same bound for the live artifact snapshots a crawl's worker posts through
+    # `/api/worker/artifact` (BE-0449 unit 8), counted apart so a growing screen map never eats
+    # the console's budget, or the console the screen map's.
+    live_artifact_budget: LiveLineBudget = field(default_factory=LiveLineBudget)
+    # The bound for a paused `record`'s handoff requests, screenshots included (BE-0449 unit 8),
+    # so a worker that keeps asking cannot grow the bus without end. Kept apart from the two above.
+    live_handoff_budget: LiveLineBudget = field(
+        default_factory=lambda: LiveLineBudget(bytes_per_job=_HANDOFF_BYTES_PER_JOB)
+    )
+    # Encrypts a person's handoff answer while it waits in the jobs table for the worker of a paused
+    # `record` (BE-0449 unit 8): the secrets key, which every deployment with a queue holds. None
+    # without a queue, where the answer goes straight to the job's own standard input.
+    handoff_cipher: Fernet | None = None
     # Run-artifact reads. Filesystem-confined by default; a server backend swaps in an
     # object-storage store (set after construction) that may serve signed-URL redirects (BE-0015).
     artifacts: ArtifactStore = field(init=False)

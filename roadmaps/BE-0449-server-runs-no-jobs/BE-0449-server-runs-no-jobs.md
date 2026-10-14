@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0449") |
-| Implementing PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167) (Unit 1, part 1 of 3), [#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168) (Unit 1, part 2 of 3), [#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170) (Unit 1, part 3 of 3), [#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171) (Unit 2), [#2172](https://github.com/bajutsu-e2e/bajutsu/pull/2172) (Unit 4), [#2173](https://github.com/bajutsu-e2e/bajutsu/pull/2173) (Unit 3), [#2182](https://github.com/bajutsu-e2e/bajutsu/pull/2182) (Unit 5, part 1 of 2: a lossless local start), [#2183](https://github.com/bajutsu-e2e/bajutsu/pull/2183) (Unit 5, part 2 of 2: `run` on a worker), [#2184](https://github.com/bajutsu-e2e/bajutsu/pull/2184), [#2185](https://github.com/bajutsu-e2e/bajutsu/pull/2185), [#2186](https://github.com/bajutsu-e2e/bajutsu/pull/2186) (Unit 6, through BE-0448), and [#2187](https://github.com/bajutsu-e2e/bajutsu/pull/2187) (Unit 7) |
+| Implementing PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167) (Unit 1, part 1 of 3), [#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168) (Unit 1, part 2 of 3), [#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170) (Unit 1, part 3 of 3), [#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171) (Unit 2), [#2172](https://github.com/bajutsu-e2e/bajutsu/pull/2172) (Unit 4), [#2173](https://github.com/bajutsu-e2e/bajutsu/pull/2173) (Unit 3), [#2182](https://github.com/bajutsu-e2e/bajutsu/pull/2182) (Unit 5, part 1 of 2: a lossless local start), [#2183](https://github.com/bajutsu-e2e/bajutsu/pull/2183) (Unit 5, part 2 of 2: `run` on a worker), [#2184](https://github.com/bajutsu-e2e/bajutsu/pull/2184), [#2185](https://github.com/bajutsu-e2e/bajutsu/pull/2185), [#2186](https://github.com/bajutsu-e2e/bajutsu/pull/2186) (Unit 6, through BE-0448), [#2187](https://github.com/bajutsu-e2e/bajutsu/pull/2187) (Unit 7), and [#2188](https://github.com/bajutsu-e2e/bajutsu/pull/2188) (Unit 8) |
 | Topic | Hosting the web UI |
 <!-- /BE-METADATA -->
 
@@ -153,7 +153,7 @@ This item does not change what a job does, how a verdict is decided, or the run 
 - [x] Move `run`
 - [x] Move `run-set` (the Device Farm batch)
 - [x] Move `triage` (on a local start; hosted triage and same-machine affinity are follow-ups, see the log)
-- [ ] Move `record` and `crawl`
+- [x] Move `record` and `crawl`
 - [ ] Remove the local executor
 
 Log:
@@ -369,6 +369,43 @@ Log:
   and upload `triage.json` back. Second, a job that names server paths (`run` and `triage`) carries
   no capability that ties it to the server's machine. A worker on another machine may lease such a job
   and then fail it.
+- [#2188](https://github.com/bajutsu-e2e/bajutsu/pull/2188) (Unit 8) — a local start now queues `record` and `crawl` too, so
+  `LOCAL_QUEUED_KINDS` holds every kind. With a queue, the server runs no job in its own process.
+  `LocalExecutor` still serves a deployment with a bucket and no database, which unit 9 removes. A
+  crawl's worker watches the screen map in the crawl's `--out` directory. It posts each changed
+  snapshot that parses as JSON to a new `POST /api/worker/artifact`. The route takes the
+  `screenmap.json` name alone, a JSON object of at most 2 MiB, from the lease holder. The server
+  publishes the snapshot on the job's log bus under its own line prefix. The event stream sends it
+  as an `artifact` event. A separate live budget of 16 MiB per job bounds the snapshots. Past it,
+  the server publishes one `truncated` snapshot and tells the worker to stop. The Crawl tab draws
+  the graph from those events and reads `screenmap.json` once the job ends. Past the budget, it
+  reads the file on each log line as before. A paused record's worker posts the request line to
+  `POST /api/worker/handoff`. The route takes a `record` job alone, one request at a time, within a
+  separate live budget of 64 MiB per job. A `record` alone opens a handoff in the server's own
+  process too. The server marks the row `handoff_pending` (migration `0023`) and publishes the
+  request as a `human-request` event. `respond-human` encrypts the answer under the secrets key into
+  `handoff_response`. It stores the answer while the job holds a lease, waits on a person, and has
+  no cancel pending, and at no other time. The worker polls `POST /api/worker/handoff-response` once
+  a second while the record waits. A conditional update hands the answer to one poll. The worker
+  writes it to the record's standard input. The server drops an answer older than the record's
+  five-minute wait. The poll also carries a cancel, so a cancel reaches a waiting record at once
+  rather than on the 30-second heartbeat. A result, a reclaim, or a cancel clears both columns. The
+  design names the heartbeat response as the carrier. The relay polls on its own instead, because a
+  30-second beat keeps a person at the page waiting far too long. The three relay routes answer
+  `409` to any worker but the lease holder, and `403` to a caller on a browser or machine session.
+  `respond-human` now checks the job's org the way the cancel route does, and answers `404` outside
+  the caller's orgs. The log route and the server's own process drop a log line shaped like a
+  handoff request or a snapshot, so a run cannot forge either. The job view reads `awaitingHuman`
+  from the row, so every replica agrees. A page that reconnects no longer gets a request the job
+  stopped waiting on. It still gets every earlier snapshot of the screen map, and replaying the
+  latest one alone is a follow-up. Outputs land as before. A crawl writes into the server's runs
+  directory, and a record writes into the target's scenarios directory. A worker on the same machine
+  runs both. The AI key reaches the agent through the lease alone. An end-to-end test runs a crawl
+  and a record through the real worker loop. A stub child stands in for each, so the test reaches no
+  model and no device. The test checks the snapshots on an event-stream client, the request on the
+  page, the answer at the record, and a cancel while the record waits. Hosted deployments keep two
+  gaps. A crawl there names server paths, as the unit 7 follow-up describes. The device takeover
+  stays refused on a hosted start (BE-0185).
 
 ## References
 

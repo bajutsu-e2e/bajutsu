@@ -103,10 +103,7 @@ async function continuePastRun(runId){
   const {jobId,runId:started,error}=await r.json();
   if(error){setStatus($('#crawl-status'),error,'ng');setBusy($('#crawl-go'),$('#crawl-stop'),false);return;}
   crawlJobId=jobId;crawlRunId=started;
-  crawlPoll=streamJob(jobId,line=>{
-    appendLine($('#crawl-out'),line);
-    if(crawlRunId)loadGraph(crawlRunId);
-  },crawlDone);
+  crawlPoll=streamCrawl(jobId);
 }
 // Leave history mode: re-enable the live form and reset the map/plan/links to their pre-crawl state,
 // the same clean slate crawlDone leaves for the next run.
@@ -136,8 +133,32 @@ async function crawlDone(j){
 }
 async function loadGraph(runId){
   const data=await getJSON('/runs/'+runId+'/screenmap.json',null);if(!data)return;
+  showGraph(data,runId);
+}
+function showGraph(data,runId){
   renderGraph(data,runId);
   renderPlan(data);  // the right-column plan tree, kept in step with the transition graph
+}
+// The crawl's worker posts each new screen map, and the server relays it on the job's event stream
+// (BE-0449 unit 8), so the graph grows wherever the worker runs. Until the first snapshot arrives, and
+// again once the stream says the job's live budget is spent, the page reads the file on each log line
+// as it did before — which also keeps a crawl the server still runs itself (a deployment with a bucket
+// and no database) drawing its graph.
+let crawlPollFile=true;
+function onCrawlArtifact(a){
+  if(!a||a.name!=='screenmap.json')return;
+  if(a.truncated){crawlPollFile=true;return}
+  if(!a.data)return;
+  crawlPollFile=false;
+  if(crawlRunId)showGraph(a.data,crawlRunId);
+}
+// Stream a continued or resumed crawl the way the Crawl button's startJob streams a fresh one.
+function streamCrawl(jobId){
+  crawlPollFile=true;
+  return streamJob(jobId,line=>{
+    appendLine($('#crawl-out'),line);
+    if(crawlPollFile&&crawlRunId)loadGraph(crawlRunId);  // no live snapshot yet, or past the budget
+  },crawlDone,null,n=>setStatus($('#crawl-status'),n||'',n?'ng':'run'),onCrawlArtifact);
 }
 // The exploration-plan tree (right column), a separate view from the transition graph: each screen
 // branches into its operations, marked explored (✅, already traversed) or pending (⏳, the frontier
@@ -479,10 +500,7 @@ async function resumePruned(src,key){
   const {jobId,runId:started,error}=await r.json();
   if(error){setStatus($('#crawl-status'),error,'ng');setBusy($('#crawl-go'),$('#crawl-stop'),false);return}
   crawlJobId=jobId;crawlRunId=started;
-  crawlPoll=streamJob(jobId,line=>{
-    appendLine($('#crawl-out'),line);
-    if(crawlRunId)loadGraph(crawlRunId);
-  },crawlDone);
+  crawlPoll=streamCrawl(jobId);
 }
 
 // ---- lightbox: enlarge a screen's shot and step through the transitions (before / after) ----
@@ -568,11 +586,11 @@ function initCrawl(){
         maxScreens:parseInt($('#crawl-maxscreens').value,10)||50,maxSteps:parseInt($('#crawl-maxsteps').value,10)||200,
         erase:$('#crawl-erase').checked,
         systemAlertHandling:$('#crawl-nodismiss').checked?false:undefined,headed:$('#crawl-headed').checked||undefined},
-      onStart:d=>{crawlJobId=d.jobId;crawlRunId=d.runId;},
+      onStart:d=>{crawlJobId=d.jobId;crawlRunId=d.runId;crawlPollFile=true;},
       onLog:line=>{
         appendLine($('#crawl-out'),line);
-        if(crawlRunId)loadGraph(crawlRunId);  // redraw the streamed screenmap.json as it grows
-      },onDone:crawlDone});
+        if(crawlPollFile&&crawlRunId)loadGraph(crawlRunId);  // no live snapshot yet, or past the budget
+      },onArtifact:onCrawlArtifact,onDone:crawlDone});
   });
   $('#crawl-stop').addEventListener('click',()=>cancelJob(crawlJobId,$('#crawl-stop')));
   document.querySelectorAll('#view-crawl .tab').forEach(t=>t.addEventListener('click',()=>showCrawlTab(t.dataset.tab)));
