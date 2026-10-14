@@ -897,7 +897,7 @@ batch provider that packages `launchEnv`, `common/report/rows.py`, `templates/se
     API level 34 alone. This unit had no emulator to read. The emulator passes the name on its
     kernel command line. Images from API level 31 expose it as `ro.boot.qemu.avd_name`. Older
     images expose it as `ro.kernel.qemu.avd_name`. That split rests on known emulator
-    behavior, not a device read, so we rate it medium. Unit 8 should read both
+    behavior, not a device read. Our confidence in the split is medium. Unit 8 should read both
     properties, and fail when an emulator reports neither. An `avd` condition then never misses
     without a message. The read stays an open item. Unit 8 must verify it on a real emulator at each
     supported API level.

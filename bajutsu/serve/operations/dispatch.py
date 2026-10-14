@@ -803,13 +803,15 @@ def start_run_set(  # noqa: C901, PLR0911
     )
     if requests_err:
         return requests_err
+    label, label_err = _run_label(binding, body)
+    if label_err:
+        return label_err
+    # Last of the checks: snapshotting the binary reads and copies it whole, so every plain body
+    # refusal above stays free.
     ships_files = bool(requests[0][1])
     batch_app, app_err = _batch_application(state, binding, org, app_path, ships_files=ships_files)
     if app_err:
         return app_err
-    label, label_err = _run_label(binding, body)
-    if label_err:
-        return label_err
     dispatched: list[str] = []
     config_text = cfg.read_text(encoding="utf-8")
     for request, materials in requests:

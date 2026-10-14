@@ -453,7 +453,7 @@ def worker_handoff(
         return {"error": f"request is over {WORKER_HANDOFF_MAX_BYTES} bytes"}, 413
     try:
         request_from_json(request)
-    except ValueError:
+    except (TypeError, ValueError):  # a non-string `screenshot` fails base64 with a TypeError
         return {"error": "request must be a handoff request object"}, 400
     row = state.repository.get_job(job_id)
     spec = row.get("spec") if row is not None else None
