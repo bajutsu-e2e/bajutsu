@@ -91,6 +91,9 @@ def test_start_triage_ai_requires_a_credential(tmp_path: Path, monkeypatch: Any)
     import bajutsu.common.ai as ai
 
     monkeypatch.setattr(ai, "credential_gap", lambda _ai: "anthropic-key")
+    # The environment store reads a stored key from the process environment, where another test on
+    # this worker process may have left one, and a key there would rightly admit the job.
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     state = _state(tmp_path)
     run_id = _write_run(state, "20260101-000000")
     payload, status = ops.start_triage(
