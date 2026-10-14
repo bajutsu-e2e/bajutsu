@@ -1043,8 +1043,9 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
 - Network observation + **deterministic mocks** (scenario `mocks` → in-protocol stubs, validated
   on-device): `request` assertions, `wait: { until: request }`, and offline stubbed responses; a
   `request`/`event` match's `query` and `body` fields take a key/value dictionary instead of a
-  regex — order-independent, with `$matches`/`$exists` operators and, for `body`, nested maps and
-  lists — shared by `requestSequence` and `responseSchema.request` too; `mocks` keep the
+  regex — order-independent for query parameters and JSON object keys, with `$matches`/`$exists`
+  operators and, for `body`, nested maps plus lists (matched element by element, same length
+  required) — shared by `requestSequence` and `responseSchema.request` too; `mocks` keep the
   regex-only grammar (BE-0463); on iOS, a `setMocks` step replaces the app's stub table
   mid-scenario over the in-app control channel (BE-0365)
 - The **screen-transition signal** (BE-0310, iOS): an opt-in `BajutsuScreen` in `BajutsuKit`
