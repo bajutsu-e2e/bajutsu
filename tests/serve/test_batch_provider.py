@@ -289,9 +289,11 @@ def _android_request_with_config(
     preconditions_block = ""
     if scenario_preconditions_launch_env:
         env_block = "\n".join(
-            f"      {k}: {v}" for k, v in scenario_preconditions_launch_env.items()
+            f"          {k}: {v}" for k, v in scenario_preconditions_launch_env.items()
         )
-        preconditions_block = f"\n  preconditions:\n    launchEnv:\n{env_block}"
+        preconditions_block = (
+            f"\n  preconditions:\n    app:\n      launch:\n        env:\n{env_block}"
+        )
     (work / "smoke.yaml").write_text(
         f"- name: alpha{preconditions_block}\n  steps: []\n", encoding="utf-8"
     )
@@ -812,5 +814,7 @@ def test_collision_guard_accepts_non_overlapping_keys(tmp_path: Path) -> None:
     from bajutsu.serve.batch_provider.device_farm_batch_provider import _check_launch_env_collisions
 
     scenario = tmp_path / "scenario.yaml"
-    scenario.write_text("- name: s1\n  preconditions:\n    launchEnv:\n      OTHER_KEY: value\n")
+    scenario.write_text(
+        "- name: s1\n  preconditions:\n    app:\n      launch:\n        env:\n          OTHER_KEY: value\n"
+    )
     _check_launch_env_collisions(scenario, {"PROXY_HOST": "proxy.example.com"})

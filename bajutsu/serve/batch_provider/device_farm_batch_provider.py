@@ -45,9 +45,9 @@ def _check_launch_env_collisions(
     scenario_path: Path,
     injected: dict[str, str],
 ) -> None:
-    """Raise loudly if any scenario preconditions.launchEnv key collides with an injected key.
+    """Raise loudly if any scenario `preconditions.app.launch.env` key collides with an injected key.
 
-    On-device merge order is ``{**target_env, **preconditions.launch_env}`` so a scenario key
+    On-device merge order is ``{**target_env, **preconditions.app.launch.env}`` so a scenario key
     silently wins over the injected value — catching this at submit time makes the conflict visible
     before the run starts (BE-0435 Thread-8 decision).
     """
@@ -61,12 +61,14 @@ def _check_launch_env_collisions(
         preconditions = scenario.get("preconditions") or {}
         if not isinstance(preconditions, dict):
             continue
-        launch_env = preconditions.get("launchEnv") or {}
+        app = preconditions.get("app") or {}
+        launch = app.get("launch") if isinstance(app, dict) else None
+        launch_env = (launch.get("env") if isinstance(launch, dict) else None) or {}
         for key in launch_env:
             if key in injected:
                 name = scenario.get("name", "<unnamed>")
                 raise ValueError(
-                    f"launchEnv collision: key {key!r} injected by a BatchLifecycleHook "
+                    f"launch env collision: key {key!r} injected by a BatchLifecycleHook "
                     f"is also set in scenario {name!r} preconditions "
                     f"({scenario_path.name}). The scenario value wins on-device, "
                     f"silently overriding the injected one."
@@ -169,7 +171,7 @@ class DeviceFarmBatchProvider:
                         yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
                     )
 
-                    # Collision guard: scenario preconditions.launchEnv wins on-device, so a key
+                    # Collision guard: scenario preconditions.app.launch.env wins on-device, so a key
                     # collision means the injected value is silently overridden — fail loudly here.
                     _check_launch_env_collisions(
                         scenario_path=work_dir / request.scenario,

@@ -3,7 +3,9 @@
 # In-app modals are visible to the backend (unlike the OS alerts in permission.yaml).
 - name: open and dismiss the detented sheet
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Log", traits: [button] }
       capture: [deviceLog]
@@ -20,7 +22,9 @@
 
 - name: open and dismiss the full-screen cover
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Log", traits: [button] }
       capture: [deviceLog]
@@ -34,7 +38,9 @@
 
 - name: action sheet records its choice
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Log", traits: [button] }
       capture: [deviceLog]
@@ -56,7 +62,9 @@
 # Form controls: the stepper and toggle mirror their state to a11y values.
 - name: stepper and toggle mirror state
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Log", traits: [button] }
       capture: [deviceLog]

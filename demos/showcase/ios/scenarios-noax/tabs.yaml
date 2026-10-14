@@ -5,7 +5,9 @@
 # addressed by their visible label (where the a11y twin uses the per-tab `id`).
 - name: switch tabs by label over xcuitest
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Search", traits: [button] }
     - tap: { label: "Log", traits: [button] }

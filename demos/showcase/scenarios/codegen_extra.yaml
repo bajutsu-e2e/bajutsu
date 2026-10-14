@@ -11,7 +11,9 @@
 # only to wait for a button that always exists.
 - name: coordinate swipe, element drag, and compound traits-index compile and run
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Log", traits: [button] }
     - wait: { for: { id: log.submit }, timeout: 10 }

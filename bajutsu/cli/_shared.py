@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, overload
 
 import typer
+from pydantic import ValidationError
 
 from bajutsu.common.agents import ai_config, anthropic_client
 from bajutsu.common.ai import credential_gap
@@ -35,12 +36,17 @@ from bajutsu.common.config import (
     AiConfig,
     Config,
     Effective,
+    ResolvedPreconditions,
     WebConfig,
+    check_preconditions,
+    command_preconditions,
     ios_bundle_id,
     load_config_file,
     resolve,
+    scenario_conditions,
     web_engine,
 )
+from bajutsu.common.config.schema.platform.web import WebBrowser
 from bajutsu.common.config_source import (
     DEFAULT_CONFIG as DEFAULT_CONFIG,  # re-exported: the single owner is config_source (BE-0251)
 )
@@ -62,6 +68,7 @@ if TYPE_CHECKING:
     from bajutsu.common.agents.alerts import ClaudeAlertLocator
     from bajutsu.common.drivers import base
     from bajutsu.common.orchestrator import AlertEvent
+    from bajutsu.common.scenario import Scenario
 
 
 @overload
@@ -77,10 +84,10 @@ def resolve_system_alert_handling_flag(
 ) -> bool | None:
     """Resolve the `--system-alert-handling` flag against each command's own unset behavior.
 
-    `run` leaves it None (each scenario's own value applies), while `record` and `crawl` pass
-    `default=True` (the guard is on while authoring / crawling). Shared by all three so the flag
-    behaves identically on each. The `--alert-handling` / `--dismiss-alerts` aliases this once merged
-    were deleted with no replacement (BE-0401).
+    `run` leaves it None (each scenario's own value applies), while `record` and `crawl` pass the
+    target's `run.systemAlertHandling` as the default, on unless the target turns it off (BE-0452).
+    Shared by all three so the flag behaves identically on each. The `--alert-handling` /
+    `--dismiss-alerts` aliases this once merged were deleted with no replacement (BE-0401).
     """
     return default if system_alert_handling is None else system_alert_handling
 
@@ -400,24 +407,148 @@ def _refuse_conditions(eff: Effective, backends: list[str]) -> None:
     raise typer.Exit(2)
 
 
+def parse_engine_flag(flag: str, value: str) -> str:
+    """Parse one engine named on the command line as a value of `runsOn.browser.engine` (BE-0452).
+
+    The flag is read by the model that reads the target's own field, so the command line and the
+    config accept the same engines. An unknown engine is a clean exit 2, before it reaches
+    Playwright's `getattr(pw, engine)`.
+
+    Args:
+        flag: The flag that named the engine, for the message (`--browser`, `--browsers`).
+        value: The engine as written.
+
+    Raises:
+        typer.Exit: *value* is not one of the known engines (exit code 2).
+    """
+    try:
+        WebBrowser(engine=value)
+    except ValidationError:
+        typer.echo(f"unknown {flag} {value!r}: use one of {', '.join(WEB_ENGINES)}")
+        raise typer.Exit(2) from None
+    return value
+
+
+def _precondition_checks(
+    loaded: LoadedConfig, scenarios: list[Scenario], target_name: str, eff: Effective
+) -> list[tuple[Scenario, list[Effective]]]:
+    """Pair each scenario with the targets it drives, for `_refuse_bad_preconditions` (BE-0452).
+
+    A scenario drives its declared `targets`, else the command's own *target_name* (*eff*). Shared
+    by `run` and `audit` so both commands check one suite against the same targets.
+
+    Returns:
+        Each scenario with its driven targets. A scenario whose declared names are all unknown is
+        left out: the target checks that follow name the typo, which an empty platform list here
+        would only obscure.
+    """
+    effs = {target_name: eff}
+    checks: list[tuple[Scenario, list[Effective]]] = []
+    for s in scenarios:
+        if not s.target_names:
+            checks.append((s, [eff]))
+            continue
+        known = [n for n in s.target_names if n in effs or n in loaded.config.targets]
+        if not known:
+            continue
+        for name in known:
+            if name not in effs:
+                effs[name] = _effective_for(loaded, name)
+        checks.append((s, [effs[name] for name in known]))
+    return checks
+
+
+def _refuse_bad_preconditions(
+    checks: list[tuple[Scenario, list[Effective]]], *, erase: bool | None, fake: bool
+) -> None:
+    """Refuse every scenario whose preconditions its driven targets cannot honor (BE-0452).
+
+    Runs before any device work, on the scenarios as written: an `app` or iOS-only `run` field no
+    driven platform has, a malformed `runsOn` block, and a merged `seedPhotos` without an effective
+    erase (`check_preconditions`). A `runsOn` condition the scenario declares (`model`, `os`, `avd`,
+    `apiLevel`, `browser.*`) is refused as not yet supported, as a target's own is, except under
+    `--backend fake`, which evaluates no condition and says so once.
+
+    Args:
+        checks: Each scenario with the targets it drives.
+        erase: The `--erase` / `--no-erase` flag, or None when absent.
+        fake: Whether the run uses the fake backend.
+
+    Raises:
+        typer.Exit: Any scenario has a problem; each is printed with the scenario's name (exit 2).
+    """
+    problems: list[str] = []
+    for s, targets in checks:
+        problems += [
+            f"{s.name}: {problem}"
+            for problem in check_preconditions(s.preconditions, targets, erase_flag=erase)
+        ]
+        conditions = scenario_conditions(s.preconditions, [t.schema_platform for t in targets])
+        if not conditions:
+            continue
+        named = ", ".join(f"preconditions.{c}" for c in conditions)
+        if fake:
+            warn_once(
+                "conditions.fake.scenario",
+                f"note: --backend fake evaluates no device condition; {named} of scenario "
+                f"'{s.name}' is not checked",
+            )
+        else:
+            problems.append(
+                f"{s.name}: declares {named}: matching devices by runsOn conditions is not yet "
+                "supported (BE-0452); remove the condition, or run with --backend fake"
+            )
+    if problems:
+        for problem in problems:
+            typer.echo(problem)
+        raise typer.Exit(2)
+
+
+def _command_preconditions_or_exit(eff: Effective, *, erase: bool) -> ResolvedPreconditions:
+    """The target's preconditions for `record`, `crawl`, or `repl`, or a clean exit 2.
+
+    A target that seeds photos needs the wipe its `--no-erase` turned off; seeding nothing would
+    ignore a field the config wrote (BE-0452), so the command refuses before any device work.
+
+    Raises:
+        typer.Exit: The target seeds photos and *erase* is false (exit code 2).
+    """
+    try:
+        return command_preconditions(eff, erase=erase)
+    except ValueError as e:
+        typer.echo(str(e))
+        raise typer.Exit(2) from None
+
+
 def _resolve_browser(eff: Effective, browser: str) -> Effective:
-    """Apply a `--browser` flag over the target's `browser` config (web backend, BE-0076).
+    """Apply a `--browser` flag over the target's `runsOn.browser.engine` (web backend, BE-0076).
 
     Precedence mirrors `--headed`: an explicit flag wins, else the target's config (already on
-    `eff`), else the chromium default. An unknown engine is a clean exit 2 — before it reaches
-    Playwright's `getattr(pw, engine)`.
+    `eff`), else the chromium default. The flag replaces the field, so a listed engine the target
+    declares stops counting as a condition once the flag names one engine.
 
     Raises:
         typer.Exit: *browser* is set but not one of the known engines (exit code 2).
     """
     if not browser:
         return eff
-    if browser not in WEB_ENGINES:
-        typer.echo(f"unknown --browser {browser!r}: use one of {', '.join(WEB_ENGINES)}")
-        raise typer.Exit(2)
+    parse_engine_flag("--browser", browser)
     if not isinstance(eff.platform_config, WebConfig):
-        return eff  # `browser` is a web-only knob; a non-web target ignores the flag
-    return replace(eff, platform_config=replace(eff.platform_config, browser=browser))
+        return eff  # `runsOn.browser` is a web-only field; a non-web target ignores the flag
+    return replace(
+        _without_engine_condition(eff),
+        platform_config=replace(eff.platform_config, browser=browser),
+    )
+
+
+def _without_engine_condition(eff: Effective) -> Effective:
+    """*eff* with its listed `runsOn.browser.engine` no longer counted as a device condition.
+
+    An engine flag names the engines itself — `--browser` one, `--browsers` the matrix that sets
+    each pass's engine — so the target's own list is overridden rather than matched.
+    """
+    conditions = {k: v for k, v in eff.conditions.items() if k != "browser.engine"}
+    return replace(eff, conditions=conditions)
 
 
 def _resolve_language(eff: Effective, language: str) -> Effective:
@@ -446,9 +577,9 @@ def _resolve_language(eff: Effective, language: str) -> Effective:
 
 
 def _with_headed(eff: Effective, headed: bool | None) -> Effective:
-    """Apply `--headed`/`--no-headed` to a web target's `headless` (BE-0126).
+    """Apply `--headed`/`--no-headed` over a web target's `driver.headless` (BE-0126, BE-0452).
 
-    Web-only, like `--browser`: a non-web target has no `headless` knob and ignores the flag.
+    Web-only, like `--browser`: a non-web target's `driver` has no `headless` and ignores the flag.
     """
     if headed is None or not isinstance(eff.platform_config, WebConfig):
         return eff

@@ -104,7 +104,7 @@ def test_defaults_are_what_an_omitted_block_means() -> None:
             "runsOn",
             {"browser": {"engine": "webkit"}},
             "runsOn.browser",
-            "model, os, kind, locale",
+            "model, os, kind, locale, seedPhotos",
         ),
         ("web", "runsOn", {"apiLevel": "34"}, "runsOn.apiLevel", "browser, emulate"),
         ("android", "driver", {"headless": True}, "driver.headless", "nativeZ"),
@@ -124,7 +124,13 @@ def test_defaults_are_what_an_omitted_block_means() -> None:
             "runsOn.browser.engin",
             "engine, version",
         ),
-        ("android", "app", {"id": "p", "launch": {"args": ["-x"]}}, "app.launch.args", "env"),
+        (
+            "android",
+            "app",
+            {"id": "p", "launch": {"args": ["-x"]}},
+            "app.launch.args",
+            "env, deeplink",
+        ),
         # the iOS run extension, and a platform with none
         ("android", "run", {"tipKitHandling": True}, "run.tipKitHandling", "(none)"),
         ("fake", "runsOn", {"model": "iPhone 16"}, "runsOn.model", "(none)"),
@@ -164,13 +170,9 @@ def test_every_unknown_key_is_reported() -> None:
         ("ios", "runsOn", {"seedPhotos": ["photos/cat.jpg"]}, "runsOn.seedPhotos"),
     ],
 )
-def test_unit_seven_fields_fail_as_unknown_until_they_land(
-    platform: str, group: Group, data: Any, where: str
-) -> None:
-    # Unit 7 adds these with their `Effective` attributes; until then a written value must fail
-    # rather than be ignored.
-    with pytest.raises(ValueError, match=rf"targets\.t\.{where}: unknown field"):
-        validate_group(platform, group, data, where="targets.t." + group)
+def test_unit_seven_fields_load(platform: str, group: Group, data: Any, where: str) -> None:
+    # Unit 7 added these with their `Effective` attributes, so each now loads on its platform.
+    validate_group(platform, group, data, where="targets.t." + group)
 
 
 def test_other_failures_keep_pydantics_error() -> None:
@@ -255,6 +257,7 @@ def test_allowed_fields_spells_aliases() -> None:
         "id",
         "path",
         "build",
+        "reinstall",
         "launch",
         "grantPermissions",
     )

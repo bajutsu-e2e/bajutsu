@@ -7,11 +7,12 @@ from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 from bajutsu.common.config import Effective
+from bajutsu.common.config.preconditions import ResolvedPreconditions
 from bajutsu.common.drivers import base
 from bajutsu.common.evidence import intervals
 from bajutsu.common.evidence.network import Collector
 from bajutsu.common.orchestrator import DeviceControl, RelaunchFn
-from bajutsu.common.scenario import Preconditions, Scenario
+from bajutsu.common.scenario import Scenario
 
 from .collector_host import CollectorHost
 
@@ -37,7 +38,7 @@ class RunEnvironment(Protocol):
     def start(
         self,
         eff: Effective,
-        pre: Preconditions,
+        pre: ResolvedPreconditions,
         *,
         extra_env: Mapping[str, str] | None = None,
         record_video_dir: Path | None = None,
@@ -47,7 +48,7 @@ class RunEnvironment(Protocol):
     def start_member(
         self,
         eff: Effective,
-        pre: Preconditions,
+        pre: ResolvedPreconditions,
         *,
         extra_env: Mapping[str, str] | None = None,
         permissions: Mapping[str, str] | None = None,

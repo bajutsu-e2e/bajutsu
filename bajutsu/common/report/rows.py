@@ -691,20 +691,30 @@ def _cleanup_rows(
     return _fold_groups(rows)
 
 
+def _mapping(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
 def _preconditions_rows(definition: dict[str, Any] | None) -> list[tuple[str, str]]:
-    pre = (definition or {}).get("preconditions") or {}
+    # The grouped shape BE-0452 introduced; a stored plan from before it is upgraded on load.
+    pre = _mapping((definition or {}).get("preconditions"))
+    app, run = _mapping(pre.get("app")), _mapping(pre.get("run"))
+    launch = _mapping(app.get("launch"))
     rows: list[tuple[str, str]] = []
-    if "erase" in pre:
-        rows.append(("erase", "true" if pre["erase"] else "false"))
-    if pre.get("deeplink"):
-        rows.append(("deeplink", str(pre["deeplink"])))
-    if pre.get("locale"):
-        rows.append(("locale", str(pre["locale"])))
-    if pre.get("setup"):
-        rows.append(("setup", str(pre["setup"])))
-    rows += [(str(k), str(v)) for k, v in (pre.get("launchEnv") or {}).items()]
-    if pre.get("launchArgs"):
-        rows.append(("launchArgs", " ".join(pre["launchArgs"])))
+    if "erase" in run:
+        rows.append(("erase", "true" if run["erase"] else "false"))
+    if app.get("reinstall"):
+        rows.append(("reinstall", str(app["reinstall"])))
+    if launch.get("deeplink"):
+        rows.append(("deeplink", str(launch["deeplink"])))
+    rows.extend(
+        ("locale", str(block["locale"]))
+        for block in _mapping(pre.get("runsOn")).values()
+        if _mapping(block).get("locale")
+    )
+    rows += [(str(k), str(v)) for k, v in _mapping(launch.get("env")).items()]
+    if launch.get("args"):
+        rows.append(("launch args", " ".join(launch["args"])))
     return rows
 
 

@@ -14,7 +14,9 @@
   tags: [multi-target]
   targets: [showcase-swiftui, showcase-compose]
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - target: showcase-swiftui
       tap: { label: "Search", traits: [button] }

@@ -33,7 +33,7 @@ class TargetRuntime:
     resolved per target the same way the rest are, and a separate carrier for one field would only
     give the two a chance to disagree about which target they describe.
 
-    Carries no `launchEnv`: the touch-marker policy it would drive (`_hides_touch_markers`) is a
+    Carries no `app.launch.env`: the touch-marker policy it would drive (`_hides_touch_markers`) is a
     property of the whole visual-capture group, not of one target, so `_evaluate_expect` reads it
     from the *primary*'s own launch env once, exactly like `control`/`channel`/`cancelled` — see
     that function's docstring. A per-target field here would sit unread the way it did before this

@@ -5,7 +5,9 @@
 # needs no accessibility. Run over XCUITest (`--backend ios`).
 - name: refresh issues an observed catalog request
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - wait: { for: { label: "Refresh", traits: [button] }, timeout: 10 }
       capture: [network]

@@ -249,7 +249,7 @@ def system_alert_label(prompt: SystemAlertPrompt, choice: SystemAlertChoice, loc
     Args:
         prompt: Which of the covered OS prompts the step is answering.
         choice: What the author means by the tap, rather than which button says it.
-        locale: The scenario's resolved locale (`Preconditions.resolved_locale`); only its language
+        locale: The scenario's resolved locale (`Preconditions.resolved_locale`, over `runsOn.<platform>.locale`); only its language
             subtag selects the labels, since SpringBoard localizes by language, not by region.
 
     Raises:

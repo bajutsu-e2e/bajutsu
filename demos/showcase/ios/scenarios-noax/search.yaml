@@ -5,7 +5,9 @@
 # -noax toolkits). Run over XCUITest (`--backend ios`).
 - name: filter narrows the catalog
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Search", traits: [button] }
     - wait: { for: { label: "Search horses" }, timeout: 10 }
@@ -18,7 +20,9 @@
 
 - name: no match shows the empty state
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Search", traits: [button] }
     - wait: { for: { label: "Search horses" }, timeout: 10 }

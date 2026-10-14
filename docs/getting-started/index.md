@@ -96,7 +96,9 @@ fixed catalog of rows renders on launch:
 ```yaml
 - name: stable catalog smoke
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }     # disable animations -> tight condition waits
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }     # disable animations -> tight condition waits
   steps:
     - wait: { for: { id: [stable.row.1, stable_row_1] }, timeout: 10 }
   expect:

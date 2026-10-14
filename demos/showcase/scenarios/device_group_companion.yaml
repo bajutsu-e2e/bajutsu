@@ -20,7 +20,9 @@
   primaryTarget: showcase-swiftui
   installs: [showcase-uikit]
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - foreground: {}
     - tap: { label: "Log", traits: [button] }
@@ -55,7 +57,9 @@
   primaryTarget: showcase-compose
   installs: [showcase-views]
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - foreground: {}
     - tap: { label: "Log", traits: [button] }

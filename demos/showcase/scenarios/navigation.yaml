@@ -8,7 +8,9 @@
 # form, so this one scenario runs unchanged on every target (BE-0221).
 - name: push horse detail and pop back
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - wait: { for: { id: [stable.row.3, stable_row_3] }, timeout: 10 }
       capture: [deviceLog]

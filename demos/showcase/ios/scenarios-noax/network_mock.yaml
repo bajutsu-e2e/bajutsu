@@ -5,7 +5,9 @@
 # the status mirror reads "Status: done". Run over XCUITest (`--backend ios`).
 - name: log submit answered by a mock, toast appears and clears
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   mocks:
     - match: { method: POST, pathMatches: "/post$" }
       respond: { status: 201, body: "{\"ok\":true}" }

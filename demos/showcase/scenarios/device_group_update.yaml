@@ -17,7 +17,9 @@
   targets: [[showcase-swiftui-previous, showcase-swiftui]]
   primaryTarget: showcase-swiftui-previous
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_SAVED_NOTE: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1", SHOWCASE_SAVED_NOTE: "1" }
   steps:
     - wait: { for: { id: saved.build }, timeout: 10 }
     - assert:
@@ -40,7 +42,9 @@
   targets: [[showcase-compose-previous, showcase-compose]]
   primaryTarget: showcase-compose-previous
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_SAVED_NOTE: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1", SHOWCASE_SAVED_NOTE: "1" }
   steps:
     - wait: { for: { id: saved.build }, timeout: 10 }
     - assert:

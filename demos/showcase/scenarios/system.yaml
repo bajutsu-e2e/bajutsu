@@ -8,7 +8,9 @@
 # form, so one scenario runs on every target (BE-0221).
 - name: copy then paste round-trips through the mirror
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Permissions", traits: [button] }
       capture: [deviceLog]

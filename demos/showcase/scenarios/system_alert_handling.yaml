@@ -31,9 +31,12 @@
 # out of the local bulk run-swiftui / run-uikit runs, which do not reset per-scenario device state.
 - name: deny the notification prompt through systemAlertHandling rules
   tags: [systemalert]
-  systemAlertHandling: { rules: [{ prompt: notifications, choice: deny }] }
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
+    run:
+      systemAlertHandling: { rules: [{ prompt: notifications, choice: deny }] }
   steps:
     - tap: { label: "Permissions", traits: [button] }
     - wait: { for: { id: perm.requestNotif }, timeout: 10 }
@@ -46,9 +49,12 @@
 
 - name: grant the tracking prompt through systemAlertHandling rules
   tags: [systemalert]
-  systemAlertHandling: { rules: [{ prompt: tracking, choice: grant }] }
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
+    run:
+      systemAlertHandling: { rules: [{ prompt: tracking, choice: grant }] }
   steps:
     - tap: { label: "Permissions", traits: [button] }
     # The tab transition is asynchronous, so wait for the tab's first control before scrolling.
@@ -64,9 +70,12 @@
 
 - name: deny the tracking prompt through systemAlertHandling rules
   tags: [systemalert]
-  systemAlertHandling: { rules: [{ prompt: tracking, choice: deny }] }
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
+    run:
+      systemAlertHandling: { rules: [{ prompt: tracking, choice: deny }] }
   steps:
     - tap: { label: "Permissions", traits: [button] }
     - wait: { for: { id: perm.requestNotif }, timeout: 10 }
@@ -80,9 +89,12 @@
 
 - name: grant the paste-consent prompt through systemAlertHandling rules
   tags: [systemalert]
-  systemAlertHandling: { rules: [{ prompt: paste, choice: grant }] }
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
+    run:
+      systemAlertHandling: { rules: [{ prompt: paste, choice: grant }] }
   steps:
     # Written from outside the app, so the app's own read raises the cross-process consent prompt.
     - setClipboard: { text: "bajutsu-cross-clip" }
@@ -96,9 +108,12 @@
 
 - name: deny the paste-consent prompt through systemAlertHandling rules
   tags: [systemalert]
-  systemAlertHandling: { rules: [{ prompt: paste, choice: deny }] }
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
+    run:
+      systemAlertHandling: { rules: [{ prompt: paste, choice: deny }] }
   steps:
     - setClipboard: { text: "bajutsu-cross-clip" }
     - tap: { label: "Permissions", traits: [button] }

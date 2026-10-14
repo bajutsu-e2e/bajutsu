@@ -5,7 +5,9 @@
 # "Pasted: bajutsu-clip" mirror. Run over XCUITest (`--backend ios`).
 - name: copy then paste round-trips through the mirror
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Permissions", traits: [button] }
     - wait: { for: { label: "Request Notifications", traits: [button] }, timeout: 10 }

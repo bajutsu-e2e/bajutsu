@@ -18,7 +18,9 @@
 #   bajutsu run --scenario text_editing.yaml --target showcase-swiftui ...
 - name: select and copy the field text, then clear and delete it
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Search", traits: [button] }
     - wait: { for: { id: search.field }, timeout: 10 }

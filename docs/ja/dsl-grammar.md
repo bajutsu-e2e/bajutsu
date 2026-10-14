@@ -119,7 +119,7 @@ Scenario ::= {
   installs?:       list(string),            # 既定 []  — プライマリと並んで開始時にインストールして起動するデバイスグループのメンバー（BE-0447）。2つ以上のメンバーを持つグループのそれ以外のメンバーは後から入るメンバーで、`installApp` と `foreground` が立ち上げる（§4）
   data?:           list(map(string,string)),# インライン行  ┐ XOR
   dataFile?:       string,                  # CSV パス      ┘ （§6.3）
-  preconditions?:  <Preconditions>,         # 既定 {}
+  preconditions?:  <Preconditions>,         # 既定 {}  — ターゲットの `app` / `runsOn` / `run` をシナリオごとに上書き（BE-0452）
   setup?:          list(<Step>),            # 既定 []  — steps の前に独立したフェーズとして走るセットアップ（BE-0392）。宣言した各ターゲットの `hooks.setup` の後に連結される
   steps:           list(<Step>),            # 必須
   expect?:         list(<Assertion>),       # 既定 []  — 最終チェック
@@ -128,8 +128,6 @@ Scenario ::= {
   network?:        <Network>,
   mocks?:          list(<Mock>),            # 既定 []
   redact?:         <Redact>,
-  systemAlertHandling?: <SystemAlertHandling>,  # アラートガード; 未指定で ON
-  iosTipKitHandling?: <bool>,                   # ブロックしている TipKit の tip を閉じる; 未指定で OFF（iOS のみ）
   permissions?:    <Permissions>,           # 起動前の OS 権限状態; 既定 {}
   interrupts?:     list(<Interrupt>),       # 既定 []  — 予測できないタイミングで現れる中断画面のハンドラ（BE-0314）。ターゲットの `hooks.interrupts` の後に追加される
 }
@@ -147,15 +145,34 @@ Interrupt ::= { condition: <Assertion>, steps: list(<Step>), target?: string }
 CleanupRule ::= { on: "always" | "success" | "failure", steps: list(<Step>) }
 
 # ── Preconditions ──────────────────────────────────────────────────────
+# ターゲットと同じグループ名を使います（BE-0452）。各フィールドは、シナリオが動かす各ターゲットの
+# 同じフィールドを上書きします。`app.launch.env` はキーごとにマージし、`app.launch.args` は追記し、
+# `run.systemAlertHandling` の規則は連結します（シナリオの規則が先）。動かすどのターゲットの
+# プラットフォームにもないフィールドは、デバイスを操作する前に run を失敗させます。
 Preconditions ::= {
-  erase?:      boolean,                     # 未設定はターゲットの `run.erase` を継承し、それもなければオフ（BE-0177）。先頭で simctl erase
-  reinstall?:  ("clean" | "overwrite"),     # 既定 "clean" — config が `app.path` 指定時の再インストール
-  launchArgs?: list(string),                # 既定 []
-  launchEnv?:  map(string,string),          # 既定 {}    — SIMCTL_CHILD_* として注入
-  deeplink?:   string,
-  locale?:     string,
-  run?:        { inheritSetup?: boolean },  # 既定 true — false で、宣言した全ターゲットの `hooks.setup` を省く（BE-0452）。cleanup は走る
+  app?:    {
+    reinstall?: ("clean" | "overwrite"),    # 未設定はターゲットの `app.reinstall`、なければ "clean"。iOS と Android
+    launch?: {
+      env?:      map(string,string),        # 既定 {} — ターゲットの `app.launch.env` にマージ
+      args?:     list(string),              # 既定 [] — ターゲットの引数の後ろに追記。iOS のみ
+      deeplink?: string,                    # 未設定はターゲットの `app.launch.deeplink`。iOS と Android
+    },
+  },
+  runsOn?: map(<Platform>, <RunsOn>),       # プラットフォームがキー。動かさないプラットフォームのブロックは効果なし
+  run?:    {
+    erase?:               boolean,          # 未設定はターゲットの `run.erase` を継承し、それもなければオフ（BE-0177）
+    systemAlertHandling?: <SystemAlertHandling>,  # アラートガード; 未指定で ON
+    tipKitHandling?:      boolean,          # ブロックしている TipKit の tip を閉じる; 未指定で OFF。iOS のみ
+    inheritSetup?:        boolean,          # 既定 true — false で、宣言した全ターゲットの `hooks.setup` を省く。cleanup は走る
+  },
 }
+
+# 1 つのプラットフォームに対するシナリオの `runsOn` ブロックです。そのプラットフォームに登録された
+# `runsOn` のモデルから、ターゲットに残す `kind` と `emulate` を除いたものです。iOS の `locale` と
+# `seedPhotos`（シナリオファイルからの相対パス）はデバイスの状態です。`model`、`os`、`avd`、
+# `apiLevel`、`browser.*` はデバイスの条件で、デバイスの照合が実装されるまでは run 時に拒否します。
+# 重ね合わせたあとの `seedPhotos` が空でなければ、実効の `run.erase` が必要です。
+RunsOn ::= { locale?: string, seedPhotos?: list(string), model?: …, os?: …, avd?: …, apiLevel?: …, browser?: { engine?: …, version?: … } }
 
 # ── SystemAlertHandling（リアクティブなシステムアラートガード; 既定 ON）─
 # XCUITest ではネイティブの SpringBoard 照会 + tap（モデルなし、BE-0316 を再利用。BE-0315）に加え、
@@ -444,15 +461,15 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 | フィールド | 既定値 |
 |---|---|
 | `Scenario.tags` / `expect` / `capturePolicy` / `mocks` / `interrupts` / `setup` / `cleanup` | `[]` |
-| `Scenario.preconditions` | `{}`（= `erase` は未設定 — ターゲットの `run.erase` が指定しない限りオフ、`reinstall: clean`） |
-| `Scenario.systemAlertHandling` | 未指定（アラートガード ON。ただし規則が無いので、自分からはどのプロンプトにも答えない） |
-| `Scenario.iosTipKitHandling` | 未指定（OFF — tip 自体が検証対象になる場合があるため。iOS のみ） |
+| `Scenario.preconditions` | `{}`（どのフィールドもターゲットの値に、次に組み込みの既定値に従います） |
 | `Scenario.permissions` | `{}`（起動前の権限状態を適用しない） |
-| `Preconditions.erase` | 未設定 — ターゲットの `run.erase` を継承し、それもなければオフ（BE-0177） |
+| `Preconditions.run.erase` | 未設定 — ターゲットの `run.erase` を継承し、それもなければオフ（BE-0177） |
+| `Preconditions.run.systemAlertHandling` | 未指定（アラートガード ON。ただし規則が無いので、自分からはどのプロンプトにも答えない） |
+| `Preconditions.run.tipKitHandling` | 未指定（ターゲットの `run.tipKitHandling`、なければ OFF — tip 自体が検証対象になる場合があるため。iOS のみ） |
 | `Preconditions.run.inheritSetup` | `true`（宣言した各ターゲットの `hooks.setup` がシナリオの `setup` の前に走る） |
-| `Preconditions.reinstall` | `clean` |
-| `Preconditions.launchArgs` | `[]` |
-| `Preconditions.launchEnv` | `{}` |
+| `Preconditions.app.reinstall` | 未設定 — ターゲットの `app.reinstall`、なければ `clean` |
+| `Preconditions.app.launch.args` | `[]` |
+| `Preconditions.app.launch.env` | `{}` |
 | `SystemAlertHandling.rules` | `[]`（プロンプトの宣言が無いのでガードは何にも答えない。出会ったアラートはブロックされたステップの失敗理由に書き出される） |
 | `SystemAlertHandling.visionInstruction` | 未設定。ほかの値は使えません。`run` は拒否し（BE-0402）、`record` / `crawl` は自由記述を自身の `--alert-vision-instruction` フラグからのみ読みます |
 | `TypeText.submit` | `false` |
@@ -537,7 +554,7 @@ scenarios:
 
 ### 6.3 データ駆動シナリオ（`data` / `dataFile`）
 
-`data`（インライン行）か `dataFile`（CSV パス。両者は排他）を持つシナリオは、`${row.<column>}` を置換して **1 行 1 シナリオ**に展開されます（`expand_data`, `scenario/expand.py`）。派生シナリオは `"<name> [row N: col=val, …]"` に改名され、**元の preconditions を保ちます**。そのためどの行も、元の preconditions（`erase` / `reinstall`）を継承した状態でアプリを準備します。
+`data`（インライン行）か `dataFile`（CSV パス。両者は排他）を持つシナリオは、`${row.<column>}` を置換して **1 行 1 シナリオ**に展開されます（`expand_data`, `scenario/expand.py`）。派生シナリオは `"<name> [row N: col=val, …]"` に改名され、**元の preconditions を保ちます**。そのためどの行も、元の preconditions（`run.erase` / `app.reinstall`）を継承した状態でアプリを準備します。
 
 ```yaml
 - name: search returns a result
@@ -573,6 +590,6 @@ load_scenarios        # この文法に対しパース + 検証
 ## 7. 検証とラウンドトリップ
 
 - `load_scenarios(text) -> list[Scenario]` は上記すべてに対して検証します。トップレベルはシナリオのシーケンスか `{description, scenarios}` マッピングのいずれかが必須で、[§4](#4-個数と排他の制約) のいずれかの規則違反はロードエラーになります（`scenario/load.py`）。
-- `dump_scenarios(scenarios) -> str` は YAML へ戻します。著者が設定しなかったフィールドだけを落とし、エイリアスキー（`idMatches`、`launchEnv` など）で出力します。出力は **そのまま再ロード可能**で、`record` が依存するラウンドトリップです（`scenario/serialize.py`）。
+- `dump_scenarios(scenarios) -> str` は YAML へ戻します。著者が設定しなかったフィールドだけを落とし、エイリアスキー（`idMatches`、`tipKitHandling` など）で出力します。出力は **そのまま再ロード可能**で、`record` が依存するラウンドトリップです（`scenario/serialize.py`）。
 
 形の背後にある意味論（セレクタが 0/1/2+ 件にどう解決するか、各アサーションがどう比較するか、wait がどうタイムアウトするか）は [selectors](selectors.md) と [run-loop](run-loop.md) を参照してください。例でシナリオを書き始めるには [scenarios](scenarios.md) を参照してください。

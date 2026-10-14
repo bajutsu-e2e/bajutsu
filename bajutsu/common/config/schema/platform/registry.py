@@ -91,6 +91,26 @@ def _nested_model(annotation: Any) -> type[BaseModel] | None:
     return None
 
 
+def accepts_field(model: type[BaseModel], path: tuple[str, ...]) -> bool:
+    """Whether *model* accepts the nested field at *path*, each part spelled as a config writes it.
+
+    Lets a check ask whether a platform has a field (`("launch", "args")` on an `app` model) without
+    naming platforms itself.
+    """
+    current: type[BaseModel] | None = model
+    for i, part in enumerate(path):
+        if current is None:
+            return False
+        field = next(
+            (f for name, f in current.model_fields.items() if part in (name, f.alias)), None
+        )
+        if field is None:
+            return False
+        if i < len(path) - 1:
+            current = _nested_model(field.annotation)
+    return True
+
+
 def _model_at(model: type[BaseModel], loc: tuple[int | str, ...]) -> type[BaseModel]:
     current = model
     for part in loc:

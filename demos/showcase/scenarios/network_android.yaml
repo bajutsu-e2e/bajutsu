@@ -16,7 +16,9 @@
 - name: refresh issues an observed catalog request (android)
   tags: [network, android]
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_API_URL: "http://10.0.2.2:8770" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1", SHOWCASE_API_URL: "http://10.0.2.2:8770" }
   steps:
     - wait: { for: { id: [stable.refresh, stable_refresh] }, timeout: 10 }
       capture: [network, deviceLog]

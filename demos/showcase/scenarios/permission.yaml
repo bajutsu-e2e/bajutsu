@@ -23,10 +23,13 @@
 # is tagged `ai` and both run on the required XCUITest gate.
 - name: grant notification permission
   tags: [permission, system]
-  # iOS: native tap on the notification prompt's grant button; Android: no-op (pre-granted).
-  systemAlertHandling: { rules: [{ prompt: notifications, choice: grant }] }
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
+    run:
+      # iOS: native tap on the notification prompt's grant button; Android: no-op (pre-granted).
+      systemAlertHandling: { rules: [{ prompt: notifications, choice: grant }] }
   steps:
     - tap: { label: "Permissions", traits: [button] }
       capture: [deviceLog]
@@ -50,7 +53,9 @@
   permissions:
     location: grant
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Permissions", traits: [button] }
       capture: [deviceLog]

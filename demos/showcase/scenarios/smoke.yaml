@@ -5,7 +5,9 @@
 # `.`/`-`), so this one scenario runs unchanged on every target (BE-0221).
 - name: stable catalog smoke
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - wait: { for: { id: [stable.row.1, stable_row_1] }, timeout: 10 }
       capture: [deviceLog]

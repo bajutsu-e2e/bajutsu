@@ -39,10 +39,16 @@
 スキーマが強制します。例外は **制御フローのステップ**（`if` / `forEach`）で、こちらは capture や
 extract の修飾子を持ちません。定義は `bajutsu/scenario/models/steps.py` の `Step` です。
 
-**precondition（前提条件）**：run の前に適用する、シナリオ単位の環境準備です。`erase`、`reinstall`、
-`launchArgs`、`launchEnv`、`deeplink`、`locale`、`run.inheritSetup` があります。実行時の関心事（`mocks` /
-`network`）とも、config 側の `defaults` / `targets` とも別物です。定義は
-`bajutsu/scenario/models/scenario.py` の `Preconditions` です。
+**precondition（前提条件）**：run の前に適用する、シナリオ単位の環境準備です。ターゲットと同じ
+`app`、`runsOn`、`run` のグループで書きます。シナリオが動かす各ターゲットの値に重ねます。
+フィールドは次のとおりです。
+
+- `app.reinstall` と `app.launch.env` / `.args` / `.deeplink` です。
+- `runsOn.<platform>` です。iOS では `locale` と `seedPhotos` を書けます。
+- `run.erase` / `.systemAlertHandling` / `.tipKitHandling` / `.inheritSetup` です。
+
+実行時の関心事（`mocks` / `network`）とも、config 側の `defaults` / `targets` とも別物です。定義は
+`bajutsu/common/scenario/models/scenario/preconditions.py` の `Preconditions` です。
 
 **expect / assertion（アサーション）**：**assertion（アサーション）** は機械チェック可能な検査ひとつ
 （`exists` / `value` / `label` / `count` / `enabled` / `disabled` / `selected` / `request` /

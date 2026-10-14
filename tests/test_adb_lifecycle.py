@@ -15,11 +15,11 @@ import pytest
 
 from bajutsu.common.backend_cli import adb
 from bajutsu.common.backend_cli.adb_resident import ResidentChannel
-from bajutsu.common.config import AndroidConfig, Effective
+from bajutsu.common.config import AndroidConfig, Effective, ResolvedPreconditions
 from bajutsu.common.drivers.adb import ActOutcome, AdbDriver, HierarchyRead
 from bajutsu.common.platform_lifecycle import AndroidEnvironment, ProvisionProfile, environment_for
 from bajutsu.common.platform_lifecycle.readiness import await_boot
-from bajutsu.common.scenario import Preconditions, Redact
+from bajutsu.common.scenario import Redact
 
 
 def _recorder(calls: list[list[str]]) -> adb.RunFn:
@@ -349,7 +349,7 @@ def _resolve_activity_run(calls: list[list[str]]) -> adb.RunFn:
 def test_android_environment_start_runs_the_adb_sequence() -> None:
     calls: list[list[str]] = []
     env = AndroidEnvironment("adb", "emulator-5554", adb_run=_resolve_activity_run(calls))
-    pre = Preconditions(deeplink="showcasecompose://permissions")
+    pre = ResolvedPreconditions(deeplink="showcasecompose://permissions")
     driver = env.start(_eff(), pre)
 
     assert driver.name == "adb"
@@ -402,7 +402,7 @@ def test_android_environment_starts_screenrecord_before_launching_the_app(tmp_pa
         return _Proc()
 
     env = AndroidEnvironment("adb", "emulator-5554", adb_run=run, spawn=spawn)
-    env.start(_eff(), Preconditions(), record_video_dir=tmp_path)
+    env.start(_eff(), ResolvedPreconditions(), record_video_dir=tmp_path)
 
     assert events == ["record", "launch"]  # recording began before the app launched
     started = env.prestarted_intervals()
@@ -447,7 +447,7 @@ def test_android_environment_stops_the_prestarted_video_when_launch_fails(tmp_pa
 
     env = AndroidEnvironment("adb", "emulator-5554", adb_run=run, spawn=spawn)
     with pytest.raises(adb.DeviceError):
-        env.start(_eff(), Preconditions(), record_video_dir=tmp_path)
+        env.start(_eff(), ResolvedPreconditions(), record_video_dir=tmp_path)
 
     assert stopped  # the screenrecord was stopped, not left running
     assert env.prestarted_intervals() == []
@@ -461,7 +461,7 @@ def test_android_environment_start_grants_configured_permissions_after_clear() -
     env = AndroidEnvironment("adb", "S", adb_run=_resolve_activity_run(calls))
     env.start(
         _eff(grant_permissions=["android.permission.POST_NOTIFICATIONS"]),
-        Preconditions(erase=True),
+        ResolvedPreconditions(erase=True),
     )
     joined = [" ".join(c) for c in calls]
     assert any("pm grant com.bajutsu.showcase.android.compose "
@@ -474,7 +474,7 @@ def test_android_environment_start_grants_configured_permissions_after_clear() -
 def test_android_environment_start_grants_nothing_when_unconfigured() -> None:
     calls: list[list[str]] = []
     env = AndroidEnvironment("adb", "S", adb_run=_resolve_activity_run(calls))
-    env.start(_eff(), Preconditions())
+    env.start(_eff(), ResolvedPreconditions())
     assert not any("pm grant" in " ".join(c) for c in calls)
 
 
@@ -485,7 +485,7 @@ def test_android_environment_start_applies_scenario_permissions_after_clear() ->
     env = AndroidEnvironment("adb", "S", adb_run=_resolve_activity_run(calls))
     env.start(
         _eff(grant_permissions=["android.permission.POST_NOTIFICATIONS"]),
-        Preconditions(erase=True),
+        ResolvedPreconditions(erase=True),
         permissions={"camera": "grant", "location": "revoke"},
     )
     joined = [" ".join(c) for c in calls]
@@ -501,7 +501,7 @@ def test_android_environment_start_applies_scenario_permissions_after_clear() ->
 def test_android_environment_start_applies_no_permissions_when_unset() -> None:
     calls: list[list[str]] = []
     env = AndroidEnvironment("adb", "S", adb_run=_resolve_activity_run(calls))
-    env.start(_eff(), Preconditions())
+    env.start(_eff(), ResolvedPreconditions())
     assert not any("pm revoke" in " ".join(c) for c in calls)
 
 
@@ -548,7 +548,7 @@ def test_android_environment_wires_the_resident_channel_when_enabled() -> None:
         adb_run=_resolve_activity_run([]),
         resident_factory=lambda: resident,
     )
-    driver = env.start(_eff(), Preconditions())
+    driver = env.start(_eff(), ResolvedPreconditions())
     driver._run = run  # type: ignore[attr-defined]  # prove the read never reaches the dump subprocess
     assert len(driver.query()) == 1  # read came from the resident fetch
 
@@ -573,7 +573,7 @@ def test_android_environment_falls_back_to_dump_when_resident_unavailable(
     import logging
 
     with caplog.at_level(logging.WARNING):
-        driver = env.start(_eff(), Preconditions())
+        driver = env.start(_eff(), ResolvedPreconditions())
     assert driver.name == "adb"
     assert any("resident" in r.message.lower() for r in caplog.records)
     # Not silent on the act consequence either (BE-0339 Unit 4): a lease that lost the channel at
@@ -598,7 +598,7 @@ def test_android_environment_skips_resident_when_the_server_is_not_built(
     monkeypatch.setattr(adb_resident, "server_apks_built", lambda *a: False)
     env = AndroidEnvironment("adb", "S", adb_run=_resolve_activity_run([]))
     with caplog.at_level(logging.DEBUG):
-        env.start(_eff(), Preconditions())
+        env.start(_eff(), ResolvedPreconditions())
     assert env._resident is None  # nothing started
     # Not silent (BE-0339 Unit 4): a run states which actuation path it landed on even when the
     # channel was never attempted, not only when a live one later faults.
@@ -705,7 +705,7 @@ def test_android_environment_grants_permissions_even_on_overwrite() -> None:
     env = AndroidEnvironment("adb", "S", adb_run=_resolve_activity_run(calls))
     env.start(
         _eff(grant_permissions=["android.permission.CAMERA"]),
-        Preconditions(reinstall="overwrite"),
+        ResolvedPreconditions(reinstall="overwrite"),
     )
     joined = [" ".join(c) for c in calls]
     assert not any("pm clear" in j for j in joined)  # overwrite keeps data
@@ -723,7 +723,7 @@ def test_android_environment_start_forwards_collector_env_for_network_mocks() ->
     # same launch_env merge and must reach the app as intent extras.
     env.start(
         _eff(),
-        Preconditions(),
+        ResolvedPreconditions(),
         extra_env={"BAJUTSU_COLLECTOR": "http://127.0.0.1:9/", "BAJUTSU_COLLECTOR_TOKEN": "tok"},
     )
     joined = [" ".join(c) for c in calls]
@@ -787,7 +787,7 @@ def test_android_environment_bridge_collector_raises_clean_device_error_when_adb
 def test_android_environment_start_skips_pm_clear_on_overwrite() -> None:
     calls: list[list[str]] = []
     env = AndroidEnvironment("adb", "S", adb_run=_resolve_activity_run(calls))
-    env.start(_eff(), Preconditions(reinstall="overwrite"))
+    env.start(_eff(), ResolvedPreconditions(reinstall="overwrite"))
     assert not any("pm clear" in " ".join(c) for c in calls)  # overwrite keeps app data
 
 
@@ -802,7 +802,7 @@ def test_android_environment_start_skips_boot_wait_when_provisioned() -> None:
         adb_run=_resolve_activity_run(calls),
         provision=ProvisionProfile(boot_ready=True),
     )
-    env.start(_eff(), Preconditions())
+    env.start(_eff(), ResolvedPreconditions())
     assert not any("getprop sys.boot_completed" in " ".join(c) for c in calls)
 
 
@@ -816,7 +816,9 @@ def test_android_environment_start_skips_install_when_preinstalled() -> None:
         adb_run=_resolve_activity_run(calls),
         provision=ProvisionProfile(app_preinstalled=True),
     )
-    env.start(_eff(app_path="/nonexistent/app.apk"), Preconditions())  # would raise if not skipped
+    env.start(
+        _eff(app_path="/nonexistent/app.apk"), ResolvedPreconditions()
+    )  # would raise if not skipped
     assert not any("install" in " ".join(c) for c in calls)
 
 
@@ -847,7 +849,7 @@ def test_android_environment_preinstalled_skip_is_about_the_app_not_the_resident
         resident_factory=_InstallingResident,
         provision=ProvisionProfile(app_preinstalled=True),
     )
-    env.start(_eff(app_path="/nonexistent/app.apk"), Preconditions())
+    env.start(_eff(app_path="/nonexistent/app.apk"), ResolvedPreconditions())
     joined = [" ".join(c) for c in calls]
     assert any("install" in j and "server-debug.apk" in j for j in joined)  # the channel's own
     assert not any("/nonexistent/app.apk" in j for j in joined)  # never the app's
@@ -868,7 +870,7 @@ def test_android_environment_preinstalled_skip_still_fails_loudly_on_a_missing_a
         "adb", "S", adb_run=run, provision=ProvisionProfile(app_preinstalled=True)
     )
     with pytest.raises(adb.DeviceError, match="no launcher activity"):
-        env.start(_eff(app_path="/nonexistent/app.apk"), Preconditions())
+        env.start(_eff(app_path="/nonexistent/app.apk"), ResolvedPreconditions())
 
 
 def test_android_environment_boot_ready_skip_still_fails_loudly_on_a_not_booted_device() -> None:
@@ -889,7 +891,7 @@ def test_android_environment_boot_ready_skip_still_fails_loudly_on_a_not_booted_
 
     env = AndroidEnvironment("adb", "S", adb_run=run, provision=ProvisionProfile(boot_ready=True))
     with pytest.raises(adb.DeviceError, match="device offline"):
-        env.start(_eff(), Preconditions(erase=True))
+        env.start(_eff(), ResolvedPreconditions(erase=True))
 
 
 def test_android_environment_default_profile_boots_and_polls() -> None:
@@ -897,7 +899,7 @@ def test_android_environment_default_profile_boots_and_polls() -> None:
     # runs. The skip is opt-in via the provider; nothing else about start() changes (BE-0236).
     calls: list[list[str]] = []
     env = AndroidEnvironment("adb", "S", adb_run=_resolve_activity_run(calls))
-    env.start(_eff(), Preconditions())
+    env.start(_eff(), ResolvedPreconditions())
     assert any("getprop sys.boot_completed" in " ".join(c) for c in calls)
 
 
@@ -960,7 +962,7 @@ def test_start_raises_clean_device_error_when_adb_is_missing() -> None:
 
     env = AndroidEnvironment("adb", "emulator-5554", adb_run=no_adb)
     with pytest.raises(adb.DeviceError, match="adb"):
-        env.start(_eff(), Preconditions())
+        env.start(_eff(), ResolvedPreconditions())
 
 
 def test_await_boot_gives_up_at_the_deadline_rather_than_spinning(
@@ -998,7 +1000,7 @@ def test_relauncher_invalidates_the_driver_settled_cache() -> None:
     from bajutsu.common.scenario import Relaunch, Scenario
 
     env = AndroidEnvironment("adb", "S", adb_run=_resolve_activity_run([]))
-    driver = env.start(_eff(), Preconditions())
+    driver = env.start(_eff(), ResolvedPreconditions())
     assert isinstance(driver, AdbDriver)
     driver._settled_key = ()  # seed a stale "proven" key `_settle` must not trust after the relaunch
     relaunch = env.relauncher(_eff(), Scenario(name="t", steps=[]), driver)
@@ -1009,7 +1011,7 @@ def test_relauncher_invalidates_the_driver_settled_cache() -> None:
 def test_crawl_reset_invalidates_the_driver_settled_cache() -> None:
     # Same gap as relauncher above, on the crawl entry point.
     env = AndroidEnvironment("adb", "S", adb_run=_resolve_activity_run([]))
-    driver = env.start(_eff(), Preconditions())
+    driver = env.start(_eff(), ResolvedPreconditions())
     assert isinstance(driver, AdbDriver)
     driver._settled_key = ()
     env.crawl_reset(_eff())(driver)

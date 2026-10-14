@@ -5,7 +5,15 @@ from __future__ import annotations
 from pydantic import Field, field_validator
 
 from .._model import _Model
-from ._shared import AppCommon, LaunchEnv, RangeField, check_list
+from ._shared import AppCommon, RangeField, Reinstall, check_list
+
+
+class AndroidLaunch(_Model):
+    """`app.launch` on Android: intent extras, and a URL the app opens once it has launched."""
+
+    # Android reads the launch environment as intent extras.
+    env: dict[str, str] = Field(default_factory=dict)
+    deeplink: str | None = None
 
 
 class AndroidApp(AppCommon):
@@ -14,8 +22,8 @@ class AndroidApp(AppCommon):
     id: str = Field(min_length=1)
     path: str | None = None
     build: str | None = None
-    # Android reads the launch environment as intent extras.
-    launch: LaunchEnv = Field(default_factory=LaunchEnv)
+    reinstall: Reinstall | None = None
+    launch: AndroidLaunch = Field(default_factory=AndroidLaunch)
     # Runtime permissions granted before launch (`pm grant`, BE-0210), so a prompt never blocks a run.
     grant_permissions: list[str] = Field(default_factory=list, alias="grantPermissions")
 

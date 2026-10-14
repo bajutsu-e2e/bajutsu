@@ -27,12 +27,16 @@ from bajutsu.cli._shared import (
     _load_config_with_source,
     _load_device_worker_or_exit,
     _log_subsystem_default,
+    _precondition_checks,
+    _refuse_bad_preconditions,
     _reject_url_udid,
     _resolve_browser,
     _select_actuator_or_exit,
     _start_launch_server_or_exit,
     _with_headed,
     _with_worker_device,
+    _without_engine_condition,
+    parse_engine_flag,
     resolve_system_alert_handling_flag,
 )
 from bajutsu.common.assertions import GoldenContext
@@ -46,7 +50,12 @@ from bajutsu.common.backends import (
 from bajutsu.common.cancellation import CancelSource, graceful_sigterm, not_cancelled
 from bajutsu.common.capability import capability_preflight
 from bajutsu.common.capability.worker_capability import WorkerCapability
-from bajutsu.common.config import WEB_ENGINES, AndroidConfig, Effective, IosConfig
+from bajutsu.common.config import (
+    WEB_ENGINES,
+    AndroidConfig,
+    Effective,
+    IosConfig,
+)
 from bajutsu.common.deprecations import warn_once
 from bajutsu.common.devices import errors as device_errors
 from bajutsu.common.drivers import base
@@ -98,21 +107,20 @@ from bajutsu.run.step_gate import PromptStepGate
 
 
 def _parse_browsers(browsers: str) -> list[str]:
-    """Parse `--browsers` into an ordered, de-duplicated engine list, validated against WEB_ENGINES.
+    """Parse `--browsers` into an ordered, de-duplicated list of `runsOn.browser.engine` values.
 
     The cross-browser matrix axis (BE-0076): a comma list (`chromium,firefox,webkit`) trimmed of
     blanks and de-duped while keeping order. Empty means no matrix (the run uses the single-engine
-    path); `--browsers chromium` is exactly `--browser chromium`. An unknown engine exits 2 — before
-    it reaches Playwright — exactly as `--browser` does.
+    path); `--browsers chromium` is exactly `--browser chromium`. Each entry is read as the target's
+    own field reads it, so an unknown engine exits 2 before it reaches Playwright, as `--browser`
+    does.
 
     Raises:
         typer.Exit: an entry isn't one of the known engines (exit code 2).
     """
     engines = list(dict.fromkeys(b.strip() for b in browsers.split(",") if b.strip()))
     for engine in engines:
-        if engine not in WEB_ENGINES:
-            typer.echo(f"unknown --browsers engine {engine!r}: use any of {', '.join(WEB_ENGINES)}")
-            raise typer.Exit(2)
+        parse_engine_flag("--browsers", engine)
     return engines
 
 
@@ -313,10 +321,7 @@ def _expand_file(
     plan_sources: dict[str, ScenarioPlanSource] = {}
     for s in scenarios:
         s.set_source_stem(path.stem)
-        if s.preconditions.seed_photos:
-            s.preconditions.seed_photos = [
-                str(contained_ref(root, base_dir, ref)) for ref in s.preconditions.seed_photos
-            ]
+        s.preconditions.resolve_seed_photos(lambda ref: str(contained_ref(root, base_dir, ref)))
         base_name = declared_name(s.name)
         plan = plan_by_name.get(base_name)
         if plan is None:
@@ -371,9 +376,9 @@ def _resolve_config_and_engines(
         except BuildError as e:
             typer.echo(str(e))
             raise typer.Exit(2) from None
-    # --headed/--no-headed overrides the target's `headless` config (web backend only; iOS ignores it).
+    # --headed/--no-headed overrides the target's `driver.headless` (web only; iOS ignores it).
     eff = _with_headed(eff, headed)
-    # --browser overrides the target's `browser` config (web backend only; flag > config > chromium).
+    # --browser overrides the target's `runsOn.browser.engine` (web only; flag > config > chromium).
     eff = _resolve_browser(eff, browser)
     # --browsers is the multi-engine spelling of the same axis: a comma list fans the run out across
     # engines into a matrix. One engine collapses to the single-engine path (set as --browser would);
@@ -381,6 +386,8 @@ def _resolve_config_and_engines(
     engines = _parse_browsers(browsers)
     if len(engines) == 1:
         eff = _resolve_browser(eff, engines[0])
+    elif engines:
+        eff = _without_engine_condition(eff)  # each matrix pass sets its own engine (`run_pass`)
     return loaded, eff, config_source, engines
 
 
@@ -817,7 +824,7 @@ def _sharing_problems(
         )
 
     def locale(eff: Effective) -> str:
-        return s.preconditions.resolved_locale(eff.locale)
+        return s.preconditions.resolved_locale(eff.locale, eff.platform)
 
     for member in rest:
         if route(effs[member]) != route(effs[first]):
@@ -934,14 +941,18 @@ def _filter_scenarios(
     target_erase: bool,
     ios_tipkit_handling: bool | None = None,
     target_ios_tipkit_handling: bool = False,
+    check: Callable[[list[Scenario]], None] | None = None,
 ) -> list[Scenario]:
-    """Apply `--tag`/`--exclude` selection and resolve each scenario's `preconditions.erase`.
+    """Apply `--tag`/`--exclude` selection and resolve each scenario's `preconditions.run.erase`.
 
-    Selection runs over the combined set; an empty result is a usage error (exit 2). Erase resolves
-    most-specific-wins (BE-0177): `--erase` / `--no-erase` overrides every scenario, else a scenario's
-    own explicit value, else *target_erase* (the target config default, already the built-in off when
-    unset). Leaves every scenario with a concrete bool, so downstream never sees the unset `None`.
-    `iosTipKitHandling` resolves by the same precedence, and likewise lands as a concrete bool.
+    Selection runs over the combined set; an empty result is a usage error (exit 2). *check* then
+    sees the selected scenarios as written, before any run default is filled in, so a field the
+    scenario never wrote cannot trip it (BE-0452). Erase resolves most-specific-wins (BE-0177):
+    `--erase` / `--no-erase` overrides every scenario, else a scenario's own explicit value, else
+    *target_erase* (the target config default, already the built-in off when unset). Leaves every
+    scenario with a concrete bool, so downstream never sees the unset `None`.
+    `preconditions.run.tipKitHandling` resolves by the same precedence, but is set only when it ends
+    on or the flag names it, so a scenario that drives no iOS target never gains the iOS-only field.
     """
     include = [t.strip() for t in tag.split(",") if t.strip()]
     excluded = [t.strip() for t in exclude.split(",") if t.strip()]
@@ -950,16 +961,42 @@ def _filter_scenarios(
         if not scenarios:
             typer.echo("no scenarios match --tag/--exclude")
             raise typer.Exit(2)
+    if check is not None:
+        check(scenarios)
     for s in scenarios:
         if erase is not None:
-            s.preconditions.erase = erase  # CLI flag overrides every scenario
-        elif s.preconditions.erase is None:
-            s.preconditions.erase = target_erase  # unset scenario inherits the target default
+            s.preconditions.run.erase = erase  # CLI flag overrides every scenario
+        elif s.preconditions.run.erase is None:
+            s.preconditions.run.erase = target_erase  # unset scenario inherits the target default
         if ios_tipkit_handling is not None:
-            s.ios_tip_kit_handling = ios_tipkit_handling
-        elif s.ios_tip_kit_handling is None:
-            s.ios_tip_kit_handling = target_ios_tipkit_handling
+            s.preconditions.run.tip_kit_handling = ios_tipkit_handling
+        elif s.preconditions.run.tip_kit_handling is None and target_ios_tipkit_handling:
+            s.preconditions.run.tip_kit_handling = True
     return scenarios
+
+
+def _check_preconditions_or_exit(
+    loaded: LoadedConfig,
+    scenarios: list[Scenario],
+    target_name: str,
+    eff: Effective,
+    *,
+    erase: bool | None,
+    backend: str,
+) -> None:
+    """Refuse a scenario whose preconditions no driven target can honor, before any device work.
+
+    Each scenario is checked against every target it drives: its declared `targets`, else the run's
+    own (`_precondition_checks`; `_refuse_bad_preconditions` says what is checked).
+
+    Raises:
+        typer.Exit: Any scenario has a problem (exit code 2).
+    """
+    checks = _precondition_checks(loaded, scenarios, target_name, eff)
+    # Read, not validated: the primary may be a stale inference that `--tag` / `--exclude` is about
+    # to replace, and `--backend` is checked against the primary the run settles on.
+    fake = [b.strip() for b in backend.split(",") if b.strip()] == ["fake"]
+    _refuse_bad_preconditions(checks, erase=erase, fake=fake)
 
 
 def _select_actuator(
@@ -997,10 +1034,10 @@ def _apply_system_alert_handling(
         return
     for s in scenarios:
         if not system_alert_handling:
-            s.system_alert_handling = False
+            s.preconditions.run.system_alert_handling = False
             continue
-        prev = s.system_alert_handling
-        s.system_alert_handling = (
+        prev = s.preconditions.run.system_alert_handling
+        s.preconditions.run.system_alert_handling = (
             prev if isinstance(prev, SystemAlertHandling) else (SystemAlertHandling())
         )
 
@@ -1148,7 +1185,8 @@ def _reject_vision_instruction(
     named = [
         f"scenario {s.name!r}"
         for s in scenarios
-        if (policy := _policy_of(s.system_alert_handling)) is not None and policy.vision_instruction
+        if (policy := _policy_of(s.preconditions.run.system_alert_handling)) is not None
+        and policy.vision_instruction
     ]
     if target_policy is not None and target_policy.vision_instruction:
         named.append("the target config's run_defaults")
@@ -1187,8 +1225,8 @@ def _alert_guard_factory(
     # else the built-in on (BE-0177). The `--system-alert-handling` flag is already baked onto the
     # scenario by `_apply_system_alert_handling`, so it needs no separate check here.
     def _enabled(s: Scenario) -> bool:
-        if s.system_alert_handling is not None:
-            return s.system_alert_handling is not False
+        if s.preconditions.run.system_alert_handling is not None:
+            return s.preconditions.run.system_alert_handling is not False
         if eff.run_defaults.system_alert_handling is not None:
             return eff.run_defaults.system_alert_handling is not False
         return True
@@ -1204,7 +1242,7 @@ def _alert_guard_factory(
             return None
         # Innermost layer first, so a scalar's precedence and a list's concatenation are the same
         # walk over the same sequence.
-        scenario_policy = _policy_of(s.system_alert_handling)
+        scenario_policy = _policy_of(s.preconditions.run.system_alert_handling)
         layers = [p for p in (scenario_policy, flag_policy, target_policy) if p is not None]
         poll_interval = next(
             (layer.poll_interval for layer in layers if layer.poll_interval is not None),
@@ -1225,7 +1263,7 @@ def _alert_guard_factory(
         # the target's *own* rules, which would make a scenario that declares nothing look like one
         # answering for itself.
         _warn_target_rules_reach(s, scenario_rules, target_rules)
-        locale = s.preconditions.resolved_locale(eff.locale)
+        locale = s.preconditions.resolved_locale(eff.locale, eff.platform)
         rules = _resolve_rules([*scenario_rules, *target_rules], locale)
 
         frozen_screen_timeout = next(
@@ -1260,7 +1298,7 @@ def _apply_mocks(scenarios: list[Scenario], network: bool) -> None:
         return
     for s in scenarios:
         if s.mocks:
-            s.preconditions.launch_env.setdefault("BAJUTSU_MOCKS", dump_mocks(s.mocks))
+            s.preconditions.app.launch.env.setdefault("BAJUTSU_MOCKS", dump_mocks(s.mocks))
 
 
 def _walk_visual_steps(steps: list[Step]) -> Iterator[Step]:
@@ -1348,7 +1386,7 @@ def _apply_touch_markers(
     scenario's own, the same merge `_hides_touch_markers` performs and the same order the launch
     itself merges them in — so a target that pins the marker key for every scenario is decided for
     here exactly as the app that launches sees it, not as if every scenario had pinned nothing.
-    `target_launch_env` is the target's own `launchEnv` (`Effective.launch_env`); a caller that
+    `target_launch_env` is the target's own `app.launch.env` (`Effective.launch_env`); a caller that
     omits it sees only each scenario's own launch env, as before.
 
     Every internal decision here is keyed by scenario object identity, never by `.name`: nothing
@@ -1379,7 +1417,7 @@ def _apply_touch_markers(
     def _env(s: Scenario) -> Mapping[str, str]:
         # Same merge and order the launch itself performs, so a target-level pin reads here
         # exactly as the app that launches sees it, not as a scenario that pinned nothing.
-        return {**target_env, **s.preconditions.launch_env}
+        return {**target_env, **s.preconditions.app.launch.env}
 
     visual_scenarios = _visual_asserting_scenarios(scenarios)
     # A scenario (or its target) that pinned the marker value to "0" draws no markers at all, so it
@@ -1529,9 +1567,9 @@ def _write_touch_marker_env(scenarios: list[Scenario], skip: set[int], *, armed:
     for s in scenarios:
         if id(s) in skip:
             continue
-        s.preconditions.launch_env.setdefault("BAJUTSU_TOUCH_MARKERS", "1")
+        s.preconditions.app.launch.env.setdefault("BAJUTSU_TOUCH_MARKERS", "1")
         if id(s) in armed:
-            s.preconditions.launch_env.setdefault("BAJUTSU_CONTROL_CHANNEL", "1")
+            s.preconditions.app.launch.env.setdefault("BAJUTSU_CONTROL_CHANNEL", "1")
 
 
 # One `setMocks` step, the `web:` / `app:` block it sits in (if any), and the target it runs on.
@@ -1628,18 +1666,20 @@ def _arm_mock_swaps(
         if problem := _mock_swap_problem(s, swaps):
             misplaced.append(f"{s.name} ({problem})")
             continue
-        pinned = {**target_env, **s.preconditions.launch_env}.get("BAJUTSU_CONTROL_CHANNEL", "1")
+        pinned = {**target_env, **s.preconditions.app.launch.env}.get(
+            "BAJUTSU_CONTROL_CHANNEL", "1"
+        )
         if pinned != "1":
             refused.append(f"{s.name} (BAJUTSU_CONTROL_CHANNEL is pinned to {pinned!r})")
         elif not channel_available(s):
             refused.append(s.name)
         else:
-            s.preconditions.launch_env.setdefault("BAJUTSU_CONTROL_CHANNEL", "1")
+            s.preconditions.app.launch.env.setdefault("BAJUTSU_CONTROL_CHANNEL", "1")
             # The key is also half of the pair `_hides_touch_markers` reads, so a scenario that
             # pinned BAJUTSU_TOUCH_MARKERS itself and compares a screenshot now has its markers
             # hidden for that capture. The channel is armed anyway, so hiding them is correct;
             # it is announced because the author asked for neither.
-            merged = {**target_env, **s.preconditions.launch_env}
+            merged = {**target_env, **s.preconditions.app.launch.env}
             if id(s) in visual and merged.get("BAJUTSU_TOUCH_MARKERS") == "1":
                 marker_pair.append(s.name)
     if marker_pair:
@@ -1991,10 +2031,10 @@ class _RunPlan:
     # Scenarios the worker capability check failed before any device work (BE-0450), keyed by their
     # index in `scenarios`: reported with the prefixed reason and never leased.
     worker_failures: Mapping[int, str]
-    # Whether a backend-crash-triggered retry may force `preconditions.erase=True`
+    # Whether a backend-crash-triggered retry may force `preconditions.run.erase=True`
     # (`bajutsu/common/runner/pipeline.py`'s forced-erase retry). `erase is not False` — True for the default
     # (unset) and explicit `--erase`, False only for an explicit `--no-erase` — captured here, ahead of
-    # `_filter_scenarios` resolving every scenario's `preconditions.erase` to a concrete bool, since
+    # `_filter_scenarios` resolving every scenario's `preconditions.run.erase` to a concrete bool, since
     # that resolved value can no longer distinguish an explicit opt-out from "nobody asked".
     force_erase_on_retry: bool
     # `--trace-driver` (BE-0415): one `<sid>/driver_trace.json` per scenario, recording every
@@ -2395,19 +2435,22 @@ def run_body(
     erase: bool | None = typer.Option(
         None,
         "--erase/--no-erase",
-        help="override every scenario's preconditions.erase (default: per-scenario)",
+        help="override run.erase: wins over every scenario's preconditions.run.erase and the "
+        "target's run.erase (default: the scenario's, then the target's, then off)",
     ),
     ios_tipkit_handling: bool | None = typer.Option(
         None,
         "--ios-tipkit-handling/--no-ios-tipkit-handling",
-        help="dismiss a blocking iOS TipKit tip (default: per-scenario, off)",
+        help="dismiss a blocking iOS TipKit tip; overrides run.tipKitHandling, winning over every "
+        "scenario's preconditions.run.tipKitHandling and the target's (default: off)",
     ),
     # --- Alerts, capture & logging ---
     system_alert_handling: bool | None = typer.Option(
         None,
         "--system-alert-handling/--no-system-alert-handling",
-        help="override every scenario's systemAlertHandling (default: per-scenario, on; the guard "
-        "is fully deterministic and makes no model call)",
+        help="override run.systemAlertHandling, winning over every scenario's "
+        "preconditions.run.systemAlertHandling and the target's (default: on; the guard is fully "
+        "deterministic and makes no model call)",
     ),
     alert_poll_interval: float | None = typer.Option(
         None,
@@ -2483,40 +2526,41 @@ def run_body(
     baselines: str = typer.Option(
         "",
         "--baselines",
-        help="directory of baseline images for `visual` assertions "
-        "(default: config baselines, then baselines/ beside the scenario)",
+        help="directory of baseline images for `visual` assertions; overrides the target's "
+        "paths.baselines (default: paths.baselines, then baselines/ beside the scenario)",
     ),
     schemas: str = typer.Option(
         "",
         "--schemas",
-        help="directory of JSON Schema files for `responseSchema` assertions "
-        "(default: config schemas, then schemas/ beside the scenario)",
+        help="directory of JSON Schema files for `responseSchema` assertions; overrides the "
+        "target's paths.schemas (default: paths.schemas, then schemas/ beside the scenario)",
     ),
     goldens: str = typer.Option(
         "",
         "--goldens",
-        help="directory of golden JSON files for `golden` assertions (BE-0006) "
-        "(default: goldens/ beside the scenario)",
+        help="directory of golden JSON files for `golden` assertions (BE-0006); overrides the "
+        "target's paths.goldens (default: paths.goldens, then goldens/ beside the scenario)",
     ),
     # --- Browser & engine selection ---
     headed: bool | None = typer.Option(
         None,
         "--headed/--no-headed",
-        help="web backend: show the browser (headed, slow-motion) instead of headless; "
-        "default leaves the target's `headless` config (headless)",
+        help="web backend: show the browser (headed, slow-motion) instead of headless; overrides "
+        "the target's driver.headless (default: headless)",
     ),
     browser: str = typer.Option(
         "",
         "--browser",
         help=f"web backend: rendering engine to drive — {' / '.join(WEB_ENGINES)}; "
-        "default leaves the target's `browser` config (chromium)",
+        "overrides the target's runsOn.browser.engine (default: chromium)",
     ),
     browsers: str = typer.Option(
         "",
         "--browsers",
         help=f"web backend: run the cross-browser matrix — a comma list of engines "
-        f"({','.join(WEB_ENGINES)}); each scenario runs once per engine and the run is green only "
-        "if every engine passes (all-must-pass). A single engine equals --browser",
+        f"({','.join(WEB_ENGINES)}) that overrides the target's runsOn.browser.engine; each "
+        "scenario runs once per engine and the run is green only if every engine passes "
+        "(all-must-pass). A single engine equals --browser",
     ),
     # --- Reporting & output ---
     zip_run: bool = typer.Option(
@@ -2620,6 +2664,9 @@ def run_body(
             eff.run_defaults.erase,
             ios_tipkit_handling,
             eff.run_defaults.ios_tip_kit_handling,
+            check=lambda selected: _check_preconditions_or_exit(
+                loaded, selected, primary, eff, erase=erase, backend=backend
+            ),
         )
         return (
             loaded,

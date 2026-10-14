@@ -10,7 +10,9 @@
 - name: receive a push notification
   tags: [system]
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - wait: { for: { id: stable.row.1 }, timeout: 10 }
     - push: { payload: { aps: { alert: "You have a new message" } } }
@@ -47,9 +49,12 @@
 # the banner is cleared live (BE-0416 roadmap item, Unit 5).
 - name: a foreground notification banner is swiped away, not tapped
   tags: [systemalert]
-  systemAlertHandling: false
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_NOTIFICATION_BANNER: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1", SHOWCASE_NOTIFICATION_BANNER: "1" }
+    run:
+      systemAlertHandling: false
   steps:
     - wait: { for: { id: notif.permission.value }, timeout: 10 }
     - handleSystemAlert: { prompt: notifications, choice: grant, timeout: 10 }

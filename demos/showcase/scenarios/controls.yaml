@@ -10,7 +10,9 @@
 # about the rows below it, so aiming at a button would leave the mirror row off a lazy tree.
 - name: segmented control mirrors the selected choice
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Log", traits: [button] }
       capture: [deviceLog]

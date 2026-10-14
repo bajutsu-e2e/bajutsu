@@ -6,7 +6,9 @@
 # bottom, so walk down with swipes anchored on controls that stay visible. Run over XCUITest.
 - name: segmented control mirrors the selected choice
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Log", traits: [button] }
     - wait: { for: { label: "Note" }, timeout: 10 }

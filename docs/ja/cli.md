@@ -84,19 +84,19 @@ web backend が動く Windows では、`run` は BE-0449 以前と同じく run 
 | `--tag` | "" | カンマ区切り。これらの tag のいずれかを持つシナリオのみ実行 |
 | `--exclude` | "" | カンマ区切り。これらの tag のいずれかを持つシナリオをスキップ |
 | `--udid` | `booted` | 対象 Simulator（カンマ区切り = `--workers` 用のデバイスプール）。URL は終了コード 2 |
-| `--erase / --no-erase` | シナリオ › config › off | 各シナリオの `preconditions.erase`（シム全体を wipe）を上書き。省略時は各シナリオの値、次にターゲットの `run.erase` config、次に off の順で解決（[BE-0177](../../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)）。アプリはどちらでも毎回 fresh に再インストール（config `app.path` + `preconditions.reinstall`） |
-| `--system-alert-handling / --no-system-alert-handling` | シナリオ › config › ON | 各シナリオの `systemAlertHandling` を上書きします。iOS バックエンドから見えないシステムアラートを消すリアクティブなガードで、XCUITest 上ではネイティブに処理します（モデル不使用、BE-0315）。決定的な経路がどれも片付けられないアラートには何もしません。ガード対象の `wait` は見たものを自身のタイムアウトで必ず名指しし、wait の外のステップは、ネイティブ照会がアラートを列挙できたときだけ名指しします。ネイティブ照会を持たないバックエンドでは名指しする材料がないため、そのステップは従来どおり失敗します（BE-0402）。省略時は各シナリオの値、次にターゲットの `run.systemAlertHandling` config、次に ON の順で解決します。AI 認証情報は一切不要です（[recording](recording.md#システムアラートの自動対処)） |
-| `--ios-tipkit-handling / --no-ios-tipkit-handling` | シナリオ › config › OFF | 各シナリオの `iosTipKitHandling` を上書きします。操作をブロックしている Apple **TipKit** の tip を閉じます。フレームワークが所有する popover であり、同じ回避策をシナリオごとに手で書かずに済ませるためのガードです。ガードは tip を、閉じるための scrim（`PopoverDismissRegion`）とその tip 自身のコンテナ（`TipView`）の両方で判定します。`confirmationDialog` が同一の scrim を設置するため、そちらには手を触れないようにする必要があるからです。同じ理由で、tip 向けの `interrupts` エントリ（またはターゲットの `hooks.interrupts` エントリ）を手で書く場合は `TipView` を手がかりにします。iOS 専用（他のバックエンドでは何もしません）で、求められない限り **OFF** です。tip 自体がアサーションの対象になる場合があるからです。省略時は各シナリオの値、次にターゲットの `run.tipKitHandling` config、次に OFF の順で解決します。認証情報は不要です（[scenarios](scenarios.md)） |
+| `--erase / --no-erase` | シナリオ › config › off | すべてのシナリオについて `run.erase` を上書きし、各シナリオの `preconditions.run.erase`（シム全体を wipe）に優先します。省略時は各シナリオの値、次にターゲットの `run.erase` config、次に off の順で解決します（[BE-0177](../../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)）。アプリはどちらでも毎回 fresh に再インストールします（config の `app.path` と、シナリオ、次にターゲットの `app.reinstall`） |
+| `--system-alert-handling / --no-system-alert-handling` | シナリオ › config › ON | すべてのシナリオについて `run.systemAlertHandling` を上書きし、各シナリオの `preconditions.run.systemAlertHandling` に優先します。iOS バックエンドから見えないシステムアラートを消すリアクティブなガードで、XCUITest 上ではネイティブに処理します（モデル不使用、BE-0315）。決定的な経路がどれも片付けられないアラートには何もしません。ガード対象の `wait` は見たものを自身のタイムアウトで必ず名指しし、wait の外のステップは、ネイティブ照会がアラートを列挙できたときだけ名指しします。ネイティブ照会を持たないバックエンドでは名指しする材料がないため、そのステップは従来どおり失敗します（BE-0402）。省略時は各シナリオの値、次にターゲットの `run.systemAlertHandling` config、次に ON の順で解決します。AI 認証情報は一切不要です（[recording](recording.md#システムアラートの自動対処)） |
+| `--ios-tipkit-handling / --no-ios-tipkit-handling` | シナリオ › config › OFF | すべてのシナリオについて `run.tipKitHandling` を上書きし、各シナリオの `preconditions.run.tipKitHandling` に優先します。操作をブロックしている Apple **TipKit** の tip を閉じます。フレームワークが所有する popover であり、同じ回避策をシナリオごとに手で書かずに済ませるためのガードです。ガードは tip を、閉じるための scrim（`PopoverDismissRegion`）とその tip 自身のコンテナ（`TipView`）の両方で判定します。`confirmationDialog` が同一の scrim を設置するため、そちらには手を触れないようにする必要があるからです。同じ理由で、tip 向けの `interrupts` エントリ（またはターゲットの `hooks.interrupts` エントリ）を手で書く場合は `TipView` を手がかりにします。iOS 専用（他のバックエンドでは何もしません）で、求められない限り **OFF** です。tip 自体がアサーションの対象になる場合があるからです。省略時は各シナリオの値、次にターゲットの `run.tipKitHandling` config、次に OFF の順で解決します。認証情報は不要です（[scenarios](scenarios.md)） |
 | `--alert-poll-interval` | 未設定 | ネイティブのシステムアラート presence 照会の間隔（秒）。シナリオ自身の `pollInterval` の下位、ターゲットの上位に位置します。ガードのもう 1 つのキーである `rules` にフラグはありません。1 エントリはプロンプトと選択の組であり、フラグの値 1 つでは読みやすく運べないため、宣言はシナリオファイルとターゲット config に置いたままにしています（[BE-0406](../../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md)） |
 | `--log-predicate` | "" | `deviceLog` ストリームを絞る NSPredicate（例 subsystem） |
 | `--log-subsystem` | "" | `appTrace` 用の os_log subsystem（既定はアプリの `app.id`） |
 | `--network / --no-network` | config › ON | `request` アサーション用にアプリの通信を収集。省略時はターゲットの `run.network` config、次に ON の順で解決（[BE-0177](../../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)）。iOS はアプリに BajutsuKit が必要。web は Playwright でネイティブに観測し、シナリオの `mocks` をその場でスタブします |
 | `--workers` | 1 | デバイスプール上で並列実行します。複数のターゲットを宣言するシナリオは、ターゲットごとに1台のデバイスをそのシナリオの全長にわたって保持します。そのため `run` は、ワーカーが互いのデバイスを奪い合わない範囲までこの値を抑えます。iOS では `--udid u1,u2,…` が必要で、そのプール数で上限になります。web では `--workers N` だけで N 本の並列ブラウザコンテキストレーンになります（`--udid` 不要、[BE-0054](../../roadmaps/BE-0054-web-backend-completion/BE-0054-web-backend-completion-ja.md)）。各レーンが自前のネットワークコレクタ、インターバル録画、（iOS では）デバイス制御を持つので、network / 動画 / `setLocation` / `push` はシングルデバイス実行と同じく機能します |
-| `--baselines` | config の `paths.baselines`、次にシナリオ隣の `baselines/` | `visual` アサーション用のベースライン画像ディレクトリ。`baseline: home.png` はこの中で解決されます |
-| `--schemas` | config の `paths.schemas`、次にシナリオ隣の `schemas/` | `responseSchema` アサーション用の JSON Schema ファイルのディレクトリ。`schema: items.json` はこの中で解決されます（`schema` extra が必要です） |
-| `--goldens` | config の `paths.goldens`、次にシナリオ隣の `goldens/` | `golden` アサーション用の golden JSON ファイルのディレクトリ。`golden: response.json` はこの中で解決されます |
+| `--baselines` | config の `paths.baselines`、次にシナリオ隣の `baselines/` | ターゲットの `paths.baselines` を上書きします。`visual` アサーション用のベースライン画像ディレクトリ。`baseline: home.png` はこの中で解決されます |
+| `--schemas` | config の `paths.schemas`、次にシナリオ隣の `schemas/` | ターゲットの `paths.schemas` を上書きします。`responseSchema` アサーション用の JSON Schema ファイルのディレクトリ。`schema: items.json` はこの中で解決されます（`schema` extra が必要です） |
+| `--goldens` | config の `paths.goldens`、次にシナリオ隣の `goldens/` | ターゲットの `paths.goldens` を上書きします。`golden` アサーション用の golden JSON ファイルのディレクトリ。`golden: response.json` はこの中で解決されます |
 | `--headed / --no-headed` | ターゲットの `driver.headless`（既定はヘッドレス） | web backend: ヘッドレスの代わりにブラウザを画面に表示し（低速再生）、実行の各ステップを確認できます（コマンドを実行しているマシン上でウィンドウが開きます）。省略時はターゲットの `driver.headless` 設定に従います。iOS は無視します |
-| `--browser` | ターゲットの `runsOn.browser.engine`（既定 chromium） | web backend: この run で使う Playwright のレンダリングエンジン。`chromium` / `firefox` / `webkit` から選びます。省略時はターゲットの `runsOn.browser.engine` config に従います（[configuration](configuration.md)、[BE-0076](../../roadmaps/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md)） |
+| `--browser` | ターゲットの `runsOn.browser.engine`（既定 chromium） | web backend: この run で使う Playwright のレンダリングエンジン。`chromium` / `firefox` / `webkit` から選びます。省略時はターゲットの `runsOn.browser.engine` config に従います。フラグはこのフィールドを置き換えるので、ターゲットがリストで宣言したエンジンはデバイス条件として数えなくなります（[configuration](configuration.md)、[BE-0076](../../roadmaps/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md)） |
 | `--browsers` | "" | web backend: **クロスブラウザマトリクス**を実行します。エンジンのカンマ区切りリスト（例 `chromium,firefox,webkit`）を指定すると、各シナリオがエンジンごとに1回ずつ走り、全エンジンが合格して初めて run 全体が緑になります（[configuration](configuration.md#クロスブラウザマトリクス--browsersbe-0076)）。エンジンを1つだけ指定するのは `--browser` と同じです |
 | `--progress / --no-progress` | off | シナリオ / ステップごとの進捗を stderr に流します（`serve` UI が消費します） |
 | `--score / --no-score` | off | アプリの入口画面の規約スコア（doctor の Ready/Partial/Blocked グレード）を、この run 自身の最初の起動から算出して stderr に出力します。2 つめの XCUITest ランナーをコールド起動する別立ての `doctor` を挟まずに、CI がこの目印を読み取れます。診断専用で、pass/fail には一切影響しません |
@@ -129,7 +129,13 @@ web backend が動く Windows では、`run` は BE-0449 以前と同じく run 
   まだデバイスを条件と照合できません。そのため、条件を宣言したターゲットに対する run は
   「not yet supported」で失敗し、終了コード 2 で終わります。`record`、`crawl`、`repl`、`audit`、
   MCP の run、`doctor` の画面プローブも同じです。`--backend fake` は通知を 1 回出して検査を
-  飛ばします。`--browsers` には影響しません。
+  飛ばします。`--browsers` には影響しません。シナリオ自身の `preconditions.runsOn` の条件も、
+  `run` と `audit` で同じく拒否されます。
+- **シナリオの preconditions は、デバイスを操作する前に検査します（BE-0452）。** `run` と `audit` は、
+  各シナリオを、そのシナリオが動かすターゲットと照合します。動かすどのターゲットのプラットフォームにも
+  ない `app` のフィールドや、iOS 専用の `run` のフィールドは、フィールド名を示して終了コード 2 で
+  終わります。形の誤った `preconditions.runsOn` のブロックや、実効の `run.erase` を伴わない
+  `seedPhotos` も同じです（[scenarios](scenarios.md#preconditions環境準備)）。
 - `AI usage:` 行は出力しません。`run` はどのフラグを付けてもトークンを消費しないため（BE-0402）、
   使用量台帳を導入せず、報告もしません。`record`、`crawl`、`triage --ai` は従来どおり出力します。
 
@@ -420,8 +426,8 @@ bajutsu record --target <name> --goal "<自然言語ゴール>" [--out <file.yam
 | `--name` | （ゴールから） | 自動命名するファイル名（`--out` 指定時は無視） |
 | `--udid` | `booted` | 対象 Simulator |
 | `--backend` | ターゲットの `platform` | ターゲットの platform に対する検査（[共通](#共通)を参照） |
-| `--erase / --no-erase` | `--erase` | 起動前に erase（アプリはインストール済みである必要） |
-| `--system-alert-handling` | on | オーサリング中のプロンプトを片付ける（要 API キー） |
+| `--erase / --no-erase` | `--erase` | 起動前に erase（アプリはインストール済みである必要）。ターゲットの `run.erase` はここでは効きません |
+| `--system-alert-handling` | ターゲットの `run.systemAlertHandling`（on） | オーサリング中のプロンプトを片付ける（要 API キー）。省略時はターゲットの `run.systemAlertHandling` に従い、ターゲットが `false` と書かない限り on です |
 | `--max-steps` | `30` | オーサリングのターン数（＝トークン消費の上限）に上限を設けます（[BE-0194](../../roadmaps/BE-0194-record-turn-payload-diet/BE-0194-record-turn-payload-diet-ja.md)） |
 | `--screenshot / --no-screenshot` | `--screenshot` | 毎ターン、スクリーンショットを送ります。`--no-screenshot` は要素情報だけを記録し（コストが安い）、id を十分に備えたアプリ向けです（[BE-0194](../../roadmaps/BE-0194-record-turn-payload-diet/BE-0194-record-turn-payload-diet-ja.md)） |
 | `--headed / --no-headed` | ターゲットの `driver.headless` | web backend: ヘッドレスではなく目に見える（低速再生の）ブラウザでオーサリングします。省略時はターゲットの `driver.headless` 設定に従います |
@@ -459,8 +465,8 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
 | `--udid` | `booted` | 対象 Simulator。カンマ区切り（`A,B,C`）で並列プールも指定できる（`--workers` 参照） |
 | `--workers` | `1` | 同時に動かすワーカー数。1 つの画面マップを共有する。iOS は同数のシミュレータ（[BE-0064](../../roadmaps/BE-0064-parallel-crawl/BE-0064-parallel-crawl-ja.md)、`--udid` のデバイス数で上限）、web は同数のブラウザプロセス（[BE-0077](../../roadmaps/BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl-ja.md)）。`1` はシングルワーカーのクロール |
 | `--backend` | ターゲットの `platform` | ターゲットの platform に対する検査（[共通](#共通)を参照） |
-| `--erase / --no-erase` | `--erase` | 起動前に erase（アプリはインストール済みである必要） |
-| `--system-alert-handling / --no-system-alert-handling` | `--system-alert-handling` | クロール中に予期せぬ OS プロンプトを片付ける（クラッシュ誤判定を防ぐ。設定した AI プロバイダを使用し、`ANTHROPIC_API_KEY`、Bedrock なら AWS 認証情報） |
+| `--erase / --no-erase` | `--erase` | 起動前に erase（アプリはインストール済みである必要）。ターゲットの `run.erase` はここでは効きません |
+| `--system-alert-handling / --no-system-alert-handling` | ターゲットの `run.systemAlertHandling`（on） | 省略時はターゲットの `run.systemAlertHandling` に従い、ターゲットが `false` と書かない限り on です。クロール中に予期せぬ OS プロンプトを片付ける（クラッシュ誤判定を防ぐ。設定した AI プロバイダを使用し、`ANTHROPIC_API_KEY`、Bedrock なら AWS 認証情報） |
 | `--alert-vision-instruction` | "" | プロンプトを片付ける代わりに視覚ガードが読む自由記述 |
 | `--headed / --no-headed` | ターゲットの `driver.headless` | web backend: ヘッドレスではなく目に見える（低速再生の）ブラウザでクロールする。省略時はターゲットの `driver.headless` 設定に従う |
 | `--language` | config の `ai.language`（`auto`） | ガイドの流れる推論の AI 出力言語。`ja` / `en` / `auto` から選び `ai.language` を上書きします。`auto` はクロールでは英語のままです（[BE-0188](../../roadmaps/BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language-ja.md)） |
@@ -604,7 +610,7 @@ bajutsu repl --target <name> [options]
 | `--target` | （必須） | 対象アプリ |
 | `--udid` | `booted` | 対象 Simulator。URL は終了コード 2（Appium グリッドは `--worker-config` で指定します） |
 | `--backend` | ターゲットの `platform` | ターゲットの platform に対する検査（[共通](#共通)を参照） |
-| `--erase / --no-erase` | live 経路以外は erase | 起動前に erase（アプリはインストール済みである必要）。`appium` グリッドへの live 経路は erase を受け付けないため、その経路の既定は off になり、そこで明示的に `--erase` を指定すると CLI エラーで終了します |
+| `--erase / --no-erase` | live 経路以外は erase | 起動前に erase（アプリはインストール済みである必要）。ターゲットの `run.erase` はここでは効きません。`appium` グリッドへの live 経路は erase を受け付けないため、その経路の既定は off になり、そこで明示的に `--erase` を指定すると CLI エラーで終了します |
 | `--headed / --no-headed` | ターゲットの `driver.headless` | web backend: ヘッドレスではなく目に見える（低速再生の）ブラウザを調べます。省略時はターゲットの `driver.headless` 設定に従います |
 | `--browser` | ターゲットの `runsOn.browser.engine`（既定 chromium） | web backend: 調べる対象の Playwright レンダリングエンジン。`chromium` / `firefox` / `webkit` から選びます。省略時はターゲットの `runsOn.browser.engine` config に従います |
 | `--attach` | off | ローカルの iOS Simulator（`xcuitest`）専用です。起動済みの Simulator で動いているアプリに、そのままの状態で接続します。erase、インストール、再起動はしません（後述の「起動中のアプリへの接続」を参照） |

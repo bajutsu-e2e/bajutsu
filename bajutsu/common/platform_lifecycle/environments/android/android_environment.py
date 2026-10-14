@@ -12,7 +12,8 @@ from typing import TYPE_CHECKING
 
 from bajutsu.common import backends
 from bajutsu.common.backend_cli import adb
-from bajutsu.common.config import Effective, require_android
+from bajutsu.common.config import Effective, require_android, resolve_preconditions
+from bajutsu.common.config.preconditions import ResolvedPreconditions
 from bajutsu.common.drivers import base
 from bajutsu.common.evidence import intervals
 from bajutsu.common.evidence.network import Collector
@@ -20,7 +21,7 @@ from bajutsu.common.orchestrator import DeviceControl, RelaunchFn
 from bajutsu.common.platform_lifecycle import readiness
 from bajutsu.common.platform_lifecycle.device_control import android_device_control
 from bajutsu.common.platform_lifecycle.protocols import CollectorHost, ProvisionProfile
-from bajutsu.common.scenario import Preconditions, Relaunch, Scenario
+from bajutsu.common.scenario import Relaunch, Scenario
 from bajutsu.crawl import AliveCheck, ClearBlocking, Recover, Reset
 
 from .resident_server_like import ResidentServerLike
@@ -157,7 +158,10 @@ class AndroidEnvironment:
         # `_drivers`, so the front check reaches all of them (BE-0447).
         self._group_drivers: list[base.Driver] = []
         self._member_markers: dict[str, tuple[float, str] | None] = {}
-        self._launch_inputs: tuple[Preconditions, Mapping[str, str]] = (Preconditions(), {})
+        self._launch_inputs: tuple[ResolvedPreconditions, Mapping[str, str]] = (
+            ResolvedPreconditions(),
+            {},
+        )
 
     def resolve_device(self, udid: str) -> str:
         return adb.resolve_serial(udid, self._run)
@@ -168,7 +172,7 @@ class AndroidEnvironment:
     def start(
         self,
         eff: Effective,
-        pre: Preconditions,
+        pre: ResolvedPreconditions,
         *,
         extra_env: Mapping[str, str] | None = None,
         record_video_dir: Path | None = None,
@@ -479,7 +483,7 @@ class AndroidEnvironment:
     ) -> RelaunchFn:
         package = require_android(eff).package
         e = adb.Env(self._serial, run=self._run)
-        pre = scenario.preconditions
+        pre = resolve_preconditions(eff, scenario.preconditions)
 
         def relaunch(opts: Relaunch) -> None:
             e.force_stop(package)  # restart only the app; the device is not rebooted
@@ -584,7 +588,7 @@ class AndroidEnvironment:
     def start_member(
         self,
         eff: Effective,  # Environment shape
-        pre: Preconditions,
+        pre: ResolvedPreconditions,
         *,
         extra_env: Mapping[str, str] | None = None,  # noqa: ARG002
         permissions: Mapping[str, str] | None = None,
@@ -620,7 +624,7 @@ class AndroidEnvironment:
         return driver
 
     def _install_for_start(
-        self, e: adb.Env, package: str, app_path: str | None, pre: Preconditions
+        self, e: adb.Env, package: str, app_path: str | None, pre: ResolvedPreconditions
     ) -> None:
         # Android has no device-wide wipe: `erase` is each app's own uninstall and `pm clear`, as in
         # `start`. Clearing this member's package never touches another member's data.

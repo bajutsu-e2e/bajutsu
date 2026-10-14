@@ -23,6 +23,7 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 
 from bajutsu.common.config import Effective, require_ios
+from bajutsu.common.config.preconditions import ResolvedPreconditions
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.xcuitest_live import (
     WdTransportFn,
@@ -33,7 +34,7 @@ from bajutsu.common.drivers.xcuitest_live import (
 )
 from bajutsu.common.orchestrator import DeviceControl, RelaunchFn
 from bajutsu.common.platform_lifecycle.environments.ios import _DeviceEnvironment
-from bajutsu.common.scenario import Preconditions, Scenario
+from bajutsu.common.scenario import Scenario
 from bajutsu.crawl import Reset
 
 
@@ -72,7 +73,7 @@ class XcuitestLiveEnvironment(_DeviceEnvironment):
     def start(
         self,
         eff: Effective,
-        pre: Preconditions,
+        pre: ResolvedPreconditions,
         *,
         extra_env: Mapping[str, str] | None = None,
         record_video_dir: Path | None = None,  # noqa: ARG002  # Environment shape

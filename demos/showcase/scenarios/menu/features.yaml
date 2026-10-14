@@ -4,7 +4,9 @@
 - name: filter via the shared component
   tags: [smoke]
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - use: { component: _components/search_for.yaml, with: { query: "Horse 3" } }
     - wait: { for: { id: search.row.3 }, timeout: 5 }
@@ -14,7 +16,9 @@
 - name: type a masked secret into the field
   tags: [smoke, secret]
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Search", traits: [button] }
     # ${secrets.PASSWORD} resolves from the environment; the literal value is masked in every run
@@ -29,7 +33,9 @@
 - name: nightly deep check
   tags: [slow]
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - wait: { for: { id: stable.row.3 }, timeout: 10 }
     - tap: { id: stable.row.3 }

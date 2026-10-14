@@ -298,7 +298,7 @@ def test_a_primary_only_failed_scenarios_use_is_not_acquired(
     result = invoke(runner, app, args)
     assert result.exit_code == 7, result.output
     assert acquired == ["app"]
-    assert [sc.preconditions.erase for sc in reached if sc.name == "one"] == [True]
+    assert [sc.preconditions.run.erase for sc in reached if sc.name == "one"] == [True]
 
 
 def test_the_browser_matrix_still_refuses_a_failed_multi_target_scenario(tmp_path: Path) -> None:

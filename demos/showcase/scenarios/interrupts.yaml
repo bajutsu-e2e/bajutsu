@@ -19,7 +19,9 @@
       steps:
         - tap: { id: [notice.promo.dismiss, notice_promo_dismiss] }
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - wait: { for: { id: [stable.row.1, stable_row_1] }, timeout: 10 }
       capture: [deviceLog]

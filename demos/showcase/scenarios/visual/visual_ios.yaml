@@ -14,7 +14,9 @@
 - name: visual stable catalog (ios)
   tags: [visual, lists]
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - wait: { for: { id: stable.row.1 }, timeout: 10 }
       capture: [video]

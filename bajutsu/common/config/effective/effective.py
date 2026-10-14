@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 from pathlib import Path
+from typing import Literal
 
 from bajutsu.common.config.schema import (
     DeviceProvider,
@@ -47,6 +48,17 @@ class Effective:
     capture: list[str]
     redact: Redact
     secrets: list[str] = field(default_factory=list)
+    # The target's `app.reinstall` (BE-0452): how the app is reinstalled when the scenario sets no
+    # mode of its own. None leaves the built-in `clean`.
+    reinstall: Literal["clean", "overwrite"] | None = None
+    # The target's `app.launch.deeplink` (BE-0452), opened after launch unless the scenario sets one.
+    deeplink: str | None = None
+    # The target's `runsOn.seedPhotos` (BE-0452), rebased against the config file; a scenario's own
+    # list replaces it.
+    seed_photos: list[str] = field(default_factory=list)
+    # The target's own `platform` key (BE-0452), which `schema_platform` reads. None for an
+    # `Effective` built by hand, which then reads its platform from the sub-config.
+    declared_platform: str | None = None
     # Resolved AI provider/model/endpoint/key (BE-0047), passed to the AI factory. None = env-only.
     ai: AiConfig | None = None
     # Generic HTTP mailbox the `email` step polls (`targets.<name>.mailbox`, BE-0046). None = no
@@ -87,6 +99,17 @@ class Effective:
         return "android"
 
     @property
+    def schema_platform(self) -> str:
+        """The platform the target declares, whose registered models shape its groups (BE-0452).
+
+        Unlike `platform`, which reads a `fake` target as iOS because it resolves to the iOS-shaped
+        sub-config, this keeps `fake`, so a scenario field is checked against the models the target
+        was validated with. A `--backend fake` override leaves it alone: the target still declares
+        its own platform.
+        """
+        return self.declared_platform or self.platform
+
+    @property
     def app_identifier(self) -> str | None:
         """The bundle identifier or package the app installs under, or None for a web target.
 
@@ -104,11 +127,12 @@ class Effective:
     ) -> Effective:
         """A copy with the relative path fields resolved against `root`.
 
-        The common path fields — `scenarios` / `baselines` / `schemas` / `goldens` — and the iOS or
-        Android sub-config's `app_path` are rebased; a future path field is rebased by adding it here. `build`
-        (a shell command) is intentionally absent, and a component the target's hooks call was
-        already resolved against the config file when it loaded. Called for a Git checkout (BE-0063), for an uploaded bundle, and — `root`
-        the config file's own directory — for a local config (BE-0242), so the caller's working
+        The common path fields — `scenarios` / `baselines` / `schemas` / `goldens` — the iOS or
+        Android sub-config's `app_path`, and an iOS target's `seed_photos` are rebased; a future
+        path field is rebased by adding it here. `build` (a shell command) is intentionally absent,
+        and a component the target's hooks call was already resolved against the config file when
+        it loaded. Called for a Git checkout (BE-0063), for an uploaded bundle, and — `root` the
+        config file's own directory — for a local config (BE-0242), so the caller's working
         directory no longer decides where a config's paths point.
 
         `confine` gates the escape check: when true, an absolute or `../` value that would leave the
@@ -173,6 +197,11 @@ class Effective:
             )
         if not isinstance(self.platform_config, IosConfig):
             return common  # only the iOS / Android sub-configs carry rebasable path fields
+        # Seeded photos resolve against the file that declares them, as `app.path` does (BE-0452).
+        common = replace(
+            common,
+            seed_photos=[at("runsOn.seedPhotos", photo) or photo for photo in self.seed_photos],
+        )
 
         ios = self.platform_config
         rebased_xcuitest = ios.xcuitest

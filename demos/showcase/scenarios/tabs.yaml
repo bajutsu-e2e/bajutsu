@@ -19,7 +19,9 @@
 - name: switch tabs by id
   tags: [xcuitest]
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { id: search, traits: [button] }
     - wait: { for: { id: search.field }, timeout: 10 }
@@ -33,7 +35,9 @@
 - name: return to the Stable tab by id
   tags: [xcuitest]
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { id: notice, traits: [button] }
     - wait: { for: { id: notice.row.1 }, timeout: 10 }

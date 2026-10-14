@@ -22,10 +22,11 @@ _TOTP_SEED = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
 SCENARIO_YAML = """
 - name: open settings and reindex
   preconditions:
-    erase: true
-    launchEnv: { SAMPLE_SCREEN: "settings" }
-    deeplink: "bajutsusample://settings"
-    locale: "ja_JP"
+    app:
+      launch: { env: { SAMPLE_SCREEN: "settings" }, deeplink: "bajutsusample://settings" }
+    runsOn:
+      ios: { locale: "ja_JP" }
+    run: { erase: true }
   steps:
     - tap: { id: settings.open }
     - tap: { id: settings.reindex }
@@ -145,8 +146,8 @@ def test_load_scenario_example() -> None:
     assert len(scenarios) == 1
     s = scenarios[0]
     assert s.name == "open settings and reindex"
-    assert s.preconditions.erase is True
-    assert s.preconditions.launch_env == {"SAMPLE_SCREEN": "settings"}
+    assert s.preconditions.run.erase is True
+    assert s.preconditions.app.launch.env == {"SAMPLE_SCREEN": "settings"}
     assert len(s.steps) == 2
     assert s.steps[1].capture == ["screenshot.after", "deviceLog"]
     assert s.expect[0].exists is not None
@@ -185,7 +186,7 @@ def test_dump_round_trip() -> None:
     text = """
 - name: round trip
   preconditions:
-    launchEnv: { K: "1" }
+    app: { launch: { env: { K: "1" } } }
   steps:
     - tap: { id: home.go }
     - type: { text: "hi", into: { id: home.field } }
@@ -338,7 +339,9 @@ def test_redact_totp_secrets_round_trips_every_policy_shape(
     # own default is how that used to happen — `systemAlertHandling.labels` rejected `[]` while `[]`
     # was also its default (BE-0401), so a policy steering the guard by anything else died here, on
     # the `run` path, after the steps had passed. `labels` is gone (BE-0406); the invariant is not.
-    scn = Scenario.model_validate({"name": "a", "steps": [], "systemAlertHandling": policy})
+    scn = Scenario.model_validate(
+        {"name": "a", "steps": [], "preconditions": {"run": {"systemAlertHandling": policy}}}
+    )
     assert redact_totp_secrets(scn).model_dump() == scn.model_dump()
 
 
@@ -348,13 +351,17 @@ def test_redact_totp_secrets_preserves_an_explicit_system_alert_policy() -> None
         {
             "name": "a",
             "steps": [{"totp": {"secret": _TOTP_SEED, "into": {"var": "code"}}}],
-            "systemAlertHandling": {
-                "rules": [{"prompt": "notifications", "choice": "grant"}],
-                "pollInterval": 0.5,
+            "preconditions": {
+                "run": {
+                    "systemAlertHandling": {
+                        "rules": [{"prompt": "notifications", "choice": "grant"}],
+                        "pollInterval": 0.5,
+                    }
+                }
             },
         }
     )
-    policy = redact_totp_secrets(scn).system_alert_handling
+    policy = redact_totp_secrets(scn).preconditions.run.system_alert_handling
     assert isinstance(policy, SystemAlertHandling)
     assert [(r.prompt, r.choice) for r in policy.rules] == [("notifications", "grant")]
     assert policy.poll_interval == 0.5

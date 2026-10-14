@@ -136,7 +136,10 @@ def register_tools(
 
         Returns a summary with the manifest path. The scenario parameter is
         a path to a *.yaml file; if omitted, all scenarios in the target's
-        configured directory are run.
+        `paths.scenarios` directory are run. `erase=True` erases the device
+        before every scenario, overriding each scenario's
+        `preconditions.run.erase` and the target's `run.erase`; False leaves
+        those in force.
         """
         # The internal run module, not the public wrapper: the tool's timeout kills what it spawned,
         # and the run must die with it rather than outlive it in a session of its own (BE-0449).

@@ -5,7 +5,9 @@
 # launch-time tab shortcut, so a relaunch lands on the Stable tab; the scenario taps Log again.
 - name: relaunch resets in-app state
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Log", traits: [button] }
     - wait: { for: { labelMatches: "Intense", traits: [button] }, timeout: 10 }

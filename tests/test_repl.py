@@ -19,7 +19,7 @@ from typer.testing import CliRunner
 
 import bajutsu.repl.cli as repl_cli
 from bajutsu.cli import app
-from bajutsu.common.config import load_config, resolve
+from bajutsu.common.config import ResolvedPreconditions, load_config, resolve
 from bajutsu.common.devices import errors as device_errors
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
@@ -33,7 +33,6 @@ from bajutsu.common.platform_lifecycle import (
 )
 from bajutsu.common.platform_lifecycle.environments.xcuitest_live import XcuitestLiveEnvironment
 from bajutsu.common.runner import launch as launch_module
-from bajutsu.common.scenario import Preconditions
 from bajutsu.repl.loop import PROMPT, repl_loop
 from bajutsu.repl.render import _display_width, render_json, render_table
 from bajutsu.repl.session import COMMAND_ERRORS, FATAL_ERRORS, ReplExit, ReplSession, _yaml_key
@@ -1039,7 +1038,7 @@ def test_repl_defaults_to_no_erase_on_the_live_webdriver_route(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # The live route's device behind an `appium` grid is already booted with its build installed
-    # (BE-0238); its environment explicitly rejects `Preconditions(erase=True)`, so an unset
+    # (BE-0238); its environment explicitly rejects `ResolvedPreconditions(erase=True)`, so an unset
     # `--erase` must default to off there rather than the local route's on.
     monkeypatch.setattr("bajutsu.cli._shared.select_actuator", lambda *a, **k: "xcuitest")
     monkeypatch.setattr(
@@ -1048,7 +1047,7 @@ def test_repl_defaults_to_no_erase_on_the_live_webdriver_route(
     captured: dict[str, object] = {}
 
     def launch(
-        _udid: str, _eff: object, _actuator: str, pre: Preconditions, **_k: object
+        _udid: str, _eff: object, _actuator: str, pre: ResolvedPreconditions, **_k: object
     ) -> tuple[FakeDriver, None]:
         captured["erase"] = pre.erase
         return FakeDriver(), None
@@ -1113,7 +1112,7 @@ def test_repl_honors_an_explicit_no_erase_on_the_local_route(
     captured: dict[str, object] = {}
 
     def launch(
-        _udid: str, _eff: object, _actuator: str, pre: Preconditions, **_k: object
+        _udid: str, _eff: object, _actuator: str, pre: ResolvedPreconditions, **_k: object
     ) -> tuple[FakeDriver, None]:
         captured["erase"] = pre.erase
         return FakeDriver(), None
@@ -1320,7 +1319,7 @@ def _stub_attach(
     captured: dict[str, object] = {}
 
     def launch(
-        _udid: str, _eff: object, _actuator: str, pre: Preconditions, **kw: object
+        _udid: str, _eff: object, _actuator: str, pre: ResolvedPreconditions, **kw: object
     ) -> tuple[FakeDriver, None]:
         captured.update(kw, erase=pre.erase, attach_requested=env._attach)
         if error is not None:

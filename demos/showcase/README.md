@@ -138,7 +138,7 @@ brittle than ids, so scroll counts may need on-device tuning per toolkit.
 
 Deeplink schemes are per-product (so two installed apps never collide): `showcaseswiftui`,
 `showcaseuikit`, plus the `…noax` variants. Because `bajutsu` opens the URL literally, the
-shared scenarios use `launchEnv` + taps (scheme-agnostic) rather than deeplinks. A deeplink
+shared scenarios use `app.launch.env` + taps (scheme-agnostic) rather than deeplinks. A deeplink
 selects a tab (it no longer pushes a detail screen — BE-0079); to exercise one directly:
 
 ```bash

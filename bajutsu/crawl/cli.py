@@ -35,6 +35,7 @@ from bajutsu.cli._shared import (
     WORKER_CONFIG_HELP,
     _ai_redactor,
     _build_alert_guard,
+    _command_preconditions_or_exit,
     _device_udid_or_exit,
     _install_usage_ledger,
     _load_device_worker_or_exit,
@@ -49,7 +50,7 @@ from bajutsu.cli._shared import (
     resolve_system_alert_handling_flag,
 )
 from bajutsu.common.ai import announce_ai
-from bajutsu.common.config import Effective, web_base_url
+from bajutsu.common.config import Effective, command_preconditions, web_base_url
 from bajutsu.common.devices import errors as device_errors
 from bajutsu.common.drivers import base
 from bajutsu.common.evidence.redaction import Redactor
@@ -58,7 +59,6 @@ from bajutsu.common.platform_lifecycle import CrawlEnvironment, environment_for
 from bajutsu.common.run_meta.files import RunArtifactReader, runs_root
 from bajutsu.common.run_meta.id import new_run_id
 from bajutsu.common.runner import launch_driver
-from bajutsu.common.scenario import Preconditions
 from bajutsu.crawl import flows as crawl_flows
 from bajutsu.crawl import report as crawl_report
 from bajutsu.crawl import repro as crawl_repro
@@ -300,7 +300,11 @@ def _build_lane(
     """
     env = environment_for(plan.actuator, udid)
     driver, _readiness = launch_driver(
-        udid, plan.eff, plan.actuator, Preconditions(erase=plan.erase), environment=env
+        udid,
+        plan.eff,
+        plan.actuator,
+        command_preconditions(plan.eff, erase=plan.erase),
+        environment=env,
     )
     # After the launch, deliberately: `crawl_reset` snapshots `simctl.Env(self._udid)` eagerly, so a
     # reset built ahead of it would bind the udid the launch may have just replaced.
@@ -460,12 +464,16 @@ def crawl(
         "screen that shows it (on by default; the WebUI lets you resume a pruned branch on demand)",
     ),
     erase: bool = typer.Option(
-        True, "--erase/--no-erase", help="erase the device before launching (app must be installed)"
+        True,
+        "--erase/--no-erase",
+        help="erase the device before launching (app must be installed); the target's run.erase "
+        "does not apply here (default: erase)",
     ),
     system_alert_handling: bool | None = typer.Option(
         None,
         "--system-alert-handling/--no-system-alert-handling",
-        help="handle unexpected OS prompts while crawling (on by default; uses the same API key)",
+        help="handle unexpected OS prompts while crawling; overrides the target's "
+        "run.systemAlertHandling (default: on; uses the same API key)",
     ),
     alert_vision_instruction: str = typer.Option(
         "",
@@ -496,7 +504,7 @@ def crawl(
         None,
         "--headed/--no-headed",
         help="web backend: crawl a visible (headed, slow-motion) browser instead of headless; "
-        "default leaves the target's `headless` config",
+        "overrides the target's driver.headless",
     ),
     language: str = typer.Option(
         "",
@@ -529,7 +537,7 @@ def crawl(
         typer.echo("crawl: --continue and --resume-src/--resume-key are mutually exclusive")
         raise typer.Exit(2)
     eff, _source, checkout_root = _load_effective_with_source(config, target_name)
-    # --headed/--no-headed overrides the target's `headless` config (web backend only; iOS ignores it).
+    # --headed/--no-headed overrides the target's `driver.headless` (web only; iOS ignores it).
     eff = _with_headed(eff, headed)
     # --language overrides the target's `ai.language` (flag > config > auto), BE-0188.
     eff = _resolve_language(eff, language)
@@ -586,11 +594,14 @@ def crawl(
     environment = environment_for(actuator, "")
     udids = _plan_lanes(environment, udid, workers, seed_path)
 
-    # On by default while crawling (a crawl carries no scenario to hold its own setting).
+    # A crawl carries no scenario to hold its own setting, so the flag sits over the target's
+    # `run.systemAlertHandling`, which is on unless the target writes `false` (BE-0452).
     system_alert_handling_enabled = resolve_system_alert_handling_flag(
-        system_alert_handling, default=True
+        system_alert_handling, default=eff.run_defaults.system_alert_handling is not False
     )
 
+    # Refused here, before any lane starts, rather than inside a lane's own launch.
+    _command_preconditions_or_exit(eff, erase=erase)
     plan = _CrawlPlan(
         eff=eff,
         actuator=actuator,

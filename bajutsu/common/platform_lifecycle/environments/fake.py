@@ -7,9 +7,9 @@ from pathlib import Path
 
 from bajutsu.common import backends
 from bajutsu.common.config import Effective
+from bajutsu.common.config.preconditions import ResolvedPreconditions
 from bajutsu.common.drivers import base
 from bajutsu.common.platform_lifecycle.environments.ios import _DeviceEnvironment
-from bajutsu.common.scenario import Preconditions
 
 
 class FakeEnvironment(_DeviceEnvironment):
@@ -26,7 +26,7 @@ class FakeEnvironment(_DeviceEnvironment):
     def start(
         self,
         eff: Effective,  # noqa: ARG002  # Environment shape
-        pre: Preconditions,  # noqa: ARG002
+        pre: ResolvedPreconditions,  # noqa: ARG002
         *,
         extra_env: Mapping[str, str] | None = None,  # noqa: ARG002
         record_video_dir: Path | None = None,  # noqa: ARG002
@@ -43,7 +43,7 @@ class FakeEnvironment(_DeviceEnvironment):
     def start_member(
         self,
         eff: Effective,
-        pre: Preconditions,
+        pre: ResolvedPreconditions,
         *,
         extra_env: Mapping[str, str] | None = None,
         permissions: Mapping[str, str] | None = None,

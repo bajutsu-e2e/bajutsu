@@ -422,7 +422,7 @@ def make_proxy_hook() -> ProxyHook:
 
 ### Key-collision guard
 
-On-device, the launch-environment merge order is `{**target_env, **preconditions.launch_env}` — a scenario's `preconditions.launchEnv` wins over the target-level value. If a hook injects a key that a scenario's preconditions also set, the injected value would be silently overridden. To surface this early, `submit` checks the scenario file and **fails loudly at submit time**, naming the scenario, the key, and the file, before any upload happens.
+On-device, the launch-environment merge order is `{**target_env, **preconditions.app.launch.env}` — a scenario's `preconditions.app.launch.env` wins over the target-level value. If a hook injects a key that a scenario's preconditions also set, the injected value would be silently overridden. To surface this early, `submit` checks the scenario file and **fails loudly at submit time**, naming the scenario, the key, and the file, before any upload happens.
 
 ### Checkpoint-resume behaviour
 

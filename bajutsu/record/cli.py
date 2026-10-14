@@ -14,6 +14,7 @@ from bajutsu.cli._shared import (
     WORKER_CONFIG_HELP,
     _ai_redactor,
     _build_alert_guard,
+    _command_preconditions_or_exit,
     _device_udid_or_exit,
     _install_usage_ledger,
     _load_device_worker_or_exit,
@@ -39,7 +40,7 @@ from bajutsu.common.devices import errors as device_errors
 from bajutsu.common.handoff import HumanHandoffUnavailable
 from bajutsu.common.platform_lifecycle import environment_for
 from bajutsu.common.runner import launch_driver
-from bajutsu.common.scenario import Preconditions, dump_scenarios
+from bajutsu.common.scenario import dump_scenarios
 from bajutsu.record.loop import record as record_loop
 
 
@@ -114,12 +115,16 @@ def record(
     udid: str = typer.Option("booted"),
     backend: str = typer.Option(""),
     erase: bool = typer.Option(
-        True, "--erase/--no-erase", help="erase the device before launching (app must be installed)"
+        True,
+        "--erase/--no-erase",
+        help="erase the device before launching (app must be installed); the target's run.erase "
+        "does not apply here (default: erase)",
     ),
     system_alert_handling: bool | None = typer.Option(
         None,
         "--system-alert-handling/--no-system-alert-handling",
-        help="handle unexpected OS prompts while authoring (on by default; uses the same API key)",
+        help="handle unexpected OS prompts while authoring; overrides the target's "
+        "run.systemAlertHandling (default: on; uses the same API key)",
     ),
     max_steps: int = typer.Option(
         30,
@@ -142,13 +147,13 @@ def record(
         None,
         "--headed/--no-headed",
         help="web backend: author against a visible (headed, slow-motion) browser instead of "
-        "headless; default leaves the target's `headless` config",
+        "headless; overrides the target's driver.headless",
     ),
     browser: str = typer.Option(
         "",
         "--browser",
         help=f"web backend: rendering engine to author against — {' / '.join(WEB_ENGINES)}; "
-        "default leaves the target's `browser` config (chromium)",
+        "overrides the target's runsOn.browser.engine (default: chromium)",
     ),
     language: str = typer.Option(
         "",
@@ -181,9 +186,9 @@ def record(
     `scenarios` dir — or, for a read-only Git `--config`, under the current directory (BE-0063).
     """
     eff, _source, checkout_root = _load_effective_with_source(config, target_name)
-    # --headed/--no-headed overrides the target's `headless` config (web backend only; iOS ignores it).
+    # --headed/--no-headed overrides the target's `driver.headless` (web only; iOS ignores it).
     eff = _with_headed(eff, headed)
-    # --browser overrides the target's `browser` config (web backend only; flag > config > chromium).
+    # --browser overrides the target's `runsOn.browser.engine` (web only; flag > config > chromium).
     eff = _resolve_browser(eff, browser)
     # --language overrides the target's `ai.language` (flag > config > auto), BE-0188.
     eff = _resolve_language(eff, language)
@@ -211,8 +216,11 @@ def record(
     # an `appium` environment names (BE-0452).
     udid = _device_udid_or_exit(eff, udid)
     alert_guard = None
-    # On by default while authoring (there is no scenario yet to carry its own setting).
-    if resolve_system_alert_handling_flag(system_alert_handling, default=True):
+    # There is no scenario yet to carry its own setting, so the flag sits over the target's
+    # `run.systemAlertHandling`, which is on unless the target writes `false` (BE-0452).
+    if resolve_system_alert_handling_flag(
+        system_alert_handling, default=eff.run_defaults.system_alert_handling is not False
+    ):
         alert_guard = _build_alert_guard(eff, redactor, alert_vision_instruction)
     # Resolve through the selected environment's own device lookup, as `repl` does: simctl for the
     # local iOS route, the endpoint as is for an `appium` grid, and no device at all for the web.
@@ -237,11 +245,12 @@ def record(
     except ValueError as e:
         typer.echo(str(e), err=True)
         raise typer.Exit(2) from None
+    preconditions = _command_preconditions_or_exit(eff, erase=erase)
     say(
         f"⚙️  preparing the simulator — installing and launching {target_name} (this can take a moment) …"
     )
     try:
-        driver, _readiness = launch_driver(udid, eff, actuator, Preconditions(erase=erase))
+        driver, _readiness = launch_driver(udid, eff, actuator, preconditions)
     except device_errors.DeviceError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None

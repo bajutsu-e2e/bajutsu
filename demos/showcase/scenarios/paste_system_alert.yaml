@@ -34,9 +34,12 @@
 # scenario file and do not reset per-scenario device state.
 - name: grant the paste-consent prompt with handleSystemAlert
   tags: [systemalert]
-  systemAlertHandling: false
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
+    run:
+      systemAlertHandling: false
   steps:
     - setClipboard: { text: "bajutsu-cross-clip" }   # written from outside the app (BE-0052)
     - tap: { label: "Permissions", traits: [button] }
@@ -58,9 +61,12 @@
 
 - name: deny the paste-consent prompt with handleSystemAlert
   tags: [systemalert]
-  systemAlertHandling: false
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
+    run:
+      systemAlertHandling: false
   steps:
     # The same seed as the grant scenario, and here it is the string that must *not* arrive: the
     # refused read publishes the `(none)` marker, so a tap that hit the grant button by mistake fails
@@ -81,10 +87,15 @@
 # localized strings, so their own controls stay the English labels these steps name.
 - name: grant the paste-consent prompt on a Japanese Simulator
   tags: [systemalert]
-  systemAlertHandling: false
   preconditions:
-    locale: ja_JP
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
+    runsOn:
+      ios:
+        locale: ja_JP
+    run:
+      systemAlertHandling: false
   steps:
     - setClipboard: { text: "bajutsu-cross-clip" }
     - tap: { label: "Permissions", traits: [button] }
@@ -98,10 +109,15 @@
 
 - name: deny the paste-consent prompt on a Japanese Simulator
   tags: [systemalert]
-  systemAlertHandling: false
   preconditions:
-    locale: ja_JP
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
+    runsOn:
+      ios:
+        locale: ja_JP
+    run:
+      systemAlertHandling: false
   steps:
     - setClipboard: { text: "bajutsu-cross-clip" }
     - tap: { label: "Permissions", traits: [button] }

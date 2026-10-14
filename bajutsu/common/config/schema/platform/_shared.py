@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Self
+from typing import Annotated, Any, Literal, Self
 
 from pydantic import AfterValidator, BeforeValidator, Field, model_validator
 
@@ -37,9 +37,15 @@ class AppCommon(_Model):
 
 
 class LaunchEnv(_Model):
-    """`app.launch` on a platform that reads only environment variables (Android, web)."""
+    """`app.launch` on a platform that reads only environment variables (the web)."""
 
     env: dict[str, str] = Field(default_factory=dict)
+
+
+# How the app is (re)installed before each run when the target gives an `app.path` (BE-0452):
+# `clean` uninstalls first, `overwrite` installs over the existing app and keeps its data. Unset
+# leaves it to the scenario, then the built-in `clean`.
+Reinstall = Literal["clean", "overwrite"]
 
 
 def coerce_range(value: Any) -> Any:

@@ -30,15 +30,9 @@ from bajutsu.common.config.schema import (
     XcuitestConfig,
     _Model,
 )
-from bajutsu.common.config.schema.platform._shared import AppCommon, LaunchEnv
+from bajutsu.common.config.schema.platform._shared import AppCommon
 from bajutsu.common.config.schema.platform.android import AndroidApp, AndroidDriver, AndroidRunsOn
-from bajutsu.common.config.schema.platform.ios import (
-    IosApp,
-    IosDriver,
-    IosLaunch,
-    IosRun,
-    IosRunsOn,
-)
+from bajutsu.common.config.schema.platform.ios import IosApp, IosDriver, IosRun, IosRunsOn
 from bajutsu.common.config.schema.platform.web import WebApp, WebDriver, WebRunsOn
 
 
@@ -152,14 +146,13 @@ def _platform_config(a: TargetConfig) -> PlatformConfig:
     return IosConfig(bundle_id=getattr(app, "id", None) or "")
 
 
-def _launch(app: _Model) -> tuple[dict[str, str], list[str]]:
-    """The app's launch environment and arguments; a platform with no arguments gives none."""
+def _launch(app: _Model) -> tuple[dict[str, str], list[str], str | None]:
+    """The app's launch environment, arguments, and deeplink; a field the platform lacks gives none."""
     launch = getattr(app, "launch", None)
-    if isinstance(launch, IosLaunch):
-        return dict(launch.env), list(launch.args)
-    if isinstance(launch, LaunchEnv):
-        return dict(launch.env), []
-    return {}, []
+    env = getattr(launch, "env", None) or {}
+    args = getattr(launch, "args", None) or []
+    deeplink = getattr(launch, "deeplink", None)
+    return dict(env), list(args), deeplink
 
 
 def resolve(config: Config, target: str) -> Effective:
@@ -169,9 +162,10 @@ def resolve(config: Config, target: str) -> Effective:
     a = config.targets[target]
     app = a.app
     start_when = app.start_when if isinstance(app, AppCommon) else None
-    launch_env, launch_args = _launch(app)
+    launch_env, launch_args, deeplink = _launch(app)
     runs_on = a.runs_on
     locale = (runs_on.locale if isinstance(runs_on, IosRunsOn) else None) or DEFAULT_LOCALE
+    seed_photos = list(runs_on.seed_photos) if isinstance(runs_on, IosRunsOn) else []
     run = a.run
     tip_kit = run.tip_kit_handling if isinstance(run, IosRun) else None
     return Effective(
@@ -181,9 +175,13 @@ def resolve(config: Config, target: str) -> Effective:
         start_when=start_when.exists.sel.as_selector() if start_when is not None else None,
         conditions=_conditions(runs_on),
         backend=[a.platform],
+        declared_platform=a.platform,
         locale=locale,
         launch_env=launch_env,
         launch_args=launch_args,
+        reinstall=getattr(app, "reinstall", None),
+        deeplink=deeplink,
+        seed_photos=seed_photos,
         id_namespaces=list(app.id_namespaces) if isinstance(app, AppCommon) else [],
         reserved_namespaces=list(config.reserved_namespaces),
         mock_server=a.services.mock_server,

@@ -6,7 +6,9 @@
 # (`--backend ios`).
 - name: open and dismiss the detented sheet
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Log", traits: [button] }
     - wait: { for: { label: "Open Filter", traits: [button] }, timeout: 10 }
@@ -22,7 +24,9 @@
 
 - name: open and dismiss the full-screen cover
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Log", traits: [button] }
     - wait: { for: { label: "Open Gallery", traits: [button] }, timeout: 10 }
@@ -35,7 +39,9 @@
 
 - name: action sheet records its choice
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Log", traits: [button] }
     - wait: { for: { label: "Submit", traits: [button] }, timeout: 10 }
@@ -58,7 +64,9 @@
 # this -noax twin addresses them by label.
 - name: native alert can be tapped
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Log", traits: [button] }
     - wait: { for: { label: "Submit", traits: [button] }, timeout: 10 }
@@ -81,7 +89,9 @@
 
 - name: native alert cancel leaves a distinct result
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Log", traits: [button] }
     - wait: { for: { label: "Submit", traits: [button] }, timeout: 10 }
@@ -101,7 +111,9 @@
 # assertion keys on the unambiguous "Easy" (only the mirror ever says "Easy") flipping away.
 - name: stepper and toggle mirror state
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Log", traits: [button] }
     - wait: { for: { labelMatches: "Intense", traits: [button] }, timeout: 10 }
