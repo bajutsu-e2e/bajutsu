@@ -984,8 +984,8 @@ run history (`bajutsu stats`). All run against the **active config**, which you 
 the file browser, a Git repository, or an uploaded `.zip` bundle (see "Open config" below).
 Each request queues a job. A `bajutsu worker` runs it, since the server runs none itself
 (BE-0449). The server streams the job's output. It serves the produced `runs/<id>/` tree. The
-report's relative asset links resolve against it, as does the crawl's `screenmap.json`. It binds
-`127.0.0.1`.
+report's relative asset links resolve against it, as does the crawl's `screenmap.json`. The server
+binds `127.0.0.1`.
 
 ```bash
 bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs runs] [--baselines <dir>]
