@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0452") |
-| 実装 PR | [#2191](https://github.com/bajutsu-e2e/bajutsu/pull/2191)（単位 1〜3）、[#2193](https://github.com/bajutsu-e2e/bajutsu/pull/2193)（単位 4）、[#2194](https://github.com/bajutsu-e2e/bajutsu/pull/2194)（単位 5）、PR_PLACEHOLDER21（単位 6〜7） |
+| 実装 PR | [#2191](https://github.com/bajutsu-e2e/bajutsu/pull/2191)（単位 1〜3）、[#2193](https://github.com/bajutsu-e2e/bajutsu/pull/2193)（単位 4）、[#2194](https://github.com/bajutsu-e2e/bajutsu/pull/2194)（単位 5）、[#2195](https://github.com/bajutsu-e2e/bajutsu/pull/2195)（単位 6〜7） |
 | トピック | ドライバとバックエンドのアーキテクチャ |
 | 関連 | [BE-0126](../BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config-ja.md)、[BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact-ja.md)、[BE-0228](../BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation-ja.md)、[BE-0076](../BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md)、[BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks-ja.md)、[BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction-ja.md)、[BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch-ja.md)、[BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md)、[BE-0447](../BE-0447-install-app-step/BE-0447-install-app-step-ja.md)、[BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md) |
 <!-- /BE-METADATA -->
@@ -498,7 +498,7 @@ target は、どこで実行するかを持たなくなります。target が書
     - `report/load.py`は、`before`、`after`、`error`を使う保存済みの`scenario.yaml`も書き換えて読みます。シナリオのモデルがこれらの名前を拒否するようになったので、書き換えなしでは manifest が読めても以前の run を読み込めないからです。
     - CTRF の記録の`extra`は、フェーズを`setup`と`cleanup`という名前で持ちます。`extra.before`や`extra.after`を読んでいた CTRF の利用側は、新しいキーへ移る必要があります。
   - この作業単位では、これらの名前を説明しているページを更新しました。文書全体の見直しは作業単位13に残します。
-- PR_PLACEHOLDER21（単位 6〜7）— コマンドラインのフラグが組み直したフィールドを読むようになりました。シナリオの`preconditions`は、target と同じグループ名を使います。
+- [#2195](https://github.com/bajutsu-e2e/bajutsu/pull/2195)（単位 6〜7）— コマンドラインのフラグが組み直したフィールドを読むようになりました。シナリオの`preconditions`は、target と同じグループ名を使います。
   - 作業単位6：`--browser`の値と`--browsers`の各要素は、`runsOn.browser.engine`のモデルで読みます（`parse_engine_flag`）。`--browser`はこのフィールドを置き換えるので、リストで書いたエンジンは条件として数えなくなります。`run`、`record`、`crawl`、`repl`のヘルプは、各フラグが上書きするフィールドを示します。`triage --rerun`と MCP の run の docstring も同じです。フラグは引き続き、名前を変えていない`Effective`を通して働きます。
   - 動作の変更があります。`record`と`crawl`は、`--system-alert-handling`の既定値に target の`run.systemAlertHandling`を使います。そのため、target が`false`と書けば、そこでもガードは止まります。`record`、`crawl`、`repl`の`--erase`は独自の既定値のままで、ヘルプには`run.erase`が効かないと書きました。
   - 作業単位7：`preconditions`は`app`、`runsOn`、`run`を持ちます。トップレベルの`systemAlertHandling`と`iosTipKitHandling`は、`run.systemAlertHandling`と`run.tipKitHandling`へ移しました。平坦なキーとこの2つのフィールドは、読み込みの時点で失敗し、メッセージが移動先を示します。シナリオの`app.reinstall`は、既定で未設定です。
