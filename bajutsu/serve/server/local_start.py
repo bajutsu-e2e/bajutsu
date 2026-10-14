@@ -98,7 +98,7 @@ def local_file_store(
     Signed with the local HMAC key.
 
     Raises:
-        ValueError: *port* is 0, *baselines_dir* is or encloses the runs or the state directory, the
+        ValueError: *port* is 0, *baselines_dir* overlaps the runs or the state directory, the
             runs directory is a symlink, or the signing key file is unsafe.
     """
     if port == 0:
@@ -120,21 +120,24 @@ def local_file_store(
 
 
 def _refuse_enclosing_baselines(baselines_dir: Path, *, runs_dir: Path, state_dir: Path) -> None:
-    """Refuse a ``--baselines`` directory that is, or holds, the runs tree or the state directory.
+    """Refuse a ``--baselines`` directory that overlaps the runs tree or the state directory.
 
     The store serves every file under the baselines mount to anyone holding a signed URL, and an
     override run's lease signs one per file there. A baselines directory enclosing the state
     directory would hand out the signing key, the secrets key, and the queue database; one
-    enclosing the runs tree would list every run's files as baselines.
+    enclosing the runs tree would list every run's files as baselines. One nested inside either
+    leaks too: under the state directory it can be the object store's own root, so every stored
+    object would be listed as a baseline.
 
     Raises:
-        ValueError: *baselines_dir* is or encloses *runs_dir* or *state_dir*.
+        ValueError: *baselines_dir* is, encloses, or sits inside *runs_dir* or *state_dir*.
     """
     baselines = baselines_dir.resolve()
     for label, directory in (("runs", runs_dir), ("state", state_dir)):
-        if directory.resolve().is_relative_to(baselines):
+        other = directory.resolve()
+        if other.is_relative_to(baselines) or baselines.is_relative_to(other):
             raise ServeStartupError(
-                f"--baselines {baselines_dir} is or contains the {label} directory {directory}; "
+                f"--baselines {baselines_dir} overlaps the {label} directory {directory}; "
                 "a local start serves the baselines directory over signed URLs, so point "
                 "--baselines at a directory of its own"
             )

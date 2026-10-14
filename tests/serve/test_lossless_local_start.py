@@ -471,8 +471,8 @@ def test_a_config_org_named_like_a_store_folder_is_never_seeded(
     assert state.repository is not None and state.repository.get_org("baselines") is None
 
 
-@pytest.mark.parametrize("baselines", [".", "runs", ".bajutsu"])
-def test_a_local_start_refuses_baselines_that_hold_the_runs_or_state_directory(
+@pytest.mark.parametrize("baselines", [".", "runs", ".bajutsu", ".bajutsu/objects", "runs/base"])
+def test_a_local_start_refuses_baselines_that_overlap_the_runs_or_state_directory(
     tmp_path: Path, baselines: str
 ) -> None:
     # The store serves the baselines directory over signed URLs, so one enclosing the state
