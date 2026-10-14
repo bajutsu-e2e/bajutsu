@@ -15,7 +15,12 @@ from typing import TYPE_CHECKING
 
 from bajutsu.serve.server.file_object_store import FileObjectStore, UrlSigner
 from bajutsu.serve.server.local_keys import signing_key
-from bajutsu.serve.server.object_store import ObjectStore, artifact_prefix, object_store_from_env
+from bajutsu.serve.server.object_store import (
+    ObjectStore,
+    artifact_prefix,
+    baseline_prefix,
+    object_store_from_env,
+)
 from bajutsu.serve.server.secrets import fernet_from_env, fernet_from_env_or_local
 
 if TYPE_CHECKING:
@@ -71,7 +76,14 @@ def loopback_base_url(host: str, port: int) -> str:
     return f"http://{name}:{port}"
 
 
-def local_file_store(runs_dir: Path, state_dir: Path, *, host: str, port: int) -> FileObjectStore:
+def local_file_store(
+    runs_dir: Path,
+    state_dir: Path,
+    *,
+    host: str,
+    port: int,
+    baselines_dir: Path | None = None,
+) -> FileObjectStore:
     """The ``file://`` store a local start keeps its objects in.
 
     Its keys follow the bucket layout. The default org's run artifacts (``artifacts/<runId>/…``)
@@ -79,11 +91,14 @@ def local_file_store(runs_dir: Path, state_dir: Path, *, host: str, port: int) -
     command line, and every run already under ``runs/``, resolves where it lies. Everything else
     (another org's prefix, scenarios, baselines, uploads) lives under ``<state_dir>/objects``, out
     of the runs tree: the default org's artifact store sees only its own runs, so no run id it can
-    be asked for names another tenant's tree or a store folder. Signed with the local HMAC key.
+    be asked for names another tenant's tree or a store folder. The default org's baselines
+    (``baselines/…``) live in *baselines_dir* when one is given: the `--baselines` directory an
+    approve writes and a run reads, so a worker's signed download reads the same files.
+    Signed with the local HMAC key.
 
     Raises:
-        ValueError: *port* is 0, or the runs directory is a symlink, or the signing key file is
-            unsafe.
+        ValueError: *port* is 0, *baselines_dir* overlaps the runs or the state directory, the
+            runs directory is a symlink, or the signing key file is unsafe.
     """
     if port == 0:
         # The signed URLs are fixed when the store is built, before any socket is bound, so an
@@ -92,16 +107,48 @@ def local_file_store(runs_dir: Path, state_dir: Path, *, host: str, port: int) -
             "--backend server without BAJUTSU_SERVER_STORE signs URLs to its own port, "
             "so it needs a fixed --port (not 0)"
         )
+    if baselines_dir is not None:
+        _refuse_enclosing_baselines(baselines_dir, runs_dir=runs_dir, state_dir=state_dir)
     return FileObjectStore(
         state_dir / LOCAL_OBJECTS_DIR,
         loopback_base_url(host, port),
         UrlSigner(signing_key(state_dir)),
         mount=(artifact_prefix(), runs_dir),
+        mounts=[(baseline_prefix(), baselines_dir)] if baselines_dir is not None else [],
     )
 
 
+def _refuse_enclosing_baselines(baselines_dir: Path, *, runs_dir: Path, state_dir: Path) -> None:
+    """Refuse a ``--baselines`` directory that overlaps the runs tree or the state directory.
+
+    The store serves every file under the baselines mount to anyone holding a signed URL, and an
+    override run's lease signs one per file there. A baselines directory enclosing the state
+    directory would hand out the signing key, the secrets key, and the queue database; one
+    enclosing the runs tree would list every run's files as baselines. One nested inside either
+    leaks too: under the state directory it can be the object store's own root, so every stored
+    object would be listed as a baseline.
+
+    Raises:
+        ValueError: *baselines_dir* is, encloses, or sits inside *runs_dir* or *state_dir*.
+    """
+    baselines = baselines_dir.resolve()
+    for label, directory in (("runs", runs_dir), ("state", state_dir)):
+        other = directory.resolve()
+        if other.is_relative_to(baselines) or baselines.is_relative_to(other):
+            raise ValueError(
+                f"--baselines {baselines_dir} overlaps the {label} directory {directory}; "
+                "a local start serves the baselines directory over signed URLs, so point "
+                "--baselines at a directory of its own"
+            )
+
+
 def artifact_store(
-    runs_dir: Path, state_dir: Path, *, host: str, port: int
+    runs_dir: Path,
+    state_dir: Path,
+    *,
+    host: str,
+    port: int,
+    baselines_dir: Path | None = None,
 ) -> tuple[ObjectStore, str, bool]:
     """The server's artifact store, its key prefix, and whether it is a local start's file store.
 
@@ -116,7 +163,8 @@ def artifact_store(
     if server_store is not None:
         store, prefix = server_store
         return store, prefix, False
-    return local_file_store(runs_dir, state_dir, host=host, port=port), "", True
+    store = local_file_store(runs_dir, state_dir, host=host, port=port, baselines_dir=baselines_dir)
+    return store, "", True
 
 
 def secrets_fernet(state_dir: Path, *, database: bool, local_database: bool) -> Fernet | None:

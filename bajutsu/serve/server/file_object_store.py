@@ -19,7 +19,7 @@ import shutil
 import stat
 import tempfile
 import time
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 from typing import BinaryIO
 from urllib.parse import quote, urlencode
@@ -120,15 +120,25 @@ class PendingPut:
         self._path.unlink(missing_ok=True)
 
 
+def _mount_prefix(prefix: str) -> str:
+    """*prefix*, checked as a mount's key prefix: a safe relative key ending in ``/``."""
+    if not prefix.endswith("/") or not valid_relative_key(prefix.rstrip("/")):
+        raise ValueError(f"invalid mount prefix: {prefix!r}")
+    return prefix
+
+
 class FileObjectStore:
     """`ObjectStore` over a directory, whose signed URLs point at this server's store routes.
 
     *mount*, when given, is a ``(key prefix, directory)`` pair: every key under that prefix lives
     under the directory instead of the root, with the prefix stripped. A local start mounts the
     runs tree at ``artifacts/`` (BE-0449), so the default org's run trees stay where ``bajutsu run``
-    writes them while every other object keeps the bucket layout under the root. The key namespace
-    is the bucket's either way, so a signature names one object and a key under the prefix can never
-    reach the root, nor one outside it the mount.
+    writes them while every other object keeps the bucket layout under the root. *mounts* adds more
+    pairs the same way; the local start mounts the ``--baselines`` directory at ``baselines/``, so a
+    worker downloads the baselines an approve wrote there. The store creates the *mount* directory
+    but not a *mounts* one, which appears with its first object. No prefix may nest inside another.
+    The key namespace is the bucket's either way, so a signature names one object and a key under a
+    prefix can never reach the root or another mount, nor one outside it the mount.
     """
 
     def __init__(
@@ -139,22 +149,30 @@ class FileObjectStore:
         *,
         presign_ttl: int = _PRESIGN_TTL,
         mount: tuple[str, Path] | None = None,
+        mounts: Sequence[tuple[str, Path]] = (),
     ) -> None:
         self._root = _owner_only_dir(root)
         self._base_url = base_url.rstrip("/")
         self.signer = signer
         self._ttl = presign_ttl
         self._mount: tuple[str, Path] | None = None
+        pairs: list[tuple[str, Path]] = []
         if mount is not None:
-            prefix, directory = mount
-            if not prefix.endswith("/") or not valid_relative_key(prefix.rstrip("/")):
-                raise ValueError(f"invalid mount prefix: {prefix!r}")
             # The mount is the operator's own runs tree, not a directory this store owns: create and
             # resolve it, but leave its mode alone (`make_run_dir` already restricts each run dir)
             # and follow a symlink (a runs tree moved to a larger disk). `path_for` confines every
             # key to the resolved directory, which is what protects it.
-            directory.mkdir(parents=True, exist_ok=True)
-            self._mount = (prefix, directory.resolve())
+            mount[1].mkdir(parents=True, exist_ok=True)
+            self._mount = (_mount_prefix(mount[0]), mount[1].resolve())
+            pairs.append(self._mount)
+        # The other mounts are the operator's directories too, resolved the same way. A missing one
+        # is not created here, so a start leaves no empty directory in the project.
+        pairs += [(_mount_prefix(prefix), directory.resolve()) for prefix, directory in mounts]
+        for i, (a, _) in enumerate(pairs):
+            for b, _ in pairs[i + 1 :]:
+                if a.startswith(b) or b.startswith(a):
+                    raise ValueError(f"mount prefixes overlap: {a!r} and {b!r}")
+        self._mounts: tuple[tuple[str, Path], ...] = tuple(pairs)
 
     @property
     def root(self) -> Path:
@@ -166,10 +184,16 @@ class FileObjectStore:
         """The ``(key prefix, resolved directory)`` mount, or None."""
         return self._mount
 
+    @property
+    def mounts(self) -> tuple[tuple[str, Path], ...]:
+        """Every ``(key prefix, resolved directory)`` mount, *mount* first."""
+        return self._mounts
+
     def _locate(self, key: str) -> tuple[Path, str]:
         """The directory *key* lives under, and its path relative to that directory."""
-        if self._mount is not None and key.startswith(self._mount[0]):
-            return self._mount[1], key[len(self._mount[0]) :]
+        for prefix, directory in self._mounts:
+            if key.startswith(prefix):
+                return directory, key[len(prefix) :]
         return self._root, key
 
     def path_for(self, key: str) -> Path:
@@ -186,21 +210,26 @@ class FileObjectStore:
         resolved = (base / rel).resolve()
         if resolved == base or not resolved.is_relative_to(base):
             raise ValueError(f"object key escapes the store root: {key!r}")
-        if self._mount is not None:
-            # Neither directory may be reached under the other's names, whichever one nests: a
-            # root-side key must not land in the mount (it would reach it under a name its prefix
-            # never covered), and a mounted key must not land in the root. When *other* encloses
-            # *base*, every key confined to *base* is inside it anyway, so that case is not an escape.
-            other = self._mount[1] if base == self._root else self._root
+        # No directory may be reached under another's names, whichever one nests: a root-side key
+        # must not land in a mount (it would reach it under a name its prefix never covered), and a
+        # mounted key must not land in the root or another mount. When *other* encloses *base*,
+        # every key confined to *base* is inside it anyway, so that case is not an escape.
+        for other in self._dirs():
+            if other == base:
+                continue
             lands_in_other = resolved == other or resolved.is_relative_to(other)
             if lands_in_other and not base.is_relative_to(other):
                 raise ValueError(f"object key escapes the store root: {key!r}")
         return resolved
 
+    def _dirs(self) -> tuple[Path, ...]:
+        """The root and every mounted directory."""
+        return (self._root, *(directory for _, directory in self._mounts))
+
     def _make_parents(self, path: Path) -> None:
         missing: list[Path] = []
         parent = path.parent
-        stop = (self._root, self._mount[1]) if self._mount is not None else (self._root,)
+        stop = self._dirs()
         while parent not in stop and not parent.exists():
             missing.append(parent)
             parent = parent.parent
@@ -218,6 +247,9 @@ class FileObjectStore:
                 own I/O failed (a full disk, a permission loss).
         """
         final = self.path_for(key)
+        # A mounted directory the store did not create at start (see *mounts*) appears with its
+        # first object, with the operator's default mode, as the local store would create it.
+        self._locate(key)[0].mkdir(parents=True, exist_ok=True)
         self._make_parents(final)
         # Re-resolve now that the parents exist: a symlinked parent created by someone else in the
         # meantime must not move the write outside the root.
@@ -289,17 +321,20 @@ class FileObjectStore:
     def list_keys(self, prefix: str) -> list[str]:
         if prefix and not valid_relative_key(prefix):
             raise ValueError(f"invalid object key prefix: {prefix!r}")
-        if self._mount is None:
-            return _walk(self._root, "", prefix)
-        mount_prefix, mounted = self._mount
-        if prefix.startswith(mount_prefix):
-            return _walk(mounted, mount_prefix, prefix)
-        # A shorter prefix spans both directories: the root's objects outside the mount's prefix,
-        # plus the mount's objects whose full key still matches.
-        keys = [k for k in _walk(self._root, "", prefix) if not k.startswith(mount_prefix)]
-        if mount_prefix.startswith(prefix):
-            keys += _walk(mounted, mount_prefix, mount_prefix)
-        return sorted(keys)
+        for mount_prefix, mounted in self._mounts:
+            if prefix.startswith(mount_prefix):
+                return _walk(mounted, mount_prefix, prefix)
+        # A shorter prefix spans several directories: the root's objects outside every mount's
+        # prefix, plus each mount's objects whose full key still matches.
+        keys = [
+            k
+            for k in _walk(self._root, "", prefix)
+            if not any(k.startswith(p) for p, _ in self._mounts)
+        ]
+        for mount_prefix, mounted in self._mounts:
+            if mount_prefix.startswith(prefix):
+                keys += _walk(mounted, mount_prefix, mount_prefix)
+        return sorted(keys) if self._mounts else keys
 
     def delete_key(self, key: str) -> None:
         path = self._read_path(key)

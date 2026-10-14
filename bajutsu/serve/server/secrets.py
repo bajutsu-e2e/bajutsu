@@ -5,12 +5,13 @@
 scoped by ``org_id`` like the other server tables — so it survives a restart, is shared across the
 control-plane replicas, and is scoped per org. As with the seam everywhere, there is no plaintext
 read an HTTP handler can reach: `describe` decrypts internally only to compute the masked preview,
-returning the mask alone. `cryptography` is imported lazily (behind the `db` extra), so the default
-serve/CLI path never loads it.
+returning the mask alone, and `values_for_job` is called only on the job-execution path (BE-0449).
+`cryptography` is a base dependency but is imported lazily, so the CLI path never loads it.
 """
 
 from __future__ import annotations
 
+import logging
 import os
 from datetime import UTC, datetime
 from pathlib import Path
@@ -21,6 +22,8 @@ from bajutsu.serve.helpers import mask_secret
 if TYPE_CHECKING:
     from cryptography.fernet import Fernet
     from sqlalchemy.engine import Engine
+
+_logger = logging.getLogger(__name__)
 
 
 class DbSecretStore:
@@ -78,6 +81,36 @@ class DbSecretStore:
             # Decrypt only to compute the masked preview; the plaintext never leaves this method.
             plaintext = self._fernet.decrypt(row.ciphertext.encode("ascii")).decode("utf-8")
             return mask_secret(plaintext)
+
+    def values_for_job(self) -> dict[str, str]:
+        """Every secret of this org, decrypted, by logical name — for a job's environment only.
+
+        The `SecretStore` read that no HTTP handler calls (BE-0449). A row the current key cannot
+        decrypt (the key was rotated without re-entering the value) is skipped with a warning, so
+        one stale secret does not stop every job of the org.
+        """
+        from cryptography.fernet import InvalidToken
+        from sqlalchemy import select
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import Secret
+
+        out: dict[str, str] = {}
+        with Session(self._engine) as session:
+            rows = session.scalars(select(Secret).where(Secret.org_id == self._org_id)).all()
+            for row in rows:
+                try:
+                    out[row.name] = self._fernet.decrypt(row.ciphertext.encode("ascii")).decode(
+                        "utf-8"
+                    )
+                except InvalidToken:
+                    _logger.warning(
+                        "secret %r of org %r cannot be decrypted with the current key; "
+                        "a job runs without it",
+                        row.name,
+                        self._org_id,
+                    )
+        return out
 
 
 def fernet_from_env() -> Fernet | None:

@@ -1,18 +1,19 @@
 """The FastAPI backend's routes are generated from the shared route registry (BE-0253 Part 3).
 
-`make_app` iterates `ROUTES` and registers every entry that carries a `handle` and is not
-`local_only`, so the hosted backend's route table is derived from the same source of truth the
-stdlib handler dispatches from. These tests lock that the generated surface matches the registry
-(the anti-drift guard the item exists to provide — the FastAPI twin of the stdlib
-`test_off_loop_routes_are_intercepted_before_registry`), that the Part 4 `local_only` triage really
-keeps the local-only routes off this backend, that the endpoints previously missing here are now
-served, and that a generated route decodes a percent-encoded path param exactly once. No mocks — a
-real `ServeState` with local seams.
+`make_app` iterates `ROUTES` and registers every entry that carries a `handle`, skipping the
+`local_only` ones on a hosted deployment, so its route table is derived from the same source of
+truth the stdlib handler dispatches from. These tests lock that the generated surface matches the
+registry (the anti-drift guard the item exists to provide — the FastAPI twin of the stdlib
+`test_off_loop_routes_are_intercepted_before_registry`), that the Part 4 `local_only` triage keeps
+the local-only routes off a hosted deployment while one that is not hosted serves them (BE-0449),
+that the endpoints previously missing here are now served, and that a generated route decodes a
+percent-encoded path param exactly once. No mocks — a real `ServeState` with local seams.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 from _shared import project, write_run
 from fastapi import FastAPI
@@ -51,45 +52,82 @@ def _exposed(app: FastAPI) -> set[tuple[str, str]]:
     }
 
 
-def test_fastapi_app_exposes_every_non_local_only_registry_route(tmp_path: Path) -> None:
+def test_fastapi_app_exposes_every_registry_route_when_not_hosted(tmp_path: Path) -> None:
     # The generated (uniform/text) routes and the bespoke off_loop ones together must cover every
-    # non-local_only entry in ROUTES. A route added to the registry without a FastAPI counterpart
-    # (a generated handle, or a bespoke off_loop handler for handle=None) fails here (BE-0253).
+    # entry in ROUTES on a deployment that is not hosted, `local_only` ones included (BE-0449). A
+    # route added to the registry without a FastAPI counterpart (a generated handle, or a bespoke
+    # off_loop handler for handle=None) fails here (BE-0253).
     exposed = _exposed(make_app(_state(tmp_path)))
+    missing = [(r.method, r.path) for r in ROUTES if (r.method, r.path) not in exposed]
+    assert missing == []
+
+
+def test_hosted_fastapi_app_exposes_every_non_local_only_registry_route(tmp_path: Path) -> None:
+    exposed = _exposed(make_app(_state(tmp_path, hosted=True)))
     missing = [
         (r.method, r.path) for r in ROUTES if not r.local_only and (r.method, r.path) not in exposed
     ]
     assert missing == []
 
 
-def test_fastapi_app_skips_local_only_registry_routes(tmp_path: Path) -> None:
-    # Part 4 triage: the hosted backend deliberately does not serve the local-only routes.
-    exposed = _exposed(make_app(_state(tmp_path)))
+def test_hosted_fastapi_app_skips_local_only_registry_routes(tmp_path: Path) -> None:
+    # Part 4 triage: a hosted deployment deliberately does not serve the local-only routes.
+    exposed = _exposed(make_app(_state(tmp_path, hosted=True)))
     leaked = [(r.method, r.path) for r in ROUTES if r.local_only and (r.method, r.path) in exposed]
     assert leaked == []
 
 
-def test_make_app_declares_that_it_serves_no_local_only_route(tmp_path: Path) -> None:
-    # The boot read's `capture` capability is keyed to this field, so the UI can disable Capture on
-    # a transport whose capture routes 404 (issue 1721). It has to follow the loop above rather than
-    # `hosted`: a local `serve --asgi` keeps `hosted` False and still reaches `make_app`, and the
-    # `/api/config` answer would otherwise offer a mode this app never registered.
-    state = _state(tmp_path)
-    assert state.serves_local_routes is True  # the stdlib server's default, before make_app
-    make_app(state)
-    assert state.serves_local_routes is False
-    capture = ops_config.serve_capabilities(state)["capture"]
-    assert capture["available"] is False and capture["reason"]
-    # The flag reports; it never widens. Every local-only route stays absent from the app either way.
-    assert TestClient(make_app(state)).post("/api/capture/start", json={}).status_code == 404
+def test_make_app_declares_whether_it_serves_the_local_only_routes(tmp_path: Path) -> None:
+    # The boot read's `capture` capability is keyed to this field, so the UI disables Capture only
+    # where the capture routes 404 (issue 1721). It follows `hosted` (BE-0449): a local start or a
+    # local `serve --asgi` sits at the device and serves them; a hosted deployment does not.
+    (tmp_path / "hosted").mkdir()
+    local = _state(tmp_path)
+    make_app(local)
+    assert local.serves_local_routes is True
+    assert ops_config.serve_capabilities(local)["capture"] == {"available": True, "reason": None}
+
+    hosted = _state(tmp_path / "hosted", hosted=True)
+    make_app(hosted)
+    assert hosted.serves_local_routes is False
+    capture = ops_config.serve_capabilities(hosted)["capture"]
+    assert capture == {"available": False, "reason": ops_config.CAPTURE_HOSTED_REASON}
 
 
-def test_local_only_routes_are_not_found_on_the_hosted_backend(tmp_path: Path) -> None:
-    client = TestClient(make_app(_state(tmp_path)))
+def test_local_only_routes_are_not_found_on_a_hosted_deployment(tmp_path: Path) -> None:
+    client = TestClient(make_app(_state(tmp_path, hosted=True)))
     assert client.get("/api/ant/login").status_code == 404
     assert client.post("/api/ant/login").status_code == 404
     assert client.post("/api/capture/start", json={}).status_code == 404
     assert client.get("/api/capture/screenshot").status_code == 404
+
+
+def test_local_only_routes_reach_their_operations_when_not_hosted(tmp_path: Path) -> None:
+    # Each answer comes from the operation itself, not the router's absent-route 404: the routes
+    # are wired, and the screenshot's bespoke handler mirrors the stdlib one.
+    client = TestClient(make_app(_state(tmp_path)))
+    assert client.get("/api/ant/login").status_code == 200
+    start = client.post("/api/capture/start", json={})
+    assert start.status_code == 400 and "error" in start.json()
+    shot = client.get("/api/capture/screenshot")
+    assert shot.status_code == 404 and shot.json() == {"error": "no active capture session"}
+
+
+def test_capture_screenshot_serves_the_session_png_to_its_owner_only(tmp_path: Path) -> None:
+    state = _state(tmp_path)
+    png = tmp_path / "shot.png"
+    png.write_bytes(b"\x89PNG fake")
+    state.capture = SimpleNamespace(screenshot_path=png, actor=None)  # type: ignore[assignment]
+    client = TestClient(make_app(state))
+    shot = client.get("/api/capture/screenshot")
+    assert shot.status_code == 200
+    assert shot.content == b"\x89PNG fake"
+    assert shot.headers["content-type"] == "image/png"
+    assert shot.headers["cache-control"] == "no-cache"
+    # A session another user started stays theirs, as on the stdlib server.
+    state.capture = SimpleNamespace(screenshot_path=png, actor="alice")  # type: ignore[assignment]
+    other = client.get("/api/capture/screenshot")
+    assert other.status_code == 403
 
 
 def test_backfilled_flakiness_route_serves_html(tmp_path: Path) -> None:

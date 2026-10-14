@@ -210,7 +210,9 @@ so the two never drift.
 Installing from PyPI instead? The base package is AI-free: `pip install bajutsu` gets the
 deterministic authoring / running paths with no AI SDK, and `pip install bajutsu[ai]` (or
 `bajutsu[bedrock]`) adds the SDK for the Claude paths — see
-[What uses Claude](docs/ai-boundary.md#installing-the-claude-paths).
+[What uses Claude](docs/ai-boundary.md#installing-the-claude-paths). The base package also carries
+the server stack. With it, `bajutsu serve --backend server` runs on one machine with no extra. For a
+hosted deployment, the `server` extra adds boto3 and the `db` extra adds psycopg.
 
 ## Usage
 

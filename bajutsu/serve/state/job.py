@@ -143,6 +143,11 @@ class Job:
     # so a remote worker needs no settings of its own. Empty when no provider is selected (the
     # zero-config path, BE-0101, then falls back to the job's inherited env unchanged).
     env_overlay: dict[str, str] = field(default_factory=dict)
+    # The requesting org's stored secrets as environment variables (BE-0449), for a job the server
+    # runs in its own process: `LocalExecutor`'s thread fills it from the org's secret store, and
+    # `_spawn_env` merges it onto the child env. Never part of the job spec the queue stores, and
+    # kept out of `repr` so a logged `Job` cannot print a value.
+    secret_env: dict[str, str] = field(default_factory=dict, repr=False)
     # A cloud-batch run request (BE-0336): when set, this job runs one scenario on a batch device
     # cloud (its `provider` names the concrete backend) instead of spawning `cmd` locally. `run_job`
     # branches on it; None is the ordinary local/worker run. The verdict still comes from the run's

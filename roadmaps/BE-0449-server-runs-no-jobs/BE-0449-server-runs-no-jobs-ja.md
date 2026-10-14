@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0449") |
-| 実装 PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167)（単位 1 の 3 分割のうち 1）、[#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168)（単位 1 の 3 分割のうち 2）、[#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170)（単位 1 の 3 分割のうち 3）、[#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171)（単位 2）、[#2172](https://github.com/bajutsu-e2e/bajutsu/pull/2172)（単位 4）、[#2173](https://github.com/bajutsu-e2e/bajutsu/pull/2173)（単位 3） |
+| 実装 PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167)（単位 1 の 3 分割のうち 1）、[#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168)（単位 1 の 3 分割のうち 2）、[#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170)（単位 1 の 3 分割のうち 3）、[#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171)（単位 2）、[#2172](https://github.com/bajutsu-e2e/bajutsu/pull/2172)（単位 4）、[#2173](https://github.com/bajutsu-e2e/bajutsu/pull/2173)（単位 3）、[#2182](https://github.com/bajutsu-e2e/bajutsu/pull/2182)（単位 5 の 2 分割のうち 1：機能を失わないローカル起動） |
 | トピック | Hosting the web UI |
 <!-- /BE-METADATA -->
 
@@ -278,6 +278,37 @@ local バックエンドと server バックエンドの違いは、これらの
   worker はコントロールプレーンより先に、または同時に更新する必要があります。この変更より前のビルドの
   worker は、キューに入った `-m bajutsu.run.internal` を自分のインタプリタに置き換えないので、リースした
   `run` がすべて失敗します。
+- [#2182](https://github.com/bajutsu-e2e/bajutsu/pull/2182)（単位 5 の 2 分割のうち 1：機能を失わないローカル起動）— ローカル起動は、
+  `--backend local` の利用者が使える機能を残すようになりました。これで、2 分割のうち 2 で
+  ローカル backend をこの形へ移せます。ただし 1 点は 2 分割のうち 2 まで残ります。ローカル起動は
+  すべての種類の job をキューに積み、キューに入った job は、リースが中継するまで保存した secret を
+  受け取りません。hosted でないデプロイでは、FastAPI のアプリが `local_only` の
+  ルートを配信します。キャプチャモード、ライブなステップ選択、`/api/ant/login` がこれにあたります。
+  stdlib のハンドラと同じ動きをするスクリーンショットのハンドラを加え、起動時の読み取りはキャプチャを
+  利用可能と報告します。hosted のデプロイは、これらのルートを引き続き拒否します。`SecretStore` に、
+  平文を読む唯一の口として `values_for_job` を加えました。`DbSecretStore` はその org の行を復号し、
+  今のキーで復号できない行は警告を出して飛ばします。`EnvSecretStore` は、自分が書いた secret の名前を
+  ロックを取って返します。プロセス内の job のスレッド（`jobs.run_job_in_process`）が、
+  `jobs.job_secret_env` を通じて値を新しい `Job.secret_env` に入れます。ストアのエラーは、理由を
+  示す行を残してその job だけを失敗させます。`_spawn_env` はこのフィールドを、プロバイダの上書きより下に重ねます。
+  このフィールドは job の仕様にも `repr` にも入りません。job は config を取得しないので、Git の
+  認証情報も入れません。`serve.jobs` の外で `values_for_job` や `job_secret_env` を直接呼ぶと
+  テストが失敗するので、値に手を伸ばす HTTP のハンドラはこのテストで見つかります。
+  2 分割のうち 2 では、同じ読み出しをリースの応答で中継します。default org について、ローカル起動は
+  シナリオを割り当てた config のツリーに、ベースラインを `--baselines` のディレクトリに置きます。
+  そのため、保存したシナリオは一覧に戻り、承認したベースラインは run が読むものと一致します。
+  `FileObjectStore` は複数の割り当てを持てるようになり、ローカル起動は `--baselines` のディレクトリを
+  `baselines/` に割り当てます。worker の署名付きダウンロードも、承認したベースラインを読みます。
+  runs ディレクトリや state ディレクトリを含む `--baselines` は起動時に拒否します。default org の配置が
+  使う名前（`artifacts`、`baselines`、`scenarios`、`uploads`）は、API でも `orgs:` でも org の slug に
+  使えません。
+  プロバイダの設定も `provider-settings.json` に残します。2 つの backend が 1 つの写しを共有するので、
+  データベースの写しがずれることはありません。他の org はバケットと同じ配置のままです。FastAPI、
+  uvicorn、SQLAlchemy、Alembic、`cryptography` は基本の依存に移りました。`server` の extra には boto3 が、
+  `db` の extra には psycopg が残ります。どちらかの extra を指定したインストールのコマンドも、
+  そのまま解決します。CLI は引き続きサーバの依存を 1 つも import しません。`--asgi` のインストール確認は
+  なくなり、サーバ backend のインストールの案内はクラウドのクライアントだけを挙げます。ローカル backend の
+  executor と既定値は変えていません。
 
 ## 参考
 

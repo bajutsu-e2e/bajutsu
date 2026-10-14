@@ -16,8 +16,9 @@ transport mechanics stay per-backend while the route table is shared.
 `off_loop` routes (SSE, file/range serving, raw-body uploads, the OAuth round-trip, login, and the
 index render) write their own responses and differ structurally per backend, so the registry only
 *declares* them (`handle=None`) — each backend keeps its bespoke handling. `local_only` marks a
-route the FastAPI generator deliberately skips — Part 4's triage marks `/api/ant/login` and
-`/api/capture/*`; every other route is served by both backends. `content_type`, when set, selects a
+route that needs a single-process server — Part 4's triage marks `/api/ant/login` and
+`/api/capture/*` — so the FastAPI generator skips it on a hosted deployment and serves it otherwise
+(BE-0449); every other route is served by both backends. `content_type`, when set, selects a
 text response over JSON.
 
 Framework-agnostic by construction — like `gate.py`, it must import without FastAPI so the default

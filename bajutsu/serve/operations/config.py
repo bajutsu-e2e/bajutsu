@@ -69,12 +69,12 @@ AI_API_KEY_SECRET = "aiApiKey"  # noqa: S105 — a secret's logical name, not a 
 # The logical name of the `claude-code` provider's OAuth token in the same secret store (BE-0215) —
 # the second named secret BE-0136's generalization anticipated, reusing the store and its write-once
 # guarantee with no new plumbing. Local serve materializes it into `CLAUDE_CODE_OAUTH_TOKEN` (via
-# `ServeState._env_var_for_secret`); the hosted backend encrypts it per org like every named secret.
+# `ServeState.env_var_for_secret`); the hosted backend encrypts it per org like every named secret.
 AI_CLAUDE_CODE_TOKEN_SECRET = "aiClaudeCodeOauthToken"  # noqa: S105 — a logical name, not a value
 
 # The logical name of the GitHub credential for a private-repo config source (BE-0224) — a third
 # named secret reusing the same write-once store. Local serve materializes it into the bajutsu-owned
-# `BAJUTSU_GIT_CONFIG_TOKEN` (via `ServeState._env_var_for_secret`), which the in-process
+# `BAJUTSU_GIT_CONFIG_TOKEN` (via `ServeState.env_var_for_secret`), which the in-process
 # `bind_git_config` fetch then reads. The hosted backend encrypts it per org, so each tenant's stored
 # credential is its own; wiring the per-org value into the hosted control plane's in-process fetch is
 # a follow-up (the write-once store discloses no plaintext to a handler), so on hosted a private bind
@@ -82,7 +82,7 @@ AI_CLAUDE_CODE_TOKEN_SECRET = "aiClaudeCodeOauthToken"  # noqa: S105 — a logic
 GIT_CONFIG_TOKEN_SECRET = "gitConfigToken"  # noqa: S105 — a logical name, not a value
 
 # The three logical names above are all valid identifiers, so `_valid_key_env_name` alone would let a
-# scenario-declared secret collide with one of them: `_env_var_for_secret` maps `AI_API_KEY_SECRET` to
+# scenario-declared secret collide with one of them: `env_var_for_secret` maps `AI_API_KEY_SECRET` to
 # `active_key_env`'s env var (the operator's real Anthropic API key, or a configured `ai.keyEnv`), so
 # a config that declares e.g. `secrets: [aiApiKey]` would let `GET /api/secrets` disclose that key's
 # masked preview to any actor and `POST /api/secrets` overwrite it — the same collision applies to the
@@ -159,11 +159,10 @@ CAPTURE_HOSTED_REASON = (
     "— capture from a local serve instead"
 )
 
-# Why a local deployment that nonetheless serves no `local_only` route cannot capture: `serve
-# --asgi` runs the FastAPI transport with the local backend, and that transport registers no
-# `local_only` route (`serve.server.app.make_app`). The devices are right there, so the reason names
-# the transport rather than the deployment.
-CAPTURE_NO_LOCAL_ROUTES_REASON = "this server does not serve the capture routes — run `bajutsu serve` without `--asgi` to capture"
+# Why a deployment that is not hosted but serves no `local_only` route cannot capture. `make_app`
+# serves them whenever the deployment is not hosted (BE-0449), so no transport this repository
+# ships reaches this; it stays so a transport that omits them reports why instead of a 404.
+CAPTURE_NO_LOCAL_ROUTES_REASON = "this server does not serve the capture routes"
 
 # Why a caller cannot administer orgs on a deployment that does have a database: the roster
 # discloses one tenant's membership to another, so every `/api/orgs` verb is admin-only.
@@ -179,9 +178,9 @@ def _capability(reason: str | None) -> dict[str, Any]:
 def _capture_unavailable(state: ServeState) -> str | None:
     """Why capture is unavailable here, or None when it is available.
 
-    Keyed to whether the transport serves the `local_only` routes, not to `hosted`: both hosted and
-    a local `serve --asgi` go through `make_app` and so serve none of them. Hosted is reported
-    first, since there the devices really are elsewhere and the transport is beside the point.
+    Keyed to whether the transport serves the `local_only` routes as well as to `hosted`. Hosted is
+    reported first, since there the devices really are elsewhere and the transport is beside the
+    point.
     """
     if state.hosted:
         return CAPTURE_HOSTED_REASON

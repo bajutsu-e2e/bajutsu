@@ -2,10 +2,10 @@
 
 `make_app(state)` serves the **same** SPA + API as the local stdlib handler, delegating every
 request to the shared `bajutsu.serve.operations` — so the local and hosted backends stay in
-lockstep and only differ in which seam implementations the `ServeState` carries. This module is
-imported only when the server backend is selected (the import guard in
-``tests/serve/test_import_guard.py`` keeps it off the default path); FastAPI lives in the
-``server`` optional-dependency group.
+lockstep and only differ in which seam implementations the `ServeState` carries. FastAPI is a base
+dependency (BE-0449), but this module is still imported only when the FastAPI transport is selected
+(the import guard in ``tests/serve/test_import_guard.py`` keeps it off the default path), so the CLI
+starts without loading it.
 
 The uniform (JSON/text) routes are generated from the shared `bajutsu.serve.routes` registry
 (BE-0253 Part 3): `make_app` iterates `ROUTES` and registers each entry that carries a `handle` and
@@ -13,8 +13,10 @@ is not `local_only`, so this backend's route table is derived from the same sour
 stdlib handler dispatches from — the two can't drift. `off_loop` routes (the SPA index, the
 ES-module frontend, run file / range / archive serving, SSE, the OAuth round-trip, login, and the
 raw-body uploads) write their own responses and stay bespoke below. `local_only` routes
-(`/api/ant/login`, `/api/capture/*`) are deliberately skipped: they need a single-process model
-(an in-process `Driver`, a machine-global credential) a horizontally-scaled deployment can't offer.
+(`/api/ant/login`, `/api/capture/*`) need a single-process model (an in-process `Driver`, a
+machine-global credential) that a horizontally scaled deployment can't offer, so a hosted
+deployment skips them. A deployment that is not hosted, such as the local start (BE-0449), sits at
+the device and registers them, so authoring keeps capture and the live step picker.
 
 The transport-specific parts mirror the stdlib handler one-to-one: the auth gate (BE-0051), the
 unconditional CSRF Origin check and Host allowlist (BE-0121), the session cookie, and the hardening
@@ -496,6 +498,17 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
             return _result(({"error": "not found"}, 404))
         return Response(_asset(asset), media_type="text/javascript; charset=utf-8")
 
+    # The capture screenshot (off_loop, `local_only`): registered only where the local-only routes
+    # are, below. Mirrors the stdlib handler's `_serve_capture_screenshot`.
+    async def capture_screenshot(request: Request) -> Response:
+        session = state.capture
+        if session is None or not session.screenshot_path.exists():
+            return _result(({"error": "no active capture session"}, 404))
+        if session.actor is not None and _actor(request) != session.actor:
+            return _result(({"error": "capture session belongs to another user"}, 403))
+        data = await run_in_threadpool(session.screenshot_path.read_bytes)
+        return Response(data, media_type="image/png", headers={"Cache-Control": "no-cache"})
+
     @app.get("/runs/{run_id}/archive.zip")
     async def run_archive(run_id: str, request: Request) -> Response:
         # A one-file download of the whole run (BE-0060), through the same org-scoped store as the
@@ -805,12 +818,15 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
 
         app.add_api_route(route.path, endpoint, methods=[route.method])
 
-    # Declare the omission on the state the app will serve, so the boot read can report it and the
-    # UI disables Capture instead of offering a mode whose first call 404s (issue 1721). Set here,
-    # beside the loop that causes it, so the two cannot drift.
-    state.serves_local_routes = False
+    # A hosted deployment skips the `local_only` routes; one that is not hosted (the local start,
+    # `serve --asgi`) sits at the device and serves them (BE-0449). Declared on the state the app
+    # serves, so the boot read reports it and the UI disables Capture only where its first call
+    # would 404 (issue 1721). Set here, beside the loop it governs, so the two cannot drift.
+    state.serves_local_routes = not state.hosted
+    if state.serves_local_routes:
+        app.add_api_route("/api/capture/screenshot", capture_screenshot, methods=["GET"])
     for route in ROUTES:
-        if route.handle is not None and not route.local_only:
+        if route.handle is not None and (state.serves_local_routes or not route.local_only):
             _register(route)
 
     return app

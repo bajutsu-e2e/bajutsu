@@ -17,3 +17,15 @@ class SecretStore(Protocol):
 
     def describe(self, name: str) -> str | None:
         """The masked preview of secret *name*, or None when it is unset — never the plaintext."""
+
+    def values_for_job(self) -> dict[str, str]:
+        """Every secret this store holds, by logical name, in plaintext — for a job's environment.
+
+        The one plaintext read (BE-0449). It exists so a job the server runs in its own process gets
+        the values a user set in the UI, and a later worker lease can carry them the same way. It
+        is called only on the job-execution path (`serve.jobs`), never by an HTTP handler, so no
+        response can disclose a value (BE-0136); a test locks that boundary.
+        """
+        # Raise rather than fall through: an implementation inheriting this body would return None
+        # against the annotation and fail later, inside the job's environment build.
+        raise NotImplementedError

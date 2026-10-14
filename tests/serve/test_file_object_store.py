@@ -669,3 +669,64 @@ def test_a_mounted_key_never_reaches_a_root_nested_inside_the_mount(tmp_path: Pa
         store.put_bytes(nested, b"x")
     with pytest.raises(ValueError, match="escapes"):
         store.presigned_url("artifacts/.bajutsu/objects")
+
+
+def _two_mounts(tmp_path: Path) -> FileObjectStore:
+    return FileObjectStore(
+        tmp_path / "objects",
+        _BASE,
+        UrlSigner(_KEY),
+        mount=("artifacts/", tmp_path / "runs"),
+        mounts=[("baselines/", tmp_path / "project" / "baselines")],
+    )
+
+
+def test_a_second_mount_keeps_its_own_prefix(tmp_path: Path) -> None:
+    # A local start mounts the `--baselines` directory beside the runs tree (BE-0449).
+    store = _two_mounts(tmp_path)
+    baselines = tmp_path / "project" / "baselines"
+    assert not baselines.exists()  # created with its first object, never at start
+    assert store.mounts == (
+        ("artifacts/", (tmp_path / "runs").resolve()),
+        ("baselines/", baselines.resolve()),
+    )
+    store.put_bytes("baselines/home.png", b"B")
+    store.put_bytes("artifacts/r1/a.txt", b"A")
+    store.put_bytes("acme/baselines/home.png", b"C")
+    assert (baselines / "home.png").read_bytes() == b"B"
+    assert (tmp_path / "objects" / "acme" / "baselines" / "home.png").read_bytes() == b"C"
+    assert store.list_keys("baselines/") == ["baselines/home.png"]
+    assert store.list_keys("") == [
+        "acme/baselines/home.png",
+        "artifacts/r1/a.txt",
+        "baselines/home.png",
+    ]
+
+
+def test_a_key_never_crosses_from_one_mount_into_another(tmp_path: Path) -> None:
+    # The baselines directory nested inside the runs tree: a run key must not reach it.
+    runs = tmp_path / "runs"
+    store = FileObjectStore(
+        tmp_path / "objects",
+        _BASE,
+        UrlSigner(_KEY),
+        mount=("artifacts/", runs),
+        mounts=[("baselines/", runs / "baselines")],
+    )
+    store.put_bytes("baselines/home.png", b"B")
+    with pytest.raises(ValueError, match="escapes"):
+        store.put_bytes("artifacts/baselines/home.png", b"x")
+    assert store.get_bytes("artifacts/baselines/home.png") is None
+
+
+def test_overlapping_mount_prefixes_are_refused(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="overlap"):
+        FileObjectStore(
+            tmp_path / "objects",
+            _BASE,
+            UrlSigner(_KEY),
+            mount=("artifacts/", tmp_path / "runs"),
+            mounts=[("artifacts/sub/", tmp_path / "other")],
+        )
+    with pytest.raises(ValueError, match="mount prefix"):
+        FileObjectStore(tmp_path / "o2", _BASE, UrlSigner(_KEY), mounts=[("bad", tmp_path / "x")])
