@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0463](BE-0463-network-expect-dict-matchers.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0463") |
+| Implementing PR | [#2179](https://github.com/bajutsu-e2e/bajutsu/pull/2179) |
 | Topic | Verification & coverage |
 <!-- /BE-METADATA -->
 
@@ -136,11 +137,25 @@ The Playwright code generator mirrors `match_request` in JavaScript. It must tra
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Models: `query` / `body` fields, nested value-grammar validator, mock rejection
-- [ ] Evaluation: shared dictionary matcher in `match_request` and the `event` path
-- [ ] Reporting: labels, failure details, report rendering
-- [ ] Code generation: Playwright translation
-- [ ] Documentation and showcase scenario (both languages)
+- [x] Models: `query` / `body` fields, nested value-grammar validator, mock rejection
+- [x] Evaluation: shared dictionary matcher in `match_request` and the `event` path
+- [x] Reporting: labels, failure details, report rendering
+- [x] Code generation: Playwright translation
+- [x] Documentation and showcase scenario (both languages)
+
+Log:
+
+- [#2179](https://github.com/bajutsu-e2e/bajutsu/pull/2179) — all five units. `query` and `body`
+  live on the shared endpoint matcher, so `request`, `event`, `requestSequence`,
+  `responseSchema.request`, and `until: { request }` all accept them.
+  A load-time check enforces the value grammar, and `mocks` refuse both fields. One pure matcher
+  (`bajutsu/common/assertions/dict_match.py`) evaluates them. `NetworkExchange` caches its parsed
+  query and JSON body, so each exchange parses once. When one candidate exchange alone exists, the
+  message names the first mismatched key. The Playwright helper reads the body with a small JSON reader,
+  which keeps key order and number tokens. A `node` parity test pins that reader to the runner's text
+  form. The web demo's Sync request now carries a query, a nested body field, and a list.
+  `network.yaml` checks them all, passing in a real browser run. The `event` body changed from an
+  empty default to unset. A top-level body key starting with `$` now needs `$$`.
 
 ## References
 

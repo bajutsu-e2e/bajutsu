@@ -279,7 +279,7 @@ def test_event_interpolates_vars_in_body() -> None:
 
     a = _event(url="https://t.example.com/track", body={"amount": "${vars.amount}"})
     [interp] = _interp_asserts([a], {"vars.amount": "300"})
-    assert interp.event is not None and interp.event.body["amount"] == "300"
+    assert interp.event is not None and interp.event.body == {"amount": "300"}
 
 
 def _seq(*reqs: RequestMatch) -> Assertion:
