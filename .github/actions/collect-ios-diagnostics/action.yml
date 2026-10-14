@@ -349,8 +349,11 @@ runs:
         if [ -z "$udid" ]; then
           echo "::warning::bajutsu diagnostics: no device id resolved; the GUEST unified log (SpringBoard/backboardd/testmanagerd) was NOT collected, and the host extract does not contain it"
         else
+          # The runner's touch-synthesis markers ride in the same extract, interleaved with
+          # backboardd's own lines, so a dropped touch can be read against the window that caused it
+          # (BE-0462).
           bounded 180 xcrun simctl spawn "$udid" log show --last "$LOG_WINDOW" --style compact \
-            --predicate 'process == "backboardd" OR process == "SpringBoard" OR process == "testmanagerd"' \
+            --predicate 'process == "backboardd" OR process == "SpringBoard" OR process == "testmanagerd" OR subsystem == "bajutsu.runner"' \
             >"$DEST/unified-log-guest.txt" 2>&1
           rc=$?
           lines=$(wc -l <"$DEST/unified-log-guest.txt" 2>/dev/null || echo 0)

@@ -90,11 +90,13 @@ expect:
 |---|---|
 | `method` | HTTP method (case-insensitive) |
 | `url` | exact full URL (the endpoint) |
-| `urlMatches` | regex/substring over the URL (query strings live here) |
+| `urlMatches` | regex/substring over the full URL |
 | `path` | exact URL path (query ignored) |
 | `pathMatches` | regex over the path |
+| `query` | key/value dictionary over the URL-decoded query parameters, order-independent (BE-0463) |
+| `body` | key/value dictionary over the JavaScript Object Notation (JSON) request body, nested maps and lists included (BE-0463) |
 | `status` | response status code |
-| `bodyMatches` | regex/substring over the request body |
+| `bodyMatches` | regex/substring over the raw request body |
 | `count` | exact number of matching exchanges — an aggregate, exempt from the 1:1 rule (omit ⇒ at least one) |
 
 ## Deterministic mocks
@@ -120,7 +122,8 @@ mocks:
 ```
 
 The first matching rule wins. `match` reuses the request matcher's request-side fields
-(`method` / `url` / `urlMatches` / `path` / `pathMatches` / `bodyMatches`). Mocks ride the
+(`method` / `url` / `urlMatches` / `path` / `pathMatches` / `bodyMatches`). A mock refuses the
+`query` / `body` dictionaries, since the in-app matcher would ignore them. Mocks ride the
 same channel as observation, so they need `--network`. On iOS, the rules reach the app via the
 `BAJUTSU_MOCKS` launch env (like `BAJUTSU_COLLECTOR`); on web there is no app to launch into, so
 `network_collector()` takes the scenario's `mocks` directly and fulfills them in-process.

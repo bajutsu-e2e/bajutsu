@@ -34,8 +34,13 @@ MANUAL = SigningConfig.model_validate(
 )
 
 
-def _profile_bytes(name: str, uuid: str, expires: datetime) -> bytes:
-    body = plistlib.dumps({"Name": name, "UUID": uuid, "ExpirationDate": expires})
+def _profile_bytes(
+    name: str, uuid: str, expires: datetime, *, xcode_managed: bool = False
+) -> bytes:
+    info = {"Name": name, "UUID": uuid, "ExpirationDate": expires}
+    if xcode_managed:
+        info["IsXcodeManaged"] = True
+    body = plistlib.dumps(info)
     # A real profile wraps the plist in a binary CMS envelope; the parser must slice it out.
     return b"\x30\x82CMS-header" + body + b"\x00signature"
 
@@ -95,11 +100,19 @@ class FakeHost:
         )
 
 
-def _install_profile(home: Path, filename: str, name: str, uuid: str, expires: datetime) -> Path:
+def _install_profile(
+    home: Path,
+    filename: str,
+    name: str,
+    uuid: str,
+    expires: datetime,
+    *,
+    xcode_managed: bool = False,
+) -> Path:
     directory = home / "Library/MobileDevice/Provisioning Profiles"
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / filename
-    path.write_bytes(_profile_bytes(name, uuid, expires))
+    path.write_bytes(_profile_bytes(name, uuid, expires, xcode_managed=xcode_managed))
     return path
 
 
@@ -122,6 +135,7 @@ def test_read_profile_slices_the_plist_out_of_the_envelope(tmp_path: Path) -> No
     path = _install_profile(tmp_path, "p.mobileprovision", "P", "U", NOW)
     profile = build.read_profile(path)
     assert (profile.name, profile.uuid, profile.expires) == ("P", "U", NOW)
+    assert not profile.xcode_managed
 
 
 def test_read_profile_rejects_a_file_without_a_plist(tmp_path: Path) -> None:
@@ -192,6 +206,29 @@ def test_preflight_reports_skipped_unreadable_profiles_and_an_expired_one(tmp_pa
     assert "profile 'H' expired on" in message
     assert "profile 'R' is not installed" in message
     assert "1 unreadable skipped" in message and "r.mobileprovision" in message
+
+
+def test_preflight_rejects_an_xcode_managed_profile_for_manual_signing(tmp_path: Path) -> None:
+    # Xcode refuses its own team profile under manual signing (BE-0456 spike); say so before
+    # the build instead of failing inside `xcodebuild`.
+    host = _manual_host(tmp_path)
+    expires = NOW + timedelta(days=100)
+    _install_profile(tmp_path, "h.mobileprovision", "H", "UH", expires, xcode_managed=True)
+    with pytest.raises(DeviceRunnerError) as info:
+        build.preflight(MANUAL, host.toolchain())
+    message = str(info.value)
+    assert "profile 'H' is managed by Xcode" in message and "signing: automatic" in message
+    assert "profile 'R'" not in message
+
+
+def test_preflight_reports_an_expired_xcode_managed_profile_as_both(tmp_path: Path) -> None:
+    host = _manual_host(tmp_path)
+    expired = NOW - timedelta(days=1)
+    _install_profile(tmp_path, "h.mobileprovision", "H", "UH", expired, xcode_managed=True)
+    with pytest.raises(DeviceRunnerError) as info:
+        build.preflight(MANUAL, host.toolchain())
+    message = str(info.value)
+    assert "profile 'H' expired on" in message and "profile 'H' is managed by Xcode" in message
 
 
 def test_capture_reports_stderr_and_a_missing_tool() -> None:

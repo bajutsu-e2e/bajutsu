@@ -114,7 +114,7 @@ signing: automatic                 # automatic（既定）または manual
 #     runner: "Acme Bajutsu Runner"          # UI テストバンドルの .xctrunner アプリ
 ```
 
-このファイルには秘密情報が入りません。Team ID、証明書名、プロファイル名は、鍵とプロファイルを指す名前にすぎません。鍵とプロファイルそのものは、キーチェインと `~/Library/MobileDevice/Provisioning Profiles/` に残ります。
+このファイルには秘密情報が入りません。Team ID、証明書名、プロファイル名は、鍵とプロファイルを指す名前にすぎません。鍵とプロファイルそのものは、キーチェインとプロファイルのディレクトリに残ります。Xcode 16 以降のプロファイルの置き場所は `~/Library/Developer/Xcode/UserData/Provisioning Profiles/` です。それより前のリリースは `~/Library/MobileDevice/Provisioning Profiles/` を使います。Bajutsu は両方を探します。
 
 | キー | 意味 |
 |---|---|
@@ -123,7 +123,7 @@ signing: automatic                 # automatic（既定）または manual
 | `teamId` | 2 つの成果物に署名する Apple Developer のチームです。 |
 | `signing` | `automatic` では Xcode がプロファイルを発行します。`manual` では下の証明書とプロファイルを固定します。 |
 | `manual.identity` | コード署名の ID です。名前か証明書のハッシュで指定します。 |
-| `manual.profile` / `manual.profiles` | すべての成果物に共通の 1 つのプロファイルか、runner のホストアプリ（`profiles.host`）と `.xctrunner` アプリ（`profiles.runner`）それぞれのプロファイルです。どちらか一方の形で指定します。期限内のプロファイルが同じ名前で 2 つ以上あるときは、プロファイルの `UUID` フィールドの値で指定します。 |
+| `manual.profile` / `manual.profiles` | すべての成果物に共通の 1 つのプロファイルか、runner のホストアプリ（`profiles.host`）と `.xctrunner` アプリ（`profiles.runner`）それぞれのプロファイルです。どちらか一方の形で指定します。期限内のプロファイルが同じ名前で 2 つ以上あるときは、プロファイルの `UUID` フィールドの値で指定します。`iOS Team Provisioning Profile: *` のような Xcode が管理するプロファイルは使えません。Xcode は手動署名でこのプロファイルを受け付けないため、ビルド前の確認で弾きます。Apple Developer ポータルで開発用プロファイルを作るか、`signing: automatic` を使います。 |
 
 UI テストバンドルの `.xctrunner` アプリは、`<uitests の識別子>.xctrunner` という識別子を持ちます。成果物ごとのプロファイルで手動署名する場合は、この識別子のプロファイルも必要です。
 

@@ -5,6 +5,7 @@ Turn selectors / matchers / assertions into (class, text) token parts the templa
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from bajutsu.common.drivers import base
@@ -89,6 +90,10 @@ def _request_parts(m: dict[str, Any]) -> tuple[list[Part], list[Part]]:
     if m.get("pathMatches") is not None:
         tg.append([("re", f"path~/{m['pathMatches']}/")])
     cg: list[list[Part]] = []
+    for field in ("query", "body"):  # key/value dictionaries (BE-0463), shown as compact JSON
+        if m.get(field) is not None:
+            text = json.dumps(m[field], separators=(",", ":"), ensure_ascii=False)
+            cg.append([("", f"{field} ⊇ "), ("str", text)])
     if m.get("status") is not None:
         cg.append([("", "status == "), ("num", str(m["status"]))])
     if m.get("bodyMatches") is not None:

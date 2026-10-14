@@ -29,6 +29,10 @@ KEY_FILE_MODE = 0o600
 
 SECRETS_KEY_FILE = "secrets.key"
 SIGNING_KEY_FILE = "store-signing.key"
+# The server machine's identity, which routes a job naming files by server paths to a worker on this
+# machine (BE-0449). Not a secret, but kept with the same owner-only rules: a file another account
+# could replace would let it steer those jobs.
+MACHINE_ID_FILE = "machine-id"
 # 256 bits matches HMAC-SHA256's block-independent security level; more buys nothing.
 SIGNING_KEY_BYTES = 32
 
@@ -221,3 +225,45 @@ def signing_key(state_dir: Path) -> bytes:
     if len(key) != SIGNING_KEY_BYTES:
         raise ServeStartupError(f"the key file {path} does not hold a {SIGNING_KEY_BYTES}-byte key")
     return key
+
+
+def machine_id(state_dir: Path) -> str:
+    """The server machine's identity, generated on first use as 32 hex digits.
+
+    Raises:
+        ValueError: the file is unsafe, or holds something that is not a machine identity.
+    """
+    path = state_dir / MACHINE_ID_FILE
+    raw = load_or_create_key(path, lambda: secrets.token_hex(16).encode())
+    return _decode_machine_id(path, raw)
+
+
+def read_machine_id(state_dir: Path) -> str:
+    """The machine identity a server already keeps in *state_dir*, for a worker on the same machine.
+
+    Never generates one: a worker that would invent its own identity would advertise a token no job
+    requires, and idle while the server's jobs wait.
+
+    Raises:
+        ValueError: *state_dir* holds no identity yet (no server started there), or the file is
+            unsafe or malformed.
+    """
+    path = state_dir / MACHINE_ID_FILE
+    try:
+        raw = _read_existing(path)
+    except FileNotFoundError:
+        raise ServeStartupError(
+            f"{path} does not exist: start `bajutsu serve` with this state directory first"
+        ) from None
+    return _decode_machine_id(path, raw)
+
+
+def _decode_machine_id(path: Path, raw: bytes) -> str:
+    from bajutsu.serve.capabilities import machine_capability
+
+    value = raw.decode("ascii", errors="replace").strip()
+    try:
+        machine_capability(value)
+    except ValueError as e:
+        raise ServeStartupError(f"the file {path} does not hold a machine id: {e}") from e
+    return value
