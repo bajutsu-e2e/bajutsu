@@ -499,7 +499,9 @@ ROUTES: tuple[Route, ...] = (
     Route(
         "POST",
         "/api/jobs/{job_id}/cancel",
-        lambda state, ctx: ops.cancel_job(state, ctx.path_param("job_id")),
+        lambda state, ctx: ops.cancel_job(
+            state, ctx.path_param("job_id"), actor=ctx.actor(), machine_org=ctx.machine_org()
+        ),
     ),
     Route(
         "POST",

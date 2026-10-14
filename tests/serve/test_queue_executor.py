@@ -248,6 +248,31 @@ def test_execute_job_spec_rebuilds_and_runs_run_job(tmp_path: Path) -> None:
     assert "step 0 ok" in v["lines"]
 
 
+def test_execute_job_spec_hands_the_job_over_before_it_runs(tmp_path: Path) -> None:
+    # The worker's heartbeat loop needs the rebuilt Job to cancel it (BE-0449); a cancel delivered
+    # through the hand-over stops the run before its process is allowed to stream.
+    from bajutsu.serve.jobs import cancel_job
+
+    project(tmp_path)
+    spec = {"job_id": "7", "cmd": ["bajutsu", "run"], "udids": [], "app_path": None, "build": None}
+    seen: list[str] = []
+
+    def on_job(job: srv.Job) -> None:
+        seen.append(job.id)
+        cancel_job(job)
+
+    job = execute_job_spec(
+        spec,
+        popen=fake_popen(["PASS  runs/20260610-1/manifest.json\n"]),
+        cwd=tmp_path,
+        bus=srv.InMemoryLogBus(),
+        on_job=on_job,
+    )
+    assert seen == ["7"]
+    v = job.view()
+    assert v["cancelled"] is True and v["ok"] is False
+
+
 def test_job_spec_carries_the_overrides_and_their_provenance(tmp_path: Path) -> None:
     from bajutsu.serve.upload_artifacts import ArtifactOverrides
 

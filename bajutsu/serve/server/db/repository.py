@@ -261,6 +261,13 @@ class Repository(Protocol):
         it should stop.
         """
 
+    def cancel_requested(self, job_id: str, worker_id: str) -> bool:
+        """Whether a cancel has reached the job *worker_id* holds the lease on (BE-0449).
+
+        The heartbeat reads this after renewing the lease, so the worker learns of a cancel on its
+        next beat. False once the worker no longer holds the lease.
+        """
+
     def reclaim_expired_leases(
         self, timeout: timedelta, *, max_attempts: int = DEFAULT_LEASE_MAX_ATTEMPTS
     ) -> list[str]:
@@ -268,7 +275,8 @@ class Repository(Protocol):
 
         Returns the ids re-queued (available again). A worker that dies mid-run stops heart-beating,
         so its lease ages past the timeout and returns to ``queued`` for another worker — but a
-        poison job that keeps killing its worker is failed once it hits the attempt cap.
+        poison job that keeps killing its worker is failed once it hits the attempt cap, and one a
+        cancel already reached is marked ``cancelled`` rather than run again.
         """
 
     def complete_job(
@@ -284,6 +292,28 @@ class Repository(Protocol):
         """Mark a still-leased job ``failed`` with *error*; False if it is no longer leasable (see
         `complete_job`)."""
 
+    def cancel_job(self, job_id: str) -> tuple[str, bool] | None:
+        """Cancel a job wherever it is in the queue, returning its status afterwards (BE-0449).
+
+        A ``queued`` job becomes ``cancelled`` with `cancelled_job_result` as its terminal payload,
+        so no worker ever leases it. A ``leased`` job stays leased and gets its cancel-requested flag
+        set, which the heartbeat hands to the worker; the worker's cancelled result then finishes it.
+        A job already ``done``, ``failed``, or ``cancelled`` is left alone, and its status returned.
+
+        Returns:
+            The job's status after the call and whether this call cancelled it, or None when no
+            such job exists. ``("cancelled", True)`` is a queued job cancelled now, ``("leased",
+            True)`` a job whose worker now has a cancel to honor, and ``(<terminal status>,
+            False)`` a job that had already finished.
+        """
+
+    def cancel_leased_job(self, job_id: str, result: dict[str, Any], *, worker_id: str) -> bool:
+        """Mark a job ``cancelled`` with the result its lease holder posted; False if it may not.
+
+        Only *worker_id*, while it still holds the lease, may record the cancelled outcome, so a
+        stale worker cannot turn a re-leased job's run into a cancel (see `complete_job`).
+        """
+
     def get_job(self, job_id: str) -> dict[str, Any] | None:
         """Return the job's status, result, org_id, current lease holder (``leased_by``), and
         ``spec``, or None if it does not exist.
@@ -294,7 +324,7 @@ class Repository(Protocol):
         copy — unlike a per-id `get_job` in a loop, which `finished_job_ids` exists to avoid."""
 
     def finished_job_ids(self, job_ids: Iterable[str]) -> set[str]:
-        """Which of *job_ids* have reached a terminal state (``done`` / ``failed``).
+        """Which of *job_ids* have reached a terminal state (``done`` / ``failed`` / ``cancelled``).
 
         The control plane asks this on every dispatch and every metrics scrape to release the
         concurrency-cap slots of jobs that finished on a worker, so it is one narrow read for the

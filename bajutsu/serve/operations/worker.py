@@ -132,7 +132,12 @@ def _baseline_urls(state: ServeState, org: str) -> dict[str, str]:
 
 
 def worker_heartbeat(state: ServeState, worker_id: str, job_id: str) -> tuple[dict[str, Any], int]:
-    """Renew a worker's lease mid-run; 409 tells the worker its lease was reclaimed and to stop."""
+    """Renew a worker's lease mid-run; 409 tells the worker its lease was reclaimed and to stop.
+
+    Once a cancel has reached the leased job, the 200 response also carries ``"cancel": true``
+    (BE-0449): the worker then stops its own run and posts a cancelled result. The lease is still
+    renewed, so a `run` that winds down gracefully is not reclaimed while it writes its report.
+    """
     if state.repository is None:
         return {"error": "server backend has no database configured"}, 503
     if not worker_id:
@@ -144,12 +149,18 @@ def worker_heartbeat(state: ServeState, worker_id: str, job_id: str) -> tuple[di
     # its capability's queued jobs look unroutable. The heartbeat is that liveness signal here too.
     state.repository.touch_worker(worker_id)
     if state.repository.heartbeat_job(job_id, worker_id):
+        if state.repository.cancel_requested(job_id, worker_id):
+            return {"ok": True, "cancel": True}, 200
         return {"ok": True}, 200
     return {"error": "lease lost or not held by this worker"}, 409
 
 
 def worker_result(state: ServeState, body: dict[str, Any]) -> tuple[dict[str, Any], int]:
-    """Record a finished job's result (called by the worker after a run completes)."""
+    """Record a finished job's result (called by the worker after a run completes).
+
+    A result whose ``cancelled`` is true records the job as ``cancelled`` rather than done or
+    failed (BE-0449). Like every outcome, it is accepted only from the worker holding the lease.
+    """
     if state.repository is None:
         return {"error": "server backend has no database configured"}, 503
     job_id = body.get("job_id", "")
@@ -167,7 +178,9 @@ def worker_result(state: ServeState, body: dict[str, Any]) -> tuple[dict[str, An
     if info is None:
         return {"error": f"job {job_id} not found"}, 404
     failed = result.get("ok") is False or "error" in result
-    if failed:
+    if result.get("cancelled") is True:
+        applied = state.repository.cancel_leased_job(job_id, result, worker_id=worker_id)
+    elif failed:
         applied = state.repository.fail_job(
             job_id, error=result.get("error", "unknown"), worker_id=worker_id
         )

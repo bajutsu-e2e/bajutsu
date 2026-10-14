@@ -16,6 +16,8 @@ import time
 from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any
 
+from bajutsu.serve.server.db import TERMINAL_JOB_STATUSES
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
@@ -58,7 +60,7 @@ class PostCompletionLogBus:
         info = self._repo.get_job(job_id)
         if info is None:
             return None
-        if info["status"] in ("done", "failed"):
+        if info["status"] in TERMINAL_JOB_STATUSES:
             result: dict[str, Any] = info["result"]
             import json
 
@@ -71,7 +73,7 @@ class PostCompletionLogBus:
         idle = 0.0
         while True:
             info = self._repo.get_job(job_id)
-            if info is not None and info["status"] in ("done", "failed"):
+            if info is not None and info["status"] in TERMINAL_JOB_STATUSES:
                 run_id = info.get("result", {}).get("runId")
                 yield from self._read_console_log(info.get("org_id", ""), run_id or job_id)
                 return

@@ -888,6 +888,23 @@ Simulator, uploads the `runs/<id>/` tree (including `console.log`), and posts th
 `/api/worker/result`. The control plane records the finished run into Postgres — the worker needs no
 database access.
 
+A cancel reaches a job whether the job waits in the queue or runs on a worker. The control plane
+finds the job in the jobs table. A cancel thus reaches a job queued before a restart too.
+
+- **A queued job:** the control plane marks the job `cancelled`, and no worker leases it.
+- **A leased job:** the job keeps its lease, and the control plane flags it. The next worker
+  heartbeat answers `{"ok": true, "cancel": true}`, and the worker stops its own run. A `run` job
+  winds down and still writes its report. Any other kind of job stops with its whole process group.
+  The worker renews the lease until the run ends. It then posts a cancelled result. The control
+  plane accepts that result from the lease holder alone, and marks the job `cancelled`.
+- **A finished job:** the cancel changes nothing and reports the job's final status.
+
+A worker can go offline while it stops a cancelled job. Once the lease expires, the control plane
+ends the job `cancelled`. Another worker never runs it.
+
+A leased-job cancel needs workers at this version or later. Upgrade the workers together with the
+control plane.
+
 ### 4. Expose it
 
 Front the control plane like Tier A: `tailscale serve --bg 8765` (tailnet-only, recommended), or

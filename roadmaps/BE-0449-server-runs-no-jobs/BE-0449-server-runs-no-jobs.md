@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0449") |
-| Implementing PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167) (Unit 1, part 1 of 3), [#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168) (Unit 1, part 2 of 3), [#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170) (Unit 1, part 3 of 3) |
+| Implementing PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167) (Unit 1, part 1 of 3), [#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168) (Unit 1, part 2 of 3), [#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170) (Unit 1, part 3 of 3), [#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171) (Unit 2) |
 | Topic | Hosting the web UI |
 <!-- /BE-METADATA -->
 
@@ -68,7 +68,6 @@ Cancelling a job reaches only the server's in-memory `Job` today, and for a queu
 
 - Cancelling a queued job marks its row cancelled, and the lease skips it. The cancel finds the job in the repository, so a job queued before a restart can still be cancelled.
 - Cancelling a leased job keeps the row leased and sets a cancel-requested flag, which the heartbeat response returns with a 200. The worker then cancels its own `Job`: gracefully for `run`, and by a process-group kill for the other kinds. The result route accepts a cancelled outcome from the lease holder, and only that moves the row to cancelled.
-- `worker --once` maps SIGINT and SIGTERM to the same cancel.
 
 ### Live output across the split
 
@@ -78,7 +77,7 @@ The hosted model delivers a worker's console log after the job completes ([BE-01
 
 ### The one-shot worker
 
-`bajutsu worker --once <spec>` executes one job spec without a server and exits with the job's exit code. The spec has the shape the queue already stores (`job_spec` in `worker_job.py`). The worker reads its `worker.yaml` through `--worker-config`, runs the worker capability check, executes the job through `execute_job_spec` with local input and output in place of HTTP and signed URLs, and, in one-shot mode, spawns the child with inherited standard input, output, and error in place of the piped, merged capture a leased job uses. It takes the run id from the run tree the child wrote and not from the PASS line, and it passes its resolved `--worker-config` path to the internal run entry point it spawns. A spec that names an uploaded bundle or artifact overrides is rejected with a clear message, because those arrive by signed URL and a one-shot run has none. The same command serves tests, investigations, and the wrapper below.
+`bajutsu worker --once <spec>` executes one job spec without a server and exits with the job's exit code. The spec has the shape the queue already stores (`job_spec` in `worker_job.py`). The worker reads its `worker.yaml` through `--worker-config`, runs the worker capability check, executes the job through `execute_job_spec` with local input and output in place of HTTP and signed URLs, and, in one-shot mode, spawns the child with inherited standard input, output, and error in place of the piped, merged capture a leased job uses. It takes the run id from the run tree the child wrote and not from the PASS line, and it passes its resolved `--worker-config` path to the internal run entry point it spawns. A spec that names an uploaded bundle or artifact overrides is rejected with a clear message, because those arrive by signed URL and a one-shot run has none. `worker --once` maps SIGINT and SIGTERM to the same cancel a leased job receives from its heartbeat. The same command serves tests, investigations, and the wrapper below.
 
 ### `bajutsu run` as a thin wrapper
 
@@ -148,7 +147,7 @@ This item does not change what a job does, how a verdict is decided, or the run 
 > first, each with a link to its PR.
 
 - [x] Local defaults
-- [ ] Cancellation across the split
+- [x] Cancellation across the split
 - [ ] One-shot worker and wrapper
 - [ ] Live log stream and the routing executor
 - [ ] Move `run`
@@ -197,6 +196,29 @@ Log:
   the default org, through a new insert-only `record_run_if_absent`, so a completing job's row is
   never overwritten. An admin's `POST /api/runs/rescan` does the same on demand and answers `409`
   without the local layout. Unit 1 is complete.
+- [#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171) (Unit 2) — a cancel now reaches a job wherever the split put it. The cancel route
+  looks the job up in the jobs table first, so it still reaches a job queued before a restart. A job
+  with no row stops in process, as before. A queued job becomes `cancelled`
+  through a conditional `UPDATE` on `status = 'queued'`, so no lease returns it. A leased job keeps
+  its lease and gets a new `cancel_requested` column (migration `0022`). The heartbeat then answers
+  `{"ok": true, "cancel": true}`, and the worker cancels its own `Job` through `jobs.cancel_job`:
+  gracefully for `run`, and by a process-group kill for the other kinds. `execute_job_spec` hands
+  the rebuilt `Job` to the heartbeat loop before the run starts, and a cancel during the bundle
+  fetch skips the run. The result route records `"cancelled": true` from the lease holder alone,
+  by a conditional `UPDATE` on `status = 'leased' AND leased_by = :worker`. A cancel after the job
+  finished changes nothing and reports the terminal status. A reclaimed lease that carries a cancel
+  ends `cancelled` rather than re-queued, even at the attempt cap. `cancelled` joins the terminal
+  statuses that release a job's concurrency slot and end its log stream, and the `0022` downgrade
+  folds it into `failed`. A cancel that lands between a job's registration and its enqueue reaches
+  the row either way: `DbQueueExecutor.dispatch` cancels the row of a job already cancelled in
+  memory, and the cancel route re-reads the jobs table after its in-process cancel. A signed-in
+  caller may cancel a job, in process or in the jobs table, only if the job's org is the caller's
+  active org or one of the caller's memberships. The route answers `404` for any other job, and the
+  job view stays unscoped for people. The route also scopes a machine principal to its org, as the
+  job read does, but the gate does not admit a machine to the cancel route, so that check is
+  defensive. A leased-job cancel needs workers at this version, since
+  an older worker ignores the heartbeat's `cancel`. The SIGINT and SIGTERM mapping for
+  `worker --once` arrives with unit 3.
 
 ## References
 

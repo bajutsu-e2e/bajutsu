@@ -37,6 +37,8 @@ from bajutsu.serve.cli.worker import (
     _write_console_log,
     worker,
 )
+from bajutsu.serve.server.db import cancelled_job_result
+from bajutsu.serve.state import Job
 
 
 def _port(server: socketserver.BaseServer) -> int:
@@ -677,6 +679,99 @@ def test_run_with_heartbeat_never_starts_the_run_once_the_lease_is_lost_mid_fetc
     )
     assert abandoned is True
     assert not started.is_set()
+
+
+def test_run_with_heartbeat_cancels_the_job_on_a_heartbeat_cancel(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A heartbeat answering ``cancel: true`` makes the worker cancel its own `Job` (BE-0449).
+
+    The flag repeats on every beat while the row stays leased, so the cancel must be delivered once:
+    a second graceful stop would restart the run's grace window.
+    """
+    job = Job(id="j1", cmd=["bajutsu", "run"])
+    cancelled: list[Job] = []
+    # Set on the second beat: by then the first beat's cancel has been relayed, and a repeat of the
+    # flag has reached the worker while the run is still going.
+    repeated = threading.Event()
+
+    def fake_cancel(target: Job) -> bool:
+        cancelled.append(target)
+        target.cancelled = True
+        return True
+
+    def running_execute(spec: dict[str, Any], **kwargs: Any) -> Job:
+        kwargs["on_job"](job)  # hand the job over before it runs, as execute_job_spec does
+        assert repeated.wait(2.0)  # stay alive until the flag has come back more than once
+        job.status = "done"
+        return job
+
+    beats = 0
+
+    def hb_cancel(
+        url: str, body: dict[str, Any], *, token: str | None = None, timeout: float | None = None
+    ) -> tuple[int, Any]:
+        nonlocal beats
+        beats += 1
+        if beats == 2:
+            repeated.set()
+        return 200, {"ok": True, "cancel": True}
+
+    monkeypatch.setattr(worker_mod, "cancel_job", fake_cancel)
+    monkeypatch.setattr(worker_mod, "execute_job_spec", running_execute)
+    monkeypatch.setattr(worker_mod, "_post_json", hb_cancel)
+    result, abandoned, _job_work = _run_hb(tmp_path)
+    assert abandoned is False
+    assert repeated.is_set()
+    assert cancelled == [job]
+    assert result is not None and result["cancelled"] is True and result["ok"] is False
+
+
+def test_run_with_heartbeat_skips_the_run_when_cancelled_during_the_fetch(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # A cancel that lands while the bundle downloads stops the run before it touches the device,
+    # and the worker reports the same cancelled result the server records for a queued cancel.
+    started = threading.Event()
+    relayed = threading.Event()
+    beats = 0
+
+    def slow_workspace(work: Path, spec: dict[str, Any], urls: Any) -> Path:
+        assert relayed.wait(2.0)  # the fetch outlasts the beat that carried the cancel
+        return work
+
+    def recording_execute(spec: dict[str, Any], **kwargs: Any) -> _FakeJob:
+        started.set()
+        return _FakeJob()
+
+    def hb_cancel(
+        url: str, body: dict[str, Any], *, token: str | None = None, timeout: float | None = None
+    ) -> tuple[int, Any]:
+        nonlocal beats
+        beats += 1
+        if beats == 2:  # the first beat's cancel has been relayed by the time a second is sent
+            relayed.set()
+        return 200, {"ok": True, "cancel": True}
+
+    monkeypatch.setattr(worker_mod, "_bundle_workspace", slow_workspace)
+    monkeypatch.setattr(worker_mod, "execute_job_spec", recording_execute)
+    monkeypatch.setattr(worker_mod, "_post_json", hb_cancel)
+    result, abandoned, _job_work = _run_hb(
+        tmp_path, bundle_urls={"bundle": "https://signed/bundle"}, spec={"bundle": {"id": "a" * 64}}
+    )
+    assert abandoned is False
+    assert result == cancelled_job_result("j1")
+    assert not started.is_set()
+
+
+def test_cancel_relay_delivers_a_cancel_that_arrived_before_the_job() -> None:
+    relay = worker_mod._CancelRelay()
+    relay.request()
+    relay.request()  # repeated beats are idempotent
+    job = Job(id="j1", cmd=["bajutsu", "run"])
+    relay.bind(job)
+    assert job.cancelled is True
+    assert job.lines == ["cancelled"]
 
 
 def test_run_with_heartbeat_leaves_a_transient_fetch_failure_to_lapse(
