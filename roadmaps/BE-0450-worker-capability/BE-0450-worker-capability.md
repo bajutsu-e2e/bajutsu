@@ -245,6 +245,9 @@ Log:
   the check before a cloud request is submitted waits for the worker-side Device Farm dispatch
   (BE-0448), so `bajutsu worker` refuses a non-`local` environment until then. The documentation
   for the shipped behavior lands here; unit 6 stays open for unit 5's pages.
+- BE-0449 unit 3 ([#2173](https://github.com/bajutsu-e2e/bajutsu/pull/2173)) added `bajutsu worker --once` and the internal run entry point.
+  `--once` passes the resolved `--worker-config` path to the run it spawns, which closes the first
+  of the two waits recorded above. This change leaves the units here as they were.
 
 ## References
 

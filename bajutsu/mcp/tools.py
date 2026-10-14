@@ -12,6 +12,7 @@ from bajutsu.common.backends import select_actuator
 from bajutsu.common.config import Effective, load_config, resolve
 from bajutsu.common.devices import errors as device_errors
 from bajutsu.common.doctor import DoctorProbeError, probe_screen, render, score
+from bajutsu.run import INTERNAL_MODULE as INTERNAL_RUN_MODULE
 
 
 def _load_effective(config_path: Path, target: str) -> Effective:
@@ -95,11 +96,12 @@ def register_tools(mcp: FastMCP, config_path: Path) -> None:
         a path to a *.yaml file; if omitted, all scenarios in the target's
         configured directory are run.
         """
+        # The internal run module, not the public wrapper: the tool's timeout kills what it spawned,
+        # and the run must die with it rather than outlive it in a session of its own (BE-0449).
         cmd = [
             sys.executable,
             "-m",
-            "bajutsu",
-            "run",
+            INTERNAL_RUN_MODULE,
             "--target",
             target,
             "--config",

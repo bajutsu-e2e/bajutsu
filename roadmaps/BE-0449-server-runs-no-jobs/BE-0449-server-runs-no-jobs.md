@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0449") |
-| Implementing PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167) (Unit 1, part 1 of 3), [#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168) (Unit 1, part 2 of 3), [#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170) (Unit 1, part 3 of 3), [#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171) (Unit 2), [#2172](https://github.com/bajutsu-e2e/bajutsu/pull/2172) (Unit 4) |
+| Implementing PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167) (Unit 1, part 1 of 3), [#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168) (Unit 1, part 2 of 3), [#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170) (Unit 1, part 3 of 3), [#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171) (Unit 2), [#2172](https://github.com/bajutsu-e2e/bajutsu/pull/2172) (Unit 4), [#2173](https://github.com/bajutsu-e2e/bajutsu/pull/2173) (Unit 3) |
 | Topic | Hosting the web UI |
 <!-- /BE-METADATA -->
 
@@ -148,7 +148,7 @@ This item does not change what a job does, how a verdict is decided, or the run 
 
 - [x] Local defaults
 - [x] Cancellation across the split
-- [ ] One-shot worker and wrapper
+- [x] One-shot worker and wrapper
 - [x] Live log stream and the routing executor
 - [ ] Move `run`
 - [ ] Move `run-set` (the Device Farm batch)
@@ -246,6 +246,37 @@ Log:
   that tree uploads, through a new `before_upload` callback on `execute_job_spec`. The worker used
   to write the file after the upload, so `console.log` never reached the artifact store. The live artifact stream for
   `crawl` arrives with unit 8.
+- [#2173](https://github.com/bajutsu-e2e/bajutsu/pull/2173) (Unit 3) — `bajutsu run` is now a thin wrapper over the one-shot worker path. The
+  body of the command moved behind an internal entry point, `python -m bajutsu.run.internal`, a
+  module of its own rather than a hidden subcommand. The module stays out of `bajutsu --help` and
+  the BE-0101 command list, and its process imports the run body alone. `run_command`, the `triage
+  --rerun` command, and the MCP `run` tool emit it. `Job.kind` and `_with_worker_config` recognise
+  the module and still accept the `-m bajutsu run` that a spec queued before the change names.
+  `_local_interpreter` rewrites that legacy form to the internal module, so such a spec runs in one
+  process, as it did when it was queued. The wrapper shares the body's signature, so the two have
+  one flag surface, and it passes on every flag the caller typed, whatever its value. A default or
+  an environment value is left for the run to resolve. The parser now checks `--label`, so the
+  wrapper refuses an over-long label in the caller's words. `bajutsu worker --once <spec.json>` runs
+  one spec through `execute_job_spec` with a no-op `LocalWorkerIO` and no repository. A new
+  `inherit_stdio` mode of `run_job` spawns the child on the caller's standard streams, in a session
+  of its own (the public `bajutsu run` alone also keeps the caller's `PATH`), and reads the run id from the new run tree. The caller holds a liveness pipe
+  open while it waits. When the pipe reaches end of file, the internal run sends itself SIGTERM, so
+  a wrapper killed by SIGKILL does not leave a run driving the device. `--once` refuses a bundle,
+  artifact overrides, a Device Farm batch, a non-`local` worker file (naming BE-0448), mistyped
+  `udids` or `materials`, and materials that would overwrite a different file in the current
+  directory. SIGINT, SIGTERM, and SIGHUP become the unit 2 cancel. A second SIGINT kills the child's
+  group at once. SIGTSTP stops the child's group and then the wrapper, and SIGCONT continues both. A
+  signal the caller already ignores stays ignored. The exit code is the child's, or 128 plus the
+  signal number. A `--step` prompt now polls the run's cancel source while it waits on the terminal,
+  so a Ctrl-C at the prompt still ends the run with its report written. A Ctrl-C or a SIGTERM on
+  `bajutsu run` now exits 130 or 143 where the single process exited 1. Ctrl-C no longer reaches the
+  run's driver children directly, and a background `--step` run no longer stops on terminal input.
+  Subprocess parity tests cover a pass, a fail, a usage error, both signals, a SIGKILLed wrapper, a
+  second Ctrl-C, Ctrl-Z, the `--step` prompt on a pseudo-terminal, and a pre-change spec under
+  `--once`. A round-trip test renders every `run` option and parses it back with the internal entry
+  point. The in-process CLI tests now invoke the internal entry point. Workers must be upgraded
+  before or with the control plane: a worker built before this change does not map the queued
+  `-m bajutsu.run.internal` onto its own interpreter, so it fails every `run` it leases.
 
 ## References
 

@@ -19,6 +19,7 @@ from pathlib import Path
 
 import pytest
 import typer
+from run_cli import invoke
 from typer.testing import CliRunner
 
 from bajutsu.cli import app
@@ -128,7 +129,8 @@ def test_run_alert_guard_needs_no_credential_at_all(
     monkeypatch.setattr("bajutsu.run.cli.run_and_report", _reached_execution)
 
     cfg, scn = _fake_config(tmp_path)
-    result = runner.invoke(
+    result = invoke(
+        runner,
         app,
         [
             "run",

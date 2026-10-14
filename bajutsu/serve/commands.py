@@ -1,8 +1,8 @@
 """CLI command builders for ``bajutsu serve``.
 
 Split from `serve/helpers.py` (BE-0206): these build the ``python -m bajutsu …`` argv a serve
-request spawns, rendering every flag from the CLI's own option metadata (BE-0134) so the argv can't
-drift from the CLI. They depend on nothing else in the serve package but `_cli_flags.flag_args`, and
+request spawns (``python -m bajutsu.run.internal …`` for a run, BE-0449), rendering every flag
+from the CLI's own option metadata (BE-0134) so the argv can't drift from the CLI. They depend on nothing else in the serve package but `_cli_flags.flag_args`, and
 are free of server state — fully unit-testable on their own.
 """
 
@@ -11,6 +11,7 @@ from __future__ import annotations
 import sys
 from typing import Any
 
+from bajutsu.run import INTERNAL_MODULE as INTERNAL_RUN_MODULE
 from bajutsu.serve._cli_flags import flag_args
 
 
@@ -59,8 +60,10 @@ def run_command(
     require_pinned_config: bool | None = None,
     label: str = "",
 ) -> list[str]:
-    """The ``python -m bajutsu run ...`` argv for a launch request.  ``udid`` may be a comma
-    list and ``workers > 1`` runs those devices as a parallel pool (capped to the pool size by
+    """The ``python -m bajutsu.run.internal ...`` argv for a launch request: the body of
+    ``bajutsu run`` behind its internal entry point (BE-0449), so the spawned run never enters the
+    public wrapper, which would spawn it in turn. It takes exactly ``run``'s flags.  ``udid`` may
+    be a comma list and ``workers > 1`` runs those devices as a parallel pool (capped to the pool size by
     the CLI).  ``erase`` / ``system_alert_handling`` / ``headed`` / ``network`` are overrides:
     True/False force the flag on/off, None omits it so the CLI's own default applies — for
     ``erase`` / ``system_alert_handling`` that means each scenario's preconditions.erase /
@@ -73,8 +76,7 @@ def run_command(
     cmd = [
         sys.executable,
         "-m",
-        "bajutsu",
-        "run",
+        INTERNAL_RUN_MODULE,
         "--scenario",
         scenario,
         "--target",

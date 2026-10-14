@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, get_args
 
+from bajutsu.run import INTERNAL_MODULE as INTERNAL_RUN_MODULE
 from bajutsu.serve.logbus import LogBus
 
 from ._shared import _DEFAULT_ORG
@@ -23,9 +24,17 @@ JOB_KINDS: frozenset[JobKind] = frozenset(get_args(JobKind))
 
 
 def _cmd_kind(cmd: list[str]) -> JobKind | None:
-    """The `bajutsu` subcommand *cmd* spawns, when it is one of the job kinds."""
-    for i in range(len(cmd) - 2):
-        if cmd[i] == "-m" and cmd[i + 1] == "bajutsu":
+    """The `bajutsu` subcommand *cmd* spawns, when it is one of the job kinds.
+
+    The internal run module (`-m bajutsu.run.internal`, BE-0449) is a `run`, as is the
+    `-m bajutsu run` a spec queued before it still names.
+    """
+    for i in range(len(cmd) - 1):
+        if cmd[i] != "-m":
+            continue
+        if cmd[i + 1] == INTERNAL_RUN_MODULE:
+            return "run"
+        if cmd[i + 1] == "bajutsu" and i + 2 < len(cmd):
             sub = cmd[i + 2]
             return next((k for k in JOB_KINDS if k == sub), None)
     return None
@@ -69,6 +78,14 @@ class Job:
     # Written and cleared with `proc` at every site that touches it, so `proc is None` always implies
     # False here rather than a stale value the reader has to reason is harmless.
     proc_graceful: bool = False
+    # Whether the spawn keeps the caller's own `PATH` instead of putting this interpreter's bin dir
+    # first (BE-0449). Only the public `bajutsu run` sets it: that run lives in the caller's shell, as
+    # it always has. A leased job and `worker --once` leave it False, so both resolve `idb` alike.
+    keep_caller_path: bool = False
+    # A hard kill asked for while no subprocess was registered (BE-0449): a second Ctrl-C that lands
+    # before the spawn. Latched here so registration ends the spawn at once instead of sending the
+    # SIGTERM a child may ignore.
+    kill_requested: bool = False
     lines: list[str] = field(default_factory=list)
     lock: threading.Lock = field(default_factory=threading.Lock)
     bus: LogBus | None = None  # live-log channel; set from state.logbus at creation (BE-0015)

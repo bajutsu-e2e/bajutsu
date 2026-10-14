@@ -29,6 +29,32 @@ bajutsu run --scenario <self-declaring.yaml> [options]          # --target は�
 既定では、そのアプリの設定済みシナリオディレクトリ（`targets.<name>.scenarios`、[configuration](configuration.md) 参照）内の
 **すべての `*.yaml`** を読み込んで実行します。config だけで実行できます。1 ファイルだけ実行するには `--scenario <file>` を渡してください。このフラグを繰り返すと、指定した複数ファイルを1つの warm な runner を共有しながら1プロセスで実行できます。
 
+`run` は run 本体を子プロセスで実行します（[BE-0449](../../roadmaps/BE-0449-server-runs-no-jobs/BE-0449-server-runs-no-jobs-ja.md)）。
+`run` はフラグを子プロセスに渡し、`bajutsu worker --once` と同じ 1 回実行の経路を通ります。そのため、コマンドラインと worker は同じ実装で run を実行します。
+子プロセスは端末の標準入力、標準出力、標準エラーを引き継ぎます。
+したがって `PASS|FAIL` の行は stdout に、進捗は stderr に出て、`--step` もこれまでどおり端末から読みます。
+子プロセスは独自のセッションで動くので、Ctrl-C は run 本体ではなく `run` に届きます。
+`run` は SIGINT、SIGTERM、SIGHUP を、`serve` の job が受けるキャンセルに変えます。
+run は次の安全な区切りで止まり、マニフェストとレポートを書き出します（[BE-0370](../../roadmaps/BE-0370-graceful-run-cancel/BE-0370-graceful-run-cancel-ja.md)）。
+呼び出し側がすでに無視しているシグナルは無視したままにします（`nohup` が SIGHUP を無視する場合など）。
+
+子プロセスが独自のセッションで動くことで、端末での振る舞いがほかに 3 つ変わります。
+
+- **2 回目の Ctrl-C。** 1 回目の Ctrl-C は run に停止を求めます。ドライバーの呼び出しが進行中なら、停止まで猶予時間（既定 90 秒、`BAJUTSU_CANCEL_GRACE`）かかることがあります。もう一度 Ctrl-C を押すと、マニフェストを書かずに run をすぐ止めます。
+- **Ctrl-Z。** `run` は run のプロセスグループを停止してから、自身も停止します。`fg` か `bg` で両方が再開します。
+- **バックグラウンドの `--step` の run。** run は端末のジョブ制御に属さないので、`&` で起動した run の `--step` プロンプトは、ジョブを停止せずに端末から読みます。`--step` はフォアグラウンドで実行してください。
+
+`run` 自身が捕捉できない形で終了した場合（`kill -9`、メモリ不足による強制終了）も、run 本体は呼び出し側がいなくなったことに気づき、同じ方法で自らをキャンセルします。
+
+web backend が動く Windows では、`run` は BE-0449 以前と同じく run 本体を自身のプロセスで実行します。子プロセス、シグナルの中継、上記の端末での 3 つの振る舞いは、macOS と Linux だけに当てはまります。
+
+| 終了コード | 条件 |
+|---|---|
+| 0 | すべてのシナリオが成功した |
+| 1 | いずれかのシナリオが失敗した |
+| 2 | 未知のフラグや読み込めない config などの使い方の誤り |
+| 128 + シグナル番号 | `run` が SIGINT（130）、SIGTERM（143）、SIGHUP（129）を受け取った。キャンセルされた run の結果にかかわらずこの値です |
+
 ### `--target` を省略できる場合
 
 自分で [`targets`](scenarios.md#targets--target複数ターゲットシナリオbe-0428) を宣言するシナリオは、
@@ -113,7 +139,7 @@ bajutsu run --scenario cross-platform.yaml --config both-targets.yaml           
 | `next`（`n`、または空行） | ステップを実行し、次のステップの前で止まります |
 | `continue`（`c`） | 次のブレークポイントか終端まで止まらず実行します |
 | `quit`（`q`、`exit`、または入力の終端） | ここで run を終了します。シナリオは `cancelled` として報告し、終了コードは 1 です。失敗で止まっているときは、失敗理由をそのまま残します |
-| Ctrl-C | `quit` と同じく run を終了します。端末は run の録画やブラウザにも割り込むため、続行できません |
+| Ctrl-C | `quit` と同じく run を終了します。終了コードは 130 です（[`run`](#run) を参照） |
 | `tree`、`find`、`screenshot` | [`repl`](#repl) と同じく、動作中のアプリを読み取ります |
 | `tap`、`type`、`scroll`、`back`、`step <yaml>` | `repl` と同じく、アプリを操作します |
 
@@ -733,7 +759,7 @@ bajutsu approve [<run_dir>] --baselines <dir> [--scenario <id>] [--all] [--runs 
 
 **オーサリング、実行、探索**のためのローカル Web UI です。Tier 1 の利便機能で、**CI ゲートには含まれません**。
 CLI を覆う 4 つのトップレベルタブがあります。**Record** はゴールからシナリオを著し（`python -m bajutsu
-record ...`）、**Replay** はシナリオを実行してレポートを表示し（`python -m bajutsu run ...`）、**Crawl** は
+record ...`）、**Replay** はシナリオを実行してレポートを表示し（`bajutsu run` の本体である `python -m bajutsu.run.internal ...`）、**Crawl** は
 アプリを探索して画面マップをリアルタイムに描き（`python -m bajutsu crawl ...`）、**Stats** は run 履歴を
 横断した集計 run 統計ダッシュボードを表示します（`bajutsu stats`）。いずれも**アクティブな
 config** に対して動きます。config はファイルブラウザ、Git リポジトリ、アップロードした `.zip` バンドルの
@@ -928,10 +954,12 @@ bajutsu mcp [--config bajutsu.config.yaml] [--runs runs] [--transport stdio]
 bajutsu worker [--server-url <url>] [--token <t>] [--platform ios] [--capabilities <tokens>]
                [--poll-interval 2.0] [--heartbeat-interval 30.0] [--worker-id <id>]
                [--worker-config <worker.yaml>]
+bajutsu worker --once <spec.json> [--worker-config <worker.yaml>]
 ```
 
 | オプション | 既定 | 説明 |
 |---|---|---|
+| `--once` | オフ | この JSON ファイルの job 仕様を 1 つ、サーバーなしでこのマシン上で実行し、job の終了コードで終了します。詳しくは下記を参照してください |
 | `--server-url` | `$BAJUTSU_SERVER_URL` または `http://localhost:8765` | コントロールプレーンの URL |
 | `--token` | "" | 認証用の operator トークン（コントロールプレーン側の `--token` / `$BAJUTSU_SERVE_TOKEN`） |
 | `--platform` | `ios` | この worker が動かせる backend のカンマ区切りリスト（`ios` / `web` / `android`）。コントロールプレーンが job を振り分ける軸です |
@@ -940,6 +968,36 @@ bajutsu worker [--server-url <url>] [--token <t>] [--platform ios] [--capabiliti
 | `--heartbeat-interval` | `30.0` | run 中にリースのハートビートを送る間隔（秒）。コントロールプレーンのリースタイムアウトより短く保つことで、長時間の run を停止した worker と誤認して回収されないようにしています |
 | `--worker-id` | "" (自動生成) | worker の識別子 |
 | `--worker-config` | 同梱の既定 | この worker が従う worker 能力ファイル（[BE-0450](../../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability-ja.md)。[drivers](drivers.md#worker-の能力検査be-0450) を参照）。worker は起動時にファイルを検証し、不正なら job をリースする前に終了します。device cloud 向けの job のリースはまだ実装していないため、`environment` が `local` 以外のファイルも当面は拒否します。worker は起動するすべての `bajutsu run` にファイルの絶対パスを渡すので、リースした run はどれも同じファイルで検査されます。サーバーはこのファイルを読みません |
+
+`--once` は job 仕様を 1 つ、サーバーなしで実行します（[BE-0449](../../roadmaps/BE-0449-server-runs-no-jobs/BE-0449-server-runs-no-jobs-ja.md)）。
+job 仕様はキューが保存する形と同じで、`cmd` のリストと、キュー済みの job が持つ任意のフィールドからなります。
+worker はまず `--worker-config` を検証し、リースした job と同じく、起動する run にその絶対パスを渡します。
+そのあとの job は、リースした job と同じコードで動きます。違いは次のとおりです。
+
+- 子プロセスは端末の標準入力、標準出力、標準エラーを引き継ぎます。
+- ダウンロードとアップロードをしないので、run ツリーは run が書いた場所に残ります。
+- worker は run ID を `PASS|FAIL` の行ではなく run ツリーから読み取ります。
+- SIGINT、SIGTERM、SIGHUP は、ハートビートによるキャンセルと同じく job をキャンセルします。終了コードは 128 にシグナル番号を足した値になります。
+
+`--once` は次の仕様を、何も実行する前に拒否し、終了コード 2 で終了します。
+
+- アップロードされたバンドル、成果物の差し替え、ビジュアルベースラインの取得を指定する仕様。これらは署名付き URL で届きますが、1 回実行の job には URL に署名するサーバーがありません。ベースラインは、ディスク上のディレクトリを `--baselines` で指定してください。
+- Device Farm のバッチ仕様
+- `environment` が `local` 以外の `--worker-config`
+- `udids` が文字列のリストでない仕様、または `materials` がパスから文字列への対応になっていない仕様
+- worker が認識しない形で run を指定する `cmd`。認識する形は `python -m bajutsu.run.internal …` と、以前の `python -m bajutsu run …` です。
+- 絶対パス、`..` を含むパス、シンボリックリンクを通ってカレントディレクトリの外に出るパスを持つ `materials`
+- カレントディレクトリにある別の内容のファイルを上書きしてしまう `materials`
+- Windows 上のすべての仕様（シグナルの中継と生存確認のパイプには macOS か Linux が必要なため）
+
+worker は仕様の `materials`（サーバーが送るシナリオと config）をカレントディレクトリに書き出します。リースした worker が自分の作業ディレクトリに書き出すのと同じです。
+同じ内容のファイルはそのまま使います。内容が異なるファイルは呼び出し側のものなので、`--once` は上書きせずに拒否します。
+そうした仕様は空のディレクトリから実行してください。
+
+捕捉できない形で終了した `worker --once` に気づくのは `run` の仕様だけです。worker を `kill -9` で終了させても、`record`、`crawl`、`triage` の子プロセスは自分で終わるまで動き続けます。
+
+サーバーなしで Device Farm の job を投入する機能は、[BE-0448](../../roadmaps/BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch-ja.md) で追加します。
+ほかのオプションはポーリングする worker のためのもので、`--once` では無視します。
 
 ## `lint`
 

@@ -33,6 +33,43 @@ By default `run` loads **every `*.yaml`** in the app's configured scenarios dir
 to run. Pass `--scenario <file>` to run one file instead, or repeat the flag to run several
 specific files in one process, sharing a single warm runner.
 
+The scenarios run in a child process of `run`
+([BE-0449](../roadmaps/BE-0449-server-runs-no-jobs/BE-0449-server-runs-no-jobs.md)). `run` passes
+its flags to that process through the one-shot path of `bajutsu worker --once`. The command line
+and a worker thus share one implementation. The child process inherits the terminal's standard
+input, output, and error. The `PASS|FAIL` line stays on stdout and progress on stderr. `--step`
+reads the terminal as before.
+
+The child process starts in a session of its own, so a Ctrl-C reaches `run` alone. `run` turns a
+SIGINT, a SIGTERM, or a SIGHUP into the cancel a `serve` job receives. The run then stops at its
+next safe boundary and still writes its manifest and report
+([BE-0370](../roadmaps/BE-0370-graceful-run-cancel/BE-0370-graceful-run-cancel.md)). A signal
+that the caller already ignores stays ignored, as SIGHUP does under `nohup`.
+
+Running the child in its own session changes three more things at the terminal:
+
+- **Ctrl-C twice.** The first Ctrl-C asks the run to stop, which can take up to the grace window
+  (90 seconds by default, `BAJUTSU_CANCEL_GRACE`) when a driver call is in flight. Press Ctrl-C again
+  to stop the run immediately, without its manifest.
+- **Ctrl-Z.** `run` stops the run's process group and then itself. `fg` or `bg` continues both.
+- **A background `--step` run.** The run does not belong to the terminal's job control, so a
+  `--step` prompt in a run started with `&` still reads the terminal instead of stopping the job.
+  Run `--step` in the foreground.
+
+If `run` itself dies without a signal it can catch (`kill -9`, an out-of-memory kill), the run
+notices that its caller is gone and cancels itself the same way.
+
+On Windows, where the web backend runs, `run` executes the run body in the `run` process itself,
+with no child process, as it did before BE-0449. The child process, the signal relay, and the three
+terminal behaviors above apply on macOS and Linux only.
+
+| Exit code | When |
+|---|---|
+| 0 | every scenario passed |
+| 1 | a scenario failed |
+| 2 | a usage error, such as an unknown flag or an unloadable config |
+| 128 + the signal number | `run` received SIGINT (130), SIGTERM (143), or SIGHUP (129), whatever the cancelled run reported |
+
 ### When `--target` is optional
 
 A scenario that declares its own
@@ -118,7 +155,7 @@ fails; a scenario-level `expect` mismatch does not stop.
 | `next` (or `n`, or an empty line) | run the step, then stop before the next one |
 | `continue` (or `c`) | run on until the next breakpoint, or the end |
 | `quit` (or `q`, `exit`, or end of input) | end the run here; the scenario is reported as `cancelled` and the run exits 1. At a failure pause, the failure keeps its own reason |
-| Ctrl-C | ends the run like `quit`: the terminal also interrupts the run's recorder and browser, so the run cannot go on |
+| Ctrl-C | ends the run like `quit`, and the run exits 130 (see [`run`](#run)) |
 | `tree`, `find`, `screenshot` | read the live app, exactly as in [`repl`](#repl) |
 | `tap`, `type`, `scroll`, `back`, `step <yaml>` | act on the app, exactly as in `repl` |
 
@@ -941,7 +978,7 @@ bajutsu approve [<run_dir>] --baselines <dir> [--scenario <id>] [--all] [--runs 
 A local web UI to **author, run, and explore** — a Tier-1 convenience, **not part of the CI
 gate**. Four top-level tabs over the CLI: **Record** authors a scenario from a goal
 (`python -m bajutsu record ...`), **Replay** runs a scenario and shows its report
-(`python -m bajutsu run ...`), **Crawl** explores the app and draws its screen map live
+(`python -m bajutsu.run.internal ...`, the body of `bajutsu run`), **Crawl** explores the app and draws its screen map live
 (`python -m bajutsu crawl ...`), and **Stats** shows the aggregate run-stats dashboard across the
 run history (`bajutsu stats`). All run against the **active config**, which you open from
 the file browser, a Git repository, or an uploaded `.zip` bundle (see "Open config" below).
@@ -1183,10 +1220,12 @@ plane signs (BE-0160), so the worker needs only an HTTP client. Not needed for l
 bajutsu worker [--server-url <url>] [--token <t>] [--platform ios] [--capabilities <tokens>]
                [--poll-interval 2.0] [--heartbeat-interval 30.0] [--worker-id <id>]
                [--worker-config <worker.yaml>]
+bajutsu worker --once <spec.json> [--worker-config <worker.yaml>]
 ```
 
 | Option | Default | Description |
 |---|---|---|
+| `--once` | off | execute the one job spec in this JSON file on this machine, with no server, and exit with the job's exit code; see below |
 | `--server-url` | `$BAJUTSU_SERVER_URL` or `http://localhost:8765` | the control plane's URL |
 | `--token` | "" | operator token for auth (the control plane's `--token` / `$BAJUTSU_SERVE_TOKEN`) |
 | `--platform` | `ios` | comma list of backends this worker can drive (`ios` / `web` / `android`) — the axis the control plane routes jobs on |
@@ -1195,6 +1234,46 @@ bajutsu worker [--server-url <url>] [--token <t>] [--platform ios] [--capabiliti
 | `--heartbeat-interval` | `30.0` | seconds between lease heartbeats during a run (kept under the control plane's lease timeout, so a long run is never mistaken for a dead worker and reclaimed) |
 | `--worker-id` | "" (auto) | worker identifier |
 | `--worker-config` | the shipped default | the worker capability file this worker runs under ([BE-0450](../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability.md); see [drivers](drivers.md#worker-capability-check-be-0450)). The worker validates it at startup and exits before leasing anything when the file does not load. It also refuses an `environment` other than `local` for now, because leasing jobs for a device cloud is not implemented yet. The worker passes the file's absolute path to every `bajutsu run` it spawns, so each leased run is checked against the same file; the server never reads it |
+
+`--once` executes one job spec without a server
+([BE-0449](../roadmaps/BE-0449-server-runs-no-jobs/BE-0449-server-runs-no-jobs.md)). The spec has
+the shape the queue stores: a `cmd` list, plus the optional fields a queued job carries. The worker
+validates `--worker-config` first and, as it does for a leased job, passes the file's absolute path
+to the run it spawns. The job then runs through the same code as a leased job, with these
+differences:
+
+- The child process inherits the terminal's standard input, output, and error.
+- The worker downloads and uploads nothing, so the run tree stays where the run wrote it.
+- The worker reads the run id from the run tree, not from the `PASS|FAIL` line.
+- A SIGINT, a SIGTERM, or a SIGHUP cancels the job as a heartbeat cancel does. The exit code is
+  then 128 plus the signal number.
+
+`--once` refuses some specs before it runs anything, and exits 2:
+
+- a spec that names an uploaded bundle or artifact overrides, or asks for visual baselines
+  (`materialize_baselines`), since those arrive by signed URL and a one-shot job has no server to
+  sign one; point `--baselines` at a directory on disk instead
+- a Device Farm batch spec
+- a `--worker-config` whose `environment` is not `local`
+- a `udids` that is not a list of strings, or `materials` that do not map paths to strings
+- a `cmd` that names a run in neither form a worker recognises (`python -m bajutsu.run.internal …`
+  or the older `python -m bajutsu run …`)
+- `materials` whose path is absolute, contains `..`, or leaves the current directory through a
+  symbolic link
+- `materials` that would overwrite a different file in the current directory
+- any spec on Windows, since the signal relay and the liveness pipe need macOS or Linux
+
+The worker writes a spec's `materials` (the scenario and config a server ships) into the current
+directory, as a leased worker writes them into its workspace. A file with the same content is
+reused. A file with different content is the caller's own, so `--once` refuses rather than
+overwrite it. Run such a spec from an empty directory.
+
+Only a `run` spec notices a `worker --once` that dies without a signal it can catch: a `kill -9` of
+the worker leaves a `record`, `crawl`, or `triage` child running until it ends on its own.
+
+Submitting a Device Farm job without a server arrives with
+[BE-0448](../roadmaps/BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch.md).
+The other options configure the polling worker, and `--once` ignores them.
 
 ## `lint`
 

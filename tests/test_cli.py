@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from run_cli import invoke
 from typer.testing import CliRunner
 
 from bajutsu.cli import app
@@ -94,7 +95,9 @@ def _argv(
 @pytest.mark.parametrize("command", ["run", "record", "doctor", "crawl"])
 def test_unknown_app_exits_cleanly(tmp_path: Path, command: str) -> None:
     cfg, scn = _write(tmp_path)
-    r = runner.invoke(app, _argv(command, cfg=cfg, scn=scn, out=tmp_path / "rec.yaml", app="ghost"))
+    r = invoke(
+        runner, app, _argv(command, cfg=cfg, scn=scn, out=tmp_path / "rec.yaml", app="ghost")
+    )
     assert r.exit_code == 2
     assert "unknown target" in r.output
 
@@ -115,7 +118,8 @@ def test_record_fails_closed_without_credential(
         lambda *a, **k: pytest.fail("client constructed despite missing credential"),
     )
     cfg, _ = _write(tmp_path)
-    r = runner.invoke(
+    r = invoke(
+        runner,
         app,
         [
             "record",
@@ -147,7 +151,8 @@ def test_record_fails_closed_uses_configured_key_env(
         "targets:\n  demo: { bundleId: com.example.demo, idNamespaces: [home] }\n",
         encoding="utf-8",
     )
-    r = runner.invoke(
+    r = invoke(
+        runner,
         app,
         [
             "record",
@@ -188,7 +193,8 @@ def test_record_refuses_under_provider_none(
         "anthropic.Anthropic",
         lambda *a, **k: pytest.fail("client constructed despite ai.provider: none"),
     )
-    r = runner.invoke(
+    r = invoke(
+        runner,
         app,
         [
             "record",
@@ -224,7 +230,8 @@ def test_triage_ai_refuses_under_provider_none(
         '{"scenarios": [{"scenario": "s", "ok": false, "failure": "boom", "steps": []}]}',
         encoding="utf-8",
     )
-    r = runner.invoke(
+    r = invoke(
+        runner,
         app,
         [
             "triage",
@@ -256,7 +263,7 @@ def test_triage_ai_fails_closed_without_credential(
         '{"scenarios": [{"scenario": "s", "ok": false, "failure": "boom", "steps": []}]}',
         encoding="utf-8",
     )
-    r = runner.invoke(app, ["triage", str(run_dir), "--ai"])
+    r = invoke(runner, app, ["triage", str(run_dir), "--ai"])
     assert r.exit_code == 2
     assert "no AI credential" in r.output
 
@@ -275,7 +282,9 @@ def test_credential_gap_messages_for_ant_are_actionable() -> None:
 def test_legacy_app_flag_is_rejected(tmp_path: Path) -> None:
     # Hard cutover (BE-0057): there is no `--app` alias — the old flag exits 2 (unknown option).
     cfg, scn = _write(tmp_path)
-    r = runner.invoke(app, ["run", "--scenario", str(scn), "--app", "sample", "--config", str(cfg)])
+    r = invoke(
+        runner, app, ["run", "--scenario", str(scn), "--app", "sample", "--config", str(cfg)]
+    )
     assert r.exit_code == 2
 
 
@@ -289,8 +298,10 @@ def test_no_backend_available_exits_cleanly(
     # the backend gate this test exercises.
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
     cfg, scn = _write(tmp_path)
-    r = runner.invoke(
-        app, _argv(command, cfg=cfg, scn=scn, out=tmp_path / "rec.yaml", app="demo", backend="nope")
+    r = invoke(
+        runner,
+        app,
+        _argv(command, cfg=cfg, scn=scn, out=tmp_path / "rec.yaml", app="demo", backend="nope"),
     )
     assert r.exit_code == 2
     assert "no available actuator" in r.output
@@ -310,14 +321,15 @@ def test_record_exposes_token_budget_flags() -> None:
 
 
 def test_run_missing_config(tmp_path: Path) -> None:
-    r = runner.invoke(app, ["run", "--target", "demo", "--config", str(tmp_path / "nope.yaml")])
+    r = invoke(runner, app, ["run", "--target", "demo", "--config", str(tmp_path / "nope.yaml")])
     assert r.exit_code == 2
     assert "config not found" in r.output
 
 
 def test_run_missing_scenario(tmp_path: Path) -> None:
     cfg, _ = _write(tmp_path)
-    r = runner.invoke(
+    r = invoke(
+        runner,
         app,
         [
             "run",
@@ -336,21 +348,21 @@ def test_run_missing_scenario(tmp_path: Path) -> None:
 def test_run_reads_configured_dir(tmp_path: Path) -> None:
     # No --scenario: run loads the app's configured scenarios dir, then hits the backend gate.
     cfg, _ = _write(tmp_path)
-    r = runner.invoke(app, ["run", "--target", "demo", "--backend", "nope", "--config", str(cfg)])
+    r = invoke(runner, app, ["run", "--target", "demo", "--backend", "nope", "--config", str(cfg)])
     assert r.exit_code == 2
     assert "no available actuator" in r.output
 
 
 def test_run_no_scenarios_dir(tmp_path: Path) -> None:
     cfg, _ = _write(tmp_path)
-    r = runner.invoke(app, ["run", "--target", "bare", "--config", str(cfg)])
+    r = invoke(runner, app, ["run", "--target", "bare", "--config", str(cfg)])
     assert r.exit_code == 2
     assert "no scenarios dir" in r.output
 
 
 def test_run_empty_scenarios_dir(tmp_path: Path) -> None:
     cfg, _ = _write(tmp_path)
-    r = runner.invoke(app, ["run", "--target", "empty", "--config", str(cfg)])
+    r = invoke(runner, app, ["run", "--target", "empty", "--config", str(cfg)])
     assert r.exit_code == 2
     assert "no scenarios found" in r.output
 
@@ -358,7 +370,7 @@ def test_run_empty_scenarios_dir(tmp_path: Path) -> None:
 def test_record_no_scenarios_dir(tmp_path: Path) -> None:
     # No --out and the app has no scenarios dir -> can't decide where to write.
     cfg, _ = _write(tmp_path)
-    r = runner.invoke(app, ["record", "--target", "bare", "--goal", "x", "--config", str(cfg)])
+    r = invoke(runner, app, ["record", "--target", "bare", "--goal", "x", "--config", str(cfg)])
     assert r.exit_code == 2
     assert "no scenarios dir" in r.output
 
@@ -411,7 +423,8 @@ def test_record_writes_the_authored_scenario(
         encoding="utf-8",
     )
     out = tmp_path / "rec.yaml"
-    r = runner.invoke(
+    r = invoke(
+        runner,
         app,
         [
             "record",
@@ -463,7 +476,8 @@ def test_record_needs_human_handoff_exits_3(
     monkeypatch.setattr(rec, "record_loop", _needs_human)
 
     cfg = _fake_record_config(tmp_path)
-    r = runner.invoke(
+    r = invoke(
+        runner,
         app,
         [
             "record",
@@ -511,7 +525,8 @@ def test_record_device_error_exits_2(tmp_path: Path, monkeypatch: pytest.MonkeyP
         "bajutsu.cli._shared.start_launch_server", lambda *a, **k: (lambda: None, None)
     )
     monkeypatch.setattr(rec, "launch_driver", no_device)
-    r = runner.invoke(
+    r = invoke(
+        runner,
         app,
         [
             "record",
@@ -584,7 +599,7 @@ def test_run_reports_pass_and_exits_zero(tmp_path: Path, monkeypatch: pytest.Mon
     manifest = _manifest_at(tmp_path)
     _stub_execution(monkeypatch, results=[RunResult("demo", True, [])], manifest=manifest)
     cfg, scn = _fake_run(tmp_path)
-    r = runner.invoke(app, _run_argv(cfg, scn, tmp_path, "--no-system-alert-handling"))
+    r = invoke(runner, app, _run_argv(cfg, scn, tmp_path, "--no-system-alert-handling"))
     assert r.exit_code == 0
     assert r.output.startswith(f"PASS  {manifest}")
 
@@ -598,7 +613,7 @@ def test_run_reports_fail_and_exits_one(tmp_path: Path, monkeypatch: pytest.Monk
         monkeypatch, results=[RunResult("demo", False, [], failure="boom")], manifest=manifest
     )
     cfg, scn = _fake_run(tmp_path)
-    r = runner.invoke(app, _run_argv(cfg, scn, tmp_path, "--erase", "--no-system-alert-handling"))
+    r = invoke(runner, app, _run_argv(cfg, scn, tmp_path, "--erase", "--no-system-alert-handling"))
     assert r.exit_code == 1
     assert r.output.startswith("FAIL")
 
@@ -615,7 +630,7 @@ def test_run_zip_writes_artifact_after_the_verdict(
     (manifest.parent / "report.html").write_text("<html></html>", encoding="utf-8")
     _stub_execution(monkeypatch, results=[RunResult("demo", True, [])], manifest=manifest)
     cfg, scn = _fake_run(tmp_path)
-    r = runner.invoke(app, _run_argv(cfg, scn, tmp_path, "--zip", "--no-system-alert-handling"))
+    r = invoke(runner, app, _run_argv(cfg, scn, tmp_path, "--zip", "--no-system-alert-handling"))
     assert r.exit_code == 0  # the verdict stands, unaffected by the post-run zip
     assert (manifest.parent.parent / f"{manifest.parent.name}.zip").is_file()
 
@@ -645,8 +660,8 @@ def test_run_trace_driver_flag_reaches_run_and_report(
     monkeypatch.setattr("bajutsu.run.cli.run_and_report", _fake_run_and_report)
 
     cfg, scn = _fake_run(tmp_path)
-    r = runner.invoke(
-        app, _run_argv(cfg, scn, tmp_path, "--trace-driver", "--no-system-alert-handling")
+    r = invoke(
+        runner, app, _run_argv(cfg, scn, tmp_path, "--trace-driver", "--no-system-alert-handling")
     )
     assert r.exit_code == 0
     assert calls[0]["trace_driver"] is True
@@ -672,7 +687,7 @@ def test_run_without_trace_driver_flag_defaults_to_off(
     monkeypatch.setattr("bajutsu.run.cli.run_and_report", _fake_run_and_report)
 
     cfg, scn = _fake_run(tmp_path)
-    r = runner.invoke(app, _run_argv(cfg, scn, tmp_path, "--no-system-alert-handling"))
+    r = invoke(runner, app, _run_argv(cfg, scn, tmp_path, "--no-system-alert-handling"))
     assert r.exit_code == 0
     assert calls[0]["trace_driver"] is False
 
@@ -709,7 +724,7 @@ def test_run_never_consults_an_ai_credential(
         monkeypatch, results=[RunResult("demo", True, [])], manifest=_manifest_at(tmp_path)
     )
     cfg, scn = _fake_run(tmp_path)
-    r = runner.invoke(app, _run_argv(cfg, scn, tmp_path))
+    r = invoke(runner, app, _run_argv(cfg, scn, tmp_path))
     assert r.exit_code == 0
     assert "alert guard" not in r.output
     assert "ANTHROPIC_API_KEY" not in r.output
@@ -720,7 +735,8 @@ def test_run_tag_no_match_exits_2(tmp_path: Path) -> None:
     # --tag selects across the fully-expanded set; when nothing matches it's a usage error (exit 2),
     # surfaced before any device work.
     cfg, scn = _fake_run(tmp_path, tags="smoke")
-    r = runner.invoke(
+    r = invoke(
+        runner,
         app,
         [
             "run",
@@ -746,7 +762,8 @@ def test_run_browsers_matrix_is_web_only(tmp_path: Path) -> None:
     # --browsers is a web-only axis: a multi-engine matrix on a non-web backend is caught up front
     # (exit 2), not after building a pool that would ignore the engine list (BE-0076).
     cfg, scn = _fake_run(tmp_path)
-    r = runner.invoke(
+    r = invoke(
+        runner,
         app,
         [
             "run",
@@ -878,7 +895,8 @@ def test_run_rejects_a_stale_target_flag_end_to_end(tmp_path: Path) -> None:
         "      tap: { id: home.title }\n",
         encoding="utf-8",
     )
-    r = runner.invoke(
+    r = invoke(
+        runner,
         app,
         [
             "run",
@@ -942,7 +960,8 @@ def test_a_pool_too_small_for_the_scenario_still_releases_every_device(tmp_path:
         )
         # Both targets resolve to the "fake" actuator and thus share one pool; a single `--udid`
         # gives that pool exactly one lane for a scenario that needs two.
-        r = runner.invoke(
+        r = invoke(
+            runner,
             app,
             [
                 "run",
@@ -982,7 +1001,8 @@ def test_run_rejects_a_bad_target_config_hook_end_to_end(tmp_path: Path) -> None
     )
     scn = tmp_path / "s.yaml"
     scn.write_text("- name: demo\n  steps:\n    - tap: { id: home.title }\n", encoding="utf-8")
-    r = runner.invoke(
+    r = invoke(
+        runner,
         app,
         [
             "run",
@@ -1025,7 +1045,8 @@ def test_run_rejects_a_duplicate_extract_body_var_in_a_target_config_hook(tmp_pa
     )
     scn = tmp_path / "s.yaml"
     scn.write_text("- name: demo\n  steps:\n    - tap: { id: home.title }\n", encoding="utf-8")
-    r = runner.invoke(
+    r = invoke(
+        runner,
         app,
         [
             "run",
@@ -1072,7 +1093,8 @@ def test_run_tag_filtering_away_a_multi_target_scenario_lets_the_rest_run(
         "      tap: { id: home.title }\n",
         encoding="utf-8",
     )
-    r = runner.invoke(
+    r = invoke(
+        runner,
         app,
         [
             "run",
@@ -1126,7 +1148,8 @@ def test_run_scenarios_dir_excluding_a_cross_target_file_runs_the_rest(tmp_path:
     # self-declaring check runs after that selection, so the excluded file no longer turns the
     # whole suite away with exit 2.
     cfg = _suite_dir_with_a_cross_target_file(tmp_path)
-    r = runner.invoke(
+    r = invoke(
+        runner,
         app,
         [
             "run",
@@ -1150,7 +1173,8 @@ def test_run_scenarios_dir_excluding_a_cross_target_file_runs_the_rest(tmp_path:
 
 def test_run_scenarios_dir_still_refuses_a_selected_cross_target_file(tmp_path: Path) -> None:
     cfg = _suite_dir_with_a_cross_target_file(tmp_path)
-    r = runner.invoke(
+    r = invoke(
+        runner,
         app,
         [
             "run",
@@ -1183,7 +1207,8 @@ def test_run_scenarios_dir_names_the_file_of_a_data_driven_cross_target_scenario
         "      tap: { id: home.title }\n",
         encoding="utf-8",
     )
-    r = runner.invoke(
+    r = invoke(
+        runner,
         app,
         [
             "run",
@@ -1219,7 +1244,7 @@ def test_codegen_rejects_a_multi_target_scenario(tmp_path: Path) -> None:
         "      tap: { id: home.title }\n",
         encoding="utf-8",
     )
-    r = runner.invoke(app, ["codegen", str(scn), "--target", "demo", "--config", str(cfg)])
+    r = invoke(runner, app, ["codegen", str(scn), "--target", "demo", "--config", str(cfg)])
     assert r.exit_code == 2
     assert "cannot emit a multi-target scenario" in r.output
     assert "cross-target" in r.output
@@ -1289,7 +1314,7 @@ def test_unknown_language_exits_cleanly(tmp_path: Path, command: str) -> None:
     # An unknown --language exits 2 before reaching an AI path (BE-0188), with a usable hint.
     cfg, scn = _write(tmp_path)
     argv = _argv(command, cfg=cfg, scn=scn, out=tmp_path / "rec.yaml", app="demo")
-    r = runner.invoke(app, [*argv, "--language", "klingon"])
+    r = invoke(runner, app, [*argv, "--language", "klingon"])
     assert r.exit_code == 2
     assert "unknown --language" in r.output
 
@@ -1299,7 +1324,7 @@ def test_unknown_browser_engine_exits_cleanly(tmp_path: Path, command: str) -> N
     # An unknown --browser engine exits 2 before reaching Playwright (BE-0076), with a usable hint.
     cfg, scn = _write(tmp_path)
     argv = _argv(command, cfg=cfg, scn=scn, out=tmp_path / "rec.yaml", app="demo")
-    r = runner.invoke(app, [*argv, "--browser", "safari"])
+    r = invoke(runner, app, [*argv, "--browser", "safari"])
     assert r.exit_code == 2
     assert "unknown --browser" in r.output
 
@@ -1327,7 +1352,7 @@ def test_browsers_unknown_engine_exits_cleanly(tmp_path: Path) -> None:
     # The matrix flag validates the same way --browser does: an unknown engine exits 2 up front.
     cfg, scn = _write(tmp_path)
     argv = _argv("run", cfg=cfg, scn=scn, out=tmp_path / "rec.yaml", app="demo")
-    r = runner.invoke(app, [*argv, "--browsers", "chromium,safari"])
+    r = invoke(runner, app, [*argv, "--browsers", "chromium,safari"])
     assert r.exit_code == 2
     assert "safari" in r.output
 
@@ -1782,8 +1807,8 @@ def test_doctor_fake_backend_scores_the_current_screen(
         "targets:\n  demo: { bundleId: com.example.demo, idNamespaces: [home] }\n",
         encoding="utf-8",
     )
-    r = runner.invoke(
-        app, ["doctor", "--target", "demo", "--backend", "fake", "--config", str(cfg)]
+    r = invoke(
+        runner, app, ["doctor", "--target", "demo", "--backend", "fake", "--config", str(cfg)]
     )
     assert r.exit_code == 1
     assert "grade: Blocked" in r.output
@@ -1809,8 +1834,8 @@ def test_doctor_reports_unreachable_screen_instead_of_crashing(
         "targets:\n  demo: { bundleId: com.example.demo, idNamespaces: [home] }\n",
         encoding="utf-8",
     )
-    r = runner.invoke(
-        app, ["doctor", "--target", "demo", "--backend", "fake", "--config", str(cfg)]
+    r = invoke(
+        runner, app, ["doctor", "--target", "demo", "--backend", "fake", "--config", str(cfg)]
     )
     assert r.exit_code == 1
     assert r.exception is None or isinstance(r.exception, SystemExit)  # no crash, a clean exit
@@ -1826,7 +1851,8 @@ def test_doctor_scenario_not_found_exits_2(tmp_path: Path) -> None:
         "targets:\n  demo: { bundleId: com.example.demo, idNamespaces: [home] }\n",
         encoding="utf-8",
     )
-    r = runner.invoke(
+    r = invoke(
+        runner,
         app,
         [
             "doctor",
@@ -1846,14 +1872,14 @@ def test_doctor_scenario_not_found_exits_2(tmp_path: Path) -> None:
 
 def test_serve_refuses_non_loopback_without_token() -> None:
     # Binding a non-loopback host with no token would expose an unauthenticated server (BE-0051).
-    r = runner.invoke(app, ["serve", "--host", "0.0.0.0"])
+    r = invoke(runner, app, ["serve", "--host", "0.0.0.0"])
     assert r.exit_code == 2
     assert "without a token" in r.output
 
 
 def test_serve_emit_launchagent_prints_plist_and_exits() -> None:
     # --emit-launchagent prints a plist and exits 0 without binding a server (BE-0016 Tier A).
-    r = runner.invoke(app, ["serve", "--emit-launchagent", "--config", "bajutsu.config.yaml"])
+    r = invoke(runner, app, ["serve", "--emit-launchagent", "--config", "bajutsu.config.yaml"])
     assert r.exit_code == 0
     assert "<plist" in r.output
     assert "com.bajutsu.serve" in r.output
@@ -1877,7 +1903,7 @@ def test_serve_config_from_git_binds_checkout(
     )
     captured: dict[str, object] = {}
     monkeypatch.setattr(srv, "serve", lambda **kw: captured.update(kw))  # don't start a server
-    r = runner.invoke(app, ["serve", "--config", "github:acme/repo@main"])
+    r = invoke(runner, app, ["serve", "--config", "github:acme/repo@main"])
     assert r.exit_code == 0
     assert captured["config"] == cfg  # bound to the checkout's config
     assert captured["cwd"] == checkout  # served from the checkout root
@@ -1892,7 +1918,7 @@ def test_serve_config_from_git_failure_exits_2(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setattr("bajutsu.common.config_source.materialize", fail)
     started: list[object] = []
     monkeypatch.setattr("bajutsu.serve.serve", lambda **kw: started.append(kw))
-    r = runner.invoke(app, ["serve", "--config", "github:acme/repo@main"])
+    r = invoke(runner, app, ["serve", "--config", "github:acme/repo@main"])
     assert r.exit_code == 2
     assert "--config github:acme/repo@main: network unreachable" in r.output
     assert started == []
@@ -1913,7 +1939,7 @@ def test_serve_local_config_binds_the_config_directory(
     cfg.write_text("targets: { demo: { bundleId: com.example.demo } }\n", encoding="utf-8")
     captured: dict[str, object] = {}
     monkeypatch.setattr(srv, "serve", lambda **kw: captured.update(kw))  # don't start a server
-    r = runner.invoke(app, ["serve", "--config", str(cfg)])
+    r = invoke(runner, app, ["serve", "--config", str(cfg)])
     assert r.exit_code == 0
     assert captured["config"] == cfg
     assert captured["cwd"] == cfg_dir  # anchored at the config's directory, not the launch dir
@@ -1939,7 +1965,7 @@ def test_serve_local_relative_config_is_resolved_to_absolute(
     captured: dict[str, object] = {}
     monkeypatch.setattr(srv, "serve", lambda **kw: captured.update(kw))  # don't start a server
     # Path relative to launch_dir, pointing back up into the config's subdir.
-    r = runner.invoke(app, ["serve", "--config", "../proj/bajutsu.config.yaml"])
+    r = invoke(runner, app, ["serve", "--config", "../proj/bajutsu.config.yaml"])
     assert r.exit_code == 0
     config = captured["config"]
     assert isinstance(config, Path) and config.is_absolute()  # survives the cwd rebind
@@ -1949,7 +1975,7 @@ def test_serve_local_relative_config_is_resolved_to_absolute(
 
 def test_serve_rejects_invalid_upload_exec() -> None:
     # An unknown --upload-exec mode fails loud at the boundary (BE-0090), never silently defaults.
-    r = runner.invoke(app, ["serve", "--upload-exec", "bogus", "--config", "bajutsu.config.yaml"])
+    r = invoke(runner, app, ["serve", "--upload-exec", "bogus", "--config", "bajutsu.config.yaml"])
     assert r.exit_code == 2
     assert "upload-exec" in r.output
 
@@ -1961,11 +1987,11 @@ def test_serve_upload_exec_env_mirror_and_flag_precedence(monkeypatch: pytest.Mo
     captured: dict[str, object] = {}
     monkeypatch.setattr(srv, "serve", lambda **kw: captured.update(kw))
     monkeypatch.setenv("BAJUTSU_UPLOAD_EXEC", "deny")
-    r = runner.invoke(app, ["serve", "--config", "bajutsu.config.yaml"])
+    r = invoke(runner, app, ["serve", "--config", "bajutsu.config.yaml"])
     from_env = captured["upload_exec"]
     assert r.exit_code == 0 and from_env == "deny"  # env honoured when no flag
     captured.clear()
-    r = runner.invoke(app, ["serve", "--upload-exec", "reuse", "--config", "bajutsu.config.yaml"])
+    r = invoke(runner, app, ["serve", "--upload-exec", "reuse", "--config", "bajutsu.config.yaml"])
     from_flag = captured["upload_exec"]
     assert r.exit_code == 0 and from_flag == "reuse"  # flag wins over env
 
@@ -1984,7 +2010,7 @@ def test_serve_themes_flag_and_default_theme(
     cfg.write_text("ui:\n  default_theme: daylight\n", encoding="utf-8")
     captured: dict[str, object] = {}
     monkeypatch.setattr(srv, "serve", lambda **kw: captured.update(kw))
-    r = runner.invoke(app, ["serve", "--themes", str(themes), "--config", str(cfg)])
+    r = invoke(runner, app, ["serve", "--themes", str(themes), "--config", str(cfg)])
     assert r.exit_code == 0
     assert captured["themes_dir"] == themes
     assert captured["default_theme"] == "daylight"
@@ -1996,7 +2022,7 @@ def test_serve_themes_flag_absent_passes_none(monkeypatch: pytest.MonkeyPatch) -
 
     captured: dict[str, object] = {}
     monkeypatch.setattr(srv, "serve", lambda **kw: captured.update(kw))
-    r = runner.invoke(app, ["serve", "--config", "bajutsu.config.yaml"])
+    r = invoke(runner, app, ["serve", "--config", "bajutsu.config.yaml"])
     assert r.exit_code == 0
     assert captured.get("themes_dir") is None
 
@@ -2019,7 +2045,8 @@ def test_crawl_no_backend_available(tmp_path: Path) -> None:
     # crucially, before the run dir is created (no stray runs/ side effect from the gate).
     cfg, _ = _write(tmp_path)
     out = tmp_path / "crawlrun"
-    r = runner.invoke(
+    r = invoke(
+        runner,
         app,
         ["crawl", "--target", "demo", "--backend", "nope", "--out", str(out), "--config", str(cfg)],
     )
@@ -2055,7 +2082,8 @@ def test_crawl_api_agent_needs_anthropic_key(
     _no_dotenv(monkeypatch)
     cfg, _ = _write(tmp_path)
     out = tmp_path / "crawlrun"
-    r = runner.invoke(
+    r = invoke(
+        runner,
         app,
         ["crawl", "--target", "demo", "--backend", "fake", "--out", str(out), "--config", str(cfg)],
     )
@@ -2085,7 +2113,8 @@ def test_crawl_bedrock_does_not_require_anthropic_key(
     monkeypatch.setattr("bajutsu.crawl.cli.launch_driver", _no_device)
     cfg, _ = _write(tmp_path)
     out = tmp_path / "crawlrun"
-    r = runner.invoke(
+    r = invoke(
+        runner,
         app,
         ["crawl", "--target", "demo", "--backend", "fake", "--out", str(out), "--config", str(cfg)],
     )
@@ -2106,7 +2135,8 @@ def test_crawl_empty_udid_pool_is_a_usage_error(
     monkeypatch.setenv("BAJUTSU_AI_PROVIDER", "bedrock")
     monkeypatch.setenv("BAJUTSU_BEDROCK_MODEL", "global.anthropic.claude-opus-4-6-v1")
     cfg, _ = _write(tmp_path)
-    r = runner.invoke(
+    r = invoke(
+        runner,
         app,
         [
             "crawl",
@@ -2133,7 +2163,8 @@ def test_crawl_bedrock_needs_model(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     monkeypatch.setenv("BAJUTSU_AI_PROVIDER", "bedrock")
     cfg, _ = _write(tmp_path)
     out = tmp_path / "crawlrun"
-    r = runner.invoke(
+    r = invoke(
+        runner,
         app,
         ["crawl", "--target", "demo", "--backend", "fake", "--out", str(out), "--config", str(cfg)],
     )
@@ -2177,7 +2208,8 @@ def test_crawl_web_builds_one_browser_lane_per_worker(
 
     cfg, _ = _write(tmp_path)
     out = tmp_path / "crawlrun"
-    r = runner.invoke(
+    r = invoke(
+        runner,
         app,
         [
             "crawl",
@@ -2252,7 +2284,7 @@ def _write_visual_run(runs: Path, run_id: str, *, ok: bool) -> Path:
 def test_approve_promotes_failing_visual(tmp_path: Path) -> None:
     run_dir = _write_visual_run(tmp_path / "runs", "20260610-1", ok=False)
     baselines = tmp_path / "baselines"
-    r = runner.invoke(app, ["approve", str(run_dir), "--baselines", str(baselines)])
+    r = invoke(runner, app, ["approve", str(run_dir), "--baselines", str(baselines)])
     assert r.exit_code == 0
     assert (baselines / "home.png").read_bytes() == b"PNGDATA"
     assert "approved home.png" in r.output
@@ -2292,7 +2324,7 @@ def test_approve_promotes_element_scoped_crop(tmp_path: Path) -> None:
     }
     (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     baselines = tmp_path / "baselines"
-    r = runner.invoke(app, ["approve", str(run_dir), "--baselines", str(baselines)])
+    r = invoke(runner, app, ["approve", str(run_dir), "--baselines", str(baselines)])
     assert r.exit_code == 0
     assert (baselines / "card.png").read_bytes() == b"CROPDATA"  # the crop became the baseline
 
@@ -2300,17 +2332,19 @@ def test_approve_promotes_element_scoped_crop(tmp_path: Path) -> None:
 def test_approve_skips_passing_without_all(tmp_path: Path) -> None:
     run_dir = _write_visual_run(tmp_path / "runs", "20260610-1", ok=True)
     baselines = tmp_path / "baselines"
-    r = runner.invoke(app, ["approve", str(run_dir), "--baselines", str(baselines)])
+    r = invoke(runner, app, ["approve", str(run_dir), "--baselines", str(baselines)])
     assert r.exit_code == 1  # nothing to approve (the check passed)
     assert not (baselines / "home.png").exists()
     # --all refreshes the passing baseline too.
-    r = runner.invoke(app, ["approve", str(run_dir), "--baselines", str(baselines), "--all"])
+    r = invoke(runner, app, ["approve", str(run_dir), "--baselines", str(baselines), "--all"])
     assert r.exit_code == 0
     assert (baselines / "home.png").read_bytes() == b"PNGDATA"
 
 
 def test_approve_no_run_found(tmp_path: Path) -> None:
-    r = runner.invoke(app, ["approve", "--baselines", str(tmp_path / "b"), "--runs", str(tmp_path)])
+    r = invoke(
+        runner, app, ["approve", "--baselines", str(tmp_path / "b"), "--runs", str(tmp_path)]
+    )
     assert r.exit_code == 2
     assert "no run found" in r.output
 
@@ -2323,7 +2357,7 @@ def test_serve_server_backend_without_extras_exits_cleanly(monkeypatch: pytest.M
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     monkeypatch.setitem(sys.modules, "boto3", None)
-    r = runner.invoke(app, ["serve", "--backend", "server"])
+    r = invoke(runner, app, ["serve", "--backend", "server"])
     assert r.exit_code == 2
     assert "extra" in r.output.lower()
 
@@ -2333,7 +2367,8 @@ def test_crawl_continue_and_resume_are_mutually_exclusive(tmp_path: Path) -> Non
     # contradict, so naming both is rejected up front — before any backend/credential/device setup
     # (BE-0181), so the error is a clean usage message, not a late failure.
     cfg, _ = _write(tmp_path)
-    r = runner.invoke(
+    r = invoke(
+        runner,
         app,
         [
             "crawl",
@@ -2355,7 +2390,7 @@ def test_crawl_continue_and_resume_are_mutually_exclusive(tmp_path: Path) -> Non
 def test_worker_help_exits_cleanly() -> None:
     # The worker CLI uses stdlib only (no Redis/RQ since BE-0106), so --help must work without
     # any optional extras installed.
-    r = runner.invoke(app, ["worker", "--help"])
+    r = invoke(runner, app, ["worker", "--help"])
     assert r.exit_code == 0
     assert "lease" in r.output.lower() or "poll" in r.output.lower()
 
@@ -2988,7 +3023,7 @@ def test_run_hands_the_pipeline_a_live_cancellation_source(
     monkeypatch.setattr("bajutsu.run.cli.run_and_report", _pipeline)
     cfg, scn = _fake_run(tmp_path)
 
-    r = runner.invoke(app, _run_argv(cfg, scn, tmp_path, "--no-system-alert-handling"))
+    r = invoke(runner, app, _run_argv(cfg, scn, tmp_path, "--no-system-alert-handling"))
 
     assert seen == [False, True]
     assert r.exit_code == 1  # a cancelled run is a failed run

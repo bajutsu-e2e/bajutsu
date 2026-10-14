@@ -335,10 +335,11 @@ def test_list_crawl_runs_empty_dir(tmp_path: Path) -> None:
 
 def test_run_command_builder() -> None:
     cmd = srv.run_command("s.yaml", "demo", backend="xcuitest", udid="U", config="c.yaml")
-    assert cmd[:6] == [sys.executable, "-m", "bajutsu", "run", "--scenario", "s.yaml"]
+    # The internal run module, never the public wrapper, which would spawn it in turn (BE-0449).
+    assert cmd[:5] == [sys.executable, "-m", "bajutsu.run.internal", "--scenario", "s.yaml"]
     # erase defaults to None: no flag, so each scenario's preconditions.erase decides.
     # --progress is always passed so the run streams scenario/step lines into the run log.
-    assert cmd[6:] == [
+    assert cmd[5:] == [
         "--target",
         "demo",
         "--config",

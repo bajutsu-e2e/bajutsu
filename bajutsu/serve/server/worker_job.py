@@ -16,14 +16,16 @@ from __future__ import annotations
 import logging
 import subprocess
 import sys
+import threading
 from contextlib import nullcontext
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
 from bajutsu.common.backend_cli import simctl as _simctl
 from bajutsu.common.run_meta.files import DEFAULT_RUNS_DIR
+from bajutsu.run import INTERNAL_MODULE as _INTERNAL_RUN_MODULE
 from bajutsu.serve import oplog
-from bajutsu.serve.jobs import run_job
+from bajutsu.serve.jobs import _kill, _pgid_of, _still_running, cancel_job, run_job
 from bajutsu.serve.logbus import InMemoryLogBus, LogBus
 from bajutsu.serve.orgs import DEFAULT_ORG as _DEFAULT_ORG
 from bajutsu.serve.state import Job, ServeState
@@ -52,6 +54,78 @@ class WorkerIO(Protocol):
 
     def save_scenario(self, work: Path, out_path: str, app: str, ref: str) -> None:
         """Persist a `record` job's authored scenario at *out_path* to storage as ``(app, ref)``."""
+
+
+class CancelRelay:
+    """Hands a cancel to the job a run thread is running (BE-0449).
+
+    The run builds its `Job` inside `execute_job_spec`, so a cancel can arrive before the job exists,
+    after, or while it is being bound. The lock orders the two: whichever comes second delivers the
+    cancel, and it is delivered once, since a leased worker's heartbeat repeats the flag on every
+    beat, a one-shot caller may be signalled twice, and a second graceful stop would restart the
+    run's grace window.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._job: Job | None = None
+        self._requested = False
+        self._kill_requested = False
+
+    @property
+    def requested(self) -> bool:
+        """Whether a cancel has been asked for, delivered or not."""
+        with self._lock:
+            return self._requested
+
+    def bind(self, job: Job) -> None:
+        """Attach the job a cancel is for, delivering one that was asked for before it existed."""
+        with self._lock:
+            self._job = job
+            pending = self._requested
+            hard = self._kill_requested
+        if hard:
+            with job.lock:
+                job.kill_requested = True
+        if pending:
+            cancel_job(job)
+
+    def request(self) -> None:
+        """Cancel the bound job, or the job once it is bound; a repeated request does nothing."""
+        with self._lock:
+            if self._requested:
+                return
+            self._requested = True
+            job = self._job
+        if job is not None:
+            cancel_job(job)
+
+    def pgid(self) -> int | None:
+        """The process group of the bound job's live child, or None when there is none yet."""
+        with self._lock:
+            job = self._job
+        proc = job.proc if job is not None else None
+        return None if proc is None else _pgid_of(proc)
+
+    def kill(self) -> None:
+        """End the bound job's live child and its group at once, past any grace window.
+
+        With no child registered yet the request is latched (`Job.kill_requested`), and the
+        registration consumes it by killing the child it would otherwise ask to stop.
+        """
+        with self._lock:
+            job = self._job
+            if job is None:
+                self._kill_requested = True
+                return
+        with job.lock:
+            proc = job.proc
+            # A finished build phase leaves its exited process here until the run is spawned.
+            if proc is None or not _still_running(proc):
+                job.kill_requested = True
+                proc = None
+        if proc is not None:
+            _kill(proc)
 
 
 def job_spec(job: Job) -> dict[str, Any]:
@@ -167,15 +241,33 @@ def _local_interpreter(cmd: list[str]) -> list[str]:
     The control plane builds the argv with its own ``sys.executable``, an absolute path that means
     nothing on the worker: a container's ``/usr/local/bin/python3.13`` also exists on a Mac worker —
     without bajutsu installed — so the run dies with ``No module named bajutsu`` while the worker
-    still reports the job completed. Only the ``-m bajutsu`` form is rewritten; a spec whose argv
-    names some other executable keeps it. Every `cmd` the control plane queues today is built by
+    still reports the job completed. Only the ``-m bajutsu`` form and the internal run module's
+    ``-m bajutsu.run.internal`` form (BE-0449) are rewritten; a spec whose argv names some other
+    executable keeps it. A ``-m bajutsu run`` that a spec queued before BE-0449 still names becomes
+    the internal run module, so the run executes in one process, as it did when it was queued,
+    rather than behind the public wrapper and its extra process. Every `cmd` the control plane queues today is built by
     `run_command` / `record_command` / `crawl_command` / `triage_command`, so the guard is purely
     defensive — it does not cover the batch or ``build:`` paths, which carry no argv through `cmd`
     at all (`Job.batch` and `Job.build` are their own fields, spawned elsewhere).
     """
-    if cmd[1:3] == ["-m", "bajutsu"]:
+    if cmd[1:4] == ["-m", "bajutsu", "run"]:
+        return [sys.executable, "-m", _INTERNAL_RUN_MODULE, *cmd[4:]]
+    if cmd[1:2] == ["-m"] and cmd[2:3] in (["bajutsu"], [_INTERNAL_RUN_MODULE]):
         return [sys.executable, *cmd[1:]]
     return cmd
+
+
+def _run_argv_head(cmd: list[str]) -> int | None:
+    """How many leading words of *cmd* name a run, or None when *cmd* is not a recognised run argv.
+
+    Two forms are recognised: ``python -m bajutsu.run.internal``, which the spec builders emit
+    (BE-0449), and ``python -m bajutsu run``, which a spec queued before that change still names.
+    """
+    if cmd[1:3] == ["-m", _INTERNAL_RUN_MODULE]:
+        return 3
+    if cmd[1:4] == ["-m", "bajutsu", "run"]:
+        return 4
+    return None
 
 
 def _with_worker_config(cmd: list[str], worker_config: Path | None) -> list[str]:
@@ -184,12 +276,13 @@ def _with_worker_config(cmd: list[str], worker_config: Path | None) -> list[str]
     The worker alone holds `worker.yaml` — the server is not a worker and never sets the flag — so
     the run it spawns must read the same file to apply the same check. Only `run` takes the flag;
     the other commands' argv is returned unchanged. A worker started without a file still strips a
-    spec-supplied flag from a recognised ``python -m bajutsu run`` argv, so the run falls back to the
+    spec-supplied flag from a recognised run argv (`_run_argv_head`), so the run falls back to the
     shipped default rather than the spec's choice.
     """
-    if "run" not in cmd[:4]:
-        return cmd
-    if cmd[1:4] != ["-m", "bajutsu", "run"]:
+    head = _run_argv_head(cmd)
+    if head is None:
+        if "run" not in cmd[:4] and _INTERNAL_RUN_MODULE not in cmd[:3]:
+            return cmd
         if worker_config is None:
             return cmd
         # Passing the argv through would run under the shipped default, which offers every driver:
@@ -199,7 +292,7 @@ def _with_worker_config(cmd: list[str], worker_config: Path | None) -> list[str]
     # worker's declaration, and the last value of a repeated option wins.
     rest = [
         arg
-        for i, arg in enumerate(cmd[4:], start=4)
+        for i, arg in enumerate(cmd[head:], start=head)
         if not (
             arg == "--worker-config"
             or arg.startswith("--worker-config=")
@@ -207,8 +300,8 @@ def _with_worker_config(cmd: list[str], worker_config: Path | None) -> list[str]
         )
     ]
     if worker_config is None:
-        return [*cmd[:4], *rest]
-    return [*cmd[:4], "--worker-config", str(worker_config.resolve()), *rest]
+        return [*cmd[:head], *rest]
+    return [*cmd[:head], "--worker-config", str(worker_config.resolve()), *rest]
 
 
 def execute_job_spec(
@@ -223,6 +316,9 @@ def execute_job_spec(
     worker_config: Path | None = None,
     on_job: Callable[[Job], None] | None = None,
     before_upload: Callable[[Job], None] | None = None,
+    one_shot: bool = False,
+    apply_worker_config: bool = True,
+    keep_caller_path: bool = False,
 ) -> Job:
     """Worker entrypoint: rebuild the job from *spec*, run the unchanged `run_job`, then upload its
     run tree through the control plane's presigned URLs.
@@ -238,7 +334,15 @@ def execute_job_spec(
     in-memory database on the gate. *on_job* receives the rebuilt `Job` before it starts, so the
     worker's heartbeat loop can cancel it when the control plane asks (BE-0449). *before_upload*
     receives the finished `Job` before its outputs are uploaded, so the worker can add files the run
-    itself did not write (its ``console.log``) to the uploaded tree. Returns the finished `Job`."""
+    itself did not write (its ``console.log``) to the uploaded tree. Returns the finished `Job`.
+
+    *one_shot* runs the job for `bajutsu worker --once` and the public `bajutsu run` (BE-0449): the
+    child inherits this process's standard streams, and no repository is read from the
+    environment, so the run is recorded nowhere but in its own run tree. *apply_worker_config* False
+    leaves the argv's own `--worker-config` as the caller typed it, for the public `bajutsu run`,
+    whose run reads the file and reports a bad one in the caller's own words. *keep_caller_path*
+    spawns the run on the caller's own `PATH`, also for the public `bajutsu run` alone; every other
+    job, `worker --once` included, puts this interpreter's bin dir first as a leased job does."""
     # The subprocess runs with cwd=work and writes runs/<id>/ relative to it, so runs_dir must be
     # work/runs — otherwise state.artifacts would be confined to an unrelated process-CWD runs/.
     work = cwd or Path.cwd()
@@ -259,11 +363,17 @@ def execute_job_spec(
         popen=popen,
         simctl=simctl,
         logbus=log_bus,
-        repository=repository if repository is not None else _repository_from_env_or_none(),
+        repository=(
+            repository if repository is not None or one_shot else _repository_from_env_or_none()
+        ),
     )
     job = Job(
         id=str(spec["job_id"]),  # keep the control plane's id so logs/results line up
-        cmd=_with_worker_config(_local_interpreter(list(spec["cmd"])), worker_config),
+        cmd=(
+            _with_worker_config(_local_interpreter(list(spec["cmd"])), worker_config)
+            if apply_worker_config
+            else _local_interpreter(list(spec["cmd"]))
+        ),
         udids=list(spec.get("udids") or []),
         app_path=spec.get("app_path"),
         build=spec.get("build"),
@@ -284,6 +394,7 @@ def execute_job_spec(
         # batch seam here rather than degrading to a local subprocess. None for a normal job.
         batch=_batch_from_spec(spec.get("batch")),
         provenance=_provenance_from_spec(spec.get("provenance")),
+        keep_caller_path=keep_caller_path,
     )
     # Bind the job's ids so every operational record on this worker correlates to it (BE-0055);
     # `run_id` is the run's own id, minted by `run_job`, so it binds only once the run has started.
@@ -291,7 +402,7 @@ def execute_job_spec(
         on_job(job)
     with oplog.job_context(job_id=job.id, org=org, actor=spec.get("actor")):
         oplog.log_event(_logger, "worker.job.started", "worker started job")
-        run_job(state, job)
+        run_job(state, job, inherit_stdio=one_shot)
         # Bind run_id for correlation only: the run resolves `${secrets.X}` inside the `bajutsu run`
         # subprocess, so those values aren't in this process to seed a run-scoped redactor here.
         with oplog.run_context(job.run_id) if job.run_id else nullcontext():
