@@ -597,6 +597,16 @@ tr.visrow>td{background:#fafafb}
 .mxs{text-align:left;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
 .mxc{font-weight:700;font-variant-numeric:tabular-nums}
 .mx-ok{color:var(--ok)} .mx-ng{color:#fff;background:var(--ng)} .mx-na{color:var(--mut)}
+/* Run matrix (BE-0452): a not-applicable cell is neither a pass nor a failure, so it takes the muted
+   ink with a dashed outline rather than either verdict color; the list below names each reason. */
+.mx-skip{color:var(--mut);outline:1px dashed var(--line);outline-offset:-3px}
+.nalist{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:.7rem .9rem;margin-bottom:1rem}
+.nalist ul{margin:0;padding-left:1.1rem}
+.nalist li{margin:.15rem 0;font-size:.8rem}
+.naname{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;margin-right:.6rem}
+.nareason{color:var(--mut);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap}
+.scoord{font:400 .78rem/1 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--mut)}
+.chip.nachip{background:#5f6368;color:#fff}
 /* Dark mode — flip the palette variables, then the hardcoded light backgrounds and the
    token text colors that need lightening on a dark surface. */
 @media (prefers-color-scheme: dark){

@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0452") |
-| 実装 PR | [#2191](https://github.com/bajutsu-e2e/bajutsu/pull/2191)（単位 1〜3）、[#2193](https://github.com/bajutsu-e2e/bajutsu/pull/2193)（単位 4）、[#2194](https://github.com/bajutsu-e2e/bajutsu/pull/2194)（単位 5）、[#2195](https://github.com/bajutsu-e2e/bajutsu/pull/2195)（単位 6〜7）、[#2196](https://github.com/bajutsu-e2e/bajutsu/pull/2196)（単位 8〜9） |
+| 実装 PR | [#2191](https://github.com/bajutsu-e2e/bajutsu/pull/2191)（単位 1〜3）、[#2193](https://github.com/bajutsu-e2e/bajutsu/pull/2193)（単位 4）、[#2194](https://github.com/bajutsu-e2e/bajutsu/pull/2194)（単位 5）、[#2195](https://github.com/bajutsu-e2e/bajutsu/pull/2195)（単位 6〜7）、[#2196](https://github.com/bajutsu-e2e/bajutsu/pull/2196)（単位 8〜9）、PR_PLACEHOLDER23（単位 10〜12） |
 | トピック | ドライバとバックエンドのアーキテクチャ |
 | 関連 | [BE-0126](../BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config-ja.md)、[BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact-ja.md)、[BE-0228](../BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation-ja.md)、[BE-0076](../BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md)、[BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks-ja.md)、[BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction-ja.md)、[BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch-ja.md)、[BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md)、[BE-0447](../BE-0447-install-app-step/BE-0447-install-app-step-ja.md)、[BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md) |
 <!-- /BE-METADATA -->
@@ -449,9 +449,9 @@ target は、どこで実行するかを持たなくなります。target が書
 - [x] 作業単位 7: シナリオの preconditions
 - [x] 作業単位 8: 端末の読み取り
 - [x] 作業単位 9: 回と結果
-- [ ] 作業単位 10: 報告
-- [ ] 作業単位 11: `doctor`
-- [ ] 作業単位 12: `bajutsu config schema`
+- [x] 作業単位 10: 報告
+- [x] 作業単位 11: `doctor`
+- [x] 作業単位 12: `bajutsu config schema`
 - [ ] 作業単位 13: 文書
 
 ### ログ
@@ -531,6 +531,20 @@ target は、どこで実行するかを持たなくなります。target が書
     - 条件が複数の run を作るとき、`--step`は終了コード2で終わります。
     - `audit --repeat`は、実行できる run をすべて報告してから、デバイスのなかった run があれば終了コード1で終わります。
   - この作業単位では、これらの動作を説明しているページを更新しました。文書全体の見直しは作業単位13に残します。
+- PR_PLACEHOLDER23（単位 10〜12）— すべての報告の出力が、run の行列表と対象外の記録を示すようになりました。`doctor`は各シナリオの run を列挙し、`bajutsu config schema`は config の JSON Schema を出力します。
+  - 作業単位10：スキーマのバージョン15のマニフェストは`runMatrix`を持ちます。このグリッドのセルは、シナリオと座標をキーに持ちます。各セルには run か対象外の記録が入ります。HTML のレポートはグリッドを描画し、ヘッダーで記録の件数を示し、各記録の理由を別に並べます。各シナリオのカードには座標を添えます。
+  - JUnit は対象外の記録を`<skipped>`のケースとして、CTRF は`skipped`のテストとして並べます。CTRF は run の座標を`extra.coordinates`に持ちます。Webhook の通知は記録の件数を示し、失敗した run の座標を添えます。serve の run 履歴は件数を`N n/a`と表示します。
+  - どの条件も作らなかった run では、すべての出力の形が変わりません。テストがその場合の各出力を固定します。
+  - 作業単位11：条件があるとき、`doctor`は`runs:`のセクションを出力します。`run`と同じように`--udid`のプールを読んで同じ run を作り、各 run の適格なデバイスを示します。失敗する run と対象外の記録には、理由を示します。
+  - 読めるプールがないとき、`doctor`は宣言された run だけを並べます。このとき片側が開いた範囲は「one run per available major version」と表示します。グリッドのターゲット、物理デバイス、読めないプールが、この経路を通ります。
+  - `doctor`の画面のプローブと MCP の doctor ツールは、ターゲットの最初の run のデバイス（`record`が使うデバイス）を採点します。最後に残っていた「not yet supported」の拒否はなくなりました。
+  - 作業単位12：`bajutsu config schema`は、config のモデルとレジストリから生成した JSON Schema を出力します。各ターゲットは、`platform`をキーにした`oneOf`です。`defaults.platforms`は各 platform のグループを並べ、そのフィールドはすべて省略できます。`bajutsu schema`の出力でも、シナリオの`preconditions.runsOn`が platform ごとの形を持ちます。各 platform のフィールドはレジストリから取ります。
+  - `exists`のアサーションは、両方のスキーマで、ファイルに書くとおりのセレクタを並べる形を示すようになりました。モデルはセレクタを`sel`に格納しますが、ファイルに`sel`を書くことはありません。
+  - テストが両方のスキーマをモデルに固定し、リポジトリにあるすべての config をスキーマで検証します。
+  - 設計の記述から外れた点が2つあります。
+    - `runs:`のセクションは情報の表示です。失敗するはずの run があっても、`doctor`の終了コードは変わりません。
+    - ホストする runs の表は、呼び出しごとに1行のままです。作業単位9の記録は run ごとの行をこの作業単位に残しましたが、設計はそれを求めていません。そのため行は作業単位9の形のままです。
+  - この変更では、`docs/cli.md`と`docs/reporting.md`を両言語で更新しました。文書全体の見直しは作業単位13に残します。
 
 ## 参考
 

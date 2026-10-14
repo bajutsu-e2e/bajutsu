@@ -22,6 +22,7 @@ from bajutsu.common.backend_cli import simctl as _simctl
 from bajutsu.common.backends import KNOWN_ACTUATORS, PLATFORMS, backend_override, resolve_actuators
 from bajutsu.common.config import Config, IosConfig, resolve
 from bajutsu.common.devices.id import is_valid_device_id
+from bajutsu.common.report.manifest import history_summary
 from bajutsu.common.run_meta.files import is_soft_deleted
 from bajutsu.common.scenario import load_scenario_file
 from bajutsu.serve.capabilities import required_capabilities, required_host
@@ -464,15 +465,16 @@ def list_runs(runs_dir: Path) -> list[dict[str, Any]]:
             data = json.loads(manifest.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             continue
-        scenarios = [s for s in (data.get("scenarios") or []) if isinstance(s, dict)]
+        if not isinstance(data, dict):
+            continue
         out.append(
             {
                 "id": d.name,
                 "ok": bool(data.get("ok")),
                 "report": (d / "report.html").is_file(),
-                "scenarios": [str(s.get("scenario", "")) for s in scenarios],
-                "passed": sum(1 for s in scenarios if s.get("ok")),
-                "total": len(scenarios),
+                # The scenario names, the counts, and any not-applicable count (BE-0452), read the
+                # same way by every history list.
+                **history_summary(data),
                 # The run-history partition and the target axis (BE-0404 units 2-4). Both empty on a
                 # run recorded before the stamp, which reads as "unlabeled" and so stays visible
                 # under the label filter's empty-match fallback.

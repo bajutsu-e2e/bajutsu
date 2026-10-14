@@ -102,7 +102,7 @@ runs/<runId>/
 - `steps[].system_alert`: `handleSystemAlert` ステップが押したボタン（`label`）と、それを選んだ規則（`rule`）です。`rule` は `sel`、`label table: <locale>`、`position: button 2 of 2` のいずれかです。label の対応表にない言語でも、何をなぜ押したかがわかります（[BE-0445](../../roadmaps/BE-0445-system-alert-locale-agnostic-answer/BE-0445-system-alert-locale-agnostic-answer-ja.md)）。ほかのアクションと、`schemaVersion` 12 より前に記録された run は持ちません。
 - `network.json`の`startedAt`（シナリオごとに1ファイルで、上のmanifestには出てきません）: 観測した各通信が始まった絶対的な実時刻です。`steps[].started_at`と同じ土俵に立ち、同じシナリオの基準時刻を通して導かれるので、描画する側は両方から`video_anchor_s`を引きます。両者がどのように1本のタイムラインへ織り込まれるかは[report.html](#reporthtml)を参照してください。
 - `failure`: 失敗時の要約です（例 `"step 3 (tap): no match: {...}"`）。成功なら null です。
-- `provenance`（トップ、任意）: run の同一性スタンプです（[BE-0049](../../roadmaps/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md)）。`scenarioHash`（実行した `scenario.yaml` の `sha256:` フィンガープリント）、`toolVersion`（`bajutsu.__version__`）、`gitRevision`（コミット。git チェックアウト内の run のときだけ付く）、そして config が Git ソース由来のとき（[BE-0063](../../roadmaps/BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）は `configSource`（`{ host, owner, repo, ref, sha }`。ブランチ指定の run が実際に実行した正確なコミット）を持ちます。蓄積した run を同一性でグルーピングできるので、フィンガープリントが変わっていないのに判定が反転すれば、それは編集ではなく**真の flakiness** だと分かります。純粋なメタデータで、`ok` には一切入りません。（このブロックが出るようになった時点で `schemaVersion` は `3` 以上です。現在は `13` です。）
+- `provenance`（トップ、任意）: run の同一性スタンプです（[BE-0049](../../roadmaps/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md)）。`scenarioHash`（実行した `scenario.yaml` の `sha256:` フィンガープリント）、`toolVersion`（`bajutsu.__version__`）、`gitRevision`（コミット。git チェックアウト内の run のときだけ付く）、そして config が Git ソース由来のとき（[BE-0063](../../roadmaps/BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）は `configSource`（`{ host, owner, repo, ref, sha }`。ブランチ指定の run が実際に実行した正確なコミット）を持ちます。蓄積した run を同一性でグルーピングできるので、フィンガープリントが変わっていないのに判定が反転すれば、それは編集ではなく**真の flakiness** だと分かります。純粋なメタデータで、`ok` には一切入りません。（このブロックが出るようになった時点で `schemaVersion` は `3` 以上です。現在は `15` です。）
 - `target`（トップ、任意）: この run が実行した target です。「Android の target は通るのに iOS の target は落ちる」を、保存済みのデータから計算できます（[BE-0404](../../roadmaps/BE-0404-collapse-project-layer/BE-0404-collapse-project-layer-ja.md)）。1 つの run が解決する target は 1 つなので、シナリオごとではなく `backend` の隣に置きます。`serve` はこれを run の行へ写し、target どうしを順位付けします。target を持たない run では省かれます。（この項目が出るようになった時点で `schemaVersion` は `10` 以上です。）
 - `label`（トップ、任意）: run 履歴の区切りです。bind している config 自身の名前か、運用者が `run --label` で上書きした値が入ります。不透明なメタデータで、解析も config との照合もせず、`ok` の入力にもなりません。`serve` を再起動したあとに 2 つの config の run を読み分けられるのは、この値のおかげです。label を持たない run では省かれます。（この項目が出るようになった時点で `schemaVersion` は `10` 以上です。）
 - `idb`（トップ、任意、レガシー）: 古い manifest には `idb_companion` / client のバージョンブロックが残っていることがあります（BE-0005）。idb バックエンドとともに BE-0290 で廃止され、今は書き出されません。未知のトップレベルキーは読み込み時に無視されるため、これを含む古い manifest も問題なく読めます。
@@ -149,7 +149,7 @@ step 1 tap: FAIL no match: {...}</failure>
 ```
 
 - `summary.duration` と各 `tests[].duration` はミリ秒（Σ／シナリオごとの `duration_s`）で、CTRF の消費側が拠り所にするフィールドであり、正確です。`summary.start` と文書の `timestamp` は `YYYYMMDD-HHMMSS` の runId から導出します。runId は UTC で採番されるため、UTC として解釈します。`stop = start + duration` です。テストごとの絶対 start/stop は、シナリオごとの絶対エポックが要る（オプションの後続作業）ため、近似せず省きます。実行時のホスト状態は一切載せないので、`bajutsu report` は同じ実行の `ctrf.json` をバイト単位で同一に再生成します。
-- `tests[].status` は `passed` / `failed` です。Bajutsu の run が出す状態はこの二つだけで、他の CTRF の集計は `0` のままです。
+- `tests[].status` は、実行した run では `passed` / `failed` です。対象外（not applicable）の記録（[端末の条件が作る実行](#端末の条件が作る実行)を参照）は `skipped` になります。他の CTRF の集計は `0` のままです。
 - CTRF の `step` は `{ name, status, extra }` しか許さないので、ステップのより豊かなデータ（duration、reason、ステップごとのアサーション、アーティファクト）は `step.extra` に入れます。name／status だけを描画する消費側にはきれいな一覧が見え、Bajutsu を理解するツールは extra を読めます。
 - アタッチメントの `contentType` は、アーティファクトの `kind` → MIME の対応表（`screenshot`→`image/png`、`deviceLog`→`text/plain`、`elements`／`network`／`appTrace`→`application/json`）から決め、未知の kind には `application/octet-stream` を充てます。`path` は manifest と同じく実行ディレクトリからの相対パスです。`video` だけは例外で、固定の対応表ではなくアーティファクトの実際のファイル拡張子から MIME を求めます。web シナリオで Playwright が録画する動画は本物の WebM です（`video/webm`、`scenario.webm`）。simctl / adb の録画が使う `video/mp4` とは別物だからです。詳しくは [evidence](evidence.md) を参照してください。
 - `--browsers` のマトリクス run では、エンジン × シナリオの各セルが 1 つの CTRF テストになります。エンジンはテストの `name` と `browser` フィールドに入れ（JUnit の `classname` に倣います）、エンジン × シナリオのグリッドは `results.extra.matrix` に持ちます。Bajutsu のその他の余剰（`sid`、`expect` の結果、アラート、`skipped_captures`）は、テストごとの `extra` に入ります。
@@ -278,6 +278,29 @@ screenshot / element tree列は空にしてあります。ここにクリック�
 ボタン、Escapeキーのいずれでもモーダルを閉じられ、録画は元のプレイヤーへ戻ります。
 
 Device Log / App Trace は別タブのままです。
+
+## 端末の条件が作る実行
+
+ターゲットやシナリオは、`runsOn` に端末の条件（機種の一覧や OS バージョンの範囲など）を宣言できます
+（[configuration](configuration.md)）。条件は1つのシナリオを、座標の組ごとの複数の**実行**（run）に
+分けます。座標の組の例は `iPhone SE (3rd generation) / iOS 17` です。片側が開いた範囲に当てはまる端末がない実行は、**対象外**
+（not applicable）の記録になります。対象外の記録は、成功と失敗のどちらとしても数えません。各出力は、実行と対象外の記録を次のように示します。
+
+| 出力 | 実行 | 対象外の記録 |
+|---|---|---|
+| `manifest.json` | 各シナリオの項目が `coordinates`（ラベル）と `run_coordinates`（ターゲットと条件フィールドごと）を持ちます | 記録ごとの `{ scenario, target, coordinates, reason }` を `notApplicable` に持ちます |
+| `manifest.json` の `runMatrix` | `{ columns, scenarios, cells: { "<scenario>": { "<coordinates>": { status, sid, failure } } } }` で、`status` は `passed` か `failed` です | `status: "not-applicable"` と `reason` を持つセルになります |
+| `report.html` | シナリオと座標を軸にした **run matrix** の表を表示し、各シナリオのカードに座標を添えます | `N/A` のセル、ヘッダーの件数、各記録の理由の一覧を表示します |
+| `junit.xml` | 各ケースの名前は `<scenario> [<coordinates>]` です | `<skipped>` のケースになり、スイートの `skipped` 属性で数えます |
+| `ctrf.json` | 座標をテスト名と `extra.coordinates` に入れ、グリッドを `results.extra.runMatrix` に持ちます | `extra.notApplicable: true` を持つ `skipped` のテストになり、`summary.skipped` で数えます |
+| Webhook の通知 | 失敗の項目に座標を添えます | 結果の行で件数を示します |
+| `serve` の run 履歴 | 各シナリオ名を1回だけ並べ、`passed` と `total` ではすべての実行を数えます | `notApplicable` の件数を `N n/a` と表示します |
+
+すべての記録が対象外だった run は、何も実行していません。その manifest とレポートは FAIL になり、
+コマンドは終了コード 1 で終わります。run matrix では、条件を持つシナリオと一緒に実行した条件のない
+シナリオを `any device` の列に置きます。どの条件も実行を作らなかった run は、これらのフィールドを
+持ちません。そのため出力の形は、上の各節で説明したものから変わりません。`runMatrix` は
+`schemaVersion` 15 から、ほかのフィールドは 14 から現れます。
 
 ## 書き出し API
 

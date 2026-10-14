@@ -2,7 +2,7 @@
 
 # CLI リファレンス
 
-> 実装: `bajutsu/cli/`（Typer。各コマンドは所属する機能のディレクトリに置かれます。例：`run/cli.py`、`record/cli.py` — `cli/commands/` には機能を持たない `doctor`/`lint`/`schema`/`report`/`runner` のみが残ります）。エントリポイントは `pyproject.toml` の `bajutsu = "bajutsu.cli:app"`。
+> 実装: `bajutsu/cli/`（Typer。各コマンドは所属する機能のディレクトリに置かれます。例：`run/cli.py`、`record/cli.py` — `cli/commands/` には機能を持たない `doctor`/`lint`/`schema`/`config`/`report`/`runner` のみが残ります）。エントリポイントは `pyproject.toml` の `bajutsu = "bajutsu.cli:app"`。
 > この CLI（コマンドラインインターフェース）のすべてのコマンドは `--target <name>` で 1 [アプリ](glossary.md#target-app-device)を選び、
 > `--config`（既定 `bajutsu.config.yaml`）で設定を指します。アプリ固有の差分は config 側にあります（[configuration](configuration.md)）。
 
@@ -202,7 +202,28 @@ bajutsu doctor --target <name> [--udid booted] [--backend ...] [--config ...] [-
 - `--scenario <file.yaml>` は端末不要の **capability プリフライト**（BE-0024）を実行します。画面プローブの前に、選択したバックエンドが実行できない構文をシナリオが使っていないかを検査し、非対応があれば**終了 1** とします。
 - `--worker-config` は [`run`](#run) と同じ worker 能力ファイルを受け付けます。`appium` のファイルを
   渡すと、グリッドの platform のターゲットに対する画面プローブはグリッドで動きます。
-- それ以外は actuator で `query()` し、`score(elements, app.idNamespaces)` を表示します。**grade が Blocked で 1、それ以外 0**。
+- 端末の条件があるとき、`runs:` セクションに条件が作る実行を列挙します。条件とは、iOS の `model` と
+  `os`、Android の `avd` と `apiLevel`、web の `browser.*` です。条件はターゲットの `runsOn` にも、
+  `--scenario` ファイルのシナリオにも書けます。`--scenario` がなければ、ターゲット自身の実行を列挙します。`doctor` は `run` と同じ方法で `--udid` の
+  プールを読み、同じ実行を作ります。そのため各行には、その実行に合う端末が並びます。
+
+  ```
+  runs:
+    checkout:
+      ✓ iPhone SE (3rd generation) / iOS 17: iOS 17.5 "iPhone SE (3rd generation)" (5A3F...)
+      ✘ iPad Pro 13-inch (M4) / iOS 17: fails: no available device fits this run
+      – one run: not applicable: runsOn.ios.os  ">=19"  available: ...
+  ```
+
+  `✓` は実行と、その実行が使える端末を示します。`✘` は端末がないため失敗する実行を、`–` は対象外
+  （not applicable）の記録を示します。このセクションは情報の表示だけで、終了コードを変えません。
+  読めるプールがないターゲットでは、宣言された実行だけを `•` 付きで列挙します。該当するのは、`appium`
+  グリッドのターゲット、実機、端末を読めないプールです。このとき片側が開いた範囲は
+  「one run per available major version」（利用できるメジャーバージョンごとに1回）と表示します。
+  `--backend fake` は条件を評価しないため、`runs:` セクションを表示しません。
+- それ以外は actuator で `query()` し、`score(elements, app.idNamespaces)` を表示します。端末の条件が
+  あるときは、ターゲットの最初の実行の端末（[`record`](#record) が使う端末）をスコアの対象にします。
+  **grade が Blocked で 1、それ以外 0**。
 
 ## `audit`
 
@@ -1071,6 +1092,28 @@ bajutsu lint <scenario.yaml>
 ```bash
 bajutsu schema > bajutsu.schema.json
 ```
+
+シナリオのスキーマは、シナリオの `preconditions.runsOn` を platform ごとに示します。各 platform に並ぶのは、
+その platform の `runsOn` のうちシナリオで書けるフィールドです。フィールドは platform のレジストリから
+生成するため、platform を追加してもこの出力を手で直す必要はありません。
+
+## `config schema`
+
+`bajutsu.config.yaml` の **JSON Schema** を stdout に出力します。エディタ連携用です。オプションはありません。
+
+```bash
+bajutsu config schema > bajutsu.config.schema.json
+```
+
+このコマンドは、config のモデルと platform のレジストリからスキーマを生成します。各ターゲットは、
+登録された platform ごとに1つの分岐を持つ `oneOf` で、`platform` がその判別子（discriminator）です。
+そのためスキーマを読むエディタは、書かれた platform の `app`、`runsOn`、`driver`、`run` のキーを補完できます。
+`defaults.platforms` も同じ platform をキーに持ち、すべてのフィールドを省略可能にしています。デフォルトが
+書かなかった部分は、各ターゲットが補うためです。
+
+スキーマは、`defaults` を重ねる前の、書かれたままのターゲットを検査します。そのため、デフォルトが
+補いうるグループはスキーマ上で省略可能です。`{ platform: ios }` のようなターゲットはスキーマを通りますが、
+`app.id` を補うデフォルトがなければ、読み込みの段階で拒否されます。
 
 ## `runner`
 

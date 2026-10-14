@@ -107,6 +107,14 @@ def scenario_json_schema() -> str:
         scenario_schema = Scenario.model_json_schema()
         defs.update(scenario_schema.pop("$defs", {}))
         defs["Scenario"] = {k: v for k, v in scenario_schema.items() if k != "$defs"}
+    # The scenario model keeps each `runsOn` block as written, because it never imports the config;
+    # the editor schema states each platform's fields from the registry instead (BE-0452).
+    from bajutsu.common.config.json_schema import scenario_runs_on_schema
+
+    runs_on = scenario_runs_on_schema()
+    defs.update(runs_on.pop("$defs"))
+    runs_on["description"] = defs["Preconditions"]["properties"]["runsOn"].get("description", "")
+    defs["Preconditions"]["properties"]["runsOn"] = runs_on
 
     return json.dumps(
         {"anyOf": [list_schema, file_schema], "$defs": defs},

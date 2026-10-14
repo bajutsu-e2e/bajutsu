@@ -138,7 +138,7 @@ async function openMetricsDetail(name){
   if(!Array.isArray(runs)||!runs.length){ul.innerHTML='<li class="muted" data-testid="metrics.detail-empty">No runs recorded for this target yet.</li>';return}
   ul.innerHTML=runs.map(r=>`<li data-testid="metrics.detail-run"><span class="dot ${r.ok?'ok':'ng'}"></span>`
     +`<span class="hid">${esc(r.id)}</span>`
-    +`<span class="hsum">${r.passed}/${r.total}${r.scenarios&&r.scenarios.length?' · '+esc(r.scenarios.join(', ')):''}</span></li>`).join('');
+    +`<span class="hsum">${r.passed}/${r.total}${r.notApplicable?' · '+r.notApplicable+' n/a':''}${r.scenarios&&r.scenarios.length?' · '+esc(r.scenarios.join(', ')):''}</span></li>`).join('');
 }
 
 // Wire the one static listener. Called once by the entry module's boot after every section evaluates.

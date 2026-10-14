@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Literal, Self
 
-from pydantic import AfterValidator, BeforeValidator, Field, model_validator
+from pydantic import AfterValidator, BeforeValidator, Field, WithJsonSchema, model_validator
 
 from bajutsu.common.devices.version import VersionSpec
 from bajutsu.common.scenario import Exists
@@ -79,8 +79,13 @@ def check_range(value: str | None) -> str | None:
 
 
 # A version-range field with both validators attached, so a platform's range field cannot acquire one
-# without the other.
-RangeField = Annotated[str | None, BeforeValidator(coerce_range), AfterValidator(check_range)]
+# without the other. Its JSON Schema admits the integer `coerce_range` reads, as `apiLevel: 34`.
+RangeField = Annotated[
+    str | None,
+    BeforeValidator(coerce_range),
+    AfterValidator(check_range),
+    WithJsonSchema({"anyOf": [{"type": "string"}, {"type": "integer"}, {"type": "null"}]}),
+]
 
 
 def check_list(field: str, value: str | list[str] | None) -> str | list[str] | None:

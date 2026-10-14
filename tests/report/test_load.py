@@ -105,9 +105,9 @@ def test_round_trip_through_manifest_is_lossless() -> None:
 
 def test_manifest_carries_schema_version_and_source_name() -> None:
     data = manifest_dict("r1", [_result()], source_name="smoke.yaml")
-    # bumped for a run's `runsOn` coordinates and not-applicable records (v14, BE-0452), after
-    # each actuation's own `at` instant (v13)
-    assert data["schemaVersion"] == 14
+    # bumped for the run matrix of a run's `runsOn` coordinates (v15, BE-0452), after the
+    # coordinates and not-applicable records themselves (v14)
+    assert data["schemaVersion"] == 15
     assert data["sourceName"] == "smoke.yaml"
 
 

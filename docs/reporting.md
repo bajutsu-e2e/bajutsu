@@ -161,7 +161,7 @@ means the same thing after the run that produced it exits
   `configSource` (`{ host, owner, repo, ref, sha }`, the exact commit a branch-based run executed).
   It groups accumulated runs by identity, so a verdict that flips while the fingerprint is
   unchanged is **true flakiness** rather than an edited scenario. Pure metadata — it never enters
-  `ok`. (`schemaVersion` is `3` or higher once this block can appear — it is `13` today.)
+  `ok`. (`schemaVersion` is `3` or higher once this block can appear — it is `15` today.)
 - `target` (top, optional): the target the run ran, so "the Android target passes while the iOS
   target fails" is computable from stored data ([BE-0404](../roadmaps/BE-0404-collapse-project-layer/BE-0404-collapse-project-layer.md)).
   One run resolves one target, so it sits beside `backend` rather than on each scenario. `serve`
@@ -240,7 +240,8 @@ The document is `{ reportFormat: "CTRF", specVersion, generatedBy, timestamp, re
   duration`. Absolute per-test start/stop are deferred (they need an absolute per-scenario epoch, an
   optional follow-up) so they are omitted rather than approximated. The export carries no live host
   state, so `bajutsu report` regenerates the same run's `ctrf.json` byte-for-byte.
-- `tests[].status` is `passed` / `failed` — the only two states a Bajutsu run emits; the other CTRF
+- `tests[].status` is `passed` / `failed` for every run that ran. A not-applicable record is
+  `skipped` ([Runs that device conditions form](#runs-that-device-conditions-form)). The other CTRF
   counts stay `0`.
 - A CTRF `step` allows only `{ name, status, extra }`, so a step's richer data (duration, reason,
   per-step assertions, artifacts) lands in `step.extra` — a consumer that renders just name/status
@@ -394,6 +395,30 @@ in sync, in its ordinary compact form. A backdrop click, the close button, or Es
 modal and return the recording to its own player.
 
 Device Log / App Trace remain separate tabs.
+## Runs that device conditions form
+
+A target or a scenario may declare device conditions under `runsOn`
+([configuration](configuration.md)). A list of models is one such condition. An OS version range is a condition too. The conditions split
+one scenario into *runs*, one per set of coordinates. `iPhone SE (3rd generation) / iOS 17` names
+one such set. An open range with no device in it leaves a *not-applicable* record instead of a run.
+A not-applicable record neither passes nor fails. Every report output shows both, as follows.
+
+| Output | Runs | Not-applicable records |
+|---|---|---|
+| `manifest.json` | each scenario entry carries `coordinates` (the label) and `run_coordinates` (per target and condition field) | `notApplicable`: `{ scenario, target, coordinates, reason }` per record |
+| `manifest.json` `runMatrix` | `{ columns, scenarios, cells: { "<scenario>": { "<coordinates>": { status, sid, failure } } } }`, with `status` `passed` or `failed` | a cell with `status: "not-applicable"` and its `reason` |
+| `report.html` | a **run matrix** table of scenarios against coordinates, and each scenario card names its coordinates | an `N/A` cell, a count chip in the header, and a list of each record's reason |
+| `junit.xml` | each case named `<scenario> [<coordinates>]` | a `<skipped>` case, counted in the suite's `skipped` attribute |
+| `ctrf.json` | the coordinates in the test name and in `extra.coordinates`; the grid under `results.extra.runMatrix` | a `skipped` test with `extra.notApplicable: true`, counted in `summary.skipped` |
+| webhook payload | a failure names its coordinates | the result line counts the records |
+| `serve` run history | each scenario named once, with every run counted in `passed` / `total` | a `notApplicable` count shown as `N n/a` |
+
+A run whose every record is not applicable ran nothing. Its manifest and report read `FAIL`. The
+invocation exits with code 1 and prints `no run executed`. The run matrix puts a scenario with no
+condition in the `any device` column. A run that no condition formed carries none of these fields.
+Its outputs keep the shape the sections above describe. `runMatrix` appears from `schemaVersion`
+15, and the other fields from 14.
+
 ## Write API
 
 ```python

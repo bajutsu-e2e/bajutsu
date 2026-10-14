@@ -2,7 +2,7 @@
 
 # CLI reference
 
-> Implementation: `bajutsu/cli/` (Typer; each command lives beside its owning feature, e.g. `run/cli.py`, `record/cli.py` — `cli/commands/` holds only the feature-less `doctor`/`lint`/`schema`/`report`/`runner`). The entry point is `bajutsu = "bajutsu.cli:app"` in
+> Implementation: `bajutsu/cli/` (Typer; each command lives beside its owning feature, e.g. `run/cli.py`, `record/cli.py` — `cli/commands/` holds only the feature-less `doctor`/`lint`/`schema`/`config`/`report`/`runner`). The entry point is `bajutsu = "bajutsu.cli:app"` in
 > `pyproject.toml`. Every command in this CLI (command-line interface) selects one [app](glossary.md#target-app-device) with `--target <name>` and points at config with
 > `--config` (default `bajutsu.config.yaml`). App-specific differences live in config
 > ([configuration](configuration.md)).
@@ -226,8 +226,29 @@ bajutsu doctor --target <name> [--udid booted] [--backend ...] [--config ...] [-
   1** if any are unsupported.
 - `--worker-config` takes the same worker capability file as [`run`](#run). An `appium` file sends
   the screen probe of a target on the grid's platform to the grid.
-- Otherwise, `query()`s via the actuator and renders `score(elements, app.idNamespaces)`. **Exits 1 when
-  the grade is Blocked, 0 otherwise.**
+- A device condition adds a `runs:` section. The conditions are `model` and `os` on iOS, `avd` and
+  `apiLevel` on Android, and `browser.*` on the web.
+  The condition may come from the target's `runsOn` or from a scenario in the `--scenario` file.
+  The section lists the runs the conditions form, or the target's own runs without `--scenario`.
+  `doctor` reads the `--udid` pool the way `run` does and forms the same runs. Each line names the
+  devices that fit the run:
+
+  ```
+  runs:
+    checkout:
+      ✓ iPhone SE (3rd generation) / iOS 17: iOS 17.5 "iPhone SE (3rd generation)" (5A3F...)
+      ✘ iPad Pro 13-inch (M4) / iOS 17: fails: no available device fits this run
+      – one run: not applicable: runsOn.ios.os  ">=19"  available: ...
+  ```
+
+  `✓` marks a run with its eligible devices. `✘` marks a run that fails for want of a device. `–`
+  marks a not-applicable record. The section is informational and never changes the exit code.
+  A target with no pool to read lists the declared runs alone, marked `•`. A grid target, a
+  physical device, and an unreadable pool all lack a pool. An open range then reads as "one run
+  per available major version". `--backend fake` evaluates no condition and prints no section.
+- Otherwise, `query()`s via the actuator and renders `score(elements, app.idNamespaces)`. Under a
+  device condition, the probe scores the device of the target's first run, the one
+  [`record`](#record) takes. **Exits 1 when the grade is Blocked, 0 otherwise.**
 
 ## `audit`
 
@@ -1379,6 +1400,28 @@ validation). No options.
 ```bash
 bajutsu schema > bajutsu.schema.json
 ```
+
+The scenario schema states a scenario's `preconditions.runsOn` per platform. Each platform lists
+the `runsOn` fields a scenario may set. The platform registry supplies the fields, so a new
+platform appears with no edit.
+
+## `config schema`
+
+Prints the **JSON Schema** of `bajutsu.config.yaml` to stdout, for editor integration. No options.
+
+```bash
+bajutsu config schema > bajutsu.config.schema.json
+```
+
+The command generates the schema from the config models and the platform registry. Each target
+is a `oneOf` with one branch per registered platform, and `platform` is its discriminator. An
+editor that reads the schema completes the keys of the platform written in each group. Under
+`defaults.platforms`, the same platforms list every field as optional. Each target completes what a
+default leaves out.
+
+The schema checks a target as written, before `defaults` merges into it. A default may supply
+any group, so every group is optional in the schema. A target that names its `platform` alone
+passes the schema. The loader still refuses that target when no default supplies `app.id`.
 
 ## `runner`
 

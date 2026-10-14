@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import subprocess
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict
 from xml.etree import ElementTree as ET
 
@@ -103,7 +104,15 @@ def _run_backend(results: list[RunResult]) -> str:
 #   when `runsOn` conditions form the scenario's runs — and the manifest may carry "notApplicable",
 #   one record per run no available device fell in an open range for. Absent on every older run,
 #   whose scenarios each ran once.
-SCHEMA_VERSION = 14
+# v15 (BE-0452): optional top-level "runMatrix" — the scenario x coordinates grid of the runs
+#   `runsOn` conditions formed, with each not-applicable record as its own cell. A pure aggregation
+#   of "scenarios" and "notApplicable", absent whenever no run carried coordinates, so an
+#   unconditioned run keeps the v14 shape.
+SCHEMA_VERSION = 15
+
+# How the run matrix heads the column of a run no condition formed: a scenario without conditions,
+# run in an invocation where other scenarios' conditions formed runs.
+UNCONDITIONED_COLUMN = "any device"
 
 
 def _matrix(results: list[RunResult]) -> dict[str, object] | None:
@@ -158,6 +167,54 @@ def _matrix(results: list[RunResult]) -> dict[str, object] | None:
             "failure": r.failure,
         }
     return {"engines": engines, "scenarios": scenarios, "cells": cells}
+
+
+def run_matrix(
+    results: list[RunResult], not_applicable: Sequence[Mapping[str, str]] = ()
+) -> dict[str, object] | None:
+    """Aggregate the runs `runsOn` conditions formed into the scenario x coordinates grid (BE-0452).
+
+    The same shape the `--browsers` matrix has (BE-0076), with a run's coordinates as the column.
+    Each cell's `status` is `passed`, `failed`, or `not-applicable`, so a not-applicable record sits
+    in the grid beside the runs that did execute rather than reading as a gap. None when no result
+    carries coordinates and no record is not applicable, so an unconditioned run keeps its shape.
+
+    A scenario name is not unique across a multi-file run; a second result for a cell already taken
+    moves to a row suffixed "(N)", as `_matrix` labels its repeats.
+    """
+    if not any(r.coordinates for r in results) and not not_applicable:
+        return None
+    columns: list[str] = []
+    scenarios: list[str] = []
+    cells: dict[str, dict[str, dict[str, object]]] = {}
+
+    def place(name: str, coordinates: str, cell: dict[str, object]) -> None:
+        column = coordinates or UNCONDITIONED_COLUMN
+        label, n = name, 1
+        while column in cells.get(label, {}):
+            n += 1
+            label = f"{name} ({n})"
+        if label not in cells:
+            cells[label] = {}
+            scenarios.append(label)
+        if column not in columns:
+            columns.append(column)
+        cells[label][column] = cell
+
+    for r in results:
+        cell: dict[str, object] = {"status": "passed" if r.ok else "failed"}
+        if r.sid:
+            cell["sid"] = r.sid
+        if not r.ok:
+            cell["failure"] = r.failure
+        place(r.scenario, r.coordinates, cell)
+    for record in not_applicable:
+        place(
+            record.get("scenario", ""),
+            record.get("coordinates", ""),
+            {"status": "not-applicable", "reason": record.get("reason", "")},
+        )
+    return {"columns": columns, "scenarios": scenarios, "cells": cells}
 
 
 def run_provenance(
@@ -246,7 +303,34 @@ def manifest_dict(
         manifest["matrix"] = matrix
     if not_applicable:
         manifest["notApplicable"] = not_applicable
+    if (grid := run_matrix(results, not_applicable or ())) is not None:
+        manifest["runMatrix"] = grid
     return manifest
+
+
+def history_summary(manifest: Mapping[str, object]) -> dict[str, object]:
+    """The names and counts a run-history row shows, read from a stored manifest.
+
+    `scenarios` holds the names the run executed, which the serve UI also scopes its pickers by, so
+    they stay bare. One scenario's runs formed by `runsOn` conditions (BE-0452) name it once, while
+    `passed` and `total` count every run, and `notApplicable` counts the records no device fell in
+    range for. A run with no such record carries no `notApplicable`, so a run no condition formed
+    reads exactly as before.
+    """
+    raw = manifest.get("scenarios")
+    scenarios = [s for s in (raw if isinstance(raw, list) else []) if isinstance(s, Mapping)]
+    names = [str(s.get("scenario", "")) for s in scenarios]
+    if any(s.get("coordinates") for s in scenarios):
+        names = list(dict.fromkeys(names))
+    summary: dict[str, object] = {
+        "scenarios": names,
+        "passed": sum(1 for s in scenarios if s.get("ok")),
+        "total": len(scenarios),
+    }
+    skipped = manifest.get("notApplicable")
+    if isinstance(skipped, list) and skipped:
+        summary["notApplicable"] = len(skipped)
+    return summary
 
 
 def result_test_name(r: RunResult) -> str:
@@ -337,25 +421,48 @@ def _step_label(s: StepOutcome) -> str:
     return f"{s.action}@{s.target}" if s.target else s.action
 
 
-def _junit_name(r: RunResult) -> str:
+def _junit_name(scenario: str, coordinates: str) -> str:
     # The engine already keys the classname, so only the coordinates extend the case name.
-    return f"{r.scenario} [{r.coordinates}]" if r.coordinates else r.scenario
+    return f"{scenario} [{coordinates}]" if coordinates else scenario
 
 
-def junit_xml(results: list[RunResult]) -> str:
+def not_applicable_name(record: Mapping[str, str]) -> str:
+    """The test name a not-applicable record takes: the scenario, then its coordinates (BE-0452)."""
+    return _junit_name(record.get("scenario", ""), record.get("coordinates", ""))
+
+
+def junit_xml(results: list[RunResult], not_applicable: Sequence[Mapping[str, str]] = ()) -> str:
     """One testcase per scenario; a failing scenario gets a <failure>.
 
     On a `--browsers` cross-engine run each result carries its `engine`, so the case is keyed by it
     (`classname="bajutsu.<engine>"`) — CI then sees `chromium.login` and `webkit.login` as distinct
     cases and attributes a per-engine failure without reading the manifest (BE-0076). A single-engine
     result has no `engine`, so its classname stays `bajutsu`.
+
+    Each not-applicable record (BE-0452) is a `<skipped>` case: JUnit's own word for a test that
+    neither passed nor failed, so CI counts it apart. The suite's `skipped` count appears only
+    when there is one, so a run no condition formed keeps its exact shape.
     """
     failures = sum(0 if r.ok else 1 for r in results)
-    suite = ET.Element("testsuite", name="bajutsu", tests=str(len(results)), failures=str(failures))
+    suite = ET.Element(
+        "testsuite",
+        name="bajutsu",
+        tests=str(len(results) + len(not_applicable)),
+        failures=str(failures),
+    )
+    if not_applicable:
+        suite.set("skipped", str(len(not_applicable)))
     for r in results:
         classname = f"bajutsu.{r.engine}" if r.engine else "bajutsu"
-        case = ET.SubElement(suite, "testcase", name=_junit_name(r), classname=classname)
+        case = ET.SubElement(
+            suite, "testcase", name=_junit_name(r.scenario, r.coordinates), classname=classname
+        )
         if not r.ok:
             failure = ET.SubElement(case, "failure", message=r.failure or "failed")
             failure.text = _details(r)
+    for record in not_applicable:
+        case = ET.SubElement(
+            suite, "testcase", name=not_applicable_name(record), classname="bajutsu"
+        )
+        ET.SubElement(case, "skipped", message=f"not applicable: {record.get('reason', '')}")
     return ET.tostring(suite, encoding="unicode")

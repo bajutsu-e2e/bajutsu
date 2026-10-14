@@ -46,7 +46,6 @@ from bajutsu.common.config import (
     scenario_conditions,
     web_engine,
 )
-from bajutsu.common.config.preconditions import remote_condition_problems
 from bajutsu.common.config.schema.platform.web import WebBrowser
 from bajutsu.common.config_source import (
     DEFAULT_CONFIG as DEFAULT_CONFIG,  # re-exported: the single owner is config_source (BE-0251)
@@ -58,7 +57,6 @@ from bajutsu.common.config_source import (
     source_provenance,
 )
 from bajutsu.common.deprecations import warn_once
-from bajutsu.common.devices.errors import DeviceError
 from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.common.github import GitHubAccessError
 from bajutsu.common.run_meta.files import is_soft_deleted
@@ -398,26 +396,6 @@ def _note_fake_conditions(eff: Effective, backends: list[str]) -> bool:
     return True
 
 
-def _refuse_conditions(eff: Effective, backends: list[str]) -> None:
-    """Refuse a target whose `runsOn` declares a device condition on `doctor`'s device path.
-
-    `doctor` lists each scenario's runs and the devices that fit them with BE-0452 unit 11; until
-    then its device path fails before any device work rather than ignoring a condition. Every other
-    command matches the conditions (unit 9). `--backend fake` skips the check and says so once.
-
-    Raises:
-        typer.Exit: The target declares a condition and the backend is not `fake` (exit code 2).
-    """
-    if not eff.conditions or _note_fake_conditions(eff, backends):
-        return
-    named = ", ".join(f"runsOn.{field}" for field in eff.conditions)
-    typer.echo(
-        f"target '{eff.target}' declares {named}: matching devices by runsOn conditions is not "
-        "yet supported (BE-0452); remove the condition, or run with --backend fake"
-    )
-    raise typer.Exit(2)
-
-
 def parse_engine_flag(flag: str, value: str) -> str:
     """Parse one engine named on the command line as a value of `runsOn.browser.engine` (BE-0452).
 
@@ -508,14 +486,10 @@ def _resolve_browser(eff: Effective, browser: str) -> Effective:
     if not browser:
         return eff
     parse_engine_flag("--browser", browser)
-    if not isinstance(eff.platform_config, WebConfig):
-        return eff  # `runsOn.browser` is a web-only field; a non-web target ignores the flag
-    conditions = {k: v for k, v in eff.conditions.items() if k != "browser.engine"}
-    return replace(
-        eff,
-        platform_config=replace(eff.platform_config, browser=browser),
-        conditions=conditions,
-    )
+    from bajutsu.run.device_matrix import apply_engine
+
+    # `runsOn.browser` is a web-only field; a non-web target ignores the flag.
+    return apply_engine(eff, browser)
 
 
 def _resolve_language(eff: Effective, language: str) -> Effective:
@@ -710,11 +684,11 @@ def _first_run_or_exit(
     read_android: Callable[[Sequence[str]], list[DeviceFacts]] | None = None,
     read_browser: Callable[[str], DeviceFacts] | None = None,
 ) -> tuple[Effective, str]:
-    """The run `record`, `crawl`, and `repl` take under the target's conditions, or exit 2 (BE-0452).
+    """The run `record`, `crawl`, `repl`, and `doctor`'s probe take under the conditions, or exit 2.
 
-    These commands never multiply runs: they take the first listed value and the newest major
-    version the pool has within a range, on the first device of that run's eligible set. A target
-    with no condition, and the fake backend, keep *udid* as given.
+    These commands never multiply runs (BE-0452): they take the first listed value and the newest
+    major version the pool has within a range, on the first device of that run's eligible set
+    (`first_run_device`). A target with no condition, and the fake backend, keep *udid* as given.
 
     Args:
         eff: The target's effective configuration.
@@ -733,42 +707,20 @@ def _first_run_or_exit(
     """
     if not eff.conditions or _note_fake_conditions(eff, ["fake"] if actuator == "fake" else []):
         return eff, udid
-    from bajutsu.common.devices import facts
-    from bajutsu.common.devices.runs import first_run
-    from bajutsu.common.platform_lifecycle import environment_for
+    from bajutsu.run.device_matrix import first_run_device
 
-    problems = remote_condition_problems(eff, eff.conditions)
-    if problems:
-        for problem in problems:
-            typer.echo(problem)
-        raise typer.Exit(2)
     try:
-        platform = eff.platform
-        devices: list[DeviceFacts] = []
-        if platform == "web":
-            if "browser.version" in eff.conditions:
-                # The first run takes the first engine, which actuator selection already installed.
-                listed = eff.conditions.get("browser.engine") or web_engine(eff)
-                engine = listed[0] if isinstance(listed, list) else listed
-                devices = [(read_browser or facts.read_web)(engine)]
-        else:
-            env = environment_for(actuator, udid)
-            pool = [env.resolve_device(u.strip()) for u in udid.split(",") if u.strip()]
-            reader = (
-                (read_ios or facts.read_ios)
-                if platform == "ios"
-                else (read_android or facts.read_android)
-            )
-            devices = reader(pool)
-        run, device = first_run(
-            eff.target, platform, eff.conditions, devices, engine=web_engine(eff)
+        return first_run_device(
+            eff,
+            actuator,
+            udid,
+            read_ios=read_ios,
+            read_android=read_android,
+            read_browser=read_browser,
         )
-    except (DeviceError, LookupError) as e:
-        typer.echo(f"target '{eff.target}': {e}")
+    except ValueError as e:
+        typer.echo(str(e))
         raise typer.Exit(2) from None
-    if run.engine is not None:
-        return _resolve_browser(eff, run.engine), udid
-    return eff, device.udid if device is not None else udid
 
 
 def _start_launch_server_or_exit(

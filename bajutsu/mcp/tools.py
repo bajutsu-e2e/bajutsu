@@ -15,6 +15,7 @@ from bajutsu.common.config import Effective, load_config_file, resolve
 from bajutsu.common.devices import errors as device_errors
 from bajutsu.common.doctor import DoctorProbeError, probe_screen, render, score
 from bajutsu.run import INTERNAL_MODULE as INTERNAL_RUN_MODULE
+from bajutsu.run.device_matrix import first_run_device
 
 
 def _load_effective(config_path: Path, target: str) -> Effective:
@@ -48,23 +49,19 @@ def _parse_verdict(stdout: str) -> str:
 
 
 def _probe_device(eff: Effective, udid: str, worker: WorkerCapability) -> tuple[Effective, str]:
-    """*eff* with the worker's device provider, and the udid spec it hands back (BE-0452).
+    """*eff* with the worker's device provider, and the device of the target's first run (BE-0452).
+
+    The probe scores the screen of the first run the target's `runsOn` conditions form, as `doctor`
+    does; a target with no condition keeps the udid spec the provider hands back.
 
     Raises:
-        ValueError: *udid* is a URL, the target declares a `runsOn` condition (which `doctor`'s
-            device path matches from BE-0452 unit 11; `bajutsu_run` matches it as `run` does), or
-            the provider cannot resolve a device.
+        ValueError: *udid* is a URL, the provider cannot resolve a device, or no available device
+            fits the first run.
     """
     if any(t.strip().startswith(("http://", "https://")) for t in udid.split(",")):
         raise ValueError(
             "udid no longer takes a URL: name the grid in an `appium` environment of the "
             "server's --worker-config (BE-0452)"
-        )
-    if eff.conditions:
-        named = ", ".join(f"runsOn.{field}" for field in eff.conditions)
-        raise ValueError(
-            f"target '{eff.target}' declares {named}: matching devices by runsOn conditions is "
-            "not yet supported (BE-0452)"
         )
     # Imported here: the provider registry reaches the platform environments.
     from bajutsu.common.runner.device_provider import acquire_device
@@ -72,7 +69,8 @@ def _probe_device(eff: Effective, udid: str, worker: WorkerCapability) -> tuple[
     provider = worker.device_provider_for(eff.backend[0] if eff.backend else eff.platform)
     if provider is not None:
         eff = replace(eff, device_provider=provider)
-    return eff, acquire_device(eff, udid).udid_spec
+    spec = acquire_device(eff, udid).udid_spec
+    return first_run_device(eff, select_actuator(eff.backend), spec)
 
 
 def register_tools(
