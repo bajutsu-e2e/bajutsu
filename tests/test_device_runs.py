@@ -237,3 +237,17 @@ def test_a_web_union_keeps_each_sides_rule_and_a_bounded_miss_fails() -> None:
     assert outcome("120 - 125 || >=140") == "failed"
     # Open sides alone say where the scenario applies.
     assert outcome("<100 || >=140") == "not-applicable"
+
+
+def test_the_eligible_set_falls_through_to_a_later_model_with_enough_at_one_release() -> None:
+    # The iPad has two devices but no two at one release, so the SE pair takes the run.
+    pool = [
+        _ios("a", IPAD, "17.4"),
+        _ios("b", IPAD, "17.5"),
+        _ios("c", SE, "17.5"),
+        _ios("d", SE, "17.5"),
+    ]
+    (run,) = form_target_runs("app", "ios", {"os": "17"}, pool)
+    assert [d.udid for d in eligible_set(run, pool, demand=2) or []] == ["c", "d"]
+    # At demand 1 the first model in pool order still wins, at its newest release.
+    assert [d.udid for d in eligible_set(run, pool) or []] == ["b"]

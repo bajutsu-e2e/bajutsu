@@ -745,11 +745,15 @@ def _first_run_or_exit(
     try:
         platform = eff.platform
         devices: list[DeviceFacts] = []
+        conditions = dict(eff.conditions)
         if platform == "web":
-            if "browser.version" in eff.conditions:
-                # The first run takes the first engine, which actuator selection already installed.
-                listed = eff.conditions.get("browser.engine") or web_engine(eff)
-                engine = listed[0] if isinstance(listed, list) else listed
+            # The first run takes the first listed engine, which actuator selection already
+            # installed; the rest are dropped so no run is formed for an engine never read.
+            listed = conditions.get("browser.engine") or web_engine(eff)
+            engine = listed[0] if isinstance(listed, list) else listed
+            if "browser.engine" in conditions:
+                conditions["browser.engine"] = engine
+            if "browser.version" in conditions:
                 devices = [(read_browser or facts.read_web)(engine)]
         else:
             env = environment_for(actuator, udid)
@@ -760,10 +764,8 @@ def _first_run_or_exit(
                 else (read_android or facts.read_android)
             )
             devices = reader(pool)
-        run, device = first_run(
-            eff.target, platform, eff.conditions, devices, engine=web_engine(eff)
-        )
-    except (DeviceError, LookupError) as e:
+        run, device = first_run(eff.target, platform, conditions, devices, engine=web_engine(eff))
+    except (DeviceError, LookupError, ValueError) as e:
         typer.echo(f"target '{eff.target}': {e}")
         raise typer.Exit(2) from None
     if run.engine is not None:

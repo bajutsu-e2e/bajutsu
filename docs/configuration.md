@@ -165,7 +165,7 @@ its targets' runs.
 
 Each run takes a device from its eligible set. The set keeps the devices that meet the run's
 conditions. When the run fixes no model, the set then keeps the first model in pool order with
-enough devices. Last, it keeps the newest release that still has enough. Every member shares one
+enough devices at one release. Within that model, it keeps the newest release that has enough. Every member shares one
 model and one release, so `--workers` spreads runs over identical devices.
 
 `record`, `crawl`, and `repl` never multiply runs. They take the first listed value and the newest

@@ -229,3 +229,37 @@ def test_audit_run_pools_share_a_pool_per_device_set(monkeypatch: pytest.MonkeyP
     pools.shutdown()
     assert opened == [["se17"], ["se18"]]
     assert stopped == ["se17", "se18"]
+
+
+def test_a_web_engine_list_beside_a_version_range_reads_only_the_first_engine() -> None:
+    # The schema refuses this pair in one `runsOn`; built directly, the first run must still read
+    # only the engine it takes rather than fail for the others.
+    eff = _eff("web", "{browser: {engine: [webkit, chromium]}}")
+    eff = replace(eff, conditions={**eff.conditions, "browser.version": ">=120"})
+    read: list[str] = []
+
+    def browser(engine: str) -> DeviceFacts:
+        read.append(engine)
+        return DeviceFacts(f"web-{engine}", "web", engine, "130.0")
+
+    run_eff, udid = _first_run_or_exit(eff, "playwright", "booted", read_browser=browser)
+    assert (web_engine(run_eff), udid, read) == ("webkit", "booted", ["webkit"])
+
+
+def test_a_run_formation_value_error_exits_2(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def broken(*_a: object, **_k: object) -> object:
+        raise ValueError("no browser version was read for engine 'chromium'")
+
+    monkeypatch.setattr("bajutsu.common.devices.runs.first_run", broken)
+    eff = _eff("web", "{browser: {version: '>=120'}}")
+    with pytest.raises(typer.Exit) as exc:
+        _first_run_or_exit(
+            eff,
+            "playwright",
+            "booted",
+            read_browser=lambda e: DeviceFacts(f"web-{e}", "web", e, "130.0"),
+        )
+    assert exc.value.exit_code == 2
+    assert "no browser version was read" in capsys.readouterr().out

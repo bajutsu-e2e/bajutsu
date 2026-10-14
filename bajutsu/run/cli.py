@@ -80,6 +80,7 @@ from bajutsu.common.run_meta.files import DEFAULT_RUNS_DIR
 from bajutsu.common.run_meta.id import new_run_id
 from bajutsu.common.runner import (
     device_pool,
+    prepare_run_dir,
     report_run_matrix,
     reroot_evidence,
     run_all,
@@ -2431,6 +2432,9 @@ def _dispatch_runs(
     does under `run_dir/<engine>/`. A run no device fits fails without a lease, and a run an open
     range left without a device is a not-applicable record, which the manifest lists apart.
     """
+    # Owner-only up front (BE-0131): the sink creating run_dir/run-NN/ would otherwise materialize
+    # the run directory above it at the ambient umask for the whole run.
+    prepare_run_dir(plan.runs_dir, plan.run_id)
     executed: dict[int, RunResult] = {}  # keyed by id() of the record that ran
     for number, cell in enumerate(matrix.cells, start=1):
         prefix = f"run-{number:02d}"
@@ -2594,7 +2598,9 @@ def _run_cell(
             step_gate=plan.step_gate,
         )
     finally:
-        _close_pools({f"{k[0]} {','.join(k[1])}": v for k, v in pools.items()})
+        # The engine stays in the label: two web pools can differ only by it, and a shared label
+        # would drop one pool's shutdown.
+        _close_pools({f"{k[0]} {','.join(k[1])} {k[2]}".rstrip(): v for k, v in pools.items()})
 
 
 def _write_zip(manifest: Path) -> None:
