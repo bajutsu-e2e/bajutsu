@@ -117,7 +117,32 @@ targets:
 
 `model` と `avd` に書いたリストも条件になります。バージョンの範囲は npm の [node-semver の範囲の文法](https://github.com/npm/node-semver#ranges)で書きます（`">=17 <19"` など）。形が誤った範囲は、ローダが拒否します。YAML は `18.10` を `18.1` として読むので、小数のバージョンは引用符で囲みます。
 
-Bajutsu は、デバイスをこれらの条件とまだ照合しません。条件を宣言したターゲットの run は、デバイスを操作する前に失敗し、メッセージは該当するフィールドを示します。この規則は `run`、`record`、`crawl`、`repl`、`audit`、Model Context Protocol（MCP）のツール、`doctor` の画面のプローブに及びます。fake のドライバには読み取るデバイスがないので、`--backend fake` はこの検査を飛ばし、通知を 1 回だけ出します。`runsOn.kind: device`（物理の iPhone）のターゲットは、`model` と `os` を宣言できません。
+Bajutsu は、run の前に利用できる各デバイスを読み、これらの条件と照合します（[BE-0452](../../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)）。何を読むかはプラットフォームで決まります。
+
+| 条件 | 読み取り元 | 比較 |
+|---|---|---|
+| iOS の `model` | udid の simctl のデバイスタイプ名 | 完全一致 |
+| iOS の `os` | Simulator のランタイムのバージョン | バージョンの範囲 |
+| Android の `avd` | エミュレータの Android Virtual Device（AVD）名。`ro.boot.qemu.avd_name`、`ro.kernel.qemu.avd_name`、`adb emu avd name` の順に読みます | 完全一致。物理デバイスは一致しません |
+| Android の `apiLevel` | `ro.build.version.sdk` | 整数に対するバージョンの範囲 |
+| Web の `browser.version` | Playwright が起動するブラウザのバージョン | バージョンの範囲 |
+
+プールは `--udid` に並べたすべての udid です。AVD 名を返さないエミュレータは run を失敗させます。そのため、`avd` の条件がメッセージなしにデバイスを取り逃すことはありません。
+
+run は、1 つのシナリオを 1 組の座標で実行する単位です。run を増やす条件は 2 種類あります。
+
+| フィールド | run の数 | 合うデバイスがないとき |
+|---|---|---|
+| `model`、`avd`、`browser.engine` に書いたリスト | 値ごとに 1 つ | その run は値を示して失敗します |
+| 両側が閉じた範囲（`">=17 <19"`、`"18"`、`"33 - 35"` など） | 範囲が含むメジャーバージョンごとに 1 つ | その run はメジャーバージョンを示して失敗します |
+| 片側が開いた範囲（`">=18"` など） | 範囲内で利用できるデバイスが持つメジャーバージョンごとに 1 つ | **対象外**（not applicable）の記録を 1 件残します |
+| 単一の `model` や `avd` | run は増えません | その run は失敗します |
+
+Android では API レベル 1 つを 1 つのメジャーバージョンと数えます。`browser.version` の範囲は run を増やさず、起動したブラウザを絞り込みます。対象外の記録は、それ自体では判定を持ちません。コンソールとマニフェストは対象外の記録を別に並べます。すべての記録が対象外になった呼び出しは、終了コード 1 で終わり、`no run executed` を出します。複数のターゲットを持つシナリオは、各ターゲットの run のすべての組み合わせを実行します。
+
+各 run は、自分の適格な集合からデバイスを取ります。適格な集合には、run の条件を満たすデバイスが残ります。run がモデルを固定しないときは、必要な台数を持つ最初のモデルをプールの順に選びます。続いて、その台数がまだそろう、いちばん新しいリリースを選びます。集合のデバイスはどれも同じモデルとリリースを持つので、`--workers` は同一のデバイスに run を振り分けます。
+
+`record`、`crawl`、`repl` は run を増やしません。最初に並べた値と、範囲内でプールが持つ、いちばん新しいメジャーバージョンを使い、合うデバイスがなければ終了コード 2 で終わります。`doctor` の画面のプローブは、条件を宣言したターゲットを引き続き拒否します。`--backend fake` はどの条件も照合せず、そのことを 1 回だけ知らせます。物理の iPhone で動くターゲット（`runsOn.kind: device`）は、`model` と `os` を宣言できません。`appium` のグリッドが受け持つターゲットや Device Farm のジョブには、読み取るプールがありません。そこに書いた条件は、デバイスを操作する前に失敗し、フィールドを示します。
 
 `runsOn` の 2 つのフィールドは、条件ではなくデバイスの状態です。`kind`（`simulator` か `device`）は XCUITest の接続先を選びます。`locale` は run が適用する言語を固定します。`locale` が未指定なら、iOS はビルトインの `en_US` を使います。
 
@@ -139,7 +164,7 @@ Bajutsu は、デバイスをこれらの条件とまだ照合しません。条
 | `platform_config.headless`（`WebConfig`） | `driver.headless` | web のみ: `true`（既定）はヘッドレス、`false` はブラウザを画面に表示し低速再生します。`bajutsu run --headed / --no-headed` と Web UI の「show browser」トグルが実行ごとに上書きします |
 | `platform_config.browser`（`WebConfig`） | `runsOn.browser.engine` | web のみ: 駆動する Playwright の描画エンジンです。`chromium`（既定）、`firefox`、`webkit` から選びます。いずれも Linux 上でヘッドレス実行できます。`bajutsu run/record --browser <engine>` が実行ごとに上書きし（フラグ > config > 既定）、`bajutsu run --browsers <list>` はクロスブラウザマトリクスを実行します（後述）。エンジンのブラウザバイナリが無ければ実行時に取得します。未知の値は config 読み込み時に拒否されます（[BE-0076](../../roadmaps/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md)） |
 | `platform_config.device_mode`（`WebConfig`） | `runsOn.emulate` | web のみ: ブラウザコンテキストを生成するときのデバイスモードです。省略するとデスクトップのコンテキストになり、Playwright のデバイスプリセット名（例 `iPhone 13`）を指定すると、viewport / `device_scale_factor` / `is_mobile` / `has_touch` / `user_agent` をエミュレートし、web ターゲットをそのモバイル端末として駆動します。これはデスクトップ級ブラウザでのエミュレーション（Chrome DevTools のデバイスツールバー）であり、実機ではありません（[drivers → Playwright](drivers.md#playwrightweb)）。ドライバーの中で `playwright.devices` に対して**遅延**して解決するため、config 読み込みが Playwright を import することはありません。不明なプリセットは config 読み込み時ではなくドライバー起動時に明示的なエラーで失敗します（[BE-0228](../../roadmaps/BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation-ja.md)） |
-| `conditions` | `runsOn` | ターゲットが宣言するデバイスの条件です（[前述](#デバイスの条件runson)）。照合の機能が入るまで、条件を宣言したターゲットを run は拒否します |
+| `conditions` | `runsOn` | ターゲットが宣言するデバイスの条件です（[前述](#デバイスの条件runson)）。範囲は書いたままの文字列で持ちます。run はここから自分の run を作り、`doctor` の画面のプローブは条件を宣言したターゲットを拒否します |
 | `device_provider` | `--worker-config` | このターゲットのデバイスの取得元です。config はこれを指定しなくなりました。コマンドが従う `worker.yaml` の `appium` environment が、グリッドのエンドポイントを、グリッドのプラットフォームのターゲットに渡します（[マシンが実行できるもの](#マシンが実行できるもの設定の外be-0450)）。ほかのターゲットはビルトインの `local` provider（`--udid` の経路）を使います。このエンドポイントは live の W3C WebDriver トランスポートで端から端まで駆動します（[iOS デバイスクラウド](ios-device-cloud.md#ライブ--appium-エンドポイントのプロバイダー)、[BE-0236](../../roadmaps/BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction-ja.md)、[BE-0238](../../roadmaps/BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution-ja.md)） |
 | `launch_server` | `services.server` | 任意の `{cmd, readyUrl, readyTimeout, cwd, env}` です。run のためにアプリのホストを起動し、終わったら停止します。`readyUrl`（既定は `app.url`）をプローブし、すでに応答すれば再利用、しなければ `cmd` を起動して準備が整うまで待ちます（固定 sleep ではなく条件待ち）。`app.build` の web 版です（[BE-0059](../../roadmaps/BE-0059-launch-target-server/BE-0059-launch-target-server-ja.md)）。`serve` 上の**アップロードされた**バンドルでは、ホストが `cmd` を直接実行することはなく、`serve --upload-exec` が統制します（[セルフホスティング](self-hosting.md#アップロードされた-config-のコマンド実行be-0090)を参照）。`sandbox` での実行には、追加フィールドとして `dockerImage`（Docker イメージ参照。例 `node:20-slim`）か `dockerfile`（バンドル相対のパスで、`docker build` でビルドします）のどちらか一方、加えて `port`（コンテナ内の待ち受けポート。ループバックのホストポートへ publish します）が必要です（[BE-0090](../../roadmaps/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution-ja.md)） |
 | `run_defaults.system_alert_handling` / `.erase` / `.network` / `.ios_tip_kit_handling` | `run` | 本来シナリオ単位や CLI フラグで指定する run のテスト動作設定に、アプリ単位の既定値を与えます（[BE-0177](../../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)）。`run.systemAlertHandling` はシナリオと同じ形（`false`、または `{ rules, visionInstruction, pollInterval }`）を取りアラートガードの既定値になり、`run.erase` は `preconditions.run.erase` の、`run.network` はアプリのネットワーク収集の既定値になります。`erase` と `network` は **フラグ ＞ シナリオ ＞ これ ＞ ビルトイン既定**（erase は off、network は on）の順で解決し、`--headed`/`headless` と同じ重ね方です。`systemAlertHandling` の ON と OFF も同じ順です（`--system-alert-handling`/`--no-system-alert-handling` ＞ シナリオ ＞ これ ＞ ON）。ただし方針を持つキーは、それぞれの型で合わさります（[BE-0401](../../roadmaps/BE-0401-system-alert-handling-dsl-consolidation/BE-0401-system-alert-handling-dsl-consolidation-ja.md)）。リストである `rules` は内側の層から順に**連結**されるので、シナリオの答えをこの既定より先に試したうえで、どちらの層の宣言も消えません。スカラーである `pollInterval` は、値を持つもっとも内側の層が勝ちます（シナリオ、無ければ `--alert-poll-interval`、無ければこれ）。`visionInstruction` はどの層からも `run` に届きません。BE-0402 がこのキーの操作するフォールバックを取り除いたため、`run` は値を持つシナリオやターゲット config を実行前に拒否します。ここに書いた規則は、別のプロンプトについて規則を書いているシナリオの中でも、自分の名指すプロンプトには答えます。答えるときガードが通知を出し、シナリオ側は同じプロンプトの規則を書けば上書きできます。`labels` は [BE-0406](../../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md) で削除されました。ボタンのラベルが名指すのはボタンであってアラートではないため、ターゲット config が、どのシナリオも記述していない画面へのタップを許してしまうからです。[`systemAlertHandling` の層の重ね方](scenarios.md#層の重ね方1-つのキーは-3-か所から届く)を参照してください。`run.tipKitHandling` は TipKit の tip ガードの既定値です（iOS 専用、ビルトイン既定は**オフ**）。`--ios-tipkit-handling`/`--no-ios-tipkit-handling` で同じ優先順位に従います |

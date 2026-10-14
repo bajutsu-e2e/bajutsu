@@ -818,3 +818,39 @@ def test_collision_guard_accepts_non_overlapping_keys(tmp_path: Path) -> None:
         "- name: s1\n  preconditions:\n    app:\n      launch:\n        env:\n          OTHER_KEY: value\n"
     )
     _check_launch_env_collisions(scenario, {"PROXY_HOST": "proxy.example.com"})
+
+
+def test_devicefarm_provider_refuses_a_runs_on_condition_before_submitting(tmp_path: Path) -> None:
+    # A reserved Device Farm device has no pool to read, so a condition from the target or the
+    # scenario fails the job before anything is uploaded (BE-0452); device state stays allowed.
+    client = _FakeClient()
+    transfer = _FakeTransfer(manifest_ok=True)
+    provider = bp.DeviceFarmBatchProvider(
+        client=client, transfer=transfer, project_arn="arn:project/1", sleep=lambda _: None
+    )
+    work = tmp_path / "project"
+    work.mkdir()
+    (work / "bajutsu.config.yaml").write_text(
+        "defaults: { platforms: { android: { runsOn: { apiLevel: 34 } } } }\n"
+        "targets:\n  demo: { platform: android, runsOn: { locale: ja_JP } }\n",
+        encoding="utf-8",
+    )
+    (work / "smoke.yaml").write_text(
+        "- name: alpha\n  preconditions: { runsOn: { android: { avd: Pixel_8 } } }\n  steps: []\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "app.apk").write_bytes(b"apk")
+    request = bp.BatchRequest(
+        provider="devicefarm",
+        scenario="smoke.yaml",
+        target="demo",
+        config="bajutsu.config.yaml",
+        platform="android",
+        app_path=str(tmp_path / "app.apk"),
+    )
+    with pytest.raises(ValueError, match="has no pool to match a runsOn condition") as exc:
+        provider.submit(request, work_dir=work, dest=tmp_path / "download")
+    assert str(exc.value).startswith(
+        "target 'demo' runsOn.apiLevel, scenario 'alpha' preconditions.runsOn.android.avd: "
+    )
+    assert transfer.uploaded == [] and client.scheduled is None

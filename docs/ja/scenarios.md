@@ -122,7 +122,7 @@ preconditions:
 | `app.launch.env` | dict | `{}` | 起動時の環境変数です。ターゲットの `app.launch.env` にキーごとにマージします。iOS は `SIMCTL_CHILD_*` で、Android は intent extra で注入します。Web では Playwright のコード生成が読みます |
 | `app.launch.args` | list[str] | `[]` | 起動引数です。ターゲットの `app.launch.args` の後ろに追記します。iOS 専用です |
 | `app.launch.deeplink` | str | 未設定（ターゲットの `app.launch.deeplink`） | 起動後にアプリが開く URL です（iOS は `simctl openurl`、Android は intent） |
-| `runsOn.<platform>` | object | なし | 1 つのプラットフォームに対するシナリオ自身の `runsOn` です。iOS では `locale` と `seedPhotos` を書けます。デバイスの条件（`model`、`os`、`avd`、`apiLevel`、`browser.engine`、`browser.version`）も受け付けますが、デバイスの照合が実装されるまでは run 時に拒否します。run が動かさないプラットフォームのブロックは効果を持ちません |
+| `runsOn.<platform>` | object | なし | 1 つのプラットフォームに対するシナリオ自身の `runsOn` です。iOS では `locale` と `seedPhotos` を書けます。デバイスの条件（`model`、`os`、`avd`、`apiLevel`、`browser.engine`、`browser.version`）は、ターゲットの同じフィールドをフィールドごとに上書きし、run はデバイスをこれらと照合します（[configuration](configuration.md#デバイスの条件runson)）。run が動かさないプラットフォームのブロックは効果を持ちません |
 | `runsOn.ios.locale` | str | 未設定（ターゲットの `runsOn.locale`） | 起動時の locale と言語を強制し（`-AppleLocale` / `-AppleLanguages`）、Simulator のシステム言語も固定します |
 | `runsOn.ios.seedPhotos` | list[str] | 未設定（ターゲットの `runsOn.seedPhotos`） | erase の経路で、Simulator の写真ライブラリに順に投入する画像です。パスはシナリオファイルを基準に解決します。シナリオのリストはターゲットのリストを置き換えます |
 | `run.erase` | bool | 未設定（ターゲットの `run.erase`、次にオフ） | 各テストの前にデバイス全体を wipe します（`simctl erase`。アプリ、データ、設定を消去します）。`reinstall` が全 wipe なしでアプリを新しい状態に保つので、まっさらなデバイスが必要なテストだけ `true` にします |

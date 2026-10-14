@@ -29,6 +29,12 @@ class RunResult:
     # — set only on a `--browsers` cross-engine run (BE-0076). Empty for iOS and any single-engine
     # run, so `backend` stays the actuator and `engine` carries the rendering-engine axis.
     engine: str = ""
+    # The run's coordinates when `runsOn` conditions form the scenario's runs (BE-0452): `coordinates`
+    # names them as a test name shows them (`iPhone SE (3rd generation) / iOS 17`), and
+    # `run_coordinates` holds them per target and condition field, the key the flakiness history
+    # groups by. Both empty for a scenario no condition multiplies.
+    coordinates: str = ""
+    run_coordinates: dict[str, dict[str, str]] = field(default_factory=dict)
     # The scenario's evidence-dir slug under the run dir (`NN-slug`), stamped by the runner that
     # named the dir, so anything cross-linking to that evidence reads the authoritative value
     # instead of re-deriving it (BE-0076). Empty when no evidence dir was written (e.g. tests).

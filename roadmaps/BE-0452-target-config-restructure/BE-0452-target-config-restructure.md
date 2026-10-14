@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0452") |
-| Implementing PR | [#2191](https://github.com/bajutsu-e2e/bajutsu/pull/2191) (Units 1–3), [#2193](https://github.com/bajutsu-e2e/bajutsu/pull/2193) (Unit 4), [#2194](https://github.com/bajutsu-e2e/bajutsu/pull/2194) (Unit 5), [#2195](https://github.com/bajutsu-e2e/bajutsu/pull/2195) (Units 6–7) |
+| Implementing PR | [#2191](https://github.com/bajutsu-e2e/bajutsu/pull/2191) (Units 1–3), [#2193](https://github.com/bajutsu-e2e/bajutsu/pull/2193) (Unit 4), [#2194](https://github.com/bajutsu-e2e/bajutsu/pull/2194) (Unit 5), [#2195](https://github.com/bajutsu-e2e/bajutsu/pull/2195) (Units 6–7), PR_PLACEHOLDER22 (Units 8–9) |
 | Topic | Driver & backend architecture |
 | Related | [BE-0126](../BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config.md), [BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact.md), [BE-0228](../BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation.md), [BE-0076](../BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md), [BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks.md), [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md), [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch.md), [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md), [BE-0447](../BE-0447-install-app-step/BE-0447-install-app-step.md), [BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md) |
 <!-- /BE-METADATA -->
@@ -866,8 +866,8 @@ batch provider that packages `launchEnv`, `common/report/rows.py`, `templates/se
 - [x] Unit 5: setup and cleanup
 - [x] Unit 6: command-line flags
 - [x] Unit 7: scenario preconditions
-- [ ] Unit 8: reading devices
-- [ ] Unit 9: runs and outcomes
+- [x] Unit 8: reading devices
+- [x] Unit 9: runs and outcomes
 - [ ] Unit 10: reporting
 - [ ] Unit 11: `doctor`
 - [ ] Unit 12: `bajutsu config schema`
@@ -1046,6 +1046,51 @@ batch provider that packages `launchEnv`, `common/report/rows.py`, `templates/se
     target that seeds photos. A `fake` target keeps reading the scenario's iOS locale, as the flat
     `locale` let it.
   - This unit updated the pages that describe these names. The full docs pass stays with unit 13.
+- PR_PLACEHOLDER22 (Units 8–9) — `run` reads each available device and forms its runs.
+  Every command except `doctor` drops the "not yet supported" refusal.
+  - Unit 8: `bajutsu/common/devices/facts.py` reads each device through the simctl and adb layers.
+    On iOS it reads the device-type name from `simctl list devicetypes` and the runtime version. A
+    device's own name is free-form, so the read never compares it. On Android it reads
+    `ro.build.version.sdk` and, for an emulator, the AVD name. On the web it reads the version of a
+    brief headless Playwright launch. A device the read cannot answer for fails the run with exit
+    code 2.
+  - The AVD name reads `ro.boot.qemu.avd_name`, then `ro.kernel.qemu.avd_name`, then
+    `adb emu avd name`. An emulator that reports none fails. The tests use fake adb output alone.
+    The read on a real emulator at each supported API level is still unverified, so it stays open.
+  - A target an `appium` grid serves fails on any effective condition. A physical iPhone does too.
+    The check covers each target alone and runs before any device work. The Device Farm provider
+    refuses a job whose target or scenario declares a condition. It refuses before any upload.
+  - Unit 9: `bajutsu/common/devices/runs.py` forms a target's runs and combines them. It picks
+    each run's eligible set too. `bajutsu/run/device_matrix.py` merges each scenario's block over
+    its targets. It reads each pool once, then groups the runs that take the same devices into
+    cells. `run` keeps today's path when no scenario runs under a condition.
+  - Each run's result carries `coordinates` and `run_coordinates`. JUnit and CTRF names append the
+    coordinates. The manifest, schema version 14, lists not-applicable records under
+    `notApplicable`. An invocation where every record is not applicable exits with code 1 and
+    prints `no run executed`. A line before the verdict counts passes, failures, and not-applicable
+    records.
+  - The hosted runs table gains `run_coordinates` (migration `0024`). The flakiness history keys an
+    invocation by its target and coordinates beside its OS.
+  - `record`, `crawl`, and `repl` take the first run's device. `audit --repeat` forms runs as `run`
+    does, and an MCP run is a `bajutsu run`. The MCP doctor tool and `doctor`'s screen probe keep
+    the refusal until unit 11.
+  - Seven departures from the design text:
+    - Cells run one after another, each on pools narrowed to its eligible sets. `--workers` spreads
+      a cell's runs over its identical devices.
+    - Participants on one pool never share a device. The conditioned sets take their devices
+      first, in declared order. An unconditioned target on the same pool takes the devices left.
+    - Existing histories continue rather than start fresh. A null row reads as the empty key. An
+      older manifest without coordinates does too. No run before this unit could carry a
+      condition. An unconditioned scenario thus keeps one history across the upgrade.
+    - An invocation's hosted row holds the coordinates all its results share. A row whose results
+      ran on two or more coordinates holds the distinct key `*`. It never merges with an
+      unconditioned history. A history per run needs a row per run, which unit 10 can add.
+    - A scenario's single `browser.engine` replaces the target's engine for its runs. `--browsers`
+      beside any remaining condition exits 2, `browser.version` or another.
+    - `--step` exits 2 when the conditions form more than one run.
+    - `audit --repeat` reports every run it can, then exits 1 when a run had no device.
+  - This unit updated the pages that describe these behaviors. The full docs pass stays with unit
+    13.
 
 ## References
 

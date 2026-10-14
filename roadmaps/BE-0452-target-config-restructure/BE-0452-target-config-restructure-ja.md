@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0452") |
-| 実装 PR | [#2191](https://github.com/bajutsu-e2e/bajutsu/pull/2191)（単位 1〜3）、[#2193](https://github.com/bajutsu-e2e/bajutsu/pull/2193)（単位 4）、[#2194](https://github.com/bajutsu-e2e/bajutsu/pull/2194)（単位 5）、[#2195](https://github.com/bajutsu-e2e/bajutsu/pull/2195)（単位 6〜7） |
+| 実装 PR | [#2191](https://github.com/bajutsu-e2e/bajutsu/pull/2191)（単位 1〜3）、[#2193](https://github.com/bajutsu-e2e/bajutsu/pull/2193)（単位 4）、[#2194](https://github.com/bajutsu-e2e/bajutsu/pull/2194)（単位 5）、[#2195](https://github.com/bajutsu-e2e/bajutsu/pull/2195)（単位 6〜7）、PR_PLACEHOLDER22（単位 8〜9） |
 | トピック | ドライバとバックエンドのアーキテクチャ |
 | 関連 | [BE-0126](../BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config-ja.md)、[BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact-ja.md)、[BE-0228](../BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation-ja.md)、[BE-0076](../BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md)、[BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks-ja.md)、[BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction-ja.md)、[BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch-ja.md)、[BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md)、[BE-0447](../BE-0447-install-app-step/BE-0447-install-app-step-ja.md)、[BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md) |
 <!-- /BE-METADATA -->
@@ -447,8 +447,8 @@ target は、どこで実行するかを持たなくなります。target が書
 - [x] 作業単位 5: setup と cleanup
 - [x] 作業単位 6: コマンドラインのフラグ
 - [x] 作業単位 7: シナリオの preconditions
-- [ ] 作業単位 8: 端末の読み取り
-- [ ] 作業単位 9: 回と結果
+- [x] 作業単位 8: 端末の読み取り
+- [x] 作業単位 9: 回と結果
 - [ ] 作業単位 10: 報告
 - [ ] 作業単位 11: `doctor`
 - [ ] 作業単位 12: `bajutsu config schema`
@@ -514,6 +514,23 @@ target は、どこで実行するかを持たなくなります。target が書
     - 作業単位6は`--scenarios`フラグを変えていません。`run`が受け取るのは`--scenario`のファイルで、`--scenarios`を持つのは`serve`だけです。`serve`の`--scenarios`は target のフィールドを指しません。また、`crawl`は`--browser`を持ちません。
   - 投入する写真が無視されないよう、拒否を2つ加えました。複数のターゲットを動かすシナリオで、プライマリ以外のターゲットが重ね合わせたあとの`seedPhotos`を持つと失敗します。run が`run.erase`を決めて写真を投入するのは、プライマリだけだからです。`record`、`crawl`、`repl`は、写真を投入するターゲットに対する`--no-erase`を終了コード2で拒否します。`fake`の target は、平坦な`locale`のときと同じく、シナリオの iOS のロケールを読みます。
   - この作業単位では、これらの名前を説明しているページを更新しました。文書全体の見直しは作業単位13に残します。
+- PR_PLACEHOLDER22（単位 8〜9）— run は利用できるすべてのデバイスを読み、条件から自分の run を作るようになりました。「not yet supported」の拒否は、`doctor`を除くすべてのコマンドから外れました。
+  - 作業単位8：`bajutsu/common/devices/facts.py`は、simctl と adb の層を通して各デバイスを読みます。iOS では、`simctl list devicetypes`のデバイスタイプ名とランタイムのバージョンを読みます。デバイス自身の名前は自由に付けられるので、比較には使いません。Android では`ro.build.version.sdk`と、エミュレータなら AVD 名を読みます。web では、ヘッドレスの Playwright を短く起動してバージョンを読みます。読めないデバイスがあると、run は終了コード2で失敗します。
+  - AVD 名は、`ro.boot.qemu.avd_name`、`ro.kernel.qemu.avd_name`、`adb emu avd name`の順に読みます。どれも返さないエミュレータは失敗します。テストは偽の adb の出力だけを使います。対応する各 API レベルの実機のエミュレータでの読み取りはまだ確かめていないので、この点は未解決のまま残します。
+  - `appium`のグリッドが受け持つターゲットと物理の iPhone は、実効的な条件があれば失敗します。検査はターゲットごとに、デバイスを操作する前に行います。Device Farm のプロバイダは、ターゲットかシナリオが条件を宣言したジョブを、何もアップロードする前に拒否します。
+  - 作業単位9：`bajutsu/common/devices/runs.py`は、ターゲットの run を作って組み合わせ、各 run の適格な集合を選びます。`bajutsu/run/device_matrix.py`は、各シナリオのブロックをターゲットに重ね、プールごとに1回だけデバイスを読みます。そのうえで、同じデバイスを使う run をセルにまとめます。どのシナリオも条件のもとで動かないときは、`run`は従来の経路を通ります。
+  - 各 run の結果は`coordinates`と`run_coordinates`を持ちます。JUnit と CTRF のテスト名には座標を付けます。スキーマのバージョン14のマニフェストは、対象外の記録を`notApplicable`に並べます。すべての記録が対象外になった呼び出しは、終了コード1で終わり、`no run executed`を出します。判定の行の直前の行が、成功、失敗、対象外の件数を示します。
+  - ホストする runs の表に`run_coordinates`の列を加えました（マイグレーション`0024`）。フレーキネスの履歴は、OS に加えてターゲットと座標で呼び出しを分けます。
+  - `record`、`crawl`、`repl`は、最初の run のデバイスを使います。`audit --repeat`は`run`と同じように run を作ります。MCP の run は`bajutsu run`そのものです。MCP の doctor ツールと`doctor`の画面のプローブは、作業単位11まで拒否を続けます。
+  - 設計の記述から外れた点が7つあります。
+    - セルは1つずつ順に実行します。各セルは、適格な集合に絞ったプールで動きます。`--workers`は、セルの run を同一のデバイスに振り分けます。
+    - 1つのプールに属する参加者どうしは、デバイスを共有しません。条件を持つ集合が、宣言の順でデバイスを先に確保します。同じプールの条件を持たないターゲットは、残ったデバイスを使います。
+    - 既存の履歴は、最初からにはせず引き継ぎます。値が null の行と、スキーマのバージョンが14より古いマニフェストは、空のキーとして読みます。この作業単位より前の run は条件を持てなかったからです。そのため、条件を持たないシナリオの履歴は、更新の前後で1つのままです。
+    - 呼び出しのホスト側の行は、すべての結果に共通する座標を持ちます。複数の座標で動いた結果を含む行は、専用のキー`*`を持ちます。そのため、条件を持たない履歴と混ざることはありません。run ごとの履歴には run ごとの行が必要で、作業単位10で加えられます。
+    - シナリオに書いた単一の`browser.engine`は、そのシナリオの run についてターゲットのエンジンを置き換えます。`--browsers`は、`browser.version`に限らず、条件が残っていれば終了コード2で終わります。
+    - 条件が複数の run を作るとき、`--step`は終了コード2で終わります。
+    - `audit --repeat`は、実行できる run をすべて報告してから、デバイスのなかった run があれば終了コード1で終わります。
+  - この作業単位では、これらの動作を説明しているページを更新しました。文書全体の見直しは作業単位13に残します。
 
 ## 参考
 

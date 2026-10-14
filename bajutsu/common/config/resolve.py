@@ -121,8 +121,8 @@ def _platform_config(a: TargetConfig) -> PlatformConfig:
         return WebConfig(
             base_url=app.url,
             headless=driver.headless,
-            # A listed engine is a condition the run refuses until BE-0452 unit 9; the first stands
-            # in so the resolved type stays one engine.
+            # A listed engine is a condition each run replaces with its own engine (BE-0452); the
+            # first stands in so the resolved type stays one engine.
             browser=engine[0] if isinstance(engine, list) else engine,
             device_mode=runs_on.emulate,
         )

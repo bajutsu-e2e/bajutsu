@@ -15,6 +15,7 @@ from bajutsu.cli._shared import (
     WORKER_CONFIG_HELP,
     _command_preconditions_or_exit,
     _device_udid_or_exit,
+    _first_run_or_exit,
     _load_device_worker_or_exit,
     _load_effective,
     _resolve_browser,
@@ -141,6 +142,8 @@ def repl(
     # The device comes through the target's provider, as in `run`: the `--udid` pool, or the grid
     # an `appium` environment names (BE-0452).
     udid = _device_udid_or_exit(eff, udid)
+    # Under `runsOn` conditions the command takes the first run's device, never several (BE-0452).
+    eff, udid = _first_run_or_exit(eff, actuator, udid)
     if attach:
         _check_attach_or_exit(actuator, udid, eff, erase)
         erase = False

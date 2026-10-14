@@ -142,6 +142,11 @@ def get_prop_cmd(serial: str, prop: str) -> list[str]:
     return _adb(serial, "shell", "getprop", prop)
 
 
+def emu_avd_name_cmd(serial: str) -> list[str]:
+    """Ask a local emulator's console for its AVD name; the reply's last line is `OK` (BE-0452)."""
+    return _adb(serial, "emu", "avd", "name")
+
+
 def dump_cmd(serial: str) -> list[str]:
     """Stream the current window's UI Automator hierarchy XML to stdout (no on-device temp file)."""
     return _adb(serial, "exec-out", "uiautomator", "dump", "/dev/tty")

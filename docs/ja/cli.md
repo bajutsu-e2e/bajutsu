@@ -123,14 +123,20 @@ web backend が動く Windows では、`run` は BE-0449 以前と同じく run 
   `worker-capability-unsupported:` で始まる理由で失敗します。この失敗は、ほかの失敗シナリオと同じく
   run の結果とレポートに記録されます。そのシナリオのためにデバイスは確保せず、残りのシナリオは実行します。
   実行できるシナリオが 1 つもなければ、`run` は理由を列挙して終了コード 2 で終了します。
-- **デバイス条件の照合はまだできません（BE-0452）。** ターゲットはデバイス条件を宣言できます。
+- **デバイス条件から run を作ります（BE-0452）。** ターゲットはデバイス条件を宣言できます。
   `runsOn.model`、`runsOn.os`、`runsOn.avd`、`runsOn.apiLevel`、`runsOn.browser.version`、および
-  `model`、`avd`、`browser.engine` に書いたリストがデバイス条件です。config は読み込めますが、`run` は
-  まだデバイスを条件と照合できません。そのため、条件を宣言したターゲットに対する run は
-  「not yet supported」で失敗し、終了コード 2 で終わります。`record`、`crawl`、`repl`、`audit`、
-  MCP の run、`doctor` の画面プローブも同じです。`--backend fake` は通知を 1 回出して検査を
-  飛ばします。`--browsers` には影響しません。シナリオ自身の `preconditions.runsOn` の条件も、
-  `run` と `audit` で同じく拒否されます。
+  `model`、`avd`、`browser.engine` に書いたリストがデバイス条件です。シナリオの `preconditions.runsOn`
+  のブロックは、ターゲットの条件をフィールドごとに上書きします。`run` は `--udid` のプールの
+  すべてのデバイスを読みます。並べた値ごと、範囲のメジャーバージョンごとに run を 1 つ作り、
+  それぞれを自分の適格なデバイスで実行します（[configuration](configuration.md#デバイスの条件runson)）。
+  各 run の証跡は `runs/<id>/run-NN/` に置き、JUnit と CTRF のテスト名には座標が付きます。
+  合うデバイスがない run は失敗します。片側が開いた範囲でデバイスがなかった run は「not applicable」
+  として並び、判定の行の直前の行が成功、失敗、対象外の件数を示します。すべての記録が対象外の
+  ときは、`run` は終了コード 1 で終わり、`no run executed` を出します。`audit --repeat` と MCP の
+  run も同じように run を作ります。`record`、`crawl`、`repl` は最初の run だけを使います。`doctor` の
+  画面プローブは条件を引き続き拒否します。`--backend fake` はどの条件も照合せず、通知を 1 回
+  出します。`browser.version` のような条件が残る状態で `--browsers` を渡すと終了コード 2 で終わり、
+  条件が複数の run を作るときの `--step` も終了コード 2 で終わります。
 - **シナリオの preconditions は、デバイスを操作する前に検査します（BE-0452）。** `run` と `audit` は、
   各シナリオを、そのシナリオが動かすターゲットと照合します。動かすどのターゲットのプラットフォームにも
   ない `app` のフィールドや、iOS 専用の `run` のフィールドは、フィールド名を示して終了コード 2 で

@@ -52,6 +52,7 @@ def _run_fields(run: RunRecord) -> dict[str, Any]:
         "device_runtime": run.device_runtime,
         "label": run.label,
         "target": run.target,
+        "run_coordinates": run.run_coordinates,
     }
     if run.created_at is not None:
         fields["created_at"] = run.created_at

@@ -10,6 +10,7 @@ from jinja2 import Environment, FileSystemLoader
 from bajutsu.analysis.audit import canonical_os, classify_stability, unknown_os_note
 from bajutsu.common.devices import os as device_os
 from bajutsu.common.devices.os import DeviceOS
+from bajutsu.common.devices.runs import coordinates_from_manifest
 from bajutsu.common.run_meta.id import parse_run_id_timestamp
 from bajutsu.serve.server.db import RunRecord
 
@@ -74,7 +75,7 @@ def rank_flakiness(
     """
     if window_runs is not None and window_runs <= 0:
         raise ValueError(f"window_runs must be a positive integer, got {window_runs!r}")
-    groups: dict[tuple[str, DeviceOS | None], list[RunRecord]] = {}
+    groups: dict[tuple[str, DeviceOS | None, str | None, str], list[RunRecord]] = {}
     skipped = 0
     for record in records:
         if since is not None and (
@@ -84,13 +85,21 @@ def rank_flakiness(
         if not isinstance(record.scenario_hash, str) or record.ok is None:
             skipped += 1
             continue
-        groups.setdefault(
-            (record.scenario_hash, device_os.parse(record.device_runtime)), []
-        ).append(record)
+        # The target and the run's coordinates join the key (BE-0452), so one scenario's runs on
+        # two models, or two targets, are two histories rather than one flaky one.
+        key = (
+            record.scenario_hash,
+            device_os.parse(record.device_runtime),
+            record.target,
+            # A row recorded before the column existed could carry no condition, so it reads as
+            # the empty key and its history continues.
+            record.run_coordinates or "",
+        )
+        groups.setdefault(key, []).append(record)
 
     scenarios = [
-        _score(scenario_hash, os, _window(runs, window_runs))
-        for (scenario_hash, os), runs in groups.items()
+        _score(scenario_hash, os, _window(runs, window_runs), target=target, coordinates=coords)
+        for (scenario_hash, os, target, coords), runs in groups.items()
     ]
     # Flaky first (the findings to act on), then flakiest by flip rate, then the most-observed. The
     # OS closes the tie two rows that differ only by it would otherwise leave to input order.
@@ -101,6 +110,8 @@ def rank_flakiness(
             -s.runs,
             s.scenario_hash,
             device_os.ordering_key(s.device_os),
+            s.target or "",
+            s.coordinates or "",
         )
     )
     return FlakinessReport(scenarios=scenarios, skipped=skipped)
@@ -112,8 +123,15 @@ def _window(runs: list[RunRecord], window_runs: int | None) -> list[RunRecord]:
     return ordered[:window_runs] if window_runs is not None else ordered
 
 
-def _score(scenario_hash: str, os: DeviceOS | None, runs: list[RunRecord]) -> FlakyScenario:
-    """Tally one scenario's windowed runs on one OS into a classified, ranked entry."""
+def _score(
+    scenario_hash: str,
+    os: DeviceOS | None,
+    runs: list[RunRecord],
+    *,
+    target: str | None = None,
+    coordinates: str = "",
+) -> FlakyScenario:
+    """Tally one scenario's windowed runs on one OS and coordinates into a classified, ranked entry."""
     passed = sum(1 for r in runs if r.ok)
     failed = len(runs) - passed
     total = len(runs)
@@ -129,6 +147,8 @@ def _score(scenario_hash: str, os: DeviceOS | None, runs: list[RunRecord]) -> Fl
         classification=classify_stability(passed, total),
         representative_pass_run_id=representatives[0],
         representative_fail_run_id=representatives[1],
+        target=target,
+        coordinates=coordinates,
     )
 
 
@@ -188,6 +208,8 @@ def _record_from_manifest(manifest: Mapping[str, object]) -> RunRecord:
         # "" — determined, no single OS — rather than None, which marks a row whose OS was never
         # determined and which the hosted backfill is still free to repair (BE-0358).
         device_runtime=run_os.label if run_os is not None else "",
+        target=target if isinstance(target := manifest.get("target"), str) else None,
+        run_coordinates=coordinates_from_manifest(manifest),
     )
 
 
@@ -210,7 +232,10 @@ def render(report: FlakinessReport) -> str:
 
 def _render_scenario(s: FlakyScenario) -> str:
     """One scenario's text block: its OS, class, verdict tally, flip rate, and representative runs."""
-    head = f"{s.name or s.scenario_hash} on {device_os.describe(s.device_os)}: {s.classification} "
+    where = device_os.describe(s.device_os)
+    if s.coordinates:
+        where += f" [{s.coordinates}]"
+    head = f"{s.name or s.scenario_hash} on {where}: {s.classification} "
     head += f"({s.runs} runs · {s.passed} passed / {s.failed} failed · flip {s.flip_rate:.0%})"
     evidence = " · ".join(
         part

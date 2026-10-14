@@ -358,7 +358,7 @@ def doctor(
     # whose app server is down still faults on navigate (ERR_CONNECTION_REFUSED). Report it as a
     # fixable error and exit non-zero rather than surfacing a stack trace — doctor diagnoses, it
     # does not crash.
-    # The screen probe is the device path, which matches no runsOn condition until BE-0452 unit 9.
+    # The screen probe is the device path, which matches no runsOn condition until BE-0452 unit 11.
     _refuse_conditions(eff, backends)
     try:
         elements = _current_screen(actuator, udid, eff)

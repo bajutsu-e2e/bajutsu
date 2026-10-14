@@ -51,8 +51,9 @@ def _probe_device(eff: Effective, udid: str, worker: WorkerCapability) -> tuple[
     """*eff* with the worker's device provider, and the udid spec it hands back (BE-0452).
 
     Raises:
-        ValueError: *udid* is a URL, the target declares a `runsOn` condition (which no command
-            matches until BE-0452 unit 9), or the provider cannot resolve a device.
+        ValueError: *udid* is a URL, the target declares a `runsOn` condition (which `doctor`'s
+            device path matches from BE-0452 unit 11; `bajutsu_run` matches it as `run` does), or
+            the provider cannot resolve a device.
     """
     if any(t.strip().startswith(("http://", "https://")) for t in udid.split(",")):
         raise ValueError(

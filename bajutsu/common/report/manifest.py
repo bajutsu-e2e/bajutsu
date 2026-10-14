@@ -99,7 +99,11 @@ def _run_backend(results: list[RunResult]) -> str:
 #   transport, on the same footing as the step's "started_at". A report switches the highlighted step
 #   row at it, since the recording only changes once the action lands. Absent on every older run,
 #   which reads as "no actuation instant": the row switches at the step's own "started_at" as before.
-SCHEMA_VERSION = 13
+# v14 (BE-0452): a scenario may carry "coordinates" and "run_coordinates" — the run's coordinates
+#   when `runsOn` conditions form the scenario's runs — and the manifest may carry "notApplicable",
+#   one record per run no available device fell in an open range for. Absent on every older run,
+#   whose scenarios each ran once.
+SCHEMA_VERSION = 14
 
 
 def _matrix(results: list[RunResult]) -> dict[str, object] | None:
@@ -200,6 +204,7 @@ def manifest_dict(
     provenance: dict[str, object] | None = None,
     target: str | None = None,
     label: str | None = None,
+    not_applicable: list[dict[str, str]] | None = None,
 ) -> dict[str, object]:
     """Build the manifest — the run's canonical, versioned render model (BE-0068).
 
@@ -216,11 +221,14 @@ def manifest_dict(
     value, not a per-scenario one — one run resolves one target — so it sits at the top level
     beside `backend` rather than on each scenario. `label` is the run-history partition (unit 2),
     opaque operator free-text: never parsed, never matched against config, never authorized on.
+    `not_applicable` lists the runs no available device fell in an open `runsOn` range for
+    (BE-0452); they are neither passes nor failures, but a run with nothing else is not `ok`, so an
+    invocation that executed nothing never reports green.
     """
     manifest: dict[str, object] = {
         "schemaVersion": SCHEMA_VERSION,
         "runId": run_id,
-        "ok": all(r.ok for r in results),
+        "ok": all(r.ok for r in results) and bool(results or not not_applicable),
         "backend": _run_backend(results),
         "sourceName": source_name,
         "scenarios": [_scenario_dict(r) for r in results],
@@ -236,7 +244,19 @@ def manifest_dict(
     # the v1 shape; `ok` above already aggregates every engine x scenario verdict (all-must-pass).
     if (matrix := _matrix(results)) is not None:
         manifest["matrix"] = matrix
+    if not_applicable:
+        manifest["notApplicable"] = not_applicable
     return manifest
+
+
+def result_test_name(r: RunResult) -> str:
+    """The name a test report gives one result: the scenario, then its engine and coordinates.
+
+    One scenario's runs share its name, so the engine of a `--browsers` cell (BE-0076) and the
+    coordinates of a run `runsOn` formed (BE-0452) keep JUnit and CTRF test names unique.
+    """
+    suffix = ", ".join(part for part in (r.engine, r.coordinates) if part)
+    return f"{r.scenario} [{suffix}]" if suffix else r.scenario
 
 
 def scenario_result_dict(r: RunResult) -> dict[str, object]:
@@ -317,6 +337,11 @@ def _step_label(s: StepOutcome) -> str:
     return f"{s.action}@{s.target}" if s.target else s.action
 
 
+def _junit_name(r: RunResult) -> str:
+    # The engine already keys the classname, so only the coordinates extend the case name.
+    return f"{r.scenario} [{r.coordinates}]" if r.coordinates else r.scenario
+
+
 def junit_xml(results: list[RunResult]) -> str:
     """One testcase per scenario; a failing scenario gets a <failure>.
 
@@ -329,7 +354,7 @@ def junit_xml(results: list[RunResult]) -> str:
     suite = ET.Element("testsuite", name="bajutsu", tests=str(len(results)), failures=str(failures))
     for r in results:
         classname = f"bajutsu.{r.engine}" if r.engine else "bajutsu"
-        case = ET.SubElement(suite, "testcase", name=r.scenario, classname=classname)
+        case = ET.SubElement(suite, "testcase", name=_junit_name(r), classname=classname)
         if not r.ok:
             failure = ET.SubElement(case, "failure", message=r.failure or "failed")
             failure.text = _details(r)
