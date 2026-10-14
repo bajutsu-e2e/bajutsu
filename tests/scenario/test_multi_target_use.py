@@ -516,7 +516,7 @@ def test_a_recovery_use_omitting_target_stays_on_the_guard_runner_even_with_a_pr
 def test_lifecycle_before_use_follows_the_main_steps_rule() -> None:
     s = _expanded(
         targets=TWO,
-        before=[_use("sign-in", target="web")],
+        setup=[_use("sign-in", target="web")],
         steps=[{"tap": {"id": "a"}, "target": "app"}],
     )
-    assert _targets(s.before) == ["web", "web"]
+    assert _targets(s.setup) == ["web", "web"]

@@ -484,7 +484,7 @@ def test_group_nested_inside_before_is_rejected() -> None:
         Scenario.model_validate(
             {
                 "name": "x",
-                "before": [
+                "setup": [
                     {
                         "group": {
                             "name": "outer",
@@ -505,7 +505,7 @@ def test_group_nested_inside_an_after_rules_steps_is_rejected() -> None:
             {
                 "name": "x",
                 "steps": [{"tap": {"id": "z"}}],
-                "after": [
+                "cleanup": [
                     {
                         "on": "always",
                         "steps": [

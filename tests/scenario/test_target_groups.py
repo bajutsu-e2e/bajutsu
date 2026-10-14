@@ -6,7 +6,7 @@ forbidden; a direct child must omit target, which also rejects a nested group; r
 flat, stamped step list a hand-written one would, on every step list it walks (`steps`, `before`,
 `after`, `interrupts`), through `if`/`forEach`/`web`/`app` nesting, and that the expansion survives
 `expand_components` and config hook-folding the same way `_check_target_requirements`
-already does (see `test_target_routing.py`, `test_components.py`, `tests/orchestrator/test_before_after.py`).
+already does (see `test_target_routing.py`, `test_components.py`, `tests/orchestrator/test_setup_cleanup.py`).
 """
 
 from __future__ import annotations
@@ -262,9 +262,9 @@ def test_before_and_after_and_interrupts_are_expanded_the_same_way() -> None:
         {
             "name": "s",
             "targets": ["app"],
-            "before": [_group("app", [{"tap": {"id": "b"}}])],
+            "setup": [_group("app", [{"tap": {"id": "b"}}])],
             "steps": [{"target": "app", "tap": {"id": "s"}}],
-            "after": [{"on": "always", "steps": [_group("app", [{"tap": {"id": "a"}}])]}],
+            "cleanup": [{"on": "always", "steps": [_group("app", [{"tap": {"id": "a"}}])]}],
             "interrupts": [
                 {
                     "condition": {"exists": {"id": "popup"}},
@@ -273,10 +273,10 @@ def test_before_and_after_and_interrupts_are_expanded_the_same_way() -> None:
             ],
         }
     )
-    assert s.before[0].target == "app"
-    assert s.before[0].tap is not None and s.before[0].tap.id == "b"
-    assert s.after[0].steps[0].target == "app"
-    assert s.after[0].steps[0].tap is not None and s.after[0].steps[0].tap.id == "a"
+    assert s.setup[0].target == "app"
+    assert s.setup[0].tap is not None and s.setup[0].tap.id == "b"
+    assert s.cleanup[0].steps[0].target == "app"
+    assert s.cleanup[0].steps[0].tap is not None and s.cleanup[0].steps[0].tap.id == "a"
     assert s.interrupts[0].steps[0].target == "app"
     assert s.interrupts[0].steps[0].tap is not None and s.interrupts[0].steps[0].tap.id == "i"
 
@@ -511,6 +511,6 @@ def test_hook_folding_expands_a_group_a_config_level_hook_carries() -> None:
         }
     )
     merged = with_lifecycle_phases(effs["app"], [scenario], effs)[0]
-    assert [(s.target, _tap_id(s)) for s in merged.before] == [("app", "a1"), ("app", "a2")]
-    after_steps = merged.after[0].steps
+    assert [(s.target, _tap_id(s)) for s in merged.setup] == [("app", "a1"), ("app", "a2")]
+    after_steps = merged.cleanup[0].steps
     assert [(s.target, _tap_id(s)) for s in after_steps] == [("app", "a3")]

@@ -283,7 +283,7 @@ def _details(r: RunResult) -> str:
 
     The lifecycle phases (BE-0392) are labeled rather than merged into the numbered `steps` — each
     counts from zero, so an unlabeled line would read as a second `step 0`. Without them a run that
-    failed only in `before` or `after` would carry an empty `<failure>` body, since neither phase's
+    failed only in `setup` or `cleanup` would carry an empty `<failure>` body, since neither phase's
     outcomes live in `steps`.
     """
 
@@ -296,10 +296,10 @@ def _details(r: RunResult) -> str:
 
     return "\n".join(
         [
-            *(step_line("before ", s) for s in r.before_outcomes),
+            *(step_line("setup ", s) for s in r.before_outcomes),
             *(step_line("", s) for s in r.steps),
             *(expect_line(a) for a in r.expect_results),
-            *(step_line("after ", s) for s in r.after_outcomes),
+            *(step_line("cleanup ", s) for s in r.after_outcomes),
         ]
     )
 

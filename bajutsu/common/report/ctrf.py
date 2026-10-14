@@ -144,9 +144,9 @@ def _test_extra(r: RunResult) -> dict[str, object]:
     # only `steps` would miss a run whose sole failure was in setup or teardown. CTRF has one `steps`
     # array per test and no phase concept, so they ride `extra` the way `expect` already does.
     if r.before_outcomes:
-        extra["before"] = [_step(s) for s in r.before_outcomes]
+        extra["setup"] = [_step(s) for s in r.before_outcomes]
     if r.after_outcomes:
-        extra["after"] = [_step(s) for s in r.after_outcomes]
+        extra["cleanup"] = [_step(s) for s in r.after_outcomes]
     if r.expect_results:
         extra["expect"] = [
             {"ok": a.ok, "kind": a.kind, "detail": a.detail, "reason": a.reason}

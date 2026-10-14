@@ -152,7 +152,7 @@ def test_a_failing_relaunch_is_never_probed() -> None:
 
 
 def test_a_failed_relaunch_suppresses_every_later_probe_in_the_scenario() -> None:
-    # The latch has to be scenario-scoped, not per-outcome: the wrapping outcomes and any `after`
+    # The latch has to be scenario-scoped, not per-outcome: the wrapping outcomes and any `cleanup`
     # step carry a different `outcome.action` and would each otherwise probe fresh, reading the
     # app's honest `notRunning` as a crash the failed `relaunch` itself caused.
     driver = CrashingDriver([el("home", "Home")])
@@ -166,7 +166,7 @@ def test_a_failed_relaunch_suppresses_every_later_probe_in_the_scenario() -> Non
             {
                 "name": "relaunch then cleanup",
                 "steps": [{"relaunch": {}}],
-                "after": [{"on": "error", "steps": [{"tap": {"id": "gone"}}]}],
+                "cleanup": [{"on": "failure", "steps": [{"tap": {"id": "gone"}}]}],
             }
         ),
         clock=FakeClock(),
@@ -413,7 +413,7 @@ def test_a_backend_crash_from_the_probe_still_propagates() -> None:
 
 def test_the_capture_runs_at_confirmation_and_lands_on_the_outcome() -> None:
     # Captured synchronously at confirmation rather than after the scenario finishes: a teardown
-    # `relaunch` in the same `after` phase would otherwise re-stamp the launch marker the sweep
+    # `relaunch` in the same `cleanup` phase would otherwise re-stamp the launch marker the sweep
     # matches against, and a later read would sweep past the crash it exists to attribute.
     driver = CrashingDriver([el("home", "Home")])
     calls: list[int] = []
@@ -440,7 +440,7 @@ def test_a_teardown_after_the_crash_does_not_re_capture() -> None:
             {
                 "name": "crash then cleanup",
                 "steps": [{"tap": {"id": "gone"}}],
-                "after": [{"on": "error", "steps": [{"tap": {"id": "also-gone"}}]}],
+                "cleanup": [{"on": "failure", "steps": [{"tap": {"id": "also-gone"}}]}],
             }
         ),
         clock=FakeClock(),
@@ -467,7 +467,7 @@ def test_no_capture_callable_still_classifies() -> None:
 def test_a_crash_on_the_last_step_stays_green_when_nothing_follows_it() -> None:
     # Pinned rather than left to be rediscovered as a bug. The trigger's own actuation succeeds — the
     # tap lands before the app dies — so it is never probed, and with no `expect` and no non-failure
-    # `after` rule there is nothing after it to fail. Closing this would need an unconditional
+    # `cleanup` rule there is nothing after it to fail. Closing this would need an unconditional
     # end-of-scenario probe, the every-green-run cost this design exists to avoid.
     driver = CrashingDriver([el("ok", "OK", ["button"])])
     result = _run(driver, [{"tap": {"id": "ok"}}])
@@ -515,7 +515,7 @@ def test_an_after_rule_that_runs_on_success_catches_the_crash_one_step_later() -
             {
                 "name": "crash on the last step, teardown after",
                 "steps": [{"tap": {"id": "ok"}}],
-                "after": [{"on": "always", "steps": [{"tap": {"id": "gone"}}]}],
+                "cleanup": [{"on": "always", "steps": [{"tap": {"id": "gone"}}]}],
             }
         ),
         clock=FakeClock(),

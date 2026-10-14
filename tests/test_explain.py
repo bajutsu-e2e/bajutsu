@@ -26,7 +26,7 @@ SCENARIO = """
       capture: [video, screenshot]
     - on: { event: screenChanged }
       capture: [network]
-    - on: { result: error }
+    - on: { result: failure }
       capture: [video, deviceLog]
   steps:
     - tap: { id: form.submit }
@@ -114,7 +114,7 @@ def test_cli_trace_explain_reports_firing(tmp_path: Path) -> None:
     assert "*.submit" in r.output
     # Ensure the other expected conditional rules are also reported.
     assert "screenChanged" in r.output
-    assert "error" in r.output
+    assert "result=failure" in r.output
 
 
 def test_cli_trace_explain_missing_file() -> None:

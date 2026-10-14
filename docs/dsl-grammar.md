@@ -50,8 +50,8 @@ graph LR
   SC -->|mocks| MK["Mock"]
   SC -->|redact| RD["Redact"]
   SC -->|interrupts| IR["Interrupt"]
-  SC -->|before| ST
-  SC -->|after| AR["AfterRule"]
+  SC -->|setup| ST
+  SC -->|cleanup| AR["CleanupRule"]
   AR -->|steps| ST
 
   ST -->|"tap·doubleTap·longPress·<br/>type·swipe·pinch·rotate·<br/>select·clear·delete·<br/>selectOption·setPickerValue·<br/>drag·scroll·handleSystemAlert"| SEL["Selector"]
@@ -122,10 +122,10 @@ Scenario ::= {
   data?:           list(map(string,string)),# inline rows   ┐ XOR
   dataFile?:       string,                  # CSV path      ┘ (§6.3)
   preconditions?:  <Preconditions>,         # default {}
-  before?:         list(<Step>),            # default []  — setup phase run ahead of `steps`, reported apart from it (BE-0392); each declared target's `hooks.setup` precede these
+  setup?:          list(<Step>),            # default []  — setup phase run ahead of `steps`, reported apart from it (BE-0392); each declared target's `hooks.setup` precede these
   steps:           list(<Step>),            # required
   expect?:         list(<Assertion>),       # default []  — final checks
-  after?:          list(<AfterRule>),       # default []  — teardown rules run once the verdict exists (BE-0392); each declared target's `hooks.cleanup` follow these
+  cleanup?:        list(<CleanupRule>),     # default []  — teardown rules run once the verdict exists (BE-0392); each declared target's `hooks.cleanup` follow these
   capturePolicy?:  list(<CaptureRule>),     # default []
   network?:        <Network>,
   mocks?:          list(<Mock>),            # default []
@@ -146,7 +146,7 @@ Interrupt ::= { condition: <Assertion>, steps: list(<Step>), target?: string }
 
 # One teardown rule (BE-0392): the outcome it answers, and the steps to run for that outcome. The
 # outcome is the scenario's own machine-checked verdict, never a model call.
-AfterRule ::= { on: "always" | "success" | "error", steps: list(<Step>) }
+CleanupRule ::= { on: "always" | "success" | "failure", steps: list(<Step>) }
 
 # ── Preconditions ──────────────────────────────────────────────────────
 Preconditions ::= {
@@ -367,7 +367,7 @@ CaptureRule ::= { on: <Trigger>, capture: list(<CaptureToken>), from?: string }
 Trigger ::=                                    # exactly one of action / event / result
     { action: string, idMatches?: string }     # idMatches only alongside action
   | { event: "screenChanged" }
-  | { result: "error" }
+  | { result: "failure" }
 
 # ── Network / mocks / redact ───────────────────────────────────────────
 Network ::= { filter?: { domains?: list(string) } }
@@ -428,7 +428,7 @@ error). This table is the **authoritative list of "exactly one / at least one / 
 | `Scenario.primaryTarget` | omitted, or equal to the first name of `targets` (the first member of the first group); **rejected** when `targets` is empty (BE-0436) | `scenario/models/scenario/_targets.py` |
 | `Scenario.installs` | every entry a declared target, none repeated; a group of ≥ 2 that does not hold the primary lists **≥ 1** of its members (BE-0447) | `scenario/models/scenario/_targets.py` |
 | `installApp` | `from` names a **later member** (neither the primary nor in `installs`, in a group of ≥ 2) of the group holding the step's device; **at most one** top-level `installApp` per member; **rejected** inside `web:` / `app:`, and in an `interrupts` recovery with no explicit device once the scenario contains a `setPrimaryTarget` (BE-0447) | `scenario/models/scenario/_targets.py` |
-| `setPrimaryTarget` | `target` names a declared target; **top-level `steps` only** — rejected inside `if`, `forEach`, a target group, `web:`, `app:`, an `interrupts` entry, `before`, or `after`; a component's is valid when its `use:` / `group:` call is top-level, and expansion never stamps a caller's `target` onto it (BE-0447) | `scenario/models/scenario/_targets.py`, `scenario/expand.py` |
+| `setPrimaryTarget` | `target` names a declared target; **top-level `steps` only** — rejected inside `if`, `forEach`, a target group, `web:`, `app:`, an `interrupts` entry, `setup`, or `cleanup`; a component's is valid when its `use:` / `group:` call is top-level, and expansion never stamps a caller's `target` onto it (BE-0447) | `scenario/models/scenario/_targets.py`, `scenario/expand.py` |
 | `Step.target` / `Assertion.target` (`expect` only) | omitted or matching the one entry when `len(target_names) ≤ 1`; **required** — including on an `if`/`forEach`/`web` wrapper, not only a leaf action — naming a declared target, when `len(target_names) ≥ 2` and `primaryTarget` is unset; **optional** when `len(target_names) ≥ 2` and `primaryTarget` is set, an omitted one running against the primary at every nesting depth (BE-0436) — the current primary, which a `setPrimaryTarget` step moves (BE-0447); **rejected** on a step nested inside `web:`, and on an `Assertion` reached through an inline `assert:` list, an `if`'s `condition`, or an `interrupts` entry's `condition` (BE-0428) | `scenario/models/scenario/_targets.py` |
 | `Step.target` on a `use:` / `group:` step | **optional** at any `len(target_names)`, even with no `primaryTarget`, and never resolved itself; one that is set must name a declared target. Expansion stamps it onto every step the call produces that omits one, and refuses a produced step naming a different target (BE-0446) | `scenario/models/scenario/_targets.py`, `scenario/expand.py` |
 | `Interrupt.target`, and `Step.target` in an `interrupts` entry's `steps` | **optional** at any `len(target_names)`, regardless of `primaryTarget`: an omitted entry `target` watches the primary target, and an omitted recovery-step `target` runs on the entry's own target (or an enclosing `if`/`forEach` step's when that step names one); a value that is set follows the `Step.target` rule above for naming a declared target (BE-0438) | `scenario/models/scenario/_targets.py` |
@@ -447,13 +447,13 @@ Omitted optional keys take these values (so a minimal scenario is just `name` + 
 
 | Field | Default |
 |---|---|
-| `Scenario.tags` / `expect` / `capturePolicy` / `mocks` / `interrupts` / `before` / `after` | `[]` |
+| `Scenario.tags` / `expect` / `capturePolicy` / `mocks` / `interrupts` / `setup` / `cleanup` | `[]` |
 | `Scenario.preconditions` | `{}` (i.e. `erase` unset — off unless the target's `run.erase` says otherwise — and `reinstall: clean`) |
 | `Scenario.systemAlertHandling` | unset (alert guard on, with no rules — so it answers no prompt of its own) |
 | `Scenario.iosTipKitHandling` | unset (off — a tip is sometimes the assertion; iOS only) |
 | `Scenario.permissions` | `{}` (no pre-launch permission state applied) |
 | `Preconditions.erase` | unset — inherits the target's `run.erase`, else off (BE-0177) |
-| `Preconditions.run.inheritSetup` | `true` (every declared target's `hooks.setup` runs ahead of `before`) |
+| `Preconditions.run.inheritSetup` | `true` (every declared target's `hooks.setup` runs ahead of the scenario's `setup`) |
 | `Preconditions.reinstall` | `clean` |
 | `Preconditions.launchArgs` | `[]` |
 | `Preconditions.launchEnv` | `{}` |
@@ -594,7 +594,7 @@ derived scenario is renamed `"<name> [row N: col=val, …]"` and **keeps the ori
 ### 6.4 Shared setup, secrets, and tag selection
 
 - **Shared setup**: a login / navigation flow written once is a component (§6.2). A `use` step
-  calls it from the scenario's own `before`, or from a target's `hooks.setup` in config. A target's
+  calls it from the scenario's own `setup`, or from a target's `hooks.setup` in config. A target's
   component resolves when the config loads, against the config file's directory. It must stay
   inside the suite root (BE-0174).
   [BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)

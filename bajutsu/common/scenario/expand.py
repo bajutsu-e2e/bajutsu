@@ -294,7 +294,7 @@ def expand_components(
     `web:` / `app:` block (BE-0446).
 
     Args:
-        scenarios: The scenarios to expand; their `steps`, their `before` / `after` lifecycle
+        scenarios: The scenarios to expand; their `steps`, their `setup` / `cleanup` lifecycle
             steps, and every `interrupts` entry's recovery `steps` are rewritten in place.
         resolve: Maps a component name to its `Component` (e.g. by loading a shared file). One that
             also satisfies `ScopedResolve` re-scopes each ref's nested expansion, and owns whatever
@@ -314,8 +314,8 @@ def expand_components(
         # all take the ordinary step grammar, so a `use` can appear in any of them. Left
         # unexpanded it reaches the step loop as a step with no action and aborts the whole run
         # with an `AssertionError`, not one failed scenario.
-        scenario.before = expand(scenario.before, [], resolve)
-        for rule in scenario.after:
+        scenario.setup = expand(scenario.setup, [], resolve)
+        for rule in scenario.cleanup:
             rule.steps = expand(rule.steps, [], resolve)
         for entry in scenario.interrupts:
             entry.steps = expand(entry.steps, [], resolve)

@@ -19,7 +19,7 @@ from bajutsu.common.scenario.models._base import _Model
 from bajutsu.common.scenario.models.assertions import Assertion
 from bajutsu.common.scenario.models.evidence import CaptureRule, Network, Redact
 from bajutsu.common.scenario.models.mocks import Mock
-from bajutsu.common.scenario.models.steps import AfterRule, Interrupt, Step
+from bajutsu.common.scenario.models.steps import CleanupRule, Interrupt, Step
 
 from ._functions import _coerce_system_alert_handling
 from ._group_nesting import _check_no_nested_group
@@ -93,19 +93,19 @@ class Scenario(_Model):
     data: list[dict[str, str]] | None = None
     data_file: str | None = Field(default=None, alias="dataFile")
     preconditions: Preconditions = Field(default_factory=Preconditions)
-    # Setup that runs as its own phase before `steps` (BE-0392), not spliced into it the way a
-    # `preconditions.setup` prelude is: it gets its own report section, and its failure aborts the
-    # scenario before `steps` runs rather than surfacing as an ordinary step failure. Prepended to
-    # the target config's own `before`, the config-then-scenario order `interrupts` follows. Empty
-    # (the default) means no scenario-level prelude, so it prunes from a dump.
-    before: list[Step] = Field(default_factory=list)
+    # Setup that runs as its own phase before `steps` (BE-0392): it gets its own report section, and
+    # its failure aborts the scenario before `steps` runs rather than surfacing as an ordinary step
+    # failure. Runs after the target config's own `hooks.setup`, the config-then-scenario order
+    # `interrupts` follows. Named `before` until BE-0452, which gave the target and the scenario one
+    # pair of words for the phases. Empty (the default) prunes from a dump.
+    setup: list[Step] = Field(default_factory=list)
     steps: list[Step]
     expect: list[Assertion] = Field(default_factory=list)
     # Teardown rules keyed to the run's own verdict (BE-0392), run after `steps`/`expect` on every
     # path out of them — including the one a failing step took, which trailing `steps` never reach.
-    # Merged scenario-then-config, the reverse of `before`: this scenario's own cleanup releases what
-    # it created before the app-wide one tears down around it.
-    after: list[AfterRule] = Field(default_factory=list)
+    # Merged scenario-then-config, the reverse of `setup`: this scenario's own cleanup releases what
+    # it created before the app-wide one tears down around it. Named `after` until BE-0452.
+    cleanup: list[CleanupRule] = Field(default_factory=list)
     capture_policy: list[CaptureRule] = Field(default_factory=list, alias="capturePolicy")
     network: Network | None = None
     mocks: list[Mock] = Field(default_factory=list)
@@ -190,6 +190,9 @@ class Scenario(_Model):
         # so name the canonical key here instead of leaving Pydantic's generic extra-field error.
         for old in ("alertHandling", "dismissAlerts"):
             reject_renamed_key(data, surface="scenario", old=old, new="systemAlertHandling")
+        # The lifecycle phases took the target's words (BE-0452), and old keys are not read.
+        reject_renamed_key(data, surface="scenario", old="before", new="setup")
+        reject_renamed_key(data, surface="scenario", old="after", new="cleanup")
         return data
 
     @field_validator("permissions")

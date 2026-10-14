@@ -8,7 +8,7 @@ that each rebuild an already-validated `Scenario` in a way Pydantic never re-val
 `expand_components` (a `${params.*}` substitution can reveal a collision the as-loaded tree never
 showed), `apply_setups` (a prepended setup's own steps, read as a bare `list[Step]` that may never
 have passed through a full `Scenario.model_validate`), and `with_lifecycle_phases`
-(`bajutsu/common/runner/pipeline.py`; a target config's `before`/`after` hooks, read the same
+(`bajutsu/common/runner/pipeline.py`; a target config's `hooks.setup`/`cleanup`, read the same
 unvalidated way). `expand_data`'s per-row `${row.*}` substitution needs no such re-call:
 `_instantiate_rows` re-validates each row through `Scenario.model_validate`, which re-fires every
 `model_validator` including this one.
@@ -56,8 +56,8 @@ def _walk_http_requests(steps: list[Step]) -> Iterator[HttpRequest]:
 
 def _check_http_extract_vars(scenario: Scenario) -> None:
     """Raise on the first `extractBody`/`saveBody` `var` collision anywhere in *scenario*'s steps."""
-    phases = [scenario.steps, scenario.before]
-    phases.extend(rule.steps for rule in scenario.after)
+    phases = [scenario.steps, scenario.setup]
+    phases.extend(rule.steps for rule in scenario.cleanup)
     phases.extend(entry.steps for entry in scenario.interrupts)
     for steps in phases:
         for http in _walk_http_requests(steps):

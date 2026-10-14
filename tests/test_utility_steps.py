@@ -451,7 +451,7 @@ def test_http_step_extract_body_fails_on_out_of_range_index() -> None:
 
 def test_extract_body_fields_is_all_or_nothing_across_entries() -> None:
     # BE-0440: the first entry resolves cleanly and the second fails, but neither var may land in
-    # `bindings` — a cleanup (`after`/`interrupts`) step sharing this same dict would otherwise see
+    # `bindings` — a cleanup (`cleanup`/`interrupts`) step sharing this same dict would otherwise see
     # a passing entry's var as set with no signal that a sibling entry in the same list failed.
     step = Step.model_validate(
         {

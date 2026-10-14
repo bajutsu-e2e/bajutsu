@@ -309,7 +309,7 @@ class _StepRunner:
     def _gate(self) -> StepGate | None:
         """The `run --step` gate, for the scenario's own steps only.
 
-        Never a `before` / `after` hook phase, and never an interrupt's recovery steps: those run
+        Never a `setup` / `cleanup` hook phase, and never an interrupt's recovery steps: those run
         from inside a step already under way (its clock started, or its wait polling), so a pause
         there would spend that step's own timeout and number a step the scenario never wrote.
         """
@@ -427,7 +427,7 @@ class _StepRunner:
         if outcome.action == app_crash_latches.RELAUNCH:
             # The one step that deliberately terminates the app. Latched before any probe, and it
             # suppresses every later probe in this scenario — this step's own wrapping `if`/`forEach`
-            # outcomes and any `after: on: error` cleanup step included, each of which carries a
+            # outcomes and any `cleanup: on: failure` step included, each of which carries a
             # different `outcome.action` and would otherwise probe fresh, reading the app's honest
             # `notRunning` as a crash the check itself caused.
             latches.deliberate_termination = True
@@ -463,7 +463,7 @@ class _StepRunner:
             latches.confirmed_signal = str(exc)
             if self.cfg.capture_app_crash is not None:
                 # Synchronously, here at confirmation rather than once the scenario finishes: a
-                # teardown `relaunch` in this scenario's own `after` phase re-stamps the launch marker
+                # teardown `relaunch` in this scenario's own `cleanup` phase re-stamps the launch marker
                 # the sweep matches against, so a later read would sweep past the crash it is for.
                 outcome.app_crash_artifacts = tuple(self.cfg.capture_app_crash())
 
@@ -1531,7 +1531,7 @@ class _StepRunner:
                 if outcome.ok and kind in _SCREEN_ACTIONS:
                     outcome.ok, outcome.reason = False, str(exc)
                     # The captures were chosen for a passing step; choose again so an
-                    # `on: { result: error }` rule fires on the failure this read just found.
+                    # `on: { result: failure }` rule fires on the failure this read just found.
                     instant = self._instant_captures(
                         step, kind, False, screen_changed, active_driver
                     )

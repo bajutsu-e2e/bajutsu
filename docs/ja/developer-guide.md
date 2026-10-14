@@ -291,10 +291,10 @@ classDiagram
         <<pydantic · 作成時>>
         +str name
         +Preconditions preconditions
-        +list~Step~ before
+        +list~Step~ setup
         +list~Step~ steps
         +list~Assertion~ expect
-        +list~AfterRule~ after
+        +list~CleanupRule~ cleanup
         +list~CaptureRule~ capture_policy
     }
     class Step {
@@ -495,7 +495,7 @@ scenarios:
 | コンポーネント | `use` ステップ、別立てのコンポーネントファイル | 名前付きでパラメータ化されたステップの並びをコンパイル時に展開します。run が始まる前に解決済みです（`expand.py`、第 7.1 節）。ステップループが `use` ステップを目にすることはありません。 |
 | WebView のスコープ | `web` ステップ（`within`、`steps`） | `within` の `Selector` で届く WebView に、入れ子のステップの並びを絞ります。 |
 | 割り込みハンドラ | シナリオ直下の `interrupts:` | 許可ダイアログやアプリ更新のプロンプトのような、run の途中で予測できない位置に現れうる割り込み画面を片付けます。囲むシナリオの `vars.*` を共有します。 |
-| セットアップ・ティアダウンのフェーズ | シナリオ直下の `before:` / `after:` | `steps` の前と、判定が出たあとに走るステップです。本体のステップの並びとは別に報告されます。 |
+| セットアップ・ティアダウンのフェーズ | シナリオ直下の `setup:` / `cleanup:` | `steps` の前と、判定が出たあとに走るステップです。本体のステップの並びとは別に報告されます。 |
 | データ駆動の行 | `data:` / `dataFile:` | インラインの並びまたは CSV ファイルの行ごとに 1 つのシナリオを実体化し、`${row.*}` に代入します。 |
 
 ### 4.6 補間：`${namespace.key}`
@@ -515,7 +515,7 @@ scenarios:
 シナリオの `capturePolicy`（`common/scenario/models/evidence.py`）は、単発の指示ではなく、
 ステップループが繰り返し発火する規則を挙げます。だから 2 回目の run でも、AI を挟まずに同じ
 証跡が集まります。各規則の `on` トリガーは `action`（id が一致するステップが実行された）・
-`event: screenChanged`・`result: error` のうちちょうど 1 つです。`capture` の並びは、トリガーが
+`event: screenChanged`・`result: failure` のうちちょうど 1 つです。`capture` の並びは、トリガーが
 発火したときに採取する成果物の種類を挙げます。仕組みの全体は[証跡](evidence.md)にあります。
 `capturePolicy` の有無にかかわらずどのステップにも付く、基準の `capture` 保証も含みます。
 
@@ -665,7 +665,7 @@ flowchart TB
 | ファイル | クラスと関数 | 役割 |
 |---|---|---|
 | `models/scenario.py` | `Scenario`、`Component`、`ScenarioFile`、`Preconditions`、`SystemAlertHandling` | 文書の最上位と、シナリオごとの前提設定です。 |
-| `models/steps.py` | `Step`、`If`、`ForEach`、`Use`、`Web`、`Interrupt`、`AfterRule`、`Extract` | 1 ステップと、制御構文やライフサイクルの包みです。 |
+| `models/steps.py` | `Step`、`If`、`ForEach`、`Use`、`Web`、`Interrupt`、`CleanupRule`、`Extract` | 1 ステップと、制御構文やライフサイクルの包みです。 |
 | `models/assertions.py` | `Assertion`、`Exists`、`TextMatch`、`CountMatch`、`RequestMatch`、`VisualMatch`、`GoldenMatch` | 14 種のアサーションです。 |
 | `models/actions.py` | `TypeText`、`Swipe`、`Scroll`、`HttpRequest`、`Generate`、`Email`、`Totp` ほか | アクションごとの引数モデルです。 |
 | `models/selector.py` | `Selector` | 作成時のセレクタです。`as_selector()` で実行時の形に変えます。 |
@@ -827,7 +827,7 @@ Android と web を 1 つのインターフェースで動かせます。
 
 | クラスまたは関数 | 役割 |
 |---|---|
-| `run_scenario()` | 入口です。要求された区間証跡を開始し、`before`、本体、`after` の各フェーズを走らせ、末尾の `expect` を評価し、`RunResult` を組み立てます。 |
+| `run_scenario()` | 入口です。要求された区間証跡を開始し、`setup`、本体、`cleanup` の各フェーズを走らせ、末尾の `expect` を評価し、`RunResult` を組み立てます。 |
 | `StepLoopState` | 1 フェーズが持ち回る可変の状態です。蓄積した変数バインディング、直前のステップの要素ツリー、読み取り回数が入ります。 |
 | `_LoopConfig` | 不変の側です。ドライバ、シンク、時計、alert guard、シナリオが入ります。 |
 | `_StepRunner` | 振り分け役です。`exec_steps` が並びを歩き、`_handle_if`、`_handle_for_each`、`_handle_web`、`_handle_action` が各ステップ形状を処理します。 |

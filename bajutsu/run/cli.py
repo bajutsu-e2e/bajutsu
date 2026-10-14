@@ -862,8 +862,8 @@ def _retired_primary_problems(s: Scenario, effs: Mapping[str, Effective]) -> Ite
     # this to run time; walked here in step order, it is refused before any device is leased.
     installed = {m for m in s.target_names if m not in set(s.later_targets)}
     retired: set[str] = set()
-    # `before` runs ahead of `steps`, so an install there retires a member just the same.
-    for step in [*s.before, *s.steps]:
+    # `setup` runs ahead of `steps`, so an install there retires a member just the same.
+    for step in [*s.setup, *s.steps]:
         if step.install_app is not None:
             member = step.install_app.from_
             identifier = effs[member].app_identifier
@@ -899,8 +899,8 @@ def _install_steps(s: Scenario) -> Iterator[Step]:
                 yield from walk(step.for_each.steps)
 
     yield from walk(s.steps)
-    yield from walk(s.before)
-    for rule in s.after:
+    yield from walk(s.setup)
+    for rule in s.cleanup:
         yield from walk(rule.steps)
     for entry in s.interrupts:
         yield from walk(entry.steps)
@@ -913,7 +913,7 @@ def _reject_bad_target_config_hooks(
 
     `with_lifecycle_phases` re-validates its own folded result already — but only `run_all` calls
     it, deep inside a path this command's own `try` doesn't catch (its `finally` only releases the
-    device lease). A `targets.<name>.before`/`after` hook step carrying a `target` that disagrees
+    device lease). A `targets.<name>.hooks.setup`/`cleanup` hook step carrying a `target` that disagrees
     with the scenario it folds into would otherwise reach the operator as a raw traceback instead
     of the clean exit 2 every other scenario-loading error gets. Calling it here again, and
     discarding the result, is redundant with `run_all`'s own call on the same inputs — cheap, and
@@ -1290,7 +1290,7 @@ def _visual_asserting_scenarios(scenarios: list[Scenario]) -> set[int]:
     multi-file run (`_load_scenarios` just concatenates each file's own scenarios), and a
     name-keyed set would conflate two same-named scenarios that need different answers below.
 
-    Walks every lifecycle phase (`before`, `steps`, each `after` rule), every `interrupts` entry's
+    Walks every lifecycle phase (`setup`, `steps`, each `cleanup` rule), every `interrupts` entry's
     own recovery `steps`, and the full step tree within each — not only the scenario's own top-level
     `steps` — since a step-level `visual` assertion can sit anywhere in that tree. An interrupt's
     recovery steps run through the same `exec_steps` machinery as any other step (`_run_recovery`),
@@ -1299,9 +1299,9 @@ def _visual_asserting_scenarios(scenarios: list[Scenario]) -> set[int]:
     visual = set()
     for s in scenarios:
         all_steps = [
-            *s.before,
+            *s.setup,
             *s.steps,
-            *(step for rule in s.after for step in rule.steps),
+            *(step for rule in s.cleanup for step in rule.steps),
             *(step for entry in s.interrupts for step in entry.steps),
         ]
         step_assertions = [a for step in _walk_visual_steps(all_steps) for a in step.assert_ or []]
@@ -1566,7 +1566,7 @@ def _mock_swaps(
 def _scenario_mock_swaps(s: Scenario) -> list[_MockSwap]:
     """`_mock_swaps` over every phase of *s*, `interrupts` recovery steps included."""
     swaps = list(
-        _mock_swaps([*s.before, *s.steps, *(step for rule in s.after for step in rule.steps)])
+        _mock_swaps([*s.setup, *s.steps, *(step for rule in s.cleanup for step in rule.steps)])
     )
     for entry in s.interrupts:
         swaps.extend(_mock_swaps(entry.steps, target=entry.target))

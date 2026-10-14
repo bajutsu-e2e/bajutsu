@@ -70,10 +70,10 @@ misinterpret rather than merely reject; a purely additive optional field needs n
 | `installs` | list[str] | `[]` | The device-group members that install and launch at the start beside the primary; every other member of a group of two or more installs later through an `installApp` step ([device groups](#device-groups-several-apps-on-one-device-be-0447)) |
 | `data` / `dataFile` | list / str | none | Data-driven rows — inline `data`, or `dataFile` (a CSV path). Expands into one run per row, substituting `${row.col}`. Mutually exclusive ([reuse, data, and tags](#reuse-data-and-tags)) |
 | `preconditions` | object | `{}` | Per-test environment setup (below) |
-| `before` | list | `[]` | Setup steps run as their **own phase** ahead of `steps`; a failure there aborts the scenario ([below](#before--after-setup-and-teardown-phases)) |
+| `setup` | list | `[]` | Setup steps run as their **own phase** ahead of `steps`; a failure there aborts the scenario ([below](#setup--cleanup-setup-and-teardown-phases)) |
 | `steps` | list | required | The ordered actions (below) |
 | `expect` | list | `[]` | Final assertions after all steps pass ([selectors](selectors.md#assertion-evaluation)) |
-| `after` | list | `[]` | Teardown rules — each `{ on: always \| success \| error, steps }`, run once the verdict exists, on every path out of `steps` ([below](#before--after-setup-and-teardown-phases)) |
+| `cleanup` | list | `[]` | Teardown rules — each `{ on: always \| success \| failure, steps }`, run once the verdict exists, on every path out of `steps` ([below](#setup--cleanup-setup-and-teardown-phases)) |
 | `capturePolicy` | list | `[]` | Repeatedly-firing evidence rules ([evidence](evidence.md#a-capturepolicy-rule-based)) |
 | `network` | object | none | `{ filter: { domains: [...] } }` — `filter.domains` scopes which observed requests are interleaved into the report's Steps timeline (by URL host; a parent domain matches subdomains). Unset shows all; the Network tab always lists them all ([reporting](reporting.md#reporthtml)) |
 | `mocks` | list | `[]` | Deterministic network stubs — a matching outgoing request gets a canned response instead of hitting the network ([network mocks](#network-mocks-deterministic-stubs)) |
@@ -112,7 +112,7 @@ the launch sequence ([run-loop](run-loop.md#runner-the-run-pipeline)).
 | `launchEnv` | dict | `{}` | Launch env (injected via `SIMCTL_CHILD_*`; merged onto config's `app.launch.env`) | ✅ |
 | `deeplink` | str | none | Opened after launch via `simctl openurl` | ✅ |
 | `locale` | str | none | Force the locale/language at launch (`-AppleLocale`/`-AppleLanguages`); overrides the target's `runsOn.locale` | ✅ |
-| `run.inheritSetup` | bool | `true` | `false` skips the `hooks.setup` of every target this scenario declares; their `hooks.cleanup` still runs ([below](#before--after-setup-and-teardown-phases)) | ✅ |
+| `run.inheritSetup` | bool | `true` | `false` skips the `hooks.setup` of every target this scenario declares; their `hooks.cleanup` still runs ([below](#setup--cleanup-setup-and-teardown-phases)) | ✅ |
 
 > **launchEnv resolution order** is **config's `app.launch.env` < preconditions' `launchEnv`** (the
 > one closer to the test wins). `launch_driver` merges `{**eff.launch_env, **pre.launch_env}`.
@@ -697,7 +697,7 @@ No native XCUITest / Espresso / Playwright construct maps onto "check this condi
 throughout the whole test," so `codegen` emits a labeled `// TODO` naming the field and each
 configured condition rather than generating code for it — `bajutsu run` is the faithful path.
 
-## `before` / `after` (setup and teardown phases)
+## `setup` / `cleanup` (setup and teardown phases)
 
 Setup written at the front of `steps` runs indistinguishably from the scenario's own steps: the
 report lists them in one numbered sequence, and a setup failure surfaces as an ordinary step failure
@@ -707,9 +707,9 @@ cleanup step runs only when every preceding step already passed — exactly the 
 cleanup least. A scenario that signs up a test user, then hits a broken button three steps later,
 leaves that user behind.
 
-`before` and `after` close both gaps. `before` is an ordered list of steps that runs first, reported
+`setup` and `cleanup` close both gaps. `setup` is an ordered list of steps that runs first, reported
 as its own section, and a failure there aborts the scenario before `steps` and `expect` run at all.
-`after` is a list of rules, each pairing an outcome — `always`, `success`, or `error` — with the
+`cleanup` is a list of rules, each pairing an outcome — `always`, `success`, or `failure` — with the
 steps to run for that outcome. The runner evaluates the rules once the scenario's verdict exists,
 and reaches the phase on every path out of `steps`, the failing path included. Both fields reuse the
 ordinary step grammar and the ordinary assertion DSL, so a hook's steps are exactly as
@@ -718,50 +718,55 @@ machine-checkable as the scenario's own, and both share the run's `${vars.*}` bi
 
 ```yaml
 - name: sign up, then release the account
-  before:
+  setup:
     # the seed endpoint returns the new user's bare id as its response body
     - http: { method: POST, url: "https://api.test/users", saveBody: userId }
   steps:
     - tap:  { id: login.button }
     - type: { text: "${vars.userId}", into: { id: login.username } }
-  after:
+  cleanup:
     - on: always
       steps:
         - tap: { id: session.logout }
     - on: success
       steps:
         - http: { method: DELETE, url: "https://api.test/users/${vars.userId}" }
-    - on: error
+    - on: failure
       steps:
         - http: { method: POST, url: "https://api.test/diagnostics", body: '{"failed":true}' }
 ```
 
-(real file: [`demos/showcase/scenarios/before_after.yaml`](../demos/showcase/scenarios/before_after.yaml))
+(real file: [`demos/showcase/scenarios/setup_cleanup.yaml`](../demos/showcase/scenarios/setup_cleanup.yaml))
+
+Before [BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md),
+the two fields were `before` and `after`, and the outcome word `failure` was `error`. BE-0452 gave a
+target's hooks and a scenario's phases one pair of words. The loader reads no old name. A scenario
+that still writes one fails to load, and the error names the replacement.
 
 More than one rule may carry the same `on` value, and rules composing that way run in declaration
 order — the same way two `capturePolicy` rules may share a trigger. A rule whose own steps fail does
 not stop the phase: the remaining rules still run, because skipping the rest of the cleanup is the
 outcome teardown exists to avoid. What that failure does to the run's verdict depends on where the
 run already stood. On a run that was passing, the failing rule becomes the failure
-(`after: step 0 (tap): …`). On a run that had already failed, the failing rule is appended behind
+(`cleanup: step 0 (tap): …`). On a run that had already failed, the failing rule is appended behind
 the original failure instead of replacing it, so the reason a reader sees first is still the original
 cause rather than a symptom of the cleanup it triggered.
 
 A cancelled run (`SIGTERM`, the `serve` Web UI's Cancel button) reaches the phase too, dispatching
-`after` as an `error` outcome, and the cleanup rules get a bounded slice of the cancellation grace
+`cleanup` as a `failure` outcome, and the cleanup rules get a bounded slice of the cancellation grace
 window to run in. Once that slice is spent, the remaining rules are abandoned so the shutdown tail
 that writes the report still fits inside the window.
 
 ### The target's hooks: `hooks.setup` and `hooks.cleanup`
 
-`targets.<name>.hooks.setup` takes the shape of `before` as an app-wide default.
-`targets.<name>.hooks.cleanup` takes the shape of `after`. Each merges with the scenario's own field,
+`targets.<name>.hooks.setup` takes the shape of a scenario's `setup` as an app-wide default.
+`targets.<name>.hooks.cleanup` takes the shape of a scenario's `cleanup`. Each merges with the scenario's own field,
 in opposite orders:
 
 | Field | Merge order | Why |
 |---|---|---|
-| `before` | config (`hooks.setup`), then scenario | The app-wide setup seeds the state this scenario's own setup then builds on — the same config-then-scenario layering `interrupts` follows |
-| `after` | scenario, then config (`hooks.cleanup`) | This scenario releases what it created before the app-wide teardown closes around it, the last-acquired-first-released order a fixture-based teardown pair gives |
+| `setup` | config (`hooks.setup`), then scenario | The app-wide setup seeds the state this scenario's own setup then builds on — the same config-then-scenario layering `interrupts` follows |
+| `cleanup` | scenario, then config (`hooks.cleanup`) | This scenario releases what it created before the app-wide teardown closes around it, the last-acquired-first-released order a fixture-based teardown pair gives |
 
 With `use:`, a hook step calls a [component](#reuse-data-and-tags). A login flow that every
 scenario of a target shares then lives in one file.
@@ -776,19 +781,19 @@ Three fields sit near this ground, and each answers a different question:
 
 | Field | Runs | Reported as | For |
 |---|---|---|---|
-| `before` / `after` | as its own phase, before `steps` / after the verdict | its own Before / After block | setup and teardown the reader must be able to tell apart from the scenario under test |
+| `setup` / `cleanup` | as its own phase, before `steps` / after the verdict | its own setup / cleanup block | setup and teardown the reader must be able to tell apart from the scenario under test |
 | `use` (a component) | expanded in place, where the step calls it | more numbered steps | a reusable flow shared by several scenarios, where no separation is wanted |
 | `capturePolicy` | throughout the step loop, per step | evidence attached to a step | capturing extra evidence when a step fails, not running steps |
 
-`capturePolicy`'s `on: { result: error }` trigger and an `after` rule's `on: error` share the word
-`error` for the same idea, at two scales: a `capturePolicy` trigger fires for one failed step,
-wherever in the run it happened, while an `after` rule fires once, for the whole scenario's verdict.
+`capturePolicy`'s `on: { result: failure }` trigger and a `cleanup` rule's `on: failure` share the
+word `failure` for the same idea, at two scales: a `capturePolicy` trigger fires for one failed step,
+wherever in the run it happened, while a `cleanup` rule fires once, for the whole scenario's verdict.
 
 ### What `codegen` emits
 
-`before` needs no framework construct: `codegen` emits its steps inline at the top of the generated
-test body under a `// before` divider, which is exactly the phase's meaning — they run first, and a
-failure aborts what follows. `after` needs one, and each target reaches it differently. Playwright and
+`setup` needs no framework construct: `codegen` emits its steps inline at the top of the generated
+test body under a `// setup` divider, which is exactly the phase's meaning — they run first, and a
+failure aborts what follows. `cleanup` needs one, and each target reaches it differently. Playwright and
 UI Automator wrap the test body in `try` / `catch` / `finally`, since an assertion on either target
 throws, so the `catch` sees the very failure the verdict would have been. XCUITest registers a single
 `addTeardownBlock` instead, because `XCTAssert` records a failure rather than throwing, and reads the
@@ -1690,7 +1695,7 @@ omits `target` runs on the named target. The same holds for an `interrupts` entr
 `expect` entry.
 
 The step changes routing and nothing else. Leasing, the evidence directories, and crash recovery stay
-with the declared primary. In the `before` and `after` phases, an omitted `target` still resolves
+with the declared primary. In the `setup` and `cleanup` phases, an omitted `target` still resolves
 to the declared primary, since teardown has to run no matter where the run stopped.
 
 `setPrimaryTarget` belongs among a scenario's top-level `steps` alone. The loader refuses it inside
@@ -1699,7 +1704,7 @@ these constructs:
 - `if` or `forEach`
 - a target group, `web:`, or `app:`
 - an `interrupts` entry
-- `before` or `after`
+- `setup` or `cleanup`
 
 That placement lets the loader follow the current primary through the steps in order. A component
 may contain a `setPrimaryTarget` when its `use:` or `group:` call is a top-level step. Expansion never

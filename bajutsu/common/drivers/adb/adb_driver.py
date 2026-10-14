@@ -234,7 +234,7 @@ class AdbDriver(CoordinateTreeDriver):
         # Set once a bounded exit-info poll has ended without a match, so every later probe in the
         # same scenario reads the history once and answers immediately (the same shape as
         # `_act_warned` / `_act_unavailable` below). The first probe is the one racing
-        # `system_server`'s reap; a later one — a crash three levels deep, or a failing `after` step —
+        # `system_server`'s reap; a later one — a crash three levels deep, or a failing `cleanup` step —
         # has nothing new to wait out. `run` builds a fresh driver per lease, but `crawl` builds one
         # for the whole walk, which is why `reset_exit_info_poll()` exists to clear it.
         self._exit_info_exhausted = False

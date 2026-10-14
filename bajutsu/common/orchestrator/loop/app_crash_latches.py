@@ -44,13 +44,13 @@ class AppCrashLatches:
     """The three latches bounding the step loop's reactive app-crash probe, scoped to one scenario.
 
     `run_scenario` creates one and shares it with every `run_phase` call the same way it already
-    shares `live_bindings`, so it survives `before`, the main steps, and every dispatched `after`
+    shares `live_bindings`, so it survives `setup`, the main steps, and every dispatched `cleanup`
     rule — each of which builds its own fresh `StepLoopState` around it.
     """
 
     # A `relaunch` step failed, so the app's state is whatever that step left behind. Suppresses every
     # later probe in this scenario unconditionally: the failing step's own wrapping `if`/`forEach`
-    # outcomes and any `after: on: error` cleanup step would each otherwise probe fresh and read
+    # outcomes and any `cleanup: on: failure` step would each otherwise probe fresh and read
     # `notRunning` — honest, and caused by the check's own scenario rather than by a defect.
     deliberate_termination: bool = False
     # The app has not been observed answering since it was last launched. Seeded from the lease's own

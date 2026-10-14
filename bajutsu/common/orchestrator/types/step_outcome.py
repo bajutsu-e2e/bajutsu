@@ -58,7 +58,7 @@ class StepOutcome:
     # own `reason` and leaves this at the default, so the scan never has to choose among several.
     app_crashed: bool = False
     # The platform's own crash evidence, captured synchronously at the moment above — not later, when
-    # a teardown `relaunch` in the same scenario's `after` phase could already have moved the launch
+    # a teardown `relaunch` in the same scenario's `cleanup` phase could already have moved the launch
     # marker the sweep matches against. Deliberately excluded from `manifest.py`'s `_scenario_dict`:
     # raw `bytes` has no JSON encoding, and the durable copy is the redacted one under `app-crash/`.
     app_crash_artifacts: tuple[tuple[str, bytes], ...] = ()

@@ -282,7 +282,7 @@ class RunEnvironment(Protocol):
         The app-side counterpart to `take_crash_snapshot` above, and plainer in two ways. It returns
         the bytes rather than a thunk: the step loop calls it synchronously the moment a driver
         confirms the crash, so nothing is deferred past a point the environment's launch marker could
-        move — which a teardown `relaunch` in the same scenario's own `after` phase would otherwise
+        move — which a teardown `relaunch` in the same scenario's own `cleanup` phase would otherwise
         do, widening the sweep past the crash it is meant to attribute. And it needs no ownership
         move, because that call site is strictly inside the scenario the evidence belongs to.
 
@@ -301,7 +301,7 @@ class RunEnvironment(Protocol):
         Split out of `app_crash_artifacts` above because Android alone needs two call sites with
         different timing constraints. The pull needs `adb root`, which restarts `adbd` and kills the
         resident server's `am instrument -w` session outright — so firing it mid-scenario would make
-        every wrapping outcome, `expect`, and `after` rule still to come raise `BackendCrashError`
+        every wrapping outcome, `expect`, and `cleanup` rule still to come raise `BackendCrashError`
         against a dead channel, discarding the very `RunResult` this item exists to produce. Called
         only from `pipeline.py`'s post-return scan, where the scenario is genuinely over. Reading the
         launch marker that late is safe here in a way it is not for the other layer: a teardown only

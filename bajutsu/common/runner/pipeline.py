@@ -75,7 +75,7 @@ from bajutsu.common.runner.recovery import (
 )
 from bajutsu.common.runner.types import AlertGuardFor, Lease, LeaseFn, TargetPool
 from bajutsu.common.scenario import (
-    AfterRule,
+    CleanupRule,
     Interrupt,
     Redact,
     Scenario,
@@ -1436,7 +1436,7 @@ class _ScenarioRunner:
                 ),
                 primary_target=primary_target,
                 # Called from inside the step loop, not here, so the sweep runs at the moment the
-                # crash is confirmed — strictly before a teardown step in this scenario's own `after`
+                # crash is confirmed — strictly before a teardown step in this scenario's own `cleanup`
                 # phase can re-stamp the launch marker it matches against (BE-0424).
                 capture_app_crash=lz.app_crash_artifacts,
                 app_launch_unconfirmed=_launch_unconfirmed(lz.readiness),
@@ -1552,13 +1552,13 @@ def _steps_for_target(s: Scenario, target: str) -> Scenario:
     routed = {target, None}
     return s.model_copy(
         update={
-            "before": [st for st in s.before if st.resolved_target in routed],
+            "setup": [st for st in s.setup if st.resolved_target in routed],
             "steps": [st for st in s.steps if st.resolved_target in routed],
-            "after": [
+            "cleanup": [
                 rule.model_copy(
                     update={"steps": [st for st in rule.steps if st.resolved_target in routed]}
                 )
-                for rule in s.after
+                for rule in s.cleanup
             ],
             # The primary in force after the last step, which a `setPrimaryTarget` may have moved.
             "expect": [a for a in s.expect if (a.target or s.final_primary) in routed],
@@ -1701,14 +1701,14 @@ def _effs_of(targets: Mapping[str, TargetPool] | None) -> dict[str, Effective]:
 
 def _hooks_for(
     s: Scenario, eff: Effective, target_effs: Mapping[str, Effective] | None
-) -> tuple[list[Step], list[AfterRule]]:
-    """This scenario's folded-in config hooks: `(before, after)`, already target-stamped.
+) -> tuple[list[Step], list[CleanupRule]]:
+    """This scenario's folded-in config hooks: `(setup, cleanup)`, already target-stamped.
 
     A scenario with no `targets` of its own reads the run's single `eff`, exactly as before
-    BE-0428. A self-declaring one reads each declared target's own `targets.<name>.before`/`after`
-    instead, since a hook is config on the target it acts on: `before` folds every target's hooks in
-    declared order ahead of the scenario's own steps, and `after` mirrors it in reverse, behind
-    them. Each folded step is stamped with its own target's name — for an `after` entry, every step
+    BE-0428. A self-declaring one reads each declared target's own `hooks.setup`/`cleanup`
+    instead, since a hook is config on the target it acts on: `setup` folds every target's hooks in
+    declared order ahead of the scenario's own steps, and `cleanup` mirrors it in reverse, behind
+    them. Each folded step is stamped with its own target's name — for a `cleanup` entry, every step
     inside the rule rather than the rule itself, which carries no target of its own — so a hook is
     exactly as unambiguous about which target it acts on as an author-written step already has to be.
 
@@ -1717,18 +1717,18 @@ def _hooks_for(
     """
     inherit = s.preconditions.run.inherit_setup
     if not s.targets:
-        return list(eff.run_defaults.before) if inherit else [], list(eff.run_defaults.after)
-    before: list[Step] = []
-    after: list[AfterRule] = []
+        return list(eff.run_defaults.setup) if inherit else [], list(eff.run_defaults.cleanup)
+    setup: list[Step] = []
+    cleanup: list[CleanupRule] = []
     for name in s.target_names:
         target_eff = (target_effs or {}).get(name, eff)
         if inherit:
-            before += [_stamped(h, name) for h in target_eff.run_defaults.before]
-        after += [
+            setup += [_stamped(h, name) for h in target_eff.run_defaults.setup]
+        cleanup += [
             rule.model_copy(update={"steps": [_stamped(h, name) for h in rule.steps]})
-            for rule in target_eff.run_defaults.after
+            for rule in target_eff.run_defaults.cleanup
         ]
-    return before, after
+    return setup, cleanup
 
 
 def _stamped(step: Step, target: str) -> Step:
@@ -1766,18 +1766,18 @@ def with_lifecycle_phases(
     *,
     skip: Collection[int] = (),
 ) -> list[Scenario]:
-    """Fold the target config's `before` / `after` into each scenario's own (BE-0392).
+    """Fold the target config's `hooks.setup` / `hooks.cleanup` into each scenario's own (BE-0392).
 
-    The two merge in opposite orders. `before` is config-then-scenario, like `interrupts`: the
-    app-wide prelude seeds the state this scenario's own setup then builds on. `after` is
+    The two merge in opposite orders. `setup` is config-then-scenario, like `interrupts`: the
+    app-wide prelude seeds the state this scenario's own setup then builds on. `cleanup` is
     scenario-then-config, so this scenario releases the record it created before the app-wide
     teardown closes around it — the last-acquired-first-released order a fixture-based teardown pair
     gives.
 
     Applied to the scenario itself rather than passed beside it, so the scenario the runner executes
-    and the scenario whose Before / After blocks the report renders are one object. Handing the
+    and the scenario whose setup / cleanup blocks the report renders are one object. Handing the
     merged lists to the runner separately would leave the report pairing an app-wide step's outcome
-    with the scenario's own step definition, and drop an app-wide `after` rule's outcomes entirely.
+    with the scenario's own step definition, and drop an app-wide `cleanup` rule's outcomes entirely.
 
     Args:
         eff: The run's primary target config — the only one a scenario declaring no `targets` reads.
@@ -1791,13 +1791,13 @@ def with_lifecycle_phases(
     hooks = [
         ([], []) if i in skip else _hooks_for(s, eff, target_effs) for i, s in enumerate(scenarios)
     ]
-    if not any(before or after for before, after in hooks):
+    if not any(setup or cleanup for setup, cleanup in hooks):
         return scenarios  # nothing app-wide to fold in; keep the caller's own objects
     folded = [
-        s.model_copy(update={"before": [*before, *s.before], "after": [*s.after, *after]})
-        for s, (before, after) in zip(scenarios, hooks, strict=True)
+        s.model_copy(update={"setup": [*setup, *s.setup], "cleanup": [*s.cleanup, *cleanup]})
+        for s, (setup, cleanup) in zip(scenarios, hooks, strict=True)
     ]
-    # `model_copy(update=...)` never re-runs a `model_validator` — so a config-level `before`/`after`
+    # `model_copy(update=...)` never re-runs a `model_validator` — so a config-level `setup`/`cleanup`
     # hook would otherwise splice in steps the load-time pass never saw, each free to omit the
     # `target` its scenario requires (BE-0428), or a target group it never expanded (BE-0437; see
     # `scenario/models/scenario/_targets.py`). `_hooks_for` reads these hooks as a bare `list[Step]`
@@ -2118,7 +2118,7 @@ def run_and_report(
     manifest = _assemble_report(
         # The same fold `run_all` already applied, over the same per-target config, so the report
         # pairs each outcome with the step definition that actually produced it — a config-level
-        # hook folded from one target's own `before`/`after` here and the primary's there would
+        # hook folded from one target's own `setup`/`cleanup` here and the primary's there would
         # otherwise mislabel or drop outcomes for every other declared target (BE-0428).
         with_lifecycle_phases(eff, scenarios, _effs_of(targets), skip=worker_failures or {}),
         results,

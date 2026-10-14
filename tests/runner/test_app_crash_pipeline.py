@@ -177,13 +177,13 @@ def test_a_passing_scenario_writes_no_app_crash_directory(tmp_path: Path) -> Non
 
 
 def test_the_scan_finds_a_crash_in_the_after_phase(tmp_path: Path) -> None:
-    # `result.steps` alone is not enough: it is `[]` outright when a `before` step fails, and an
-    # `after` rule records into its own list — so reading `steps[-1]` would miss both.
+    # `result.steps` alone is not enough: it is `[]` outright when a `setup` step fails, and a
+    # `cleanup` rule records into its own list — so reading `steps[-1]` would miss both.
     scenario = Scenario.model_validate(
         {
             "name": "a",
             "steps": [{"tap": {"id": "other"}}],
-            "after": [{"on": "always", "steps": [{"tap": {"id": "gone"}}]}],
+            "cleanup": [{"on": "always", "steps": [{"tap": {"id": "gone"}}]}],
         }
     )
     run_dir = tmp_path / "runs" / "run1"
@@ -194,7 +194,7 @@ def test_the_scan_finds_a_crash_in_the_after_phase(tmp_path: Path) -> None:
 
 def test_the_scan_finds_a_crash_in_the_before_phase(tmp_path: Path) -> None:
     scenario = Scenario.model_validate(
-        {"name": "a", "before": [{"tap": {"id": "gone"}}], "steps": [{"tap": {"id": "other"}}]}
+        {"name": "a", "setup": [{"tap": {"id": "gone"}}], "steps": [{"tap": {"id": "other"}}]}
     )
     run_dir = tmp_path / "runs" / "run1"
     results = run_all(_eff(), [scenario], _app_crash_lease(), run_dir=run_dir)

@@ -210,8 +210,8 @@ def resolve(config: Config, target: str) -> Effective:
             network=run.network if run.network is not None else True,
             ios_tip_kit_handling=tip_kit if tip_kit is not None else False,
             interrupts=list(a.hooks.interrupts),
-            before=list(a.hooks.setup),
-            after=list(a.hooks.cleanup),
+            setup=list(a.hooks.setup),
+            cleanup=list(a.hooks.cleanup),
         ),
     )
 

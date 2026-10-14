@@ -132,7 +132,7 @@ def test_requested_intervals_from_capture_policy_in_canonical_order() -> None:
         {
             "name": "x",
             "capturePolicy": [
-                {"on": {"result": "error"}, "capture": ["appTrace", "deviceLog", "video"]}
+                {"on": {"result": "failure"}, "capture": ["appTrace", "deviceLog", "video"]}
             ],
             "steps": [{"tap": {"id": "a"}}],
         }
@@ -275,7 +275,7 @@ def test_error_trigger_is_the_safety_net() -> None:
             {
                 "name": "x",
                 "steps": [{"tap": {"id": "missing"}}],
-                "capturePolicy": [{"on": {"result": "error"}, "capture": ["actionLog"]}],
+                "capturePolicy": [{"on": {"result": "failure"}, "capture": ["actionLog"]}],
             }
         ),
         sink=sink,
@@ -461,7 +461,7 @@ def test_requested_interval_recorded_even_when_a_step_fails() -> None:
         _scn(
             {
                 "name": "x",
-                "capturePolicy": [{"on": {"result": "error"}, "capture": ["video"]}],
+                "capturePolicy": [{"on": {"result": "failure"}, "capture": ["video"]}],
                 "steps": [{"tap": {"id": "missing"}}],
             }
         ),

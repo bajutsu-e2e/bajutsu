@@ -8,7 +8,7 @@ from typing import Self
 
 from pydantic import Field, ValidationInfo, model_validator
 
-from bajutsu.common.scenario import AfterRule, Interrupt, Step
+from bajutsu.common.scenario import CleanupRule, Interrupt, Step
 
 from ._model import _Model
 
@@ -34,8 +34,8 @@ class Hooks(_Model):
 
     `setup` runs ahead of a scenario's own setup and `cleanup` behind its own, so a scenario releases
     what it created before the app-wide teardown closes around it; `interrupts` are checked before
-    the scenario's. Until BE-0452 unit 5 renames the phases, they run as a scenario's `before` and
-    `after`, and a `cleanup` rule still takes `on: error`.
+    the scenario's. The names match the scenario's own `setup` and `cleanup`, so one pair of words
+    names the phases at both levels.
 
     A step may call a component with `use:`, resolved when the config loads against the config
     file's directory and kept inside the suite root (BE-0174); `with` values substitute then, and
@@ -43,7 +43,7 @@ class Hooks(_Model):
     """
 
     setup: list[Step] = Field(default_factory=list)
-    cleanup: list[AfterRule] = Field(default_factory=list)
+    cleanup: list[CleanupRule] = Field(default_factory=list)
     interrupts: list[Interrupt] = Field(default_factory=list)
 
     def _all_steps(self) -> list[Step]:

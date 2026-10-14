@@ -1,10 +1,10 @@
 """Tests for `Scenario.targets` / `Step.target` / `Assertion.target` (BE-0428).
 
 Covers the `Scenario`-level validator (`_check_target_requirements`) across zero/one/two-or-more
-`targets`, on `steps`/`before`/`after`/`expect`/`interrupts` and every nested `if`/`forEach`/`web`
+`targets`, on `steps`/`setup`/`cleanup`/`expect`/`interrupts` and every nested `if`/`forEach`/`web`
 shape, duplicate-name rejection, and the `Assertion.target`-outside-`expect` rejection. The
 `expand_components`/`with_lifecycle_phases` re-check survival lives in `tests/test_components.py`
-and `tests/orchestrator/test_before_after.py`, alongside the mutation points themselves.
+and `tests/orchestrator/test_setup_cleanup.py`, alongside the mutation points themselves.
 """
 
 from __future__ import annotations
@@ -175,7 +175,7 @@ def test_before_walked_the_same_way() -> None:
             {
                 "name": "s",
                 "targets": ["app", "web"],
-                "before": [_step()],
+                "setup": [_step()],
                 "steps": [_step(target="app")],
             }
         )
@@ -188,7 +188,7 @@ def test_after_walked_the_same_way() -> None:
                 "name": "s",
                 "targets": ["app", "web"],
                 "steps": [_step(target="app")],
-                "after": [{"on": "always", "steps": [_step()]}],
+                "cleanup": [{"on": "always", "steps": [_step()]}],
             }
         )
 

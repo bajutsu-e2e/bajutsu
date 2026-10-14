@@ -243,7 +243,7 @@ def _step_findings(step: Step) -> Iterator[Finding]:
 def _sleeps(node: object) -> Iterator[Sleep]:
     """Every `sleep` written anywhere in a scenario, nested blocks included.
 
-    Covers `before`, `steps`, `after`, `interrupts`, and the insides of `if` / `forEach` / `group` /
+    Covers `setup`, `steps`, `cleanup`, `interrupts`, and the insides of `if` / `forEach` / `group` /
     `web` / `app`, by walking the model tree rather than naming each container, so a new nesting
     construct cannot hide a fixed pause from the audit.
     """

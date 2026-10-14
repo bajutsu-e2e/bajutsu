@@ -81,10 +81,12 @@ class RunResult:
     # scenario's numbered sequence the way a `preconditions.setup` prelude does.
     before_outcomes: list[StepOutcome] = field(default_factory=list)
     after_outcomes: list[StepOutcome] = field(default_factory=list)
-    # The verdict the `after` phase dispatched on — "success" / "error", or "" when the scenario
-    # declared no `after` rules. Recorded rather than re-derived from `failure`, which by then may
-    # also carry a cleanup step's own reason: without it a report cannot tell which rules ran, and
-    # so cannot line an outcome up with the rule that produced it.
+    # The verdict the `cleanup` phase dispatched on — "success" / "failure" (BE-0452; "error" before
+    # it, which `report/load.py` reads as "failure"), or "" when the scenario declared no `cleanup`
+    # rules. The stored key keeps its name, so manifests stay readable both ways. Recorded rather
+    # than re-derived from `failure`, which by then may also carry a cleanup step's own reason:
+    # without it a report cannot tell which rules ran, and so cannot line an outcome up with the
+    # rule that produced it.
     after_verdict: str = ""
     # The first command an operator ran against the app while a `bajutsu run --step` pause held the
     # loop. Non-empty makes the result a failure whatever the assertions said: a hand-driven run is

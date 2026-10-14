@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Literal, Self
+from typing import Any, Literal, Self
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 
-from bajutsu.common.scenario.models._base import _exactly_one, _Model
+from bajutsu.common.scenario.models._base import _exactly_one, _Model, reject_error_outcome
 
 
 class Trigger(_Model):
@@ -19,7 +19,13 @@ class Trigger(_Model):
     action: str | None = None
     id_matches: str | None = Field(default=None, alias="idMatches")
     event: Literal["screenChanged"] | None = None
-    result: Literal["error"] | None = None
+    # `failure` since BE-0452, the word a `cleanup` rule's `on` uses for the scenario's own outcome.
+    result: Literal["failure"] | None = None
+
+    @field_validator("result", mode="before")
+    @classmethod
+    def _renamed_error(cls, value: Any) -> Any:
+        return reject_error_outcome(value, "capturePolicy `result`")
 
     @model_validator(mode="after")
     def _one(self) -> Self:

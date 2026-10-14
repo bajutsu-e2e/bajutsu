@@ -443,8 +443,8 @@ def test_html_before_and_after_phase_rows_carry_their_action_instant() -> None:
         )
     ]
     definition = {
-        "before": [{"tap": {"id": "a"}}],
-        "after": [{"on": "always", "steps": [{"tap": {"id": "b"}}]}],
+        "setup": [{"tap": {"id": "a"}}],
+        "cleanup": [{"on": "always", "steps": [{"tap": {"id": "b"}}]}],
         "steps": [],
     }
     out = html_report("run1", [r], definitions=[definition])

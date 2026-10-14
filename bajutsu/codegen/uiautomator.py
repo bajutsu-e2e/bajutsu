@@ -25,7 +25,7 @@ from __future__ import annotations
 import re
 
 from bajutsu.codegen.common import (
-    AfterEmission,
+    CleanupEmission,
     class_name,
     device_group_todo,
     ident,
@@ -42,7 +42,7 @@ from bajutsu.codegen.common import (
 )
 from bajutsu.common.assertions import request_label
 from bajutsu.common.drivers import base
-from bajutsu.common.scenario import AfterRule, Assertion, Gone, Scenario, Step, WaitRequest
+from bajutsu.common.scenario import Assertion, CleanupRule, Gone, Scenario, Step, WaitRequest
 from bajutsu.common.scenario.models.assertions import CountMatch, TextMatch, Wait
 
 # The adb backend has no network-interception surface (common/drivers/adb.py CAPABILITIES), so a network
@@ -963,14 +963,14 @@ class _UiAutomatorGen:
     def scenario_open(self, name: str) -> str:
         return f"  @Test\n  fun {ident(name)}() {{"
 
-    def after_lines(self, after: list[AfterRule]) -> AfterEmission:
+    def cleanup_lines(self, cleanup: list[CleanupRule]) -> CleanupEmission:
         # JUnit4's `@After` is per class, and reading the test's outcome inside it needs a
         # `TestWatcher` rule the generated class does not have. The language construct is per test
         # and needs neither: an Espresso/UI Automator assertion throws, so a `catch` sees the very
         # failure the verdict would have been and `finally` runs the cleanup on both paths.
-        if not after:
-            return AfterEmission()
-        branching = any(rule.on != "always" for rule in after)
+        if not cleanup:
+            return CleanupEmission()
+        branching = any(rule.on != "always" for rule in cleanup)
         prologue = (["var bajutsuFailed = false"] if branching else []) + ["try {"]
         epilogue = (
             [
@@ -981,7 +981,7 @@ class _UiAutomatorGen:
             if branching
             else ["} finally {"]
         )
-        for rule in after:
+        for rule in cleanup:
             lines = [line for step in rule.steps for line in _emit_step(step)]
             if rule.on == "always":
                 epilogue.extend(indent_lines(lines))
@@ -991,7 +991,7 @@ class _UiAutomatorGen:
                 epilogue.extend(indent_lines(lines, 2))
                 epilogue.extend(indent_lines(["}"]))
         epilogue.append("}")
-        return AfterEmission(prologue, epilogue, 1)
+        return CleanupEmission(prologue, epilogue, 1)
 
     def setup_lines(self, scenario: Scenario) -> list[str]:
         # The mutable extras map the launch-env lines fill and `launch(extras)` consumes; always

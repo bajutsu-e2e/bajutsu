@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from bajutsu.common.scenario import AfterRule, Assertion, Scenario, Step
+from bajutsu.common.scenario import Assertion, CleanupRule, Scenario, Step
 
-from .after_emission import AfterEmission
+from .cleanup_emission import CleanupEmission
 
 
 class CodeGenerator(Protocol):
@@ -22,11 +22,11 @@ class CodeGenerator(Protocol):
     def scenario_open(self, name: str) -> str:
         """The line opening one scenario's test function/case (carries its own indent)."""
 
-    def after_lines(self, after: list[AfterRule]) -> AfterEmission:
-        """How this target renders the scenario's `after` rules (BE-0392).
+    def cleanup_lines(self, cleanup: list[CleanupRule]) -> CleanupEmission:
+        """How this target renders the scenario's `cleanup` rules (BE-0392).
 
         Called even for an empty list, so a target that always needs a wrapper can say so; the
-        default `AfterEmission()` renders nothing and leaves the body where it was.
+        default `CleanupEmission()` renders nothing and leaves the body where it was.
         """
 
     def setup_lines(self, scenario: Scenario) -> list[str]:

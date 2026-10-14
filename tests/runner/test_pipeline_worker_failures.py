@@ -44,11 +44,11 @@ def test_a_failed_scenario_folds_in_no_other_targets_hooks() -> None:
 
     base = _eff()
     prelude = [Step.model_validate({"tap": {"id": "prelude"}})]
-    eff = replace(base, run_defaults=replace(base.run_defaults, before=prelude))
+    eff = replace(base, run_defaults=replace(base.run_defaults, setup=prelude))
     scenarios = [*_scenarios("ok"), _scenarios("failed")[0]]
     folded = with_lifecycle_phases(eff, scenarios, skip={1})
-    assert len(folded[0].before) == 1
-    assert folded[1].before == []
+    assert len(folded[0].setup) == 1
+    assert folded[1].setup == []
 
 
 def test_a_worker_failure_keeps_its_reason_under_a_cancel() -> None:

@@ -1,6 +1,6 @@
-"""Tests for `before` / `after` — the scenario's own lifecycle phases (BE-0392).
+"""Tests for `setup` / `cleanup` — the scenario's own lifecycle phases (BE-0392, BE-0452).
 
-`before` runs ahead of `steps` as its own phase and gates them; `after` runs once a verdict exists,
+`setup` runs ahead of `steps` as its own phase and gates them; `cleanup` runs once a verdict exists,
 dispatching each rule on the run's own machine-checked outcome. Both reuse the ordinary step loop,
 so the whole feature is covered here with a `FakeDriver` and no Simulator. Nothing an LLM decides
 enters any of it: `on` is compared against the `failure` value the deterministic loop already
@@ -25,7 +25,7 @@ from bajutsu.common.orchestrator import run_scenario
 from bajutsu.common.orchestrator.evidence_rules import requested_intervals
 from bajutsu.common.runner.pipeline import with_lifecycle_phases
 from bajutsu.common.scenario import (
-    AfterRule,
+    CleanupRule,
     Component,
     Scenario,
     dump_scenarios,
@@ -50,36 +50,48 @@ def _run(scenario: Scenario, **kw: object) -> object:
 def test_scenario_parses_both_phases_and_round_trips() -> None:
     text = """
 - name: lifecycle
-  before:
+  setup:
     - tap: { id: a }
   steps:
     - tap: { id: b }
-  after:
+  cleanup:
     - on: always
       steps: [{ tap: { id: c } }]
-    - on: error
+    - on: failure
       steps: [{ tap: { id: a } }]
 """
     s = load_scenarios(text)[0]
-    assert [st.tap.id for st in s.before if st.tap] == ["a"]
-    assert [r.on for r in s.after] == ["always", "error"]
+    assert [st.tap.id for st in s.setup if st.tap] == ["a"]
+    assert [r.on for r in s.cleanup] == ["always", "failure"]
     # `on` survives a dump: YAML 1.1 would resolve the bare key to True, so the dump quotes it and
     # `_yaml`'s restricted bool resolver reads it back as the string — the same round trip
     # `capturePolicy`'s own `on:` trigger already relies on.
-    assert load_scenarios(dump_scenarios([s]))[0].after[0].on == "always"
+    assert load_scenarios(dump_scenarios([s]))[0].cleanup[0].on == "always"
 
 
 def test_unset_phases_prune_from_a_dump() -> None:
     s = load_scenarios("- name: bare\n  steps: [{ tap: { id: a } }]\n")[0]
     dumped = dump_scenarios([s])
-    assert "before:" not in dumped
-    assert "after:" not in dumped
+    assert "setup:" not in dumped
+    assert "cleanup:" not in dumped
 
 
 def test_unknown_outcome_word_is_rejected() -> None:
     # An outcome the runner has no dispatch for must fail at load time, not silently never fire.
     with pytest.raises(ValidationError):
-        AfterRule.model_validate({"on": "failure", "steps": []})
+        CleanupRule.model_validate({"on": "never", "steps": []})
+
+
+def test_the_renamed_outcome_word_names_its_replacement() -> None:
+    # BE-0452 reads no old spelling, so `on: error` fails — but says what to write instead.
+    with pytest.raises(ValidationError, match="'error' was renamed; write 'failure' instead"):
+        CleanupRule.model_validate({"on": "error", "steps": []})
+
+
+@pytest.mark.parametrize(("old", "new"), [("before", "setup"), ("after", "cleanup")])
+def test_the_renamed_phase_keys_name_their_replacement(old: str, new: str) -> None:
+    with pytest.raises(ValidationError, match=f"'{old}' was removed; rename it to '{new}'"):
+        _scenario({"name": "s", "steps": [], old: []})
 
 
 def test_target_config_carries_both_phases() -> None:
@@ -97,20 +109,40 @@ def test_target_config_carries_both_phases() -> None:
         "        - tap: {id: c}\n"
     )
     eff = resolve(cfg, "app")
-    assert len(eff.run_defaults.before) == 1
-    assert [r.on for r in eff.run_defaults.after] == ["always"]
+    assert len(eff.run_defaults.setup) == 1
+    assert [r.on for r in eff.run_defaults.cleanup] == ["always"]
+
+
+def test_a_target_cleanup_rule_takes_failure_and_names_it_for_error() -> None:
+    def config(on: str) -> str:
+        return (
+            "targets:\n"
+            "  app:\n"
+            "    platform: ios\n"
+            "    app: {id: com.example.app}\n"
+            "    hooks:\n"
+            "      cleanup:\n"
+            f"      - 'on': {on}\n"
+            "        steps:\n"
+            "        - tap: {id: c}\n"
+        )
+
+    eff = resolve(load_config(config("failure")), "app")
+    assert [r.on for r in eff.run_defaults.cleanup] == ["failure"]
+    with pytest.raises(ValueError, match="'error' was renamed; write 'failure' instead"):
+        load_config(config("error"))
 
 
 # --- runner integration (Unit 3) -------------------------------------------------------------
 
 
-def test_before_runs_first_and_reports_as_its_own_phase() -> None:
+def test_setup_runs_first_and_reports_as_its_own_phase() -> None:
     r = run_scenario(
         _driver(),
         _scenario(
             {
                 "name": "s",
-                "before": [{"tap": {"id": "a"}}],
+                "setup": [{"tap": {"id": "a"}}],
                 "steps": [{"tap": {"id": "b"}}],
             }
         ),
@@ -123,13 +155,13 @@ def test_before_runs_first_and_reports_as_its_own_phase() -> None:
     assert [o.index for o in r.steps] == [0]
 
 
-def test_a_failing_before_skips_steps_and_expect() -> None:
+def test_a_failing_setup_skips_steps_and_expect() -> None:
     r = run_scenario(
         _driver(),
         _scenario(
             {
                 "name": "s",
-                "before": [{"tap": {"id": "missing"}}],
+                "setup": [{"tap": {"id": "missing"}}],
                 "steps": [{"tap": {"id": "b"}}],
                 "expect": [{"exists": {"id": "b"}}],
             }
@@ -137,21 +169,21 @@ def test_a_failing_before_skips_steps_and_expect() -> None:
         FakeClock(),
     )
     assert not r.ok
-    assert r.failure is not None and r.failure.startswith("before: ")
+    assert r.failure is not None and r.failure.startswith("setup: ")
     assert r.steps == []
     assert r.expect_results == []
 
 
-def test_vars_flow_from_before_into_steps_and_on_into_after() -> None:
-    # One `live_bindings` dict across all three phases: `before` seeds a var `steps` addresses, and
-    # `after` addresses one `steps` captured — the sharing a cleanup step needs to delete the very
+def test_vars_flow_from_setup_into_steps_and_on_into_cleanup() -> None:
+    # One `live_bindings` dict across all three phases: `setup` seeds a var `steps` addresses, and
+    # `cleanup` addresses one `steps` captured — the sharing a cleanup step needs to delete the very
     # record the run created.
     r = run_scenario(
         _driver(),
         _scenario(
             {
                 "name": "s",
-                "before": [
+                "setup": [
                     {
                         "tap": {"id": "a"},
                         "extract": {"first": {"sel": {"id": "a"}, "prop": "identifier"}},
@@ -163,7 +195,7 @@ def test_vars_flow_from_before_into_steps_and_on_into_after() -> None:
                         "extract": {"second": {"sel": {"id": "b"}, "prop": "identifier"}},
                     }
                 ],
-                "after": [
+                "cleanup": [
                     {
                         "on": "always",
                         "steps": [{"assert": [{"exists": {"id": "${vars.second}"}}]}],
@@ -177,14 +209,14 @@ def test_vars_flow_from_before_into_steps_and_on_into_after() -> None:
     assert r.after_outcomes[0].ok
 
 
-def test_after_runs_even_when_a_step_failed() -> None:
+def test_cleanup_runs_even_when_a_step_failed() -> None:
     r = run_scenario(
         _driver(),
         _scenario(
             {
                 "name": "s",
                 "steps": [{"tap": {"id": "missing"}}],
-                "after": [{"on": "always", "steps": [{"tap": {"id": "c"}}]}],
+                "cleanup": [{"on": "always", "steps": [{"tap": {"id": "c"}}]}],
             }
         ),
         FakeClock(),
@@ -199,16 +231,16 @@ def test_outcome_dispatch_picks_only_the_matching_rules() -> None:
     rules = [
         {"on": "always", "steps": [{"tap": {"id": "a"}}]},
         {"on": "success", "steps": [{"tap": {"id": "b"}}]},
-        {"on": "error", "steps": [{"tap": {"id": "c"}}]},
+        {"on": "failure", "steps": [{"tap": {"id": "c"}}]},
     ]
     passing = run_scenario(
         _driver(),
-        _scenario({"name": "s", "steps": [{"tap": {"id": "a"}}], "after": rules}),
+        _scenario({"name": "s", "steps": [{"tap": {"id": "a"}}], "cleanup": rules}),
         FakeClock(),
     )
     failing = run_scenario(
         _driver(),
-        _scenario({"name": "s", "steps": [{"tap": {"id": "missing"}}], "after": rules}),
+        _scenario({"name": "s", "steps": [{"tap": {"id": "missing"}}], "cleanup": rules}),
         FakeClock(),
     )
     assert [o.action for o in passing.after_outcomes] == ["tap", "tap"]
@@ -216,24 +248,24 @@ def test_outcome_dispatch_picks_only_the_matching_rules() -> None:
     assert passing.ok and not failing.ok
 
 
-def test_a_failing_before_dispatches_after_as_error() -> None:
+def test_a_failing_setup_dispatches_cleanup_as_failure() -> None:
     r = run_scenario(
         _driver(),
         _scenario(
             {
                 "name": "s",
-                "before": [{"tap": {"id": "missing"}}],
+                "setup": [{"tap": {"id": "missing"}}],
                 "steps": [{"tap": {"id": "b"}}],
-                "after": [
+                "cleanup": [
                     {"on": "success", "steps": [{"tap": {"id": "a"}}]},
-                    {"on": "error", "steps": [{"tap": {"id": "c"}}]},
+                    {"on": "failure", "steps": [{"tap": {"id": "c"}}]},
                 ],
             }
         ),
         FakeClock(),
     )
     assert not r.ok
-    assert len(r.after_outcomes) == 1  # the `error` rule alone
+    assert len(r.after_outcomes) == 1  # the `failure` rule alone
 
 
 def test_a_success_rule_failure_becomes_the_sole_failure() -> None:
@@ -243,23 +275,23 @@ def test_a_success_rule_failure_becomes_the_sole_failure() -> None:
             {
                 "name": "s",
                 "steps": [{"tap": {"id": "a"}}],
-                "after": [{"on": "success", "steps": [{"tap": {"id": "missing"}}]}],
+                "cleanup": [{"on": "success", "steps": [{"tap": {"id": "missing"}}]}],
             }
         ),
         FakeClock(),
     )
     assert not r.ok
-    assert r.failure is not None and r.failure.startswith("after: ")
+    assert r.failure is not None and r.failure.startswith("cleanup: ")
 
 
-def test_an_error_rule_failure_is_appended_behind_the_original_cause() -> None:
+def test_a_failure_rule_failure_is_appended_behind_the_original_cause() -> None:
     r = run_scenario(
         _driver(),
         _scenario(
             {
                 "name": "s",
                 "steps": [{"tap": {"id": "missing"}}],
-                "after": [{"on": "error", "steps": [{"tap": {"id": "also-missing"}}]}],
+                "cleanup": [{"on": "failure", "steps": [{"tap": {"id": "also-missing"}}]}],
             }
         ),
         FakeClock(),
@@ -268,7 +300,7 @@ def test_an_error_rule_failure_is_appended_behind_the_original_cause() -> None:
     assert r.failure is not None
     # The reason a reader sees first is the original cause, not the cleanup it triggered.
     assert r.failure.startswith("step 0 (tap)")
-    assert "; after: " in r.failure
+    assert "; cleanup: " in r.failure
 
 
 def test_a_failing_rule_does_not_skip_the_remaining_cleanup() -> None:
@@ -278,7 +310,7 @@ def test_a_failing_rule_does_not_skip_the_remaining_cleanup() -> None:
             {
                 "name": "s",
                 "steps": [{"tap": {"id": "a"}}],
-                "after": [
+                "cleanup": [
                     {"on": "always", "steps": [{"tap": {"id": "missing"}}]},
                     {"on": "always", "steps": [{"tap": {"id": "c"}}]},
                 ],
@@ -352,23 +384,23 @@ def _merged(scenario: dict[str, object]) -> Scenario:
     return with_lifecycle_phases(eff, [_scenario({"name": "s", **scenario})])[0]
 
 
-def test_before_merges_config_first_then_the_scenarios_own() -> None:
+def test_setup_merges_config_first_then_the_scenarios_own() -> None:
     # The app-wide prelude seeds the state this scenario's own setup builds on, so it runs first —
     # the config-then-scenario order `interrupts` already follows.
-    merged = _merged({"steps": [{"tap": {"id": "a"}}], "before": [{"tap": {"id": "c"}}]})
-    assert [s.tap.id for s in merged.before if s.tap] == ["a", "c"]
+    merged = _merged({"steps": [{"tap": {"id": "a"}}], "setup": [{"tap": {"id": "c"}}]})
+    assert [s.tap.id for s in merged.setup if s.tap] == ["a", "c"]
 
 
-def test_after_merges_the_scenarios_own_first_then_config() -> None:
+def test_cleanup_merges_the_scenarios_own_first_then_config() -> None:
     # The reverse order: this scenario releases what it created before the app-wide teardown closes
     # around it, the last-acquired-first-released order a fixture teardown pair gives.
     merged = _merged(
         {
             "steps": [{"tap": {"id": "a"}}],
-            "after": [{"on": "always", "steps": [{"tap": {"id": "c"}}]}],
+            "cleanup": [{"on": "always", "steps": [{"tap": {"id": "c"}}]}],
         }
     )
-    assert [r.steps[0].tap.id for r in merged.after if r.steps[0].tap] == ["c", "b"]
+    assert [r.steps[0].tap.id for r in merged.cleanup if r.steps[0].tap] == ["c", "b"]
 
 
 def test_a_config_with_no_phases_leaves_the_scenarios_untouched() -> None:
@@ -380,8 +412,8 @@ def test_a_config_with_no_phases_leaves_the_scenarios_untouched() -> None:
     assert with_lifecycle_phases(eff, scenarios) is scenarios
 
 
-def test_source_stem_survives_the_before_after_merge_copy() -> None:
-    # BE-0417: whenever the target config declares before/after, this returns a `model_copy`, not
+def test_source_stem_survives_the_setup_cleanup_merge_copy() -> None:
+    # BE-0417: whenever the target config declares setup/cleanup, this returns a `model_copy`, not
     # the caller's own object — the evidence-dir naming must survive that copy, not just the
     # no-op path `test_a_config_with_no_phases_leaves_the_scenarios_untouched` covers.
     eff = resolve(load_config(_MERGE_CONFIG), "app")
@@ -393,7 +425,7 @@ def test_source_stem_survives_the_before_after_merge_copy() -> None:
 
 def test_each_declared_targets_own_hooks_fold_in_stamped_with_its_name() -> None:
     # BE-0428: a config-level hook is config on the target it acts on, so a two-target scenario
-    # folds in each declared target's own `before`/`after` — in declared order, each step stamped
+    # folds in each declared target's own `hooks.setup`/`cleanup` — in declared order, each step stamped
     # with that target's name, so an app-side hook and a web-side one never run against each other's
     # driver. `_WEB_HOOKS_CONFIG` gives `web` its own pair with different ids, so the assertion
     # below distinguishes "stamped correctly" from "the primary's hooks folded in twice".
@@ -403,8 +435,8 @@ def test_each_declared_targets_own_hooks_fold_in_stamped_with_its_name() -> None
         {"name": "s", "targets": ["app", "web"], "steps": [{"target": "app", "tap": {"id": "x"}}]}
     )
     merged = with_lifecycle_phases(effs["app"], [scenario], effs)[0]
-    assert [(s.target, s.tap.id) for s in merged.before if s.tap] == [("app", "a"), ("web", "w")]
-    assert [(s.target, s.tap.id) for rule in merged.after for s in rule.steps if s.tap] == [
+    assert [(s.target, s.tap.id) for s in merged.setup if s.tap] == [("app", "a"), ("web", "w")]
+    assert [(s.target, s.tap.id) for rule in merged.cleanup for s in rule.steps if s.tap] == [
         ("app", "b"),
         ("web", "z"),
     ]
@@ -475,7 +507,7 @@ def test_a_hooks_nested_steps_run_against_the_hooks_own_target() -> None:
     folded = [_fold_nested_hook(["a", "b"]), _fold_nested_hook(["b", "a"])]
     nested = []
     for merged in folded:
-        hook_if, hook_for_each, _ = merged.before
+        hook_if, hook_for_each, _ = merged.setup
         assert hook_if.if_ is not None
         assert hook_if.resolved_target == "b"
         assert hook_if.if_.then[0].resolved_target == "b"
@@ -488,7 +520,7 @@ def test_a_hooks_nested_steps_run_against_the_hooks_own_target() -> None:
 
 
 def test_a_hooks_nested_step_naming_a_target_keeps_it() -> None:
-    hook_if, _, _ = _fold_nested_hook(["b", "a"]).before
+    hook_if, _, _ = _fold_nested_hook(["b", "a"]).setup
     assert hook_if.if_ is not None
     assert hook_if.if_.then[1].target == "a"
 
@@ -496,14 +528,14 @@ def test_a_hooks_nested_step_naming_a_target_keeps_it() -> None:
 def test_a_hooks_web_body_is_left_out_of_the_target_fill() -> None:
     # `_fill_target` must not descend into a `web:`/`app:` body — its nested steps still always
     # run against the block's own device, and must keep omitting `target` outright.
-    _, _, hook_web = _fold_nested_hook(["b", "a"]).before
+    _, _, hook_web = _fold_nested_hook(["b", "a"]).setup
     assert hook_web.web is not None
     assert hook_web.web.steps[0].target is None
     assert hook_web.web.steps[0].resolved_target is None
 
 
 def test_the_merged_phases_are_what_the_run_executes() -> None:
-    merged = _merged({"steps": [{"tap": {"id": "a"}}], "before": [{"tap": {"id": "c"}}]})
+    merged = _merged({"steps": [{"tap": {"id": "a"}}], "setup": [{"tap": {"id": "c"}}]})
     r = run_scenario(_driver(), merged, FakeClock())
     assert r.ok, r.failure
     assert len(r.before_outcomes) == 2  # the app-wide step and this scenario's own
@@ -511,16 +543,16 @@ def test_the_merged_phases_are_what_the_run_executes() -> None:
 
 
 def test_each_dispatched_rule_gets_its_own_step_numbering() -> None:
-    # The `after` phase runs one step-loop call per rule. Restarting the numbering per rule would
+    # The `cleanup` phase runs one step-loop call per rule. Restarting the numbering per rule would
     # give two rules' first steps the same evidence `step_id`, so the second would overwrite the
-    # first's screenshots and the JUnit body would print two lines both labeled `after step 0`.
+    # first's screenshots and the JUnit body would print two lines both labeled `cleanup step 0`.
     r = run_scenario(
         _driver(),
         _scenario(
             {
                 "name": "s",
                 "steps": [{"tap": {"id": "a"}}],
-                "after": [
+                "cleanup": [
                     {"on": "always", "steps": [{"tap": {"id": "b"}}]},
                     {"on": "success", "steps": [{"tap": {"id": "c"}}]},
                 ],
@@ -543,7 +575,7 @@ def test_a_cancelled_run_still_runs_its_cleanup() -> None:
             {
                 "name": "s",
                 "steps": [{"tap": {"id": "a"}}],
-                "after": [{"on": "always", "steps": [{"tap": {"id": "c"}}]}],
+                "cleanup": [{"on": "always", "steps": [{"tap": {"id": "c"}}]}],
             }
         ),
         FakeClock(),
@@ -567,7 +599,7 @@ def test_a_cancelled_runs_cleanup_is_abandoned_once_its_budget_is_spent() -> Non
             {
                 "name": "s",
                 "steps": [{"tap": {"id": "a"}}],
-                "after": [
+                "cleanup": [
                     {"on": "always", "steps": [{"tap": {"id": "b"}}]},
                     {"on": "always", "steps": [{"tap": {"id": "c"}}]},
                 ],
@@ -597,7 +629,7 @@ def test_a_cancel_arriving_during_teardown_fails_the_passing_run_as_cancelled() 
             {
                 "name": "s",
                 "steps": [{"tap": {"id": "a"}}],
-                "after": [
+                "cleanup": [
                     {"on": "always", "steps": [{"tap": {"id": "b"}}, {"tap": {"id": "c"}}]},
                 ],
             }
@@ -625,7 +657,7 @@ def test_a_cancel_latching_after_the_last_step_still_lets_cleanup_run() -> None:
             {
                 "name": "s",
                 "steps": [{"tap": {"id": "a"}}],
-                "after": [{"on": "success", "steps": [{"tap": {"id": "c"}}]}],
+                "cleanup": [{"on": "success", "steps": [{"tap": {"id": "c"}}]}],
             }
         ),
         FakeClock(),
@@ -636,7 +668,7 @@ def test_a_cancel_latching_after_the_last_step_still_lets_cleanup_run() -> None:
     assert len(r.after_outcomes) == 1
 
 
-def test_run_cancelled_is_never_raised_out_of_the_after_phase() -> None:
+def test_run_cancelled_is_never_raised_out_of_the_cleanup_phase() -> None:
     try:
         run_scenario(
             _driver(),
@@ -644,14 +676,14 @@ def test_run_cancelled_is_never_raised_out_of_the_after_phase() -> None:
                 {
                     "name": "s",
                     "steps": [{"tap": {"id": "a"}}],
-                    "after": [{"on": "always", "steps": [{"tap": {"id": "c"}}]}],
+                    "cleanup": [{"on": "always", "steps": [{"tap": {"id": "c"}}]}],
                 }
             ),
             FakeClock(),
             cancelled=lambda: True,
         )
     except RunCancelled:  # pragma: no cover - the assertion is that we never get here
-        raise AssertionError("the after phase must absorb its own cancellation") from None
+        raise AssertionError("the cleanup phase must absorb its own cancellation") from None
 
 
 # --- components inside a phase (Unit 1 / Unit 3) ----------------------------------------------
@@ -664,16 +696,16 @@ def test_a_use_step_inside_either_phase_is_expanded() -> None:
     scenario = _scenario(
         {
             "name": "s",
-            "before": [{"use": {"component": "c"}}],
+            "setup": [{"use": {"component": "c"}}],
             "steps": [{"tap": {"id": "a"}}],
-            "after": [{"on": "always", "steps": [{"use": {"component": "c"}}]}],
+            "cleanup": [{"on": "always", "steps": [{"use": {"component": "c"}}]}],
         }
     )
     expand_components(
         [scenario], lambda _ref: Component.model_validate({"steps": [{"tap": {"id": "b"}}]})
     )
-    assert scenario.before[0].use is None
-    assert scenario.after[0].steps[0].use is None
+    assert scenario.setup[0].use is None
+    assert scenario.cleanup[0].steps[0].use is None
     r = run_scenario(_driver(), scenario, FakeClock())
     assert r.ok, r.failure
     assert [o.action for o in r.before_outcomes] == ["tap"]
@@ -709,10 +741,10 @@ def test_an_app_wide_phase_resolves_a_component_against_the_config_file(tmp_path
         "        - use: { component: components/login.yaml, with: { user: bob } }\n",
     )
     eff = resolve(load_config_file(cfg), "app")
-    setup = eff.run_defaults.before
+    setup = eff.run_defaults.setup
     assert [st.use for st in setup] == [None, None]
     assert setup[0].type is not None and setup[0].type.text == "alice"  # `with` at load
-    assert eff.run_defaults.after[0].steps[0].type is not None
+    assert eff.run_defaults.cleanup[0].steps[0].type is not None
 
 
 def test_a_component_in_hooks_needs_the_config_files_path() -> None:
@@ -774,7 +806,7 @@ def test_a_use_inside_an_app_wide_hooks_target_group_is_resolved_too(tmp_path: P
         tmp_path,
         "      setup:\n      - target: app\n        steps:\n        - use: {component: c.yaml}\n",
     )
-    setup = resolve(load_config_file(cfg), "app").run_defaults.before
+    setup = resolve(load_config_file(cfg), "app").run_defaults.setup
     assert not any(st.use is not None for top in setup for st in [top, *(top.steps or [])])
 
 
@@ -809,21 +841,21 @@ def test_an_app_wide_phase_resolves_a_use_nested_inside_if(tmp_path: Path) -> No
         "          then:\n"
         "          - use: {component: c.yaml}\n",
     )
-    (step,) = resolve(load_config_file(cfg), "app").run_defaults.before
+    (step,) = resolve(load_config_file(cfg), "app").run_defaults.setup
     assert step.if_ is not None
     assert [s.tap.id for s in step.if_.then if s.tap is not None] == ["from.c"]
 
 
 def test_the_capability_preflight_sees_a_hook_steps_construct() -> None:
     # Missed here, an unsupported teardown step passes the preflight, a device is leased, and the
-    # whole scenario is driven before the step fails — and a failing `after` rule on an otherwise
+    # whole scenario is driven before the step fails — and a failing `cleanup` rule on an otherwise
     # passing run becomes that run's failure, so a green scenario reports red after full device work.
     scenario = _scenario(
         {
             "name": "s",
-            "before": [{"pinch": {"sel": {"id": "a"}, "scale": 2.0}}],
+            "setup": [{"pinch": {"sel": {"id": "a"}, "scale": 2.0}}],
             "steps": [{"tap": {"id": "a"}}],
-            "after": [
+            "cleanup": [
                 {
                     "on": "always",
                     "steps": [{"selectOption": {"sel": {"id": "a"}, "option": "y"}}],
@@ -832,8 +864,8 @@ def test_the_capability_preflight_sees_a_hook_steps_construct() -> None:
         }
     )
     reasons = unsupported(scenario, {base.Capability.QUERY, base.Capability.ELEMENTS})
-    assert any("before" in r for r in reasons), reasons
-    assert any("after[0]" in r for r in reasons), reasons
+    assert any(r.startswith("setup ") for r in reasons), reasons
+    assert any(r.startswith("cleanup[0]") for r in reasons), reasons
 
 
 def test_an_interval_capture_on_a_hook_step_opens_its_interval() -> None:
@@ -843,9 +875,11 @@ def test_an_interval_capture_on_a_hook_step_opens_its_interval() -> None:
     scenario = _scenario(
         {
             "name": "s",
-            "before": [{"tap": {"id": "a"}, "capture": ["video"]}],
+            "setup": [{"tap": {"id": "a"}, "capture": ["video"]}],
             "steps": [{"tap": {"id": "a"}}],
-            "after": [{"on": "always", "steps": [{"tap": {"id": "c"}, "capture": ["deviceLog"]}]}],
+            "cleanup": [
+                {"on": "always", "steps": [{"tap": {"id": "c"}, "capture": ["deviceLog"]}]}
+            ],
         }
     )
     assert set(requested_intervals(scenario)) == {"video", "deviceLog"}

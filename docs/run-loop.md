@@ -70,19 +70,19 @@ scenario's declared order, so a reader sees the block as authored.
 
 ### The lifecycle phases around the step loop
 
-A scenario's `before` / `after` fields ([scenarios](scenarios.md#before--after-setup-and-teardown-phases))
+A scenario's `setup` / `cleanup` fields ([scenarios](scenarios.md#setup--cleanup-setup-and-teardown-phases))
 wrap the step loop in two more phases, both driven by the same step runner, so a hook's steps are
 exactly as capable as any other step and share the run's `vars.*` bindings:
 
-1. **`before` runs first.** A failure there sets `failure = "before: …"` and skips `steps` and
-   `expect` entirely — `before` is a precondition for the scenario, not a step within it.
+1. **`setup` runs first.** A failure there sets `failure = "setup: …"` and skips `steps` and
+   `expect` entirely — `setup` is a precondition for the scenario, not a step within it.
 2. **`steps` and `expect` run unchanged**, computing the verdict exactly as they did before.
-3. **`after` runs once a verdict exists**, on every path out of `steps` — the passing one, the
+3. **`cleanup` runs once a verdict exists**, on every path out of `steps` — the passing one, the
    failing one, and the cancelled one. Each rule whose `on` matches `always` or that verdict runs, in
    declaration order. A rule's own failure becomes the run's failure when the run was passing, and is
    appended behind the existing failure otherwise.
 
-A cancelled run cannot bound the `after` phase with the cancel source: that source is a latched
+A cancelled run cannot bound the `cleanup` phase with the cancel source: that source is a latched
 `threading.Event.is_set`, so its first read inside the phase would raise `RunCancelled` again and no
 cleanup step would run at all. The phase runs under its own deadline instead — a tenth of
 `grace_seconds()` — abandoning the remaining rules once the deadline passes, so cleanup gets a
@@ -90,7 +90,9 @@ bounded chance to run without pushing the shutdown tail past the window `serve` 
 unconditional kill.
 
 Each phase numbers its steps from zero and records them in its own `RunResult` list, so the report
-shows Before and After as blocks distinct from the scenario's numbered steps.
+shows the setup and cleanup blocks apart from the scenario's numbered steps. `RunResult.after_verdict`
+records the verdict the cleanup phase dispatched on. A run stored before BE-0452 holds `error` there,
+and the report loader reads it as `failure`, so an earlier run still renders its cleanup block.
 
 ### The flow of one step
 
@@ -197,9 +199,9 @@ class RunResult:
     steps: list[StepOutcome]
     expect_results: list[AssertionResult]  # evaluation of the final expect
     failure: str | None          # e.g. "step 3 (tap): no match: {...}"
-    before_outcomes: list[StepOutcome]  # the `before` phase's own steps
-    after_outcomes: list[StepOutcome]   # the `after` phase's own steps
-    after_verdict: str           # "success" / "error" — which `after` rules ran; "" when none
+    before_outcomes: list[StepOutcome]  # the `setup` phase's own steps
+    after_outcomes: list[StepOutcome]   # the `cleanup` phase's own steps
+    after_verdict: str           # "success" / "failure" — which `cleanup` rules ran; "" when none
     target_devices: dict[str, TargetDeviceInfo]  # one row per declared target (multi-target only)
 ```
 

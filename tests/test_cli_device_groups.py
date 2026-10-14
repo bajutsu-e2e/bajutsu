@@ -215,7 +215,7 @@ def test_an_install_in_before_retires_a_member_too(
         _scenario(
             targets=[["old", "new"]],
             primaryTarget="old",
-            before=[{"installApp": {"from": "new"}}],
+            setup=[{"installApp": {"from": "new"}}],
             steps=[{"setPrimaryTarget": {"target": "old"}}],
         ),
     )
@@ -254,7 +254,7 @@ def test_a_shared_build_is_checked_once_for_the_whole_run(
                 }
             ]
         },
-        {"after": [{"on": "always", "steps": [{"installApp": {"from": "gone"}}]}]},
+        {"cleanup": [{"on": "always", "steps": [{"installApp": {"from": "gone"}}]}]},
         {
             "steps": [
                 {
@@ -267,7 +267,7 @@ def test_a_shared_build_is_checked_once_for_the_whole_run(
             ]
         },
     ],
-    ids=["forEach", "after", "if-else"],
+    ids=["forEach", "cleanup", "if-else"],
 )
 def test_a_nested_install_still_needs_its_build(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], placement: dict[str, object]

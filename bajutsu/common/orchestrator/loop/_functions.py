@@ -74,8 +74,8 @@ from bajutsu.common.orchestrator.waits import (
     wait_for_system_alert,
 )
 from bajutsu.common.scenario import (
-    AfterRule,
     Assertion,
+    CleanupRule,
     Email,
     Extract,
     ForEach,
@@ -637,14 +637,14 @@ def _resolve_video_start_offset(
     return offset
 
 
-def _dispatch_after(
-    rules: list[AfterRule],
+def _dispatch_cleanup(
+    rules: list[CleanupRule],
     failure: str | None,
     run_steps: Callable[[list[Step], CancelSource], str | None],
     clock: Clock,
     cancelled: CancelSource,
 ) -> tuple[str | None, str]:
-    """Run the `after` rules this run's verdict selects; return the run's composed failure (BE-0392).
+    """Run the `cleanup` rules this run's verdict selects; return the run's composed failure (BE-0392).
 
     Entries run in declaration order — interleaved, not grouped by `on` — so the scenario-then-config
     merge order holds across the whole phase rather than only within one outcome group. The verdict
@@ -665,7 +665,7 @@ def _dispatch_after(
         latter to know which rules ran, which `failure` alone can no longer say once a cleanup
         step's own reason has been folded into it.
     """
-    verdict = "success" if failure is None else "error"
+    verdict = "success" if failure is None else "failure"
     # A run that is shutting down cannot be bounded by `cancelled`: that source is latched, so its
     # first read inside this phase would raise and no cleanup step would run at all. Give the phase
     # its own deadline instead — cleanup gets a bounded chance to run without pushing the shutdown
@@ -691,16 +691,16 @@ def _dispatch_after(
                 # The teardown budget above, spent. Abandoning the rest is the designed bound, not a
                 # new failure: a run cancelled early already carries that as its reason, and one
                 # cancelled after its last boundary keeps the real verdict BE-0370 gives it. Either
-                # way the After block's not-run rows are what disclose the abandoned entries.
-                _logger.debug("after: teardown budget spent; abandoning the remaining entries")
+                # way the cleanup block's not-run rows are what disclose the abandoned entries.
+                _logger.debug("cleanup: teardown budget spent; abandoning the remaining entries")
                 break
             # A cancel that arrived *during* teardown. On a passing run the failure must still lead
             # with the cancellation spelling downstream reads (BE-0370).
             if failure is None:
                 return CANCELLED_FAILURE, verdict
-            return f"{failure}; after: {CANCELLED_FAILURE}", verdict
+            return f"{failure}; cleanup: {CANCELLED_FAILURE}", verdict
         if reason is not None:
-            failure = f"after: {reason}" if failure is None else f"{failure}; after: {reason}"
+            failure = f"cleanup: {reason}" if failure is None else f"{failure}; cleanup: {reason}"
     return failure, verdict
 
 
@@ -805,7 +805,7 @@ def run_scenario(  # noqa: C901, PLR0915
     `capture:` tokens — the default is empty, so a caller that doesn't pass one (a test
     constructing a scenario directly) sees the unchanged capturePolicy/inline-only behavior.
 
-    The scenario's `before` / `after` lifecycle phases (BE-0392) are read off `scenario` itself,
+    The scenario's `setup` / `cleanup` lifecycle phases (BE-0392) are read off `scenario` itself,
     not passed alongside it the way `interrupts` is: `runner.pipeline` folds the target config's own
     phases into each scenario before the run, so the scenario this function executes and the scenario
     the report renders are the same object. A caller that builds a `Scenario` directly therefore gets
@@ -834,7 +834,7 @@ def run_scenario(  # noqa: C901, PLR0915
     *app under test*, called from inside the step loop the moment a driver confirms one. Unlike
     `base.BackendCrashError` below, that event is classified in-band: it fails the step that observed
     it, and this function's ordinary `RunResult` assembly — the steps, the artifacts, the running
-    video, the `after: on: error` dispatch — finishes exactly as it would for an `ElementNotFound`.
+    video, the `cleanup: on: failure` dispatch — finishes exactly as it would for an `ElementNotFound`.
     `app_launch_unconfirmed` says the lease's readiness gate never established that the app reached
     the foreground, which suppresses the probe until a step succeeds against the app: without it a
     scenario's very first failing step, having no earlier step to have observed the app running, would
@@ -887,7 +887,7 @@ def run_scenario(  # noqa: C901, PLR0915
     before_outcomes: list[StepOutcome] = []
     after_outcomes: list[StepOutcome] = []
     after_verdict = ""
-    # One counter for the whole `after` phase: it runs one `run_phase` call per dispatched rule, and
+    # One counter for the whole `cleanup` phase: it runs one `run_phase` call per dispatched rule, and
     # a per-call counter would restart each rule at zero, colliding their evidence `step_id`s.
     after_counter = _StepCounter()
     expect_results: list[AssertionResult] = []
@@ -933,7 +933,7 @@ def run_scenario(  # noqa: C901, PLR0915
     # expect sees the accumulated values.
     live_bindings: dict[str, str] = dict(bindings or {})
     # Scenario-scoped, and shared across every phase for the same reason `live_bindings` is: what a
-    # failing `relaunch` in `steps` latched must still suppress the probe for an `after: on: error`
+    # failing `relaunch` in `steps` latched must still suppress the probe for a `cleanup: on: failure`
     # rule dispatched afterward, which runs through its own freshly built `StepLoopState` (BE-0424).
     app_crash_latches = AppCrashLatches(unconfirmed_launch=app_launch_unconfirmed)
 
@@ -944,8 +944,8 @@ def run_scenario(  # noqa: C901, PLR0915
         phase_cancelled: CancelSource,
         counter: _StepCounter | None = None,
     ) -> str | None:
-        # Every phase shares `live_bindings`, so a `before` step's `vars.*` reaches `steps` and an
-        # `after` step can address what `steps` captured; everything else is per-phase.
+        # Every phase shares `live_bindings`, so a `setup` step's `vars.*` reaches `steps` and a
+        # `cleanup` step can address what `steps` captured; everything else is per-phase.
         return _run_steps(
             driver,
             scenario,
@@ -985,13 +985,13 @@ def run_scenario(  # noqa: C901, PLR0915
     try:
         try:
             try:
-                if scenario.before:
+                if scenario.setup:
                     # A precondition for the scenario, not a step within it: its failure skips `steps`
                     # and `expect` outright, the way an unsatisfiable `preconditions` already fails a
                     # scenario before this function is reached at all.
-                    reason = run_phase(list(scenario.before), before_outcomes, "before", cancelled)
+                    reason = run_phase(list(scenario.setup), before_outcomes, "setup", cancelled)
                     if reason is not None:
-                        failure = "before: " + reason
+                        failure = "setup: " + reason
                 if failure is None:
                     failure = run_phase(scenario.steps, outcomes, "", cancelled)
                 if failure is None and roster is not None:
@@ -1097,14 +1097,14 @@ def run_scenario(  # noqa: C901, PLR0915
                 # report and the manifest are written exactly as they are for any other failure
                 # (BE-0370).
                 failure = CANCELLED_FAILURE
-            if scenario.after:
+            if scenario.cleanup:
                 # Reached on every path out of `steps`/`expect`, the cancelled one included — the same
                 # reason the `finally` below finalizes unconditionally.
-                failure, after_verdict = _dispatch_after(
-                    list(scenario.after),
+                failure, after_verdict = _dispatch_cleanup(
+                    list(scenario.cleanup),
                     failure,
                     lambda steps, src: run_phase(
-                        steps, after_outcomes, "after", src, after_counter
+                        steps, after_outcomes, "cleanup", src, after_counter
                     ),
                     clock,
                     cancelled,
@@ -1461,11 +1461,11 @@ def _run_steps(
 ) -> str | None:
     """Run one phase's step loop, appending outcomes; return the failure string or None.
 
-    ``steps`` is the list to run — the scenario's own, or a `before` / `after` hook's (BE-0392).
+    ``steps`` is the list to run — the scenario's own, or a `setup` / `cleanup` hook's (BE-0392).
     Each phase gets its own `StepLoopState`, so its steps are numbered from zero and reported as
     their own block, while ``bindings`` stays the one dict every phase shares.
 
-    ``counter`` continues an already-started phase's numbering. The `after` phase runs one call per
+    ``counter`` continues an already-started phase's numbering. The `cleanup` phase runs one call per
     dispatched rule, so without it every rule would restart at zero — two rules' first steps would
     then claim the same evidence `step_id` and overwrite each other's screenshots.
 

@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0452") |
-| Implementing PR | [#2191](https://github.com/bajutsu-e2e/bajutsu/pull/2191) (Units 1–3), [#2193](https://github.com/bajutsu-e2e/bajutsu/pull/2193) (Unit 4) |
+| Implementing PR | [#2191](https://github.com/bajutsu-e2e/bajutsu/pull/2191) (Units 1–3), [#2193](https://github.com/bajutsu-e2e/bajutsu/pull/2193) (Unit 4), PR_PLACEHOLDER19 (Unit 5) |
 | Topic | Driver & backend architecture |
 | Related | [BE-0126](../BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config.md), [BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact.md), [BE-0228](../BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation.md), [BE-0076](../BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md), [BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks.md), [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md), [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch.md), [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md), [BE-0447](../BE-0447-install-app-step/BE-0447-install-app-step.md), [BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md) |
 <!-- /BE-METADATA -->
@@ -863,7 +863,7 @@ batch provider that packages `launchEnv`, `common/report/rows.py`, `templates/se
 - [x] Unit 2: confirm the open facts
 - [x] Unit 3: platform registry and models
 - [x] Unit 4: schema switch-over, fixtures, and `demos/` configs
-- [ ] Unit 5: setup and cleanup
+- [x] Unit 5: setup and cleanup
 - [ ] Unit 6: command-line flags
 - [ ] Unit 7: scenario preconditions
 - [ ] Unit 8: reading devices
@@ -966,6 +966,29 @@ batch provider that packages `launchEnv`, `common/report/rows.py`, `templates/se
       component. A prelude rewritten as a component therefore loses its own directory as a base.
       Unit 2 found no prelude outside the tests, so no config changes.
     - `serve --backend` keeps its meaning; BE-0449 already deprecated it.
+- PR_PLACEHOLDER19 (Unit 5) — a scenario's phases take the words a target's hooks use: `setup` and
+  `cleanup`. The failed outcome is `failure` everywhere.
+  - The scenario's `before` and `after` became `setup` and `cleanup`. A cleanup rule's `on` and a
+    `capturePolicy` trigger's `result` take `failure` in place of `error`. The loader reads no old
+    name, as *Out of scope* says. A scenario that writes `before` or `after`, and a rule or trigger
+    that writes `error`, fail at load with a message that names the replacement.
+  - The code names follow: `CleanupRule` replaces `AfterRule`, and `RunDefaults` holds `setup` and
+    `cleanup`. The showcase fixture moved to `demos/showcase/scenarios/setup_cleanup.yaml`.
+  - The report labels the two phases `setup` and `cleanup`: the HTML blocks and their
+    `data-phase`, the failure prefix (`setup: …`, `cleanup: …`), and the JUnit body. The evidence
+    directory of a hook step takes the same prefix, and `codegen` writes a `// setup` divider.
+  - `RunResult.after_verdict` stores `failure` in place of `error`. `report/load.py` reads `error`
+    from an older manifest as `failure`. A fixture run from before the rename pins that read.
+  - Three departures from the design text:
+    - The stored keys `before_outcomes`, `after_outcomes`, and `after_verdict` keep their names.
+      The design renames the stored value alone. Keeping the keys lets an older reader still parse
+      the manifest; its offline re-render falls back to the baked report.
+    - `report/load.py` also rewrites a stored `scenario.yaml` that uses `before`, `after`, or
+      `error`. The scenario model now rejects those names, so without this rewrite an earlier run
+      would fail to load in spite of its manifest.
+    - The CTRF record's `extra` names the phases `setup` and `cleanup`, so a CTRF consumer that read
+      `extra.before` or `extra.after` must switch to the new keys.
+  - This unit updated the pages that describe these names. The full docs pass stays with unit 13.
 
 ## References
 

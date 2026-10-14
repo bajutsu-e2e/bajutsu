@@ -11,7 +11,7 @@ from ._functions import _TIP_MAX_DISMISSES as _TIP_MAX_DISMISSES
 from ._functions import _capture_visual_actual as _capture_visual_actual
 from ._functions import _clipboard_for as _clipboard_for
 from ._functions import _dismiss_blocking_tip as _dismiss_blocking_tip
-from ._functions import _dispatch_after as _dispatch_after
+from ._functions import _dispatch_cleanup as _dispatch_cleanup
 from ._functions import _do_email as _do_email
 from ._functions import _evaluate_expect as _evaluate_expect
 from ._functions import _fail_reason as _fail_reason
