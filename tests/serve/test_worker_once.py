@@ -16,7 +16,6 @@ import time
 from pathlib import Path
 from typing import Any
 
-import click
 import pytest
 import typer
 from typer.testing import CliRunner
@@ -493,7 +492,9 @@ def test_worker_once_refuses_a_device_cloud_worker_file_without_a_provider(
         app, ["worker", "--once", str(spec), "--worker-config", str(worker_file)]
     )
     assert result.exit_code == 2
-    assert "registered no provider" in re.sub(r"[\s│]+", " ", click.unstyle(result.output))
+    assert "registered no provider" in re.sub(
+        r"[\s│]+", " ", re.sub(r"\x1b\[[0-9;]*m", "", result.output)
+    )
 
 
 # --- the public `bajutsu run` wrapper -----------------------------------------------------------

@@ -238,11 +238,10 @@ def test_unroutable_count_applies_the_environment_rule(
     assert not repo.lacks_live_worker("batch")
 
 
-# A test of its own, not a second repository in the one above: on Postgres both would share the one
-# schema the fixture resets per test, so the second `batch` row would collide with the first.
-def test_unroutable_count_flags_a_device_farm_job_with_no_device_farm_worker(
+def test_a_device_farm_job_is_unroutable_to_a_plain_worker(
     serve_engine: Callable[..., Engine],
 ) -> None:
+    # A test of its own: on Postgres every engine the factory makes shares one schema.
     repo = _repo(serve_engine)
     repo.enqueue_job("batch", "o", {}, capabilities=["environment:devicefarm"])
     repo.register_worker("mac", ["platform:ios"])

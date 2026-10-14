@@ -17,7 +17,6 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-import click
 import pytest
 import typer
 from typer.testing import CliRunner
@@ -579,7 +578,7 @@ def test_worker_once_refuses_a_plain_spec_under_a_device_farm_file(
     )
     assert result.exit_code == 2
     assert "runs only that provider's batch jobs" in re.sub(
-        r"[\s│]+", " ", click.unstyle(result.output)
+        r"[\s│]+", " ", re.sub(r"\x1b\[[0-9;]*m", "", result.output)
     )
 
 
