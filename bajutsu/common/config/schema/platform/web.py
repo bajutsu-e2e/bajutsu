@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any, Self
+from typing import Self
 
 from pydantic import Field, field_validator, model_validator
 
 from .._model import _Model
-from ._shared import AppCommon, LaunchEnv, check_list, check_range, coerce_range
+from ._shared import AppCommon, LaunchEnv, RangeField, check_list
 
 # Playwright rendering engines a web target can drive (BE-0076). Chromium is the default, and all
 # three run headless on Linux.
@@ -26,7 +26,7 @@ class WebBrowser(_Model):
     """`runsOn.browser`: which engine runs the page, and the version range it must fall in."""
 
     engine: str | list[str] = "chromium"
-    version: str | None = None
+    version: RangeField = None
 
     @field_validator("engine")
     @classmethod
@@ -38,16 +38,6 @@ class WebBrowser(_Model):
         listed = check_list("runsOn.browser.engine", v)
         assert listed is not None
         return listed
-
-    @field_validator("version", mode="before")
-    @classmethod
-    def _valid_version_number(cls, v: Any) -> Any:
-        return coerce_range(v)
-
-    @field_validator("version")
-    @classmethod
-    def _valid_version(cls, v: str | None) -> str | None:
-        return check_range(v)
 
     @model_validator(mode="after")
     def _no_version_across_engines(self) -> Self:

@@ -354,8 +354,9 @@ class Repository(Protocol):
         """
 
     def get_job(self, job_id: str) -> dict[str, Any] | None:
-        """Return the job's status, result, org_id, current lease holder (``leased_by``), and
-        ``spec``, or None if it does not exist.
+        """Return the job's status, result, org_id, current lease holder (``leased_by``), ``spec``,
+        and ``awaiting_human`` (whether a leased `record` waits on a person), or None if it does not
+        exist.
 
         The spec rides along because a worker's result carries no `actor` / `label` of its own:
         `worker_result` records the finished run under the identity and run-history partition the

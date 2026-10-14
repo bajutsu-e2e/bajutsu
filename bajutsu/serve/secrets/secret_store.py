@@ -26,3 +26,6 @@ class SecretStore(Protocol):
         is called only on the job-execution path (`serve.jobs`), never by an HTTP handler, so no
         response can disclose a value (BE-0136); a test locks that boundary.
         """
+        # Raise rather than fall through: an implementation inheriting this body would return None
+        # against the annotation and fail later, inside the job's environment build.
+        raise NotImplementedError

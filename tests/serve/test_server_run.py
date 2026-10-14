@@ -989,8 +989,8 @@ def test_build_state_server_normalizes_a_prefix_without_a_slash(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # A prefix without a trailing slash must not fuse into "tenantartifacts/" / "tenantscenarios/".
-    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt/tenant")
-    _with_database(monkeypatch)  # no trailing slash
+    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt/tenant")  # no trailing slash
+    _with_database(monkeypatch)
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     _scn, cfg, runs = project(tmp_path)
     state = srv._build_state(

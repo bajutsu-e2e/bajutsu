@@ -885,13 +885,13 @@ def test_cli_emit_uiautomator_writes_kt(tmp_path: Path) -> None:
     assert 'act(byId("home.title")).click()' in code
 
 
-def test_cli_emit_uiautomator_without_package_exits(tmp_path: Path) -> None:
+def test_cli_emit_uiautomator_without_app_id_exits(tmp_path: Path) -> None:
     cfg, scn = _cli_setup(tmp_path)
     r = runner.invoke(
         app, ["codegen", str(scn), "--target", "web", "--emit", "uiautomator", "--config", str(cfg)]
     )
     assert r.exit_code == 2
-    assert "package" in r.output
+    assert "targets.web.app.id (an Android target)" in r.output
 
 
 def test_manual_step_is_a_labeled_todo() -> None:

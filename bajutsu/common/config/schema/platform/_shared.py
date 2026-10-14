@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal, Self
+from typing import Annotated, Any, Literal, Self
 
-from pydantic import Field, model_validator
+from pydantic import AfterValidator, BeforeValidator, Field, model_validator
 
 from bajutsu.common.devices.version import VersionSpec
 from bajutsu.common.scenario import Exists
@@ -76,6 +76,11 @@ def check_range(value: str | None) -> str | None:
     if value is not None:
         VersionSpec.parse(value)
     return value
+
+
+# A version-range field with both validators attached, so a platform's range field cannot acquire one
+# without the other.
+RangeField = Annotated[str | None, BeforeValidator(coerce_range), AfterValidator(check_range)]
 
 
 def check_list(field: str, value: str | list[str] | None) -> str | list[str] | None:

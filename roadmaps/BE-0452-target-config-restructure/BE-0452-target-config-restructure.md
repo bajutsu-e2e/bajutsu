@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0452") |
-| Implementing PR | [#2191](https://github.com/bajutsu-e2e/bajutsu/pull/2191) (Units 1–3), [#2193](https://github.com/bajutsu-e2e/bajutsu/pull/2193) (Unit 4), PR_PLACEHOLDER19 (Unit 5), PR_PLACEHOLDER21 (Units 6–7) |
+| Implementing PR | [#2191](https://github.com/bajutsu-e2e/bajutsu/pull/2191) (Units 1–3), [#2193](https://github.com/bajutsu-e2e/bajutsu/pull/2193) (Unit 4), [#2194](https://github.com/bajutsu-e2e/bajutsu/pull/2194) (Unit 5), PR_PLACEHOLDER21 (Units 6–7) |
 | Topic | Driver & backend architecture |
 | Related | [BE-0126](../BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config.md), [BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact.md), [BE-0228](../BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation.md), [BE-0076](../BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md), [BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks.md), [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md), [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch.md), [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md), [BE-0447](../BE-0447-install-app-step/BE-0447-install-app-step.md), [BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md) |
 <!-- /BE-METADATA -->
@@ -897,7 +897,7 @@ batch provider that packages `launchEnv`, `common/report/rows.py`, `templates/se
     API level 34 alone. This unit had no emulator to read. The emulator passes the name on its
     kernel command line. Images from API level 31 expose it as `ro.boot.qemu.avd_name`. Older
     images expose it as `ro.kernel.qemu.avd_name`. That split rests on known emulator
-    behavior, not a device read, so we rate it medium. Unit 8 should read both
+    behavior, not a device read. Our confidence in the split is medium. Unit 8 should read both
     properties, and fail when an emulator reports neither. An `avd` condition then never misses
     without a message. The read stays an open item. Unit 8 must verify it on a real emulator at each
     supported API level.
@@ -926,6 +926,11 @@ batch provider that packages `launchEnv`, `common/report/rows.py`, `templates/se
     answers a mismatch with a 400. Routing never widens such a pair to any worker. An
     `environment: appium` run of a scenario that mixes a grid target with a local one gets a 400 at
     dispatch, as the design asks.
+  - A run with no `--target` takes its primary target from the first file's first declared name.
+    `--tag` or `--exclude` can drop every scenario on that target. `run` then infers the primary
+    again, from the first scenario left. The showcase's Android device-group lane needs this fix: its
+    files list the iOS scenario first. The stale iOS primary was still acquired, and the stricter
+    `--backend android` check then exited 2. The check itself keeps its rule.
   - This unit removes `deviceProvider`, `cloudBatch`, `cloudBatchBudget`, `requires`, and the
     server's budget machinery. `run-set` requires a batch-provider `environment`. A request that
     still names `deviceBudget` gets a 400. The plain run request accepts
@@ -966,7 +971,7 @@ batch provider that packages `launchEnv`, `common/report/rows.py`, `templates/se
       component. A prelude rewritten as a component therefore loses its own directory as a base.
       Unit 2 found no prelude outside the tests, so no config changes.
     - `serve --backend` keeps its meaning; BE-0449 already deprecated it.
-- PR_PLACEHOLDER19 (Unit 5) — a scenario's phases take the words a target's hooks use: `setup` and
+- [#2194](https://github.com/bajutsu-e2e/bajutsu/pull/2194) (Unit 5) — a scenario's phases take the words a target's hooks use: `setup` and
   `cleanup`. The failed outcome is `failure` everywhere.
   - The scenario's `before` and `after` became `setup` and `cleanup`. A cleanup rule's `on` and a
     `capturePolicy` trigger's `result` take `failure` in place of `error`. The loader reads no old

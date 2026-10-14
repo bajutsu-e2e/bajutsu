@@ -55,6 +55,12 @@ def on_linux(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("bajutsu.run.cli.current_host_os", lambda: "linux")
 
 
+@pytest.fixture
+def on_macos(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("bajutsu.cli._shared.current_host_os", lambda: "darwin")
+    monkeypatch.setattr("bajutsu.run.cli.current_host_os", lambda: "darwin")
+
+
 # --- the shared backend filter ------------------------------------------------------------------
 
 
@@ -137,6 +143,7 @@ def _loaded() -> LoadedConfig:
     )
 
 
+@pytest.mark.usefixtures("on_macos")
 def test_only_the_scenario_over_the_target_limit_fails() -> None:
     scenarios = [_sc("single"), _sc("cross", targets=["app", "site"]), _sc("other")]
     eff = resolve(load_config(_CONFIG), "app")

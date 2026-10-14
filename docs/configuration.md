@@ -106,7 +106,7 @@ The shared groups hold the same fields on every platform:
 `defaults.platforms.<platform>`, and apply to that platform's targets alone. One file can hold
 defaults for each platform at once. The loader merges `defaults` into a target before it validates
 the target. A field the platform requires, such as `app.id`, may therefore come from the defaults.
-The merge follows four rules:
+The merge follows five rules:
 
 - A dictionary merges key by key, and the target's value wins.
 - A target clears an inherited value by writing `null`.

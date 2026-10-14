@@ -217,7 +217,7 @@ def _real_device_check(eff: Effective, actuator: str, udid: str) -> preflight.Ch
 
 
 def _capability_preflight(scenario: str, actuator: str, eff: Effective, udid: str) -> bool:
-    """Print the scenario's capability preflight and report whether it failed; exit 2 if missing.
+    """Print the scenario's capability preflight and report whether it failed.
 
     When a scenario file is provided, check whether it uses constructs the chosen backend can't
     perform — pure, no device needed (BE-0024). The live-route narrowing (BE-0238) keys on the raw
@@ -227,11 +227,7 @@ def _capability_preflight(scenario: str, actuator: str, eff: Effective, udid: st
     """
     if not scenario:
         return False
-    scenario_path = Path(scenario)
-    if not scenario_path.is_file():
-        typer.echo(f"scenario not found: {scenario}")
-        raise typer.Exit(2)
-    cap_reasons = check_scenarios(scenario_path, capabilities_for_run(actuator, eff, udid))
+    cap_reasons = check_scenarios(Path(scenario), capabilities_for_run(actuator, eff, udid))
     if not cap_reasons:
         return False
     typer.echo("capability preflight:")
@@ -284,6 +280,11 @@ def doctor(
     *environment* gate against a real host (BE-0304) skips that cost and its unrelated failure modes —
     the runner's own startup flakiness included.
     """
+    # Argument validation first: a `--scenario` that names no file is the caller's own input error,
+    # reported before the worker capability check could refuse the target on this host.
+    if scenario and not Path(scenario).is_file():
+        typer.echo(f"scenario not found: {scenario}")
+        raise typer.Exit(2)
     eff = _load_effective(config, target_name)
     worker = _load_device_worker_or_exit(worker_config)
     eff = _with_worker_device(eff, worker)
@@ -357,7 +358,7 @@ def doctor(
     # whose app server is down still faults on navigate (ERR_CONNECTION_REFUSED). Report it as a
     # fixable error and exit non-zero rather than surfacing a stack trace — doctor diagnoses, it
     # does not crash.
-    # The screen probe is the device path, which matches no runsOn condition until BE-0452 unit 11.
+    # The screen probe is the device path, which matches no runsOn condition until BE-0452 unit 9.
     _refuse_conditions(eff, backends)
     try:
         elements = _current_screen(actuator, udid, eff)

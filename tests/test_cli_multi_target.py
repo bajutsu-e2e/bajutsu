@@ -14,7 +14,10 @@ from pathlib import Path
 
 import pytest
 import typer
+from run_cli import invoke
+from typer.testing import CliRunner
 
+from bajutsu.cli import app
 from bajutsu.cli._shared import LoadedConfig
 from bajutsu.common.config import Effective, load_config, resolve
 from bajutsu.common.platform_lifecycle import ProvisionProfile
@@ -671,3 +674,84 @@ def test_a_real_iphone_group_is_refused_before_acquisition(
     with pytest.raises(typer.Exit):
         _reject_unshareable_groups([grouped], _effs(), "", [], "booted")
     assert "backend 'xcuitest' cannot share a device" in capsys.readouterr().out
+
+
+# --- an inferred primary follows `--tag` (the showcase's per-platform device-group lanes) ------
+
+_PER_PLATFORM_CONFIG = (
+    "targets:\n"
+    "  ios-main: {platform: ios, app: {id: com.example.main}}\n"
+    "  ios-companion: {platform: ios, app: {id: com.example.companion}}\n"
+    "  droid-main: {platform: android, app: {id: com.example.main}}\n"
+    "  droid-companion: {platform: android, app: {id: com.example.companion}}\n"
+)
+
+
+def _per_platform_files(tmp_path: Path) -> tuple[Path, list[str]]:
+    # The shape of demos/showcase's device_group_*.yaml: each file carries one device-group
+    # scenario per platform, iOS first, tagged so each lane selects its own with `--tag`.
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(_PER_PLATFORM_CONFIG, encoding="utf-8")
+    files = []
+    for stem in ("update", "companion"):
+        scn = tmp_path / f"{stem}.yaml"
+        scn.write_text(
+            "".join(
+                f"- name: {stem} ({prefix})\n"
+                f"  tags: [multi-target, {tag}]\n"
+                f"  targets: [[{prefix}-main, {prefix}-companion]]\n"
+                f"  primaryTarget: {prefix}-main\n"
+                f"  installs: [{prefix}-companion]\n"
+                "  steps:\n    - tap: { id: a }\n"
+                for prefix, tag in (("ios", "ios"), ("droid", "android"))
+            ),
+            encoding="utf-8",
+        )
+        files.append(str(scn))
+    return cfg, files
+
+
+@pytest.mark.parametrize(
+    ("host", "tag", "backend", "prefix"),
+    [
+        ("linux", "android", "android", "droid"),
+        ("darwin", "android", "android", "droid"),
+        ("linux", "android", "", "droid"),
+        ("darwin", "ios", "ios", "ios"),
+    ],
+)
+def test_an_inferred_primary_follows_the_scenarios_the_tag_leaves(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, host: str, tag: str, backend: str, prefix: str
+) -> None:
+    # `make -C demos/showcase/android e2e-device-group` infers the primary from the first file's
+    # first target, an iOS one its `--tag android` selects away. Kept, that target was still
+    # resolved and acquired, and `--backend android` was checked against its iOS platform and
+    # exited 2 (BE-0452 unit 4). The primary is re-inferred from the scenarios left instead.
+    monkeypatch.setattr("bajutsu.common.backends.current_host_os", lambda *_: host)
+    monkeypatch.setattr("bajutsu.run.cli.current_host_os", lambda *_: host)
+    seen: dict[str, object] = {}
+
+    def stop(scenarios: list[Scenario], target_effs: dict[str, Effective], *_: object) -> None:
+        seen["targets"] = set(target_effs)
+        seen["scenarios"] = [s.name for s in scenarios]
+        raise typer.Exit(7)
+
+    monkeypatch.setattr("bajutsu.run.cli._reject_unshareable_groups", stop)
+    cfg, files = _per_platform_files(tmp_path)
+    argv = ["run", *(a for f in files for a in ("--scenario", f)), "--tag", tag, "--udid"]
+    argv += ["booted", "--config", str(cfg)] + (["--backend", backend] if backend else [])
+    r = invoke(CliRunner(), app, argv)
+    assert r.exit_code == 7, r.output
+    assert seen["targets"] == {f"{prefix}-main", f"{prefix}-companion"}
+    assert seen["scenarios"] == [f"update ({prefix})", f"companion ({prefix})"]
+
+
+def test_a_backend_for_another_platform_is_still_refused(tmp_path: Path) -> None:
+    # The re-inference only follows the scenarios left: `--backend` naming a platform none of them
+    # drives is still the BE-0452 check's exit 2.
+    cfg, files = _per_platform_files(tmp_path)
+    argv = ["run", *(a for f in files for a in ("--scenario", f)), "--tag", "android"]
+    argv += ["--backend", "ios", "--config", str(cfg)]
+    r = invoke(CliRunner(), app, argv)
+    assert r.exit_code == 2
+    assert "--backend 'ios' does not match the target's platform 'android'" in r.output
