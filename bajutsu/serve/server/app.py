@@ -59,7 +59,7 @@ from bajutsu.serve.helpers import (
     range_reply,
     valid_run_id,
 )
-from bajutsu.serve.routes import ROUTES, Handle, Route
+from bajutsu.serve.routes import ROUTES, Handle, Route, json_body_cap
 from bajutsu.serve.server.file_object_store import FileObjectStore, PendingPut
 from bajutsu.serve.sessions import MACHINE
 from bajutsu.serve.state import ServeState
@@ -179,6 +179,34 @@ def _store_signature_ok(
     return store.signer.verify(
         method, key, content_type, expires, request.query_params.get("sig", "")
     )
+
+
+async def _json_body(request: Request, cap: int) -> dict[str, Any] | Response:
+    """A POST's JSON object, read at most *cap* bytes deep, or the error response to send instead.
+
+    Parsed the way the stdlib handler parses it (empty -> {}, malformed or non-object -> 400), so
+    both backends reject the same input the same way. The cap is checked against Content-Length
+    first and again while reading, so a chunked or lying body is cut off at *cap* rather than
+    buffered whole (413).
+    """
+    too_large = _result(({"error": f"request body over {cap} bytes"}, 413))
+    declared = request.headers.get("content-length", "")
+    if declared.isdigit() and int(declared) > cap:
+        return too_large
+    chunks: list[bytes] = []
+    received = 0
+    async for chunk in request.stream():
+        received += len(chunk)
+        if received > cap:
+            return too_large
+        chunks.append(chunk)
+    try:
+        parsed = json.loads(b"".join(chunks) or b"{}")
+    except json.JSONDecodeError:
+        return _result(({"error": "bad json"}, 400))
+    if not isinstance(parsed, dict):
+        return _result(({"error": "expected a JSON object"}, 400))
+    return parsed
 
 
 def _store_put_cap() -> int:
@@ -521,7 +549,10 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
     # --- login + OAuth round-trip (off_loop, set cookies) ---
 
     @app.post(_LOGIN_PATH)
-    async def login(body: dict[str, Any]) -> JSONResponse:
+    async def login(request: Request) -> Response:
+        body = await _json_body(request, json_body_cap(ROUTES, _LOGIN_PATH))
+        if isinstance(body, Response):
+            return body
         payload, status, sid = ops.login(state, str(body.get("token", "") or ""))
         resp = JSONResponse(payload, status_code=status)
         if sid is not None:
@@ -529,7 +560,10 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
         return resp
 
     @app.post(gate.OIDC_EXCHANGE_PATH)
-    async def oidc_exchange(body: dict[str, Any]) -> JSONResponse:
+    async def oidc_exchange(request: Request) -> Response:
+        body = await _json_body(request, json_body_cap(ROUTES, gate.OIDC_EXCHANGE_PATH))
+        if isinstance(body, Response):
+            return body
         # Mirror of the stdlib handler's `_post_oidc_exchange` (BE-0414 unit 1): a CI job presents
         # its OIDC token and gets a machine session cookie, so every later call in the pipeline is
         # an ordinary session request both backends already handle identically.
@@ -746,12 +780,9 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
                 # non-object -> 400) rather than via a typed `dict` param, so a bodyless POST (cancel,
                 # activate, restore) isn't forced to 422 and the two backends reject malformed input
                 # identically.
-                try:
-                    parsed = json.loads(await request.body() or b"{}")
-                except json.JSONDecodeError:
-                    return _result(({"error": "bad json"}, 400))
-                if not isinstance(parsed, dict):
-                    return _result(({"error": "expected a JSON object"}, 400))
+                parsed = await _json_body(request, route.max_body)
+                if isinstance(parsed, Response):
+                    return parsed
                 body = parsed
             ctx = _FastapiCtx(
                 request,

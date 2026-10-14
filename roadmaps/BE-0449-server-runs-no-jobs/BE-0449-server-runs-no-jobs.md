@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0449") |
-| Implementing PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167) (Unit 1, part 1 of 3), [#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168) (Unit 1, part 2 of 3), [#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170) (Unit 1, part 3 of 3), [#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171) (Unit 2) |
+| Implementing PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167) (Unit 1, part 1 of 3), [#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168) (Unit 1, part 2 of 3), [#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170) (Unit 1, part 3 of 3), [#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171) (Unit 2), [#2172](https://github.com/bajutsu-e2e/bajutsu/pull/2172) (Unit 4) |
 | Topic | Hosting the web UI |
 <!-- /BE-METADATA -->
 
@@ -149,7 +149,7 @@ This item does not change what a job does, how a verdict is decided, or the run 
 - [x] Local defaults
 - [x] Cancellation across the split
 - [ ] One-shot worker and wrapper
-- [ ] Live log stream and the routing executor
+- [x] Live log stream and the routing executor
 - [ ] Move `run`
 - [ ] Move `run-set` (the Device Farm batch)
 - [ ] Move `triage`
@@ -219,6 +219,33 @@ Log:
   defensive. A leased-job cancel needs workers at this version, since
   an older worker ignores the heartbeat's `cancel`. The SIGINT and SIGTERM mapping for
   `worker --once` arrives with unit 3.
+- [#2172](https://github.com/bajutsu-e2e/bajutsu/pull/2172) (Unit 4) — a queued job's console is live again. The worker posts its log lines
+  to a new `POST /api/worker/log` about once a second. It posts the tail before its result, within
+  five seconds. A stateful line masker hides credential shapes. It keeps a private key block masked
+  from BEGIN to END, across lines and batches. The server runs the per-line backstop again on each
+  posted line. Handoff request lines stay out of the live stream. A new read-only
+  `Repository.holds_lease` lets the route accept a batch from the lease holder alone. Any other
+  worker gets `409` and drops the job, as on a heartbeat `409`. One post carries at most 500 lines.
+  The server cuts a line past 8 KiB. Past 50,000 live lines or 16 MiB for one job, the server
+  publishes one truncation notice and drops the rest. Each server process keeps its own count. The worker drops a
+  batch it cannot post, and caps its queue of unsent lines. It stops streaming on a `401`, `404`,
+  or `405` from an older control plane. With a repository, the server swaps the post-completion bus
+  for a new `QueueLogBus`, on the local start too. `QueueLogBus` publishes the posted lines to an
+  in-memory bus. The new `BAJUTSU_REDIS_URL` switches that bus to `RedisLogBus`. `RedisLogBus` now
+  pushes a batch in one command. It also bounds the list's lifetime on every write. The in-memory
+  bus drops a finished job's channel once 256 later jobs have finished. The result route still
+  closes the stream. An idle stream also polls the jobs table. A job that ends with no close
+  reaching the bus thus still ends its stream. A viewer who opens a finished job reads the uploaded
+  `console.log`, as does a live viewer who received no line. A failing live bus falls back to that
+  post-completion read. `Job.kind` derives the job kind from `batch`, or from the subcommand that
+  `cmd` spawns. `RoutingExecutor` sends a kind in `queued_kinds` to `DbQueueExecutor`. A job of
+  unknown kind goes there too. Any other job goes to `LocalExecutor`. The server queues every kind,
+  which keeps today's behavior. The per-job artifact override refusal now asks where a `run` job
+  routes, not what type the executor has. The bucket-only shape and `--backend local` keep their
+  behavior. The worker now writes `console.log` into the run tree before
+  that tree uploads, through a new `before_upload` callback on `execute_job_spec`. The worker used
+  to write the file after the upload, so `console.log` never reached the artifact store. The live artifact stream for
+  `crawl` arrives with unit 8.
 
 ## References
 

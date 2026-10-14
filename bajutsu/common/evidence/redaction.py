@@ -127,6 +127,43 @@ def mask_credential_shapes(text: str) -> tuple[str, list[str]]:
     return text, matched
 
 
+_PEM_BEGIN = re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")
+_PEM_END = re.compile(r"-----END [A-Z ]*PRIVATE KEY-----")
+# How many lines a private key block may run before an END that never came is given up on. An RSA
+# 4096 key is about 50 lines of base64, so a longer block is not a key, and masking every later
+# line of a log would hide far more than any key.
+PEM_MAX_LINES = 200
+
+
+class LineCredentialMasker:
+    """`mask_credential_shapes` for text that arrives one line at a time (BE-0449).
+
+    The pattern backstop masks a whole private key block when it sees the BEGIN and END lines in
+    one text. A live log arrives line by line, so a per-line pass would mask the header and let the
+    key body through. This masker remembers that a block is open: every line up to the END line is
+    replaced whole, and a block with no END stops being masked after `PEM_MAX_LINES` lines.
+    """
+
+    def __init__(self) -> None:
+        self._in_pem = 0  # lines masked in the open block; 0 when no block is open
+
+    def mask(self, line: str) -> str:
+        """*line* with every credential shape masked, given the lines seen before it."""
+        if self._in_pem:
+            self._in_pem += 1
+            end = _PEM_END.search(line)
+            if end is not None:
+                self._in_pem = 0
+                return PLACEHOLDER + mask_credential_shapes(line[end.end() :])[0]
+            if self._in_pem <= PEM_MAX_LINES:
+                return PLACEHOLDER + ("\n" if line.endswith("\n") else "")
+            self._in_pem = 0  # no END within the bound: not a key, stop hiding the log
+        begin = _PEM_BEGIN.search(line)
+        if begin is not None and _PEM_END.search(line, begin.end()) is None:
+            self._in_pem = 1
+        return mask_credential_shapes(line)[0]
+
+
 def _as_str(value: Any) -> str | None:
     """A JSON field as text, or None when it is absent or another type."""
     return value if isinstance(value, str) else None

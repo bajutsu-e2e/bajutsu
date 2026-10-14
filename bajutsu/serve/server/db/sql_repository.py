@@ -772,6 +772,22 @@ class SqlRepository:
             session.commit()
             return _rowcount(renewed) == 1
 
+    def holds_lease(self, job_id: str, worker_id: str) -> bool:
+        from sqlalchemy import select
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import JobRecord
+
+        with Session(self._engine) as session:
+            held = session.scalar(
+                select(JobRecord.id).where(
+                    JobRecord.id == job_id,
+                    JobRecord.status == "leased",
+                    JobRecord.leased_by == worker_id,
+                )
+            )
+            return held is not None
+
     def cancel_requested(self, job_id: str, worker_id: str) -> bool:
         from sqlalchemy import select
         from sqlalchemy.orm import Session

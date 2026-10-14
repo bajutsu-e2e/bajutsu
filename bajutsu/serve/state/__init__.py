@@ -12,7 +12,7 @@ from ._functions import _scenarios_dir_for as _scenarios_dir_for
 from ._shared import _DEFAULT_ORG as _DEFAULT_ORG
 from .capture_session import CaptureSession
 from .config_binding import ConfigBinding
-from .job import Job
+from .job import JOB_KINDS, Job, JobKind
 from .job_registry import JobRegistry
 from .org_provider_settings import OrgProviderSettings
 from .provider_settings import ProviderSettings
@@ -22,10 +22,12 @@ from .session_manager import SessionManager
 from .store_bundle import StoreBundle
 
 __all__ = [
+    "JOB_KINDS",
     "MAX_SESSION_BINDINGS",
     "CaptureSession",
     "ConfigBinding",
     "Job",
+    "JobKind",
     "JobRegistry",
     "OrgProviderSettings",
     "Popen",

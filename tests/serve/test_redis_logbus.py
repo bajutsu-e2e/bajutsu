@@ -21,9 +21,11 @@ class FakeRedis:
         self._lists: dict[str, list[str]] = {}
         self._kv: dict[str, str] = {}
         self.ttls: dict[str, int] = {}  # records expire() calls so tests can assert key lifetimes
+        self.rpush_calls = 0  # round trips, so a batch can be asserted to be one push
 
-    def rpush(self, key: str, value: str) -> int:
-        self._lists.setdefault(key, []).append(value)
+    def rpush(self, key: str, *values: str) -> int:
+        self.rpush_calls += 1
+        self._lists.setdefault(key, []).extend(values)
         return len(self._lists[key])
 
     def lrange(self, key: str, start: int, end: int) -> list[object]:
@@ -153,3 +155,18 @@ def test_stream_drains_tail_written_just_before_done() -> None:
 
     got = list(RedisLogBus(_RaceRedis(), poll_interval=0.001).stream("j"))
     assert got == ["tail line"]  # the tail written at the done boundary is not lost
+
+
+def test_a_batch_is_one_push_and_bounds_the_list_before_close() -> None:
+    # BE-0449: a worker posts a batch at a time, and a job whose close never comes must not leave
+    # its lines in Redis forever, so every write sets the list's lifetime too.
+    r = FakeRedis()
+    bus = RedisLogBus(r, poll_interval=0.001, ttl=60)
+    bus.publish_many("j1", ["a\n", "b\n", "c\n"])
+    assert r.rpush_calls == 1
+    assert r.ttls == {"bajutsu:log:j1": 60}
+    bus.publish_many("j1", [])  # nothing to write: no round trip
+    assert r.rpush_calls == 1
+    bus.publish("j1", "d\n")
+    bus.close("j1")
+    assert list(bus.stream("j1")) == ["a\n", "b\n", "c\n", "d\n"]

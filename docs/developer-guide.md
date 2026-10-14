@@ -1116,8 +1116,9 @@ bundling the job registry, the session manager, the scenario store, and the prov
 `routes.py` declares the routes as data, so both the standard-library handler (`handler.py`) and the
 FastAPI application (`server/app.py`) serve the same route table. `executor.py` declares the
 `RunExecutor` seam where local and hosted deployment diverge: `LocalExecutor` runs each job on a
-daemon thread, while `DbQueueExecutor` enqueues it for a remote `bajutsu worker`. The execution body
-in `jobs.py` stays identical on both sides.
+daemon thread, while `DbQueueExecutor` enqueues it for a remote `bajutsu worker`. Job kinds move
+from the server to the workers one at a time (BE-0449). Meanwhile `RoutingExecutor` reads
+`Job.kind` and picks one of the two executors. The execution body in `jobs.py` stays identical on both sides.
 
 **`mcp/`** exposes `run` and `doctor` as Model Context Protocol (MCP) tools and a run's evidence as
 MCP resources, so an editor-side agent reaches the deterministic paths without a shell.

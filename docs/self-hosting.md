@@ -888,6 +888,34 @@ Simulator, uploads the `runs/<id>/` tree (including `console.log`), and posts th
 `/api/worker/result`. The control plane records the finished run into Postgres — the worker needs no
 database access.
 
+The browser shows a queued job's console live (BE-0449). While a job runs, the worker posts its new
+log lines to `/api/worker/log` about once a second. The worker masks credential shapes first. A
+private key block stays masked up to its END line. The control plane accepts a batch
+from the lease holder alone. Any other worker gets `409` and drops the job, as on a heartbeat `409`.
+One post carries at most 500 lines and 4 MiB; the worker splits a larger batch, and the control plane
+refuses a larger body with `413` before reading it. The control plane cuts a line longer than 8 KiB. A job may
+publish 50,000 live lines or 16 MiB. Past that, a single truncation notice replaces the rest. Each line goes
+to the job's Server-Sent Events (SSE) stream. The worker's result closes the stream. The worker
+logs and drops a batch it cannot post. A lost batch never stops or delays the job.
+
+The live lines serve a viewer who watches the job while it runs. The uploaded `console.log` stays
+the durable copy of the log:
+
+- A viewer who opens a finished job gets `console.log` when it exists.
+- A viewer who watched live gets `console.log` at the end when no live line reached that viewer.
+- A viewer who received some live lines does not get them again from `console.log`.
+
+Live logs on more than one control-plane replica need `BAJUTSU_REDIS_URL`. One process keeps the
+live lines in memory. Replicas behind a load balancer need a shared store instead:
+
+- Set `BAJUTSU_REDIS_URL` on every replica, for example `redis://cache:6379/0`.
+- Install the `redis` package beside the server extras (`pip install redis`).
+
+A worker's post and a browser's stream then meet in Redis, whatever replica each one reaches.
+Without Redis, a browser misses the lines a worker posted to another replica. Each replica applies
+the cap to its own tally. A deployment with a bucket and no database runs jobs in its own process. That
+deployment ignores `BAJUTSU_REDIS_URL`.
+
 A cancel reaches a job whether the job waits in the queue or runs on a worker. The control plane
 finds the job in the jobs table. A cancel thus reaches a job queued before a restart too.
 

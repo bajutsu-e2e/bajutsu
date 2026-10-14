@@ -5,12 +5,29 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from bajutsu.common.evidence.redaction import mask_credential_shapes
 from bajutsu.serve.helpers import valid_run_id, valid_sha256
 from bajutsu.serve.jobs import persist_run
 from bajutsu.serve.orgs import DEFAULT_ORG
 from bajutsu.serve.server.object_store import baseline_prefix, org_prefix, upload_store_key
 from bajutsu.serve.state import ServeState
 from bajutsu.serve.upload_artifacts import ARTIFACT_KINDS, OVERRIDE_KINDS, artifact_store_key
+
+# Bounds on one `/api/worker/log` post (BE-0449). Every line is held in the log bus until the job's
+# stream expires, so an unbounded post would let one worker grow the server's memory (or a shared
+# Redis) at will. A worker flushes about once a second, so 500 lines is far above a normal run's
+# rate, and a line past 8 KiB is a dumped payload, not a log line a person reads in the console.
+WORKER_LOG_MAX_LINES = 500
+WORKER_LOG_MAX_LINE_CHARS = 8192
+# The raw-byte bound on one post, enforced before the body is read. A full batch of maximal plain
+# lines (500 x 8 KiB, about 3.9 MiB once quoted) fits in one post. JSON escapes a non-ASCII or
+# control character to `\uXXXX`, up to 12 bytes per character, so the worker also splits a batch by
+# its encoded size (`WORKER_LOG_BATCH_BYTES`) and a well-behaved worker never reaches this bound.
+WORKER_LOG_MAX_BODY_BYTES = 4 * 1024 * 1024
+# The lines' share of one post; the rest is left for the envelope (`worker_id`, `job_id`, the keys).
+WORKER_LOG_BATCH_BYTES = WORKER_LOG_MAX_BODY_BYTES - 64 * 1024
+# Published once, in place of the lines a job posts past its live budget of lines or bytes.
+LIVE_LOG_TRUNCATED = "[live log truncated; see console.log]\n"
 
 
 def _clean_capabilities(raw: Any) -> list[str]:
@@ -155,6 +172,43 @@ def worker_heartbeat(state: ServeState, worker_id: str, job_id: str) -> tuple[di
     return {"error": "lease lost or not held by this worker"}, 409
 
 
+def worker_log(state: ServeState, body: dict[str, Any]) -> tuple[dict[str, Any], int]:
+    """Publish a batch of a leased job's log lines to the live stream (BE-0449).
+
+    Accepted only from the worker holding the lease, the same owner test as the heartbeat, so a
+    worker whose lease was reclaimed cannot write into the stream of the job's next attempt; it gets
+    409 and treats it as a lost lease. A batch over `WORKER_LOG_MAX_LINES` is refused whole with 413,
+    and a line over `WORKER_LOG_MAX_LINE_CHARS` is cut to that length. Past the job's live budget
+    of lines or bytes (`ServeState.live_log_budget`, counted per server process), the lines are
+    dropped and one `LIVE_LOG_TRUNCATED` notice is published instead. Each line passes the credential-shape
+    backstop here too, behind the worker's own masking. The uploaded ``console.log`` stays the
+    durable copy of the log; these lines are the live view of it.
+    """
+    if state.repository is None:
+        return {"error": "server backend has no database configured"}, 503
+    worker_id = body.get("worker_id", "")
+    job_id = body.get("job_id", "")
+    lines = body.get("lines")
+    if not worker_id:
+        return {"error": "worker_id is required"}, 400
+    if not job_id:
+        return {"error": "job_id is required"}, 400
+    if not isinstance(lines, list) or not all(isinstance(line, str) for line in lines):
+        return {"error": "lines must be a list of strings"}, 400
+    if len(lines) > WORKER_LOG_MAX_LINES:
+        return {"error": f"at most {WORKER_LOG_MAX_LINES} lines per post"}, 413
+    if not state.repository.holds_lease(job_id, worker_id):
+        return {"error": "lease lost or not held by this worker"}, 409
+    # Mask before cutting, so a credential straddling the bound is matched whole, not posted in part.
+    masked = [mask_credential_shapes(line)[0][:WORKER_LOG_MAX_LINE_CHARS] for line in lines]
+    allowed, crossed = state.live_log_budget.admit(job_id, masked)
+    published = masked[:allowed]
+    if crossed:
+        published.append(LIVE_LOG_TRUNCATED)
+    state.logbus.publish_many(job_id, published)
+    return {"ok": True}, 200
+
+
 def worker_result(state: ServeState, body: dict[str, Any]) -> tuple[dict[str, Any], int]:
     """Record a finished job's result (called by the worker after a run completes).
 
@@ -192,6 +246,7 @@ def worker_result(state: ServeState, body: dict[str, Any]) -> tuple[dict[str, An
         return {"error": "job is no longer leased by this worker; result ignored"}, 409
     _persist_worker_run(state, info, result, ok=not failed)
     state.logbus.close(job_id, json.dumps(result))
+    state.live_log_budget.forget(job_id)
     return {"ok": True}, 200
 
 
