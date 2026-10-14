@@ -23,10 +23,12 @@ from fastapi.testclient import TestClient
 
 from bajutsu import serve as srv
 from bajutsu.serve import jobs
+from bajutsu.serve.capabilities import machine_capability
 from bajutsu.serve.cli import worker as worker_mod
 from bajutsu.serve.operations._common import NO_WORKER_NOTICE
 from bajutsu.serve.operations.dispatch import _register_and_dispatch
 from bajutsu.serve.server.app import make_app
+from bajutsu.serve.server.local_keys import read_machine_id
 from bajutsu.serve.server.worker_job import execute_job_spec
 from bajutsu.serve.state import Job, ServeState
 
@@ -161,8 +163,9 @@ class _StopLoop(Exception):
     """Ends the worker's poll loop once the queue is drained."""
 
 
-def _worker_through(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Run the real `bajutsu worker` loop against *client* until a lease comes back empty."""
+def _worker_through(client: TestClient, monkeypatch: pytest.MonkeyPatch, project: Path) -> None:
+    """Run the real `bajutsu worker` loop against *client* until a lease comes back empty, on the
+    machine of the server whose runs directory is in *project*."""
 
     def post(url: str, body: dict[str, Any], **_kw: Any) -> tuple[int, Any]:
         path = url.removeprefix("http://cp")
@@ -183,6 +186,7 @@ def _worker_through(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None
             capabilities="",
             token="",
             worker_config=None,
+            server_state_dir=project / ".bajutsu",
             once=None,
         )
 
@@ -230,7 +234,7 @@ def test_a_worker_runs_a_queued_triage_and_the_server_serves_its_result(
     assert spec["cmd"][1:4] == ["-m", "bajutsu", "triage"]
     assert client.get(f"/api/jobs/{job_id}").json()["notice"] == NO_WORKER_NOTICE
 
-    _worker_through(client, monkeypatch)
+    _worker_through(client, monkeypatch, tmp_path)
 
     finished = state.repository.get_job(job_id)
     assert finished is not None and finished["status"] == "done"
@@ -294,7 +298,7 @@ def test_ai_triage_gets_the_stored_key_through_the_lease_alone(
     assert queued is not None and "--ai" in queued["spec"]["cmd"]
     assert _API_KEY not in json.dumps(queued)
 
-    _worker_through(client, monkeypatch)
+    _worker_through(client, monkeypatch, tmp_path)
 
     finished = state.repository.get_job(job_id)
     assert finished is not None and finished["status"] == "done", finished
@@ -365,7 +369,7 @@ def test_cancelling_a_queued_triage_keeps_it_from_any_worker(
     row = state.repository.get_job(job_id)
     assert row is not None and row["status"] == "cancelled"
 
-    _worker_through(client, monkeypatch)
+    _worker_through(client, monkeypatch, tmp_path)
 
     assert not (tmp_path / "runs" / _RUN_ID / "triage.json").exists()
 
@@ -374,7 +378,8 @@ def test_cancelling_a_leased_triage_reaches_its_worker(tmp_path: Path) -> None:
     state = _local_start(tmp_path, _project(tmp_path))
     client = TestClient(make_app(state))
     job_id = _start_triage(client).json()["jobId"]
-    lease = client.post("/api/worker/lease", json={"worker_id": "w1", "capabilities": []})
+    here = machine_capability(read_machine_id(tmp_path / ".bajutsu"))
+    lease = client.post("/api/worker/lease", json={"worker_id": "w1", "capabilities": [here]})
     assert lease.status_code == 200 and lease.json()["job_id"] == job_id
     assert client.post(f"/api/jobs/{job_id}/cancel").status_code == 200
     beat = client.post("/api/worker/heartbeat", json={"worker_id": "w1", "job_id": job_id})

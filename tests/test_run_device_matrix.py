@@ -443,3 +443,73 @@ def test_installed_browser_installs_the_engine_before_reading_its_version(
     monkeypatch.setattr("bajutsu.run.device_matrix.ensure_web_runtime", broken)
     with pytest.raises(DeviceReadError, match="could not install webkit"):
         installed_browser(["web"], read)("webkit")
+
+
+def test_the_run_directory_is_owner_only_before_the_first_cell_writes(
+    tmp_path: Path, harness: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    modes: list[int | None] = []
+
+    def pool(udids: list[str], _backends: object, _eff: object, run_dir: Path, **_k: object):  # type: ignore[no-untyped-def]
+        parent = run_dir.parent
+        modes.append(parent.stat().st_mode & 0o777 if parent.exists() else None)
+        return object(), lambda: None
+
+    monkeypatch.setattr("bajutsu.run.cli.device_pool", pool)
+    args = _args(tmp_path, "{os: '>=17 <19'}", "- name: s\n  steps: []\n")
+    result = invoke(runner, app, args)
+    assert result.exit_code == 0, result.output
+    assert modes and set(modes) == {0o700}
+
+
+def test_two_web_pools_differing_only_by_engine_both_shut_down(
+    tmp_path: Path, harness: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from bajutsu.common.config import web_engine
+
+    monkeypatch.setattr("bajutsu.cli._shared.select_actuator", lambda backends: "playwright")
+    monkeypatch.setattr("bajutsu.cli._shared.ensure_web_runtime", lambda *a: None)
+    monkeypatch.setattr("bajutsu.run.cli.ensure_web_runtime", lambda *a: None)
+    opened: list[str] = []
+    closed: list[str] = []
+
+    def pool(udids: list[str], _backends: object, eff: Any, run_dir: Path, **_k: object):  # type: ignore[no-untyped-def]
+        engine = web_engine(eff)
+        opened.append(engine)
+        return object(), lambda: closed.append(engine)
+
+    monkeypatch.setattr("bajutsu.run.cli.device_pool", pool)
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "targets:\n"
+        "  site:\n    platform: web\n    app: {url: 'http://localhost:1/'}\n"
+        "    runsOn: {browser: {engine: [chromium]}}\n"
+        "  admin:\n    platform: web\n    app: {url: 'http://localhost:2/'}\n"
+        "    runsOn: {browser: {engine: [webkit]}}\n",
+        encoding="utf-8",
+    )
+    worker = tmp_path / "worker.yaml"
+    worker.write_text("version: 1\ndrivers: [playwright]\n", encoding="utf-8")
+    file = tmp_path / "s.yaml"
+    file.write_text("- name: s\n  targets: [site, admin]\n  steps: []\n", encoding="utf-8")
+    result = invoke(
+        runner,
+        app,
+        [
+            "run",
+            "--target",
+            "site",
+            "--scenario",
+            str(file),
+            "--worker-config",
+            str(worker),
+            "--config",
+            str(cfg),
+            "--runs-dir",
+            str(tmp_path / "runs"),
+            "--workers",
+            "2",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert sorted(opened) == sorted(closed) == ["chromium", "webkit"]

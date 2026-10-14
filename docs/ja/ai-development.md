@@ -1129,17 +1129,17 @@ Bajutsu のコメントは、すでに「何を」ではなく「なぜ」を書
 例(結果に畳み、導出は項目側に残した形)。
 
 ```python
-# A retry forces the device recovery `erase: true` would give. Skipped on `reinstall: overwrite`
-# (the scenario needs its app data preserved) and on the operator's `--no-erase`; a CLI-resolved
-# `erase: false` is NOT the same signal (BE-0353).
+# A retry forces the device recovery `erase: true` would give. Skipped on a merged `reinstall:
+# overwrite`, from the scenario or its target (the app data must survive), and on the operator's
+# `--no-erase`; a CLI-resolved `erase: false` is NOT the same signal (BE-0353).
 ```
 
 次の形にはしません。
 
 ```python
-# Skipped when the scenario declares `reinstall: overwrite` — its explicit declaration that it
-# needs its app's data container preserved across a lease — since forcing `erase` would silently
-# override exactly the precondition the scenario was written against. NOT skipped on
+# Skipped when the merged `reinstall` is `overwrite` — the scenario's, or its target's default — an
+# explicit declaration that the app's data container must survive a lease, since forcing `erase`
+# would silently override exactly the precondition the scenario was written against. NOT skipped on
 # `preconditions.run.erase is False`: by the time a scenario reaches here, the CLI has already resolved
 # every scenario's `erase` to a concrete bool — most commonly `False`, the built-in default a
 # scenario never asked for — so a guard on that value would silently disable this whole unit on the

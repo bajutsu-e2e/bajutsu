@@ -362,7 +362,7 @@ BE-0401 と BE-0406 は下記のキーをエイリアスなしで削除しまし
 | `enabled: true` | マッピング（または `systemAlertHandling: true`）。マッピングは常に ON |
 | `alertHandling:` / `dismissAlerts:` | `preconditions.run.systemAlertHandling:` |
 | シナリオのトップレベルの `systemAlertHandling:` / `iosTipKitHandling:` | `preconditions.run.systemAlertHandling:` / `preconditions.run.tipKitHandling:`（BE-0452） |
-| `--alert-labels "Allow,OK"` / `--alert-instruction "Allow,OK"` | シナリオまたはターゲット config の `rules` エントリ。プロンプトと選択の組をフラグの値 1 つで読みやすく運べないため、フラグは無い。serve の HTTP API に `alertLabels` を載せた `run` リクエストは、`systemAlertHandling.rules` を名指しする 400 で拒否される |
+| `--alert-labels "Allow,OK"` / `--alert-instruction "Allow,OK"` | シナリオまたはターゲット config の `rules` エントリ。プロンプトと選択の組をフラグの値 1 つで読みやすく運べないため、フラグは無い。serve の HTTP API に `alertLabels` を載せた `run` リクエストは、`preconditions.run.systemAlertHandling.rules` を名指しする 400 で拒否される |
 | `--alert-instruction "tap Allow"` | `--alert-vision-instruction "tap Allow"`（`record` / `crawl` 専用。`run` は BE-0402 で廃止） |
 | `--alert-handling` / `--dismiss-alerts` | `--system-alert-handling` |
 
@@ -1510,11 +1510,13 @@ showcase のデモは、この 2 つの流れを iOS と Android の両方で実
 |---|---|---|
 | `method` | str | HTTP メソッド（`GET`, `POST`, …） |
 | `url` | str | 完全一致の URL（エンドポイント） |
-| `urlMatches` | str | URL への正規表現 / 部分一致（クエリ文字列はここに含める） |
+| `urlMatches` | str | URL 全体への正規表現 / 部分一致 |
 | `path` | str | 完全一致のパス（クエリは無視） |
 | `pathMatches` | str | パスへの正規表現 |
+| `query` | map | URL のクエリパラメータに対するキーと値の辞書（下記「キーと値の辞書」を参照） |
+| `body` | map | JSON の**リクエストボディ**に対するキーと値の辞書（下記「キーと値の辞書」を参照） |
 | `status` | int | レスポンスのステータスコード |
-| `bodyMatches` | str | **リクエストボディ**への正規表現 / 部分一致 |
+| `bodyMatches` | str | 生の**リクエストボディ**への正規表現 / 部分一致 |
 | `count` | int | 一致した通信数。アサーションでは **厳密**、`wait` では **下限** |
 
 ```yaml
@@ -1524,21 +1526,79 @@ showcase のデモは、この 2 つの流れを iOS と Android の両方で実
 ```
 
 > `count` はマッチフィールド **ではありません**。`method` / `url` / `urlMatches` / `path` /
-> `pathMatches` / `status` / `bodyMatches` の少なくとも 1 つが必要です。
+> `pathMatches` / `query` / `body` / `status` / `bodyMatches` の少なくとも 1 つが必要です。
 > （[`demos/showcase/scenarios/network_mock.yaml`](../../demos/showcase/scenarios/network_mock.yaml) 実物）
+
+#### キーと値の辞書（`query` と `body`）
+
+URL やボディに対する正規表現は、意味の変わらない変更でも壊れます。`urlMatches: "page=2&sort=asc"` は、
+アプリがパラメータの順序を入れ替えると失敗します。`bodyMatches: '"id":\s*42'` は、JSON が整形されると
+失敗します。`query` と `body` の辞書は、正規表現の代わりにキーを名指しします
+（[BE-0463](../../roadmaps/BE-0463-network-expect-dict-matchers/BE-0463-network-expect-dict-matchers-ja.md)）。
+そのため、順序や整形の違いに左右されません。
+
+```yaml
+expect:
+  - request:
+      method: POST
+      path: /api/orders
+      query: { page: "2", sort: { $matches: "^(asc|desc)$" } }
+      body:
+        user: { id: "42", email: { $exists: true } }
+        items: [ { sku: A-1, qty: "1" } ]
+        coupon: { $exists: false }
+```
+
+- **`query`**：URL のクエリ文字列を検査します。キーと値は URL デコードしてから比較します（`+` は空白として
+  読みます）。値が空または欠けたキー（`?debug`、`?page=`）は、値 `""` を持つものとして扱います。同じキーが
+  繰り返し現れる場合は、どれか 1 つが値を満たせば一致します。
+- **`body`**：JSON として解析したリクエストボディを検査し、入れ子の map とリストまで再帰的にたどります。
+  JSON でない、オブジェクトでない、あるいは存在しないボディは、どの `body` 条件にも一致しません。
+
+各値は、次の 4 つの形のどれかで書きます。
+
+| 形 | 例 | 一致する条件 |
+|---|---|---|
+| スカラー | `id: "42"` | JSON 値のテキスト形式が文字列と等しいこと（`"42"` は数値 `42` に一致します。真偽値と null は `true` / `false` / `null` として読みます） |
+| 演算子 map | `id: { $matches: "^4" }` | すべての演算子が成り立つこと。`$matches` はテキスト形式を正規表現で検索し、`$exists: true` / `false` はキーの有無を要求します |
+| 通常の map | `user: { id: "42" }` | JSON 値がオブジェクトで、列挙したキーがそれぞれ成り立つこと。列挙していないキーは無視します |
+| リスト | `tags: [a, b]` | JSON 値が同じ長さの配列で、各要素が同じ位置のマッチャを満たすこと |
+
+クエリ文字列には入れ子がないため、`query` に書けるのはスカラーと演算子 map だけです。
+
+辞書が文法に反するとき、シナリオの読み込みは失敗します。
+
+- **引用符のないスカラー**：`qty: 1`、`ok: true`、`note: null` のような値は拒否します。書き間違えた値が
+  黙って一致しなくなるのを防ぐためです。`qty: "1"` のように引用符で囲んでください。
+- **空の辞書**：`query: {}` や `body: {}` は、すべての通信に一致してしまいます。
+- **混在した演算子 map と未知の演算子**：`$` で始まるキーと通常のキーを混ぜた map は拒否します。
+  `$matches` と `$exists` 以外の演算子も拒否します。
+- **最上位の演算子**：`query` と `body` の最上位のキーは、常にフィールド名を表します。
+
+名前自体が `$` で始まるフィールドは、`$` を重ねて書きます。たとえば `$$ref` はフィールド `$ref` を検査します。
+
+アサーションが成り立たず、エンドポイントとメソッドの条件を満たす通信がちょうど 1 件だったとします。この
+場合、メッセージは成り立たなかった最初のキーを示します（例：`query.page: expected "2", got "3"`）。候補が 0 件または複数件のとき、あるいは
+`count` を指定したときは、従来どおり件数のメッセージを出します。
+
+`query` と `body` は、このマッチャを使うすべての場所で使えます。対象は `request`、`event`、
+`requestSequence`、`responseSchema.request`、`until: { request }` です。値には `${vars.*}` /
+`${secrets.*}` トークンを書けます。`mocks` では、どちらのフィールドもいまのところ拒否します。アプリ内の
+マッチャがこれらのフィールドを無視し、シナリオの記述より多くの通信をスタブしてしまうためです。
 
 ### `event`（イベントアサーション）
 
 `event` は、画面には現れない振る舞い、すなわちアプリが**送った**分析 / テレメトリイベントを表明します
 （[BE-0048](../../roadmaps/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions-ja.md)）。
 `request` が読むのと同じ観測済み通信に対する純粋な検査なので（`--network` 実行フラグが必要）、判定は機械のみで LLM は介在しません。
-イベントの**エンドポイント**（`request` と同じ `method` / `url` / `urlMatches` / `path` / `pathMatches` マッチャ）でタイムラインを絞り、
-続けて構造化した**リクエストボディのフィールド**で絞り、残った通信数を count 演算子と突き合わせます。
+まず、イベントの**エンドポイント**（`request` と同じ `method` / `url` / `urlMatches` / `path` / `pathMatches` マッチャ）でタイムラインを絞ります。
+続けて `query` / `body` の辞書で絞り、残った通信数を count 演算子と突き合わせます。
 
 | フィールド | 型 | 説明 |
 |---|---|---|
 | `method` / `url` / `urlMatches` / `path` / `pathMatches` | str | エンドポイントのマッチャ（AND）。意味は `request` と同じ |
-| `body` | map | 各 `key: value` が JSON リクエストボディに存在し、その値と等しいこと。テキストとして比較する（`amount: "300"` は JSON の数値 `300` に一致。JSON の真偽値 / null は `"true"` / `"false"` / `"null"` に一致） |
+| `query` | map | URL のクエリパラメータに対するキーと値の辞書。文法は `request` と同じ（上記「キーと値の辞書」を参照） |
+| `body` | map | JSON リクエストボディに対するキーと値の辞書。文法は `request` と同じ。平坦な形は最上位のフィールドをテキストとして比較します（`amount: "300"` は JSON の数値 `300` に一致）。入れ子の map、リスト、`$matches`、`$exists` も使えます |
 | `count` | object | 期待する多重度。`equals` / `atLeast` / `atMost` の **いずれか 1 つ**。省略時は **1 件以上** |
 
 ```yaml
@@ -1550,9 +1610,10 @@ expect:
       count: { equals: 1 }
 ```
 
-> エンドポイントのフィールドか `body` の少なくとも一方が必須で、イベントは必ず何かを特定します。JSON でない、
-> オブジェクトでない、あるいは存在しないリクエストボディは `body` 条件に一致しません（推測せず失敗します）。
-> ボディの値は DSL の他の箇所と同じく `${vars.*}` / `${secrets.*}` トークンを使えます。
+> エンドポイントのフィールド、`query`、`body` の少なくとも 1 つが必須で、イベントは必ず何かを特定します。
+> JSON でない、オブジェクトでない、あるいは存在しないリクエストボディは `body` 条件に一致しません（推測せず
+> 失敗します）。辞書の値は DSL の他の箇所と同じく `${vars.*}` / `${secrets.*}` トークンを使えます。単独の
+> `$` は演算子を表すため、`$` で始まる最上位の `body` キーは `$$` と書きます。
 
 ### `requestSequence`（順序付きリクエスト）
 

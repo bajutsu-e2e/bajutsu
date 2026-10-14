@@ -27,6 +27,7 @@ from bajutsu.cli._shared import (
     _load_config_with_source,
     _load_device_worker_or_exit,
     _log_subsystem_default,
+    _precondition_checks,
     _refuse_bad_preconditions,
     _reject_url_udid,
     _resolve_browser,
@@ -34,6 +35,7 @@ from bajutsu.cli._shared import (
     _start_launch_server_or_exit,
     _with_headed,
     _with_worker_device,
+    _without_engine_condition,
     parse_engine_flag,
     resolve_system_alert_handling_flag,
 )
@@ -80,6 +82,7 @@ from bajutsu.common.run_meta.files import DEFAULT_RUNS_DIR
 from bajutsu.common.run_meta.id import new_run_id
 from bajutsu.common.runner import (
     device_pool,
+    prepare_run_dir,
     report_run_matrix,
     reroot_evidence,
     run_all,
@@ -411,6 +414,8 @@ def _resolve_config_and_engines(
     engines = _parse_browsers(browsers)
     if len(engines) == 1:
         eff = _resolve_browser(eff, engines[0])
+    elif engines:
+        eff = _without_engine_condition(eff)  # each matrix pass sets its own engine (`run_pass`)
     return loaded, eff, config_source, engines
 
 
@@ -1094,20 +1099,12 @@ def _check_preconditions_or_exit(
     """Refuse a scenario whose preconditions no driven target can honor, before any device work.
 
     Each scenario is checked against every target it drives: its declared `targets`, else the run's
-    own (`_refuse_bad_preconditions` says what is checked).
+    own (`_precondition_checks`; `_refuse_bad_preconditions` says what is checked).
 
     Raises:
         typer.Exit: Any scenario has a problem (exit code 2).
     """
-    effs = {target_name: eff}
-    checks: list[tuple[Scenario, list[Effective]]] = []
-    for s in scenarios:
-        # An unknown name is left to the target checks that follow, which say what is wrong with it.
-        known = [n for n in s.target_names if n in effs or n in loaded.config.targets]
-        for name in known:
-            if name not in effs:
-                effs[name] = _effective_for(loaded, name)
-        checks.append((s, [effs[name] for name in known] if s.target_names else [eff]))
+    checks = _precondition_checks(loaded, scenarios, target_name, eff)
     # Read, not validated: the primary may be a stale inference that `--tag` / `--exclude` is about
     # to replace, and `--backend` is checked against the primary the run settles on.
     fake = [b.strip() for b in backend.split(",") if b.strip()] == ["fake"]
@@ -2431,6 +2428,9 @@ def _dispatch_runs(
     does under `run_dir/<engine>/`. A run no device fits fails without a lease, and a run an open
     range left without a device is a not-applicable record, which the manifest lists apart.
     """
+    # Owner-only up front (BE-0131): the sink creating run_dir/run-NN/ would otherwise materialize
+    # the run directory above it at the ambient umask for the whole run.
+    prepare_run_dir(plan.runs_dir, plan.run_id)
     executed: dict[int, RunResult] = {}  # keyed by id() of the record that ran
     for number, cell in enumerate(matrix.cells, start=1):
         prefix = f"run-{number:02d}"
@@ -2594,7 +2594,9 @@ def _run_cell(
             step_gate=plan.step_gate,
         )
     finally:
-        _close_pools({f"{k[0]} {','.join(k[1])}": v for k, v in pools.items()})
+        # The engine stays in the label: two web pools can differ only by it, and a shared label
+        # would drop one pool's shutdown.
+        _close_pools({f"{k[0]} {','.join(k[1])} {k[2]}".rstrip(): v for k, v in pools.items()})
 
 
 def _write_zip(manifest: Path) -> None:

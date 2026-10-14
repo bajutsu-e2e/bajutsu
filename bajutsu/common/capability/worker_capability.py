@@ -49,16 +49,23 @@ BATCH_PROVIDERS: frozenset[str] = frozenset({"devicefarm"})
 ENVIRONMENTS: frozenset[str] = frozenset({LOCAL, APPIUM, *BATCH_PROVIDERS})
 
 # The routing-token prefixes a worker fills in itself: `environment:<name>` for a provider it
-# registered (BE-0448), and `host:<os>` for the machine it runs on (BE-0450). Reserved, so every
-# hand-written token input — a worker's override — rejects them: a hand-written one could pull a job
-# onto a worker that cannot run it, or route a job nowhere. Defined here, beside the environment
-# names, so the core can check them without importing the server package.
+# registered (BE-0448), `host:<os>` for the operating system it runs on (BE-0450), and
+# `machine:<id>` for the server machine it shares, whose jobs name files by their paths there
+# (BE-0449). Reserved, so every hand-written token input — a worker's override — rejects them: a
+# hand-written one could pull a job onto a worker that cannot run it, or route a job nowhere. Defined
+# here, beside the environment names, so the core can check them without importing the server
+# package.
 ENVIRONMENT_ROUTING_PREFIX = "environment:"
 HOST_ROUTING_PREFIX = "host:"
-RESERVED_ROUTING_PREFIXES: tuple[str, ...] = (ENVIRONMENT_ROUTING_PREFIX, HOST_ROUTING_PREFIX)
+MACHINE_ROUTING_PREFIX = "machine:"
+RESERVED_ROUTING_PREFIXES: tuple[str, ...] = (
+    ENVIRONMENT_ROUTING_PREFIX,
+    HOST_ROUTING_PREFIX,
+    MACHINE_ROUTING_PREFIX,
+)
 RESERVED_ROUTING_REASON = (
-    "the environment: and host: prefixes are reserved: a worker advertises them itself, from its "
-    "worker.yaml environment and the machine it runs on"
+    "the environment:, host:, and machine: prefixes are reserved: a worker advertises them itself, "
+    "from its worker.yaml environment, the machine it runs on, and the server machine it shares"
 )
 
 

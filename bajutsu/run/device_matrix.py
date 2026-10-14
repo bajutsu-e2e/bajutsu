@@ -376,10 +376,16 @@ def first_run_device(
     if problems:
         raise ValueError("\n".join(problems))
     engines: list[str] = []
-    if eff.platform == "web" and "browser.version" in eff.conditions:
-        # The first run takes the first engine, which actuator selection already installed.
-        listed = eff.conditions.get("browser.engine") or web_engine(eff)
-        engines = [listed[0] if isinstance(listed, list) else listed]
+    conditions = dict(eff.conditions)
+    if eff.platform == "web":
+        # The first run takes the first listed engine, which actuator selection already installed;
+        # the rest are dropped so no run is formed for an engine never read.
+        listed = conditions.get("browser.engine") or web_engine(eff)
+        engine = listed[0] if isinstance(listed, list) else listed
+        if "browser.engine" in conditions:
+            conditions["browser.engine"] = engine
+        if "browser.version" in conditions:
+            engines = [engine]
     try:
         devices = target_pool(
             eff,
@@ -391,7 +397,7 @@ def first_run_device(
             read_browser=read_browser,
         )
         run, device = first_run(
-            eff.target, eff.platform, eff.conditions, devices, engine=web_engine(eff)
+            eff.target, eff.platform, conditions, devices, engine=web_engine(eff)
         )
     except (DeviceError, LookupError) as e:
         raise ValueError(f"target '{eff.target}': {e}") from None

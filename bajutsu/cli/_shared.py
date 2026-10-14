@@ -418,6 +418,35 @@ def parse_engine_flag(flag: str, value: str) -> str:
     return value
 
 
+def _precondition_checks(
+    loaded: LoadedConfig, scenarios: list[Scenario], target_name: str, eff: Effective
+) -> list[tuple[Scenario, list[Effective]]]:
+    """Pair each scenario with the targets it drives, for `_refuse_bad_preconditions` (BE-0452).
+
+    A scenario drives its declared `targets`, else the command's own *target_name* (*eff*). Shared
+    by `run` and `audit` so both commands check one suite against the same targets.
+
+    Returns:
+        Each scenario with its driven targets. A scenario whose declared names are all unknown is
+        left out: the target checks that follow name the typo, which an empty platform list here
+        would only obscure.
+    """
+    effs = {target_name: eff}
+    checks: list[tuple[Scenario, list[Effective]]] = []
+    for s in scenarios:
+        if not s.target_names:
+            checks.append((s, [eff]))
+            continue
+        known = [n for n in s.target_names if n in effs or n in loaded.config.targets]
+        if not known:
+            continue
+        for name in known:
+            if name not in effs:
+                effs[name] = _effective_for(loaded, name)
+        checks.append((s, [effs[name] for name in known]))
+    return checks
+
+
 def _refuse_bad_preconditions(
     checks: list[tuple[Scenario, list[Effective]]], *, erase: bool | None, fake: bool
 ) -> None:
@@ -490,6 +519,16 @@ def _resolve_browser(eff: Effective, browser: str) -> Effective:
 
     # `runsOn.browser` is a web-only field; a non-web target ignores the flag.
     return apply_engine(eff, browser)
+
+
+def _without_engine_condition(eff: Effective) -> Effective:
+    """*eff* with its listed `runsOn.browser.engine` no longer counted as a device condition.
+
+    An engine flag names the engines itself — `--browser` one, `--browsers` the matrix that sets
+    each pass's engine — so the target's own list is overridden rather than matched.
+    """
+    conditions = {k: v for k, v in eff.conditions.items() if k != "browser.engine"}
+    return replace(eff, conditions=conditions)
 
 
 def _resolve_language(eff: Effective, language: str) -> Effective:

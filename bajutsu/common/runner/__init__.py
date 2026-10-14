@@ -9,6 +9,7 @@ API is re-exported here, so `from bajutsu.common.runner import ...` is unchanged
 
 from __future__ import annotations
 
+from bajutsu.common.evidence.sink import prepare_run_dir
 from bajutsu.common.runner.launch import ReadinessResult, await_ready, launch_driver
 from bajutsu.common.runner.pipeline import (
     report_run_matrix,
@@ -31,6 +32,7 @@ __all__ = [
     "device_pool",
     "device_relauncher",
     "launch_driver",
+    "prepare_run_dir",
     "report_run_matrix",
     "reroot_evidence",
     "run_all",

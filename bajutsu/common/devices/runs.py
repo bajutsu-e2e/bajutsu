@@ -247,8 +247,8 @@ def eligible_set(
     """The devices *run* may take, all of one model and release, or None when too few fit.
 
     Keeps the devices that meet the run's conditions; then, unless the run fixes a model, the devices
-    of the first model in pool order that still has *demand* devices; then the devices at the newest
-    release that still has that many. Every member then observes the same model and release, so any
+    of the first model in pool order that has *demand* devices at one release, taking that model's
+    newest such release. Every member then observes the same model and release, so any
     idle one may take the run. A run with no condition takes any device of the pool.
 
     Args:
@@ -262,14 +262,14 @@ def eligible_set(
     by_model: dict[str, list[DeviceFacts]] = {}
     for d in kept:
         by_model.setdefault(d.model, []).append(d)
-    model = next((m for m, group in by_model.items() if len(group) >= demand), None)
-    if model is None:
-        return None
-    by_release: dict[Version, list[DeviceFacts]] = {}
-    for d in by_model[model]:
-        by_release.setdefault(d.version, []).append(d)
-    newest = max((v for v, group in by_release.items() if len(group) >= demand), default=None)
-    return by_release[newest] if newest is not None else None
+    for group in by_model.values():
+        by_release: dict[Version, list[DeviceFacts]] = {}
+        for d in group:
+            by_release.setdefault(d.version, []).append(d)
+        newest = max((v for v, g in by_release.items() if len(g) >= demand), default=None)
+        if newest is not None:
+            return by_release[newest]
+    return None
 
 
 @dataclass(frozen=True)

@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0462](BE-0462-ios-dropped-touch-retry-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **承認済み** |
+| 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0462") |
+| 実装 PR | [#2169](https://github.com/bajutsu-e2e/bajutsu/pull/2169)（ユニット 2） |
 | トピック | Platform support |
 <!-- /BE-METADATA -->
 
@@ -243,11 +244,44 @@ runner は終了マーカーの直後にフェンスマーカーを出すので�
 > 関連する PR へリンクします。
 
 - [ ] ユニット 1 — CI ホストでマーカーの経路を実測する
-- [ ] ユニット 2 — runner のマーカーと `synthesisId`
+- [x] ユニット 2 — runner のマーカーと `synthesisId`
 - [ ] ユニット 3 — ホストのログモニター
 - [ ] ユニット 4 — ドライバーの打ち直しと `TouchNotDelivered`
 - [ ] ユニット 5 — ドキュメント
 - [ ] ユニット 6 — CI で確かめる
+
+ログ：
+
+- [#2169](https://github.com/bajutsu-e2e/bajutsu/pull/2169) — ユニット 2。runner が合成するすべてのタッチにマーカーを付けるようにしました。マーカーを読むホスト側の
+  コードは、まだありません。
+  - `BajutsuRunner` パッケージに `SynthesisLedger` を加えました。`begin`、`end`、`fence` の各マーカーと、
+    ソケットの bind 後に出す `serving` マーカーを書きます。出力先は unified log で、サブシステムは
+    `bajutsu.runner`、カテゴリは `synthesis`、レベルは `.notice` です。`.notice` は永続化されるので、
+    後から `log show` で取り出しても残ります。
+  - 操作の途中で Swift のエラーや `NSException` を投げたタッチは、終了マーカーまで届きません。
+    Swift のエラーには `mark` 自身が `abort` マーカーを書きます。`NSException` には、それを捕まえる
+    ハンドラーが、開いたまま残ったマーカー区間ごとに内側から順に `abort` マーカーを書きます。設計に
+    このマーカーはありません。書かなければ、ストリームの中でマーカー区間がずっと開いたままになりえます。
+  - タッチを合成するエンドポイントの返信は、任意項目 `synthesisId` を持ちます。drain する割り込みの
+    記録には `tappedSynthesisIds` と `bannerSynthesisIds` が加わりました。2 つの配列は、それぞれ
+    `labels` と `banners` に並行します。
+  - CI 診断がゲストの unified log を取り出すとき、runner のサブシステムも選ぶようにしました。マーカーが
+    `backboardd` の行と同じ抽出に並ぶので、ユニット 1 は使い捨てのビルドではなく、この診断証跡で
+    マーカーの経路を実測できます。
+  - 実装は次の 4 点で設計と異なります。
+    - ピッカーの調整は、呼び出し全体を 1 つのマーカー区間で囲みます。XCUITest は 1 回の
+      `adjust(toPickerWheelValue:)` 呼び出しの中でホイールを動かすので、ドラッグごとには囲めません。
+    - `resolveAlerts` 専用の返信はありません。記録は `GET /elements?resolveAlerts=` と
+      `/systemAlert/resolve` の返信に載ります。
+    - 割り込みの監視だけでなく、解決付きの読み取りもアラートのボタンを押します。その押下も、同じように
+      記録へ id を残します。
+    - バナーの id のリストは、そのバナーを消したスワイプではなく、runner がそのバナーに向けて合成した
+      スワイプを示します。スワイプの後もバナーが残り、やがて自然に消えた場合も、リストにはスワイプの
+      id が入ります。runner がスワイプしなかったバナーのリストは空です。
+
+  - 回答済みの表示をもう一度押すと、その表示の記録がまだ drain されていなければ、記録へ id を足します。
+    drain の後に押した場合は、足す先の記録がありません。この欠けが「未確認」の判定に響くかどうかは、
+    ユニット 3 で決めます。
 
 ## 参考
 

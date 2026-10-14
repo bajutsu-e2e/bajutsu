@@ -192,12 +192,14 @@ final class XcuitestElementProvider: ElementProviding {
         let target: Tappable = backing.root == .safariViewService
             ? coordinate(Double(el.frame.midX), Double(el.frame.midY))
             : el
-        if duration > 0 {
-            target.press(forDuration: duration)
-        } else if taps >= 2 {
-            target.doubleTap()
-        } else {
-            target.tap()
+        synthesize {
+            if duration > 0 {
+                target.press(forDuration: duration)
+            } else if taps >= 2 {
+                target.doubleTap()
+            } else {
+                target.tap()
+            }
         }
         return .ok
     }
@@ -209,7 +211,7 @@ final class XcuitestElementProvider: ElementProviding {
     }
 
     func tapPoint(x: Double, y: Double) -> TapResult {
-        coordinate(x, y).tap()
+        synthesize { coordinate(x, y).tap() }
         return .ok
     }
 
@@ -217,12 +219,14 @@ final class XcuitestElementProvider: ElementProviding {
         guard let backing = backingElement as? PositionPathBacking else { return .notFound }
         guard let el = liveElement(for: backing) else { return .stale }
         let actuate: () -> Void
+        // Each attempt is marked on its own, so the opt-in retry below never puts two touches inside
+        // one verdict; the reply reports the last attempt (BE-0462).
         switch kind {
         case "pinch":
             // velocity sign must match the scale direction (zoom in vs out) or XCUITest rejects it.
-            actuate = { el.pinch(withScale: CGFloat(scale), velocity: scale >= 1 ? 1 : -1) }
+            actuate = { synthesize { el.pinch(withScale: CGFloat(scale), velocity: scale >= 1 ? 1 : -1) } }
         case "rotate":
-            actuate = { el.rotate(CGFloat(radians), withVelocity: 1) }
+            actuate = { synthesize { el.rotate(CGFloat(radians), withVelocity: 1) } }
         default:
             return .notFound
         }
@@ -254,7 +258,7 @@ final class XcuitestElementProvider: ElementProviding {
     private static let maxGestureAttempts = 4
 
     func swipe(fromX: Double, fromY: Double, toX: Double, toY: Double) -> TapResult {
-        coordinate(fromX, fromY).press(forDuration: 0.1, thenDragTo: coordinate(toX, toY))
+        synthesize { coordinate(fromX, fromY).press(forDuration: 0.1, thenDragTo: coordinate(toX, toY)) }
         return .ok
     }
 
@@ -289,14 +293,16 @@ final class XcuitestElementProvider: ElementProviding {
         // stops where the gesture ended. The content still falls ~10 points short of the request —
         // the pan recognizer's slop, which the driver conformance suite's realized-travel tolerance
         // names rather than the gesture compensating for one device's constant.
-        coordinate(fromX, fromY).press(
-            forDuration: Self.scrollPressDuration,
-            thenDragTo: coordinate(toX, toY),
-            withVelocity: Self.scrollVelocity,
-            // No hold: the only press overload that takes a velocity also requires a hold duration,
-            // and every duration measured the same, so this spends none.
-            thenHoldForDuration: 0
-        )
+        synthesize {
+            coordinate(fromX, fromY).press(
+                forDuration: Self.scrollPressDuration,
+                thenDragTo: coordinate(toX, toY),
+                withVelocity: Self.scrollVelocity,
+                // No hold: the only press overload that takes a velocity also requires a hold duration,
+                // and every duration measured the same, so this spends none.
+                thenHoldForDuration: 0
+            )
+        }
         return .ok
     }
 
@@ -342,7 +348,9 @@ final class XcuitestElementProvider: ElementProviding {
         // `liveElement(for:)` deliberately excludes `value` from its identity check, precisely because
         // a wheel legitimately changes value between the snapshot and the actuation — which is what
         // makes it safe to reuse here.
-        el.adjust(toPickerWheelValue: value)
+        // One window around the whole adjustment: XCUITest drives the wheel inside this one call,
+        // so the drags it makes are not the runner's to mark one by one (BE-0462).
+        synthesize { el.adjust(toPickerWheelValue: value) }
         // The call reports nothing: it returns Void, never throws, and a value it could not reach is
         // recorded as a soft XCTIssue that `RunnerUITest.continueAfterFailure` swallows (BE-0356). So
         // read the wheel back, bounded, and decide here — otherwise a wheel with no such row would
@@ -419,7 +427,7 @@ final class XcuitestElementProvider: ElementProviding {
         guard let backing = backingElement as? SystemAlertButtonBacking else { return .notFound }
         let button = springboard.alerts.buttons.element(boundBy: backing.ordinal)
         guard button.exists else { return .stale }  // the alert dismissed itself between query and tap
-        button.tap()
+        synthesize { button.tap() }
         return .ok
     }
 
@@ -721,4 +729,10 @@ private func typeName(_ t: XCUIElement.ElementType) -> String {
     case .other: return "other"
     default: return "other"
     }
+}
+
+/// Marks *touch* as one synthesis in the process-wide ledger the interruption monitor also marks
+/// into, so the host can verify the Simulator delivered it (BE-0462).
+private func synthesize(_ touch: () -> Void) {
+    SynthesisLedger.shared.mark(touch)
 }

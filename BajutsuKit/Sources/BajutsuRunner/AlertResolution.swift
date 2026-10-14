@@ -31,6 +31,9 @@ extension AlertResolutionOutcome: @unchecked Sendable {}
 struct AlertResolver {
     let provider: ElementProviding
     let store: InterruptionPolicyStore
+    /// Where the provider marks each press it synthesizes (BE-0462). A press here is answered in the
+    /// records, never as the request's own touch, so it is collected apart from the request.
+    var ledger: SynthesisLedger = .shared
 
     func run(mode: AlertResolutionMode, forceCheck: Bool) -> AlertResolutionOutcome {
         let policy = store.policy
@@ -123,11 +126,11 @@ struct AlertResolver {
                 store.giveUp(rule)
                 return .notPressed
             }
-            let result = provider.tapSystemAlertButton(
-                backingElement: alert.buttons[ordinal].backingElement
-            )
+            let (result, synthesisId) = ledger.collect {
+                provider.tapSystemAlertButton(backingElement: alert.buttons[ordinal].backingElement)
+            }
             if result == .ok {
-                store.notePress(rule, alert: matched)
+                store.notePress(rule, alert: matched, synthesisId: synthesisId)
                 return .pressed
             }
             store.noteFailedPress(rule)
@@ -181,10 +184,12 @@ struct AlertResolver {
             outcome.springboardChecked = false
             return
         }
-        let result = provider.tap(backingElement: targets[0].element.backingElement, taps: 1, duration: 0)
+        let (result, synthesisId) = ledger.collect {
+            provider.tap(backingElement: targets[0].element.backingElement, taps: 1, duration: 0)
+        }
         switch result {
         case .ok:
-            store.notePress(rule, alert: rule.identify, signature: signature)
+            store.notePress(rule, alert: rule.identify, signature: signature, synthesisId: synthesisId)
             store.actuationCompleted(result)
             outcome.elements = provider.queryElements()
         case .notHittable:

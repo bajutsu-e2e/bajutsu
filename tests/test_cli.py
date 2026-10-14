@@ -1463,6 +1463,33 @@ def test_browser_flag_replaces_a_listed_engine_condition() -> None:
     assert "browser.engine" not in flagged.conditions
 
 
+def test_browsers_matrix_replaces_a_listed_engine_condition(tmp_path: Path) -> None:
+    # `--browsers` overrides the field as `--browser` does, so the matrix a target's engine list
+    # exists for is not refused as an unsupported condition.
+    from bajutsu.run.cli import _resolve_config_and_engines
+
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "targets:\n"
+        "  site:\n"
+        "    platform: web\n"
+        "    app: { url: 'http://x/' }\n"
+        "    runsOn: { browser: { engine: [chromium, webkit] } }\n",
+        encoding="utf-8",
+    )
+    _, eff, _, engines = _resolve_config_and_engines(
+        str(cfg),
+        "site",
+        offline=False,
+        require_pinned=False,
+        headed=None,
+        browser="",
+        browsers="chromium,webkit",
+    )
+    assert engines == ["chromium", "webkit"]
+    assert "browser.engine" not in eff.conditions
+
+
 @pytest.mark.parametrize(
     ("command", "param", "field"),
     [

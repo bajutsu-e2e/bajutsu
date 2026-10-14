@@ -31,8 +31,10 @@ from bajutsu.cli._shared import (
     WORKER_CONFIG_HELP,
     _backends,
     _device_udid_or_exit,
+    _effective_for,
+    _load_config_with_source,
     _load_device_worker_or_exit,
-    _load_effective,
+    _precondition_checks,
     _refuse_bad_preconditions,
     _resolve_browser,
     _select_actuator_or_exit,
@@ -193,11 +195,12 @@ def _repeat_audit(
             f"{', '.join(mismatched)}"
         )
         raise typer.Exit(2)
-    eff = _load_effective(config, target_name)  # exits 2 on missing config / unknown target
-    # The same precondition checks `run` applies before any device work (BE-0452). Audit has no
-    # `--erase`, so each scenario's own erase, then the target's, decides.
+    loaded = _load_config_with_source(config)  # exits 2 on a missing config
+    eff = _effective_for(loaded, target_name)  # exits 2 on an unknown target
+    # The same precondition checks `run` applies before any device work, against the same targets
+    # (BE-0452). Audit has no `--erase`, so each scenario's own erase, then the target's, decides.
     _refuse_bad_preconditions(
-        [(s, [eff]) for s in scenarios],
+        _precondition_checks(loaded, scenarios, target_name, eff),
         erase=None,
         fake=_backends(backend, eff.backend) == ["fake"],
     )

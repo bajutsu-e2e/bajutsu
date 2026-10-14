@@ -8,7 +8,7 @@ import json
 import re
 from dataclasses import dataclass
 
-from bajutsu.common.assertions.evaluate import _json_text
+from bajutsu.common.assertions.dict_match import json_text
 from bajutsu.common.drivers import base
 from bajutsu.common.orchestrator.actions._registry import _handler
 from bajutsu.common.scenario import HttpRequest, Step
@@ -190,7 +190,7 @@ def _extract_body_fields(http: HttpRequest, body: str, bindings: dict[str, str] 
         (var, _resolve_path(parsed, _parse_path(path, var), var, path)) for var, path in substituted
     ]
     for var, resolved in resolved_values:
-        bindings[f"vars.{var}"] = resolved if isinstance(resolved, str) else _json_text(resolved)
+        bindings[f"vars.{var}"] = resolved if isinstance(resolved, str) else json_text(resolved)
 
 
 def _do_http(http: HttpRequest, bindings: dict[str, str] | None) -> None:
