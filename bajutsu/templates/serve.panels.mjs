@@ -308,7 +308,9 @@ async function runTriage(id){
   const d=r&&r.ok?await r.json():{error:r?('HTTP '+r.status):'request failed'};
   if(!r||!r.ok||d.error){setBusy(go,stop,false);res.innerHTML=`<div class="triageerr">${esc(d.error||'triage failed')}</div>`;return}
   state.triageJobId=d.jobId;
-  streamJob(d.jobId,line=>{const l=$('#triage-log');if(l)appendLine(l,line)},j=>triageDone(id,target,scenario,j));
+  // A triage job waits in the queue for a worker (BE-0449), so the panel says why while none can take it.
+  streamJob(d.jobId,line=>{const l=$('#triage-log');if(l)appendLine(l,line)},j=>triageDone(id,target,scenario,j),null,
+    n=>{const el=$('#triage-result');if(el)el.innerHTML=n?`<div class="triagefix muted" data-testid="replay.triage-notice">${esc(n)}</div>`:''});
 }
 function triageDone(id,target,scenario,j){
   state.triageJobId=null;

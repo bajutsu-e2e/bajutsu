@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0449") |
-| Implementing PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167) (Unit 1, part 1 of 3), [#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168) (Unit 1, part 2 of 3), [#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170) (Unit 1, part 3 of 3), [#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171) (Unit 2), [#2172](https://github.com/bajutsu-e2e/bajutsu/pull/2172) (Unit 4), [#2173](https://github.com/bajutsu-e2e/bajutsu/pull/2173) (Unit 3), [#2182](https://github.com/bajutsu-e2e/bajutsu/pull/2182) (Unit 5, part 1 of 2: a lossless local start), [#2183](https://github.com/bajutsu-e2e/bajutsu/pull/2183) (Unit 5, part 2 of 2: `run` on a worker), [#2184](https://github.com/bajutsu-e2e/bajutsu/pull/2184), [#2185](https://github.com/bajutsu-e2e/bajutsu/pull/2185), and [#2186](https://github.com/bajutsu-e2e/bajutsu/pull/2186) (Unit 6, through BE-0448) |
+| Implementing PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167) (Unit 1, part 1 of 3), [#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168) (Unit 1, part 2 of 3), [#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170) (Unit 1, part 3 of 3), [#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171) (Unit 2), [#2172](https://github.com/bajutsu-e2e/bajutsu/pull/2172) (Unit 4), [#2173](https://github.com/bajutsu-e2e/bajutsu/pull/2173) (Unit 3), [#2182](https://github.com/bajutsu-e2e/bajutsu/pull/2182) (Unit 5, part 1 of 2: a lossless local start), [#2183](https://github.com/bajutsu-e2e/bajutsu/pull/2183) (Unit 5, part 2 of 2: `run` on a worker), [#2184](https://github.com/bajutsu-e2e/bajutsu/pull/2184), [#2185](https://github.com/bajutsu-e2e/bajutsu/pull/2185), [#2186](https://github.com/bajutsu-e2e/bajutsu/pull/2186) (Unit 6, through BE-0448), and [#2187](https://github.com/bajutsu-e2e/bajutsu/pull/2187) (Unit 7) |
 | Topic | Hosting the web UI |
 <!-- /BE-METADATA -->
 
@@ -152,7 +152,7 @@ This item does not change what a job does, how a verdict is decided, or the run 
 - [x] Live log stream and the routing executor
 - [x] Move `run`
 - [x] Move `run-set` (the Device Farm batch)
-- [ ] Move `triage`
+- [x] Move `triage` (on a local start; hosted triage and same-machine affinity are follow-ups, see the log)
 - [ ] Move `record` and `crawl`
 - [ ] Remove the local executor
 
@@ -348,6 +348,27 @@ Log:
   settings remain for one release as deprecated. The two an operator writes log a notice that names
   `maxJobConcurrency`, once per server process. Until
   their removal, they still cap the fan-out.
+- [#2187](https://github.com/bajutsu-e2e/bajutsu/pull/2187) (Unit 7) — a local start now queues `triage` too (`LOCAL_QUEUED_KINDS`). A
+  worker runs it, and the server spawns no triage process. The job names the run directory by its
+  absolute path on the server's disk. It names the bound config and the scenario source the same
+  way. A worker on the same machine runs the job from the config's directory. It writes
+  `triage.json` into the server's run directory, and the UI reads the file from there. A worker on
+  another machine fails the job with the unit 5 message. The job no longer carries an uploaded
+  bundle, since it reads none of it. An `--ai` triage gets the AI key from the lease, like every
+  queued job. The server's credential check now counts a key the org stored in the UI. It reads the
+  masked description alone, and it counts the key when the key travels under the variable the
+  target reads. Before, a local start refused `--ai` triage without the key in its own environment.
+  A triage job no longer takes a run path in its output as its own run id. Otherwise its tail would
+  record the run it read once more. On a worker, it would also write over that run's `console.log`.
+  The triage panel shows the no-worker notice while the job waits. No change touches the verdict
+  path. A new import guard checks the run entry point and the worker loop. Neither loads the triage
+  module, a Claude agent, or the Anthropic client library. An end-to-end test runs a queued
+  triage through the real worker loop. A stub agent stands in for the model on the `--ai` path.
+  Two follow-ups remain open. First, a hosted deployment still refuses triage. Its scenario ships
+  as `materials`, and its runs live in object storage. The worker must first download the run tree
+  and upload `triage.json` back. Second, a job that names server paths (`run` and `triage`) carries
+  no capability that ties it to the server's machine. A worker on another machine may lease such a job
+  and then fail it.
 
 ## References
 

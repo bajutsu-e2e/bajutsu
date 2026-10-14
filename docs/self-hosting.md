@@ -360,10 +360,20 @@ jobs they queue:
 
 | Backend | Queued for a worker | Run inside the server process |
 |---|---|---|
-| `local` (the default) | `run`, with its build phase, and the Device Farm fan-out (`run-set`) | `record`, `crawl`, and `triage` |
+| `local` (the default) | `run` with its build phase, the Device Farm fan-out (`run-set`), and `triage` | `record` and `crawl` |
 | `server` | every job | none |
 
-The remaining kinds move to the worker in later units of BE-0449. For each setting left
+The remaining kinds move to the worker in later units of BE-0449.
+
+A `triage` job reads the run it diagnoses from the server's runs directory. Its command line names
+the run directory by its absolute path on the server's disk. The bound config and the scenario
+source get absolute paths too. The job writes `triage.json` into the run directory, and the UI
+reads the file from there. A worker on the same machine runs the job from the config's directory,
+as it runs a local `run`. A worker on another machine fails the job. Its message says the job needs
+a worker on the server's machine. A triage with `--ai` reads the AI key from the lease, like every
+queued job. A key set in the UI thus reaches the investigator and never enters the job spec.
+
+For each setting left
 unset, the server supplies a local default. Every default lives in a `.bajutsu/` directory beside
 the runs directory. The server creates that directory owner-only (`0700`), and Git ignores it.
 These defaults apply when `BAJUTSU_SERVER_STORE` is unset. A deployment with a bucket and no

@@ -57,19 +57,23 @@ def _no_ambient_server_env(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(var, raising=False)
 
 
-def test_build_state_local_is_the_server_shape_that_queues_run_and_run_set(
+def test_build_state_local_is_the_server_shape_that_queues_run_run_set_and_triage(
     tmp_path: Path,
 ) -> None:
     # `--backend local` is the local start (BE-0449 unit 5): a run goes to a worker through the
-    # queue, and so does a Device Farm fan-out, since the server registers no provider (BE-0448).
-    # Every other kind still runs in this process.
+    # queue, and so does a Device Farm fan-out, since the server registers no provider (BE-0448),
+    # and a triage (unit 7). Every other kind still runs in this process.
     from bajutsu.serve.server.db_executor import DbQueueExecutor
     from bajutsu.serve.server.queue_logbus import QueueLogBus
 
     state = _state(tmp_path)
     assert isinstance(state, srv.ServeState)
     assert isinstance(state.executor, srv.RoutingExecutor)
-    assert state.executor.queued_kinds == srv.LOCAL_QUEUED_KINDS == frozenset({"run", "run-set"})
+    assert (
+        state.executor.queued_kinds
+        == srv.LOCAL_QUEUED_KINDS
+        == frozenset({"run", "run-set", "triage"})
+    )
     assert isinstance(state.executor._queue, DbQueueExecutor)
     assert isinstance(state.executor._local, srv.LocalExecutor)
     assert isinstance(state.logbus, QueueLogBus)

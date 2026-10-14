@@ -95,11 +95,12 @@ def _default_driver_factory(eff: Effective, backends_list: list[str], udid: str)
 
 
 # What a queued job says while no worker can take it (BE-0449): the server executes no queued job
-# itself, so without this an operator who forgot the worker would wait in silence.
+# itself, so without this an operator who forgot the worker would wait in silence. The wording names
+# no platform, since some kinds (`triage`) require none.
 NO_WORKER_NOTICE = (
-    "no worker is available to run this job: it stays queued until a worker that advertises its "
-    "platform and capabilities starts (`bajutsu worker --platform …`, which `make serve` starts "
-    "for you)"
+    "no worker is available to run this job: it stays queued until a worker that can serve it "
+    "starts (`bajutsu worker`, with the platform and capabilities the job requires, if any; "
+    "`make serve` starts one for you)"
 )
 
 

@@ -150,11 +150,11 @@ __all__ = [
 # The serve backends `_build_state` can assemble — the source of truth the CLI validates against.
 # Both build the server shape (BE-0449); they differ only in which job kinds the queue takes.
 SERVE_BACKENDS: tuple[str, ...] = ("local", "server")
-# The kinds `--backend local` hands to a worker (BE-0449 unit 5). `run-set` joins `run` because the
-# server registers no batch provider (BE-0448), so only a Device Farm worker can run it. The rest
-# still run in this process until their own units move them; once every kind is queued, the two
-# backends are one.
-LOCAL_QUEUED_KINDS: frozenset[JobKind] = frozenset({"run", "run-set"})
+# The kinds `--backend local` hands to a worker (BE-0449 units 5 and 7). `run-set` joins `run` because
+# the server registers no batch provider (BE-0448), so only a Device Farm worker can run it, and
+# `triage` follows so its AI investigator runs where the runs do. `record` and `crawl` still run in
+# this process until unit 8 moves them; once every kind is queued, the two backends are one.
+LOCAL_QUEUED_KINDS: frozenset[JobKind] = frozenset({"run", "run-set", "triage"})
 
 _logger = logging.getLogger(__name__)
 

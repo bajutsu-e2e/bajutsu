@@ -146,6 +146,45 @@ def test_default_path_does_not_import_anthropic() -> None:
     )
 
 
+def test_the_run_entry_and_the_worker_load_no_investigator() -> None:
+    """The verdict path a worker spawns, and the worker loop itself, load no AI investigator.
+
+    A worker now runs `triage` beside `run` (BE-0449 unit 7), but each in a child process of its
+    own: the triage module, the Claude agents, and the AI SDK stay out of the run entry point and
+    out of the worker that leases both. A stray import here would put a model next to the run's
+    verdict (prime directive 1), so the guard checks the import closure rather than trusting it.
+    """
+    forbidden = (
+        "anthropic",
+        "bajutsu.triage",
+        "bajutsu.common.agents.claude",
+        "bajutsu.common.agents.claude_triage",
+        "bajutsu.common.agents.claude_backed",
+        # The Anthropic SDK adapter. `bajutsu.common.ai.claude_code` is left off: the worker loads it
+        # through `bajutsu.common.agents.availability` for credential messages, and loading it
+        # starts no model call.
+        "bajutsu.common.ai.anthropic",
+    )
+    code = (
+        "import sys\n"
+        "import bajutsu.run.internal\n"
+        "import bajutsu.serve.cli.worker\n"
+        f"forbidden = {forbidden!r}\n"
+        "leaked = sorted(m for m in sys.modules if any(m == f or m.startswith(f + '.') "
+        "for f in forbidden))\n"
+        "sys.stdout.write(','.join(leaked))\n"
+        "sys.exit(1 if leaked else 0)\n"
+    )
+    result = _run_in_child(code)
+    assert result.returncode == 0, (
+        "the run entry point or the worker loop imported an AI investigator "
+        f"(exit {result.returncode}).\n"
+        f"leaked modules: {result.stdout.strip() or '(none)'}\n"
+        f"stderr: {result.stderr.strip() or '(none)'}\n"
+        "Triage and the AI paths run in a child process; keep their imports out of both."
+    )
+
+
 def test_default_path_runs_with_anthropic_absent() -> None:
     """A base install (no `ai` / `bedrock` extra) imports and runs the deterministic subset.
 
