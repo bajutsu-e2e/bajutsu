@@ -267,6 +267,14 @@ def _joserfc_installed() -> bool:
         return False
 
 
+def _provider_settings_file(runs_dir: Path) -> Path:
+    """The file both backends keep the Settings panel's provider choice in (BE-0184, BE-0449).
+
+    One owner for the path, so a user who switches backends keeps reading the same saved choice.
+    """
+    return runs_dir.parent / "provider-settings.json"
+
+
 class MissingServerExtra(ImportError):
     """A server-backend optional extra (an object-storage SDK, the PostgreSQL driver, Redis) is not
     installed.
@@ -366,7 +374,7 @@ def _build_state(
         # runs_dir), so a saved choice survives a restart (BE-0184). Construction only wires the
         # store; `serve()` restores from it on boot, once logging is live.
         providers=ProviderSettingsManager(
-            store=LocalProviderSettingsStore(runs_dir.parent / "provider-settings.json")
+            store=LocalProviderSettingsStore(_provider_settings_file(runs_dir))
         ),
     )
 
@@ -738,7 +746,7 @@ def _build_server_state(  # noqa: C901, PLR0915
     # below overwrites the bare fields: `ServeState` built the scenario store over the bound
     # config's tree, exactly as for `--backend local`.
     local_scenarios = state.scenarios
-    local_provider_settings = LocalProviderSettingsStore(runs_dir.parent / "provider-settings.json")
+    local_provider_settings = LocalProviderSettingsStore(_provider_settings_file(runs_dir))
     state.org_stores = make_bundle
     # The default-org bundle backs the bare ServeState fields, so code paths that don't resolve an
     # org (and local-parity tests) keep working.
