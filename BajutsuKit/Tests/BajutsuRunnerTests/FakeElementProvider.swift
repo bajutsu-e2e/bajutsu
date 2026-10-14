@@ -19,6 +19,13 @@ final class FakeElementProvider: ElementProviding {
 
     var isHittableResult: TapResult = .ok
 
+    /// When set, every touch actuation that lands marks itself here, as the real provider does
+    /// (BE-0462). Nil by default, so the parity tests' replies carry no `synthesisId` the legacy
+    /// `Router` could never produce.
+    var ledger: SynthesisLedger?
+    /// How many times `gesture` synthesizes per call, standing in for the opt-in retry's attempts.
+    var gestureAttempts = 1
+
     var tapCalls: [(backingElement: AnyObject, taps: Int, duration: TimeInterval)] = []
     var isHittableCalls: [AnyObject] = []
     var tapPointCalls: [(x: Double, y: Double)] = []
@@ -67,7 +74,11 @@ final class FakeElementProvider: ElementProviding {
 
     func tap(backingElement: AnyObject, taps: Int, duration: TimeInterval) -> TapResult {
         tapCalls.append((backingElement, taps, duration))
-        if let exception = tapRaises { exception.raise() }
+        if let exception = tapRaises {
+            // Raised inside the marked touch when a ledger is set, as XCUITest raises mid-interaction.
+            if let ledger { ledger.mark { exception.raise() } } else { exception.raise() }
+        }
+        touched(tapResult)
         afterTap?()
         return tapResult
     }
@@ -79,21 +90,25 @@ final class FakeElementProvider: ElementProviding {
 
     func tapPoint(x: Double, y: Double) -> TapResult {
         tapPointCalls.append((x, y))
+        touched(tapResult)
         return tapResult
     }
 
     func gesture(backingElement: AnyObject, kind: String, scale: Double, radians: Double) -> TapResult {
         gestureCalls.append((backingElement, kind, scale, radians))
+        for _ in 0..<gestureAttempts { touched(tapResult) }
         return tapResult
     }
 
     func swipe(fromX: Double, fromY: Double, toX: Double, toY: Double) -> TapResult {
         swipeCalls.append((fromX, fromY, toX, toY))
+        touched(tapResult)
         return tapResult
     }
 
     func scroll(fromX: Double, fromY: Double, toX: Double, toY: Double) -> TapResult {
         scrollCalls.append((fromX, fromY, toX, toY))
+        touched(tapResult)
         return tapResult
     }
 
@@ -123,6 +138,7 @@ final class FakeElementProvider: ElementProviding {
 
     func setPickerValue(backingElement: AnyObject, value: String) -> TapResult {
         setPickerValueCalls.append((backingElement, value))
+        touched(setPickerValueResult)
         return setPickerValueResult
     }
 
@@ -134,6 +150,7 @@ final class FakeElementProvider: ElementProviding {
 
     func tapSystemAlertButton(backingElement: AnyObject) -> TapResult {
         systemAlertTapCalls.append(backingElement)
+        touched(tapResult)
         afterSystemAlertTap?()
         return tapResult
     }
@@ -159,4 +176,12 @@ final class FakeElementProvider: ElementProviding {
     }
 
     func appState() -> AppRunState { appRunState }
+
+    /// Marks one synthesis unless *result* is one the real provider returns before touching anything.
+    private func touched(_ result: TapResult) {
+        switch result {
+        case .ok, .valueNotFound: ledger?.mark {}
+        case .stale, .notFound, .notHittable: break
+        }
+    }
 }

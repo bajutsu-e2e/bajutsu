@@ -29,7 +29,13 @@ public final class RunnerServer {
         // type's initializer is part of the public surface BE-0381 keeps unchanged. It runs before
         // the socket binds, so no connection can arrive at an empty route table.
         try handler.registerHandlers(on: transport)
-        return try httpServer.start(port: port)
+        let bound = try httpServer.start(port: port)
+        // Only once the socket is bound: the host reads this marker as proof that its log stream
+        // sees a runner able to synthesize, so it must not precede a bind that could still throw
+        // (BE-0462). Written once, and `log stream` delivers only what follows its attach, so the
+        // host's stream must be up before it spawns the runner.
+        SynthesisLedger.shared.announceServing()
+        return bound
     }
 
     /// Start the server on the port from `BAJUTSU_RUNNER_PORT`, or an ephemeral port if unset.

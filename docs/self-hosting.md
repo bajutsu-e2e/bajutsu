@@ -87,7 +87,10 @@ The agent starts the server alone. The server queues every job for a `bajutsu wo
 itself (BE-0449). Run a worker beside it as a second LaunchAgent:
 
 1. Copy the plist under another label.
-2. Change its `ProgramArguments` to `python -m bajutsu worker --platform ios`. Add
+2. Change its `ProgramArguments` to `python -m bajutsu worker --platform ios`. Append
+   `--server-state-dir <project>/.bajutsu`, where `<project>` holds the server's runs directory.
+   `--server-state-dir` lets the worker take the jobs that name files on this machine. See
+   [the server backend on one machine](#the-server-backend-on-one-machine-be-0449). Add
    `--server-url http://127.0.0.1:<port>` when the server listens on a port other than 8765.
 3. Put the same token in its `EnvironmentVariables`, as `BAJUTSU_TOKEN`.
 4. Leave the working directory unchanged. The worker runs each job in a temporary directory.
@@ -364,6 +367,17 @@ there. The server runs no job itself. It queues each kind of job for a worker:
 A `bajutsu worker` on the same machine leases each job and runs it. `make serve` starts that
 worker for you. Without a worker, a job stays queued, and the UI says that no worker is available.
 
+A job that names its files by paths on the server's disk goes to a worker on that machine alone. A local start keeps a random machine identity in `.bajutsu/machine-id`, beside the
+runs directory. A `run`, `triage`, `record`, or `crawl` can name its config and runs directory by
+those paths. Such a job requires the capability token `machine:<id>`. A worker advertises the token
+when it starts with `--machine-id <id>`. It can read the identity instead, with
+`--server-state-dir <dir>`. `make serve` passes `--server-state-dir` to the worker it starts. A
+worker on another machine never leases such a job, nor does a Device Farm worker. The UI keeps
+saying that no worker is available until a worker on the server's machine polls. A job that ships
+its files, such as a run off an uploaded bundle, requires no machine token and goes to any worker. A
+worker that holds the identity but lacks the server's files still fails the job. The worker reports
+that the job needs a worker on the server's machine.
+
 We deprecate the `--backend` flag. The flag once chose between two backends. The `local` backend
 ran jobs inside the server process, and the `server` backend queued them. Both values now start
 the same server, so the flag changes nothing. `bajutsu serve` still accepts either value and
@@ -374,8 +388,8 @@ A `triage` job reads the run it diagnoses from the server's runs directory. Its 
 the run directory by its absolute path on the server's disk. The bound config and the scenario
 source get absolute paths too. The job writes `triage.json` into the run directory, and the UI
 reads the file from there. A worker on the same machine runs the job from the config's directory,
-as it runs a local `run`. A worker on another machine fails the job. Its message says the job needs
-a worker on the server's machine. A triage with `--ai` reads the AI key from the lease, like every
+as it runs a local `run`. Like a `run`, the job goes to a worker on the server's machine alone. A
+triage with `--ai` reads the AI key from the lease, like every
 queued job. A key set in the UI thus reaches the investigator and never enters the job spec.
 
 A `crawl` or `record` job also needs a worker on the server's machine. A crawl writes its screen
@@ -1141,7 +1155,9 @@ deterministic `run` verdict.
   worker advertises `host:<os>` for the operating system it runs on, such as `host:darwin` on a
   Mac ([BE-0450](../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability.md)). An iOS
   worker also advertises its installed Simulator inventory. That inventory gives an `iosNN` token
-  per runtime, and the `iphone` and `ipad` device classes. The web-worker container bakes in `--platform web`, so it advertises
+  per runtime, and the `iphone` and `ipad` device classes. A worker on a local start's machine
+  also advertises `machine:<id>`, the server's identity, which routes the jobs that name files on
+  that machine ([the server backend on one machine](#the-server-backend-on-one-machine-be-0449)). The web-worker container bakes in `--platform web`, so it advertises
   `web` and needs no flag.
 - **A local worker refuses a platform it cannot serve.** At startup, the worker checks each
   `--platform` against its [worker capability file](drivers.md#worker-capability-check-be-0450) and
@@ -1171,8 +1187,8 @@ deterministic `run` verdict.
   `$BAJUTSU_WORKER_CAPABILITIES` add tokens verbatim. Both still work for this release, with a
   one-time notice, and go away in the next release. The inventory and the worker capability file
   now supply what the override was for. An override can also claim a runtime the machine lacks.
-  Neither may carry the reserved `environment:` or `host:` prefix, which the worker fills itself. A
-  worker rejects such a token at startup.
+  Neither may carry the reserved `environment:`, `host:`, or `machine:` prefix, which the worker
+  fills itself. A worker rejects such a token at startup.
 - **An unroutable job** — one whose required capabilities no live worker advertises — stays queued
   rather than being leased to an incompatible worker or dropped, and is surfaced by the
   `bajutsu_unroutable_jobs` metric (below) so the operator knows to add a worker with the missing

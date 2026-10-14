@@ -79,12 +79,13 @@ final class RunnerUITest: XCTestCase {
             guard let ordinal = labels.firstIndex(of: label) else { return false }
             let button = buttons.element(boundBy: ordinal)
             guard button.exists else { return false }
-            button.tap()
+            // Marked as the monitor's own touch, never the interrupted request's (BE-0462).
+            let press = SynthesisLedger.shared.mark(actuation: false) { button.tap() }
             // Recorded so the driver can report this as an `AlertEvent`: a prompt answered here
             // being missing from the report is the failure this mechanism exists to end. The store
             // records only a showing's first press, so a showing a resolving read already answered
             // is not reported twice (BE-0461 Unit 2) — the press itself always happens.
-            InterruptionPolicyStore.shared.recordMonitorPress(rule, alert: matched)
+            InterruptionPolicyStore.shared.recordMonitorPress(rule, alert: matched, synthesisId: press.id)
             return true
         }
     }
@@ -164,9 +165,12 @@ final class RunnerUITest: XCTestCase {
                 remaining, label: label, swiped: false, unconfirmed: "the banner disappeared before the swipe"
             )
         }
-        from.press(forDuration: bannerSwipePressDuration, thenDragTo: to)
+        let swipe = SynthesisLedger.shared.mark(actuation: false) {
+            from.press(forDuration: bannerSwipePressDuration, thenDragTo: to)
+        }
         return awaitBannerClearance(
-            remaining, label: label, swiped: true, unconfirmed: "the swipe did not clear the banner"
+            remaining, label: label, swiped: true, synthesisId: swipe.id,
+            unconfirmed: "the swipe did not clear the banner"
         )
     }
 
@@ -207,7 +211,8 @@ final class RunnerUITest: XCTestCase {
     /// it went only after `bannerSwipeClearanceWindow`, since it is cleared either way; both cases are
     /// logged so the path that cleared it stays observable.
     private static func awaitBannerClearance(
-        _ remaining: XCUIElementQuery, label: String, swiped: Bool, unconfirmed reason: String
+        _ remaining: XCUIElementQuery, label: String, swiped: Bool, synthesisId: String? = nil,
+        unconfirmed reason: String
     ) -> Bool {
         let start = Date()
         repeat {
@@ -221,7 +226,9 @@ final class RunnerUITest: XCTestCase {
                 if label.isEmpty {
                     logBanner("cleared, but its label read empty, so the report records nothing")
                 } else {
-                    InterruptionPolicyStore.shared.recordBanner(label)
+                    InterruptionPolicyStore.shared.recordBanner(
+                        label, synthesisIds: synthesisId.map { [$0] } ?? []
+                    )
                 }
                 return true
             }

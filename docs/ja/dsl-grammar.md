@@ -335,21 +335,30 @@ SelectorRegion ::= { selector: <Selector> }   # 要素のフレームをマス�
 RequestMatch ::= {              # 下記マッチフィールドの 1 つ以上
   method?:      string,
   url?:         string,         # 完全一致 URL（エンドポイント）
-  urlMatches?:  string,         # URL への正規表現/部分一致（クエリはここ）
+  urlMatches?:  string,         # URL 全体への正規表現/部分一致
   path?:        string,         # 完全一致パス（クエリ無視）
   pathMatches?: string,         # パスへの正規表現
+  query?:       DictMatch,      # URL デコードしたクエリパラメータ。値は string か演算子 map（BE-0463）
+  body?:        DictMatch,      # 解析した JSON リクエストボディ。値は任意の DictValue（BE-0463）
   status?:      integer,
   bodyMatches?: string,         # リクエストボディへの正規表現/部分一致
   count?:       integer,        # アサーション → 厳密一致数 / wait → 下限
 }
 
-EventMatch ::= {                # エンドポイント条件（method/url/urlMatches/path/pathMatches）または body の 1 つ以上
+DictMatch ::= map(string, DictValue)   # 空は不可。`$$` で始まるキーは `$` で始まるフィールドを指す
+DictValue ::= string                   # JSON 値のテキスト形式と等しい（引用符必須。裸の 1/true/null は不可）
+  | { $matches?: string, $exists?: boolean }   # 演算子 map（演算子 1 つ以上）
+  | map(string, DictValue)             # JSON オブジェクトの部分集合
+  | list(DictValue)                    # 同じ長さの JSON 配列。要素ごとに照合
+
+EventMatch ::= {                # エンドポイント条件（method/url/urlMatches/path/pathMatches）、query、body の 1 つ以上
   method?:      string,
   url?:         string,
   urlMatches?:  string,
   path?:        string,
   pathMatches?: string,
-  body?:        map(string,string),  # 各キーがリクエストボディの JSON に存在し、値がテキストとして一致すること
+  query?:       DictMatch,      # RequestMatch.query と同じ文法
+  body?:        DictMatch,      # RequestMatch.body と同じ文法
   count?:       <CountOp>,           # 期待する多重度（既定: 1 回以上）
 }
 
@@ -407,8 +416,8 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 | `TextMatch`（`value`/`label`） | `equals` / `contains` / `matches` の **ちょうど 1 つ** | `scenario/models/assertions.py` |
 | `CountMatch`（`count`） | `equals` / `atLeast` / `atMost` の **ちょうど 1 つ** | `scenario/models/assertions.py` |
 | `ClipboardMatch`（`clipboard`） | `equals` / `matches` の **ちょうど 1 つ** | `scenario/models/assertions.py` |
-| `RequestMatch` | `method`/`url`/`urlMatches`/`path`/`pathMatches`/`status`/`bodyMatches` の **1 つ以上**（`count` はマッチフィールドではない） | `scenario/models/assertions.py` |
-| `EventMatch`（`event`） | `method`/`url`/`urlMatches`/`path`/`pathMatches`/`body` の **1 つ以上** | `scenario/models/assertions.py` |
+| `RequestMatch` | `method`/`url`/`urlMatches`/`path`/`pathMatches`/`query`/`body`/`status`/`bodyMatches` の **1 つ以上**（`count` はマッチフィールドではない）。`query`/`body` の辞書は空にできず、引用符付きのスカラー、`$matches`/`$exists` の演算子 map、（`body` では）入れ子の map とリストだけを含む | `scenario/models/assertions.py` |
+| `EventMatch`（`event`） | `method`/`url`/`urlMatches`/`path`/`pathMatches`/`query`/`body` の **1 つ以上** | `scenario/models/assertions.py` |
 | `CountOp`（`event.count`） | `equals` / `atLeast` / `atMost` の **ちょうど 1 つ** | `scenario/models/assertions.py` |
 | `Assertion.requestSequence` | **1 件以上** | `scenario/models/assertions.py` |
 | `Trigger`（`capturePolicy[].on`） | `action` / `event` / `result` の **ちょうど 1 つ**。`idMatches` は `action` と **併用時のみ** | `scenario/models/evidence.py` |

@@ -1870,11 +1870,13 @@ wait and `mocks` (below). At least one match field is required; the listed field
 |---|---|---|
 | `method` | str | HTTP method (`GET`, `POST`, …) |
 | `url` | str | Exact full URL (the endpoint) |
-| `urlMatches` | str | Regex / substring over the URL (query strings live here) |
+| `urlMatches` | str | Regex / substring over the full URL |
 | `path` | str | Exact path (query ignored) |
 | `pathMatches` | str | Regex over the path |
+| `query` | map | Key/value dictionary over the URL's query parameters ([below](#keyvalue-dictionaries-query-and-body)) |
+| `body` | map | Key/value dictionary over the JSON **request body** ([below](#keyvalue-dictionaries-query-and-body)) |
 | `status` | int | Response status code |
-| `bodyMatches` | str | Regex / substring over the **request body** |
+| `bodyMatches` | str | Regex / substring over the raw **request body** |
 | `count` | int | Number of matching exchanges — **exact** for the assertion, a **lower bound** for the `wait` |
 
 ```yaml
@@ -1884,8 +1886,66 @@ wait and `mocks` (below). At least one match field is required; the listed field
 ```
 
 > `count` is **not** a match field — at least one of `method` / `url` / `urlMatches` / `path` /
-> `pathMatches` / `status` / `bodyMatches` must be present. (real file:
+> `pathMatches` / `query` / `body` / `status` / `bodyMatches` must be present. (real file:
 > [`demos/showcase/scenarios/network_mock.yaml`](../demos/showcase/scenarios/network_mock.yaml))
+
+#### Key/value dictionaries (`query` and `body`)
+
+A regex over the URL or the body breaks on a harmless change. Reordered parameters break
+`urlMatches: "page=2&sort=asc"`. A pretty-printed JavaScript Object Notation (JSON) body breaks
+`bodyMatches: '"id":\s*42'`. The `query` and `body` dictionaries name keys instead, so order and
+formatting no longer matter
+([BE-0463](../roadmaps/BE-0463-network-expect-dict-matchers/BE-0463-network-expect-dict-matchers.md)).
+
+```yaml
+expect:
+  - request:
+      method: POST
+      path: /api/orders
+      query: { page: "2", sort: { $matches: "^(asc|desc)$" } }
+      body:
+        user: { id: "42", email: { $exists: true } }
+        items: [ { sku: A-1, qty: "1" } ]
+        coupon: { $exists: false }
+```
+
+- **`query`** checks the URL's query string. Keys and values are URL-decoded (`+` reads as a space).
+  A key with an empty or missing value (`?debug`, `?page=`) holds the value `""`. A repeated key
+  matches when any occurrence satisfies the value.
+- **`body`** checks the request body parsed as JSON, recursing into nested maps and lists. A
+  non-JSON, non-object, or absent body fails every `body` criterion.
+
+Each value takes one of four forms:
+
+| Form | Example | Holds when |
+|---|---|---|
+| Scalar | `id: "42"` | The text form of the JSON value equals the string (`"42"` matches the number `42`; booleans and null read as `true` / `false` / `null`) |
+| Operator map | `id: { $matches: "^4" }` | Every operator holds: `$matches` searches the text form with a regex, and `$exists: true` / `false` requires the key present / absent |
+| Plain map | `user: { id: "42" }` | The JSON value is an object, and each listed key holds; unlisted keys are ignored |
+| List | `tags: [a, b]` | The JSON value is an array of the same length, each element holding against the matcher at its index |
+
+`query` takes the scalar and operator-map forms alone, because a query string has no nesting.
+
+The scenario fails to load when a dictionary breaks the grammar:
+
+- **An unquoted scalar.** The loader refuses a value such as `qty: 1` or `ok: true`. Quote it
+  (`qty: "1"`). An unquoted number would never equal the text it is compared with.
+- **An empty dictionary.** `query: {}` or `body: {}` would match every exchange.
+- **A mixed or unknown operator map.** The loader refuses a map that mixes `$` keys with plain
+  keys. It also refuses any operator other than `$matches` or `$exists`.
+- **A bare operator at the top.** The top-level keys of `query` and `body` always name fields.
+
+To check a field whose own name starts with `$`, double the prefix: `$$ref` checks the field `$ref`.
+
+Suppose the assertion does not hold, and one exchange alone satisfies the endpoint and method
+criteria. The message then names the first key that did not hold, such as
+`query.page: expected "2", got "3"`. Otherwise the message keeps the plain count. That holds with no
+candidate, with more than one, and with `count` set.
+
+`query` and `body` work wherever this matcher does. That covers `request`, `event`,
+`requestSequence`, `responseSchema.request`, and `until: { request }`. Values accept `${vars.*}` /
+`${secrets.*}` tokens. `mocks` refuse both fields for now. The in-app matcher would ignore them and
+stub more traffic than the scenario says.
 
 ### `event` (analytics event assertion)
 
@@ -1893,13 +1953,14 @@ wait and `mocks` (below). At least one match field is required; the listed field
 ([BE-0048](../roadmaps/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md)).
 It is a pure check over the same observed exchanges `request` reads (needs the `--network` run flag),
 so the verdict stays machine-only — no LLM. It filters the timeline by the event's **endpoint** (the
-same `method` / `url` / `urlMatches` / `path` / `pathMatches` matcher as `request`), then by structured
-**request-body fields**, and checks how many exchanges survive against a count operator.
+same `method` / `url` / `urlMatches` / `path` / `pathMatches` matcher as `request`), then by its
+`query` / `body` dictionaries, and checks how many exchanges survive against a count operator.
 
 | Field | Type | Description |
 |---|---|---|
 | `method` / `url` / `urlMatches` / `path` / `pathMatches` | str | Endpoint matcher (AND-ed), same meaning as `request` |
-| `body` | map | Each `key: value` must be present in the JSON request body and equal the value, compared as text (so `amount: "300"` matches the JSON number `300`; a JSON boolean / null matches `"true"` / `"false"` / `"null"`) |
+| `query` | map | Key/value dictionary over the URL's query parameters, the same grammar as `request` ([dictionaries](#keyvalue-dictionaries-query-and-body)) |
+| `body` | map | Key/value dictionary over the JSON request body, the same grammar as `request`. The flat form compares top-level fields as text (so `amount: "300"` matches the JSON number `300`); nested maps, lists, `$matches`, and `$exists` work too ([dictionaries](#keyvalue-dictionaries-query-and-body)) |
 | `count` | object | Expected multiplicity — **exactly one** of `equals` / `atLeast` / `atMost`. Omitted means **at least one** |
 
 ```yaml
@@ -1911,9 +1972,11 @@ expect:
       count: { equals: 1 }
 ```
 
-> At least one of an endpoint field or `body` must be present, so an event always pins something. A
-> non-JSON, non-object, or absent request body matches no `body` criterion (it fails rather than
-> guessing). Body values support `${vars.*}` / `${secrets.*}` tokens like the rest of the DSL.
+> At least one of an endpoint field, `query`, or `body` must be present, so an event always pins
+> something. A non-JSON, non-object, or absent request body matches no `body` criterion (it fails
+> rather than guessing). Dictionary values support `${vars.*}` / `${secrets.*}` tokens like the rest
+> of the DSL. Write a top-level `body` key that starts with `$` as `$$`, since a single `$` marks an
+> operator.
 
 ### `requestSequence` (ordered requests)
 

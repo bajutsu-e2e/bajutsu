@@ -269,3 +269,27 @@ def test_state_dir_refuses_a_gitignore_that_is_a_directory(tmp_path: Path) -> No
     (state / ".gitignore").mkdir(parents=True)
     with pytest.raises(ValueError, match=r"\.gitignore"):
         ensure_state_dir(state)
+
+
+def test_the_machine_id_is_generated_once_and_kept(tmp_path: Path) -> None:
+    state = tmp_path / ".bajutsu"
+    first = local_keys.machine_id(state)
+    assert len(first) == 32 and int(first, 16) >= 0
+    assert local_keys.machine_id(state) == first
+    assert local_keys.read_machine_id(state) == first
+    assert _mode(state / local_keys.MACHINE_ID_FILE) == 0o600
+
+
+def test_reading_a_machine_id_never_creates_one(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="does not exist"):
+        local_keys.read_machine_id(tmp_path / ".bajutsu")
+    assert not (tmp_path / ".bajutsu").exists()
+
+
+def test_a_malformed_machine_id_is_refused(tmp_path: Path) -> None:
+    state = tmp_path / ".bajutsu"
+    local_keys.machine_id(state)
+    path = state / local_keys.MACHINE_ID_FILE
+    path.write_text("not one token\n", encoding="ascii")
+    with pytest.raises(ValueError, match="does not hold a machine id"):
+        local_keys.read_machine_id(state)
