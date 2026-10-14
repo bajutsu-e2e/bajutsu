@@ -16,7 +16,12 @@ from run_cli import invoke
 from typer.testing import CliRunner
 
 from bajutsu.cli import app
-from bajutsu.cli._shared import _command_preconditions_or_exit, _refuse_bad_preconditions
+from bajutsu.cli._shared import (
+    LoadedConfig,
+    _command_preconditions_or_exit,
+    _precondition_checks,
+    _refuse_bad_preconditions,
+)
 from bajutsu.common import _yaml
 from bajutsu.common.config import (
     Effective,
@@ -312,6 +317,27 @@ def test_a_scenario_condition_passes_the_check_and_fake_says_it_is_not_evaluated
     assert "not yet supported" not in capsys.readouterr().out
     # The fake backend evaluates no condition, and says so.
     _refuse_bad_preconditions([(scenario, [_effs()["phone"]])], erase=None, fake=True)
+
+
+def test_each_scenario_is_checked_against_the_targets_it_declares() -> None:
+    # The phone's seed photos would trip the primary-only check, which is not what this pins.
+    cfg = load_config(_CONFIG.replace(", seedPhotos: [photos/red.png]", ""))
+    loaded = LoadedConfig(config=cfg, path=Path("c.yaml"), source=None, root=None)
+    both, own, typo = load_scenarios(
+        "- name: both\n  targets: [site, phone]\n  steps: []\n"
+        "- name: own\n  steps: []\n"
+        "- name: typo\n  targets: [nope]\n  steps: []\n"
+    )
+    checks = _precondition_checks(loaded, [both, own, typo], "site", resolve(cfg, "site"))
+    # `run` and `audit` share this: a scenario declaring `site` and `phone` drives both, so an
+    # iOS-only field it writes is honored under `--target site`. A scenario whose every declared
+    # name is unknown is left to the target checks, which name the typo.
+    assert [(s.name, [t.target for t in ts]) for s, ts in checks] == [
+        ("both", ["site", "phone"]),
+        ("own", ["site"]),
+    ]
+    both.preconditions = _pre("{ app: { launch: { args: [-x] } } }")
+    _refuse_bad_preconditions(checks, erase=None, fake=False)
 
 
 _WEB_CONFIG = """

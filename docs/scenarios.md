@@ -181,13 +181,14 @@ on the target as well.
 ## tipKitHandling (a blocking TipKit tip)
 
 Set `preconditions.run.tipKitHandling` to `true` to turn the TipKit guard on. The guard dismisses a
-blocking Apple **TipKit** tip, the framework-owned popover. Each scenario is then spared from
-hand-authoring the same recovery. The guard needs two signs of a tip together. One is its dismiss
-scrim (`PopoverDismissRegion`). The other is its own container (`TipView`). A plain `confirmationDialog` installs an identical scrim, and the guard
-must not touch it. An `interrupts` entry for a tip keys on `TipView` for the same reason. `TipView`
-is TipKit's own container, measured on both the SwiftUI and UIKit presentations. The field applies
-to iOS alone. The guard is **off** by default, because a scenario sometimes asserts on the tip itself. The
-CLI's `--ios-tipkit-handling` / `--no-ios-tipkit-handling` overrides it.
+blocking Apple **TipKit** tip, so no scenario has to hand-author that recovery. A tip is the
+framework-owned popover. The guard requires a tip's dismiss scrim (`PopoverDismissRegion`) **and**
+its container together. A plain `confirmationDialog` installs the same scrim, so the scrim alone
+cannot identify a tip. The container, `TipView`, belongs to TipKit alone. We measured it on both the
+SwiftUI and UIKit presentations. An `interrupts` entry for a tip keys on `TipView` for the same
+reason. The guard applies to iOS alone and stays **off** by default. A scenario sometimes asserts on
+the tip itself, and the guard would dismiss it. The command-line flag `--ios-tipkit-handling` /
+`--no-ios-tipkit-handling` overrides the field.
 
 ## systemAlertHandling (the system-alert guard)
 
@@ -485,7 +486,7 @@ its replacement, rather than parsing into something that behaves differently fro
 | `enabled: true` | a mapping (or `systemAlertHandling: true`) — a mapping always means on |
 | `alertHandling:` / `dismissAlerts:` | `preconditions.run.systemAlertHandling:` |
 | a scenario's top-level `systemAlertHandling:` / `iosTipKitHandling:` | `preconditions.run.systemAlertHandling:` / `preconditions.run.tipKitHandling:` (BE-0452) |
-| `--alert-labels "Allow,OK"` / `--alert-instruction "Allow,OK"` | a scenario or target-config `rules` entry — no flag carries a prompt paired with a choice legibly. A `run` request to the serve HTTP API carrying `alertLabels` is refused with 400, naming `systemAlertHandling.rules` |
+| `--alert-labels "Allow,OK"` / `--alert-instruction "Allow,OK"` | a scenario or target-config `rules` entry — no flag carries a prompt paired with a choice legibly. A `run` request to the serve HTTP API carrying `alertLabels` is refused with 400, naming `preconditions.run.systemAlertHandling.rules` |
 | `--alert-instruction "tap Allow"` | `--alert-vision-instruction "tap Allow"` (`record` / `crawl` only — `run` retired it, BE-0402) |
 | `--alert-handling` / `--dismiss-alerts` | `--system-alert-handling` |
 

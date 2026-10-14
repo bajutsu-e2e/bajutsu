@@ -1236,17 +1236,17 @@ either side, and it inflates the file with reasoning a reader can look up.
 Example — trimmed to its result, with the derivation left in the item:
 
 ```python
-# A retry forces the device recovery `erase: true` would give. Skipped on `reinstall: overwrite`
-# (the scenario needs its app data preserved) and on the operator's `--no-erase`; a CLI-resolved
-# `erase: false` is NOT the same signal (BE-0353).
+# A retry forces the device recovery `erase: true` would give. Skipped on a merged `reinstall:
+# overwrite`, from the scenario or its target (the app data must survive), and on the operator's
+# `--no-erase`; a CLI-resolved `erase: false` is NOT the same signal (BE-0353).
 ```
 
 not:
 
 ```python
-# Skipped when the scenario declares `reinstall: overwrite` — its explicit declaration that it
-# needs its app's data container preserved across a lease — since forcing `erase` would silently
-# override exactly the precondition the scenario was written against. NOT skipped on
+# Skipped when the merged `reinstall` is `overwrite` — the scenario's, or its target's default — an
+# explicit declaration that the app's data container must survive a lease, since forcing `erase`
+# would silently override exactly the precondition the scenario was written against. NOT skipped on
 # `preconditions.run.erase is False`: by the time a scenario reaches here, the CLI has already resolved
 # every scenario's `erase` to a concrete bool — most commonly `False`, the built-in default a
 # scenario never asked for — so a guard on that value would silently disable this whole unit on the
