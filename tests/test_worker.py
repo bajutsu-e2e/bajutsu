@@ -334,9 +334,9 @@ def test_advertised_capabilities_splits_platforms_and_falls_back_to_env(
 
     monkeypatch.setattr(worker_mod, "worker_capabilities", record)
     monkeypatch.setenv(WORKER_CAPABILITIES_ENV, "ios18")
-    caps = _advertised_capabilities("ios, web", "")  # empty flag → env override applies
+    caps = _advertised_capabilities("ios, web", "", None, "darwin")  # empty flag → env applies
     assert seen == {"platforms": ["ios", "web"], "override": "ios18"}
-    assert caps == ["platform:ios", "platform:web"]  # sorted
+    assert caps == ["host:darwin", "platform:ios", "platform:web"]  # sorted, host added (BE-0450)
 
 
 def test_advertised_capabilities_rejects_an_unknown_platform() -> None:

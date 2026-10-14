@@ -129,7 +129,7 @@ DEVICEFARM_PROJECT_ARN=arn:aws:devicefarm:us-west-2:123456789012:project:abc \
 - ワーカーが Bajutsu のソースのチェックアウトから起動しています。各実行のパッケージはチェックアウトの `pyproject.toml`、`tests/`、`bajutsu/` を含みます。インストール済みの Bajutsu には、これらがありません。
 - コマンドラインで `--platform` を指定していません。端末は Device Farm のホストに属するので、ワーカーは自分のデバイスを操作しません。
 
-登録が済むと、ワーカーは `provider registered: devicefarm` を表示し、ルーティング用のトークン `environment:devicefarm` を広告します。fan-out のジョブが要求するトークンは、このトークン 1 つだけです。このトークンを広告するワーカーは、ほかのジョブをリースしません。そのため、ローカルのジョブと Device Farm のジョブが互いのワーカーに届くことはありません。1 台のマシンで両方を扱うには、ワーカーが 2 つ要ります。ワーカーに `environment:` という接頭辞のトークンを付けられるのは、この登録だけです。`--capabilities` と `$BAJUTSU_WORKER_CAPABILITIES` は、起動時にこの接頭辞を拒否します。
+登録が済むと、ワーカーは `provider registered: devicefarm` を表示し、ルーティング用のトークン `environment:devicefarm` を広告します。どのワーカーも自分のマシンを表す `host:<os>` を広告するので、このトークンも並びます。fan-out のジョブが要求するトークンは、`environment:devicefarm` 1 つだけです。このトークンを広告するワーカーは、ほかのジョブをリースしません。そのため、ローカルのジョブと Device Farm のジョブが互いのワーカーに届くことはありません。1 台のマシンで両方を扱うには、ワーカーが 2 つ要ります。ワーカーに `environment:` という接頭辞のトークンを付けられるのは、この登録だけです。`--capabilities` と `$BAJUTSU_WORKER_CAPABILITIES` は起動時に、設定ファイルの `requires` は読み込み時に、この接頭辞を拒否します。
 
 どのワーカーも扱えない fan-out のジョブは、ほかのジョブと同じくキューに残り、ルーティング不能として数えられます。キューを持たないサーバには fan-out を渡せるワーカーがないので、`POST /api/run-set` を拒否します。
 

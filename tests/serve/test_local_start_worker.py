@@ -80,15 +80,19 @@ def _no_server_env(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(var, raising=False)
 
 
-def _fake_project(tmp_path: Path) -> Path:
-    """A fake-backend project whose `demo` target declares a scenario secret; returns its config."""
+def _fake_project(tmp_path: Path, identifier: str = "bundleId: com.example.demo") -> Path:
+    """A fake-backend project whose `demo` target declares a scenario secret; returns its config.
+
+    *identifier* picks the target's platform: the default is iOS, and `package: ...` makes it an
+    Android target that a worker on any host may serve (BE-0450).
+    """
     scn = tmp_path / "scenarios"
     scn.mkdir()
     (scn / "pass.yaml").write_text("- name: ok\n  steps: []\n", encoding="utf-8")
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
         "defaults: { backend: [fake] }\ntargets:\n"
-        f"  demo: {{ bundleId: com.example.demo, scenarios: {scn}, secrets: [LOGIN_PASSWORD] }}\n",
+        f"  demo: {{ {identifier}, scenarios: {scn}, secrets: [LOGIN_PASSWORD] }}\n",
         encoding="utf-8",
     )
     (tmp_path / "runs").mkdir()
@@ -520,7 +524,9 @@ def test_sigterm_to_a_worker_cancels_its_leased_run_and_ends_the_child(
     import threading
     import time
 
-    cfg = _fake_project(tmp_path)
+    # An Android fake target: a real worker refuses `--platform ios` off macOS (BE-0450), and this
+    # test spawns one on whatever host runs the suite.
+    cfg = _fake_project(tmp_path, "package: com.example.demo")
     slow = tmp_path / "scenarios" / "slow-signal.yaml"
     slow.write_text(
         "- name: slow\n  steps:\n"
@@ -570,7 +576,7 @@ def test_sigterm_to_a_worker_cancels_its_leased_run_and_ends_the_child(
                 "--server-url",
                 f"http://127.0.0.1:{port}",
                 "--platform",
-                "ios",
+                "android",
                 "--poll-interval",
                 "0.2",
                 "--heartbeat-interval",
@@ -664,8 +670,28 @@ def test_port_zero_on_a_local_start_exits_cleanly(tmp_path: Path) -> None:
 
 def test_the_startup_note_names_the_platforms_the_config_needs(tmp_path: Path) -> None:
     cfg = _fake_project(tmp_path)
-    assert srv.worker_platforms(cfg) == "ios"
-    assert srv.worker_platforms(None) in {"android,ios,web", "android,web"}
+    assert srv.worker_platforms(cfg, "darwin") == "ios"
+    assert srv.worker_platforms(None, "darwin") == "android,ios,web"
+    assert srv.worker_platforms(None, "linux") == "android,web"
+
+
+def test_the_startup_note_leaves_out_a_platform_the_host_cannot_drive(tmp_path: Path) -> None:
+    # A local worker refuses `--platform ios` on Linux (BE-0450), so `make serve` never starts one
+    # that way: the iOS runs wait with the no-worker notice, and the worker serves what it can.
+    cfg = _fake_project(tmp_path)
+    assert srv.worker_platforms(cfg, "linux") == "android,web"
+
+
+def test_a_platform_with_no_driver_yet_is_left_out_rather_than_raising(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A planned platform lands in PLATFORMS before its driver does; `serve` must still start.
+    from bajutsu.common import backends
+    from bajutsu.serve import helpers
+
+    monkeypatch.setitem(backends.PLATFORMS, "flutter", ("flutter-bridge",))
+    monkeypatch.setattr(helpers, "target_capabilities", lambda *_a: ["platform:flutter"])
+    assert srv.worker_platforms(_fake_project(tmp_path), "linux") == "android,web"
 
 
 def test_a_worker_without_the_servers_files_fails_the_job_clearly(

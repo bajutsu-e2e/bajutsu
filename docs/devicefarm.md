@@ -243,11 +243,12 @@ startup, the worker exits with the reason unless all three conditions below hold
   drives no device of its own.
 
 Once registered, the worker prints `provider registered: devicefarm`. It advertises the routing
-token `environment:devicefarm`. A fan-out job requires that token and no other. A worker
-advertising the token leases nothing else. Local jobs and Device Farm jobs thus never reach each
-other's workers. Serving both on one machine takes two workers. Registration alone puts an
-`environment:` token on a worker. `--capabilities` and `$BAJUTSU_WORKER_CAPABILITIES` refuse that
-prefix at startup.
+token `environment:devicefarm`, beside the `host:<os>` token every worker advertises for its machine.
+A fan-out job requires `environment:devicefarm` and no other token. A worker advertising the token
+leases nothing else. Local jobs and Device Farm jobs thus never reach each other's workers. Serving
+both on one machine takes two workers. Registration alone puts an `environment:` token on a worker.
+`--capabilities` and `$BAJUTSU_WORKER_CAPABILITIES` refuse that prefix at startup. A config's
+`requires` refuses it at load.
 
 A fan-out job that no live worker can serve stays queued as unroutable, like any other job. A server
 with no queue has no worker to take the fan-out, so it refuses `POST /api/run-set`.

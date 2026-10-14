@@ -973,13 +973,13 @@ bajutsu worker --once <spec.json> [--worker-config <worker.yaml>]
 | `--once` | オフ | この JSON ファイルの job 仕様を 1 つ、サーバーなしでこのマシン上で実行し、job の終了コードで終了します。詳しくは下記を参照してください |
 | `--server-url` | `$BAJUTSU_SERVER_URL` または `http://localhost:8765` | コントロールプレーンの URL |
 | `--token` | "" | 認証用の operator トークン（コントロールプレーン側の `--token` / `$BAJUTSU_SERVE_TOKEN`） |
-| `--platform` | `ios` | この worker が動かせる backend のカンマ区切りリスト（`ios` / `web` / `android`）。コントロールプレーンが job を振り分ける軸です |
-| `--capabilities` | "" (`$BAJUTSU_WORKER_CAPABILITIES` も可) | platform と Simulator の在庫情報に加えて広告する追加の capability トークン（例: `ios18,ipad`）。job がそのトークンを要求する場合、それを持つ worker にしかリースされません |
+| `--platform` | `ios` | この worker が動かせる backend のカンマ区切りリスト（`ios` / `web` / `android`）。コントロールプレーンが job を振り分ける軸です。ローカルの worker は、worker 能力ファイルが含まないドライバや、ホストで動かせないドライバのプラットフォームを指定されると、ドライバを名指しして起動時に終了します。そのため、Linux の worker は `--platform ios` で止まります（[BE-0450](../../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability-ja.md)）。device cloud の worker は指定を受け付けません |
+| `--capabilities` | "" (`$BAJUTSU_WORKER_CAPABILITIES` も可) | **非推奨**（[BE-0450](../../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability-ja.md)）。platform、ホスト、Simulator の在庫情報に加えて広告する追加の capability トークン（例: `ios18,ipad`）です。今回のリリースでは 1 回だけの通知とともに引き続き効き、次のリリースで削除します。これらのトークンは、在庫情報と worker 能力ファイルがすでに提供しています。予約済みの接頭辞 `environment:` や `host:` を持つトークンを渡すと、worker は起動時に止まります |
 | `--poll-interval` | `2.0` | 空き時間にリースを試みる間隔（秒） |
 | `--heartbeat-interval` | `30.0` | run 中にリースのハートビートを送る間隔（秒）。コントロールプレーンのリースタイムアウトより短く保つことで、長時間の run を停止した worker と誤認して回収されないようにしています |
 | `--workdir` | 新しい一時ディレクトリ | lease した job を実行する場所です。job の materials、取得したバンドル、アップロード前の run のツリーを置きます。既定のディレクトリは worker の停止時に削除するので、プロジェクトの中で起動した worker がプロジェクトに書き込むことはありません |
 | `--worker-id` | "" (自動生成) | worker の識別子 |
-| `--worker-config` | 同梱の既定 | この worker が従う worker 能力ファイル（[BE-0450](../../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability-ja.md)。[drivers](drivers.md#worker-の能力検査be-0450) を参照）。worker は起動時にファイルを検証し、不正なら job をリースする前に終了します。device cloud 向けの job のリースはまだ実装していないため、`environment` が `local` 以外のファイルも当面は拒否します。worker は起動するすべての `bajutsu run` にファイルの絶対パスを渡すので、リースした run はどれも同じファイルで検査されます。サーバーはこのファイルを読みません |
+| `--worker-config` | 同梱の既定 | この worker が従う worker 能力ファイル（[BE-0450](../../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability-ja.md)。[drivers](drivers.md#worker-の能力検査be-0450) を参照）。worker は起動時にファイルを検証し、不正なら job をリースする前に終了します。`environment` に device cloud を指定したファイルでは、worker はそのプロバイダを登録し、`environment:<name>` を広告します（[Device Farm](devicefarm.md)）。worker は起動するすべての `bajutsu run` にファイルの絶対パスを渡すので、リースした run はどれも同じファイルで検査されます。サーバーはこのファイルを読みません |
 
 `--once` は job 仕様を 1 つ、サーバーなしで実行します（[BE-0449](../../roadmaps/BE-0449-server-runs-no-jobs/BE-0449-server-runs-no-jobs-ja.md)）。
 job 仕様はキューが保存する形と同じで、`cmd` のリストと、キュー済みの job が持つ任意のフィールドからなります。

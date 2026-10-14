@@ -16,9 +16,14 @@ gate drives it with captured `simctl` JSON.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 
 from bajutsu.common.backend_cli import simctl as _simctl
+from bajutsu.common.capability.worker_capability import (
+    ENVIRONMENT_ROUTING_PREFIX,
+    HOST_ROUTING_PREFIX,
+    reserved_routing_tokens,
+)
 
 # The backend axis (idb vs web vs android): `platform:ios` is served by a Mac idb worker,
 # `platform:web` by the Linux Playwright worker container (BE-0173). Kept a distinct prefix so a
@@ -29,10 +34,16 @@ PLATFORM_PREFIX = "platform:"
 # `environment` advertises `environment:<name>`, and a cloud-batch job requires exactly that token.
 # Reserved: only a worker that registered the named provider may advertise it, so an operator's
 # free-form tokens can never pull a cloud job onto a worker that holds no provider.
-ENVIRONMENT_PREFIX = "environment:"
+ENVIRONMENT_PREFIX = ENVIRONMENT_ROUTING_PREFIX
+
+# The host axis (BE-0450): every worker advertises `host:<os>` for the operating system it runs on,
+# and a job whose driver runs on one host operating system only (xcuitest: macOS) requires it, so the
+# job never reaches a worker whose machine cannot start that driver.
+HOST_PREFIX = HOST_ROUTING_PREFIX
 
 # Operator override: extra capability tokens a worker advertises beyond its platform + Simulator
-# inventory (comma/space separated), e.g. `ios18,ipad`. The pinning escape hatch the design keeps.
+# inventory (comma/space separated), e.g. `ios18,ipad`. Deprecated (BE-0450): still honored, with a
+# notice, for one release.
 WORKER_CAPABILITIES_ENV = "BAJUTSU_WORKER_CAPABILITIES"
 
 _SPLIT = re.compile(r"[,\s]+")
@@ -48,9 +59,44 @@ def environment_capability(environment: str) -> str:
     return f"{ENVIRONMENT_PREFIX}{environment}"
 
 
+def host_capability(host: str) -> str:
+    """The host-axis token for an operating system, e.g. ``host:darwin``."""
+    return f"{HOST_PREFIX}{host}"
+
+
+def required_host(
+    actuators: Iterable[str],
+    host_os_for: Callable[[str], frozenset[str] | None] | None = None,
+) -> str | None:
+    """The one host operating system every actuator in *actuators* is bound to, or None.
+
+    A fallback list such as ``[xcuitest, playwright]`` requires no host, since `playwright` runs
+    anywhere and the worker may resolve to it; an actuator with no driver yet adds no constraint
+    either, as the worker cannot select it.
+
+    Args:
+        actuators: The actuators a job's target requests, in order.
+        host_os_for: The driver host-requirement lookup; `backends.host_os_for` when None.
+    """
+    if host_os_for is None:
+        from bajutsu.common.backends import host_os_for as default_host_os_for
+
+        host_os_for = default_host_os_for
+    hosts: set[str] = set()
+    for actuator in actuators:
+        try:
+            bound = host_os_for(actuator)
+        except ValueError:
+            return None
+        if bound is None or len(bound) != 1:
+            return None
+        hosts |= bound
+    return next(iter(hosts)) if len(hosts) == 1 else None
+
+
 def reserved_tokens(tokens: Iterable[str]) -> list[str]:
-    """The tokens among *tokens* that carry the reserved ``environment:`` prefix, sorted."""
-    return sorted(t for t in tokens if t.startswith(ENVIRONMENT_PREFIX))
+    """The tokens among *tokens* that carry a reserved ``environment:`` or ``host:`` prefix, sorted."""
+    return reserved_routing_tokens(tokens)
 
 
 def parse_capabilities(raw: str | None) -> set[str]:
@@ -63,13 +109,23 @@ def parse_capabilities(raw: str | None) -> set[str]:
     return {token for token in _SPLIT.split(raw.strip()) if token}
 
 
-def required_capabilities(platform: str, requires: Iterable[str] = ()) -> list[str]:
-    """The capability set a job needs: its platform axis plus any operator-declared tokens.
+def required_capabilities(
+    platform: str, requires: Iterable[str] = (), *, host: str | None = None
+) -> list[str]:
+    """The capability set a job needs: its platform axis, its host, and any operator-declared tokens.
 
     Returned sorted and de-duplicated so the value stored on the job row is canonical — two jobs
     with the same requirements always serialize identically.
+
+    Args:
+        platform: The target's platform axis; empty adds no ``platform:*`` token.
+        requires: The deprecated operator-declared tokens (`requires`), added verbatim.
+        host: The host operating system the target's driver is bound to (`required_host`); None
+            adds no ``host:*`` token.
     """
     tokens = {platform_capability(platform)} if platform else set()
+    if host:
+        tokens.add(host_capability(host))
     tokens.update(t for t in requires if t)
     return sorted(tokens)
 
@@ -100,8 +156,9 @@ def worker_capabilities(
     Args:
         platforms: The backend axes this worker can drive (``ios`` for a Mac idb worker, ``web`` for
             the Playwright container) — each becomes a ``platform:*`` token.
-        override: The operator pin from `WORKER_CAPABILITIES_ENV` / ``--capabilities``; its tokens
-            are added verbatim, so an operator can force ``ios18``/``ipad`` regardless of inventory.
+        override: The deprecated operator pin from `WORKER_CAPABILITIES_ENV` / ``--capabilities``;
+            its tokens are added verbatim, so an operator can force ``ios18``/``ipad`` regardless of
+            inventory.
         run: A `simctl` runner. When given, the installed Simulator inventory contributes ``iosNN``
             runtime and ``iphone``/``ipad`` device-class tokens (`simctl_capabilities`); omit it on a
             worker with no Simulators (e.g. the web container).

@@ -13,6 +13,7 @@ and no lookup in the working directory, so the file in force is always the one o
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Literal
 
@@ -38,6 +39,25 @@ LOCAL = "local"
 # are listed here rather than read from the provider registry, which the server package fills at
 # runtime and the deterministic core may not import; a test keeps the two in step.
 ENVIRONMENTS: frozenset[str] = frozenset({LOCAL, "devicefarm"})
+
+# The routing-token prefixes a worker fills in itself: `environment:<name>` for a provider it
+# registered (BE-0448), and `host:<os>` for the machine it runs on (BE-0450). Reserved, so every
+# hand-written token input — a worker's override and a target's `requires` — rejects them: a
+# hand-written one could pull a job onto a worker that cannot run it, or route a job nowhere. Defined
+# here, beside the environment names, so the configuration schema can check them without importing
+# the server package.
+ENVIRONMENT_ROUTING_PREFIX = "environment:"
+HOST_ROUTING_PREFIX = "host:"
+RESERVED_ROUTING_PREFIXES: tuple[str, ...] = (ENVIRONMENT_ROUTING_PREFIX, HOST_ROUTING_PREFIX)
+RESERVED_ROUTING_REASON = (
+    "the environment: and host: prefixes are reserved: a worker advertises them itself, from its "
+    "worker.yaml environment and the machine it runs on"
+)
+
+
+def reserved_routing_tokens(tokens: Iterable[str]) -> list[str]:
+    """The tokens among *tokens* that carry a reserved routing prefix, sorted."""
+    return sorted(t for t in tokens if t.startswith(RESERVED_ROUTING_PREFIXES))
 
 
 class WorkerCapabilityError(ValueError):

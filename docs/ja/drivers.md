@@ -135,6 +135,24 @@ drivers: [xcuitest, adb, playwright, fake]
   残りのシナリオは実行します。最初のデバイスを確保する前に、すべての target の actuator を選んで検査します。
   そのため、worker で動かせない target があっても、何も確保しないまま終わります。
 
+**広告とルーティング。** サーバの worker は、同じ事実をルーティング用のトークンに変えます
+（[self-hosting](self-hosting.md#能力に基づくキューの振り分けbe-0166)）。worker は、自分が動く
+OS を表す `host:<os>` を広告します。target のドライバがすべて 1 つの OS
+でしか動かない job は、そのホストを必要とします。そのため、`xcuitest` の job は `host:darwin` を
+必要とし、Mac の worker にだけ届きます。`local` の worker は起動時に、各 `--platform` を worker 能力
+ファイルとホストに照らして検査します。どちらかがそのプラットフォームを除外する場合は、ドライバの理由を
+示して終了します。たとえば `--platform ios` で起動した Linux の worker は止まります。理由は
+`xcuitest runs only on macOS; this worker runs on linux` です。この検査は target の `backend` ではなく
+プラットフォームのドライバを判定します。そのため、`fake` の backend で動く iOS の target も Mac の worker を
+必要とします。macOS 以外の worker は `platform:ios` を広告しないからです。environment が device cloud の
+worker は、`environment:<name>` を広告します。`platform:*` のトークンは広告しません。worker 能力ファイル自体は
+ルーティング用のトークンを宣言しません。ランタイムやデバイス種別のトークン（`ios18`、`ipad`）は Simulator の
+在庫から得ます。宣言では、マシンにないランタイムまで約束できてしまうからです。
+
+worker の `--capabilities` フラグ、`$BAJUTSU_WORKER_CAPABILITIES`、target の `requires` リストは非推奨です。
+いずれも今回のリリースでは、1 回だけの通知とともに引き続き効きます。3 つのいずれも、予約済みの接頭辞
+`environment:` と `host:` を含められません。worker がどちらも自分で埋めるからです。
+
 ## XCUITest（iOS）
 
 [BE-0290](../../roadmaps/BE-0290-xcuitest-default-ios-backend/BE-0290-xcuitest-default-ios-backend-ja.md) で idb を撤去して以来、**iOS の唯一の backend** です。**XCTest のオートメーションスナップショット**を、**実機上に常駐する runner**（`BajutsuKit`）を loopback HTTP で駆動して読み取り、アプリ側の統合なしに任意のアプリを bundle id で駆動します。実装: `common/drivers/xcuitest.py`。frame 中心の座標に解決するのではなく、能力モデルの豊かな端に位置します（semantic tap、ネイティブ条件待機、multi-touch、テキスト選択）。Xcode の `xcodebuild` が必要です。

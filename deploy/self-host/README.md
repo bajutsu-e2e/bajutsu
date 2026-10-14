@@ -56,11 +56,16 @@ backend has no Simulator/GUI constraint. An optional `worker-web` service (off b
 docker compose --profile web-worker up -d --build
 ```
 
-`/api/worker/lease` filters by **worker capability** (BE-0166), so a mixed-backend fleet is safe:
-the web-worker container advertises `web` and leases only web jobs, while an idb worker leases only
-idb jobs — the two never cross. See [capability-routed
-queues](../../docs/self-hosting.md#capability-routed-queues-be-0166) for pinning iOS runtimes or
-device classes with `requires:`.
+`/api/worker/lease` filters by **worker capability** (BE-0166), so a mixed-backend fleet is safe.
+The web-worker container advertises `web` and leases web jobs alone. A Mac worker leases iOS jobs
+alone, and the two never cross. Every worker also advertises `host:<os>` for its machine. An iOS
+job requires `host:darwin`, so it reaches a Mac worker alone (BE-0450).
+
+A worker capability file declares what one machine can run. It lists the drivers and caps the
+targets one scenario may hold. Pass it with `bajutsu worker --worker-config <worker.yaml>`. A target's
+`requires:` list can still pin an iOS runtime or a device class. The list now logs a deprecation
+notice. The worker's `--capabilities` goes away in the next release. See [capability-routed
+queues](../../docs/self-hosting.md#capability-routed-queues-be-0166).
 
 > The compose stack and images are **not exercised by CI** (no Docker on the gate). Verify a
 > deployment by hand: `docker compose up`, then check the migrate step succeeds, `/` returns 200,
