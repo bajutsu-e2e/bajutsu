@@ -201,7 +201,7 @@ def test_an_empty_requires_says_nothing(caplog: pytest.LogCaptureFixture) -> Non
     assert caplog.text == ""
 
 
-@pytest.mark.parametrize("token", ["environment:devicefarm", "host:darwin"])
+@pytest.mark.parametrize("token", ["environment:devicefarm", "host:darwin", "machine:abc"])
 @pytest.mark.parametrize("where", ["defaults", "target"])
 def test_requires_refuses_the_reserved_prefixes(token: str, where: str) -> None:
     body = (
@@ -209,17 +209,96 @@ def test_requires_refuses_the_reserved_prefixes(token: str, where: str) -> None:
         if where == "defaults"
         else f"targets:\n  s: {{ bundleId: com.x, requires: [ios18, '{token}'] }}\n"
     )
-    with pytest.raises(ValidationError, match="host: prefixes are reserved"):
+    with pytest.raises(ValidationError, match="machine: prefixes are reserved"):
         load_config(body)
 
 
-@pytest.mark.parametrize("token", ["environment:devicefarm", "host:darwin"])
+@pytest.mark.parametrize("token", ["environment:devicefarm", "host:darwin", "machine:abc"])
 def test_the_override_refuses_the_reserved_prefixes(
     token: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # The worker fills both itself, so neither the flag nor the variable may claim one.
+    # The worker fills each itself, so neither the flag nor the variable may claim one.
     with pytest.raises(typer.BadParameter, match="reserved"):
         worker_mod._advertised_capabilities("web", token, _local(), "linux")
     monkeypatch.setenv(cap.WORKER_CAPABILITIES_ENV, f"ios18,{token}")
     with pytest.raises(typer.BadParameter, match="reserved"):
         worker_mod._advertised_capabilities("web", "", _local(), "linux")
+
+
+# --- the machine axis: a job naming the server's paths goes to a worker on that machine ----------
+
+
+def test_a_machine_id_is_one_plain_token() -> None:
+    assert cap.machine_capability("3f2a-01.b_c") == "machine:3f2a-01.b_c"
+    for bad in ("", "a b", "a,b", "machine:x", "x" * 129):
+        with pytest.raises(ValueError, match="invalid machine id"):
+            cap.machine_capability(bad)
+
+
+def test_only_a_host_path_job_is_stamped_with_the_machine() -> None:
+    required = ["platform:ios"]
+    assert cap.routed_capabilities(required, names_host_paths=True, machine_id="m1") == [
+        "machine:m1",
+        "platform:ios",
+    ]
+    assert cap.routed_capabilities(required, names_host_paths=False, machine_id="m1") == required
+    assert cap.routed_capabilities(required, names_host_paths=True, machine_id=None) == required
+
+
+def test_a_stamped_job_is_served_by_the_same_machine_alone() -> None:
+    required = cap.routed_capabilities(["platform:ios"], names_host_paths=True, machine_id="m1")
+    assert cap.can_serve(required, ["platform:ios", "host:darwin", "machine:m1"])
+    assert not cap.can_serve(required, ["platform:ios", "host:darwin"])
+    assert not cap.can_serve(required, ["platform:ios", "machine:m2"])
+    # A Device Farm worker never takes it, even one that claims the machine.
+    assert not cap.can_serve(required, ["environment:devicefarm", "platform:ios", "machine:m1"])
+    # The machine token narrows nothing else: a same-machine worker still takes shipped jobs.
+    assert cap.can_serve(["platform:ios"], ["platform:ios", "machine:m1"])
+
+
+def _caps_for(
+    *,
+    machine_id: str = "",
+    server_state_dir: Path | None = None,
+    capability: WorkerCapability | None = None,
+) -> str | None:
+    return worker_mod._machine_token(machine_id, server_state_dir, capability or _local())
+
+
+def test_the_worker_advertises_a_given_machine_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(cap.MACHINE_ID_ENV, raising=False)
+    assert _caps_for() is None
+    assert _caps_for(machine_id="m1") == "machine:m1"
+    monkeypatch.setenv(cap.MACHINE_ID_ENV, "m2")
+    assert _caps_for() == "machine:m2"
+    assert _caps_for(machine_id="m1") == "machine:m1"  # the flag wins over the variable
+
+
+def test_the_worker_reads_the_servers_machine_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from bajutsu.serve.server.local_keys import machine_id
+
+    monkeypatch.delenv(cap.MACHINE_ID_ENV, raising=False)
+    state = tmp_path / ".bajutsu"
+    with pytest.raises(typer.BadParameter, match="start `bajutsu serve`"):
+        _caps_for(server_state_dir=state)
+    ident = machine_id(state)
+    assert _caps_for(server_state_dir=state) == f"machine:{ident}"
+    with pytest.raises(typer.BadParameter, match="not both"):
+        _caps_for(machine_id="m1", server_state_dir=state)
+
+
+def test_the_worker_refuses_a_malformed_machine_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(cap.MACHINE_ID_ENV, raising=False)
+    with pytest.raises(typer.BadParameter, match="invalid machine id"):
+        _caps_for(machine_id="a b")
+
+
+def test_a_device_cloud_worker_takes_no_machine_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(cap.MACHINE_ID_ENV, raising=False)
+    cloud = WorkerCapability.model_validate(
+        {"version": 1, "environment": "devicefarm", "drivers": ["xcuitest"]}
+    )
+    with pytest.raises(typer.BadParameter, match="takes no machine id"):
+        _caps_for(machine_id="m1", capability=cloud)

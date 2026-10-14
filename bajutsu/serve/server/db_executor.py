@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 
+from bajutsu.serve.capabilities import routed_capabilities
 from bajutsu.serve.server.db import cancelled_job_result
 from bajutsu.serve.server.worker_job import job_spec
 
@@ -19,14 +20,26 @@ if TYPE_CHECKING:
 
 
 class DbQueueExecutor:
-    """Dispatches a job by inserting a ``queued`` row (the `RunExecutor` seam, BE-0106)."""
+    """Dispatches a job by inserting a ``queued`` row (the `RunExecutor` seam, BE-0106).
 
-    def __init__(self, repository: Repository) -> None:
+    *machine_id* is the server machine's identity (`local_keys.machine_id`). A job whose spec names
+    its files by their paths on this machine is stored requiring ``machine:<id>``, so only a worker
+    here leases it; None stamps nothing, for a caller that routes no such job.
+    """
+
+    def __init__(self, repository: Repository, *, machine_id: str | None = None) -> None:
         self._repo = repository
+        self._machine_id = machine_id
 
     def dispatch(self, state: ServeState, job: Job) -> None:
+        spec = job_spec(job)
+        # The spec carries a `cwd` exactly when the worker would refuse the job off this machine
+        # (`worker_job._spec_cwd`), so routing and that refusal judge the same jobs.
+        job.capabilities = routed_capabilities(
+            job.capabilities, names_host_paths=spec["cwd"] is not None, machine_id=self._machine_id
+        )
         self._repo.enqueue_job(
-            job.id, org_id=job.org or "", spec=job_spec(job), capabilities=job.capabilities
+            job.id, org_id=job.org or "", spec=spec, capabilities=job.capabilities
         )
         # The job is registered before its row exists, so a cancel can land in between, find no
         # row, and stop only the in-memory `Job` (BE-0449). Carry that cancel onto the row now, or

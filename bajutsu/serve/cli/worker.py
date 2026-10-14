@@ -44,9 +44,11 @@ from bajutsu.common.run_meta.files import DEFAULT_RUNS_DIR
 from bajutsu.common.run_meta.object_store import content_type_for
 from bajutsu.serve import InMemoryLogBus
 from bajutsu.serve.capabilities import (
+    MACHINE_ID_ENV,
     WORKER_CAPABILITIES_ENV,
     environment_capability,
     host_capability,
+    machine_capability,
     parse_capabilities,
     reserved_tokens,
     worker_capabilities,
@@ -270,6 +272,41 @@ def _advertised_capabilities(
     )
 
 
+def _machine_token(
+    machine_id: str, server_state_dir: Path | None, capability: WorkerCapability
+) -> str | None:
+    """The ``machine:<id>`` token this worker advertises, or None when it names no server machine.
+
+    The identity comes from ``--machine-id`` (or `MACHINE_ID_ENV`), or is read from the server's
+    state directory; never both, so the two cannot disagree. A device-cloud worker takes neither: it
+    serves only its environment's jobs (`can_serve`), so the token could route it nothing.
+
+    Raises:
+        typer.BadParameter: both sources are given, the identity is malformed or unreadable, or the
+            worker's environment is a device cloud.
+    """
+    from bajutsu.serve.server.local_keys import read_machine_id
+
+    given = machine_id or os.environ.get(MACHINE_ID_ENV, "")
+    if given and server_state_dir is not None:
+        raise typer.BadParameter(
+            "give the machine id or the state directory to read it from, not both",
+            param_hint="--machine-id",
+        )
+    if not given and server_state_dir is None:
+        return None
+    if not capability.is_local:
+        raise typer.BadParameter(
+            f"a worker whose environment is '{capability.environment}' runs no job off the "
+            "server's files, so it takes no machine id",
+            param_hint="--machine-id",
+        )
+    try:
+        return machine_capability(given or read_machine_id(server_state_dir or Path()))
+    except ValueError as e:
+        raise typer.BadParameter(str(e), param_hint="--machine-id") from None
+
+
 def worker(
     server_url: str = typer.Option(
         "",
@@ -319,6 +356,24 @@ def worker(
             "stops, so a worker started in a project never writes into it (BE-0449).",
         ),
     ] = None,
+    machine_id: Annotated[
+        str,
+        typer.Option(
+            "--machine-id",
+            help="The server machine's identity (its .bajutsu/machine-id), advertised as "
+            "machine:<id> so this worker takes the jobs that name files by their paths on that "
+            "machine — a local start's run, triage, record, and crawl (BE-0449). Give it only to a "
+            "worker that sees those paths. Also read from $BAJUTSU_WORKER_MACHINE_ID.",
+        ),
+    ] = "",
+    server_state_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--server-state-dir",
+            help="The server's state directory (.bajutsu beside its runs directory) to read "
+            "--machine-id from, for a worker on the server's own machine; `make serve` passes it.",
+        ),
+    ] = None,
     once: Annotated[
         Path | None,
         typer.Option(
@@ -353,6 +408,8 @@ def worker(
     # The capability set this worker advertises on every lease (BE-0166), computed once at startup
     # (the pool is assumed stable per worker).
     caps = _advertised_capabilities(platform, capabilities, capability)
+    if machine := _machine_token(machine_id, server_state_dir, capability):
+        caps = sorted({*caps, machine})
     # After the flags are checked, so a typo'd flag is reported before any AWS client is built.
     _register_environment_or_exit(capability.environment)
 

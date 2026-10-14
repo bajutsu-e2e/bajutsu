@@ -433,6 +433,9 @@ Log:
   executor. Every unit is now done. Four follow-ups stay open outside this item:
   - Hosted triage, whose run lives in object storage (unit 7).
   - A capability that ties a job naming server paths to the server's machine (units 5 and 7).
+    [#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM) adds it. A local start stamps such a job
+    with `machine:<id>`, from an identity it keeps in `.bajutsu/machine-id`, and the worker that
+    `make serve` starts advertises the token.
   - A crawl on a hosted start, which names server paths too (unit 8).
   - Replaying the latest screen-map snapshot alone to a page that reconnects (unit 8).
 

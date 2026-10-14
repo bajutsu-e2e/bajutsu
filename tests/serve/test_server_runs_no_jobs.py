@@ -180,5 +180,10 @@ def test_serve_sh_starts_a_worker_beside_the_server() -> None:
     # job beside the server, and forwards only the caller's own arguments to `serve`.
     script = (Path(__file__).resolve().parents[2] / "scripts" / "serve.sh").read_text("utf-8")
     assert '"$python_bin" -m bajutsu worker' in script
+    # The worker advertises the server's machine identity, read from the state directory beside the
+    # runs directory the server uses, so the jobs naming this machine's paths route to it.
+    assert '--server-state-dir "$state_dir"' in script
+    assert 'state_dir="$(dirname "$runs")/.bajutsu"' in script
+    assert '--runs) runs="$arg"' in script and '--runs=*) runs="${arg#--runs=}"' in script
     serve_lines = [line for line in script.splitlines() if "-m bajutsu serve" in line]
     assert serve_lines and all("--backend" not in line for line in serve_lines)
