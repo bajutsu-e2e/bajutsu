@@ -121,44 +121,87 @@ class PendingPut:
 
 
 class FileObjectStore:
-    """`ObjectStore` over a directory, whose signed URLs point at this server's store routes."""
+    """`ObjectStore` over a directory, whose signed URLs point at this server's store routes.
+
+    *mount*, when given, is a ``(key prefix, directory)`` pair: every key under that prefix lives
+    under the directory instead of the root, with the prefix stripped. A local start mounts the
+    runs tree at ``artifacts/`` (BE-0449), so the default org's run trees stay where ``bajutsu run``
+    writes them while every other object keeps the bucket layout under the root. The key namespace
+    is the bucket's either way, so a signature names one object and a key under the prefix can never
+    reach the root, nor one outside it the mount.
+    """
 
     def __init__(
-        self, root: Path, base_url: str, signer: UrlSigner, *, presign_ttl: int = _PRESIGN_TTL
+        self,
+        root: Path,
+        base_url: str,
+        signer: UrlSigner,
+        *,
+        presign_ttl: int = _PRESIGN_TTL,
+        mount: tuple[str, Path] | None = None,
     ) -> None:
-        if root.is_symlink():
-            raise ValueError(f"refusing to use a symlinked store root: {root}")
-        root.mkdir(parents=True, exist_ok=True)
-        root.chmod(_DIR_MODE)
-        self._root = root.resolve()
+        self._root = _owner_only_dir(root)
         self._base_url = base_url.rstrip("/")
         self.signer = signer
         self._ttl = presign_ttl
+        self._mount: tuple[str, Path] | None = None
+        if mount is not None:
+            prefix, directory = mount
+            if not prefix.endswith("/") or not valid_relative_key(prefix.rstrip("/")):
+                raise ValueError(f"invalid mount prefix: {prefix!r}")
+            # The mount is the operator's own runs tree, not a directory this store owns: create and
+            # resolve it, but leave its mode alone (`make_run_dir` already restricts each run dir)
+            # and follow a symlink (a runs tree moved to a larger disk). `path_for` confines every
+            # key to the resolved directory, which is what protects it.
+            directory.mkdir(parents=True, exist_ok=True)
+            self._mount = (prefix, directory.resolve())
 
     @property
     def root(self) -> Path:
-        """The resolved directory every object lives under."""
+        """The resolved directory every object outside the mount lives under."""
         return self._root
 
+    @property
+    def mount(self) -> tuple[str, Path] | None:
+        """The ``(key prefix, resolved directory)`` mount, or None."""
+        return self._mount
+
+    def _locate(self, key: str) -> tuple[Path, str]:
+        """The directory *key* lives under, and its path relative to that directory."""
+        if self._mount is not None and key.startswith(self._mount[0]):
+            return self._mount[1], key[len(self._mount[0]) :]
+        return self._root, key
+
     def path_for(self, key: str) -> Path:
-        """The file *key* names, confined to the store root.
+        """The file *key* names, confined to the root, or to the mount for a key under its prefix.
 
         Raises:
             ValueError: *key* is not a safe relative key, is not in canonical form (see
-                `_canonical`), or resolves (through ``..`` or a symlink) outside the root or onto
-                the root itself.
+                `_canonical`), or resolves (through ``..`` or a symlink) outside its directory or
+                onto the directory itself.
         """
         if not valid_relative_key(key) or not _canonical(key):
             raise ValueError(f"invalid object key: {key!r}")
-        resolved = (self._root / key).resolve()
-        if resolved == self._root or not resolved.is_relative_to(self._root):
+        base, rel = self._locate(key)
+        resolved = (base / rel).resolve()
+        if resolved == base or not resolved.is_relative_to(base):
             raise ValueError(f"object key escapes the store root: {key!r}")
+        if self._mount is not None:
+            # Neither directory may be reached under the other's names, whichever one nests: a
+            # root-side key must not land in the mount (it would reach it under a name its prefix
+            # never covered), and a mounted key must not land in the root. When *other* encloses
+            # *base*, every key confined to *base* is inside it anyway, so that case is not an escape.
+            other = self._mount[1] if base == self._root else self._root
+            lands_in_other = resolved == other or resolved.is_relative_to(other)
+            if lands_in_other and not base.is_relative_to(other):
+                raise ValueError(f"object key escapes the store root: {key!r}")
         return resolved
 
     def _make_parents(self, path: Path) -> None:
         missing: list[Path] = []
         parent = path.parent
-        while parent != self._root and not parent.exists():
+        stop = (self._root, self._mount[1]) if self._mount is not None else (self._root,)
+        while parent not in stop and not parent.exists():
             missing.append(parent)
             parent = parent.parent
         for d in reversed(missing):
@@ -246,40 +289,77 @@ class FileObjectStore:
     def list_keys(self, prefix: str) -> list[str]:
         if prefix and not valid_relative_key(prefix):
             raise ValueError(f"invalid object key prefix: {prefix!r}")
-        # Walk only the directory the prefix ends in, then filter on the full string, which keeps
-        # S3's semantics for a prefix that stops mid-name (``artifacts/run-1`` matches ``run-10``).
-        base = (self._root / prefix.rpartition("/")[0]).resolve()
-        # A symlinked directory anywhere along the prefix would move the walk outside the root.
-        if not base.is_relative_to(self._root) or not base.is_dir():
-            return []
-        keys: list[str] = []
-        for dirpath, dirnames, filenames in os.walk(base):
-            here = Path(dirpath)
-            # os.walk does not descend into symlinked directories; drop them from the listing too.
-            dirnames[:] = [d for d in dirnames if not (here / d).is_symlink()]
-            for name in filenames:
-                full = here / name
-                if name.startswith(_STAGING_PREFIX):
-                    continue
-                try:
-                    if not stat.S_ISREG(os.lstat(full).st_mode):
-                        continue
-                except FileNotFoundError:  # removed between the walk and the check: not listed
-                    continue
-                if not full.resolve().is_relative_to(self._root):
-                    continue
-                key = full.relative_to(self._root).as_posix()
-                if key.startswith(prefix):
-                    keys.append(key)
+        if self._mount is None:
+            return _walk(self._root, "", prefix)
+        mount_prefix, mounted = self._mount
+        if prefix.startswith(mount_prefix):
+            return _walk(mounted, mount_prefix, prefix)
+        # A shorter prefix spans both directories: the root's objects outside the mount's prefix,
+        # plus the mount's objects whose full key still matches.
+        keys = [k for k in _walk(self._root, "", prefix) if not k.startswith(mount_prefix)]
+        if mount_prefix.startswith(prefix):
+            keys += _walk(mounted, mount_prefix, mount_prefix)
         return sorted(keys)
 
     def delete_key(self, key: str) -> None:
         path = self._read_path(key)
-        if (
-            path is not None and path.is_file()
-        ):  # a directory is no object; leave it, as a bucket has none to delete
+        # A directory is no object; leave it, as a bucket has none to delete.
+        if path is not None and path.is_file():
             path.unlink(missing_ok=True)
+            self._prune_empty_parents(path, self._locate(key)[0])
+
+    def _prune_empty_parents(self, path: Path, base: Path) -> None:
+        # A bucket has no directories, so a purged run must leave none behind either: an empty
+        # `runs/<id>/` would still read as a run tree. Stops at *base*, which is never removed.
+        parent = path.parent
+        while parent != base and parent.is_relative_to(base):
+            try:
+                parent.rmdir()
+            except OSError:  # not empty (or already gone): nothing further up can be empty either
+                return
+            parent = parent.parent
 
     def delete_keys(self, keys: Iterable[str]) -> None:
         for key in keys:
             self.delete_key(key)
+
+
+def _owner_only_dir(path: Path) -> Path:
+    """Create *path* owner-only (``0700``) and return it resolved; a symlink is refused, since it
+    would move every object (and the ``chmod``) to a directory someone else chose."""
+    if path.is_symlink():
+        raise ValueError(f"refusing to use a symlinked store root: {path}")
+    path.mkdir(parents=True, exist_ok=True)
+    path.chmod(_DIR_MODE)
+    return path.resolve()
+
+
+def _walk(base: Path, key_prefix: str, prefix: str) -> list[str]:
+    """The keys under *base* (each named *key_prefix* + its path) that start with *prefix*."""
+    # Walk only the directory the prefix ends in, then filter on the full string, which keeps S3's
+    # semantics for a prefix that stops mid-name (``artifacts/run-1`` matches ``run-10``).
+    rel_prefix = prefix[len(key_prefix) :]
+    start = (base / rel_prefix.rpartition("/")[0]).resolve()
+    # A symlinked directory anywhere along the prefix would move the walk outside the base.
+    if not start.is_relative_to(base) or not start.is_dir():
+        return []
+    keys: list[str] = []
+    for dirpath, dirnames, filenames in os.walk(start):
+        here = Path(dirpath)
+        # os.walk does not descend into symlinked directories; drop them from the listing too.
+        dirnames[:] = [d for d in dirnames if not (here / d).is_symlink()]
+        for name in filenames:
+            full = here / name
+            if name.startswith(_STAGING_PREFIX):
+                continue
+            try:
+                if not stat.S_ISREG(os.lstat(full).st_mode):
+                    continue
+            except FileNotFoundError:  # removed between the walk and the check: not listed
+                continue
+            if not full.resolve().is_relative_to(base):
+                continue
+            key = key_prefix + full.relative_to(base).as_posix()
+            if key.startswith(prefix):
+                keys.append(key)
+    return sorted(keys)

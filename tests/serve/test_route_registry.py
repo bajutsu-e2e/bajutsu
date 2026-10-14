@@ -121,6 +121,7 @@ _EXPECTED: frozenset[tuple[str, str]] = frozenset(
         ("POST", "/api/jobs/{job_id}/respond-human"),
         ("POST", "/api/runs/{run_id}/upload-urls"),
         ("POST", "/api/runs/bulk-delete"),
+        ("POST", "/api/runs/rescan"),
         ("POST", "/api/runs/{run_id}/restore"),
         # --- DELETE ---
         ("DELETE", "/api/crawl/runs/{run_id}"),

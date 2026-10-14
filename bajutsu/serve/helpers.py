@@ -21,6 +21,7 @@ from bajutsu.common.backend_cli import simctl as _simctl
 from bajutsu.common.backends import KNOWN_ACTUATORS, PLATFORMS
 from bajutsu.common.config import Config, IosConfig, resolve
 from bajutsu.common.devices.id import is_valid_device_id
+from bajutsu.common.run_meta.files import is_soft_deleted
 from bajutsu.common.scenario import load_scenario_file
 from bajutsu.serve.capabilities import required_capabilities
 from bajutsu.serve.orgs import OrgConfig, load_serve_config
@@ -341,7 +342,7 @@ def list_runs(runs_dir: Path) -> list[dict[str, Any]]:
         return out
     for d in runs_dir.iterdir():
         manifest = d / "manifest.json"
-        if not (d.is_dir() and manifest.is_file()):
+        if not (d.is_dir() and manifest.is_file()) or is_soft_deleted(d):
             continue
         try:
             data = json.loads(manifest.read_text(encoding="utf-8"))
@@ -382,7 +383,7 @@ def list_crawl_runs(runs_dir: Path) -> list[dict[str, Any]]:
         return out
     for d in runs_dir.iterdir():
         screenmap = d / "screenmap.json"
-        if not (d.is_dir() and screenmap.is_file()):
+        if not (d.is_dir() and screenmap.is_file()) or is_soft_deleted(d):
             continue
         try:
             data = json.loads(screenmap.read_text(encoding="utf-8"))

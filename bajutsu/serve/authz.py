@@ -443,6 +443,7 @@ _ROLE_RANK = {"viewer": 0, "editor": 1, "admin": 2}
 # uploaded bundle (BE-0073). A bind repoints only the asking session since BE-0393 unit 2, so what
 # keeps it admin is not its reach but what it does: it materializes content the deployment does not
 # own and decides that content's build trust (BE-0121).
+_RESCAN_PATH = "/api/runs/rescan"
 _ADMIN_PATHS = frozenset(
     {
         "/api/config",
@@ -471,6 +472,9 @@ _ADMIN_PATHS = frozenset(
         "/api/secrets",
         "/api/provider",
         "/api/ant/login",
+        # Rescanning the runs tree (BE-0449) writes every unrecorded tree into the history under the
+        # default org, an operator's decision.
+        _RESCAN_PATH,
     }
 )
 _EDITOR_PATHS = frozenset(
@@ -574,8 +578,10 @@ def required_role(method: str, path: str) -> str | None:
     # triggering a run. Permanent purge (``?purge=true``) is admin, but the query string isn't in the
     # `path` seen here, so that gate lives in the operation (`delete_run`/`bulk_delete_runs`). Handled
     # ahead of the POST-only guard because the soft-delete is a DELETE; the worker upload-urls POST
-    # keeps its own no-role handling (falls through to None).
-    if path.startswith(("/api/runs/", "/api/crawl/runs/")):
+    # keeps its own no-role handling (falls through to None). The rescan POST is no run's lifecycle,
+    # so it passes on to `_ADMIN_PATHS`; any other verb on that path stays a run's (an editor's).
+    rescan = method == "POST" and path == _RESCAN_PATH
+    if path.startswith(("/api/runs/", "/api/crawl/runs/")) and not rescan:
         if method == "DELETE":
             return "editor"
         if method == "POST" and (path == "/api/runs/bulk-delete" or path.endswith("/restore")):

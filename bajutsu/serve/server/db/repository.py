@@ -20,6 +20,13 @@ class Repository(Protocol):
     def record_run(self, run: RunRecord) -> None:
         """Insert *run*, or update it in place when its id already exists (e.g. a status change)."""
 
+    def record_run_if_absent(self, run: RunRecord) -> bool:
+        """Insert *run* when no row has its id yet; True when it was inserted.
+
+        Never updates an existing row, so indexing a run tree from disk (BE-0449) cannot overwrite
+        the row a completing job wrote with its actor and label, whichever of the two lands first.
+        """
+
     def get_run(self, run_id: str) -> RunRecord | None:
         """The run with *run_id*, or None if there is none."""
 

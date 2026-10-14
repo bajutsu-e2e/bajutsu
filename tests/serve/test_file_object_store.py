@@ -588,3 +588,84 @@ def test_list_keys_skips_a_regular_file_reached_outside_the_root(
 
     monkeypatch.setattr(Path, "resolve", _resolve)
     assert store.list_keys("a/") == []
+
+
+def test_delete_prunes_the_empty_directories_it_leaves(tmp_path: Path) -> None:
+    runs = tmp_path / "runs"
+    store = FileObjectStore(
+        tmp_path / "objects", _BASE, UrlSigner(_KEY), mount=("artifacts/", runs)
+    )
+    store.put_bytes("artifacts/r1/steps/a.png", b"A")
+    store.put_bytes("artifacts/r1/manifest.json", b"{}")
+    store.put_bytes("scenarios/demo/smoke.yaml", b"x")
+
+    store.delete_key("artifacts/r1/steps/a.png")
+    assert not (runs / "r1" / "steps").exists()
+    assert (runs / "r1").is_dir()  # still holds the manifest
+    store.delete_key("artifacts/r1/manifest.json")
+    assert not (runs / "r1").exists()
+    assert runs.is_dir()  # the mounted directory itself is never removed
+
+    store.delete_key("scenarios/demo/smoke.yaml")
+    assert not (tmp_path / "objects" / "scenarios").exists()
+    assert (tmp_path / "objects").is_dir()
+
+
+def test_a_mounted_key_never_reaches_the_root(tmp_path: Path) -> None:
+    runs = tmp_path / "runs"
+    store = FileObjectStore(
+        tmp_path / "objects", _BASE, UrlSigner(_KEY), mount=("artifacts/", runs)
+    )
+    store.put_bytes("artifacts/r1/a.txt", b"A")
+    store.put_bytes("acme/artifacts/r1/a.txt", b"B")
+    assert (runs / "r1" / "a.txt").read_bytes() == b"A"
+    assert (tmp_path / "objects" / "acme" / "artifacts" / "r1" / "a.txt").read_bytes() == b"B"
+    assert store.list_keys("") == ["acme/artifacts/r1/a.txt", "artifacts/r1/a.txt"]
+    assert store.list_keys("artifacts/") == ["artifacts/r1/a.txt"]
+    assert store.list_keys("acme/") == ["acme/artifacts/r1/a.txt"]
+    with pytest.raises(ValueError, match="mount prefix"):
+        FileObjectStore(tmp_path / "o2", _BASE, UrlSigner(_KEY), mount=("artifacts", runs))
+
+
+def test_mounting_leaves_the_runs_tree_mode_alone_and_follows_a_symlink(tmp_path: Path) -> None:
+    # The mount is the operator's own runs tree: never chmod-ed, and a symlink onto another disk
+    # is resolved rather than refused. Only the server-owned root is made 0700.
+    real = tmp_path / "big-disk" / "runs"
+    real.mkdir(parents=True)
+    real.chmod(0o755)
+    (tmp_path / "runs").symlink_to(real)
+    store = FileObjectStore(
+        tmp_path / "objects", _BASE, UrlSigner(_KEY), mount=("artifacts/", tmp_path / "runs")
+    )
+    assert store.mount == ("artifacts/", real.resolve())
+    assert _mode(real) == 0o755
+    assert _mode(tmp_path / "objects") == 0o700
+    store.put_bytes("artifacts/r1/a.txt", b"A")
+    assert (real / "r1" / "a.txt").read_bytes() == b"A"
+
+
+def test_mounting_creates_a_missing_runs_tree(tmp_path: Path) -> None:
+    store = FileObjectStore(
+        tmp_path / "objects", _BASE, UrlSigner(_KEY), mount=("artifacts/", tmp_path / "runs")
+    )
+    assert (tmp_path / "runs").is_dir()
+    assert store.list_keys("artifacts/") == []
+
+
+def test_a_mounted_key_never_reaches_a_root_nested_inside_the_mount(tmp_path: Path) -> None:
+    # The mirror of the root-side check: with the root inside the mounted directory, a mounted
+    # key must not read or write the root's objects under the mount's names.
+    project = tmp_path / "project"
+    store = FileObjectStore(
+        project / ".bajutsu" / "objects", _BASE, UrlSigner(_KEY), mount=("artifacts/", project)
+    )
+    store.put_bytes("scenarios/demo/smoke.yaml", b"secret")
+    nested = "artifacts/.bajutsu/objects/scenarios/demo/smoke.yaml"
+    assert store.get_bytes(nested) is None
+    assert store.exists(nested) is False
+    store.delete_key(nested)
+    assert store.get_bytes("scenarios/demo/smoke.yaml") == b"secret"
+    with pytest.raises(ValueError, match="escapes"):
+        store.put_bytes(nested, b"x")
+    with pytest.raises(ValueError, match="escapes"):
+        store.presigned_url("artifacts/.bajutsu/objects")

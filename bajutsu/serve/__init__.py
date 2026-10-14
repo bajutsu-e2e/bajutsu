@@ -62,7 +62,7 @@ from bajutsu.serve.helpers import (
     valid_run_id,
     valid_udid,
 )
-from bajutsu.serve.jobs import cancel_job, run_job
+from bajutsu.serve.jobs import cancel_job, index_run_trees, run_job
 from bajutsu.serve.launchagent import launchagent_plist
 from bajutsu.serve.logbus import InMemoryLogBus, LogBus
 from bajutsu.serve.oidc import GITHUB_ACTIONS, PROVIDERS, OidcConfig
@@ -286,13 +286,17 @@ def _build_state(
     config_provenance: dict[str, str] | None = None,
     themes_dir: Path | None = None,
     default_theme: str | None = None,
+    host: str = "127.0.0.1",
+    port: int = 8765,
 ) -> ServeState:
     """Assemble the `ServeState` for *backend* — the one place the serve seams are wired.
 
     ``local`` runs in-process (thread executor, in-memory log bus, filesystem artifacts, on-disk
-    scenarios). ``server`` wires the hosted seams (a database-backed queue + log bus, object-storage
-    artifacts + scenarios) from the environment. An unknown backend fails loudly rather than
-    silently falling back to local. The transport (stdlib vs uvicorn) is a separate choice."""
+    scenarios). ``server`` wires the queue seams (a database-backed queue + log bus, object-storage
+    artifacts + scenarios) from the environment, or from local defaults where it names none
+    (BE-0449). *host* and *port* are the bind, from which a local start builds the URL its file
+    store signs. An unknown backend fails loudly rather than silently falling back to local. The
+    transport (stdlib vs uvicorn) is a separate choice."""
     if backend not in SERVE_BACKENDS:
         raise ValueError(
             f"unknown serve backend: {backend!r} (available: {', '.join(SERVE_BACKENDS)})"
@@ -316,6 +320,8 @@ def _build_state(
                 upload_exec=upload_exec,
                 evidence=evidence,
                 allow_remote_build=allow_remote_build,
+                host=host,
+                port=port,
             )
         except ImportError as e:
             # Only a missing third-party extra earns the install hint. A failed `bajutsu.*` import is
@@ -371,14 +377,20 @@ def _build_server_state(  # noqa: C901
     upload_exec: str = "sandbox",
     evidence: EvidenceTarget | None = None,
     allow_remote_build: bool = False,
+    host: str = "127.0.0.1",
+    port: int = 8765,
 ) -> ServeState:
-    """Wire the hosted seams from the environment (the single-tenant server backend, BE-0015/BE-0106).
+    """Wire the queue seams from the environment (the server backend, BE-0015/BE-0106/BE-0449).
 
     Postgres (``BAJUTSU_DATABASE_URL``) backs the job queue, sessions, and the system of record
     (BE-0106); one bucket named by ``BAJUTSU_SERVER_STORE`` (``s3://bucket/prefix`` or
     ``gs://bucket/prefix``, BE-0204) holds artifacts and scenarios — the same URI-based selector
-    ``--evidence-store`` uses, kept as its own independent setting. Server extras (SQLAlchemy,
-    boto3, google-cloud-storage) are imported lazily so the default path stays SDK-free."""
+    ``--evidence-store`` uses, kept as its own independent setting. With no bucket, a local start
+    fills the gaps from the state directory beside the runs tree (BE-0449): a SQLite queue migrated
+    here unless a database is configured, a generated secrets key for it, and a ``file://`` store
+    that reads the default org's runs from the runs tree, whose URLs point at *host* and *port*. A
+    bucket with no database keeps the in-process shape. Server extras (SQLAlchemy, boto3,
+    google-cloud-storage) are imported lazily so the default path stays SDK-free."""
     import os
 
     from bajutsu.serve.authz import ADMIN_TEAM_ENTRY_RE, admin_teams_unusable
@@ -386,8 +398,15 @@ def _build_server_state(  # noqa: C901
     from bajutsu.serve.server.baselines import ObjectBaselineStore
     from bajutsu.serve.server.db import engine_from_url, repository_from_env
     from bajutsu.serve.server.db_executor import DbQueueExecutor
+    from bajutsu.serve.server.local_keys import ensure_state_dir, local_state_dir
+    from bajutsu.serve.server.local_start import (
+        artifact_store,
+        default_database_url,
+        hosted_from_env,
+        secrets_fernet,
+    )
     from bajutsu.serve.server.oauth import GitHubOAuthClient
-    from bajutsu.serve.server.object_store import artifact_prefix, object_store_from_env, org_prefix
+    from bajutsu.serve.server.object_store import artifact_prefix, org_prefix
     from bajutsu.serve.server.post_completion_logbus import PostCompletionLogBus
     from bajutsu.serve.server.provider_store import DbProviderSettingsStore
     from bajutsu.serve.server.scenarios import (
@@ -395,25 +414,29 @@ def _build_server_state(  # noqa: C901
         ObjectScenarioStorage,
         StorageScenarioStore,
     )
-    from bajutsu.serve.server.secrets import DbSecretStore, fernet_from_env
+    from bajutsu.serve.server.secrets import DbSecretStore
     from bajutsu.serve.server.sessions import _DEFAULT_TTL, SqlSessionStore
 
-    server_store = object_store_from_env()
-    if server_store is None:
-        raise ValueError(
-            "BAJUTSU_SERVER_STORE is required for --backend=server "
-            "(e.g. s3://bucket/prefix or gs://bucket/prefix)"
-        )
-    store, prefix = server_store
-    db_url = os.environ.get("BAJUTSU_DATABASE_URL")
-    _db_engine = engine_from_url(db_url) if db_url else None
-    # The master key that encrypts operator secrets at rest (BE-0136). A database-backed server
-    # persists secrets in the `secrets` table, so it must be provisioned — fail loudly at startup
-    # rather than silently degrade to plaintext-in-memory. Without a database, secrets stay in the
-    # process env (the local shape), so no key is needed.
-    _secrets_fernet = fernet_from_env()
-    if _db_engine is not None and _secrets_fernet is None:
-        raise ValueError("BAJUTSU_SECRETS_KEY is required for --backend=server with a database")
+    # Read before any local default is created, so a malformed BAJUTSU_SERVER_STORE or BAJUTSU_HOSTED
+    # fails without leaving a state directory behind.
+    hosted = hosted_from_env(server_store_set=bool(os.environ.get("BAJUTSU_SERVER_STORE")))
+    # The local defaults (BE-0449) live in one owner-only directory beside the runs tree.
+    state_dir = local_state_dir(runs_dir)
+    store, prefix, local_layout = artifact_store(runs_dir, state_dir, host=host, port=port)
+    db_url = os.environ.get("BAJUTSU_DATABASE_URL") or None
+    # Only a local start (no bucket) gets the default SQLite (BE-0449). A bucket-backed deployment
+    # with no database keeps its in-process shape: on several replicas, a SQLite file per replica
+    # would split the queue.
+    local_db_url = (
+        default_database_url(ensure_state_dir(state_dir)) if local_layout and not db_url else None
+    )
+    # `repository_from_env` migrates the default SQLite, since no operator will.
+    repo = repository_from_env(default_url=local_db_url)
+    engine_url = db_url or local_db_url
+    _db_engine = engine_from_url(engine_url) if engine_url else None
+    _secrets_fernet = secrets_fernet(
+        state_dir, database=_db_engine is not None, local_database=local_db_url is not None
+    )
     # GitHub OAuth login is optional: wired only when all three OAuth vars are set, else None (token
     # auth only). Once configured, sign-in and the viewer/editor role follow GitHub org/Team
     # membership (BE-0313); `BAJUTSU_OAUTH_ADMIN_TEAMS` names the server-wide admin Teams (a member of
@@ -517,7 +540,6 @@ def _build_server_state(  # noqa: C901
             )
         _warn("admin_teams_malformed", msg)
 
-    repo = repository_from_env()
     # A CI job's own credential (BE-0414): wired only when an expected audience is configured, and
     # useless without a database, since the exchange spends each token's `jti` in the shared
     # system of record. Warn rather than fail — a deployment may be mid-setup — but say plainly
@@ -578,7 +600,11 @@ def _build_server_state(  # noqa: C901
         object_store_prefix=prefix,
         allow_remote_build=allow_remote_build,
         run_retention_days=_run_retention_from_env(os.environ.get("BAJUTSU_RUN_RETENTION_DAYS")),
-        hosted=True,  # the server backend is a hosted deployment: drop the file browser (BE-0108)
+        local_file_store=local_layout,
+        # A deployment setting, not implied by the repository (BE-0449): a hosted deployment drops
+        # the file browser (BE-0108) and refuses the device takeover (BE-0185); a local start keeps
+        # both.
+        hosted=hosted,
         executor=DbQueueExecutor(repo) if repo is not None else LocalExecutor(),
         logbus=(
             PostCompletionLogBus(
@@ -681,6 +707,12 @@ def _build_server_state(  # noqa: C901
         default.baselines,
         default.secrets,
     )
+    # A local start's history is the database now, so the runs already under `runs/`, and those
+    # `bajutsu run` wrote from the command line, are indexed into it (BE-0449). A bucket-backed
+    # deployment's runs tree is not where its artifacts live, so there is nothing to index there.
+    if repo is not None and local_layout:
+        repo.ensure_org(DEFAULT_ORG, slug=DEFAULT_ORG, name=DEFAULT_ORG)
+        index_run_trees(state)
     return state
 
 
@@ -782,6 +814,8 @@ def serve(
         config_provenance=config_provenance,
         themes_dir=themes_dir,
         default_theme=default_theme,
+        host=host,
+        port=port,
     )
     # No startup sweep of uploads_dir: every entry is now a content-addressed cache keyed by its
     # sha256 (BE-0243), as valid a cache hit moments after a restart as one extracted just before
@@ -826,6 +860,11 @@ def serve(
             f"note: Host-header enforcement is off for the wildcard bind {host!r}; "
             "CSRF remains the cross-origin defense (BE-0121)"
         )
+    if not asgi and state.local_file_store:
+        # A local start's file store is read and written over signed URLs that only the FastAPI app
+        # serves (BE-0449), so the stdlib transport would hand out links that 404.
+        print("note: the local file store is served by the FastAPI transport; using --asgi")  # noqa: T201
+        asgi = True
     if asgi:
         # The FastAPI app over uvicorn — the transport the hosted backend will use; runnable now
         # with the local backend (a single-process ASGI server) so the path is exercised before

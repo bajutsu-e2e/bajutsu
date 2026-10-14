@@ -51,6 +51,7 @@ from bajutsu.common.config_source import (
 )
 from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.common.github import GitHubAccessError
+from bajutsu.common.run_meta.files import is_soft_deleted
 from bajutsu.common.runner.launch_server import start_launch_server
 
 if TYPE_CHECKING:
@@ -210,7 +211,7 @@ def read_manifests(runs_dir: Path) -> list[dict[str, object]]:
     manifests: list[dict[str, object]] = []
     for d in sorted(runs_dir.iterdir()):
         manifest = d / "manifest.json"
-        if not (d.is_dir() and manifest.is_file()):
+        if not (d.is_dir() and manifest.is_file()) or is_soft_deleted(d):
             continue
         try:
             data = json.loads(manifest.read_text(encoding="utf-8"))

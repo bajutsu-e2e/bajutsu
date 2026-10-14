@@ -286,8 +286,10 @@ self-hosted single Mac) keeps all three: there the filesystem is the operator's 
 
 The walkthrough above is organized by *how you deploy*; this box collects *what changes for each kind
 of state `serve` manages*, so the tier-by-tier detail is easier to place. "Local" below covers both
-Tier A and a bare `make serve` on a laptop — both run with `hosted: false`; only Tier B's server
-backend sets `hosted: true`.
+Tier A and a bare `make serve` on a laptop. Both run with `hosted: false`. Tier B's server backend
+names a bucket in `BAJUTSU_SERVER_STORE`, which makes it `hosted: true`. A server backend on one
+machine with no bucket stays `hosted: false`. The section *The server backend on one machine*,
+below, covers that case.
 
 | State | Local (`hosted: false` — Tier A, or a bare `make serve`) | Hosted (`hosted: true` — Tier B server backend) |
 |---|---|---|
@@ -335,6 +337,69 @@ backend sets `hosted: true`.
   config supplied at startup is operator-trusted (see *Remote-config command execution*, above). The
   web (Playwright) backend has no binary concept on either side; the browser engine installs on demand
   instead.
+
+### The server backend on one machine (BE-0449)
+
+`bajutsu serve --backend server` also starts on one machine with no cloud service. It needs no
+environment variables there. Such a server queues every job and runs none itself. A
+`bajutsu worker` on the same machine leases the queued jobs and runs them. For each setting left
+unset, the server supplies a local default. Every default lives in a `.bajutsu/` directory beside
+the runs directory. The server creates that directory owner-only (`0700`), and Git ignores it.
+These defaults apply when `BAJUTSU_SERVER_STORE` is unset. A deployment with a bucket and no
+database has no queue and runs jobs in its own process, as before: a SQLite file per replica would
+split the queue across them.
+
+| Setting left unset | Local default |
+|---|---|
+| `BAJUTSU_DATABASE_URL` | A SQLite file, `.bajutsu/queue.db`. The server migrates it to the latest schema at every start, because no operator runs Alembic for it. |
+| `BAJUTSU_SECRETS_KEY` | A Fernet key generated once into `.bajutsu/secrets.key`, an owner-only (`0600`) regular file. Applies to the default SQLite alone. A configured `BAJUTSU_SECRETS_KEY` takes precedence. |
+| `BAJUTSU_SERVER_STORE` | A `file://` store, served by the server's own `/api/store/objects/` routes. The default org's runs stay in the runs tree; every other object lives in `.bajutsu/objects/`. |
+| `BAJUTSU_HOSTED` | `false`. With a bucket named, `true`. |
+
+A configured database keeps the earlier rule. With `BAJUTSU_DATABASE_URL` set and no
+`BAJUTSU_SECRETS_KEY`, the server refuses to start. The server never generates a key for an
+operator's own database. Startup also refuses an unsafe key file that already exists. A symlink, a
+file another account owns, or a file open to group or other counts as unsafe. On a shared host, a
+key that another local account can read would expose every stored secret.
+
+The file store uses the bucket's key layout, with one difference. The default org's run artifacts
+have keys under `artifacts/<run id>/`. They stay where `bajutsu run` writes them, at
+`runs/<run id>/`. A run from the command line resolves through the store without moving a file. The
+same holds for a run already under `runs/`. Every other object lives in `.bajutsu/objects/` under
+its bucket key. Scenarios, baselines, uploaded bundles, and every other org's runs go there. Keeping
+them out of `runs/` keeps tenants apart. A default-org request for a run named `acme` or `scenarios`
+finds nothing. It can neither read nor delete another org's runs or a store folder.
+
+The server leaves the runs directory itself as it is. It creates `runs/` when it is missing, but
+never changes its mode. A symlinked `runs/`, such as one moved to a larger disk, is followed. Every
+key is confined to the resolved directory, so none reaches outside it. Only `.bajutsu/objects/`,
+which the server owns, is made owner-only (`0700`), and a symlink there is refused.
+
+The two backends share the runs tree. A run deleted under the server backend stays at
+`runs/<run id>/` with a `.deleted` marker, rather than moving to `runs/.trash/`. The local
+backend's history, `bajutsu flakiness --history`, and `bajutsu triage --flaky` skip a tree that
+holds the marker, so the run stays deleted under either backend.
+
+The browser and the worker reach a stored file through a signed URL. The server signs each URL with
+an HMAC key. That key lives in `.bajutsu/store-signing.key`, under the same `0600` rules. Each URL
+names the `--host` the server was given, or `127.0.0.1` for a wildcard bind. The FastAPI transport alone
+serves these routes. A server backend without a bucket switches itself to `--asgi` and says so at
+startup. The URLs carry the port fixed at startup, and such a server refuses `--port 0`.
+
+With a database, the run history comes from the runs table and not from the directory listing. At
+startup the server indexes every run tree under `runs/` into the runs table, under the `default`
+org. The index skips a tree with no readable `manifest.json`. It also skips a run that a job is
+still writing. The index never updates a row. A run the table already holds keeps the row its job
+wrote. A run that `bajutsu run` writes while the server is up needs a rescan. An admin calls
+`POST /api/runs/rescan`, which indexes the new trees and returns `{"indexed": <count>}`. A
+deployment with a bucket answers the rescan with `409`, since its runs do not live under `runs/`.
+
+`hosted` is a deployment setting of its own, read from `BAJUTSU_HOSTED`. The variable accepts
+`true`, `false`, `1`, or `0`. Any other value stops the start with an error. When the variable is
+unset, `hosted` follows the store. A bucket in `BAJUTSU_SERVER_STORE` makes it `true`, so an
+existing Tier B deployment behaves as before. Otherwise `hosted` is `false`. A database does not
+imply `hosted`. A local start with a queue keeps the file browser (BE-0108). It also keeps the
+device takeover of `record` (BE-0185), since the author sits at the device.
 
 ### Per-job artifact overrides for a CI run (BE-0431)
 
@@ -592,7 +657,9 @@ shared system of record, so single-use holds across control-plane replicas rathe
 one process — with no `BAJUTSU_DATABASE_URL` the exchange refuses every request. The token
 signature is verified with `joserfc`, which ships in the `oauth` extra (`uv sync --extra oauth`),
 the same extra GitHub OAuth needs. `serve` warns about either at boot rather than letting a
-pipeline discover it one failed run at a time.
+pipeline discover it one failed run at a time. A server on one machine with no bucket is the
+exception: its default SQLite is its database, so its exchange works within that single process
+(see *The server backend on one machine*, above).
 
 Then list the repositories each org admits, under `allowedRepositories`:
 
@@ -735,7 +802,9 @@ export BAJUTSU_SECRETS_KEY=…
 
 A database-backed control plane **requires** `BAJUTSU_SECRETS_KEY` and refuses to start without one,
 rather than silently degrading to holding the secret only in process memory. Without a database,
-secrets stay in the serve process's environment (the local-backend shape) and no key is needed. Treat
+secrets stay in the serve process's environment (the local-backend shape) and no key is needed. A
+server on one machine with no bucket keeps its secrets in its default SQLite instead. It encrypts
+them under a key it generates into `.bajutsu/secrets.key`. Treat
 the key like the database password: losing it makes the stored secrets unrecoverable, and a rotated
 key cannot decrypt values written under the old one, so re-enter each secret after rotating.
 

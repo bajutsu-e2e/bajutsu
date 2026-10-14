@@ -1129,9 +1129,20 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   the run id is always in the key and runs never collide. Upload runs after the verdict, so a failure
   only warns. Needs the `s3` or `gcs` extra **on the server** (the worker needs neither). See
   [self-hosting](self-hosting.md) for the topology.
+- **`--backend server` — a queue and a worker.** The `local` default runs each job
+  inside the `serve` process. The `server` backend queues each job, and a `bajutsu worker` runs it.
+  On one machine, with no `BAJUTSU_SERVER_STORE`, it needs no environment variables. It keeps a
+  SQLite queue at `.bajutsu/queue.db` beside the runs directory. It generates a key there with mode
+  `0600` for signed URLs. It also generates one for stored secrets, unless you provide
+  `BAJUTSU_SECRETS_KEY`. Its artifact store reads the default org's runs straight from the runs
+  tree, over URLs the server signs. Every other object goes to `.bajutsu/objects/`. At startup it
+  indexes the runs already under `runs/` into its history. An admin's `POST /api/runs/rescan` picks
+  up later ones. `BAJUTSU_DATABASE_URL`, `BAJUTSU_SECRETS_KEY`, `BAJUTSU_SERVER_STORE`, and
+  `BAJUTSU_HOSTED` override those defaults. A server backend with no bucket uses the FastAPI
+  transport, as `--asgi` does, and needs a fixed `--port`. See
+  [self-hosting → The server backend on one machine](self-hosting.md#the-server-backend-on-one-machine-be-0449).
 - **Hosting flags (advanced).** `--emit-launchagent` prints a launchd plist to run `serve` as a
-  token-authenticated LaunchAgent on a single Mac; `--backend server` (with `--asgi`) switches to
-  the hosted FastAPI control plane; `--upload-exec` (or `$BAJUTSU_UPLOAD_EXEC`) governs whether an
+  token-authenticated LaunchAgent on a single Mac; `--upload-exec` (or `$BAJUTSU_UPLOAD_EXEC`) governs whether an
   **uploaded bundle**'s `launchServer` command may run (`deny` / `reuse` / `sandbox`, default
   `sandbox`); `--allow-remote-build` (or `$BAJUTSU_ALLOW_REMOTE_BUILD`) opts a UI-bound **Git**
   config's `build` command into running on the host (off by default). All are covered in

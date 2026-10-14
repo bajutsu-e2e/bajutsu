@@ -20,6 +20,7 @@ from pathlib import PurePosixPath
 from typing import Any
 
 from bajutsu.common.report.archive import zip_tree
+from bajutsu.common.run_meta.files import RUN_TOMBSTONE
 from bajutsu.common.run_meta.object_store import content_type_for
 from bajutsu.serve.artifacts import Artifact
 from bajutsu.serve.helpers import crawl_run_summary, valid_run_id
@@ -29,7 +30,7 @@ from bajutsu.serve.server.object_store import ObjectStore
 # deletion time (ISO-8601). Object storage has no filesystem `.trash/` to move a tree into, so the
 # tombstone is the store-side "this run is trashed" signal `list_runs`/`list_crawl_runs` skip on and
 # the retention sweep reads a timestamp from (BE-0239) — the mirror of `LocalArtifactStore`'s trash.
-_TOMBSTONE = ".deleted"
+TOMBSTONE = RUN_TOMBSTONE
 
 
 class ObjectStorageArtifactStore:
@@ -171,12 +172,12 @@ class ObjectStorageArtifactStore:
             for rel in rels
             if (run_id := rel.split("/")[0])
             and valid_run_id(run_id)
-            and rel == f"{run_id}/{_TOMBSTONE}"
+            and rel == f"{run_id}/{TOMBSTONE}"
         }
 
     def _tombstone_key(self, run_id: str) -> str | None:
         """The tombstone object key for *run_id*, or None if *run_id* isn't a single safe segment."""
-        return None if not valid_run_id(run_id) else self._key(f"{run_id}/{_TOMBSTONE}")
+        return None if not valid_run_id(run_id) else self._key(f"{run_id}/{TOMBSTONE}")
 
     def soft_delete_run(self, run_id: str) -> bool:
         key = self._tombstone_key(run_id)
@@ -216,7 +217,7 @@ class ObjectStorageArtifactStore:
         for key in self._store.list_keys(self._prefix):
             rel = key[len(self._prefix) :]
             run_id = rel.split("/")[0]
-            if not valid_run_id(run_id) or rel != f"{run_id}/{_TOMBSTONE}":
+            if not valid_run_id(run_id) or rel != f"{run_id}/{TOMBSTONE}":
                 continue
             raw = self._store.get_bytes(key)
             deleted_at = raw.decode(errors="replace") if raw else None

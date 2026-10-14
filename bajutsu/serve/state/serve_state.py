@@ -120,10 +120,11 @@ class ServeState:
     # Opt-in to run an API-bound Git config's `build:` command on the host (BE-0121). Off by default;
     # serve() sets it from --allow-remote-build / BAJUTSU_ALLOW_REMOTE_BUILD.
     allow_remote_build: bool = False
-    # Whether this is a hosted deployment (the server backend), the single source of truth for
-    # deployment-aware config sourcing (BE-0108). The server backend sets it True where it wires its
-    # hosted seams; the local backend (stdlib serve, including a self-hosted single Mac) never does,
-    # so the file browser stays offered locally and is removed — UI and server-side — when hosted.
+    # Whether this is a hosted deployment, the single source of truth for deployment-aware config
+    # sourcing (BE-0108). A deployment setting, not implied by a repository (BE-0449): the server
+    # backend reads it from `BAJUTSU_HOSTED`, defaulting to True only when `BAJUTSU_SERVER_STORE`
+    # names a bucket; the local backend never sets it. The file browser stays offered locally and is
+    # removed — UI and server-side — when hosted.
     hosted: bool = False
     # Whether this deployment's transport serves the `local_only` routes (`serve.routes`) — the
     # `/api/capture/*` family among them. The stdlib server registers every route, so the default
@@ -224,6 +225,11 @@ class ServeState:
     # server backend sets both where it wires its per-org object stores.
     object_store: ObjectStore | None = None
     object_store_prefix: str = ""
+    # Whether `object_store` is a local start's `FileObjectStore` (BE-0449): the runs tree mounted at
+    # the default org's `artifacts/` prefix, every other object under `.bajutsu/objects/`. Only then
+    # are the run trees under `runs_dir` this deployment's own artifacts, so only then does the server
+    # index them into the run history.
+    local_file_store: bool = False
     # Days a soft-deleted run stays in the trash before the lazy sweep purges it (BE-0239). The
     # retention window that makes soft-delete non-instantly-destructive. <= 0 disables the automatic
     # purge (trash is kept until a manual purge). serve() sets it from BAJUTSU_RUN_RETENTION_DAYS.

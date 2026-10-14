@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0449") |
-| Implementing PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167) (Unit 1, part 1 of 3), [#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168) (Unit 1, part 2 of 3) |
+| Implementing PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167) (Unit 1, part 1 of 3), [#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168) (Unit 1, part 2 of 3), [#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170) (Unit 1, part 3 of 3) |
 | Topic | Hosting the web UI |
 <!-- /BE-METADATA -->
 
@@ -57,7 +57,7 @@ The hosted deployment already needs a queue, sessions, and a place for artifacts
 - **Migrations** run automatically on the default SQLite, since the server never runs Alembic today.
 - **The secrets key**, `BAJUTSU_SECRETS_KEY`, is mandatory for a database-backed start today. A local start generates one and persists it beside the runs directory. The file is created atomically with owner-only permissions (`0600`), as a regular file that is not a symlink, and the start fails on an existing path that is unsafe, in the way `bajutsu/common/run_meta/artifact_perms.py` treats secret-bearing files. A world-readable key on a shared host would undo BE-0136.
 - **`hosted`** stays a deployment setting. A repository must not imply it, or the file browser of BE-0108 disappears and the device takeover of `record` (BE-0185) is refused for an author who sits at the device.
-- **Run history** comes from the database window once a repository exists, so runs that `bajutsu run` wrote from the command line, and runs already under `runs/`, would vanish from the local UI. The server indexes the run trees under `runs/`, both the existing ones and those that `bajutsu run` writes from the command line, into the runs table at start and on a rescan. The file store is rooted at the runs tree, so their artifacts resolve. Targets are org-scoped once a repository exists, and a local start uses one default org.
+- **Run history** comes from the database window once a repository exists, so runs that `bajutsu run` wrote from the command line, and runs already under `runs/`, would vanish from the local UI. The server indexes the run trees under `runs/`, both the existing ones and those that `bajutsu run` writes from the command line, into the runs table at start and on a rescan. The file store mounts the runs tree at the default org's `artifacts/` prefix, so their artifacts resolve. Targets are org-scoped once a repository exists, and a local start uses one default org.
 - **The artifact store** gets a filesystem implementation. The object store accepts only `s3://` and `gs://` today ([`object_store.py`](../../bajutsu/serve/server/object_store.py)). A `file://` store lets the worker write a run tree and the server read it. The worker still reaches it through the signed-URL interface of [BE-0160](../BE-0160-worker-credential-free-uploads/BE-0160-worker-credential-free-uploads.md), and the server serves those URLs for this store. Each URL is signed with an HMAC key that the server generates and persists under the same rules as the secrets key (atomic `0600` creation, regular file, unsafe existing path rejected), expires, binds the object key and content type into the signature, and is confined to the store root by the existing key validation. The routes accept nothing else.
 
 The local backend and the server backend then differ in these defaults and nothing else. The `--backend` flag loses its meaning and is deprecated in one release and removed in the next.
@@ -147,7 +147,7 @@ This item does not change what a job does, how a verdict is decided, or the run 
 > *Detailed design* (one entry per unit of work), and the log records what changed and when, oldest
 > first, each with a link to its PR.
 
-- [ ] Local defaults
+- [x] Local defaults
 - [ ] Cancellation across the split
 - [ ] One-shot worker and wrapper
 - [ ] Live log stream and the routing executor
@@ -180,6 +180,23 @@ Log:
   authorizes: an HMAC-SHA256 over the method, the key, the content type, and the expiry. The routes
   exist only when the object store is a `FileObjectStore`, and the default start is unchanged until
   part 3 wires it.
+- [#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170) (Unit 1, part 3 of 3: the local start) — `bajutsu serve --backend server` now
+  starts with no cloud service. With neither `BAJUTSU_SERVER_STORE` nor `BAJUTSU_DATABASE_URL`
+  set, the server keeps a migrated SQLite queue at `.bajutsu/queue.db`. The secrets key is
+  `BAJUTSU_SECRETS_KEY` when set, else generated into `.bajutsu/secrets.key`. A configured database
+  without `BAJUTSU_SECRETS_KEY` still fails to start. A deployment with a bucket and no database
+  keeps its in-process shape, since a SQLite file per replica would split the queue. With no
+  bucket, the artifact store is a `FileObjectStore` that keeps the bucket's key layout under
+  `.bajutsu/objects/` and mounts the runs tree at the default org's `artifacts/` prefix. Runs that
+  `bajutsu run` wrote resolve without moving, and the default org's store cannot name another
+  org's runs or a store folder. The store signs with the local key and addresses the server's
+  loopback URL, so a local start refuses `--port 0` and switches itself to the FastAPI transport,
+  which serves the signed-URL routes. `hosted` now reads `BAJUTSU_HOSTED` and, when unset, follows
+  whether the deployment names a bucket, so a local start keeps the file browser and the device
+  takeover. At startup the server indexes every run tree under `runs/` into the runs table under
+  the default org, through a new insert-only `record_run_if_absent`, so a completing job's row is
+  never overwritten. An admin's `POST /api/runs/rescan` does the same on demand and answers `409`
+  without the local layout. Unit 1 is complete.
 
 ## References
 

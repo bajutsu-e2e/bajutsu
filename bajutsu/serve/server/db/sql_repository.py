@@ -27,6 +27,27 @@ DEFAULT_LEASE_TIMEOUT_SECONDS = 120.0
 _REPLAY_SKEW_SECONDS = 60
 
 
+def _run_fields(run: RunRecord) -> dict[str, Any]:
+    """The `Run` row's columns for *run*; `created_at` is left to the server default unless given."""
+    fields: dict[str, Any] = {
+        "id": run.id,
+        "org_id": run.org_id,
+        "status": run.status,
+        "created_by": run.created_by,
+        "ok": run.ok,
+        "summary": run.summary,
+        "scenario_hash": run.scenario_hash,
+        "tool_version": run.tool_version,
+        "git_revision": run.git_revision,
+        "device_runtime": run.device_runtime,
+        "label": run.label,
+        "target": run.target,
+    }
+    if run.created_at is not None:
+        fields["created_at"] = run.created_at
+    return fields
+
+
 class SqlRepository:
     """A SQLAlchemy-backed `Repository`. Works against any engine SQLAlchemy supports — SQLite on
     the gate, Postgres in production — since the models pick JSONB only on Postgres."""
@@ -43,31 +64,48 @@ class SqlRepository:
         self._max_attempts = max_attempts
 
     def record_run(self, run: RunRecord) -> None:
+        from sqlalchemy.exc import IntegrityError
         from sqlalchemy.orm import Session
 
         from bajutsu.serve.server.models import Run
 
         # `merge` upserts by primary key, so re-recording a run (e.g. a status change) updates it
-        # rather than colliding. `created_at` is left to the server default unless given.
-        fields: dict[str, Any] = {
-            "id": run.id,
-            "org_id": run.org_id,
-            "status": run.status,
-            "created_by": run.created_by,
-            "ok": run.ok,
-            "summary": run.summary,
-            "scenario_hash": run.scenario_hash,
-            "tool_version": run.tool_version,
-            "git_revision": run.git_revision,
-            "device_runtime": run.device_runtime,
-            "label": run.label,
-            "target": run.target,
-        }
-        if run.created_at is not None:
-            fields["created_at"] = run.created_at
+        # rather than colliding.
+        fields = _run_fields(run)
         with Session(self._engine) as session:
             session.merge(Run(**fields))
-            session.commit()
+            try:
+                session.commit()
+            except IntegrityError:
+                # `merge` selects, then inserts: an insert-only writer (a rescan, BE-0449) can land
+                # the same id in between. Retry once; the row now exists, so the merge updates it
+                # and this write's actor and label still win.
+                session.rollback()
+                session.merge(Run(**fields))
+                session.commit()
+
+    def record_run_if_absent(self, run: RunRecord) -> bool:
+        from sqlalchemy.exc import IntegrityError
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import Run
+
+        fields = _run_fields(run)
+        with Session(self._engine) as session:
+            if session.get(Run, run.id) is not None:
+                return False
+            session.add(Run(**fields))
+            try:
+                session.commit()
+            except IntegrityError:
+                # Another writer inserted the same id between the read and the commit; the primary
+                # key turned that race into a no-op, which is the outcome this method promises. Any
+                # other constraint (a foreign key) is a real failure, so it is raised, not hidden.
+                session.rollback()
+                if session.get(Run, run.id) is not None:
+                    return False
+                raise
+        return True
 
     def get_run(self, run_id: str) -> RunRecord | None:
         from sqlalchemy.orm import Session
