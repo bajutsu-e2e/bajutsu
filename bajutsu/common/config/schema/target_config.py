@@ -7,7 +7,7 @@ from typing import Any, Literal, Self
 
 from pydantic import AliasChoices, Field, field_validator, model_validator
 
-from bajutsu.common.deprecations import reject_renamed_key
+from bajutsu.common.deprecations import reject_renamed_key, warn_server_batch_budget
 from bajutsu.common.drivers import base
 from bajutsu.common.scenario import AfterRule, Interrupt, Redact, Step, SystemAlertHandlingField
 
@@ -99,6 +99,8 @@ class TargetConfig(_Model):
     # in-flight total, not just for this target." This is intentional: the cap bounds the real device
     # quota, not each target's slice of it. Must be a positive integer — a non-positive literal is
     # rejected at config load rather than silently meaning "unlimited" (determinism first).
+    # Deprecated since the worker owns the budget as `maxJobConcurrency` (BE-0448): still honored
+    # for one release, with a notice, and removed by the target-config restructure.
     cloud_batch_budget: int | None = Field(default=None, alias="cloudBatchBudget", gt=0)
     device: str | None = None
     locale: str | None = None
@@ -253,6 +255,13 @@ class TargetConfig(_Model):
         for old in ("alertHandling", "dismissAlerts"):
             reject_renamed_key(data, surface="config", old=old, new="systemAlertHandling")
         return data
+
+    @field_validator("cloud_batch_budget")
+    @classmethod
+    def _deprecated_budget(cls, v: int | None) -> int | None:
+        # Runs only when the key is written, since Pydantic does not validate the omitted default.
+        warn_server_batch_budget("config field 'cloudBatchBudget'")
+        return v
 
     @field_validator("backend", mode="before")
     @classmethod

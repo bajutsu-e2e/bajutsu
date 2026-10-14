@@ -7,9 +7,9 @@
 |---|---|
 | Proposal | [BE-0448](BE-0448-devicefarm-worker-dispatch.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0448") |
-| Implementing PR | [#2184](https://github.com/bajutsu-e2e/bajutsu/pull/2184) (Units 1–2 and part of 3), [#2185](https://github.com/bajutsu-e2e/bajutsu/pull/2185) (Units 3, 6–7) |
+| Implementing PR | [#2184](https://github.com/bajutsu-e2e/bajutsu/pull/2184) (Units 1–2 and part of 3), [#2185](https://github.com/bajutsu-e2e/bajutsu/pull/2185) (Units 3, 6–7), [#2186](https://github.com/bajutsu-e2e/bajutsu/pull/2186) (Units 4–5, 8) |
 | Topic | Device-cloud execution |
 <!-- /BE-METADATA -->
 
@@ -189,11 +189,11 @@ This item removes the in-process dispatch of the server (`_run_batch_job` and th
 - [x] Provider registration on the worker
 - [x] Routing
 - [x] Package root and application delivery
-- [ ] Concurrent slots
-- [ ] Budget from the declaration
+- [x] Concurrent slots
+- [x] Budget from the declaration
 - [x] Checkpoint over HTTP
 - [x] Result path
-- [ ] Tests and documentation
+- [x] Tests and documentation
 
 Log:
 
@@ -261,6 +261,39 @@ Log:
   fails before any verdict now also posts its reason as the result's `error`. The jobs row then names
   the cause instead of `unknown`. The window from scheduling a run to storing its ARN stays open (see
   *Restart and lease loss*).
+- [#2186](https://github.com/bajutsu-e2e/bajutsu/pull/2186) (Units 4–5, 8) — A device-cloud worker now reads its job budget from `worker.yaml`.
+  The budget is the file's top-level `maxJobConcurrency`. Above one, the worker runs the slot model.
+  Each leased job runs on a thread of its own, with its own lease renewal, log bus, and package. Its
+  workspace lives under `.slots/<n>/`. The workspace returns to the pool once the job has uploaded its
+  evidence. A job counts from its lease until the worker posts its result. While every slot holds a
+  job, the worker sends no lease request. A stop signal to a slot worker cancels nothing. The worker
+  stops leasing and treats every lease in flight as lost. A run whose ARN the server holds keeps
+  running for the next worker. The worker stops any other run, since nobody could resume it. It then
+  waits for its slots, and a second SIGINT ends the wait. If SIGKILL ends a worker, the window before
+  the server stores the ARN stays open. A worker whose `maxJobConcurrency` is one keeps
+  today's single-slot loop. Its graceful cancel, `.job-pgid` file, and workspace sweep stay
+  unchanged. Before it submits, the worker runs the BE-0450 check on each leased scenario. The check
+  judges every target on the driver that Device Farm runs: `adb` or `xcuitest`. It compares that
+  driver with `drivers`, and the target count with `maxTargetsPerJob`. A scenario that fails the
+  check, or that the worker cannot read, fails its job. The job's error starts with
+  `worker-capability-unsupported:`, and Device Farm receives nothing. Four server-side settings still
+  cap the fan-out for this release:
+
+  - `cloudBatchBudget`;
+  - `deviceBudget`;
+  - `max_concurrent_batch`;
+  - `try_register(device_budget=…)`.
+
+  The first two log a notice that names `maxJobConcurrency`, once per server process. The two
+  internal ones log nothing, so an operator sees the setting they wrote. A resumed run skips the
+  check, since failing it would orphan the run it already holds. A `run-set` response lists under
+  `warnings` the deprecated settings that applied. The target-config restructure removes all four. A
+  new test drives the fan-out from `start_run_set` through the database queue. A slot worker then
+  runs the jobs against the faked Device Farm. Two slots run at once, and the third job waits with no
+  lease request sent. The test then stops a worker mid-poll. A second worker resumes both runs
+  without a second submission. `docs/devicefarm.md` and `docs/self-hosting.md` describe the final
+  design, in both languages. The self-hosting table now lists `run-set` among the jobs that the
+  `local` backend queues. That backend has queued them since #2184.
 
 ## References
 

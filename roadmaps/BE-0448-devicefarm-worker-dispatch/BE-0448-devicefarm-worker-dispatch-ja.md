@@ -7,9 +7,9 @@
 |---|---|
 | 提案 | [BE-0448](BE-0448-devicefarm-worker-dispatch-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0448") |
-| 実装 PR | [#2184](https://github.com/bajutsu-e2e/bajutsu/pull/2184)（単位 1〜2 と単位 3 の一部）、[#2185](https://github.com/bajutsu-e2e/bajutsu/pull/2185)（単位 3、6〜7） |
+| 実装 PR | [#2184](https://github.com/bajutsu-e2e/bajutsu/pull/2184)（単位 1〜2 と単位 3 の一部）、[#2185](https://github.com/bajutsu-e2e/bajutsu/pull/2185)（単位 3、6〜7）、[#2186](https://github.com/bajutsu-e2e/bajutsu/pull/2186)（単位 4〜5、8） |
 | トピック | Device-cloud execution |
 <!-- /BE-METADATA -->
 
@@ -170,11 +170,11 @@ worker は、実行のツリーを一時ディレクトリにダウンロード�
 - [x] worker でのプロバイダーの登録
 - [x] ルーティング
 - [x] パッケージの根とアプリの受け取り
-- [ ] 並行スロット
-- [ ] 宣言からの予算
+- [x] 並行スロット
+- [x] 宣言からの予算
 - [x] HTTP 経由のチェックポイント
 - [x] 結果の経路
-- [ ] テストとドキュメント
+- [x] テストとドキュメント
 
 ログ：
 
@@ -241,6 +241,32 @@ worker は、実行のツリーを一時ディレクトリにダウンロード�
   通常の worker の経路で実行をアップロードしていました。判定の前に失敗したバッチのジョブは、その理由を
   結果の `error` として送るようになりました。そのため、ジョブの行には `unknown` ではなく原因が残ります。
   実行のスケジュールから ARN の保存までの隙間は、「再起動と lease の喪失」の記述どおり残ります。
+- [#2186](https://github.com/bajutsu-e2e/bajutsu/pull/2186)（単位 4〜5、8）— デバイスクラウドの worker は、ジョブの予算を `worker.yaml` から
+  読むようになりました。予算は、ファイル最上位の `maxJobConcurrency` です。値が 1 を超えると、worker はスロット
+  モデルで動きます。リースした各ジョブは専用のスレッドで動き、ハートビート、ログバス、パッケージも
+  ジョブごとに持ちます。作業ディレクトリは `.slots/<n>/` の下に置きます。作業ディレクトリがプールへ
+  戻るのは、そのジョブが証跡をアップロードし終えたあとです。ジョブは、リースした時点から結果を送る
+  までを数えます。スロットがすべて埋まっている間、worker はリースの要求を送りません。スロットを使う
+  worker への停止シグナルは、何も取り消しません。worker はリースをやめ、処理中のリースをすべて失った
+  ものとして扱います。サーバが ARN を保存した実行は、次の worker のために走り続けます。サーバが ARN を
+  持たない実行は、誰も再開できないので止めます。worker はそのあとスロットの終了を待ち、2 回目の
+  SIGINT で待つのをやめます。強制終了された worker では、実行のスケジュールから ARN の保存までの
+  隙間が残ります。`maxJobConcurrency` が 1 の worker は、1 スロットのループを変えずに保ちます。
+  穏当な取り消し、`.job-pgid`、作業ディレクトリの掃除も従来どおりです。worker は投入の前に、
+  リースした各シナリオに BE-0450 の検査をします。どのターゲットも、Device Farm のホストが
+  `--backend` に渡すドライバー（`adb` か `xcuitest`）で、`drivers` と `maxTargetsPerJob` に照らして
+  判定します。検査に通らないシナリオや、worker が読めないシナリオは、`worker-capability-unsupported:`
+  で始まる理由とともにジョブを失敗させ、Device Farm には何も届きません。`cloudBatchBudget`、
+  `deviceBudget`、`max_concurrent_batch`、`try_register(device_budget=…)` は、このリリースの間は
+  引き続き fan-out の上限として効きます。前の 2 つは、`maxJobConcurrency` を案内する通知をサーバのプロセスごとに一度だけ
+  ログに出します。内部の 2 つはログに何も出さないので、運用者には自分が書いた設定の通知だけが見えます。
+  保存済みの実行を再開するジョブは検査を省きます。検査で失敗させると、すでに持っている実行が孤立するからです。`run-set` の応答は、効いた非推奨の設定を `warnings` に挙げます。4 つはターゲット
+  設定の再構成で取り除きます。新しいテストは、`start_run_set` からデータベースのキューとスロットを
+  使う worker を通し、Device Farm の偽物に対して fan-out を最後まで動かします。2 つのスロットが同時に
+  動き、3 つ目のジョブはリースの要求が送られないまま待ちます。ポーリング中に止めた worker のあと、
+  2 つ目の worker が両方の実行を、2 回目の投入なしに再開します。`docs/devicefarm.md` と
+  `docs/self-hosting.md` は、日本語版とともに最終的な設計を説明します。self-hosting の表は、
+  #2184 以来の動作どおり、`local` backend がキューに積むジョブに `run-set` を挙げるようになりました。
 
 ## 参考
 

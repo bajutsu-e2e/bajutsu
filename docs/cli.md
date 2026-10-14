@@ -1241,6 +1241,11 @@ leased job; a run gets its grace window to write its report. The worker then pos
 result and exits with 128 plus the signal number. The queue then records the job as cancelled and does not run it again. A second SIGINT ends
 the job's process group at once, as with `--once`.
 
+A device-cloud worker whose `maxJobConcurrency` is above one handles a stop signal differently
+(BE-0448). It stops leasing, cancels nothing, and posts nothing. Each lease in flight lapses, and a
+restarted worker resumes the run. A second SIGINT exits without waiting for the slots.
+The Device Farm page says what happens to each run ([restart and lease loss](devicefarm.md#restart-and-lease-loss)).
+
 ```bash
 bajutsu worker [--server-url <url>] [--token <t>] [--platform ios] [--capabilities <tokens>]
                [--poll-interval 2.0] [--heartbeat-interval 30.0] [--worker-id <id>]

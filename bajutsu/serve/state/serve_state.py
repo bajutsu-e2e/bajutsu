@@ -520,7 +520,9 @@ class ServeState:
         """Register *job* only if under the concurrency caps, forwarding this state's configured caps
         to the registry, which counts and inserts atomically under one lock (BE-0051). *device_budget*
         is the per-target cloud-batch device cap (BE-0336 Unit 4); unlike the state-wide caps it is
-        per-target, so the dispatcher resolves it from the request's config and passes it per call."""
+        per-target, so the dispatcher resolves it from the request's config and passes it per call.
+        It is deprecated with the registry's ``max_concurrent_batch`` it feeds (BE-0448): the Device
+        Farm worker's ``maxJobConcurrency`` replaces it, and it is honored for one release."""
         return self.job_registry.try_register(
             self._freeze_binding(job),
             max_concurrent=self.max_concurrent,

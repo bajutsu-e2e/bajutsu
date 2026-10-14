@@ -13,6 +13,7 @@ from bajutsu.serve.logbus import LogBus
 from ._shared import _DEFAULT_ORG
 
 if TYPE_CHECKING:
+    from bajutsu.common.capability.worker_capability import WorkerCapability
     from bajutsu.serve.batch_provider import BatchCheckpoint, BatchRequest
     from bajutsu.serve.upload_artifacts import ArtifactOverrides
 
@@ -164,6 +165,10 @@ class Job:
     # Worker-side only: set once the job's lease is lost, so a cloud-batch poll leaves its run to the
     # worker that holds the job now instead of waiting it out (BE-0448).
     lease_lost: threading.Event | None = None
+    # Worker-side only: the device-cloud worker's `worker.yaml`, which a cloud-batch job's scenario
+    # must fit before anything is submitted (BE-0450's check, run on the worker by BE-0448). None
+    # submits unchecked, as a worker started without `--worker-config` runs no cloud job anyway.
+    worker_capability: WorkerCapability | None = None
     # Why a job failed before producing a verdict of its own (a cloud-batch submission that failed),
     # posted as the result's `error` so the jobs row names the cause rather than "unknown".
     error: str | None = None

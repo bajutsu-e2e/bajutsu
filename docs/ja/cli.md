@@ -957,6 +957,8 @@ bajutsu mcp [--config bajutsu.config.yaml] [--runs runs] [--transport stdio]
 
 SIGINT や SIGTERM を受けた worker は、サーバからのキャンセルと同じように止まります。lease した job をキャンセルし（run なら穏やかに止めます）、キャンセルした結果を送ってから、128 にシグナル番号を足した終了コードで終わります。キューはその job をキャンセル済みとして記録し、再び実行しません。2 回目の SIGINT は、`--once` と同じく job のプロセスグループをすぐに終わらせます。
 
+`maxJobConcurrency` が 1 を超えるデバイスクラウドの worker は、停止シグナルの扱いが異なります（BE-0448）。リースをやめ、何も取り消さず、結果も送りません。処理中のリースはそれぞれ期限切れになり、再起動した worker が実行を再開します。2 回目の SIGINT を受けると、スロットを待たずに終了します。各実行がどうなるかは [AWS Device Farm で実行する](devicefarm.md#再起動とリースの喪失) で説明しています。
+
 ```bash
 bajutsu worker [--server-url <url>] [--token <t>] [--platform ios] [--capabilities <tokens>]
                [--poll-interval 2.0] [--heartbeat-interval 30.0] [--worker-id <id>]

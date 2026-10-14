@@ -193,17 +193,13 @@ The submitter and the workflow above are the headless path: one run packages the
 executes its scenarios back to back on a single reserved device. `bajutsu serve` (BE-0336) adds a
 second path on the surface operators already use to dispatch runs and watch history — and it changes
 the shape. Instead of one serialized run, serve **fans the suite out one Device Farm run per
-scenario**, so scenarios run in parallel, bounded by a device budget rather than by a single device.
+scenario**, so scenarios run in parallel. The Device Farm workers' job budget, not a single device,
+bounds how many run at once.
 
-Two per-target config fields under `targets.<name>` drive it, keeping the per-environment difference
-in config as the tool stays unchanged (prime directive 3):
-
-- **`cloudBatch: devicefarm`** selects the batch provider a target's cloud runs use. A target without
-  it is a local target, and the cloud fan-out refuses it.
-- **`cloudBatchBudget: K`** sets the device budget: at most `K` of that provider's runs reserve a
-  device at once. The cap is keyed on the provider — the contended device pool — so it spans every
-  target and org sharing that provider, not one target's slice. Device Farm's own `maxDevices` stays
-  pinned to one per run, so this Bajutsu-side budget alone governs how many devices are held.
+One per-target config field under `targets.<name>` drives the fan-out. Config thus holds the
+difference between environments, and the tool stays unchanged (prime directive 3).
+**`cloudBatch: devicefarm`** selects the batch provider a target's cloud runs use. A target without
+the field is a local target, and the cloud fan-out refuses it.
 
 ```yaml
 targets:
@@ -213,7 +209,6 @@ targets:
     scenarios: demos/showcase/scenarios
     appPath: app-debug.apk        # the APK Device Farm installs on the reserved device
     cloudBatch: devicefarm        # dispatch this target's cloud runs through Device Farm
-    cloudBatchBudget: 4           # reserve at most four devices at once across the pool
 ```
 
 The server does not submit these runs itself (BE-0448). Each fan-out job waits in the queue for a
@@ -226,6 +221,7 @@ may share one machine as two processes. Start the worker with the file and no `-
 # devicefarm.worker.yaml
 version: 1
 environment: devicefarm
+maxJobConcurrency: 4    # hold at most four Device Farm runs at once
 drivers: [adb, xcuitest]
 ```
 
@@ -275,22 +271,78 @@ filter. It needs no device-pool ARN.
 > file's digest against the one the job names. Such an `appPath` must name a file inside the config's directory, and the server
 > needs an object store. Otherwise `POST /api/run-set` returns a 400 error.
 
+### The job budget
+
+The worker owns the budget. The top-level `maxJobConcurrency` of its `worker.yaml` caps the jobs it
+holds in flight. A job counts from its lease until the worker posts its result. While every slot
+holds a job, the worker sends no lease request. Each running job keeps renewing its lease, which
+keeps the worker registered as live. The queued Device Farm jobs thus never show as unroutable
+during a backlog. A job that has posted its result and still uploads its evidence no longer counts.
+The worker may then lease again.
+
+Each job in flight holds one Device Farm device. With one worker, `maxJobConcurrency` is the exact
+device cap. With two or more workers, the devices in use are the sum of their jobs in flight. The
+operator keeps the sum of their `maxJobConcurrency` values within the account's quota. An omitted
+`maxJobConcurrency` means one job at a time, a safe default for a Device Farm quota. `N` single-job
+workers remain a valid alternative to one worker with `maxJobConcurrency: N`. They cost `N` copies
+of the AWS environment, the source checkout, and the process.
+
+A worker whose `maxJobConcurrency` is above one runs each job in a **slot**. A slot is a thread that
+owns one leased job and its lease renewals. A slot also owns a workspace under `.slots/<n>/`, the
+package it uploads, and the job's log. Slots share nothing that changes. A workspace returns to the
+pool once its job has uploaded its evidence. The next job thus never reuses a tree that an earlier
+job still uploads from. Size the disk for one application binary per slot, plus the run trees still
+uploading.
+
+Before it uploads anything, the worker checks each leased scenario against its `worker.yaml`. The
+check is the one `bajutsu run --worker-config` makes
+([Drivers](drivers.md#worker-capability-check-be-0450)). The worker judges every target on the
+driver that Device Farm runs. That driver is `adb` for an Android request and `xcuitest`
+for an iOS one. A scenario fails when `drivers` lacks that driver. It also fails when it declares
+more targets than `maxTargetsPerJob` allows. A scenario file the worker cannot read fails too. The
+job then fails with a `worker-capability-unsupported:` reason. The worker posts that reason through
+the ordinary result route. Device Farm receives nothing. A job that resumes a stored run skips the
+check, since an earlier attempt already submitted that run.
+
+Four server-side budget settings remain for one release as deprecated:
+
+- a target's `cloudBatchBudget`;
+- a `run-set` request's `deviceBudget`;
+- the job registry's `max_concurrent_batch`;
+- `try_register(device_budget=…)`, which passes the other two on to the registry.
+
+They bounded the fan-out while the server ran the dispatch. During that release, all four still cap
+the fan-out as before. The first two are the ones an operator writes. Each logs a deprecation notice
+that names `maxJobConcurrency`, once per server process. The last two are internal and log nothing.
+A later release removes all four, together with the target-config restructure. The server's global, per-user,
+and per-org caps count queued jobs too. Those caps may still cut a large fan-out short.
+
+### Fanning a target out
+
 A `POST /api/run-set` request fans a target out. Its body names the `target` and, optionally, a
-`scenarios` subset and a `deviceBudget`:
+`scenarios` subset:
 
 ```json
-{ "target": "showcase-compose", "scenarios": ["firstlook.yaml", "controls.yaml"], "deviceBudget": 2 }
+{ "target": "showcase-compose", "scenarios": ["firstlook.yaml", "controls.yaml"] }
 ```
 
 Omitting `scenarios` runs every scenario in the target's directory. Every requested name resolves to
 its scenario **before** any dispatch, so one unknown name fails the whole request closed rather than
-fanning out the good ones and erroring on the bad one. A per-request `deviceBudget` may only *lower*
-the target's budget, never raise it — the request tightens a shared resource, it does not grant more
-of it. When the budget is already full, the surplus scenarios are **deferred**, not rejected: a
-partial dispatch is the routine outcome the cap governs, and the response lists the jobs it did
-start. serve refuses the request loudly, though, when it cannot honor it at all — a web target (no
-device to reserve), a target with no `cloudBatch` provider or no `appPath`, or a config or scenario
-outside the config's directory, which the worker packages.
+fanning out the good ones and erroring on the bad one. serve queues one job per scenario. The Device
+Farm workers lease the jobs as their budgets allow. serve refuses the request outright when it
+cannot honor it at all:
+
+- a web target, which has no device to reserve;
+- a target with no `cloudBatch` provider or no `appPath`;
+- a config or scenario outside the config's directory, which the worker packages.
+
+A request that still sends the deprecated `deviceBudget` may *lower* the target's `cloudBatchBudget`.
+It may never raise it. When that cap is full, serve defers the surplus scenarios rather than
+rejecting them. The response then lists the jobs serve did start. Whenever either deprecated setting
+applied, the response also carries a `warnings` list. Each warning names the setting and
+`maxJobConcurrency`.
+
+### Restart and lease loss
 
 A run is **durable across a restart** of the server or the worker. Device Farm names each scheduled
 run by an Amazon Resource Name (ARN). The worker sends that ARN to the server over HTTP as soon as
@@ -306,16 +358,21 @@ A worker may stop after Device Farm schedules a run but before the server stores
 That run then has no owner. The job submits again, and the first run keeps its device until Device
 Farm ends it.
 
-A worker gives a run up in four ways:
+A worker gives a run up in five ways:
 
 | Event | What happens to the run | What the worker posts |
 |---|---|---|
-| The server relays the job's cancel to the worker, or a stop signal reaches the worker | The worker stops the run through Device Farm's `StopRun` call | The job, as cancelled |
+| The server relays the job's cancel to the worker, or a stop signal reaches a worker whose `maxJobConcurrency` is one | The worker stops the run through Device Farm's `StopRun` call | The job, as cancelled |
+| A stop signal reaches a worker whose `maxJobConcurrency` is above one | The worker leaves a run whose ARN the server stored, and the next worker to lease the job resumes it. It stops a run whose ARN the server does not hold, since nobody could resume that run | Nothing; each lease lapses, and the next worker posts the result |
 | The lease is lost after the server stored the ARN | The run continues, and the next worker to lease the job resumes it | Nothing; the next worker posts the result |
 | The server answers `409` to the ARN because the lease is gone | No worker could resume the run, so the worker stops it | A result the server ignores, since the lease moved on |
 | The server refuses the ARN with another `4xx` (a server or configuration error), or six minutes of retries run out | The server holds no ARN to resume from, so the worker stops the run and logs the error | The job's error, so the job ends without a verdict |
 
-A cancel that arrives while the worker is still uploading schedules no run at all.
+A cancel that arrives while the worker is still uploading schedules no run at all. A slot worker
+treats a stop signal as a shutdown, not as a cancel. The signal ends the lease requests, and every
+lease in flight lapses. A restart or another worker then picks the jobs up. The worker waits for its
+slots to leave their runs and for uploads already under way. Then it exits. A second SIGINT exits
+without waiting.
 `bajutsu worker --once <spec.json>` with the same `worker.yaml` submits one batch spec with no
 server. Its `appPath` is a path on that machine, and it stores no ARN. A SIGINT, SIGTERM, or SIGHUP
 stops its scheduled run the same way a cancel does.
@@ -347,7 +404,7 @@ the config needs the `bundle/` prefix on the Device Farm machine.
 
 ### Wiring hooks
 
-Hooks are wired at **process start only**, through the `BAJUTSU_BATCH_HOOKS` environment variable — a comma-separated list of `module:factory` paths. Bajutsu imports each module and calls the named factory (no arguments) to produce one hook instance:
+Hooks are wired at **process start only**, through the `BAJUTSU_BATCH_HOOKS` environment variable — a comma-separated list of `module:factory` paths. Bajutsu imports each module and calls the named factory (no arguments) to produce one hook instance. A worker whose `maxJobConcurrency` is above one shares that instance across its slots. Its hooks may then run at the same time, so a hook must be thread-safe and keep per-run state keyed by `ctx.job_id`:
 
 ```bash
 BAJUTSU_BATCH_HOOKS=myapp.hooks:make_proxy_hook,myapp.hooks:make_audit_hook \

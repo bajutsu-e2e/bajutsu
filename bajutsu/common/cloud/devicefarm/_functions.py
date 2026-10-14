@@ -60,6 +60,16 @@ _PLATFORM_RUN: dict[Platform, _PlatformRun] = {
     ),
 }
 
+
+def host_backend(platform: Platform) -> str:
+    """The ``--backend`` every `bajutsu run` on the Device Farm host passes for *platform*.
+
+    It overrides each target's own `backend`, so a worker judging a scenario before it submits
+    (BE-0448) asks about this driver, not the one the config names.
+    """
+    return _PLATFORM_RUN[platform].backend
+
+
 # Noise directories to keep out of the upload. `--package .=.` walks the whole checked-out
 # repo root, which already holds `.git/` and the `uv`-created `.venv/` plus build/test caches and
 # scratch output; zipping them would bloat (and could break) every upload. Matched on any path
@@ -79,11 +89,12 @@ _PACKAGE_EXCLUDES = frozenset(
         ".DS_Store",
         # A Bajutsu process's own state, which a bundle directory may hold when it is a project or a
         # worker's workspace: the local start's keys and queue (`.bajutsu`), the worker's bundle,
-        # override, and batch caches, and its owner and process-group files (BE-0448).
+        # override, batch, and slot directories, and its owner and process-group files (BE-0448).
         ".bajutsu",
         ".bundles",
         ".overrides",
         ".batch",
+        ".slots",
         ".owner-pid",
         ".job-pgid",
     }
