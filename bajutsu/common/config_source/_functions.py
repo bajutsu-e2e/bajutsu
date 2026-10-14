@@ -124,15 +124,19 @@ def github_token() -> str | None:
     return out.stdout.strip() or None  # a logged-out `gh` can exit 0 with blank stdout → no token
 
 
-def resolve_github_credential(spec: GitConfigSpec) -> str | None:
+def resolve_github_credential(spec: GitConfigSpec, stored: str | None = None) -> str | None:
     """The bearer token for `spec`, in documented precedence order (BE-0224).
 
     A configured **GitHub App installation** first (a short-lived, per-installation, service-identity
     token — the answer for an unattended host), then the `GITHUB_TOKEN` / `GH_TOKEN` / `gh auth token`
     chain of `github_token()`, else anonymous. Resolved **per acquisition** (the transport is built
     per `materialize`), so a rotated secret takes effect without a serve restart.
+
+    *stored* is the credential a user set in the serve UI, read from a store that keeps it out of
+    the environment (BE-0449). It takes the place `BAJUTSU_GIT_CONFIG_TOKEN` holds in that chain:
+    after the App, ahead of an ambient token.
     """
-    return _github_app_credential(spec) or github_token()
+    return _github_app_credential(spec) or stored or github_token()
 
 
 def _github_app_credential(spec: GitConfigSpec) -> str | None:
@@ -267,6 +271,7 @@ def materialize(
     transport: Transport | None = None,
     cache_root: Path | None = None,
     offline: bool = False,
+    credential: str | None = None,
 ) -> Materialized:
     """Check out `spec`'s subtree at its resolved commit SHA into a content-addressed cache.
 
@@ -276,6 +281,7 @@ def materialize(
 
     With `offline` (the `--config-offline` switch) it never touches the network: the ref must already
     be a full SHA (a branch/tag can't be resolved offline) and that SHA must already be cached.
+    *credential* is a stored UI credential (`resolve_github_credential`'s *stored*).
     """
     if transport is None and spec.host != "github.com":
         # The general `git+https://…` spec form is parsed (the door is open for other hosts) but only
@@ -289,7 +295,7 @@ def materialize(
         # a GitHub App token (BE-0224). Resolved at most once per `materialize`.
         nonlocal transport
         if transport is None:
-            transport = _GitHubTransport(resolve_github_credential(spec))
+            transport = _GitHubTransport(resolve_github_credential(spec, credential))
         return transport
 
     pinned = is_full_sha(spec.ref)

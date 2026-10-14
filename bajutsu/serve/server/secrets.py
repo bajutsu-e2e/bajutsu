@@ -17,7 +17,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from bajutsu.serve.helpers import mask_secret
+from bajutsu.serve.helpers import ServeStartupError, mask_secret
 
 if TYPE_CHECKING:
     from cryptography.fernet import Fernet
@@ -127,7 +127,7 @@ def fernet_from_env() -> Fernet | None:
     except ValueError as e:
         # Name the offending variable so a malformed key is diagnosable at startup — still fails
         # loud, just with a message that points at BAJUTSU_SECRETS_KEY rather than a bare Fernet one.
-        raise ValueError(
+        raise ServeStartupError(
             "BAJUTSU_SECRETS_KEY must be a url-safe base64-encoded 32-byte Fernet key "
             "(generate one with `python3 -c 'from cryptography.fernet import Fernet; "
             "print(Fernet.generate_key().decode())'`)"

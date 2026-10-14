@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from bajutsu.serve.helpers import ServeStartupError
 from bajutsu.serve.server.file_object_store import FileObjectStore, UrlSigner
 from bajutsu.serve.server.local_keys import signing_key
 from bajutsu.serve.server.object_store import (
@@ -61,7 +62,7 @@ def hosted_from_env(*, server_store_set: bool) -> bool:
         return True
     if value in _FALSE:
         return False
-    raise ValueError(f"BAJUTSU_HOSTED must be one of true, false, 1, 0; got {raw!r}")
+    raise ServeStartupError(f"BAJUTSU_HOSTED must be one of true, false, 1, 0; got {raw!r}")
 
 
 def loopback_base_url(host: str, port: int) -> str:
@@ -103,8 +104,8 @@ def local_file_store(
     if port == 0:
         # The signed URLs are fixed when the store is built, before any socket is bound, so an
         # ephemeral port would leave them pointing at port 0.
-        raise ValueError(
-            "--backend server without BAJUTSU_SERVER_STORE signs URLs to its own port, "
+        raise ServeStartupError(
+            "a server without BAJUTSU_SERVER_STORE signs URLs to its own port, "
             "so it needs a fixed --port (not 0)"
         )
     if baselines_dir is not None:
@@ -135,7 +136,7 @@ def _refuse_enclosing_baselines(baselines_dir: Path, *, runs_dir: Path, state_di
     for label, directory in (("runs", runs_dir), ("state", state_dir)):
         other = directory.resolve()
         if other.is_relative_to(baselines) or baselines.is_relative_to(other):
-            raise ValueError(
+            raise ServeStartupError(
                 f"--baselines {baselines_dir} overlaps the {label} directory {directory}; "
                 "a local start serves the baselines directory over signed URLs, so point "
                 "--baselines at a directory of its own"
@@ -183,5 +184,7 @@ def secrets_fernet(state_dir: Path, *, database: bool, local_database: bool) -> 
         return fernet_from_env_or_local(state_dir)
     fernet = fernet_from_env()
     if database and fernet is None:
-        raise ValueError("BAJUTSU_SECRETS_KEY is required for --backend=server with a database")
+        raise ServeStartupError(
+            "BAJUTSU_SECRETS_KEY is required for --backend=server with a database"
+        )
     return fernet

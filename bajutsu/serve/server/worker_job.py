@@ -31,7 +31,7 @@ from bajutsu.serve.orgs import DEFAULT_ORG as _DEFAULT_ORG
 from bajutsu.serve.state import Job, ServeState
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
 
     # Only the type annotations reference it; the runtime rebuild imports it lazily so serializing a
     # normal job never pulls the batch seam (and its optional deps) into the common worker path.
@@ -177,7 +177,43 @@ def job_spec(job: Job) -> dict[str, Any]:
         # What the run's manifest records it executed (a bound bundle's identity, BE-0073; each
         # override's sha, BE-0431). The run executes here, so this is where `run_job` stamps it.
         "provenance": dict(job.provenance) if job.provenance is not None else None,
+        # The config's directory on the server's disk, for a job that names its files by path rather
+        # than shipping them (a local start's run, BE-0449): its build and relative `appPath` resolve
+        # from there, as they do in the server's own process. None for a job that ships its files.
+        "cwd": str(job.cwd) if job.cwd is not None and _names_host_paths(job) else None,
     }
+
+
+def _names_host_paths(job: Job) -> bool:
+    """Whether *job* runs off files on the server's disk, shipping none of its own to the worker."""
+    return not job.materials and job.bundle is None and job.overrides is None
+
+
+def _spec_cwd(spec: dict[str, Any]) -> Path | None:
+    """The directory a leased job's build and run start in, when its spec names one.
+
+    Honoured only for a spec that ships no files (`_names_host_paths`), so the workspace a worker
+    builds for shipped files is never swapped for another directory. Such a job names its config,
+    scenario, and runs directory by their paths on the server's machine, so a worker that lacks
+    the directory cannot run it at all.
+
+    Raises:
+        ValueError: the spec names an absolute directory this machine does not have.
+    """
+    raw = spec.get("cwd")
+    if not isinstance(raw, str) or not raw:
+        return None
+    if spec.get("materials") or spec.get("bundle") is not None or spec.get("overrides") is not None:
+        return None
+    path = Path(raw)
+    if not path.is_absolute():
+        return None
+    if not path.is_dir():
+        raise ValueError(
+            f"this job runs off files on the server's machine ({raw} is not here); "
+            "it needs a worker on the server's machine"
+        )
+    return path
 
 
 def _batch_spec(batch: BatchRequest | None) -> dict[str, Any] | None:
@@ -319,6 +355,7 @@ def execute_job_spec(
     one_shot: bool = False,
     apply_worker_config: bool = True,
     keep_caller_path: bool = False,
+    secret_env: Mapping[str, str] | None = None,
 ) -> Job:
     """Worker entrypoint: rebuild the job from *spec*, run the unchanged `run_job`, then upload its
     run tree through the control plane's presigned URLs.
@@ -342,10 +379,14 @@ def execute_job_spec(
     leaves the argv's own `--worker-config` as the caller typed it, for the public `bajutsu run`,
     whose run reads the file and reports a bad one in the caller's own words. *keep_caller_path*
     spawns the run on the caller's own `PATH`, also for the public `bajutsu run` alone; every other
-    job, `worker --once` included, puts this interpreter's bin dir first as a leased job does."""
+    job, `worker --once` included, puts this interpreter's bin dir first as a leased job does.
+    *secret_env* is the org's stored secrets the lease relayed (BE-0449), laid over the child's
+    environment and never written into the spec or the run's argv."""
     # The subprocess runs with cwd=work and writes runs/<id>/ relative to it, so runs_dir must be
     # work/runs — otherwise state.artifacts would be confined to an unrelated process-CWD runs/.
     work = cwd or Path.cwd()
+    # Checked first, so a worker on another machine refuses the job before it writes anything.
+    job_cwd = _spec_cwd(spec)
     org = str(spec.get("org") or _DEFAULT_ORG)
     # Write the scenario + config the control plane shipped into the workspace, so the run's
     # workspace-relative `--scenario` / `--config` resolve here (the worker has no project on disk).
@@ -395,6 +436,8 @@ def execute_job_spec(
         batch=_batch_from_spec(spec.get("batch")),
         provenance=_provenance_from_spec(spec.get("provenance")),
         keep_caller_path=keep_caller_path,
+        cwd=job_cwd,
+        secret_env=dict(secret_env or {}),
     )
     # Bind the job's ids so every operational record on this worker correlates to it (BE-0055);
     # `run_id` is the run's own id, minted by `run_job`, so it binds only once the run has started.

@@ -31,7 +31,7 @@ from bajutsu.serve.helpers import (
     valid_run_id,
     valid_scenario_ref,
 )
-from bajutsu.serve.operations._common import _resolve_org_or_forbid
+from bajutsu.serve.operations._common import _resolve_org_or_forbid, no_worker_notice
 from bajutsu.serve.operations.config import FS_DISABLED_ERROR, launch_label
 from bajutsu.serve.operations.runs import sweep_expired_trash
 from bajutsu.serve.orgs import DEFAULT_ORG
@@ -910,6 +910,9 @@ def job_view(state: ServeState, job_id: str, *, machine_org: str | None = None) 
         final = state.logbus.final(job_id)
         if final is not None:
             return json.loads(final), 200
+        # A queued job with no live worker says so, rather than looking merely slow (BE-0449).
+        if (notice := no_worker_notice(state, job)) is not None:
+            view["notice"] = notice
     return view, 200
 
 

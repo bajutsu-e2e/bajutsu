@@ -3,15 +3,18 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 from bajutsu.common.evidence.redaction import mask_credential_shapes
 from bajutsu.serve.helpers import valid_run_id, valid_sha256
-from bajutsu.serve.jobs import persist_run
+from bajutsu.serve.jobs import lease_secret_env, persist_run
 from bajutsu.serve.orgs import DEFAULT_ORG
 from bajutsu.serve.server.object_store import baseline_prefix, org_prefix, upload_store_key
 from bajutsu.serve.state import ServeState
 from bajutsu.serve.upload_artifacts import ARTIFACT_KINDS, OVERRIDE_KINDS, artifact_store_key
+
+_logger = logging.getLogger(__name__)
 
 # Bounds on one `/api/worker/log` post (BE-0449). Every line is held in the log bus until the job's
 # stream expires, so an unbounded post would let one worker grow the server's memory (or a shared
@@ -41,7 +44,7 @@ def _clean_capabilities(raw: Any) -> list[str]:
 
 
 def worker_lease(
-    state: ServeState, worker_id: str, capabilities: Any = None
+    state: ServeState, worker_id: str, capabilities: Any = None, *, relay_secrets: bool = True
 ) -> tuple[dict[str, Any], int]:
     """Lease the oldest queued job *worker_id* can serve, or return 204 when none is servable.
 
@@ -59,6 +62,13 @@ def worker_lease(
     job from. Without them the run would start against an ``appPath`` binary only the control plane
     holds. A job naming per-job artifact overrides (BE-0431) carries ``binary_url`` /
     ``scenarios_url`` the same way.
+
+    With *relay_secrets*, the response also carries ``secret_env``: the leased job's org's stored
+    secrets (the AI key and the ``${secrets.X}`` values a user set in the UI) under the variables a
+    job reads them from (BE-0449). They are read here, at lease time, and never enter the stored
+    spec. The route passes False for a caller that came in on a browser or machine session, since
+    a worker authenticates with the shared token and nothing else should receive the values. A
+    store that cannot be read fails the job rather than run it without them.
     """
     if state.repository is None:
         return {"error": "server backend has no database configured"}, 503
@@ -70,6 +80,18 @@ def worker_lease(
     if leased is None:
         return {}, 204
     resp: dict[str, Any] = {"job_id": leased.id, "org_id": leased.org_id, "spec": leased.spec}
+    if relay_secrets:
+        try:
+            secret_env = lease_secret_env(state, leased.org_id or DEFAULT_ORG)
+        # Any failure of the store, whatever its backend raises, must end the job rather than strand
+        # it leased or hand it to the worker without the values it may need.
+        except Exception:
+            _logger.warning(
+                "could not read the stored secrets of org %s", leased.org_id, exc_info=True
+            )
+            return _fail_unread_secrets(state, leased.id, worker_id), 204
+        if secret_env:
+            resp["secret_env"] = secret_env
     if state.object_store is not None:
         org = leased.org_id or DEFAULT_ORG
         if leased.spec.get("materialize_baselines"):
@@ -78,6 +100,16 @@ def worker_lease(
             resp["bundle_urls"] = urls
         resp.update(_override_urls(state, org, leased.spec.get("overrides")))
     return resp, 200
+
+
+def _fail_unread_secrets(state: ServeState, job_id: str, worker_id: str) -> dict[str, Any]:
+    """Fail a just-leased job whose org's secrets could not be read, and end its live stream."""
+    assert state.repository is not None  # caller guards
+    error = "could not read the org's stored secrets, so the job did not start"
+    if state.repository.fail_job(job_id, error=error, worker_id=worker_id):
+        state.logbus.publish(job_id, f"error: {error}")
+        state.logbus.close(job_id, json.dumps({"ok": False, "error": error}))
+    return {}
 
 
 def _override_urls(state: ServeState, org: str, overrides: Any) -> dict[str, str]:

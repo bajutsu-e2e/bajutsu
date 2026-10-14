@@ -230,7 +230,9 @@ bajutsu schema                                            # エディタ連携�
 > `make serve`（または `scripts/serve.sh`）は `bajutsu serve` をラップし、設定された backend の
 > 依存を必要時に導入します。これにより、クリーンなチェックアウトでも
 > `no available actuator among ['xcuitest']` に当たりません。フラグは `make serve ARGS="--port 8766"`
-> のように渡します。
+> のように渡します。サーバは run を `bajutsu worker` のキューに積むので、`make serve` はサーバの横で
+> worker も1つ起動し、サーバの停止とともに止めます。サーバだけを起動するには
+> `SERVE_WORKER=0 make serve` とします。
 
 アプリ別・プラットフォーム別の設定は、`--config` で渡す config ファイルに置きます。デモにはすぐ動く
 ものが同梱されています（例: [`demos/showcase/showcase.config.yaml`](demos/showcase/showcase.config.yaml)、

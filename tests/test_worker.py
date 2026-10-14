@@ -297,8 +297,11 @@ def test_worker_runs_a_bundle_job_from_the_bundles_own_tree(
 
     monkeypatch.setattr(worker_mod, "_post_json", fake_post)
     monkeypatch.setattr(worker_mod, "_bundle_workspace", lambda *_a, **_k: tree)
+    # The console log lands in the runs dir the run wrote: the bundle tree's own (BE-0449).
     monkeypatch.setattr(
-        worker_mod, "_write_console_log", lambda work, *_a: seen.setdefault("log", work)
+        worker_mod,
+        "_write_run_console_log",
+        lambda run_dir, *_a: seen.setdefault("log", run_dir.parent.parent),
     )
     monkeypatch.setattr(
         worker_mod, "_upload_evidence", lambda work, *_a, **_k: seen.setdefault("evidence", work)

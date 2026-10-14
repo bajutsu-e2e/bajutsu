@@ -43,13 +43,58 @@ def _state(tmp_path: Path) -> srv.ServeState:
     )
 
 
-def test_build_state_assembles_local_seams(tmp_path: Path) -> None:
+@pytest.fixture(autouse=True)
+def _no_ambient_server_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Both backends read these now (BE-0449), so a maintainer's own deployment variables must not
+    # turn a local start into theirs; a test that needs one sets it itself.
+    for var in (
+        "BAJUTSU_SERVER_STORE",
+        "BAJUTSU_DATABASE_URL",
+        "BAJUTSU_SECRETS_KEY",
+        "BAJUTSU_HOSTED",
+        "BAJUTSU_REDIS_URL",
+    ):
+        monkeypatch.delenv(var, raising=False)
+
+
+def test_build_state_local_is_the_server_shape_that_queues_run_alone(tmp_path: Path) -> None:
+    # `--backend local` is the local start (BE-0449 unit 5): a run goes to a worker through the
+    # queue, and every other kind still runs in this process.
+    from bajutsu.serve.server.db_executor import DbQueueExecutor
+    from bajutsu.serve.server.queue_logbus import QueueLogBus
+
     state = _state(tmp_path)
     assert isinstance(state, srv.ServeState)
-    assert isinstance(state.executor, srv.LocalExecutor)
-    assert isinstance(state.logbus, srv.InMemoryLogBus)
-    assert isinstance(state.artifacts, srv.LocalArtifactStore)
+    assert isinstance(state.executor, srv.RoutingExecutor)
+    assert state.executor.queued_kinds == srv.LOCAL_QUEUED_KINDS == frozenset({"run"})
+    assert isinstance(state.executor._queue, DbQueueExecutor)
+    assert isinstance(state.executor._local, srv.LocalExecutor)
+    assert isinstance(state.logbus, QueueLogBus)
+    assert state.local_file_store
+    assert not state.hosted
+    # The default org keeps its scenarios on the bound config's tree, as the local backend did.
     assert isinstance(state.scenarios, srv.LocalScenarioStore)
+
+
+def test_build_state_local_keeps_the_startup_cwd_and_provenance(tmp_path: Path) -> None:
+    # The local backend's startup inputs survive the move onto the server shape: a config's relative
+    # paths still resolve from its own directory, and a Git config keeps its provenance stamp.
+    _scn, cfg, runs = project(tmp_path)
+    state = srv._build_state(
+        runs_dir=runs,
+        config=cfg,
+        scenarios_dir=None,
+        root=tmp_path,
+        baselines_dir=None,
+        max_concurrent=4,
+        token=None,
+        cwd=cfg.parent,
+        config_provenance={"repo": "acme/app", "sha": "abc"},
+        default_theme="light",
+    )
+    assert state.binding.cwd == cfg.parent
+    assert state.binding.provenance == {"repo": "acme/app", "sha": "abc"}
+    assert state.default_theme == "light"
 
 
 def test_build_state_rejects_unknown_backend(tmp_path: Path) -> None:
@@ -113,9 +158,11 @@ def test_build_state_server_wires_the_hosted_seams(
     assert scope.read("smoke.yaml") == (_scn / "smoke.yaml").read_text(encoding="utf-8")
 
 
-def test_build_state_local_has_no_repository(tmp_path: Path) -> None:
-    # The system of record is server-only; local never has one, so its behavior is unchanged.
-    assert _state(tmp_path).repository is None
+def test_build_state_local_keeps_a_sqlite_repository(tmp_path: Path) -> None:
+    # The local start keeps its queue in a SQLite file beside the runs tree (BE-0449).
+    state = _state(tmp_path)
+    assert state.repository is not None
+    assert (tmp_path / ".bajutsu" / "queue.db").is_file()
 
 
 def test_build_state_server_has_no_repository_without_a_database_url(
@@ -236,11 +283,11 @@ def test_build_state_server_requires_a_secrets_key_with_a_database(
         )
 
 
-def test_build_state_local_uses_in_memory_sessions(tmp_path: Path) -> None:
-    # Local sessions stay in-memory (a restart drops them), so its behavior is unchanged.
-    from bajutsu.serve.sessions import InMemorySessionStore
+def test_build_state_local_keeps_sessions_in_its_database(tmp_path: Path) -> None:
+    # With the queue's database, login sessions survive a restart on a local start too (BE-0449).
+    from bajutsu.serve.server.sessions import SqlSessionStore
 
-    assert isinstance(_state(tmp_path).auth.sessions, InMemorySessionStore)
+    assert isinstance(_state(tmp_path).auth.sessions, SqlSessionStore)
 
 
 def test_build_state_server_uses_sql_sessions_when_db_is_configured(

@@ -44,11 +44,29 @@ make serve ARGS="--config demos/showcase/showcase.config.yaml --port 8766"   # �
 リポジトリにはルートの `bajutsu.config.yaml` が無いため、ショーケースアプリにはこの config 指定が
 必要です。
 
+サーバ自身は run のためにデバイスを操作しません。run を `bajutsu worker` のキューに積みます。worker が
+run を lease し、デバイスやブラウザを操作します。そのため `make serve` はサーバの横で worker を1つ
+起動します。この worker は同じマシンで同じトークンを使い、サーバが止まると止まります。worker が宣言するのは
+起動時の config のターゲットが使うプラットフォームです。後から別のプラットフォームのターゲットを bind
+したときは、それに合う worker が必要で、使える worker がないという通知がそれを示します。自前の worker を
+つなぐ場合など、サーバだけを起動するには `SERVE_WORKER=0` を指定します。
+
+```bash
+SERVE_WORKER=0 make serve
+```
+
+キューで待つ run は、待っている理由を示します。Replay のステータス行には、使える worker がないという
+通知が出ます。`GET /api/jobs/<id>` は同じ文を `notice` として返します。この通知は、run を実行できる
+worker がサーバに問い合わせると消えます。record、crawl、triage のジョブは、引き続きサーバのプロセス内で
+動きます（BE-0449）。
+
 `make serve` は内部で `python -m bajutsu serve`、すなわち [CLI リファレンス](cli.md#serve) が説明する
 `bajutsu serve` コマンドを実行します。checkout の外で Bajutsu を導入した場合（`make` が無い場合）は、
 `bajutsu serve`（または `python -m bajutsu serve`）を直接実行してください。その場合、backend の依存は
 自分で用意します。iOS ターゲットには XCUITest ランナー（と Xcode）が要りますが、web（Playwright）
-ターゲットには不要です。いずれの方法でも、サーバがブラウザを自動で開くことはありません。`127.0.0.1` に
+ターゲットには不要です。worker も、別の端末で `bajutsu worker` を実行して自分で起動します（web ターゲットには `--platform web` を
+付けます）。
+いずれの方法でも、サーバがブラウザを自動で開くことはありません。`127.0.0.1` に
 bind するので、起動したら表示された URL（既定は `http://127.0.0.1:8765`、`--port` を渡した場合はその
 ポート）を自分で開いてください。よく使うフラグ（`--port`、`--config`、`--root`、`--runs`、
 `--baselines`、`--themes`、`--host`、`--token`、`--max-concurrent-runs`、`--evidence-store`）は

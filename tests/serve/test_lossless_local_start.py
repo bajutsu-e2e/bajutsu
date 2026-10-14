@@ -376,7 +376,8 @@ def _calls_of(name: str) -> set[str]:
 
 def test_only_the_job_execution_path_reads_a_secrets_plaintext() -> None:
     # BE-0136 keeps every plaintext read away from an HTTP handler. The one read (BE-0449) is called
-    # from `jobs.job_secret_env`, and that from the in-process job thread alone. This is a tripwire
+    # from `serve.jobs` alone, and `job_secret_env` from there too: the in-process job thread and
+    # the lease's own named reader (`test_local_start_worker`) both go through it. This is a tripwire
     # on direct calls by name, not a lock: a call through an alias or `getattr` would slip past it.
     # It catches the likely mistake, an operation or route calling either function outright.
     assert _calls_of("values_for_job") == {"bajutsu/serve/jobs.py"}
@@ -398,24 +399,6 @@ def test_a_store_failure_ends_the_job_instead_of_stranding_it(tmp_path: Path) ->
     assert (job.status, job.exit_code) == ("done", 1)
     assert any("stored secrets" in line for line in job.lines)
     assert "database is down" not in "".join(job.lines)
-
-
-def test_a_queued_job_does_not_get_the_stored_secrets_yet(tmp_path: Path) -> None:
-    # A local start queues every job kind today, and the secret read runs on the in-process path
-    # alone. Until part 2 relays the values in the lease, a queued job's spec carries none of them.
-    _project(tmp_path)
-    state = _local(tmp_path)
-    client = TestClient(make_app(state))
-    client.post("/api/apikey", json={"value": "sk-ant-local-0004"})
-    assert client.post(
-        "/api/run", json={"target": "demo", "scenario": "smoke.yaml"}
-    ).status_code == (200)
-    job = next(iter(state.jobs.values()))
-    assert job.secret_env == {}
-    assert state.repository is not None
-    leased, code = ops.worker_lease(state, "w1", job.capabilities)
-    assert code == 200
-    assert "sk-ant-local-0004" not in json.dumps(leased)
 
 
 def test_a_worker_downloads_the_baseline_an_approve_wrote(tmp_path: Path) -> None:

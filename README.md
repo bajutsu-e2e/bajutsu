@@ -211,7 +211,7 @@ Installing from PyPI instead? The base package is AI-free: `pip install bajutsu`
 deterministic authoring / running paths with no AI SDK, and `pip install bajutsu[ai]` (or
 `bajutsu[bedrock]`) adds the SDK for the Claude paths — see
 [What uses Claude](docs/ai-boundary.md#installing-the-claude-paths). The base package also carries
-the server stack. With it, `bajutsu serve --backend server` runs on one machine with no extra. For a
+the server stack. With it, `bajutsu serve` runs on one machine with no extra. For a
 hosted deployment, the `server` extra adds boto3 and the `db` extra adds psycopg.
 
 ## Usage
@@ -239,6 +239,8 @@ backend) round out this walkthrough. The CLI also wires `audit` / `coverage` / `
 > `make serve` (or `scripts/serve.sh`) wraps `bajutsu serve` and installs the configured
 > backend's dependencies on demand, so a fresh checkout will not hit
 > `no available actuator among ['xcuitest']`. Pass flags via `make serve ARGS="--port 8766"`.
+> The server queues each run for a `bajutsu worker`, so `make serve` also starts one worker beside
+> it and stops that worker with the server. `SERVE_WORKER=0 make serve` starts the server alone.
 
 Per-app (and per-platform) settings live in a config file you pass with `--config`; the demos
 ship ready-to-run ones (e.g. [`demos/showcase/showcase.config.yaml`](demos/showcase/showcase.config.yaml),

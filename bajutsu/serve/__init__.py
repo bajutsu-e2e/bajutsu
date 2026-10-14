@@ -25,6 +25,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
+from collections.abc import Iterable
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -42,9 +43,10 @@ from bajutsu.serve.commands import (
     run_command,
     triage_command,
 )
-from bajutsu.serve.executor import LocalExecutor, RoutingExecutor, RunExecutor
+from bajutsu.serve.executor import LocalExecutor, RoutingExecutor, RunExecutor, runs_in_process
 from bajutsu.serve.handler import make_server
 from bajutsu.serve.helpers import (
+    ServeStartupError,
     _scenario_path,
     list_crawl_runs,
     list_fs,
@@ -86,8 +88,8 @@ from bajutsu.serve.sessions import InMemorySessionStore
 from bajutsu.serve.state import (
     JOB_KINDS,
     Job,
+    JobKind,
     Popen,
-    ProviderSettingsManager,
     ServeState,
     SessionManager,
     StoreBundle,
@@ -95,6 +97,7 @@ from bajutsu.serve.state import (
 
 __all__ = [
     "JOB_KINDS",
+    "LOCAL_QUEUED_KINDS",
     "SERVE_BACKENDS",
     "Artifact",
     "ArtifactStore",
@@ -112,6 +115,7 @@ __all__ = [
     "RunExecutor",
     "ScenarioScope",
     "ScenarioStore",
+    "ServeStartupError",
     "ServeState",
     "_int",
     "_scenario_path",
@@ -145,8 +149,11 @@ __all__ = [
 
 
 # The serve backends `_build_state` can assemble — the source of truth the CLI validates against.
-# `local` runs in-process; `server` wires the hosted seams (DB-backed queue/log bus + object storage).
+# Both build the server shape (BE-0449); they differ only in which job kinds the queue takes.
 SERVE_BACKENDS: tuple[str, ...] = ("local", "server")
+# The kinds `--backend local` hands to a worker (BE-0449 unit 5). The rest still run in this process
+# until their own units move them; once every kind is queued, the two backends are one.
+LOCAL_QUEUED_KINDS: frozenset[JobKind] = frozenset({"run"})
 
 _logger = logging.getLogger(__name__)
 
@@ -305,12 +312,13 @@ def _build_state(
 ) -> ServeState:
     """Assemble the `ServeState` for *backend* — the one place the serve seams are wired.
 
-    ``local`` runs in-process (thread executor, in-memory log bus, filesystem artifacts, on-disk
-    scenarios). ``server`` wires the queue seams (a database-backed queue + log bus, object-storage
-    artifacts + scenarios) from the environment, or from local defaults where it names none
-    (BE-0449). *host* and *port* are the bind, from which a local start builds the URL its file
-    store signs. An unknown backend fails loudly rather than silently falling back to local. The
-    transport (stdlib vs uvicorn) is a separate choice."""
+    Both backends build the server shape (BE-0449): a queue, sessions, and an artifact store from
+    the environment, or from local defaults under ``.bajutsu/`` where it names none. They differ in
+    which job kinds the queue takes while the kinds move to the workers. ``local`` queues `run`
+    (with its build phase) for a ``bajutsu worker`` and runs every other kind in this process;
+    ``server`` queues every kind. *host* and *port* are the bind, from which a local start builds
+    the URL its file store signs. An unknown backend fails loudly rather than silently falling back
+    to local. The transport (stdlib vs uvicorn) is a separate choice."""
     if backend not in SERVE_BACKENDS:
         raise ValueError(
             f"unknown serve backend: {backend!r} (available: {', '.join(SERVE_BACKENDS)})"
@@ -318,65 +326,41 @@ def _build_state(
     resolved_baselines = baselines_dir or (
         scenarios_dir / "baselines" if scenarios_dir else Path("baselines")
     )
-    if backend == "server":
-        # FastAPI, uvicorn, SQLAlchemy, and Alembic are base dependencies (BE-0449). What stays
-        # optional is the client for a service the environment names: boto3 for s3://, the GCS SDK
-        # for gs://, psycopg for PostgreSQL. If one is missing, surface one clear install hint
-        # rather than a raw ImportError naming whichever module happened to load first.
-        try:
-            return _build_server_state(
-                runs_dir=runs_dir,
-                config=config,
-                scenarios_dir=scenarios_dir,
-                root=root or Path.cwd(),
-                baselines_dir=resolved_baselines,
-                max_concurrent=max_concurrent,
-                token=token,
-                upload_exec=upload_exec,
-                evidence=evidence,
-                allow_remote_build=allow_remote_build,
-                host=host,
-                port=port,
-            )
-        except ImportError as e:
-            # Only a missing third-party extra earns the install hint. A failed `bajutsu.*` import is
-            # a real bug, not a missing dependency — re-raise it so its own traceback survives.
-            if e.name and e.name.split(".")[0] == "bajutsu":
-                raise
-            raise MissingServerExtra(
-                "the server backend needs the optional extra for a service it is configured "
-                "with — install with: pip install 'bajutsu[server,db,gcs]' (server adds boto3 "
-                "for s3://, db adds psycopg for a PostgreSQL BAJUTSU_DATABASE_URL, gcs is only "
-                "needed if BAJUTSU_SERVER_STORE or --evidence-store uses gs://)"
-            ) from e
-    return ServeState(
-        runs_dir=runs_dir,
-        config=config,
-        scenarios_dir=scenarios_dir,
-        root=root or Path.cwd(),
-        baselines_dir=resolved_baselines,
-        # Uploaded bundles (BE-0073) extract under the shared Bajutsu cache root — serve-owned,
-        # never the browse `--root`, so an uploaded tree can't overwrite the operator's files. A
-        # sibling of the Git source's own checkout cache (BE-0243), so a hosted deployment that
-        # already provisions one writable cache root for Git needn't provision a second for uploads.
-        uploads_dir=_bajutsu_cache_root() / "uploads",
-        max_concurrent=max_concurrent,
-        auth=SessionManager(token=token),
-        upload_exec=upload_exec,
-        evidence=evidence,
-        allow_remote_build=allow_remote_build,
-        run_retention_days=_run_retention_from_env(os.environ.get("BAJUTSU_RUN_RETENTION_DAYS")),
-        cwd=cwd or Path.cwd(),
-        config_provenance=config_provenance,
-        themes_dir=themes_dir,
-        default_theme=default_theme,
-        # Persist the Settings panel's provider/model/effort to a serve-owned file (a sibling of
-        # runs_dir), so a saved choice survives a restart (BE-0184). Construction only wires the
-        # store; `serve()` restores from it on boot, once logging is live.
-        providers=ProviderSettingsManager(
-            store=LocalProviderSettingsStore(_provider_settings_file(runs_dir))
-        ),
-    )
+    # FastAPI, uvicorn, SQLAlchemy, and Alembic are base dependencies (BE-0449). What stays optional
+    # is the client for a service the environment names: boto3 for s3://, the GCS SDK for gs://,
+    # psycopg for PostgreSQL. If one is missing, surface one clear install hint rather than a raw
+    # ImportError naming whichever module happened to load first.
+    try:
+        return _build_server_state(
+            runs_dir=runs_dir,
+            config=config,
+            scenarios_dir=scenarios_dir,
+            root=root or Path.cwd(),
+            baselines_dir=resolved_baselines,
+            max_concurrent=max_concurrent,
+            token=token,
+            upload_exec=upload_exec,
+            evidence=evidence,
+            allow_remote_build=allow_remote_build,
+            host=host,
+            port=port,
+            queued_kinds=LOCAL_QUEUED_KINDS if backend == "local" else JOB_KINDS,
+            cwd=cwd,
+            config_provenance=config_provenance,
+            themes_dir=themes_dir,
+            default_theme=default_theme,
+        )
+    except ImportError as e:
+        # Only a missing third-party extra earns the install hint. A failed `bajutsu.*` import is a
+        # real bug, not a missing dependency — re-raise it so its own traceback survives.
+        if e.name and e.name.split(".")[0] == "bajutsu":
+            raise
+        raise MissingServerExtra(
+            "the server needs the optional extra for a service it is configured "
+            "with — install with: pip install 'bajutsu[server,db,gcs]' (server adds boto3 "
+            "for s3://, db adds psycopg for a PostgreSQL BAJUTSU_DATABASE_URL, gcs is only "
+            "needed if BAJUTSU_SERVER_STORE or --evidence-store uses gs://)"
+        ) from e
 
 
 # The count folds in the nested closures below (`_warn`, `make_bundle` and its org-store helpers),
@@ -395,6 +379,11 @@ def _build_server_state(  # noqa: C901, PLR0915
     allow_remote_build: bool = False,
     host: str = "127.0.0.1",
     port: int = 8765,
+    queued_kinds: Iterable[JobKind] = JOB_KINDS,
+    cwd: Path | None = None,
+    config_provenance: dict[str, str] | None = None,
+    themes_dir: Path | None = None,
+    default_theme: str | None = None,
 ) -> ServeState:
     """Wire the queue seams from the environment (the server backend, BE-0015/BE-0106/BE-0449).
 
@@ -405,8 +394,9 @@ def _build_server_state(  # noqa: C901, PLR0915
     fills the gaps from the state directory beside the runs tree (BE-0449): a SQLite queue migrated
     here unless a database is configured, a generated secrets key for it, and a ``file://`` store
     that reads the default org's runs from the runs tree, whose URLs point at *host* and *port*. A
-    bucket with no database keeps the in-process shape. Server extras (SQLAlchemy, boto3,
-    google-cloud-storage) are imported lazily so the default path stays SDK-free."""
+    bucket with no database keeps the in-process shape. With a queue, a job whose kind is in
+    *queued_kinds* goes to a worker and any other runs in this process. Server extras (SQLAlchemy,
+    boto3, google-cloud-storage) are imported lazily so the default path stays SDK-free."""
     import os
 
     from bajutsu.serve.authz import ADMIN_TEAM_ENTRY_RE, admin_teams_unusable
@@ -600,6 +590,12 @@ def _build_server_state(  # noqa: C901, PLR0915
         scenarios_dir=scenarios_dir,
         root=root,
         baselines_dir=baselines_dir,
+        # The startup config's directory, its Git provenance, and the theme settings, as the local
+        # backend always took them (BE-0449): a config's relative paths resolve from its own folder.
+        cwd=cwd or Path.cwd(),
+        config_provenance=config_provenance,
+        themes_dir=themes_dir,
+        default_theme=default_theme,
         max_concurrent=max_concurrent,
         max_concurrent_per_user=_max_concurrent_from_env(
             os.environ.get("BAJUTSU_MAX_CONCURRENT_PER_USER"),
@@ -627,10 +623,10 @@ def _build_server_state(  # noqa: C901, PLR0915
         # the file browser (BE-0108) and refuses the device takeover (BE-0185); a local start keeps
         # both.
         hosted=hosted,
-        # With a queue, every job kind goes to the workers today; the routing executor is the seam
-        # that moves kinds one at a time as the server stops running jobs itself (BE-0449).
+        # With a queue, the kinds in *queued_kinds* go to the workers; the routing executor is the
+        # seam that moves kinds one at a time as the server stops running jobs itself (BE-0449).
         executor=(
-            RoutingExecutor(DbQueueExecutor(repo), LocalExecutor(), queued_kinds=JOB_KINDS)
+            RoutingExecutor(DbQueueExecutor(repo), LocalExecutor(), queued_kinds=queued_kinds)
             if repo is not None
             else LocalExecutor()
         ),
@@ -714,11 +710,11 @@ def _build_server_state(  # noqa: C901, PLR0915
         )
         if local_layout and org == DEFAULT_ORG:
             # A local start keeps the default org's scenarios, baselines, and AI provider settings
-            # where `--backend local` keeps them (BE-0449), as it already does that org's runs. A
-            # saved scenario then lists back from the tree it was saved to, an approved baseline
-            # lands in the `--baselines` directory a run reads, and the provider settings file
-            # stays the one source of truth, which either backend reads and writes. Another org
-            # keeps the bucket layout, so no tenant writes into the default org's tree.
+            # on the local tree (BE-0449), as it already does that org's runs. A saved scenario then
+            # lists back from the tree it was saved to, an approved baseline lands in the
+            # `--baselines` directory a run reads, and the provider settings file stays the one
+            # source of truth. Another org keeps the bucket layout, so no tenant writes into the
+            # default org's tree.
             return StoreBundle(
                 artifacts=ObjectStorageArtifactStore(store, prefix=artifact_prefix(base)),
                 scenarios=local_scenarios,
@@ -744,7 +740,7 @@ def _build_server_state(  # noqa: C901, PLR0915
 
     # The default org's local stores on a local start (BE-0449), taken before the default bundle
     # below overwrites the bare fields: `ServeState` built the scenario store over the bound
-    # config's tree, exactly as for `--backend local`.
+    # config's tree.
     local_scenarios = state.scenarios
     local_provider_settings = LocalProviderSettingsStore(_provider_settings_file(runs_dir))
     state.org_stores = make_bundle
@@ -802,6 +798,26 @@ def _emit_startup_warnings(state: ServeState) -> None:
     warn about) (BE-0352)."""
     for check, msg in state.startup_warnings:
         oplog.log_event(_logger, "server.startup_warning", msg, level=logging.WARNING, check=check)
+
+
+def worker_platforms(config: Path | None) -> str:
+    """The `--platform` list a worker beside this server needs, for the startup note (BE-0449).
+
+    The platforms the bound config's targets require. With no config, or none readable, the ones
+    this machine can drive, as `scripts/serve.sh` advertises: the iOS Simulator only on macOS.
+    """
+    from bajutsu.serve.capabilities import PLATFORM_PREFIX
+    from bajutsu.serve.helpers import target_capabilities
+
+    found = {
+        cap.removeprefix(PLATFORM_PREFIX)
+        for target in (list_targets(config) if config is not None else [])
+        for cap in target_capabilities(config, target)  # type: ignore[arg-type]
+        if cap.startswith(PLATFORM_PREFIX)
+    }
+    if not found:
+        found = {"ios", "web", "android"} if sys.platform == "darwin" else {"web", "android"}
+    return ",".join(sorted(found))
 
 
 def make_asgi_server(state: ServeState, host: str = "127.0.0.1", port: int = 8765) -> Any:
@@ -909,6 +925,16 @@ def serve(
         # serves (BE-0449), so the stdlib transport would hand out links that 404.
         print("note: the local file store is served by the FastAPI transport; using --asgi")  # noqa: T201
         asgi = True
+    if state.repository is not None and not runs_in_process(state.executor, "run"):
+        # Runs wait in the queue until a worker leases them (BE-0449); say how to start one, since a
+        # bare `bajutsu serve` executes none itself.
+        from bajutsu.serve.server.local_start import loopback_base_url
+
+        print(  # noqa: T201
+            "note: runs are queued for a worker; start one with "
+            f"`bajutsu worker --server-url {loopback_base_url(host, port)} "
+            f"--platform {worker_platforms(config)}` (`make serve` starts one for you)"
+        )
     if asgi:
         # The FastAPI app over uvicorn — the transport the hosted backend will use; runnable now
         # with the local backend (a single-process ASGI server) so the path is exercised before

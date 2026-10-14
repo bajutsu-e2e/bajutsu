@@ -9,11 +9,12 @@ from bajutsu.common.config import Effective, resolve
 from bajutsu.common.config.schema import Config
 from bajutsu.common.drivers import base as driver_base
 from bajutsu.serve.authz import _target_forbidden
+from bajutsu.serve.executor import runs_in_process
 from bajutsu.serve.helpers import (
     valid_backend,
     valid_udid,
 )
-from bajutsu.serve.state import ServeState
+from bajutsu.serve.state import Job, ServeState
 
 # A live capture/enrich driver paired with the teardown that releases whatever backs it. Some
 # backends leave nothing to release once the driver is dropped (idb was such a backend); XCUITest
@@ -91,3 +92,26 @@ def _default_driver_factory(eff: Effective, backends_list: list[str], udid: str)
         return driver, lambda: env.teardown(driver, eff)
     driver = backends.make_driver(actuator, udid)
     return driver, lambda: _close_quietly(driver)
+
+
+# What a queued job says while no worker can take it (BE-0449): the server executes no queued job
+# itself, so without this an operator who forgot the worker would wait in silence.
+NO_WORKER_NOTICE = (
+    "no worker is available to run this job: it stays queued until a worker that advertises its "
+    "platform and capabilities starts (`bajutsu worker --platform …`, which `make serve` starts "
+    "for you)"
+)
+
+
+def no_worker_notice(state: ServeState, job: Job) -> str | None:
+    """`NO_WORKER_NOTICE` while *job* waits in the queue with no live worker to serve it, else None.
+
+    Decided by the queue's own lease and liveness data (`Repository.lacks_live_worker`), with no
+    timer of its own, so the answer is the same on every read. A job the server runs in its own
+    process never waits for a worker, so it is never asked about.
+    """
+    if state.repository is None or job.status == "done" or job.kind is None:
+        return None
+    if runs_in_process(state.executor, job.kind):
+        return None
+    return NO_WORKER_NOTICE if state.repository.lacks_live_worker(job.id) else None

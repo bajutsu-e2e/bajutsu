@@ -518,7 +518,7 @@ def test_a_git_source_is_restored_through_the_ordinary_binder(
         config_path = checkout / "web.yaml"
         sha = "deadbeef"
 
-    monkeypatch.setattr(config_ops, "materialize", lambda _spec: _Mat())
+    monkeypatch.setattr(config_ops, "materialize", lambda _spec, **_kw: _Mat())
     state, _repo = _with_memory(
         tmp_path,
         {

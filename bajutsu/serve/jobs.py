@@ -34,7 +34,7 @@ from bajutsu.common.evidence.sink import RunArtifactWriter
 from bajutsu.common.handoff import REQUEST_LINE_PREFIX as _HANDOFF_REQUEST_PREFIX
 from bajutsu.common.run_meta.files import DEFAULT_RUNS_DIR, RunArtifactReader
 from bajutsu.run import PARENT_FD_ENV
-from bajutsu.serve.helpers import valid_run_id
+from bajutsu.serve.helpers import unsafe_env_name, valid_run_id, warn_unsafe_env_name
 from bajutsu.serve.orgs import DEFAULT_ORG
 from bajutsu.serve.state import Job, ServeState
 
@@ -95,17 +95,56 @@ def job_secret_env(state: ServeState, org: str) -> dict[str, str]:
     scenario secret under its own name, so ``${secrets.X}`` resolves. The Git credential is left
     out: the server's own config fetch is its only reader, and a job never fetches.
 
-    The one caller of `SecretStore.values_for_job`, on the job-execution path, never on a response
-    path (BE-0136). Part 2 of BE-0449 unit 5 is to relay the same values in a worker's lease.
+    One of the two callers of `SecretStore.values_for_job`, both here, on the job-execution path
+    and never on a response path an HTTP reader sees (BE-0136). The in-process job thread reads it
+    (`run_job_in_process`), and so does a worker's lease (`lease_secret_env`).
     """
     from bajutsu.serve.operations.config import GIT_CONFIG_TOKEN_SECRET
 
     values = state.for_org(org).secrets.values_for_job()
-    return {
+    env = {
         state.env_var_for_secret(name): value
         for name, value in values.items()
         if name != GIT_CONFIG_TOKEN_SECRET
     }
+    # The names were screened when each secret was set; a row written before a name joined the
+    # deny list still must not reach a job's environment.
+    for var in env:
+        if unsafe_env_name(var):
+            warn_unsafe_env_name(var, f"a stored secret of org {org!r}")
+    return {var: value for var, value in env.items() if not unsafe_env_name(var)}
+
+
+def lease_secret_env(state: ServeState, org: str) -> dict[str, str]:
+    """The environment a leased job of *org* gets from that org's stored secrets (BE-0449).
+
+    The lease response carries it to the worker that just leased the job, which lays it over the
+    job's child environment. It is read at lease time and never stored: the job spec in the queue
+    holds none of it, so the database row and every other response stay free of the values. A
+    store failure propagates, so the lease can fail the job rather than run it without them.
+    """
+    return job_secret_env(state, org)
+
+
+def stored_git_credential(state: ServeState, org: str) -> str | None:
+    """*org*'s stored Git credential for the server's own private-repository fetch, or None.
+
+    The other caller of `SecretStore.values_for_job` (BE-0449). A store that keeps secrets out of
+    the process environment (the database of a local start) otherwise leaves the credential a user
+    set in the UI unread by the fetch, which reads only the environment. The value goes to the Git
+    transport alone and never into a response. A store that fails reads as no stored credential, so
+    the fetch still tries the environment and the configured GitHub App.
+    """
+    from bajutsu.serve.operations.config import GIT_CONFIG_TOKEN_SECRET
+
+    try:
+        values = state.for_org(org).secrets.values_for_job()
+    # Any failure of the store, whatever its backend raises, must leave the fetch on its other
+    # credentials rather than fail the bind outright.
+    except Exception:
+        logger.warning("could not read the stored Git credential of org %s", org, exc_info=True)
+        return None
+    return values.get(GIT_CONFIG_TOKEN_SECRET) or None
 
 
 def _log(job: Job, line: str) -> None:

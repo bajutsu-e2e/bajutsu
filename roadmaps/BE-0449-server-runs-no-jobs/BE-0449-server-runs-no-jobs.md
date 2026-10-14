@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0449") |
-| Implementing PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167) (Unit 1, part 1 of 3), [#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168) (Unit 1, part 2 of 3), [#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170) (Unit 1, part 3 of 3), [#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171) (Unit 2), [#2172](https://github.com/bajutsu-e2e/bajutsu/pull/2172) (Unit 4), [#2173](https://github.com/bajutsu-e2e/bajutsu/pull/2173) (Unit 3), [#2182](https://github.com/bajutsu-e2e/bajutsu/pull/2182) (Unit 5, part 1 of 2: a lossless local start) |
+| Implementing PR | [#2167](https://github.com/bajutsu-e2e/bajutsu/pull/2167) (Unit 1, part 1 of 3), [#2168](https://github.com/bajutsu-e2e/bajutsu/pull/2168) (Unit 1, part 2 of 3), [#2170](https://github.com/bajutsu-e2e/bajutsu/pull/2170) (Unit 1, part 3 of 3), [#2171](https://github.com/bajutsu-e2e/bajutsu/pull/2171) (Unit 2), [#2172](https://github.com/bajutsu-e2e/bajutsu/pull/2172) (Unit 4), [#2173](https://github.com/bajutsu-e2e/bajutsu/pull/2173) (Unit 3), [#2182](https://github.com/bajutsu-e2e/bajutsu/pull/2182) (Unit 5, part 1 of 2: a lossless local start), [#2183](https://github.com/bajutsu-e2e/bajutsu/pull/2183) (Unit 5, part 2 of 2: `run` on a worker) |
 | Topic | Hosting the web UI |
 <!-- /BE-METADATA -->
 
@@ -150,7 +150,7 @@ This item does not change what a job does, how a verdict is decided, or the run 
 - [x] Cancellation across the split
 - [x] One-shot worker and wrapper
 - [x] Live log stream and the routing executor
-- [ ] Move `run`
+- [x] Move `run`
 - [ ] Move `run-set` (the Device Farm batch)
 - [ ] Move `triage`
 - [ ] Move `record` and `crawl`
@@ -305,6 +305,38 @@ Log:
   An install command that names either extra still resolves. The CLI still imports none of the
   server stack. The `--asgi` install check is gone, and the server backend's install hint now names
   only the cloud clients. The local backend's executor and defaults are unchanged.
+- [#2183](https://github.com/bajutsu-e2e/bajutsu/pull/2183) (Unit 5, part 2 of 2: `run` on a worker) — the local backend is now the local start. Both
+  backends build the server shape, and they differ in the kinds they queue. `local` queues `run`
+  with its build phase (`LOCAL_QUEUED_KINDS`) and runs every other kind in the server's process.
+  `server` queues every kind. The flag stays, and its removal is still unit 9's. A local start now
+  also keeps the startup config's directory, its Git provenance, and the theme settings. The lease
+  response carries `secret_env`. That field holds the leased job's org's stored secrets, under the
+  variables a job reads them from. The server reads them at lease time through
+  `jobs.lease_secret_env` and never stores them in the spec. A lease taken by a browser or machine
+  login gets none. A store the server cannot read fails the job rather than run it without them.
+  The worker lays the values over the run's environment, never its argv. A job that ships no files
+  now names its config directory in the spec's `cwd`. A worker on the same machine builds and runs
+  it from there. It writes `console.log` into the runs directory the run wrote. A Git credential
+  set in the UI now reaches the server's own private-repository fetch through
+  `jobs.stored_git_credential`, even from the database store. It ranks after a GitHub App and ahead
+  of an ambient token. A queued job with no live worker able to serve it carries a notice.
+  `Repository.lacks_live_worker` decides it from the lease timeout and the capabilities alone. The
+  job view returns it as `notice`, and the live stream sends a `notice` event each time it
+  changes. The Replay and Record status lines show it. `make serve` starts a local worker beside the
+  server, from a scratch workspace, with the same token. The worker stops when serve exits.
+  `SERVE_WORKER=0` turns it off. A SIGINT or SIGTERM to the leasing worker now cancels its job,
+  posts the cancelled result, and exits, so the queue does not re-run an orphaned job. `serve.sh`
+  stops the worker first and waits out the grace window. The worker runs jobs in a temporary
+  directory of its own unless `--workdir` names one, and no longer in its current directory. It
+  records the directory's owner, and a later worker removes a directory whose owner has exited. It
+  also records the running job's process group there, so `serve.sh` can end the run when it must
+  stop the worker outright. A job that names its files by path fails with a clear message on a
+  worker that lacks them. Neither a stored secret nor a lease may set a loader, interpreter, shell, or
+  `BAJUTSU_*` variable; the server and the worker log a dropped name without its value.
+  `bajutsu serve --port 0` exits 2 with the reason. A known gap stays for a follow-up: such a job
+  carries no capability that the server's machine alone advertises, so a remote worker may lease
+  it and then fail it.
+  An end-to-end test runs a queued `run` through the real worker loop on the fake backend.
 
 ## References
 

@@ -253,6 +253,15 @@ class Repository(Protocol):
         worker has no registry row yet (it registers on its first lease before any heartbeat).
         """
 
+    def lacks_live_worker(self, job_id: str) -> bool:
+        """Whether *job_id* is queued and no live worker can serve it (BE-0449, the no-worker notice).
+
+        Live means seen within the lease timeout, the window `metrics_snapshot` counts unroutable
+        jobs by, and a worker can serve the job when it advertises every capability the job
+        requires (`can_serve`, the lease's own test). False for a job that is leased, finished, or
+        not in the table, so the notice clears as soon as a worker takes the job.
+        """
+
     def heartbeat_job(self, job_id: str, worker_id: str) -> bool:
         """Renew a lease's timer, returning False when *worker_id* no longer owns the live lease.
 

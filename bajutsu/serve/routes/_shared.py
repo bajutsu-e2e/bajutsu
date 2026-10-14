@@ -475,8 +475,13 @@ ROUTES: tuple[Route, ...] = (
     Route(
         "POST",
         "/api/worker/lease",
+        # The stored secrets ride only on a lease taken with the shared token (or with no gate at
+        # all on a loopback start): a browser or machine session never receives them (BE-0449).
         lambda state, ctx: ops.worker_lease(
-            state, ctx.body().get("worker_id", ""), ctx.body().get("capabilities")
+            state,
+            ctx.body().get("worker_id", ""),
+            ctx.body().get("capabilities"),
+            relay_secrets=ctx.session() is None and ctx.machine_org() is None,
         ),
     ),
     Route(

@@ -103,8 +103,9 @@ def serve(
     backend: str = typer.Option(
         "local",
         "--backend",
-        help="'local' runs jobs in this process; 'server' queues them for a `bajutsu worker`, with "
-        "the queue, keys, and artifact store from the environment or local defaults under .bajutsu/",
+        help="both keep the queue, keys, and artifact store from the environment or local defaults "
+        "under .bajutsu/ and queue jobs for a `bajutsu worker`; 'local' queues `run` alone and runs "
+        "the other job kinds in this process, 'server' queues every kind",
     ),
     upload_exec: str = typer.Option(
         "",
@@ -138,10 +139,16 @@ def serve(
     non-loopback `--host` requires one so the server is never exposed unauthenticated.
     With `--emit-launchagent`, print a LaunchAgent plist matching these flags (for self-hosting)
     and exit without starting the server. With `--asgi`, serve the same UI/API as a FastAPI app
-    over uvicorn; `--backend server` queues jobs for a `bajutsu worker` instead of running them here,
-    and uses the FastAPI transport whenever its artifacts stay on this machine.
+    over uvicorn. A run is queued for a `bajutsu worker` (`make serve` starts one beside the
+    server); `--backend server` queues every other job kind too. Either backend uses the FastAPI
+    transport whenever its artifacts stay on this machine.
     """
-    from bajutsu.serve import SERVE_BACKENDS, MissingServerExtra, launchagent_plist
+    from bajutsu.serve import (
+        SERVE_BACKENDS,
+        MissingServerExtra,
+        ServeStartupError,
+        launchagent_plist,
+    )
     from bajutsu.serve import serve as _serve
 
     resolved_token = token or os.environ.get("BAJUTSU_SERVE_TOKEN") or ""
@@ -216,6 +223,11 @@ def serve(
             themes_dir=Path(themes) if themes else None,
             default_theme=default_theme,
         )
+    except ServeStartupError as e:
+        # A startup check refused the settings (a `--port 0` for a local start, a malformed key):
+        # say which, rather than a traceback.
+        typer.echo(f"bajutsu serve: {e}")
+        raise typer.Exit(2) from None
     except MissingServerExtra as e:
         # The server backend was selected without its optional extras: show the install hint and
         # exit cleanly rather than dumping a traceback (mirrors worker). Only this specific error is
