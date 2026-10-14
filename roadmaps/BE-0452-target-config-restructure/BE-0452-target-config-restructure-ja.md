@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0452") |
-| 実装 PR | [#2191](https://github.com/bajutsu-e2e/bajutsu/pull/2191)（単位 1〜3）、PR_PLACEHOLDER18（単位 4） |
+| 実装 PR | [#2191](https://github.com/bajutsu-e2e/bajutsu/pull/2191)（単位 1〜3）、[#2193](https://github.com/bajutsu-e2e/bajutsu/pull/2193)（単位 4） |
 | トピック | ドライバとバックエンドのアーキテクチャ |
 | 関連 | [BE-0126](../BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config-ja.md)、[BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact-ja.md)、[BE-0228](../BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation-ja.md)、[BE-0076](../BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md)、[BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks-ja.md)、[BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction-ja.md)、[BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch-ja.md)、[BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md)、[BE-0447](../BE-0447-install-app-step/BE-0447-install-app-step-ja.md)、[BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md) |
 <!-- /BE-METADATA -->
@@ -466,7 +466,7 @@ target は、どこで実行するかを持たなくなります。target が書
     前置きの説明は、`DESIGN.md`、`docs/configuration.md`、`docs/dsl-grammar.md`にあります。target の`setup:`を設定する設定ファイルがないので、シナリオのディレクトリによって別のファイルに解決される参照もありません。
   - 作業単位2では AVD 名も確かめました。リポジトリには、AVD 名を読むコードがまだありません。Android の CI が起動するのは API レベル34だけで、この作業単位では読み取れるエミュレータもありませんでした。エミュレータは、AVD 名をカーネルのコマンドラインで渡します。API レベル31以降のイメージは`ro.boot.qemu.avd_name`として公開し、それより古いイメージは`ro.kernel.qemu.avd_name`として公開します。この区別は、端末から読んだ結果ではなく、エミュレータの既知の動作に基づきます。そのため確度は中程度です。作業単位8では両方のプロパティを読み、どちらも返さないエミュレータでは失敗させるべきです。そうすれば、`avd`の条件がメッセージなしに外れることはありません。この読み取りは未完了の項目として残し、作業単位8で各 API レベルの実際のエミュレータを使って確かめます。手元のエミュレータなら、`adb emu avd name`でエミュレータのコンソールに問い合わせる方法も、さらなる代替になります。
   - 設計の記述から外れた点が2つあります。1つ目は`xcuitest.hostAddress`で、設計の記述より後に加わったキーです。runner の他のキーと一緒に`driver.runner.hostAddress`へ移すことにし、2つの表に記載しました。2つ目は Web のエンジンの一覧`WEB_ENGINES`で、Web のモデルの隣へ移しました。現在のローダーは、そこから読み込みます。
-- PR_PLACEHOLDER18（単位 4）— スキーマの切り替えが入りました。ローダーは用途別の11個のキーだけを読みます。設定ファイル、デモ、テストの固定データも、すべて新しい形へ移しました。
+- [#2193](https://github.com/bajutsu-e2e/bajutsu/pull/2193)（単位 4）— スキーマの切り替えが入りました。ローダーは用途別の11個のキーだけを読みます。設定ファイル、デモ、テストの固定データも、すべて新しい形へ移しました。
   - `Config`は、検証の前に`defaults`を各 target の生の値へマージします。そのあと`TargetConfig`が、`app`、`runsOn`、`driver`を`validate_group`で検証します。target の`run`は、プラットフォームごとに1つのモデルで検証します。このモデルは、共通の`RunPolicy`にプラットフォームのフィールドを加えたものです。そのため未知のキーのエラーは、両方のフィールドを並べます。範囲は文字列のまま持ち、iOS の`en_US`の既定値は`resolve`が与えます。
   - ローダーは、設定ファイルのパスとスイートのルートを受け取ります。`load_config(text, path=, root=)`と`load_config_file(path, root=)`です。Git のソースを指す`--config`は、チェックアウトをルートとして渡します。ほかの呼び出し元はファイルだけを渡し、そのときのルートは設定ファイル自身のディレクトリです。
   - target は、`run.secrets`、`evidence.redact`の各リスト、それらを含むブロックに`null`を書けません。読み込みはそのパスを示して失敗するので、target がチームのマスクを消すことはありません。
