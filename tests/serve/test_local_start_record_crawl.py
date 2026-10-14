@@ -433,6 +433,16 @@ def test_only_the_lease_holder_may_relay(tmp_path: Path) -> None:
     assert not _awaiting_human(state, job_id)
 
 
+@pytest.mark.parametrize("shot", [123, True])
+def test_a_non_string_screenshot_is_refused_as_a_bad_request(tmp_path: Path, shot: Any) -> None:
+    state, job_id = _leased_record(tmp_path)
+    request = json.dumps({"reason": "otp", "screenshot": shot})
+    body, code = ops.worker_handoff(
+        state, {"worker_id": "w1", "job_id": job_id, "request": request}
+    )
+    assert code == 400 and "handoff request object" in body["error"]
+
+
 def test_a_session_caller_is_refused_on_every_relay_route(tmp_path: Path) -> None:
     state, job_id = _leased_record(tmp_path, token="tok")
     client = TestClient(make_app(state))
@@ -541,7 +551,8 @@ def test_an_artifact_must_be_a_named_json_object_within_its_bound(tmp_path: Path
     ok, code = ops.worker_artifact(state, {**holder, "name": "screenmap.json", "content": "{}"})
     assert code == 200 and ok == {"ok": True}
     [line] = _published(state, job_id)
-    assert _classify(line) == ("artifact", '{"name":"screenmap.json","data":{}}')
+    event, data = _classify(line)
+    assert event == "artifact" and json.loads(data) == {"name": "screenmap.json", "data": {}}
 
 
 def test_past_the_live_budget_one_truncation_notice_goes_out(tmp_path: Path) -> None:
@@ -555,9 +566,10 @@ def test_past_the_live_budget_one_truncation_notice_goes_out(tmp_path: Path) -> 
     assert ops.worker_artifact(state, holder)[0] == {"ok": True, "truncated": True}
     assert ops.worker_artifact(state, holder)[0] == {"ok": True, "truncated": True}
     events = [_classify(line) for line in _published(state, job_id)]
-    assert events == [
-        ("artifact", '{"name":"screenmap.json","data":{}}'),
-        ("artifact", '{"name": "screenmap.json", "truncated": true}'),
+    assert [event for event, _data in events] == ["artifact", "artifact"]
+    assert [json.loads(data) for _event, data in events] == [
+        {"name": "screenmap.json", "data": {}},
+        {"name": "screenmap.json", "truncated": True},
     ]
 
 
@@ -790,6 +802,9 @@ def test_the_handoff_relay_writes_the_answer_to_the_record(tmp_path: Path) -> No
     relay.bind(job)
     relay.offer("not a request")  # a line without the prefix is no request
     relay.offer(REQUEST_LINE_PREFIX + _REQUEST)
+    # Wait for the answer before `communicate`, which closes the child's stdin at once.
+    for thread in relay._threads:
+        thread.join(timeout=10)
     out, _ = proc.communicate(timeout=10)
     relay.stop()
     assert out.strip() == '{"values": ["v"]}'

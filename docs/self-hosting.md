@@ -374,8 +374,8 @@ as it runs a local `run`. A worker on another machine fails the job. Its message
 a worker on the server's machine. A triage with `--ai` reads the AI key from the lease, like every
 queued job. A key set in the UI thus reaches the investigator and never enters the job spec.
 
-A `crawl` or `record` job follows the same same-machine rule. A crawl writes its screen map into
-the server's runs directory. A record writes its scenario into the target's scenarios directory.
+A `crawl` or `record` job also needs a worker on the server's machine. A crawl writes its screen
+map into the server's runs directory. A record writes its scenario into the target's scenarios directory.
 While a crawl runs, its worker posts each new screen map to `POST /api/worker/artifact`. The
 server relays each snapshot to the Crawl tab as an `artifact` event on the job's event stream. The
 graph thus grows as the worker explores. The file stays the durable copy, and the page reads it
