@@ -73,6 +73,8 @@ final class Router {
                     "banners": drained.banners, "tappedAlerts": drained.tappedAlerts,
                     "tappedSurfaces": drained.tappedSurfaces.map(\.rawValue),
                     "unidentified": drained.unidentified,
+                    "tappedSynthesisIds": drained.tappedSynthesisIds,
+                    "bannerSynthesisIds": drained.bannerSynthesisIds,
                     "gaveUp": drained.gaveUp.map {
                         ["identify": $0.identify, "surface": $0.surface.rawValue, "tap": $0.tap]
                     },
