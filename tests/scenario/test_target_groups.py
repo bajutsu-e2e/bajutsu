@@ -3,8 +3,8 @@
 Covers the `Step`-level validator (target required unconditionally; capture/extract/name/from_
 forbidden; a direct child must omit target, which also rejects a nested group; refused inside
 `web:`/`app:`) and `_expand_target_groups` — that a group-authored scenario produces the same
-flat, stamped step list a hand-written one would, on every step list it walks (`steps`, `before`,
-`after`, `interrupts`), through `if`/`forEach`/`web`/`app` nesting, and that the expansion survives
+flat, stamped step list a hand-written one would, on every step list it walks (`steps`, `setup`,
+`cleanup`, `interrupts`), through `if`/`forEach`/`web`/`app` nesting, and that the expansion survives
 `expand_components` and config hook-folding the same way `_check_target_requirements`
 already does (see `test_target_routing.py`, `test_components.py`, `tests/orchestrator/test_setup_cleanup.py`).
 """
