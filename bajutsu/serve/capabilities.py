@@ -22,6 +22,7 @@ from bajutsu.common.backend_cli import simctl as _simctl
 from bajutsu.common.capability.worker_capability import (
     ENVIRONMENT_ROUTING_PREFIX,
     HOST_ROUTING_PREFIX,
+    MACHINE_ROUTING_PREFIX,
     reserved_routing_tokens,
 )
 
@@ -41,10 +42,23 @@ ENVIRONMENT_PREFIX = ENVIRONMENT_ROUTING_PREFIX
 # job never reaches a worker whose machine cannot start that driver.
 HOST_PREFIX = HOST_ROUTING_PREFIX
 
+# The machine axis (BE-0449): a job that names its config, scenario, and runs directory by their
+# paths on the server's machine — a local start's run, triage, record, and crawl — requires
+# `machine:<id>`, the server's own identity, and only a worker on that machine advertises it. A job
+# that ships its files (materials, a bundle, overrides) carries no machine token and routes anywhere.
+MACHINE_PREFIX = MACHINE_ROUTING_PREFIX
+
+# What a machine identity may look like: one token, so it never splits in a comma/space list and
+# never carries a prefix of its own.
+_MACHINE_ID = re.compile(r"[A-Za-z0-9._-]{1,128}")
+
 # Operator override: extra capability tokens a worker advertises beyond its platform + Simulator
 # inventory (comma/space separated), e.g. `ios18,ipad`. Deprecated (BE-0450): still honored, with a
 # notice, for one release.
 WORKER_CAPABILITIES_ENV = "BAJUTSU_WORKER_CAPABILITIES"
+
+# The server machine identity a worker advertises as `machine:<id>`, when `--machine-id` is unset.
+MACHINE_ID_ENV = "BAJUTSU_WORKER_MACHINE_ID"
 
 _SPLIT = re.compile(r"[,\s]+")
 
@@ -62,6 +76,40 @@ def environment_capability(environment: str) -> str:
 def host_capability(host: str) -> str:
     """The host-axis token for an operating system, e.g. ``host:darwin``."""
     return f"{HOST_PREFIX}{host}"
+
+
+def machine_capability(machine_id: str) -> str:
+    """The machine-axis token for a server machine identity, e.g. ``machine:3f2a…``.
+
+    Raises:
+        ValueError: *machine_id* is empty or is not one token of letters, digits, ``.``, ``_``, ``-``.
+    """
+    if not _MACHINE_ID.fullmatch(machine_id):
+        raise ValueError(
+            f"invalid machine id {machine_id!r}: expected 1-128 letters, digits, '.', '_' or '-'"
+        )
+    return f"{MACHINE_PREFIX}{machine_id}"
+
+
+def routed_capabilities(
+    required: Iterable[str], *, names_host_paths: bool, machine_id: str | None
+) -> list[str]:
+    """The capability set a queued job is stored with: *required* plus, for a job that names files
+    by their paths on the server's machine, that machine's ``machine:<id>`` token.
+
+    The lease, the unroutable count, and the no-worker notice all judge the stored set with
+    `can_serve`, so stamping it here is what keeps the three agreeing that only a worker on the
+    server's machine can take the job (BE-0449).
+
+    Args:
+        required: The job's own requirement (`required_capabilities`, or an environment token).
+        names_host_paths: Whether the job ships none of its files and names them by server paths.
+        machine_id: The server's machine identity; None stamps nothing (a server with no identity).
+    """
+    tokens = set(required)
+    if names_host_paths and machine_id:
+        tokens.add(machine_capability(machine_id))
+    return sorted(tokens)
 
 
 def required_host(
@@ -95,7 +143,8 @@ def required_host(
 
 
 def reserved_tokens(tokens: Iterable[str]) -> list[str]:
-    """The tokens among *tokens* that carry a reserved ``environment:`` or ``host:`` prefix, sorted."""
+    """The tokens among *tokens* that carry a reserved ``environment:``, ``host:``, or ``machine:``
+    prefix, sorted."""
     return reserved_routing_tokens(tokens)
 
 
@@ -136,7 +185,9 @@ def can_serve(required: Iterable[str], advertised: Iterable[str]) -> bool:
     A subset test: the worker must advertise *every* token the job requires. A job with no declared
     requirement (the empty set) is servable by any worker, so an un-annotated job routes as before.
     One rule narrows it (BE-0448): a worker advertising an ``environment:*`` token serves only jobs
-    that require that token, since the empty set would otherwise hand it every local job.
+    that require that token, since the empty set would otherwise hand it every local job. A job
+    tied to the server's machine needs no rule of its own: it requires ``machine:<id>``, which only a
+    worker on that machine advertises (`routed_capabilities`).
     """
     needed, offered = set(required), set(advertised)
     environments = {t for t in offered if t.startswith(ENVIRONMENT_PREFIX)}

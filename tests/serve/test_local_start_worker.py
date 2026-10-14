@@ -29,9 +29,11 @@ from bajutsu import serve as srv
 from bajutsu.common.config_source import GitConfigSpec, resolve_github_credential
 from bajutsu.serve import jobs
 from bajutsu.serve import operations as ops
+from bajutsu.serve.capabilities import machine_capability
 from bajutsu.serve.cli import worker as worker_mod
 from bajutsu.serve.operations._common import NO_WORKER_NOTICE, no_worker_notice
 from bajutsu.serve.server.app import make_app
+from bajutsu.serve.server.local_keys import read_machine_id
 from bajutsu.serve.server.worker_job import _spec_cwd, execute_job_spec, job_spec
 from bajutsu.serve.state import Job
 
@@ -112,6 +114,11 @@ def _local_start(tmp_path: Path, cfg: Path, *, token: str | None = None) -> srv.
     )
 
 
+def _this_machine(tmp_path: Path) -> str:
+    """The `machine:<id>` token a worker beside the local start in *tmp_path* advertises."""
+    return machine_capability(read_machine_id(tmp_path / ".bajutsu"))
+
+
 def _no_spawn_here(_cmd: list[str], **_kw: Any) -> FakeProc:
     raise AssertionError("the server must not spawn a run itself")
 
@@ -121,9 +128,10 @@ class _StopLoop(Exception):
 
 
 def _worker_through(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch, *, token: str | None = None
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, project: Path, *, token: str | None = None
 ) -> None:
-    """Run the real `bajutsu worker` loop against *client* until a lease comes back empty."""
+    """Run the real `bajutsu worker` loop against *client* until a lease comes back empty, on the
+    machine of the server whose runs directory is in *project*."""
     headers = {"Authorization": f"Bearer {token}"} if token else {}
 
     def post(url: str, body: dict[str, Any], **_kw: Any) -> tuple[int, Any]:
@@ -144,6 +152,7 @@ def _worker_through(
             capabilities="",
             token="",
             worker_config=None,
+            server_state_dir=project / ".bajutsu",
             once=None,
         )
 
@@ -194,7 +203,7 @@ def test_a_local_start_queues_a_run_and_a_worker_runs_it(
     # No worker has polled yet, so the job says why it is waiting.
     assert client.get(f"/api/jobs/{job_id}").json()["notice"] == NO_WORKER_NOTICE
 
-    _worker_through(client, monkeypatch)
+    _worker_through(client, monkeypatch, tmp_path)
 
     finished = state.repository.get_job(job_id)
     assert finished is not None and finished["status"] == "done"
@@ -235,7 +244,7 @@ def test_the_lease_relays_the_orgs_secrets_and_nothing_stores_them(tmp_path: Pat
     state, client = _queued_run(tmp_path, token="tok")
     lease = client.post(
         "/api/worker/lease",
-        json={"worker_id": "w1", "capabilities": ["platform:ios"]},
+        json={"worker_id": "w1", "capabilities": ["platform:ios", _this_machine(tmp_path)]},
         headers={"Authorization": "Bearer tok"},
     )
     assert lease.status_code == 200
@@ -266,7 +275,8 @@ def test_a_session_caller_leases_without_the_secrets(tmp_path: Path) -> None:
     sid = state.auth.issue_session("alice")
     client.cookies.set("bajutsu_session", sid)
     lease = client.post(
-        "/api/worker/lease", json={"worker_id": "w1", "capabilities": ["platform:ios"]}
+        "/api/worker/lease",
+        json={"worker_id": "w1", "capabilities": ["platform:ios", _this_machine(tmp_path)]},
     )
     assert lease.status_code == 200
     assert "secret_env" not in lease.json()
@@ -286,7 +296,9 @@ def test_the_lease_relays_only_the_leased_jobs_org(tmp_path: Path) -> None:
 
 def test_a_lease_without_relay_carries_no_secrets(tmp_path: Path) -> None:
     state, _client = _queued_run(tmp_path)
-    leased, code = ops.worker_lease(state, "w1", ["platform:ios"], relay_secrets=False)
+    leased, code = ops.worker_lease(
+        state, "w1", ["platform:ios", _this_machine(tmp_path)], relay_secrets=False
+    )
     assert code == 200
     assert "secret_env" not in leased
 
@@ -302,7 +314,7 @@ def test_a_store_failure_at_lease_fails_the_job_instead_of_running_it_bare(
     import bajutsu.serve.operations.worker as worker_ops
 
     monkeypatch.setattr(worker_ops, "lease_secret_env", broken)
-    leased, code = ops.worker_lease(state, "w1", ["platform:ios"])
+    leased, code = ops.worker_lease(state, "w1", ["platform:ios", _this_machine(tmp_path)])
     assert (leased, code) == ({}, 204)
     assert state.repository is not None
     row = state.repository.get_job(next(iter(state.jobs)))
@@ -443,16 +455,51 @@ def test_the_notice_appears_with_no_live_worker_and_clears_when_one_polls(tmp_pa
     assert state.repository is not None
     state.repository.register_worker("web-only", ["platform:web"])
     assert client.get(f"/api/jobs/{job_id}").json()["notice"] == NO_WORKER_NOTICE
-    # One that can serve it does, before it even leases.
-    state.repository.register_worker("ios", ["platform:ios"])
+    # Nor does an iOS worker on another machine: the run names its files by this machine's paths.
+    state.repository.register_worker("remote", ["platform:ios"])
+    assert client.get(f"/api/jobs/{job_id}").json()["notice"] == NO_WORKER_NOTICE
+    # A worker on this machine can serve it, and clears the notice before it even leases.
+    state.repository.register_worker("ios", ["platform:ios", _this_machine(tmp_path)])
     assert "notice" not in client.get(f"/api/jobs/{job_id}").json()
+
+
+def test_a_local_path_job_is_routed_to_the_servers_machine_alone(tmp_path: Path) -> None:
+    state, _client = _queued_run(tmp_path)
+    job_id = next(iter(state.jobs))
+    here = _this_machine(tmp_path)
+    assert here in state.jobs[job_id].capabilities
+    assert state.repository is not None
+    # Another machine's worker, or a Device Farm worker, leases nothing, and the job counts as
+    # unroutable until a worker here polls.
+    assert state.repository.lease_job("remote", ["platform:ios"]) is None
+    assert state.repository.lease_job("cloud", ["environment:devicefarm", here]) is None
+    assert state.repository.metrics_snapshot().unroutable_queued == 1
+    state.repository.register_worker("ios", ["platform:ios", here])
+    assert state.repository.metrics_snapshot().unroutable_queued == 0
+    leased = state.repository.lease_job("ios", ["platform:ios", here])
+    assert leased is not None and leased.id == job_id
+
+
+def test_a_job_that_ships_its_files_carries_no_machine_token(tmp_path: Path) -> None:
+    from bajutsu.serve.server.db_executor import DbQueueExecutor
+
+    state = _local_start(tmp_path, _fake_project(tmp_path))
+    assert isinstance(state.executor, DbQueueExecutor)
+    shipped = Job(id="s1", cmd=["x"], cwd=tmp_path, materials={"a": "b"})
+    shipped.capabilities = ["platform:ios"]
+    state.executor.dispatch(state, shipped)
+    assert shipped.capabilities == ["platform:ios"]
+    # Any iOS worker may take it, wherever it runs.
+    assert state.repository is not None
+    leased = state.repository.lease_job("remote", ["platform:ios"])
+    assert leased is not None and leased.id == "s1"
 
 
 def test_the_notice_clears_once_the_job_is_leased(tmp_path: Path) -> None:
     state, client = _queued_run(tmp_path)
     job_id = next(iter(state.jobs))
     assert state.repository is not None
-    assert state.repository.lease_job("w1", ["platform:ios"]) is not None
+    assert state.repository.lease_job("w1", ["platform:ios", _this_machine(tmp_path)]) is not None
     assert not state.repository.lacks_live_worker(job_id)
     assert "notice" not in client.get(f"/api/jobs/{job_id}").json()
 
@@ -487,7 +534,7 @@ def test_the_event_stream_sends_the_notice_and_its_clearing(tmp_path: Path) -> N
     assert first.startswith("event: notice\n")
     assert json.loads(first.split("data: ", 1)[1]) == {"notice": NO_WORKER_NOTICE}
     assert state.repository is not None
-    state.repository.register_worker("ios", ["platform:ios"])
+    state.repository.register_worker("ios", ["platform:ios", _this_machine(tmp_path)])
     cleared = next(f for f in frames if f.startswith("event: notice"))
     assert json.loads(cleared.split("data: ", 1)[1]) == {"notice": None}
     frames.close()
@@ -583,6 +630,8 @@ def test_sigterm_to_a_worker_cancels_its_leased_run_and_ends_the_child(
                 "1",
                 "--workdir",
                 str(tmp_path / "work"),
+                "--server-state-dir",
+                str(tmp_path / ".bajutsu"),
             ],
             env=env,
             stdout=subprocess.DEVNULL,
@@ -758,7 +807,7 @@ def test_an_uploaded_bundle_runs_on_a_same_machine_worker(
         dest.write_bytes(resp.content)
 
     monkeypatch.setattr(worker_mod, "_get_file", get_file)
-    _worker_through(client, monkeypatch)
+    _worker_through(client, monkeypatch, tmp_path)
 
     assert state.repository is not None
     finished = state.repository.get_job(job_id)

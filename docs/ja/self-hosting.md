@@ -86,8 +86,11 @@ PLIST=~/Library/LaunchAgents/com.bajutsu.serve.plist
 自分では1つも実行しません（BE-0449）。2つ目の LaunchAgent として worker を横で動かします。
 
 1. plist を別のラベルで複製します。
-2. その `ProgramArguments` を `python -m bajutsu worker --platform ios` に変えます。サーバが 8765
-   以外のポートで待ち受けるときは、`--server-url http://127.0.0.1:<ポート>` も加えます。
+2. その `ProgramArguments` を `python -m bajutsu worker --platform ios` に変えます。続けて
+   `--server-state-dir <プロジェクト>/.bajutsu` を加えます。`<プロジェクト>` は、サーバの runs ディレクトリを
+   置くディレクトリです。`--server-state-dir` を渡すと、このマシン上のファイルを指定する job を worker が受け取れます
+   （[1台のマシンで動かすサーバ backend](#1台のマシンで動かすサーバ-backendbe-0449)）。サーバが 8765 以外のポートで待ち受けるときは、
+   `--server-url http://127.0.0.1:<ポート>` も加えます。
 3. 同じトークンを、その `EnvironmentVariables` に `BAJUTSU_TOKEN` として入れます。
 4. 作業ディレクトリはそのままにします。worker は job ごとに専用の一時ディレクトリで実行します。
    作業場所を固定したいときは `--workdir <ディレクトリ>` を渡します。
@@ -348,6 +351,17 @@ serve ホストの `--root` を辿る**ファイルブラウザ**です。サー
 `make serve` はその worker を起動します。worker がいなければ job はキューで待ち、UI は利用できる
 worker がないことを表示します。
 
+サーバのディスク上のパスでファイルを指定する job は、サーバのマシンの worker だけに渡ります。ローカルで
+起動したサーバは、ランダムなマシン識別子を runs ディレクトリの隣の `.bajutsu/machine-id` に保存します。
+設定と runs ディレクトリをそのパスで指定する `run`、`triage`、`record`、`crawl` は、capability トークン
+`machine:<id>` を必要とします。worker は、このファイルを読む `--server-state-dir <ディレクトリ>` か、
+`--machine-id <id>` を付けて起動したときに、このトークンを広告します。`make serve` は、自分で起動する
+worker に `--server-state-dir` を渡します。別のマシンの worker や Device Farm の worker は、このような job を
+リースしません。サーバのマシンの worker が問い合わせるまで、UI は利用できる worker がないことを表示し続けます。
+アップロードしたバンドルから実行する run のように、ファイルを送る job はマシンのトークンを必要とせず、
+どの worker にも渡ります。識別子を渡されてもサーバのファイルを持たない worker は、サーバのマシンの worker が
+必要だというメッセージで job を失敗させます。
+
 `--backend` フラグは非推奨です。以前のサーバには、サーバのプロセス内で job を実行する `local` backend と、
 job をキューに積む `server` backend がありました。今はどちらの値でも同じサーバが起動するので、このフラグは
 何も変えません。`bajutsu serve` は `local` と `server` を受け付けて警告を表示し、次のリリースでフラグを
@@ -357,8 +371,8 @@ job をキューに積む `server` backend がありました。今はどちら�
 `triage` の job は、診断する run をサーバの runs ディレクトリから読みます。job はそのディレクトリ、
 バインドした設定、シナリオのソースを、サーバのディスク上の絶対パスで指定します。結果の `triage.json` は
 run ディレクトリに書き、UI はそこから読み戻します。同じマシンの worker は、ローカルの run と同じく設定の
-ディレクトリから triage を実行します。別のマシンの worker は、サーバのマシンの worker が必要だというメッセージで
-job を失敗させます。`--ai` を付けた triage も、キューのほかの job と同じく AI キーを lease から受け取ります。
+ディレクトリから triage を実行します。triage の job も run と同じく、サーバのマシンの worker だけに渡ります。
+`--ai` を付けた triage も、キューのほかの job と同じく AI キーを lease から受け取ります。
 UI で設定したキーは、job 仕様に入らないまま調査役のエージェントに届きます。
 
 `crawl` と `record` の job も、同じマシンの worker を前提とする点は同じです。crawl は画面マップを
@@ -1101,7 +1115,9 @@ iOS 17 のワーカーに渡って失敗しかねません。それは本物の�
   コンテナは `platform:web`）と、マシン自身から得るトークンでできています。どのワーカーも、自分が動く
   OS を表す `host:<os>` を広告します。Mac なら `host:darwin` です（[BE-0450](../../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability-ja.md)）。
   iOS ワーカーは、インストール済みの Simulator 在庫も広告します。在庫からは、ランタイムごとの
-  `iosNN` トークンと、`iphone` と `ipad` のデバイス種別が得られます。web ワーカーのコンテナは `--platform web` を組み込んであるので、
+  `iosNN` トークンと、`iphone` と `ipad` のデバイス種別が得られます。ローカルで起動したサーバのマシンで
+  動くワーカーは、サーバの識別子を表す `machine:<id>` も広告します。このトークンが、そのマシン上のファイルを
+  指定するジョブを振り分けます（[1台のマシンで動かすサーバ backend](#1台のマシンで動かすサーバ-backendbe-0449)）。web ワーカーのコンテナは `--platform web` を組み込んであるので、
   `web` を広告し、フラグは要りません。
 - **ローカルのワーカーは、扱えないプラットフォームを拒否します。** ワーカーは起動時に、各 `--platform` を
   [worker 能力ファイル](drivers.md#worker-の能力検査be-0450)とホストに照らして検査します。ファイルが
@@ -1123,7 +1139,7 @@ iOS 17 のワーカーに渡って失敗しかねません。それは本物の�
   すでに担っているからです。上書きは、マシンにないランタイムを広告できてしまう点でも問題です。
   `requires:` は、ターゲットの `device` からランタイムやデバイス種別の要件を導く後続の項目が入るまで
   残ります。それまでは、`ios18` や `ipad` を固定する手段は `requires:` だけです。3 つのいずれも、予約済みの
-  接頭辞 `environment:` と `host:` を含められません。ワーカーがどちらも自分で埋めるからです。ワーカーは
+  接頭辞 `environment:`、`host:`、`machine:` を含められません。ワーカーがいずれも自分で埋めるからです。ワーカーは
   起動時に、設定ファイルは読み込み時に、そのトークンを拒否します。`requires:` の通知は設定ファイルの
   読み込み時に出ます。`requires:` が効くのはサーバのジョブの振り分けだけですが、通知はローカルの
   `bajutsu run` でも表示されます。

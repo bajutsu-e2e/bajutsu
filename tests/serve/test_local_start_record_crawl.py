@@ -28,12 +28,14 @@ from fastapi.testclient import TestClient
 from bajutsu import serve as srv
 from bajutsu.common.handoff import REQUEST_LINE_PREFIX
 from bajutsu.serve import operations as ops
+from bajutsu.serve.capabilities import machine_capability
 from bajutsu.serve.cli import worker as worker_mod
 from bajutsu.serve.cli.worker_relay import ArtifactStreamer, HandoffRelay
 from bajutsu.serve.logbus import ARTIFACT_LINE_PREFIX, InMemoryLogBus
 from bajutsu.serve.operations.sse import _classify
 from bajutsu.serve.operations.worker import HANDOFF_ANSWER_TTL_SECONDS, WORKER_ARTIFACT_MAX_BYTES
 from bajutsu.serve.server.app import make_app
+from bajutsu.serve.server.local_keys import read_machine_id
 from bajutsu.serve.server.worker_job import CancelRelay, execute_job_spec
 from bajutsu.serve.state import Job
 
@@ -167,9 +169,10 @@ class _StopLoop(Exception):
 
 
 def _worker_thread(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch, *, heartbeat: float = 0.5
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, project: Path, *, heartbeat: float = 0.5
 ) -> threading.Thread:
-    """The real `bajutsu worker` loop against *client*, on a thread, until a lease comes back empty."""
+    """The real `bajutsu worker` loop against *client*, on a thread, until a lease comes back empty,
+    on the machine of the server whose runs directory is in *project*."""
 
     def post(url: str, body: dict[str, Any], **_kw: Any) -> tuple[int, Any]:
         path = url.removeprefix("http://cp")
@@ -192,6 +195,7 @@ def _worker_thread(
                 capabilities="",
                 token="",
                 worker_config=None,
+                server_state_dir=project / ".bajutsu",
                 once=None,
             )
 
@@ -268,7 +272,7 @@ def test_a_worker_crawls_and_the_growing_map_reaches_an_event_stream(
 
     events: list[tuple[str, str]] = []
     reader = _events(client, job_id, events)
-    worker = _worker_thread(client, monkeypatch)
+    worker = _worker_thread(client, monkeypatch, tmp_path)
     worker.start()
     worker.join(timeout=60)
     reader.join(timeout=30)
@@ -313,7 +317,7 @@ def test_a_worker_records_and_the_handoff_goes_page_to_worker_and_back(
     job_id = started.json()["jobId"]
     events: list[tuple[str, str]] = []
     reader = _events(client, job_id, events)
-    worker = _worker_thread(client, monkeypatch)
+    worker = _worker_thread(client, monkeypatch, tmp_path)
     worker.start()
 
     # The paused record's request reached the server, which now waits on a person.
@@ -381,7 +385,7 @@ def test_cancelling_a_record_that_waits_on_a_person_stops_it(
     ).json()["jobId"]
     # A heartbeat far longer than the test: the cancel must reach the worker through the handoff
     # poll, not wait for the next beat.
-    worker = _worker_thread(client, monkeypatch, heartbeat=120.0)
+    worker = _worker_thread(client, monkeypatch, tmp_path, heartbeat=120.0)
     worker.start()
     _wait_for(lambda: _awaiting_human(state, job_id))
 
@@ -410,7 +414,8 @@ def _leased_record(tmp_path: Path, *, token: str | None = None) -> tuple[srv.Ser
     job_id = client.post(
         "/api/record", json={"target": "demo", "goal": "log in"}, headers=headers
     ).json()["jobId"]
-    leased, code = ops.worker_lease(state, "w1", ["platform:ios"])
+    here = machine_capability(read_machine_id(tmp_path / ".bajutsu"))
+    leased, code = ops.worker_lease(state, "w1", ["platform:ios", here])
     assert code == 200 and leased["job_id"] == job_id
     return state, job_id
 
@@ -713,7 +718,8 @@ def test_only_a_record_hands_off(tmp_path: Path) -> None:
     state = _local_start(tmp_path)
     client = TestClient(make_app(state))
     job_id = client.post("/api/crawl", json={"target": "demo", "backend": "fake"}).json()["jobId"]
-    assert ops.worker_lease(state, "w1", ["platform:ios"])[0]["job_id"] == job_id
+    here = machine_capability(read_machine_id(tmp_path / ".bajutsu"))
+    assert ops.worker_lease(state, "w1", ["platform:ios", here])[0]["job_id"] == job_id
     body = {"worker_id": "w1", "job_id": job_id, "request": _REQUEST}
     assert ops.worker_handoff(state, body)[1] == 409
     assert not _awaiting_human(state, job_id)
