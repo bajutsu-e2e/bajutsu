@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from pydantic import Field, field_validator
 
 from .._model import _Model
-from ._shared import AppCommon, LaunchEnv, check_list, check_range, coerce_range
+from ._shared import AppCommon, LaunchEnv, RangeField, check_list
 
 
 class AndroidApp(AppCommon):
@@ -26,17 +24,7 @@ class AndroidRunsOn(_Model):
     """`runsOn` on Android: the emulator's Android Virtual Device (AVD) name and API level."""
 
     avd: str | list[str] | None = None
-    api_level: str | None = Field(default=None, alias="apiLevel")
-
-    @field_validator("api_level", mode="before")
-    @classmethod
-    def _valid_api_level_number(cls, v: Any) -> Any:
-        return coerce_range(v)
-
-    @field_validator("api_level")
-    @classmethod
-    def _valid_api_level(cls, v: str | None) -> str | None:
-        return check_range(v)
+    api_level: RangeField = Field(default=None, alias="apiLevel")
 
     @field_validator("avd")
     @classmethod

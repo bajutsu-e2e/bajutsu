@@ -115,7 +115,7 @@ class VersionRange:
         """The major versions this range covers, in ascending order.
 
         A major counts as covered when at least one version within it satisfies the range, so
-        `>=17 <19` covers 17 and 18, and `<=18.2` would cover 18 too.
+        `>=17 <19` covers 17 and 18, and `>=17 <=18.2` covers 18 too.
 
         Raises:
             ValueError: The range is open on a side, so the majors it covers are unbounded or start

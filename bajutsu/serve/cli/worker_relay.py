@@ -90,7 +90,7 @@ class HandoffRelay:
         if not line.startswith(REQUEST_LINE_PREFIX) or self._stop.is_set():
             return
         with self._lock:
-            if self._job is None or self._job.kind != "record":
+            if self._job is None or self._job.kind != "record" or self._stop.is_set():
                 return
             self._generation += 1
             generation = self._generation
@@ -100,7 +100,8 @@ class HandoffRelay:
                 daemon=True,
             )
             self._threads.append(thread)
-        thread.start()
+            # Started under the lock, so `stop`'s join never reaches an unstarted thread.
+            thread.start()
 
     def stop(self) -> None:
         """End every poll and wait for the threads, once the job has finished."""

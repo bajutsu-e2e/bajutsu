@@ -325,7 +325,9 @@ def test_a_stored_key_under_another_variable_does_not_count(tmp_path: Path) -> N
     state = _local_start(tmp_path, cfg)
     client = TestClient(make_app(state))
     assert client.post("/api/apikey", json={"value": _API_KEY}).status_code == 200
-    assert _start_triage(client, ai=True).status_code == 400
+    refused = _start_triage(client, ai=True)
+    assert refused.status_code == 400
+    assert "AI triage cannot run" in refused.json()["error"]
 
 
 def test_a_store_that_cannot_be_read_counts_as_no_key(

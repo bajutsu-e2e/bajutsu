@@ -209,6 +209,12 @@ def test_other_failures_keep_pydantics_error() -> None:
         (
             "ios",
             "runsOn",
+            {"kind": "device", "model": "iPhone 16", "os": ">=18"},
+            "runsOn.model and runsOn.os are device conditions",
+        ),
+        (
+            "ios",
+            "runsOn",
             {"kind": "device", "model": ["a", "b"]},
             "runsOn.model is a device condition",
         ),
@@ -295,16 +301,18 @@ def test_the_run_group_lists_the_shared_and_the_platform_fields() -> None:
 
 
 @pytest.mark.parametrize(
-    ("platform", "data", "read"),
+    ("platform", "data", "read", "expected"),
     [
-        ("android", {"apiLevel": 34}, lambda m: m.api_level),
-        ("ios", {"os": 18}, lambda m: m.os),
-        ("web", {"browser": {"version": 120}}, lambda m: m.browser.version),
+        ("android", {"apiLevel": 34}, lambda m: m.api_level, "34"),
+        ("ios", {"os": 18}, lambda m: m.os, "18"),
+        ("web", {"browser": {"version": 120}}, lambda m: m.browser.version, "120"),
     ],
 )
-def test_an_unquoted_integer_range_reads_as_its_text(platform: str, data: Any, read: Any) -> None:
+def test_an_unquoted_integer_range_reads_as_its_text(
+    platform: str, data: Any, read: Any, expected: str
+) -> None:
     model = validate_group(platform, "runsOn", data, where="targets.t.runsOn")
-    assert read(model) in ("34", "18", "120")
+    assert read(model) == expected
 
 
 @pytest.mark.parametrize(

@@ -277,6 +277,16 @@ def _repository_from_env_or_none() -> Any:
     return repository_from_env()
 
 
+def _spec_argv(spec: dict[str, Any]) -> list[str]:
+    """The argv the spec names: empty only for a cloud-batch spec, which spawns nothing (BE-0448).
+
+    Any other spec without a `cmd` still fails loudly here, before a device boots or an app builds.
+    """
+    if spec.get("batch") is not None:
+        return list(spec.get("cmd") or [])
+    return list(spec["cmd"])
+
+
 def _local_interpreter(cmd: list[str]) -> list[str]:
     """Re-point a ``python -m bajutsu …`` argv at *this* process's interpreter.
 
@@ -421,10 +431,9 @@ def execute_job_spec(
     job = Job(
         id=str(spec["job_id"]),  # keep the control plane's id so logs/results line up
         cmd=(
-            # A cloud-batch spec spawns nothing, so a one-shot one may leave `cmd` out (BE-0448).
-            _with_worker_config(_local_interpreter(list(spec.get("cmd") or [])), worker_config)
+            _with_worker_config(_local_interpreter(_spec_argv(spec)), worker_config)
             if apply_worker_config
-            else _local_interpreter(list(spec.get("cmd") or []))
+            else _local_interpreter(_spec_argv(spec))
         ),
         udids=list(spec.get("udids") or []),
         app_path=spec.get("app_path"),
@@ -459,7 +468,7 @@ def execute_job_spec(
         on_job(job)
     with oplog.job_context(job_id=job.id, org=org, actor=spec.get("actor")):
         oplog.log_event(_logger, "worker.job.started", "worker started job")
-        run_job(state, job, inherit_stdio=one_shot)
+        run_job(state, job, inherit_stdio=one_shot, one_shot=one_shot)
         # Bind run_id for correlation only: the run resolves `${secrets.X}` inside the `bajutsu run`
         # subprocess, so those values aren't in this process to seed a run-scoped redactor here.
         with oplog.run_context(job.run_id) if job.run_id else nullcontext():
