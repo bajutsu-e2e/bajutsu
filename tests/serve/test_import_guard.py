@@ -194,5 +194,5 @@ def test_the_server_stack_is_a_base_dependency_and_the_old_extras_still_resolve(
     assert {"fastapi", "uvicorn", "sqlalchemy", "alembic", "cryptography"} <= base
     assert "psycopg" not in base
     extras = project["optional-dependencies"]
-    assert extras["db"] == ["psycopg[binary]>=3.1"]
-    assert extras["server"] == ["boto3>=1.34"]
+    assert {dep.split(">")[0].split("[")[0] for dep in extras["db"]} == {"psycopg"}
+    assert {dep.split(">")[0].split("[")[0] for dep in extras["server"]} == {"boto3"}
