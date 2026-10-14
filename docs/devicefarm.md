@@ -248,12 +248,17 @@ startup, the worker exits with the reason unless all three conditions below hold
 
 Once registered, the worker prints `provider registered: devicefarm`. It advertises the routing
 token `environment:devicefarm`. A fan-out job requires that token and no other. A worker
-advertising the token leases no other job. Local jobs and Device Farm jobs never cross. Serving
-both on one machine takes two workers. This registration alone may advertise the `environment:`
-prefix. `--capabilities` and `$BAJUTSU_WORKER_CAPABILITIES` refuse it at startup. A fan-out job
-that no live worker can serve stays queued as unroutable, like any other job. A server with no
-queue runs jobs in its own process. Such a server refuses `POST /api/run-set` instead. Unlike the headless submitter, the worker reserves one device per run through a
-device-selection filter. It needs no device-pool ARN.
+advertising the token leases nothing else. Local jobs and Device Farm jobs thus never reach each
+other's workers. Serving both on one machine takes two workers. Registration alone puts an
+`environment:` token on a worker. `--capabilities` and `$BAJUTSU_WORKER_CAPABILITIES` refuse that
+prefix at startup.
+
+A fan-out job that no live worker can serve stays queued as unroutable, like any other job. A server
+that keeps no queue runs jobs in its own process. Such a server has no worker to take the fan-out,
+so it refuses `POST /api/run-set` outright.
+
+Unlike the headless submitter, the worker reserves one device per run through a device-selection
+filter. It needs no device-pool ARN.
 
 > **Config and scenario placement.** The worker composes a separate package for each job. The
 > package holds the source checkout's three parts, plus the job's bundle directory under `bundle/`.
