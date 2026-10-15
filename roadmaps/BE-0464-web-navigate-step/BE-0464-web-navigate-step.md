@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0464") |
-| Implementing PR | — |
+| Implementing PR | [#2207](https://github.com/bajutsu-e2e/bajutsu/pull/2207) |
 | Topic | Scenario authoring features |
 <!-- /BE-METADATA -->
 
@@ -142,7 +142,7 @@ The driver method is named `goto` because `BackendLifecycle.navigate()` already 
 Log:
 
 - Proposed.
-- Shipped all eight units in one change. Built against today's tree, with three deviations from the
+- [#2207](https://github.com/bajutsu-e2e/bajutsu/pull/2207) — Shipped all eight units in one change. Built against today's tree, with three deviations from the
   design text: `Navigate` also dumps back to the plain string, because `_interp_step`, `serialize`,
   and a saved run's reload each dump a step and re-validate it, and a dumped `{url: ...}` would meet
   the rejected mapping form. The load-time scheme check runs from the `Scenario` validator rather than
