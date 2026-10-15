@@ -234,6 +234,8 @@ def test_the_command_prints_the_runs_section(
     )
     monkeypatch.setattr("bajutsu.cli._shared.current_host_os", lambda: host)
     monkeypatch.setattr("bajutsu.cli.commands.doctor._host_toolchain", lambda: (None, None))
+    # CI hosts have no adb; the runs section is what this test reads, not the toolchain.
+    monkeypatch.setattr("bajutsu.cli.commands.doctor.select_actuator", lambda *_a, **_k: "adb")
     android = [
         DeviceFacts(
             udid="emulator-5554", platform="android", model="Pixel", release="34", avd="P34"
