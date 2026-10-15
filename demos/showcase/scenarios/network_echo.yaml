@@ -1,0 +1,31 @@
+# Body forwarding (observed, not mocked): the Log submit's POST goes to a public echo server, which
+# returns the JSON body it received, and the app shows the echoed `note` as `log.echo`. URLSession
+# hands BajutsuURLProtocol the body as a one-shot `httpBodyStream`, so this is the check that the
+# interceptor forwards that body intact — a request that reached the server empty echoes no note,
+# and the `value` assertion below fails. network_live.yaml cannot catch that: it passes on any
+# observed exchange, failed or not.
+#
+# postman-echo rather than the app's httpbin default: both echo the parsed body under `json`, and
+# postman-echo has been the steadier of the two. A loopback echo server would be simpler to own, but
+# `BajutsuURLProtocol.canInit` never intercepts loopback, so it would bypass the path under test.
+#
+# `swiftui`-tagged: the UIKit Log screen has no `log.echo`.
+- name: log submit body reaches an echo server intact
+  tags: [network, swiftui]
+  preconditions:
+    app:
+      launch:
+        env: { SHOWCASE_UITEST: "1", SHOWCASE_HTTP_BASE: "https://postman-echo.com" }
+  steps:
+    - tap: { label: "Log", traits: [button] }
+    - wait: { for: { id: log.note }, timeout: 10 }
+    - type: { text: "echo roundtrip", into: { id: log.note } }
+    - tap: { id: log.submit }
+    # `pathMatches`, not `path`: the xcuitest runner forwards launch env through `.xctestrun`, where
+    # `xcodebuild` collapses `https://` to `https:/`, so the app's URL parses with no host and the
+    # reported path is `/postman-echo.com/post` (CFNetwork still reaches the host).
+    - wait: { until: { request: { method: POST, pathMatches: "/post$", status: 200 } }, timeout: 15 }
+    - wait: { for: { id: log.echo }, timeout: 5 }
+  expect:
+    - request: { method: POST, pathMatches: "/post$", status: 200 }
+    - value: { sel: { id: log.echo }, equals: "echo roundtrip" }

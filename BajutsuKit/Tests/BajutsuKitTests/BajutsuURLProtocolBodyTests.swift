@@ -15,26 +15,12 @@ final class BajutsuURLProtocolBodyTests: XCTestCase {
         return req
     }
 
-    private func read(_ stream: InputStream?) -> Data? {
-        guard let stream else { return nil }
-        stream.open()
-        defer { stream.close() }
-        var data = Data()
-        var buf = [UInt8](repeating: 0, count: 7)
-        while true {
-            let n = stream.read(&buf, maxLength: buf.count)
-            if n <= 0 { break }
-            data.append(buf, count: n)
-        }
-        return data
-    }
-
     func testStreamBodyIsForwardedAndCaptured() throws {
         let req = post()
         req.httpBodyStream = InputStream(data: payload)
         let (forwarded, captured) = try XCTUnwrap(BajutsuURLProtocol.forwardedRequest(for: req as URLRequest))
         XCTAssertEqual(captured, payload)
-        XCTAssertEqual(read(forwarded.httpBodyStream), payload)
+        XCTAssertEqual(forwarded.httpBody, payload)
         XCTAssertEqual(forwarded.httpMethod, "POST")
         XCTAssertEqual(forwarded.value(forHTTPHeaderField: "Content-Type"), "application/json")
     }
@@ -59,6 +45,8 @@ final class BajutsuURLProtocolBodyTests: XCTestCase {
         let req = post()
         req.httpBodyStream = InputStream(data: payload)
         let (forwarded, _) = try XCTUnwrap(BajutsuURLProtocol.forwardedRequest(for: req as URLRequest))
+        // The unmarked request is interceptable, so the `false` below can only come from the marker.
+        XCTAssertTrue(BajutsuURLProtocol.canInit(with: req as URLRequest))
         XCTAssertFalse(BajutsuURLProtocol.canInit(with: forwarded))
     }
 }

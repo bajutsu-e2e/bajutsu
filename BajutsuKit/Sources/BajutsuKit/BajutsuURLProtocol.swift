@@ -100,10 +100,11 @@ final class BajutsuURLProtocol: URLProtocol, URLSessionDataDelegate {
     ///
     /// By the time a URLProtocol sees a request, URLSession has moved an `httpBody` into
     /// `httpBodyStream`, and the copy shares that one-shot stream with the original — so it is read
-    /// once here and handed back as a fresh stream over the same bytes. Only the stream is set:
-    /// `NSMutableURLRequest` keeps `httpBody` and `httpBodyStream` mutually exclusive, so assigning
-    /// either (even `nil`) clears the other, which is how the body used to vanish from the
-    /// forwarded request.
+    /// once here and handed back as `httpBody`. Data rather than a fresh stream: URLSession derives
+    /// `Content-Length` from it instead of falling back to chunked encoding, and a redirect or auth
+    /// retry can re-send it. Only `httpBody` is set: `NSMutableURLRequest` keeps it and
+    /// `httpBodyStream` mutually exclusive, so assigning either (even `nil`) clears the other, which
+    /// is how a trailing `httpBodyStream = nil` used to empty the forwarded request.
     static func forwardedRequest(for request: URLRequest) -> (URLRequest, Data?)? {
         guard let mutable = (request as NSURLRequest).mutableCopy() as? NSMutableURLRequest else {
             return nil
@@ -114,7 +115,7 @@ final class BajutsuURLProtocol: URLProtocol, URLSessionDataDelegate {
         }
         guard let stream = request.httpBodyStream else { return (mutable as URLRequest, nil) }
         let body = drain(stream)
-        mutable.httpBodyStream = InputStream(data: body)
+        mutable.httpBody = body
         return (mutable as URLRequest, body)
     }
 

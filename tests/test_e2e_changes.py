@@ -1526,6 +1526,7 @@ def test_makefile_declared_scenarios_match_the_targets() -> None:
         "network": {
             "demos/showcase/scenarios/network_mock.yaml",
             "demos/showcase/scenarios/network_live.yaml",
+            "demos/showcase/scenarios/network_echo.yaml",
         },
         "device-group": {
             "demos/showcase/scenarios/device_group_update.yaml",
@@ -1562,6 +1563,7 @@ def test_lane_job_scenario_map_folds_the_makefile_jobs_on_ios_only() -> None:
     assert ios_map["network"] == {
         "demos/showcase/scenarios/network_mock.yaml",
         "demos/showcase/scenarios/network_live.yaml",
+        "demos/showcase/scenarios/network_echo.yaml",
     }
     for lane in ("android", "web"):
         text = lane_workflow_text(lane)

@@ -28,6 +28,7 @@ import subprocess
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import pytest
 import yaml
@@ -179,6 +180,31 @@ def test_live_scenario_asserts_only_that_the_catalog_request_was_observed() -> N
     # Deliberately no status: the upstream response varies (and can fail outright on a host with no
     # egress), so the scenario asserts only the deterministic fact that the exchange was observed.
     assert req.status is None
+
+
+def test_echo_scenario_asserts_the_note_the_server_sent_back() -> None:
+    sc = _sole_scenario("network_echo.yaml")
+    # Only the SwiftUI Log screen shows `log.echo`; the tag keeps the UIKit and Flutter lanes off it.
+    assert {"network", "swiftui"} <= set(sc.tags)
+    # Unmocked: the body has to cross BajutsuURLProtocol to a real server for the echo to mean anything.
+    assert sc.mocks == []
+
+    # A non-loopback https host, since `canInit` never intercepts loopback and the app has no ATS
+    # exception for plain http.
+    assert sc.preconditions is not None and sc.preconditions.app is not None
+    launch = sc.preconditions.app.launch
+    assert launch is not None
+    base = urlparse(launch.env["SHOWCASE_HTTP_BASE"])
+    assert base.scheme == "https"
+    assert base.hostname not in {"127.0.0.1", "localhost", "::1"}
+
+    typed = [step.type for step in sc.steps if step.type is not None]
+    assert len(typed) == 1 and typed[0].into is not None and typed[0].into.id == "log.note"
+    echoed = [a.value for a in sc.expect if a.value is not None]
+    assert len(echoed) == 1 and echoed[0].sel.id == "log.echo"
+    assert echoed[0].equals == typed[0].text
+    # The element the assertion reads is one the app renders.
+    assert '"log.echo"' in _log_view_source()
 
 
 def test_showcase_redact_policy_masks_the_log_submit_secrets() -> None:
