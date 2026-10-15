@@ -57,4 +57,11 @@ class Navigate(_Model):
     def __get_pydantic_json_schema__(
         cls, core_schema: CoreSchema, handler: GetJsonSchemaHandler
     ) -> JsonSchemaValue:
-        return {"title": "Navigate", "description": cls.__doc__, "type": "string", "minLength": 1}
+        # The schema speaks to a scenario author, so it states the authored form, not the model's.
+        return {
+            "title": "Navigate",
+            "description": "Load a URL in the current page, resolved against the target's baseUrl "
+            "(web only; http/https or a relative reference).",
+            "type": "string",
+            "minLength": 1,
+        }

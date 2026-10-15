@@ -41,9 +41,10 @@ def test_parse_string_shorthand() -> None:
     assert _action_of(step) == "navigate"
 
 
-def test_mapping_form_is_rejected() -> None:
+@pytest.mark.parametrize("value", [{"url": "/settings"}, 8080, ["/a"], True])
+def test_anything_but_a_string_is_rejected(value: object) -> None:
     with pytest.raises(ValidationError, match="navigate takes a URL string"):
-        Step.model_validate({"navigate": {"url": "/settings"}})
+        Step.model_validate({"navigate": value})
 
 
 def test_the_model_still_constructs_from_its_field() -> None:
