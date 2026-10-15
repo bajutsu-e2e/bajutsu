@@ -106,7 +106,8 @@ set) — no device, no clock — and per-scenario: only the offending scenarios 
 The check gates only the **hard** requirements the capability set cleanly decides: `pinch` /
 `rotate` need `multiTouch`, `selectOption` needs the `selectOption` token (a web-only `<select>`
 switch; iOS / Android are rejected before any device work), `navigate` needs `urlNavigation` (web
-only, and caught even inside a `web:` block, the only construct the check follows into one),
+only, and caught even inside a `web:` or `app:` block, the only construct the check follows into
+one),
 `select` / `copy` need `textSelection`
 (select-all + clipboard copy; the web context is coordinate-only for these and refuses both —
 `delete` / `clear` stay ungated, as every backend backs `delete_text`), a `visual` assertion needs

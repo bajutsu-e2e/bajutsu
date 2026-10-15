@@ -104,4 +104,5 @@ _ACTION_META = {
     "sleep": ("sleep", "act-wait"),
     "assert": ("assert", "act-assert"),
     "relaunch": ("relaunch", "act-wait"),
+    "navigate": ("navigate", "act-move"),
 }

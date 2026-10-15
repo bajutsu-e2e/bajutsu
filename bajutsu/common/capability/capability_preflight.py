@@ -100,7 +100,8 @@ def _walk_steps(steps: list[Step], prefix: str = "") -> Iterator[tuple[str, Step
         # capability neither backend today declares only alongside WEBVIEW/APP_CONTEXT does not
         # currently exist, so this is a real but so-far harmless gap, not fixed here (this item
         # keeps it rather than fixing `web:`'s pre-existing one as a drive-by, which is out of its
-        # lane).
+        # lane). `navigate` (BE-0464) is now such a construct; `_navigate_locations` follows `web:`
+        # / `app:` blocks for it alone.
 
 
 def _walk_scenario(sc: Scenario) -> Iterator[tuple[str, Step]]:

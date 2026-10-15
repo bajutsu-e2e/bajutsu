@@ -148,8 +148,9 @@ Log:
   the rejected mapping form. The load-time scheme check runs from the `Scenario` validator rather than
   the model, for the reason `_http_extract.py` gives (a model check would re-fire after substitution
   as an uncaught `ValidationError`). `goto` maps every Playwright navigation error except
-  `TargetClosedError` to `SelectorError`; a real-Chromium test pins the split (an unresolvable host
-  fails the step, a closed page stays a wedge). The preflight follows `web:` and `app:` blocks for
+  a closed page (`TargetClosedError`) or a crashed renderer to `SelectorError`, and leaves the URL out
+  of the message, since a substituted secret could ride in it; a real-Chromium test pins the split (an
+  unresolvable host fails the step, a closed page stays a wedge). The preflight follows `web:` and `app:` blocks for
   `navigate` alone, so no other construct's failure moves from run time to preflight. The Playwright
   codegen check is a unit-test expectation rather than a golden file, since the one golden
   (`smoke.spec.ts`) tracks `smoke.yaml`. The open point on relative resolution stays as designed

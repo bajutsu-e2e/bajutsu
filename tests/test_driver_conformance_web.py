@@ -296,7 +296,8 @@ def test_goto_maps_a_bad_url_to_a_step_failure_and_a_closed_page_to_a_wedge(chro
 
     page = chromium.new_page()
     driver = PlaywrightDriver("about:blank", page=page)
-    with pytest.raises(base.SelectorError, match="ERR_NAME_NOT_RESOLVED"):
+    # Matched on the driver's own wording: behind a proxy Chromium reports a tunnel error instead.
+    with pytest.raises(base.SelectorError, match="navigate could not load"):
         driver.goto("http://bajutsu-navigate.invalid/")
     page.close()
     with pytest.raises(simctl.DeviceError):

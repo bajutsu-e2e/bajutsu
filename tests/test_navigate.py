@@ -23,7 +23,7 @@ from bajutsu.common.drivers.webview.web_context_driver import WebContextDriver
 from bajutsu.common.drivers.xcuitest.xcuitest_driver import XcuitestDriver
 from bajutsu.common.drivers.xcuitest_live.xcuitest_live_driver import XcuitestLiveDriver
 from bajutsu.common.orchestrator import _action_of, run_scenario
-from bajutsu.common.scenario import Scenario, Step, dump_scenarios, load_scenarios
+from bajutsu.common.scenario import Navigate, Scenario, Step, dump_scenarios, load_scenarios
 from bajutsu.common.scenario.models.actions import navigate_url_problem
 
 
@@ -44,6 +44,10 @@ def test_parse_string_shorthand() -> None:
 def test_mapping_form_is_rejected() -> None:
     with pytest.raises(ValidationError, match="navigate takes a URL string"):
         Step.model_validate({"navigate": {"url": "/settings"}})
+
+
+def test_the_model_still_constructs_from_its_field() -> None:
+    assert Navigate(url="/x").url == "/x"
 
 
 def test_navigate_is_one_action() -> None:
@@ -297,6 +301,25 @@ def test_a_failed_lookup_fails_the_step_not_the_browser() -> None:
 def test_an_empty_error_message_names_the_error_type() -> None:
     with pytest.raises(base.SelectorError, match="_PwError"):
         _web(_Page(_PwError(""))).goto("/x")
+
+
+@pytest.mark.usefixtures("_pw_errors")
+def test_crashed_in_the_url_is_not_a_crash() -> None:
+    error = _PwError("Page.goto: net::ERR_CONNECTION_REFUSED at https://app.test/page-crashed")
+    with pytest.raises(base.SelectorError):
+        _web(_Page(error)).goto("/page-crashed")
+
+
+@pytest.mark.usefixtures("_pw_errors")
+def test_the_failure_reason_leaves_the_url_out() -> None:
+    # A substituted secret can ride in the URL; Playwright echoes it after "at".
+    error = _PwError("Page.goto: net::ERR_NAME_NOT_RESOLVED at https://h.invalid/?t=s3cr%20t")
+    with pytest.raises(base.SelectorError) as caught:
+        _web(_Page(error)).goto("https://h.invalid/?t=s3cr t")
+    assert (
+        str(caught.value)
+        == "navigate could not load the URL: Page.goto: net::ERR_NAME_NOT_RESOLVED"
+    )
 
 
 @pytest.mark.usefixtures("_pw_errors")

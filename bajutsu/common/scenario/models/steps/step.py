@@ -199,6 +199,15 @@ class Step(_Model):
             raise ValueError(f"name must not contain a path separator or be '.'/'..' (§6.2): {v!r}")
         return v
 
+    @field_validator("navigate", mode="before")
+    @classmethod
+    def _navigate_is_a_string(cls, v: object) -> object:
+        # The authored form is a plain string; see `Navigate` for why a mapping is refused here.
+        if isinstance(v, dict):
+            # pydantic turns only a ValueError into a ValidationError naming the field.
+            raise ValueError("navigate takes a URL string, e.g. `navigate: /settings`")  # noqa: TRY004
+        return v
+
     @model_validator(mode="after")
     def _one_action(self) -> Self:
         _exactly_one(self, _STEP_ACTIONS, "§6.2")

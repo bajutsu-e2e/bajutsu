@@ -141,9 +141,9 @@ URL の解決は標準の参照解決（`urllib.parse.urljoin`）に従い、基
 - 8 つの単位をすべて 1 つの変更で実装しました。現在のコードに合わせて、設計の記述から 3 点を変えています。
   1 点目として、`Navigate` は書き出すときも素の文字列に戻します。`_interp_step`、`serialize`、保存済みの run の再読み込みは、いずれもステップを書き出してから再検証します。`{url: ...}` の形で書き出すと、拒否するマッピングの形に当たるためです。
   2 点目として、読み込み時のスキーム検査は、モデルではなく `Scenario` のバリデータで行います。理由は `_http_extract.py` に書かれているものと同じで、モデルで検査すると、展開後の再検証で捕捉されない `ValidationError` になるからです。
-  3 点目として、`goto` は `TargetClosedError` 以外の Playwright のナビゲーションエラーをすべて `SelectorError` に変換します。存在しないホストではステップが失敗し、閉じたページは wedge のまま残ることを、実際の Chromium を使うテストで確かめています。
+  3 点目として、`goto` は、閉じたページ（`TargetClosedError`）とレンダラーのクラッシュを除く Playwright のナビゲーションエラーをすべて `SelectorError` に変換します。展開した秘密情報が URL に含まれうるので、エラーメッセージには URL を載せません。存在しないホストではステップが失敗し、閉じたページは wedge のまま残ることを、実際の Chromium を使うテストで確かめています。
   preflight が `web:` と `app:` ブロックの中まで追うのは `navigate` だけです。ほかの構文の失敗が実行時から preflight に移ることはありません。
-  Playwright のコード生成は、golden ファイルではなく単体テストの期待値で検証します。golden ファイルは `smoke.spec.ts` の 1 つだけで、`smoke.yaml` に対応しているからです。
+  Playwright のコード生成は、golden ファイルではなくユニットテストの期待値で検証します。golden ファイルは `smoke.spec.ts` の 1 つだけで、`smoke.yaml` に対応しているからです。
   相対 URL の解決は、設計どおり `urljoin` のままです。
 
 ## 参考

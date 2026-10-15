@@ -18,6 +18,7 @@ from bajutsu.common.evidence import intervals
 from ._functions import (
     _device_context_kwargs,
     _is_browser_fault,
+    _nav_reason,
     _playwright_error_types,
     _rotate_point,
     _start_browser,
@@ -639,11 +640,11 @@ class PlaywrightDriver:
         try:
             self._page.goto(target)
         except _playwright_error_types() as exc:
-            if _is_browser_fault(exc):
+            if _is_browser_fault(exc, target):
                 raise
-            lines = [line for line in str(exc).splitlines() if line.strip()]
-            reason = lines[0] if lines else type(exc).__name__
-            raise base.SelectorError(f"navigate could not load {target}: {reason}") from exc
+            raise base.SelectorError(
+                f"navigate could not load the URL: {_nav_reason(exc, target)}"
+            ) from exc
 
     @_wedge_guard
     def pinch(self, sel: base.Selector, scale: float) -> None:

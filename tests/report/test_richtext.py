@@ -30,6 +30,7 @@ from bajutsu.common.report.richtext import (
     _textmatch_parts,
     _wait_parts,
 )
+from bajutsu.common.report.rows import _step_detail
 
 
 def _text(parts: list[Part]) -> str:
@@ -243,6 +244,7 @@ def test_a_tap_renders_its_selector(action: str) -> None:
 def test_navigate_renders_its_url_as_a_string() -> None:
     # The one string-valued action (BE-0464): the payload is the URL itself, not a mapping.
     assert _step_desc_parts("navigate", "/settings") == [("str", "/settings")]
+    assert _step_detail({"navigate": "/settings"})["parts"] == [("str", "/settings")]
 
 
 def test_a_long_press_shows_its_duration() -> None:

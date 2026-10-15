@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import functools
 import math
+import re
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, cast
 
@@ -130,17 +131,31 @@ def _wedge_guard[F: Callable[..., Any]](method: F) -> F:
     return cast(F, wrapper)
 
 
-def _is_browser_fault(exc: BaseException) -> bool:
+def _is_browser_fault(exc: BaseException, target: str) -> bool:
     """Whether *exc* says the page is gone or crashed — a browser fault, not a bad URL (BE-0464).
 
     Playwright raises `TargetClosedError` for a closed page, but exports the class only from its
     private `_impl` package, so it is matched by name across the error's class hierarchy. A renderer
     crash has no class of its own: its message ("Page crashed", "...because page crashed!") is the
-    only signal.
+    only signal, read with *target* removed so a URL path like `/page-crashed` cannot fake one.
     """
     if any(cls.__name__ == "TargetClosedError" for cls in type(exc).__mro__):
         return True
-    return "crashed" in str(exc).lower()
+    return "page crashed" in str(exc).replace(target, "").lower()
+
+
+def _nav_reason(exc: BaseException, target: str) -> str:
+    """The first meaningful line of a `goto` error, with the URL left out (BE-0464).
+
+    The URL can carry a substituted `${secrets.*}` value, and Playwright may echo it percent-encoded
+    where value redaction cannot match it, so the reason drops it the way the `http` step reports only
+    a transport failure's reason.
+    """
+    lines = [line for line in str(exc).splitlines() if line.strip()]
+    if not lines:
+        return type(exc).__name__
+    first = lines[0].replace(target, "<url>")
+    return re.sub(r"\s+at\s+\S+\s*$", "", first)
 
 
 def web_is_alive(driver: PlaywrightDriver, elements: list[base.Element]) -> bool:

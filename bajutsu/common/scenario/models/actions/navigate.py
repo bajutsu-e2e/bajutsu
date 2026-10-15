@@ -35,8 +35,9 @@ def navigate_url_problem(url: str) -> str | None:
 class Navigate(_Model):
     """`navigate: <url>` — load *url* in the current page, resolved against the target's `baseUrl`.
 
-    The YAML value is a plain string; `url` is only how the model stores it. A mapping is rejected,
-    so `{url: ...}` never becomes a public shape a later option would have to stay compatible with.
+    The YAML value is a plain string; `url` is only how the model stores it. `Step` rejects a
+    mapping, so `{url: ...}` never becomes a public shape a later option would have to stay
+    compatible with, while `Navigate(url=...)` still constructs.
     """
 
     url: str
@@ -44,11 +45,7 @@ class Navigate(_Model):
     @model_validator(mode="before")
     @classmethod
     def _shorthand(cls, data: Any) -> Any:
-        if isinstance(data, str):
-            return {"url": data}
-        if isinstance(data, cls):
-            return data
-        raise ValueError("navigate takes a URL string, e.g. `navigate: /settings`")
+        return {"url": data} if isinstance(data, str) else data
 
     # Dumps back to the plain string the file wrote, so every dump-and-revalidate path
     # (`_interp_step`, `serialize`, a saved run's reload) round-trips through `_shorthand`.
