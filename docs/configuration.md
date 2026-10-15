@@ -194,8 +194,9 @@ enough devices at one release. Within that model, it keeps the newest release th
 model and one release, so `--workers` spreads runs over identical devices.
 
 `record`, `crawl`, and `repl` never multiply runs. They take the first listed value and the newest
-major version the pool has within the range. They exit 2 when no device fits. `doctor` lists each
-scenario's runs and the devices that fit each one ([doctor output](#output)). Its screen probe
+major version the pool has within the range. They exit 2 when no device fits. `doctor` lists the
+target's own runs, and each scenario's runs when `--scenario` names a file, with the devices that
+fit each one ([doctor output](#output)). Its screen probe
 scores the device of the first run. `--backend fake` matches no condition, and says so once. A
 target that runs on a physical iPhone (`runsOn.kind: device`) may not declare
 `model` or `os`. A target an `appium` grid serves has no pool to read, and neither does a Device
@@ -858,7 +859,8 @@ duplicateIds: 0
 The CLI's `doctor` exits with code 1 when the grade is Blocked ([cli](cli.md#doctor)).
 
 A [device condition](#device-conditions-runson) adds a `runs:` section to the CLI's output. The
-section reads the `--udid` pool the way `run` does, and forms the same runs. It lists the devices
-that fit each run. A target with no pool to read lists its declared runs alone. A physical device
+section reads the `--udid` pool the way `run` does, and forms the same runs. Without `--scenario`
+it lists the target's own runs; with a scenario file, each scenario's. It lists the devices that fit
+each run. A target with no pool to read lists its declared runs alone. A physical device
 and a grid target both lack a pool. The section is informational and never changes the exit code.
 The score itself covers the device of the target's first run, the one `record` takes.

@@ -484,8 +484,9 @@ bajutsu flakiness [--org <org>] [--json] [--window N]          # read the serve 
   coordinates then join the key. A layout bug on one model thus never reads as a flaky scenario.
   The target joins the key as well, so a scenario run against two targets keeps two histories. The
   text output names the coordinates in brackets after the OS. A run with no condition keeps empty
-  coordinates. A history recorded before BE-0452 thus continues. A hosted run can hold results on
-  two or more coordinates. Such a run groups under `*`, apart from every other history.
+  coordinates. A history recorded before BE-0452 thus continues. One run can hold results on two or
+  more coordinates, since an invocation records every run its conditions formed under one run id.
+  Such a run groups under `*`, apart from every other history.
 - Each entry carries the newest passing and newest failing run ids, so `--json` consumers (and the
   serve panel) can link straight to the representative evidence on both sides.
 - **`--window N`** keeps only each history's newest `N` runs before scoring — per *history*, since
