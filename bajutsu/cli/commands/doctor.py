@@ -354,6 +354,9 @@ def runs_summary(
             LookupError,
             ValueError,
             subprocess.SubprocessError,
+            # `facts.read_web` imports Playwright, an optional extra, so a base install raises
+            # ModuleNotFoundError here rather than a DeviceError.
+            ImportError,
         ) as e:
             note = f"could not read the device pool: {e}"
     lines = ["runs:"]

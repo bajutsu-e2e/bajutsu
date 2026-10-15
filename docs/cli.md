@@ -245,9 +245,10 @@ bajutsu doctor --target <name> [--udid booted] [--backend ...] [--config ...] [-
 
   `✓` marks a run with its eligible devices. `✘` marks a run that fails for want of a device. `–`
   marks a not-applicable record. The section is informational and never changes the exit code.
-  A target with no pool to read lists the declared runs alone, marked `•`. A grid target, a
-  physical device, and an unreadable pool all lack a pool. An open range then reads as "one run
-  per available major version". `--backend fake` evaluates no condition and prints no section.
+  A target with no pool to read lists the declared runs alone, marked `•`. This covers a grid
+  target, a physical device, and a pool whose devices cannot be read. An open range then reads as
+  "one run per available major version". `--backend fake` evaluates no condition and prints no
+  section.
 - Otherwise, `query()`s via the actuator and renders `score(elements, app.idNamespaces)`. Under a
   device condition, the probe scores the device of the target's first run, the one
   [`record`](#record) takes. **Exits 1 when the grade is Blocked, 0 otherwise.**

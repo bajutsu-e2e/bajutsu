@@ -312,10 +312,20 @@ def apply_engine(eff: Effective, engine: str) -> Effective:
     """
     if not isinstance(eff.platform_config, WebConfig):
         return eff
-    conditions = {k: v for k, v in eff.conditions.items() if k != "browser.engine"}
     return replace(
-        eff, platform_config=replace(eff.platform_config, browser=engine), conditions=conditions
+        without_engine_condition(eff),
+        platform_config=replace(eff.platform_config, browser=engine),
     )
+
+
+def without_engine_condition(eff: Effective) -> Effective:
+    """*eff* with its listed `runsOn.browser.engine` no longer counted as a device condition.
+
+    An engine flag names the engines itself — `--browser` one, `--browsers` the matrix that sets
+    each pass's engine — so the target's own list is overridden rather than matched.
+    """
+    conditions = {k: v for k, v in eff.conditions.items() if k != "browser.engine"}
+    return replace(eff, conditions=conditions)
 
 
 def target_pool(

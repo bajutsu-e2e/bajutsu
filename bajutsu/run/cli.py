@@ -2687,7 +2687,7 @@ def _finish(
             endpoints=plan.eff.notify,
             bindings=plan.secret_bindings,
             runs_dir=plan.runs_dir,
-            not_applicable=len(not_applicable),
+            not_applicable=not_applicable,
         )
     typer.echo(f"{'PASS' if ok else 'FAIL'}  {manifest}")
     if plan.zip_run:

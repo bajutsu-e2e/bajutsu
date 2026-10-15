@@ -8,7 +8,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -292,12 +292,13 @@ def emit(
     bindings: Mapping[str, str],
     runs_dir: Path,
     report_url: str | None = None,
-    not_applicable: int = 0,
+    not_applicable: Sequence[Mapping[str, str]] = (),
 ) -> bool:
     """Post run notifications to all matching endpoints. Returns whether any fired.
 
     Called after the verdict is fixed. A delivery failure is logged, never raised. *not_applicable*
-    counts the runs no available device fell in range for (BE-0452).
+    holds the records of the runs no available device fell in range for (BE-0452); an endpoint
+    scoped by `targets:` counts only its own scenarios' records.
     """
     if not endpoints:
         return False
@@ -309,7 +310,7 @@ def emit(
         source_name=source_name,
         backend=backend,
         report_url=report_url,
-        not_applicable=not_applicable,
+        not_applicable=len(not_applicable),
     )
 
     for ep in endpoints:
@@ -332,6 +333,9 @@ def emit(
                     source_name=source_name,
                     backend=backend,
                     report_url=report_url,
+                    not_applicable=sum(
+                        1 for rec in not_applicable if rec.get("scenario") in ep.targets
+                    ),
                 )
 
             if not _should_fire(ep, ep_summary, prior_ok):

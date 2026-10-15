@@ -496,8 +496,11 @@ def test_doctor_probes_the_first_run_of_a_condition(
 # --- the MCP server's device ---------------------------------------------------------------
 
 
-def test_the_mcp_probe_takes_its_device_through_the_worker() -> None:
+def test_the_mcp_probe_takes_its_device_through_the_worker(monkeypatch: pytest.MonkeyPatch) -> None:
     from bajutsu.mcp.tools import _probe_device
+
+    # CI hosts have no xcuitest toolchain; the probe's routing is what this test reads.
+    monkeypatch.setattr("bajutsu.mcp.tools.select_actuator", lambda *_a, **_k: "xcuitest")
 
     eff, spec = _probe_device(_eff(_IOS), "booted", _grid())
     assert spec == "https://grid.example/wd/hub"

@@ -524,11 +524,11 @@ def _resolve_browser(eff: Effective, browser: str) -> Effective:
 def _without_engine_condition(eff: Effective) -> Effective:
     """*eff* with its listed `runsOn.browser.engine` no longer counted as a device condition.
 
-    An engine flag names the engines itself — `--browser` one, `--browsers` the matrix that sets
-    each pass's engine — so the target's own list is overridden rather than matched.
+    `--browsers` strips it here and `--browser` through `apply_engine`; both share one rule.
     """
-    conditions = {k: v for k, v in eff.conditions.items() if k != "browser.engine"}
-    return replace(eff, conditions=conditions)
+    from bajutsu.run.device_matrix import without_engine_condition
+
+    return without_engine_condition(eff)
 
 
 def _resolve_language(eff: Effective, language: str) -> Effective:

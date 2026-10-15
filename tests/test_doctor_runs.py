@@ -111,6 +111,18 @@ def test_without_a_condition_or_under_fake_nothing_is_listed() -> None:
 # --- no pool to read ------------------------------------------------------------------------
 
 
+def test_a_missing_playwright_lists_the_declared_runs() -> None:
+    # Playwright is an optional extra; a base install must reach the checklist, not a traceback.
+    def no_playwright(*_a: Any) -> list[DeviceFacts]:
+        raise ModuleNotFoundError("No module named 'playwright'")
+
+    eff = _eff(f'{{ model: "{_SE}" }}')
+    lines = runs_summary(eff, "xcuitest", "u", "", read_pool=no_playwright)
+    assert lines[1] == (
+        "  declared runs only — could not read the device pool: No module named 'playwright'"
+    )
+
+
 def test_an_unreadable_pool_lists_the_declared_runs() -> None:
     def broken(*_a: Any) -> list[DeviceFacts]:
         raise DeviceError("simctl is not installed")
@@ -234,6 +246,8 @@ def test_the_command_prints_the_runs_section(
     )
     monkeypatch.setattr("bajutsu.cli._shared.current_host_os", lambda: host)
     monkeypatch.setattr("bajutsu.cli.commands.doctor._host_toolchain", lambda: (None, None))
+    # CI hosts have no adb; the runs section is what this test reads, not the toolchain.
+    monkeypatch.setattr("bajutsu.cli.commands.doctor.select_actuator", lambda *_a, **_k: "adb")
     android = [
         DeviceFacts(
             udid="emulator-5554", platform="android", model="Pixel", release="34", avd="P34"
