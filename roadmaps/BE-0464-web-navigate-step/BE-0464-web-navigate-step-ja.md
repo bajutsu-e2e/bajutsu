@@ -1,14 +1,14 @@
-[English](BE-XXXX-web-navigate-step.md) · **日本語**
+[English](BE-0464-web-navigate-step.md) · **日本語**
 
-# BE-XXXX — Web バックエンドで、シナリオの途中から URL を開く `navigate` ステップ
+# BE-0464 — Web バックエンドで、シナリオの途中から URL を開く `navigate` ステップ
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-web-navigate-step-ja.md) |
+| 提案 | [BE-0464](BE-0464-web-navigate-step-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **承認済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0464") |
 | 実装 PR | — |
 | トピック | シナリオ作成機能 |
 <!-- /BE-METADATA -->
