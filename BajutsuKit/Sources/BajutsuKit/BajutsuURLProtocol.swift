@@ -50,22 +50,11 @@ final class BajutsuURLProtocol: URLProtocol, URLSessionDataDelegate {
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
-        guard let mutable = (request as NSURLRequest).mutableCopy() as? NSMutableURLRequest else {
+        guard let (forwarded, body) = Self.forwardedRequest(for: request) else {
             client?.urlProtocolDidFinishLoading(self)
             return
         }
-        URLProtocol.setProperty(true, forKey: Self.handledKey, in: mutable)
-        // A request body is moved to httpBodyStream by the time a URLProtocol sees it, so
-        // drain the stream to capture it, then re-attach it as httpBody so the forwarded
-        // request still carries the body.
-        if let body = request.httpBody {
-            capturedRequestBody = body
-        } else if let stream = request.httpBodyStream {
-            let body = Self.drain(stream)
-            capturedRequestBody = body
-            mutable.httpBody = body
-            mutable.httpBodyStream = nil
-        }
+        capturedRequestBody = body
         startedAt = Date()
         // Deterministic stub: if a mock matches, answer it and never touch the network.
         if let rule = BajutsuMocks.shared.stub(for: request, body: capturedRequestBody) {
@@ -80,7 +69,7 @@ final class BajutsuURLProtocol: URLProtocol, URLSessionDataDelegate {
         // (headers, method, body, cachePolicy, timeoutInterval) are unaffected: they live on the
         // `URLRequest` copied above, not on the configuration.
         inner = URLSession(configuration: .default, delegate: self, delegateQueue: nil)
-        innerTask = inner?.dataTask(with: mutable as URLRequest)
+        innerTask = inner?.dataTask(with: forwarded)
         innerTask?.resume()
     }
 
@@ -106,12 +95,37 @@ final class BajutsuURLProtocol: URLProtocol, URLSessionDataDelegate {
         }
     }
 
+    /// The request to forward, carrying the handled marker and the app's body byte-for-byte, plus
+    /// that body for the report and mock matching.
+    ///
+    /// By the time a URLProtocol sees a request, URLSession has moved an `httpBody` into
+    /// `httpBodyStream`, and the copy shares that one-shot stream with the original — so it is read
+    /// once here and handed back as a fresh stream over the same bytes. Only the stream is set:
+    /// `NSMutableURLRequest` keeps `httpBody` and `httpBodyStream` mutually exclusive, so assigning
+    /// either (even `nil`) clears the other, which is how the body used to vanish from the
+    /// forwarded request.
+    static func forwardedRequest(for request: URLRequest) -> (URLRequest, Data?)? {
+        guard let mutable = (request as NSURLRequest).mutableCopy() as? NSMutableURLRequest else {
+            return nil
+        }
+        URLProtocol.setProperty(true, forKey: handledKey, in: mutable)
+        if let body = request.httpBody {
+            return (mutable as URLRequest, body)
+        }
+        guard let stream = request.httpBodyStream else { return (mutable as URLRequest, nil) }
+        let body = drain(stream)
+        mutable.httpBodyStream = InputStream(data: body)
+        return (mutable as URLRequest, body)
+    }
+
+    // Reads to end of stream rather than while `hasBytesAvailable`: that flag may be false before
+    // the first read on a stream that has data, which used to leave the body empty.
     private static func drain(_ stream: InputStream) -> Data {
         stream.open()
         defer { stream.close() }
         var data = Data()
         var buf = [UInt8](repeating: 0, count: 4096)
-        while stream.hasBytesAvailable {
+        while true {
             let n = stream.read(&buf, maxLength: buf.count)
             if n <= 0 { break }
             data.append(buf, count: n)
