@@ -29,6 +29,7 @@ from bajutsu.common.agents.ai_config import PROVIDER_MANAGED_ENV
 from bajutsu.common.backend_cli import simctl as _simctl
 from bajutsu.common.cancellation import GRACE_ENV, grace_seconds
 from bajutsu.common.devices import os as device_os
+from bajutsu.common.devices.runs import coordinates_from_manifest
 from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.common.evidence.sink import RunArtifactWriter
 from bajutsu.common.handoff import REQUEST_LINE_PREFIX as _HANDOFF_REQUEST_PREFIX
@@ -650,6 +651,7 @@ def _record_run(
         tool_version=tool_version,
         git_revision=git_revision,
         device_runtime=_run_device_runtime(manifest),
+        run_coordinates=coordinates_from_manifest(manifest) if manifest is not None else None,
         label=label,
         target=target,
     )

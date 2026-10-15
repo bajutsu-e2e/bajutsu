@@ -35,6 +35,12 @@ class RunRecord:
     # The target this run ran, mirrored from the manifest like `device_runtime` (BE-0404 unit 3), so
     # a cross-target comparison reads it from the DB. None when the run named no target.
     target: str | None = None
+    # The coordinates every scenario of the run shared, as `devices.runs.coordinates_key` spells them
+    # (BE-0452): with `target` and `device_runtime`, the flakiness grouping key, so a failure on one
+    # model never reads as flakiness. `""` for a run no condition formed, `*` for one whose results
+    # ran on different coordinates; None for a row recorded before the column existed, which the
+    # flakiness score reads as `""` because no such run could carry a condition.
+    run_coordinates: str | None = None
     # Soft-delete marker (BE-0239): when set, the run is trashed — hidden from `list_runs` unless
     # `include_deleted`. None for a live run. `record_run` never writes these (a status update must
     # not resurrect or re-trash a run); only `soft_delete_run`/`restore_run` touch them.

@@ -253,6 +253,7 @@ def write_report(
     label: str | None = None,
     source_files: list[str | None] | None = None,
     step_lines: list[list[int] | None] | None = None,
+    not_applicable: list[dict[str, str]] | None = None,
 ) -> Path:
     """Write manifest.json (the versioned render model), junit.xml, and report.html under run_dir.
 
@@ -260,7 +261,7 @@ def write_report(
     Rich/YAML toggle. `provenance` is the run-identity stamp (BE-0049). `writer` is the run's sink.
     `target` / `label` are the target the run ran and its history label, stamped into the
     manifest (BE-0404 units 2 and 3). `source_files` / `step_lines` are `html_report`'s own —
-    see there.
+    see there. `not_applicable` holds the manifest's not-applicable records (BE-0452).
 
     Returns:
         The manifest.json path.
@@ -275,6 +276,7 @@ def write_report(
             provenance=provenance,
             target=target,
             label=label,
+            not_applicable=not_applicable,
         ),
     )
     write_html_and_junit(

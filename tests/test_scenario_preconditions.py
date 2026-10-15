@@ -306,17 +306,16 @@ def test_scenario_conditions_name_only_the_driven_platforms() -> None:
     assert scenario_conditions(pre, ["android"]) == []
 
 
-def test_a_scenario_condition_is_refused_until_matching_lands(
+def test_a_scenario_condition_passes_the_check_and_fake_says_it_is_not_evaluated(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     (scenario,) = load_scenarios(
         "- name: s\n  preconditions: { runsOn: { ios: { os: '>=18' } } }\n  steps: []\n"
     )
-    with pytest.raises(typer.Exit) as exc:
-        _refuse_bad_preconditions([(scenario, [_effs()["phone"]])], erase=None, fake=False)
-    assert exc.value.exit_code == 2
-    assert "preconditions.runsOn.ios.os" in capsys.readouterr().out
-    # The fake backend evaluates no condition, so it lets the run through.
+    # Unit 9 matches the condition when the run forms its runs, so the check lets it through.
+    _refuse_bad_preconditions([(scenario, [_effs()["phone"]])], erase=None, fake=False)
+    assert "not yet supported" not in capsys.readouterr().out
+    # The fake backend evaluates no condition, and says so.
     _refuse_bad_preconditions([(scenario, [_effs()["phone"]])], erase=None, fake=True)
 
 

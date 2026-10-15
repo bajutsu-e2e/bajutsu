@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from collections.abc import Callable, Collection, Iterable, Mapping
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -2225,6 +2225,64 @@ def run_matrix_and_report(
     return results, manifest
 
 
+def report_run_matrix(
+    eff: Effective,
+    scenarios: list[Scenario],
+    results: list[RunResult],
+    plan_order: Sequence[int],
+    runs_dir: Path,
+    run_id: str,
+    *,
+    target_effs: Mapping[str, Effective] | None = None,
+    not_applicable: list[dict[str, str]] | None = None,
+    source_name: str | None = None,
+    description: str | None = None,
+    plan_sources: Mapping[str, ScenarioPlanSource] | None = None,
+    secret_values: list[str] | None = None,
+    config_source: dict[str, str] | None = None,
+    exec_provenance: dict[str, str | None] | None = None,
+    label: str | None = None,
+    worker_failures: Mapping[int, str] | None = None,
+) -> Path:
+    """Write ONE report for the runs `runsOn` conditions formed across *scenarios* (BE-0452).
+
+    The caller has already run each run against its own eligible devices and tagged every result
+    with its coordinates; this only assembles the report. *plan_order* names the scenario each result
+    ran, since a scenario contributes one result per run. *not_applicable* records the runs no
+    available device fell in an open range for, which the manifest lists apart from the results.
+
+    Returns:
+        The path to the written `manifest.json`.
+    """
+    run_dir = runs_dir / run_id
+    prepare_run_dir(runs_dir, run_id)
+    return _assemble_report(
+        with_lifecycle_phases(eff, scenarios, dict(target_effs or {}), skip=worker_failures or {}),
+        results,
+        run_dir,
+        run_id,
+        description=description,
+        source_name=source_name,
+        plan_sources=plan_sources,
+        secret_values=secret_values,
+        config_source=config_source,
+        exec_provenance=exec_provenance,
+        target=eff.target,
+        label=label,
+        plan_order=plan_order,
+        not_applicable=not_applicable,
+    )
+
+
+def reroot_evidence(r: RunResult, prefix: str) -> None:
+    """Prefix *r*'s run-dir-relative evidence paths with `<prefix>/`, as a matrix pass writes them.
+
+    A run formed by `runsOn` conditions writes its evidence under its own subdirectory of the run
+    dir, as an engine pass of `--browsers` does (BE-0076, BE-0452).
+    """
+    _reroot_evidence(r, prefix)
+
+
 def _cancelled_pass(
     scenarios: list[Scenario], engine: str, worker_failures: Mapping[int, str] | None = None
 ) -> list[RunResult]:
@@ -2296,6 +2354,8 @@ def _assemble_report(
     exec_provenance: dict[str, str | None] | None = None,
     target: str | None = None,
     label: str | None = None,
+    plan_order: Sequence[int] | None = None,
+    not_applicable: list[dict[str, str]] | None = None,
 ) -> Path:
     """Write the run's report artifacts under `run_dir` from its (possibly engine-tagged) results.
 
@@ -2309,6 +2369,11 @@ def _assemble_report(
     YAML tab from each scenario's own on-disk text instead of a re-dump — the sink's own
     scrub (above) still runs over it like every other artifact, on top of the structural TOTP-secret
     masking `scenario_sources` already applied when it read the file.
+
+    `plan_order` names, for each result, the index of the scenario it ran, when a scenario's runs
+    make more than one result (BE-0452); the report's per-result plan inputs follow it. None keeps
+    the positional pairing the single-engine and `--browsers` paths use. `not_applicable` holds the
+    records of runs no available device fell in an open range for.
     """
     # Snapshot for evidence with literal `totp.secret` seeds masked (BE-0152) — a `${secrets.*}`
     # reference is kept and its resolved value is masked by the sink below.
@@ -2318,6 +2383,11 @@ def _assemble_report(
     # whenever `plan_sources` is unavailable there too (an older run, or one BE-cli didn't produce).
     definitions, sources = scenario_render_inputs(snapshot, plan_sources)
     source_files, step_lines = scenario_source_meta(snapshot, plan_sources)
+    if plan_order is not None:
+        definitions = [definitions[i] for i in plan_order]
+        sources = [sources[i] for i in plan_order]
+        source_files = [source_files[i] for i in plan_order]
+        step_lines = [step_lines[i] for i in plan_order]
     writer = RunArtifactWriter(run_dir, Redactor(None, values=secret_values))
     # Keep the executed scenario alongside its results (re-runnable / reviewable).
     scenario_yaml = dump_scenario_file(snapshot, description)
@@ -2346,4 +2416,5 @@ def _assemble_report(
         label=label,
         source_files=source_files,
         step_lines=step_lines,
+        not_applicable=not_applicable,
     )

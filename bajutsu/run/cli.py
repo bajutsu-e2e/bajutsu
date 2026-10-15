@@ -7,7 +7,7 @@ import os
 import select
 import sys
 import typing
-from collections.abc import Callable, Iterable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any
@@ -44,10 +44,16 @@ from bajutsu.common.backends import (
     capabilities_for_run,
     current_host_os,
     default_available,
+    ensure_web_runtime,
     select_actuator,
     select_actuator_for_scenario,
 )
-from bajutsu.common.cancellation import CancelSource, graceful_sigterm, not_cancelled
+from bajutsu.common.cancellation import (
+    CANCELLED_FAILURE,
+    CancelSource,
+    graceful_sigterm,
+    not_cancelled,
+)
 from bajutsu.common.capability import capability_preflight
 from bajutsu.common.capability.worker_capability import WorkerCapability
 from bajutsu.common.config import (
@@ -58,6 +64,7 @@ from bajutsu.common.config import (
 )
 from bajutsu.common.deprecations import warn_once
 from bajutsu.common.devices import errors as device_errors
+from bajutsu.common.devices import facts as device_facts
 from bajutsu.common.drivers import base
 from bajutsu.common.github import actions as github_actions
 from bajutsu.common.orchestrator import (
@@ -73,7 +80,15 @@ from bajutsu.common.report.archive import archive_run_dir
 from bajutsu.common.report.manifest import MAX_LABEL_LENGTH, _run_backend
 from bajutsu.common.run_meta.files import DEFAULT_RUNS_DIR
 from bajutsu.common.run_meta.id import new_run_id
-from bajutsu.common.runner import device_pool, run_all, run_and_report, run_matrix_and_report
+from bajutsu.common.runner import (
+    device_pool,
+    prepare_run_dir,
+    report_run_matrix,
+    reroot_evidence,
+    run_all,
+    run_and_report,
+    run_matrix_and_report,
+)
 from bajutsu.common.runner.build import BuildError, build_if_missing
 from bajutsu.common.runner.device_provider import DeviceLease, acquire_device
 from bajutsu.common.runner.pipeline import with_lifecycle_phases
@@ -103,6 +118,19 @@ from bajutsu.common.scenario.system_alerts import (
     covered_languages,
     system_alert_shapes,
 )
+from bajutsu.run.device_matrix import (
+    Cell,
+    DeviceMatrix,
+    TargetLanes,
+    any_conditions,
+    condition_problems,
+    installed_browser,
+    not_applicable_record,
+    participants_of,
+    read_pool_facts,
+    render_not_applicable,
+)
+from bajutsu.run.device_matrix import plan as plan_device_matrix
 from bajutsu.run.step_gate import PromptStepGate
 
 
@@ -931,6 +959,90 @@ def _reject_bad_target_config_hooks(
     except ValueError as e:
         typer.echo(f"config-level before/after hook: {e}")
         raise typer.Exit(2) from None
+
+
+def _reject_unmatchable_conditions(
+    scenarios: list[Scenario],
+    target_effs: Mapping[str, Effective],
+    primary: str,
+    engines: list[str],
+    *,
+    engine_flag: bool,
+) -> None:
+    """Refuse, before any device work, a condition no device of the run can be matched against.
+
+    A physical iPhone and a target an `appium` grid serves have no pool to read, and the members of
+    a device group must agree on their conditions (`condition_problems`). A `--browsers` engine list
+    beside any remaining condition is refused too: engines number their versions differently, so
+    the pair a target cannot write at load is not formed at run time either (BE-0452).
+
+    Raises:
+        typer.Exit: Any scenario has such a condition (exit code 2).
+    """
+    problems = condition_problems(scenarios, target_effs, primary, engine_flag=engine_flag)
+    if len(engines) > 1:
+        lanes = {n: TargetLanes(n, e, "", ()) for n, e in target_effs.items()}
+        if any_conditions(scenarios, lanes, primary, engine_flag=True):
+            problems.append(
+                "--browsers forms an engine list, which cannot be combined with a runsOn condition "
+                "such as browser.version: each engine numbers its versions differently"
+            )
+    if problems:
+        for problem in problems:
+            typer.echo(problem)
+        raise typer.Exit(2)
+
+
+def _web_backends(setups: Mapping[str, _TargetSetup]) -> list[str]:
+    """The backend list of the run's web target, which provisions an engine before it launches."""
+    return next((s.backends for s in setups.values() if s.actuator == "playwright"), ["web"])
+
+
+def _plan_device_runs(
+    scenarios: list[Scenario],
+    setups: Mapping[str, _TargetSetup],
+    primary: str,
+    *,
+    engine_flag: bool,
+    skip: Mapping[int, str],
+    step_gate: StepGate | None,
+    read_facts: Callable[[TargetLanes], list[device_facts.DeviceFacts]] = read_pool_facts,
+    read_browser: Callable[[str], device_facts.DeviceFacts] | None = None,
+) -> DeviceMatrix | None:
+    """The runs the scenarios' `runsOn` conditions form, or None when no scenario declares one.
+
+    None keeps today's single-engine and `--browsers` paths unchanged for a run without conditions.
+
+    Raises:
+        typer.Exit: A pool's devices could not be read, or `--step` meets more than one run
+            (exit code 2).
+    """
+    lanes = {
+        name: TargetLanes(name, setup.eff, setup.actuator, tuple(setup.udids))
+        for name, setup in setups.items()
+    }
+    runnable = [s for i, s in enumerate(scenarios) if i not in skip]
+    if not any_conditions(runnable, lanes, primary, engine_flag=engine_flag):
+        return None
+    try:
+        matrix = plan_device_matrix(
+            scenarios,
+            lanes,
+            primary,
+            engine_flag=engine_flag,
+            read_facts=read_facts,
+            read_browser=read_browser or installed_browser(_web_backends(setups)),
+            skip=skip,
+        )
+    except device_errors.DeviceError as e:
+        typer.echo(str(e))
+        raise typer.Exit(2) from None
+    if step_gate is not None and len(matrix.records) > 1:
+        typer.echo(
+            "--step needs exactly one run, but the scenario's runsOn conditions form several"
+        )
+        raise typer.Exit(2)
+    return matrix
 
 
 def _filter_scenarios(
@@ -2042,6 +2154,9 @@ class _RunPlan:
     trace_driver: bool
     # `--step` / `--break` / `--break-on-fail`: the prompt that holds the step loop at a boundary.
     step_gate: StepGate | None = None
+    # The runs `runsOn` conditions formed (BE-0452), indexed into `scenarios`; None when no scenario
+    # runs any target under a condition, which keeps the single-engine and `--browsers` paths.
+    matrix: DeviceMatrix | None = None
 
 
 def _print_score(score: Score) -> None:
@@ -2057,12 +2172,12 @@ def _print_score(score: Score) -> None:
     typer.echo(render(score), err=True)
 
 
-def _dispatch(plan: _RunPlan) -> tuple[list[RunResult], Path]:
-    """Bring up the launch server and execute the run — single-engine or cross-browser matrix.
+def _dispatch(plan: _RunPlan) -> tuple[list[RunResult], Path, list[dict[str, str]]]:
+    """Bring up the launch server and execute the run — single-engine, cross-browser, or device runs.
 
     The launch server (if the target declares one) is brought up before the pool leases and torn
     down in the finally; one server serves every engine in a matrix run. Returns the per-scenario
-    results and the report manifest path.
+    results, the report manifest path, and the not-applicable records (BE-0452).
     """
     # --progress streams scenario/step lines to stderr (the web UI merges them into its run log);
     # stdout stays the machine-readable final PASS/FAIL line.
@@ -2088,9 +2203,11 @@ def _dispatch(plan: _RunPlan) -> tuple[list[RunResult], Path]:
         plan.eff, upload_exec=plan.upload_exec or None
     )
     try:
+        if plan.matrix is not None:
+            return _dispatch_runs(plan, plan.matrix, progress_fn, exec_decision)
         if len(plan.engines) > 1:
-            return _dispatch_matrix(plan, progress_fn, exec_decision)
-        return _dispatch_single(plan, progress_fn, exec_decision)
+            return (*_dispatch_matrix(plan, progress_fn, exec_decision), [])
+        return (*_dispatch_single(plan, progress_fn, exec_decision), [])
     except device_errors.DeviceError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
@@ -2298,6 +2415,190 @@ def _dispatch_matrix(
     )
 
 
+def _dispatch_runs(
+    plan: _RunPlan,
+    matrix: DeviceMatrix,
+    progress_fn: Callable[[str], None] | None,
+    exec_decision: dict[str, str | None] | None,
+) -> tuple[list[RunResult], Path, list[dict[str, str]]]:
+    """The runs `runsOn` conditions formed (BE-0452): one pass per cell, then ONE report.
+
+    Each cell runs against pools narrowed to its eligible sets, so a run never takes a device
+    outside its set; its evidence lands under `run_dir/run-NN/`, as an engine pass of `--browsers`
+    does under `run_dir/<engine>/`. A run no device fits fails without a lease, and a run an open
+    range left without a device is a not-applicable record, which the manifest lists apart.
+    """
+    # Owner-only up front (BE-0131): the sink creating run_dir/run-NN/ would otherwise materialize
+    # the run directory above it at the ambient umask for the whole run.
+    prepare_run_dir(plan.runs_dir, plan.run_id)
+    executed: dict[int, RunResult] = {}  # keyed by id() of the record that ran
+    for number, cell in enumerate(matrix.cells, start=1):
+        prefix = f"run-{number:02d}"
+        if plan.cancelled():
+            # Every run left is failed as cancelled, never dropped, as the `--browsers` matrix does.
+            for record in cell.runs:
+                executed[id(record)] = RunResult(
+                    scenario=plan.scenarios[record.scenario].name,
+                    ok=False,
+                    steps=[],
+                    failure=CANCELLED_FAILURE,
+                    coordinates=record.combination.label,
+                    run_coordinates=record.combination.coordinates,
+                )
+            continue
+        if progress_fn is not None:
+            labels = dict.fromkeys(r.combination.label for r in cell.runs if r.combination.label)
+            progress_fn(f"━ {prefix} {'; '.join(labels)}".rstrip())
+        passed = _run_cell(plan, cell, prefix, progress_fn, first=number == 1)
+        for record, result in zip(cell.runs, passed, strict=True):
+            result.coordinates = record.combination.label
+            result.run_coordinates = record.combination.coordinates
+            reroot_evidence(result, prefix)
+            executed[id(record)] = result
+    results: list[RunResult] = []
+    plan_order: list[int] = []
+    for index, s in enumerate(plan.scenarios):
+        if index in plan.worker_failures:
+            results.append(
+                RunResult(scenario=s.name, ok=False, steps=[], failure=plan.worker_failures[index])
+            )
+            plan_order.append(index)
+    not_applicable: list[dict[str, str]] = []
+    for record in matrix.records:
+        s = plan.scenarios[record.scenario]
+        combo = record.combination
+        if combo.outcome == "not-applicable":
+            not_applicable.append(not_applicable_record(s, plan.target_name, combo))
+            continue
+        result = executed.get(id(record)) or RunResult(
+            scenario=s.name,
+            ok=False,
+            steps=[],
+            failure=f"no device fits this run: {combo.reason}",
+            coordinates=combo.label,
+            run_coordinates=combo.coordinates,
+        )
+        results.append(result)
+        plan_order.append(record.scenario)
+    manifest = report_run_matrix(
+        plan.eff,
+        plan.scenarios,
+        results,
+        plan_order,
+        plan.runs_dir,
+        plan.run_id,
+        target_effs={name: setup.eff for name, setup in plan.targets.items()},
+        not_applicable=not_applicable,
+        source_name=plan.source_name,
+        description=plan.description,
+        plan_sources=plan.plan_sources,
+        secret_values=plan.secret_values,
+        config_source=plan.config_source,
+        exec_provenance=exec_decision,
+        label=plan.label or None,
+        worker_failures=plan.worker_failures,
+    )
+    return results, manifest, not_applicable
+
+
+def _run_cell(
+    plan: _RunPlan,
+    cell: Cell,
+    prefix: str,
+    progress_fn: Callable[[str], None] | None,
+    *,
+    first: bool,
+) -> list[RunResult]:
+    """Run one cell's scenarios against pools narrowed to its devices, one result per run."""
+    scenarios = [plan.scenarios[record.scenario] for record in cell.runs]
+    names = list(
+        dict.fromkeys(
+            name
+            for s in scenarios
+            for group in participants_of(s, plan.target_name)
+            for name in group
+        )
+    )
+    effs: dict[str, Effective] = {}
+    keys: dict[str, tuple[str, tuple[str, ...], str]] = {}
+    for name in names:
+        setup = plan.targets[name]
+        eff = setup.eff
+        engine = cell.engines.get(name, "")
+        if engine:
+            try:
+                # A listed engine may not be installed yet; the web backend installs it on demand.
+                ensure_web_runtime(setup.backends, engine)
+            except RuntimeError as e:
+                typer.echo(str(e))
+                raise typer.Exit(2) from None
+            eff = _resolve_browser(eff, engine)
+        effs[name] = eff
+        keys[name] = (setup.actuator, cell.devices.get(name, tuple(setup.udids)), engine)
+    run_dir = plan.runs_dir / plan.run_id / prefix
+    pools: dict[tuple[str, tuple[str, ...], str], tuple[LeaseFn, Callable[[], None]]] = {}
+    try:
+        for name in names:
+            if keys[name] in pools:
+                continue
+            setup = plan.targets[name]
+            pools[keys[name]] = device_pool(
+                list(keys[name][1]),
+                setup.backends,
+                effs[name],
+                run_dir,
+                network=plan.network,
+                log_predicate=plan.log_predicate or None,
+                log_subsystem=plan.log_subsystem or _log_subsystem_default(effs[name]),
+                secret_values=plan.secret_values,
+                provision=setup.device.provision,
+            )
+        # Each worker holds one device per participant on a pool for the scenario's whole length.
+        demand: dict[tuple[str, tuple[str, ...], str], int] = {}
+        for s in scenarios:
+            per_pool: dict[tuple[str, tuple[str, ...], str], int] = {}
+            for group in participants_of(s, plan.target_name):
+                per_pool[keys[group[0]]] = per_pool.get(keys[group[0]], 0) + 1
+            for key, n in per_pool.items():
+                demand[key] = max(demand.get(key, 0), n)
+        workers = max(1, min([plan.workers, *(len(k[1]) // n for k, n in demand.items())]))
+        lead = plan.target_name if plan.target_name in names else names[0]
+        return run_all(
+            effs[lead],
+            scenarios,
+            pools[keys[lead]][0],
+            targets={
+                name: TargetPool(
+                    eff=effs[name],
+                    lease=pools[keys[name]][0],
+                    actuator=plan.targets[name].actuator,
+                    udid_spec=plan.targets[name].device.udid_spec,
+                )
+                for name in names
+            },
+            alert_guard_for=plan.alert_guard_for,
+            workers=workers,
+            run_dir=run_dir,
+            bindings=plan.secret_bindings,
+            secret_values=plan.secret_values,
+            progress=progress_fn,
+            baselines_dir=plan.baselines_dir,
+            schemas_dir=plan.schemas_dir,
+            resolve_actuator=lambda s: select_actuator_for_scenario(plan.backends, s),
+            golden_context=plan.golden_context,
+            lease_udid_spec=plan.udid_spec,
+            on_score=_print_score if plan.score and first else None,
+            trace_driver=plan.trace_driver,
+            force_erase_on_retry=plan.force_erase_on_retry,
+            cancelled=plan.cancelled,
+            step_gate=plan.step_gate,
+        )
+    finally:
+        # The engine stays in the label: two web pools can differ only by it, and a shared label
+        # would drop one pool's shutdown.
+        _close_pools({f"{k[0]} {','.join(k[1])} {k[2]}".rstrip(): v for k, v in pools.items()})
+
+
 def _write_zip(manifest: Path) -> None:
     """Package the finished run into runs/<id>.zip, strictly after the verdict (BE-0060).
 
@@ -2343,14 +2644,30 @@ def _upload_evidence(manifest: Path, evidence_store: str) -> None:
             typer.echo(f"  warning: upload failed for {key}: {reason}", err=True)
 
 
-def _finish(plan: _RunPlan, results: list[RunResult], manifest: Path) -> None:
+def _finish(
+    plan: _RunPlan,
+    results: list[RunResult],
+    manifest: Path,
+    not_applicable: Sequence[Mapping[str, str]] = (),
+) -> None:
     """Emit the verdict and every post-verdict step, then exit with the machine-only code.
 
     Order is load-bearing: the PASS/FAIL verdict and exit code are decided first (machine-only, no
     LLM); `--zip` and `--evidence-store` run strictly after and can only warn, never flip the verdict
-    (BE-0060/BE-0110).
+    (BE-0060/BE-0110). Not-applicable records (BE-0452) are listed apart; an invocation where every
+    record is not applicable executed nothing, so it fails with "no run executed" rather than report
+    green.
     """
-    ok = all(r.ok for r in results)
+    for record in not_applicable:
+        typer.echo(render_not_applicable(record))
+    ok = all(r.ok for r in results) and bool(results or not not_applicable)
+    if plan.matrix is not None:
+        passed = sum(1 for r in results if r.ok)
+        typer.echo(
+            f"{passed} passed, {len(results) - passed} failed, {len(not_applicable)} not applicable"
+        )
+        if not results:
+            typer.echo("no run executed: every run was not applicable")
     github_actions.emit(results, manifest.parent / "report.html")  # annotations + summary in CI
     # Webhook: post-verdict notification (BE-0099).
     if plan.eff.notify:
@@ -2787,6 +3104,12 @@ def run_body(
     # idb, `--udid` is a concrete comma list capped to the pool size. (The "booted" default is
     # unused on web.) How a device handle resolves is the platform's, behind the Environment seam
     # (BE-0256): Android via adb, the iOS family via simctl — no `actuator == "adb"` branch here.
+    fake = [b.strip() for b in backend.split(",") if b.strip()] == ["fake"]
+    engine_flag = bool(browser or engines)
+    if not fake:
+        _reject_unmatchable_conditions(
+            scenarios, target_effs, target_name, engines, engine_flag=engine_flag
+        )
     _reject_unshareable_groups(scenarios, target_effs, backend, engines, udid, worker)
     setups = _acquire_targets(target_effs, backend, engines, udid, workers, worker)
     primary = setups[target_name]
@@ -2799,6 +3122,16 @@ def run_body(
         # scenario's own target count (BE-0428).
         _reject_incompatible_actuator_sharing(setups)
         _reject_preinstalled_group_builds(scenarios, setups)
+        # Decided per target from its resolved actuator, so a target the fake driver runs reads no
+        # device whichever way it came to the fake actuator.
+        matrix = _plan_device_runs(
+            all_scenarios,
+            setups,
+            target_name,
+            engine_flag=engine_flag,
+            skip=worker_failures,
+            step_gate=step_gate,
+        )
         workers = _resolve_multi_target_workers(scenarios, setups, primary.workers)
         _apply_system_alert_handling(
             scenarios, resolve_system_alert_handling_flag(system_alert_handling)
@@ -2875,14 +3208,15 @@ def run_body(
                 force_erase_on_retry=erase is not False,
                 cancelled=cancelled,
                 worker_failures=worker_failures,
+                matrix=matrix,
             )
             # No usage ledger and no token accounting here: since BE-0402 removed the alert guard's
             # vision fallback, nothing in `run` can reach a model, so there is nothing to attribute.
-            results, manifest = _dispatch(plan)
+            results, manifest, not_applicable = _dispatch(plan)
             if step_gate is not None:
                 for unreached in step_gate.unreached_breaks():
                     typer.echo(f"breakpoint never reached: {unreached}", err=True)
-            _finish(plan, results, manifest)
+            _finish(plan, results, manifest, not_applicable)
     finally:
         # Hand every target's device back to its provider (a no-op for the local one), even on
         # failure so a reserved cloud device is never leaked (BE-0236).

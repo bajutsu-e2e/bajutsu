@@ -141,13 +141,20 @@ uses it as always. Each self-declaring file has it checked for membership instea
   `worker-capability-unsupported:`. The run's results and report record it like any other
   scenario that did not pass. `run` acquires no device for that scenario and runs the rest. When no scenario
   can run, `run` exits 2 and lists each reason.
-- **Device conditions are not yet matched (BE-0452).** A target may declare a device condition:
+- **Device conditions form runs (BE-0452).** A target may declare a device condition:
   `runsOn.model`, `runsOn.os`, `runsOn.avd`, `runsOn.apiLevel`, `runsOn.browser.version`, or a list
-  on `model`, `avd`, or `browser.engine`. The config loads, but `run` cannot yet match a device
-  against one, so a run against such a target fails with "not yet supported" and exits 2. `record`,
-  `crawl`, `repl`, `audit`, an MCP run, and `doctor`'s screen probe do the same. `--backend fake`
-  skips the check with one notice. The cross-browser matrix flag `--browsers` keeps working.
-  A scenario's own `preconditions.runsOn` conditions get the same refusal from `run` and `audit`.
+  on `model`, `avd`, or `browser.engine`. A scenario's `preconditions.runsOn` block overrides the
+  target's conditions field by field. `run` reads every device of the `--udid` pool, makes one run
+  per listed value and per major version of a range, and runs each on its own eligible devices
+  ([configuration](configuration.md#device-conditions-runson)). Each run's evidence lands under
+  `runs/<id>/run-NN/`. Its JUnit and Common Test Report Format (CTRF) test names carry its
+  coordinates. A run that no device fits fails. The console lists a run an open range left without a device as "not
+  applicable". The line before the verdict counts passes, failures, and not-applicable records.
+  When every record is not applicable, `run` exits with code 1 and prints `no run executed`.
+  `audit --repeat` and an MCP run form runs the same way. `record`, `crawl`, and `repl` take the first run alone. `doctor`'s
+  screen probe still refuses a condition. `--backend fake` matches none, with one notice.
+  `--browsers` beside a remaining condition such as `browser.version` exits 2, and `--step` exits 2
+  when the conditions form more than one run.
 - **Preconditions come first (BE-0452).** Before any device work, `run` and `audit` check each
   scenario. They check it against the targets it drives. Some fields exist on one platform alone, such
   as `app.launch.args` or `run.tipKitHandling`. When no driven target's platform has such a field,

@@ -16,6 +16,7 @@ from bajutsu.cli._shared import (
     _build_alert_guard,
     _command_preconditions_or_exit,
     _device_udid_or_exit,
+    _first_run_or_exit,
     _install_usage_ledger,
     _load_device_worker_or_exit,
     _load_effective_with_source,
@@ -215,6 +216,8 @@ def record(
     # The device comes through the target's provider, as in `run`: the `--udid` pool, or the grid
     # an `appium` environment names (BE-0452).
     udid = _device_udid_or_exit(eff, udid)
+    # Under `runsOn` conditions the command takes the first run's device, never several (BE-0452).
+    eff, udid = _first_run_or_exit(eff, actuator, udid)
     alert_guard = None
     # There is no scenario yet to carry its own setting, so the flag sits over the target's
     # `run.systemAlertHandling`, which is on unless the target writes `false` (BE-0452).

@@ -37,6 +37,7 @@ from bajutsu.cli._shared import (
     _build_alert_guard,
     _command_preconditions_or_exit,
     _device_udid_or_exit,
+    _first_run_or_exit,
     _install_usage_ledger,
     _load_device_worker_or_exit,
     _load_effective_with_source,
@@ -553,6 +554,8 @@ def crawl(
     # The device comes through the target's provider, as in `run`: the `--udid` pool, or the grid
     # an `appium` environment names (BE-0452).
     udid = _device_udid_or_exit(eff, udid)
+    # Under `runsOn` conditions the command takes the first run's device, never several (BE-0452).
+    eff, udid = _first_run_or_exit(eff, actuator, udid)
     # Fail closed (BE-0097 / BE-0047): the guide and the alert guard both reach the model via the
     # resolved SDK provider (Anthropic / Bedrock / ant), so a missing credential is an actionable
     # error, not a quiet fallback. Placed after backend selection so a config/backend error surfaces

@@ -17,7 +17,7 @@ from datetime import datetime
 
 from bajutsu import __version__
 from bajutsu.common.orchestrator import RunResult, StepOutcome
-from bajutsu.common.report.manifest import _details, _matrix
+from bajutsu.common.report.manifest import _details, _matrix, result_test_name
 from bajutsu.common.run_meta.id import parse_run_id_timestamp
 from bajutsu.common.run_meta.object_store import content_type_for
 
@@ -66,8 +66,12 @@ def _status(ok: bool) -> str:
 
 
 def _test_name(r: RunResult) -> str:
-    """The scenario name, suffixed with the engine on a cross-browser cell (BE-0076)."""
-    return f"{r.scenario} [{r.engine}]" if r.engine else r.scenario
+    """The scenario name, suffixed with the engine on a cross-browser cell (BE-0076).
+
+    A run formed by `runsOn` conditions appends its coordinates too, so one scenario's runs keep
+    unique test names (BE-0452).
+    """
+    return result_test_name(r)
 
 
 def _device_label(device_name: str, device_runtime: str) -> str:

@@ -77,8 +77,9 @@ class Effective:
     # step and after a relaunch, by polling. None keeps the default readiness chain.
     start_when: base.Selector | None = None
     # The device conditions the target's `runsOn` declares, keyed by field (`model`, `os`, `avd`,
-    # `apiLevel`, `browser.version`, or a listed `browser.engine`). Matching devices against them
-    # lands with BE-0452 unit 9; until then a run refuses a target that declares any.
+    # `apiLevel`, `browser.version`, or a listed `browser.engine`); ranges are their text as written.
+    # A run forms its runs from them and matches devices against them (BE-0452); `doctor`'s device
+    # path still refuses a target that declares any, until unit 11.
     conditions: dict[str, str | list[str]] = field(default_factory=dict)
     # Configurable doctor id-coverage thresholds (BE-0024 / BE-0252).
     doctor_thresholds: DoctorThresholds = field(default_factory=DoctorThresholds)

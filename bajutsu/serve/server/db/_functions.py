@@ -54,6 +54,7 @@ def _to_record(row: Run) -> RunRecord:
         device_runtime=row.device_runtime,
         label=row.label,
         target=row.target,
+        run_coordinates=row.run_coordinates,
         deleted_at=row.deleted_at,
         deleted_by=row.deleted_by,
     )

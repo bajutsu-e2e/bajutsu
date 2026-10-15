@@ -25,6 +25,8 @@ from bajutsu.common.cloud.devicefarm import (
     render_test_spec,
     submit_and_collect,
 )
+from bajutsu.common.config.schema._merge import merge_defaults
+from bajutsu.common.devices.runs import unpack_conditions
 
 from .batch_checkpoint import BatchCheckpoint
 from .batch_lifecycle_hook import BatchContext, BatchLifecycleHook
@@ -73,6 +75,49 @@ def _check_launch_env_collisions(
                     f"({scenario_path.name}). The scenario value wins on-device, "
                     f"silently overriding the injected one."
                 )
+
+
+def _check_no_conditions(
+    config_path: Path, scenario_path: Path, target: str, platform: str
+) -> None:
+    """Raise when the job's target or scenario declares a `runsOn` condition (BE-0452).
+
+    A Device Farm device is reserved by the worker, not read from a pool, so no condition can be
+    matched against it; the worker refuses the job before it submits anything rather than letting
+    the condition go ignored. `locale` and `seedPhotos` are device state, so they stay allowed. A
+    file the job does not carry declares nothing here; the run on the device reports it missing.
+    """
+
+    def read(path: Path) -> Any:
+        return yaml.safe_load(path.read_text(encoding="utf-8")) if path.is_file() else None
+
+    config = read(config_path) or {}
+    targets = config.get("targets") if isinstance(config, dict) else None
+    defaults = config.get("defaults") if isinstance(config, dict) else None
+    raw = targets.get(target) if isinstance(targets, dict) else None
+    raw = raw if isinstance(raw, dict) else {}
+    # The loader's own merge, so a team-wide `defaults.platforms.<platform>.runsOn` reaches the
+    # target as it does at load, and a target's `null` clears it.
+    merged = merge_defaults(defaults, raw) if isinstance(defaults, dict) else raw
+    runs_on = merged.get("runsOn")
+    declared: dict[str, object] = runs_on if isinstance(runs_on, dict) else {}
+    found = [f"target {target!r} runsOn.{name}" for name in unpack_conditions(declared)]
+    scenarios = read(scenario_path)
+    for scenario in scenarios if isinstance(scenarios, list) else []:
+        pre = scenario.get("preconditions") if isinstance(scenario, dict) else None
+        runs_on = pre.get("runsOn") if isinstance(pre, dict) else None
+        block = runs_on.get(platform) if isinstance(runs_on, dict) else None
+        if isinstance(block, dict):
+            name = scenario.get("name", "<unnamed>")
+            found += [
+                f"scenario {name!r} preconditions.runsOn.{platform}.{field}"
+                for field in unpack_conditions(block)
+            ]
+    if found:
+        raise ValueError(
+            f"{', '.join(found)}: a Device Farm device has no pool to match a runsOn condition "
+            "against; remove the condition, or run the job locally"
+        )
 
 
 class DeviceFarmBatchProvider:
@@ -154,6 +199,12 @@ class DeviceFarmBatchProvider:
                     interrupt=interrupt,
                 )
             else:
+                _check_no_conditions(
+                    work_dir / request.config,
+                    work_dir / request.scenario,
+                    request.target,
+                    request.platform,
+                )
                 for hook in self._hooks:
                     hook.before_submit(ctx)
 

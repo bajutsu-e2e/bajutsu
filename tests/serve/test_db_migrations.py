@@ -339,3 +339,22 @@ def test_0023_adds_an_idle_handoff_to_existing_jobs(migration_db_url: str) -> No
             assert [tuple(r) for r in rows] == [("j1", "leased")]
     finally:
         engine.dispose()
+
+
+@pytest.mark.parametrize("migration_db_url", _DIALECTS, indirect=True)
+def test_0024_adds_run_coordinates_null_on_existing_runs(migration_db_url: str) -> None:
+    """0024 adds the coordinates column; a run recorded before it carries none (BE-0452)."""
+    from alembic import command
+
+    cfg = _alembic_config()
+    command.upgrade(cfg, "0023")
+    engine = create_engine(migration_db_url)
+    try:
+        command.upgrade(cfg, "0024")
+        columns = {c["name"] for c in inspect(engine).get_columns("runs")}
+        assert "run_coordinates" in columns
+        command.downgrade(cfg, "0023")
+        columns = {c["name"] for c in inspect(engine).get_columns("runs")}
+        assert "run_coordinates" not in columns
+    finally:
+        engine.dispose()

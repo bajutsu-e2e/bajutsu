@@ -9,11 +9,11 @@ target.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Literal
 
-from bajutsu.common.config.effective import Effective
+from bajutsu.common.config.effective import Effective, IosConfig
 from bajutsu.common.config.schema.platform import (
     accepts_field,
     allowed_fields,
@@ -21,6 +21,7 @@ from bajutsu.common.config.schema.platform import (
     validate_model,
 )
 from bajutsu.common.config.schema.target_config import run_model
+from bajutsu.common.devices.runs import unpack_conditions
 from bajutsu.common.scenario import Preconditions
 
 # `runsOn` fields a scenario may not set: `kind` and `emulate` say how a target is driven, so they
@@ -173,6 +174,57 @@ def scenario_conditions(pre: Preconditions, platforms: Sequence[str]) -> list[st
             else:
                 found.append(f"runsOn.{platform}.{key}")
     return found
+
+
+def effective_conditions(
+    eff: Effective, pre: Preconditions | None = None, *, engine_flag: bool = False
+) -> dict[str, str | list[str]]:
+    """The `runsOn` conditions one target runs a scenario under: the scenario's block over the target's.
+
+    The scenario's block for the target's platform overrides the target's conditions field by field,
+    so the scenario wins, and may widen the target's range (BE-0452). A single `browser.engine` in the
+    scenario replaces the target's engine for the scenario's runs; a `--browser` or `--browsers` flag
+    (*engine_flag*) wins over both, so the scenario's engine is dropped.
+
+    Args:
+        eff: The target the scenario runs against.
+        pre: The scenario's preconditions; None for a command that runs no scenario.
+        engine_flag: Whether a command-line flag already names the web engine.
+    """
+    merged = dict(eff.conditions)
+    if pre is not None:
+        merged.update(unpack_conditions(pre.runs_on_for(eff.schema_platform)))
+    if engine_flag:
+        merged.pop("browser.engine", None)
+    return merged
+
+
+def remote_condition_problems(
+    eff: Effective, conditions: Mapping[str, str | list[str]]
+) -> list[str]:
+    """Why *conditions* cannot be matched for *eff*: it has no pool to read before the run.
+
+    A physical iPhone (`runsOn.kind: device`) and a target an `appium` grid serves are never matched,
+    so a condition on either fails rather than going ignored (BE-0452). `locale` and `seedPhotos` are
+    device state, not conditions, so they never appear here.
+
+    Returns:
+        One message per condition, each naming the field; empty when the target can be matched.
+    """
+    if not conditions:
+        return []
+    ios = eff.platform_config if isinstance(eff.platform_config, IosConfig) else None
+    if ios is not None and ios.xcuitest is not None and ios.xcuitest.device_type == "device":
+        where = "a physical device (runsOn.kind: device)"
+    elif eff.device_provider is not None and eff.device_provider.kind != "local":
+        where = f"a remote environment ({eff.device_provider.kind})"
+    else:
+        return []
+    return [
+        f"runsOn.{eff.schema_platform}.{name}: target {eff.target!r} runs on {where}, which has "
+        "no device pool to match a condition against; remove the condition for this target"
+        for name in conditions
+    ]
 
 
 def check_preconditions(

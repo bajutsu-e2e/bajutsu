@@ -193,7 +193,7 @@ def test_run_warns_and_keeps_its_verdict_when_release_raises(
         manifest.parent.mkdir(parents=True, exist_ok=True)
         manifest.write_text("{}", encoding="utf-8")
         result_row = RunResult(scenario="demo", ok=True, steps=[])
-        monkeypatch.setattr(run_cmd, "_dispatch", lambda plan: ([result_row], manifest))
+        monkeypatch.setattr(run_cmd, "_dispatch", lambda plan: ([result_row], manifest, []))
         # No CI annotations off a fake manifest (patch the name run.py's `_finish` actually calls).
         monkeypatch.setattr(github_actions, "emit", lambda *a, **k: None)
 
