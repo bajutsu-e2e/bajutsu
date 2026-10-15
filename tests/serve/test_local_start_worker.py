@@ -566,7 +566,11 @@ def test_a_log_line_clears_the_notice_in_the_event_stream(tmp_path: Path) -> Non
 
 
 def _processes_naming(text: str) -> list[str]:
-    out = subprocess.run(["ps", "-ax", "-o", "command"], capture_output=True, text=True, check=True)
+    # `-ww` lifts ps's column limit: without it a ps that sizes its output to a terminal cuts each
+    # command line at that width (80 here inside pytest), dropping the scenario path being matched.
+    out = subprocess.run(
+        ["ps", "-ax", "-ww", "-o", "command"], capture_output=True, text=True, check=True
+    )
     return [line for line in out.stdout.splitlines() if text in line and "ps -ax" not in line]
 
 

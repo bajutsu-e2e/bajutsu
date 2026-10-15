@@ -506,3 +506,10 @@ def test_handle_system_alert_prompt_form_is_todo() -> None:
         "    - handleSystemAlert: { prompt: notifications, choice: grant, timeout: 5 }\n"
     )
     assert "// TODO: handleSystemAlert — prompt: notifications" in code
+
+
+def test_navigate_is_a_labeled_web_only_todo() -> None:
+    # BE-0464: `navigate` is web-only, so the mobile generators name it instead of dropping it.
+    code = _gen("- name: x\n  steps:\n    - navigate: /settings\n")
+    assert '// TODO: navigate(url: "/settings") — web-only; not generated' in code
+    assert "unsupported step" not in code

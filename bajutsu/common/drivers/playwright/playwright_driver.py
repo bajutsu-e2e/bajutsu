@@ -8,7 +8,9 @@ import shutil
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
+from urllib.parse import urljoin
 
+from bajutsu.common.backend_cli import simctl
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.actuation import Actuation, ActuationLog, Drained
 from bajutsu.common.drivers.dom import QUERY_JS, parse_dom
@@ -16,6 +18,8 @@ from bajutsu.common.evidence import intervals
 
 from ._functions import (
     _device_context_kwargs,
+    _is_browser_fault,
+    _nav_reason,
     _playwright_error_types,
     _rotate_point,
     _start_browser,
@@ -620,6 +624,34 @@ class PlaywrightDriver:
         self._page.go_back()
 
     @_wedge_guard
+    def goto(self, url: str) -> None:
+        """Load *url*, resolved against the base URL as a browser resolves a link (BE-0464).
+
+        Returns once the page's `load` event fires; the response status is not read, so a 404 page
+        loads and the scenario's next assertion decides. A failure the URL itself causes (a failed
+        lookup, a refused connection, a timeout) fails the step as a `SelectorError` rather than
+        reaching `_wedge_guard`, which would report an author's typo as a recoverable browser
+        fault. A closed or crashed page stays a wedge, since no URL could have loaded there; a
+        timeout counts as the URL's, since a scenario run cannot tell a slow server from a hung
+        renderer.
+        """
+        target = urljoin(self._base_url, url)
+        # The URL is author data, so the record names only the gesture (`actuation` rule 3).
+        self._actuations.record(Actuation(gesture="navigate", via="url", unit=_UNIT))
+        try:
+            self._page.goto(target)
+        except _playwright_error_types() as exc:
+            if _is_browser_fault(exc, target):
+                # Raised here rather than left to `_wedge_guard`, which embeds `{exc}` whole: the
+                # wedge reason has to leave the URL out as the step failure below does.
+                raise simctl.DeviceError(
+                    f"web browser fault (recoverable wedge): {_nav_reason(exc, target)}"
+                ) from exc
+            raise base.SelectorError(
+                f"navigate could not load the URL: {_nav_reason(exc, target)}"
+            ) from exc
+
+    @_wedge_guard
     def pinch(self, sel: base.Selector, scale: float) -> None:
         # Two fingers level on the element's center; `scale` spreads (>1) or closes (<1) their gap.
         (cx, cy, r), el = self._gesture_anchor(sel)
@@ -830,6 +862,7 @@ class PlaywrightDriver:
             base.Capability.MULTI_TOUCH,
             base.Capability.SELECT_OPTION,
             base.Capability.TEXT_SELECTION,
+            base.Capability.URL_NAVIGATION,
         }
     )
 

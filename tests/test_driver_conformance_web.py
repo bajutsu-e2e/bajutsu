@@ -283,3 +283,34 @@ def test_native_checkbox_checked_reads_as_selected(chromium: Any) -> None:
         assert base.Trait.SELECTED not in by_id["off"]["traits"]
     finally:
         page.close()
+
+
+@pytest.mark.web
+def test_goto_maps_a_bad_url_to_a_step_failure_and_a_closed_page_to_a_wedge(chromium: Any) -> None:
+    """The error mapping BE-0464 left to a real-browser test: which `page.goto` failures are whose.
+
+    An unresolvable host is the author's URL, so it must fail the step (`SelectorError`) rather than
+    pass through `_wedge_guard` as a browser fault; a closed page is the browser's, and stays one.
+    """
+    from bajutsu.common.backend_cli import simctl
+
+    page = chromium.new_page()
+    driver = PlaywrightDriver("about:blank", page=page)
+    # Matched on the driver's own wording: behind a proxy Chromium reports a tunnel error instead.
+    with pytest.raises(base.SelectorError, match="navigate could not load"):
+        driver.goto("http://bajutsu-navigate.invalid/")
+    page.close()
+    with pytest.raises(simctl.DeviceError):
+        driver.goto("about:blank")
+
+
+@pytest.mark.web
+def test_goto_loads_a_page_without_reading_its_status(chromium: Any) -> None:
+    """A `data:` page stands in for any loaded page: `goto` returns once it loads, status unread."""
+    page = chromium.new_page()
+    try:
+        driver = PlaywrightDriver("about:blank", page=page)
+        driver.goto('data:text/html,<div data-testid="landed">ok</div>')
+        assert [e["identifier"] for e in driver.query()] == ["landed"]
+    finally:
+        page.close()

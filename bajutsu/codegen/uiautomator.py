@@ -308,6 +308,9 @@ def _device_control_todo(step: Step) -> str:
         return f"// TODO: manual step — {manual_todo(step.manual.label, step.manual.bypass)}"
     if (todo := device_group_todo(step)) is not None:
         return todo
+    if step.navigate is not None:
+        # Web-only (BE-0464); an Android intent is a separate item, so there is nothing to generate.
+        return f"// TODO: navigate(url: {_s(step.navigate.url)}) — web-only; not generated"
     if step.handle_system_alert is not None:
         # An iOS SpringBoard prompt (BE-0316); no Android equivalent — a system dialog is reached by
         # an ordinary tap there. A labeled TODO, consistent with the device-family fallbacks above.

@@ -344,6 +344,9 @@ def _emit_step(step: Step) -> list[str]:  # noqa: C901, PLR0911, PLR0912
         return [todo]
     if step.relaunch is not None:
         return ["app.terminate()", "app.launch()"]
+    if step.navigate is not None:
+        # Web-only (BE-0464); an iOS deep link is a separate item, so there is nothing to generate.
+        return [f"// TODO: navigate(url: {_s(step.navigate.url)}) — web-only; not generated"]
     if step.set_clipboard is not None:
         # simctl-backed in bajutsu; not currently generated for XCUITest (BE-0052).
         return [

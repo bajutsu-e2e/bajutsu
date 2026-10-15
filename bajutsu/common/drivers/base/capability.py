@@ -21,6 +21,7 @@ class Capability:
     )
     WEBVIEW = "webView"  # DOM query/tap inside an embedded WKWebView (BE-0037)
     SELECT_OPTION = "selectOption"  # set a native <select> by value; web only (BE-0191)
+    URL_NAVIGATION = "urlNavigation"  # open a URL mid-scenario (`navigate`); web only (BE-0464)
     # `select`/`copy` on the focused field (BE-0265). A backend that can select and copy natively
     # advertises this; a coordinate-only backend with no select-all handle does not and raises
     # UnsupportedAction — the same actuate-or-raise promise as MULTI_TOUCH (BE-0280). `delete` needs

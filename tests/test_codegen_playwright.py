@@ -71,6 +71,20 @@ def test_wait_until_gone() -> None:
     assert "await expect(page.getByTestId('spinner')).toBeHidden({ timeout: 3000 });" in code
 
 
+def test_navigate_resolves_against_base_url_like_the_driver() -> None:
+    # BE-0464: `new URL(ref, BASE_URL)` resolves a reference as the driver's `urljoin` does, and the
+    # value goes through `_ts`, since a `'` is legal in a URL query.
+    code = _gen('- name: x\n  steps:\n    - navigate: "/search?q=it\'s"\n')
+    assert "await page.goto(new URL('/search?q=it\\'s', BASE_URL).toString());" in code
+    assert "TODO" not in code
+
+
+def test_navigate_with_a_runtime_token_is_a_labeled_todo() -> None:
+    code = _gen("- name: x\n  steps:\n    - navigate: '/items/${vars.id}'\n")
+    assert "// TODO: navigate('/items/${vars.id}') — runtime-substituted URL; not generated" in code
+    assert "page.goto(new URL" not in code
+
+
 def test_back_goes_back_in_history() -> None:
     # BE-0210: the web `back` step is browser history — emitted faithfully, not an unlabeled TODO.
     code = _gen("- name: x\n  steps:\n    - back: {}\n")

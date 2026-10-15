@@ -9,7 +9,9 @@ Bajutsu の **Playwright** backend（[BE-0041](../../roadmaps/BE-0041-web-playwr
 | パス | 役割 |
 |---|---|
 | `app/index.html` | テスト対象アプリ。onboarding → login → counter、`/api/sync` へ POST する Sync ボタン（ネットワークレーンのリクエスト）、加えてハンドオフデモ用のデバイス検証フロー。素の JS、安定した `data-testid` の id |
+| `app/help.html` | `index.html` のどこからもリンクされておらず、アドレスでしか開けないページ。`scenarios/navigate.yaml` が開きます |
 | `scenarios/smoke.yaml` | 決定論的なスモークシナリオ（iOS デモと同じ step/expect スキーマ） |
+| `scenarios/navigate.yaml` | `navigate` ステップで `help.html` を開き、相対参照で元のページへ戻ります（[BE-0464](../../roadmaps/BE-0464-web-navigate-step/BE-0464-web-navigate-step-ja.md)） |
 | `scenarios/network.yaml` | ネットワークスモーク（[BE-0282](../../roadmaps/BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md)）。モックされ、キャプチャされる `POST /api/sync` が秘密情報を運びます。`network` タグを付けてあるので、既定の `e2e`（`--no-network`）はこれを除外します |
 | `network/assert_redaction.py` | 永続化された `network.json` が Sync リクエストの秘密情報をマスクしていることを確認します。run の文法ではアサートできない redaction のギャップを塞ぎます |
 | `record/goals.txt` | `make -C demos/web record` が記述の起点にする自然言語ゴール |

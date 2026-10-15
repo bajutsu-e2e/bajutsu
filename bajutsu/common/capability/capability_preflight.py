@@ -100,7 +100,8 @@ def _walk_steps(steps: list[Step], prefix: str = "") -> Iterator[tuple[str, Step
         # capability neither backend today declares only alongside WEBVIEW/APP_CONTEXT does not
         # currently exist, so this is a real but so-far harmless gap, not fixed here (this item
         # keeps it rather than fixing `web:`'s pre-existing one as a drive-by, which is out of its
-        # lane).
+        # lane). `navigate` (BE-0464) is now such a construct; `_navigate_locations` follows `web:`
+        # / `app:` blocks for it alone.
 
 
 def _walk_scenario(sc: Scenario) -> Iterator[tuple[str, Step]]:
@@ -145,6 +146,31 @@ def _multi_touch_locations(sc: Scenario) -> list[str]:
 def _select_option_locations(sc: Scenario) -> list[str]:
     """The paths where a selectOption step appears."""
     return [path for path, step in _walk_scenario(sc) if step.select_option is not None]
+
+
+def _navigate_locations(sc: Scenario) -> list[str]:
+    """The paths where a navigate step appears, inside a `web:` / `app:` block included (BE-0464).
+
+    `_walk_steps` skips those blocks on purpose, but no backend that runs one (the iOS WebView
+    context, the cross-app context) can open a URL, so a `navigate` nested there would otherwise reach
+    a leased device before failing. Recursing for this one construct closes that gap without moving
+    every other construct's failure from run time to preflight.
+    """
+
+    def found(pairs: Iterator[tuple[str, Step]]) -> Iterator[str]:
+        for path, step in pairs:
+            if step.navigate is not None:
+                yield path
+            for name, block in (("web", step.web), ("app", step.app)):
+                if block is not None:
+                    yield from found(_walk_steps(block.steps, f"{path} > {name}"))
+
+    paths = list(found(_walk_scenario(sc)))
+    # `_walk_scenario` stops at setup / steps / cleanup; an interrupt's recovery steps run on the
+    # leased device too, so a `navigate` there has to be caught before the lease as well.
+    for i, entry in enumerate(sc.interrupts):
+        paths.extend(found(_walk_steps(entry.steps, f"interrupts[{i}] ")))
+    return paths
 
 
 def _text_selection_locations(sc: Scenario) -> list[str]:
@@ -213,6 +239,11 @@ _REQUIREMENTS = (
         base.Capability.SELECT_OPTION,
         "selectOption (web <select> switch; not supported on iOS / Android)",
         _select_option_locations,
+    ),
+    _Requirement(
+        base.Capability.URL_NAVIGATION,
+        "navigate (open a URL; web only, not supported on iOS / Android)",
+        _navigate_locations,
     ),
     _Requirement(
         base.Capability.PICKER_WHEEL,

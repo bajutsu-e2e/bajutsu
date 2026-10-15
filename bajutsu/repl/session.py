@@ -90,8 +90,9 @@ _HELP = (
     "  step {swipe: {on: {id: card}, direction: up}}",
     "  step {pinch: {sel: {id: map}, scale: 0.5}}",
     "any one-shot action a scenario's own steps accept works this way — tap, type, scroll, swipe,",
-    "drag, pinch, rotate, setPickerValue, selectOption, select, copy, handleSystemAlert, and more —",
-    "except wait / assert / control-flow (if/forEach/web/app) / use, which need a whole scenario to run",
+    "drag, pinch, rotate, setPickerValue, selectOption, navigate, select, copy, handleSystemAlert,",
+    "and more — except wait / assert / control-flow (if/forEach/web/app) / use, which need a whole",
+    "scenario to run",
 )
 
 

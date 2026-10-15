@@ -1,0 +1,19 @@
+# navigate real-backend coverage (BE-0464): open a page no control links to, by URL, then come back
+# by a reference relative to baseUrl. Both forms resolve against `app.url` exactly as a browser
+# resolves a link, so the scenario names no host and runs unchanged against any served copy.
+description: >-
+  Web navigate — open a page reachable only by its address, assert its content, then return to the
+  app by a relative reference.
+scenarios:
+  - name: navigate opens a page by URL
+    steps:
+      - wait: { for: { id: onboarding.title }, timeout: 5 }
+      - navigate: /help.html
+      - wait: { for: { id: help.title }, timeout: 5 }
+      - assert:
+          - exists: { id: help.body }
+          - exists: { id: onboarding.title, negate: true }
+      - navigate: index.html
+      - wait: { for: { id: onboarding.title }, timeout: 5 }
+    expect:
+      - exists: { id: onboarding.start }

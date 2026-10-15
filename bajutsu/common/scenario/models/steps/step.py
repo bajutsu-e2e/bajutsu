@@ -31,6 +31,7 @@ from bajutsu.common.scenario.models.actions import (
     InstallApp,
     LongPress,
     Manual,
+    Navigate,
     OverrideStatusBar,
     Pinch,
     Push,
@@ -95,6 +96,9 @@ class Step(_Model):
     drag: Drag | None = None
     scroll: Scroll | None = None
     back: Back | None = None
+    # A web-only step gated by the `urlNavigation` capability (BE-0464); the YAML value is a plain
+    # string, which `Navigate` maps to its `url` field and dumps back.
+    navigate: Navigate | None = None
     pinch: Pinch | None = None
     rotate: Rotate | None = None
     wait: Wait | None = None
@@ -193,6 +197,15 @@ class Step(_Model):
     def _safe_name(cls, v: str | None) -> str | None:
         if v is not None and (any(c in v for c in _UNSAFE_STEP_NAME_CHARS) or v in (".", "..")):
             raise ValueError(f"name must not contain a path separator or be '.'/'..' (§6.2): {v!r}")
+        return v
+
+    @field_validator("navigate", mode="before")
+    @classmethod
+    def _navigate_is_a_string(cls, v: object) -> object:
+        # The authored form is a plain string; see `Navigate` for why a mapping is refused here.
+        if v is not None and not isinstance(v, (str, Navigate)):
+            # pydantic turns only a ValueError into a ValidationError naming the field.
+            raise ValueError("navigate takes a URL string, e.g. `navigate: /settings`")
         return v
 
     @model_validator(mode="after")

@@ -669,6 +669,7 @@ config の読み込みは、そうしたエントリと、その `steps` にあ�
 | `drag` | `drag: { on: <Selector>, direction: up\|down\|left\|right, amount?: <frac> }` | 要素そのものを**ドラッグ**する（ハンドル／仕切り／スライダー）。スクロールではない |
 | `scroll` | `scroll: { to: <Selector>, direction?: up\|down\|left\|right, within?: <Selector>, amount?: <frac>, maxScrolls?: <int> }` | `to` が画面に入るまで（慣性なしに）スクロールし、上限に達したら失敗する。`direction` は**スクロール**方向（既定 `down`）で、`swipe` とは逆向き |
 | `back` | `back: {}` | 1 階層戻ります。各バックエンドがプラットフォームに合った手段（Android のシステム戻るキー、iOS の OS 提供の戻るボタン、web の履歴）を使います（[BE-0210](../../roadmaps/BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity-ja.md)） |
+| `navigate` | `navigate: "<url>"` | 現在のページで URL を開きます。値はターゲットの `baseUrl` を基準に解決します（[後述](#navigate)）。web 専用です（iOS / Android は preflight で失敗します） |
 | `pinch` | `pinch: { sel: <Selector>, scale: <num> }` | 2 本指の拡縮。`scale > 0`（`>1` で拡大, `<1` で縮小） |
 | `rotate` | `rotate: { sel: <Selector>, radians: <num> }` | 2 本指の回転。`>0` で時計回り |
 | `handleSystemAlert` | `handleSystemAlert: { sel: <Selector>, timeout: <sec> }` | iOS SpringBoard の権限プロンプトのボタンを決定的に tap する（[下記](#handlesystemalert決定的なシステムアラートステップ)）。iOS（XCUITest）専用。`sel` は `label` / `labelMatches` / `index` のみ受け付け、run が Simulator を固定するシステム言語に対して解決する。`sel` の代わりに `prompt: notifications\|tracking\|paste` と `choice: grant\|deny` を指定すると、ボタンを意味で指定でき、run がその label を解決する（BE-0320）。label の対応表にない言語では、ボタンの位置で解決する（BE-0445） |
@@ -728,6 +729,33 @@ config の読み込みは、そうしたエントリと、その `steps` にあ�
 
 ネイティブの HTML `<select>` は、ドロップダウンがページの要素ツリーに含まれないため、座標タップでは値を決定的に切り替えられません。`selectOption` は、ほかのアクションと同じ一意解決のコアで `<select>` を解決したうえで、表示ラベルではなく option の **value** を指定して値を設定し、`change` イベントを発火します。これにより、ユーザーが選んだときと同じようにページが反応します。指定する value は `value` アサーションが `<select>` から読み取る値と一致するので、選択結果はそのまま検証できます。これは web 専用のアクションです。`<select>` は iOS や Android にネイティブの対応物がないため、これらのバックエンドは何もせずに済ませるのではなく、「サポート外のアクション」という明確な理由でステップを失敗させます。
 
+### `navigate`
+
+```yaml
+- navigate: /settings                       # ターゲットの baseUrl を基準に解決する
+- navigate: https://idp.example.com/login   # 絶対 URL は書いたとおりに使う
+- navigate: "/items/${vars.itemId}"         # ${...} トークンはほかのステップのフィールドと同じく展開される
+```
+
+`navigate` は、シナリオの途中で URL を開くステップです（[BE-0464](../../roadmaps/BE-0464-web-navigate-step/BE-0464-web-navigate-step-ja.md)）。
+どのコントロールからもリンクされていないページ（メールのリンク、共有アイテムの URL など）を開くときに使います。
+UI をたどらないと届かない深いページへ直接移るときや、リダイレクトを検証するときにも使います。
+値はマッピングではなく、ただの文字列です。
+値はブラウザがリンクを解決するのと同じ規則（`urljoin`）で、ターゲットの `baseUrl` を基準に解決します。
+`/settings` は `baseUrl` のパスを置き換え、`settings` はそのパスを基準に解決します。
+`http` / `https` の絶対 URL は、別のオリジンであっても書いたとおりに使います。
+それ以外のスキーム（`javascript:`、`file:`、`data:`）は拒否します。
+リテラルの値はシナリオの読み込み時に拒否します。
+`${...}` トークンを含む値は、実行時に展開した後で検査し、規則に反すればステップを失敗させます。
+
+ステップは、ページの `load` イベントが発火した時点で戻ります。
+レスポンスのステータスは読まないので、404 のページでも読み込めればステップは成功し、判定は次の `assert` や `wait` が下します。
+Cookie とストレージは保たれるので、`navigate` はセッションを初期化せずに続けます。
+存在しないホストやタイムアウトのように、URL そのものが原因の失敗は、ブラウザのメッセージを付けてステップを失敗させます。
+`navigate` には `urlNavigation` ケーパビリティが必要で、これを公開するのは web バックエンドだけです。
+そのため iOS や Android で `navigate` を使うシナリオは、デバイスを確保する前の preflight で失敗します。
+`web:` ブロックの中に置いた `navigate` も同じく preflight で失敗します。
+
 ### `setPickerValue`
 
 ```yaml
@@ -769,7 +797,7 @@ config の読み込みは、そうしたエントリと、その `steps` にあ�
       - wait: { for: { id: pay.confirmation }, timeout: 10 }
 ```
 
-`web` は `within` をネイティブに解決し、ちょうど 1 つの `WKWebView` ホストを指します。入れ子の `steps` は、アプリのネイティブなアクセシビリティツリーではなく、その WebView の正規化された DOM（`data-testid` → `Element.identifier`）を対象にします。web コンテンツをネイティブアプリに埋め込んだハイブリッド画面向けの構造です（[BE-0037](../../roadmaps/BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support-ja.md)）。ブロックの `steps` を終えると、制御はネイティブドライバーに戻ります。入れ子の `steps` は、`if` や `forEach` の分岐と同じく、囲むシナリオの `vars.*` を共有します。`capture` / `extract` 修飾子は `web` ステップ自体には使えません。WebView bridge の設定（`BAJUTSU_WEBVIEW_PORT`）が必要で、未設定のときは何もせず済ませるのではなくステップを明確に失敗させます。この最初の実装は、ブロック内の `tap` / `tapPoint` / `doubleTap` / `type` / `wait` / `assert` に対応しています。`longPress` / `swipe` / `drag` / `clear` / `delete` / `select` / `copy` / `selectOption` / `scroll` / `back` / `pinch` / `rotate` / `handleSystemAlert` / `setPickerValue` はそこに届かず、いずれも「web コンテキストは非対応」という明確な理由で失敗します。
+`web` は `within` をネイティブに解決し、ちょうど 1 つの `WKWebView` ホストを指します。入れ子の `steps` は、アプリのネイティブなアクセシビリティツリーではなく、その WebView の正規化された DOM（`data-testid` → `Element.identifier`）を対象にします。web コンテンツをネイティブアプリに埋め込んだハイブリッド画面向けの構造です（[BE-0037](../../roadmaps/BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support-ja.md)）。ブロックの `steps` を終えると、制御はネイティブドライバーに戻ります。入れ子の `steps` は、`if` や `forEach` の分岐と同じく、囲むシナリオの `vars.*` を共有します。`capture` / `extract` 修飾子は `web` ステップ自体には使えません。WebView bridge の設定（`BAJUTSU_WEBVIEW_PORT`）が必要で、未設定のときは何もせず済ませるのではなくステップを明確に失敗させます。この最初の実装は、ブロック内の `tap` / `tapPoint` / `doubleTap` / `type` / `wait` / `assert` に対応しています。`longPress` / `swipe` / `drag` / `clear` / `delete` / `select` / `copy` / `selectOption` / `scroll` / `back` / `navigate` / `pinch` / `rotate` / `handleSystemAlert` / `setPickerValue` はそこに届かず、いずれも「web コンテキストは非対応」という明確な理由で失敗します。
 
 ### `app`（別アプリのUIを操作する。iOS限定）
 
