@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0452") |
-| 実装 PR | [#2191](https://github.com/bajutsu-e2e/bajutsu/pull/2191)（単位 1〜3）、[#2193](https://github.com/bajutsu-e2e/bajutsu/pull/2193)（単位 4）、[#2194](https://github.com/bajutsu-e2e/bajutsu/pull/2194)（単位 5）、[#2195](https://github.com/bajutsu-e2e/bajutsu/pull/2195)（単位 6〜7）、[#2196](https://github.com/bajutsu-e2e/bajutsu/pull/2196)（単位 8〜9）、[#2200](https://github.com/bajutsu-e2e/bajutsu/pull/2200)（単位 10〜12）、PR_PLACEHOLDER24（単位 13） |
+| 実装 PR | [#2191](https://github.com/bajutsu-e2e/bajutsu/pull/2191)（単位 1〜3）、[#2193](https://github.com/bajutsu-e2e/bajutsu/pull/2193)（単位 4）、[#2194](https://github.com/bajutsu-e2e/bajutsu/pull/2194)（単位 5）、[#2195](https://github.com/bajutsu-e2e/bajutsu/pull/2195)（単位 6〜7）、[#2196](https://github.com/bajutsu-e2e/bajutsu/pull/2196)（単位 8〜9）、[#2200](https://github.com/bajutsu-e2e/bajutsu/pull/2200)（単位 10〜12）、[#2201](https://github.com/bajutsu-e2e/bajutsu/pull/2201)（単位 13） |
 | トピック | ドライバとバックエンドのアーキテクチャ |
 | 関連 | [BE-0126](../BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config-ja.md)、[BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact-ja.md)、[BE-0228](../BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation-ja.md)、[BE-0076](../BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md)、[BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks-ja.md)、[BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction-ja.md)、[BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch-ja.md)、[BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md)、[BE-0447](../BE-0447-install-app-step/BE-0447-install-app-step-ja.md)、[BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md) |
 <!-- /BE-METADATA -->
@@ -546,7 +546,7 @@ target は、どこで実行するかを持たなくなります。target が書
     - `runs:`のセクションは情報の表示です。失敗するはずの run があっても、`doctor`の終了コードは変わりません。
     - ホストする runs の表は、呼び出しごとに1行のままです。作業単位9の記録は run ごとの行をこの作業単位に残しましたが、設計はそれを求めていません。そのため行は作業単位9の形のままです。
   - この変更では、`docs/cli.md`と`docs/reporting.md`を両言語で更新しました。文書全体の見直しは作業単位13に残します。
-- PR_PLACEHOLDER24（単位 13）— 文書全体を見直しました。作業単位13が挙げるすべてのページが、両言語でコードと一致します。この作業単位で、この項目は完了しました。
+- [#2201](https://github.com/bajutsu-e2e/bajutsu/pull/2201)（単位 13）— 文書全体を見直しました。作業単位13が挙げるすべてのページが、両言語でコードと一致します。この作業単位で、この項目は完了しました。
   - 古いキーとシナリオのフィールドは、作業単位4〜12が、それぞれ触れたページですでに書き換えていました。この作業単位では、挙げられた各ページを「旧キーの移行先」のキーで調べました。各ページの config とシナリオの例は、ローダで読み込んで確かめました。読み込めなかった例は2つあり、どちらも直しました。`docs/scenarios.md`の`interrupts`のターゲットには、`platform`と`app.id`が欠けていました。`docs/ios-device-cloud.md`の物理デバイスのターゲットには、`app.id`が欠けていました。
   - 作業単位8〜12が加えた動作を、各ページが説明するようになりました。
     - `docs/configuration.md`：run の行列の例、対象外の記録を並べる出力、`doctor`の`runs:`のセクション、`bajutsu config schema`を加えました。
