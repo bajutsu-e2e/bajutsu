@@ -1459,3 +1459,66 @@ def test_enter_app_and_leave_app_unsupported() -> None:
         drv.enter_app("com.example")
     with pytest.raises(base.UnsupportedAction):
         drv.leave_app()
+
+
+class _CaptureRefusingPage(_FakePage):
+    """Fails its first `refusals` screenshots the way Chromium does under load, then succeeds."""
+
+    def __init__(self, error: type[Exception], refusals: int, message: str) -> None:
+        super().__init__([])
+        self._error = error
+        self._refusals = refusals
+        self._message = message
+        self.attempts = 0
+
+    def screenshot(self, *, path: str) -> object:
+        self.attempts += 1
+        if self.attempts <= self._refusals:
+            raise self._error(self._message)
+        return super().screenshot(path=path)
+
+
+_CAPTURE_REFUSAL_MESSAGE = (
+    "Page.screenshot: Protocol error (Page.captureScreenshot): Unable to capture screenshot"
+)
+
+
+def _patch_pw_error(monkeypatch: pytest.MonkeyPatch) -> type[Exception]:
+    class _PwError(Exception):
+        pass
+
+    monkeypatch.setattr(
+        sys.modules["bajutsu.common.drivers.playwright._functions"], "_PW_ERRORS", (_PwError,)
+    )
+    return _PwError
+
+
+def test_screenshot_retries_chromiums_transient_capture_refusal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Chromium refuses a capture now and then under CPU contention; the re-issue captures the shot.
+    page = _CaptureRefusingPage(_patch_pw_error(monkeypatch), 2, _CAPTURE_REFUSAL_MESSAGE)
+    PlaywrightDriver("http://app.test/", page=page).screenshot("/tmp/shot.png")
+    assert page.attempts == 3
+    assert page.shot == "/tmp/shot.png"
+
+
+def test_screenshot_gives_up_after_bounded_capture_refusals(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A refusal that persists is no longer transient: it surfaces as the recoverable wedge.
+    from bajutsu.common.backend_cli import simctl
+
+    page = _CaptureRefusingPage(_patch_pw_error(monkeypatch), 99, _CAPTURE_REFUSAL_MESSAGE)
+    with pytest.raises(simctl.DeviceError, match="Unable to capture screenshot"):
+        PlaywrightDriver("http://app.test/", page=page).screenshot("/tmp/shot.png")
+    assert page.attempts == 3
+
+
+def test_screenshot_does_not_retry_other_browser_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    from bajutsu.common.backend_cli import simctl
+
+    page = _CaptureRefusingPage(_patch_pw_error(monkeypatch), 1, "Target page has been closed")
+    with pytest.raises(simctl.DeviceError):
+        PlaywrightDriver("http://app.test/", page=page).screenshot("/tmp/shot.png")
+    assert page.attempts == 1

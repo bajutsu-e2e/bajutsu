@@ -27,6 +27,11 @@ if TYPE_CHECKING:
 # would risk an unlisted wedge type aborting the crawl instead.
 _PW_ERRORS: tuple[type[BaseException], ...] | None = None
 
+# The message Chromium's `Page.captureScreenshot` returns when the compositor hands it no frame, and
+# how many times the driver issues a screenshot before letting that refusal through.
+_CAPTURE_REFUSAL = "Unable to capture screenshot"
+_SCREENSHOT_ATTEMPTS = 3
+
 
 def _rotate_point(p: base.Point, center: base.Point, radians: float) -> base.Point:
     """Rotate point `p` about `center` by `radians` (for two-finger rotate synthesis)."""
@@ -104,6 +109,11 @@ def _playwright_error_types() -> tuple[type[BaseException], ...]:
         except ImportError:
             _PW_ERRORS = ()
     return _PW_ERRORS
+
+
+def _is_transient_capture_refusal(exc: BaseException) -> bool:
+    """Whether `exc` is Chromium's transient "Unable to capture screenshot" refusal."""
+    return isinstance(exc, _playwright_error_types()) and _CAPTURE_REFUSAL in str(exc)
 
 
 def _wedge_guard[F: Callable[..., Any]](method: F) -> F:

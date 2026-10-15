@@ -15,7 +15,9 @@ from bajutsu.common.drivers.dom import QUERY_JS, parse_dom
 from bajutsu.common.evidence import intervals
 
 from ._functions import (
+    _SCREENSHOT_ATTEMPTS,
     _device_context_kwargs,
+    _is_transient_capture_refusal,
     _playwright_error_types,
     _rotate_point,
     _start_browser,
@@ -801,6 +803,20 @@ class PlaywrightDriver:
 
     @_wedge_guard
     def screenshot(self, path: str) -> None:
+        # Chromium's `Page.captureScreenshot` intermittently answers "Unable to capture screenshot"
+        # when the compositor has no frame ready for it — under CPU contention (parallel lanes, a
+        # recording context), roughly once in a thousand shots. It is a transient refusal, not a
+        # wedge: an immediate re-issue captures the same screen, so a bounded retry absorbs it
+        # before `_wedge_guard` would turn it into a lane fault. Any other error, or the last
+        # attempt's, propagates unchanged.
+        for _ in range(_SCREENSHOT_ATTEMPTS - 1):
+            try:
+                self._page.screenshot(path=path)
+            except Exception as exc:
+                if not _is_transient_capture_refusal(exc):
+                    raise
+            else:
+                return
         self._page.screenshot(path=path)
 
     def network_collector(self, mocks: list[Mock] | None = None) -> WebNetworkCollector:
