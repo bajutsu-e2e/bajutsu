@@ -1151,7 +1151,7 @@ batch provider that packages `launchEnv`, `common/report/rows.py`, `templates/se
     - `docs/glossary.md`: matching, in the `device` entry.
     - `docs/architecture.md`: the `config` command, and the `preconditions` and `json_schema`
       modules.
-    - `DESIGN.md` §3.3: the run matrix and its determinism. `README.md` lists device conditions.
+    - `DESIGN.md` §3.3: the run matrix and its determinism. `README.md` and `README.ja.md` list device conditions.
   - Two statements units 4 and 9 left behind were stale. `doctor`'s screen probe no longer refuses
     a condition, as unit 11 changed. The glossary no longer says that conditions go unmatched.
   - One example stays illustrative. The `DESIGN.md` §8 config names a hook component,

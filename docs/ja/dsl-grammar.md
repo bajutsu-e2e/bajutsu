@@ -170,7 +170,9 @@ Preconditions ::= {
 # 1 つのプラットフォームに対するシナリオの `runsOn` ブロックです。そのプラットフォームに登録された
 # `runsOn` のモデルから、ターゲットに残す `kind` と `emulate` を除いたものです。iOS の `locale` と
 # `seedPhotos`（シナリオファイルからの相対パス）はデバイスの状態です。`model`、`os`、`avd`、
-# `apiLevel`、`browser.*` はデバイスの条件で、デバイスの照合が実装されるまでは run 時に拒否します。
+# `apiLevel`、`browser.*` はデバイスの条件で、run の前にプールのデバイスと照合します。リストや範囲は
+# run を増やします。片側が開いた範囲に合うデバイスがなければ、対象外の記録が残ります
+# （configuration.md#デバイスの条件runson）。
 # 重ね合わせたあとの `seedPhotos` が空でなければ、実効の `run.erase` が必要です。
 RunsOn ::= { locale?: string, seedPhotos?: list(string), model?: …, os?: …, avd?: …, apiLevel?: …, browser?: { engine?: …, version?: … } }
 

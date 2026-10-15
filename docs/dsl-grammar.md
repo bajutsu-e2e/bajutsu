@@ -172,8 +172,10 @@ Preconditions ::= {
 # A scenario's `runsOn` block for one platform: the platform's registered `runsOn` model without
 # `kind` and `emulate`, which stay on the target. On iOS `locale` and `seedPhotos` (paths relative to
 # the scenario file) are device state; `model`, `os`, `avd`, `apiLevel`, and `browser.*` are device
-# conditions, refused at run time until matching devices lands. A merged, non-empty `seedPhotos`
-# needs an effective `run.erase`.
+# conditions, matched against the pool's devices before the run. A list or a range multiplies runs;
+# an open range that no device fits leaves a not-applicable record
+# (configuration.md#device-conditions-runson). A merged, non-empty `seedPhotos` needs an effective
+# `run.erase`.
 RunsOn ::= { locale?: string, seedPhotos?: list(string), model?: …, os?: …, avd?: …, apiLevel?: …, browser?: { engine?: …, version?: … } }
 
 # ── SystemAlertHandling (reactive system-alert guard; on by default) ───

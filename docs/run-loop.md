@@ -297,8 +297,7 @@ The cells run one after another. Each goes through `run_and_report` on a pool na
 eligible devices. `--workers` thus spreads a cell's runs over identical devices. A run that no
 device fits fails. Under an open range, it becomes a not-applicable record instead
 ([configuration](configuration.md#device-conditions-runson)). Such a record never reaches a
-driver. An invocation where
-no scenario declares a condition keeps the path above unchanged.
+driver. An invocation where no scenario declares a condition keeps the path above unchanged.
 
 > **Warm XCUITest runner (BE-0291).** Each scenario still gets a freshly launched app and a fresh
 > driver (clean isolation), but the XCUITest backend's resident `xcodebuild` runner — whose cold

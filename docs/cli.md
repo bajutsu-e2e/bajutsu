@@ -481,15 +481,16 @@ bajutsu flakiness [--org <org>] [--json] [--window N]          # read the serve 
 - **The grouping is per target and per run coordinates as well**
   ([BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)).
   Device conditions can split a scenario into runs, such as one per listed model. Each run's
-  coordinates then join the key. A layout bug on one model thus never reads as a flaky scenario. The
+  coordinates then join the key. A layout bug on one model thus never reads as a flaky scenario.
+  The target joins the key as well, so a scenario run against two targets keeps two histories. The
   text output names the coordinates in brackets after the OS. A run with no condition keeps empty
   coordinates. A history recorded before BE-0452 thus continues. A hosted run can hold results on
   two or more coordinates. Such a run groups under `*`, apart from every other history.
 - Each entry carries the newest passing and newest failing run ids, so `--json` consumers (and the
   serve panel) can link straight to the representative evidence on both sides.
-- **`--window N`** keeps only each history's newest `N` runs before scoring — per scenario *per OS
-  version*, since that is the group being scored (0, the default, uses the whole history). Windowing
-  per scenario instead would evict an older OS version's history once the newest runs had all moved
+- **`--window N`** keeps only each history's newest `N` runs before scoring — per *history*, since
+  that is the group being scored (0, the default, uses the whole history). A history holds one
+  scenario's runs on one OS version, target, and set of run coordinates. Windowing per scenario instead would evict an older OS version's history once the newest runs had all moved
   to a newer one, hiding the very cross-version finding the grouping exists to surface. **`--org
   <org>`** picks the tenant whose runs the database read mines.
 - A run with no `provenance.scenarioHash` (a pre-provenance run) or no recorded verdict can't be
