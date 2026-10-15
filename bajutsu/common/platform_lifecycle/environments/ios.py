@@ -27,8 +27,9 @@ class _DeviceEnvironment:
     """The device-style lifecycle: the iOS Simulator (`simctl`) backend and the fake test backend,
     which mimics the same shape without a real device.
 
-    Only `start` differs between them — the fake runs no device sequence — so every lease-shaping
-    method (catalog, relaunch, control, teardown, the external-receiver network strategy) lives here.
+    The lease-shaping methods (catalog, relaunch, control, teardown, the external-receiver network
+    strategy) live here. The fake runs no device sequence, so it overrides `start` and every method
+    that would reach a Simulator or narrow the target to iOS (issue #2208).
     """
 
     def __init__(

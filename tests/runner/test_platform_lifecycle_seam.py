@@ -8,6 +8,7 @@ single-fork refactor folded behind the Protocol.
 from __future__ import annotations
 
 import base64
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -15,7 +16,7 @@ import pytest
 from _runner import _eff, _ios_eff, _web_eff
 
 from bajutsu.common.backend_cli import simctl
-from bajutsu.common.config import ResolvedPreconditions
+from bajutsu.common.config import AndroidConfig, Effective, ResolvedPreconditions
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.platform_lifecycle import (
@@ -174,6 +175,31 @@ def test_fake_environment_runs_no_lifecycle() -> None:
     # No device lifecycle (no env_run, no simctl): it just yields the fake driver.
     driver = FakeEnvironment("fake", "UDID").start(_eff(), ResolvedPreconditions())
     assert driver.query() == []  # the real fake driver, constructed without any device step
+
+
+def _android_eff() -> Effective:
+    return replace(_eff(), platform_config=AndroidConfig(package="com.example.demo"))
+
+
+@pytest.mark.parametrize("eff", [_eff(), _android_eff(), _web_eff()], ids=["ios", "android", "web"])
+def test_fake_environment_leases_on_any_platform_without_a_device(eff: Effective) -> None:
+    # Issue #2208: the fake backend is device-free and platform-neutral, so every hook a lease calls
+    # must answer on any target without narrowing it to iOS or shelling out to simctl.
+    def no_simctl(args: list[str], extra_env: object = None) -> str:
+        raise AssertionError(f"the fake backend must not run simctl: {args}")
+
+    env = FakeEnvironment("fake", "UDID", env_run=no_simctl)
+    driver = env.start(eff, ResolvedPreconditions())
+    relaunch = env.relauncher(eff, Scenario(name="s", steps=[]), driver)
+    assert env.controller(eff) is None
+    reset = env.crawl_reset(eff)
+    env.teardown(driver, eff)
+    env.end_lease(driver, eff)
+    # A scenario that actually relaunches, or a crawl that resets, is refused loudly.
+    with pytest.raises(base.UnsupportedAction, match="relaunch"):
+        relaunch(Relaunch())
+    with pytest.raises(base.UnsupportedAction, match="crawl reset"):
+        reset(driver)
 
 
 def test_fake_environment_rejects_permissions() -> None:
