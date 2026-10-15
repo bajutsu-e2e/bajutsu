@@ -1226,8 +1226,8 @@ def test_leaving_the_shell_closes_a_session_this_process_owns(
 def test_leaving_the_shell_leaves_a_device_backed_app_running(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # `FakeEnvironment` inherits the device-style teardown that terminates the app; the operator
-    # expects the Simulator still showing the screen they were inspecting, so it must not run.
+    # The shell must not run a device-backed environment's teardown (which terminates the app): the
+    # operator expects the Simulator still showing the screen they were inspecting.
     env = FakeEnvironment("fake", "FAKE-UDID")
     recorder = _patched_env(monkeypatch, env)
     repl_cli._close_owned_session(env, FakeDriver(), _EFF)

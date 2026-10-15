@@ -29,7 +29,8 @@ class _DeviceEnvironment:
 
     The lease-shaping methods (catalog, relaunch, control, teardown, the external-receiver network
     strategy) live here. The fake runs no device sequence, so it overrides `start` and every method
-    that would reach a Simulator or narrow the target to iOS (issue #2208).
+    that would narrow the target to iOS or drive the Simulator (issue #2208); only the best-effort
+    `device_catalog` probe still reads simctl.
     """
 
     def __init__(
