@@ -1155,8 +1155,8 @@ batch provider that packages `launchEnv`, `common/report/rows.py`, `templates/se
   - Two statements units 4 and 9 left behind were stale. `doctor`'s screen probe no longer refuses
     a condition, as unit 11 changed. The glossary no longer says that conditions go unmatched.
   - One example stays illustrative. The `DESIGN.md` §8 config names a hook component,
-    `./scenarios/showcase/_setup.yaml`. The tree holds no such file. That example thus loads beside
-    such a file alone.
+    `./scenarios/showcase/_setup.yaml`. The tree holds no such file, so that example loads only
+    once someone adds one.
 
 ## References
 
