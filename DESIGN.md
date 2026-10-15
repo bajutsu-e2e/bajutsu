@@ -109,6 +109,7 @@ Reporter (manifest.json + JUnit/CTRF/HTML + スクショ/録画)
 - **アイソレーション単位 = ワーカー**：各ワーカーは固有の `udid`（`simctl clone` 等）を借り受けます。証跡の書き込み先は、run 全体で 1 つの `runs/<runId>` の下にある固有のサブディレクトリ `runs/<runId>/<scenarioId>` です。run ディレクトリは run に 1 つ、書き込み先はワーカーごとに別、という組み合わせが成果物の混線を防ぎます。`mocks` は in-protocol でアプリ内に閉じるため（§3.2）、ワーカー間で共有ポートを取り合いません
 - **ヘッドレス前提**：iOS Simulator はヘッドレスで動くため、N 台へ水平スケールできます（CI 向き）
 - **CLI**：`bajutsu run ... --workers N` です。既定は 1 です。`--udid` はデバイスのカンマ区切りリストを受け取り、`--workers` はそのリストの台数を上限として丸められます
+- **デバイスの条件と run の組み合わせ**：ターゲットやシナリオの `runsOn` には、デバイスの条件を書けます。iOS の `model` と `os`、Android の `avd` と `apiLevel`、web の `browser` です。run の前に、プールの各デバイスから読んだ事実とこれらの条件を照合します。リストは値ごとに、範囲はメジャーバージョンごとに run を作ります。各 run が使うデバイスの集合は、どれも同じモデルとリリースにそろえます。そのため、どのデバイスが run を受け持っても、観測する画面は変わりません。リストや両側が閉じた範囲で合うデバイスがなければ、その run は失敗します。片側が開いた範囲で合うデバイスがなければ、対象外（not applicable）の記録を残します。すべての記録が対象外なら、呼び出しは終了コード 1 で終わります。照合も run の数も決定的で、AI は関与しません（[BE-0452](roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)）
 - **不変条件**：並列でもシナリオ間で simulator / 索引 / モック状態を共有しません。共有が要る前提は `preconditions` で各テストが自前で構築します（§2）。この不変条件は、デバイスを実際に 2 台同時に起動する CI レーンが検証します（[BE-0298](roadmaps/BE-0298-device-pool-concurrent-real-verification/BE-0298-device-pool-concurrent-real-verification-ja.md)）。fake driver に架空の udid を渡すユニットテストが示せるのは、プール自身の記帳の整合性までです。OS レベルの競合は、実際に 2 台のデバイスを同時に動かしたときにしか表面化しません
 
 ---
@@ -392,7 +393,8 @@ SDK は test/debug ビルドに限って有効化し、リリースには載せ�
 ```
 bajutsu run --target <name> [--scenario file.yaml] [--backend ios] [--udid booted] [--workers N]   # 既定は config の scenarios ディレクトリ全体
 bajutsu record --target <name> [--out file.yaml]   # AI で探索しつつ操作・証跡指示を記録（既定は config の scenarios へ自動命名）
-bajutsu doctor --target <name>                   # 環境/権限/接続 + §7 規約の充足を検証
+bajutsu doctor --target <name>                   # 環境/権限/接続 + §7 規約の充足を検証。デバイスの条件があれば run とその端末も列挙
+bajutsu config schema                         # config の JSON Schema（プラットフォームごとのキーをエディタで補完）
 bajutsu trace <runDir>                        # 証跡ビューア（省略時は runs 以下の最新 run）
 bajutsu trace --explain <scenario>            # 証跡ルールの発火回数を事前提示（ドライラン）
 bajutsu codegen <scenario.yaml> --target <name> --emit xcuitest -o UITests/   # M3。--emit は xcuitest / playwright / uiautomator

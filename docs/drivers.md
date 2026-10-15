@@ -747,7 +747,10 @@ def make_driver(actuator, udid, *, base_url=None, runner_port=None) -> Driver:  
   `android` to `adb`, `web` to `playwright`. `--backend` (and a serve request body's `backend`) is a
   check, not an ordered fallback list: it accepts the target's platform, that platform's actuator
   name, or `fake`, so `--backend ios` and `--backend xcuitest` mean the same. Anything else, or a
-  comma list, exits 2. `serve --backend` and `provision --backend` keep their own meaning. The machinery for a **multi-actuator** platform
+  comma list, exits 2. `--backend fake` runs any target on the fake driver, which has no device to
+  read, so it evaluates no `runsOn` condition and forms no runs; the invocation prints one notice
+  saying so ([configuration](configuration.md#device-conditions-runson)). `serve --backend` and
+  `provision --backend` keep their own meaning. The machinery for a **multi-actuator** platform
   (per-scenario resolution in cost order; BE-0240) stays in place for a future platform, but no
   platform exercises it today.
 - Two orderings answer two questions. **Stability order** (`PLATFORMS`, most-capable-first;

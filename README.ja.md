@@ -104,7 +104,10 @@ orchestrator、証跡、config、レポート）は [`bajutsu/common/`](bajutsu/
   `approve`）、golden 要素ツリー比較、`capturePolicy` トリガールール、シークレットの **redaction**
 - **レポート**（`manifest.json` + JUnit XML + CTRF JSON + 自己完結のインタラクティブ HTML）
 - **config 解決**（チーム既定 × アプリ別。iOS と Android は `app.id`、web は `app.url`）と
-  **backend 選択**（ターゲットの `platform`）
+  **backend 選択**（ターゲットの `platform`）。`bajutsu config schema` がプラットフォームごとの JSON Schema を出力します
+- **デバイスの条件**（`runsOn`）。モデルのリストや OS の範囲を書くと、シナリオはモデルごと、メジャー
+  バージョンごとの run に分かれ、各 run は読み取ったデバイスと照合します。片側が開いた範囲に合う
+  デバイスがなければ、失敗ではなく対象外として報告します
 - **backend コマンド層**（iOS 向け simctl、Android 向け adb）、**XCUITest チャネル**（常駐ランナーの
   要素スナップショット）、**Playwright web ドライバ**、**adb ドライバ**（常駐の UI Automator サーバ、
   フォールバックとして `uiautomator dump`）、**doctor** 規約スコアと環境 preflight

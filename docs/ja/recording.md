@@ -88,6 +88,8 @@ class Agent(Protocol):
 
 出力は `dump_scenarios` を通して YAML 化されます（[scenarios](scenarios.md#ラウンドトリップ読込--書出)）。
 
+**`record` が操作するデバイス。** `record`、`crawl`、`repl` は run を増やしません。ターゲットが `runsOn` にデバイスの条件を宣言しているときは、最初の run を使います。最初に並べた値と、範囲内で `--udid` のプールが持ついちばん新しいメジャーバージョンです。合うデバイスがなければ、終了コード 2 で終わります（[configuration](configuration.md#デバイスの条件runson)）。記録したシナリオはこれらの条件を持たず、`bajutsu run` がターゲット自身の条件を適用します。
+
 ### human-in-the-loop ハンドオフ（BE-0179）
 
 一部の flow は、AI が供給できない何か（ワンタイムパスワード、CAPTCHA、生体認証のプロンプト）で

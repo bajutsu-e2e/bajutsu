@@ -88,6 +88,8 @@ uv run python scripts/devicefarm_submit.py \
 
 `showcase.devicefarm.ios.config.yaml` は `runsOn.kind: device`（XCUITest バックエンドがシミュレーターではなく実機を操作します）を設定し、`app.path` を持ちません（Device Farm がアップロードした `.ipa` を予約デバイスへ自分でインストールします）。`--package BajutsuKit/Runner/build/dd-device/Build/Products=.` は、デバイス署名済みの `.xctestrun` とテストバンドルをパッケージのルートに配置します。これは設定の `driver.runner.testRunner: BajutsuRunner.xctestrun` が参照する場所です。再署名と simctl に関する注意事項は[上記](#ios-再署名と実機のケーパビリティ)をご参照ください。
 
+Device Farm のジョブでは、`runsOn.model` や `runsOn.os` のようなデバイスの条件を使えません（[configuration](configuration.md#デバイスの条件runson)）。Bajutsu は run の前に読み取れるデバイスに対して条件を照合しますが、Device Farm が予約するデバイスには、事前に読み取るものがありません。そのため provider は、ターゲットかシナリオが条件を宣言しているジョブを、アップロードの前に拒否し、該当するフィールドを示します。`runsOn.locale` と `runsOn.seedPhotos` は条件ではなくデバイスの状態なので、引き続き使えます。
+
 ## GitHub Actions ワークフロー
 
 [`.github/workflows/devicefarm.yml`](https://github.com/bajutsu-e2e/bajutsu/blob/main/.github/workflows/devicefarm.yml) は、サブミッターを**手動でオプトインする**ワークフローとしてラップします。これは `workflow_dispatch` のみで起動し、push や pull request では動きません。したがってマージ経路には乗らず、必須チェックにもなりません。ワークフローの GitHub OIDC トークンを `AWS_DEVICEFARM_ROLE_ARN` のロールと交換して短命の AWS 認証情報を発行し（静的なキーは使いません）、`devicefarm` という Environment にスコープします。プロジェクトとデバイスプールの ARN は、リポジトリ変数 `DEVICEFARM_PROJECT_ARN` と `DEVICEFARM_DEVICE_POOL_ARN` から読み取ります。この 3 つのいずれかが未設定のとき、ジョブは緑の no-op（`::notice::` を出すだけで、赤にはなりません）になります。運用者がアカウントを接続するまで、休止したままです。

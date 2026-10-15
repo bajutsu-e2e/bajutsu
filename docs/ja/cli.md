@@ -55,8 +55,8 @@ web backend が動く Windows では、`run` は BE-0449 以前と同じく run 
 
 | 終了コード | 条件 |
 |---|---|
-| 0 | すべてのシナリオが成功した |
-| 1 | いずれかのシナリオが失敗した |
+| 0 | すべてのシナリオが成功した。対象外の記録が並んでいても変わらない |
+| 1 | いずれかのシナリオが失敗した。または、すべての記録が対象外だった（`no run executed`） |
 | 2 | 未知のフラグや読み込めない config などの使い方の誤り |
 | 128 + シグナル番号 | `run` が SIGINT（130）、SIGTERM（143）、SIGHUP（129）を受け取った。キャンセルされた run の結果にかかわらずこの値です |
 
@@ -131,10 +131,11 @@ web backend が動く Windows では、`run` は BE-0449 以前と同じく run 
   それぞれを自分の適格なデバイスで実行します（[configuration](configuration.md#デバイスの条件runson)）。
   各 run の証跡は `runs/<id>/run-NN/` に置き、JUnit と CTRF のテスト名には座標が付きます。
   合うデバイスがない run は失敗します。片側が開いた範囲でデバイスがなかった run は「not applicable」
-  として並び、判定の行の直前の行が成功、失敗、対象外の件数を示します。すべての記録が対象外の
+  （対象外）になり、コンソール、マニフェスト、各レポートが別に並べます（[reporting](reporting.md)）。
+  判定の行の直前の行が、成功、失敗、対象外の件数を示します。すべての記録が対象外の
   ときは、`run` は終了コード 1 で終わり、`no run executed` を出します。`audit --repeat` と MCP の
-  run も同じように run を作ります。`record`、`crawl`、`repl` は最初の run だけを使います。`doctor` の
-  画面プローブは条件を引き続き拒否します。`--backend fake` はどの条件も照合せず、通知を 1 回
+  run も同じように run を作ります。`record`、`crawl`、`repl` は最初の run だけを使います。`doctor` は
+  その run を一覧にします（[後述](#doctor)）。`--backend fake` はどの条件も照合せず、通知を 1 回
   出します。`browser.version` のような条件が残る状態で `--browsers` を渡すと終了コード 2 で終わり、
   条件が複数の run を作るときの `--step` も終了コード 2 で終わります。
 - **シナリオの preconditions は、デバイスを操作する前に検査します（BE-0452）。** `run` と `audit` は、
@@ -319,6 +320,7 @@ bajutsu flakiness [--org <org>] [--json] [--window N]          # serve のデー
 - **入力元は二つ、ランク付けは一つ**です。`--history <runs-dir>` は過去の run の `manifest.json` を集めたディレクトリを掘り起こします（CI やスクリプト向けの形）。省略するとデータベース（`BAJUTSU_DATABASE_URL`）を読み、各 run の行に刻まれた `provenance.scenarioHash` から直接グルーピングします。runs ディレクトリが無いとき、またはデータベースが未設定のときは終了 2 です。
 - run は `provenance.scenarioHash` でグルーピングし、各シナリオを**判定の反転率**（`2·min(passed, failed)/runs`。一貫していれば 0、五分五分で 1）で採点します。分類は [BE-0049](../../roadmaps/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md) から再利用します。出力は flaky を先頭に、次いで反転率の降順、さらに run 数の降順で並びます。
 - **グループ化は OS バージョン単位でもあります。** 規則は `audit --history` と同じです（[BE-0358](../../roadmaps/BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact-ja.md)）。デバイスのマトリックスで 1 つのスイートを走らせる fleet が、そこにある本物の OS 差をフレーキネスとして採点することは、もうありません。この面が束ねる単位は run です（`audit --history` はシナリオ単位です）。そのため、複数の OS バージョンにまたがった run はどのバージョンも代表できず、解釈できないラベルと同じ `unknown OS` のグループに入ります。データベースを読むときの OS は、各 run の行が持つ列から得ます。その列より早く記録された run は、`serve` のパネルがランク付けするたびに、その run の manifest からメモリ上で修復します。データベースには書き戻しません。読み取り経路での書き込みは、運用者が消去した run を挿入し直しかねないためです。manifest が失われている行は `unknown OS` のまま残し、レポートがその件数を開示します。
+- **グループ化は、ターゲットと run の座標の単位でもあります**（[BE-0452](../../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)）。デバイスの条件がシナリオを複数の run に分けるとき（並べたモデルごとの run など）は、各 run の座標がキーに加わります。そのため、1 つのモデルだけで起きるレイアウトの失敗が、フレーキーなシナリオとして読まれることはありません。テキストの出力は、OS の後ろに座標を角括弧で示します。条件のない run の座標は空のままなので、BE-0452 より前に記録した履歴はそのまま続きます。結果が 2 つ以上の座標にまたがるホスト型の run は `*` としてまとめ、ほかのどの履歴とも合流させません。
 - 各エントリは最新の合格 run と最新の失敗 run の id を持ちます。`--json` の利用側や serve パネルは、両側の代表的な証跡へ直接リンクできます。
 - **`--window N`** は採点前に、各履歴の最新 N run だけを残します。採点する単位がシナリオ × OS バージョンなので、残す単位もそれに揃えます（既定の 0 は履歴全体です）。シナリオ単位で残すと、最新の run がすべて新しい OS に移った時点で古い OS の履歴が落ち、この grouping が浮かび上がらせるはずのバージョン間の所見が隠れます。**`--org <org>`** はデータベースを読むときに掘り起こす対象のテナントを選びます。
 - `provenance.scenarioHash` を持たない run（provenance 導入前）や、判定が記録されていない run はグルーピングできず、`audit --history` と同様にスキップとして報告します。

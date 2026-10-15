@@ -108,7 +108,11 @@ Implemented and covered by tests (run without a Simulator):
   secret **redaction**
 - **Reporting** (`manifest.json` + JUnit XML + CTRF JSON + self-contained interactive HTML)
 - **Config resolution** (team defaults × per-target; iOS or Android `app.id`, web `app.url`) and
-  **backend selection** (the target's `platform`)
+  **backend selection** (the target's `platform`), with a per-platform JSON Schema from
+  `bajutsu config schema`
+- **Device conditions** (`runsOn`). A model list or an OS range splits a scenario into runs, one
+  per model or major version. Each run takes a device that meets its conditions. An open range that
+  no device meets yields a not-applicable record, not a failed run
 - The **backend command layer** (simctl for iOS, adb for Android), the **XCUITest channel** (the
   resident runner's element snapshot), the **Playwright web driver**, the **adb driver**
   (a resident UI Automator server, with a `uiautomator dump` fallback), and the **doctor**

@@ -36,6 +36,7 @@ The XCUITest backend targets the Simulator by default. A single config key on th
 targets:
   my-app:
     platform: ios
+    app: { id: com.example.myapp }
     runsOn:
       kind: device   # "simulator" (the default) or "device"
 ```

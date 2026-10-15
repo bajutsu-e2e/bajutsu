@@ -28,6 +28,11 @@ a file path writes to the file. `--emit playwright` requires the app to be a web
 exits with code 2. Config's `app.launch.env` is carried into the generated test ([cli](cli.md#codegen)) — `app.launchEnvironment` for
 XCUITest, seeded `localStorage` for Playwright, and forwarded as intent extras for UI Automator.
 
+The generated test carries no device condition
+([configuration](configuration.md#device-conditions-runson)). In `bajutsu run`, a condition in
+`runsOn` selects the devices a scenario runs on. A generated test runs on whatever device or browser
+launches it.
+
 ## XCUITest output shape
 
 A group of scenarios becomes one `XCTestCase` subclass. **1 scenario = 1 test method.**
@@ -476,7 +481,7 @@ class ComponentsUITest {
   a sequence of such restarts could starve a launch a single long wait would have completed. Only a
   window absent for the whole timeout counts as stuck rather than slow. After `LAUNCH_ATTEMPTS`
   attempts `launch` fails, naming the windows it did see. The intent is rebuilt per attempt, which
-  also keeps `launchEnv` arriving through `onCreate`; resuming the existing task instead would route
+  also keeps the launch environment (`app.launch.env`) arriving through `onCreate`; resuming the existing task instead would route
   the extras to `onNewIntent`.
 - **A `wait` spends its budget across several reads, dropping the accessibility cache between
   them.** `hasObject`, `findObject`, and every `Until` condition built on them resolve through the

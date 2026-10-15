@@ -28,6 +28,10 @@ bajutsu codegen <scenario.yaml> --target <name> [--emit xcuitest | playwright | 
 `app.launch.env` は生成テストに引き継がれます（[cli](cli.md#codegen)）。XCUITest では `app.launchEnvironment` に、
 Playwright では `localStorage` のシードに反映され、UI Automator では intent extra として渡されます。
 
+生成したテストは、デバイスの条件を持ちません（[configuration](configuration.md#デバイスの条件runson)）。
+`bajutsu run` では、`runsOn` の条件がシナリオを動かすデバイスを選びます。生成したテストは、それを
+起動したデバイスやブラウザの上でそのまま動きます。
+
 ## XCUITest の出力の形
 
 シナリオ群を 1 つの `XCTestCase` サブクラスに落とします。**1 シナリオ = 1 テストメソッド**。
@@ -467,7 +471,7 @@ class ComponentsUITest {
   起動途中のアプリを最初からやり直させてしまいます。それを繰り返すと、1回の長い待機なら間に合った起動を
   枯渇させかねません。上限いっぱいウィンドウが現れなかった場合だけを、遅いのではなく詰まったものとして扱います。
   `LAUNCH_ATTEMPTS` 回の試行を終えると、`launch` は実際に見えていたウィンドウを名指しして失敗します。
-  intent は試行ごとに組み立て直します。これにより `launchEnv` は `onCreate` に届き続けます。既存のタスクを
+  intent は試行ごとに組み立て直します。これにより起動時の環境（`app.launch.env`）は `onCreate` に届き続けます。既存のタスクを
   再開する形にすると、extra は `onNewIntent` に回ってしまいます。
 - **`wait` は待機時間を複数回の読み取りに分け、その合間にキャッシュを破棄します。** 理由は2つあります。
   1つは、`hasObject` や `findObject`、`Until` の条件が、接続ごとに保持される

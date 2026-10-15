@@ -163,6 +163,8 @@ class RunResult:
     after_outcomes: list[StepOutcome]   # cleanup フェーズ自身のステップ
     after_verdict: str           # "success" / "failure" — どの cleanup ルールが走ったか。なければ ""
     target_devices: dict[str, TargetDeviceInfo]  # 宣言済みターゲットごとに 1 行（複数ターゲットのみ）
+    coordinates: str             # 例: "iPhone SE (3rd generation) / iOS 17"。条件がなければ ""
+    run_coordinates: dict[str, dict[str, str]]  # 同じ座標を、ターゲットと条件のフィールドごとに持つ
 ```
 
 `RunResult` の単数形の `backend` / `device` / `device_name` / `device_runtime` は、どれも 1 つのターゲット
@@ -218,6 +220,14 @@ erase（pre.erase なら shutdown → erase） → boot → bootstatus -b（起�
 - `run_and_report(...)`: `run_all` の結果を `write_report(runs_dir/run_id, ...)` で書き出し、`(results, manifest_path)` を返します。
 
 CLI の `run` はこの `run_and_report` を呼びます（[cli](cli.md#run)）。
+
+**デバイスの条件から作る run（BE-0452）。** シナリオの実効の `runsOn` は、デバイスの条件を宣言できます。そのときは、シナリオを実行する前に `bajutsu/run/device_matrix.py` が呼び出し全体の計画を立てます。
+
+1. 各プールを 1 回だけ読みます（`common/devices/facts.py`）。
+2. 各シナリオの run を作り、run ごとに適格なデバイスを選びます（`common/devices/runs.py`）。
+3. 同じデバイスを使う run を、1 つのセルにまとめます。
+
+セルは 1 つずつ順に実行します。各セルは、適格なデバイスに絞ったプールで `run_and_report` を通ります。そのため、`--workers` はセルの run を同一のデバイスに振り分けます。合うデバイスがない run は失敗します。片側が開いた範囲なら対象外の記録になり、ドライバには届きません（[configuration](configuration.md#デバイスの条件runson)）。条件を宣言したシナリオがない呼び出しは、上の経路をそのまま通ります。
 
 > **ウォームな XCUITest ランナー（BE-0291）。** 各シナリオは今も新しく起動したアプリと新しいドライバで実行します（クリーンな分離）。ただし XCUITest バックエンドの常駐 `xcodebuild` ランナーは、そのコールド起動が最大の固定コストなので、**デバイスごとにリースをまたいで常駐**させ、シナリオの切り替えではアプリだけを再起動します。これにより、スイートが払うコールド起動はシナリオごと 1 回ではなくデバイスごと 1 回で済みます。プールはウォームランナーを `(udid, actuator)` をキーに保持します。別の actuator に解決されるリース（BE-0240）や、デバイスを `erase` するシナリオはランナーをティアダウンして起動し直し、境界の定まった `/health` プローブに失敗したランナーはキャッシュミスとして扱います（コールド起動 1 回分の追加で済み、run を失いません）。adb と Playwright の各バックエンドはこの常駐プロセスを持たず、挙動は変わりません。
 >

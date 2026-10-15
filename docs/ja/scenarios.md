@@ -144,6 +144,31 @@ preconditions:
 > ディレクトリに置きます。`runsOn` のブロックはプラットフォームをキーにするので、run が動かさない
 > プラットフォームのブロックはエラーになりません。
 
+シナリオの `runsOn` のブロックは、シナリオが当てはまる環境も宣言します。iPad にしかない画面のシナリオは
+モデルを指定します。iOS と Android の両方のターゲットで動かすシナリオは、プラットフォームごとに条件を
+書きます。
+
+```yaml
+# iPad にしかない画面のシナリオ
+preconditions:
+  runsOn:
+    ios: { model: "iPad Pro 13-inch (M4)", os: ">=18" }
+```
+
+```yaml
+# iOS のターゲットと Android のターゲットの両方で動かすシナリオ
+preconditions:
+  runsOn:
+    ios:     { os: ">=18" }
+    android: { apiLevel: ">=34" }
+```
+
+シナリオのブロックはターゲットの `runsOn` をフィールドごとに上書きするので、ターゲットの範囲を広げる
+こともできます。ブロックにリストや範囲を書くと、シナリオは複数の run に分かれます。片側が開いた範囲に
+合うデバイスがないときは、失敗ではなく**対象外**（not applicable）の記録が残ります（規則は
+[configuration](configuration.md#デバイスの条件runson) にあります）。ブロックに書けるのは、デバイスの
+条件と、iOS の `locale` と `seedPhotos` です。`kind` と `emulate` はターゲットに残ります。
+
 > `run.erase` の解決順は **CLI の `--erase` / `--no-erase` > このシナリオ自身の `run.erase` >
 > ターゲットの `run.erase` > 組み込みのオフ**です
 > （[BE-0177](../../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)、
@@ -461,6 +486,8 @@ label の対応表が扱う言語は英語と日本語です。それ以外の�
 # config.yaml — アプリ全体の既定。このアプリのオンボーディング画面を全シナリオで扱う
 targets:
   myapp:
+    platform: ios
+    app: { id: com.example.myapp }
     hooks:
       interrupts:
         - condition: { exists: { id: onboarding.skip } }

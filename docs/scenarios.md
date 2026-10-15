@@ -153,6 +153,31 @@ on the target as well.
 > sits in a directory only the matching targets read. A `runsOn` block is keyed by platform, so a
 > block for a platform the run does not drive is not an error.
 
+A scenario's `runsOn` block also declares where the scenario applies. A scenario for a screen that
+iPad alone has names the model. A scenario run against both an iOS and an Android target states a
+condition for each platform:
+
+```yaml
+# a scenario for a screen that iPad alone has
+preconditions:
+  runsOn:
+    ios: { model: "iPad Pro 13-inch (M4)", os: ">=18" }
+```
+
+```yaml
+# one scenario run against an iOS target and against an Android target
+preconditions:
+  runsOn:
+    ios:     { os: ">=18" }
+    android: { apiLevel: ">=34" }
+```
+
+The scenario's block overrides the target's `runsOn` field by field. The scenario may thus widen
+the target's range too. A list or a range in the block multiplies the scenario into runs. An open
+range that no available device meets leaves a **not applicable** record rather than a failure.
+[Configuration](configuration.md#device-conditions-runson) has the rules. A block accepts the
+device conditions and, on iOS, `locale` and `seedPhotos`. `kind` and `emulate` stay on the target.
+
 > **`run.erase` resolution order** is **CLI `--erase` / `--no-erase` > this scenario's own
 > `run.erase` > the target's `run.erase` > built-in off**. An unset scenario value (the common case)
 > inherits whatever the target config sets. `_filter_scenarios` (`run/cli.py`) resolves the order
@@ -689,6 +714,8 @@ author no longer has to predict the one spot to place an `if`.
 # config.yaml — an app-wide default: this app's onboarding screen, on every scenario
 targets:
   myapp:
+    platform: ios
+    app: { id: com.example.myapp }
     hooks:
       interrupts:
         - condition: { exists: { id: onboarding.skip } }
