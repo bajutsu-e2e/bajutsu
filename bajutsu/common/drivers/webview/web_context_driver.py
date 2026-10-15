@@ -116,6 +116,9 @@ class WebContextDriver:
     def back(self) -> None:
         raise UnsupportedAction("back is not supported in web context (first slice)")
 
+    def goto(self, url: str) -> None:  # noqa: ARG002  # Driver shape
+        raise UnsupportedAction("navigate is not supported in web context (first slice)")
+
     def pinch(self, sel: Selector, scale: float) -> None:  # noqa: ARG002  # Driver shape
         raise UnsupportedAction("pinch is not supported in web context (first slice)")
 

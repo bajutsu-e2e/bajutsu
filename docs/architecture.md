@@ -293,7 +293,8 @@ The contract (`tests/driver_conformance.py`) is the "done" definition a new back
 - `capabilities()` matches observed behavior — the `QUERY` / `ELEMENTS` baseline is declared,
   multi-touch gestures work exactly when `MULTI_TOUCH` is declared, select-all / clipboard copy
   work exactly when `TEXT_SELECTION` is declared, and setting a native `<select>` by value works
-  exactly when `SELECT_OPTION` is declared (else each raises `UnsupportedAction`, BE-0280);
+  exactly when `SELECT_OPTION` is declared, and loading a URL works exactly when `URL_NAVIGATION` is
+  declared (else each raises `UnsupportedAction`, BE-0280, BE-0464);
 - text editing round-trips on the focused field (typing then deleting reduces its reported length),
   and `tap_point` — a raw coordinate tap, the alert-dismissal path — focuses the field when aimed at
   its center, the same observable effect as a semantic tap (BE-0280);

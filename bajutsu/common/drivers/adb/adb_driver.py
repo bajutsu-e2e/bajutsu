@@ -1506,6 +1506,10 @@ class AdbDriver(CoordinateTreeDriver):
         self._actuations.record(Actuation(gesture="back", via="key", unit=_UNIT))
         self._act(adb.keyevent_cmd(self.serial, adb.KEYCODE_BACK))
 
+    def goto(self, url: str) -> None:  # noqa: ARG002  # Driver shape
+        # An Android intent is its own item (BE-0464's out-of-scope list), not a `navigate` alias.
+        raise base.UnsupportedAction("navigate is web-backend-only; Android opens no URL mid-run")
+
     def pinch(self, sel: base.Selector, scale: float) -> None:
         # Two contacts spread from / close to the target centre by `scale`, driven as a raw two-slot
         # `sendevent` sweep (BE-0232) — the machinery the double-tap established, one slot to two.

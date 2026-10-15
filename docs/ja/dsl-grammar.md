@@ -216,6 +216,7 @@ Action    ::=
   | { select:      { into: <Selector>, mode?: "all" } }    # フィールドをフォーカスして内容を選択（mode 既定 "all"。web コンテキストは非対応。codegen は XCUITest の同等コードを出力）
   | { copy:        {} }                                    # 選択中の内容をクリップボードにコピー（事前に select が必要。web コンテキストは非対応）
   | { selectOption:{ sel: <Selector>, option: string } }   # web の <select> をこの value を持つ option に設定（web 専用。iOS/Android は非対応）
+  | { navigate:    string }                                # baseUrl を基準に解決した URL を開く。http/https のみ（web 専用。BE-0464）
   | { setPickerValue:{ sel: <Selector>, value: string } }  # ホイール型のピッカーをこの value を持つ行へ動かす（iOS 専用。sel は 1 つのホイールを指す）
   | { swipe:       <Swipe> }                          # 方向指定形式はスクロール。座標形式は素のドラッグ
   | { drag:        <Drag> }                           # 掴んだ要素（ハンドル / 仕切り / スライダー）をポインタドラッグする。スクロールではない

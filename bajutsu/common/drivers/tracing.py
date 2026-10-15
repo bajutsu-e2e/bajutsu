@@ -39,6 +39,7 @@ _TRACED_METHODS = frozenset(
         "swipe",
         "scroll",
         "back",
+        "goto",
         "pinch",
         "rotate",
         "type_text",

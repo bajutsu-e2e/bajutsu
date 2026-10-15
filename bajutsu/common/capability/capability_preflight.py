@@ -147,6 +147,26 @@ def _select_option_locations(sc: Scenario) -> list[str]:
     return [path for path, step in _walk_scenario(sc) if step.select_option is not None]
 
 
+def _navigate_locations(sc: Scenario) -> list[str]:
+    """The paths where a navigate step appears, inside a `web:` / `app:` block included (BE-0464).
+
+    `_walk_steps` skips those blocks on purpose, but no backend that runs one (the iOS WebView
+    context, the cross-app context) can open a URL, so a `navigate` nested there would otherwise reach
+    a leased device before failing. Recursing for this one construct closes that gap without moving
+    every other construct's failure from run time to preflight.
+    """
+
+    def found(pairs: Iterator[tuple[str, Step]]) -> Iterator[str]:
+        for path, step in pairs:
+            if step.navigate is not None:
+                yield path
+            for name, block in (("web", step.web), ("app", step.app)):
+                if block is not None:
+                    yield from found(_walk_steps(block.steps, f"{path} > {name}"))
+
+    return list(found(_walk_scenario(sc)))
+
+
 def _text_selection_locations(sc: Scenario) -> list[str]:
     """The paths where a `select` or `copy` step appears (BE-0280).
 
@@ -213,6 +233,11 @@ _REQUIREMENTS = (
         base.Capability.SELECT_OPTION,
         "selectOption (web <select> switch; not supported on iOS / Android)",
         _select_option_locations,
+    ),
+    _Requirement(
+        base.Capability.URL_NAVIGATION,
+        "navigate (open a URL; web only, not supported on iOS / Android)",
+        _navigate_locations,
     ),
     _Requirement(
         base.Capability.PICKER_WHEEL,

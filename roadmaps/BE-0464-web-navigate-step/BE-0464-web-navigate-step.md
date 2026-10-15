@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0464](BE-0464-web-navigate-step.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0464") |
 | Implementing PR | — |
 | Topic | Scenario authoring features |
@@ -130,18 +130,30 @@ The driver method is named `goto` because `BackendLifecycle.navigate()` already 
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Scenario model: `Navigate` and `Step.navigate`
-- [ ] Driver protocol, capability, preflight
-- [ ] Handler, runner sets, tracing, actuation record
-- [ ] Playwright `goto` with URL resolution and error mapping
-- [ ] Driver conformance case
-- [ ] Codegen
-- [ ] Web demo scenario
-- [ ] Documentation and vocabulary lists
+- [x] Scenario model: `Navigate` and `Step.navigate`
+- [x] Driver protocol, capability, preflight
+- [x] Handler, runner sets, tracing, actuation record
+- [x] Playwright `goto` with URL resolution and error mapping
+- [x] Driver conformance case
+- [x] Codegen
+- [x] Web demo scenario
+- [x] Documentation and vocabulary lists
 
 Log:
 
 - Proposed.
+- Shipped all eight units in one change. Built against today's tree, with three deviations from the
+  design text: `Navigate` also dumps back to the plain string, because `_interp_step`, `serialize`,
+  and a saved run's reload each dump a step and re-validate it, and a dumped `{url: ...}` would meet
+  the rejected mapping form. The load-time scheme check runs from the `Scenario` validator rather than
+  the model, for the reason `_http_extract.py` gives (a model check would re-fire after substitution
+  as an uncaught `ValidationError`). `goto` maps every Playwright navigation error except
+  `TargetClosedError` to `SelectorError`; a real-Chromium test pins the split (an unresolvable host
+  fails the step, a closed page stays a wedge). The preflight follows `web:` and `app:` blocks for
+  `navigate` alone, so no other construct's failure moves from run time to preflight. The Playwright
+  codegen check is a unit-test expectation rather than a golden file, since the one golden
+  (`smoke.spec.ts`) tracks `smoke.yaml`. The open point on relative resolution stays as designed
+  (`urljoin`).
 
 ## References
 

@@ -8,6 +8,7 @@ import shutil
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
+from urllib.parse import urljoin
 
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.actuation import Actuation, ActuationLog, Drained
@@ -16,6 +17,7 @@ from bajutsu.common.evidence import intervals
 
 from ._functions import (
     _device_context_kwargs,
+    _is_target_closed,
     _playwright_error_types,
     _rotate_point,
     _start_browser,
@@ -620,6 +622,27 @@ class PlaywrightDriver:
         self._page.go_back()
 
     @_wedge_guard
+    def goto(self, url: str) -> None:
+        """Load *url*, resolved against the base URL as a browser resolves a link (BE-0464).
+
+        Returns once the page's `load` event fires; the response status is not read, so a 404 page
+        loads and the scenario's next assertion decides. A failure the URL itself causes (a failed
+        lookup, a refused connection, a timeout) fails the step as a `SelectorError` rather than
+        reaching `_wedge_guard`, which would report an author's typo as a recoverable browser
+        fault; only a closed page, context, or browser stays a wedge.
+        """
+        target = urljoin(self._base_url, url)
+        # The URL is author data, so the record names only the gesture (`actuation` rule 3).
+        self._actuations.record(Actuation(gesture="navigate", via="url", unit=_UNIT))
+        try:
+            self._page.goto(target)
+        except _playwright_error_types() as exc:
+            if _is_target_closed(exc):
+                raise
+            reason = str(exc).splitlines()[0] if str(exc) else type(exc).__name__
+            raise base.SelectorError(f"navigate could not load {target}: {reason}") from exc
+
+    @_wedge_guard
     def pinch(self, sel: base.Selector, scale: float) -> None:
         # Two fingers level on the element's center; `scale` spreads (>1) or closes (<1) their gap.
         (cx, cy, r), el = self._gesture_anchor(sel)
@@ -830,6 +853,7 @@ class PlaywrightDriver:
             base.Capability.MULTI_TOUCH,
             base.Capability.SELECT_OPTION,
             base.Capability.TEXT_SELECTION,
+            base.Capability.URL_NAVIGATION,
         }
     )
 

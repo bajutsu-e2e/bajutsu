@@ -467,7 +467,7 @@ scenarios:
 
 | 分類 | 欄 | すること |
 |---|---|---|
-| ジェスチャー | `tap`、`tapPoint`、`doubleTap`、`longPress`、`swipe`、`drag`、`scroll`、`pinch`、`rotate`、`back` | タッチとナビゲーションの入力です。 |
+| ジェスチャー | `tap`、`tapPoint`、`doubleTap`、`longPress`、`swipe`、`drag`、`scroll`、`pinch`、`rotate`、`back`、`navigate` | タッチとナビゲーションの入力です。 |
 | テキストと選択 | `type`、`select`、`clear`、`delete`、`copy`、`selectOption`、`setPickerValue` | テキストの入力・選択・コピーです。`copy` は事前の `select` を必要とします（第 7.5 節）。 |
 | 条件 | `wait`、`assert` | 条件やアサーションブロックをポーリングします。固定時間の sleep は使いません。 |
 | アプリとデバイスのライフサイクル | `relaunch`、`setLocation`、`push`、`clearKeychain`、`clearClipboard`、`setClipboard`、`background`、`foreground`、`overrideStatusBar`、`clearStatusBar`、`handleSystemAlert` | アプリのライフサイクルと、その周りのシミュレートされたデバイスを操作します。 |

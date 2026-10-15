@@ -219,6 +219,7 @@ Action    ::=
   | { select:      { into: <Selector>, mode?: "all" } }    # focus the field and select its content (mode default "all"; web-context raises; codegen emits the native XCUITest equivalent)
   | { copy:        {} }                                    # copy the active selection to the clipboard (requires a prior select; web-context raises)
   | { selectOption:{ sel: <Selector>, option: string } }   # set a web <select> to the option with this value (web only; iOS/Android raise)
+  | { navigate:    string }                                # load a URL resolved against baseUrl; http/https only (web only; BE-0464)
   | { setPickerValue:{ sel: <Selector>, value: string } }  # move a wheel-style picker to the row with this value (iOS only; sel addresses one wheel)
   | { swipe:       <Swipe> }                          # directional form scrolls; coordinate form is a raw drag
   | { drag:        <Drag> }                           # pointer-drag a grabbed element (handle / divider / slider), not a scroll

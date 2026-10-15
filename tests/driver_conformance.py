@@ -539,6 +539,17 @@ class DriverConformanceContract:
             with pytest.raises(base.UnsupportedAction):
                 driver.select_option({"id": "sel"}, "opt")
 
+    def test_url_navigation_capability_matches_behavior(self, harness: ConformanceHarness) -> None:
+        # capabilities() is a promise (BE-0464): a URL_NAVIGATION backend loads the URL; one without
+        # it refuses with UnsupportedAction rather than silently staying put. `about:blank` is
+        # absolute, so it needs no base URL, and the web harness's own base is `about:blank` anyway.
+        driver = harness.with_screen([element(identifier="a")])
+        if base.Capability.URL_NAVIGATION in driver.capabilities():
+            driver.goto("about:blank")
+        else:
+            with pytest.raises(base.UnsupportedAction):
+                driver.goto("about:blank")
+
     def test_picker_wheel_capability_matches_behavior(self, harness: ConformanceHarness) -> None:
         # capabilities() is a promise (BE-0356): a PICKER_WHEEL backend must not raise
         # UnsupportedAction for set_picker_value; one without it must raise rather than silently

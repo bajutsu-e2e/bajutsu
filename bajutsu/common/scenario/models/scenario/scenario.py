@@ -21,6 +21,7 @@ from bajutsu.common.scenario.models.steps import CleanupRule, Interrupt, Step
 
 from ._group_nesting import _check_no_nested_group
 from ._http_extract import _check_http_extract_vars
+from ._navigate_urls import _check_navigate_urls
 from ._targets import _check_target_requirements, _expand_target_groups
 from .preconditions import Preconditions
 
@@ -204,4 +205,9 @@ class Scenario(_Model):
     @model_validator(mode="after")
     def _http_extract_vars(self) -> Self:
         _check_http_extract_vars(self)
+        return self
+
+    @model_validator(mode="after")
+    def _navigate_urls(self) -> Self:
+        _check_navigate_urls(self)
         return self

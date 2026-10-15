@@ -130,6 +130,15 @@ def _wedge_guard[F: Callable[..., Any]](method: F) -> F:
     return cast(F, wrapper)
 
 
+def _is_target_closed(exc: BaseException) -> bool:
+    """Whether *exc* says the page, context, or browser is gone — a browser fault, not a bad URL.
+
+    Playwright raises `TargetClosedError` for it, but exports the class only from its private
+    `_impl` package, so it is matched by name across the error's class hierarchy (BE-0464).
+    """
+    return any(cls.__name__ == "TargetClosedError" for cls in type(exc).__mro__)
+
+
 def web_is_alive(driver: PlaywrightDriver, elements: list[base.Element]) -> bool:
     """The web crash signal for the crawl (BE-0066).
 

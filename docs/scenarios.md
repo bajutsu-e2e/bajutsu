@@ -955,6 +955,7 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `drag` | `drag: { on: <Selector>, direction: up\|down\|left\|right, amount?: <frac> }` | a real pointer **drag** of the element (a handle / divider / slider), not a scroll |
 | `scroll` | `scroll: { to: <Selector>, direction?: up\|down\|left\|right, within?: <Selector>, amount?: <frac>, maxScrolls?: <int> }` | scroll (non-inertially) until `to` is on-screen, or fail at a bound; `direction` is **scroll** direction (default `down`), the inverse of `swipe`'s |
 | `back` | `back: {}` | navigate back one level, each backend using its platform-correct primitive — the Android system back key, the iOS OS-provided back button, or web history ([BE-0210](../roadmaps/BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md)) |
+| `navigate` | `navigate: "<url>"` | load a URL in the current page, resolved against the target's `baseUrl` ([below](#navigate)); web only (iOS / Android fail in preflight) |
 | `pinch` | `pinch: { sel: <Selector>, scale: <num> }` | two-finger magnify; `scale > 0` (`>1` zooms in, `<1` out) |
 | `rotate` | `rotate: { sel: <Selector>, radians: <num> }` | two-finger rotation; `>0` is clockwise |
 | `handleSystemAlert` | `handleSystemAlert: { sel: <Selector>, timeout: <sec> }` | tap a button on an iOS SpringBoard permission prompt, deterministically ([below](#handlesystemalert-the-deterministic-system-alert-step)); iOS (XCUITest) only. `sel` accepts only `label` / `labelMatches` / `index`, and resolves against the system language the run pins the Simulator to. In place of `sel`, `prompt: notifications\|tracking\|paste` + `choice: grant\|deny` names the button by meaning and lets the run resolve its label (BE-0320), or its position under a language the label table does not cover (BE-0445) |
@@ -1020,6 +1021,31 @@ label) and fires a `change` event, so the page reacts exactly as it would to a u
 value matches what a `value` assertion reads back from the `<select>`, so a selection is directly
 assertable. `selectOption` is a web-only action — a `<select>` has no native counterpart on iOS or Android,
 so those backends fail the step with a clear "unsupported action" reason rather than doing nothing.
+
+### `navigate`
+
+```yaml
+- navigate: /settings                       # resolves against the target's baseUrl
+- navigate: https://idp.example.com/login   # an absolute URL is used as written
+- navigate: "/items/${vars.itemId}"         # ${...} tokens are expanded like any step field
+```
+
+`navigate` opens a URL in the middle of a scenario, for a page that no control links to (a link from
+an email, a shared-item URL), a deep page a UI walk would otherwise have to reach, or a redirect to
+exercise ([BE-0464](../roadmaps/BE-0464-web-navigate-step/BE-0464-web-navigate-step.md)). The value is
+a plain string, not a mapping. It resolves against the target's `baseUrl` the way a browser resolves a
+link (`urljoin`): `/settings` replaces any path in `baseUrl`, `settings` resolves against that path,
+and an absolute `http` / `https` URL is used as written, even on another origin. Any other scheme
+(`javascript:`, `file:`, `data:`) is rejected: a literal value when the scenario loads, and a value
+with a `${...}` token once the run has substituted it, which fails the step.
+
+The step returns once the page's `load` event fires. It does not read the response status, so a 404
+page loads and the step passes; the next `assert` or `wait` decides the verdict. Cookies and storage
+persist, so `navigate` continues the session rather than resetting it. A failure the URL itself
+causes, such as an unresolvable host or a timeout, fails the step with the browser's message.
+`navigate` needs the `urlNavigation` capability, which only the web backend declares, so a scenario
+that uses it on iOS or Android fails in preflight, before any device is leased, including a
+`navigate` nested inside a `web:` block.
 
 ### `setPickerValue`
 
@@ -1103,7 +1129,7 @@ modifiers are not allowed on the `web` step itself. The step needs a WebView bri
 (`BAJUTSU_WEBVIEW_PORT`); without one it fails cleanly rather than doing nothing. This first slice
 supports `tap` / `tapPoint` / `doubleTap` / `type` / `wait` / `assert` inside the block. `longPress` /
 `swipe` / `drag` / `clear` / `delete` / `select` / `copy` / `selectOption` / `scroll` / `back` /
-`pinch` / `rotate` / `handleSystemAlert` / `setPickerValue` are not reachable there, and each fails
+`navigate` / `pinch` / `rotate` / `handleSystemAlert` / `setPickerValue` are not reachable there, and each fails
 with a clear "not supported in web context" reason.
 
 ### `app` (driving another app's UI, iOS only)

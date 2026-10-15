@@ -135,18 +135,19 @@ _SCREEN_ACTIONS = frozenset(
         "drag",
         "scroll",
         "back",
+        "navigate",
         "pinch",
         "rotate",
     }
 )
 
 # The screen actions that resolve no selector before they act — a `tapPoint`, a coordinate `swipe`,
-# `type` with no `into`, `back`, `copy` — so on a device a group shares they would land on whichever
+# `type` with no `into`, `back`, `navigate`, `copy` — so on a device a group shares they would land on whichever
 # member is in front (BE-0447). Every other screen action resolves a required selector through a read
 # that raises `AppNotInFront`, a `SelectorError` the step body already turns into a named failure
 # before anything actuates. `swipe` and `type` stay whole: their selector-free forms are not
 # distinguishable by kind alone.
-_UNRESOLVED_ACTIONS = frozenset({"tap_point", "type", "copy_", "swipe", "back"})
+_UNRESOLVED_ACTIONS = frozenset({"tap_point", "type", "copy_", "swipe", "back", "navigate"})
 
 
 class _TargetUnavailable(Exception):

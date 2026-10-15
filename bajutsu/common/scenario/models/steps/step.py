@@ -31,6 +31,7 @@ from bajutsu.common.scenario.models.actions import (
     InstallApp,
     LongPress,
     Manual,
+    Navigate,
     OverrideStatusBar,
     Pinch,
     Push,
@@ -95,6 +96,9 @@ class Step(_Model):
     drag: Drag | None = None
     scroll: Scroll | None = None
     back: Back | None = None
+    # A web-only step gated by the `urlNavigation` capability (BE-0464); the YAML value is a plain
+    # string, which `Navigate` maps to its `url` field and dumps back.
+    navigate: Navigate | None = None
     pinch: Pinch | None = None
     rotate: Rotate | None = None
     wait: Wait | None = None

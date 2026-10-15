@@ -28,6 +28,7 @@ from .http_request import HttpRequest
 from .install_app import InstallApp
 from .long_press import LongPress
 from .manual import Manual
+from .navigate import Navigate, navigate_url_problem
 from .override_status_bar import OverrideStatusBar
 from .pinch import Pinch
 from .push import Push
@@ -75,6 +76,7 @@ __all__ = [
     "InstallApp",
     "LongPress",
     "Manual",
+    "Navigate",
     "OverrideStatusBar",
     "Pinch",
     "Push",
@@ -100,4 +102,5 @@ __all__ = [
     "TypeText",
     "VarTarget",
     "bypass_hint",
+    "navigate_url_problem",
 ]

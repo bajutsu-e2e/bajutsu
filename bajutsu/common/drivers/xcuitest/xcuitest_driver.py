@@ -1092,6 +1092,10 @@ class XcuitestDriver:
         # re-issuing the actuate call (BE-0210).
         self.tap({"id": base.OS_BACK_BUTTON})
 
+    def goto(self, url: str) -> None:  # noqa: ARG002  # Driver shape
+        # An iOS deep link is its own item (BE-0464's out-of-scope list), not a `navigate` alias.
+        raise base.UnsupportedAction("navigate is web-backend-only; iOS opens no URL mid-run")
+
     def type_text(self, text: str) -> None:
         # `text` is deliberately absent from the record — not even its length (see `actuation.py`).
         self._actuations.record(Actuation(gesture="typeText", via="focused", unit=_UNIT))

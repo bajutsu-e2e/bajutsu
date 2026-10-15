@@ -107,6 +107,7 @@ final class ComponentsUITests: XCTestCase {
 | `select` | `.tap()` + 全選択（BE-0265） |
 | `copy` | `app.typeKey("c", modifierFlags: .command)` |
 | `back` | OS のナビゲーション戻るボタンを tap します。XCUITest ドライバが実行時に tap するのと同じ要素（共有定数、BE-0210） |
+| `navigate` | `// TODO: navigate(url: …) — web-only; not generated`（BE-0464） |
 | `sleep` | `// fixed pause: <reason>` と `Thread.sleep(forTimeInterval: <秒>)` |
 | `swipe { on, direction }` | `.swipeUp/Down/Left/Right()` |
 | `swipe { from, to }` | `coord(x1, y1).press(forDuration: 0.1, thenDragTo: coord(x2, y2))`（`XCUICoordinate` のドラッグ。BE-0025） |
@@ -218,6 +219,7 @@ test.describe('Components', () => {
 | `select` | `await loc.selectText()`。web における全選択の対応物です（BE-0265） |
 | `copy` | `await page.keyboard.press('Control+c')` |
 | `back` | `await page.goBack()`。ブラウザ履歴で、ドライバの `back()` と同じ基本操作です（BE-0210） |
+| `navigate` | `await page.goto(new URL('<value>', BASE_URL).toString())`。ドライバが `baseUrl` を基準に解決するのと同じ規則で、値を `BASE_URL` を基準に解決します。`${...}` トークンを含む値は、生成したテストに展開元の値がないので `// TODO` になります（BE-0464） |
 | `sleep` | `// fixed pause: <reason>` と `await page.waitForTimeout(<ミリ秒>)` |
 | `swipe { on, direction }` | 要素中心からその方向への `page.mouse.wheel` スクロール（BE-0227） |
 | `swipe { from, to }` | `// TODO`（座標スワイプは生成しない） |
@@ -633,6 +635,7 @@ Gradle 自身のレポートとあわせて回収済みのディレクトリを�
 | `select` | `.click()` + `device.pressKeyCode(KeyEvent.KEYCODE_A, KeyEvent.META_CTRL_ON)`（BE-0265） |
 | `copy` | `device.pressKeyCode(KeyEvent.KEYCODE_C, KeyEvent.META_CTRL_ON)` |
 | `back` | `device.pressBack()`。UI Automator ネイティブのシステム戻る操作で、adb ドライバの `keyevent 4` に対応します（BE-0210） |
+| `navigate` | `// TODO: navigate(url: …) — web-only; not generated`（BE-0464） |
 | `sleep` | `// fixed pause: <reason>` と `Thread.sleep(<ミリ秒>)` |
 | `swipe { on, direction }` | `.swipe(Direction.<UP/DOWN/LEFT/RIGHT>, 0.75f)` |
 | `swipe { from, to }` | `// TODO`（座標スワイプは生成しない） |

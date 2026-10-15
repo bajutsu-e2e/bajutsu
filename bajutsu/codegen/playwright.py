@@ -377,6 +377,13 @@ def _emit_step(step: Step) -> list[str]:  # noqa: C901, PLR0911, PLR0912
         # The web's `back` is browser history — the same primitive the driver's `back()` uses
         # (`page.go_back()`), so codegen emits it faithfully rather than an unlabeled TODO (BE-0210).
         return ["await page.goBack();"]
+    if step.navigate is not None:
+        url = step.navigate.url
+        if "${" in url:
+            # Substituted by the runner at run time; the generated test has no binding to read it from.
+            return [f"// TODO: navigate({_ts(url)}) — runtime-substituted URL; not generated"]
+        # `new URL(ref, base)` resolves a reference exactly as the driver's `urljoin` does (BE-0464).
+        return [f"await page.goto(new URL({_ts(url)}, BASE_URL).toString());"]
     if step.long_press is not None:
         return _act(
             step.long_press.sel.as_selector(),

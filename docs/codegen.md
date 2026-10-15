@@ -108,6 +108,7 @@ the selector at `el("UNSUPPORTED_SELECTOR")` — an honest gap, not a wrong gues
 | `select` | `.tap()` + select-all (BE-0265) |
 | `copy` | `app.typeKey("c", modifierFlags: .command)` |
 | `back` | taps the OS navigation back button — the same element (and shared constant) the XCUITest driver taps at run time (BE-0210) |
+| `navigate` | `// TODO: navigate(url: …) — web-only; not generated` (BE-0464) |
 | `sleep` | `// fixed pause: <reason>` + `Thread.sleep(forTimeInterval: <seconds>)` |
 | `swipe { on, direction }` | `.swipeUp/Down/Left/Right()` |
 | `swipe { from, to }` | `coord(x1, y1).press(forDuration: 0.1, thenDragTo: coord(x2, y2))` — an `XCUICoordinate` drag (BE-0025) |
@@ -222,6 +223,7 @@ test.describe('Components', () => {
 | `select` | `await loc.selectText()` — the web peer of select-all (BE-0265) |
 | `copy` | `await page.keyboard.press('Control+c')` |
 | `back` | `await page.goBack()` — browser history, the same primitive the driver's `back()` uses (BE-0210) |
+| `navigate` | `await page.goto(new URL('<value>', BASE_URL).toString())` — resolves the value against `BASE_URL` exactly as the driver resolves it against `baseUrl`; a value with a `${...}` token becomes a `// TODO`, since the generated test has no binding to substitute (BE-0464) |
 | `sleep` | `// fixed pause: <reason>` + `await page.waitForTimeout(<milliseconds>)` |
 | `swipe { on, direction }` | a `page.mouse.wheel` scroll from the element center in the direction (BE-0227) |
 | `swipe { from, to }` | `// TODO` (coordinate swipes are not generated) |
@@ -649,6 +651,7 @@ same limit the XCUITest emitter hits for NSPredicate `MATCHES`), so it stays a `
 | `select` | `.click()` + `device.pressKeyCode(KeyEvent.KEYCODE_A, KeyEvent.META_CTRL_ON)` (BE-0265) |
 | `copy` | `device.pressKeyCode(KeyEvent.KEYCODE_C, KeyEvent.META_CTRL_ON)` |
 | `back` | `device.pressBack()` — UI Automator's native system back, the peer of the adb driver's `keyevent 4` (BE-0210) |
+| `navigate` | `// TODO: navigate(url: …) — web-only; not generated` (BE-0464) |
 | `sleep` | `// fixed pause: <reason>` + `Thread.sleep(<milliseconds>)` |
 | `swipe { on, direction }` | `.swipe(Direction.<UP/DOWN/LEFT/RIGHT>, 0.75f)` |
 | `swipe { from, to }` | `// TODO` (coordinate swipes are not generated) |

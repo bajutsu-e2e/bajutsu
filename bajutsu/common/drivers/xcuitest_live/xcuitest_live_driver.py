@@ -330,6 +330,9 @@ class XcuitestLiveDriver:
             "first-class XCUITest command"
         )
 
+    def goto(self, url: str) -> None:  # noqa: ARG002  # Driver shape
+        raise base.UnsupportedAction("navigate is web-backend-only; iOS opens no URL mid-run")
+
     def select_option(self, sel: base.Selector, option: str) -> None:  # noqa: ARG002  # Driver shape
         raise base.UnsupportedAction("selectOption is web-only; iOS has no native <select>")
 

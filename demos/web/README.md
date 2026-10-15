@@ -11,7 +11,9 @@ toolchain as `make check`.
 | Path | Purpose |
 |---|---|
 | `app/index.html` | the app under test — onboarding → login → counter, a Sync button that POSTs to `/api/sync` (the network lane's request), plus a device-verification flow for the handoff demo, vanilla JS, stable `data-testid` ids |
+| `app/help.html` | a page nothing in `index.html` links to, reachable only by its address — what `scenarios/navigate.yaml` opens |
 | `scenarios/smoke.yaml` | the deterministic smoke scenario (same step/expect schema as the iOS demos) |
+| `scenarios/navigate.yaml` | opens `help.html` with a `navigate` step and returns by a relative reference ([BE-0464](../../roadmaps/BE-0464-web-navigate-step/BE-0464-web-navigate-step.md)) |
 | `scenarios/network.yaml` | the network smoke ([BE-0282](../../roadmaps/BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md)) — a mocked, captured `POST /api/sync` carrying a secret; tagged `network` so the default `e2e` (`--no-network`) skips it |
 | `network/assert_redaction.py` | checks the persisted `network.json` masks the Sync request's secret — the redaction gap the run grammar can't assert |
 | `record/goals.txt` | the natural-language goal `make -C demos/web record` authors from |

@@ -199,6 +199,12 @@ class FakeDriver:
         self._actuations.record(Actuation(gesture="back", via="key", unit=_UNIT))
         self._record("back", None)
 
+    def goto(self, url: str) -> None:
+        # The URL is author data, so it reaches `actions` (the test's view) but never the
+        # actuation record, which carries no author-written string (`actuation` rule 3).
+        self._actuations.record(Actuation(gesture="navigate", via="url", unit=_UNIT))
+        self._record("goto", url)
+
     def pinch(self, sel: base.Selector, scale: float) -> None:
         self._log_target("pinch", base.resolve_unique(self.screen, sel), scale=scale)
         self._record("pinch", (sel, scale))
@@ -390,6 +396,7 @@ class FakeDriver:
             base.Capability.ELEMENTS,
             base.Capability.MULTI_TOUCH,
             base.Capability.SELECT_OPTION,
+            base.Capability.URL_NAVIGATION,
             base.Capability.TEXT_SELECTION,
             base.Capability.HANDLE_SYSTEM_ALERT,
             base.Capability.PICKER_WHEEL,

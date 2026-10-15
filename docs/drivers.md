@@ -57,6 +57,7 @@ resolution, and the **preflight capability check** (below).
 | `multiTouch` | two-finger gestures (pinch / rotate) | ✅ | ✅ | ✅ | ✅ |
 | `textSelection` | select-all + clipboard copy on the focused field | ✅ | ✅ | ✅ | ✅ |
 | `selectOption` | set a native `<select>` by value (web only) | — | — | ✅ | ✅ |
+| `urlNavigation` | open a URL mid-scenario with `navigate` (web only; BE-0464) | — | — | ✅ | ✅ |
 | `handleSystemAlert` | tap an iOS SpringBoard permission-prompt button natively | ✅ | — | — | ✅ |
 | `pickerWheel` | set a wheel-style picker to a named row (iOS only) | ✅ | — | — | ✅ |
 | `handleTipkitTip` | dismiss a blocking Apple TipKit tip (iOS only) | ✅ | — | — | ✅ |
@@ -104,7 +105,9 @@ set) — no device, no clock — and per-scenario: only the offending scenarios 
 
 The check gates only the **hard** requirements the capability set cleanly decides: `pinch` /
 `rotate` need `multiTouch`, `selectOption` needs the `selectOption` token (a web-only `<select>`
-switch; iOS / Android are rejected before any device work), `select` / `copy` need `textSelection`
+switch; iOS / Android are rejected before any device work), `navigate` needs `urlNavigation` (web
+only, and caught even inside a `web:` block, the only construct the check follows into one),
+`select` / `copy` need `textSelection`
 (select-all + clipboard copy; the web context is coordinate-only for these and refuses both —
 `delete` / `clear` stay ungated, as every backend backs `delete_text`), a `visual` assertion needs
 `screenshot`, `handleSystemAlert` needs the `handleSystemAlert` token (only xcuitest declares it),
