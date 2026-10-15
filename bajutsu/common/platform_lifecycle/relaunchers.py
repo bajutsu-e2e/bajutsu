@@ -11,7 +11,7 @@ from collections.abc import Callable, Mapping
 from typing import cast
 
 from bajutsu.common.backend_cli import simctl
-from bajutsu.common.config import Effective, require_ios, resolve_preconditions
+from bajutsu.common.config import Effective, ios_bundle_id, resolve_preconditions
 from bajutsu.common.drivers import base
 from bajutsu.common.orchestrator import RelaunchFn
 from bajutsu.common.platform_lifecycle import readiness
@@ -58,7 +58,7 @@ def device_relauncher(
 
     def for_scenario(eff: Effective, scenario: Scenario, driver: base.Driver) -> RelaunchFn:
         pre = resolve_preconditions(eff, scenario.preconditions)
-        bundle_id = require_ios(eff).bundle_id
+        bundle_id = ios_bundle_id(eff)
 
         def relaunch(opts: Relaunch) -> None:
             e.terminate(bundle_id)

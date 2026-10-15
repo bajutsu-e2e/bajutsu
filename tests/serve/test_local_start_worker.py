@@ -566,8 +566,12 @@ def test_a_log_line_clears_the_notice_in_the_event_stream(tmp_path: Path) -> Non
 
 
 def _processes_naming(text: str) -> list[str]:
-    out = subprocess.run(["ps", "-ax", "-o", "command"], capture_output=True, text=True, check=True)
-    return [line for line in out.stdout.splitlines() if text in line and "ps -ax" not in line]
+    # `-ww`: piped, `ps` may cut each line to 80 columns, dropping a scenario path deep in a long
+    # tmp dir; both procps and BSD ps take it as "never truncate".
+    out = subprocess.run(
+        ["ps", "-ww", "-ax", "-o", "command"], capture_output=True, text=True, check=True
+    )
+    return [line for line in out.stdout.splitlines() if text in line and "ps -ww" not in line]
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX signals and sessions")

@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 
 from bajutsu.common.backend_cli import simctl
-from bajutsu.common.config import Effective, require_ios
+from bajutsu.common.config import Effective, ios_bundle_id
 from bajutsu.common.config.preconditions import ResolvedPreconditions
 from bajutsu.common.drivers import base
 from bajutsu.common.evidence import intervals
@@ -29,6 +29,8 @@ class _DeviceEnvironment:
 
     Only `start` differs between them — the fake runs no device sequence — so every lease-shaping
     method (catalog, relaunch, control, teardown, the external-receiver network strategy) lives here.
+    The fake leases a target of any platform, so the bundle id is read with `ios_bundle_id` (empty off
+    iOS) rather than `require_ios`, which would fail the lease of every non-iOS fake run.
     """
 
     def __init__(
@@ -91,10 +93,10 @@ class _DeviceEnvironment:
         return device_relauncher(self._udid, self._run, extra_env)(eff, scenario, driver)
 
     def controller(self, eff: Effective) -> DeviceControl | None:
-        return device_control(self._udid, require_ios(eff).bundle_id, self._run)
+        return device_control(self._udid, ios_bundle_id(eff), self._run)
 
     def teardown(self, driver: base.Driver, eff: Effective) -> None:  # noqa: ARG002  # Environment shape
-        simctl.Env(self._udid, run=self._run).terminate(require_ios(eff).bundle_id)
+        simctl.Env(self._udid, run=self._run).terminate(ios_bundle_id(eff))
 
     def start_member(
         self,
@@ -116,7 +118,7 @@ class _DeviceEnvironment:
         raise base.UnsupportedAction(f"installApp is not supported on {self._actuator}")
 
     def end_member(self, driver: base.Driver, eff: Effective) -> None:  # noqa: ARG002  # Environment shape
-        simctl.Env(self._udid, run=self._run).terminate(require_ios(eff).bundle_id)
+        simctl.Env(self._udid, run=self._run).terminate(ios_bundle_id(eff))
 
     def has_reusable_resident(self) -> bool:
         # fake spawns no resident to amortize; XcuitestEnvironment overrides (BE-0291).
@@ -166,7 +168,7 @@ class _DeviceEnvironment:
         # Return to a clean start the way `run` reaches any state: relaunch (not a full erase) so each
         # frontier revisit stays fast; the engine then replays the shortest path from the entry.
         e = simctl.Env(self._udid, run=self._run)
-        bundle_id = require_ios(eff).bundle_id
+        bundle_id = ios_bundle_id(eff)
 
         def reset(driver: base.Driver) -> None:
             e.terminate(bundle_id)
