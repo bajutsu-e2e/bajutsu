@@ -171,6 +171,19 @@ def test_preflight_sees_navigate_inside_an_app_block_and_a_lifecycle_phase() -> 
     assert navigate == ["setup [0]", "step 1 > app[0]"]
 
 
+def test_preflight_sees_navigate_in_an_interrupt() -> None:
+    # An interrupt's recovery steps run on the leased device, so they are walked too.
+    sc = Scenario.model_validate(
+        {
+            "name": "s",
+            "steps": [{"tap": {"id": "ok"}}],
+            "interrupts": [{"condition": {"exists": {"id": "x"}}, "steps": [{"navigate": "/a"}]}],
+        }
+    )
+    reasons = capability_preflight.unsupported(sc, _MOBILE)
+    assert [r.split(":")[0] for r in reasons] == ["interrupts[0] [0]"]
+
+
 # --- Handler: dispatch, substitution, and the run-time scheme re-check ---
 
 
@@ -324,10 +337,11 @@ def test_the_failure_reason_leaves_the_url_out() -> None:
 
 
 @pytest.mark.usefixtures("_pw_errors")
-def test_a_crashed_page_stays_a_wedge() -> None:
-    drv = _web(_Page(_PwError("Page.goto: Navigation failed because page crashed!")))
-    with pytest.raises(simctl.DeviceError):
-        drv.goto("/x")
+def test_a_crashed_page_stays_a_wedge_without_the_url() -> None:
+    error = _PwError("Page.goto: Navigation failed because page crashed!\nnavigating to /x?t=s3cr")
+    with pytest.raises(simctl.DeviceError) as caught:
+        _web(_Page(error)).goto("/x?t=s3cr")
+    assert "s3cr" not in str(caught.value)
 
 
 @pytest.mark.usefixtures("_pw_errors")

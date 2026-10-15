@@ -165,7 +165,12 @@ def _navigate_locations(sc: Scenario) -> list[str]:
                 if block is not None:
                     yield from found(_walk_steps(block.steps, f"{path} > {name}"))
 
-    return list(found(_walk_scenario(sc)))
+    paths = list(found(_walk_scenario(sc)))
+    # `_walk_scenario` stops at setup / steps / cleanup; an interrupt's recovery steps run on the
+    # leased device too, so a `navigate` there has to be caught before the lease as well.
+    for i, entry in enumerate(sc.interrupts):
+        paths.extend(found(_walk_steps(entry.steps, f"interrupts[{i}] ")))
+    return paths
 
 
 def _text_selection_locations(sc: Scenario) -> list[str]:

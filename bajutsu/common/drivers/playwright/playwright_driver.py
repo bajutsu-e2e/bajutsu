@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import urljoin
 
+from bajutsu.common.backend_cli import simctl
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.actuation import Actuation, ActuationLog, Drained
 from bajutsu.common.drivers.dom import QUERY_JS, parse_dom
@@ -641,7 +642,11 @@ class PlaywrightDriver:
             self._page.goto(target)
         except _playwright_error_types() as exc:
             if _is_browser_fault(exc, target):
-                raise
+                # Raised here rather than left to `_wedge_guard`, which embeds `{exc}` whole: the
+                # wedge reason has to leave the URL out as the step failure below does.
+                raise simctl.DeviceError(
+                    f"web browser fault (recoverable wedge): {_nav_reason(exc, target)}"
+                ) from exc
             raise base.SelectorError(
                 f"navigate could not load the URL: {_nav_reason(exc, target)}"
             ) from exc
