@@ -332,6 +332,11 @@ e2e-visual-approve:
 # exchanges, but not on the persisted network.json, so whether a *really captured* secret is masked
 # there — and whether `mocked` is provenance rather than a default — is checked by that script.
 #
+# network_echo.yaml runs last, into its own `echo/` subdirectory of the same runs dir: it POSTs the
+# same secret-bearing body to a live echo server, whose response repeats those secrets back, so it
+# stays out of the evidence check above (which expects exactly one `/post` exchange, the mocked one)
+# while the CI artifact upload of `$(NET_RUNS)` still carries its evidence.
+#
 # `--target showcase-swiftui`, not both toolkits like `run-swiftui`/`run-uikit`: only the SwiftUI Log
 # submit sends the Authorization header and the `password` field the redaction check reads
 # (ios/uikit/Sources/LogController.swift sends neither), so the UIKit twin would fail that check for
@@ -350,6 +355,10 @@ e2e-network: swiftui-build runner-build
 		--target showcase-swiftui --udid $(SIM) --backend xcuitest --config $(CONFIG) \
 		--network --runs-dir $(NET_RUNS)
 	cd $(ROOT) && uv run python demos/showcase/network/assert_network_evidence.py $(NET_RUNS)
+	cd $(ROOT) && uv run bajutsu run \
+		--scenario demos/showcase/scenarios/network_echo.yaml \
+		--target showcase-swiftui --udid $(SIM) --backend xcuitest --config $(CONFIG) \
+		--network --runs-dir $(NET_RUNS)/echo
 
 # ---- In-app browser (SFSafariViewController) -------------------------------------------------------
 # scenarios/browser.yaml on its own, with the fixture page it loads served for the length of the run.
