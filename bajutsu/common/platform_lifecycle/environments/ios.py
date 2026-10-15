@@ -1,7 +1,8 @@
 """The device-style lifecycle base shared by the simctl family.
 
-`_DeviceEnvironment` holds every lease-shaping method the simctl family (XCUITest, fake) share; each
-concrete environment adds only its own `start` sequence.
+`_DeviceEnvironment` holds the lease-shaping methods the simctl family (XCUITest, fake) share.
+XCUITest adds its own `start` sequence; the fake backend, which drives no device, also overrides
+every method that would narrow the target to iOS or drive the Simulator (issue #2208).
 """
 
 from __future__ import annotations
