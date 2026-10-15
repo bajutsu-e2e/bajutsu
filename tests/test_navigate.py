@@ -74,6 +74,28 @@ def test_nested_value_is_checked_too() -> None:
         load_scenarios(yaml)
 
 
+_BAD = {"navigate": "javascript:alert(1)"}
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"setup": [_BAD]},
+        {"cleanup": [{"on": "always", "steps": [_BAD]}]},
+        {"interrupts": [{"condition": {"exists": {"id": "x"}}, "steps": [_BAD]}]},
+        {"steps": [{"if": {"condition": {"exists": {"id": "x"}}, "then": [], "else": [_BAD]}}]},
+        {"steps": [{"forEach": {"sel": {"id": "row"}, "as": "r", "steps": [_BAD]}}]},
+        {"steps": [{"app": {"bundleId": "com.example.other", "steps": [_BAD]}}]},
+        {"steps": [{"group": {"name": "g", "steps": [_BAD]}}]},
+    ],
+    ids=["setup", "cleanup", "interrupt", "if-else", "forEach", "app", "group"],
+)
+def test_every_phase_and_container_is_checked(body: dict[str, object]) -> None:
+    # Also pins `_iter_steps`, which the `http` extractBody check now shares.
+    with pytest.raises(ValueError, match="only opens http/https"):
+        Scenario.model_validate({"name": "s", "steps": [], **body})
+
+
 def test_token_value_is_left_to_run_time() -> None:
     # A `${...}` value can only be judged once substituted; the handler re-checks it then.
     step = load_scenarios(_one("navigate: '${vars.url}'"))[0].steps[0]
@@ -131,12 +153,32 @@ def test_preflight_sees_navigate_inside_a_web_block() -> None:
                        "Android) needs 'urlNavigation'"]  # fmt: skip
 
 
+def test_preflight_sees_navigate_inside_an_app_block_and_a_lifecycle_phase() -> None:
+    sc = Scenario.model_validate(
+        {
+            "name": "s",
+            "setup": [{"navigate": "/a"}],
+            "steps": [{"app": {"bundleId": "com.example.other", "steps": [{"navigate": "/b"}]}}],
+        }
+    )
+    reasons = capability_preflight.unsupported(sc, _MOBILE)
+    navigate = [r.split(":")[0] for r in reasons if "urlNavigation" in r]
+    assert navigate == ["setup [0]", "step 1 > app[0]"]
+
+
 # --- Handler: dispatch, substitution, and the run-time scheme re-check ---
 
 
 def test_fake_run_dispatches_goto() -> None:
     driver = FakeDriver(screen=[])
     result = run_scenario(driver, load_scenarios(_one("navigate: /settings"))[0])
+    assert result.ok, result.failure
+    assert driver.actions == [("goto", "/settings")]
+
+
+def test_surrounding_whitespace_is_dropped_before_goto() -> None:
+    driver = FakeDriver(screen=[])
+    result = run_scenario(driver, load_scenarios(_one("navigate: '  /settings  '"))[0])
     assert result.ok, result.failure
     assert driver.actions == [("goto", "/settings")]
 
@@ -249,6 +291,25 @@ def test_a_failed_lookup_fails_the_step_not_the_browser() -> None:
     drv = _web(_Page(_PwError("Page.goto: net::ERR_NAME_NOT_RESOLVED at http://nope.invalid/")))
     with pytest.raises(base.SelectorError, match="ERR_NAME_NOT_RESOLVED"):
         drv.goto("http://nope.invalid/")
+
+
+@pytest.mark.usefixtures("_pw_errors")
+def test_an_empty_error_message_names_the_error_type() -> None:
+    with pytest.raises(base.SelectorError, match="_PwError"):
+        _web(_Page(_PwError(""))).goto("/x")
+
+
+@pytest.mark.usefixtures("_pw_errors")
+def test_a_crashed_page_stays_a_wedge() -> None:
+    drv = _web(_Page(_PwError("Page.goto: Navigation failed because page crashed!")))
+    with pytest.raises(simctl.DeviceError):
+        drv.goto("/x")
+
+
+@pytest.mark.usefixtures("_pw_errors")
+def test_a_blank_first_line_does_not_empty_the_reason() -> None:
+    with pytest.raises(base.SelectorError, match="net::ERR_FAILED"):
+        _web(_Page(_PwError("\nnet::ERR_FAILED at /x"))).goto("/x")
 
 
 @pytest.mark.usefixtures("_pw_errors")

@@ -23,9 +23,10 @@ def navigate_url_problem(url: str) -> str | None:
     A relative reference (no scheme) passes: the driver resolves it against the target's `baseUrl`.
     Resolution alone guards nothing, since `urljoin` returns an absolute `javascript:` unchanged.
     """
-    if not url.strip():
+    stripped = url.strip()
+    if not stripped:
         return "navigate needs a non-empty URL"
-    scheme = urlsplit(url.strip()).scheme.lower()
+    scheme = urlsplit(stripped).scheme.lower()
     if scheme and scheme not in _ALLOWED_SCHEMES:
         return f"navigate only opens http/https URLs or a path relative to baseUrl, got {url!r}"
     return None

@@ -17,7 +17,7 @@ from bajutsu.common.evidence import intervals
 
 from ._functions import (
     _device_context_kwargs,
-    _is_target_closed,
+    _is_browser_fault,
     _playwright_error_types,
     _rotate_point,
     _start_browser,
@@ -629,7 +629,9 @@ class PlaywrightDriver:
         loads and the scenario's next assertion decides. A failure the URL itself causes (a failed
         lookup, a refused connection, a timeout) fails the step as a `SelectorError` rather than
         reaching `_wedge_guard`, which would report an author's typo as a recoverable browser
-        fault; only a closed page, context, or browser stays a wedge.
+        fault. A closed or crashed page stays a wedge, since no URL could have loaded there; a
+        timeout counts as the URL's, since a scenario run cannot tell a slow server from a hung
+        renderer.
         """
         target = urljoin(self._base_url, url)
         # The URL is author data, so the record names only the gesture (`actuation` rule 3).
@@ -637,9 +639,10 @@ class PlaywrightDriver:
         try:
             self._page.goto(target)
         except _playwright_error_types() as exc:
-            if _is_target_closed(exc):
+            if _is_browser_fault(exc):
                 raise
-            reason = str(exc).splitlines()[0] if str(exc) else type(exc).__name__
+            lines = [line for line in str(exc).splitlines() if line.strip()]
+            reason = lines[0] if lines else type(exc).__name__
             raise base.SelectorError(f"navigate could not load {target}: {reason}") from exc
 
     @_wedge_guard

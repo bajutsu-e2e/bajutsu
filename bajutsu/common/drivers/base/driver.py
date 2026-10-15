@@ -56,9 +56,10 @@ class Driver(Protocol):
     # Android's system back key, iOS's on-screen OS back button, the browser's history.
     def back(self) -> None: ...
     # Load `url` in the current page (BE-0464). `url` is a reference the backend resolves against its
-    # own base (the target's `baseUrl`), so an absolute URL passes through unchanged. Only a backend
-    # advertising URL_NAVIGATION supports it; the rest raise UnsupportedAction. Named `goto` because
-    # `BackendLifecycle.navigate()` already means "open baseUrl".
+    # own base (the target's `baseUrl`), so an absolute URL passes through unchanged. The caller has
+    # already applied the scheme rule (`navigate_url_problem`), as the `navigate` handler does. Only
+    # a backend advertising URL_NAVIGATION supports it; the rest raise UnsupportedAction. Named
+    # `goto` because `BackendLifecycle.navigate()` already means "open baseUrl".
     def goto(self, url: str) -> None: ...
     # Two-finger gestures. scale > 1 zooms in, < 1 zooms out; radians > 0 rotates
     # clockwise. Only backends advertising MULTI_TOUCH support these.

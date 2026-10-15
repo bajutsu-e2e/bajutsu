@@ -240,6 +240,11 @@ def test_a_tap_renders_its_selector(action: str) -> None:
     assert _text(_step_desc_parts(action, {"id": "ok"})) == "#ok"
 
 
+def test_navigate_renders_its_url_as_a_string() -> None:
+    # The one string-valued action (BE-0464): the payload is the URL itself, not a mapping.
+    assert _step_desc_parts("navigate", "/settings") == [("str", "/settings")]
+
+
 def test_a_long_press_shows_its_duration() -> None:
     assert _text(_step_desc_parts("longPress", {"sel": {"id": "row"}, "duration": 1.5})) == (
         "#row · 1.5s"
