@@ -100,9 +100,12 @@ public final class RunnerServer {
     }
 
     static func launchArguments(from environment: [String: String]) -> [String] {
-        let data = decodedForwarded(environment["BAJUTSU_ENCODED_LAUNCH_ARGS"])
-            ?? environment["BAJUTSU_LAUNCH_ARGS"]?.data(using: .utf8)
-        guard let data, let array = try? JSONSerialization.jsonObject(with: data) as? [String] else {
+        if let data = decodedForwarded(environment["BAJUTSU_ENCODED_LAUNCH_ARGS"]),
+           let array = try? JSONSerialization.jsonObject(with: data) as? [String] {
+            return array
+        }
+        guard let data = environment["BAJUTSU_LAUNCH_ARGS"]?.data(using: .utf8),
+              let array = try? JSONSerialization.jsonObject(with: data) as? [String] else {
             return []
         }
         return array

@@ -42,6 +42,14 @@ final class ForwardedLaunchTests: XCTestCase {
         XCTAssertEqual(RunnerServer.launchArguments(from: env), ["-url", "https://example.com/a"])
     }
 
+    func testMalformedEncodedArgumentsFallBackToPlain() {
+        // An empty value decodes to empty `Data`, not nil, so it has to fail on the JSON parse.
+        for bad in ["", "not base64!"] {
+            let env = ["BAJUTSU_ENCODED_LAUNCH_ARGS": bad, "BAJUTSU_LAUNCH_ARGS": #"["-AppleLocale", "fr_FR"]"#]
+            XCTAssertEqual(RunnerServer.launchArguments(from: env), ["-AppleLocale", "fr_FR"], bad)
+        }
+    }
+
     func testPlainArgumentsAreTheFallback() {
         XCTAssertEqual(RunnerServer.launchArguments(from: ["BAJUTSU_LAUNCH_ARGS": #"["-reset"]"#]), ["-reset"])
         XCTAssertEqual(RunnerServer.launchArguments(from: [:]), [])
