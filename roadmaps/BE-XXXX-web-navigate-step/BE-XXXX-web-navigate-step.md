@@ -107,6 +107,12 @@ The driver method is named `goto` because `BackendLifecycle.navigate()` already 
 | 7 | Web demo scenario | a scenario under the web demo opens a page by URL and asserts its content, and it passes in the web E2E lane |
 | 8 | Documentation and vocabulary lists | the English and Japanese pages list `navigate`; `make check` is green |
 
+### Open points for review
+
+- **Relative resolution.** We chose standard `urljoin`, so `/settings` drops any path in `baseUrl`. A target whose `baseUrl` is `https://host/app/` would then need `app/settings` or `/app/settings`. Appending to the `baseUrl` path is the alternative.
+- **Error classification.** Unit 4 must separate a bad URL from a browser fault. The exact mapping of Playwright's `net::ERR_*` errors needs a test against a real browser.
+- **Scheme restriction.** The `http`/`https` rule goes beyond what `http` enforces. We keep it because a `file:` URL would read the worker's disk on a hosted run.
+
 ## Alternatives considered
 
 | Alternative | Why we did not choose it |
@@ -117,12 +123,6 @@ The driver method is named `goto` because `BackendLifecycle.navigate()` already 
 | Restrict navigation to the `baseUrl` origin by default | It blocks external sign-in providers and payment pages that real scenarios cross. It also makes `navigate` stricter than `http`, which has no host limit. A hosted-run policy would cover both. |
 | Fail the step on a 4xx or 5xx response | It is the safer default, but we chose a plain `load` step. Scenarios that test an error page would then need an opt-out. Revisit it if silent 404s prove common. |
 | Extend `relaunch` with a URL | `relaunch` restarts the app process. The web equivalent is a context reset, which drops cookies and storage, so it cannot express "continue the session on another page". |
-
-## Open points for review
-
-- **Relative resolution.** We chose standard `urljoin`, so `/settings` drops any path in `baseUrl`. A target whose `baseUrl` is `https://host/app/` would then need `app/settings` or `/app/settings`. Appending to the `baseUrl` path is the alternative.
-- **Error classification.** Unit 4 must separate a bad URL from a browser fault. The exact mapping of Playwright's `net::ERR_*` errors needs a test against a real browser.
-- **Scheme restriction.** The `http`/`https` rule goes beyond what `http` enforces. We keep it because a `file:` URL would read the worker's disk on a hosted run.
 
 ## Progress
 
