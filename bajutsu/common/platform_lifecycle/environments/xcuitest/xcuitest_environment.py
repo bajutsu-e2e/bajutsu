@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import contextlib
 import dataclasses
-import json
 import math
 import os
 import shutil
@@ -44,6 +43,7 @@ from ._functions import (
     _bundle_executable,
     _destination,
     _diagnostic_reports_dir,
+    _forwarded_launch,
     _max_warm_reuses,
     _never_ended,
     _no_recovery,
@@ -478,8 +478,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
             forwarded_base["BAJUTSU_ATTACH"] = "1"
         else:
             launch_env, launch_args = self._launch_params(eff, pre, extra_env)
-            forwarded_base.update({f"BAJUTSU_LAUNCH_ENV_{k}": v for k, v in launch_env.items()})
-            forwarded_base["BAJUTSU_LAUNCH_ARGS"] = json.dumps(launch_args)
+            forwarded_base.update(_forwarded_launch(launch_env, launch_args))
             self._app_launched_at = time.time()
         runner_path = _resolve_runner(ios.xcuitest, device_type)
 
@@ -529,16 +528,17 @@ class XcuitestEnvironment(_DeviceEnvironment):
             self._prepare_simulator(eff, pre, permissions, cold=True)
 
         # The runner launches the app via XCUIApplication.launch(). The resolved preconditions are
-        # forwarded through env vars: the runner reads BAJUTSU_LAUNCH_ENV_* and sets them on
-        # launchEnvironment, BAJUTSU_LAUNCH_ARGS as launchArguments, and opens BAJUTSU_DEEPLINK.
+        # forwarded through env vars: the runner sets BAJUTSU_ENCODED_LAUNCH_ENV on launchEnvironment
+        # and BAJUTSU_ENCODED_LAUNCH_ARGS as launchArguments, falling back to BAJUTSU_LAUNCH_ENV_* /
+        # BAJUTSU_LAUNCH_ARGS only for a runner older than the encoded pair (`_forwarded_launch`);
+        # the plain form's URLs arrive with `//` collapsed, so it is not the one to inspect.
         launch_env, launch_args = self._launch_params(eff, pre, extra_env)
         runner_path = _resolve_runner(ios.xcuitest, device_type)
         forwarded_base = {
             # One generic runner drives whatever app the run targets, so it launches this
             # bundle id via XCUIApplication(bundleIdentifier:) rather than its own target app.
             "BAJUTSU_BUNDLE_ID": ios.bundle_id,
-            **{f"BAJUTSU_LAUNCH_ENV_{k}": v for k, v in launch_env.items()},
-            "BAJUTSU_LAUNCH_ARGS": json.dumps(launch_args),
+            **_forwarded_launch(launch_env, launch_args),
         }
         if pre.deeplink is not None:
             forwarded_base["BAJUTSU_DEEPLINK"] = pre.deeplink

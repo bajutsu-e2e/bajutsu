@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import contextlib
 import json
 import os
@@ -853,6 +854,26 @@ def _runner_host_bundle_ids(runner_path: Path) -> tuple[str, ...]:
         if isinstance(host_id, str) and host_id and host_id not in ids:
             ids.append(host_id)
     return tuple(ids)
+
+
+def _forwarded_launch(launch_env: Mapping[str, str], launch_args: list[str]) -> dict[str, str]:
+    """The runner env vars that carry the app's launch environment and arguments.
+
+    Each is sent twice. The encoded pair is what a current runner reads: `xcodebuild`
+    path-normalizes `.xctestrun` `TestingEnvironmentVariables`, collapsing the `//` of any URL in a
+    value (`https://host` arrives as `https:/host`), and base64url has no `/` to collapse. The plain
+    `BAJUTSU_LAUNCH_ENV_*` / `BAJUTSU_LAUNCH_ARGS` form stays for a runner built before the encoded
+    one existed (an explicit `driver.runner.testRunner`), which would otherwise lose the launch
+    environment outright rather than only its URLs' `//`.
+    """
+    env_json = json.dumps(dict(launch_env))
+    args_json = json.dumps(launch_args)
+    return {
+        **{f"BAJUTSU_LAUNCH_ENV_{k}": v for k, v in launch_env.items()},
+        "BAJUTSU_LAUNCH_ARGS": args_json,
+        "BAJUTSU_ENCODED_LAUNCH_ENV": base64.urlsafe_b64encode(env_json.encode()).decode(),
+        "BAJUTSU_ENCODED_LAUNCH_ARGS": base64.urlsafe_b64encode(args_json.encode()).decode(),
+    }
 
 
 def _patch_xctestrun_env(runner_path: Path, forwarded: Mapping[str, str]) -> Path:

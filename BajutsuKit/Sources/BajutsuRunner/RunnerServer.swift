@@ -65,29 +65,57 @@ public final class RunnerServer {
         }
     }
 
-    /// The app launch environment forwarded by the Python environment via `BAJUTSU_LAUNCH_ENV_*`.
+    /// The app launch environment forwarded by the Python environment.
     ///
-    /// Each env var whose key starts with `BAJUTSU_LAUNCH_ENV_` is collected with the prefix
-    /// stripped; the caller sets these on `XCUIApplication.launchEnvironment` before `launch()`.
+    /// Read from `BAJUTSU_ENCODED_LAUNCH_ENV` when present: `xcodebuild` path-normalizes `.xctestrun`
+    /// `TestingEnvironmentVariables`, collapsing the `//` of any URL in a value (`https://host` reaches
+    /// the runner as `https:/host`), so the host also sends the whole map as base64url-encoded JSON,
+    /// whose alphabet has no `/`. Otherwise each env var whose key starts with `BAJUTSU_LAUNCH_ENV_`
+    /// is collected with the prefix stripped — what a host from before the encoded form sends. The
+    /// caller sets these on `XCUIApplication.launchEnvironment` before `launch()`.
     public static var forwardedLaunchEnvironment: [String: String] {
+        launchEnvironment(from: ProcessInfo.processInfo.environment)
+    }
+
+    static func launchEnvironment(from environment: [String: String]) -> [String: String] {
+        if let data = decodedForwarded(environment["BAJUTSU_ENCODED_LAUNCH_ENV"]),
+           let map = try? JSONSerialization.jsonObject(with: data) as? [String: String] {
+            return map
+        }
         let prefix = "BAJUTSU_LAUNCH_ENV_"
         var result: [String: String] = [:]
-        for (key, value) in ProcessInfo.processInfo.environment where key.hasPrefix(prefix) {
+        for (key, value) in environment where key.hasPrefix(prefix) {
             result[String(key.dropFirst(prefix.count))] = value
         }
         return result
     }
 
-    /// The app launch arguments forwarded by the Python environment via `BAJUTSU_LAUNCH_ARGS`.
+    /// The app launch arguments forwarded by the Python environment.
     ///
-    /// The value is a JSON array of strings; an absent or malformed value yields `[]`.
+    /// Read from `BAJUTSU_ENCODED_LAUNCH_ARGS` when present, for the same reason as
+    /// `forwardedLaunchEnvironment`, else from the plain JSON array in `BAJUTSU_LAUNCH_ARGS`. An
+    /// absent or malformed value yields `[]`.
     public static var forwardedLaunchArguments: [String] {
-        guard let raw = ProcessInfo.processInfo.environment["BAJUTSU_LAUNCH_ARGS"],
-              let data = raw.data(using: .utf8),
+        launchArguments(from: ProcessInfo.processInfo.environment)
+    }
+
+    static func launchArguments(from environment: [String: String]) -> [String] {
+        if let data = decodedForwarded(environment["BAJUTSU_ENCODED_LAUNCH_ARGS"]),
+           let array = try? JSONSerialization.jsonObject(with: data) as? [String] {
+            return array
+        }
+        guard let data = environment["BAJUTSU_LAUNCH_ARGS"]?.data(using: .utf8),
               let array = try? JSONSerialization.jsonObject(with: data) as? [String] else {
             return []
         }
         return array
+    }
+
+    // base64url (RFC 4648 §5), padded, as Python's `base64.urlsafe_b64encode` writes it.
+    private static func decodedForwarded(_ raw: String?) -> Data? {
+        guard let raw else { return nil }
+        let standard = raw.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        return Data(base64Encoded: standard)
     }
 
     /// The deeplink URL forwarded by the Python environment via `BAJUTSU_DEEPLINK`, if any.
