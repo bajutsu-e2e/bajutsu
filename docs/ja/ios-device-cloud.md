@@ -20,6 +20,7 @@ XCUITest バックエンドは、既定ではシミュレータを対象にし�
 targets:
   my-app:
     platform: ios
+    app: { id: com.example.myapp }
     runsOn:
       kind: device   # "simulator"（既定）または "device"
 ```

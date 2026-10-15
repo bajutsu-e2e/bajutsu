@@ -176,6 +176,13 @@ its test bundles at the package root, where the config's `driver.runner.testRunn
 resolves them. The re-signing and simctl caveats described [above](#ios-re-signing-and-real-device-capabilities)
 apply to this run.
 
+A Device Farm job cannot use a device condition such as `runsOn.model` or `runsOn.os`
+([configuration](configuration.md#device-conditions-runson)). Bajutsu reads each device before a
+run and matches the conditions against it. A reserved Device Farm device offers nothing to read
+beforehand. The provider thus refuses a job whose target or scenario declares a condition. It
+refuses before any upload, and names each field. `runsOn.locale` and `runsOn.seedPhotos` stay
+allowed: they are device state rather than conditions.
+
 ## The GitHub Actions workflow
 
 [`.github/workflows/devicefarm.yml`](https://github.com/bajutsu-e2e/bajutsu/blob/main/.github/workflows/devicefarm.yml)

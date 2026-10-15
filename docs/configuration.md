@@ -35,6 +35,10 @@ keys a target accepts. It never reads the flat keys of earlier releases, such as
 | `ai` | Which provider backs the AI paths | No |
 | `notify` | Where results are reported | No |
 
+`bajutsu config schema` prints the JavaScript Object Notation (JSON) Schema of this file
+([cli](cli.md#config-schema)). Each target in the schema is a `oneOf` keyed by `platform`. An
+editor thus completes the keys of the platform a target names.
+
 ```yaml
 defaults:                         # shared across all targets
   evidence:
@@ -159,9 +163,30 @@ A run is one scenario on one set of coordinates. Two kinds of condition multiply
 
 On Android each API level counts as one major version. A `browser.version` range never multiplies
 runs: it narrows the launched browser instead. A not-applicable record carries no verdict of its
-own. The console and the manifest list it apart. An invocation where every record is not applicable
-exits with code 1 and prints `no run executed`. A multi-target scenario runs every combination of
-its targets' runs.
+own. Every output lists it apart from the passes and failures ([reporting](reporting.md)):
+
+- the console and the manifest
+- the HTML report's run matrix
+- JUnit and Common Test Report Format (CTRF), as a skipped test
+- the webhook payload
+
+An invocation where every record is not applicable exits with code 1 and prints `no run executed`.
+A multi-target scenario runs every combination of its targets' runs.
+
+The scenario below lists two models over a range bounded on both sides. It makes four runs, one for
+each model on iOS 17 and on iOS 18:
+
+```yaml
+preconditions:
+  runsOn:
+    ios:
+      model: ["iPhone SE (3rd generation)", "iPad Pro 13-inch (M4)"]
+      os: ">=17 <19"
+```
+
+A target-level range multiplies every scenario of the target. Take a pool with iOS 17 and iOS 18:
+`os: ">=17"` then runs every scenario twice. For one run per scenario, a target names one major
+version, such as `os: "18"`. It may also leave `os` out.
 
 Each run takes a device from its eligible set. The set keeps the devices that meet the run's
 conditions. When the run fixes no model, the set then keeps the first model in pool order with
@@ -169,9 +194,11 @@ enough devices at one release. Within that model, it keeps the newest release th
 model and one release, so `--workers` spreads runs over identical devices.
 
 `record`, `crawl`, and `repl` never multiply runs. They take the first listed value and the newest
-major version the pool has within the range. They exit 2 when no device fits. `doctor`'s screen
-probe still refuses a target that declares a condition. `--backend fake` matches no condition, and
-says so once. A target that runs on a physical iPhone (`runsOn.kind: device`) may not declare
+major version the pool has within the range. They exit 2 when no device fits. `doctor` lists the
+target's own runs, and each scenario's runs when `--scenario` names a file, with the devices that
+fit each one ([doctor output](#output)). Its screen probe
+scores the device of the first run. `--backend fake` matches no condition, and says so once. A
+target that runs on a physical iPhone (`runsOn.kind: device`) may not declare
 `model` or `os`. A target an `appium` grid serves has no pool to read, and neither does a Device
 Farm job. A condition there fails before any device work and names the field.
 
@@ -206,7 +233,7 @@ platforms — rather than `effective.bundle_id` directly, which does not exist.
 | `platform_config.headless` (`WebConfig`) | `driver.headless` | web only: `true` (default) runs headless; `false` shows a visible (headed) browser, in slow-motion. `bajutsu run --headed / --no-headed` and the Web UI's "show browser" toggle override per run |
 | `platform_config.browser` (`WebConfig`) | `runsOn.browser.engine` | web only: the Playwright rendering engine to drive — `chromium` (default), `firefox`, or `webkit`. All three run headless on Linux. `bajutsu run/record --browser <engine>` overrides per run (flag > config > default), and `bajutsu run --browsers <list>` runs the cross-browser matrix (below); a missing engine binary is installed on demand. An unknown value is rejected at config load ([BE-0076](../roadmaps/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md)) |
 | `platform_config.device_mode` (`WebConfig`) | `runsOn.emulate` | web only: the device mode a browser context is created with — omitted for a desktop context, or a Playwright device preset name (e.g. `iPhone 13`) that emulates its viewport / touch / device scale / user agent, driving the web target as that mobile device. It is desktop-browser emulation (Chrome DevTools' device toolbar), not a real device ([drivers → Playwright](drivers.md#playwright-web)). Resolved **lazily** against `playwright.devices` in the driver, so config load never imports Playwright; an unknown preset fails loudly at driver start, not at config load ([BE-0228](../roadmaps/BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation.md)) |
-| `conditions` | `runsOn` | the device conditions the target declares ([above](#device-conditions-runson)), ranges as written; a run forms its runs from them, and `doctor`'s screen probe refuses a target that declares any |
+| `conditions` | `runsOn` | the device conditions the target declares ([above](#device-conditions-runson)), ranges as written; `run` forms its runs from them, and `doctor` lists those runs |
 | `device_provider` | `--worker-config` | where this target's devices come from. The config no longer names it: an `appium` environment in the `worker.yaml` the command runs under hands the grid's endpoint to the targets of the grid's platform ([what a machine can run](#what-a-machine-can-run-outside-the-config-be-0450)), and every other target takes the built-in `local` provider (the `--udid` path). Bajutsu drives that endpoint end to end over a live W3C WebDriver transport ([iOS device cloud](ios-device-cloud.md#live--an-appium-endpoint-provider), [BE-0236](../roadmaps/BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md), [BE-0238](../roadmaps/BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md)) |
 | `launch_server` | `services.server` | optional `{cmd, readyUrl, readyTimeout, cwd, env}` — bring up the app's host for the run, then tear it down: probe `readyUrl` (default `app.url`), reuse it if already serving, else run `cmd` and wait until ready (a condition wait, never a fixed sleep). The web analogue of `app.build` ([BE-0059](../roadmaps/BE-0059-launch-target-server/BE-0059-launch-target-server.md)). For an **uploaded** bundle in `serve`, the host never runs `cmd` directly — `serve --upload-exec` governs it (see [self-hosting](self-hosting.md#uploaded-config-command-execution-be-0090)); a `sandbox` run needs the extra fields `dockerImage` (a Docker image reference, e.g. `node:20-slim`) **or** `dockerfile` (a bundle-relative path built with `docker build`) — exactly one — plus `port` (the in-container listen port, published to a loopback host port) ([BE-0090](../roadmaps/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md)) |
 | `run_defaults.system_alert_handling` / `.erase` / `.network` / `.ios_tip_kit_handling` | `run` | per-app defaults for run-behavior settings otherwise set per scenario or on a CLI flag ([BE-0177](../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md)). `run.systemAlertHandling` takes the scenario form (`false`, or `{ rules, visionInstruction, pollInterval }`) and defaults the alert guard; `run.erase` defaults `preconditions.run.erase`; `run.network` defaults collecting the app's network exchanges. `erase` and `network` resolve **flag > scenario > this > built-in** (erase off, network on), mirroring `--headed`/`headless`. Inside `systemAlertHandling`, the on/off bit resolves that way too (`--system-alert-handling`/`--no-system-alert-handling` > scenario > this > on), but each policy key composes by its own type ([BE-0401](../roadmaps/BE-0401-system-alert-handling-dsl-consolidation/BE-0401-system-alert-handling-dsl-consolidation.md)): the list `rules` is **concatenated** innermost layer first, so a scenario's answers are tried before this default's and neither layer deletes the other; the scalar `pollInterval` takes the innermost layer that supplies one (scenario, else `--alert-poll-interval`, else this). `visionInstruction` reaches `run` from no layer at all: [BE-0402](../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md) removed the fallback it steered, so a scenario or a target config carrying it is rejected before the run starts. A rule here answers its prompt even inside a scenario that rules on other prompts — the guard prints a notice when it does, and the scenario overrides it by writing its own rule for that prompt. `labels` was removed by [BE-0406](../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts.md): a button label named a button, never the alert it sat on, so a target config could license a tap on a screen no scenario had described. See [`systemAlertHandling` layering](scenarios.md#layering-a-key-reaches-a-run-from-three-places). `run.tipKitHandling` defaults the TipKit tip guard (iOS only, built-in **off**) and rides the same precedence via `--ios-tipkit-handling`/`--no-ios-tipkit-handling` |
@@ -830,3 +857,10 @@ duplicateIds: 0
 ```
 
 The CLI's `doctor` exits with code 1 when the grade is Blocked ([cli](cli.md#doctor)).
+
+A [device condition](#device-conditions-runson) adds a `runs:` section to the CLI's output. The
+section reads the `--udid` pool the way `run` does, and forms the same runs. Without `--scenario`
+it lists the target's own runs; with a scenario file, each scenario's. It lists the devices that fit
+each run. A target with no pool to read lists its declared runs alone. A physical device
+and a grid target both lack a pool. The section is informational and never changes the exit code.
+The score itself covers the device of the target's first run, the one `record` takes.

@@ -38,7 +38,7 @@ extract modifiers. Defined by `Step` in `bajutsu/scenario/models/steps.py`.
 groups: `app`, `runsOn`, and `run`. It merges over each target the scenario drives. Its fields:
 
 - `app.reinstall` and `app.launch.env` / `.args` / `.deeplink`
-- `runsOn.<platform>`, on iOS `locale` and `seedPhotos`
+- `runsOn.<platform>`: the device conditions, and on iOS `locale` and `seedPhotos`
 - `run.erase` / `.systemAlertHandling` / `.tipKitHandling` / `.inheritSetup`
 
 Distinct from runtime concerns (`mocks` / `network`) and from config-level `defaults` / `targets`.
@@ -119,7 +119,7 @@ is why BE-0057 renamed the config concept from `app` to `target`.
 |---|---|
 | **target** | One config entry under `targets.<name>` describing an app to test: its required `platform`, its per-platform identifier (iOS and Android `app.id`, web `app.url`), plus `app.path`, `runsOn`, `driver`, and so on. A *config unit*. Defined by `TargetConfig` in `bajutsu/common/config/schema/target_config.py`. |
 | **app** | The application under test itself — the software the target points at and that gets installed on a device. |
-| **device** | The concrete runtime instance the target is driven on — a Simulator / emulator / browser context, addressed at runtime by `udid`. A target's `runsOn` group describes it; its device conditions (`runsOn.model`, `runsOn.os`, and the like) load but are not yet matched against a device. |
+| **device** | The concrete runtime instance the target is driven on — a Simulator / emulator / browser context, addressed at runtime by `udid`. A target's `runsOn` group describes it. Its device conditions (`runsOn.model`, `runsOn.os`, and the like) are matched against each available device before a run ([configuration](configuration.md#device-conditions-runson)). A list or a range splits a scenario into one run per value or major version. An open range that no device meets leaves a *not applicable* record instead of a failed run. |
 
 So a **target** (config) points at an **app** (software) driven on a **device** (runtime instance).
 

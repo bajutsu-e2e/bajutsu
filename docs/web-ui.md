@@ -405,7 +405,10 @@ run compares against it — the review step of the run → review → approve �
 report section shows: [reporting](reporting.md).
 
 **History.** The sub-tab lists past runs, newest first, each with a pass/fail dot and a scenario
-summary. Click one to reopen its report. Use the refresh button to re-list.
+summary. The summary counts passed runs against the total. A device condition can leave a run
+with no matching device ([configuration](configuration.md#device-conditions-runson)). The summary
+then adds the count of not-applicable records as `N n/a`. Click a row to reopen its report. Use
+the refresh button to re-list.
 
 **Delete a run** ([BE-0239](../roadmaps/BE-0239-deletable-runs-serve/BE-0239-deletable-runs-serve.md)).
 Each row carries a trash button that moves that run — its report, screenshots, video, and network

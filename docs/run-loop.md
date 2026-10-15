@@ -203,6 +203,8 @@ class RunResult:
     after_outcomes: list[StepOutcome]   # the `cleanup` phase's own steps
     after_verdict: str           # "success" / "failure" — which `cleanup` rules ran; "" when none
     target_devices: dict[str, TargetDeviceInfo]  # one row per declared target (multi-target only)
+    coordinates: str             # e.g. "iPhone SE (3rd generation) / iOS 17"; "" when no condition applies
+    run_coordinates: dict[str, dict[str, str]]  # the same coordinates per target and condition field
 ```
 
 `RunResult`'s singular `backend` / `device` / `device_name` / `device_runtime` each describe one
@@ -281,6 +283,21 @@ propagating. The scenario's own end releases the whole set.
   returns `(results, manifest_path)`.
 
 The CLI's `run` calls this `run_and_report` ([cli](cli.md#run)).
+
+**Runs formed by device conditions (BE-0452).** A scenario's effective `runsOn` may declare a
+condition. `bajutsu/run/device_matrix.py` then plans the invocation before any scenario
+runs:
+
+1. It reads each pool once, through `common/devices/facts.py`.
+2. It forms each scenario's runs and picks each run's eligible devices, through
+   `common/devices/runs.py`.
+3. It groups the runs that take the same devices into a cell.
+
+The cells run one after another. Each goes through `run_and_report` on a pool narrowed to its
+eligible devices. `--workers` thus spreads a cell's runs over identical devices. A run that no
+device fits fails. Under an open range, it becomes a not-applicable record instead
+([configuration](configuration.md#device-conditions-runson)). Such a record never reaches a
+driver. An invocation where no scenario declares a condition keeps the path above unchanged.
 
 > **Warm XCUITest runner (BE-0291).** Each scenario still gets a freshly launched app and a fresh
 > driver (clean isolation), but the XCUITest backend's resident `xcodebuild` runner — whose cold

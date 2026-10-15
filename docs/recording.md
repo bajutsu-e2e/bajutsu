@@ -104,6 +104,12 @@ deterministic comparison, never an LLM judgment.
 The output is serialized to YAML via `dump_scenarios`
 ([scenarios](scenarios.md#round-trip-load--dump)).
 
+**Which device `record` drives.** `record`, `crawl`, and `repl` never multiply runs. When the
+target declares a device condition in `runsOn`, they take the first run. That run takes the first
+listed value. Under a range, it takes the newest major version the `--udid` pool has. They exit
+with code 2 when no device fits ([configuration](configuration.md#device-conditions-runson)). The
+recorded scenario carries none of those conditions; `bajutsu run` applies the target's own.
+
 ### Human-in-the-loop handoff (BE-0179)
 
 Some flows are gated by something the AI cannot supply — a one-time password, a CAPTCHA, a biometric

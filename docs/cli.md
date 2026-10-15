@@ -72,8 +72,8 @@ terminal behaviors above apply on macOS and Linux only.
 
 | Exit code | When |
 |---|---|
-| 0 | every scenario passed |
-| 1 | a scenario failed |
+| 0 | every scenario passed; a not-applicable record beside them does not change this |
+| 1 | a scenario failed, or every record was not applicable (`no run executed`) |
 | 2 | a usage error, such as an unknown flag or an unloadable config |
 | 128 + the signal number | `run` received SIGINT (130), SIGTERM (143), or SIGHUP (129), whatever the cancelled run reported |
 
@@ -148,11 +148,13 @@ uses it as always. Each self-declaring file has it checked for membership instea
   per listed value and per major version of a range, and runs each on its own eligible devices
   ([configuration](configuration.md#device-conditions-runson)). Each run's evidence lands under
   `runs/<id>/run-NN/`. Its JUnit and Common Test Report Format (CTRF) test names carry its
-  coordinates. A run that no device fits fails. The console lists a run an open range left without a device as "not
-  applicable". The line before the verdict counts passes, failures, and not-applicable records.
+  coordinates. A run that no device fits fails. A run an open range left without a device is "not
+  applicable": the console, the manifest, and the reports list it apart
+  ([reporting](reporting.md)). The line before the verdict counts passes, failures, and
+  not-applicable records.
   When every record is not applicable, `run` exits with code 1 and prints `no run executed`.
-  `audit --repeat` and an MCP run form runs the same way. `record`, `crawl`, and `repl` take the first run alone. `doctor`'s
-  screen probe still refuses a condition. `--backend fake` matches none, with one notice.
+  `audit --repeat` and an MCP run form runs the same way. `record`, `crawl`, and `repl` take the first run alone. `doctor`
+  lists the runs ([below](#doctor)). `--backend fake` matches none, with one notice.
   `--browsers` beside a remaining condition such as `browser.version` exits 2, and `--step` exits 2
   when the conditions form more than one run.
 - **Preconditions come first (BE-0452).** Before any device work, `run` and `audit` check each
@@ -476,11 +478,20 @@ bajutsu flakiness [--org <org>] [--json] [--window N]          # read the serve 
   the `serve` panel ranks it — in memory, never written back, since a write on a read path could
   re-insert a run an operator had purged. Where the manifest is gone the row stays `unknown OS`, and
   the report discloses that count.
+- **The grouping is per target and per run coordinates as well**
+  ([BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)).
+  Device conditions can split a scenario into runs, such as one per listed model. Each run's
+  coordinates then join the key. A layout bug on one model thus never reads as a flaky scenario.
+  The target joins the key as well, so a scenario run against two targets keeps two histories. The
+  text output names the coordinates in brackets after the OS. A run with no condition keeps empty
+  coordinates. A history recorded before BE-0452 thus continues. One run can hold results on two or
+  more coordinates, since an invocation records every run its conditions formed under one run id.
+  Such a run groups under `*`, apart from every other history.
 - Each entry carries the newest passing and newest failing run ids, so `--json` consumers (and the
   serve panel) can link straight to the representative evidence on both sides.
-- **`--window N`** keeps only each history's newest `N` runs before scoring — per scenario *per OS
-  version*, since that is the group being scored (0, the default, uses the whole history). Windowing
-  per scenario instead would evict an older OS version's history once the newest runs had all moved
+- **`--window N`** keeps only each history's newest `N` runs before scoring — per *history*, since
+  that is the group being scored (0, the default, uses the whole history). A history holds one
+  scenario's runs on one OS version, target, and set of run coordinates. Windowing per scenario instead would evict an older OS version's history once the newest runs had all moved
   to a newer one, hiding the very cross-version finding the grouping exists to surface. **`--org
   <org>`** picks the tenant whose runs the database read mines.
 - A run with no `provenance.scenarioHash` (a pre-provenance run) or no recorded verdict can't be
