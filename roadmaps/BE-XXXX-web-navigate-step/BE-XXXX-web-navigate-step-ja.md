@@ -15,7 +15,7 @@
 
 ## はじめに
 
-Web（Playwright）バックエンドで、シナリオの途中から URL を開く `navigate` ステップを追加します。ステップは `- navigate: /settings` のように文字列を 1 つ受け取ります。`/` で始まるパスはターゲットの `baseUrl` を基準に解決し、絶対の `http` または `https` の URL はそのまま使います。ステップはページの `load` イベントを待って戻ります。HTTP ステータスは見ないので、遷移後に何が表示されるかはシナリオのアサーションで確かめます。実装は新しい `Driver.goto(url)` メソッドと、新しい `urlNavigation` capability の上に載せます。capability を宣言するのは Web バックエンドだけなので、iOS や Android で `navigate` を使うシナリオは、デバイスを確保する前の preflight で失敗します。
+Web（Playwright）バックエンドで、シナリオの途中から URL を開く `navigate` ステップを追加します。ステップは `- navigate: /settings` のように文字列を 1 つ受け取ります。`/` で始まるパスはターゲットの `baseUrl` を基準に解決し、絶対の `http` または `https` の URL はそのまま使います。ステップはページの `load` イベントを待って戻ります。HTTP ステータスは見ないので、遷移後に何が表示されるかはシナリオのアサーションで確かめます。実装は新しい `Driver.goto(url)` メソッドと、新しい `urlNavigation` capability の上に載せます。capability を宣言するのは Web バックエンドだけなので、iOS や Android で `navigate` を使うシナリオは、デバイスを確保する前の preflight で失敗します。iOS の `web:` ブロックの中に置いた `navigate` も同じく失敗します。
 
 ## 動機
 
@@ -41,7 +41,7 @@ steps:
   - assert: [{ exists: { id: settings.title } }]
 ```
 
-`navigate` は通常のアクションです。1 つのステップが持つアクションは 1 つだけで、共通の修飾子（`name`、`capture`、`target`）も他のアクションと同じように使えます。YAML の値は素の文字列です。`url` を 1 つだけ持つ `Navigate` モデルが、`before` バリデーターで文字列を `{url: <文字列>}` に写して受け取ります。`Exists` も同じバリデーターの手法で、インライン形式を受け取っています（`bajutsu/common/scenario/models/assertions/exists.py:21`）。
+`navigate` は通常のアクションです。1 つのステップが持つアクションは 1 つだけで、共通の修飾子（`name`、`capture`、`target`）も他のアクションと同じように使えます。YAML の値は素の文字列です。`url` を 1 つだけ持つ `Navigate` モデルが、`before` バリデーターで文字列を `{url: <文字列>}` に写して受け取ります。`Exists` も同じバリデーターの手法で、インライン形式を受け取っています（`bajutsu/common/scenario/models/assertions/exists.py:21`）。バリデーターはマッピングを拒否します。`{url: ...}` が文書にない公開の形になり、後で足す `waitUntil` がその形との互換を背負うことを避けるためです。
 
 URL の解決は標準の参照解決（`urllib.parse.urljoin`）に従い、基準にはターゲットの `baseUrl` を使います。
 
@@ -52,16 +52,16 @@ URL の解決は標準の参照解決（`urllib.parse.urljoin`）に従い、基
 | `https://other.example/x` | そのまま使います。別のオリジンも許します |
 | `http` と `https` 以外のスキーム | シナリオの読み込み時に拒否します |
 
-ほかのスキームを拒否するのは、`file:`、`data:`、`javascript:` をこのステップへ入れないためです。読み込み時の検査は、`${...}` トークンを含まない値にだけ働きます。トークンを含む値は、展開した後の実行時に改めて検査します。
+ほかのスキームを拒否するのは、`file:`、`data:`、`javascript:` をこのステップへ入れないためです。読み込み時の検査は、`${...}` トークンを含まない値にだけ働きます。トークンを含む値は、展開した後の実行時に改めて検査します。スキームの規則は 1 つの共有関数が持ち、2 つの検査はどちらもその関数を呼びます。`HttpRequest` が `first_duplicate_var` を読み込み時と実行時の検査で共有しているのと同じ形です（`bajutsu/common/scenario/models/actions/http_request.py:20`）。`urljoin` は `javascript:alert(1)` のような絶対参照をそのまま返すので、解決の処理そのものは防御になりません。
 
 ### 実行時の振る舞い
 
-1. ハンドラーが文字列の `${...}` トークンを展開し、解決した URL へ移動するようドライバーに依頼します。
+1. ハンドラーが文字列の `${...}` トークンを展開し、結果にスキームの規則を当てます。そのうえで、相対のこともある参照を `Driver.goto` に渡します。`baseUrl` を基準に参照を解決するのは、ハンドラーではなくドライバーです。Playwright ドライバーはすでに基準の URL を持っているので（`playwright_driver.py:57`）、オーケストレーターがターゲットの設定に新たに依存することはありません。したがって `Driver.goto` の契約は「バックエンド自身の基準で解決される参照」です。
 2. Playwright ドライバーは actuation（`gesture: navigate`）を記録して `page.goto(url)` を呼び、`load` イベントが発火したところで戻ります。ステップは履歴に項目を 1 つ足します。Cookie とストレージは残るので、`navigate` はコンテキストのリセットではありません（クリーンな開始の手段は、これまでどおりクロールの `reset_context` です）。
 3. ステップはレスポンスのステータスを読みません。404 のページでも読み込めればステップは成功し、続く `assert` や `wait` が判定を担います。`last_nav_status` はクロール専用の信号のままです（`bajutsu/common/drivers/playwright/_functions.py:143`）。
 4. URL そのものが引き起こす遷移エラー（名前解決の失敗、接続の拒否、タイムアウト）は、Playwright のメッセージを添えてステップを失敗させます。ドライバーはこれをブラウザーの wedge（詰まり）に分類してはいけません。`_wedge_guard` は Playwright のエラーをすべて回復可能な `DeviceError` に変換し（`bajutsu/common/drivers/playwright/_functions.py:109`）、クロールのワーカーはそれにブラウザーの再起動で応えます。そのままでは、シナリオの実行が作者の打ち間違いをブラウザーの故障として扱ってしまいます。そのため `goto` には独自のエラー対応づけが要ります。
 
-このステップは、三つの基本方針（prime directive）の内側に収まります。固定の待ち時間を含まず、待つ条件はブラウザー自身の `load` であり、判定は引き続きアサーションだけから出ます。
+このステップは prime directive の範囲に収まります。固定の待ち時間を含まず、待つ条件はブラウザー自身の `load` であり、判定は引き続きアサーションだけから出ます。
 
 ### ドライバー、capability、preflight
 
@@ -70,7 +70,7 @@ URL の解決は標準の参照解決（`urllib.parse.urljoin`）に従い、基
 | シナリオモデル | `Navigate` アクションと `Step.navigate` フィールド | `bajutsu/common/scenario/models/actions/navigate.py`（新規）、`steps/step.py` |
 | Driver プロトコル | `def goto(self, url: str) -> None` | `bajutsu/common/drivers/base/driver.py` |
 | capability | `URL_NAVIGATION = "urlNavigation"` | `bajutsu/common/drivers/base/capability.py` |
-| preflight | `navigate` を持つステップへの `_Requirement` | `bajutsu/common/capability/capability_preflight.py` |
+| preflight | `navigate` を持つステップへの `_Requirement`。`web:` ブロックの中のステップも含みます | `bajutsu/common/capability/capability_preflight.py` |
 | ハンドラー | `back` の隣に `@_handler("navigate")` | `bajutsu/common/orchestrator/actions/handlers/navigation.py` |
 | Web ドライバー | 独自のエラー対応づけを持つ `goto` | `bajutsu/common/drivers/playwright/playwright_driver.py` |
 | Fake ドライバー | 呼び出しを記録し、capability を宣言する | `bajutsu/common/drivers/fake/fake_driver.py` |
@@ -84,7 +84,7 @@ URL の解決は標準の参照解決（`urllib.parse.urljoin`）に従い、基
 
 ### コード生成、記述支援、文書の面
 
-- Playwright のコード生成は `await page.goto(new URL('<値>', BASE_URL).toString());` を出力します。ドライバーの解決と同じ結果になります。リテラルとして描けない値は、既存の「ラベル付き `// TODO`」の形に落とします（`bajutsu/codegen/playwright.py`、376 行目付近の `back` の分岐）。XCUITest と UI Automator のコード生成は、同じラベル付き `TODO` を出力します。
+- Playwright のコード生成は `await page.goto(new URL(<値>, BASE_URL).toString());` を出力します。ドライバーの解決と同じ結果になります。値は、他のリテラルと同じく生成器の `_ts()` 文字列リテラル補助関数（`bajutsu/codegen/playwright.py:74`）で描きます。URL のクエリには `'` が現れうるからです。リテラルとして描けない値は、既存の「ラベル付き `// TODO`」の形に落とします（`bajutsu/codegen/playwright.py`、376 行目付近の `back` の分岐）。XCUITest と UI Automator のコード生成は、同じラベル付き `TODO` を出力します。
 - ステップの語彙は、モデルのほかにも複数の場所に列挙されています。実装では `bajutsu/common/scenario/edit.py`、`bajutsu/repl/session.py`、`app_crash_latches.py` を確かめて更新します。そのうえで、`docs/scenarios.md`、`docs/dsl-grammar.md`、`docs/drivers.md`、`docs/codegen.md` と、それぞれの `docs/ja/` の写しにアクションを加えます。
 
 ### 対象外
@@ -98,9 +98,9 @@ URL の解決は標準の参照解決（`urllib.parse.urljoin`）に従い、基
 
 | # | 単位 | 完了条件 |
 |---|---|---|
-| 1 | シナリオモデル：`Navigate`、`Step.navigate`、文字列の短縮形、スキーム検査 | モデルのテストが、文字列とマッピングを読み込み、`javascript:` と空の値を拒否する |
-| 2 | Driver プロトコル、capability トークン、preflight の要件、Web 以外のドライバーでの送出 | preflight のテストで、iOS、Android、webview のターゲットが、`navigate` の名前を示すメッセージとともにデバイス確保の前に失敗する |
-| 3 | ハンドラー、トークン展開、ランナーの集合、トレース、actuation の記録 | Fake ドライバーでの実行が `navigate` を実行し、`${vars.*}` を展開し、actuation を記録する |
+| 1 | シナリオモデル：`Navigate`、`Step.navigate`、文字列の短縮形、スキーム検査 | モデルのテストが文字列の短縮形を読み込み、マッピング、`javascript:`、空の値を拒否する |
+| 2 | Driver プロトコル、capability トークン、preflight の要件、Web 以外のドライバーでの送出 | preflight のテストで、iOS と Android のターゲットが、`navigate` の名前を示すメッセージとともにデバイス確保の前に失敗する。iOS ターゲットの `web:` ブロックの中に置いた `navigate` も同じく失敗する。preflight は `web.steps` へ意図して再帰しないが（`capability_preflight.py:95`）、その隙間からこのトークンを確保済みのデバイスまで通さない |
+| 3 | ハンドラー、トークン展開、ランナーの集合、トレース、actuation の記録 | Fake ドライバーでの実行が `navigate` を実行し、`${vars.*}` を展開し、actuation を記録する。展開すると `javascript:` や `file:` になる値は、単位 1 が読み込み時に使うのと同じスキームの規則でステップを失敗させる |
 | 4 | Playwright の `goto`：URL の解決、`load` の待機、エラーの対応づけ | Web ドライバーのテストが、相対と絶対の値、回復を起こさずにステップを失敗させる名前解決の失敗、成功扱いになる 404 を網羅する |
 | 5 | ドライバー適合性のテストケース | Web の適合性スイートが新しい `goto` のケースとともに通り、Web 以外のバックエンドは capability によってそれを飛ばす |
 | 6 | コード生成 | `navigate` のシナリオに対する Playwright の出力がゴールデンと一致し、他の生成器はラベル付き `TODO` を出力する |
