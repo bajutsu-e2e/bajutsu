@@ -7,9 +7,9 @@
 |---|---|
 | Proposal | [BE-0452](BE-0452-target-config-restructure.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0452") |
-| Implementing PR | [#2191](https://github.com/bajutsu-e2e/bajutsu/pull/2191) (Units 1–3), [#2193](https://github.com/bajutsu-e2e/bajutsu/pull/2193) (Unit 4), [#2194](https://github.com/bajutsu-e2e/bajutsu/pull/2194) (Unit 5), [#2195](https://github.com/bajutsu-e2e/bajutsu/pull/2195) (Units 6–7), [#2196](https://github.com/bajutsu-e2e/bajutsu/pull/2196) (Units 8–9), PR_PLACEHOLDER23 (Units 10–12) |
+| Implementing PR | [#2191](https://github.com/bajutsu-e2e/bajutsu/pull/2191) (Units 1–3), [#2193](https://github.com/bajutsu-e2e/bajutsu/pull/2193) (Unit 4), [#2194](https://github.com/bajutsu-e2e/bajutsu/pull/2194) (Unit 5), [#2195](https://github.com/bajutsu-e2e/bajutsu/pull/2195) (Units 6–7), [#2196](https://github.com/bajutsu-e2e/bajutsu/pull/2196) (Units 8–9), PR_PLACEHOLDER23 (Units 10–12), PR_PLACEHOLDER24 (Unit 13) |
 | Topic | Driver & backend architecture |
 | Related | [BE-0126](../BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config.md), [BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact.md), [BE-0228](../BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation.md), [BE-0076](../BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md), [BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks.md), [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md), [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch.md), [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md), [BE-0447](../BE-0447-install-app-step/BE-0447-install-app-step.md), [BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md) |
 <!-- /BE-METADATA -->
@@ -871,7 +871,7 @@ batch provider that packages `launchEnv`, `common/report/rows.py`, `templates/se
 - [x] Unit 10: reporting
 - [x] Unit 11: `doctor`
 - [x] Unit 12: `bajutsu config schema`
-- [ ] Unit 13: docs
+- [x] Unit 13: docs
 
 ### Log
 
@@ -1130,6 +1130,33 @@ batch provider that packages `launchEnv`, `common/report/rows.py`, `templates/se
       unit. The design does not ask for one, so the row stays as unit 9 made it.
   - This change updated `docs/cli.md` and `docs/reporting.md` in both languages. The full docs pass
     stays with unit 13.
+- PR_PLACEHOLDER24 (Unit 13) — the docs pass. Every page unit 13 lists now matches the code, in both
+  languages. This unit completes the item.
+  - Units 4–12 had already rewritten the old keys and scenario fields on the pages they touched. This
+    unit checked every listed page for the keys of *Where each old key goes*. It loaded each config
+    and scenario example in them through the loader. Two examples did not load, and
+    this unit fixed both. The `interrupts` target in `docs/scenarios.md` lacked `platform` and
+    `app.id`. The physical-device target in `docs/ios-device-cloud.md` lacked `app.id`.
+  - The pages now describe the behavior units 8–12 added:
+    - `docs/configuration.md`: a run-matrix example, the outputs that list a not-applicable record,
+      `doctor`'s `runs:` section, and `bajutsu config schema`.
+    - `docs/scenarios.md`: a scenario's own device conditions.
+    - `docs/run-loop.md`: how `device_matrix.py` plans cells, and the new `RunResult` fields.
+    - `docs/cli.md`: the not-applicable exit code, and coordinates in the flakiness key.
+    - `docs/recording.md`: the device `record` takes.
+    - `docs/codegen.md`: a generated test carries no condition.
+    - `docs/devicefarm.md`: a Device Farm job refuses a condition.
+    - `docs/web-ui.md`: the `N n/a` count.
+    - `docs/drivers.md`: the notice under `--backend fake`.
+    - `docs/glossary.md`: matching, in the `device` entry.
+    - `docs/architecture.md`: the `config` command, and the `preconditions` and `json_schema`
+      modules.
+    - `DESIGN.md` §3.3: the run matrix and its determinism. `README.md` lists device conditions.
+  - Two statements units 4 and 9 left behind were stale. `doctor`'s screen probe no longer refuses
+    a condition, as unit 11 changed. The glossary no longer says that conditions go unmatched.
+  - One example stays illustrative. The `DESIGN.md` §8 config names a hook component,
+    `./scenarios/showcase/_setup.yaml`. The tree holds no such file. That example thus loads beside
+    such a file alone.
 
 ## References
 
