@@ -21,11 +21,8 @@
     - wait: { for: { id: log.note }, timeout: 10 }
     - type: { text: "echo roundtrip", into: { id: log.note } }
     - tap: { id: log.submit }
-    # `pathMatches`, not `path`: the xcuitest runner forwards launch env through `.xctestrun`, where
-    # `xcodebuild` collapses `https://` to `https:/`, so the app's URL parses with no host and the
-    # reported path is `/postman-echo.com/post` (CFNetwork still reaches the host).
-    - wait: { until: { request: { method: POST, pathMatches: "/post$", status: 200 } }, timeout: 15 }
+    - wait: { until: { request: { method: POST, path: /post, status: 200 } }, timeout: 15 }
     - wait: { for: { id: log.echo }, timeout: 5 }
   expect:
-    - request: { method: POST, pathMatches: "/post$", status: 200 }
+    - request: { method: POST, path: /post, status: 200 }
     - value: { sel: { id: log.echo }, equals: "echo roundtrip" }

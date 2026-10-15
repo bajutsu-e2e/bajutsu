@@ -43,7 +43,9 @@ public enum BajutsuNet {
     /// `BajutsuURLProtocol.canInit`'s loopback guard, so every report POST was itself intercepted and
     /// re-reported, ~1,200 times a second, each carrying the last payload. Repaired here, at the one
     /// place the value is read, rather than by loosening the guard alone — a collector that cannot be
-    /// addressed collects nothing either way.
+    /// addressed collects nothing either way. A current runner forwards the launch environment
+    /// base64url-encoded and so hands the app the URL intact; this stays for an app driven by a runner
+    /// built before that (`RunnerServer.forwardedLaunchEnvironment`).
     static func repairedURL(_ raw: String) -> String {
         for scheme in ["http", "https"] where raw.hasPrefix("\(scheme):/") && !raw.hasPrefix("\(scheme)://") {
             return "\(scheme)://" + raw.dropFirst(scheme.count + 2)

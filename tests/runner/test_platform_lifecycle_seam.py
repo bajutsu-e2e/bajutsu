@@ -7,6 +7,7 @@ single-fork refactor folded behind the Protocol.
 
 from __future__ import annotations
 
+import base64
 from pathlib import Path
 from typing import Any
 
@@ -925,6 +926,14 @@ def test_xcuitest_environment_forwards_preconditions_to_runner_env(
     args = json.loads(target_env["BAJUTSU_LAUNCH_ARGS"])
     assert "-verbose" in args and "-reset" in args
     assert "-AppleLocale" in args and "fr_FR" in args
+    # The same env and args, base64url-encoded JSON: what a current runner reads, since
+    # `xcodebuild` collapses the `//` of a URL in a plain value and base64url has no `/`.
+    encoded_env = json.loads(base64.urlsafe_b64decode(target_env["BAJUTSU_ENCODED_LAUNCH_ENV"]))
+    assert encoded_env["BAJUTSU_COLLECTOR"] == "http://127.0.0.1:9999"
+    assert encoded_env["SCENARIO_KEY"] == "val"
+    assert "/" not in target_env["BAJUTSU_ENCODED_LAUNCH_ENV"]
+    encoded_args = json.loads(base64.urlsafe_b64decode(target_env["BAJUTSU_ENCODED_LAUNCH_ARGS"]))
+    assert encoded_args == args
     # deeplink
     assert target_env["BAJUTSU_DEEPLINK"] == "myapp://home"
     # bundle id of the app under test (so one generic runner drives any app)

@@ -24,6 +24,7 @@ from ._functions import _await_cold_runner as _await_cold_runner
 from ._functions import _classify_runner as _classify_runner
 from ._functions import _destination as _destination
 from ._functions import _diagnostic_reports_dir as _diagnostic_reports_dir
+from ._functions import _forwarded_launch as _forwarded_launch
 from ._functions import _major as _major
 from ._functions import _max_warm_reuses as _max_warm_reuses
 from ._functions import _never_ended as _never_ended
