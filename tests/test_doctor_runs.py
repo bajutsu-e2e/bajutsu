@@ -111,6 +111,18 @@ def test_without_a_condition_or_under_fake_nothing_is_listed() -> None:
 # --- no pool to read ------------------------------------------------------------------------
 
 
+def test_a_missing_playwright_lists_the_declared_runs() -> None:
+    # Playwright is an optional extra; a base install must reach the checklist, not a traceback.
+    def no_playwright(*_a: Any) -> list[DeviceFacts]:
+        raise ModuleNotFoundError("No module named 'playwright'")
+
+    eff = _eff(f'{{ model: "{_SE}" }}')
+    lines = runs_summary(eff, "xcuitest", "u", "", read_pool=no_playwright)
+    assert lines[1] == (
+        "  declared runs only — could not read the device pool: No module named 'playwright'"
+    )
+
+
 def test_an_unreadable_pool_lists_the_declared_runs() -> None:
     def broken(*_a: Any) -> list[DeviceFacts]:
         raise DeviceError("simctl is not installed")

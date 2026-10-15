@@ -802,3 +802,40 @@ def test_emit_start_failure_logs_never_contain_resolved_secret(
     assert "SECRETVALUE" not in log_text
     assert "hooks.slack.com" not in log_text
     assert "${secrets.HOOK}" in log_text
+
+
+def test_emit_targets_filter_counts_only_its_own_not_applicable_records(monkeypatch: Any) -> None:
+    # BE-0452: an endpoint scoped by `targets:` reports the not-applicable records of its own
+    # scenarios, as the unscoped endpoint reports all of them.
+    captured: list[bytes] = []
+
+    def fake_urlopen(req: Any, timeout: Any = None) -> Any:
+        captured.append(req.data)
+        resp = MagicMock()
+        resp.status = 200
+        resp.__enter__ = lambda self: self
+        resp.__exit__ = MagicMock(return_value=False)
+        return resp
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    records = [
+        {"scenario": "checkout", "reason": "no device"},
+        {"scenario": "login", "reason": "no device"},
+        {"scenario": "login", "reason": "no device"},
+    ]
+    emit(
+        [_res("login", False, "err"), _res("checkout", False, "err")],
+        run_id="r1",
+        source_name="s.yaml",
+        backend="xcuitest",
+        endpoints=[
+            _endpoint(on=["failure"], url="https://all"),
+            _endpoint(on=["failure"], targets=["checkout"], url="https://checkout"),
+        ],
+        bindings={},
+        runs_dir=Path("/nonexistent"),
+        not_applicable=records,
+    )
+    assert len(captured) == 2
+    assert b"3 not applicable" in captured[0]
+    assert b"1 not applicable" in captured[1]
