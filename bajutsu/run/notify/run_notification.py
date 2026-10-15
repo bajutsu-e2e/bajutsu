@@ -23,3 +23,6 @@ class RunNotification:
     failures_remaining: int
     report_url: str | None
     engine: str
+    # Runs no available device fell in an open `runsOn` range for (BE-0452): neither passed nor
+    # failed, so they sit outside `total`.
+    not_applicable: int = 0

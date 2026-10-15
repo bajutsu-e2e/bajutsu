@@ -335,6 +335,9 @@ def _scenario_data(
         panels.append(_trace_panel(run_dir, trace))
     return {
         "name": r.scenario,
+        # The run's coordinates when `runsOn` conditions formed it (BE-0452), shown beside the name
+        # so one scenario's runs read apart; empty for a run no condition formed.
+        "coordinates": r.coordinates,
         "ok": r.ok,
         # A multi-target scenario's chips name every declared target's backend and device rather
         # than one of them (BE-0428); the singular fields are empty there.

@@ -49,6 +49,7 @@ CAPABILITIES: tuple[Capability, ...] = (
     Capability("trace", uses_claude=False),
     Capability("lint", uses_claude=False),
     Capability("schema", uses_claude=False),
+    Capability("config", uses_claude=False),
     Capability("approve", uses_claude=False),
     Capability("mcp", uses_claude=False),
     Capability("worker", uses_claude=False),

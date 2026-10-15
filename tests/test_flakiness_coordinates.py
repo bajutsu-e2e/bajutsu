@@ -23,7 +23,7 @@ def _manifest(
     run_id: str, *, ok: bool, coordinates: dict[str, dict[str, str]]
 ) -> dict[str, object]:
     return {
-        "schemaVersion": 14,
+        "schemaVersion": 15,
         "runId": run_id,
         "ok": ok,
         "target": "app",

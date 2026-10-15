@@ -15,9 +15,9 @@ from bajutsu.cli._shared import (
     WORKER_CONFIG_HELP,
     _backends,
     _device_udid_or_exit,
+    _first_run_or_exit,
     _load_device_worker_or_exit,
     _load_effective,
-    _refuse_conditions,
     _with_worker_device,
     _worker_backends,
 )
@@ -40,7 +40,9 @@ from bajutsu.common.config import (
     web_base_url,
     web_engine,
 )
+from bajutsu.common.config.preconditions import effective_conditions, remote_condition_problems
 from bajutsu.common.devices import errors as device_errors
+from bajutsu.common.devices.facts import DeviceFacts
 from bajutsu.common.doctor import DoctorProbeError, probe_screen, render, score
 from bajutsu.common.drivers import base
 from bajutsu.common.platform_lifecycle.environments.xcuitest import (
@@ -55,6 +57,10 @@ from bajutsu.common.platform_lifecycle.environments.xcuitest import (
     runner_source,
 )
 from bajutsu.common.scenario import load_scenario_file
+from bajutsu.run.device_matrix import FAKE_ACTUATOR, ListedRun, list_runs, target_pool
+
+# How each outcome marks a listed run: the same marks the environment checklist uses.
+_RUN_MARKS = {"run": "✓", "failed": "✘", "not-applicable": "–", "declared": "•"}
 
 
 def check_scenarios(scenario_path: Path, capabilities: frozenset[str]) -> list[str]:
@@ -237,8 +243,14 @@ def _capability_preflight(scenario: str, actuator: str, eff: Effective, udid: st
     return True
 
 
-def _print_disclosures(eff: Effective, backends: list[str], udid: str, actuator: str) -> None:
-    """Print doctor's informational, device-free, non-gating disclosures."""
+def _print_disclosures(
+    eff: Effective, backends: list[str], udid: str, actuator: str, scenario: str = ""
+) -> None:
+    """Print doctor's informational, non-gating disclosures.
+
+    Every one is device-free except the runs `runsOn` conditions form, which read the pool's device
+    facts when a condition applies (BE-0452).
+    """
     # Per-scenario actuator resolution disclosure (BE-0240): when the ladder has more than one iOS
     # actuator, show how the target's scenarios split across them.
     summary = actuator_resolution_summary(eff, backends, udid)
@@ -259,6 +271,105 @@ def _print_disclosures(eff: Effective, backends: list[str], udid: str, actuator:
         for line in addresses:
             typer.echo(line)
         typer.echo("")
+
+    if runs := runs_summary(eff, actuator, udid, scenario):
+        for line in runs:
+            typer.echo(line)
+        typer.echo("")
+
+
+def _subjects(eff: Effective, scenario: str) -> list[tuple[str, dict[str, str | list[str]]]]:
+    """What `doctor` lists runs for: each scenario of *scenario*, or else the target itself.
+
+    A scenario's conditions are its `runsOn` block merged over the target's, as `run` merges them.
+    """
+    if not scenario:
+        return [(f"target '{eff.target}'", dict(eff.conditions))]
+    return [
+        (s.name, effective_conditions(eff, s.preconditions, engine_flag=False))
+        for s in load_scenario_file(Path(scenario).read_text(encoding="utf-8")).scenarios
+    ]
+
+
+def _engines(eff: Effective, subjects: list[tuple[str, dict[str, str | list[str]]]]) -> list[str]:
+    """The engines whose launched version a `browser.version` range compares, in first-seen order."""
+    engines: dict[str, None] = {}
+    for _name, conditions in subjects:
+        if "browser.version" not in conditions:
+            continue
+        listed = conditions.get("browser.engine") or web_engine(eff)
+        engines.update(dict.fromkeys(listed if isinstance(listed, list) else [listed]))
+    return list(engines)
+
+
+def _listed_line(run: ListedRun) -> str:
+    label = run.label or "one run"
+    if run.outcome == "run":
+        return f"    {_RUN_MARKS['run']} {label}: {', '.join(run.devices) or 'any device'}"
+    if run.outcome == "declared":
+        return f"    {_RUN_MARKS['declared']} {label}"
+    word = "fails" if run.outcome == "failed" else "not applicable"
+    return f"    {_RUN_MARKS[run.outcome]} {label}: {word}: {run.reason}"
+
+
+def runs_summary(
+    eff: Effective,
+    actuator: str,
+    udid: str,
+    scenario: str,
+    read_pool: Callable[[Effective, str, str, list[str]], list[DeviceFacts]] | None = None,
+) -> list[str]:
+    """Each scenario's runs under its `runsOn` conditions and the devices that fit each (BE-0452).
+
+    Informational and never gating: it forms the runs `run` would form against the same pool, so a
+    misspelled model or a pool missing an OS version shows before a run. With no pool to read (a
+    target an `appium` grid or a physical device serves, or a pool whose devices cannot be read), it
+    lists the declared runs alone. Empty when no condition applies, and under the fake actuator,
+    which evaluates none.
+
+    Args:
+        eff: The target's effective configuration.
+        actuator: The selected actuator, which resolves each udid of the pool.
+        udid: The udid spec the device provider handed back.
+        scenario: The `--scenario` file, or empty to list the target's own runs.
+        read_pool: Reads the pool's device facts, given the engines to launch; injectable for tests.
+    """
+    if actuator == FAKE_ACTUATOR:
+        return []
+    subjects = _subjects(eff, scenario)
+    if not any(conditions for _name, conditions in subjects):
+        return []
+    devices: list[DeviceFacts] | None = None
+    note = ""
+    problems = [p for _name, c in subjects for p in remote_condition_problems(eff, c)]
+    if problems:
+        note = problems[0]
+    else:
+        reader = read_pool or (lambda e, a, u, engines: target_pool(e, a, u, engines=engines))
+        try:
+            devices = reader(eff, actuator, udid, _engines(eff, subjects))
+        except (
+            device_errors.DeviceError,
+            OSError,
+            LookupError,
+            ValueError,
+            subprocess.SubprocessError,
+            # `facts.read_web` imports Playwright, an optional extra, so a base install raises
+            # ModuleNotFoundError here rather than a DeviceError.
+            ImportError,
+        ) as e:
+            note = f"could not read the device pool: {e}"
+    lines = ["runs:"]
+    if devices is None:
+        lines.append(f"  declared runs only — {note}")
+    for name, conditions in subjects:
+        lines.append(f"  {name}:")
+        try:
+            lines += [_listed_line(run) for run in list_runs(eff, conditions, devices)]
+        except ValueError as e:
+            # A malformed range in the scenario fails its own `run` the same way; doctor names it.
+            lines.append(f"    {_RUN_MARKS['failed']} {e}")
+    return lines
 
 
 def doctor(
@@ -316,7 +427,7 @@ def doctor(
         raise typer.Exit(2)
 
     cap_failed = _capability_preflight(scenario, actuator, eff, udid)
-    _print_disclosures(eff, backends, udid, actuator)
+    _print_disclosures(eff, backends, udid, actuator, scenario)
 
     # Runnability gate: the CLIs (+ a booted Simulator) the actuator needs. Fail fast here
     # with a fixable checklist instead of crashing later on a missing tool / no device. The
@@ -358,8 +469,8 @@ def doctor(
     # whose app server is down still faults on navigate (ERR_CONNECTION_REFUSED). Report it as a
     # fixable error and exit non-zero rather than surfacing a stack trace — doctor diagnoses, it
     # does not crash.
-    # The screen probe is the device path, which matches no runsOn condition until BE-0452 unit 11.
-    _refuse_conditions(eff, backends)
+    # The probe scores the screen of the target's first run, as `record` takes it (BE-0452).
+    eff, udid = _first_run_or_exit(eff, actuator, udid)
     try:
         elements = _current_screen(actuator, udid, eff)
     except device_errors.DeviceError as e:

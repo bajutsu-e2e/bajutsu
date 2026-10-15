@@ -67,7 +67,7 @@ def test_the_cli_backend_check_exits_2(capsys: pytest.CaptureFixture[str]) -> No
     assert "use one of web, playwright, fake" in capsys.readouterr().out
 
 
-# --- runsOn conditions are not yet supported --------------------------------------------------
+# --- runsOn conditions --------------------------------------------------------------------------
 
 
 def test_conditions_resolve_onto_the_effective_config() -> None:
@@ -86,29 +86,18 @@ def test_conditions_resolve_onto_the_effective_config() -> None:
     assert _eff(_IOS).conditions == {}
 
 
-def test_a_condition_fails_before_any_device_work(capsys: pytest.CaptureFixture[str]) -> None:
-    eff = _eff(
-        'targets:\n  t: { platform: ios, app: { id: com.x }, runsOn: { model: "iPhone 16" } }\n'
-    )
-    with pytest.raises(typer.Exit) as exc:
-        _shared._refuse_conditions(eff, ["ios"])
-    assert exc.value.exit_code == 2
-    assert "runsOn.model: matching devices by runsOn conditions is not yet supported" in (
-        capsys.readouterr().out
-    )
-
-
 def test_the_fake_driver_skips_conditions_with_one_notice(caplog: pytest.LogCaptureFixture) -> None:
     eff = _eff('targets:\n  t: { platform: ios, app: { id: com.x }, runsOn: { os: "18" } }\n')
     deprecations._emitted.discard("conditions.fake")
     with caplog.at_level(logging.WARNING, logger=deprecations.logger.name):
-        _shared._refuse_conditions(eff, ["fake"])
-        _shared._refuse_conditions(eff, ["fake"])
+        assert _shared._note_fake_conditions(eff, ["fake"])
+        assert _shared._note_fake_conditions(eff, ["fake"])
     notices = [
         r.getMessage() for r in caplog.records if "evaluates no device condition" in r.getMessage()
     ]
     assert len(notices) == 1
-    _shared._refuse_conditions(_eff(_IOS), ["ios"])  # no condition, nothing to refuse
+    assert not _shared._note_fake_conditions(_eff(_IOS), ["fake"])  # no condition, no notice
+    assert not _shared._note_fake_conditions(eff, ["ios"])  # a real backend matches them
 
 
 def test_a_kind_device_target_cannot_declare_a_condition() -> None:
@@ -464,12 +453,13 @@ def test_doctor_exits_2_on_a_failed_config_gate(
     assert "set targets.t.app.id" in result.output
 
 
-def test_doctor_refuses_a_condition_on_its_device_path(
+def test_doctor_probes_the_first_run_of_a_condition(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from typer.testing import CliRunner
 
     from bajutsu.cli import app
+    from bajutsu.common.devices.facts import DeviceFacts
 
     monkeypatch.setattr(
         "bajutsu.common.capability.preflight.doctor_environment_checks", lambda *a, **k: []
@@ -478,23 +468,39 @@ def test_doctor_refuses_a_condition_on_its_device_path(
     monkeypatch.setattr("bajutsu.cli._shared.current_host_os", lambda: "darwin")
     monkeypatch.setattr("bajutsu.cli.commands.doctor.select_actuator", lambda _b: "xcuitest")
     monkeypatch.setattr("bajutsu.cli.commands.doctor._host_toolchain", lambda: (None, None))
+    pool = [
+        DeviceFacts(udid="u17", platform="ios", model="iPhone 15", release="17.5"),
+        DeviceFacts(udid="u18", platform="ios", model="iPhone 15", release="18.2"),
+    ]
+    for where in ("bajutsu.run.device_matrix", "bajutsu.cli.commands.doctor"):
+        monkeypatch.setattr(f"{where}.target_pool", lambda *_a, **_k: list(pool))
+    probed: list[str] = []
+
+    def screen(_actuator: str, udid: str, _eff: object) -> list[object]:
+        probed.append(udid)
+        return []
+
+    monkeypatch.setattr("bajutsu.cli.commands.doctor._current_screen", screen)
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
         'targets:\n  t: { platform: ios, app: { id: com.x }, runsOn: { os: "18" } }\n',
         encoding="utf-8",
     )
-    argv = ["doctor", "--target", "t", "--config", str(cfg)]
-    assert CliRunner().invoke(app, [*argv, "--environment-only"]).exit_code == 0
+    argv = ["doctor", "--target", "t", "--config", str(cfg), "--udid", "u17,u18"]
     result = CliRunner().invoke(app, argv)
-    assert result.exit_code == 2
-    assert "not yet supported" in result.output
+    assert "not yet supported" not in result.output
+    assert "runs:\n  target 't':\n    ✓ iOS 18: iOS 18.2 \"iPhone 15\" (u18)" in result.output
+    assert probed == ["u18"]
 
 
 # --- the MCP server's device ---------------------------------------------------------------
 
 
-def test_the_mcp_probe_takes_its_device_through_the_worker() -> None:
+def test_the_mcp_probe_takes_its_device_through_the_worker(monkeypatch: pytest.MonkeyPatch) -> None:
     from bajutsu.mcp.tools import _probe_device
+
+    # CI hosts have no xcuitest toolchain; the probe's routing is what this test reads.
+    monkeypatch.setattr("bajutsu.mcp.tools.select_actuator", lambda *_a, **_k: "xcuitest")
 
     eff, spec = _probe_device(_eff(_IOS), "booted", _grid())
     assert spec == "https://grid.example/wd/hub"
@@ -505,7 +511,8 @@ def test_the_mcp_probe_takes_its_device_through_the_worker() -> None:
     assert local == "booted"
     with pytest.raises(ValueError, match="no longer takes a URL"):
         _probe_device(_eff(_IOS), "https://grid/", _grid())
-    with pytest.raises(ValueError, match="not yet supported"):
+    # A grid has no pool to read, so a condition on a target it serves fails by name.
+    with pytest.raises(ValueError, match=r"runsOn\.ios\.os"):
         _probe_device(
             _eff('targets:\n  t: { platform: ios, app: { id: com.x }, runsOn: { os: "18" } }\n'),
             "booted",

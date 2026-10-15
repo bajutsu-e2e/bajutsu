@@ -252,7 +252,7 @@ def test_a_run_formation_value_error_exits_2(
     def broken(*_a: object, **_k: object) -> object:
         raise ValueError("no browser version was read for engine 'chromium'")
 
-    monkeypatch.setattr("bajutsu.common.devices.runs.first_run", broken)
+    monkeypatch.setattr("bajutsu.run.device_matrix.first_run", broken)
     eff = _eff("web", "{browser: {version: '>=120'}}")
     with pytest.raises(typer.Exit) as exc:
         _first_run_or_exit(

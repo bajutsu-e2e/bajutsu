@@ -13,15 +13,25 @@ decide the result, and nothing here calls a model.
 from __future__ import annotations
 
 from collections.abc import Callable, Collection, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from typing import Literal
 
 from bajutsu.common.backends import ensure_web_runtime
-from bajutsu.common.config import Effective
+from bajutsu.common.config import Effective, WebConfig
 from bajutsu.common.config.accessors import web_engine
 from bajutsu.common.config.preconditions import effective_conditions, remote_condition_problems
 from bajutsu.common.devices import facts
+from bajutsu.common.devices.errors import DeviceError
 from bajutsu.common.devices.facts import DeviceFacts
-from bajutsu.common.devices.runs import Combination, Participant, combine, form_target_runs
+from bajutsu.common.devices.runs import (
+    Combination,
+    Participant,
+    combine,
+    declared_runs,
+    eligible_set,
+    first_run,
+    form_target_runs,
+)
 from bajutsu.common.scenario import Scenario
 
 # The actuator the fake driver runs under; its targets match no condition.
@@ -293,3 +303,163 @@ def render_not_applicable(record: Mapping[str, str]) -> str:
     if record.get("coordinates"):
         name += f" [{record['coordinates']}]"
     return f"not applicable: {name}\n  {record['reason']}"
+
+
+def apply_engine(eff: Effective, engine: str) -> Effective:
+    """*eff* driven with *engine*, which then stops counting as a `browser.engine` condition.
+
+    A non-web target has no engine, so it is returned unchanged.
+    """
+    if not isinstance(eff.platform_config, WebConfig):
+        return eff
+    return replace(
+        without_engine_condition(eff),
+        platform_config=replace(eff.platform_config, browser=engine),
+    )
+
+
+def without_engine_condition(eff: Effective) -> Effective:
+    """*eff* with its listed `runsOn.browser.engine` no longer counted as a device condition.
+
+    An engine flag names the engines itself — `--browser` one, `--browsers` the matrix that sets
+    each pass's engine — so the target's own list is overridden rather than matched.
+    """
+    conditions = {k: v for k, v in eff.conditions.items() if k != "browser.engine"}
+    return replace(eff, conditions=conditions)
+
+
+def target_pool(
+    eff: Effective,
+    actuator: str,
+    udid: str,
+    *,
+    engines: Sequence[str] = (),
+    read_ios: Callable[[Sequence[str]], list[DeviceFacts]] | None = None,
+    read_android: Callable[[Sequence[str]], list[DeviceFacts]] | None = None,
+    read_browser: Callable[[str], DeviceFacts] | None = None,
+) -> list[DeviceFacts]:
+    """The device facts of one target's pool, as `run` reads them: each udid of *udid*, resolved.
+
+    A web lane has no device to read; its facts are the browsers *engines* launch.
+
+    Raises:
+        DeviceError: A device could not be resolved or read.
+    """
+    if eff.platform == "web":
+        return [(read_browser or facts.read_web)(engine) for engine in engines]
+    # Imported here: the platform environments reach the device CLIs, which planning alone never needs.
+    from bajutsu.common.platform_lifecycle import environment_for
+
+    env = environment_for(actuator, udid)
+    pool = [env.resolve_device(u.strip()) for u in udid.split(",") if u.strip()]
+    if eff.platform == "ios":
+        return (read_ios or facts.read_ios)(pool)
+    return (read_android or facts.read_android)(pool)
+
+
+def first_run_device(
+    eff: Effective,
+    actuator: str,
+    udid: str,
+    *,
+    read_ios: Callable[[Sequence[str]], list[DeviceFacts]] | None = None,
+    read_android: Callable[[Sequence[str]], list[DeviceFacts]] | None = None,
+    read_browser: Callable[[str], DeviceFacts] | None = None,
+) -> tuple[Effective, str]:
+    """The first run of the target's conditions, and the device it takes (BE-0452).
+
+    A command that never multiplies runs (`record`, `crawl`, `repl`, and `doctor`'s screen probe)
+    takes the first listed value and the newest major version the pool has within a range, on the
+    first device of that run's eligible set. A target with no condition, and the fake actuator, keep
+    *udid* as given.
+
+    Returns:
+        The configuration with the run's web engine applied, and the udid of the device it takes.
+
+    Raises:
+        ValueError: The target runs where no pool can be read, a device could not be read, or no
+            available device fits; the message names the condition and the devices seen.
+    """
+    if not eff.conditions or actuator == FAKE_ACTUATOR:
+        return eff, udid
+    problems = remote_condition_problems(eff, eff.conditions)
+    if problems:
+        raise ValueError("\n".join(problems))
+    engines: list[str] = []
+    conditions = dict(eff.conditions)
+    if eff.platform == "web":
+        # The first run takes the first listed engine, which actuator selection already installed;
+        # the rest are dropped so no run is formed for an engine never read.
+        listed = conditions.get("browser.engine") or web_engine(eff)
+        engine = listed[0] if isinstance(listed, list) else listed
+        if "browser.engine" in conditions:
+            conditions["browser.engine"] = engine
+        if "browser.version" in conditions:
+            engines = [engine]
+    try:
+        devices = target_pool(
+            eff,
+            actuator,
+            udid,
+            engines=engines,
+            read_ios=read_ios,
+            read_android=read_android,
+            read_browser=read_browser,
+        )
+        run, device = first_run(
+            eff.target, eff.platform, conditions, devices, engine=web_engine(eff)
+        )
+    except (DeviceError, LookupError) as e:
+        raise ValueError(f"target '{eff.target}': {e}") from None
+    if run.engine is not None:
+        return apply_engine(eff, run.engine), udid
+    return eff, device.udid if device is not None else udid
+
+
+ListedOutcome = Literal["run", "failed", "not-applicable", "declared"]
+
+
+@dataclass(frozen=True)
+class ListedRun:
+    """One run as `doctor` lists it: its coordinates, its outcome, and the devices that fit it.
+
+    `declared` marks a run listed from the conditions alone, because no pool could be read.
+    """
+
+    label: str
+    outcome: ListedOutcome
+    devices: tuple[str, ...] = ()
+    reason: str = ""
+
+
+def list_runs(
+    eff: Effective,
+    conditions: Mapping[str, str | list[str]],
+    devices: Sequence[DeviceFacts] | None,
+) -> list[ListedRun]:
+    """Each run *conditions* form on one target, with the available devices that fit it.
+
+    The same forming and eligible sets `run` uses, so the listing never disagrees with a run. With
+    *devices* None, no pool could be read, so the runs are the declared ones alone and an open range
+    reads as one run per available major version.
+    """
+    engine = web_engine(eff) if eff.platform == "web" else None
+    if devices is None:
+        return [
+            ListedRun(label, "declared")
+            for label in declared_runs(eff.platform, conditions, engine=engine)
+        ]
+    listed: list[ListedRun] = []
+    for run in form_target_runs(eff.target, eff.platform, conditions, devices, engine=engine):
+        if run.outcome != "run":
+            listed.append(ListedRun(run.label, run.outcome, reason=run.reason))
+        elif eff.platform == "web":
+            launched = [d.describe for d in devices if d.model == run.engine]
+            listed.append(ListedRun(run.label, "run", tuple(launched) or (str(run.engine),)))
+        elif (fit := eligible_set(run, devices)) is None:
+            listed.append(
+                ListedRun(run.label, "failed", reason="no available device fits this run")
+            )
+        else:
+            listed.append(ListedRun(run.label, "run", tuple(d.describe for d in fit)))
+    return listed

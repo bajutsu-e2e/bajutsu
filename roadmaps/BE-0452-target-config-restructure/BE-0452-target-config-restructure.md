@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0452") |
-| Implementing PR | [#2191](https://github.com/bajutsu-e2e/bajutsu/pull/2191) (Units 1–3), [#2193](https://github.com/bajutsu-e2e/bajutsu/pull/2193) (Unit 4), [#2194](https://github.com/bajutsu-e2e/bajutsu/pull/2194) (Unit 5), [#2195](https://github.com/bajutsu-e2e/bajutsu/pull/2195) (Units 6–7), [#2196](https://github.com/bajutsu-e2e/bajutsu/pull/2196) (Units 8–9) |
+| Implementing PR | [#2191](https://github.com/bajutsu-e2e/bajutsu/pull/2191) (Units 1–3), [#2193](https://github.com/bajutsu-e2e/bajutsu/pull/2193) (Unit 4), [#2194](https://github.com/bajutsu-e2e/bajutsu/pull/2194) (Unit 5), [#2195](https://github.com/bajutsu-e2e/bajutsu/pull/2195) (Units 6–7), [#2196](https://github.com/bajutsu-e2e/bajutsu/pull/2196) (Units 8–9), [#2200](https://github.com/bajutsu-e2e/bajutsu/pull/2200) (Units 10–12) |
 | Topic | Driver & backend architecture |
 | Related | [BE-0126](../BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config.md), [BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact.md), [BE-0228](../BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation.md), [BE-0076](../BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md), [BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks.md), [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md), [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch.md), [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md), [BE-0447](../BE-0447-install-app-step/BE-0447-install-app-step.md), [BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md) |
 <!-- /BE-METADATA -->
@@ -868,9 +868,9 @@ batch provider that packages `launchEnv`, `common/report/rows.py`, `templates/se
 - [x] Unit 7: scenario preconditions
 - [x] Unit 8: reading devices
 - [x] Unit 9: runs and outcomes
-- [ ] Unit 10: reporting
-- [ ] Unit 11: `doctor`
-- [ ] Unit 12: `bajutsu config schema`
+- [x] Unit 10: reporting
+- [x] Unit 11: `doctor`
+- [x] Unit 12: `bajutsu config schema`
 - [ ] Unit 13: docs
 
 ### Log
@@ -1096,6 +1096,40 @@ batch provider that packages `launchEnv`, `common/report/rows.py`, `templates/se
     - `audit --repeat` reports every run it can, then exits 1 when a run had no device.
   - This unit updated the pages that describe these behaviors. The full docs pass stays with unit
     13.
+- [#2200](https://github.com/bajutsu-e2e/bajutsu/pull/2200) (Units 10–12) — the reports show the run matrix and the not-applicable records.
+  `doctor` lists each scenario's runs, and `bajutsu config schema` prints the config's
+  JSON Schema.
+  - Unit 10: the manifest, schema version 15, gains `runMatrix`. That grid keys each cell by
+    scenario and coordinates. A cell holds a run or a not-applicable record. The HTML report renders
+    the grid and counts the records in a header chip. It lists each reason apart, and each scenario
+    card names its coordinates.
+  - JUnit lists each not-applicable record as a `<skipped>` case, and CTRF as a `skipped` test. CTRF
+    carries a run's coordinates under `extra.coordinates`. The webhook payload counts the records
+    and names the coordinates of a run in error. The serve run history shows the count as `N n/a`.
+  - A run that no condition formed keeps the shape of every output. A test pins each output for
+    that case.
+  - Unit 11: `doctor` prints a `runs:` section when a condition applies. It reads the `--udid` pool
+    as `run` does and forms the same runs. Each run lists its eligible devices, or the reason it
+    has none.
+  - With no pool to read, `doctor` lists the declared runs alone. An open range then reads as "one
+    run per available major version". A grid target, a physical device, and an unreadable pool all
+    take this path.
+  - The screen probe of `doctor` and the MCP doctor tool score the device of the first run. That
+    device is the one `record` takes. No command refuses a condition as "not yet supported" now.
+  - Unit 12: `bajutsu config schema` prints a JSON Schema built from the config models. The
+    registry supplies each platform's groups. Each target is a `oneOf` keyed by `platform`.
+    `defaults.platforms` lists every platform's groups with each field optional. `bajutsu schema`
+    now states a scenario's `preconditions.runsOn` per platform from the registry.
+  - The `exists` assertion now states its inline form in both schemas, as files write it. The model
+    stores the selector under `sel`, which no file writes.
+  - A test pins both schemas to the models, and validates every config the repository ships.
+  - Two departures from the design text:
+    - The `runs:` section is informational. A run with no device does not change the exit code of
+      `doctor`.
+    - The hosted runs table keeps one row per invocation. Unit 9's note left a row per run to this
+      unit. The design does not ask for one, so the row stays as unit 9 made it.
+  - This change updated `docs/cli.md` and `docs/reporting.md` in both languages. The full docs pass
+    stays with unit 13.
 
 ## References
 

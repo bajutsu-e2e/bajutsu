@@ -20,6 +20,7 @@ from pathlib import PurePosixPath
 from typing import Any
 
 from bajutsu.common.report.archive import zip_tree
+from bajutsu.common.report.manifest import history_summary
 from bajutsu.common.run_meta.files import RUN_TOMBSTONE
 from bajutsu.common.run_meta.object_store import content_type_for
 from bajutsu.serve.artifacts import Artifact
@@ -110,15 +111,12 @@ class ObjectStorageArtifactStore:
                 continue
             if not isinstance(data, dict):  # a manifest that isn't a JSON object is skipped
                 continue
-            scenarios = [s for s in (data.get("scenarios") or []) if isinstance(s, dict)]
             out.append(
                 {
                     "id": run_id,
                     "ok": bool(data.get("ok")),
                     "report": f"{run_id}/report.html" in present,
-                    "scenarios": [str(s.get("scenario", "")) for s in scenarios],
-                    "passed": sum(1 for s in scenarios if s.get("ok")),
-                    "total": len(scenarios),
+                    **history_summary(data),
                 }
             )
         return out

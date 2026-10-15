@@ -8,7 +8,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +26,12 @@ _MAX_RETRIES = 2
 _RETRY_DELAY = 1.0
 
 
+def _failure_name(r: RunResult) -> str:
+    # The coordinates alone extend the name (BE-0452): a `--browsers` failure kept its bare name
+    # before them, and the summary's `engine` already names the engine.
+    return f"{r.scenario} [{r.coordinates}]" if r.coordinates else r.scenario
+
+
 def build_summary(
     results: list[RunResult],
     *,
@@ -34,14 +40,20 @@ def build_summary(
     backend: str,
     report_url: str | None = None,
     max_failures: int = 5,
+    not_applicable: int = 0,
 ) -> RunNotification:
-    """Project run results into a bounded, format-neutral summary."""
+    """Project run results into a bounded, format-neutral summary.
+
+    A failure names its run's coordinates as test reports do (BE-0452), so one scenario's runs read
+    apart. *not_applicable* counts the records no device fell in range for; an invocation with
+    nothing but them executed nothing, so it is not ok.
+    """
     passed = sum(1 for r in results if r.ok)
     failed_results = [r for r in results if not r.ok]
     capped = failed_results[:max_failures]
     return RunNotification(
         run_id=run_id,
-        ok=all(r.ok for r in results),
+        ok=all(r.ok for r in results) and bool(results or not not_applicable),
         total=len(results),
         passed=passed,
         failed=len(failed_results),
@@ -50,13 +62,14 @@ def build_summary(
         duration_s=sum(r.duration_s for r in results),
         failures=[
             FailureSummary(
-                scenario=r.scenario, failure=r.failure or "failed", duration_s=r.duration_s
+                scenario=_failure_name(r), failure=r.failure or "failed", duration_s=r.duration_s
             )
             for r in capped
         ],
         failures_remaining=max(0, len(failed_results) - max_failures),
         report_url=report_url,
         engine=next((r.engine for r in results if r.engine), ""),
+        not_applicable=not_applicable,
     )
 
 
@@ -135,7 +148,12 @@ def _render_slack(summary: RunNotification) -> dict[str, Any]:
                 {"type": "mrkdwn", "text": f"*Backend:* {summary.backend}"},
                 {
                     "type": "mrkdwn",
-                    "text": f"*Result:* {summary.passed} passed, {summary.failed} failed / {summary.total}",
+                    "text": f"*Result:* {summary.passed} passed, {summary.failed} failed / {summary.total}"
+                    + (
+                        f", {summary.not_applicable} not applicable"
+                        if summary.not_applicable
+                        else ""
+                    ),
                 },
                 {"type": "mrkdwn", "text": f"*Duration:* {summary.duration_s:.1f}s"},
             ],
@@ -274,17 +292,25 @@ def emit(
     bindings: Mapping[str, str],
     runs_dir: Path,
     report_url: str | None = None,
+    not_applicable: Sequence[Mapping[str, str]] = (),
 ) -> bool:
     """Post run notifications to all matching endpoints. Returns whether any fired.
 
-    Called after the verdict is fixed. A delivery failure is logged, never raised.
+    Called after the verdict is fixed. A delivery failure is logged, never raised. *not_applicable*
+    holds the records of the runs no available device fell in range for (BE-0452); an endpoint
+    scoped by `targets:` counts only its own scenarios' records.
     """
     if not endpoints:
         return False
 
     any_fired = False
     summary = build_summary(
-        results, run_id=run_id, source_name=source_name, backend=backend, report_url=report_url
+        results,
+        run_id=run_id,
+        source_name=source_name,
+        backend=backend,
+        report_url=report_url,
+        not_applicable=len(not_applicable),
     )
 
     for ep in endpoints:
@@ -307,6 +333,9 @@ def emit(
                     source_name=source_name,
                     backend=backend,
                     report_url=report_url,
+                    not_applicable=sum(
+                        1 for rec in not_applicable if rec.get("scenario") in ep.targets
+                    ),
                 )
 
             if not _should_fire(ep, ep_summary, prior_ok):

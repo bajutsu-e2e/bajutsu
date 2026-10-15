@@ -444,7 +444,7 @@ async function loadHistory(){
   renderHistFilter(shown.length);
   const ul=$('#history');
   if(!shown.length){ul.innerHTML=`<li class="muted">${historyFilter?'no matching runs':'no runs yet'}</li>`;if(histSel)histSel.sync();return;}
-  ul.innerHTML=shown.map(r=>`<li data-id="${esc(r.id)}" data-ok="${r.ok?1:0}"${r.id===state.selectedRun?' class="sel"':''}><input type="checkbox" class="rowck" aria-label="select run for deletion" data-testid="replay.history-select" value="${esc(r.id)}"><span class="dot ${r.ok?'ok':'ng'}"></span><span class="hid">${esc(r.id)}</span><span class="hsum">${r.passed}/${r.total}${r.scenarios.length?' · '+esc(r.scenarios.join(', ')):''}</span><button type="button" class="rowdel" title="Delete this run" aria-label="Delete run" data-testid="replay.history-delete">&#128465;</button></li>`).join('');
+  ul.innerHTML=shown.map(r=>`<li data-id="${esc(r.id)}" data-ok="${r.ok?1:0}"${r.id===state.selectedRun?' class="sel"':''}><input type="checkbox" class="rowck" aria-label="select run for deletion" data-testid="replay.history-select" value="${esc(r.id)}"><span class="dot ${r.ok?'ok':'ng'}"></span><span class="hid">${esc(r.id)}</span><span class="hsum">${r.passed}/${r.total}${r.notApplicable?' · '+r.notApplicable+' n/a':''}${r.scenarios.length?' · '+esc(r.scenarios.join(', ')):''}</span><button type="button" class="rowdel" title="Delete this run" aria-label="Delete run" data-testid="replay.history-delete">&#128465;</button></li>`).join('');
   if(histSel)histSel.sync();
 }
 // ---- Trash view (BE-0239): soft-deleted runs (regular + crawl share the trash), each restorable or,

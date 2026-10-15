@@ -33,6 +33,7 @@ from bajutsu.common.devices.runs import coordinates_from_manifest
 from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.common.evidence.sink import RunArtifactWriter
 from bajutsu.common.handoff import REQUEST_LINE_PREFIX as _HANDOFF_REQUEST_PREFIX
+from bajutsu.common.report.manifest import history_summary
 from bajutsu.common.run_meta.files import DEFAULT_RUNS_DIR, RunArtifactReader
 from bajutsu.run import PARENT_FD_ENV
 from bajutsu.serve.helpers import unsafe_env_name, valid_run_id, warn_unsafe_env_name
@@ -814,14 +815,11 @@ def _run_summary(
             "label": label or "",
             "target": target or "",
         }
-    scenarios = [s for s in (manifest.get("scenarios") or []) if isinstance(s, dict)]
     return {
         "id": run_id,
         "ok": bool(manifest.get("ok")),
         "report": True,
-        "scenarios": [str(s.get("scenario", "")) for s in scenarios],
-        "passed": sum(1 for s in scenarios if s.get("ok")),
-        "total": len(scenarios),
+        **history_summary(manifest),
         # Mirrored so the DB-backed history list and the local artifact-store one carry the same
         # shape, and the label filter reads one field either way (BE-0404 unit 4).
         "label": label or str(manifest.get("label") or ""),

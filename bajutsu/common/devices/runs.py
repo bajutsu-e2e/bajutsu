@@ -424,6 +424,43 @@ def first_run(
     return run, chosen[0]
 
 
+# How a declared listing names the runs an open range forms, which depend on the pool.
+PER_AVAILABLE_MAJOR = "one run per available major version"
+
+
+def declared_runs(
+    platform: str, conditions: Mapping[str, str | list[str]], *, engine: str | None = None
+) -> list[str]:
+    """The runs *conditions* name before any device is read, as `doctor` lists them with no pool.
+
+    A list names one run per value and a bounded range one per major version it covers, so those
+    are listed as the runs they form. An open range's runs depend on the major versions the pool
+    has, so it is listed as one run per available major version. A run with no coordinates (no
+    condition, or a single value alone) is listed as an empty label.
+    """
+    if platform == "web":
+        engines, listed = _listed(conditions.get("browser.engine") or engine)
+        return [name if listed and name is not None else "" for name in engines]
+    if platform not in _MODEL_FIELD or not conditions:
+        return [""]
+    models, listed = _listed(conditions.get(_MODEL_FIELD[platform]))
+    version_field = _VERSION_FIELD[platform]
+    raw_spec = conditions.get(version_field)
+    spec = VersionSpec.parse(raw_spec) if isinstance(raw_spec, str) else None
+    labels: list[str] = []
+    for model in models:
+        prefix = [model] if listed and model is not None else []
+        if spec is None:
+            labels.append(" / ".join(prefix))
+            continue
+        labels += [" / ".join([*prefix, _major_label(platform, m)]) for m in spec.majors()]
+        if any(not alt.bounded for alt in spec.alternatives):
+            labels.append(
+                " / ".join([*prefix, f'{PER_AVAILABLE_MAJOR} in {version_field} "{spec}"'])
+            )
+    return labels
+
+
 def unpack_conditions(
     value: Mapping[str, object],
 ) -> dict[str, str | list[str]]:

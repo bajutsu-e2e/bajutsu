@@ -7,7 +7,7 @@ live in bajutsu/templates/).
 from __future__ import annotations
 
 import functools
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -19,7 +19,14 @@ from bajutsu.common.evidence.sink import RunArtifactWriter
 from bajutsu.common.orchestrator import RunResult
 from bajutsu.common.report.ctrf import ctrf_json
 from bajutsu.common.report.format import _fmt_duration
-from bajutsu.common.report.manifest import _matrix, _run_backend, junit_xml, manifest_dict
+from bajutsu.common.report.manifest import (
+    _matrix,
+    _run_backend,
+    junit_xml,
+    manifest_dict,
+    not_applicable_name,
+    run_matrix,
+)
 from bajutsu.common.report.panels import _scenario_data
 from bajutsu.common.scenario import Scenario, declared_name, dump_scenarios, scenario_dict
 
@@ -104,6 +111,24 @@ def _matrix_view(results: list[RunResult]) -> dict[str, Any] | None:
     return {"engines": engines, "rows": rows}
 
 
+def _run_matrix_view(
+    results: list[RunResult], not_applicable: Sequence[Mapping[str, str]]
+) -> dict[str, Any] | None:
+    """The scenario x coordinates grid for the report, or None when no condition formed runs (BE-0452).
+
+    Reshapes `run_matrix` (the manifest's aggregation) into rows aligned with its columns, as
+    `_matrix_view` does for engines, so the template renders a plain table with no JS.
+    """
+    grid = run_matrix(results, not_applicable)
+    if grid is None:
+        return None
+    columns: list[str] = grid["columns"]  # type: ignore[assignment]
+    scenarios: list[str] = grid["scenarios"]  # type: ignore[assignment]
+    cells: dict[str, dict[str, dict[str, Any]]] = grid["cells"]  # type: ignore[assignment]
+    rows = [{"scenario": s, "cells": [cells[s].get(c) for c in columns]} for s in scenarios]
+    return {"columns": columns, "rows": rows}
+
+
 # --- Jinja rendering ---
 
 
@@ -127,6 +152,7 @@ def html_report(
     description: str | None = None,
     source_files: list[str | None] | None = None,
     step_lines: list[list[int] | None] | None = None,
+    not_applicable: Sequence[Mapping[str, str]] = (),
 ) -> str:
     """A self-contained interactive HTML report (inline CSS + JS, no external assets).
 
@@ -136,7 +162,10 @@ def html_report(
     drive the merged Result tab and its Rich/YAML toggle. `source_files` names each scenario's
     own originating file (shown beside its name); `step_lines` gives each scenario's steps'
     original line numbers in that file (shown beside each executed step), when `scenario_source_meta`
-    could recover them — both are omitted wherever their entry is None.
+    could recover them — both are omitted wherever their entry is None. `not_applicable` holds the
+    manifest's not-applicable records (BE-0452): the report counts them beside the passes and
+    failures, places them in the run matrix, and lists each one's reason apart; a run with nothing
+    but them executed nothing, so it reports FAIL.
     """
     passed = sum(1 for r in results if r.ok)
 
@@ -175,7 +204,7 @@ def html_report(
             run_id=run_id,
             passed=passed,
             failed=len(results) - passed,
-            overall=passed == len(results),
+            overall=passed == len(results) and bool(results or not not_applicable),
             backend=_run_backend(results),
             device_count=len(devices),
             total_duration=total_duration,
@@ -183,6 +212,15 @@ def html_report(
             js=_asset("report.js"),
             scenarios=scenarios,
             matrix=_matrix_view(results),
+            run_matrix=_run_matrix_view(results, not_applicable),
+            not_applicable=[
+                {
+                    "target": record.get("target", ""),
+                    "name": not_applicable_name(record),
+                    "reason": record.get("reason", ""),
+                }
+                for record in not_applicable
+            ],
             source_name=source_name,
             description=description,
         )
@@ -210,6 +248,7 @@ def write_html_and_junit(
     writer: RunArtifactWriter | None = None,
     source_files: list[str | None] | None = None,
     step_lines: list[list[int] | None] | None = None,
+    not_applicable: Sequence[Mapping[str, str]] = (),
 ) -> None:
     """Write (or rewrite) report.html + junit.xml + ctrf.json under run_dir, leaving manifest.json untouched.
 
@@ -217,12 +256,15 @@ def write_html_and_junit(
     offline re-render (BE-0068) calls it alone to refresh a finished run from its stored model.
     `provenance` (the manifest's run-identity stamp) only feeds the CTRF export's tool/environment
     fields; None omits them. `run_dir` is read (the report embeds the run's captured logs inline);
-    every write goes through `writer`. `source_files` / `step_lines` are `html_report`'s own —
-    see there.
+    every write goes through `writer`. `source_files` / `step_lines` / `not_applicable` are
+    `html_report`'s own — see there; JUnit and CTRF list each not-applicable record as skipped.
     """
     sink = _sink(run_dir, writer)
-    sink.write_text("junit.xml", junit_xml(results))
-    sink.write_json("ctrf.json", ctrf_json(run_id, results, provenance=provenance))
+    sink.write_text("junit.xml", junit_xml(results, not_applicable))
+    sink.write_json(
+        "ctrf.json",
+        ctrf_json(run_id, results, provenance=provenance, not_applicable=not_applicable),
+    )
     sink.write_text(
         "report.html",
         html_report(
@@ -235,6 +277,7 @@ def write_html_and_junit(
             description,
             source_files,
             step_lines,
+            not_applicable,
         ),
     )
 
@@ -291,5 +334,6 @@ def write_report(
         sink,
         source_files,
         step_lines,
+        not_applicable or (),
     )
     return manifest_path
