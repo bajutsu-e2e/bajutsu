@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0457") |
+| 実装 PR | [#2211](https://github.com/bajutsu-e2e/bajutsu/pull/2211)（単位 1〜3、6、7、11、12） |
 | トピック | プラットフォーム対応 |
 | 関連 | [BE-0082](../BE-0082-capability-preflight-check/BE-0082-capability-preflight-check-ja.md), [BE-0128](../BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight-ja.md), [BE-0212](../BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities-ja.md), [BE-0238](../BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution-ja.md) |
 <!-- /BE-METADATA -->
@@ -346,7 +347,7 @@ BE-0238 の実機のターゲットは、アプリの事前インストールを
 
 ログ：
 
-- PR_PLACEHOLDER — 単位 1〜3、6、7、11、12。
+- [#2211](https://github.com/bajutsu-e2e/bajutsu/pull/2211) — 単位 1〜3、6、7、11、12。
   除外記法の名前を `skipOnRealDevice` から `skipIfUnsupported` に改めました。実機かどうかではなく、capability が足りないかどうかで働きます。
   修飾子を付けた `group:`、`use:`、ターゲットグループは 1 つの単位として飛ぶようになり、`assert` を依存先のステップと一緒に扱えます。
   ステップ修飾子は実行時に実際にステップを飛ばし、すべてのレポートで skipped として表示されます。

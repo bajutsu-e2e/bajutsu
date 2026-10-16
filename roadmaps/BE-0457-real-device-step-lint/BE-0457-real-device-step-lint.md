@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0457") |
+| Implementing PR | [#2211](https://github.com/bajutsu-e2e/bajutsu/pull/2211) (units 1–3, 6, 7, 11, 12) |
 | Topic | Platform support |
 | Related | [BE-0082](../BE-0082-capability-preflight-check/BE-0082-capability-preflight-check.md), [BE-0128](../BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight.md), [BE-0212](../BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities.md), [BE-0238](../BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md) |
 <!-- /BE-METADATA -->
@@ -373,7 +374,7 @@ The target-blind check becomes worth revisiting once Android can express a real 
 
 Log:
 
-- PR_PLACEHOLDER — Units 1–3, 6, 7, 11, and 12. Renamed the opt-out from `skipOnRealDevice` to
+- [#2211](https://github.com/bajutsu-e2e/bajutsu/pull/2211) — Units 1–3, 6, 7, 11, and 12. Renamed the opt-out from `skipOnRealDevice` to
   `skipIfUnsupported`, so it triggers on any capability gap rather than on a real device. A covered
   `group:`, `use:`, or target group now skips as one unit, which keeps an `assert` with the step it
   depends on. The step modifier now skips at run time and renders as skipped in every report. The
