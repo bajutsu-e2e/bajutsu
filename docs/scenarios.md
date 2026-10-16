@@ -1380,6 +1380,44 @@ Both drive the Simulator via `simctl` and need a per-device control channel, so 
 the fake driver and in parallel runs — there the step fails cleanly (it does not crash). `push` delivers
 its `payload` as the APNs JSON to the app under test.
 
+### `skipIfUnsupported` (skipping a step the target cannot run)
+
+A scenario written for the Simulator can hold steps that a real iPhone cannot run. A real device
+target lacks the `simctl`-backed capabilities. The run preflight turns such a scenario away before
+any device work. The `skipIfUnsupported` modifier lets one scenario serve both targets. Its value is
+the author's reason, which the report shows:
+
+```yaml
+- group:
+    name: Tokyo banner
+    steps:
+      - setLocation: { lat: 35.681, lon: 139.767 }
+      - assert: [{ exists: { id: tokyo-banner } }]
+  skipIfUnsupported: "a real device cannot spoof its location"
+```
+
+The run preflight compares each step with the capabilities of the target the step routes to. A
+covered step then follows these rules:
+
+- **The target lacks a capability the step needs.** The run records the step as skipped. The
+  report shows the reason, and the driver never acts on the step. The preflight still fails a gap
+  that no modifier covers.
+- **The target supports the step.** The step runs as usual. A capability gap is the one trigger.
+  A step that runs and fails still fails.
+- **The modifier sits on a block.** The run skips a covered `if`, `forEach`, `web`, or `app`
+  block whole. On `group:` and `use:`, and on a target group, every expanded step joins one skip
+  unit. One unsupported step in the unit skips every step in it.
+
+Group a check with the step it depends on, as in the example above. A bare non-visual `assert`
+needs no capability, and the modifier never takes effect on one.
+
+A skipped `assert` removes a check rather than satisfying it. Consider a scenario with no `expect`
+where the run skipped every `assert` step. That scenario fails instead of passing with nothing
+checked. The same holds when the run skipped every step. The loader refuses the modifier on `manual` and on `setPrimaryTarget`. The loader also
+refuses it on any block holding a `manual` step. Skipping a `manual` step would hide the stop a
+human takeover must make. Skipping `setPrimaryTarget` would change which target every later step
+runs on.
+
 ### `http` (request, for test-data setup)
 
 ```yaml

@@ -198,7 +198,7 @@ PermissionAction  ::= "grant" | "revoke"
 
 # ── Step = exactly one Action + optional modifiers ─────────────────────
 Step      ::= <Action> & <StepMods>
-StepMods  ::= { capture?: list(<CaptureToken>), extract?: map(string, <Extract>), name?: string, from?: string, target?: string }
+StepMods  ::= { capture?: list(<CaptureToken>), extract?: map(string, <Extract>), name?: string, from?: string, target?: string, skipIfUnsupported?: string }
                 # `from`: provenance, the natural-language phrase `record` normalized this step from (BE-0044)
                 # `name` becomes a real filesystem path segment (the run's step_id, the editor's
                 # artifact lookup) — a path separator, or a bare "." / "..", is a load error
@@ -207,6 +207,8 @@ StepMods  ::= { capture?: list(<CaptureToken>), extract?: map(string, <Extract>)
                 # (§4). Rejected outright on a step
                 # nested inside a `web:` block, which always runs against the block's own
                 # resolved target
+                # `skipIfUnsupported`: the reason to skip this step, or this whole block, when its
+                # routed target lacks a capability the step needs (BE-0457); §4 holds the rules
 Extract   ::= { sel: <Selector>, prop?: ("value"|"label"|"identifier") }   # default "value"
 Action    ::=
     { tap:         <Selector> }
@@ -249,7 +251,7 @@ Action    ::=
   | { setMocks:         list(<Mock>) }                     # replace the app's whole stub table mid-scenario ([] removes every stub); iOS/XCUITest with network on (BE-0365)
   | { overrideStatusBar: { time?: string, batteryLevel?: integer, batteryState?: string, cellularBars?: integer, wifiBars?: integer } }
   | { clearStatusBar:   {} }                               # restore the live status bar
-  | { use:         { component: string, with?: map(string,string) } }   # macro (§6.2; no modifier but target)
+  | { use:         { component: string, with?: map(string,string) } }   # macro (§6.2; no modifier but target and skipIfUnsupported)
   | { group:       <Group> }                                            # named run of steps, folded in report.html (§6.2; no capture/extract; does not nest)
   | { if:          <If> }                                               # conditional (no capture/extract)
   | { forEach:     <ForEach> }                                          # loop (no capture/extract)
@@ -437,7 +439,8 @@ error). This table is the **authoritative list of "exactly one / at least one / 
 |---|---|---|
 | `Selector` | **≥ 1** field present | `scenario/models/selector.py` |
 | `Step` | **exactly one** action key (`tap` … `use`); `capture`/`name` are modifiers, not actions | `scenario/models/steps.py` |
-| `Step.use` | **no modifier but `target`** — refuses `capture` / `extract` / `name` / `from`, which expansion would otherwise discard with no warning; expansion stamps `target` onto the steps it produces instead (BE-0446) | `scenario/models/steps/step.py` |
+| `Step.use` | **no modifier but `target` and `skipIfUnsupported`** — refuses `capture` / `extract` / `name` / `from`, which expansion would otherwise discard with no warning; expansion stamps `target` and `skipIfUnsupported` onto the steps it produces instead (BE-0446, BE-0457) | `scenario/models/steps/step.py` |
+| `Step.skipIfUnsupported` | a **non-blank** reason; **rejected** on `manual` and `setPrimaryTarget`, and on any block that holds a `manual` step — a `use:` is checked when expansion reaches the component's steps. On a `group:`, a `use:`, or a target group, every step expansion produces joins **one skip unit**, and a produced step naming a different reason is refused (BE-0457) | `scenario/models/steps/step.py`, `scenario/models/steps/skip_unit.py` |
 | `Swipe` | **exactly one** form: `{on,direction}` **or** `{from,to}` — never mixed, never half-specified | `scenario/models/actions.py` |
 | `Pinch` | `scale` **> 0** | `scenario/models/actions.py` |
 | `HandleSystemAlert` | `sel` restricted to `label` / `labelMatches` / `index` (rejects `id`/`idMatches`/`traits`/`value`/`within`) | `scenario/models/actions.py` |

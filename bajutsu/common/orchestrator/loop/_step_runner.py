@@ -294,6 +294,11 @@ class _StepRunner:
             # step has not acted yet, so nothing is left half-actuated and no artifact is half-written.
             if self.cfg.cancelled():
                 raise RunCancelled
+            if self._skips(step):
+                # Ahead of routing and the `run --step` gate: a skipped step must neither bring a
+                # roster member up nor hold the loop for an action it never takes (BE-0457).
+                self._record_skip(step)
+                continue
             try:
                 runner, step_driver = self._route(step, active_driver)
             except _TargetUnavailable as exc:
@@ -306,6 +311,39 @@ class _StepRunner:
                 runner._pause_after_failure(pause, failure)  # noqa: SLF001
                 return failure
         return None
+
+    def _skips(self, step: Step) -> bool:
+        """Whether the run preflight left *step*'s skip unit to skip (BE-0457)."""
+        return (
+            step.skip_if_unsupported is not None
+            and step.skip_unit_id is not None
+            and step.skip_unit_id in self.cfg.skip_units
+        )
+
+    def _record_skip(self, step: Step) -> None:
+        """Record *step* as skipped, with its reason, without routing it or touching a driver.
+
+        The run preflight found a step in this unit its target cannot run, and the author accepted
+        skipping the unit. `ok` stays True because nothing failed, and there is no crash to classify.
+        """
+        kind = _action_of(step)
+        idx = self.state.counter.take()
+        reason = step.skip_if_unsupported or ""
+        outcome = StepOutcome(
+            index=idx,
+            action=kind,
+            target=step.resolved_target or self.target,
+            skipped=True,
+            reason=reason,
+            # On the same footing as an executed step's, so the report's timeline keeps it in order.
+            started_at=self.cfg.clock.now() + self.cfg.wall_offset_s,
+        )
+        if self.cfg.progress is not None:
+            label = f"{self.cfg.phase} step" if self.cfg.phase else "step"
+            self.cfg.progress(
+                f"{self.cfg.sid} · {label} {idx + 1}: {_step_label(step, kind)} (skipped: {reason})"
+            )
+        self.state.outcomes.append(outcome)
 
     def _gate(self) -> StepGate | None:
         """The `run --step` gate, for the scenario's own steps only.

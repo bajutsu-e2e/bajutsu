@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from _report import _el, _failing, _passing
@@ -425,6 +426,12 @@ def _group_scenario_result(*, second_step_id: str) -> tuple[Scenario, RunResult]
     return scenario, run_scenario(driver, scenario)
 
 
+def _first_group_key(out: str) -> str:
+    found = re.search(r"data-group-id='(\d+-0)'", out)
+    assert found is not None, "no folded group on the page"
+    return found.group(1)
+
+
 def test_html_report_folds_a_passing_group() -> None:
     scenario, result = _group_scenario_result(second_step_id="a")
     definitions, sources = scenario_render_inputs([scenario])
@@ -437,8 +444,11 @@ def test_html_report_folds_a_passing_group() -> None:
     # Both member rows are hidden by default (a passing group starts collapsed). The fold's DOM
     # key is `{group_id}-{position}` (`_fold_groups`), not the bare `group_id` — so two fragments
     # split from one invocation never share a `data-group-id`.
-    assert out.count("data-group-id='0-0'") >= 3  # heading + at least 2 member rows
-    assert "data-group-id='0-0' hidden" in out
+    # The group id comes from a process-wide counter (`expand.py`), so read it off the page rather
+    # than assume no earlier test in this worker expanded a group.
+    key = _first_group_key(out)
+    assert out.count(f"data-group-id='{key}'") >= 3  # heading + at least 2 member rows
+    assert f"data-group-id='{key}' hidden" in out
 
 
 def test_html_report_expands_a_failing_group() -> None:
@@ -448,4 +458,4 @@ def test_html_report_expands_a_failing_group() -> None:
     assert not result.ok
     assert 'aria-expanded="true"' in out
     # No member row is hidden once the group contains a failure.
-    assert "data-group-id='0-0' hidden" not in out
+    assert f"data-group-id='{_first_group_key(out)}' hidden" not in out

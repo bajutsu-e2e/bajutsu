@@ -83,3 +83,6 @@ class _LoopConfig:
     # `setup` / `cleanup` hook phase — right beside the `cancelled` check above, for the same reason:
     # nothing has acted yet, so an operator looking at the app sees a settled screen.
     step_gate: StepGate | None = None
+    # The skip units (BE-0457) the run preflight found covering a step the routed target cannot run:
+    # a step whose `skip_unit_id` is here is recorded as skipped instead of executed.
+    skip_units: frozenset[int] = frozenset()

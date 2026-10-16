@@ -346,6 +346,8 @@ details.pre[open]>summary::before{transform:rotate(90deg)}
 .exst{display:inline-block;font:700 .68rem/1.4 -apple-system,system-ui,sans-serif;letter-spacing:.04em;
  color:#fff;background:var(--mut);border-radius:5px;padding:.06rem .42rem;min-width:3.1rem;text-align:center}
 .exst.ok{background:var(--ok)} .exst.ng{background:var(--ng)}
+/* A step `skipIfUnsupported` skipped (BE-0457): muted, never the green a passing step takes. */
+tr.srow.skipped td,tr.srow.skipped .exreason{color:var(--mut)}
 .exreason{color:var(--ng);font-size:.8rem;font-style:italic}
 /* An extra full-width row beneath the check it explains, shown only when the row has a reason —
    keeps the table at four columns instead of a fifth that is empty on nearly every row. */

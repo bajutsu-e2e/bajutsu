@@ -185,6 +185,19 @@ def _view_data(out: Any, run_dir: Path | None) -> dict[str, Any]:
     }
 
 
+def _row_status(out: Any) -> str:
+    # A skipped step (BE-0457) did not pass, so it never takes the `ok` class a passing row does.
+    if out.skipped:
+        return "skipped"
+    return "ok" if out.ok else "ng"
+
+
+def _result_badge(out: Any) -> dict[str, str]:
+    status = _row_status(out)
+    text = {"ok": "PASS", "ng": "FAIL", "skipped": "SKIP"}[status]
+    return {"cls": status, "text": text}
+
+
 def _step_run_row(
     i: int,
     step_def: dict[str, Any] | None,
@@ -227,7 +240,7 @@ def _step_run_row(
     # `rowSwitchTime`), so the hover title names the same place the click then seeks to.
     click_s = max(at, act) if act is not None else at
     return {
-        "rowcls": f"srow {'ok' if out.ok else 'ng'}",
+        "rowcls": f"srow {_row_status(out)}",
         "data_t": f"{at:.3f}",
         "data_t_end": f"{end_s:.3f}" if end_text != at_text else None,
         # Never before `at`: the report's own zero clamp can lift `at` past an action that landed
@@ -237,7 +250,7 @@ def _step_run_row(
         "num": str(i),
         "numcls": None,
         "line": line,
-        "result": {"cls": "ok" if out.ok else "ng", "text": "PASS" if out.ok else "FAIL"},
+        "result": _result_badge(out),
         "action": _action_data(step_def, out.action),
         # Which declared target ran this step (BE-0428), shown beside the action so a reader of a
         # cross-platform scenario can tell the app-side rows from the web-side ones. Empty — and so
@@ -248,7 +261,7 @@ def _step_run_row(
         "elapsed": elapsed,
         "at_end": end_text if end_text != at_text else None,
         "view": _view_data(out, run_dir),
-        "reason": out.reason if (not out.ok and out.reason) else None,
+        "reason": out.reason if ((out.skipped or not out.ok) and out.reason) else None,
         "expand": None,
         "alerts": _alert_rows(out.alerts),
         "actuations": _actuation_rows(out.actuations, out.started_at),
