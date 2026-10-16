@@ -8,6 +8,7 @@ that reads the place it set.
 
 from __future__ import annotations
 
+import itertools
 from typing import NamedTuple
 
 from .step import Step, _descendants
@@ -20,24 +21,14 @@ class SkipUnit(NamedTuple):
     unit_id: int
 
 
-class _ProvisionalIds:
-    """Hands out provisional skip-unit ids while a scenario expands, never one already in use.
-
-    Module-wide for the same reason as `expand.py`'s `_group_id_counter`: a scenario expands across
-    several calls (its own steps, then each component it pulls in), and a per-call counter would
-    hand two units the same id. Provisional ids are negative, so they never meet a final id, which
-    `number_skip_units` makes positive — a reloaded `scenario.yaml` carries only final ids.
-    """
-
-    def __init__(self) -> None:
-        self._last = 0
-
-    def take(self) -> int:
-        self._last -= 1
-        return self._last
-
-
-_provisional = _ProvisionalIds()
+# Provisional skip-unit ids, handed out while a scenario expands. Module-wide for the same reason as
+# `expand.py`'s `_group_id_counter`: a scenario expands across several calls (its own steps, then
+# each component it pulls in), and a per-call counter would hand two units the same id. An
+# `itertools.count`, not a hand-rolled counter, because its `next()` is atomic under the GIL and
+# `bajutsu serve` loads scenarios on several threads at once; a repeated id would merge two units.
+# Negative, so a provisional id never meets a final one, which `number_skip_units` makes positive —
+# a reloaded `scenario.yaml` carries only final ids.
+_provisional = itertools.count(-1, -1)
 
 
 def opened_unit(step: Step, outer: SkipUnit | None, where: str) -> SkipUnit | None:
@@ -51,7 +42,7 @@ def opened_unit(step: Step, outer: SkipUnit | None, where: str) -> SkipUnit | No
         return outer
     if step.skip_if_unsupported is None:
         return None
-    unit_id = step.skip_unit_id if step.skip_unit_id is not None else _provisional.take()
+    unit_id = step.skip_unit_id if step.skip_unit_id is not None else next(_provisional)
     return SkipUnit(step.skip_if_unsupported, unit_id)
 
 
@@ -101,7 +92,7 @@ def number_skip_units(lists: list[list[Step]]) -> list[list[Step]]:
                     f"{where}: skipIfUnsupported cannot cover a block holding a manual step — "
                     "skipping the block would hide the manual stop"
                 )
-            old = step.skip_unit_id if step.skip_unit_id is not None else _provisional.take()
+            old = step.skip_unit_id if step.skip_unit_id is not None else next(_provisional)
             new = final.setdefault(old, len(final) + 1)
             if new != step.skip_unit_id:
                 updates["skip_unit_id"] = new

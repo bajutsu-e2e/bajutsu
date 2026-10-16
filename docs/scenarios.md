@@ -1413,10 +1413,11 @@ needs no capability, and the modifier never takes effect on one.
 
 A skipped `assert` removes a check rather than satisfying it. Consider a scenario with no `expect`
 where the run skipped every `assert` step. That scenario fails instead of passing with nothing
-checked. The same holds when the run skipped every step. The loader refuses the modifier on `manual` and on `setPrimaryTarget`. The loader also
-refuses it on any block holding a `manual` step. Skipping a `manual` step would hide the stop a
-human takeover must make. Skipping `setPrimaryTarget` would change which target every later step
-runs on.
+checked. The same holds when the run skipped every step.
+
+The loader refuses the modifier on `manual` and on `setPrimaryTarget`. It also refuses it on any
+block holding a `manual` step. Skipping a `manual` step would hide the stop a human takeover must make. Skipping
+`setPrimaryTarget` would change which target every later step runs on.
 
 ### `http` (request, for test-data setup)
 
