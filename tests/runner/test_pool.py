@@ -22,6 +22,7 @@ from bajutsu.common.drivers.webview import WebViewBridge
 from bajutsu.common.evidence import FileSink
 from bajutsu.common.evidence.network import NetworkCollector, NetworkExchange, ScreenTransition
 from bajutsu.common.platform_lifecycle import CollectorHost, ProvisionProfile
+from bajutsu.common.platform_lifecycle.environments.ios import _DeviceEnvironment
 from bajutsu.common.runner import ReadinessResult, device_pool, device_relauncher
 from bajutsu.common.scenario import Relaunch, Scenario
 
@@ -71,6 +72,12 @@ def test_device_pool_per_device_resources(monkeypatch: pytest.MonkeyPatch) -> No
     """A pool of >1 devices gives each leased scenario its own collector (distinct url),
     interval-recording sink (bound to the udid), and device control — the three features
     that used to drop in parallel."""
+    # The pool's per-udid control wiring is under test; fake itself has no device control (#2208),
+    # so borrow the simctl-backed one the device-style base builds.
+    monkeypatch.setattr(
+        "bajutsu.common.platform_lifecycle.environments.fake.FakeEnvironment.controller",
+        _DeviceEnvironment.controller,
+    )
     calls: list[tuple[list[str], Mapping[str, str] | None]] = []
 
     def fake_run(args: list[str], extra_env: Mapping[str, str] | None = None) -> str:
@@ -246,6 +253,12 @@ def test_device_pool_labels_leased_simulator(monkeypatch: pytest.MonkeyPatch) ->
 
 def test_device_pool_single_device_keeps_full_features(monkeypatch: pytest.MonkeyPatch) -> None:
     """A pool of one is the single-device path: collector + interval sink + control, all on."""
+    # The pool's per-udid control wiring is under test; fake itself has no device control (#2208),
+    # so borrow the simctl-backed one the device-style base builds.
+    monkeypatch.setattr(
+        "bajutsu.common.platform_lifecycle.environments.fake.FakeEnvironment.controller",
+        _DeviceEnvironment.controller,
+    )
     monkeypatch.setattr(
         "bajutsu.common.backends.make_driver",
         lambda actuator, udid: FakeDriver([_el("home", "H"), _el("ok", "OK")]),

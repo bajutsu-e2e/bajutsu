@@ -353,6 +353,46 @@ def test_record_exposes_token_budget_flags() -> None:
     assert "--no-screenshot" in flags
 
 
+@pytest.mark.parametrize("platform", ["ios", "android"])
+def test_run_on_the_fake_backend_passes_on_any_target_platform(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, platform: str
+) -> None:
+    # Issue #2208: the fake backend is device-free, so a non-iOS target used to crash at lease time
+    # in the iOS-only relauncher before any step ran.
+    from bajutsu.common.platform_lifecycle import ReadinessResult
+
+    # The empty fake screen never settles, so skip the readiness wait's ceiling (not under test).
+    monkeypatch.setattr(
+        "bajutsu.common.runner.launch.await_ready",
+        lambda *_a, **_k: ReadinessResult(True, "skipped", 0.0),
+    )
+    scn = tmp_path / "ok.yaml"
+    scn.write_text("- name: ok\n  steps: []\n", encoding="utf-8")
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        f"targets:\n  demo:\n    platform: {platform}\n    app: {{id: com.example.demo}}\n",
+        encoding="utf-8",
+    )
+    r = invoke(
+        runner,
+        app,
+        [
+            "run",
+            "--scenario",
+            str(scn),
+            "--target",
+            "demo",
+            "--backend",
+            "fake",
+            "--config",
+            str(cfg),
+            "--runs-dir",
+            str(tmp_path / "runs"),
+        ],
+    )
+    assert r.exit_code == 0, r.output
+
+
 def test_run_missing_config(tmp_path: Path) -> None:
     r = invoke(runner, app, ["run", "--target", "demo", "--config", str(tmp_path / "nope.yaml")])
     assert r.exit_code == 2
