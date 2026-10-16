@@ -98,13 +98,28 @@ def dump_block(items: Sequence[BaseModel]) -> str:
     (`exclude_defaults`), so a single spliced step / assertion stays as terse as the author wrote it
     rather than sprouting `submit: false` and other model defaults. Used by the Author editor's
     scoped round-trip edits (BE-0261) to re-serialize just the changed step / expect block.
+
+    A step's skip-unit id (BE-0457) is dropped at every depth: loading numbers it, so the author never
+    wrote it, and a spliced copy would carry it into the author's own file.
     """
     return _yaml.safe_dump(
         [
-            item.model_dump(mode="json", by_alias=True, exclude_none=True, exclude_defaults=True)
+            _without_skip_unit_ids(
+                item.model_dump(
+                    mode="json", by_alias=True, exclude_none=True, exclude_defaults=True
+                )
+            )
             for item in items
         ]
     )
+
+
+def _without_skip_unit_ids(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {k: _without_skip_unit_ids(v) for k, v in value.items() if k != "_skipUnitId"}
+    if isinstance(value, list):
+        return [_without_skip_unit_ids(v) for v in value]
+    return value
 
 
 def dump_mocks(mocks: list[Mock]) -> str:

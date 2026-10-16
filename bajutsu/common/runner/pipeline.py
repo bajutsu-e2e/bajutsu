@@ -336,7 +336,7 @@ class _ScenarioRunner:
         """
         return list(s.target_names) if s.target_names and self.targets else []
 
-    def _preflight_targets(self, s: Scenario) -> str | None:
+    def _preflight_targets(self, s: Scenario) -> tuple[str | None, frozenset[int]]:
         """Why one declared target cannot run the steps routed to it, or None (BE-0428).
 
         BE-0082's fail-fast preflight, applied once per declared target rather than once per
@@ -344,7 +344,11 @@ class _ScenarioRunner:
         that target's own backend capabilities. A `web:` block on a web target and a `handleSystemAlert`
         on an iOS target are each supported by exactly one of them, which a single shared set could
         not express.
+
+        Also returns the skip units (BE-0457) any target's preflight left to skip: a unit is skipped
+        as a whole, so one unsupported step on any target skips every step in it.
         """
+        skipped: frozenset[int] = frozenset()
         grouped = {name for g in s.device_groups if len(g) >= 2 for name in g}
         for name in self._routed(s):
             pool = self.targets[name]
@@ -355,10 +359,14 @@ class _ScenarioRunner:
                 return (
                     f"unsupported on backend '{pool.actuator}' (target '{name}'): a device group "
                     "(this backend cannot share a device between two apps yet)"
-                )
-            if reasons := capability_preflight.unsupported(_steps_for_target(s, name), caps):
-                return f"unsupported on backend '{pool.actuator}' (target '{name}'): {'; '.join(reasons)}"
-        return None
+                ), frozenset()
+            reasons, units = capability_preflight.run_preflight(_steps_for_target(s, name), caps)
+            if reasons:
+                return (
+                    f"unsupported on backend '{pool.actuator}' (target '{name}'): {'; '.join(reasons)}"
+                ), frozenset()
+            skipped |= units
+        return None, skipped
 
     def _lease_targets(self, s: Scenario, launch_scenario: Scenario) -> dict[str, Lease]:
         """One live lease per target *s* declares, brought up before its first step runs.
@@ -519,11 +527,14 @@ class _ScenarioRunner:
         # actuator can't run *before* any device is leased (BE-0082 fail-fast).
         actuator = self.actuator
         caps = self.caps
+        # The skip units (BE-0457) the preflight found covering an unsupported step.
+        skip_units: frozenset[int] = frozenset()
         if routed := self._routed(s):
             # Each declared target is preflighted against its own backend's capability set, over
             # only the steps routed to it (BE-0428). Sharing one set would reject a construct the
             # second target supports, or admit one it does not.
-            if (unsupported := self._preflight_targets(s)) is not None:
+            unsupported, skip_units = self._preflight_targets(s)
+            if unsupported is not None:
                 if self.progress is not None:
                     self.progress(f"✘ scenario {i + 1}/{self.total}: {s.name} ({unsupported})")
                 return RunResult(
@@ -548,7 +559,10 @@ class _ScenarioRunner:
                     scenario=s.name, ok=False, steps=[], backend="", sid=sid, failure=str(exc)
                 )
             caps = capabilities_for_run(actuator, self.eff, self.udid_spec)
-        if caps is not None and (reasons := capability_preflight.unsupported(s, caps)):
+        reasons: list[str] = []
+        if caps is not None:
+            reasons, skip_units = capability_preflight.run_preflight(s, caps)
+        if reasons:
             if self.progress is not None:
                 self.progress(
                     f"✘ scenario {i + 1}/{self.total}: {s.name} (unsupported on {actuator})"
@@ -817,7 +831,7 @@ class _ScenarioRunner:
                         # work, not recovery. A mid-step crash below re-arms the clock.
                         self.run_crash_budget.add_recovery_time(self._now() - recovery_started)
                         recovery_started = None
-                    return self._run_on_lease(lz, others, handler, i, s, sid)
+                    return self._run_on_lease(lz, others, handler, i, s, sid, skip_units)
                 except BackendCrashError as crash:
                     # Nothing is released here: `_lease_set` already rolls back its own partial
                     # bring-up, and `_run_on_lease` owns the whole set's release in its `finally`
@@ -1314,6 +1328,7 @@ class _ScenarioRunner:
         i: int,
         s: Scenario,
         sid: str,
+        skip_units: frozenset[int] = frozenset(),
     ) -> RunResult:
         """Run one scenario on an already-leased device and return its result.
 
@@ -1386,6 +1401,7 @@ class _ScenarioRunner:
                 lz.driver,
                 s,
                 self.clock,
+                skip_units=skip_units,
                 sink=lz.sink,
                 alert_guard=handler,
                 scenario_id=sid,

@@ -108,7 +108,9 @@ def _run_backend(results: list[RunResult]) -> str:
 #   `runsOn` conditions formed, with each not-applicable record as its own cell. A pure aggregation
 #   of "scenarios" and "notApplicable", absent whenever no run carried coordinates, so an
 #   unconditioned run keeps the v14 shape.
-SCHEMA_VERSION = 15
+# v16 (BE-0457): a step may carry "skipped" — the run skipped it under `skipIfUnsupported`, with the
+#   author's reason in "reason". Absent on every older run, which reads as "nothing was skipped".
+SCHEMA_VERSION = 16
 
 # How the run matrix heads the column of a run no condition formed: a scenario without conditions,
 # run in an invocation where other scenarios' conditions formed runs.
@@ -391,21 +393,40 @@ def _details(r: RunResult) -> str:
     outcomes live in `steps`.
     """
 
-    def step_line(prefix: str, s: StepOutcome) -> str:
-        return f"{prefix}step {s.index} {_step_label(s)}: {_status(s.ok)} {s.reason}".rstrip()
-
     def expect_line(a: AssertionResult) -> str:
         kind = f"{a.kind}@{a.target}" if a.target else a.kind
         return f"expect {kind}: {_status(a.ok)} {a.reason}".rstrip()
 
     return "\n".join(
         [
-            *(step_line("setup ", s) for s in r.before_outcomes),
-            *(step_line("", s) for s in r.steps),
+            *(_step_line("setup ", s) for s in r.before_outcomes),
+            *(_step_line("", s) for s in r.steps),
             *(expect_line(a) for a in r.expect_results),
-            *(step_line("cleanup ", s) for s in r.after_outcomes),
+            *(_step_line("cleanup ", s) for s in r.after_outcomes),
         ]
     )
+
+
+def _skipped_steps(case: ET.Element, r: RunResult) -> None:
+    """Record the steps the run skipped (BE-0457) on *case*, leaving its verdict alone.
+
+    JUnit has no per-step record, and marking the whole case `<skipped>` would misreport a scenario
+    whose other steps ran, so the skips go in `<properties>` and `<system-out>` instead.
+    """
+    phases = (("setup ", r.before_outcomes), ("", r.steps), ("cleanup ", r.after_outcomes))
+    lines = [_step_line(prefix, s) for prefix, outcomes in phases for s in outcomes if s.skipped]
+    if not lines:
+        return
+    # `properties` leads and `system-out` trails `failure`, the order the JUnit schema fixes.
+    props = ET.Element("properties")
+    ET.SubElement(props, "property", name="bajutsu.skippedSteps", value=str(len(lines)))
+    case.insert(0, props)
+    ET.SubElement(case, "system-out").text = "\n".join(lines)
+
+
+def _step_line(prefix: str, s: StepOutcome) -> str:
+    status = "skipped" if s.skipped else _status(s.ok)
+    return f"{prefix}step {s.index} {_step_label(s)}: {status} {s.reason}".rstrip()
 
 
 def _status(ok: bool) -> str:
@@ -460,6 +481,7 @@ def junit_xml(results: list[RunResult], not_applicable: Sequence[Mapping[str, st
         if not r.ok:
             failure = ET.SubElement(case, "failure", message=r.failure or "failed")
             failure.text = _details(r)
+        _skipped_steps(case, r)
     for record in not_applicable:
         case = ET.SubElement(
             suite, "testcase", name=not_applicable_name(record), classname="bajutsu"

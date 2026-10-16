@@ -20,6 +20,7 @@ from bajutsu.common.scenario.models import (
     _check_target_requirements,
     _expand_target_groups,
 )
+from bajutsu.common.scenario.models.steps.skip_unit import SkipUnit, opened_unit, stamp_unit
 
 # A `group` invocation's id must stay unique across every expansion call for one scenario, not
 # just within one call: a component called from the target's `hooks` expands when the config loads,
@@ -109,6 +110,11 @@ def _stamp(step: Step, caller: str | None, path: tuple[str, ...]) -> Step:
     return step if target == step.target else step.model_copy(update={"target": target})
 
 
+def _label(step: Step, path: tuple[str, ...]) -> str:
+    name = f"step {step.name!r}" if step.name is not None else "step <unnamed step>"
+    return " > ".join((*path, name))
+
+
 def _expand_bodies(
     step: Step,
     expand_body: Callable[[list[Step], str, str | None], list[Step]],
@@ -158,13 +164,16 @@ def _step_expander(max_depth: int) -> Callable[..., list[Step]]:  # noqa: C901
         body_target: str | None = None,
         path: tuple[str, ...] = (),
         body: str | None = None,
+        skip: SkipUnit | None = None,
     ) -> list[Step]:
         # *level_target* is the caller target (BE-0446) stamped onto each step of this list;
         # *body_target* is the one handed to an `if` / `forEach` body below it. The two differ only
         # among a target group's direct children, whose bodies keep the enclosing caller's target
         # rather than the group's (BE-0437 leaves a body a fresh scope). *path* names the chain a
         # caller target came through, for the conflict error; *body* names the `if` / `forEach` /
-        # `web` / `app` body this list sits in, if any.
+        # `web` / `app` body this list sits in, if any. *skip* is the skip unit (BE-0457) a covered
+        # `group` / `use` / target group opened, stamped onto each step of this list like
+        # *level_target*; a body below a stamped block needs none, since skipping the block skips it.
         if len(stack) > max_depth:
             raise ValueError(f"component nesting too deep (>{max_depth}): {' -> '.join(stack)}")
         out: list[Step] = []
@@ -183,6 +192,7 @@ def _step_expander(max_depth: int) -> Callable[..., list[Step]]:  # noqa: C901
                         level_target=target,
                         body_target=target,
                         path=(*path, label) if target is not None else path,
+                        skip=opened_unit(st, skip, label),
                     )
                 )
                 continue
@@ -212,11 +222,12 @@ def _step_expander(max_depth: int) -> Callable[..., list[Step]]:  # noqa: C901
                         body_target=body_target,
                         path=(*path, label),
                         body=body,
+                        skip=opened_unit(st, skip, label),
                     )
                 )
                 continue
             if st.use is None:
-                stamped = _stamp(st, level_target, path)
+                stamped = stamp_unit(_stamp(st, level_target, path), skip, _label(st, path))
                 updates = _expand_bodies(
                     stamped,
                     # An `if` / `forEach` nested in a `web:` / `app:` block keeps naming that block,
@@ -273,6 +284,7 @@ def _step_expander(max_depth: int) -> Callable[..., list[Step]]:  # noqa: C901
                     body_target=target,
                     path=(*path, label),
                     body=body,
+                    skip=opened_unit(st, skip, label),
                 )
             )
         return out

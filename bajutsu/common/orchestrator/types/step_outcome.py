@@ -23,6 +23,11 @@ class StepOutcome:
     target: str = ""
     ok: bool = True
     reason: str = ""
+    # A step the run skipped instead of executing because its routed target lacks a capability it
+    # needs and a `skipIfUnsupported` covers it (BE-0457); `reason` then holds the author's reason.
+    # `ok` stays True, since the step did not fail, so every reader must check this before showing
+    # the step as passed — a skipped step removed a check rather than satisfying it.
+    skipped: bool = False
     duration_s: float = 0.0
     # The absolute wall-clock instant (epoch seconds) the step began, derived from the scenario's
     # anchor pair rather than measured with its own clock read (BE-0348). No video correction is

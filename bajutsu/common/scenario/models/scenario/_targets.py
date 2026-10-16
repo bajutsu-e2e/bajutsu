@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Literal
 if TYPE_CHECKING:
     from bajutsu.common.scenario.models.assertions import Assertion
     from bajutsu.common.scenario.models.steps import Step
+    from bajutsu.common.scenario.models.steps.skip_unit import SkipUnit
 
     from .scenario import Scenario
 
@@ -35,7 +36,13 @@ def _step_label(step: Step) -> str:
     return repr(step.name) if step.name is not None else "<unnamed step>"
 
 
-def _expand_steps(steps: list[Step], *, group_target: str | None, inside_web: bool) -> list[Step]:
+def _expand_steps(
+    steps: list[Step],
+    *,
+    group_target: str | None,
+    inside_web: bool,
+    skip: SkipUnit | None = None,
+) -> list[Step]:
     """Expand every target group (BE-0437) in *steps*, recursively; the flat result.
 
     *group_target* is the target a directly-enclosing group already fixed, to stamp onto a child
@@ -44,7 +51,14 @@ def _expand_steps(steps: list[Step], *, group_target: str | None, inside_web: bo
     body, which are each a fresh scope requiring their own explicit target or group — where a
     step's `target` is left exactly as the author wrote it, for the existing per-step rule to
     check afterward.
+
+    *skip* is the skip unit (BE-0457) a directly-enclosing covered group opened, stamped onto each
+    child the same way.
     """
+    # Imported here, not at module load: `steps` imports this package's models, so a top-level
+    # import would close the cycle `Step` is already kept under `TYPE_CHECKING` for.
+    from bajutsu.common.scenario.models.steps.skip_unit import opened_unit, stamp_unit
+
     out: list[Step] = []
     for step in steps:
         if step.steps is not None:
@@ -53,7 +67,10 @@ def _expand_steps(steps: list[Step], *, group_target: str | None, inside_web: bo
                     f"{_step_label(step)}: a target group is not allowed nested inside a web: or "
                     "app: block — every step there already runs against the block's own device"
                 )
-            out.extend(_expand_steps(step.steps, group_target=step.target, inside_web=False))
+            unit = opened_unit(step, skip, f"target group {step.target!r}")
+            out.extend(
+                _expand_steps(step.steps, group_target=step.target, inside_web=False, skip=unit)
+            )
             continue
         if group_target is not None and step.set_primary_target is not None:
             raise ValueError(
@@ -63,6 +80,7 @@ def _expand_steps(steps: list[Step], *, group_target: str | None, inside_web: bo
         stamped = (
             step.model_copy(update={"target": group_target}) if group_target is not None else step
         )
+        stamped = stamp_unit(stamped, skip, _step_label(stamped))
         out.append(_expand_nested(stamped, inside_web=inside_web))
     return out
 
@@ -111,14 +129,33 @@ def _expand_target_groups(scenario: Scenario) -> None:
     nesting.
 
     Raises:
-        ValueError: A target group sits nested directly inside a `web:`/`app:` block's own steps.
+        ValueError: A target group sits nested directly inside a `web:`/`app:` block's own steps,
+            a covered group's step names a different `skipIfUnsupported` reason, or a covered step
+            holds a `manual` step anywhere below it (BE-0457).
     """
-    scenario.steps = _expand_steps(scenario.steps, group_target=None, inside_web=False)
-    scenario.setup = _expand_steps(scenario.setup, group_target=None, inside_web=False)
-    for rule in scenario.cleanup:
-        rule.steps = _expand_steps(rule.steps, group_target=None, inside_web=False)
-    for entry in scenario.interrupts:
-        entry.steps = _expand_steps(entry.steps, group_target=None, inside_web=False)
+    from bajutsu.common.scenario.models.steps.skip_unit import number_skip_units
+
+    # Skip units (BE-0457) are numbered here, at every point this runs — load time and after each
+    # expansion — so the run always finds one to skip by, numbered the same way every time.
+    setup, steps, *rest = number_skip_units(
+        [
+            _expand_steps(scenario.setup, group_target=None, inside_web=False),
+            _expand_steps(scenario.steps, group_target=None, inside_web=False),
+            *(
+                _expand_steps(r.steps, group_target=None, inside_web=False)
+                for r in scenario.cleanup
+            ),
+            *(
+                _expand_steps(e.steps, group_target=None, inside_web=False)
+                for e in scenario.interrupts
+            ),
+        ]
+    )
+    scenario.setup, scenario.steps = setup, steps
+    for rule, rule_steps in zip(scenario.cleanup, rest[: len(scenario.cleanup)], strict=True):
+        rule.steps = rule_steps
+    for entry, entry_steps in zip(scenario.interrupts, rest[len(scenario.cleanup) :], strict=True):
+        entry.steps = entry_steps
 
 
 def _check_target(

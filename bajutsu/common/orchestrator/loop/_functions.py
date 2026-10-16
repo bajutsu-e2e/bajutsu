@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import subprocess
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import replace
 from typing import cast
 
@@ -781,6 +781,7 @@ def run_scenario(  # noqa: C901, PLR0915
     capture_app_crash: Callable[[], list[tuple[str, bytes]]] | None = None,
     app_launch_unconfirmed: bool = False,
     roster: TargetRoster | None = None,
+    skip_units: frozenset[int] = frozenset(),
 ) -> RunResult:
     """Run one scenario deterministically, firing capturePolicy rules into `sink`.
 
@@ -847,6 +848,11 @@ def run_scenario(  # noqa: C901, PLR0915
     flight when the backend died may already be finalized on disk; that result is attached to the
     exception itself (`crash.partial_artifacts`) before it propagates, so the pipeline's
     exhausted-retry `RunResult` can still show a video that *was* captured on the doomed attempt.
+
+    `skip_units` (BE-0457) are the `skipIfUnsupported` units the run preflight left to skip: each
+    step in one is recorded as skipped, with its reason, instead of being executed. A scenario whose
+    every `assert` step was skipped, and which has no `expect`, fails rather than passing with
+    nothing checked. The default skips nothing.
     """
     clock = clock or RealClock()
     sink = sink or NullSink()
@@ -980,6 +986,7 @@ def run_scenario(  # noqa: C901, PLR0915
             capture_app_crash,
             roster,
             step_gate,
+            skip_units,
         )
 
     try:
@@ -994,6 +1001,8 @@ def run_scenario(  # noqa: C901, PLR0915
                         failure = "setup: " + reason
                 if failure is None:
                     failure = run_phase(scenario.steps, outcomes, "", cancelled)
+                if failure is None and not scenario.expect:
+                    failure = _every_check_skipped(scenario.steps, skip_units)
                 if failure is None and roster is not None:
                     # An entry naming a member that is not running would otherwise poll a retired
                     # build's replacement or another app's tree (BE-0447).
@@ -1163,6 +1172,51 @@ def run_scenario(  # noqa: C901, PLR0915
         after_verdict=after_verdict,
         interactive=manual_action or "",
     )
+
+
+def _every_check_skipped(steps: list[Step], skip_units: frozenset[int]) -> str | None:
+    """The failure for a scenario whose every `assert` step, or every step, was skipped (BE-0457).
+
+    A skipped check was removed, not satisfied, so a scenario left with nothing checked must not
+    pass. Judged on the step tree rather than the outcomes: a skipped `if` block records no outcome
+    for the `assert` steps inside it. The caller applies this only when the scenario has no
+    `expect`, which no skip can remove.
+    """
+    if not skip_units:
+        return None
+    asserts = list(_assert_steps(steps, skipped=False, skip_units=skip_units))
+    if asserts and all(asserts):
+        return (
+            "every assertion was skipped by skipIfUnsupported — the scenario checked nothing on "
+            "this target"
+        )
+    if steps and all(s.skip_unit_id is not None and s.skip_unit_id in skip_units for s in steps):
+        # No `assert` to count, yet nothing ran either: the same empty pass the rule above refuses.
+        return (
+            "every step was skipped by skipIfUnsupported — the scenario ran nothing on this target"
+        )
+    return None
+
+
+def _assert_steps(
+    steps: list[Step], *, skipped: bool, skip_units: frozenset[int]
+) -> Iterator[bool]:
+    # One bool per `assert` step at any depth: whether a skipped unit covers it.
+    for step in steps:
+        covered = skipped or (step.skip_unit_id is not None and step.skip_unit_id in skip_units)
+        if step.assert_ is not None:
+            yield covered
+        bodies: list[list[Step]] = []
+        if step.if_ is not None:
+            bodies += [step.if_.then, step.if_.else_ or []]
+        if step.for_each is not None:
+            bodies.append(step.for_each.steps)
+        if step.web is not None:
+            bodies.append(step.web.steps)
+        if step.app is not None:
+            bodies.append(step.app.steps)
+        for body in bodies:
+            yield from _assert_steps(body, skipped=covered, skip_units=skip_units)
 
 
 def _dismiss_blocking_tip(driver: base.Driver, scenario: Scenario) -> bool:
@@ -1458,6 +1512,7 @@ def _run_steps(
     capture_app_crash: Callable[[], list[tuple[str, bytes]]] | None = None,
     roster: TargetRoster | None = None,
     step_gate: StepGate | None = None,
+    skip_units: frozenset[int] = frozenset(),
 ) -> str | None:
     """Run one phase's step loop, appending outcomes; return the failure string or None.
 
@@ -1517,6 +1572,7 @@ def _run_steps(
         step_gate=step_gate,
         channel=channel,
         hide_markers=hide_markers,
+        skip_units=skip_units,
     )
     # Imported in the body, not at module load: `_StepRunner` calls six helpers from this module,
     # so rule 5 breaks the cycle the split creates on the single edge back into it.
