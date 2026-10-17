@@ -722,6 +722,16 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   `app` too) and grades a scenario Moderate past ten seconds of total fixed pause, `triage`'s laxer
   guard warns on a fix that adds one, every codegen emitter translates it with the reason as a
   comment, and `record`/`crawl` never offer it to the authoring model
+- DSL `navigate` step (BE-0464): a web-only `navigate: <url>` step that loads a URL mid-scenario —
+  a link no control reaches, a deep page, a redirect to exercise. The value is a plain string
+  (`Navigate` dumps back to it, so every dump-and-revalidate path round-trips) resolved against the
+  target's `baseUrl` the way a browser resolves a link (`urljoin`); any scheme other than `http` /
+  `https` is rejected both when the scenario loads and, for a `${...}` token, after substitution. It
+  rides on `Driver.goto` and the `urlNavigation` capability, which only the Playwright web backend
+  declares, so an iOS or Android scenario — including a `navigate` nested inside a `web:` / `app:`
+  block — fails in preflight before any device is leased. The step returns once the page's `load`
+  event fires without reading the response status, leaving the verdict to the following
+  `assert`/`wait`; cookies and storage persist across it
 - DSL `interrupts` (BE-0314): a config-level (`hooks.interrupts`, app-wide default) and scenario-level (appended) list
   of `{ condition, steps }` entries, checked opportunistically — reusing the assertion-DSL
   `condition` shape `if` already uses — for a screen that can surface at an unpredictable point (an
