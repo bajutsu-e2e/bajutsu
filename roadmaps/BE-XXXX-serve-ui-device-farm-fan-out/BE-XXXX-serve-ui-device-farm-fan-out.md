@@ -74,21 +74,30 @@ item adds one read route, and every other change stays inside the web UI.
 
 ### Listing the available environments
 
-A new read route, `GET /api/environments`, returns the environments the web UI may offer:
+A new read route, `GET /api/environments`, returns every environment that a live worker advertises:
 
 ```json
-{ "environments": [ { "name": "devicefarm", "liveWorkers": 2 } ] }
+{
+  "environments": [
+    { "name": "devicefarm", "kind": "batch", "liveWorkers": 2 },
+    { "name": "appium", "kind": "grid", "liveWorkers": 1 }
+  ]
+}
 ```
 
 The server derives the list from the workers table that capability routing already keeps. A new
 repository method reads the `environment:<name>` tokens of every worker seen within the lease
 timeout. The no-worker notice judges liveness by the same window (`lacks_live_worker`). The method
-reads the capability column, never a job's spec. The route keeps a name when `run-set` accepts it,
-meaning the name belongs to `BATCH_PROVIDERS`. An `appium` worker thus never shows up, since
-`run-set` refuses a fan-out to a grid. A server without a queue has no workers table, so the route
+reads the capability column, never a job's spec. Each entry carries the environment's kind:
+`batch` for a provider in `BATCH_PROVIDERS`, and `grid` for the `appium` grid that `POST /api/run`
+already accepts
+([BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)). The route
+filters nothing by kind. Each caller picks the kinds it can dispatch, so a later entry point for the
+grid reads the same route without changing what the route means. A server without a queue has no
+workers table, so the route
 returns an empty list there. That answer matches the `run-set` refusal on a server without a queue.
 
-The list carries provider names and counts. It never carries an Amazon Resource Name (ARN) or a
+The list carries environment names, kinds, and worker counts. It never carries an Amazon Resource Name (ARN) or a
 credential: those values live in each worker's own environment and never reach the server. The route
 sits behind the same authentication as the other read routes. The response leaves `local` out. The
 web UI always offers `local`, since the plain `POST /api/run` path serves it.
@@ -97,7 +106,8 @@ web UI always offers `local`, since the plain `POST /api/run` path serves it.
 
 The Run form gains an **Environment** selector next to Target. `local` stays the default, and
 choosing it keeps today's form unchanged. The web UI fills the selector from `GET /api/environments`
-when the tab opens, and again when the operator presses a refresh button next to the selector.
+when the tab opens, and again when the operator presses a refresh button next to the selector. The
+selector offers the `batch` entries alone, since `run-set` refuses a fan-out to a grid.
 
 Choosing a device-cloud environment changes the form in three ways:
 
@@ -149,8 +159,9 @@ reason.
   client stay as they are.
 - **No device filters.** The fan-out keeps reserving one device per run by platform. Choosing a
   model or an operating system version stays out of scope.
-- **No new environment kind.** The selector lists what `BATCH_PROVIDERS` holds. Today that set
-  holds `devicefarm` alone.
+- **No grid in the Replay selector.** The selector lists the `batch` entries, which follow
+  `BATCH_PROVIDERS`. Today that set holds `devicefarm` alone. Offering the `appium` grid in Replay
+  stays out of scope, although `GET /api/environments` already lists it.
 
 ### Prime-directive compliance
 
@@ -166,9 +177,9 @@ reason.
 ### Work breakdown (MECE)
 
 1. **Environment listing.** Add the repository method that reads live `environment:` tokens, and
-   the `GET /api/environments` route that filters them through `BATCH_PROVIDERS`. Cover a live
-   worker, an expired worker, an `appium` worker, and a server without a queue in tests.
-2. **Replay form.** Add the Environment selector and its refresh button, the multi-select with
+   the `GET /api/environments` route that returns them with their kinds. Cover a live worker, an
+   expired worker, an `appium` worker listed as `grid`, and a server without a queue in tests.
+2. **Replay form.** Add the Environment selector, limited to the `batch` entries, and its refresh button, the multi-select with
    *All scenarios*, the hidden fields and the hidden Readiness panel, the turned-off state for a web target, and the
    `POST /api/run-set` request.
 3. **Run-set panel.** Add the per-scenario rows, the per-row polling, the event stream for an expanded row, the report links, the

@@ -75,22 +75,30 @@ run-set パネルは、サーバーが投入しなかったシナリオの数を
 
 ### 利用できる環境の一覧
 
-新しい読み取りルート `GET /api/environments` が、Web UI に表示してよい環境を返します。
+新しい読み取りルート `GET /api/environments` が、生きた worker が名乗っている環境をすべて返します。
 
 ```json
-{ "environments": [ { "name": "devicefarm", "liveWorkers": 2 } ] }
+{
+  "environments": [
+    { "name": "devicefarm", "kind": "batch", "liveWorkers": 2 },
+    { "name": "appium", "kind": "grid", "liveWorkers": 1 }
+  ]
+}
 ```
 
 サーバーは、capability によるルーティングのためにすでに持っている workers テーブルから一覧を導きます。
 新しいリポジトリのメソッドが、lease のタイムアウト内に確認された worker の `environment:<name>`
 token を読み取ります。「処理できる worker がいない」という通知も、同じ時間幅で生存を判定します
 （`lacks_live_worker`）。このメソッドが読むのは capability の列だけで、ジョブの spec は読みません。
-ルートは、`run-set` が受け付ける名前、すなわち `BATCH_PROVIDERS` に含まれる名前だけを残します。
-`run-set` は grid への fan-out を拒否するので、`appium` の worker は一覧に現れません。キューを持たない
+各要素は環境の種類（`kind`）を持ちます。`BATCH_PROVIDERS` に含まれる provider は `batch`、
+`POST /api/run` がすでに受け付ける `appium` の grid は `grid` です
+（[BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)）。
+ルート自身は種類で絞り込みません。投入できる種類は呼び出し側が選びます。そのため、将来 grid 向けの入口を
+加えるときも、ルートの意味を変えずに同じルートを読めます。キューを持たない
 サーバーには workers テーブルがないため、ルートは空の一覧を返します。この答えは、キューのないサーバーで
 `run-set` が投入を拒否する挙動と一致します。
 
-一覧に載るのは provider の名前と worker の数です。Amazon Resource Name（ARN）や認証情報は載せません。
+一覧に載るのは、環境の名前と種類、worker の数です。Amazon Resource Name（ARN）や認証情報は載せません。
 これらの値は各 worker 自身の環境変数にだけあり、サーバーには届かないからです。ルートには、ほかの
 読み取りルートと同じ認証をかけます。応答には `local` を含めません。`local` は通常の `POST /api/run`
 が処理するので、Web UI が常に選択肢として表示します。
@@ -99,7 +107,8 @@ token を読み取ります。「処理できる worker がいない」という
 
 Run フォームの Target の隣に、**Environment** の選択欄を加えます。デフォルトは `local` で、`local` を
 選んでいる間のフォームは現在と変わりません。Web UI は、タブを開いたときと、選択欄の横の再読み込み
-ボタンをオペレーターが押したときに、`GET /api/environments` から選択欄を埋めます。
+ボタンをオペレーターが押したときに、`GET /api/environments` から選択欄を埋めます。`run-set` は
+grid への fan-out を拒否するので、選択欄には `batch` の要素だけを並べます。
 
 デバイスクラウドの環境を選ぶと、フォームは次の3点で変わります。
 
@@ -152,8 +161,9 @@ History の一覧に残ります。サーバー側に run-set の記録を持た
   クライアントは現状のままです。
 - **デバイスのフィルタは加えません。** fan-out は引き続き、プラットフォームだけで1 run あたり1台を
   確保します。機種や OS バージョンの指定は範囲外です。
-- **新しい種類の環境は加えません。** 選択欄に並ぶのは `BATCH_PROVIDERS` にある環境です。現時点では
-  `devicefarm` だけです。
+- **Replay の選択欄に grid は出しません。** 選択欄に並ぶのは `batch` の要素で、これは `BATCH_PROVIDERS`
+  に従います。現時点では `devicefarm` だけです。`GET /api/environments` は `appium` の grid も返しますが、
+  Replay で grid を選べるようにすることは範囲外です。
 
 ### 基本原則との整合
 
@@ -169,9 +179,9 @@ History の一覧に残ります。サーバー側に run-set の記録を持た
 ### 作業分解（MECE）
 
 1. **環境の一覧。** 生きた worker の `environment:` token を読むリポジトリのメソッドと、その結果を
-   `BATCH_PROVIDERS` で絞る `GET /api/environments` ルートを加えます。生きた worker、期限切れの
-   worker、`appium` の worker、キューのないサーバーの各場合をテストします。
-2. **Replay のフォーム。** Environment の選択欄とその再読み込みボタン、「All scenarios」付きの複数選択、隠す項目と Readiness パネル、
+   種類とともに返す `GET /api/environments` ルートを加えます。生きた worker、期限切れの worker、
+   `grid` として返る `appium` の worker、キューのないサーバーの各場合をテストします。
+2. **Replay のフォーム。** `batch` の要素に限った Environment の選択欄とその再読み込みボタン、「All scenarios」付きの複数選択、隠す項目と Readiness パネル、
    web のターゲットでの選択不可の状態、`POST /api/run-set` へのリクエストを
    加えます。
 3. **run-set パネル。** シナリオごとの行、行ごとのポーリング、展開した行のイベントストリーム、レポートへのリンク、
