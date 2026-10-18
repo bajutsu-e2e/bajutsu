@@ -10,6 +10,7 @@
 // time. serve.author.mjs is the entry module the page loads.
 import {loadHistory, loadStats, loadFlaky, loadUsage, coverageInit, showInfo, replayAudit, onSimChange, loadTrash, seedComposeFromCurrent} from './serve.panels.mjs';
 import {loadMetrics} from './serve.metrics.mjs';
+import {syncCloudForm} from './serve.runset.mjs';
 import {loadOrgs} from './serve.orgs.mjs';
 import {onCrawlSimChange} from './serve.crawl.mjs';
 import {applyCaptureCapability, authorInit, authorRefresh, syncPlatform, replayCodegen} from './serve.author.mjs';
@@ -1113,7 +1114,7 @@ async function loadScenarios(){
   const target=$('#target').value;
   scnFiles=target?await getJSON('/api/scenarios?target='+encodeURIComponent(target),[]):[];
   $('#scn').innerHTML=scnFiles.map(s=>`<option value="${esc(s.path)}">${esc(s.file)}</option>`).join('');
-  showInfo();replayAudit();
+  showInfo();replayAudit();syncCloudForm();
 }
 $('#target').addEventListener('change',()=>{loadScenarios();replayCodegen.sync();replayCodegen.reset();});
 async function loadSims(){

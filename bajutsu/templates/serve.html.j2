@@ -229,13 +229,20 @@
         <button class="tab" data-tab="history" id="histtab" data-testid="replay.tab-history">History</button>
       </div>
       <div class="panel" id="panel-run" data-testid="replay.panel-run">
-        <label>Scenario</label>
-        <select id="scn" data-testid="replay.scenario"></select><div class="names" id="names" data-testid="replay.scenario-info"></div>
+        <label class="localonly">Scenario</label>
+        <select id="scn" class="localonly" data-testid="replay.scenario"></select><div class="names localonly" id="names" data-testid="replay.scenario-info"></div>
         <!-- See what you're about to run (BE-0273): a read-only view of the selected scenario's
              raw YAML + runner-parsed steps. Enabled once a scenario is picked; no run required. -->
-        <button class="cfgbtn" id="viewscn" data-testid="replay.view-scenario" disabled>View scenario</button>
+        <button class="cfgbtn localonly" id="viewscn" data-testid="replay.view-scenario" disabled>View scenario</button>
         <!-- Determinism audit badge (BE-0145): the selected scenario's static stability grade. -->
         <div class="grade-badge" id="scn-grade" data-testid="replay.grade" hidden></div>
+        <!-- A device-cloud fan-out (BE-0465) runs a set of scenarios, so it picks several. The names
+             sent are exactly the ones listed here, so each run-set row labels the file it ran. -->
+        <div class="cloudonly" data-testid="replay.scenario-set">
+          <label>Scenarios</label>
+          <label class="allscn"><input type="checkbox" id="all-scns" data-testid="replay.all-scenarios"> All scenarios</label>
+          <select id="scns" multiple size="6" data-testid="replay.scenarios" aria-label="scenarios to fan out"></select>
+        </div>
         <!-- Add a scenario straight into the open target's scope (BE-0340): a lone .yaml, or a .zip
              of several, with no config rebind. Enabled once a target is picked, like View scenario
              needs a scenario picked. A same-named file is overwritten in place; the status line
@@ -244,29 +251,34 @@
         <button class="cfgbtn" id="replay-upload-pick" type="button" data-testid="replay.upload-pick" disabled>Upload scenario&hellip;</button>
         <div class="status" id="replay-upload-status" data-testid="replay.upload-status"></div>
         <label>Target</label><select id="target" data-testid="replay.target"></select>
-        <div class="row iosonly"><div><label>Workers</label><input id="workers" type="number" min="1" value="1"></div></div>
-        <div class="hhead iosonly" data-testid="replay.simulators"><span>Simulators</span><button class="refresh" id="simrefresh" title="refresh devices">&#8635;</button></div>
-        <div class="sims iosonly" id="sims"></div>
-        <div class="subhint iosonly">Pick the simulators to run on &mdash; shut-down ones are booted (and waited for) before the run. Pick two or more (Workers auto-tracks the count) to run the scenarios in parallel across them: each device gets its own network capture, video / device log, and setLocation / push. None picked = the already-booted device.</div>
+        <!-- Where the run happens (BE-0465): `local` keeps the form below unchanged; a device-cloud
+             environment a live worker advertises fans the chosen scenarios out through run-set. -->
+        <div class="hhead envhead"><span>Environment</span><button class="refresh" id="env-refresh" title="refresh environments" data-testid="replay.env-refresh">&#8635;</button></div>
+        <select id="env" data-testid="replay.environment"><option value="local">local</option></select>
+        <div class="subhint" id="env-reason" data-testid="replay.env-reason" hidden></div>
+        <div class="row iosonly localonly"><div><label>Workers</label><input id="workers" type="number" min="1" value="1"></div></div>
+        <div class="hhead iosonly localonly" data-testid="replay.simulators"><span>Simulators</span><button class="refresh" id="simrefresh" title="refresh devices">&#8635;</button></div>
+        <div class="sims iosonly localonly" id="sims"></div>
+        <div class="subhint iosonly localonly">Pick the simulators to run on &mdash; shut-down ones are booted (and waited for) before the run. Pick two or more (Workers auto-tracks the count) to run the scenarios in parallel across them: each device gets its own network capture, video / device log, and setLocation / push. None picked = the already-booted device.</div>
         <!-- Readiness (BE-0148): shells out to the same doctor checks the CLI runs — tool/device
              runnability plus the current screen's convention score — so a user can answer "is my
              environment ready, and is my app addressable?" before pressing Run. Read-only and
              AI-free; it never gates the run. The checks come back backend-appropriate, so the
              panel shows for iOS and web alike (simulator-only form controls above stay .iosonly). -->
-        <div class="doctor" data-testid="replay.doctor">
+        <div class="doctor localonly" data-testid="replay.doctor">
           <div class="hhead"><span>Readiness</span><button class="refresh" id="dr-check" title="check readiness" data-testid="replay.doctor-check">Check</button></div>
           <div class="status" id="dr-status"></div>
           <div class="grade-badge" id="dr-grade" data-testid="replay.doctor-grade" hidden></div>
           <div class="dr-checks" id="dr-checks"></div>
           <div class="au-audit" id="dr-findings" hidden></div>
         </div>
-        <div class="checks iosonly">
+        <div class="checks iosonly localonly">
           <label><input type="checkbox" id="erasedev"> erase device first
             <span class="hint">Wipe the whole simulator (simctl erase &mdash; all apps, data, settings) before each scenario. Off (default) leaves it to each scenario's <code>preconditions.run.erase</code>; the app is reinstalled fresh either way.</span></label>
           <label><input type="checkbox" id="nodismiss"> disable alert-dismiss
             <span class="hint">The alert guard is on by default: it dismisses unexpected system prompts (Save Password, notification permission) that a scenario's own steps can't see or tap, natively on iOS with no model call and no API key. A prompt it can't name is left alone and named in the blocked step's own failure. Check to force it off for this run; a scenario can also set <code>preconditions.run.systemAlertHandling</code> itself.</span></label>
         </div>
-        <div class="checks webonly">
+        <div class="checks webonly localonly">
           <label><input type="checkbox" id="headed" data-testid="replay.headed"> show browser (headed)
             <span class="hint">Run in a visible Chromium window in slow-motion so you can watch each step, instead of the default headless browser. The window opens on the machine running <code>serve</code> (so this is for a local server).</span></label>
         </div>
@@ -291,9 +303,17 @@
   <div class="gutter" data-var="--rep-left" data-min="260" data-max="560"></div>
   <div class="card logpanel" data-pane="log">
     <button class="run" id="go" data-testid="replay.run" data-idle="Run">Run</button>
-    <button class="stop" id="stop" hidden>Stop</button>
+    <button class="stop localonly" id="stop" hidden>Stop</button>
     <div class="status" id="status"></div>
-    <pre class="out" id="out" data-empty="Run a scenario to see its output here."></pre>
+    <pre class="out localonly" id="out" data-empty="Run a scenario to see its output here."></pre>
+    <!-- The run-set panel (BE-0465): one row per dispatched scenario, polled for its status without
+         its log; expanding a row streams that one job's log, so connections never scale with rows. -->
+    <div class="runset cloudonly" id="runset" data-testid="replay.runset">
+      <div class="hhead"><span>Run set</span><button class="stop" id="runset-stop" data-testid="replay.runset-stop" data-idle="Stop all" disabled>Stop all</button></div>
+      <div class="subhint" id="runset-empty">Run to fan the chosen scenarios out to the device cloud.</div>
+      <div class="status ng" id="runset-partial" data-testid="replay.runset-partial" hidden></div>
+      <ul class="runset-rows" id="runset-rows"></ul>
+    </div>
     <!-- codegen (BE-0137): export the selected scenario as a native test, right where it just ran. -->
     <div class="codegen-bar">
       <select class="codegen-emit" id="rp-emit" data-testid="replay.emit" aria-label="codegen destination" title="codegen destination"></select>
