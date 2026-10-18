@@ -758,6 +758,30 @@ class SqlRepository:
             ).all()
         return not any(can_serve(required, list(caps or [])) for caps in live)
 
+    def live_environments(self) -> dict[str, int]:
+        from sqlalchemy import select
+        from sqlalchemy.orm import Session
+
+        from bajutsu.common.capability.worker_capability import ENVIRONMENT_ROUTING_PREFIX
+        from bajutsu.serve.server.models import WorkerRecord
+
+        cutoff = datetime.now(UTC) - self._lease_timeout
+        with Session(self._engine) as session:
+            live = session.scalars(
+                select(WorkerRecord.capabilities).where(WorkerRecord.last_seen >= cutoff)
+            ).all()
+        counts: dict[str, int] = {}
+        for caps in live:
+            # A set, so a worker advertising one name twice still counts once.
+            names = {
+                cap.removeprefix(ENVIRONMENT_ROUTING_PREFIX)
+                for cap in caps or []
+                if cap.startswith(ENVIRONMENT_ROUTING_PREFIX)
+            }
+            for name in names:
+                counts[name] = counts.get(name, 0) + 1
+        return counts
+
     def touch_worker(self, worker_id: str) -> None:
         from sqlalchemy import update
         from sqlalchemy.orm import Session
