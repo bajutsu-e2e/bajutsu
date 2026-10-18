@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-serve-ui-device-farm-fan-out-ja.md)
+**English** · [日本語](BE-0465-serve-ui-device-farm-fan-out-ja.md)
 
-# BE-XXXX — Dispatch a Device Farm fan-out from the serve web UI
+# BE-0465 — Dispatch a Device Farm fan-out from the serve web UI
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-serve-ui-device-farm-fan-out.md) |
+| Proposal | [BE-0465](BE-0465-serve-ui-device-farm-fan-out.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0465") |
 | Topic | Device-cloud execution |
 <!-- /BE-METADATA -->
 
