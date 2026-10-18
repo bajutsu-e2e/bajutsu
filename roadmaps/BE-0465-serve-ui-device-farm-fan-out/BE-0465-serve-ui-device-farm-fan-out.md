@@ -9,7 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0465") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#2215](https://github.com/bajutsu-e2e/bajutsu/pull/2215) |
 | Topic | Device-cloud execution |
 <!-- /BE-METADATA -->
 
@@ -233,7 +233,7 @@ reason.
 
 Log:
 
-- _pending_ (Units 1–4) — `GET /api/environments` lists the batch and grid environments.
+- [#2215](https://github.com/bajutsu-e2e/bajutsu/pull/2215) (Units 1–4) — `GET /api/environments` lists the batch and grid environments.
   A live worker must advertise one for it to appear. The response gives each a live worker count and carries no ARN or credential.
   `GET /api/jobs/{id}?lines=0` omits the log buffer. The Replay tab gains the Environment selector
   and the device-cloud form, and Run posts the chosen scenarios to `POST /api/run-set`.
@@ -241,7 +241,7 @@ Log:
   `POST /api/run-set` now requires the editor role, like `POST /api/run`. Before, any signed-in
   role could call it. The `replay-device-cloud.yaml` dogfood scenario runs against an inner config
   with a `zz-fanout-android` target. The web UI and Device Farm pages describe the flow, in both
-  languages. The PR link is pending.
+  languages.
 
 ## References
 
