@@ -196,7 +196,7 @@ PermissionAction  ::= "grant" | "revoke"
 
 # ── Step = ちょうど 1 アクション + 任意の修飾子 ─────────────────────────
 Step      ::= <Action> & <StepMods>
-StepMods  ::= { capture?: list(<CaptureToken>), extract?: map(string, <Extract>), name?: string, from?: string, target?: string }
+StepMods  ::= { capture?: list(<CaptureToken>), extract?: map(string, <Extract>), name?: string, from?: string, target?: string, skipIfUnsupported?: string }
                 # `from`: 由来。record がこのステップを正規化した元の自然言語の文（BE-0044）
                 # `name` はダウンストリームで実際のファイルシステムパスの一部になる（run の
                 # step_id、エディタの証跡参照）。パス区切り文字、または単独の「.」「..」はロードエラー
@@ -204,6 +204,8 @@ StepMods  ::= { capture?: list(<CaptureToken>), extract?: map(string, <Extract>)
                 # len(scenario.target_names) と scenario.primaryTarget で決まる（§4）。web ブロック内に入れ子になったステップでは
                 # 拒まれる。そのステップは、囲んでいる web ステップがすでに解決したターゲットへ常に
                 # 走るため
+                # `skipIfUnsupported`: 振り分け先のターゲットが、このステップに必要な capability を
+                # 持たないとき、このステップ（ブロックならブロック全体）を飛ばす理由（BE-0457）。規則は §4
 Extract   ::= { sel: <Selector>, prop?: ("value"|"label"|"identifier") }   # 既定 "value"
 Action    ::=
     { tap:         <Selector> }
@@ -246,7 +248,7 @@ Action    ::=
   | { setMocks:         list(<Mock>) }                     # シナリオの途中でアプリのスタブテーブル全体を置き換える（[] はすべてのスタブを外す）。iOS/XCUITest かつネットワーク収集が有効な場合のみ（BE-0365）
   | { overrideStatusBar: { time?: string, batteryLevel?: integer, batteryState?: string, cellularBars?: integer, wifiBars?: integer } }
   | { clearStatusBar:   {} }                               # ライブのステータスバーに戻す
-  | { use:         { component: string, with?: map(string,string) } }   # マクロ（§6.2。修飾子は target のみ）
+  | { use:         { component: string, with?: map(string,string) } }   # マクロ（§6.2。修飾子は target と skipIfUnsupported のみ）
   | { group:       <Group> }                                            # ステップに名前を付け、report.htmlで折りたたむ（§6.2。capture/extract 不可。入れ子不可）
   | { if:          <If> }                                               # 条件分岐（capture/extract 不可）
   | { forEach:     <ForEach> }                                          # ループ（capture/extract 不可）
@@ -427,7 +429,8 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 |---|---|---|
 | `Selector` | **1 条件以上** | `scenario/models/selector.py` |
 | `Step` | アクションキー（`tap` … `use`）**ちょうど 1 つ**。`capture`/`name` は修飾子でアクションではない | `scenario/models/steps.py` |
-| `Step.use` | **取れる修飾子は `target` だけ**。`capture` / `extract` / `name` / `from` を拒否する（展開が警告なく捨ててしまうため）。`target` は展開後のステップへ刻印する（BE-0446） | `scenario/models/steps/step.py` |
+| `Step.use` | **取れる修飾子は `target` と `skipIfUnsupported` だけ**。`capture` / `extract` / `name` / `from` を拒否する（展開が警告なく捨ててしまうため）。`target` と `skipIfUnsupported` は展開後のステップへ刻印する（BE-0446、BE-0457） | `scenario/models/steps/step.py` |
+| `Step.skipIfUnsupported` | 理由は**空白だけにできない**。`manual` と `setPrimaryTarget` では**拒否**し、`manual` を含むブロックでも拒否する。`use:` は、展開がコンポーネントのステップに届いた時点で検査する。`group:`、`use:`、ターゲットグループに付けると、展開が生むステップはすべて **1 つの skip 単位**にまとまり、別の理由を書いたステップは拒否する（BE-0457） | `scenario/models/steps/step.py`、`scenario/models/steps/skip_unit.py` |
 | `Swipe` | 形は `{on,direction}` か `{from,to}` の **ちょうど 1 つ**（混在も片側だけの指定も不可） | `scenario/models/actions.py` |
 | `Pinch` | `scale` **> 0** | `scenario/models/actions.py` |
 | `HandleSystemAlert` | `sel` を `label` / `labelMatches` / `index` に限定（`id`/`idMatches`/`traits`/`value`/`within` を拒否） | `scenario/models/actions.py` |

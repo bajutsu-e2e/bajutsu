@@ -100,9 +100,14 @@ runs/<runId>/
 - `steps[].artifacts`: そのステップで取れた証跡の来歴です（[evidence](evidence.md#アーティファクトの来歴provider)）。
 - `steps[].actuations`: そのステップのあいだにドライバが画面に対して実際に行ったことです。タップが送った座標、スワイプが動いた端点、各ジェスチャを運んだ経路が入ります。これが `actionLog` の証跡種別で、ファイルではなく manifest に内在します（[evidence](evidence.md#各ステップが画面に対して実際に行ったことactionlog)）。`schemaVersion` 5 より前に記録された run は持ちません。`expect_actuations` はシナリオ末尾の `expect` の再チェックについて同じものを持ちます。そこではシステムアラートガードが、載せる先のステップなしに操作しうるからです。`schemaVersion` 7 からは、操作した要素がドライバの既定の規則の指す要素と異なる理由を `substitution` として持つことがあります。それより前の run は持たず、いまその項目がないのと同じに読めます。`schemaVersion` 13 からは、ドライバがその操作を送った絶対的な時刻を `at` として持ちます。`started_at` と同じ土俵に立つので、描画する側は同じように `video_anchor_s` を引きます。`at` を持たない古い run では、描画する側はステップの `started_at` を代わりに使います。
 - `steps[].system_alert`: `handleSystemAlert` ステップが押したボタン（`label`）と、それを選んだ規則（`rule`）です。`rule` は `sel`、`label table: <locale>`、`position: button 2 of 2` のいずれかです。label の対応表にない言語でも、何をなぜ押したかがわかります（[BE-0445](../../roadmaps/BE-0445-system-alert-locale-agnostic-answer/BE-0445-system-alert-locale-agnostic-answer-ja.md)）。ほかのアクションと、`schemaVersion` 12 より前に記録された run は持ちません。
+- `steps[].skipped`: `skipIfUnsupported` でステップを飛ばした run では true です。
+  飛ばすのは、ステップの実行に要る capability をターゲットが持たないときです
+  （[シナリオ](scenarios.md#skipifunsupportedターゲットが実行できないステップを飛ばす)）。
+  ステップの `reason` は作者の書いた理由です。ステップ自体は失敗していないので、`ok` は true のままです。
+  読み手は、合格として表示する前に `skipped` を確認してください。report.html では `SKIP` と表示します。
 - `network.json`の`startedAt`（シナリオごとに1ファイルで、上のmanifestには出てきません）: 観測した各通信が始まった絶対的な実時刻です。`steps[].started_at`と同じ土俵に立ち、同じシナリオの基準時刻を通して導かれるので、描画する側は両方から`video_anchor_s`を引きます。両者がどのように1本のタイムラインへ織り込まれるかは[report.html](#reporthtml)を参照してください。
 - `failure`: 失敗時の要約です（例 `"step 3 (tap): no match: {...}"`）。成功なら null です。
-- `provenance`（トップ、任意）: run の同一性スタンプです（[BE-0049](../../roadmaps/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md)）。`scenarioHash`（実行した `scenario.yaml` の `sha256:` フィンガープリント）、`toolVersion`（`bajutsu.__version__`）、`gitRevision`（コミット。git チェックアウト内の run のときだけ付く）、そして config が Git ソース由来のとき（[BE-0063](../../roadmaps/BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）は `configSource`（`{ host, owner, repo, ref, sha }`。ブランチ指定の run が実際に実行した正確なコミット）を持ちます。蓄積した run を同一性でグルーピングできるので、フィンガープリントが変わっていないのに判定が反転すれば、それは編集ではなく**真の flakiness** だと分かります。純粋なメタデータで、`ok` には一切入りません。（このブロックが出るようになった時点で `schemaVersion` は `3` 以上です。現在は `15` です。）
+- `provenance`（トップ、任意）: run の同一性スタンプです（[BE-0049](../../roadmaps/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md)）。`scenarioHash`（実行した `scenario.yaml` の `sha256:` フィンガープリント）、`toolVersion`（`bajutsu.__version__`）、`gitRevision`（コミット。git チェックアウト内の run のときだけ付く）、そして config が Git ソース由来のとき（[BE-0063](../../roadmaps/BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）は `configSource`（`{ host, owner, repo, ref, sha }`。ブランチ指定の run が実際に実行した正確なコミット）を持ちます。蓄積した run を同一性でグルーピングできるので、フィンガープリントが変わっていないのに判定が反転すれば、それは編集ではなく**真の flakiness** だと分かります。純粋なメタデータで、`ok` には一切入りません。（このブロックが出るようになった時点で `schemaVersion` は `3` 以上です。現在は `16` です。）
 - `target`（トップ、任意）: この run が実行した target です。「Android の target は通るのに iOS の target は落ちる」を、保存済みのデータから計算できます（[BE-0404](../../roadmaps/BE-0404-collapse-project-layer/BE-0404-collapse-project-layer-ja.md)）。1 つの run が解決する target は 1 つなので、シナリオごとではなく `backend` の隣に置きます。`serve` はこれを run の行へ写し、target どうしを順位付けします。target を持たない run では省かれます。（この項目が出るようになった時点で `schemaVersion` は `10` 以上です。）
 - `label`（トップ、任意）: run 履歴の区切りです。bind している config 自身の名前か、運用者が `run --label` で上書きした値が入ります。不透明なメタデータで、解析も config との照合もせず、`ok` の入力にもなりません。`serve` を再起動したあとに 2 つの config の run を読み分けられるのは、この値のおかげです。label を持たない run では省かれます。（この項目が出るようになった時点で `schemaVersion` は `10` 以上です。）
 - `idb`（トップ、任意、レガシー）: 古い manifest には `idb_companion` / client のバージョンブロックが残っていることがあります（BE-0005）。idb バックエンドとともに BE-0290 で廃止され、今は書き出されません。未知のトップレベルキーは読み込み時に無視されるため、これを含む古い manifest も問題なく読めます。
@@ -112,6 +117,10 @@ runs/<runId>/
 
 CI 連携用です。**1 シナリオ = 1 `<testcase>`**。失敗シナリオには `<failure>` が付き、その `text` に
 各ステップ / expect の ok/FAIL と理由が並びます。`--browsers` のマトリクス run では、各ケースにエンジンが織り込まれ（`classname="bajutsu.<engine>"`）、CI からは `chromium.login` と `webkit.login` が別々のケースに見えます（BE-0076）。単一エンジンの run は `classname="bajutsu"` のままです。
+
+JUnit にはステップ単位の記録がありません。そのため、`skipIfUnsupported` で飛ばしたステップがあっても
+ケースの判定は変わりません。代わりに、件数を表す `bajutsu.skippedSteps` プロパティがケースに付きます。
+飛ばした各ステップと理由は `<system-out>` に並びます。
 
 ```xml
 <testsuite name="bajutsu" tests="2" failures="1">
@@ -150,6 +159,8 @@ step 1 tap: FAIL no match: {...}</failure>
 
 - `summary.duration` と各 `tests[].duration` はミリ秒（Σ／シナリオごとの `duration_s`）で、CTRF の消費側が拠り所にするフィールドであり、正確です。`summary.start` と文書の `timestamp` は `YYYYMMDD-HHMMSS` の runId から導出します。runId は UTC で採番されるため、UTC として解釈します。`stop = start + duration` です。テストごとの絶対 start/stop は、シナリオごとの絶対エポックが要る（オプションの後続作業）ため、近似せず省きます。実行時のホスト状態は一切載せないので、`bajutsu report` は同じ実行の `ctrf.json` をバイト単位で同一に再生成します。
 - `tests[].status` は、実行した run では `passed` / `failed` です。対象外（not applicable）の記録（[端末の条件が作る実行](#端末の条件が作る実行)を参照）は `skipped` になります。他の CTRF の集計は `0` のままです。
+- `skipIfUnsupported` で飛ばしたステップのステータスは `skipped` になり、理由は `step.extra` に入ります。
+  テスト自体のステータスは変わりません。
 - CTRF の `step` は `{ name, status, extra }` しか許さないので、ステップのより豊かなデータ（duration、reason、ステップごとのアサーション、アーティファクト）は `step.extra` に入れます。name／status だけを描画する消費側にはきれいな一覧が見え、Bajutsu を理解するツールは extra を読めます。
 - アタッチメントの `contentType` は、アーティファクトの `kind` → MIME の対応表（`screenshot`→`image/png`、`deviceLog`→`text/plain`、`elements`／`network`／`appTrace`→`application/json`）から決め、未知の kind には `application/octet-stream` を充てます。`path` は manifest と同じく実行ディレクトリからの相対パスです。`video` だけは例外で、固定の対応表ではなくアーティファクトの実際のファイル拡張子から MIME を求めます。web シナリオで Playwright が録画する動画は本物の WebM です（`video/webm`、`scenario.webm`）。simctl / adb の録画が使う `video/mp4` とは別物だからです。詳しくは [evidence](evidence.md) を参照してください。
 - `--browsers` のマトリクス run では、エンジン × シナリオの各セルが 1 つの CTRF テストになります。エンジンはテストの `name` と `browser` フィールドに入れ（JUnit の `classname` に倣います）、エンジン × シナリオのグリッドは `results.extra.matrix` に持ちます。Bajutsu のその他の余剰（`sid`、`expect` の結果、アラート、`skipped_captures`）は、テストごとの `extra` に入ります。

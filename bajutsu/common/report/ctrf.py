@@ -68,7 +68,7 @@ def _ms(seconds: float) -> int:
 
 
 def _status(ok: bool) -> str:
-    """The two states an executed run takes; only a not-applicable record is `skipped` (BE-0452)."""
+    """The two states an executed run or step takes; `skipped` is set apart (BE-0452, BE-0457)."""
     return "passed" if ok else "failed"
 
 
@@ -119,7 +119,9 @@ def _step(s: StepOutcome) -> dict[str, object]:
         ]
     if s.artifacts:
         extra["artifacts"] = [{"name": a.name, "kind": a.kind} for a in s.artifacts]
-    return {"name": s.action, "status": _status(s.ok), "extra": extra}
+    # A skipped step (BE-0457) is CTRF's own `skipped` status; the scenario's test keeps its verdict.
+    status = "skipped" if s.skipped else _status(s.ok)
+    return {"name": s.action, "status": status, "extra": extra}
 
 
 def _attachments(r: RunResult) -> list[dict[str, object]]:

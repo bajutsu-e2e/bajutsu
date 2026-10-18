@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from typing import TYPE_CHECKING, Annotated, Self
 
 from pydantic import Field, PrivateAttr, field_validator, model_validator
@@ -55,7 +56,7 @@ from bajutsu.common.scenario.models.assertions import Assertion, Wait
 from bajutsu.common.scenario.models.mocks import Mock
 from bajutsu.common.scenario.models.selector import Selector
 
-from ._shared import _MODIFIERS
+from ._shared import _CARRIED_MODIFIERS, _MODIFIERS
 from .extract import Extract
 from .use import Use
 
@@ -173,6 +174,15 @@ class Step(_Model):
     report_group_id: Annotated[int | None, SkipJsonSchema()] = Field(
         default=None, alias="_reportGroupId"
     )
+    # Skip this step — or, on a block, the whole block — instead of failing, when the target it
+    # routes to lacks a capability the step needs (BE-0457). The value is the author's reason, shown
+    # in the report. Only a capability the static preflight names triggers it; a step that runs and
+    # fails still fails.
+    skip_if_unsupported: str | None = Field(default=None, alias="skipIfUnsupported")
+    # Which skip unit (BE-0457) expansion assigned this step to: every step a covered `group` or
+    # `use` produced shares one id, so the run skips them together. Hidden and round-trippable for
+    # the same reason as `report_group_id` above.
+    skip_unit_id: Annotated[int | None, SkipJsonSchema()] = Field(default=None, alias="_skipUnitId")
     # The scenario's `primaryTarget` an omitted `target` resolved to at load time (BE-0436). Private
     # rather than written back onto `target`, so `model_dump()` — the serve editor's splice and the
     # run's `scenario.yaml` snapshot — keeps the step as terse as the author wrote it.
@@ -197,6 +207,15 @@ class Step(_Model):
     def _safe_name(cls, v: str | None) -> str | None:
         if v is not None and (any(c in v for c in _UNSAFE_STEP_NAME_CHARS) or v in (".", "..")):
             raise ValueError(f"name must not contain a path separator or be '.'/'..' (§6.2): {v!r}")
+        return v
+
+    @field_validator("skip_if_unsupported")
+    @classmethod
+    def _skip_reason_stated(cls, v: str | None) -> str | None:
+        if v is not None and not v.strip():
+            raise ValueError(
+                "skipIfUnsupported: the reason must say why skipping this step is acceptable"
+            )
         return v
 
     @field_validator("navigate", mode="before")
@@ -224,13 +243,33 @@ class Step(_Model):
         return self
 
     @model_validator(mode="after")
+    def _skip_if_unsupported_placement(self) -> Self:
+        # A `manual` step stops a run where a human took over, so skipping it — directly or through
+        # a covering block — would turn that loud stop into a silent pass. `setPrimaryTarget`
+        # changes how every later step resolves its target, so skipping it would change the meaning
+        # of the rest of the scenario (BE-0457). A `use:` is checked once expansion reaches the
+        # component's own steps.
+        if self.skip_if_unsupported is None:
+            return self
+        if self.set_primary_target is not None:
+            raise ValueError("skipIfUnsupported is not supported on a setPrimaryTarget step")
+        if self.manual is not None:
+            raise ValueError("skipIfUnsupported is not supported on a manual step")
+        if any(child.manual is not None for child in _descendants(self)):
+            raise ValueError(
+                "skipIfUnsupported cannot cover a block holding a manual step — skipping the "
+                "block would hide the manual stop"
+            )
+        return self
+
+    @model_validator(mode="after")
     def _target_group(self) -> Self:
         # A target group (BE-0437) never reaches the runner — expansion replaces it with its own
         # nested steps before the scenario finishes loading. `target` is what it exists to fix
         # once, so it is required unconditionally, not only once the scenario declares two or more
-        # targets like a leaf action's. Every other modifier (`_MODIFIERS` minus `target`) is read
-        # off the one step the runner executes; setting one here would vanish with expansion,
-        # silently, so it is refused at load time instead.
+        # targets like a leaf action's. Expansion carries `_CARRIED_MODIFIERS` onto the nested
+        # steps; every other modifier is read off the one step the runner executes, so setting one
+        # here would vanish with expansion, silently, and it is refused at load time instead.
         if self.steps is None:
             return self
         if not self.target:
@@ -238,7 +277,7 @@ class Step(_Model):
         if not self.steps:
             raise ValueError("steps: a target group's steps must not be empty (§6.2)")
         for field in _MODIFIERS:
-            if field == "target":
+            if field in _CARRIED_MODIFIERS:
                 continue
             if getattr(self, field) is not None:
                 alias = type(self).model_fields[field].alias or field
@@ -268,13 +307,15 @@ class Step(_Model):
 
     @model_validator(mode="after")
     def _no_modifiers_on_use(self) -> Self:
-        # `target` is the one exception: expansion stamps it onto every step the component
-        # produces instead of dropping it (BE-0446).
+        # `target` (BE-0446) and `skipIfUnsupported` (BE-0457) are the exceptions: expansion stamps
+        # them onto every step the component produces instead of dropping them.
         if self.use is not None:
             present = [
                 (field.alias or name)
                 for name, field in type(self).model_fields.items()
-                if name in _MODIFIERS and name != "target" and getattr(self, name) is not None
+                if name in _MODIFIERS
+                and name not in _CARRIED_MODIFIERS
+                and getattr(self, name) is not None
             ]
             if present:
                 raise ValueError(
@@ -282,6 +323,28 @@ class Step(_Model):
                     "the step with the component's own steps, which would silently discard them"
                 )
         return self
+
+
+def _descendants(step: Step) -> Iterator[Step]:
+    """Every step nested anywhere under *step*'s blocks, *step* itself excluded."""
+    bodies: list[list[Step]] = []
+    if step.if_ is not None:
+        bodies.append(step.if_.then)
+        bodies.append(step.if_.else_ or [])
+    if step.for_each is not None:
+        bodies.append(step.for_each.steps)
+    if step.web is not None:
+        bodies.append(step.web.steps)
+    if step.app is not None:
+        bodies.append(step.app.steps)
+    if step.group is not None:
+        bodies.append(step.group.steps)
+    if step.steps is not None:
+        bodies.append(step.steps)
+    for body in bodies:
+        for child in body:
+            yield child
+            yield from _descendants(child)
 
 
 _STEP_ACTIONS = tuple(f for f in Step.model_fields if f not in _MODIFIERS)

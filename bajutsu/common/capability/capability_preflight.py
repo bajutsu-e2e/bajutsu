@@ -64,6 +64,7 @@ from typing import TYPE_CHECKING
 
 from bajutsu.common.drivers import base
 from bajutsu.common.scenario import Assertion, Scenario, Step
+from bajutsu.common.scenario.models.steps.skip_unit import SkipUnit
 
 if TYPE_CHECKING:
     from bajutsu.common.capability.worker_capability import WorkerCapability
@@ -86,8 +87,7 @@ def _walk_steps(steps: list[Step], prefix: str = "") -> Iterator[tuple[str, Step
     nested inside them must still be seen — otherwise the preflight misses it and the run
     fails late, the very thing it exists to prevent.
     """
-    for i, step in enumerate(steps):
-        path = f"{prefix}step {i + 1}" if not prefix else f"{prefix}[{i}]"
+    for path, step in _walk_level(steps, prefix):
         yield path, step
         if step.if_ is not None:
             yield from _walk_steps(step.if_.then, f"{path} > if > then")
@@ -302,13 +302,120 @@ def unsupported(scenario: Scenario, capabilities: Set[str]) -> list[str]:
     runnable. Pure: no device, no clock, no network. `capabilities` is any set type (the runner
     passes the driver's frozen `CAPABILITIES` directly).
     """
-    reasons = [f"running needs '{cap}'" for cap in _BASELINE if cap not in capabilities]
+    return [finding.reason for finding in unsupported_findings(scenario, capabilities)]
+
+
+@dataclass(frozen=True)
+class UnsupportedFinding:
+    """One construct a capability set cannot run (BE-0457).
+
+    Attributes:
+        location: The construct's scenario path, as `unsupported()` names it; empty for the
+            baseline read path, which belongs to no step.
+        reason: The same line `unsupported()` returns for it.
+        skip_unit: The `skipIfUnsupported` unit covering the construct — the outermost covered
+            step at or above it, since an enclosing unit wins — or None when nothing covers it.
+            Only a step can be covered: the baseline and the scenario-level `permissions` never
+            are.
+    """
+
+    location: str
+    reason: str
+    skip_unit: SkipUnit | None = None
+
+
+def unsupported_findings(scenario: Scenario, capabilities: Set[str]) -> list[UnsupportedFinding]:
+    """What `unsupported()` reports, one finding per occurrence, with its covering skip unit.
+
+    Pure, like `unsupported()`. The run preflight reads `skip_unit` to tell a construct the author
+    accepted skipping from one that must still fail the scenario up front.
+    """
+    findings = [
+        UnsupportedFinding("", f"running needs '{cap}'")
+        for cap in _BASELINE
+        if cap not in capabilities
+    ]
+    units = _covering_units(scenario)
     for req in _REQUIREMENTS:
         if req.capability not in capabilities:
-            reasons.extend(
-                f"{path}: {req.label} needs '{req.capability}'" for path in req.locations(scenario)
+            findings.extend(
+                UnsupportedFinding(
+                    path, f"{path}: {req.label} needs '{req.capability}'", _unit_at(units, path)
+                )
+                for path in req.locations(scenario)
             )
-    return reasons
+    return findings
+
+
+def run_preflight(scenario: Scenario, capabilities: Set[str]) -> tuple[list[str], frozenset[int]]:
+    """The run's preflight verdict: what still fails the scenario, and what it skips (BE-0457).
+
+    Returns:
+        The reasons of every finding no `skipIfUnsupported` covers, which fail the scenario before
+        any device work exactly as `unsupported()` always has, and the ids of the skip units that
+        cover the rest, which the step loop skips instead of running.
+    """
+    findings = unsupported_findings(scenario, capabilities)
+    failing = [f.reason for f in findings if f.skip_unit is None]
+    skipped = frozenset(f.skip_unit.unit_id for f in findings if f.skip_unit is not None)
+    return failing, skipped
+
+
+def _covering_units(sc: Scenario) -> dict[str, SkipUnit]:
+    """Each covered step path mapped to its outermost covering unit, on the paths the walks name.
+
+    Follows `web:` / `app:` blocks and `interrupts` too, since `_navigate_locations` names paths
+    there; a path no covered step encloses is simply absent.
+    """
+    units: dict[str, SkipUnit] = {}
+
+    def visit(steps: list[Step], prefix: str, outer: SkipUnit | None) -> None:
+        for path, step in _walk_level(steps, prefix):
+            unit = outer
+            if (
+                unit is None
+                and step.skip_if_unsupported is not None
+                and step.skip_unit_id is not None
+            ):
+                unit = SkipUnit(step.skip_if_unsupported, step.skip_unit_id)
+            if unit is not None:
+                units[path] = unit
+            if step.if_ is not None:
+                visit(step.if_.then, f"{path} > if > then", unit)
+                visit(step.if_.else_ or [], f"{path} > if > else", unit)
+            if step.for_each is not None:
+                visit(step.for_each.steps, f"{path} > forEach", unit)
+            for name, block in (("web", step.web), ("app", step.app)):
+                if block is not None:
+                    visit(block.steps, f"{path} > {name}", unit)
+
+    visit(sc.setup, "setup ", None)
+    visit(sc.steps, "", None)
+    for i, rule in enumerate(sc.cleanup):
+        visit(rule.steps, f"cleanup[{i}] ", None)
+    for i, entry in enumerate(sc.interrupts):
+        visit(entry.steps, f"interrupts[{i}] ", None)
+    return units
+
+
+def _walk_level(steps: list[Step], prefix: str) -> Iterator[tuple[str, Step]]:
+    # One list's steps with their paths, without recursion. The one place the path scheme lives:
+    # `_covering_units` must name exactly the paths `_walk_steps` reports, or a covered step would
+    # fail instead of being skipped.
+    for i, step in enumerate(steps):
+        yield (f"{prefix}step {i + 1}" if not prefix else f"{prefix}[{i}]"), step
+
+
+def _unit_at(units: dict[str, SkipUnit], path: str) -> SkipUnit | None:
+    # An assertion's path extends its step's (`step 3 > assert[0]`, `… > if > condition`), so the
+    # nearest enclosing step path that has a unit is the one covering it.
+    while True:
+        if path in units:
+            return units[path]
+        head, sep, _ = path.rpartition(" > ")
+        if not sep:
+            return None
+        path = head
 
 
 # --- The worker capability check (BE-0450) -------------------------------------------------------

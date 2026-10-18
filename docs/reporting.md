@@ -120,6 +120,12 @@ means the same thing after the run that produced it exits
   lets a viewer recompute the offset from a saved run — say, after a fix to how a run resolves its
   anchor — instead of forcing a re-run of the scenario
   ([BE-0348](../roadmaps/BE-0348-absolute-timestamp-recording/BE-0348-absolute-timestamp-recording.md)).
+- `steps[].skipped`: true when the run skipped the step under `skipIfUnsupported`. The run does so
+  when the step's target lacks a capability the step needs
+  ([scenarios](scenarios.md#skipifunsupported-skipping-a-step-the-target-cannot-run)). The step's
+  `reason` holds the author's reason. A skipped step keeps `ok: true`, because the step did not
+  break. A reader must check `skipped` before showing the step as passed. report.html shows it as
+  `SKIP`.
 - `video_anchor_s` (per scenario): the absolute wall-clock instant the scenario's video started,
   measured from the finished recording's own duration where that duration is a wall-clock measure,
   and otherwise from the recording's confirmed start signal
@@ -161,7 +167,7 @@ means the same thing after the run that produced it exits
   `configSource` (`{ host, owner, repo, ref, sha }`, the exact commit a branch-based run executed).
   It groups accumulated runs by identity, so a verdict that flips while the fingerprint is
   unchanged is **true flakiness** rather than an edited scenario. Pure metadata — it never enters
-  `ok`. (`schemaVersion` is `3` or higher once this block can appear — it is `15` today.)
+  `ok`. (`schemaVersion` is `3` or higher once this block can appear — it is `16` today.)
 - `target` (top, optional): the target the run ran, so "the Android target passes while the iOS
   target fails" is computable from stored data ([BE-0404](../roadmaps/BE-0404-collapse-project-layer/BE-0404-collapse-project-layer.md)).
   One run resolves one target, so it sits beside `backend` rather than on each scenario. `serve`
@@ -190,6 +196,10 @@ For CI integration. **one scenario = one `<testcase>`.** A failing scenario gets
 `text` lists each step / expect's ok/FAIL and reason. On a `--browsers` matrix run the engine is
 keyed into the case (`classname="bajutsu.<engine>"`), so CI sees `chromium.login` and `webkit.login`
 as distinct cases (BE-0076); a single-engine run keeps `classname="bajutsu"`.
+
+JUnit has no per-step record. As a result, a step that `skipIfUnsupported` skipped leaves the
+case's verdict alone. The case gains a `bajutsu.skippedSteps` property with the count instead. A
+`<system-out>` lists each skipped step with its reason.
 
 ```xml
 <testsuite name="bajutsu" tests="2" failures="1">
@@ -243,6 +253,8 @@ The document is `{ reportFormat: "CTRF", specVersion, generatedBy, timestamp, re
 - `tests[].status` is `passed` / `failed` for every run that ran. A not-applicable record is
   `skipped` ([Runs that device conditions form](#runs-that-device-conditions-form)). The other CTRF
   counts stay `0`.
+- A step that `skipIfUnsupported` skipped has the step status `skipped`, with its reason in
+  `step.extra`. The test keeps its own status.
 - A CTRF `step` allows only `{ name, status, extra }`, so a step's richer data (duration, reason,
   per-step assertions, artifacts) lands in `step.extra` — a consumer that renders just name/status
   sees a clean list, and Bajutsu-aware tooling can read the extras.

@@ -13,4 +13,9 @@ _MODIFIERS = (
     "target",
     "report_group",
     "report_group_id",
+    "skip_if_unsupported",
+    "skip_unit_id",
 )
+# The modifiers expansion carries onto the steps a `use:` or a target group produces instead of
+# dropping them (BE-0446, BE-0457), so both blocks accept them.
+_CARRIED_MODIFIERS = ("target", "skip_if_unsupported")
