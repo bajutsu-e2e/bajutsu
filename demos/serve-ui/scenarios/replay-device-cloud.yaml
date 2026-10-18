@@ -1,0 +1,54 @@
+# Device-cloud Replay (BE-0465) — the Environment selector lists a device-cloud environment once a
+# worker advertises it, a web target turns it off with a reason, and an Android target fans its
+# scenarios out through run-set into one row per job, which Stop all cancels.
+#
+# The worker is faked: one lease poll that advertises `environment:devicefarm` registers it as live
+# (for the server's lease timeout, 120 s by default), and it polls before anything is queued, so it
+# takes no job. It never polls again, so the dispatched jobs stay queued until Stop all cancels
+# them — nothing reaches Device Farm. The `zz-fanout-android` target and its two placeholder scenarios
+# live in inner.config.yaml and fanout/scenarios/.
+description: >-
+  Device-cloud Replay — a faked devicefarm worker appears in the Environment selector; a web target
+  turns it off; an Android target fans its scenarios out to a run-set panel that Stop all cancels.
+scenarios:
+  - name: an Android target fans its scenarios out to a device-cloud environment
+    description: >-
+      Register a fake devicefarm worker, refresh the Environment selector, check the web target's
+      reason, then switch to the Android target, pick devicefarm, run All scenarios, and Stop all.
+    steps:
+      - http:
+          method: POST
+          url: "http://127.0.0.1:8799/api/worker/lease"
+          headers: { Content-Type: application/json }
+          body: '{"worker_id":"fake-df","capabilities":["environment:devicefarm"]}'
+      - tap: { id: nav.replay }
+      - wait: { for: { id: replay.scenario, labelMatches: "counter" }, timeout: 10 }
+      - tap: { id: replay.env-refresh }
+      - wait: { for: { id: replay.environment, labelMatches: "devicefarm" }, timeout: 10 }
+      # The default target is the web one, which a fan-out cannot install on: the reason shows.
+      - wait: { for: { id: replay.env-reason }, timeout: 10 }
+      - selectOption: { sel: { id: replay.target }, option: zz-fanout-android }
+      - wait: { until: { gone: { id: replay.env-reason } }, timeout: 10 }
+      - selectOption: { sel: { id: replay.environment }, option: devicefarm }
+      # The multi-select lists the Android target's own scenarios. Its label is its aria-label, so the
+      # wait reads the block around it.
+      - wait: { for: { id: replay.scenario-set, labelMatches: "second" }, timeout: 10 }
+      - assert:
+          - exists: { id: replay.all-scenarios }
+          - exists: { id: replay.scenarios }
+          - exists: { id: replay.grade, negate: true }
+          # The fields run-set ignores, and the host-side Readiness checks, are hidden.
+          - exists: { id: replay.scenario, negate: true }
+          - exists: { id: replay.doctor, negate: true }
+          - exists: { id: replay.headed, negate: true }
+          - exists: { id: replay.simulators, negate: true }
+      - tap: { id: replay.all-scenarios }
+      - tap: { id: replay.run }
+      - wait: { for: { id: replay.runset-row, index: 1 }, timeout: 10 }
+      - assert:
+          - count: { sel: { id: replay.runset-row }, equals: 2 }
+          - exists: { id: replay.runset-partial, negate: true }
+      - tap: { id: replay.runset-stop }
+      - wait: { for: { id: replay.runset-status, labelMatches: "cancelled", index: 1 }, timeout: 15 }
+    expect:
+      - count: { sel: { id: replay.runset-status, labelMatches: "cancelled" }, equals: 2 }

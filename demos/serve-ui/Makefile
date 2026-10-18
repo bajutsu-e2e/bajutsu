@@ -7,10 +7,11 @@
 ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../..)
 HERE := $(ROOT)/demos/serve-ui
 CONFIG := $(HERE)/dogfood.config.yaml
-# The config the *inner* serve loads, so its dropdowns have a real app + scenario to show. We
-# reuse the web demo's config (targets.web → demos/web/scenarios/smoke.yaml) rather than invent a
-# fixture: the dogfood asserts the WebUI renders that config, not what the config contains.
-INNER_CONFIG := $(ROOT)/demos/web/demo.config.yaml
+# The config the *inner* serve loads, so its dropdowns have a real app + scenario to show. Its `web`
+# target reuses the web demo's (targets.web → demos/web/scenarios/smoke.yaml) rather than invent a
+# fixture: the dogfood asserts the WebUI renders that config, not what the config contains. It adds
+# an Android target the device-cloud fan-out dogfood dispatches (BE-0465), without touching demos/web.
+INNER_CONFIG := $(HERE)/inner.config.yaml
 PORT ?= 8799
 
 # Install the web backend (Playwright python package + the Chromium binary it drives). Idempotent,
