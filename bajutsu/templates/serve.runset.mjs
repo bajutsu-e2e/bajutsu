@@ -12,13 +12,16 @@ const POLL_MS=2000;
 const MAX_POLL_ERRORS=5;
 // The batch entries of the last /api/environments read: run-set refuses a fan-out to a grid.
 let environments=[];
+// The last /api/environments failure, kept so syncCloudForm's own re-render does not wipe it.
+let envError='';
 // The open run-set: its rows, the pending poll timer, and the one row whose log is streaming.
 let runSet=null;
 
 async function loadEnvironments(){
   const d=await getJSON('/api/environments',FETCH_ERROR);
   // A failed read keeps the last list and selection: an empty rebuild would drop a chosen environment.
-  if(isFetchError(d)){const r=$('#env-reason');r.textContent='Could not load environments — Refresh to retry';r.hidden=false;return;}
+  if(isFetchError(d)){envError='Could not load environments — Refresh to retry';syncCloudForm();return;}
+  envError='';
   environments=(Array.isArray(d.environments)?d.environments:[]).filter(e=>e.kind==='batch');
   const sel=$('#env'),prev=sel.value;
   sel.innerHTML='<option value="local">local</option>'+environments.map(e=>{
@@ -42,7 +45,7 @@ function syncCloudForm(){
   const reason=cloudReason(),sel=$('#env');
   [...sel.options].forEach(o=>{if(o.value!=='local')o.disabled=!!reason;});
   if(reason)sel.value='local';
-  const r=$('#env-reason');r.textContent=reason;r.hidden=!reason;
+  const r=$('#env-reason'),text=reason||envError;r.textContent=text;r.hidden=!text;
   $('#view-replay').classList.toggle('cloud',!!cloudEnvironment());
   syncRunSetLive();
   renderScenarioChoices();

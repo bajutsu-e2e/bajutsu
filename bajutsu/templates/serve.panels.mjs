@@ -368,6 +368,8 @@ async function applyTriage(target,scenario,d,rerun){
   $('#target').value=target;
   await loadScenarios();
   $('#scn').value=scenario;
+  // The re-run confirms this one patched scenario, so it must not fan out (BE-0465).
+  $('#env').value='local';$('#env').dispatchEvent(new Event('change'));
   $('#go').click();
 }
 async function loadStats(){

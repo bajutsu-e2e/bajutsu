@@ -157,8 +157,8 @@ DEVICEFARM_PROJECT_ARN=arn:aws:devicefarm:us-west-2:123456789012:project:abc \
 ### ターゲットの fan-out
 
 Replay タブは、ブラウザから fan-out を投入できます（[Web UI](web-ui.md#replay--シナリオを実行してレポートを読む)）。
-デバイスクラウドの環境を選び、シナリオを選んで Run を押します。タブは、稼働中の worker が広告している環境だけを
-`GET /api/environments` から読み込んで並べます。レスポンスは環境ごとに `name`、`kind`（`batch` または `grid`）、
+デバイスクラウドの環境を選び、シナリオを選んで Run を押します。タブは、稼働中の worker が広告している batch 環境だけを
+`GET /api/environments` から読み込んで並べます。`appium` の grid には、通常の run リクエストから届きます（BE-0452）。レスポンスは環境ごとに `name`、`kind`（`batch` または `grid`）、
 `liveWorkers` の数を返し、ARN や認証情報は含みません。
 
 `POST /api/run-set` リクエストがターゲットを fan-out します。`POST /api/run` と同じく editor 権限が必要です。ボディには `target` と、バッチプロバイダーを表す `environment`（現在は `devicefarm`）を指定し、任意で `scenarios` の部分集合を指定します。

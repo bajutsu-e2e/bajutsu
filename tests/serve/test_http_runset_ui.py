@@ -150,7 +150,18 @@ def test_a_404_poll_ends_the_row_unknown_and_keeps_it_cancellable(tmp_path: Path
 def test_a_failed_environment_read_keeps_the_previous_list(tmp_path: Path) -> None:
     js = _fetch(tmp_path, "/serve.runset.mjs")[0]
     assert "getJSON('/api/environments',FETCH_ERROR)" in js
-    assert "Could not load environments — Refresh to retry" in js
+    # The failure lives in module state so syncCloudForm's own re-render of #env-reason keeps it.
+    assert "envError='Could not load environments — Refresh to retry';syncCloudForm();return;" in js
+    assert "text=reason||envError;r.textContent=text;r.hidden=!text;" in js
+
+
+def test_triage_rerun_forces_the_local_form(tmp_path: Path) -> None:
+    # Apply & re-run confirms one patched scenario, so it must never fan out to a device cloud.
+    js = _fetch(tmp_path, "/serve.panels.mjs")[0]
+    assert (
+        "$('#env').value='local';$('#env').dispatchEvent(new Event('change'));\n  $('#go').click();"
+        in js
+    )
 
 
 def test_a_second_fan_out_waits_for_the_first(tmp_path: Path) -> None:
