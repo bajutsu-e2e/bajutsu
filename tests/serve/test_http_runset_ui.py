@@ -140,6 +140,11 @@ def test_a_404_poll_ends_the_row_unknown_and_keeps_it_cancellable(tmp_path: Path
     # Stop all still cancels a lost row, and stays clickable while one is listed.
     assert "const rows=set.rows.filter(r=>!r.terminal||r.lost);" in js
     assert "if(!set.rows.some(r=>r.lost))" in js
+    # Once every row has ended, the button leaves "Stopping…" even when a lost row keeps it enabled.
+    assert (
+        "if(set.rows.every(r=>r.terminal)){const stop=$('#runset-stop');"
+        "stop.textContent=stop.dataset.idle;" in js
+    )
 
 
 def test_a_failed_environment_read_keeps_the_previous_list(tmp_path: Path) -> None:
