@@ -70,7 +70,8 @@ of showing a shorter list without comment.
 | A fan-out cut short by a cap | A shorter `jobIds` list, status 200 | The panel states how many scenarios the server did not dispatch |
 
 The `POST /api/run-set` contract, the worker, and the Device Farm submission stay unchanged. This
-item adds one read route, and every other change stays inside the web UI.
+item adds one read route and a log-free form of the job read. Every other change stays inside the
+web UI.
 
 ### Listing the available environments
 
@@ -112,8 +113,13 @@ selector offers the `batch` entries alone, since `run-set` refuses a fan-out to 
 Choosing a device-cloud environment changes the form in three ways:
 
 1. **Scenarios.** The single-scenario select becomes a multi-select over the target's scenarios,
-   with an *All scenarios* option. *All scenarios* omits `scenarios` from the request, so the server
-   resolves the directory itself, as it does today.
+   with an *All scenarios* option. *All scenarios* sends every name the scenario list showed, so the
+   request names exactly the files the panel labels its rows with. Omitting `scenarios` would let the
+   server list the directory again at dispatch, and a scenario saved from the Editor tab in between
+   would shift every later row onto the wrong file. The server resolves every name before
+   dispatching any job, as it does today. It then dispatches the jobs in the request's order and
+   stops at the first one the concurrency cap rejects, so `jobIds` always pairs, position by
+   position, with the leading names of `scenarios`.
 2. **Fields the fan-out ignores.** The form hides the device picker and the Workers count, since the
    device-cloud worker reserves the device. It also hides the per-run options `erase`, `headed`,
    and `systemAlertHandling`. `run-set` reads none of them, so a value set there would be dropped
@@ -138,9 +144,12 @@ run links to its report. A job still queued with no live worker shows the no-wor
 same route already returns, so a row stuck without a worker reads differently from one in flight.
 
 The panel polls `GET /api/jobs/{id}` for each row at an interval, and stops polling a row once its
-job is done. When the operator expands a row to read its log, the panel opens that job's event
-stream, the one the single-run view uses. The number of open connections thus stays independent of
-the number of scenarios. A **Stop all** button cancels every job still queued or running through the existing cancel route.
+job is done. The poll reads the status without the log buffer. `GET /api/jobs/{id}` answers with
+the job's whole log today, so one poll per row would re-send every row's log on every tick. Unit 1
+adds a query parameter that leaves the log out (`Job.view(include_lines=False)`, the shape the
+terminal-status payload already stores). When the operator expands a row to read its log, the panel
+opens that job's event stream, the one the single-run view uses, which replays the log from its
+first line. The number of open connections thus stays independent of the number of scenarios. A **Stop all** button cancels every job still queued or running through the existing cancel route.
 For a scheduled Device Farm run, the worker then stops the run, exactly as a single cancel does.
 
 The panel compares the number of job ids in the response with the number of scenarios the operator
@@ -178,7 +187,8 @@ reason.
 
 1. **Environment listing.** Add the repository method that reads live `environment:` tokens, and
    the `GET /api/environments` route that returns them with their kinds. Cover a live worker, an
-   expired worker, an `appium` worker listed as `grid`, and a server without a queue in tests.
+   expired worker, an `appium` worker listed as `grid`, and a server without a queue in tests. Add
+   the query parameter on `GET /api/jobs/{id}` that leaves the log buffer out.
 2. **Replay form.** Add the Environment selector, limited to the `batch` entries, and its refresh button, the multi-select with
    *All scenarios*, the hidden fields and the hidden Readiness panel, the turned-off state for a web target, and the
    `POST /api/run-set` request.
