@@ -406,7 +406,7 @@ target has none. The selector then stays on `local` and states the reason.
 
 With a device-cloud environment chosen, the form dispatches a fan-out instead of one run:
 
-1. Pick scenarios in the multi-select. **All scenarios** is on by default.
+1. Pick scenarios in the multi-select, or check **All scenarios**.
    It sends every listed name explicitly. A file saved mid-request cannot shift the rows.
 2. The fields a cloud device ignores disappear. They are the device picker, **Workers**,
    **erase device first**, **show browser (headed)**, **disable alert-dismiss**, **Readiness**,

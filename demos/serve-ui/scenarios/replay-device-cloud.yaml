@@ -5,7 +5,8 @@
 # The worker is faked: one lease poll that advertises `environment:devicefarm` registers it as live
 # (for the server's lease timeout, 120 s by default), and it polls before anything is queued, so it
 # takes no job. It never polls again, so the dispatched jobs stay queued until Stop all cancels
-# them — nothing reaches Device Farm. The `zz-fanout-android` target and its two placeholder scenarios
+# them — nothing reaches Device Farm. Before that, the form switches back to local: the live run-set
+# stays in view. The `zz-fanout-android` target and its two placeholder scenarios
 # live in inner.config.yaml and fanout/scenarios/.
 description: >-
   Device-cloud Replay — a faked devicefarm worker appears in the Environment selector; a web target
@@ -14,7 +15,8 @@ scenarios:
   - name: an Android target fans its scenarios out to a device-cloud environment
     description: >-
       Register a fake devicefarm worker, refresh the Environment selector, check the web target's
-      reason, then switch to the Android target, pick devicefarm, run All scenarios, and Stop all.
+      reason, then switch to the Android target, pick devicefarm, run All scenarios, switch back to local
+      (the live run-set stays), Stop all, and read the cancelled rows back in devicefarm.
     steps:
       - http:
           method: POST
@@ -48,7 +50,16 @@ scenarios:
       - assert:
           - count: { sel: { id: replay.runset-row }, equals: 2 }
           - exists: { id: replay.runset-partial, negate: true }
+      # Switching back to local keeps a still-running fan-out and its Stop all in view.
+      - selectOption: { sel: { id: replay.environment }, option: local }
+      - assert:
+          - exists: { id: replay.runset }
+          - exists: { id: replay.runset-stop }
       - tap: { id: replay.runset-stop }
+      # Once every row has finished, the panel is cloud-only again: it hides in local mode and comes
+      # back with the device-cloud environment.
+      - wait: { until: { gone: { id: replay.runset } }, timeout: 15 }
+      - selectOption: { sel: { id: replay.environment }, option: devicefarm }
       - wait: { for: { id: replay.runset-status, labelMatches: "cancelled", index: 1 }, timeout: 15 }
     expect:
       - count: { sel: { id: replay.runset-status, labelMatches: "cancelled" }, equals: 2 }
