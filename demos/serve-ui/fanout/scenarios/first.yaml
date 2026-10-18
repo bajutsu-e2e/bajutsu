@@ -1,0 +1,5 @@
+# A placeholder the device-cloud dogfood (replay-device-cloud.yaml) fans out and cancels. It never
+# runs, so its steps only need to be valid.
+- name: first placeholder
+  steps:
+    - wait: { for: { id: fanout.ready }, timeout: 5 }

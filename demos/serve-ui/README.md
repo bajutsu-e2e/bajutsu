@@ -13,6 +13,8 @@ from machine assertions, never an LLM.
 | Path | Purpose |
 |---|---|
 | `dogfood.config.yaml` | `targets.webui` with `platform: web` + `subject.url` (the running serve) + `services.server` (no `subject.id`) |
+| `inner.config.yaml` | the config the inner serve loads: the web demo's `web` target, plus `zz-fanout-android`, an Android target that exists only to be fanned out (BE-0465) |
+| `fanout/scenarios/` | the two placeholder scenarios `zz-fanout-android` dispatches; they are never run |
 | `scenarios/shell-navigation.yaml` | the top tabs (Record / Replay / Crawl / Author / Stats / Coverage) swap the visible view |
 | `scenarios/theme.yaml` | the theme toggle follows the OS preference and flips on click |
 | `scenarios/crawl-form.yaml` | the Crawl form holds the bound target and the default exploration budget |
@@ -27,6 +29,7 @@ from machine assertions, never an LLM.
 | `scenarios/author-editor.yaml` | Edit-mode Load fills the YAML editor and grades it; invalid YAML surfaces the inline problems panel (BE-0138) |
 | `scenarios/stats.yaml` | the Stats view loads the run dashboard (BE-0102) |
 | `scenarios/coverage.yaml` | Compute renders the target's coverage map (BE-0146) |
+| `scenarios/replay-device-cloud.yaml` | a faked `devicefarm` worker appears in Replay's Environment selector; a web target turns it off with a reason; an Android target fans its scenarios out to the run-set panel, whose Stop all cancels every row (BE-0465) |
 | `scenarios/platform-ui.yaml` | each panel shows only the selected target's platform controls — a web target shows the headed toggle instead of the iOS device UI (simulators, workers, erase) |
 | `scenarios/panel-resize.yaml` | dragging one tiling divider redistributes only its pair, never a third panel |
 | `Makefile` | `web-deps` / `serve-ui` / `e2e` |
@@ -38,8 +41,8 @@ make -C demos/serve-ui e2e
 ```
 
 This installs the web backend (`uv sync --extra web` + `playwright install chromium`), launches
-`bajutsu serve` (bound to the [web demo](../web)'s config so its dropdowns have a real app + scenario
-to show), drives the Web UI through the Playwright backend with the Tier-A scenarios, and tears serve
+`bajutsu serve` (bound to `inner.config.yaml`, which reuses the [web demo](../web)'s target so its
+dropdowns have a real app + scenario to show), drives the Web UI through the Playwright backend with the Tier-A scenarios, and tears serve
 down. We start serve directly rather than via `make serve` because the dogfood is web-only — no XCUITest runner
 companion or iOS actuator is involved.
 
@@ -93,6 +96,8 @@ and the AI-driven flows are excluded from any deterministic gate **by design** (
 | Determinism-audit badge on the selected scenario | `replay-tools.yaml` |
 | Codegen export (Playwright emit offered, spec + filename, close) | `replay-tools.yaml` |
 | Platform-aware controls (web hides iOS device UI, shows headed) | `platform-ui.yaml` |
+| Replay Environment selector: a live device-cloud worker listed, a web target turned off with a reason, the fields a fan-out ignores hidden | `replay-device-cloud.yaml` |
+| Run-set panel: one row per dispatched scenario, Stop all cancels each | `replay-device-cloud.yaml` |
 | Crawl form: bound target, default budget (1 / 50 / 200), Start offered | `crawl-form.yaml` |
 | Crawl History: reopen a past run read-only (past-crawl badge), plan tree renders the stored map | `crawl-history.yaml` |
 | Crawl continue exploring: a past run with a remaining frontier offers the continue control | `crawl-history.yaml` |
@@ -116,7 +121,9 @@ and the AI-driven flows are excluded from any deterministic gate **by design** (
   `bajutsu run` (a browser inside the browser test); deferred in BE-0058.
 - **Native `<select>` option switching** — the coordinate-tapping web backend cannot open a native
   dropdown, so anything behind "pick a provider / change the target" (API-key save, Bedrock
-  fields, provider-specific flows) asserts only the pre-choice state.
+  fields, provider-specific flows) asserts only the pre-choice state. The one exception is
+  `replay-device-cloud.yaml`, which sets Replay's target and environment with the `selectOption`
+  step; its fan-out never runs, because the faked worker leases no job and Stop all cancels them.
 - **Native browser chrome** — the upload file chooser, codegen's clipboard Copy and Download, and
   the token-login `prompt()` dialog are not in the page's DOM.
 - **Host-dependent state** — Generate/Start enabled state and the gate banner (Claude
