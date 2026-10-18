@@ -21,8 +21,9 @@ fan a target out to AWS Device Farm, one run per scenario, through a hand-writte
 The Replay tab gains an execution-environment choice. With a device-cloud environment chosen, the
 operator picks several scenarios, and one press of Run dispatches the fan-out. A run-set panel then
 follows every scenario's job in one list. The choice offers a device-cloud environment while a live
-worker advertises it, and hides the environment otherwise. The operator thus never dispatches into
-an environment that no worker can serve.
+worker advertises it, and hides it otherwise, so an operator no longer dispatches into an
+environment that was never served. A worker that stops after the list was fetched still leaves its
+jobs queued, and the panel's no-worker notice names that case.
 
 ## Motivation
 
@@ -111,8 +112,8 @@ Choosing a device-cloud environment changes the form in three ways:
    single-scenario select, which the form restores when the operator switches back to `local`.
 3. **The request.** Run posts `{ target, environment, scenarios? }` to `POST /api/run-set`.
 
-The form turns off the device-cloud environments for a web target, which `GET /api/targets` already
-marks by its backend, and names the reason next to the selector. The form makes no check of its own
+`GET /api/targets` already marks a web target by its backend, so the form turns the device-cloud
+environments off for one and names the reason next to the selector. The form makes no check of its own
 for `app.path`: the server refuses a target without one before dispatching any job, and the form
 shows that refusal like any other. The server stays the authority: its own error response for any
 other refusal (a 400, or a 429 when the concurrency cap rejects the first job) appears in the form's
