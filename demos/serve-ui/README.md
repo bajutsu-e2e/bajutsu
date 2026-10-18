@@ -140,5 +140,6 @@ and the AI-driven flows are excluded from any deterministic gate **by design** (
 
 The web backend taps by coordinate, so it cannot operate a native `<select>` dropdown; these
 scenarios assert the **state the page loads** (which needs no dropdown interaction) rather
-than switching options. Driving `<select>` and the AI round-trips are tracked as future work in the
-dogfood roadmap item.
+than switching options. The one exception is `replay-device-cloud.yaml`, which switches options
+with the `selectOption` step. The dogfood roadmap item tracks the remaining `<select>` flows and
+the AI round-trips as future work.

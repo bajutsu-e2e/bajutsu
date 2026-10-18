@@ -156,7 +156,12 @@ DEVICEFARM_PROJECT_ARN=arn:aws:devicefarm:us-west-2:123456789012:project:abc \
 
 ### ターゲットの fan-out
 
-`POST /api/run-set` リクエストがターゲットを fan-out します。ボディには `target` と、バッチプロバイダーを表す `environment`（現在は `devicefarm`）を指定し、任意で `scenarios` の部分集合を指定します。
+Replay タブは、ブラウザから fan-out を投入できます（[Web UI](web-ui.md#replay--シナリオを実行してレポートを読む)）。
+デバイスクラウドの環境を選び、シナリオを選んで Run を押します。タブに並ぶのは、稼働中の worker が広告している環境だけで、
+`GET /api/environments` から読みます。レスポンスは環境ごとに `name`、`kind`（`batch` または `grid`）、
+`liveWorkers` の数を返し、ARN や認証情報は含みません。
+
+`POST /api/run-set` リクエストがターゲットを fan-out します。`POST /api/run` と同じく editor 権限が必要です。ボディには `target` と、バッチプロバイダーを表す `environment`（現在は `devicefarm`）を指定し、任意で `scenarios` の部分集合を指定します。
 
 ```json
 { "target": "showcase-compose", "environment": "devicefarm", "scenarios": ["firstlook.yaml", "controls.yaml"] }
