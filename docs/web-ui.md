@@ -407,7 +407,8 @@ target has none. The selector then stays on `local` and states the reason.
 With a device-cloud environment chosen, the form dispatches a fan-out instead of one run:
 
 1. Pick scenarios in the multi-select, or check **All scenarios**.
-   It sends every listed name explicitly. A file saved mid-request cannot shift the rows.
+   Either way the form sends every chosen name explicitly, so a file saved between the listing
+   and the dispatch cannot move a row onto the wrong scenario.
 2. The fields a cloud device ignores disappear. They are the device picker, **Workers**,
    **erase device first**, **show browser (headed)**, **disable alert-dismiss**, **Readiness**,
    and the single scenario's select, View, and grade.

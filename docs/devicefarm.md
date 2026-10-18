@@ -321,7 +321,8 @@ and per-org caps count queued jobs too. Those caps may still cut a large fan-out
 
 The Replay tab dispatches a fan-out from the browser
 ([web UI](web-ui.md#replay--run-a-scenario-and-read-its-report)). Choose a device-cloud environment,
-pick scenarios, and press Run. The tab lists the environments that a live worker advertises.
+pick scenarios, and press Run. The tab lists the *batch* environments that a live worker
+advertises; an `appium` grid is reached through the plain run request instead (BE-0452).
 It reads them from `GET /api/environments`. The response gives each environment's `name`, its `kind`
 (`batch` or `grid`), and its `liveWorkers` count. It carries no ARN or credential.
 
