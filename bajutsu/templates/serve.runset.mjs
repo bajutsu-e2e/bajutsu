@@ -137,14 +137,21 @@ async function pollRow(set,row){
   try{res=await fetch('/api/jobs/'+encodeURIComponent(row.id)+'?lines=0');v=await res.json();}
   catch(e){pollFailed(set,row,(e&&e.message)||'network error');return;}
   if(set!==runSet)return;
-  // A 404 is final (the job is gone): its {error} body ends the row like any failure payload.
-  if((res.ok||res.status===404)&&v&&typeof v==='object'){applyView(row,v);return;}
+  if(res.ok&&v&&typeof v==='object'){applyView(row,v);return;}
+  // A 404 means this server never registered the job (a restart, or another replica), not that it
+  // failed: a worker may still run it, so the row ends `unknown` and stays cancellable (DB-backed).
+  if(res.status===404){
+    row.pollErrors=0;row.lost=true;row.terminal=true;
+    row.pollError='this server no longer tracks the job (restart or another replica); its state is unknown';
+    renderRow(row);return;
+  }
   pollFailed(set,row,'HTTP '+res.status);
 }
 async function tick(set){
   await Promise.all(set.rows.filter(r=>!r.terminal).map(r=>pollRow(set,r)));
   if(set!==runSet)return;
-  if(set.rows.every(r=>r.terminal)){const stop=$('#runset-stop');stop.disabled=true;stop.textContent=stop.dataset.idle;return;}
+  // A lost row may still run somewhere, so Stop all stays clickable while one is listed.
+  if(set.rows.every(r=>r.terminal)){if(!set.rows.some(r=>r.lost)){const stop=$('#runset-stop');stop.disabled=true;stop.textContent=stop.dataset.idle;}return;}
   set.timer=setTimeout(()=>tick(set),POLL_MS);
 }
 function closeStream(set){
@@ -186,12 +193,13 @@ async function cancelRow(row){
 async function stopAll(){
   const set=runSet;if(!set)return;
   const stop=$('#runset-stop');stop.disabled=true;stop.textContent='Stopping…';
-  const rows=set.rows.filter(r=>!r.terminal);
+  // A lost row's state is unknown, so it is cancelled too rather than assumed finished.
+  const rows=set.rows.filter(r=>!r.terminal||r.lost);
   const errs=await Promise.all(rows.map(cancelRow));
   if(set!==runSet)return;
   rows.forEach((r,i)=>{r.cancelError=errs[i]?`cancel failed: ${errs[i]}`:'';renderRow(r);});
   const failed=rows.filter((r,i)=>errs[i]);
-  if(!failed.length)return;
+  if(!failed.length){if(!runSetLive())stop.textContent=stop.dataset.idle;return;}
   setStatus($('#status'),`Stop all: ${failed.length} of ${rows.length} cancel${rows.length===1?'':'s'} failed — try again`,'ng');
   stop.disabled=false;stop.textContent=stop.dataset.idle;
 }

@@ -418,6 +418,8 @@ With a device-cloud environment chosen, the form dispatches a fan-out instead of
 A **run-set panel** then lists one row per dispatched job, in request order. Each row polls its job
 about every two seconds until the job finishes, fails, or errors. A row shows its state and a
 **report** link once the run exists. It also shows the notice when no worker can take the job.
+A row also ends as unknown when the server no longer tracks the job (after a restart), and
+**Stop all** still sends its cancel.
 
 Expanding a row streams that job's log. One log streams at a time, so a large fan-out never holds
 a stream per row. **Stop all** cancels every unfinished row.
