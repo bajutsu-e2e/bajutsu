@@ -169,9 +169,13 @@ ROUTES: tuple[Route, ...] = (
         "GET",
         "/api/jobs/{job_id}",
         lambda state, ctx: ops.job_view(
-            state, ctx.path_param("job_id"), machine_org=ctx.machine_org()
+            state,
+            ctx.path_param("job_id"),
+            machine_org=ctx.machine_org(),
+            include_lines=ctx.query("lines") != "0",
         ),
     ),
+    Route("GET", "/api/environments", lambda state, _ctx: ops.list_environments(state)),
     # --- GET: text responses (content_type) ---
     Route(
         "GET",
