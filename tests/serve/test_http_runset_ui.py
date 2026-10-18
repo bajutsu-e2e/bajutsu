@@ -110,12 +110,12 @@ def test_stop_all_cancels_every_unfinished_row_and_reports_each_failure(tmp_path
     js = _fetch(tmp_path, "/serve.runset.mjs")[0]
     # cancelJob swallows a refused cancel, so Stop all posts its own and reads each answer.
     assert "cancelJob" not in js
-    assert "const rows=set.rows.filter(r=>!r.terminal);" in js
+    assert "const rows=set.rows.filter(r=>!r.terminal||r.lost);" in js
     assert "'/api/jobs/'+encodeURIComponent(row.id)+'/cancel',{method:'POST'}" in js
     assert "if(!res.ok)return (v&&v.error)||'HTTP '+res.status;" in js
     assert "r.cancelError=errs[i]?`cancel failed: ${errs[i]}`:'';" in js
     # A failed cancel leaves Stop all clickable so the user can try again.
-    assert "if(!failed.length)return;" in js
+    assert "if(!failed.length){if(!runSetLive())stop.textContent=stop.dataset.idle;return;}" in js
     assert "stop.disabled=false;" in js
 
 
@@ -128,6 +128,18 @@ def test_a_failing_status_poll_is_shown_and_gives_up_after_five_tries(tmp_path: 
     assert "row.lost?['unknown','ng']:rowState(v)" in js
     # A good read resets the count.
     assert "row.pollErrors=0;" in js
+
+
+def test_a_404_poll_ends_the_row_unknown_and_keeps_it_cancellable(tmp_path: Path) -> None:
+    js = _fetch(tmp_path, "/serve.runset.mjs")[0]
+    # A 404 means this server lost track of the job, not that the job failed.
+    assert "if(res.ok&&v&&typeof v==='object'){applyView(row,v);return;}" in js
+    assert "res.status===404" in js
+    assert "row.lost=true;row.terminal=true;" in js
+    assert "this server no longer tracks the job (restart or another replica)" in js
+    # Stop all still cancels a lost row, and stays clickable while one is listed.
+    assert "const rows=set.rows.filter(r=>!r.terminal||r.lost);" in js
+    assert "if(!set.rows.some(r=>r.lost))" in js
 
 
 def test_a_failed_environment_read_keeps_the_previous_list(tmp_path: Path) -> None:
