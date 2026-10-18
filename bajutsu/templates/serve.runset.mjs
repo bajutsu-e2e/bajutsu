@@ -151,7 +151,7 @@ async function tick(set){
   await Promise.all(set.rows.filter(r=>!r.terminal).map(r=>pollRow(set,r)));
   if(set!==runSet)return;
   // A lost row may still run somewhere, so Stop all stays clickable while one is listed.
-  if(set.rows.every(r=>r.terminal)){if(!set.rows.some(r=>r.lost)){const stop=$('#runset-stop');stop.disabled=true;stop.textContent=stop.dataset.idle;}return;}
+  if(set.rows.every(r=>r.terminal)){const stop=$('#runset-stop');stop.textContent=stop.dataset.idle;if(!set.rows.some(r=>r.lost))stop.disabled=true;return;}
   set.timer=setTimeout(()=>tick(set),POLL_MS);
 }
 function closeStream(set){
