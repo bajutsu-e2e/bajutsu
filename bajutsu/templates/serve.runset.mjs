@@ -3,18 +3,22 @@
 // advertises turns the Run form into a fan-out: Run posts the chosen scenarios to /api/run-set, and
 // the panel tracks one row per dispatched job. `local` leaves the single-run form untouched.
 import {
-  $, esc, getJSON, postJSON, setStatus, setBusy, streamJob, cancelJob, appendLine, scnFiles,
+  $, esc, getJSON, postJSON, setStatus, setBusy, streamJob, appendLine, scnFiles, FETCH_ERROR, isFetchError,
 } from './serve.core.mjs';
 import {setReport} from './serve.panels.mjs';
 
 const POLL_MS=2000;
+// Consecutive failed status reads before a row stops polling and reads `unknown`.
+const MAX_POLL_ERRORS=5;
 // The batch entries of the last /api/environments read: run-set refuses a fan-out to a grid.
 let environments=[];
 // The open run-set: its rows, the pending poll timer, and the one row whose log is streaming.
 let runSet=null;
 
 async function loadEnvironments(){
-  const d=await getJSON('/api/environments',{environments:[]});
+  const d=await getJSON('/api/environments',FETCH_ERROR);
+  // A failed read keeps the last list and selection: an empty rebuild would drop a chosen environment.
+  if(isFetchError(d)){const r=$('#env-reason');r.textContent='Could not load environments — Refresh to retry';r.hidden=false;return;}
   environments=(Array.isArray(d.environments)?d.environments:[]).filter(e=>e.kind==='batch');
   const sel=$('#env'),prev=sel.value;
   sel.innerHTML='<option value="local">local</option>'+environments.map(e=>{
@@ -40,8 +44,12 @@ function syncCloudForm(){
   if(reason)sel.value='local';
   const r=$('#env-reason');r.textContent=reason;r.hidden=!reason;
   $('#view-replay').classList.toggle('cloud',!!cloudEnvironment());
+  syncRunSetLive();
   renderScenarioChoices();
 }
+function runSetLive(){return !!runSet&&runSet.rows.some(r=>!r.terminal);}
+// The panel is cloud-only, except while a fan-out still runs: its rows and Stop all stay in view.
+function syncRunSetLive(){$('#view-replay').classList.toggle('runset-live',runSetLive());}
 function renderScenarioChoices(){
   const sel=$('#scns'),kept=new Set([...sel.selectedOptions].map(o=>o.value));
   sel.innerHTML=scnFiles.map(s=>`<option value="${esc(s.file)}"${kept.has(s.file)?' selected':''}>${esc(s.file)}</option>`).join('');
@@ -55,6 +63,8 @@ function chosenScenarios(){
 async function dispatchRunSet(){
   const environment=cloudEnvironment(),scenarios=chosenScenarios(),status=$('#status');
   if(!scenarios.length){setStatus(status,'pick at least one scenario','ng');return;}
+  // A new fan-out replaces the panel, which would orphan the running rows and their Stop all.
+  if(runSetLive()){setStatus(status,'a run-set is still running — Stop all or wait','ng');return;}
   setBusy($('#go'),$('#stop'),true,'Dispatching…');setStatus(status,'','run');
   const d=await postJSON('/api/run-set',{target:$('#target').value,environment,scenarios},{error:'request failed'});
   setBusy($('#go'),$('#stop'),false);
@@ -84,35 +94,52 @@ function openRunSet(rows,asked){
   p.hidden=missed<=0;
   $('#runset-empty').hidden=true;
   const stop=$('#runset-stop');stop.disabled=false;stop.textContent=stop.dataset.idle;
+  syncRunSetLive();
   tick(runSet);
 }
 function closeRunSet(){
   if(!runSet)return;
   clearTimeout(runSet.timer);closeStream(runSet);runSet=null;
+  syncRunSetLive();
 }
 // A worker's failure payload is {ok:false,error} with no status, so it ends a row as `done` does.
 function isTerminal(v){return v.status==='done'||v.ok===false||!!v.error;}
 function rowState(v){
   if(!v)return ['dispatched','run'];
-  if(v.cancelled)return ['cancelled','ng'];
+  if(v.cancelled)return v.status==='done'?['cancelled','ng']:['cancelling…','run'];
   if(v.status==='done')return v.ok?['passed','ok']:['failed','ng'];
   if(v.ok===false||v.error)return ['failed','ng'];
   return [v.notice?'waiting for a worker':'running','run'];
 }
 function renderRow(row){
-  const v=row.view,[label,cls]=rowState(v),el=row.el;
+  const v=row.view,[label,cls]=row.lost?['unknown','ng']:rowState(v),el=row.el;
   const st=el.querySelector('.rs-status');st.textContent=label;st.className='rs-status '+cls;
-  const detail=(v&&(v.error||v.notice))||'',d=el.querySelector('.rs-detail');
+  const detail=row.pollError||row.cancelError||(v&&(v.error||v.notice))||'',d=el.querySelector('.rs-detail');
   d.textContent=detail;d.hidden=!detail;
   el.querySelector('.rs-report').hidden=!(v&&v.runId);
+  syncRunSetLive();
 }
-function applyView(row,v){row.view=v;row.terminal=isTerminal(v);renderRow(row);}
+function applyView(row,v){
+  row.pollErrors=0;row.pollError='';row.lost=false;
+  row.view=v;row.terminal=isTerminal(v);if(row.terminal)row.cancelError='';renderRow(row);
+}
+// A failed read is shown on the row and retried; MAX_POLL_ERRORS in a row end it as `unknown`, so a
+// job the server can no longer report on never reads `running` forever.
+function pollFailed(set,row,why){
+  if(set!==runSet)return;
+  row.pollErrors=(row.pollErrors||0)+1;
+  row.lost=row.pollErrors>=MAX_POLL_ERRORS;row.terminal=row.lost;
+  row.pollError=`status check failed: ${why}${row.lost?'':' — retrying'}`;
+  renderRow(row);
+}
 async function pollRow(set,row){
   let res,v;
   try{res=await fetch('/api/jobs/'+encodeURIComponent(row.id)+'?lines=0');v=await res.json();}
-  catch(e){return;}  // a dropped request leaves the row as it was; the next tick asks again
-  // A 404 is final (the job is gone); any other refusal may be passing, so the row keeps polling.
-  if((res.ok||res.status===404)&&set===runSet&&v&&typeof v==='object')applyView(row,v);
+  catch(e){pollFailed(set,row,(e&&e.message)||'network error');return;}
+  if(set!==runSet)return;
+  // A 404 is final (the job is gone): its {error} body ends the row like any failure payload.
+  if((res.ok||res.status===404)&&v&&typeof v==='object'){applyView(row,v);return;}
+  pollFailed(set,row,'HTTP '+res.status);
 }
 async function tick(set){
   await Promise.all(set.rows.filter(r=>!r.terminal).map(r=>pollRow(set,r)));
@@ -134,7 +161,10 @@ function toggleRow(set,row){
   if(wasOpen)return;
   const log=row.el.querySelector('.rs-log');log.textContent='';log.hidden=false;
   row.el.querySelector('.rs-toggle').setAttribute('aria-expanded','true');
-  set.open={row,es:streamJob(row.id,line=>appendLine(log,line),v=>{if(set===runSet)applyView(row,v);})};
+  const es=streamJob(row.id,line=>appendLine(log,line),v=>{if(set===runSet)applyView(row,v);});
+  // Every (re)connect replays the log from its first line, so a reconnect starts the pane over.
+  es.addEventListener('open',()=>{log.textContent='';});
+  set.open={row,es};
 }
 function onRowClick(e){
   const set=runSet,li=e.target.closest('li[data-job]');
@@ -143,9 +173,27 @@ function onRowClick(e){
   if(e.target.closest('.rs-toggle'))toggleRow(set,row);
   else if(e.target.closest('.rs-report')&&row.view&&row.view.runId)setReport(row.view.runId,row.view.ok);
 }
-function stopAll(){
+// The cancel's refusal, or '' when it was accepted. The shared cancel helper swallows a refusal, so
+// Stop all posts its own and reports each failure on its row.
+async function cancelRow(row){
+  let res,v=null;
+  try{res=await fetch('/api/jobs/'+encodeURIComponent(row.id)+'/cancel',{method:'POST'});}
+  catch(e){return (e&&e.message)||'network error';}
+  try{v=await res.json();}catch(e){}
+  if(!res.ok)return (v&&v.error)||'HTTP '+res.status;
+  return v&&v.error?String(v.error):'';
+}
+async function stopAll(){
   const set=runSet;if(!set)return;
-  set.rows.filter(r=>!r.terminal).forEach(r=>cancelJob(r.id,$('#runset-stop')));
+  const stop=$('#runset-stop');stop.disabled=true;stop.textContent='Stopping…';
+  const rows=set.rows.filter(r=>!r.terminal);
+  const errs=await Promise.all(rows.map(cancelRow));
+  if(set!==runSet)return;
+  rows.forEach((r,i)=>{r.cancelError=errs[i]?`cancel failed: ${errs[i]}`:'';renderRow(r);});
+  const failed=rows.filter((r,i)=>errs[i]);
+  if(!failed.length)return;
+  setStatus($('#status'),`Stop all: ${failed.length} of ${rows.length} cancel${rows.length===1?'':'s'} failed — try again`,'ng');
+  stop.disabled=false;stop.textContent=stop.dataset.idle;
 }
 
 function initRunSet(){

@@ -8,6 +8,7 @@ endpoints the design names — run-set with explicit names, and a status poll wi
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -105,6 +106,77 @@ def test_rows_poll_the_job_without_its_log_and_stream_one_row_at_a_time(tmp_path
     assert "closeStream(set);" in js
 
 
-def test_stop_all_cancels_every_unfinished_row(tmp_path: Path) -> None:
+def test_stop_all_cancels_every_unfinished_row_and_reports_each_failure(tmp_path: Path) -> None:
     js = _fetch(tmp_path, "/serve.runset.mjs")[0]
-    assert "set.rows.filter(r=>!r.terminal).forEach(r=>cancelJob(" in js
+    # cancelJob swallows a refused cancel, so Stop all posts its own and reads each answer.
+    assert "cancelJob" not in js
+    assert "const rows=set.rows.filter(r=>!r.terminal);" in js
+    assert "'/api/jobs/'+encodeURIComponent(row.id)+'/cancel',{method:'POST'}" in js
+    assert "if(!res.ok)return (v&&v.error)||'HTTP '+res.status;" in js
+    assert "r.cancelError=errs[i]?`cancel failed: ${errs[i]}`:'';" in js
+    # A failed cancel leaves Stop all clickable so the user can try again.
+    assert "if(!failed.length)return;" in js
+    assert "stop.disabled=false;" in js
+
+
+def test_a_failing_status_poll_is_shown_and_gives_up_after_five_tries(tmp_path: Path) -> None:
+    js = _fetch(tmp_path, "/serve.runset.mjs")[0]
+    assert "const MAX_POLL_ERRORS=5;" in js
+    assert "pollFailed(set,row,'HTTP '+res.status);" in js
+    assert "row.lost=row.pollErrors>=MAX_POLL_ERRORS;" in js
+    assert "`status check failed: ${why}${row.lost?'':' — retrying'}`" in js
+    assert "row.lost?['unknown','ng']:rowState(v)" in js
+    # A good read resets the count.
+    assert "row.pollErrors=0;" in js
+
+
+def test_a_failed_environment_read_keeps_the_previous_list(tmp_path: Path) -> None:
+    js = _fetch(tmp_path, "/serve.runset.mjs")[0]
+    assert "getJSON('/api/environments',FETCH_ERROR)" in js
+    assert "Could not load environments — Refresh to retry" in js
+
+
+def test_a_second_fan_out_waits_for_the_first(tmp_path: Path) -> None:
+    js = _fetch(tmp_path, "/serve.runset.mjs")[0]
+    assert "a run-set is still running — Stop all or wait" in js
+
+
+def test_a_reconnecting_row_stream_clears_its_log(tmp_path: Path) -> None:
+    # The stream replays the log from line 1 on every (re)connect, so lines must not double.
+    js = _fetch(tmp_path, "/serve.runset.mjs")[0]
+    assert "es.addEventListener('open',()=>{log.textContent='';});" in js
+
+
+def test_a_cancelled_row_reads_cancelling_until_it_finishes(tmp_path: Path) -> None:
+    js = _fetch(tmp_path, "/serve.runset.mjs")[0]
+    assert "if(v.cancelled)return v.status==='done'?['cancelled','ng']:['cancelling…','run'];" in js
+
+
+def test_a_live_run_set_stays_visible_in_local_mode(tmp_path: Path) -> None:
+    html, js = _fetch(tmp_path, "/", "/serve.runset.mjs")
+    # Switching Environment back to local must not hide a fan-out still running, nor its Stop all.
+    assert "#view-replay.runset-live #runset{display:flex!important}" in html
+    assert "return !!runSet&&runSet.rows.some(r=>!r.terminal);" in js
+    assert "$('#view-replay').classList.toggle('runset-live',runSetLive());" in js
+
+
+def test_job_poll_without_log_over_http(tmp_path: Path) -> None:
+    scn_dir, cfg, runs = project(tmp_path)
+    state = srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+    job = srv.Job(id="j", cmd=[])
+    job.lines.append("step ok\n")
+    state.jobs["j"] = job
+    server, port = _serve(state)
+    try:
+        polled = json.loads(_get(port, "/api/jobs/j?lines=0")[1])
+        full = json.loads(_get(port, "/api/jobs/j")[1])
+    finally:
+        server.shutdown()
+        server.server_close()
+    assert "lines" not in polled and polled["id"] == "j"
+    assert "lines" in full
+
+
+def test_environments_route_is_empty_without_a_repository(tmp_path: Path) -> None:
+    body = _fetch(tmp_path, "/api/environments")[0]
+    assert json.loads(body) == {"environments": []}

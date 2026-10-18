@@ -648,3 +648,4 @@ def test_serve_registers_no_batch_provider_even_with_a_project_named(
 def test_run_set_requires_the_same_role_as_run() -> None:
     # A fan-out launches many runs; a viewer must not be able to start one by another door.
     assert ops.required_role("POST", "/api/run-set") == ops.required_role("POST", "/api/run")
+    assert ops.required_role("POST", "/api/run-set") == "editor"

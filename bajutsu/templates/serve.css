@@ -305,6 +305,8 @@ pre.out:empty::before{content:attr(data-empty);color:var(--mut)}
 /* renderGradeBadge rewrites the badge's className, so it is hidden by id rather than by class. */
 #view-replay.cloud .localonly,#view-replay.cloud #scn-grade{display:none!important}
 #view-replay:not(.cloud) .cloudonly{display:none!important}
+/* A fan-out still running keeps its panel and Stop all in view after a switch back to local. */
+#view-replay.runset-live #runset{display:flex!important}
 .envhead{margin:.6rem 0 .2rem}
 .allscn{display:flex;align-items:center;gap:.4rem;margin:.2rem 0 .3rem;color:var(--fg)}
 #scns:disabled{opacity:.5}

@@ -977,3 +977,16 @@ def test_job_view_drops_lines_on_request(tmp_path: Path) -> None:
     with_lines, _ = ops.job_view(state, "j")
     without, code = ops.job_view(state, "j", include_lines=False)
     assert code == 200 and "lines" in with_lines and "lines" not in without
+
+
+def test_job_route_honours_lines_zero_query(tmp_path: Path) -> None:
+    state = _state(tmp_path)
+    job = srv.Job(id="j", cmd=[])
+    job.lines.append("step ok\n")
+    state.jobs["j"] = job
+    client = _client(state)
+    polled = client.get("/api/jobs/j?lines=0")
+    assert polled.status_code == 200
+    assert "lines" not in polled.json() and polled.json()["id"] == "j"
+    full = client.get("/api/jobs/j")
+    assert full.status_code == 200 and "lines" in full.json()
