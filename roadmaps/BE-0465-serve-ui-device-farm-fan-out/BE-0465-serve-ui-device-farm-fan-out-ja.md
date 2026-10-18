@@ -9,7 +9,7 @@
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0465") |
-| 実装 PR | _pending_ |
+| 実装 PR | [#2215](https://github.com/bajutsu-e2e/bajutsu/pull/2215) |
 | トピック | Device-cloud execution |
 <!-- /BE-METADATA -->
 
@@ -233,14 +233,13 @@ History の一覧に残ります。サーバー側に run-set の記録を持た
 
 ログ：
 
-- _pending_（ユニット 1〜4）— `GET /api/environments` は、稼働中の worker が広告するバッチ環境とグリッド環境を、
+- [#2215](https://github.com/bajutsu-e2e/bajutsu/pull/2215)（ユニット 1〜4）— `GET /api/environments` は、稼働中の worker が広告するバッチ環境とグリッド環境を、
   稼働中の worker 数とともに返します。ARN や認証情報は含みません。`GET /api/jobs/{id}?lines=0` はログのバッファを
   省きます。Replay タブには Environment セレクタとデバイスクラウド用のフォームが加わり、Run は選んだシナリオを
   `POST /api/run-set` へ送ります。run-set パネルはジョブごとに 1 行で追跡します。
   `POST /api/run-set` は `POST /api/run` と同じく editor 権限を要求するようになりました。それまでは、サインイン済みの
   どのロールでも呼べました。dogfood のシナリオ `replay-device-cloud.yaml` は、`zz-fanout-android` ターゲットを持つ
   内側の設定に対して動きます。`docs/ja/web-ui.md` と `docs/ja/devicefarm.md` が流れを説明します。
-  PR へのリンクは未定です。
 
 ## 参考
 
