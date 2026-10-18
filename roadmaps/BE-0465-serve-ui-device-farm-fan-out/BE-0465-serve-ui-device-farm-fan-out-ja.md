@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0465](BE-0465-serve-ui-device-farm-fan-out-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
-| 状態 | **承認済み** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0465") |
+| 実装 PR | _pending_ |
 | トピック | Device-cloud execution |
 <!-- /BE-METADATA -->
 
@@ -225,10 +226,21 @@ History の一覧に残ります。サーバー側に run-set の記録を持た
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] ユニット 1 — 環境の一覧（`GET /api/environments`）
-- [ ] ユニット 2 — デバイスクラウドの環境での Replay のフォーム
-- [ ] ユニット 3 — run-set パネル
-- [ ] ユニット 4 — テストとドキュメント
+- [x] ユニット 1 — 環境の一覧（`GET /api/environments`）
+- [x] ユニット 2 — デバイスクラウドの環境での Replay のフォーム
+- [x] ユニット 3 — run-set パネル
+- [x] ユニット 4 — テストとドキュメント
+
+ログ：
+
+- _pending_（ユニット 1〜4）— `GET /api/environments` は、稼働中の worker が広告するバッチ環境とグリッド環境を、
+  稼働中の worker 数とともに返します。ARN や認証情報は含みません。`GET /api/jobs/{id}?lines=0` はログのバッファを
+  省きます。Replay タブには Environment セレクタとデバイスクラウド用のフォームが加わり、Run は選んだシナリオを
+  `POST /api/run-set` へ送ります。run-set パネルはジョブごとに 1 行で追跡します。
+  `POST /api/run-set` は `POST /api/run` と同じく editor 権限を要求するようになりました。それまでは、サインイン済みの
+  どのロールでも呼べました。dogfood のシナリオ `replay-device-cloud.yaml` は、`zz-fanout-android` ターゲットを持つ
+  内側の設定に対して動きます。`docs/ja/web-ui.md` と `docs/ja/devicefarm.md` が流れを説明します。
+  PR へのリンクは未定です。
 
 ## 参考
 

@@ -319,7 +319,14 @@ and per-org caps count queued jobs too. Those caps may still cut a large fan-out
 
 ### Fanning a target out
 
-A `POST /api/run-set` request fans a target out. Its body names the `target` and the batch provider
+The Replay tab dispatches a fan-out from the browser
+([web UI](web-ui.md#replay--run-a-scenario-and-read-its-report)). Choose a device-cloud environment,
+pick scenarios, and press Run. The tab lists the environments that a live worker advertises.
+It reads them from `GET /api/environments`. The response gives each environment's `name`, its `kind`
+(`batch` or `grid`), and its `liveWorkers` count. It carries no ARN or credential.
+
+A `POST /api/run-set` request fans a target out. It needs the editor role, like `POST /api/run`.
+Its body names the `target` and the batch provider
 as `environment` (today `devicefarm`). An optional `scenarios` subset narrows the run:
 
 ```json
