@@ -888,7 +888,7 @@ def _valid_step_id(step_id: str) -> bool:
 
 
 def list_environments(state: ServeState) -> tuple[Any, int]:
-    """The environments a live worker advertises, for the run-set panel's picker (BE-0465).
+    """The environments a live worker advertises, for the Replay tab's Environment selector (BE-0465).
 
     Returns only names, kinds and live-worker counts, never a provider ARN or credential. `local`
     is never listed: it needs no worker. A name that is neither a batch provider nor the Appium
