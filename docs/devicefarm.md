@@ -290,6 +290,9 @@ filter. It needs no device-pool ARN.
 > worker downloads the binary to the same `subject.path` inside the job's directory. It then checks the
 > file's digest against the one the job names. Such an `subject.path` must name a file inside the config's directory, and the server
 > needs an object store. Otherwise `POST /api/run-set` returns a 400 error.
+>
+> The worker sends the binary as the run's app upload and also keeps it in the package. The run on
+> the device installs the file that `app.path` names, as a local run does.
 
 ### The job budget
 

@@ -260,12 +260,13 @@ def test_the_package_holds_the_source_parts_and_the_bundle(tmp_path: Path) -> No
     names = set(transfer.package().namelist())
     assert {"pyproject.toml", "tests/test_x.py", "bajutsu/__init__.py"} <= names
     assert {"bundle/bajutsu.config.yaml", "bundle/scenarios/one.yaml"} <= names
-    # Nothing outside the three source parts, no earlier run, and no second copy of the binary.
+    # Nothing outside the three source parts, and no earlier run.
     assert "README.md" not in names
     assert not any(n.startswith("bundle/runs/") for n in names)
-    assert "bundle/app.apk" not in names
-    # The binary went up as the app upload instead.
+    # The binary goes up as the app upload and stays in the package: the on-device run checks and
+    # installs `app.path` like a local run.
     assert any(url.endswith("app.apk") for url in transfer.uploads)
+    assert "bundle/app.apk" in names
     # The test spec runs the scenario from inside the bundle.
     (spec,) = (v for k, v in transfer.uploads.items() if k.endswith("testspec.yml"))
     assert "--scenario bundle/scenarios/one.yaml" in spec.decode()
