@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0465](BE-0465-serve-ui-device-farm-fan-out-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
-| 状態 | **承認済み** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0465") |
+| 実装 PR | [#2215](https://github.com/bajutsu-e2e/bajutsu/pull/2215) |
 | トピック | Device-cloud execution |
 <!-- /BE-METADATA -->
 
@@ -165,8 +166,12 @@ History の一覧に残ります。サーバー側に run-set の記録を持た
 
 ### 範囲の境界
 
-- **投入の仕組みは変えません。** `POST /api/run-set` とその拒否条件、worker、Device Farm の
-  クライアントは現状のままです。
+- **投入の仕組みは、1 点を除いて変えません。** worker と Device Farm のクライアントは現状のままです。
+  `POST /api/run-set` のリクエスト本文も変えません。ただし、本項目の検証中に見つかった問題のため、ジョブに 1 つ
+  修正を加えました。経緯はログに記録しています。サーバのディスク上の設定ファイルから作ったジョブは、ファイルを
+  そのマシン上のパスで指していたため、そのマシンに固定されていました。Device Farm の worker はこの固定を
+  受けられないので、本項目の UI から始めた fan-out は実行されないままでした。現在のサーバは、設定ファイルの
+  ディレクトリをバンドルとして同梱し、バンドルで運べない設定ファイルは拒否します。
 - **デバイスのフィルタは加えません。** fan-out は引き続き、プラットフォームだけで1 run あたり1台を
   確保します。機種や OS バージョンの指定は範囲外です。
 - **Replay の選択欄に grid は出しません。** 選択欄に並ぶのは `batch` の要素で、これは `BATCH_PROVIDERS`
@@ -225,10 +230,37 @@ History の一覧に残ります。サーバー側に run-set の記録を持た
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] ユニット 1 — 環境の一覧（`GET /api/environments`）
-- [ ] ユニット 2 — デバイスクラウドの環境での Replay のフォーム
-- [ ] ユニット 3 — run-set パネル
-- [ ] ユニット 4 — テストとドキュメント
+- [x] ユニット 1 — 環境の一覧（`GET /api/environments`）
+- [x] ユニット 2 — デバイスクラウドの環境での Replay のフォーム
+- [x] ユニット 3 — run-set パネル
+- [x] ユニット 4 — テストとドキュメント
+
+ログ：
+
+- [#2215](https://github.com/bajutsu-e2e/bajutsu/pull/2215)（ユニット 1〜4）— `GET /api/environments` は、稼働中の worker が広告するバッチ環境とグリッド環境を、
+  稼働中の worker 数とともに返します。ARN や認証情報は含みません。`GET /api/jobs/{id}?lines=0` はログのバッファを
+  省きます。Replay タブには Environment セレクタとデバイスクラウド用のフォームが加わり、Run は選んだシナリオを
+  `POST /api/run-set` へ送ります。run-set パネルはジョブごとに 1 行で追跡します。
+  `POST /api/run-set` は `POST /api/run` と同じく editor 権限を要求するようになりました。それまでは、サインイン済みの
+  どのロールでも呼べました。dogfood のシナリオ `replay-device-cloud.yaml` は、`zz-fanout-android` ターゲットを持つ
+  内側の設定に対して動きます。`docs/ja/web-ui.md` と `docs/ja/devicefarm.md` が流れを説明します。
+- [#2215](https://github.com/bajutsu-e2e/bajutsu/pull/2215)（投入の修正）— ローカルの `make serve` で手動検証したところ、
+  fan-out のジョブがすべてキューに残ったままでした。ジョブは、サーバのディスク上にある設定ファイルの
+  ディレクトリを指していました。そのためキューがジョブに `machine:<id>` を付けました（BE-0449）。Device Farm の
+  worker は、この machine id を受け付けません。現在のサーバは、このディレクトリを zip にしてオブジェクトストアに保存します。Device Farm の
+  パッケージが除くものは、ここでも除きます。各ジョブはこのアーカイブをバンドルとして運びます。設定ファイルは
+  `bajutsu.config.yaml` として入り、シナリオの fixture、コンポーネント、バイナリも一緒に届きます。
+  サーバがオブジェクトストアを持たないとき、`POST /api/run-set` はリクエストを拒否します。アーカイブで運べない
+  設定のパスも拒否します。
+- [#2215](https://github.com/bajutsu-e2e/bajutsu/pull/2215)（パッケージの修正）— worker が組んだパッケージを
+  初めて実際の Device Farm で動かしたところ、Bajutsu のインストールに失敗しました。パッケージがソースツリーから
+  取り込むのは、`pyproject.toml`、`tests/`、`bajutsu/` の 3 つでした（BE-0448）。hatchling は、`pyproject.toml`
+  が指定する readme とライセンスファイルがないとビルドしません。現在のパッケージは、`DESIGN.md`、`LICENSE`、
+  `NOTICE` も取り込みます。
+- [#2215](https://github.com/bajutsu-e2e/bajutsu/pull/2215)（アプリケーションの修正）— Bajutsu のインストールが
+  通ると、端末上の実行が `app.path not found` で止まりました。端末上の実行は、ローカルの実行と同じく
+  `app.path` が指すバイナリをインストールします。worker は、このバイナリをアプリのアップロードでも送るため、
+  パッケージから除いていました（BE-0448）。現在のパッケージは、バイナリも含みます。
 
 ## 参考
 

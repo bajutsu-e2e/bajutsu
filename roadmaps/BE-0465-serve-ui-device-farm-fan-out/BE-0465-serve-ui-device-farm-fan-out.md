@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0465](BE-0465-serve-ui-device-farm-fan-out.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Approved** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0465") |
+| Implementing PR | [#2215](https://github.com/bajutsu-e2e/bajutsu/pull/2215) |
 | Topic | Device-cloud execution |
 <!-- /BE-METADATA -->
 
@@ -164,8 +165,12 @@ reason.
 
 ### Boundaries
 
-- **No change to dispatch.** `POST /api/run-set`, its refusals, the worker, and the Device Farm
-  client stay as they are.
+- **No change to dispatch, with one exception.** The worker and the Device Farm client stay as they
+  are. `POST /api/run-set` keeps its request body. Its jobs needed one fix, found while verifying
+  this item, and the Log records it. A job off a config on the server's disk named its files by
+  their paths there. That pinned the job to the server's machine. A Device Farm worker never takes
+  such a pin. The fan-out this item's UI starts thus never ran. The server now ships the config's
+  directory as a bundle. It refuses a config the bundle cannot carry.
 - **No device filters.** The fan-out keeps reserving one device per run by platform. Choosing a
   model or an operating system version stays out of scope.
 - **No grid in the Replay selector.** The selector lists the `batch` entries, which follow
@@ -225,10 +230,39 @@ reason.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — Environment listing (`GET /api/environments`)
-- [ ] Unit 2 — Replay form in a device-cloud environment
-- [ ] Unit 3 — Run-set panel
-- [ ] Unit 4 — Tests and documentation
+- [x] Unit 1 — Environment listing (`GET /api/environments`)
+- [x] Unit 2 — Replay form in a device-cloud environment
+- [x] Unit 3 — Run-set panel
+- [x] Unit 4 — Tests and documentation
+
+Log:
+
+- [#2215](https://github.com/bajutsu-e2e/bajutsu/pull/2215) (Units 1–4) — `GET /api/environments` lists the batch and grid environments.
+  A live worker must advertise one for it to appear. The response gives each a live worker count and carries no ARN or credential.
+  `GET /api/jobs/{id}?lines=0` omits the log buffer. The Replay tab gains the Environment selector
+  and the device-cloud form, and Run posts the chosen scenarios to `POST /api/run-set`.
+  The run-set panel tracks one row per job.
+  `POST /api/run-set` now requires the editor role, like `POST /api/run`. Before, any signed-in
+  role could call it. The `replay-device-cloud.yaml` dogfood scenario runs against an inner config
+  with a `zz-fanout-android` target. The web UI and Device Farm pages describe the flow, in both
+  languages.
+- [#2215](https://github.com/bajutsu-e2e/bajutsu/pull/2215) (dispatch fix) — A manual run against a
+  local `make serve` left every fan-out job queued. Such a job named the config's directory on the
+  server's disk. The queue thus pinned the job with `machine:<id>` (BE-0449). A Device Farm worker
+  refuses that pin. The server now zips that directory into its object store. The archive leaves
+  out what a Device Farm package leaves out. Each job carries the archive as its bundle. The bundle
+  holds the config as `bajutsu.config.yaml`. A scenario's fixtures, components, and binary travel
+  with it. `POST /api/run-set` refuses the request when the server has no object store. It also refuses
+  a config path the archive cannot carry.
+- [#2215](https://github.com/bajutsu-e2e/bajutsu/pull/2215) (packaging fix) — A worker-built package
+  ran on real Device Farm devices for the first time. Bajutsu did not install there. The package took `pyproject.toml`,
+  `tests/`, and `bajutsu/` from the source tree (BE-0448). Hatchling refuses to build without the
+  readme and license files `pyproject.toml` names. The package now carries `DESIGN.md`, `LICENSE`,
+  and `NOTICE` too.
+- [#2215](https://github.com/bajutsu-e2e/bajutsu/pull/2215) (application fix) — With Bajutsu
+  installed, the on-device run stopped at `app.path not found`. The run installs the binary that
+  `app.path` names, as a local run does. The worker had left that binary out of the package, since it
+  also goes up as the app upload (BE-0448). The package now keeps the binary.
 
 ## References
 

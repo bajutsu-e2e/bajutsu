@@ -8,10 +8,14 @@ them (no thread, no cloud).
 
 from __future__ import annotations
 
+import hashlib
+import io
+import zipfile
 from pathlib import Path
 
 import pytest
 from _shared import _post, _serve, queue_repository
+from conftest import FakeObjectStore
 
 from bajutsu import serve as srv
 from bajutsu.serve.operations.dispatch import start_run_set
@@ -35,16 +39,16 @@ def _android_batch_project(tmp_path: Path, *, scenarios: list[str]) -> tuple[Pat
     body = "- name: a\n  steps:\n    - tap: { id: x }\n"
     for name in scenarios:
         (scn_dir / name).write_text(body, encoding="utf-8")
-    apk = tmp_path / "app.apk"
-    apk.write_text("APK", encoding="utf-8")
+    (tmp_path / "app.apk").write_text("APK", encoding="utf-8")
     cfg = tmp_path / "bajutsu.config.yaml"
+    # Relative paths, as the config's directory travels to the worker as a bundle (BE-0465).
     cfg.write_text(
         (
             "targets:\n"
             "  demo:\n"
             "    platform: android\n"
-            f"    app: {{id: com.example.demo, path: {apk}}}\n"
-            f"    paths: {{scenarios: {scn_dir}}}\n"
+            "    app: {id: com.example.demo, path: app.apk}\n"
+            "    paths: {scenarios: scenarios}\n"
         ),
         encoding="utf-8",
     )
@@ -65,6 +69,7 @@ def _state(tmp_path: Path, cfg: Path, scn_dir: Path) -> tuple[ServeState, _Recor
         executor=executor,
         repository=queue_repository(),
     )
+    state.object_store = FakeObjectStore()  # the bundle of the config's directory lands here
     return state, executor
 
 
@@ -95,7 +100,7 @@ def test_fan_out_registers_one_batch_job_per_scenario(tmp_path: Path) -> None:
         assert job.batch.target == "demo"
         assert job.batch.platform == "android"
         assert job.batch.config == "bajutsu.config.yaml"
-        assert job.batch.app_path == str(tmp_path / "app.apk")
+        assert job.batch.app_path == "app.apk"
 
 
 def test_fan_out_honours_an_explicit_scenario_subset(tmp_path: Path) -> None:
@@ -286,6 +291,7 @@ def test_fan_out_returns_429_when_cap_rejects_the_first_job(tmp_path: Path) -> N
         executor=_RecordingExecutor(),
         repository=queue_repository(),
     )
+    state.object_store = FakeObjectStore()
     with unittest.mock.patch.object(state, "try_register", return_value=None):
         payload, status = start_run_set(state, _DF)
 
@@ -310,17 +316,11 @@ def test_fan_out_ships_scenarios_that_travel_as_materials(tmp_path: Path) -> Non
     # On the server-backed scenario store, runnable.arg is already workspace-relative and the
     # scenario text travels as materials (BE-0448). The job ships it with the config, and the
     # request names both by their place in the worker's workspace, which is the bundle it packages.
-    from conftest import FakeObjectStore
-
     from bajutsu.serve.scenarios import Runnable
 
-    scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml"])
     # A worker without the project receives the binary by signed URL, so the app.path names a file
     # inside the config's directory and the server has an object store to deliver it through.
-    cfg.write_text(
-        cfg.read_text(encoding="utf-8").replace(str(tmp_path / "app.apk"), "app.apk"),
-        encoding="utf-8",
-    )
+    scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml"])
 
     class _MaterialsScope:
         """A fake scope whose runnable carries materials (server-backed scenario store)."""
@@ -377,6 +377,7 @@ def test_run_set_endpoint_is_wired(tmp_path: Path) -> None:
         executor=_RecordingExecutor(),
         repository=queue_repository(),
     )
+    state.object_store = FakeObjectStore()
     server, port = _serve(state)
     try:
         status, payload = _post(port, "/api/run-set", _DF)
@@ -385,3 +386,167 @@ def test_run_set_endpoint_is_wired(tmp_path: Path) -> None:
     finally:
         server.shutdown()
         server.server_close()
+
+
+def _local_bundle_project(tmp_path: Path, *, config_name: str = "bajutsu.config.yaml") -> Path:
+    """A config directory as a developer keeps it: relative paths, a fixture beside the scenarios,
+    and the scratch output (`runs/`, `tmp/`) a Device Farm package leaves out."""
+    (tmp_path / "scenarios" / "fixtures").mkdir(parents=True)
+    for name in ("one.yaml", "two.yaml"):
+        (tmp_path / "scenarios" / name).write_text(
+            "- name: a\n  steps:\n    - tap: { id: x }\n", encoding="utf-8"
+        )
+    (tmp_path / "scenarios" / "fixtures" / "photo.png").write_bytes(b"PNG")
+    (tmp_path / "build").mkdir()
+    (tmp_path / "build" / "app.apk").write_bytes(b"APK")
+    (tmp_path / "runs" / "old").mkdir(parents=True)
+    (tmp_path / "runs" / "old" / "manifest.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "tmp").mkdir()
+    (tmp_path / "tmp" / "app.apk").write_bytes(b"APK")
+    cfg = tmp_path / config_name
+    cfg.write_text(
+        "targets:\n"
+        "  demo:\n"
+        "    platform: android\n"
+        "    app: {id: com.example.demo, path: build/app.apk}\n"
+        "    paths: {scenarios: scenarios}\n",
+        encoding="utf-8",
+    )
+    return cfg
+
+
+def _queued_state(tmp_path: Path, cfg: Path) -> ServeState:
+    """A state whose jobs go through the real queue executor of a server on machine ``m1``."""
+    from bajutsu.serve.server.db_executor import DbQueueExecutor
+
+    repository = queue_repository()
+    state = ServeState(
+        config=cfg,
+        runs_dir=tmp_path / "runs",
+        cwd=tmp_path,
+        executor=DbQueueExecutor(repository, machine_id="m1"),
+        repository=repository,
+    )
+    state.object_store = FakeObjectStore()
+    return state
+
+
+def _stored_zip(state: ServeState, job: Job) -> zipfile.ZipFile:
+    from bajutsu.serve.server.object_store import upload_store_key
+
+    assert job.bundle is not None and state.object_store is not None
+    data = state.object_store.get_bytes(upload_store_key("", job.org or "", job.bundle["id"]))
+    assert data is not None
+    assert hashlib.sha256(data).hexdigest() == job.bundle["id"]
+    return zipfile.ZipFile(io.BytesIO(data))
+
+
+def test_fan_out_ships_a_local_config_directory_as_one_bundle(tmp_path: Path) -> None:
+    # A config on the server's disk travels as a bundle of its whole directory, so a Device Farm
+    # worker on any machine can lease the job (no `machine:` pin) and the scenario still finds the
+    # files it references (BE-0465).
+    from bajutsu.serve.server.worker_job import job_spec
+
+    state = _queued_state(tmp_path, _local_bundle_project(tmp_path))
+
+    payload, status = start_run_set(state, _DF)
+
+    assert status == 200, payload
+    jobs = [state.jobs[i] for i in payload["jobIds"]]
+    assert len(jobs) == 2
+    bundle = jobs[0].bundle
+    assert bundle is not None
+    assert all(job.bundle == bundle for job in jobs)  # one zip per fan-out, shared by its jobs
+    assert bundle["artifacts"] is None and bundle["scenarios_filename"] is None
+    names = set(_stored_zip(state, jobs[0]).namelist())
+    assert {
+        "bajutsu.config.yaml",
+        "scenarios/one.yaml",
+        "scenarios/fixtures/photo.png",
+        "build/app.apk",
+    } <= names
+    assert not any(n.startswith(("runs/", "tmp/")) for n in names)
+    for job in jobs:
+        assert job.materials == {}
+        assert job.batch_app is None  # the bundle carries the binary
+        assert job_spec(job)["cwd"] is None
+        assert job.capabilities == ["environment:devicefarm"]
+
+
+def test_fan_out_names_a_bundled_config_by_the_name_a_worker_finds(tmp_path: Path) -> None:
+    # A worker finds a bundle's config by its conventional name, so a config saved under another
+    # name travels as bajutsu.config.yaml and the request points there.
+    cfg = _local_bundle_project(tmp_path, config_name="df.config.yaml")
+    state = _queued_state(tmp_path, cfg)
+
+    payload, status = start_run_set(state, _DF)
+
+    assert status == 200, payload
+    job = state.jobs[payload["jobIds"][0]]
+    assert job.batch is not None and job.batch.config == "bajutsu.config.yaml"
+    archive = _stored_zip(state, job)
+    assert archive.read("bajutsu.config.yaml").decode("utf-8") == cfg.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "expected"),
+    [
+        ("build/app.apk", "tmp/app.apk", "tmp/app.apk"),
+        ("build/app.apk", "build/missing.apk", "build/missing.apk"),
+        # An absolute path works on this machine and nowhere the bundle lands.
+        ("{scenarios: scenarios}", "{scenarios: ABS/scenarios}", "demo"),
+    ],
+)
+def test_fan_out_refuses_a_local_config_its_bundle_cannot_carry(
+    tmp_path: Path, old: str, new: str, expected: str
+) -> None:
+    # The worker would only find out on the device cloud, after the upload; refuse at the request.
+    cfg = _local_bundle_project(tmp_path)
+    edited = cfg.read_text(encoding="utf-8").replace(old, new.replace("ABS", str(tmp_path)))
+    cfg.write_text(edited, encoding="utf-8")
+    state = _queued_state(tmp_path, cfg)
+
+    payload, status = start_run_set(state, {**_DF, "scenarios": ["one.yaml"]})
+
+    assert status == 400, payload
+    assert expected in payload["error"]
+    assert state.jobs == {}
+
+
+def test_fan_out_of_a_local_config_needs_an_object_store(tmp_path: Path) -> None:
+    state = _queued_state(tmp_path, _local_bundle_project(tmp_path))
+    state.object_store = None
+
+    payload, status = start_run_set(state, _DF)
+
+    assert status == 400
+    assert "object store" in payload["error"]
+    assert state.jobs == {}
+
+
+def test_fan_out_of_a_local_config_reports_a_store_that_cannot_take_the_bundle(
+    tmp_path: Path,
+) -> None:
+    state = _queued_state(tmp_path, _local_bundle_project(tmp_path))
+    assert isinstance(state.object_store, FakeObjectStore)
+    state.object_store.fail_with = OSError("bucket unreachable")
+
+    payload, status = start_run_set(state, _DF)
+
+    assert status == 502
+    assert "bucket unreachable" in payload["error"]
+    assert state.jobs == {}
+
+
+def test_fan_out_needs_the_config_at_the_root_of_its_bundle(tmp_path: Path) -> None:
+    # The archive's root is the server's directory; a config below it would travel where a worker
+    # never looks for one.
+    cfg = _local_bundle_project(tmp_path)
+    (tmp_path / "conf").mkdir()
+    state = _queued_state(tmp_path, cfg.rename(tmp_path / "conf" / cfg.name))
+
+    payload, status = start_run_set(state, _DF)
+
+    assert status == 400, payload
+    assert "not at the root of its directory" in payload["error"]
+    assert state.jobs == {}

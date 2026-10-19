@@ -117,6 +117,55 @@ def test_heartbeat_keeps_a_busy_worker_live_for_routability(
     assert repo.metrics_snapshot().unroutable_queued == 0
 
 
+def _age_all_workers(repo: SqlRepository) -> None:
+    from sqlalchemy import update
+
+    with repo._engine.connect() as conn:
+        stale = datetime.now(UTC) - timedelta(hours=1)
+        conn.execute(update(WorkerRecord).values(last_seen=stale))
+        conn.commit()
+
+
+def test_live_environments_counts_live_workers_per_name(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    repo = _repo(serve_engine)
+    repo.register_worker("df1", ["environment:devicefarm", "platform:android"])
+    repo.register_worker("df2", ["environment:devicefarm"])
+    repo.register_worker("grid", ["environment:appium"])
+    repo.register_worker("plain", ["platform:ios"])
+    assert repo.live_environments() == {"devicefarm": 2, "appium": 1}
+
+
+def test_live_environments_ignores_an_aged_out_worker(serve_engine: Callable[..., Engine]) -> None:
+    repo = _repo(serve_engine)
+    repo.register_worker("old", ["environment:devicefarm"])
+    _age_all_workers(repo)
+    repo.register_worker("fresh", ["environment:devicefarm"])
+    assert repo.live_environments() == {"devicefarm": 1}
+
+
+def test_list_environments_maps_kinds_and_skips_unknown(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    repo = _repo(serve_engine)
+    repo.register_worker("a", ["environment:devicefarm", "environment:mystery"])
+    repo.register_worker("b", ["environment:appium"])
+    payload, code = ops.list_environments(_state(tmp_path, repo))
+    assert code == 200
+    assert payload == {
+        "environments": [
+            {"name": "appium", "kind": "grid", "liveWorkers": 1},
+            {"name": "devicefarm", "kind": "batch", "liveWorkers": 1},
+        ]
+    }
+
+
+def test_list_environments_is_empty_without_a_repository(tmp_path: Path) -> None:
+    state = srv.ServeState(runs_dir=tmp_path / "runs")
+    assert ops.list_environments(state) == ({"environments": []}, 200)
+
+
 def test_metrics_ignores_dead_workers_capabilities(serve_engine: Callable[..., Engine]) -> None:
     repo = _repo(serve_engine)
     repo.enqueue_job("web-job", "o", {}, capabilities=["platform:web"])

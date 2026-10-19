@@ -264,19 +264,34 @@ Unlike the headless submitter, the worker reserves one device per run through a 
 filter. It needs no device-pool ARN.
 
 > **Config and scenario placement.** The worker composes a separate package for each job. The
-> package holds the source checkout's three parts, plus the job's bundle directory under `bundle/`.
-> The bundle directory is the config's own directory, an uploaded bundle, or the config and scenario
-> the scenario store ships with the job. The request names the config and the scenario relative to
-> that directory. A scenario outside the config's directory makes `POST /api/run-set` return a 400
-> error. The target's `app.path` travels as written, and the worker resolves a relative one against
-> the same directory. A missing binary fails the job before the worker uploads anything.
+> package holds those three parts of the source checkout, plus the readme and license files
+> `pyproject.toml` names, which the install needs. The job's bundle directory goes under `bundle/`.
+> The request names the config and the scenario relative to that directory. Where the bundle comes
+> from depends on where the config lives:
 >
-> **Application delivery.** A job whose config and scenario travel with it still needs the binary.
-> When no uploaded bundle carries the binary, the server stores the file that `app.path` names in its
-> object store during the fan-out. The lease then carries a signed download link for that file. The
+> - **A config on the server's disk.** At the fan-out, the server zips the config's whole directory
+>   into its object store. Every job of the fan-out carries that one archive, and the lease signs a
+>   download link for it. The archive leaves out what a Device Farm package leaves out, such as
+>   `.git`, `runs/`, and `tmp/`. A scenario thus keeps the fixtures, components, and binary it
+>   references. The config travels as `bajutsu.config.yaml`, the name a worker looks for. The job
+>   names no path on the server's machine, so a worker on any machine can lease it (BE-0465). With
+>   the default `file://` store, the link points at the server itself.
+> - **An uploaded bundle.** The job carries the bundle itself.
+> - **The scenario store.** The job carries the config and the scenario text, and nothing else.
+>
+> A scenario outside the config's directory makes `POST /api/run-set` return a 400 error. The
+> target's `app.path` travels as written, and the worker resolves a relative one against the bundle
+> directory. A missing binary fails the job before the worker uploads anything.
+>
+> **Application delivery.** A config on the server's disk carries its binary inside the archive. A
+> job off the scenario store carries no binary. For such a job, the server stores the file that
+> `app.path` names in its object store during the fan-out. The lease then carries a signed download link for that file. The
 > worker downloads the binary to the same `app.path` inside the job's directory. It then checks the
 > file's digest against the one the job names. Such an `app.path` must name a file inside the config's directory, and the server
 > needs an object store. Otherwise `POST /api/run-set` returns a 400 error.
+>
+> The worker sends the binary as the run's app upload and also keeps it in the package. The run on
+> the device installs the file that `app.path` names, as a local run does.
 
 ### The job budget
 
@@ -318,7 +333,15 @@ and per-org caps count queued jobs too. Those caps may still cut a large fan-out
 
 ### Fanning a target out
 
-A `POST /api/run-set` request fans a target out. Its body names the `target` and the batch provider
+The Replay tab dispatches a fan-out from the browser
+([web UI](web-ui.md#replay--run-a-scenario-and-read-its-report)). Choose a device-cloud environment,
+pick scenarios, and press Run. The tab lists the *batch* environments that a live worker
+advertises; an `appium` grid is reached through the plain run request instead (BE-0452).
+It reads them from `GET /api/environments`. The response gives each environment's `name`, its `kind`
+(`batch` or `grid`), and its `liveWorkers` count. It carries no ARN or credential.
+
+A `POST /api/run-set` request fans a target out. It needs the editor role, like `POST /api/run`.
+Its body names the `target` and the batch provider
 as `environment` (today `devicefarm`). An optional `scenarios` subset narrows the run:
 
 ```json
@@ -335,7 +358,12 @@ cannot honor it at all:
   run request reaches a grid ([self-hosting](self-hosting.md));
 - a web target, which has no device to reserve;
 - a target with no `app.path`;
-- a config or scenario outside the config's directory, which the worker packages.
+- a config or scenario outside the config's directory, which the worker packages;
+- for a config on the server's disk, a server with no object store to deliver the archive through;
+- for a config on the server's disk, a path the archive cannot carry. A config path that leaves the
+  directory is one, such as an absolute `paths.scenarios`. An `app.path` or scenario under a
+  left-out directory such as `tmp/` is another. The refusal spares an upload that would fail on
+  the device cloud.
 
 ### Restart and lease loss
 

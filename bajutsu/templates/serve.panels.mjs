@@ -11,6 +11,7 @@ import {
   restoreRun, purgeRun, wireHistoryList, retentionDays, labelParam, loadLabels, setLabelChoice,
 } from './serve.core.mjs';
 import {replayCodegen} from './serve.author.mjs';
+import {cloudEnvironment, dispatchRunSet} from './serve.runset.mjs';
 
 // ---- Record: author a scenario from a goal ----
 async function recDone(j){
@@ -367,6 +368,8 @@ async function applyTriage(target,scenario,d,rerun){
   $('#target').value=target;
   await loadScenarios();
   $('#scn').value=scenario;
+  // The re-run confirms this one patched scenario, so it must not fan out (BE-0465).
+  $('#env').value='local';$('#env').dispatchEvent(new Event('change'));
   $('#go').click();
 }
 async function loadStats(){
@@ -777,6 +780,7 @@ function initPanels(){
   $('#scnviewmodal').addEventListener('click',e=>{if(e.target===$('#scnviewmodal'))closeScnView()});
   $('#simrefresh').addEventListener('click',loadSims);
   $('#go').addEventListener('click',async()=>{
+    if(cloudEnvironment())return dispatchRunSet();  // a device-cloud environment fans out (BE-0465)
     $('#out').textContent='';  // Replay's own pane clearing (the shared start skeleton lives in startJob)
     state.poll=await startJob({
       prev:state.poll,btn:$('#go'),stop:$('#stop'),busyLabel:'Running…',status:$('#status'),
@@ -835,5 +839,5 @@ async function onLabelChange(value){
 
 export {
   loadHistory, loadStats, loadFlaky, loadUsage, coverageInit, showInfo, replayAudit, onSimChange,
-  setHistoryFilter, showTab, initPanels, loadTrash, seedComposeFromCurrent, onLabelChange,
+  setHistoryFilter, showTab, initPanels, loadTrash, seedComposeFromCurrent, onLabelChange, setReport,
 };
