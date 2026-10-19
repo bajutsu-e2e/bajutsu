@@ -165,8 +165,12 @@ reason.
 
 ### Boundaries
 
-- **No change to dispatch.** `POST /api/run-set`, its refusals, the worker, and the Device Farm
-  client stay as they are.
+- **No change to dispatch, with one exception.** The worker and the Device Farm client stay as they
+  are. `POST /api/run-set` keeps its request body. Its jobs needed one fix, found while verifying
+  this item, and the Log records it. A job off a config on the server's disk named its files by
+  their paths there. That pinned the job to the server's machine. A Device Farm worker never takes
+  such a pin. The fan-out this item's UI starts thus never ran. The server now ships the config's
+  directory as a bundle. It refuses a config the bundle cannot carry.
 - **No device filters.** The fan-out keeps reserving one device per run by platform. Choosing a
   model or an operating system version stays out of scope.
 - **No grid in the Replay selector.** The selector lists the `batch` entries, which follow
@@ -242,6 +246,14 @@ Log:
   role could call it. The `replay-device-cloud.yaml` dogfood scenario runs against an inner config
   with a `zz-fanout-android` target. The web UI and Device Farm pages describe the flow, in both
   languages.
+- [#2215](https://github.com/bajutsu-e2e/bajutsu/pull/2215) (dispatch fix) — A manual run against a
+  local `make serve` left every fan-out job queued. Such a job named the config's directory on the
+  server's disk. The queue thus pinned the job with `machine:<id>` (BE-0449). A Device Farm worker
+  refuses that pin. The server now zips that directory into its object store. The archive leaves
+  out what a Device Farm package leaves out. Each job carries the archive as its bundle. The bundle
+  holds the config as `bajutsu.config.yaml`. A scenario's fixtures, components, and binary travel
+  with it. `POST /api/run-set` refuses the request when the server has no object store. It also refuses
+  a config path the archive cannot carry.
 
 ## References
 

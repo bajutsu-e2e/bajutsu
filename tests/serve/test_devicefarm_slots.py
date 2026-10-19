@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from conftest import FakeObjectStore
 from sqlalchemy import create_engine
 from typer.testing import CliRunner
 
@@ -133,8 +134,21 @@ def _register(cloud: _Cloud) -> None:
     )
 
 
-def _fan_out_state(tmp_path: Path, scenarios: dict[str, str]) -> ServeState:
-    """A database-backed server whose `demo` target fans out to Device Farm from its own directory."""
+def _fan_out_state(
+    tmp_path: Path, scenarios: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> ServeState:
+    """A database-backed server whose `demo` target fans out to Device Farm from its own directory.
+
+    The server sits on machine ``m1``, and the worker takes no machine id: the config's directory
+    reaches the worker as a stored bundle, fetched through the store's signed URL (BE-0465).
+    """
+    store = FakeObjectStore()
+    signed = "https://signed.example/"
+    monkeypatch.setattr(
+        worker_mod,
+        "_get_file",
+        lambda url, dest, **_k: dest.write_bytes(store.objects[url.removeprefix(signed)]),
+    )
     project = tmp_path / "project"
     (project / "scenarios").mkdir(parents=True)
     for name, text in scenarios.items():
@@ -159,8 +173,9 @@ def _fan_out_state(tmp_path: Path, scenarios: dict[str, str]) -> ServeState:
         config=config,
         runs_dir=tmp_path / "runs",
         cwd=project,
-        executor=DbQueueExecutor(repo),
+        executor=DbQueueExecutor(repo, machine_id="m1"),
         repository=repo,
+        object_store=store,
     )
 
 
@@ -264,7 +279,7 @@ def test_a_full_worker_sends_no_lease_request_until_a_result_is_posted(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     names = ("one.yaml", "two.yaml", "three.yaml")
-    state = _fan_out_state(tmp_path, {n: _SCENARIO.format(name=n[:-5]) for n in names})
+    state = _fan_out_state(tmp_path, {n: _SCENARIO.format(name=n[:-5]) for n in names}, monkeypatch)
     payload, code = start_run_set(state, {"target": "demo", "environment": "devicefarm"})
     assert code == 200 and "warnings" not in payload
     first, second, third = payload["jobIds"]
@@ -321,7 +336,9 @@ def test_a_shutdown_lets_leases_lapse_and_a_restarted_worker_resumes_every_run(
     # stops neither run and posts nothing, and the worker that leases the jobs next resumes each run
     # from the ARN the server stored, without a second submission.
     state = _fan_out_state(
-        tmp_path, {n: _SCENARIO.format(name=n[:-5]) for n in ("one.yaml", "two.yaml")}
+        tmp_path,
+        {n: _SCENARIO.format(name=n[:-5]) for n in ("one.yaml", "two.yaml")},
+        monkeypatch,
     )
     payload, _code = start_run_set(state, {"target": "demo", "environment": "devicefarm"})
     job_ids = payload["jobIds"]
@@ -661,7 +678,7 @@ def test_a_scenario_the_worker_cannot_run_fails_before_anything_is_submitted(
     scenario: str,
     words: str,
 ) -> None:
-    state = _fan_out_state(tmp_path, {"one.yaml": scenario})
+    state = _fan_out_state(tmp_path, {"one.yaml": scenario}, monkeypatch)
     payload, _code = start_run_set(state, {"target": "demo", "environment": "devicefarm"})
     (job_id,) = payload["jobIds"]
     cloud = _Cloud()
