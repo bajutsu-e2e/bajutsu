@@ -20,6 +20,7 @@ from typing import Any
 
 import pytest
 from _shared import queue_repository
+from conftest import FakeObjectStore
 
 from bajutsu import serve as srv
 from bajutsu.serve import batch_provider as bp
@@ -127,16 +128,15 @@ def _android_batch_project(tmp_path: Path, *, scenarios: list[str]) -> tuple[Pat
     body = "- name: a\n  steps:\n    - tap: { id: x }\n"
     for name in scenarios:
         (scn_dir / name).write_text(body, encoding="utf-8")
-    apk = tmp_path / "app.apk"
-    apk.write_text("APK", encoding="utf-8")
+    (tmp_path / "app.apk").write_text("APK", encoding="utf-8")
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
         (
             "targets:\n"
             "  demo:\n"
             "    platform: android\n"
-            f"    subject: {{id: com.example.demo, path: {apk}}}\n"
-            f"    paths: {{scenarios: {scn_dir}}}\n"
+            "    subject: {id: com.example.demo, path: app.apk}\n"
+            "    paths: {scenarios: scenarios}\n"
         ),
         encoding="utf-8",
     )
@@ -171,8 +171,8 @@ def test_relative_app_path_travels_as_a_logical_reference(tmp_path: Path) -> Non
             "targets:\n"
             "  demo:\n"
             "    platform: android\n"
-            f"    subject: {{id: com.example.demo, path: app.apk}}\n"
-            f"    paths: {{scenarios: {scn_dir}}}\n"
+            "    subject: {id: com.example.demo, path: app.apk}\n"
+            "    paths: {scenarios: scenarios}\n"
         ),  # relative to the config's own directory (tmp_path)
         encoding="utf-8",
     )
@@ -185,6 +185,7 @@ def test_relative_app_path_travels_as_a_logical_reference(tmp_path: Path) -> Non
         cwd=tmp_path,
         executor=executor,
         repository=queue_repository(),
+        object_store=FakeObjectStore(),
     )
 
     _payload, status = start_run_set(state, {"target": "demo", "environment": "devicefarm"})
@@ -211,11 +212,12 @@ def test_request_paths_are_relative_to_the_config_directory(tmp_path: Path) -> N
             "targets:\n"
             "  demo:\n"
             "    platform: android\n"
-            f"    subject: {{id: com.example.demo, path: app.apk}}\n"
-            f"    paths: {{scenarios: {scn_dir}}}\n"
+            "    subject: {id: com.example.demo, path: app.apk}\n"
+            "    paths: {scenarios: scenarios}\n"
         ),
         encoding="utf-8",
     )
+    (proj / "app.apk").write_text("APK", encoding="utf-8")
     executor = _RecordingExecutor()
     state = ServeState(
         scenarios_dir=scn_dir,
@@ -224,6 +226,7 @@ def test_request_paths_are_relative_to_the_config_directory(tmp_path: Path) -> N
         cwd=proj,
         executor=executor,
         repository=queue_repository(),
+        object_store=FakeObjectStore(),
     )
 
     _payload, status = start_run_set(state, {"target": "demo", "environment": "devicefarm"})
@@ -233,8 +236,8 @@ def test_request_paths_are_relative_to_the_config_directory(tmp_path: Path) -> N
     assert job.batch is not None
     assert job.batch.config == "bajutsu.config.yaml"
     assert job.batch.scenario == "scenarios/one.yaml"
-    # The job names the config's directory as its own, which is what a worker packages.
-    assert job.cwd == proj
+    # The config's directory travels as the job's bundle, which is what a worker packages.
+    assert job.bundle is not None
     assert job.capabilities == ["environment:devicefarm"]
 
 
@@ -264,6 +267,7 @@ def test_a_scenario_outside_the_config_directory_is_refused(tmp_path: Path) -> N
         cwd=proj,
         executor=executor,
         repository=queue_repository(),
+        object_store=FakeObjectStore(),
     )
 
     payload, status = start_run_set(state, {"target": "demo", "environment": "devicefarm"})
@@ -290,6 +294,7 @@ def test_fan_out_runs_every_scenario_through_the_device_farm_fake(tmp_path: Path
         cwd=tmp_path,
         executor=executor,
         repository=queue_repository(),
+        object_store=FakeObjectStore(),
     )
 
     payload, status = start_run_set(state, {"target": "demo", "environment": "devicefarm"})
@@ -320,6 +325,7 @@ def test_fan_out_surfaces_a_failing_manifest_from_the_fake(tmp_path: Path) -> No
         cwd=tmp_path,
         executor=executor,
         repository=queue_repository(),
+        object_store=FakeObjectStore(),
     )
 
     payload, status = start_run_set(state, {"target": "demo", "environment": "devicefarm"})
@@ -347,6 +353,7 @@ def test_every_scenario_of_a_faked_fan_out_lands(tmp_path: Path) -> None:
         cwd=tmp_path,
         executor=executor,
         repository=queue_repository(),
+        object_store=FakeObjectStore(),
     )
 
     payload, status = start_run_set(state, {"target": "demo", "environment": "devicefarm"})
