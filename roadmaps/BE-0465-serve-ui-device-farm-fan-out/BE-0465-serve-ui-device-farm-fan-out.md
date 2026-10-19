@@ -254,6 +254,11 @@ Log:
   holds the config as `bajutsu.config.yaml`. A scenario's fixtures, components, and binary travel
   with it. `POST /api/run-set` refuses the request when the server has no object store. It also refuses
   a config path the archive cannot carry.
+- [#2215](https://github.com/bajutsu-e2e/bajutsu/pull/2215) (packaging fix) — A worker-built package
+  ran on real Device Farm devices for the first time. Bajutsu did not install there. The package took `pyproject.toml`,
+  `tests/`, and `bajutsu/` from the source tree (BE-0448). Hatchling refuses to build without the
+  readme and license files `pyproject.toml` names. The package now carries `DESIGN.md`, `LICENSE`,
+  and `NOTICE` too.
 
 ## References
 
