@@ -259,6 +259,10 @@ Log:
   `tests/`, and `bajutsu/` from the source tree (BE-0448). Hatchling refuses to build without the
   readme and license files `pyproject.toml` names. The package now carries `DESIGN.md`, `LICENSE`,
   and `NOTICE` too.
+- [#2215](https://github.com/bajutsu-e2e/bajutsu/pull/2215) (application fix) — With Bajutsu
+  installed, the on-device run stopped at `app.path not found`. The run installs the binary that
+  `app.path` names, as a local run does. The worker had left that binary out of the package, since it
+  also goes up as the app upload (BE-0448). The package now keeps the binary.
 
 ## References
 

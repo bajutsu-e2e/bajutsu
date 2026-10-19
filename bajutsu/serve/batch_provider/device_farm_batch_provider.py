@@ -213,9 +213,9 @@ class DeviceFarmBatchProvider:
                 prefix = f"{BUNDLE_ARCNAME}/" if self._source_root is not None else ""
                 config_arc = f"{prefix}{request.config}"
                 extra_texts: dict[str, str] = {"requirements.txt": REQUIREMENTS_TXT}
-                # The binary travels as the run's app upload, so a copy inside the bundle would only
-                # double the package.
-                exclude_arcnames: set[str] = set(_inside(app_path, work_dir, prefix))
+                # The binary also stays in the package, though it travels as the run's app upload:
+                # the on-device `bajutsu run` checks and installs `app.path` like a local run.
+                exclude_arcnames: set[str] = set()
 
                 if ctx.launch_env:
                     config_path = work_dir / request.config
@@ -317,12 +317,3 @@ def _application(request: BatchRequest, work_dir: Path) -> Path:
             f"application {request.app_path!r} is not in this job's bundle ({resolved})"
         )
     return resolved
-
-
-def _inside(path: Path, root: Path, prefix: str) -> list[str]:
-    """*path*'s arcname in a package that holds *root* under *prefix*, or none when outside it."""
-    try:
-        rel = path.resolve().relative_to(root.resolve())
-    except ValueError:
-        return []
-    return [f"{prefix}{rel.as_posix()}"]

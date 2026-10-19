@@ -257,6 +257,10 @@ History の一覧に残ります。サーバー側に run-set の記録を持た
   取り込むのは、`pyproject.toml`、`tests/`、`bajutsu/` の 3 つでした（BE-0448）。hatchling は、`pyproject.toml`
   が指定する readme とライセンスファイルがないとビルドしません。現在のパッケージは、`DESIGN.md`、`LICENSE`、
   `NOTICE` も取り込みます。
+- [#2215](https://github.com/bajutsu-e2e/bajutsu/pull/2215)（アプリケーションの修正）— Bajutsu のインストールが
+  通ると、端末上の実行が `app.path not found` で止まりました。端末上の実行は、ローカルの実行と同じく
+  `app.path` が指すバイナリをインストールします。worker は、このバイナリをアプリのアップロードでも送るため、
+  パッケージから除いていました（BE-0448）。現在のパッケージは、バイナリも含みます。
 
 ## 参考
 
