@@ -15,6 +15,8 @@ from machine assertions, never an LLM.
 | `dogfood.config.yaml` | `targets.webui` with `platform: web` + `subject.url` (the running serve) + `services.server` (no `subject.id`) |
 | `inner.config.yaml` | the config the inner serve loads: the web demo's `web` target, plus `zz-fanout-android`, an Android target that exists only to be fanned out (BE-0465) |
 | `fanout/scenarios/` | the two placeholder scenarios `zz-fanout-android` dispatches; they are never run |
+| `web-scenarios/` | a gitignored copy of `demos/web/scenarios` that `make web-scenarios` refreshes before each run; a fan-out zips this directory, and a `../web/scenarios` path cannot travel in it |
+| `fanout/placeholder.apk` | a stand-in for the app `zz-fanout-android` names; dispatch refuses a missing app file, so it has to exist |
 | `scenarios/shell-navigation.yaml` | the top tabs (Record / Replay / Crawl / Author / Stats / Coverage) swap the visible view |
 | `scenarios/theme.yaml` | the theme toggle follows the OS preference and flips on click |
 | `scenarios/crawl-form.yaml` | the Crawl form holds the bound target and the default exploration budget |

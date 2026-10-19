@@ -6,14 +6,17 @@ targets:
   web:
     platform: web
     app: { url: "http://127.0.0.1:8787/index.html" }
-    paths: { scenarios: ../web/scenarios }
+    # A copy of demos/web/scenarios that the Makefile refreshes before every run (gitignored), not a
+    # `../web/scenarios` path: a fan-out zips this directory, and a path out of it cannot travel.
+    paths: { scenarios: web-scenarios }
     evidence:
       redact:
         fields: [password]
   # An Android target that exists only to be fanned out (BE-0465): replay-device-cloud.yaml picks it
   # with a faked device-cloud worker, dispatches its two placeholder scenarios through run-set, and
   # cancels them. No worker ever leases those jobs, so nothing installs `app.path` or runs the
-  # scenarios; and since this config's scenarios travel as files on disk, dispatch never reads it.
+  # scenarios. Dispatch zips this directory into each job's bundle and refuses a missing `app.path`,
+  # so `fanout/placeholder.apk` is a stand-in file that merely has to exist.
   # The pickers list targets sorted by name, so the `zz-` prefix keeps `web` the default the other
   # dogfood scenarios assert.
   zz-fanout-android:
