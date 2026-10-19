@@ -11,6 +11,7 @@ from __future__ import annotations
 import io
 import json
 import re
+import tomllib
 import zipfile
 from collections.abc import Iterator
 from dataclasses import asdict
@@ -104,12 +105,14 @@ class _CapturingTransfer:
 
 
 def _source_tree(root: Path) -> Path:
-    """A stand-in for Bajutsu's checkout: the three parts a package takes from it, plus noise."""
+    """A stand-in for Bajutsu's checkout: the parts a package takes from it, plus noise."""
     (root / "tests").mkdir(parents=True)
     (root / "tests" / "test_x.py").write_text("", encoding="utf-8")
     (root / "bajutsu").mkdir()
     (root / "bajutsu" / "__init__.py").write_text("", encoding="utf-8")
     (root / "pyproject.toml").write_text("[project]\nname='bajutsu'\n", encoding="utf-8")
+    for name in ("DESIGN.md", "LICENSE", "NOTICE"):
+        (root / name).write_text("", encoding="utf-8")
     (root / "README.md").write_text("not packaged", encoding="utf-8")
     return root
 
@@ -726,3 +729,21 @@ def test_only_a_cloud_batch_spec_may_leave_its_cmd_out() -> None:
     assert _spec_argv({"batch": asdict(_request())}) == []
     with pytest.raises(KeyError):
         _spec_argv({"job_id": "j"})
+
+
+def test_a_package_composed_from_the_source_tree_carries_every_file_its_build_needs() -> None:
+    # The test spec `pip install`s the package root, and hatchling refuses to build when a readme or
+    # license file pyproject.toml names is missing, so a package without one never installs Bajutsu.
+    root = Path(__file__).resolve().parents[2]
+    project = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+    needed = {"pyproject.toml", project["readme"], *project["license-files"]}
+    provider = bp.DeviceFarmBatchProvider(
+        client=_FakeClient(),
+        transfer=_CapturingTransfer(),
+        project_arn="arn:project/1",
+        sleep=lambda _: None,
+        source_root=root,
+    )
+    arcnames = {arc for _, arc in provider._package_entries(root / "bundle")}
+    assert needed <= arcnames
+    assert all((root / name).is_file() for name in needed)

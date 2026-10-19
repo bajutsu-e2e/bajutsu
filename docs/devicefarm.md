@@ -264,7 +264,8 @@ Unlike the headless submitter, the worker reserves one device per run through a 
 filter. It needs no device-pool ARN.
 
 > **Config and scenario placement.** The worker composes a separate package for each job. The
-> package holds the source checkout's three parts, plus the job's bundle directory under `bundle/`.
+> package holds those three parts of the source checkout, plus the readme and license files
+> `pyproject.toml` names, which the install needs. The job's bundle directory goes under `bundle/`.
 > The request names the config and the scenario relative to that directory. Where the bundle comes
 > from depends on where the config lives:
 >

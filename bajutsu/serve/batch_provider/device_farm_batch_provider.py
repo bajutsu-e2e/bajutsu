@@ -38,9 +38,10 @@ _logger = logging.getLogger(__name__)
 # than packed at the root, so a bundle that carries its own `tests/` or `pyproject.toml` can never
 # collide with the source tree's entries the test spec installs.
 BUNDLE_ARCNAME = "bundle"
-# The parts of the source tree a package needs: what the test spec `pip install`s, and the `tests/`
-# Device Farm's APPIUM_PYTHON_TEST_PACKAGE validation looks for at the root.
-_SOURCE_ENTRIES = ("pyproject.toml", "tests", "bajutsu")
+# The parts of the source tree a package needs: what the test spec `pip install`s (hatchling refuses
+# to build without the readme and license files pyproject.toml names), and the `tests/` Device Farm's
+# APPIUM_PYTHON_TEST_PACKAGE validation looks for at the root.
+_SOURCE_ENTRIES = ("pyproject.toml", "DESIGN.md", "LICENSE", "NOTICE", "tests", "bajutsu")
 
 
 def _check_launch_env_collisions(

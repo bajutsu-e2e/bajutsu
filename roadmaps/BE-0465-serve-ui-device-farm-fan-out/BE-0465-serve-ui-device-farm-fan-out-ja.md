@@ -252,6 +252,11 @@ History の一覧に残ります。サーバー側に run-set の記録を持た
   `bajutsu.config.yaml` として入り、シナリオの fixture、コンポーネント、バイナリも一緒に届きます。
   サーバがオブジェクトストアを持たないとき、`POST /api/run-set` はリクエストを拒否します。アーカイブで運べない
   設定のパスも拒否します。
+- [#2215](https://github.com/bajutsu-e2e/bajutsu/pull/2215)（パッケージの修正）— worker が組んだパッケージを
+  初めて実際の Device Farm で動かしたところ、Bajutsu のインストールに失敗しました。パッケージがソースツリーから
+  取り込むのは、`pyproject.toml`、`tests/`、`bajutsu/` の 3 つでした（BE-0448）。hatchling は、`pyproject.toml`
+  が指定する readme とライセンスファイルがないとビルドしません。現在のパッケージは、`DESIGN.md`、`LICENSE`、
+  `NOTICE` も取り込みます。
 
 ## 参考
 
