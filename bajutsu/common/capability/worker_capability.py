@@ -46,7 +46,12 @@ APPIUM = "appium"
 # deterministic core may not import; a test keeps the two in step.
 BATCH_PROVIDERS: frozenset[str] = frozenset({"devicefarm"})
 
-ENVIRONMENTS: frozenset[str] = frozenset({LOCAL, APPIUM, *BATCH_PROVIDERS})
+# The run a Device Farm package carries, on the Device Farm host (BE-0465). Device Farm reserved the
+# device and installed the uploaded app before the run starts, so every target takes a device that is
+# booted with its app in place, whatever `app.path` says.
+DEVICEFARM_HOST = "devicefarm-host"
+
+ENVIRONMENTS: frozenset[str] = frozenset({LOCAL, APPIUM, DEVICEFARM_HOST, *BATCH_PROVIDERS})
 
 # The routing-token prefixes a worker fills in itself: `environment:<name>` for a provider it
 # registered (BE-0448), `host:<os>` for the operating system it runs on (BE-0450), `machine:<id>`
@@ -198,8 +203,11 @@ class WorkerCapability(BaseModel):
     def device_provider_for(self, platform: str) -> DeviceProvider | None:
         """The device provider a target of *platform* takes from this worker, or None for local.
 
-        An `appium` environment hands its grid to the targets of the grid's platform alone (BE-0452).
+        An `appium` environment hands its grid to the targets of the grid's platform alone (BE-0452);
+        a `devicefarm-host` one hands every target its preinstalled Device Farm device (BE-0465).
         """
+        if self.environment == DEVICEFARM_HOST:
+            return DeviceProvider(kind=DEVICEFARM_HOST)
         if self.appium is not None and platform == self.appium.platform:
             return DeviceProvider(kind=APPIUM, endpoint=self.appium.endpoint)
         return None

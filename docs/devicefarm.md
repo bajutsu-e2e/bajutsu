@@ -290,9 +290,32 @@ filter. It needs no device-pool ARN.
 > worker downloads the binary to the same `subject.path` inside the job's directory. It then checks the
 > file's digest against the one the job names. Such an `subject.path` must name a file inside the config's directory, and the server
 > needs an object store. Otherwise `POST /api/run-set` returns a 400 error.
->
-> The worker sends the binary as the run's app upload and also keeps it in the package. The run on
-> the device installs the file that `app.path` names, as a local run does.
+
+> **The run on the device.** Device Farm installs the app upload on the reserved device before the
+> test spec starts. The package thus leaves the binary out and carries a `devicefarm-host.worker.yaml`
+> instead. Every run in the test spec takes that file as its `--worker-config`. Its `devicefarm-host`
+> environment tells the run that the device is booted and the app is installed. The run then
+> launches the installed build and never installs `subject.path`, on Android and iOS alike (BE-0465). A
+> scenario cannot replace the build there. `reinstall: clean` keeps the installed build and clears
+> its data. An `install` step fails, since the package holds no binary. On an iOS device, `erase` and
+> permission grants fail, as on any real device.
+
+### An iOS target
+
+An iOS target fans out like an Android one, with these differences:
+
+- The target sets `platform: ios` and `runsOn.kind: device`. Its `subject.path` names the `.ipa`, signed
+  for Device Farm's devices (see [iOS re-signing](#ios-re-signing-and-real-device-capabilities)).
+- Its `driver.runner.testRunner` names the device-build `.xctestrun`. To build the runner, run
+  `make -C demos/showcase runner-build-device`. Copy the build's whole `Products` directory into the
+  config's directory. The archive then carries the test bundle beside the `.xctestrun`.
+- The config's directory travels whole, with no size cap. Keep it to the config, the scenarios, the
+  `.ipa`, and the runner's products. Build output beside the config, such as `DerivedData/` or an
+  `.xcarchive`, would travel too.
+- The Device Farm worker's `drivers` lists `xcuitest`.
+
+The fan-out carries no secret to the Device Farm host. A scenario that reads `${secrets.*}` gets no
+value there.
 
 ### The job budget
 

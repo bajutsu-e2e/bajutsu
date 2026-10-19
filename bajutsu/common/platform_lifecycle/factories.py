@@ -27,7 +27,8 @@ def environment_for(
     `provision` carries a device provider's readiness report (BE-0236): a cloud device handed over
     already booted / with the app installed lets the environment skip that setup. None (the default,
     the local provider's inert profile) runs the full bring-up, so an omitted argument is unchanged.
-    Only the Android environment consults it today; the others accept the run's default and ignore it.
+    The Android environment and the XCUITest real-device route consult it; the others accept the
+    run's default and ignore it.
 
     `respawn` marks a mid-run *re-*bring-up: the pool has already cold-spawned this device once this
     run and a crash evicted its warm resident, so the Simulator is booted and the app installed. Only
@@ -48,7 +49,7 @@ def environment_for(
         # that structurally cannot carry a URL (BE-0238). The URL scheme is the routing signal.
         if is_webdriver_endpoint(udid):
             return XcuitestLiveEnvironment(actuator, udid)
-        return XcuitestEnvironment(actuator, udid, env_run, respawn=respawn)
+        return XcuitestEnvironment(actuator, udid, env_run, provision=provision, respawn=respawn)
     # Every implemented actuator is handled above; an unknown one reaching here is a caller bug
     # (selection should have rejected it). Fail loudly rather than silently mis-routing.
     raise ValueError(f"no environment for actuator: {actuator!r}")

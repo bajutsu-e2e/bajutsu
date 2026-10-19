@@ -14,19 +14,20 @@ import re
 import tomllib
 import zipfile
 from collections.abc import Iterator
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 from typing import Any
 
 import pytest
 import typer
+import yaml
 from typer.testing import CliRunner
 
 from bajutsu.cli import app
 from bajutsu.common.backend_cli import simctl
 from bajutsu.common.capability.route_tokens import is_route_token
-from bajutsu.common.capability.worker_capability import WorkerCapability
-from bajutsu.common.cloud.devicefarm import DeviceFarmError, Verdict
+from bajutsu.common.capability.worker_capability import WorkerCapability, parse_worker_capability
+from bajutsu.common.cloud.devicefarm import DeviceFarmError, Platform, Verdict
 from bajutsu.serve import batch_bootstrap
 from bajutsu.serve import batch_provider as bp
 from bajutsu.serve.cli import worker as worker_mod
@@ -260,13 +261,12 @@ def test_the_package_holds_the_source_parts_and_the_bundle(tmp_path: Path) -> No
     names = set(transfer.package().namelist())
     assert {"pyproject.toml", "tests/test_x.py", "bajutsu/__init__.py"} <= names
     assert {"bundle/bajutsu.config.yaml", "bundle/scenarios/one.yaml"} <= names
-    # Nothing outside the three source parts, and no earlier run.
+    # Nothing outside the three source parts, no earlier run, and no second copy of the binary.
     assert "README.md" not in names
     assert not any(n.startswith("bundle/runs/") for n in names)
-    # The binary goes up as the app upload and stays in the package: the on-device run checks and
-    # installs `app.path` like a local run.
+    assert "bundle/app.apk" not in names
+    # The binary went up as the app upload instead.
     assert any(url.endswith("app.apk") for url in transfer.uploads)
-    assert "bundle/app.apk" in names
     # The test spec runs the scenario from inside the bundle.
     (spec,) = (v for k, v in transfer.uploads.items() if k.endswith("testspec.yml"))
     assert "--scenario bundle/scenarios/one.yaml" in spec.decode()
@@ -274,6 +274,27 @@ def test_the_package_holds_the_source_parts_and_the_bundle(tmp_path: Path) -> No
     # Neither tree is written into.
     assert sorted(p.relative_to(source) for p in source.rglob("*")) == before
     assert not (bundle / "testspec.yml").exists()
+
+
+@pytest.mark.parametrize(("platform", "driver"), [("android", "adb"), ("ios", "xcuitest")])
+def test_every_run_takes_the_device_farm_installed_app(
+    tmp_path: Path, platform: Platform, driver: str
+) -> None:
+    # Device Farm installs the app upload before the test spec runs, so the run launches that build
+    # through a `devicefarm-host` worker file rather than installing `app.path` (BE-0465).
+    source = _source_tree(tmp_path / "src")
+    bundle = _bundle(tmp_path / "bundle")
+    provider, _client, transfer = _provider(source)
+
+    request = replace(_request(), platform=platform)
+    provider.submit(request, work_dir=bundle, dest=tmp_path / "dest")
+
+    package = transfer.package()
+    worker = parse_worker_capability(package.read("devicefarm-host.worker.yaml").decode())
+    assert worker.environment == "devicefarm-host" and worker.drivers == (driver,)
+    (spec,) = (v for k, v in transfer.uploads.items() if k.endswith("testspec.yml"))
+    runs = yaml.safe_load(spec)["phases"]["test"]["commands"]
+    assert runs and all(c.endswith("--worker-config devicefarm-host.worker.yaml") for c in runs)
 
 
 def test_an_injected_launch_env_overlays_the_bundled_config(tmp_path: Path) -> None:

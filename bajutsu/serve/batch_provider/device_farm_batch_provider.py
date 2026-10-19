@@ -45,6 +45,11 @@ BUNDLE_ARCNAME = "bundle"
 # to build without the readme and license files pyproject.toml names), and the `tests/` Device Farm's
 # APPIUM_PYTHON_TEST_PACKAGE validation looks for at the root.
 _SOURCE_ENTRIES = ("pyproject.toml", "DESIGN.md", "LICENSE", "NOTICE", "tests", "bajutsu")
+# The worker file every run in a package takes (BE-0465). Device Farm installs the app upload before
+# the test spec starts, so a `devicefarm-host` environment has the run launch that build instead of
+# installing `app.path`, on either platform. Its one driver is the backend the test spec runs.
+_HOST_WORKER_ARCNAME = "devicefarm-host.worker.yaml"
+_HOST_DRIVER = {"android": "adb", "ios": "xcuitest"}
 
 
 def _check_launch_env_collisions(
@@ -212,10 +217,16 @@ class DeviceFarmBatchProvider:
                 app_path = _application(request, work_dir)
                 prefix = f"{BUNDLE_ARCNAME}/" if self._source_root is not None else ""
                 config_arc = f"{prefix}{request.config}"
-                extra_texts: dict[str, str] = {"requirements.txt": REQUIREMENTS_TXT}
-                # The binary also stays in the package, though it travels as the run's app upload:
-                # the on-device `bajutsu run` checks and installs `app.path` like a local run.
-                exclude_arcnames: set[str] = set()
+                extra_texts: dict[str, str] = {
+                    "requirements.txt": REQUIREMENTS_TXT,
+                    _HOST_WORKER_ARCNAME: (
+                        "version: 1\nenvironment: devicefarm-host\n"
+                        f"drivers: [{_HOST_DRIVER[request.platform]}]\n"
+                    ),
+                }
+                # The binary travels as the run's app upload, which Device Farm installs before the
+                # run, so a copy inside the bundle would only double the package.
+                exclude_arcnames: set[str] = set(_inside(app_path, work_dir, prefix))
 
                 if ctx.launch_env:
                     config_path = work_dir / request.config
@@ -244,6 +255,7 @@ class DeviceFarmBatchProvider:
                     target=request.target,
                     config=config_arc,
                     platform=request.platform,
+                    worker_config=_HOST_WORKER_ARCNAME,
                 )
                 with tempfile.TemporaryDirectory() as staging_name:
                     staging = Path(staging_name)
@@ -317,3 +329,12 @@ def _application(request: BatchRequest, work_dir: Path) -> Path:
             f"application {request.app_path!r} is not in this job's bundle ({resolved})"
         )
     return resolved
+
+
+def _inside(path: Path, root: Path, prefix: str) -> list[str]:
+    """*path*'s arcname in a package that holds *root* under *prefix*, or none when outside it."""
+    try:
+        rel = path.resolve().relative_to(root.resolve())
+    except ValueError:
+        return []
+    return [f"{prefix}{rel.as_posix()}"]

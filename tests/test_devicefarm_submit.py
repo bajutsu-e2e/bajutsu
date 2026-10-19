@@ -26,6 +26,7 @@ from bajutsu.common.cloud.devicefarm import (
     _POLL_INITIAL_SECONDS,
     _POLL_INTERVAL_SECONDS,
     DeviceFarmError,
+    Platform,
     Verdict,
     _next_poll_delay,
     _safe_extract,
@@ -188,6 +189,28 @@ def test_ios_test_spec_targets_the_device_farm_device_udid() -> None:
     test_cmds = yaml.safe_load(spec)["phases"]["test"]["commands"]
     assert all("$DEVICEFARM_DEVICE_UDID" in c for c in test_cmds)
     assert not any("--udid booted" in c for c in test_cmds)
+
+
+@pytest.mark.parametrize("platform", ["android", "ios"])
+def test_test_spec_passes_a_worker_config_to_every_run(platform: Platform) -> None:
+    # The serve fan-out's package names a `devicefarm-host` worker file (BE-0465), so every run takes
+    # its device as Device Farm handed it over: booted, with the uploaded app installed.
+    spec = render_test_spec(
+        ["a.yaml", "b.yaml"],
+        target="t",
+        config="c.yaml",
+        platform=platform,
+        worker_config="host worker.yaml",
+    )
+    runs = yaml.safe_load(spec)["phases"]["test"]["commands"]
+    assert len(runs) == 2
+    assert all(c.endswith(" --worker-config 'host worker.yaml'") for c in runs)
+
+
+def test_test_spec_names_no_worker_config_unless_given() -> None:
+    # The headless submitter's configs name no `app.path`, so its runs keep the default worker file.
+    spec = render_test_spec(["s.yaml"], target="t", config="c.yaml")
+    assert "--worker-config" not in spec
 
 
 def test_ios_test_spec_probe_is_not_adb() -> None:

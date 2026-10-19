@@ -262,7 +262,11 @@ Log:
 - [#2215](https://github.com/bajutsu-e2e/bajutsu/pull/2215) (application fix) — With Bajutsu
   installed, the on-device run stopped at `app.path not found`. The run installs the binary that
   `app.path` names, as a local run does. The worker had left that binary out of the package, since it
-  also goes up as the app upload (BE-0448). The package now keeps the binary.
+  also goes up as the app upload (BE-0448). Device Farm installs that upload before the run starts,
+  so the package now carries a `devicefarm-host` worker file, and every run takes it as
+  `--worker-config`. Its device provider reports the device booted with the app installed. The run
+  launches that build and installs nothing, on Android and iOS alike. An iOS real device refused an
+  `app.path` outright, so this also lets an iOS target fan out.
 
 ## References
 

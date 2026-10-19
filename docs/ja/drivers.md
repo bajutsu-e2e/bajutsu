@@ -104,7 +104,7 @@ class Driver(Protocol):
 | キー | 意味 |
 |---|---|
 | `version` | スキーマのバージョンです。`1` でなければなりません。 |
-| `environment` | worker が job を実行する場所です。`local`（既定）、`appium`（稼働中の Appium グリッド）、device cloud のプロバイダ種別のいずれかを書きます。現在わかっているプロバイダ種別は `devicefarm` だけです。 |
+| `environment` | worker が job を実行する場所です。`local`（既定）、`appium`（稼働中の Appium グリッド）、`devicefarm-host`（Device Farm のパッケージ内の実行で、Device Farm が起動してアプリを入れたデバイスを使います）、device cloud のプロバイダ種別のいずれかを書きます。現在わかっているプロバイダ種別は `devicefarm` だけです。 |
 | `appium` | `environment: appium` のときに必須で、それ以外では拒否します。グリッドの `endpoint` の URL と、グリッドが受け持つ 1 つの `platform`（現在は `ios`）を書きます。 |
 | `maxJobConcurrency` | worker が同時に実行できる job の数で、正の整数です。省くと 1 になり、`local` の worker は 1 しか受け付けません。 |
 | `maxTargetsPerJob` | 1 つのシナリオが宣言できる target の数で、正の整数です。すべてのドライバとデバイスグループをまたいで数えるので、Simulator の target とブラウザの target は合わせて 2 です。省くと上限なしになります。 |

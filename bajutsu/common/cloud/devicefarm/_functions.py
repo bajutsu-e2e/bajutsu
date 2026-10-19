@@ -169,6 +169,7 @@ def render_test_spec(
     platform: Platform = "android",
     python_version: str = "3.13",
     pre_test_commands: Sequence[str] = (),
+    worker_config: str | None = None,
 ) -> str:
     """Render a Device Farm custom-environment test spec that runs the given scenarios.
 
@@ -199,6 +200,10 @@ def render_test_spec(
             to it, so no client-supplied value reaches a shell on the host holding the run's AWS role.
             A bare `str` is rejected (see Raises): `Sequence[str]` matches one, but a single command
             passed as a string would splice one `pre_test` command per character.
+        worker_config: A `worker.yaml` path inside the unpacked test package, passed to every run as
+            `--worker-config`. The serve fan-out names a `devicefarm-host` file there, so the run
+            launches the app Device Farm installed instead of installing `app.path` (BE-0465). None
+            keeps the run's default worker file.
 
     Raises:
         ValueError: If `scenarios` is empty — a spec that runs nothing would silently "pass".
@@ -221,10 +226,11 @@ def render_test_spec(
     # parsing or inject a command onto the Device Farm host running under the OIDC-minted AWS role.
     # `run.backend` / `run.udid` are fixed, code-controlled tokens (not user input), so they are not
     # quoted — the iOS `udid` intentionally carries the shell reference the host must expand.
+    worker_arg = f" --worker-config {shlex.quote(worker_config)}" if worker_config else ""
     run_cmds = [
         f"{_BAJUTSU} run"
         f" --scenario {shlex.quote(s)} --target {shlex.quote(target)}"
-        f" --config {shlex.quote(config)} --backend {run.backend} --udid {run.udid}"
+        f" --config {shlex.quote(config)} --backend {run.backend} --udid {run.udid}{worker_arg}"
         for s in scenarios
     ]
     spec: dict[str, Any] = {

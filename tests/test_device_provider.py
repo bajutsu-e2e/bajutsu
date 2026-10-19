@@ -56,6 +56,16 @@ def test_explicit_local_kind_resolves_the_same_provider() -> None:
     assert lease.provision == ProvisionProfile()
 
 
+def test_devicefarm_host_provider_reports_the_device_ready_with_its_app() -> None:
+    # On a Device Farm host the reserved device is booted and Device Farm installed the uploaded app,
+    # so the run skips both; the udid (`booted`, or the reserved iPhone's id) passes through (BE-0465).
+    eff = _eff(device_provider=DeviceProvider(kind="devicefarm-host"))
+    lease = dp.acquire_device(eff, "booted")
+    assert lease.udid_spec == "booted"
+    assert lease.provision == ProvisionProfile(boot_ready=True, app_preinstalled=True)
+    lease.release()  # nothing was reserved by this run
+
+
 def test_unknown_provider_kind_fails_closed() -> None:
     # Fail-closed at resolution (like the mailbox registry), never a silent fallback to local.
     with pytest.raises(ValueError, match="unknown device provider 'firebase-streaming'"):
