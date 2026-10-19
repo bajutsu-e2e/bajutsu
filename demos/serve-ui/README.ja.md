@@ -15,6 +15,8 @@ Linux 上で動きます。Web UI の決定的なリグレッション網であ�
 | `dogfood.config.yaml` | `targets.webui`（`platform: web` ＋ `app.url`（起動中の serve）＋ `services.server`、`app.id` なし） |
 | `inner.config.yaml` | 内側の serve が読む config。web デモの `web` target に加え、fan-out 専用の Android target `zz-fanout-android` を持つ（BE-0465） |
 | `fanout/scenarios/` | `zz-fanout-android` が dispatch する 2 つのプレースホルダーシナリオ。実行はされない |
+| `web-scenarios/` | `demos/web/scenarios` のコピー（gitignore 済み）。実行のたびに `make web-scenarios` が作り直す。fan-out はこのディレクトリを zip にするので、`../web/scenarios` のようなパスは運べない |
+| `fanout/placeholder.apk` | `zz-fanout-android` が指すアプリの代わりのファイル。dispatch はアプリのファイルが無いと拒否するため、存在する必要がある |
 | `scenarios/shell-navigation.yaml` | 上部タブ（Record / Replay / Crawl / Author / Stats / Coverage）が表示中のビューを入れ替える |
 | `scenarios/theme.yaml` | テーマ切替が OS 設定に追従し、クリックで切り替わる |
 | `scenarios/crawl-form.yaml` | Crawl フォームが bind したターゲットと既定の探索予算を持つ |
