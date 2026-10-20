@@ -49,12 +49,12 @@ from ._functions import (
     collect_run,
     device_selection_for,
     host_backend,
+    is_package_excluded,
     render_test_spec,
     stop_run,
     submit_and_collect,
     verdict_from_manifest,
 )
-from ._functions import _is_excluded as _is_excluded
 from ._functions import _next_poll_delay as _next_poll_delay
 from ._functions import _python_bootstrap_commands as _python_bootstrap_commands
 from ._functions import _safe_extract as _safe_extract
@@ -87,6 +87,7 @@ __all__ = [
     "collect_run",
     "device_selection_for",
     "host_backend",
+    "is_package_excluded",
     "render_test_spec",
     "stop_run",
     "submit_and_collect",

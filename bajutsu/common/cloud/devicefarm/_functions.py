@@ -17,6 +17,7 @@ from typing import Any, Literal
 import yaml
 
 from ._platform_run import _PlatformRun
+from ._spec_layout import _SpecLayout
 from .device_farm_client import DeviceFarmClient
 from .device_farm_error import DeviceFarmError
 from .run_interrupted import Interrupt, RunInterrupted
@@ -138,6 +139,8 @@ _BAJUTSU = f"{_VENV}/bin/bajutsu"
 # the directory by name and copies it to a fixed work directory the run starts in (BE-0465).
 XCTEST_PACKAGE_DIR = "bajutsu-package"
 _WORK = "$HOME/bajutsu-work"
+# An APPIUM_PYTHON run installs and runs from the unpacked test package itself.
+_APPIUM_LAYOUT = _SpecLayout()
 
 
 def _next_poll_delay(previous: float) -> float:
@@ -145,7 +148,7 @@ def _next_poll_delay(previous: float) -> float:
     return min(previous * 2, _POLL_INTERVAL_SECONDS)
 
 
-def _is_excluded(rel_parts: tuple[str, ...]) -> bool:
+def is_package_excluded(rel_parts: tuple[str, ...]) -> bool:
     """Return True if *rel_parts* names a path that must not enter the package.
 
     A component matches `_PACKAGE_EXCLUDES` exactly (e.g. `.git`) or starts with one of
@@ -157,7 +160,9 @@ def _is_excluded(rel_parts: tuple[str, ...]) -> bool:
     )
 
 
-def _python_bootstrap_commands(python_version: str) -> list[str]:
+def _python_bootstrap_commands(
+    python_version: str, layout: _SpecLayout = _APPIUM_LAYOUT
+) -> list[str]:
     """Install-phase commands that provision `python_version` with uv and install Bajutsu under it.
 
     Temporary workaround for Device Farm having no Python >= 3.13 (see the block comment above):
@@ -171,10 +176,38 @@ def _python_bootstrap_commands(python_version: str) -> list[str]:
         "python -m pip install --user --upgrade uv",
         f"{_UV} python install {shlex.quote(python_version)}",
         f"{_UV} venv --python {shlex.quote(python_version)} {_VENV}",
-        # The test package unpacks into $DEVICEFARM_TEST_PACKAGE_PATH; install Bajutsu from it into
-        # the 3.13 venv. The adb backend is pure subprocess, so the base install (no extras) suffices.
-        f'{_UV} pip install --python {_VENV} "$DEVICEFARM_TEST_PACKAGE_PATH"',
+        *layout.stage,
+        # Install Bajutsu from the test package into the 3.13 venv. The adb backend is pure
+        # subprocess, so the base install (no extras) suffices.
+        f"{_UV} pip install --python {_VENV} {layout.package}",
     ]
+
+
+def _xctest_layout(xctest_runner: str) -> _SpecLayout:
+    """The layout of an XCTEST_UI run, whose package Device Farm unpacks beside its runner build.
+
+    Device Farm does not unpack Bajutsu into $DEVICEFARM_TEST_PACKAGE_PATH for this test type, so
+    the spec copies `XCTEST_PACKAGE_DIR` to a fixed work directory and runs from there.
+    """
+    # Device Farm writes the re-signed runner beside its own .xctestrun; both land where the
+    # config's testRunner points, so the run needs no config of its own.
+    products = posixpath.join(posixpath.dirname(xctest_runner), "Debug-iphoneos")
+    return _SpecLayout(
+        package=f'"{_WORK}"',
+        stage=(
+            f'PKG="$(find "$DEVICEFARM_XCTEST_BUILD_DIRECTORY"'
+            f' "$(dirname "$DEVICEFARM_XCTEST_BUILD_DIRECTORY")" -maxdepth 3 -type d'
+            f' -name {XCTEST_PACKAGE_DIR} | head -n 1)" && test -n "$PKG"'
+            f' && rm -rf "{_WORK}" && cp -R "$PKG" "{_WORK}"',
+        ),
+        runner_setup=(
+            f'ditto "$(dirname "$DEVICEFARM_XCUITESTRUN_FILE")/Debug-iphoneos"'
+            f' "{_WORK}"/{shlex.quote(products)}',
+            f'cp "$DEVICEFARM_XCUITESTRUN_FILE" "{_WORK}"/{shlex.quote(xctest_runner)}',
+        ),
+        cd=f'cd "{_WORK}" && ',
+        runs=f'"{_WORK}/runs"',
+    )
 
 
 def render_test_spec(
@@ -250,52 +283,29 @@ def render_test_spec(
     # parsing or inject a command onto the Device Farm host running under the OIDC-minted AWS role.
     # `run.backend` / `run.udid` are fixed, code-controlled tokens (not user input), so they are not
     # quoted — the iOS `udid` intentionally carries the shell reference the host must expand.
+    layout = _xctest_layout(xctest_runner) if xctest_runner is not None else _APPIUM_LAYOUT
     worker_arg = f" --worker-config {shlex.quote(worker_config)}" if worker_config else ""
     run_cmds = [
-        f"{_BAJUTSU} run"
+        f"{layout.cd}{_BAJUTSU} run"
         f" --scenario {shlex.quote(s)} --target {shlex.quote(target)}"
         f" --config {shlex.quote(config)} --backend {run.backend} --udid {run.udid}{worker_arg}"
         for s in scenarios
     ]
-    install = _python_bootstrap_commands(python_version)
-    post_test = ['cp -r runs "$DEVICEFARM_LOG_DIR"/ || true']
-    runner_setup: list[str] = []
-    if xctest_runner is not None:
-        # The last bootstrap command installs from $DEVICEFARM_TEST_PACKAGE_PATH, where an XCTEST_UI
-        # run does not unpack Bajutsu; it installs from the work directory instead.
-        install = [
-            *install[:-1],
-            f'PKG="$(find "$DEVICEFARM_XCTEST_BUILD_DIRECTORY"'
-            f' "$(dirname "$DEVICEFARM_XCTEST_BUILD_DIRECTORY")" -maxdepth 3 -type d'
-            f' -name {XCTEST_PACKAGE_DIR} | head -n 1)" && test -n "$PKG"'
-            f' && rm -rf "{_WORK}" && cp -R "$PKG" "{_WORK}"',
-            f'{_UV} pip install --python {_VENV} "{_WORK}"',
-        ]
-        # Device Farm writes the re-signed runner beside its own .xctestrun; both land where the
-        # config's testRunner points, so the run needs no config of its own.
-        products = posixpath.join(posixpath.dirname(xctest_runner), "Debug-iphoneos")
-        runner_setup = [
-            f'ditto "$(dirname "$DEVICEFARM_XCUITESTRUN_FILE")/Debug-iphoneos"'
-            f' "{_WORK}"/{shlex.quote(products)}',
-            f'cp "$DEVICEFARM_XCUITESTRUN_FILE" "{_WORK}"/{shlex.quote(xctest_runner)}',
-        ]
-        run_cmds = [f'cd "{_WORK}" && {c}' for c in run_cmds]
-        post_test = [f'cp -r "{_WORK}/runs" "$DEVICEFARM_LOG_DIR"/ || true']
     spec: dict[str, Any] = {
         "version": 0.1,
         "phases": {
-            "install": {"commands": install},
+            "install": {"commands": _python_bootstrap_commands(python_version, layout)},
             "pre_test": {
                 "commands": [
                     # Prove the reserved device is visible before running (the serial-resolution PoC).
                     run.probe,
-                    *runner_setup,
+                    *layout.runner_setup,
                     # Caller-supplied device-side setup runs after the probe (BE-0432); empty by default.
                     *pre_test_commands,
                 ]
             },
             "test": {"commands": run_cmds},
-            "post_test": {"commands": post_test},
+            "post_test": {"commands": [f'cp -r {layout.runs} "$DEVICEFARM_LOG_DIR"/ || true']},
         },
         "artifacts": ["$DEVICEFARM_LOG_DIR"],
     }
@@ -349,7 +359,7 @@ def build_package(
                     # Skip noise dirs, credential files (`.env`, `.aws`), and symlinks — so
                     # `--package .=.` on the checkout root neither bloats the upload nor leaks a
                     # secret to the shared Device Farm host (mirrors `archive_run_dir`).
-                    if _is_excluded(rel.parts):
+                    if is_package_excluded(rel.parts):
                         continue
                     if path.resolve() == out_resolved:
                         continue

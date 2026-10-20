@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import shutil
 import tempfile
 import zipfile
 from dataclasses import replace
@@ -14,7 +15,12 @@ from typing import Any
 import yaml
 
 from bajutsu.common.capability.worker_capability import APPIUM, BATCH_PROVIDERS
-from bajutsu.common.cloud.devicefarm import DeviceFarmError, Platform, _is_excluded, build_package
+from bajutsu.common.cloud.devicefarm import (
+    DeviceFarmError,
+    Platform,
+    build_package,
+    is_package_excluded,
+)
 from bajutsu.common.config import load_config_file, resolve
 from bajutsu.common.report.manifest import MAX_LABEL_LENGTH
 from bajutsu.common.run_meta.id import new_run_id
@@ -635,22 +641,36 @@ def _batch_application(
     # otherwise store bytes under a digest they do not have, and the worker's check would refuse them.
     with tempfile.TemporaryDirectory(prefix="bajutsu-app-") as tmp:
         snapshot = Path(tmp) / "app"
-        digest = hashlib.sha256()
-        with resolved.open("rb") as src, snapshot.open("wb") as dst:
-            while chunk := src.read(1024 * 1024):
-                digest.update(chunk)
-                dst.write(chunk)
-        sha = digest.hexdigest()
+        shutil.copyfile(resolved, snapshot)
+        sha = _sha256(snapshot)
         key = artifact_store_key(state.object_store_prefix, org, "binary", sha)
-        try:
-            if not state.object_store.exists(key):
-                state.object_store.put_file(key, snapshot, content_type="application/octet-stream")
-        except (
-            Exception
-        ) as e:  # SDK-specific errors vary by backend (S3 vs GCS), as `bind_artifact`
-            _logger.warning("could not store the application %s", resolved, exc_info=True)
-            return None, ({"error": f"could not store the application: {e}"}, 502)
-    return sha, None
+        refusal = _put_once(
+            state, key, snapshot, "application/octet-stream", what="the application", of=resolved
+        )
+    return (None, refusal) if refusal is not None else (sha, None)
+
+
+def _sha256(path: Path) -> str:
+    """*path*'s sha256, read in chunks so a large binary never sits in memory whole."""
+    digest = hashlib.sha256()
+    with path.open("rb") as src:
+        while chunk := src.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _put_once(
+    state: ServeState, key: str, path: Path, content_type: str, *, what: str, of: Path
+) -> tuple[Any, int] | None:
+    """Store *path* under its content-addressed *key* unless it is already there, or say why not."""
+    assert state.object_store is not None  # each caller refused a server without one
+    try:
+        if not state.object_store.exists(key):
+            state.object_store.put_file(key, path, content_type=content_type)
+    except Exception as e:  # SDK-specific errors vary by backend (S3 vs GCS), as `bind_artifact`
+        _logger.warning("could not store %s %s", what, of, exc_info=True)
+        return {"error": f"could not store {what}: {e}"}, 502
+    return None
 
 
 def _bundle_refusal(cfg: Path, root: Path, requests: list[BatchRequest]) -> tuple[Any, int] | None:
@@ -676,7 +696,7 @@ def _bundle_refusal(cfg: Path, root: Path, requests: list[BatchRequest]) -> tupl
                 return {"error": f"target '{name}': {e}"}, 400
     first = requests[0]
     for rel in (first.app_path, *(r.scenario for r in requests)):
-        if _is_excluded(PurePosixPath(rel).parts):
+        if is_package_excluded(PurePosixPath(rel).parts):
             return {"error": f"{rel!r} is under a directory a Device Farm package leaves out"}, 400
     if not (root / first.app_path).is_file():
         return {"error": f"appPath {first.app_path!r} names no file on this server"}, 400
@@ -701,19 +721,12 @@ def _store_config_dir(
             )
         except (OSError, DeviceFarmError) as e:
             return None, ({"error": f"could not package the config's directory: {e}"}, 500)
-        digest = hashlib.sha256()
-        with archive.open("rb") as src:
-            while chunk := src.read(1024 * 1024):
-                digest.update(chunk)
-        sha = digest.hexdigest()
+        sha = _sha256(archive)
         key = upload_store_key(state.object_store_prefix, org, sha)
-        try:
-            if not state.object_store.exists(key):
-                state.object_store.put_file(key, archive, content_type="application/zip")
-        except Exception as e:  # SDK-specific errors vary by backend, as `_batch_application`
-            _logger.warning("could not store the bundle of %s", root, exc_info=True)
-            return None, ({"error": f"could not store the config's directory: {e}"}, 502)
-    return sha, None
+        refusal = _put_once(
+            state, key, archive, "application/zip", what="the config's directory", of=root
+        )
+    return (None, refusal) if refusal is not None else (sha, None)
 
 
 def _config_dir_bundle(

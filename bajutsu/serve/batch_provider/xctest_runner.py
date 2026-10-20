@@ -22,12 +22,15 @@ class XctestRunner:
 
     Attributes:
         xctestrun: The `.xctestrun` the target's `driver.runner.testRunner` names.
+        xctestrun_arc: Its path relative to the bundle directory, POSIX-style. The paths here are
+            resolved, so a caller holding a symlinked bundle path cannot relativise them itself.
         app: The runner app its `TestHostPath` names, which the package carries at its root.
         build_files: Every file of the build — the `.xctestrun` and the products directory beside
             it. Device Farm hands the test spec a re-signed copy, so the bundle leaves these out.
     """
 
     xctestrun: Path
+    xctestrun_arc: str
     app: Path
     build_files: tuple[Path, ...]
 
@@ -48,8 +51,9 @@ def xctest_runner(work_dir: Path, config: str, target: str) -> XctestRunner:
             f"target {target!r} names no driver.runner.testRunner: an iOS fan-out ships a device "
             "runner build for Device Farm to re-sign (`bajutsu runner build --device --out`)"
         )
+    root = work_dir.resolve()
     xctestrun = (config_path.parent / test_runner).resolve()
-    if not xctestrun.is_file() or not xctestrun.is_relative_to(work_dir.resolve()):
+    if not xctestrun.is_file() or not xctestrun.is_relative_to(root):
         raise DeviceFarmError(
             f"driver.runner.testRunner {test_runner!r} is not in this job's bundle ({xctestrun})"
         )
@@ -61,7 +65,12 @@ def xctest_runner(work_dir: Path, config: str, target: str) -> XctestRunner:
         raise DeviceFarmError(f"the runner app {app.name} is not beside {xctestrun.name} ({app})")
     products = app.parent
     build_files = (xctestrun, *(p for p in sorted(products.rglob("*")) if p.is_file()))
-    return XctestRunner(xctestrun=xctestrun, app=app, build_files=build_files)
+    return XctestRunner(
+        xctestrun=xctestrun,
+        xctestrun_arc=xctestrun.relative_to(root).as_posix(),
+        app=app,
+        build_files=build_files,
+    )
 
 
 def _target(config_path: Path, target: str) -> dict[str, Any]:
