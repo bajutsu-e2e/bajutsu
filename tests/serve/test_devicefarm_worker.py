@@ -386,6 +386,22 @@ def test_an_ios_run_ships_its_runner_for_device_farm_to_re_sign(tmp_path: Path) 
     assert '"$HOME/bajutsu-work"/bundle/products/Runner.xctestrun' in pre_test
 
 
+def test_an_ios_run_reached_through_a_symlinked_work_dir_still_names_its_runner(
+    tmp_path: Path,
+) -> None:
+    # macOS hands the worker a /var/folders work dir, a symlink to /private/var/folders.
+    _ios_bundle(tmp_path / "bundle")
+    (tmp_path / "link").symlink_to(tmp_path / "bundle")
+    provider, _, transfer = _provider(_source_tree(tmp_path / "src"))
+
+    verdict = provider.submit(_ios_request(), work_dir=tmp_path / "link", dest=tmp_path / "dest")
+
+    assert verdict.ok
+    (spec,) = (v for k, v in transfer.uploads.items() if k.endswith("testspec.yml"))
+    pre_test = " ".join(yaml.safe_load(spec)["phases"]["pre_test"]["commands"])
+    assert '"$HOME/bajutsu-work"/bundle/products/Runner.xctestrun' in pre_test
+
+
 def test_an_ios_target_without_a_runner_build_fails_before_any_upload(tmp_path: Path) -> None:
     provider, client, transfer = _provider(_source_tree(tmp_path / "src"))
     with pytest.raises(DeviceFarmError, match=r"driver\.runner\.testRunner"):

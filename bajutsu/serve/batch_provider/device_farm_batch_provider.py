@@ -273,7 +273,7 @@ class DeviceFarmBatchProvider:
                     platform=request.platform,
                     worker_config=_HOST_WORKER_ARCNAME,
                     xctest_runner=(
-                        f"{prefix}{runner.xctestrun.relative_to(work_dir).as_posix()}"
+                        f"{prefix}{runner.xctestrun.relative_to(work_dir.resolve()).as_posix()}"
                         if runner is not None
                         else None
                     ),
