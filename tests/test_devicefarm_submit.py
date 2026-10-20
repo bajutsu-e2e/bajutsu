@@ -223,6 +223,65 @@ def test_ios_test_spec_probe_is_not_adb() -> None:
 
 
 # ---------------------------------------------------------------------------
+# render_test_spec — an XCTEST_UI run, whose runner Device Farm re-signs (BE-0465)
+# ---------------------------------------------------------------------------
+
+
+def _xctest_phases() -> dict[str, list[str]]:
+    spec = render_test_spec(
+        ["bundle/s.yaml"],
+        target="t",
+        config="bundle/c.yaml",
+        platform="ios",
+        worker_config="host.worker.yaml",
+        xctest_runner="bundle/products/Runner.xctestrun",
+    )
+    return {name: phase["commands"] for name, phase in yaml.safe_load(spec)["phases"].items()}
+
+
+def test_xctest_spec_installs_bajutsu_from_the_package_directory_device_farm_unpacked() -> None:
+    install = _xctest_phases()["install"]
+    copy = next(c for c in install if "-name bajutsu-package" in c)
+    assert '"$DEVICEFARM_XCTEST_BUILD_DIRECTORY"' in copy
+    assert copy.endswith('cp -R "$PKG" "$HOME/bajutsu-work"')
+    assert install[-1].endswith('pip install --python $HOME/bajutsu-venv "$HOME/bajutsu-work"')
+
+
+def test_xctest_spec_puts_the_re_signed_runner_where_the_config_names_it() -> None:
+    pre_test = _xctest_phases()["pre_test"]
+    assert (
+        'cp "$DEVICEFARM_XCUITESTRUN_FILE" "$HOME/bajutsu-work"/bundle/products/Runner.xctestrun'
+        in pre_test
+    )
+    assert (
+        'ditto "$(dirname "$DEVICEFARM_XCUITESTRUN_FILE")/Debug-iphoneos"'
+        ' "$HOME/bajutsu-work"/bundle/products/Debug-iphoneos'
+    ) in pre_test
+
+
+def test_xctest_spec_runs_from_the_work_directory_and_keeps_its_runs() -> None:
+    phases = _xctest_phases()
+    (run,) = phases["test"]
+    assert run.startswith('cd "$HOME/bajutsu-work" && $HOME/bajutsu-venv/bin/bajutsu run')
+    assert "--scenario bundle/s.yaml" in run
+    assert run.endswith('--udid "$DEVICEFARM_DEVICE_UDID" --worker-config host.worker.yaml')
+    assert phases["post_test"] == ['cp -r "$HOME/bajutsu-work/runs" "$DEVICEFARM_LOG_DIR"/ || true']
+
+
+def test_xctest_spec_quotes_a_runner_path_with_shell_metacharacters() -> None:
+    spec = render_test_spec(
+        ["s.yaml"], target="t", config="c.yaml", platform="ios", xctest_runner="my run/R.xctestrun"
+    )
+    pre_test = " ".join(yaml.safe_load(spec)["phases"]["pre_test"]["commands"])
+    assert "\"$HOME/bajutsu-work\"/'my run/R.xctestrun'" in pre_test
+
+
+def test_an_xctest_runner_is_refused_off_ios() -> None:
+    with pytest.raises(ValueError, match="iOS"):
+        render_test_spec(["s.yaml"], target="t", config="c.yaml", xctest_runner="R.xctestrun")
+
+
+# ---------------------------------------------------------------------------
 # render_test_spec — the pre_test extension hook (BE-0432)
 # ---------------------------------------------------------------------------
 
@@ -918,6 +977,45 @@ def test_submit_and_collect_uploads_the_ios_app_type_when_requested(tmp_path: Pa
     client = _FakeClient()
     _submit(client, _FakeTransfer(), tmp_path, app_upload_type="IOS_APP")
     assert client.upload_types[0] == "IOS_APP"
+
+
+def test_submit_and_collect_runs_an_appium_python_test_by_default(tmp_path: Path) -> None:
+    client = _FakeClient()
+    _submit(client, _FakeTransfer(), tmp_path)
+    assert client.upload_types[1:] == ["APPIUM_PYTHON_TEST_PACKAGE", "APPIUM_PYTHON_TEST_SPEC"]
+    assert client.scheduled is not None
+    assert client.scheduled["test"]["type"] == "APPIUM_PYTHON"
+
+
+def test_submit_and_collect_runs_an_xctest_ui_test_when_requested(tmp_path: Path) -> None:
+    # An XCTEST_UI run is the one whose test package Device Farm re-signs for the reserved iPhone.
+    client = _FakeClient()
+    package = tmp_path / "package.zip"
+    package.write_bytes(b"zip")
+    spec = tmp_path / "testspec.yml"
+    spec.write_text("version: 0.1")
+    ipa = tmp_path / "app.ipa"
+    ipa.write_bytes(b"ipa")
+    submit_and_collect(
+        client,
+        _FakeTransfer(),
+        project_arn="arn:project/1",
+        device_selection=device_selection_for("ios"),
+        app_path=ipa,
+        package_zip=package,
+        spec_yaml=spec,
+        dest=tmp_path / "out",
+        app_upload_type="IOS_APP",
+        test_type="XCTEST_UI",
+        sleep=lambda _: None,
+    )
+    assert client.upload_types == ["IOS_APP", "XCTEST_UI_TEST_PACKAGE", "XCTEST_UI_TEST_SPEC"]
+    assert client.scheduled is not None
+    assert client.scheduled["test"] == {
+        "type": "XCTEST_UI",
+        "testPackageArn": "arn:upload/2/package.zip",
+        "testSpecArn": "arn:upload/3/testspec.yml",
+    }
 
 
 def test_submit_and_collect_reports_bajutsus_verdict_not_device_farms(tmp_path: Path) -> None:

@@ -308,11 +308,20 @@ An iOS target fans out like an Android one, with these differences:
   for Device Farm's devices (see [iOS re-signing](#ios-re-signing-and-real-device-capabilities)).
 - Its `driver.runner.testRunner` names the device-build `.xctestrun`. To build the runner, run
   `make -C demos/showcase runner-build-device`. Copy the build's whole `Products` directory into the
-  config's directory. The archive then carries the test bundle beside the `.xctestrun`.
+  config's directory. The runner needs a signature from any development certificate, and its profile
+  need not list Device Farm's devices.
 - The config's directory travels whole, with no size cap. Keep it to the config, the scenarios, the
   `.ipa`, and the runner's products. Build output beside the config, such as `DerivedData/` or an
   `.xcarchive`, would travel too.
 - The Device Farm worker's `drivers` lists `xcuitest`.
+
+The worker submits an iOS job as an `XCTEST_UI` run, not the `APPIUM_PYTHON` run an Android job
+takes. An iPhone refuses a runner whose profile does not list the device (`0xe8008012`). An
+`APPIUM_PYTHON` run delivers the runner with its own signature. For an `XCTEST_UI` run, Device Farm
+re-signs the test package for the device it reserves. The package carries the runner app at its
+root. Bajutsu and the job's bundle sit beside it under `bajutsu-package/`, without the runner's
+products. Before the run, the test spec copies Device Farm's re-signed runner to the path that
+`driver.runner.testRunner` names.
 
 The fan-out carries no secret to the Device Farm host. A scenario that reads `${secrets.*}` gets no
 value there.

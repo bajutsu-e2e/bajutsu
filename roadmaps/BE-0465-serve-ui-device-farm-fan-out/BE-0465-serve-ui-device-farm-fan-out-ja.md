@@ -265,6 +265,14 @@ History の一覧に残ります。サーバー側に run-set の記録を持た
   受け取ります。このファイルのデバイスプロバイダーは、デバイスが起動済みでアプリもインストール済みだと報告します。
   実行はそのビルドを起動し、何もインストールしません。これは Android と iOS で共通です。iOS の実機は `app.path`
   をそもそも拒否していたので、この変更で iOS のターゲットも fan-out できるようになります。
+- [#2215](https://github.com/bajutsu-e2e/bajutsu/pull/2215)（iOS のランナーの修正）— 実際の Device Farm の
+  iPhone で iOS を初めて動かしたところ、Bajutsu が動き出す前に止まりました。iPhone が、自分を含まないプロファイルで
+  署名されたランナーを拒否したためです（`0xe8008012`）。`APPIUM_PYTHON` の実行は、ビルドしたときの署名のまま
+  ランナーを届けます。一方で、実行が予約する iPhone はそのとき空いている端末です。現在の worker は、iOS のジョブを
+  `XCTEST_UI` の実行として送ります。この形式では、Device Farm が予約した端末向けにテストパッケージを署名し直します。
+  パッケージはルートにランナーのアプリを置き、Bajutsu を `bajutsu-package/` の下に置きます。テスト spec は、
+  署名し直されたランナーを `driver.runner.testRunner` の指す場所へコピーします。Android は `APPIUM_PYTHON`
+  のままです。
 
 ## 参考
 

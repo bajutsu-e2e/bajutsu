@@ -14,6 +14,7 @@ import yaml
 from bajutsu.common.cloud.devicefarm import (
     APP_UPLOAD_TYPE,
     REQUIREMENTS_TXT,
+    XCTEST_PACKAGE_DIR,
     DeviceFarmClient,
     DeviceFarmError,
     Interrupt,
@@ -34,6 +35,7 @@ from bajutsu.common.devices.runs import unpack_conditions
 from .batch_checkpoint import BatchCheckpoint
 from .batch_lifecycle_hook import BatchContext, BatchLifecycleHook
 from .batch_request import BatchRequest
+from .xctest_runner import XctestRunner, xctest_runner
 
 _logger = logging.getLogger(__name__)
 
@@ -215,18 +217,32 @@ class DeviceFarmBatchProvider:
                     hook.before_submit(ctx)
 
                 app_path = _application(request, work_dir)
+                # An iOS runner goes up as an XCTEST_UI package, which Device Farm re-signs for the
+                # device it reserves; Bajutsu then moves under XCTEST_PACKAGE_DIR beside it (BE-0465).
+                runner = (
+                    xctest_runner(work_dir, request.config, request.target)
+                    if request.platform == "ios"
+                    else None
+                )
+                # `root` places a path inside the package; `prefix` places one inside the directory the
+                # test spec runs from.
+                root = f"{XCTEST_PACKAGE_DIR}/" if runner is not None else ""
                 prefix = f"{BUNDLE_ARCNAME}/" if self._source_root is not None else ""
                 config_arc = f"{prefix}{request.config}"
                 extra_texts: dict[str, str] = {
-                    "requirements.txt": REQUIREMENTS_TXT,
-                    _HOST_WORKER_ARCNAME: (
+                    f"{root}requirements.txt": REQUIREMENTS_TXT,
+                    f"{root}{_HOST_WORKER_ARCNAME}": (
                         "version: 1\nenvironment: devicefarm-host\n"
                         f"drivers: [{_HOST_DRIVER[request.platform]}]\n"
                     ),
                 }
                 # The binary travels as the run's app upload, which Device Farm installs before the
-                # run, so a copy inside the bundle would only double the package.
-                exclude_arcnames: set[str] = set(_inside(app_path, work_dir, prefix))
+                # run, so a copy inside the bundle would only double the package. So does the runner
+                # build: Device Farm hands the test spec a re-signed copy of it.
+                left_out = [app_path, *(runner.build_files if runner is not None else ())]
+                exclude_arcnames: set[str] = {
+                    f"{root}{arc}" for path in left_out for arc in _inside(path, work_dir, prefix)
+                }
 
                 if ctx.launch_env:
                     config_path = work_dir / request.config
@@ -247,8 +263,8 @@ class DeviceFarmBatchProvider:
                     # ctx.launch_env wins over pre-existing config values on collision; it lands in
                     # the target's `subject.launch.env` (BE-0452, BE-0470).
                     launch["env"] = {**launch.get("env", {}), **ctx.launch_env}
-                    extra_texts[config_arc] = yaml.dump(config_data, allow_unicode=True)
-                    exclude_arcnames.add(config_arc)
+                    extra_texts[f"{root}{config_arc}"] = yaml.dump(config_data, allow_unicode=True)
+                    exclude_arcnames.add(f"{root}{config_arc}")
 
                 spec = render_test_spec(
                     [f"{prefix}{request.scenario}"],
@@ -256,6 +272,11 @@ class DeviceFarmBatchProvider:
                     config=config_arc,
                     platform=request.platform,
                     worker_config=_HOST_WORKER_ARCNAME,
+                    xctest_runner=(
+                        f"{prefix}{runner.xctestrun.relative_to(work_dir).as_posix()}"
+                        if runner is not None
+                        else None
+                    ),
                 )
                 with tempfile.TemporaryDirectory() as staging_name:
                     staging = Path(staging_name)
@@ -263,7 +284,7 @@ class DeviceFarmBatchProvider:
                     spec_path.write_text(spec, encoding="utf-8")
                     package_zip = staging / "devicefarm-package.zip"
                     build_package(
-                        self._package_entries(work_dir),
+                        self._package_entries(work_dir, runner),
                         package_zip,
                         extra_texts=extra_texts,
                         exclude_arcnames=exclude_arcnames,
@@ -278,6 +299,7 @@ class DeviceFarmBatchProvider:
                         spec_yaml=spec_path,
                         dest=dest,
                         app_upload_type=APP_UPLOAD_TYPE[request.platform],
+                        test_type="XCTEST_UI" if runner is not None else "APPIUM_PYTHON",
                         run_name=job_id or "bajutsu",
                         sleep=self._sleep,
                         on_scheduled=(checkpoint.save if checkpoint is not None else None),
@@ -306,14 +328,25 @@ class DeviceFarmBatchProvider:
         assert verdict is not None  # exceptions take the other path
         return verdict
 
-    def _package_entries(self, work_dir: Path) -> list[tuple[Path, str]]:
+    def _package_entries(
+        self, work_dir: Path, runner: XctestRunner | None = None
+    ) -> list[tuple[Path, str]]:
         """The `(source, arcname)` pairs of one job's package (see the class docstring)."""
         if self._source_root is None:
-            return [(work_dir, ".")]
-        return [
-            *((self._source_root / name, name) for name in _SOURCE_ENTRIES),
-            (work_dir, BUNDLE_ARCNAME),
+            entries = [(work_dir, ".")]
+        else:
+            entries = [
+                *((self._source_root / name, name) for name in _SOURCE_ENTRIES),
+                (work_dir, BUNDLE_ARCNAME),
+            ]
+        if runner is None:
+            return entries
+        # Device Farm finds the runner app at the package root; Bajutsu moves to a directory beside it.
+        nested = [
+            (source, XCTEST_PACKAGE_DIR if arc == "." else f"{XCTEST_PACKAGE_DIR}/{arc}")
+            for source, arc in entries
         ]
+        return [(runner.app, runner.app.name), *nested]
 
 
 def _application(request: BatchRequest, work_dir: Path) -> Path:

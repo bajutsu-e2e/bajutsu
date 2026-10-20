@@ -267,6 +267,14 @@ Log:
   `--worker-config`. Its device provider reports the device booted with the app installed. The run
   launches that build and installs nothing, on Android and iOS alike. An iOS real device refused an
   `app.path` outright, so this also lets an iOS target fan out.
+- [#2215](https://github.com/bajutsu-e2e/bajutsu/pull/2215) (iOS runner fix) — The first iOS run on
+  a real Device Farm iPhone stopped before Bajutsu started: the iPhone refused the runner
+  (`0xe8008012`), whose profile did not list it. An `APPIUM_PYTHON` run delivers the runner with the
+  signature it was built with, and the run reserves whichever iPhone is free. The worker now submits
+  an iOS job as an `XCTEST_UI` run, whose test package Device Farm re-signs for the reserved device.
+  The package carries the runner app at its root and Bajutsu under `bajutsu-package/`. The test spec
+  copies the re-signed runner to the path `driver.runner.testRunner` names. Android keeps
+  `APPIUM_PYTHON`.
 
 ## References
 

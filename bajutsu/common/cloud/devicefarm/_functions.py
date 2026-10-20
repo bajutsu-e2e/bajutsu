@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import logging
+import posixpath
 import shlex
 import stat
 import time
@@ -36,13 +37,19 @@ _POLL_INTERVAL_SECONDS = 30
 
 Platform = Literal["android", "ios"]
 
-# boto3 Device Farm upload types. The test package and spec use the Appium-Python
-# custom-environment types on both platforms; only the app artifact differs — an Android APK
-# (`.aab` is not accepted) or an iOS `.ipa`. Keying by `Platform` lets `mypy --strict` catch a
-# missing or misspelt platform key here rather than silently widening to `dict[str, str]`.
+# boto3 Device Farm upload types. The app artifact differs per platform — an Android APK (`.aab` is
+# not accepted) or an iOS `.ipa`. Keying by `Platform` lets `mypy --strict` catch a missing or
+# misspelt platform key here rather than silently widening to `dict[str, str]`.
 APP_UPLOAD_TYPE: dict[Platform, str] = {"android": "ANDROID_APP", "ios": "IOS_APP"}
-_UPLOAD_TEST_PACKAGE = "APPIUM_PYTHON_TEST_PACKAGE"
-_UPLOAD_TEST_SPEC = "APPIUM_PYTHON_TEST_SPEC"
+
+# The run's test type, which picks the test package and spec upload types. Both run the custom test
+# spec; XCTEST_UI is the one whose package Device Farm re-signs, so an iOS runner installs on whichever
+# device the run reserves (BE-0465).
+TestType = Literal["APPIUM_PYTHON", "XCTEST_UI"]
+_TEST_UPLOAD_TYPES: dict[TestType, tuple[str, str]] = {
+    "APPIUM_PYTHON": ("APPIUM_PYTHON_TEST_PACKAGE", "APPIUM_PYTHON_TEST_SPEC"),
+    "XCTEST_UI": ("XCTEST_UI_TEST_PACKAGE", "XCTEST_UI_TEST_SPEC"),
+}
 
 # Device Farm's DeviceFilter PLATFORM values (uppercase), keyed by Bajutsu's platform. Used to build
 # the deviceSelectionConfiguration the serve fan-out path schedules with (see `device_selection_for`).
@@ -123,6 +130,12 @@ _UV = "$HOME/.local/bin/uv"  # where `pip install --user uv` lands on the Device
 _VENV = "$HOME/bajutsu-venv"
 _BAJUTSU = f"{_VENV}/bin/bajutsu"
 
+# An XCTEST_UI package carries the runner `.app` at its root and Bajutsu under this directory. Device
+# Farm unpacks it somewhere of its own beside `$DEVICEFARM_XCTEST_BUILD_DIRECTORY`, so the spec finds
+# the directory by name and copies it to a fixed work directory the run starts in (BE-0465).
+XCTEST_PACKAGE_DIR = "bajutsu-package"
+_WORK = "$HOME/bajutsu-work"
+
 
 def _next_poll_delay(previous: float) -> float:
     """The next status-poll wait: double the previous one, capped at ``_POLL_INTERVAL_SECONDS``."""
@@ -170,6 +183,7 @@ def render_test_spec(
     python_version: str = "3.13",
     pre_test_commands: Sequence[str] = (),
     worker_config: str | None = None,
+    xctest_runner: str | None = None,
 ) -> str:
     """Render a Device Farm custom-environment test spec that runs the given scenarios.
 
@@ -204,9 +218,14 @@ def render_test_spec(
             `--worker-config`. The serve fan-out names a `devicefarm-host` file there, so the run
             launches the app Device Farm installed instead of installing `app.path` (BE-0465). None
             keeps the run's default worker file.
+        xctest_runner: For an XCTEST_UI run, the `.xctestrun` path inside `XCTEST_PACKAGE_DIR` that
+            the config's `driver.runner.testRunner` names. The spec installs Bajutsu from that
+            directory, and puts Device Farm's re-signed runner there before the run (BE-0465). None
+            renders the APPIUM_PYTHON spec, which runs from the unpacked package itself.
 
     Raises:
-        ValueError: If `scenarios` is empty — a spec that runs nothing would silently "pass".
+        ValueError: If `scenarios` is empty — a spec that runs nothing would silently "pass" — or if
+            `xctest_runner` is given for a platform other than iOS.
         TypeError: If `scenarios` or `pre_test_commands` is a bare `str`, which `Sequence[str]`
             matches but would splice one command per character.
     """
@@ -220,6 +239,8 @@ def render_test_spec(
         raise TypeError("pre_test_commands must be a sequence of commands, not a single string")
     if not scenarios:
         raise ValueError("cannot render a test spec with no scenario to run")
+    if xctest_runner is not None and platform != "ios":
+        raise ValueError("an XCTEST_UI runner applies to iOS alone")
     run = _PLATFORM_RUN[platform]
     # `target`, `config`, and each scenario path trace back to workflow_dispatch text inputs, so
     # quote every splice: an unescaped space or shell metacharacter would otherwise break argument
@@ -233,24 +254,45 @@ def render_test_spec(
         f" --config {shlex.quote(config)} --backend {run.backend} --udid {run.udid}{worker_arg}"
         for s in scenarios
     ]
+    install = _python_bootstrap_commands(python_version)
+    post_test = ['cp -r runs "$DEVICEFARM_LOG_DIR"/ || true']
+    runner_setup: list[str] = []
+    if xctest_runner is not None:
+        # The last bootstrap command installs from $DEVICEFARM_TEST_PACKAGE_PATH, where an XCTEST_UI
+        # run does not unpack Bajutsu; it installs from the work directory instead.
+        install = [
+            *install[:-1],
+            f'PKG="$(find "$DEVICEFARM_XCTEST_BUILD_DIRECTORY"'
+            f' "$(dirname "$DEVICEFARM_XCTEST_BUILD_DIRECTORY")" -maxdepth 3 -type d'
+            f' -name {XCTEST_PACKAGE_DIR} | head -n 1)" && test -n "$PKG"'
+            f' && rm -rf "{_WORK}" && cp -R "$PKG" "{_WORK}"',
+            f'{_UV} pip install --python {_VENV} "{_WORK}"',
+        ]
+        # Device Farm writes the re-signed runner beside its own .xctestrun; both land where the
+        # config's testRunner points, so the run needs no config of its own.
+        products = posixpath.join(posixpath.dirname(xctest_runner), "Debug-iphoneos")
+        runner_setup = [
+            f'ditto "$(dirname "$DEVICEFARM_XCUITESTRUN_FILE")/Debug-iphoneos"'
+            f' "{_WORK}"/{shlex.quote(products)}',
+            f'cp "$DEVICEFARM_XCUITESTRUN_FILE" "{_WORK}"/{shlex.quote(xctest_runner)}',
+        ]
+        run_cmds = [f'cd "{_WORK}" && {c}' for c in run_cmds]
+        post_test = [f'cp -r "{_WORK}/runs" "$DEVICEFARM_LOG_DIR"/ || true']
     spec: dict[str, Any] = {
         "version": 0.1,
         "phases": {
-            "install": {"commands": _python_bootstrap_commands(python_version)},
+            "install": {"commands": install},
             "pre_test": {
                 "commands": [
                     # Prove the reserved device is visible before running (the serial-resolution PoC).
                     run.probe,
+                    *runner_setup,
                     # Caller-supplied device-side setup runs after the probe (BE-0432); empty by default.
                     *pre_test_commands,
                 ]
             },
             "test": {"commands": run_cmds},
-            "post_test": {
-                "commands": [
-                    'cp -r runs "$DEVICEFARM_LOG_DIR"/ || true',
-                ]
-            },
+            "post_test": {"commands": post_test},
         },
         "artifacts": ["$DEVICEFARM_LOG_DIR"],
     }
@@ -475,6 +517,7 @@ def submit_and_collect(
     spec_yaml: Path,
     dest: Path,
     app_upload_type: str = APP_UPLOAD_TYPE["android"],
+    test_type: TestType = "APPIUM_PYTHON",
     run_name: str = "bajutsu",
     sleep: Callable[[float], None] = time.sleep,
     on_scheduled: Callable[[str], None] | None = None,
@@ -495,6 +538,8 @@ def submit_and_collect(
     Args:
         app_upload_type: The Device Farm upload type for the app artifact (``ANDROID_APP`` for an
             `.apk`, ``IOS_APP`` for an `.ipa`) — Device Farm rejects a mismatched artifact.
+        test_type: The run's test type, which also picks the package and spec upload types.
+            ``XCTEST_UI`` has Device Farm re-sign the package's runner for the reserved iPhone.
         on_scheduled: Called with the run ARN the moment the run is scheduled, before the long poll —
             serve persists it so a worker that re-leases the job after a restart resumes that run
             through `collect_run` instead of resubmitting (BE-0336 Unit 5). When it raises, the run
@@ -514,6 +559,7 @@ def submit_and_collect(
         raise DeviceFarmError(
             "schedule a run with exactly one of device_pool_arn or device_selection"
         )
+    package_type, spec_type = _TEST_UPLOAD_TYPES[test_type]
     app_arn = _upload_one(
         client,
         transfer,
@@ -528,7 +574,7 @@ def submit_and_collect(
         transfer,
         project_arn=project_arn,
         name=package_zip.name,
-        upload_type=_UPLOAD_TEST_PACKAGE,
+        upload_type=package_type,
         path=package_zip,
         sleep=sleep,
     )
@@ -537,7 +583,7 @@ def submit_and_collect(
         transfer,
         project_arn=project_arn,
         name=spec_yaml.name,
-        upload_type=_UPLOAD_TEST_SPEC,
+        upload_type=spec_type,
         path=spec_yaml,
         sleep=sleep,
     )
@@ -554,7 +600,7 @@ def submit_and_collect(
         projectArn=project_arn,
         appArn=app_arn,
         name=run_name,
-        test={"type": "APPIUM_PYTHON", "testPackageArn": package_arn, "testSpecArn": spec_arn},
+        test={"type": test_type, "testPackageArn": package_arn, "testSpecArn": spec_arn},
         **where,
     )
     run_arn = scheduled["run"]["arn"]

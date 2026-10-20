@@ -37,13 +37,14 @@ from ._functions import _PACKAGE_EXCLUDES as _PACKAGE_EXCLUDES
 from ._functions import _PLATFORM_RUN as _PLATFORM_RUN
 from ._functions import _POLL_INITIAL_SECONDS as _POLL_INITIAL_SECONDS
 from ._functions import _POLL_INTERVAL_SECONDS as _POLL_INTERVAL_SECONDS
-from ._functions import _UPLOAD_TEST_PACKAGE as _UPLOAD_TEST_PACKAGE
-from ._functions import _UPLOAD_TEST_SPEC as _UPLOAD_TEST_SPEC
+from ._functions import _TEST_UPLOAD_TYPES as _TEST_UPLOAD_TYPES
 from ._functions import _UV as _UV
 from ._functions import _VENV as _VENV
 from ._functions import (
     APP_UPLOAD_TYPE,
+    XCTEST_PACKAGE_DIR,
     Platform,
+    TestType,
     build_package,
     collect_run,
     device_selection_for,
@@ -72,12 +73,14 @@ from .verdict import Verdict
 __all__ = [
     "APP_UPLOAD_TYPE",
     "REQUIREMENTS_TXT",
+    "XCTEST_PACKAGE_DIR",
     "DeviceFarmClient",
     "DeviceFarmError",
     "HttpTransfer",
     "Interrupt",
     "Platform",
     "RunInterrupted",
+    "TestType",
     "Transfer",
     "Verdict",
     "build_package",

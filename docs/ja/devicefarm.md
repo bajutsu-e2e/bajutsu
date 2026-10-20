@@ -155,9 +155,11 @@ DEVICEFARM_PROJECT_ARN=arn:aws:devicefarm:us-west-2:123456789012:project:abc \
 iOS のターゲットも Android と同じように fan-out できます。違いは次のとおりです。
 
 - ターゲットには `platform: ios` と `runsOn.kind: device` を設定します。`subject.path` は、Device Farm のデバイス向けに署名した `.ipa` を指します（[iOS: 再署名と実機のケーパビリティ](#ios-再署名と実機のケーパビリティ)を参照してください）。
-- `driver.runner.testRunner` は、実機向けにビルドした `.xctestrun` を指します。ランナーは `make -C demos/showcase runner-build-device` でビルドします。そのうえで、ビルドの `Products` ディレクトリを丸ごと設定ファイルのディレクトリへコピーします。こうすると、アーカイブが `.xctestrun` の隣にテストバンドルを運びます。
+- `driver.runner.testRunner` は、実機向けにビルドした `.xctestrun` を指します。ランナーは `make -C demos/showcase runner-build-device` でビルドし、ビルドの `Products` ディレクトリを丸ごと設定ファイルのディレクトリへコピーします。ランナーはどの開発用証明書で署名しても構いません。プロファイルに Device Farm のデバイスが入っている必要もありません。
 - 設定ファイルのディレクトリは、サイズの上限なしで丸ごと送られます。中身は、設定ファイル、シナリオ、`.ipa`、ランナーのビルド成果物だけにします。設定ファイルの隣に `DerivedData/` や `.xcarchive` などのビルド出力があると、それも送られます。
 - Device Farm ワーカーの `drivers` には `xcuitest` を含めます。
+
+ワーカーは、iOS のジョブを `XCTEST_UI` の実行として送ります。Android のジョブが使う `APPIUM_PYTHON` ではありません。iPhone がランナーをインストールするのは、その端末を含むプロファイルで署名されているときだけです。`APPIUM_PYTHON` ではランナーが自身の署名のまま届くので、プロファイルにない iPhone はインストールを拒みます（`0xe8008012`）。`XCTEST_UI` の実行では、Device Farm が予約した端末向けにテストパッケージを署名し直します。そのためパッケージは、ルートにランナーのアプリを置き、Bajutsu とジョブのバンドルを `bajutsu-package/` の下に置きます。バンドルにはランナーのビルド成果物を入れません。実行の前に、テスト spec が Device Farm の署名し直したランナーを `driver.runner.testRunner` の指す場所へコピーします。
 
 fan-out は、Device Farm のホストへシークレットを運びません。`${secrets.*}` を読むシナリオは、そこで値を得られません。
 
