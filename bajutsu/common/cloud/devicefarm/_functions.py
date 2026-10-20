@@ -104,6 +104,9 @@ _PACKAGE_EXCLUDES = frozenset(
         ".slots",
         ".owner-pid",
         ".job-pgid",
+        # A source checkout's Simulator runner build (BE-0292), useless on Device Farm's real devices,
+        # and its .app directories make an XCTEST_UI package fail Device Farm's single-.app check.
+        "_xcuitest_runner",
     }
 )
 

@@ -426,6 +426,22 @@ def test_package_excludes_vcs_and_build_noise_dirs(tmp_path: Path) -> None:
     assert "src/runs/leftover.log" not in names
 
 
+def test_package_leaves_out_the_bundled_simulator_runner(tmp_path: Path) -> None:
+    # A source checkout's `make runner-bundle` output: an XCTEST_UI package refuses a second .app.
+    app = tmp_path / "bajutsu" / "_xcuitest_runner" / "Debug-iphonesimulator" / "Host.app"
+    app.mkdir(parents=True)
+    (app / "Host").write_bytes(b"\x00")
+    (tmp_path / "bajutsu" / "__init__.py").write_text("")
+    out = tmp_path / "package.zip"
+
+    build_package([(tmp_path / "bajutsu", "bajutsu")], out)
+
+    with zipfile.ZipFile(out) as zf:
+        names = set(zf.namelist())
+    assert "bajutsu/__init__.py" in names
+    assert not any("_xcuitest_runner" in n for n in names)
+
+
 def test_package_excludes_credential_files(tmp_path: Path) -> None:
     # When the package root is the Bajutsu checkout, `.env`, `.env.local`, and `.aws/` can carry live
     # API keys that must never reach a shared Device Farm host. The build strips any path component
