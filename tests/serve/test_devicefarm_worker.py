@@ -111,6 +111,13 @@ class _CapturingTransfer:
         return zipfile.ZipFile(io.BytesIO(data))
 
 
+def _spec_phases(transfer: _CapturingTransfer) -> dict[str, Any]:
+    """The phases of the one test spec a submit uploaded."""
+    (spec,) = (v for k, v in transfer.uploads.items() if k.endswith("testspec.yml"))
+    phases: dict[str, Any] = yaml.safe_load(spec)["phases"]
+    return phases
+
+
 def _source_tree(root: Path) -> Path:
     """A stand-in for Bajutsu's checkout: the parts a package takes from it, plus noise."""
     (root / "tests").mkdir(parents=True)
@@ -309,9 +316,9 @@ def test_the_package_holds_the_source_parts_and_the_bundle(tmp_path: Path) -> No
     # The binary went up as the app upload instead.
     assert any(url.endswith("app.apk") for url in transfer.uploads)
     # The test spec runs the scenario from inside the bundle.
-    (spec,) = (v for k, v in transfer.uploads.items() if k.endswith("testspec.yml"))
-    assert "--scenario bundle/scenarios/one.yaml" in spec.decode()
-    assert "--config bundle/bajutsu.config.yaml" in spec.decode()
+    (run,) = _spec_phases(transfer)["test"]["commands"]
+    assert "--scenario bundle/scenarios/one.yaml" in run
+    assert "--config bundle/bajutsu.config.yaml" in run
     # Neither tree is written into.
     assert sorted(p.relative_to(source) for p in source.rglob("*")) == before
     assert not (bundle / "testspec.yml").exists()
@@ -341,8 +348,7 @@ def test_every_run_takes_the_device_farm_installed_app(
     package = transfer.package()
     worker = parse_worker_capability(package.read(worker_file).decode())
     assert worker.environment == "devicefarm-host" and worker.drivers == (driver,)
-    (spec,) = (v for k, v in transfer.uploads.items() if k.endswith("testspec.yml"))
-    runs = yaml.safe_load(spec)["phases"]["test"]["commands"]
+    runs = _spec_phases(transfer)["test"]["commands"]
     assert runs and all(c.endswith("--worker-config devicefarm-host.worker.yaml") for c in runs)
 
 
@@ -357,14 +363,20 @@ def test_an_android_run_stays_an_appium_python_test(tmp_path: Path) -> None:
     assert client.test_type == "APPIUM_PYTHON"
 
 
-def test_an_ios_run_ships_its_runner_for_device_farm_to_re_sign(tmp_path: Path) -> None:
+# macOS hands the worker a /var/folders work dir, a symlink to /private/var/folders.
+@pytest.mark.parametrize("through_symlink", [False, True])
+def test_an_ios_run_ships_its_runner_for_device_farm_to_re_sign(
+    tmp_path: Path, through_symlink: bool
+) -> None:
     # An APPIUM_PYTHON package keeps the runner as signed, which a Device Farm iPhone refuses unless
     # its profile lists that device; an XCTEST_UI package has Device Farm re-sign it (BE-0465).
+    work_dir = _ios_bundle(tmp_path / "bundle")
+    if through_symlink:
+        (tmp_path / "link").symlink_to(work_dir)
+        work_dir = tmp_path / "link"
     provider, client, transfer = _provider(_source_tree(tmp_path / "src"))
 
-    verdict = provider.submit(
-        _ios_request(), work_dir=_ios_bundle(tmp_path / "bundle"), dest=tmp_path / "dest"
-    )
+    verdict = provider.submit(_ios_request(), work_dir=work_dir, dest=tmp_path / "dest")
 
     assert verdict.ok
     assert client.upload_types == ["IOS_APP", "XCTEST_UI_TEST_PACKAGE", "XCTEST_UI_TEST_SPEC"]
@@ -381,24 +393,7 @@ def test_an_ios_run_ships_its_runner_for_device_farm_to_re_sign(tmp_path: Path) 
     } <= names
     assert not any(n.startswith("bajutsu-package/bundle/products/") for n in names)
     assert "bajutsu-package/bundle/app.ipa" not in names
-    (spec,) = (v for k, v in transfer.uploads.items() if k.endswith("testspec.yml"))
-    pre_test = " ".join(yaml.safe_load(spec)["phases"]["pre_test"]["commands"])
-    assert '"$HOME/bajutsu-work"/bundle/products/Runner.xctestrun' in pre_test
-
-
-def test_an_ios_run_reached_through_a_symlinked_work_dir_still_names_its_runner(
-    tmp_path: Path,
-) -> None:
-    # macOS hands the worker a /var/folders work dir, a symlink to /private/var/folders.
-    _ios_bundle(tmp_path / "bundle")
-    (tmp_path / "link").symlink_to(tmp_path / "bundle")
-    provider, _, transfer = _provider(_source_tree(tmp_path / "src"))
-
-    verdict = provider.submit(_ios_request(), work_dir=tmp_path / "link", dest=tmp_path / "dest")
-
-    assert verdict.ok
-    (spec,) = (v for k, v in transfer.uploads.items() if k.endswith("testspec.yml"))
-    pre_test = " ".join(yaml.safe_load(spec)["phases"]["pre_test"]["commands"])
+    pre_test = " ".join(_spec_phases(transfer)["pre_test"]["commands"])
     assert '"$HOME/bajutsu-work"/bundle/products/Runner.xctestrun' in pre_test
 
 

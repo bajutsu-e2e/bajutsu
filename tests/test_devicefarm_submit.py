@@ -27,6 +27,7 @@ from bajutsu.common.cloud.devicefarm import (
     _POLL_INTERVAL_SECONDS,
     DeviceFarmError,
     Platform,
+    TestType,
     Verdict,
     _next_poll_delay,
     _safe_extract,
@@ -805,6 +806,8 @@ def _submit(
     tmp_path: Path,
     *,
     app_upload_type: str = "ANDROID_APP",
+    test_type: TestType = "APPIUM_PYTHON",
+    device_selection: dict[str, Any] | None = None,
 ) -> Verdict:
     package = tmp_path / "package.zip"
     package.write_bytes(b"zip")
@@ -816,12 +819,14 @@ def _submit(
         client,
         transfer,
         project_arn="arn:project/1",
-        device_pool_arn="arn:pool/1",
+        device_pool_arn=None if device_selection is not None else "arn:pool/1",
+        device_selection=device_selection,
         app_path=apk,
         package_zip=package,
         spec_yaml=spec,
         dest=tmp_path / "out",
         app_upload_type=app_upload_type,
+        test_type=test_type,
         sleep=lambda _: None,
     )
 
@@ -1006,24 +1011,13 @@ def test_submit_and_collect_runs_an_appium_python_test_by_default(tmp_path: Path
 def test_submit_and_collect_runs_an_xctest_ui_test_when_requested(tmp_path: Path) -> None:
     # An XCTEST_UI run is the one whose test package Device Farm re-signs for the reserved iPhone.
     client = _FakeClient()
-    package = tmp_path / "package.zip"
-    package.write_bytes(b"zip")
-    spec = tmp_path / "testspec.yml"
-    spec.write_text("version: 0.1")
-    ipa = tmp_path / "app.ipa"
-    ipa.write_bytes(b"ipa")
-    submit_and_collect(
+    _submit(
         client,
         _FakeTransfer(),
-        project_arn="arn:project/1",
-        device_selection=device_selection_for("ios"),
-        app_path=ipa,
-        package_zip=package,
-        spec_yaml=spec,
-        dest=tmp_path / "out",
+        tmp_path,
         app_upload_type="IOS_APP",
         test_type="XCTEST_UI",
-        sleep=lambda _: None,
+        device_selection=device_selection_for("ios"),
     )
     assert client.upload_types == ["IOS_APP", "XCTEST_UI_TEST_PACKAGE", "XCTEST_UI_TEST_SPEC"]
     assert client.scheduled is not None
