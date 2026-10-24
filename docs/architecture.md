@@ -825,6 +825,18 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   context raises for `clear`/`delete` too. A cross-step `SelectionState` enforces the
   copy-requires-a-prior-select precondition, verified only through the existing `clipboard`
   read-back since no backend exposes selection as queryable state
+- DSL `navigate` (BE-0464): a web-only step that loads a URL mid-scenario — `navigate: /settings`
+  resolves against the target's `baseUrl` via `urljoin`, an absolute `http`/`https` URL is used as
+  written, and any other scheme (`javascript:`, `file:`, …) fails the load, re-checked after
+  `${vars.*}` substitution for a value carrying a token. The step waits for the page's `load` event
+  and does not inspect the response status, so a 404 passes and the following `assert`/`wait`
+  decides the verdict; cookies and storage persist, so `navigate` continues the session rather than
+  resetting it. It rides on a new `Driver.goto(url)` method gated by the `URL_NAVIGATION`
+  capability, which only the Playwright backend and `FakeDriver` declare, so a scenario using it on
+  iOS or Android — including nested inside a `web:` block — fails at preflight rather than on a
+  leased device; the Playwright generator emits a real `page.goto(...)` call for a literal value and
+  a labeled `TODO` for one carrying a token, while the XCUITest and UI Automator generators always
+  emit the labeled `TODO`, since the step is web-only
 - DSL device & system actions (iOS): `background`, `clearKeychain`, `clearClipboard`,
   `overrideStatusBar` / `clearStatusBar` (deterministic status bar), and the `http` action for
   test-data setup / webhooks — `saveBody` stores the whole response body, and `extractBody`
