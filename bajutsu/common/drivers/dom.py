@@ -12,6 +12,16 @@ from bajutsu.common.drivers import base
 
 QUERY_JS = """
 () => {
+  // A link, image, or <time> keeps its meaningful value in an attribute, not the `value`
+  // property; a custom ARIA range widget (role=slider/progressbar/…) has no native `value` at all.
+  const valueOf = (el) => {
+    const tag = el.tagName.toLowerCase();
+    if (tag === 'a' || tag === 'area') return el.getAttribute('href');
+    if (tag === 'img') return el.getAttribute('src');
+    if (tag === 'time') return el.getAttribute('datetime');
+    if ('value' in el) return el.value;
+    return el.getAttribute('aria-valuetext') ?? el.getAttribute('aria-valuenow');
+  };
   const out = [];
   const sel = '[data-testid], button, a, input, select, textarea, [role]';
   for (const el of document.querySelectorAll(sel)) {
@@ -24,7 +34,7 @@ QUERY_JS = """
       identifier: el.getAttribute('data-testid'),
       role: el.getAttribute('role') || el.tagName.toLowerCase(),
       label: el.getAttribute('aria-label') || (text ? text.slice(0, 200) : null),
-      value: ('value' in el) ? el.value : null,
+      value: valueOf(el),
       secure: el.type === 'password',
       disabled: el.disabled === true || el.getAttribute('aria-disabled') === 'true',
       selected: el.getAttribute('aria-selected') === 'true'

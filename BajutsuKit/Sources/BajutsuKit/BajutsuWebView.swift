@@ -48,6 +48,14 @@ public enum BajutsuWebView {
     /// The same page-walk JavaScript the Playwright backend uses (bajutsu/common/drivers/dom.py QUERY_JS).
     static let queryJS = """
     (() => {
+      const valueOf = (el) => {
+        const tag = el.tagName.toLowerCase();
+        if (tag === 'a' || tag === 'area') return el.getAttribute('href');
+        if (tag === 'img') return el.getAttribute('src');
+        if (tag === 'time') return el.getAttribute('datetime');
+        if ('value' in el) return el.value;
+        return el.getAttribute('aria-valuetext') ?? el.getAttribute('aria-valuenow');
+      };
       const out = [];
       const sel = '[data-testid], button, a, input, select, textarea, [role]';
       for (const el of document.querySelectorAll(sel)) {
@@ -60,7 +68,7 @@ public enum BajutsuWebView {
           identifier: el.getAttribute('data-testid'),
           role: el.getAttribute('role') || el.tagName.toLowerCase(),
           label: el.getAttribute('aria-label') || (text ? text.slice(0, 200) : null),
-          value: ('value' in el) ? el.value : null,
+          value: valueOf(el),
           disabled: el.disabled === true || el.getAttribute('aria-disabled') === 'true',
           selected: el.getAttribute('aria-selected') === 'true'
                     || el.getAttribute('aria-checked') === 'true',
