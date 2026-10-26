@@ -33,6 +33,7 @@ _PAGE = """
 <progress data-testid="progress" role="progressbar" max="1" value="0.7" aria-valuenow="0"></progress>
 <progress data-testid="busy" role="progressbar" aria-valuetext="Loading"></progress>
 <progress data-testid="busyplain" aria-valuetext="Loading"></progress>
+<progress data-testid="spinner"></progress>
 <meter data-testid="gauge" role="progressbar" min="0" max="10" value="7" aria-valuenow="1"></meter>
 <div data-testid="emptytext" role="slider" aria-valuetext="" aria-valuenow="40">e</div>
 """
@@ -73,6 +74,8 @@ def test_query_js_reads_each_tags_own_value_source(page: Any) -> None:
     assert values["busy"] == "Loading"
     # ...with or without an explicit role: <progress> carries the progressbar role implicitly.
     assert values["busyplain"] == "Loading"
+    # One with no ARIA value publishes nothing, not a determinate-looking 0.
+    assert values["spinner"] is None
     assert values["gauge"] == "7"
     # An empty aria-valuetext (an unfilled template) must not hide a published aria-valuenow.
     assert values["emptytext"] == "40"
