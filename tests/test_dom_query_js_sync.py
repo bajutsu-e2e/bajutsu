@@ -27,3 +27,6 @@ def test_swift_query_js_matches_python_query_js() -> None:
     # Swift evaluates the script as an expression, so it wraps the same arrow function in an IIFE.
     assert swift.startswith("(() => {\n") and swift.endswith("\n})()")
     assert swift[1:-3] == QUERY_JS.strip()
+    # Swift's multiline literal interprets escapes (`\n`, `\\`, `\(`), so a backslash in the script
+    # would compare equal here while the string Swift evaluates differs. Keep it backslash-free.
+    assert "\\" not in QUERY_JS
