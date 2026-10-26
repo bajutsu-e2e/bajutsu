@@ -637,8 +637,9 @@ Headless Chromium via Playwright (Python). Runs on Linux with **no Mac and no Si
 fits the same toolchain as `make check`. Implementation: `common/drivers/playwright.py` (roadmap
 [BE-0041](../roadmaps/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)).
 
-- `query()`: one `page.evaluate()` walks the visible / interactive / a11y-relevant DOM nodes and a
-  pure parser (`parse_dom`) maps each to an `Element`. The id convention is the web equivalent of
+- `query()`: one `evaluate()` per document walks the visible / interactive / a11y-relevant DOM
+  nodes, the main page first and then each iframe. A pure parser (`parse_dom`) maps each node to an
+  `Element`. The id convention is the web equivalent of
   iOS accessibilityIdentifier: `data-testid` → `Selector.id`, ARIA `role` (or tag) → `traits`,
   accessible name / `aria-label` / text → `label`, input `value` → `value`.
 - **Plain text**: `query()` also returns an element that holds its own text yet matches no rule
@@ -649,6 +650,10 @@ fits the same toolchain as `make check`. Implementation: `common/drivers/playwri
   - Text inside an interactive control (a button, a link, or an input). The control's label
     already carries it.
   - Text that repeats the label of its nearest ancestor with a `data-testid` or a `role`.
+
+  Text elsewhere on the page still counts. Take a page with a heading and a button that both read
+  "Sign in". There `tap: { label: Sign in }` matches both and fails as ambiguous, as on iOS.
+  Add `traits: [button]`, `within`, or `index` to name the one you mean.
 - **Iframes**: `query()` also reads every iframe's document, nested ones included. Those
   elements join the same snapshot. The parent page's `contentDocument` stops at a cross-origin
   iframe. Playwright's frame tree reaches one, so the driver walks that tree. The driver offsets

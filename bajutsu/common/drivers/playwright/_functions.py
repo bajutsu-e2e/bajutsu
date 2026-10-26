@@ -159,8 +159,13 @@ def _iframe_elements(page: _Page) -> list[tuple[base.Element, _FrameScope]]:
     ) -> None:
         for child in frame.child_frames:
             try:
+                # A handle pins its DOM node until disposed, and query() is what condition waits
+                # poll, so the box is read and the handle released at once.
                 host = child.frame_element()
-                box = host.evaluate(_IFRAME_CONTENT_BOX_JS)
+                try:
+                    box = host.evaluate(_IFRAME_CONTENT_BOX_JS)
+                finally:
+                    host.dispose()
                 if not box or box[2] <= 0 or box[3] <= 0:
                     continue
                 child_origin = (origin[0] + box[0], origin[1] + box[1])
@@ -170,7 +175,7 @@ def _iframe_elements(page: _Page) -> list[tuple[base.Element, _FrameScope]]:
                 records = child.evaluate(QUERY_JS)
             except _playwright_error_types():
                 continue
-            scope = _FrameScope(child, child_origin, (*hosts, (host, origin)))
+            scope = _FrameScope(child, child_origin, (*hosts, (child, origin)))
             for el in parse_dom(records if isinstance(records, list) else []):
                 x, y, w, h = el["frame"]
                 shifted = (x + child_origin[0], y + child_origin[1], w, h)

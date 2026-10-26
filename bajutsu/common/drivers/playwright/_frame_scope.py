@@ -13,8 +13,9 @@ class _FrameScope(NamedTuple):
     `query()` reports every frame's elements in main-page CSS pixels, so a click at the element's
     center needs no translation. The occlusion check and `selectOption` do: `elementFromPoint` only
     sees its own document, so they run in `frame` at the point minus `origin`. `hosts` is each
-    `<iframe>` element handle on the way down (outermost first) with the main-page origin of the
-    document that owns it, so the check can confirm no cover in any ancestor swallows the click.
+    frame on the way down (outermost first) with the main-page origin of the document holding its
+    `<iframe>`, so the check can confirm no cover in any ancestor swallows the click. Frames, not
+    element handles, are kept: a handle pins its node until disposed, and a snapshot is discarded.
     """
 
     frame: Any

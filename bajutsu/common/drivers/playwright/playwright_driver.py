@@ -55,7 +55,14 @@ _HOST_HIT_JS = (
     f"{_DESCRIBE_COVER_JS}"
     "if (x < 0 || y < 0 || x >= window.innerWidth || y >= window.innerHeight) "
     "return {ok: true, cover: null, rect: null};"
-    "const hit = document.elementFromPoint(x, y);"
+    "let hit = document.elementFromPoint(x, y);"
+    # `elementFromPoint` stops at a shadow host, so an iframe inside a shadow root (which Playwright's
+    # frame tree does list) would always read as covered by its own host without descending.
+    "while (hit && hit !== host && hit.shadowRoot) {"
+    "  const inner = hit.shadowRoot.elementFromPoint(x, y);"
+    "  if (!inner || inner === hit) break;"
+    "  hit = inner;"
+    "}"
     "if (!hit) return {ok: false, cover: null, rect: null};"
     "return hit === host ? {ok: true, cover: null, rect: null} : describe(hit);"
     "}"
@@ -428,9 +435,13 @@ class PlaywrightDriver:
 
     def _hosts_hit(self, point: base.Point, scope: _FrameScope) -> _HitResult:
         """Whether `point` reaches `scope`'s frame through every enclosing `<iframe>` uncovered."""
-        for host, owner_origin in scope.hosts:
+        for frame, owner_origin in scope.hosts:
             ox, oy = owner_origin
-            result = host.evaluate(_HOST_HIT_JS, [point[0] - ox, point[1] - oy])
+            host = frame.frame_element()
+            try:
+                result = host.evaluate(_HOST_HIT_JS, [point[0] - ox, point[1] - oy])
+            finally:
+                host.dispose()
             if not result["ok"]:
                 rect = result["rect"]
                 return _HitResult(

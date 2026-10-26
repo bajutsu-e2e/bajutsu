@@ -397,3 +397,27 @@ def test_query_reads_plain_text_as_static_text(chromium: Any) -> None:
         assert heading["frame"][2] > 0
     finally:
         page.close()
+
+
+@pytest.mark.web
+def test_tap_reaches_an_iframe_inside_a_shadow_root(chromium: Any) -> None:
+    """`elementFromPoint` stops at a shadow host; the `<iframe>` check must look through it."""
+    srcdoc = html.escape(_IFRAME_INNER, quote=True)
+    page = chromium.new_page()
+    try:
+        page.set_content(
+            '<div id="embed"></div><script>'
+            "document.getElementById('embed').attachShadow({mode: 'open'}).innerHTML ="
+            f' \'<iframe srcdoc="{srcdoc}" style="border:0;width:200px;height:150px"></iframe>\';'
+            "</script>"
+        )
+        page.wait_for_function(
+            "() => document.getElementById('embed').shadowRoot"
+            ".querySelector('iframe').contentDocument?.querySelector('button')"
+        )
+        driver = PlaywrightDriver("about:blank", page=page)
+        driver.tap({"id": "inner.button"})
+        clicked = base.resolve_unique(driver.query(), {"id": "inner.button"})
+        assert clicked["label"] == "clicked"
+    finally:
+        page.close()

@@ -1483,6 +1483,10 @@ class _FakeIframeHost:
         self._box = box
         self._hit = hit if hit is not None else _HIT
         self.hit_points: list[list[float]] = []
+        self.disposed = 0
+
+    def dispose(self) -> None:
+        self.disposed += 1
 
     def evaluate(self, expression: str, arg: Any = None) -> Any:
         if arg is None:
@@ -1598,6 +1602,8 @@ def test_tap_on_an_iframe_element_checks_the_hit_inside_its_frame() -> None:
     assert page.mouse.calls == [("click", 125.0, 75.0)]
     assert host.hit_points == [[125.0, 75.0]]
     assert "elementFromPoint(25.0, 25.0)" in child.evaluated[0]
+    # Every handle taken (the snapshot's box read, the tap's hit check) is released.
+    assert host.disposed == 2
 
 
 def test_tap_on_an_iframe_element_fails_when_the_iframe_is_covered() -> None:
