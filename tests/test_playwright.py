@@ -182,6 +182,7 @@ def test_query_js_reads_value_from_each_tags_own_attribute() -> None:
         "getAttribute('src')",
         "getAttribute('datetime')",
         "getAttribute('aria-valuetext')",
+        "el.hasAttribute('role')",
         "getAttribute('aria-valuenow')",
     ):
         assert source in QUERY_JS

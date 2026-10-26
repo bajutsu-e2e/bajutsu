@@ -13,14 +13,19 @@ from bajutsu.common.drivers import base
 QUERY_JS = """
 () => {
   // A link, image, or <time> keeps its meaningful value in an attribute, not the `value`
-  // property; a custom ARIA range widget (role=slider/progressbar/…) has no native `value` at all.
+  // property. A custom ARIA range widget (role=slider/progressbar/…) reports through aria-value*,
+  // which wins even when its host element has a `value` of its own (`<button>`'s "", `<li>`'s 0).
+  // A real form control keeps its live `value`: its aria-valuenow can lag what was typed.
   const valueOf = (el) => {
     const tag = el.tagName.toLowerCase();
     if (tag === 'a' || tag === 'area') return el.getAttribute('href');
     if (tag === 'img') return el.getAttribute('src');
     if (tag === 'time') return el.getAttribute('datetime');
+    const aria = el.getAttribute('aria-valuetext') ?? el.getAttribute('aria-valuenow');
+    const native = tag === 'input' || tag === 'select' || tag === 'textarea';
+    if (aria !== null && el.hasAttribute('role') && !native) return aria;
     if ('value' in el) return el.value;
-    return el.getAttribute('aria-valuetext') ?? el.getAttribute('aria-valuenow');
+    return aria;
   };
   const out = [];
   const sel = '[data-testid], button, a, input, select, textarea, [role]';

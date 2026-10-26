@@ -53,8 +53,11 @@ public enum BajutsuWebView {
         if (tag === 'a' || tag === 'area') return el.getAttribute('href');
         if (tag === 'img') return el.getAttribute('src');
         if (tag === 'time') return el.getAttribute('datetime');
+        const aria = el.getAttribute('aria-valuetext') ?? el.getAttribute('aria-valuenow');
+        const native = tag === 'input' || tag === 'select' || tag === 'textarea';
+        if (aria !== null && el.hasAttribute('role') && !native) return aria;
         if ('value' in el) return el.value;
-        return el.getAttribute('aria-valuetext') ?? el.getAttribute('aria-valuenow');
+        return aria;
       };
       const out = [];
       const sel = '[data-testid], button, a, input, select, textarea, [role]';

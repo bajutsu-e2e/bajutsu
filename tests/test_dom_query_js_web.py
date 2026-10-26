@@ -2,8 +2,8 @@
 
 The fast suite can only string-match the script; whether `getAttribute('href')` and friends actually
 land in the record needs a real DOM. Like `test_driver_conformance_web.py`, this needs the `web` extra
-plus a Chromium binary, so the `web` marker keeps it out of `make check` and a `find_spec` module-skip
-drops it when Playwright is absent.
+plus a Chromium binary: the `web` marker keeps it out of `make check`, `web-e2e.yml` runs it, and a
+`find_spec` module-skip drops it when Playwright is absent.
 """
 
 from __future__ import annotations
@@ -27,6 +27,9 @@ _PAGE = """
 <input data-testid="field" value="typed">
 <div data-testid="slider" role="slider" aria-valuenow="40" aria-valuetext="40 percent">s</div>
 <div data-testid="meter" role="progressbar" aria-valuenow="7">p</div>
+<button data-testid="btnslider" role="slider" aria-valuenow="5">b</button>
+<input data-testid="range" type="range" value="30" aria-valuenow="99">
+<input data-testid="rolerange" type="range" role="slider" value="30" aria-valuenow="99">
 """
 
 
@@ -55,3 +58,8 @@ def test_query_js_reads_each_tags_own_value_source(page: Any) -> None:
     assert values["field"] == "typed"
     assert values["slider"] == "40 percent"
     assert values["meter"] == "7"
+    # A role'd widget's ARIA value beats its host element's own empty `value` property...
+    assert values["btnslider"] == "5"
+    # ...but a native form control keeps its live `value`, role or not: aria-valuenow can lag it.
+    assert values["range"] == "30"
+    assert values["rolerange"] == "30"
