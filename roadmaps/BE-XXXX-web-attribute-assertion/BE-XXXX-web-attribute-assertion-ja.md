@@ -68,16 +68,21 @@ AttributeMatch ::= { sel: <Selector>, name: string }
 
 ### 実行時の振る舞い
 
-1. ランナーは、いまと同じく、アサーションのまとまりを1つのクエリのスナップショットに対して評価します。
-2. 評価の前に、まとまりの中の各 `attribute` アサーションを事前処理します。事前処理は、セレクタを同じスナップショットに対して解決し、`Driver.read_attribute(element, name)` を1回呼びます。結果は `EvalContext` の新しい `attributes` フィールドに、まとまりの中のアサーションの位置をキーとして保存します。
-3. 評価関数は、読んだ値を比較の種類に従って比べ、通常の `AssertionResult` を返します。セレクタが解決できない場合は、`value` アサーションと同じ理由を返します。
+ステップの `assert` リストとシナリオの `expect` リストは、条件待ちとして実行します。その実装は `_poll_asserts`（`bajutsu/common/orchestrator/loop/_functions.py:129`）です。`_poll_asserts` は、アサーションが成功するか lane の待機の下限に達するまで、`driver.query()` を呼び直します。このポーリングは、読み出しの競合を防ぐためにあります。操作が変えた値は、操作から戻った少し後に反映されることがあるからです。この項目が対象とする `data-state` や `aria-busy` のような属性は、まさにそのように変わります。そのため、属性の読み出しもポーリングに合わせます。
 
-この事前処理は、`clipboard` アサーションの前例に従います。ランナーは `_clipboard_for`（`bajutsu/common/orchestrator/loop/_functions.py:315`）で、まとまりごとにペーストボードを1回だけ読みます。読んだ値は、評価関数が呼び出す読み取り関数としてではなく、解決済みの入力として `EvalContext` で評価関数に届きます。こうして、評価関数はスナップショットとコンテキストだけを受け取る純粋な関数のままになります。
+1. 各回の `driver.query()` の直後に、補助関数 `_attributes_for(driver, tree, block)` が、まとまりの中の各 `attribute` アサーションを処理します。補助関数は、セレクタをその回のツリーに対して解決し、`Driver.read_attribute(element, name)` を1回呼びます。
+2. 補助関数は、結果を `EvalContext` の新しい `attributes` フィールドに、まとまりの中のアサーションの位置をキーとして保存します。その回の評価には、このコンテキストを使います。
+3. 評価関数は、読んだ値を比較の種類に従って比べ、通常の `AssertionResult` を返します。セレクタが解決できない場合は、`value` アサーションと同じ理由を返します。
+4. 失敗が続く `attribute` アサーションは、`value` などツリーから導く種類と同じく、ポーリングを続けさせます。そのため、この種類は `_READ_ONCE_KINDS`（`_functions.py:110`）に入れません。`_READ_ONCE_KINDS` は、読み直しても結果が変わらない種類の集合です。
+
+`if` の条件と `interrupts` の条件は、いまはツリーを1回読み、コンテキストなしで評価します。該当するのは `_functions.py:1349` の `_run_if` と、`_interrupt_guard.py:66` の `_InterruptGuard` です。どちらも自身のクエリの後で同じ補助関数を呼ぶので、そこに置いた `attribute` が分岐や発火を決めます。
+
+評価関数は、ツリーとコンテキストだけを受け取る純粋な関数のままです。読み出しは、`_clipboard_for`（`_functions.py:315`）でのクリップボードの読み出しと同じく、組になるクエリの隣でランナーが行います。ただし、読み直しても変わらないクリップボードとは違い、属性はツリーを読むたびに読み直します。
 
 このアサーションは、プライムディレクティブの範囲に収まります。
 
 - **大規模言語モデル（LLM）を使いません**：判定は文字列の比較です。
-- **固定の待機を入れません**：読み出しは同期的な1回の呼び出しです。
+- **固定の待機を入れません**：各回の読み出しは、既存の条件待ちの中での同期的な1回の呼び出しです。
 - **推測しません**：曖昧なセレクタは、読み出しの前に失敗します。
 - **アプリに依存しません**：属性名はシナリオに書き、ツールはアプリケーションごとの属性の一覧を持ちません。
 
@@ -88,7 +93,7 @@ AttributeMatch ::= { sel: <Selector>, name: string }
 | 要素が持つもの | ドライバーが要素を見つける方法 |
 |---|---|
 | `data-testid` | `data-testid` がスナップショットの `identifier` に等しい要素を探します。該当する要素が2つあれば、曖昧として読み出しを失敗させます |
-| `data-testid` がない | `QUERY_JS`（`bajutsu/common/drivers/dom.py`）が走査するのと同じノードの一覧をたどり、境界の矩形とアクセシブルな名前で照合します。タップで `_point_hits`（`bajutsu/common/drivers/playwright/playwright_driver.py:389`）がすでに使っている規則です |
+| `data-testid` がない | `QUERY_JS`（`bajutsu/common/drivers/dom.py`）が走査するのと同じノードの一覧をたどり、境界の矩形、アクセシブルな名前、タグやロールから決まる trait で照合します。タップで `_point_hits`（`bajutsu/common/drivers/playwright/playwright_driver.py:389`）がすでに使っている規則を広げたものです。一致するノードが2つ以上あれば、曖昧として読み出しを失敗させます |
 
 見つけたら、ドライバーは `el.getAttribute(name)` を返します。属性がない場合の戻り値は `null` です。`document.elementFromPoint` ではなくノードの一覧をたどるので、ほかの要素に覆われた要素や、表示領域の外にある要素も読めます。覆われているかどうかはタップでは問題になりますが、属性の値は変わりません。要素が見つからない場合、スクリプトは例外を投げずに目印の文字列を返します。理由は `select_option` と同じで、投げられたスクリプトのエラーは `_wedge_guard` を通るとブラウザーの障害として扱われるからです。
 
@@ -99,8 +104,8 @@ AttributeMatch ::= { sel: <Selector>, name: string }
 | シナリオのモデル | `AttributeMatch` と、`Assertion` の `attribute` の種類 | `bajutsu/common/scenario/models/assertions/attribute_match.py`（新規）、`assertion.py` |
 | ドライバーのプロトコル | `def read_attribute(self, el: Element, name: str) -> str \| None` | `bajutsu/common/drivers/base/driver.py` |
 | capability | `ELEMENT_ATTRIBUTE = "elementAttribute"` | `bajutsu/common/drivers/base/capability.py` |
-| preflight | `visual` アサーションが `screenshot` を必要とするのと同じ形で、`attribute` アサーションは `elementAttribute` を必要とします | `bajutsu/common/capability/capability_preflight.py` |
-| 評価 | 事前処理、`EvalContext.attributes` フィールド、`attribute` の評価関数 | `bajutsu/common/orchestrator/loop/_functions.py`、`bajutsu/common/assertions/evaluate/` |
+| preflight | `attribute` アサーションは `elementAttribute` を必要とします。`_assertions_with_path` はどちらも扱わないため、場所の探索は `_navigate_locations`（BE-0464）と同じく `web:` と `app:` のブロックの中までたどり、`interrupts` の条件と回復のステップも対象にします | `bajutsu/common/capability/capability_preflight.py` |
+| 評価 | 補助関数 `_attributes_for`、`EvalContext.attributes` フィールド、`attribute` の評価関数 | `bajutsu/common/orchestrator/loop/_functions.py`（ステップと `expect` のポーリング、`_run_if`）、`bajutsu/common/orchestrator/loop/_interrupt_guard.py`、`bajutsu/common/assertions/evaluate/` |
 | web ドライバー | 前節で述べた `read_attribute` | `bajutsu/common/drivers/playwright/playwright_driver.py` |
 | フェイクドライバー | 要素ごとに与えた属性を返し、capability を広告します | `bajutsu/common/drivers/fake/fake_driver.py` |
 | ほかのドライバー | iOS と Android の `select_option` と同じく `UnsupportedAction` を送出します | `adb`、`xcuitest`、`xcuitest_live`、`webview` の各ドライバー |
@@ -139,9 +144,9 @@ WebView を埋め込んだ iOS アプリでも、BajutsuKit のブリッジを�
 | # | 単位 | 完了の条件 |
 |---|---|---|
 | 1 | シナリオのモデル：`AttributeMatch`、`attribute` の種類、属性名の検証、比較の種類はちょうど1つ | モデルのテストで、各比較の種類を読み込めることと、空の名前、2つの比較の種類、`absent: false` を拒否することを確かめます |
-| 2 | ドライバーのプロトコル、capability、preflight の要件、web 以外のドライバーの送出 | preflight のテストで、iOS と Android のターゲット、および iOS の `web:` ブロック内の `attribute` が、デバイスの確保前に `attribute` を名指しするメッセージで失敗することを確かめます |
-| 3 | 事前処理、`EvalContext.attributes`、評価関数 | フェイクドライバーのテストで、各比較の種類、存在と空の区別、属性がない場合、読み出しをせずに失敗する曖昧なセレクタを確かめます |
-| 4 | Playwright の `read_attribute` | 実際の Chromium を使う web ドライバーのテストで、`data-testid` とノードの一覧の走査のそれぞれで属性を読めること、覆われた要素と表示領域外の要素を読めること、`data-testid` が曖昧な場合に失敗することを確かめます |
+| 2 | ドライバーのプロトコル、capability、preflight の要件、web 以外のドライバーの送出 | preflight のテストで、iOS と Android のターゲット、iOS の `web:` ブロック内の `attribute`、`interrupts` の条件の中の `attribute` が、デバイスの確保前に `attribute` を名指しするメッセージで失敗することを確かめます |
+| 3 | `_attributes_for`、`EvalContext.attributes`、評価関数 | フェイクドライバーのテストで、各比較の種類、存在と空の区別、属性がない場合、読み出しをせずに失敗する曖昧なセレクタを確かめます。後の回で変わる属性が待機の下限内に成功すること、`if` の条件と `interrupts` の条件に置いた `attribute` が属性を読んで分岐や発火を決めることも確かめます |
+| 4 | Playwright の `read_attribute` | 実際の Chromium を使う web ドライバーのテストで、`data-testid` とノードの一覧の走査のそれぞれで属性を読めること、覆われた要素と表示領域外の要素を読めること、`data-testid` が曖昧な場合と、矩形、名前、trait で一致するノードが2つある場合に失敗することを確かめます |
 | 5 | ドライバーの適合性テスト | web の適合性テストに `read_attribute` のケースを加えて成功させ、web 以外のバックエンドでは capability によって省略します |
 | 6 | コード生成 | `attribute` を使うシナリオの Playwright 出力が golden と一致し、ほかのコード生成がラベル付きの `TODO` を出力することを確かめます |
 | 7 | web のデモシナリオ | web のデモに、リンクの `href` と `data-*` 属性を確かめるシナリオを加え、web の E2E レーンで成功させます |
@@ -166,7 +171,7 @@ WebView を埋め込んだ iOS アプリでも、BajutsuKit のブリッジを�
 
 - [ ] シナリオのモデル：`AttributeMatch`、`attribute` の種類、属性名の検証
 - [ ] ドライバーのプロトコル、capability、preflight の要件、web 以外のドライバーの送出
-- [ ] 事前処理、`EvalContext.attributes`、評価関数
+- [ ] `_attributes_for`、`EvalContext.attributes`、評価関数
 - [ ] Playwright の `read_attribute`
 - [ ] ドライバーの適合性テスト
 - [ ] コード生成
@@ -178,4 +183,4 @@ WebView を埋め込んだ iOS アプリでも、BajutsuKit のブリッジを�
 - [#2216](https://github.com/bajutsu-e2e/bajutsu/pull/2216)：web バックエンドで、タグごとに値を持つ属性から `value` を埋める変更です。
 - [BE-0331](../BE-0331-artifact-redaction-boundary/BE-0331-artifact-redaction-boundary-ja.md)：アサーションの理由に含まれる秘密情報を伏せる、成果物の秘匿化の境界です。
 - [BE-0464](../BE-0464-web-navigate-step/BE-0464-web-navigate-step-ja.md)：web 限定の機能を capability と preflight の要件の背後に置いた前例です。
-- `bajutsu/common/orchestrator/loop/_functions.py`：`_clipboard_for`。まとまりごとに値を1回だけ読む前例です。
+- `bajutsu/common/orchestrator/loop/_functions.py`：`_poll_asserts` は、属性の読み出しが従う条件待ちです。`_clipboard_for` は、クエリの隣で値を読む前例です。

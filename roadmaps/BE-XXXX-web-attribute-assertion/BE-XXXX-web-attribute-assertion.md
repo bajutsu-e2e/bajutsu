@@ -66,16 +66,21 @@ A `wait` step takes a selector (`for`) or one of a fixed set of `until` forms (`
 
 ### Behavior at run time
 
-1. The runner evaluates a block of assertions against one query snapshot, as it does today.
-2. Before evaluation, a pre-pass handles each `attribute` assertion in the block. The pre-pass resolves the selector against that same snapshot, then calls `Driver.read_attribute(element, name)` once. The pre-pass stores the results in a new `attributes` field on `EvalContext`, keyed by the assertion's position in the block.
-3. The evaluator compares the read value with the operator and returns an ordinary `AssertionResult`. A selector that fails to resolve returns the same reason the `value` assertion gives.
+A step's `assert` list and the scenario's `expect` list run as a condition wait. `_poll_asserts` (`bajutsu/common/orchestrator/loop/_functions.py:129`) calls `driver.query()` again on every tick until the assertions pass or the lane's wait floor runs out. The poll exists to close a read race: a value that an action changes can land a moment after the action returns. The attributes this item targets, such as `data-state` and `aria-busy`, change in exactly that way, so the read follows the poll.
 
-This pre-pass follows the precedent of the `clipboard` assertion. The runner reads the pasteboard once per block in `_clipboard_for` (`bajutsu/common/orchestrator/loop/_functions.py:315`). The value then reaches the evaluator as a resolved input on `EvalContext`, not as a reader the evaluator calls. The evaluators stay pure functions of the snapshot and the context.
+1. On each tick, right after `driver.query()`, a helper `_attributes_for(driver, tree, block)` handles each `attribute` assertion in the block. The helper resolves the selector against that tick's tree, then calls `Driver.read_attribute(element, name)` once.
+2. The helper stores the results in a new `attributes` field on `EvalContext`, keyed by the assertion's position in the block. The tick evaluates the block with that context.
+3. The evaluator compares the read value with the operator and returns an ordinary `AssertionResult`. A selector that fails to resolve returns the same reason the `value` assertion gives.
+4. A still-failing `attribute` assertion keeps the poll going, like `value` and the other tree-derived kinds. The kind therefore stays out of `_READ_ONCE_KINDS` (`_functions.py:110`), the set of kinds whose result a re-read cannot change.
+
+An `if` condition and an `interrupts` condition read the tree once and evaluate without a context today (`_run_if` at `_functions.py:1349`, `_InterruptGuard` in `_interrupt_guard.py:66`). Both call the same helper after their own query, so an `attribute` there decides the branch or the fire.
+
+The evaluators stay pure functions of the tree and the context. The read happens in the runner, next to the query it pairs with, as the `clipboard` read does in `_clipboard_for` (`_functions.py:315`). Unlike the clipboard, which no re-read can change, the attribute read repeats with each tree.
 
 The assertion stays inside the prime directives:
 
 - **No large language model (LLM).** The verdict is a string comparison.
-- **No fixed pause.** The read is one synchronous call.
+- **No fixed pause.** Each read is one synchronous call inside the existing condition wait.
 - **No guessing.** An ambiguous selector still fails before any read.
 - **App-agnostic.** The attribute name lives in the scenario, and the tool holds no per-application list of attributes.
 
@@ -86,7 +91,7 @@ The assertion stays inside the prime directives:
 | The element has | The driver finds it by |
 |---|---|
 | a `data-testid` | the element whose `data-testid` equals the snapshot's `identifier`. Two such elements fail the read as ambiguous |
-| no `data-testid` | walking the same node list that `QUERY_JS` walks (`bajutsu/common/drivers/dom.py`) and matching the bounding rectangle and the accessible name, the rule `_point_hits` already applies to a tap (`bajutsu/common/drivers/playwright/playwright_driver.py:389`) |
+| no `data-testid` | walking the same node list that `QUERY_JS` walks (`bajutsu/common/drivers/dom.py`) and matching the bounding rectangle, the accessible name, and the traits derived from the tag or role. This extends the rule `_point_hits` already applies to a tap (`bajutsu/common/drivers/playwright/playwright_driver.py:389`). More than one matching node fails the read as ambiguous |
 
 The driver then returns `el.getAttribute(name)`, which is `null` for a missing attribute. A walk by node list, rather than `document.elementFromPoint`, also reads an element that another element covers or that sits outside the viewport. Occlusion matters for a tap, but it does not change what an attribute says. The read returns a sentinel string for a lookup that finds nothing, rather than throwing, for the reason `select_option` gives: a thrown script error passes through `_wedge_guard` as a browser fault.
 
@@ -97,8 +102,8 @@ The driver then returns `el.getAttribute(name)`, which is `null` for a missing a
 | Scenario model | `AttributeMatch`; the `attribute` kind on `Assertion` | `bajutsu/common/scenario/models/assertions/attribute_match.py` (new), `assertion.py` |
 | Driver protocol | `def read_attribute(self, el: Element, name: str) -> str \| None` | `bajutsu/common/drivers/base/driver.py` |
 | Capability | `ELEMENT_ATTRIBUTE = "elementAttribute"` | `bajutsu/common/drivers/base/capability.py` |
-| Preflight | an `attribute` assertion needs `elementAttribute`, in the way a `visual` assertion needs `screenshot` | `bajutsu/common/capability/capability_preflight.py` |
-| Evaluation | the pre-pass, the `EvalContext.attributes` field, and the `attribute` evaluator | `bajutsu/common/orchestrator/loop/_functions.py`, `bajutsu/common/assertions/evaluate/` |
+| Preflight | an `attribute` assertion needs `elementAttribute`. Its locator recurses into `web:` / `app:` blocks and covers `interrupts` conditions and recovery steps, as `_navigate_locations` (BE-0464) does, because `_assertions_with_path` covers neither | `bajutsu/common/capability/capability_preflight.py` |
+| Evaluation | the `_attributes_for` helper, the `EvalContext.attributes` field, and the `attribute` evaluator | `bajutsu/common/orchestrator/loop/_functions.py` (the step/`expect` poll and `_run_if`), `bajutsu/common/orchestrator/loop/_interrupt_guard.py`, `bajutsu/common/assertions/evaluate/` |
 | Web driver | `read_attribute` as described above | `bajutsu/common/drivers/playwright/playwright_driver.py` |
 | Fake driver | returns attributes seeded per element and advertises the capability | `bajutsu/common/drivers/fake/fake_driver.py` |
 | Other drivers | raise `UnsupportedAction`, the way `select_option` does on iOS and Android | `adb`, `xcuitest`, `xcuitest_live`, `webview` drivers |
@@ -137,9 +142,9 @@ Because the read is on demand, an attribute enters the run's output only when an
 | # | Unit | Done when |
 |---|---|---|
 | 1 | Scenario model: `AttributeMatch`, the `attribute` kind, name validation, exactly-one operator | model tests load each operator, and reject an empty name, two operators, and `absent: false` |
-| 2 | Driver protocol, capability token, preflight requirement, non-web drivers raise | preflight tests show iOS and Android targets, and an `attribute` nested in an iOS `web:` block, fail before device lease with a message naming `attribute` |
-| 3 | Pre-pass, `EvalContext.attributes`, evaluator | fake-driver tests cover each operator, presence against emptiness, an absent attribute, and an ambiguous selector that fails without a read |
-| 4 | Playwright `read_attribute` | web driver tests in real Chromium read an attribute by `data-testid` and by the node-list walk, read a covered element and one outside the viewport, and fail an ambiguous `data-testid` |
+| 2 | Driver protocol, capability token, preflight requirement, non-web drivers raise | preflight tests show iOS and Android targets, an `attribute` nested in an iOS `web:` block, and an `attribute` in an `interrupts` condition fail before device lease with a message naming `attribute` |
+| 3 | `_attributes_for`, `EvalContext.attributes`, evaluator | fake-driver tests cover each operator, presence against emptiness, an absent attribute, and an ambiguous selector that fails without a read. An attribute that changes on a later tick passes within the wait floor. An `attribute` in an `if` condition and in an `interrupts` condition reads the attribute and decides the branch or the fire |
+| 4 | Playwright `read_attribute` | web driver tests in real Chromium read an attribute by `data-testid` and by the node-list walk, read a covered element and one outside the viewport, fail an ambiguous `data-testid`, and fail two nodes that match by rectangle, name, and traits |
 | 5 | Driver conformance case | the web conformance suite passes with a new `read_attribute` case, and non-web backends skip it by capability |
 | 6 | Codegen | the Playwright output for an `attribute` scenario matches a golden, and the other generators emit the labeled `TODO` |
 | 7 | Web demo scenario | a scenario under the web demo asserts a link's `href` and a `data-*` attribute, and it passes in the web E2E lane |
@@ -164,7 +169,7 @@ Because the read is on demand, an attribute enters the run's output only when an
 
 - [ ] Scenario model: `AttributeMatch`, the `attribute` kind, name validation
 - [ ] Driver protocol, capability token, preflight requirement, non-web drivers raise
-- [ ] Pre-pass, `EvalContext.attributes`, evaluator
+- [ ] `_attributes_for`, `EvalContext.attributes`, evaluator
 - [ ] Playwright `read_attribute`
 - [ ] Driver conformance case
 - [ ] Codegen
@@ -176,4 +181,4 @@ Because the read is on demand, an attribute enters the run's output only when an
 - [#2216](https://github.com/bajutsu-e2e/bajutsu/pull/2216): fills `value` from each tag's own value attribute on the web backend.
 - [BE-0331](../BE-0331-artifact-redaction-boundary/BE-0331-artifact-redaction-boundary.md): the artifact redaction boundary that masks secrets in assertion reasons.
 - [BE-0464](../BE-0464-web-navigate-step/BE-0464-web-navigate-step.md): the precedent for a web-only feature behind a capability and a preflight requirement.
-- `bajutsu/common/orchestrator/loop/_functions.py`: `_clipboard_for`, the precedent for a value read once per block.
+- `bajutsu/common/orchestrator/loop/_functions.py`: `_poll_asserts`, the condition wait the read follows, and `_clipboard_for`, the precedent for a read beside the query.
