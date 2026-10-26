@@ -641,10 +641,10 @@ fits the same toolchain as `make check`. Implementation: `common/drivers/playwri
   pure parser (`parse_dom`) maps each to an `Element`. The id convention is the web equivalent of
   iOS accessibilityIdentifier: `data-testid` → `Selector.id`, ARIA `role` (or tag) → `traits`,
   accessible name / `aria-label` / text → `label`, and each tag's own value source → `value`:
-  `href` for `<a>`, `src` for `<img>`, `datetime` for `<time>`, the live `value`
-  property for form controls and a determinate `<progress>` / `<meter>`, and `aria-valuetext` —
-  or `aria-valuenow` when `aria-valuetext` is absent or empty — for a custom ARIA widget such as
-  `role="slider"` and for an indeterminate `<progress>`.
+  `href` for `<a>`, `src` for `<img>`, `datetime` for `<time>`, the live `value` property for
+  form controls, for `<meter>`, and for a `<progress>` that carries a `value` attribute, and
+  `aria-valuetext` — or `aria-valuenow` when `aria-valuetext` is absent or empty — for a custom
+  ARIA widget such as `role="slider"` and for an indeterminate `<progress>`.
 - `tap(sel)`: like the adb backend, it resolves a **unique** element through the shared
   `resolve_unique`/`find_all` against a `query()` snapshot and clicks the **frame center** by
   coordinate (`page.mouse.click`). It deliberately does **not** use Playwright's own
