@@ -1,0 +1,179 @@
+**English** · [日本語](BE-XXXX-web-attribute-assertion-ja.md)
+
+# BE-XXXX — Assert an arbitrary HTML attribute on the web backend
+
+<!-- BE-METADATA -->
+| Field | Value |
+|---|---|
+| Proposal | [BE-XXXX](BE-XXXX-web-attribute-assertion.md) |
+| Author | [@0x0c](https://github.com/0x0c) |
+| Status | **Approved** |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Topic | Verification & coverage |
+<!-- /BE-METADATA -->
+
+## Introduction
+
+This item adds an `attribute` assertion that checks one named HyperText Markup Language (HTML) attribute of one element on the web (Playwright) backend. An author writes `attribute: { sel: { id: docs.link }, name: href, equals: /docs }`, and the run passes when that element's `href` attribute equals `/docs`. The assertion compares with `equals`, `contains`, or `matches`, as the `value` and `label` assertions do. It adds `absent: true` for an attribute that must not be present. The driver reads the attribute on demand, when the runner evaluates the assertion. The element snapshot that every query returns stays unchanged. The read rides on a new `Driver.read_attribute` method and a new `elementAttribute` capability. Only the web backend advertises the capability, so a scenario that uses `attribute` on iOS or Android fails in preflight, before any device is leased.
+
+## Motivation
+
+A web scenario today can check three properties of an element: its accessible label, its `value`, and its traits (such as `selected` or `disabled`). Much of what a web page promises lives in other HTML attributes, which no assertion can reach:
+
+- **Link targets.** A link's `href` decides where a click goes. A scenario can check that the link exists and what it says, but not where it points.
+- **Images.** An `<img>` carries its meaning in `src` and `alt`. A scenario cannot check that the right image loaded or that its alternative text is present.
+- **State that a page exposes as data.** Pages often mark state in `data-*` attributes (`data-state="ready"`) or Accessible Rich Internet Applications (ARIA) attributes (`aria-expanded`, `aria-busy`, `aria-current`). A test author wants to assert on that state, because it is what the page itself reports.
+
+A change in progress narrows part of this gap. It makes the web query fill `value` from the attribute that carries each tag's value: `href` for a link, `src` for an image, and `aria-valuenow` for a custom slider ([#2216](https://github.com/bajutsu-e2e/bajutsu/pull/2216)). That change gives each tag one fixed attribute, chosen by the tool. An element has many attributes, though, and an author often needs a different one: the `alt` of an image rather than its `src`, or a `data-*` attribute that no tool could guess. A per-tag default cannot cover attributes that are specific to one application.
+
+The observable outcome is this. A web scenario can assert any attribute an author names, such as a link's target or a `data-state` value, with one `attribute` assertion and no change to the tool. A web demo scenario will assert a link's `href` and a `data-*` attribute, and it will pass in the web end-to-end (E2E) lane. Element snapshots, goldens, and reports will not grow, because nothing reads an attribute that no assertion names.
+
+## Detailed design
+
+### Authoring surface
+
+```yaml
+steps:
+  - assert:
+      - attribute: { sel: { id: docs.link }, name: href, equals: /docs }
+      - attribute: { sel: { id: hero.image }, name: alt, contains: Bajutsu }
+      - attribute: { sel: { id: cart }, name: data-state, matches: "^(ready|idle)$" }
+      - attribute: { sel: { id: submit }, name: aria-busy, absent: true }
+```
+
+The grammar adds one assertion kind:
+
+```
+Assertion ::= … | { attribute: <AttributeMatch> }
+AttributeMatch ::= { sel: <Selector>, name: string }
+                 & ( {equals:string} | {contains:string} | {matches:string} | {absent:true} )
+```
+
+- **`sel`** is an ordinary selector. It resolves exactly as it does for `value`. No match fails the assertion, and two or more matches fail it as ambiguous.
+- **`name`** is the attribute name. Validation accepts the HTML attribute-name syntax and rejects an empty name. The name is case-insensitive, as HTML makes it.
+- **The operator** is exactly one of four. `equals`, `contains`, and `matches` follow the `TextMatch` rules that `value` and `label` already use. `matches` is a regular expression. `absent: true` passes when the element has no attribute by that name.
+- **Presence differs from emptiness.** An attribute that is present with an empty value reads as `""`, so `equals: ""` passes and `absent: true` fails. An attribute that is missing fails `equals`, `contains`, and `matches`, with a reason that says the attribute is absent.
+- **`${...}` tokens** in the expected string are expanded like any other assertion field.
+
+The assertion works wherever the scenario language accepts an `Assertion`:
+
+- a step's `assert` list;
+- the scenario's `expect` list;
+- an `if` condition;
+- an `interrupts` condition.
+
+A `wait` step takes a selector (`for`) or one of a fixed set of `until` forms (`screenChanged`, `settled`, `gone`, `request`). No `until` form takes an assertion, so `attribute` does not become a wait condition. Making it one is out of scope.
+
+### Behavior at run time
+
+1. The runner evaluates a block of assertions against one query snapshot, as it does today.
+2. Before evaluation, a pre-pass handles each `attribute` assertion in the block. The pre-pass resolves the selector against that same snapshot, then calls `Driver.read_attribute(element, name)` once. The pre-pass stores the results in a new `attributes` field on `EvalContext`, keyed by the assertion's position in the block.
+3. The evaluator compares the read value with the operator and returns an ordinary `AssertionResult`. A selector that fails to resolve returns the same reason the `value` assertion gives.
+
+This pre-pass follows the precedent of the `clipboard` assertion. The runner reads the pasteboard once per block in `_clipboard_for` (`bajutsu/common/orchestrator/loop/_functions.py:315`). The value then reaches the evaluator as a resolved input on `EvalContext`, not as a reader the evaluator calls. The evaluators stay pure functions of the snapshot and the context.
+
+The assertion stays inside the prime directives:
+
+- **No large language model (LLM).** The verdict is a string comparison.
+- **No fixed pause.** The read is one synchronous call.
+- **No guessing.** An ambiguous selector still fails before any read.
+- **App-agnostic.** The attribute name lives in the scenario, and the tool holds no per-application list of attributes.
+
+### Reading the attribute in the web driver
+
+`read_attribute` must find, in the live page, the same element that the snapshot describes. The Playwright driver locates the element in two ways:
+
+| The element has | The driver finds it by |
+|---|---|
+| a `data-testid` | the element whose `data-testid` equals the snapshot's `identifier`. Two such elements fail the read as ambiguous |
+| no `data-testid` | walking the same node list that `QUERY_JS` walks (`bajutsu/common/drivers/dom.py`) and matching the bounding rectangle and the accessible name, the rule `_point_hits` already applies to a tap (`bajutsu/common/drivers/playwright/playwright_driver.py:389`) |
+
+The driver then returns `el.getAttribute(name)`, which is `null` for a missing attribute. A walk by node list, rather than `document.elementFromPoint`, also reads an element that another element covers or that sits outside the viewport. Occlusion matters for a tap, but it does not change what an attribute says. The read returns a sentinel string for a lookup that finds nothing, rather than throwing, for the reason `select_option` gives: a thrown script error passes through `_wedge_guard` as a browser fault.
+
+### Driver, capability, and preflight
+
+| Layer | Change | File |
+|---|---|---|
+| Scenario model | `AttributeMatch`; the `attribute` kind on `Assertion` | `bajutsu/common/scenario/models/assertions/attribute_match.py` (new), `assertion.py` |
+| Driver protocol | `def read_attribute(self, el: Element, name: str) -> str \| None` | `bajutsu/common/drivers/base/driver.py` |
+| Capability | `ELEMENT_ATTRIBUTE = "elementAttribute"` | `bajutsu/common/drivers/base/capability.py` |
+| Preflight | an `attribute` assertion needs `elementAttribute`, in the way a `visual` assertion needs `screenshot` | `bajutsu/common/capability/capability_preflight.py` |
+| Evaluation | the pre-pass, the `EvalContext.attributes` field, and the `attribute` evaluator | `bajutsu/common/orchestrator/loop/_functions.py`, `bajutsu/common/assertions/evaluate/` |
+| Web driver | `read_attribute` as described above | `bajutsu/common/drivers/playwright/playwright_driver.py` |
+| Fake driver | returns attributes seeded per element and advertises the capability | `bajutsu/common/drivers/fake/fake_driver.py` |
+| Other drivers | raise `UnsupportedAction`, the way `select_option` does on iOS and Android | `adb`, `xcuitest`, `xcuitest_live`, `webview` drivers |
+
+An iOS app that embeds a WebView also reaches the Document Object Model (DOM), through the BajutsuKit bridge (`bajutsu/common/drivers/webview/web_context_driver.py`). The bridge is out of scope for the first slice. It raises `UnsupportedAction` for `selectOption` today, and it does the same for `read_attribute`. The preflight therefore fails an `attribute` assertion nested in a `web:` block on an iOS target, before any device is leased.
+
+### Reports, goldens, and secrets
+
+Because the read is on demand, an attribute enters the run's output only when an assertion names it.
+
+- **Snapshots and goldens.** The query snapshot and the `Element` type do not change. Golden files, crawl output, and the element tree in a report gain no field.
+- **The assertion result.** A failure reason prints the actual value, as the `value` assertion does today (`expected equals='/docs' but actual='/about'`). The string passes the artifact redaction boundary ([BE-0331](../BE-0331-artifact-redaction-boundary/BE-0331-artifact-redaction-boundary.md)) like every other reason, so a resolved secret in it is masked.
+- **What an author can expose.** An author can name an attribute that holds a token. The report then shows that one value, which the author asked for, and the redaction boundary still masks values it knows to be secrets. The tool never collects every attribute in bulk, so an attribute nobody named cannot leak.
+
+### Codegen, authoring, and documentation surfaces
+
+- The Playwright generator emits `await expect(locator).toHaveAttribute(name, value)`. It passes a regular expression for `matches`, and an escaped regular expression for `contains`. It emits `not.toHaveAttribute(name)` for `absent`. The XCUITest and UI Automator generators emit the labeled `// TODO` they use for other web-only constructs.
+- Several places list the assertion vocabulary beyond the model. The implementation checks and updates each of them:
+
+  | Surface | Where |
+  |---|---|
+  | the Author editor's assertion list | `bajutsu/common/scenario/edit.py` |
+  | the JavaScript Object Notation (JSON) schema | the output of `bajutsu schema` |
+  | the English pages | `docs/scenarios.md`, `docs/dsl-grammar.md`, `docs/drivers.md`, `docs/codegen.md` |
+  | the Japanese mirrors | the same pages under `docs/ja/` |
+
+### Out of scope
+
+- **Selecting an element by attribute** (`sel: { attr: { href: /docs } }`). Matching would need every attribute in the snapshot, which this item avoids. A later item can revisit selection on its own terms.
+- **An attribute as a wait condition** (`wait: { until: { attribute: … } }`). No `until` form today takes an assertion, and a polled attribute read deserves its own design.
+- **The BajutsuKit WebView bridge.** The bridge needs a new message type, and it can follow once the Playwright path has settled the contract.
+- **DOM properties.** The assertion reads attributes (`getAttribute`), not live properties such as `checked`, so its value is what the markup and the page's script set. The `value` assertion keeps covering the live value of a form control.
+
+### Work breakdown (MECE)
+
+| # | Unit | Done when |
+|---|---|---|
+| 1 | Scenario model: `AttributeMatch`, the `attribute` kind, name validation, exactly-one operator | model tests load each operator, and reject an empty name, two operators, and `absent: false` |
+| 2 | Driver protocol, capability token, preflight requirement, non-web drivers raise | preflight tests show iOS and Android targets, and an `attribute` nested in an iOS `web:` block, fail before device lease with a message naming `attribute` |
+| 3 | Pre-pass, `EvalContext.attributes`, evaluator | fake-driver tests cover each operator, presence against emptiness, an absent attribute, and an ambiguous selector that fails without a read |
+| 4 | Playwright `read_attribute` | web driver tests in real Chromium read an attribute by `data-testid` and by the node-list walk, read a covered element and one outside the viewport, and fail an ambiguous `data-testid` |
+| 5 | Driver conformance case | the web conformance suite passes with a new `read_attribute` case, and non-web backends skip it by capability |
+| 6 | Codegen | the Playwright output for an `attribute` scenario matches a golden, and the other generators emit the labeled `TODO` |
+| 7 | Web demo scenario | a scenario under the web demo asserts a link's `href` and a `data-*` attribute, and it passes in the web E2E lane |
+| 8 | Documentation, schema, and vocabulary lists | the English and Japanese pages list `attribute`, the schema includes it, and `make check` is green |
+
+### Open points for review
+
+- **The kind's name.** We chose `attribute`, which reads naturally beside `value` and `label`. A shorter `attr` saves typing but departs from the spelled-out names the other kinds use.
+- **The `absent` operator.** We chose `absent: true` over reusing `exists` with a new field, because the question is about one attribute of an element that does exist.
+
+## Alternatives considered
+
+- **Collect every attribute in each query snapshot.** Each `Element` would carry an `attributes` map, and the assertion would read from the snapshot like `value`. We rejected this approach for three reasons. Every query would grow with markup that no assertion reads. Golden files would change whenever a page added an unrelated attribute. A `data-*` attribute that holds a token would appear in every report, even when nobody asked for it.
+- **Let the target config choose which attribute fills `value`.** A `targets.<name>` map such as `img: alt` would extend the per-tag default of [#2216](https://github.com/bajutsu-e2e/bajutsu/pull/2216) with no change to the scenario language. We rejected this approach because it gives each tag a single attribute for the whole target. A scenario could not check both an image's `src` and its `alt`, and an attribute that varies by element, such as `data-state`, has no tag to key on.
+- **Add selection by attribute in the same item.** Selection would let an author address an element by `href` alone. We left selection out because matching needs every attribute in the snapshot, which brings back the costs of the first alternative.
+
+## Progress
+
+> Keep this current as work proceeds. The checklist mirrors the MECE work breakdown in
+> *Detailed design* (one box per unit of work); the log records what changed and when
+> (oldest first), linking the PRs.
+
+- [ ] Scenario model: `AttributeMatch`, the `attribute` kind, name validation
+- [ ] Driver protocol, capability token, preflight requirement, non-web drivers raise
+- [ ] Pre-pass, `EvalContext.attributes`, evaluator
+- [ ] Playwright `read_attribute`
+- [ ] Driver conformance case
+- [ ] Codegen
+- [ ] Web demo scenario
+- [ ] Documentation, schema, and vocabulary lists
+
+## References
+
+- [#2216](https://github.com/bajutsu-e2e/bajutsu/pull/2216): fills `value` from each tag's own value attribute on the web backend.
+- [BE-0331](../BE-0331-artifact-redaction-boundary/BE-0331-artifact-redaction-boundary.md): the artifact redaction boundary that masks secrets in assertion reasons.
+- [BE-0464](../BE-0464-web-navigate-step/BE-0464-web-navigate-step.md): the precedent for a web-only feature behind a capability and a preflight requirement.
+- `bajutsu/common/orchestrator/loop/_functions.py`: `_clipboard_for`, the precedent for a value read once per block.
