@@ -10,7 +10,9 @@ from typing import TYPE_CHECKING, Any, cast
 
 from bajutsu.common.backend_cli import simctl
 from bajutsu.common.drivers import base
+from bajutsu.common.drivers.dom import QUERY_JS, parse_dom
 
+from ._frame_scope import _FrameScope
 from ._page import _Page
 from ._shared import Starter
 from ._started import _Started
@@ -105,6 +107,81 @@ def _playwright_error_types() -> tuple[type[BaseException], ...]:
         except ImportError:
             _PW_ERRORS = ()
     return _PW_ERRORS
+
+
+# An `<iframe>`'s content box — where its document's (0, 0) sits — in its owner document's viewport,
+# or null when the iframe is not rendered. Border and padding are inside the bounding rect but outside
+# the child viewport, so both are stepped over.
+_IFRAME_CONTENT_BOX_JS = """
+(el) => {
+  const style = getComputedStyle(el);
+  if (style.display === 'none' || style.visibility === 'hidden') return null;
+  const r = el.getBoundingClientRect();
+  const pl = parseFloat(style.paddingLeft) || 0, pt = parseFloat(style.paddingTop) || 0;
+  const pr = parseFloat(style.paddingRight) || 0, pb = parseFloat(style.paddingBottom) || 0;
+  return [r.x + el.clientLeft + pl, r.y + el.clientTop + pt,
+          el.clientWidth - pl - pr, el.clientHeight - pt - pb];
+}
+"""
+
+
+def _intersect(a: base.Frame, b: base.Frame | None) -> base.Frame | None:
+    """The overlap of two rects, `a` itself when `b` is unbounded, or None when they do not meet."""
+    if b is None:
+        return a
+    x, y = max(a[0], b[0]), max(a[1], b[1])
+    right, bottom = min(a[0] + a[2], b[0] + b[2]), min(a[1] + a[3], b[1] + b[3])
+    if right < x or bottom < y:
+        return None
+    return (x, y, right - x, bottom - y)
+
+
+def _iframe_elements(page: _Page) -> list[tuple[base.Element, _FrameScope]]:
+    """Every iframe's elements (nested ones included), framed in main-page CSS pixels.
+
+    Walks Playwright's frame tree rather than `contentDocument` from page JS, so a cross-origin
+    iframe — out of reach of the parent's script — is read too. An element scrolled or clipped
+    outside every enclosing iframe's box is not on screen and is left out; one outside the main
+    viewport is kept, the same as a main-document element (BE-0326). A frame that detaches or
+    navigates mid-snapshot is skipped: its content is not observable in this snapshot, and the next
+    condition-wait poll reads it again. An injected page without a frame tree yields nothing.
+    """
+    main = getattr(page, "main_frame", None)
+    if main is None:
+        return []
+    out: list[tuple[base.Element, _FrameScope]] = []
+
+    def walk(
+        frame: Any,
+        origin: base.Point,
+        clip: base.Frame | None,
+        hosts: tuple[tuple[Any, base.Point], ...],
+    ) -> None:
+        for child in frame.child_frames:
+            try:
+                host = child.frame_element()
+                box = host.evaluate(_IFRAME_CONTENT_BOX_JS)
+                if not box or box[2] <= 0 or box[3] <= 0:
+                    continue
+                child_origin = (origin[0] + box[0], origin[1] + box[1])
+                child_clip = _intersect((*child_origin, box[2], box[3]), clip)
+                if child_clip is None:
+                    continue
+                records = child.evaluate(QUERY_JS)
+            except _playwright_error_types():
+                continue
+            scope = _FrameScope(child, child_origin, (*hosts, (host, origin)))
+            for el in parse_dom(records if isinstance(records, list) else []):
+                x, y, w, h = el["frame"]
+                shifted = (x + child_origin[0], y + child_origin[1], w, h)
+                if _intersect(shifted, child_clip) is None:
+                    continue
+                el["frame"] = shifted
+                out.append((el, scope))
+            walk(child, child_origin, child_clip, scope.hosts)
+
+    walk(main, (0.0, 0.0), None, ())
+    return out
 
 
 def _wedge_guard[F: Callable[..., Any]](method: F) -> F:

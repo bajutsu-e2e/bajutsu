@@ -641,6 +641,16 @@ fits the same toolchain as `make check`. Implementation: `common/drivers/playwri
   pure parser (`parse_dom`) maps each to an `Element`. The id convention is the web equivalent of
   iOS accessibilityIdentifier: `data-testid` → `Selector.id`, ARIA `role` (or tag) → `traits`,
   accessible name / `aria-label` / text → `label`, input `value` → `value`.
+- **Iframes**: `query()` also reads every iframe's document, nested ones included. Those
+  elements join the same snapshot. The parent page's `contentDocument` stops at a cross-origin
+  iframe. Playwright's frame tree reaches one, so the driver walks that tree. The driver offsets
+  each element by its iframe's content-box origin. Every frame then reads in main-page CSS pixels.
+  An element scrolled outside its iframe's visible box is off screen and stays out.
+  - A selector resolves over the whole snapshot. When two iframes share a `data-testid`, that
+    selector matches twice; `index` picks one.
+  - `tap` and `selectOption` hit-test with `elementFromPoint` inside the element's own document.
+    First, the driver checks that the point lands on each enclosing `<iframe>`. An overlay above
+    the iframe raises `ElementNotTappable`, naming the overlay.
 - `tap(sel)`: like the adb backend, it resolves a **unique** element through the shared
   `resolve_unique`/`find_all` against a `query()` snapshot and clicks the **frame center** by
   coordinate (`page.mouse.click`). It deliberately does **not** use Playwright's own

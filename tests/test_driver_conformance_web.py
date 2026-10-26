@@ -314,3 +314,55 @@ def test_goto_loads_a_page_without_reading_its_status(chromium: Any) -> None:
         assert [e["identifier"] for e in driver.query()] == ["landed"]
     finally:
         page.close()
+
+
+# A button and a <select> at known spots, for an iframe to host. Clicking the button relabels it,
+# so the test reads the click's effect back through `query()` itself.
+_IFRAME_INNER = (
+    '<body style="margin:0">'
+    '<button data-testid="inner.button" onclick="this.textContent=\'clicked\'" '
+    'style="position:absolute;left:10px;top:20px;width:80px;height:30px">Inner</button>'
+    '<select data-testid="inner.select" style="position:absolute;left:10px;top:60px">'
+    '<option value="a">A</option><option value="b">B</option></select>'
+    '<button data-testid="inner.below" style="position:absolute;left:10px;top:500px">Below</button>'
+    "</body>"
+)
+
+
+@pytest.mark.web
+def test_query_and_actions_reach_into_same_and_cross_origin_iframes(chromium: Any) -> None:
+    """`srcdoc` shares the parent's origin; a `data:` URL is opaque, out of the parent script's reach."""
+    srcdoc = html.escape(_IFRAME_INNER, quote=True)
+    data_url = html.escape("data:text/html," + _IFRAME_INNER, quote=True)
+    page = chromium.new_page()
+    try:
+        page.set_content(
+            '<body style="margin:0">'
+            f'<iframe data-testid="same" srcdoc="{srcdoc}" style="position:absolute;left:100px;'
+            'top:50px;width:200px;height:150px;border:5px solid;padding:3px"></iframe>'
+            f'<iframe data-testid="cross" src="{data_url}" style="position:absolute;left:400px;'
+            'top:50px;width:200px;height:150px;border:0"></iframe>'
+            "</body>"
+        )
+        driver = PlaywrightDriver("about:blank", page=page)
+        buttons = [e["frame"] for e in driver.query() if e["identifier"] == "inner.button"]
+        # Border + padding of the first iframe put its document's origin at (108, 58).
+        assert buttons == [(118, 78, 80, 30), (410, 70, 80, 30)]
+        # Clipped below the iframe's own viewport, so it is not on screen.
+        assert all(e["identifier"] != "inner.below" for e in driver.query())
+
+        driver.tap({"id": "inner.button", "index": 0})
+        driver.tap({"id": "inner.button", "index": 1})
+        driver.select_option({"id": "inner.select", "index": 1}, "b")
+        after = driver.query()
+        assert [e["label"] for e in after if e["identifier"] == "inner.button"] == ["clicked"] * 2
+        assert [e["value"] for e in after if e["identifier"] == "inner.select"] == ["a", "b"]
+
+        page.evaluate(
+            "() => { const d = document.createElement('div'); d.id = 'overlay';"
+            " d.style.cssText = 'position:absolute;inset:0;z-index:9'; document.body.append(d); }"
+        )
+        with pytest.raises(base.ElementNotTappable, match="div#overlay"):
+            driver.tap({"id": "inner.button", "index": 1})
+    finally:
+        page.close()
