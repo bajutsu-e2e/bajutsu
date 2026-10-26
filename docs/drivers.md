@@ -662,10 +662,13 @@ fits the same toolchain as `make check`. Implementation: `common/drivers/playwri
   iframe. Playwright's frame tree reaches one, so the driver walks that tree. The driver offsets
   each element by its iframe's content-box origin. Every frame then reads in main-page CSS pixels.
   An element scrolled outside its iframe's visible box is off screen and stays out.
-  An iframe under a CSS transform, such as a zoomed device preview, is not read at all. Its inner
-  coordinates would not match the screen, and a tap would land elsewhere without an error.
+  Some iframes are not read at all: those under any CSS transform but a pure translation. A zoomed
+  device preview and a mirrored frame are examples. Their inner coordinates would not match the
+  screen, so a tap would miss without an error.
   - A selector resolves over the whole snapshot. When two iframes share a `data-testid`, that
-    selector matches twice; `index` picks one.
+    selector matches twice; `index` picks one. An embedded third-party service counts too. A
+    video player's "Share" button can make an app's `{ label: Share }` ambiguous, and `within` or
+    `traits` narrows it back to the app.
   - `tap` and `selectOption` hit-test with `elementFromPoint` inside the element's own document.
     First, the driver checks that the point lands on each enclosing `<iframe>`. An overlay above
     the iframe raises `ElementNotTappable`, naming the overlay.

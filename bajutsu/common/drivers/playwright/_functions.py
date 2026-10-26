@@ -111,13 +111,26 @@ def _playwright_error_types() -> tuple[type[BaseException], ...]:
 
 # An `<iframe>`'s content box — where its document's (0, 0) sits — in its owner document's viewport,
 # or null when the iframe is not rendered. Border and padding are inside the bounding rect but outside
-# the child viewport, so both are stepped over. A CSS transform on the iframe or an ancestor (a zoomed
-# device preview) also yields null: the child's rects are untransformed, so offsetting them by a
-# transformed origin would aim a click somewhere else with no error. Not reading it fails loudly.
+# the child viewport, so both are stepped over. Any transform but a pure translation on the iframe or an
+# ancestor (a zoomed device preview, a mirrored or rotated frame) also yields null: the child's rects
+# are untransformed, so offsetting them by the iframe's origin would aim a click somewhere else with no
+# error. Not reading it fails loudly. A size-preserving one (`rotate(180deg)`, `scaleX(-1)`) leaves the
+# bounding rect's size unchanged, so the transform itself is read up the ancestor chain, across shadow
+# roots; the size comparison still catches `zoom`, which no transform property reports.
 _IFRAME_CONTENT_BOX_JS = """
 (el) => {
   const style = getComputedStyle(el);
   if (style.display === 'none' || style.visibility === 'hidden') return null;
+  const up = (n) => n.parentElement
+    || (n.getRootNode() instanceof ShadowRoot ? n.getRootNode().host : null);
+  for (let n = el; n; n = up(n)) {
+    const s = getComputedStyle(n);
+    if ((s.rotate && s.rotate !== 'none') || (s.scale && s.scale !== 'none')) return null;
+    if (s.transform && s.transform !== 'none') {
+      const m = new DOMMatrixReadOnly(s.transform);
+      if (m.a !== 1 || m.b !== 0 || m.c !== 0 || m.d !== 1 || !m.is2D) return null;
+    }
+  }
   const r = el.getBoundingClientRect();
   if (Math.abs(r.width - el.offsetWidth) > 0.5 || Math.abs(r.height - el.offsetHeight) > 0.5) {
     return null;

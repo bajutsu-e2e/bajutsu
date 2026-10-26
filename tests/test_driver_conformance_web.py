@@ -427,19 +427,42 @@ def test_tap_reaches_an_iframe_inside_a_shadow_root(chromium: Any) -> None:
 
 
 @pytest.mark.web
-def test_query_does_not_read_a_css_transformed_iframe(chromium: Any) -> None:
-    """A scaled iframe's inner rects are untransformed, so offsetting them would aim taps elsewhere.
-    Leaving it unread turns that silent miss into a loud ElementNotFound."""
+@pytest.mark.parametrize(
+    "transform",
+    ["transform:scale(0.5)", "transform:rotate(180deg)", "transform:scaleX(-1)", "rotate:180deg"],
+)
+def test_query_does_not_read_a_css_transformed_iframe(chromium: Any, transform: str) -> None:
+    """A transformed iframe's inner rects are untransformed, so offsetting them would aim taps
+    elsewhere. Leaving it unread turns that silent miss into a loud ElementNotFound — including for
+    the size-preserving transforms a bounding-rect size check alone would let through."""
     srcdoc = html.escape(_IFRAME_INNER, quote=True)
     page = chromium.new_page()
     try:
         page.set_content(
-            '<div style="transform:scale(0.5);transform-origin:0 0">'
+            f'<div style="width:400px;{transform};transform-origin:0 0">'
             f'<iframe srcdoc="{srcdoc}" style="border:0;width:400px;height:300px"></iframe></div>'
         )
         driver = PlaywrightDriver("about:blank", page=page)
         assert all(e["identifier"] != "inner.button" for e in driver.query())
         with pytest.raises(base.ElementNotFound):
             driver.tap({"id": "inner.button"})
+    finally:
+        page.close()
+
+
+@pytest.mark.web
+def test_query_still_reads_a_translated_iframe(chromium: Any) -> None:
+    """A pure translation (a centred modal) keeps rects aligned, so the iframe is read and tappable."""
+    srcdoc = html.escape(_IFRAME_INNER, quote=True)
+    page = chromium.new_page()
+    try:
+        page.set_content(
+            '<div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%)">'
+            f'<iframe srcdoc="{srcdoc}" style="display:block;border:0;width:200px;height:150px">'
+            "</iframe></div>"
+        )
+        driver = PlaywrightDriver("about:blank", page=page)
+        driver.tap({"id": "inner.button"})
+        assert base.resolve_unique(driver.query(), {"id": "inner.button"})["label"] == "clicked"
     finally:
         page.close()

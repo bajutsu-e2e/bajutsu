@@ -13,7 +13,7 @@ from bajutsu.common.drivers import base
 # One pass over the document, in document order, so an `index` selector counts positions the same
 # way whichever kind of node each candidate is. Two kinds of node come back:
 #
-# - a control or tagged node (`sel`): what the id / role / label conventions above describe;
+# - a control or tagged node (`sel`): `data-testid` is its identifier, its role or tag its trait;
 # - a text node's own element (`<p>`, `<span>`, a heading) that `sel` does not match: flagged `text`
 #   and normalized to the `staticText` trait iOS reports for a label, so a scenario can find and
 #   assert on plain copy. Text inside an interactive control is skipped, since the control's own
