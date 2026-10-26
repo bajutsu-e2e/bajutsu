@@ -126,12 +126,16 @@ _IFRAME_CONTENT_BOX_JS = """
 
 
 def _intersect(a: base.Frame, b: base.Frame | None) -> base.Frame | None:
-    """The overlap of two rects, `a` itself when `b` is unbounded, or None when they do not meet."""
+    """The overlap of two rects, `a` itself when `b` is unbounded, or None when they do not meet.
+
+    Touching edges do not meet: a row starting exactly at an iframe's bottom edge is not on screen.
+    A rect with a zero side (a hairline rule) still meets whatever it lies inside.
+    """
     if b is None:
         return a
     x, y = max(a[0], b[0]), max(a[1], b[1])
     right, bottom = min(a[0] + a[2], b[0] + b[2]), min(a[1] + a[3], b[1] + b[3])
-    if right < x or bottom < y:
+    if right < x or bottom < y or (right == x and a[2] > 0) or (bottom == y and a[3] > 0):
         return None
     return (x, y, right - x, bottom - y)
 

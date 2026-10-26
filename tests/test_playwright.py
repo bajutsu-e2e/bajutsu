@@ -1568,6 +1568,18 @@ def test_query_drops_iframe_elements_outside_the_iframe_box() -> None:
     assert [el["identifier"] for el in drv.query()] == ["seen"]
 
 
+def test_query_drops_an_iframe_element_starting_exactly_at_its_bottom_edge() -> None:
+    child = _FakeChildFrame(
+        [
+            _rec(identifier="edge", frame=[0, 150, 10, 10]),
+            _rec(identifier="rule", frame=[0, 0, 10, 0]),
+        ],
+        _FakeIframeHost([100, 50, 200, 150]),
+    )
+    drv, _ = _framed_driver([], [child])
+    assert [el["identifier"] for el in drv.query()] == ["rule"]
+
+
 def test_query_skips_an_unrendered_iframe() -> None:
     child = _FakeChildFrame([_rec(identifier="x", frame=[0, 0, 10, 10])], _FakeIframeHost(None))
     drv, _ = _framed_driver([], [child])

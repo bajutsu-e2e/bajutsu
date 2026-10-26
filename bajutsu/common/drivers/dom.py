@@ -24,7 +24,9 @@ QUERY_JS = """
   const out = [];
   const sel = '[data-testid], button, a, input, select, textarea, [role]';
   const controls = 'button, a, input, select, textarea, [role=button], [role=link], '
-    + '[role=tab], [role=menuitem], [role=option], [role=checkbox], [role=radio], [role=switch]';
+    + '[role=tab], [role=menuitem], [role=menuitemcheckbox], [role=menuitemradio], [role=option], '
+    + '[role=checkbox], [role=radio], [role=switch], [role=combobox], [role=listbox], '
+    + '[role=slider], [role=spinbutton], [role=textbox], [role=searchbox]';
   const skip = 'head, script, style, noscript, template, select, datalist';
   const labels = new Map();
   const ownsText = (el) => {
@@ -36,6 +38,8 @@ QUERY_JS = """
   for (const el of document.querySelectorAll('*')) {
     const tagged = el.matches(sel);
     if (!tagged && (!ownsText(el) || el.closest(skip))) continue;
+    // A stray text node directly under <body> would otherwise make the whole page one label.
+    if (!tagged && (el === document.body || el === document.documentElement)) continue;
     const r = el.getBoundingClientRect();
     const style = getComputedStyle(el);
     if (style.display === 'none' || style.visibility === 'hidden') continue;

@@ -653,6 +653,9 @@ fits the same toolchain as `make check`. Implementation: `common/drivers/playwri
 
   Text elsewhere on the page still counts. Take a page with a heading and a button that both read
   "Sign in". There `tap: { label: Sign in }` matches both and fails as ambiguous, as on iOS.
+  A text element's label also includes the text of the controls inside it. Take a paragraph that
+  holds a "Terms" link. Both the paragraph and the link match `labelMatches: Terms`. A `count`
+  over that pattern grows by one.
   Add `traits: [button]`, `within`, or `index` to name the one you mean.
 - **Iframes**: `query()` also reads every iframe's document, nested ones included. Those
   elements join the same snapshot. The parent page's `contentDocument` stops at a cross-origin
