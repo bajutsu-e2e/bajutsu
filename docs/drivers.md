@@ -640,11 +640,13 @@ fits the same toolchain as `make check`. Implementation: `common/drivers/playwri
 - `query()`: one `page.evaluate()` walks the visible / interactive / a11y-relevant DOM nodes and a
   pure parser (`parse_dom`) maps each to an `Element`. The id convention is the web equivalent of
   iOS accessibilityIdentifier: `data-testid` → `Selector.id`, ARIA `role` (or tag) → `traits`,
-  accessible name / `aria-label` / text → `label`, and each tag's own value source → `value`:
-  `href` for `<a>`, `src` for `<img>`, `datetime` for `<time>`, the live `value` property for
-  form controls, for `<meter>`, and for a `<progress>` that carries a `value` attribute, and
-  `aria-valuetext` — or `aria-valuenow` when `aria-valuetext` is absent or empty — for a custom
-  ARIA widget such as `role="slider"` and for an indeterminate `<progress>`.
+  accessible name / `aria-label` / text → `label`. `value` comes from each tag's own source:
+  `href` for `<a>`, `src` for `<img>`, and `datetime` for `<time>`. `<input>`, `<select>`,
+  `<textarea>`, `<meter>`, and a `<progress>` that carries a `value` attribute report their live
+  `value` property even when they also carry a `role`, because their `aria-valuenow` can lag it.
+  A `<progress>` with no `value` attribute, and any other element with an explicit `role` such as
+  `role="slider"`, report `aria-valuetext` — or `aria-valuenow` when `aria-valuetext` is absent or
+  empty.
 - `tap(sel)`: like the adb backend, it resolves a **unique** element through the shared
   `resolve_unique`/`find_all` against a `query()` snapshot and clicks the **frame center** by
   coordinate (`page.mouse.click`). It deliberately does **not** use Playwright's own
