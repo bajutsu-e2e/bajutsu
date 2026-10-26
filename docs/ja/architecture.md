@@ -306,7 +306,7 @@ iOS 側の対になるジョブ `pool (xcuitest)` は、Simulator を 2 台起�
   ショットを合成します。アプリ側が同じサブツリーを重複して映し出す部分は剪定し、二重報告を避けます。`tap`/
   `doubleTap`/`press(forDuration:)` は、ブラウザの chrome が黙って無視してしまう `XCUIElement` 自身の呼び出しでは
   なく、要素の live な frame 中心を対象に actuation します。また閉じるボタンに identifier を与えない iOS の
-- **Playwright web バックエンド**（`common/drivers/playwright`）: ブラウザに対する決定的 `run` を Linux のゲート上で動かせます（`demos/web`）。リッチ寄りの能力モデルまで引き上げ済み（BE-0054）: `page.route()` によるネイティブな `network` の観測とスタブ、共有の `driver_interval` seam を通した `video` と `deviceLog` 相当（console / page-error）の区間証跡、`multiTouch`（ピンチ / 回転）のエミュレーション、N 個の `BrowserContext` レーンにまたがる並列実行、ターゲット単位の `runsOn.emulate`（既定はデスクトップで、Playwright のデバイスプリセットを指定するとモバイルをエミュレーションします。BE-0228）、そして `navigate` ステップ（`Driver.goto`。driver が相対参照をターゲットの `baseUrl` を基準に解決します。BE-0464）を支える `URL_NAVIGATION` 能力。この `URL_NAVIGATION` を申告する実バックエンドは Playwright だけです。`appTrace` のみ iOS 専用（`os_log`/simctl 由来）のまま
+  バージョンでは、iOS 26 が使う `Close` を補って報告します。これにより、プロトコルの変更なしに、
   シナリオは `/elements` を通じて
   in-app ブラウザを他の画面と同じように操作できます
 - **Playwright web バックエンド**（`common/drivers/playwright`）: ブラウザに対する決定的 `run` を Linux のゲート上で動かせます（`demos/web`）。リッチ寄りの能力モデルまで引き上げ済み（BE-0054）: `page.route()` によるネイティブな `network` の観測とスタブ、共有の `driver_interval` seam を通した `video` と `deviceLog` 相当（console / page-error）の区間証跡、`multiTouch`（ピンチ / 回転）のエミュレーション、N 個の `BrowserContext` レーンにまたがる並列実行、ターゲット単位の `runsOn.emulate`（既定はデスクトップで、Playwright のデバイスプリセットを指定するとモバイルをエミュレーションします。BE-0228）。`appTrace` のみ iOS 専用（`os_log`/simctl 由来）のまま
