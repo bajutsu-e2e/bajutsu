@@ -825,6 +825,15 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   context raises for `clear`/`delete` too. A cross-step `SelectionState` enforces the
   copy-requires-a-prior-select precondition, verified only through the existing `clipboard`
   read-back since no backend exposes selection as queryable state
+- DSL `navigate` step (BE-0464, web only): load a URL mid-scenario, for a page no control links to
+  (an email link, a shared-item URL), a deep page a UI walk would otherwise have to reach, or a
+  redirect to exercise. The value is a plain string resolved against the target's `baseUrl` the way
+  a browser resolves a link (`urljoin`); any scheme other than `http`/`https` is rejected, at load
+  time for a literal value and at run time for one carrying a `${...}` token. The step returns once
+  the page's `load` event fires without reading the response status, so cookies and storage persist
+  across it. Rides on a new `Driver.goto(url)` method gated on the `urlNavigation` capability, which
+  only the Playwright backend declares, so preflight rejects the step on iOS or Android before any
+  device work — including a `navigate` nested inside a `web:` block
 - DSL device & system actions (iOS): `background`, `clearKeychain`, `clearClipboard`,
   `overrideStatusBar` / `clearStatusBar` (deterministic status bar), and the `http` action for
   test-data setup / webhooks — `saveBody` stores the whole response body, and `extractBody`
