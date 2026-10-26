@@ -27,7 +27,9 @@ QUERY_JS = """
     + '[role=tab], [role=menuitem], [role=menuitemcheckbox], [role=menuitemradio], [role=option], '
     + '[role=checkbox], [role=radio], [role=switch], [role=combobox], [role=listbox], '
     + '[role=slider], [role=spinbutton], [role=textbox], [role=searchbox]';
-  const skip = 'head, script, style, noscript, template, select, datalist';
+  // A replaced element's children are fallback content no user sees while the element renders.
+  const skip = 'head, script, style, noscript, template, select, datalist, '
+    + 'video, audio, canvas, object, iframe';
   const labels = new Map();
   const ownsText = (el) => {
     for (const n of el.childNodes) {

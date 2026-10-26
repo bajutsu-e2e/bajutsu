@@ -386,6 +386,7 @@ def test_query_reads_plain_text_as_static_text(chromium: Any) -> None:
             "<select><option>Only option</option></select>"
             '<div role="menuitemcheckbox"><span>Show grid</span></div>'
             "Stray body text"
+            '<video style="width:40px;height:20px">Unsupported</video>'
         )
         driver = PlaywrightDriver("about:blank", page=page)
         texts = [e["label"] for e in driver.query() if "staticText" in e["traits"]]
@@ -421,5 +422,24 @@ def test_tap_reaches_an_iframe_inside_a_shadow_root(chromium: Any) -> None:
         driver.tap({"id": "inner.button"})
         clicked = base.resolve_unique(driver.query(), {"id": "inner.button"})
         assert clicked["label"] == "clicked"
+    finally:
+        page.close()
+
+
+@pytest.mark.web
+def test_query_does_not_read_a_css_transformed_iframe(chromium: Any) -> None:
+    """A scaled iframe's inner rects are untransformed, so offsetting them would aim taps elsewhere.
+    Leaving it unread turns that silent miss into a loud ElementNotFound."""
+    srcdoc = html.escape(_IFRAME_INNER, quote=True)
+    page = chromium.new_page()
+    try:
+        page.set_content(
+            '<div style="transform:scale(0.5);transform-origin:0 0">'
+            f'<iframe srcdoc="{srcdoc}" style="border:0;width:400px;height:300px"></iframe></div>'
+        )
+        driver = PlaywrightDriver("about:blank", page=page)
+        assert all(e["identifier"] != "inner.button" for e in driver.query())
+        with pytest.raises(base.ElementNotFound):
+            driver.tap({"id": "inner.button"})
     finally:
         page.close()

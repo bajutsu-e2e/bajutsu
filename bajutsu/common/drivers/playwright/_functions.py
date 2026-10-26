@@ -111,12 +111,17 @@ def _playwright_error_types() -> tuple[type[BaseException], ...]:
 
 # An `<iframe>`'s content box — where its document's (0, 0) sits — in its owner document's viewport,
 # or null when the iframe is not rendered. Border and padding are inside the bounding rect but outside
-# the child viewport, so both are stepped over.
+# the child viewport, so both are stepped over. A CSS transform on the iframe or an ancestor (a zoomed
+# device preview) also yields null: the child's rects are untransformed, so offsetting them by a
+# transformed origin would aim a click somewhere else with no error. Not reading it fails loudly.
 _IFRAME_CONTENT_BOX_JS = """
 (el) => {
   const style = getComputedStyle(el);
   if (style.display === 'none' || style.visibility === 'hidden') return null;
   const r = el.getBoundingClientRect();
+  if (Math.abs(r.width - el.offsetWidth) > 0.5 || Math.abs(r.height - el.offsetHeight) > 0.5) {
+    return null;
+  }
   const pl = parseFloat(style.paddingLeft) || 0, pt = parseFloat(style.paddingTop) || 0;
   const pr = parseFloat(style.paddingRight) || 0, pb = parseFloat(style.paddingBottom) || 0;
   return [r.x + el.clientLeft + pl, r.y + el.clientTop + pt,
@@ -145,7 +150,7 @@ def _iframe_elements(page: _Page) -> list[tuple[base.Element, _FrameScope]]:
 
     Walks Playwright's frame tree rather than `contentDocument` from page JS, so a cross-origin
     iframe — out of reach of the parent's script — is read too. An element scrolled or clipped
-    outside every enclosing iframe's box is not on screen and is left out; one outside the main
+    outside any enclosing iframe's box is not on screen and is left out; one outside the main
     viewport is kept, the same as a main-document element (BE-0326). A frame that detaches or
     navigates mid-snapshot is skipped: its content is not observable in this snapshot, and the next
     condition-wait poll reads it again. An injected page without a frame tree yields nothing.
