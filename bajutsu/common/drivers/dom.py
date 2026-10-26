@@ -17,7 +17,8 @@ QUERY_JS = """
   // which wins even when its host element has a `value` of its own (`<button>`'s "", `<li>`'s 0).
   // A native control (form field, determinate <progress>, <meter>) keeps its live `value`: its
   // aria-valuenow can lag what was typed or set. An indeterminate <progress> has no value of its
-  // own (`el.value` is 0), so its ARIA text wins. An empty aria-valuetext falls through.
+  // own (`el.value` is 0), so its ARIA text wins even without an explicit role (its progressbar
+  // role is implicit). An empty aria-valuetext falls through to aria-valuenow.
   const valueOf = (el) => {
     const tag = el.tagName.toLowerCase();
     if (tag === 'a' || tag === 'area') return el.getAttribute('href');
@@ -26,7 +27,7 @@ QUERY_JS = """
     const aria = el.getAttribute('aria-valuetext') || el.getAttribute('aria-valuenow');
     const native = tag === 'input' || tag === 'select' || tag === 'textarea'
                    || (tag === 'progress' && el.hasAttribute('value')) || tag === 'meter';
-    if (aria !== null && el.hasAttribute('role') && !native) return aria;
+    if (aria !== null && !native && (el.hasAttribute('role') || tag === 'progress')) return aria;
     if ('value' in el) return el.value;
     return aria;
   };
