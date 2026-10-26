@@ -15,14 +15,17 @@ QUERY_JS = """
   // A link, image, or <time> keeps its meaningful value in an attribute, not the `value`
   // property. A custom ARIA range widget (role=slider/progressbar/…) reports through aria-value*,
   // which wins even when its host element has a `value` of its own (`<button>`'s "", `<li>`'s 0).
-  // A real form control keeps its live `value`: its aria-valuenow can lag what was typed.
+  // A native control (form field, determinate <progress>, <meter>) keeps its live `value`: its
+  // aria-valuenow can lag what was typed or set. An indeterminate <progress> has no value of its
+  // own (`el.value` is 0), so its ARIA text wins. An empty aria-valuetext falls through.
   const valueOf = (el) => {
     const tag = el.tagName.toLowerCase();
     if (tag === 'a' || tag === 'area') return el.getAttribute('href');
     if (tag === 'img') return el.getAttribute('src');
     if (tag === 'time') return el.getAttribute('datetime');
-    const aria = el.getAttribute('aria-valuetext') ?? el.getAttribute('aria-valuenow');
-    const native = tag === 'input' || tag === 'select' || tag === 'textarea';
+    const aria = el.getAttribute('aria-valuetext') || el.getAttribute('aria-valuenow');
+    const native = tag === 'input' || tag === 'select' || tag === 'textarea'
+                   || (tag === 'progress' && el.hasAttribute('value')) || tag === 'meter';
     if (aria !== null && el.hasAttribute('role') && !native) return aria;
     if ('value' in el) return el.value;
     return aria;

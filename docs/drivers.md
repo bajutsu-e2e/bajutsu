@@ -642,8 +642,9 @@ fits the same toolchain as `make check`. Implementation: `common/drivers/playwri
   iOS accessibilityIdentifier: `data-testid` → `Selector.id`, ARIA `role` (or tag) → `traits`,
   accessible name / `aria-label` / text → `label`, and each tag's own value source → `value`:
   `href` for `<a>` / `<area>`, `src` for `<img>`, `datetime` for `<time>`, the live `value`
-  property for form controls, and `aria-valuetext` (else `aria-valuenow`) for a custom ARIA
-  widget such as `role="slider"`.
+  property for form controls and a determinate `<progress>` / `<meter>`, and `aria-valuetext`
+  (else `aria-valuenow`, also when `aria-valuetext` is empty) for a custom ARIA widget such as
+  `role="slider"`.
 - `tap(sel)`: like the adb backend, it resolves a **unique** element through the shared
   `resolve_unique`/`find_all` against a `query()` snapshot and clicks the **frame center** by
   coordinate (`page.mouse.click`). It deliberately does **not** use Playwright's own

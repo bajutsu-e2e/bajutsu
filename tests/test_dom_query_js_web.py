@@ -30,6 +30,9 @@ _PAGE = """
 <button data-testid="btnslider" role="slider" aria-valuenow="5">b</button>
 <input data-testid="range" type="range" value="30" aria-valuenow="99">
 <input data-testid="rolerange" type="range" role="slider" value="30" aria-valuenow="99">
+<progress data-testid="progress" role="progressbar" max="1" value="0.7" aria-valuenow="0"></progress>
+<progress data-testid="busy" role="progressbar" aria-valuetext="Loading"></progress>
+<div data-testid="emptytext" role="slider" aria-valuetext="" aria-valuenow="40">e</div>
 """
 
 
@@ -63,3 +66,8 @@ def test_query_js_reads_each_tags_own_value_source(page: Any) -> None:
     # ...but a native form control keeps its live `value`, role or not: aria-valuenow can lag it.
     assert values["range"] == "30"
     assert values["rolerange"] == "30"
+    assert values["progress"] == "0.7"
+    # An indeterminate <progress> has no value of its own, so its ARIA text is what it publishes.
+    assert values["busy"] == "Loading"
+    # An empty aria-valuetext (an unfilled template) must not hide a published aria-valuenow.
+    assert values["emptytext"] == "40"

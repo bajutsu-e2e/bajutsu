@@ -46,15 +46,23 @@ public enum BajutsuWebView {
     // MARK: - JS
 
     /// The same page-walk JavaScript the Playwright backend uses (bajutsu/common/drivers/dom.py QUERY_JS).
+    /// Kept byte-for-byte equal to it, IIFE wrapper aside; tests/test_dom_query_js_sync.py enforces that.
     static let queryJS = """
     (() => {
+      // A link, image, or <time> keeps its meaningful value in an attribute, not the `value`
+      // property. A custom ARIA range widget (role=slider/progressbar/…) reports through aria-value*,
+      // which wins even when its host element has a `value` of its own (`<button>`'s "", `<li>`'s 0).
+      // A native control (form field, determinate <progress>, <meter>) keeps its live `value`: its
+      // aria-valuenow can lag what was typed or set. An indeterminate <progress> has no value of its
+      // own (`el.value` is 0), so its ARIA text wins. An empty aria-valuetext falls through.
       const valueOf = (el) => {
         const tag = el.tagName.toLowerCase();
         if (tag === 'a' || tag === 'area') return el.getAttribute('href');
         if (tag === 'img') return el.getAttribute('src');
         if (tag === 'time') return el.getAttribute('datetime');
-        const aria = el.getAttribute('aria-valuetext') ?? el.getAttribute('aria-valuenow');
-        const native = tag === 'input' || tag === 'select' || tag === 'textarea';
+        const aria = el.getAttribute('aria-valuetext') || el.getAttribute('aria-valuenow');
+        const native = tag === 'input' || tag === 'select' || tag === 'textarea'
+                       || (tag === 'progress' && el.hasAttribute('value')) || tag === 'meter';
         if (aria !== null && el.hasAttribute('role') && !native) return aria;
         if ('value' in el) return el.value;
         return aria;
@@ -72,9 +80,11 @@ public enum BajutsuWebView {
           role: el.getAttribute('role') || el.tagName.toLowerCase(),
           label: el.getAttribute('aria-label') || (text ? text.slice(0, 200) : null),
           value: valueOf(el),
+          secure: el.type === 'password',
           disabled: el.disabled === true || el.getAttribute('aria-disabled') === 'true',
           selected: el.getAttribute('aria-selected') === 'true'
-                    || el.getAttribute('aria-checked') === 'true',
+                    || el.getAttribute('aria-checked') === 'true'
+                    || el.checked === true,
           frame: [r.x, r.y, r.width, r.height],
         });
       }
