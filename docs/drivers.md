@@ -641,6 +641,14 @@ fits the same toolchain as `make check`. Implementation: `common/drivers/playwri
   pure parser (`parse_dom`) maps each to an `Element`. The id convention is the web equivalent of
   iOS accessibilityIdentifier: `data-testid` → `Selector.id`, ARIA `role` (or tag) → `traits`,
   accessible name / `aria-label` / text → `label`, input `value` → `value`.
+- **Plain text**: `query()` also returns an element that holds its own text yet matches no rule
+  above. A heading, a paragraph, and a `<span>` are typical. Its label is the element's text. Its
+  one trait is `staticText`, the trait iOS reports for a label, so a selector such as
+  `{ label: Welcome, traits: [staticText] }` reads the same on both platforms. Two kinds of text
+  stay out. Each would make a once-unique selector match twice:
+  - Text inside an interactive control (a button, a link, or an input). The control's label
+    already carries it.
+  - Text that repeats the label of its nearest ancestor with a `data-testid` or a `role`.
 - **Iframes**: `query()` also reads every iframe's document, nested ones included. Those
   elements join the same snapshot. The parent page's `contentDocument` stops at a cross-origin
   iframe. Playwright's frame tree reaches one, so the driver walks that tree. The driver offsets

@@ -265,6 +265,9 @@ id 規約は、上の iOS と Android のものと並べて記します（Flutte
 Playwright（Python）によるヘッドレス Chromium です。Mac も Simulator も要らず Linux で動くため、`make check` と同じツールチェーンに収まります。実装: `common/drivers/playwright.py`（ロードマップ [BE-0041](../../roadmaps/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）。
 
 - `query()`: 1 本の `page.evaluate()` が、可視、操作可能、アクセシビリティ関連の DOM ノードを走査し、純粋なパーサ（`parse_dom`）が各ノードを `Element` に写像します。id 規約は iOS の accessibilityIdentifier の web 版です。`data-testid` → `Selector.id`、ARIA `role`（またはタグ）→ `traits`、accessible name / `aria-label` / テキスト → `label`、input の `value` → `value`。
+- **プレーンテキスト**: `query()` は、上の規則のどれにも当てはまらないものの自分のテキストを持つ要素（見出し、段落、`<span>` など）も返します。ラベルはその要素のテキストで、トレイトは `staticText` 1 つだけです。`staticText` は、iOS がラベルに付けるトレイトと同じ名前です。そのため `{ label: Welcome, traits: [staticText] }` のようなセレクタは、両方のプラットフォームで同じ意味になります。次の 2 種類のテキストは返しません。どちらも、これまで 1 つの要素に解決していたセレクタを複数の要素に一致させてしまうからです。
+  - 操作できるコントロール（ボタン、リンク、入力欄）の中のテキストです。コントロールのラベルがすでにそのテキストを含んでいます。
+  - もっとも近い祖先のうち `data-testid` か `role` を持つ要素と、同じラベルになるテキストです。
 - **iframe**: `query()` は、入れ子を含むすべての iframe の文書も読み、その要素を同じスナップショットに加えます。ドライバーは親ページの `contentDocument` ではなく Playwright のフレームツリーをたどるので、クロスオリジンの iframe にも届きます。各要素の frame は、iframe のコンテンツボックスの原点の分だけずらします。その結果、ほかの要素と同じくメインページの CSS ピクセルで表されます。iframe の表示領域の外へスクロールした要素は画面上にないので、スナップショットに含めません。
   - セレクタはスナップショット全体に対して解決します。同じ `data-testid` を持つ要素が 2 つの iframe にあると、そのセレクタは曖昧になり、`index` で 1 つを選びます。
   - `tap` と `selectOption` は、`elementFromPoint` によるヒットテストを要素自身の文書の中で行います。その前に、点が外側の各 `<iframe>` に当たっているかをドライバーが確かめます。iframe の上にオーバーレイがあると `ElementNotTappable` になり、エラーがそのオーバーレイを名指しします。

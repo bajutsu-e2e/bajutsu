@@ -10,20 +10,55 @@ from typing import Any
 
 from bajutsu.common.drivers import base
 
+# One pass over the document, in document order, so an `index` selector counts positions the same
+# way whichever kind of node each candidate is. Two kinds of node come back:
+#
+# - a control or tagged node (`sel`): what the id / role / label conventions above describe;
+# - a text node's own element (`<p>`, `<span>`, a heading) that `sel` does not match: flagged `text`
+#   and normalized to the `staticText` trait iOS reports for a label, so a scenario can find and
+#   assert on plain copy. Text inside an interactive control is skipped, since the control's own
+#   label already carries it, as is text that only repeats its nearest tagged ancestor's label —
+#   either would turn a selector that resolved to one element into an ambiguous one.
 QUERY_JS = """
 () => {
   const out = [];
   const sel = '[data-testid], button, a, input, select, textarea, [role]';
-  for (const el of document.querySelectorAll(sel)) {
+  const controls = 'button, a, input, select, textarea, [role=button], [role=link], '
+    + '[role=tab], [role=menuitem], [role=option], [role=checkbox], [role=radio], [role=switch]';
+  const skip = 'head, script, style, noscript, template, select, datalist';
+  const labels = new Map();
+  const ownsText = (el) => {
+    for (const n of el.childNodes) {
+      if (n.nodeType === Node.TEXT_NODE && n.data.trim()) return true;
+    }
+    return false;
+  };
+  for (const el of document.querySelectorAll('*')) {
+    const tagged = el.matches(sel);
+    if (!tagged && (!ownsText(el) || el.closest(skip))) continue;
     const r = el.getBoundingClientRect();
     const style = getComputedStyle(el);
     if (style.display === 'none' || style.visibility === 'hidden') continue;
     if (r.width === 0 && r.height === 0) continue;
     const text = (el.innerText || el.textContent || '').trim();
+    const label = el.getAttribute('aria-label') || (text ? text.slice(0, 200) : null);
+    if (!tagged) {
+      const parent = el.parentElement;
+      if (parent && parent.closest(controls)) continue;
+      const host = parent && parent.closest(sel);
+      if (host && labels.get(host) === label) continue;
+      out.push({
+        identifier: null, role: null, label: label, value: null, text: true,
+        secure: false, disabled: false, selected: false,
+        frame: [r.x, r.y, r.width, r.height],
+      });
+      continue;
+    }
+    labels.set(el, label);
     out.push({
       identifier: el.getAttribute('data-testid'),
       role: el.getAttribute('role') || el.tagName.toLowerCase(),
-      label: el.getAttribute('aria-label') || (text ? text.slice(0, 200) : null),
+      label: label,
       value: ('value' in el) ? el.value : null,
       secure: el.type === 'password',
       disabled: el.disabled === true || el.getAttribute('aria-disabled') === 'true',
@@ -36,6 +71,9 @@ QUERY_JS = """
   return out;
 }
 """
+
+# The trait a plain text element carries — the same name iOS reports for a static label.
+STATIC_TEXT = "staticText"
 
 # Map HTML tags and ARIA roles to the platform-neutral trait names that doctor's
 # ACTIONABLE_TRAITS recognises.  Unmapped roles pass through as-is (so a developer-set
@@ -85,6 +123,8 @@ def _to_element(rec: dict[str, Any]) -> base.Element:
     role = _norm_role(_str_or_none(rec.get("role")))
     if role:
         traits.append(role)
+    if rec.get("text"):
+        traits.append(STATIC_TEXT)
     # `input[type=password]` carries no ARIA role, so it reaches `_ROLE_MAP` as a bare `input` and
     # normalizes to `textField` indistinguishably from a plain one. The trait is added alongside
     # that role rather than replacing it, so the field stays a text input to selectors and the crawl.

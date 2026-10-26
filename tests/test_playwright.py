@@ -172,6 +172,16 @@ def test_query_js_reads_the_password_type_off_the_node() -> None:
     assert "secure:" in QUERY_JS
 
 
+def test_a_text_record_carries_the_static_text_trait_and_nothing_else() -> None:
+    """A plain text element has no role of its own: `staticText` (iOS's name for a label) is its
+    only trait, so `{ label, traits: [staticText] }` reads the same on both platforms."""
+    [el] = parse_dom([_rec(label="Welcome back", text=True)])
+    assert el["traits"] == ["staticText"]
+    assert el["label"] == "Welcome back"
+    [control] = parse_dom([_rec(role="button", label="Save")])
+    assert "staticText" not in control["traits"]
+
+
 # --- fake page + driver actions ---
 
 

@@ -366,3 +366,34 @@ def test_query_and_actions_reach_into_same_and_cross_origin_iframes(chromium: An
             driver.tap({"id": "inner.button", "index": 1})
     finally:
         page.close()
+
+
+@pytest.mark.web
+def test_query_reads_plain_text_as_static_text(chromium: Any) -> None:
+    """Copy outside any control comes back as `staticText`; text a control or tag already carries
+    does not come back a second time, so a selector that was unique stays unique."""
+    page = chromium.new_page()
+    try:
+        page.set_content(
+            "<h1>Welcome</h1>"
+            "<p>Hello <b>world</b></p>"
+            "<button><span>Save</span></button>"
+            '<a href="#"><span>Profile</span><span>3 new</span></a>'
+            '<div data-testid="status"><span>Ready</span></div>'
+            '<div data-testid="card"><h2>Title</h2><p>Body</p></div>'
+            "<label>Email <input></label>"
+            '<p style="display:none">Hidden</p>'
+            "<select><option>Only option</option></select>"
+        )
+        driver = PlaywrightDriver("about:blank", page=page)
+        texts = [e["label"] for e in driver.query() if "staticText" in e["traits"]]
+        assert texts == ["Welcome", "Hello world", "world", "Title", "Body", "Email"]
+        # The tag keeps its label; its repeating child adds nothing to resolve against.
+        assert base.resolve_unique(driver.query(), {"label": "Ready"})["identifier"] == "status"
+        assert base.resolve_unique(driver.query(), {"label": "Save"})["traits"] == ["button"]
+        heading = base.resolve_unique(
+            driver.query(), {"label": "Welcome", "traits": ["staticText"]}
+        )
+        assert heading["frame"][2] > 0
+    finally:
+        page.close()
