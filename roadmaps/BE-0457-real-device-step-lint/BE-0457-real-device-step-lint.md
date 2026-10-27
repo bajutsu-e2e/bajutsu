@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0457](BE-0457-real-device-step-lint.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **Rejected** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0457") |
 | Topic | Platform support |
 | Related | [BE-0082](../BE-0082-capability-preflight-check/BE-0082-capability-preflight-check.md), [BE-0128](../BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight.md), [BE-0212](../BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities.md), [BE-0238](../BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md) |
@@ -344,6 +344,16 @@ The target-blind check becomes worth revisiting once Android can express a real 
 - [ ] Add `skippedPreconditions` to `RunResult` and render it in the manifest, HTML, JUnit, and CTRF reports
 - [ ] Document both opt-outs and the lint in `docs/` and `docs/ja/`: `dsl-grammar.md`, `scenarios.md`,
   `cli.md`, and `drivers.md`; update `DESIGN.md` and `docs/architecture.md` on the real-device route
+
+Log:
+
+- Rejected before any unit shipped. Skipping a *step* on some environments makes one scenario's
+  result depend on where it ran: a real-device run can pass because it checked less. The direction
+  instead keeps every step mandatory and confines skipping to environment-specific *settings*,
+  declared in the target config and checked at lint and at worker dispatch. The
+  environment-specific settings item (`environment-specific-settings`) supersedes this one. The
+  first implementation attempt, [#2211](https://github.com/bajutsu-e2e/bajutsu/pull/2211), was
+  closed unmerged.
 
 ## References
 
