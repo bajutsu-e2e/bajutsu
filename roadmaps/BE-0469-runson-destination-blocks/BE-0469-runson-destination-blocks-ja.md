@@ -1,14 +1,14 @@
-[English](BE-XXXX-runson-destination-blocks.md) · **日本語**
+[English](BE-0469-runson-destination-blocks.md) · **日本語**
 
-# BE-XXXX — runsOn を実行先ごとにまとめ、シナリオの runsOn を廃止する
+# BE-0469 — runsOn を実行先ごとにまとめ、シナリオの runsOn を廃止する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-runson-destination-blocks-ja.md) |
+| 提案 | [BE-0469](BE-0469-runson-destination-blocks-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **承認済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0469") |
 | トピック | Driver & backend architecture |
 <!-- /BE-METADATA -->
 

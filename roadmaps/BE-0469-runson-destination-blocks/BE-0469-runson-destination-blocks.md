@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-runson-destination-blocks-ja.md)
+**English** · [日本語](BE-0469-runson-destination-blocks-ja.md)
 
-# BE-XXXX — Group runsOn by destination and drop the scenario's runsOn
+# BE-0469 — Group runsOn by destination and drop the scenario's runsOn
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-runson-destination-blocks.md) |
+| Proposal | [BE-0469](BE-0469-runson-destination-blocks.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0469") |
 | Topic | Driver & backend architecture |
 <!-- /BE-METADATA -->
 
