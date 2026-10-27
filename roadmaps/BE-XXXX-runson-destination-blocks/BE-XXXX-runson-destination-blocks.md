@@ -26,8 +26,7 @@ changes meaning: every condition matches devices exactly as it does today, from 
 The shape of `runsOn` is inconsistent. `runsOn.browser` names a browser explicitly, while
 `runsOn.model` implies a mobile device without saying which platform. A reader of `runsOn.os: "18"`
 must look at the target's `platform` to learn that the range means iOS. The gap grows with every
-field a platform adds, and the companion proposal *Let runsOn.ios name a device family and
-runsOn.browser any of several engines* adds two. Grouping by destination makes every field say what
+field a platform adds, and the companion proposal *Let runsOn name an iOS device family and a set of device or browser kinds* adds two. Grouping by destination makes every field say what
 it limits: `runsOn.ios.os` reads as an iOS version, and `runsOn.browser.engine` as a browser.
 
 A scenario's `preconditions.runsOn` mixes two concerns. Where a run can happen is a property of the
@@ -165,7 +164,7 @@ and removes an override, so every difference stays in config, now in one place p
 - A platform with more than one destination, such as a web app in mobile Safari. This item keeps
   one destination per platform and leaves room to add more.
 - New conditions, such as a device family or a set of browser engines. The companion proposal
-  *Let runsOn.ios name a device family and runsOn.browser any of several engines* adds them on top
+  *Let runsOn name an iOS device family and a set of device or browser kinds* adds them on top
   of this shape.
 
 ### Work breakdown

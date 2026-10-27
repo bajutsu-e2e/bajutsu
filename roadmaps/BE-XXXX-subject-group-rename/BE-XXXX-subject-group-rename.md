@@ -82,8 +82,7 @@ already maps old flat precondition keys through `_PRECONDITION_MOVES` in
 ### Relation to the other `runsOn` proposals
 
 This item is independent of the companion proposals *Group runsOn by destination and drop the
-scenario's runsOn* and *Let runsOn.ios name a device family and runsOn.browser any of several
-engines*. It touches a different group and no matching rule. Landing it in the same release as the
+scenario's runsOn* and *Let runsOn name an iOS device family and a set of device or browser kinds*. It touches a different group and no matching rule. Landing it in the same release as the
 first of those keeps the breaking config changes to one migration for users.
 
 ### Prime-directive compliance
