@@ -82,7 +82,10 @@ targets:
   key, `null` clears a key, lists replace, `run.secrets` and each `evidence.redact` list union, and
   `null` on those union lists or their parent blocks fails the load. No new list syntax is added.
 - **A name or a path.** An `extends` entry that contains `/` or ends in `.yaml` or `.yml` is a file.
-  Any other entry is the name of an inline template. The rule is the one BE-0422 gives `use`.
+  Any other entry is the name of an inline template. The expansion calls `is_component_file_ref`
+  (`bajutsu/common/scenario/models/scenario/component.py`), the predicate `use` already shares, so
+  the two keys cannot drift apart. It imports the scenario module inside the function, as
+  `schema/hooks.py` does, to keep the scenario loader off the schema's import path.
   A file holds a single template block. The path resolves against the directory of the file that holds the `extends`.
   It must stay inside the suite root, as
   [BE-0174](../BE-0174-scenario-ref-path-containment/BE-0174-scenario-ref-path-containment.md)
@@ -90,7 +93,11 @@ targets:
 - **A file template resolves its own relative paths.** A relative value inside a template file resolves against that file's directory, as in a component file. The rule covers three kinds of value.
   - the nested `extends` entries;
   - the path fields `app.path`, `runsOn.seedPhotos`, `driver.runner.testRunner`, and `paths.*`;
-  - the component a `hooks` step calls with `use`.
+  - the component a `hooks` step calls with `use`, at every depth the config's own hook walker
+    reaches: `setup`, each `cleanup` rule, each `interrupts` entry, and recursively the `steps` of
+    a group, `if`/`else`, `forEach`, `web`, and `app` step. The rewrite and `_nested_steps` in
+    `schema/hooks.py` share one description of those containers, so a new container cannot reach
+    the model and miss the rewrite.
 
   When the loader reads the file, it rewrites each such value to resolve against the config file's directory. Everything after the merge therefore sees one base. A file template's `extends` names files alone. The template file has no `templates:` of its own to look names up in. Shell commands such as `app.build` are not paths. `services.server.cwd`, `services.server.dockerfile`, and `services.mockServer.stubs` do not resolve against the config file today. The loader leaves them unchanged, so they keep the base they have today.
 - **`platform`.** A template may declare it, and a target may omit it to take it from its templates.
@@ -100,10 +107,16 @@ targets:
   blocks to a web target. A target with no platform from any layer fails as it does today.
 - **A template is never a target.** `bajutsu run --target <name>` and every serve endpoint accept
   only names under `targets:`. When the name matches a template, the error says so and lists the
-  targets: `'showcase-ios' is a template, not a target`. A template and a target may share a name,
-  since `extends` looks up templates alone.
+  targets: `'showcase-ios' is a template, not a target`. `resolve` raises it. The serve endpoints
+  that test membership themselves (`operations/reads.py`, `doctor.py`, `codegen.py`, `enrich.py`,
+  `capture.py`, and `coverage/_functions.py`) build their message from one shared helper, so none
+  keeps the bare `unknown target` wording. A template and a target may share a name, since
+  `extends` looks up templates alone.
 - **Errors fail the load.** An unknown template name lists the known ones. A cycle prints its path
-  (`a → b → a`). A template that two entries both reach, such as a shared base, is folded once.
+  (`a → b → a`). A template that two entries both reach, such as a shared base, is folded once, at
+  its first position in the depth-first order. A base is thus always weaker than every template that
+  extends it. Listing a base again after one of its dependents does not move it, since "bases first"
+  and "later entries win" cannot both hold for one name.
 - **A template is checked through its targets.** The loader validates a template's keys against the
   eleven target keys plus `extends`. The full group validation runs on each target after the layers merge, so a
   template that no target extends has its nested keys unchecked. `bajutsu config schema` narrows that gap for editors. A template that declares `platform` is checked against that platform's target shape. Every field in it is optional. A template with no `platform` has its platform-independent groups checked in full. Its `app`, `runsOn`, and `driver` are checked against any platform's partial shape.
@@ -118,10 +131,10 @@ the merged target as before.
 | Layer fold | `bajutsu/common/config/schema/_merge.py` | `merge_defaults(defaults, target)` becomes a fold that puts an ordered list of layers onto the defaults base. It picks `defaults.platforms.<platform>` by the platform the layers resolve, not by the target's own key alone. The old call is the one-layer case. |
 | Device Farm condition check | `_check_no_conditions` in `bajutsu/serve/batch_provider/device_farm_batch_provider.py` | Today it calls `merge_defaults` on the raw YAML to find a target's `runsOn` conditions. It switches to the expansion and the fold, so a condition that a template supplies is still refused. |
 | `extends` expansion | new `bajutsu/common/config/schema/_templates.py` | Turns a target's `extends` into the ordered layer list: depth-first, bases first, each template once. Detects cycles and unknown names, reads files under the suite root, and reports platform conflicts. |
-| Path rebasing | `_templates.py`, sharing one table of path fields with `Effective.rebased` in `bajutsu/common/config/effective/effective.py` | Rewrites a file template's relative path values to resolve against the config file's directory instead of its own. Both this rewrite and `Effective.rebased` read the same table, so a new path field is added in one place. |
+| Path rebasing | `_templates.py`, with a table of path fields kept in step with `Effective.rebased` in `bajutsu/common/config/effective/effective.py` | Rewrites a file template's relative path values to resolve against the config file's directory instead of its own. `Effective.rebased` keeps its typed, per-platform traversal, so it cannot read the dotted-key table this raw-YAML rewrite uses. A test asserts that the two cover the same set of fields, so a path field added to one alone fails the gate. |
 | Entry point | `Config._merge_defaults` in `schema/config.py` | Calls the expansion, then the fold, for each target, including when the config has no `defaults`. Adds `templates: dict[str, dict[str, Any]]` to `Config`. |
-| Target-name error | `resolve` in `bajutsu/common/config/resolve.py` | The `KeyError` for an unknown target names the template when the name matches one. |
-| Editor schema | `bajutsu/common/config/json_schema.py` | Adds `extends` to each platform's target. Adds a `templates` map whose entries are a `oneOf` of per-platform partial targets keyed by `platform`, plus one branch with no `platform`, in which the platform-shaped groups take any platform's partial shape. |
+| Target-name error | `resolve` in `bajutsu/common/config/resolve.py`, and the six serve endpoints listed above | One helper builds the unknown-target message, naming the template when the name matches one. `resolve` and each serve endpoint call it. |
+| Editor schema | `bajutsu/common/config/json_schema.py` | Adds `extends` to each platform's target. Adds a `templates` map whose entries are an `anyOf`, not the target's discriminated `oneOf`. Each per-platform branch still requires its own `platform` literal. One more branch forbids `platform`, and its platform-shaped groups take any platform's partial shape. A discriminator has no branch for a template that omits `platform`. |
 
 The fold must apply the layers to the defaults one at a time, never merge the templates into one block
 first. A template that writes `null` to clear a value `defaults` supplies must still find that value
@@ -147,7 +160,8 @@ the target's `ai` in the layer order above, and the result then merges with `def
 
 1. Refactor `merge_defaults` into a layer fold with no behavior change.
 2. Add the `templates:` field, the `extends` expansion with a file template's path rebasing, and its errors.
-3. Add the template-name error to `resolve`, and `extends` and `templates` to the JSON Schema.
+3. Add the shared template-name error to `resolve` and the serve endpoints, and `extends` and
+   `templates` to the JSON Schema.
 4. Add tests: layer order, `null` clearing, union lists, file references and containment, relative paths inside a file template, cycle,
    unknown name, platform conflict, and the template-as-target error, and a Device Farm job refused for a `runsOn` condition that a template supplies.
 5. Document the feature in `docs/configuration.md` and `docs/ja/configuration.md`, and update
@@ -174,7 +188,7 @@ the target's `ai` in the layer order above, and the result then merges with `def
 
 - [ ] Refactor `merge_defaults` into a layer fold, with no behavior change
 - [ ] Add `templates:`, the `extends` expansion with file-template path rebasing, and its load errors
-- [ ] Add the template-name error to `resolve`, and `extends` and `templates` to the JSON Schema
+- [ ] Add the shared template-name error to `resolve` and the serve endpoints, and `extends` and `templates` to the JSON Schema
 - [ ] Add the tests for layer order, clearing, files, cycles, and platform conflicts
 - [ ] Document the feature in `docs/` and `docs/ja/`, and update `docs/architecture.md` and `DESIGN.md`
 - [ ] Move the showcase config's shared blocks into templates, with an unchanged `Effective` per target
