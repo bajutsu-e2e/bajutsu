@@ -110,7 +110,7 @@ guess: a string that merely looks like JSON stays a string until the author says
 | `filter` | `filter: { <predicate>, not? }` | list → list | Keeps elements that satisfy exactly one predicate: `matches` (regular expression, searched anywhere), `equals`, `contains`, or `notEmpty`. `not: true` keeps the others. An empty result is a valid list. |
 | `pick` | `pick: first`, `last`, or an index | list → string | Takes one element. An index is a non-negative integer counted from zero. |
 | `count` | `count` | list → string | The number of elements, as decimal text. |
-| `sort` | `sort`, `sort: asc`, or `sort: { order, numeric? }` | list → list | Orders by Unicode code point. With `numeric: true` it orders by decimal value and fails on a non-number. |
+| `sort` | `sort`, `sort: asc`, or `sort: { order, numeric? }` | list → list | Orders by Unicode code point. `order` is `asc` (the default) or `desc`, and any other value is a load error. `sort: desc` gives the same result as `sort` followed by `reverse`. With `numeric: true` it orders by decimal value and fails on a non-number. |
 | `unique` | `unique` | list → list | Drops repeats and keeps the first occurrence of each element. |
 | `reverse` | `reverse` | list → list | Reverses the order. |
 | `json` | `json` | string → list | Parses a JSON array. A string element stays as is, and any other element renders through `json_text`. |
@@ -128,7 +128,8 @@ with a regular expression that absorbs the whitespace, as the first example does
 The loader walks each `ops` list and tracks the type flow from `from` (a string) to the end. An
 operation applied to the wrong type, such as `join` after `regex`, is a scenario load error that
 names the step and the operation. The loader also rejects an empty `ops`, an empty `split`
-separator, a `filter` with zero or several predicates, and a negative or non-integer index. A
+separator, a `filter` with zero or several predicates, a negative or non-integer index, and a `sort`
+`order` other than `asc` or `desc`. A
 regular expression is compiled at load time when its text holds no `${...}` token.
 
 Operation arguments accept `${vars.*}` and `${secrets.*}` tokens, as other step fields do. An argument
@@ -142,7 +143,8 @@ The step fails at run time, with no fallback value, in these cases:
 - `substring` with `start` or `end` beyond the string, or `start` after `end`
 - `json` on text that is not a JSON array
 - `sort` with `numeric: true` on an element that is not a decimal number
-- an input string over 1,048,576 characters, or a list over 10,000 elements
+- an input or result string over 1,048,576 characters, or an input or result list over 10,000
+  elements (checking the result stops `replace` or `join` from growing a value past the cap)
 
 A failure message names the step, the operation's position, and the operation. It never quotes a value,
 because the value may derive from a secret. An empty list is a valid result, so a scenario that
@@ -168,19 +170,36 @@ inputs is secret.**
 - A result registers however short it is. A one-character secret result then masks that character
   everywhere in later evidence, which can make an artifact hard to read. We accept that cost over a
   length floor that would let a fragment of a secret through.
+- `count` is the one exception. Its result is an element count, so it carries no character of the
+  input. Registering it would mask a bare digit throughout every later artifact. This item
+  recommends `count` for asserting a list's length, so that case is the common one, not an edge. A
+  `count` result is never secret, and `into.var` loses the mark.
 
 ### Core-layer changes
 
 The secret set is a plain `list[str]` passed to several `Redactor` instances at run start
-(`bajutsu/common/runner/pipeline.py`, `bajutsu/common/runner/pool.py`). A list cannot grow after a
-`Redactor` has built its search terms in `__init__`. The change has two parts:
+(`bajutsu/common/runner/pipeline.py`, `bajutsu/common/runner/pool.py`). A `Redactor` builds its
+search terms once, in `__init__`. One of those instances, `result_redactor`, lives on the frozen
+scenario runner. With `workers > 1` a `ThreadPoolExecutor` shares that runner across workers. The
+sharing is safe because the runner holds no per-scenario mutable state, and the design keeps that
+property.
 
-1. A small mutable `SecretValues` class holds the raw values, with `add(value)` and a version number.
-   `Redactor` accepts it where it accepts a list, and rebuilds its terms when the version changes. A
-   caller that passes a plain list keeps working.
-2. The run state gains a `secret_vars` set beside `bindings`. The step runner
-   (`bajutsu/common/orchestrator/loop/_step_runner.py`) computes the secret status of an `eval` step
-   from the step as written, before substitution, because the handler only sees substituted text.
+A derived secret is therefore scenario-scoped. A run-wide mutable set would let one scenario's
+derived value mask matching text in another scenario's evidence. A per-scenario set that the shared
+`result_redactor` never sees would leave the value unmasked in `<sid>/result.json` and the manifest.
+The change avoids both:
+
+1. `Redactor` gains `with_values(extra)`, which returns a new `Redactor` holding the original
+   values plus `extra`. The shared instances stay immutable.
+2. The per-scenario run state gains `derived_secrets` (the raw values) and `secret_vars` (the
+   variable names marked secret), beside `bindings`. One worker thread owns that state, so it needs
+   no lock. The step runner (`bajutsu/common/orchestrator/loop/_step_runner.py`) computes the
+   secret status of an `eval` step from the step as written, before substitution, because the
+   handler only sees substituted text.
+3. Every writer of a scenario's evidence redacts with `redactor.with_values(derived_secrets)`. That
+   covers the trace, the network log, `<sid>/result.json`, and the scenario's entry in
+   `manifest.json`. The scenario result carries `derived_secrets` in memory for the manifest writer
+   and never serializes the set.
 
 Masking starts at the `eval` step. An artifact written earlier in the run is not rewritten.
 
@@ -198,7 +217,9 @@ code generator emits a labeled `// TODO` for the step, as it does for `generate`
 ([BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md)). The REPL
 session prints the stored value after an `eval`, as it does after `generate`
 (`bajutsu/repl/session.py`), and passes it through the redactor first. `eval` never reaches the app, so
-it joins the step kinds listed in `bajutsu/common/orchestrator/loop/app_crash_latches.py`.
+it stays out of `OBSERVES_APP` in `bajutsu/common/orchestrator/loop/app_crash_latches.py`. That set
+lists the step kinds whose success proves the app answered, and a kind added later proves nothing by
+default. The set needs no edit.
 
 ### Out of scope
 
@@ -218,10 +239,10 @@ it joins the step kinds listed in `bajutsu/common/orchestrator/loop/app_crash_la
 | # | Unit | Done when |
 |---|---|---|
 | 1 | Scenario model: `Eval`, the operation types, `Step.eval`, load-time type-flow and argument checks | model tests load every operation form and reject each load error listed above |
-| 2 | Evaluator: a pure function that runs an `ops` list on a string, with the caps and value-free failure messages | unit tests cover every operation, every run-time failure, and the caps |
+| 2 | Evaluator: a pure function that runs an `ops` list on a string, with the caps and value-free failure messages | unit tests cover every operation, every run-time failure, and the caps on both an input and a result (a `replace` that grows past the cap) |
 | 3 | Handler `_do_eval`: substitution, a second run of the checks on substituted arguments, the write to `vars.*`, and the produced value in the step outcome | a fake-driver run stores a string result and a list result, and a failing pipeline leaves the variable unset |
-| 4 | Secret handling: `SecretValues`, the `Redactor` change, `secret_vars` in the run state, and registration before the step is recorded | a test shows a substring of a secret, and a variable derived from that variable, masked in the report, the trace, and the network log |
-| 5 | Step-kind surfaces: runner step sets, REPL display, crash-latch list, and a labeled `TODO` in the three code generators | codegen goldens show the `TODO`, and the REPL test shows the masked value |
+| 4 | Secret handling: `Redactor.with_values`, `derived_secrets` and `secret_vars` in the per-scenario run state, the scenario-scoped redactor at every evidence writer, the `count` exception, and registration before the step is recorded | a `workers > 1` run of two scenarios shows scenario A's secret substring, and a variable derived from it, masked in A's trace, network log, `result.json`, and manifest entry; scenario B's evidence is unchanged; a `count` over a secret-derived list stays unmasked |
+| 5 | Step-kind surfaces: runner step sets, REPL display, and a labeled `TODO` in the three code generators (`OBSERVES_APP` stays unchanged) | codegen goldens show the `TODO`, and the REPL test shows the masked value |
 | 6 | Scenario-level tests with the fake driver for the examples in this item | the capture, split, filter, sort, pick, and assert flow passes end to end |
 | 7 | Documentation: the step table and a section in `docs/scenarios.md`, the production in `docs/dsl-grammar.md`, and both `docs/ja/` mirrors | the English and Japanese pages list `eval`, and `make check` is green |
 
@@ -243,14 +264,15 @@ it joins the step kinds listed in `bajutsu/common/orchestrator/loop/app_crash_la
 ### Open points for review
 
 - **Regular-expression cost.** Python's `re` module has no match timeout, and a pattern with nested
-  repetition can run for a long time on a long input. The caps above bound the input but not the
-  time. The options are to accept the risk for author-written patterns or to add a deadline in the
+  repetition can run for a long time on a long input. The caps above bound the size of every value,
+  but not the time a match takes. The options are to accept the risk for author-written patterns or to add a deadline in the
   evaluator.
 - **Cap values.** The 1,048,576-character and 10,000-element caps are starting points. Confirm them
   against the largest label or body a real scenario captures.
 - **Reuse of `generated`.** The manifest field is named for `generate`. Reusing it avoids a manifest
   version bump. Renaming it would give both steps an accurate name at the cost of a bump.
-- **Short secret results.** A one-character result masks that character in all later evidence. If
+- **Short secret results.** A one-character result derived from a secret masks that character in
+  all later evidence of its scenario (`count` is exempt, as above). If
   reports turn out to be unreadable in practice, the step could add a warning when a secret result
   falls below a length.
 - **Step name.** We chose `eval` for its brevity. The Detailed design opens with a note that the step
@@ -265,8 +287,8 @@ it joins the step kinds listed in `bajutsu/common/orchestrator/loop/app_crash_la
 - [ ] Add the `Eval` model and the load-time checks.
 - [ ] Add the evaluator with every operation, the caps, and value-free failure messages.
 - [ ] Add the `eval` handler and the produced value in the step outcome.
-- [ ] Add secret handling: `SecretValues`, the `Redactor` change, and `secret_vars`.
-- [ ] Add the step-kind surfaces: runner sets, REPL, crash-latch list, and codegen `TODO`.
+- [ ] Add scenario-scoped secret handling: `Redactor.with_values`, `derived_secrets`, and `secret_vars`.
+- [ ] Add the step-kind surfaces: runner sets, REPL, and codegen `TODO`.
 - [ ] Add scenario-level tests with the fake driver.
 - [ ] Document `eval` in `docs/scenarios.md` and `docs/dsl-grammar.md`, with both `docs/ja/` mirrors.
 
