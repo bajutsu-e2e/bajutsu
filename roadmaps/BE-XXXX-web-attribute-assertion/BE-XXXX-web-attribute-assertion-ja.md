@@ -70,6 +70,8 @@ AttributeMatch ::= { sel: <Selector>, name: string }
 
 ステップの `assert` リストとシナリオの `expect` リストは、条件待ちとして実行します。その実装は `_poll_asserts`（`bajutsu/common/orchestrator/loop/_functions.py:129`）です。`_poll_asserts` は、アサーションが成功するか lane の待機の下限に達するまで、`driver.query()` を呼び直します。このポーリングは、読み出しの競合を防ぐためにあります。操作が変えた値は、操作から戻った少し後に反映されることがあるからです。この項目が対象とする `data-state` や `aria-busy` のような属性は、まさにそのように変わります。そのため、属性の読み出しもポーリングに合わせます。
 
+ポーリングの時間の上限は、lane の待機の下限だけで決まります。環境変数 `BAJUTSU_MIN_WAIT_TIMEOUT` が設定されていなければ、`_timeout_floor()` は 0 です。この環境変数は `bajutsu/common/orchestrator/waits/_functions.py:47` で定義されています。いまこの値を設定しているのは、iOS と Android の lane だけです。そのため web の lane では、まとまりごとに1回だけ読み、ポーリングは何も加えません。作業単位7では、Android の lane と同じく、web のデモの実行に待機の下限を設定します。アサーションを受け付ける `until` の形はないので、`wait` ステップで下限の代わりはできません。
+
 1. 各回の `driver.query()` の直後に、補助関数 `_attributes_for(driver, tree, block)` が、まとまりの中の各 `attribute` アサーションを処理します。補助関数は、セレクタをその回のツリーに対して解決し、`Driver.read_attribute(element, name)` を1回呼びます。読み出しが `SelectorError` を送出した場合（実際のページで要素が見つからない場合や、2つ以上見つかった場合）、補助関数は値の代わりにその理由を記録します。アサーションはその理由で失敗し、ステップを中断せずに次の回で読み直します。
 2. 補助関数は、結果を `EvalContext` の新しい `attributes` フィールドに、展開済みのセレクタと属性名をキーとして保存します。評価関数が `evaluate_one` から受け取るのはアサーションだけで、まとまりの中の位置は渡されないからです。その回の評価には、このコンテキストを使います。
 3. 評価関数は、読んだ値を比較の種類に従って比べ、通常の `AssertionResult` を返します。セレクタが解決できない場合は、`value` アサーションと同じ理由を返します。
@@ -156,7 +158,7 @@ WebView を埋め込んだ iOS アプリでも、Bajutsu は BajutsuKit のブ�
 | 4 | Playwright の `read_attribute` | 実際の Chromium を使う web ドライバーのテストで、`data-testid` とノードの一覧の走査のそれぞれで属性を読めること、覆われた要素と表示領域外の要素を読めること、`data-testid` が曖昧な場合と、矩形、名前、trait で一致するノードが2つある場合に失敗すること、非表示の重複した `data-testid` があっても曖昧にならないことを確かめます |
 | 5 | ドライバーの適合性テスト | web の適合性テストに `read_attribute` のケースを加えて成功させ、web 以外のバックエンドでは capability によって省略します |
 | 6 | コード生成 | `attribute` を使うシナリオの Playwright 出力が golden と一致し、ほかのコード生成がラベル付きの `TODO` を出力することを確かめます |
-| 7 | web のデモシナリオ | web のデモに、リンクの `href` と `data-*` 属性を確かめるシナリオを加え、web の E2E レーンで成功させます |
+| 7 | web のデモシナリオ | web のデモに、リンクの `href` と、操作の後で値が定まる `data-*` 属性を確かめるシナリオを加えます。web のデモの実行には `BAJUTSU_MIN_WAIT_TIMEOUT` を設定し、web の E2E レーンで成功させます |
 | 8 | 文書、スキーマ、語彙の一覧 | 英語と日本語のページに `attribute` を載せ、スキーマに含め、`make check` が成功します |
 
 ### レビューで見てほしい点

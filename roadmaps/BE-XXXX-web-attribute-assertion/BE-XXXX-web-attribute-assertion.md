@@ -68,6 +68,8 @@ A `wait` step takes a selector (`for`) or one of a fixed set of `until` forms (`
 
 A step's `assert` list and the scenario's `expect` list run as a condition wait. `_poll_asserts` (`bajutsu/common/orchestrator/loop/_functions.py:129`) calls `driver.query()` again on every tick until the assertions pass or the lane's wait floor runs out. The poll exists to close a read race: a value that an action changes can land a moment after the action returns. The attributes this item targets, such as `data-state` and `aria-busy`, change in exactly that way, so the read follows the poll.
 
+The poll's budget is the lane's wait floor and nothing else. `_timeout_floor()` is zero unless `BAJUTSU_MIN_WAIT_TIMEOUT` is set (`bajutsu/common/orchestrator/waits/_functions.py:47`), and today only the iOS and Android lanes set it. The web lane therefore takes one read per block, and the poll adds nothing there. Unit 7 sets a wait floor on the web demo's run, as the Android lane does. A `wait` step cannot stand in for the floor, because no `until` form takes an assertion.
+
 1. On each tick, right after `driver.query()`, a helper `_attributes_for(driver, tree, block)` handles each `attribute` assertion in the block. The helper resolves the selector against that tick's tree, then calls `Driver.read_attribute(element, name)` once. If the read raises `SelectorError` (the live lookup found no node or more than one), the helper records that reason instead of a value, so the assertion fails with it and the poll reads again on the next tick rather than aborting the step.
 2. The helper stores the results in a new `attributes` field on `EvalContext`, keyed by the assertion's interpolated selector and attribute name, because the evaluator receives the assertion alone from `evaluate_one` and never its position in the block. The tick evaluates the block with that context.
 3. The evaluator compares the read value with the operator and returns an ordinary `AssertionResult`. A selector that fails to resolve returns the same reason the `value` assertion gives.
@@ -148,7 +150,7 @@ Because the read is on demand, an attribute enters the run's output only when an
 | 4 | Playwright `read_attribute` | web driver tests in real Chromium read an attribute by `data-testid` and by the node-list walk, read a covered element and one outside the viewport, fail an ambiguous `data-testid`, ignore a hidden duplicate `data-testid`, and fail two nodes that match by rectangle, name, and traits |
 | 5 | Driver conformance case | the web conformance suite passes with a new `read_attribute` case, and non-web backends skip it by capability |
 | 6 | Codegen | the Playwright output for an `attribute` scenario matches a golden, and the other generators emit the labeled `TODO` |
-| 7 | Web demo scenario | a scenario under the web demo asserts a link's `href` and a `data-*` attribute, and it passes in the web E2E lane |
+| 7 | Web demo scenario | a scenario under the web demo asserts a link's `href` and a `data-*` attribute that settles after an action. The web demo's run sets `BAJUTSU_MIN_WAIT_TIMEOUT`, and the scenario passes in the web E2E lane |
 | 8 | Documentation, schema, and vocabulary lists | the English and Japanese pages list `attribute`, the schema includes it, and `make check` is green |
 
 ### Open points for review
