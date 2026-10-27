@@ -72,15 +72,28 @@ already means "any", and a target clears an inherited `family` with `family: nul
 
 ### Rules the loader enforces
 
-All rules run on the merged block, after team defaults and a scenario's `preconditions.runsOn`
-have folded in, as the existing `kind: device` rule does.
+Each rule inside one `runsOn` block runs on the merged config block, after team defaults have
+folded in, as the existing `kind: device` rule does. A scenario's `preconditions.runsOn` is not part
+of that block. The loader validates it on its own and folds it in later as flat conditions, and a
+`null` drops out on the way, so a scenario cannot clear a target's field. The cross-layer pairs
+therefore get a replacement rule instead:
+
+- A scenario's `family` replaces the target's `model`, and a scenario's `model` replaces the
+  target's `family`.
+- A scenario's `anyOf` replaces the target's `engine`, and a scenario's `engine` replaces the
+  target's `anyOf`.
+
+`form_target_runs` never receives two conditions that exclude each other. Within one config block,
+the rules below hold.
 
 - `family` and `model` together fail the load and name both fields. A target clears an inherited
   one with `null`.
 - `family` on a target with `kind: device` fails the load, like `model` and `os` today. A physical
   device has no pool to match.
-- `anyOf` and an explicit `engine` together fail the load. A target clears an inherited `engine`
-  with `engine: null`; the built-in `chromium` then applies only when `anyOf` is also absent.
+- `anyOf` and an explicit `engine` together fail the load. `engine` therefore loses its
+  field-level `"chromium"` default and becomes `str | list[str] | None`. The merge pops a `null`
+  before validation, so a field default would fire again and win over `anyOf`. The built-in
+  `chromium` applies when a run resolves, and only when neither `engine` nor `anyOf` is set.
 - `anyOf` with `browser.version` fails the load, for the reason a list of engines already does:
   each engine numbers its versions differently.
 - An empty list, a repeated entry, and an unknown family or engine fail the load and name the
@@ -112,9 +125,13 @@ the winner differs, and a layout difference between an iPhone and an iPad would 
 ([BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact.md)).
 A single `family: ipad` adds no coordinate, in the way a single `model` adds none.
 
-On the web, `anyOf` resolves the same way against the engines. The lane launches engines in listed
-order, and the first launch that succeeds wins. When none launches, the run fails and names each
-engine with its launch error. The chosen engine fills the existing `engine` slot, and the
+On the web, `anyOf` resolves the same way, against the engines the pool read returns. `target_pool`
+in `bajutsu/run/device_matrix.py` already reads one `DeviceFacts` per engine through `read_web`. That
+read launches the engine headless and raises `DeviceReadError` when it cannot. The first listed
+engine that reads wins, before any run forms. When no listed engine reads, the run fails and names
+each engine with its read error. An engine that wins and then fails to launch fails its run; the run
+never falls to the next entry. The resolution stays a function of the config and the pool read, and
+a broken engine stays loud. The chosen engine fills the existing `engine` slot, and the
 `browser.engine` coordinate appears for any-of runs, as it does for a list.
 
 `--browser` on `run`, `record`, `crawl`, and `repl` replaces the whole `runsOn.browser` engine
@@ -133,8 +150,9 @@ Android and web devices carry `None`.
 ### Schema, reports, and docs
 
 - `IosRunsOn` in `bajutsu/common/config/schema/platform/ios.py` gains `family`. `WebBrowser` in
-  `web.py` gains `anyOf`. The platform registry supplies the same fields to a
-  scenario's `preconditions.runsOn`, so a scenario may narrow its target's choice.
+  `web.py` gains `anyOf`, and its `engine` loses the field-level default. The platform registry
+  supplies the same fields to a scenario's `preconditions.runsOn`, so a scenario may replace its
+  target's choice under the rule above.
 - `bajutsu config schema` emits `family` as an enum or a list of the enum, and `anyOf` as a list
   of engines.
 - `doctor` lists each run with the winning family or engine and the devices that fit.
@@ -165,10 +183,14 @@ in config.
 1. **Read the family.** Add `family` to `DeviceFacts` and read it in `read_ios` from
    `productFamily`. Confirm on a real `simctl list devicetypes` that every iPhone and iPad type
    carries it.
-2. **Schema.** Add `IosRunsOn.family`, `WebBrowser.anyOf`, and the load-time
-   rules above. Extend the JSON Schema output.
+2. **Schema.** Add `IosRunsOn.family` and `WebBrowser.anyOf`, move the `chromium` default from
+   the `engine` field to run resolution, and add the load-time rules above. Apply the cross-layer
+   replacement rule where a scenario's conditions fold in. Extend the JSON Schema output.
 3. **Resolution.** Resolve the priority lists in `form_target_runs`, narrow `eligible_set` by the
    winning family, and add the coordinate for any-of runs. Cover `first_run` and `declared_runs`.
+   `declared_runs` has no pool to resolve against. It lists a priority list as one run whose family
+   or engine depends on the pool, the way `PER_AVAILABLE_MAJOR` labels an open range, and never as
+   one run per listed entry.
 4. **Wiring.** Carry the fields through `_conditions` and `unpack_conditions`, make `--browser`
    clear `anyOf`, and thread the winning engine into the web lane.
 5. **Reporting.** Show the winner in the run label, the manifest, `doctor`, and the flakiness key.

@@ -73,16 +73,28 @@ web で「どのエンジンでもよい」を書く方法は、すべてのエ�
 
 ### ローダーが強制する規則
 
-どの規則も、チームのデフォルト値とシナリオの `preconditions.runsOn` を畳み込んだ後のブロックで判定します。
-既存の `kind: device` の規則と同じです。
+1 つの `runsOn` ブロックの中の規則は、チームのデフォルト値を畳み込んだ後の config ブロックで判定します。
+既存の `kind: device` の規則と同じです。シナリオの `preconditions.runsOn` は、このブロックに含まれません。
+ローダーはシナリオのブロックを単独で検証し、後から平らな条件として畳み込みます。その途中で `null` は
+落ちるので、シナリオはターゲットのフィールドを解除できません。そこで、層をまたぐ組には置き換えの規則を
+設けます。
+
+- シナリオの `family` はターゲットの `model` を置き換え、シナリオの `model` はターゲットの `family` を
+  置き換えます。
+- シナリオの `anyOf` はターゲットの `engine` を置き換え、シナリオの `engine` はターゲットの `anyOf` を
+  置き換えます。
+
+`form_target_runs` が、互いに排他な 2 つの条件を受け取ることはありません。1 つの config ブロックの中では、
+次の規則が成り立ちます。
 
 - `family` と `model` を併記すると、読み込みが失敗し、両方のフィールド名を示します。継承された側は
   ターゲットが `null` で解除します。
 - `kind: device` のターゲットに `family` を書くと、現在の `model` や `os` と同じく読み込みが失敗します。
   実機にはマッチさせるプールがありません。
-- `anyOf` と明示した `engine` を併記すると、読み込みが失敗します。継承された `engine` は
-  ターゲットが `engine: null` で解除します。そのとき組み込みの `chromium` が効くのは、`anyOf` も
-  ないときに限ります。
+- `anyOf` と明示した `engine` を併記すると、読み込みが失敗します。そのため `engine` はフィールドの
+  デフォルト値 `"chromium"` を失い、型は `str | list[str] | None` になります。マージは検証の前に
+  `null` を取り除くので、フィールドのデフォルト値が再び効いて `anyOf` に勝ってしまうからです。
+  組み込みの `chromium` は run の解決時に、`engine` と `anyOf` のどちらもないときに限り効きます。
 - `anyOf` と `browser.version` の併記は、エンジンのリストと同じ理由で読み込みが失敗します。
   エンジンごとにバージョンの付け方が違うからです。
 - 空のリスト、重複した項目、未知のファミリーやエンジンは、読み込みが失敗し、許される値を示します。
@@ -113,9 +125,13 @@ flakiness に見えてしまいます
 （[BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact.md)）。
 `family: ipad` の単独指定は、単独の `model` と同じく座標を加えません。
 
-web の `anyOf` も、エンジンに対して同じ方法で解決します。レーンは挙げた順にエンジンを起動し、
-最初に起動できたものが勝ちます。どれも起動できなければ、run は失敗し、各エンジンと起動エラーを
-示します。選ばれたエンジンは既存の `engine` に入ります。`browser.engine` の座標は、リストの場合と同じく
+web の `anyOf` も同じ方法で、プールの読み取りが返すエンジンに対して解決します。
+`bajutsu/run/device_matrix.py` の `target_pool` は、すでに `read_web` でエンジンごとに `DeviceFacts` を
+1 つ読みます。この読み取りはエンジンをヘッドレスで起動し、起動できなければ `DeviceReadError` を送出します。
+run を形成する前に、読み取れた最初のエンジンが勝ちます。挙げたエンジンがどれも読み取れなければ、run は
+失敗し、各エンジンと読み取りエラーを示します。勝ったエンジンが後で起動に失敗した場合、その run は失敗し、
+次の項目へは進みません。解決は config とプールの読み取りの関数のままで、壊れたエンジンは確実に失敗として
+現れます。選ばれたエンジンは既存の `engine` に入ります。`browser.engine` の座標は、リストの場合と同じく
 any-of の run にも現れます。
 
 `run`、`record`、`crawl`、`repl` の `--browser` は、`runsOn.browser` のエンジン選択全体を置き換えます。
@@ -134,9 +150,9 @@ Android と web のデバイスは `None` を持ちます。
 ### スキーマ、レポート、ドキュメント
 
 - `bajutsu/common/config/schema/platform/ios.py` の `IosRunsOn` に `family` を加えます。
-  `web.py` の `WebBrowser` には `anyOf` を加えます。プラットフォームの registry は
-  同じフィールドをシナリオの `preconditions.runsOn` にも渡すので、シナリオはターゲットの選択を
-  絞り込めます。
+  `web.py` の `WebBrowser` には `anyOf` を加え、`engine` のフィールドのデフォルト値を外します。
+  プラットフォームの registry は同じフィールドをシナリオの `preconditions.runsOn` にも渡すので、
+  シナリオは上記の規則に従ってターゲットの選択を置き換えられます。
 - `bajutsu config schema` は、`family` を enum またはその enum のリストとして、`anyOf` をエンジンの
   リストとして出力します。
 - `doctor` は、各 run を勝ったファミリーまたはエンジンと、合致したデバイスとともに一覧します。
@@ -166,10 +182,14 @@ run に LLM は入りません。解決は config とプールだけの純粋関
 1. **ファミリーの読み取り。** `DeviceFacts` に `family` を加え、`read_ios` で `productFamily` から
    読みます。実機の `simctl list devicetypes` で、iPhone と iPad のすべての型が `productFamily` を
    持つことを確かめます。
-2. **スキーマ。** `IosRunsOn.family`、`WebBrowser.anyOf`、上記の読み込み時の規則を
-   加えます。JSON Schema の出力も広げます。
+2. **スキーマ。** `IosRunsOn.family` と `WebBrowser.anyOf` を加え、`chromium` のデフォルト値を
+   `engine` フィールドから run の解決へ移し、上記の読み込み時の規則を加えます。シナリオの条件を
+   畳み込む箇所には、層をまたぐ置き換えの規則を適用します。JSON Schema の出力も広げます。
 3. **解決。** `form_target_runs` で優先順位リストを解決し、`eligible_set` を勝ったファミリーで絞り、
-   any-of の run に座標を加えます。`first_run` と `declared_runs` も対象です。
+   any-of の run に座標を加えます。`first_run` と `declared_runs` も対象です。`declared_runs` には
+   解決に使うプールがありません。そのため優先順位リストを、プール次第でファミリーやエンジンが決まる
+   1 つの run として示します。開いた範囲を `PER_AVAILABLE_MAJOR` で表すのと同じ扱いで、挙げた項目ごとの
+   run としては示しません。
 4. **配線。** `_conditions` と `unpack_conditions` にフィールドを通します。
    `--browser` が `anyOf` を解除するようにし、勝ったエンジンを web のレーンへ渡します。
 5. **レポート。** 勝者を run のラベル、マニフェスト、`doctor`、flakiness のキーに表示します。
