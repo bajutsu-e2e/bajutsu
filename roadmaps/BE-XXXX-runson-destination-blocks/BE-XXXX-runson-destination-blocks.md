@@ -47,7 +47,7 @@ path that replaces it.
 
 ### The shape of `runsOn`
 
-Each target writes the destination block that matches its `platform`, and no other.
+Each target writes one destination block. Today each platform allows exactly one destination.
 
 | Platform | Block | Fields |
 |---|---|---|
@@ -56,16 +56,22 @@ Each target writes the destination block that matches its `platform`, and no oth
 | web | `runsOn.browser` | `engine`, `version`, `emulate` |
 | fake | none | none |
 
-The loader fails a target whose block does not match its platform and names the expected key. A
-`platform: ios` target with `runsOn.browser`, for example, fails with "use runsOn.ios". Team
+`platform` and `runsOn` say different things. `platform` names the kind of app under test, which
+decides how the app is given (`app.id` or `app.url`) and which driver runs it. `runsOn` limits
+where that app can run. The two coincide for every platform today, but they need not. A web app
+that runs in mobile Safari on an iOS Simulator has `platform: web` and an iOS destination, and a
+Flutter app would run on both iOS and Android. The loader therefore checks that the pair is an
+allowed one, not that the two names are equal. The allowed pairs are the four rows above. A
+`platform: ios` target with `runsOn.browser`, for example, fails and names the destinations that
+`ios` allows. A later proposal can widen a platform's destinations without reshaping `runsOn`. Team
 defaults may hold several blocks under `defaults.runsOn`. Each target takes the block for its own
 platform, so a team default for iOS no longer reaches a web target.
 
 [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure.md) rejected the
 platform name as a key at the target level. That alternative nested the same word twice, as in
 `targets.web.web:`, and its key stood in for `platform`. The key here sits one level down, inside
-`runsOn`, and names where the run happens, as `runsOn.browser` already does. The overlap with
-`platform` remains, and the loader checks that the two agree, so they cannot drift apart.
+`runsOn`, and names where the run happens, as `runsOn.browser` already does. It does not stand in
+for `platform`: the platform still decides the shape of `app` and `driver`.
 
 `locale` and `seedPhotos` move with the iOS fields for now. They are device state, not a limit on
 where a run happens. A separate proposal decides whether a target's device state leaves `runsOn`
@@ -156,6 +162,8 @@ and removes an override, so every difference stays in config, now in one place p
 
 - Moving a target's device state (`locale`, `seedPhotos`, `emulate`) out of `runsOn`. A separate
   proposal decides its home.
+- A platform with more than one destination, such as a web app in mobile Safari. This item keeps
+  one destination per platform and leaves room to add more.
 - New conditions, such as a device family or a set of browser engines. The companion proposal
   *Let runsOn.ios name a device family and runsOn.browser any of several engines* adds them on top
   of this shape.
@@ -163,7 +171,7 @@ and removes an override, so every difference stays in config, now in one place p
 ### Work breakdown
 
 1. **Destination blocks.** Wrap each platform's `runsOn` model in `ios`, `android`, or `browser`,
-   check that the key matches `platform`, take per-platform team defaults, move `emulate` under
+   check that `platform` allows the key, take per-platform team defaults, move `emulate` under
    `browser`, and fail each old key with its new path. Rewrite the `demos/` configs and the test
    fixtures. Extend the JSON Schema output.
 2. **Scenario block.** Remove `preconditions.runsOn`, add `preconditions.device.ios` for `locale`
@@ -172,7 +180,7 @@ and removes an override, so every difference stays in config, now in one place p
 3. **Docs.** Update the bilingual docs named above with the new shape, the migration table, and
    the examples.
 
-Each unit carries its own tests: the key-agreement rule, each migration message, and the device
+Each unit carries its own tests: the allowed-pair rule, each migration message, and the device
 block's replace semantics.
 
 ## Alternatives considered
@@ -182,6 +190,7 @@ block's replace semantics.
 | Keep `runsOn` flat | `runsOn.model` implies a mobile device without naming its platform, while `runsOn.browser` names its destination. The shape grows less consistent with each new field. |
 | Key the web block `runsOn.web` | It names the platform rather than what runs the page. `runsOn.browser` already names the destination, and the iOS and Android keys follow it. |
 | Keep the scenario's `runsOn` and add cross-layer rules | Where a run can happen belongs to the target. The override needs a rule for each pair of exclusive fields, and the block's real uses in this repository were device state. |
+| Drop `platform` and infer it from the `runsOn` key | `platform` names the app under test and `runsOn` its destination, which can differ, as a web app in mobile Safari shows. Inferring would also make `runsOn` mandatory with exactly one key, an empty block just to say "any iOS device", and a key for the fake platform. |
 | Accept the old spelling for a grace period | Two spellings would coexist in the loader, the JSON Schema, and the docs. A failing load that names the new key moves a config in one edit. |
 | Move the target's device state out of `runsOn` in the same item | The right home for device state is a separate decision, and folding it in would make this breaking change larger. The scenario's device state moves now because removing the scenario's block leaves it no place. |
 
