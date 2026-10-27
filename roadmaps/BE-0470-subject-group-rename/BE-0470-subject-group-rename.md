@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-subject-group-rename-ja.md)
+**English** · [日本語](BE-0470-subject-group-rename-ja.md)
 
-# BE-XXXX — Rename the target's app group to subject
+# BE-0470 — Rename the target's app group to subject
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-subject-group-rename.md) |
+| Proposal | [BE-0470](BE-0470-subject-group-rename.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0470") |
 | Topic | Driver & backend architecture |
 <!-- /BE-METADATA -->
 
