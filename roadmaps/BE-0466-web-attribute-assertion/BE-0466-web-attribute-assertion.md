@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-web-attribute-assertion-ja.md)
+**English** · [日本語](BE-0466-web-attribute-assertion-ja.md)
 
-# BE-XXXX — Assert an arbitrary HTML attribute on the web backend
+# BE-0466 — Assert an arbitrary HTML attribute on the web backend
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-web-attribute-assertion.md) |
+| Proposal | [BE-0466](BE-0466-web-attribute-assertion.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0466") |
 | Topic | Verification & coverage |
 <!-- /BE-METADATA -->
 
