@@ -641,12 +641,19 @@ fits the same toolchain as `make check`. Implementation: `common/drivers/playwri
   nodes, the main page first and then each iframe. A pure parser (`parse_dom`) maps each node to an
   `Element`. The id convention is the web equivalent of
   iOS accessibilityIdentifier: `data-testid` → `Selector.id`, ARIA `role` (or tag) → `traits`,
-  accessible name / `aria-label` / text → `label`, input `value` → `value`.
+  accessible name / `aria-label` / text → `label`. `value` comes from each tag's own source:
+  `href` for `<a>`, `src` for `<img>`, and `datetime` for `<time>`. `<input>`, `<select>`,
+  `<textarea>`, `<meter>`, and a `<progress>` that carries a `value` attribute report their live
+  `value` property even when they also carry a `role`, because their `aria-valuenow` can lag it.
+  A `<progress>` with no `value` attribute, and any other element with an explicit `role` such as
+  `role="slider"`, report `aria-valuetext` — or `aria-valuenow` when `aria-valuetext` is absent or
+  empty.
 - **Plain text**: `query()` also returns an element that holds its own text yet matches no rule
   above. A heading, a paragraph, and a `<span>` are typical. Its label is the element's text. Its
   one trait is `staticText`, the trait iOS reports for a label, so a selector such as
-  `{ label: Welcome, traits: [staticText] }` reads the same on both platforms. Two kinds of text
-  stay out. Each would make a once-unique selector match twice:
+  `{ label: Welcome, traits: [staticText] }` reads the same on both platforms. The iOS WebView
+  bridge runs the same script, so a hybrid app's WebView reads plain text this way too. Two kinds
+  of text stay out. Each would make a once-unique selector match twice:
   - Text inside an interactive control (a button, a link, or an input). The control's label
     already carries it.
   - Text that repeats the label of its nearest ancestor with a `data-testid` or a `role`.

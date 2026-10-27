@@ -183,6 +183,22 @@ def test_a_text_record_carries_the_static_text_trait_and_nothing_else() -> None:
     assert "staticText" not in control["traits"]
 
 
+def test_query_js_reads_value_from_each_tags_own_attribute() -> None:
+    """A link's value is its `href`, not the (absent) `value` property; the other attribute-valued
+    tags and ARIA range widgets follow the same rule. The real-DOM check is
+    `test_dom_query_js_web.py`; this pins the script on the fast gate."""
+    assert "value: valueOf(el)" in QUERY_JS
+    for source in (
+        "getAttribute('href')",
+        "getAttribute('src')",
+        "getAttribute('datetime')",
+        "getAttribute('aria-valuetext')",
+        "el.hasAttribute('role')",
+        "getAttribute('aria-valuenow')",
+    ):
+        assert source in QUERY_JS
+
+
 # --- fake page + driver actions ---
 
 

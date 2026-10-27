@@ -185,6 +185,11 @@ jobs:
       - name: Report highlight lanes (Playwright)
         run: uv run --no-sync pytest tests/report/test_report_lanes_web.py -m web -n0
 
+      # Which DOM source QUERY_JS reads into each tag's `value` (href, src, aria-value*, …) is only
+      # observable in a real DOM; same `-m web -n0` reasoning as the steps above.
+      - name: QUERY_JS value sources (Playwright)
+        run: uv run --no-sync pytest tests/test_dom_query_js_web.py -m web -n0
+
   # Web network smoke (BE-0282): the one job that drives the real network path — page.route
   # interception, requestfinished capture, the `mocked` provenance flag, and redaction of
   # really-captured evidence — which the demo `smoke` above opts out of with --no-network. It runs

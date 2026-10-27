@@ -405,6 +405,7 @@ def test_web_lane_surface() -> None:
     assert is_relevant(["demos/serve-ui/scenario.yaml"], "web") is True
     assert is_relevant(["demos/web/scenario.yaml"], "web") is True
     assert is_relevant(["tests/test_driver_conformance_web.py"], "web") is True
+    assert is_relevant(["tests/test_dom_query_js_web.py"], "web") is True
     assert is_relevant([".github/workflows/web-e2e.yml"], "web") is True
     # ...but not the Android app SDK, the iOS showcase, another lane's driver, or another lane's
     # workflow — the regression this fixes: a bare `bajutsu/common/drivers/` sweep previously fired the

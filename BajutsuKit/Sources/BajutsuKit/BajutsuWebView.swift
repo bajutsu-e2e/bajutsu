@@ -46,24 +46,80 @@ public enum BajutsuWebView {
     // MARK: - JS
 
     /// The same page-walk JavaScript the Playwright backend uses (bajutsu/common/drivers/dom.py QUERY_JS).
+    /// Kept byte-for-byte equal to it, IIFE wrapper aside; tests/test_dom_query_js_sync.py enforces that.
     static let queryJS = """
     (() => {
+      // A link, image, or <time> keeps its meaningful value in an attribute, not the `value`
+      // property. A custom ARIA range widget (role=slider/progressbar/…) reports through aria-value*,
+      // which wins even when its host element has a `value` of its own (`<button>`'s "", `<li>`'s 0).
+      // A native control (form field, determinate <progress>, <meter>) keeps its live `value`: its
+      // aria-valuenow can lag what was typed or set. An indeterminate <progress> publishes its ARIA
+      // value or nothing — never the 0 its `value` property reports, which would read as a
+      // determinate 0%. An empty aria-valuetext falls through to aria-valuenow. (<area> needs no arm:
+      // the UA stylesheet hides it, so the walk below never collects one.)
+      const valueOf = (el) => {
+        const tag = el.tagName.toLowerCase();
+        if (tag === 'a') return el.getAttribute('href');
+        if (tag === 'img') return el.getAttribute('src');
+        if (tag === 'time') return el.getAttribute('datetime');
+        const aria = el.getAttribute('aria-valuetext') || el.getAttribute('aria-valuenow');
+        if (tag === 'progress' && !el.hasAttribute('value')) return aria;
+        const native = tag === 'input' || tag === 'select' || tag === 'textarea'
+                       || tag === 'progress' || tag === 'meter';
+        if (aria !== null && !native && el.hasAttribute('role')) return aria;
+        if ('value' in el) return el.value;
+        return aria;
+      };
       const out = [];
       const sel = '[data-testid], button, a, input, select, textarea, [role]';
-      for (const el of document.querySelectorAll(sel)) {
+      const controls = 'button, a, input, select, textarea, [role=button], [role=link], '
+        + '[role=tab], [role=menuitem], [role=menuitemcheckbox], [role=menuitemradio], [role=option], '
+        + '[role=checkbox], [role=radio], [role=switch], [role=combobox], [role=listbox], '
+        + '[role=slider], [role=spinbutton], [role=textbox], [role=searchbox]';
+      // A replaced element's children are fallback content no user sees while the element renders.
+      const skip = 'head, script, style, noscript, template, select, datalist, '
+        + 'video, audio, canvas, object, iframe';
+      const labels = new Map();
+      const ownsText = (el) => {
+        for (const n of el.childNodes) {
+          if (n.nodeType === Node.TEXT_NODE && n.data.trim()) return true;
+        }
+        return false;
+      };
+      for (const el of document.querySelectorAll('*')) {
+        const tagged = el.matches(sel);
+        if (!tagged && (!ownsText(el) || el.closest(skip))) continue;
+        // A stray text node directly under <body> would otherwise make the whole page one label.
+        if (!tagged && (el === document.body || el === document.documentElement)) continue;
         const r = el.getBoundingClientRect();
         const style = getComputedStyle(el);
         if (style.display === 'none' || style.visibility === 'hidden') continue;
         if (r.width === 0 && r.height === 0) continue;
         const text = (el.innerText || el.textContent || '').trim();
+        const label = el.getAttribute('aria-label') || (text ? text.slice(0, 200) : null);
+        if (!tagged) {
+          const parent = el.parentElement;
+          if (parent && parent.closest(controls)) continue;
+          const host = parent && parent.closest(sel);
+          if (host && labels.get(host) === label) continue;
+          out.push({
+            identifier: null, role: null, label: label, value: null, text: true,
+            secure: false, disabled: false, selected: false,
+            frame: [r.x, r.y, r.width, r.height],
+          });
+          continue;
+        }
+        labels.set(el, label);
         out.push({
           identifier: el.getAttribute('data-testid'),
           role: el.getAttribute('role') || el.tagName.toLowerCase(),
-          label: el.getAttribute('aria-label') || (text ? text.slice(0, 200) : null),
-          value: ('value' in el) ? el.value : null,
+          label: label,
+          value: valueOf(el),
+          secure: el.type === 'password',
           disabled: el.disabled === true || el.getAttribute('aria-disabled') === 'true',
           selected: el.getAttribute('aria-selected') === 'true'
-                    || el.getAttribute('aria-checked') === 'true',
+                    || el.getAttribute('aria-checked') === 'true'
+                    || el.checked === true,
           frame: [r.x, r.y, r.width, r.height],
         });
       }

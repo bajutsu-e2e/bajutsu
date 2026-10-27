@@ -264,8 +264,8 @@ id 規約は、上の iOS と Android のものと並べて記します（Flutte
 
 Playwright（Python）によるヘッドレス Chromium です。Mac も Simulator も要らず Linux で動くため、`make check` と同じツールチェーンに収まります。実装: `common/drivers/playwright.py`（ロードマップ [BE-0041](../../roadmaps/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）。
 
-- `query()`: 文書ごと（メインページ、続いて各 iframe）に 1 本の `evaluate()` が、可視、操作可能、アクセシビリティ関連の DOM ノードを走査し、純粋なパーサ（`parse_dom`）が各ノードを `Element` に写像します。id 規約は iOS の accessibilityIdentifier の web 版です。`data-testid` → `Selector.id`、ARIA `role`（またはタグ）→ `traits`、accessible name / `aria-label` / テキスト → `label`、input の `value` → `value`。
-- **プレーンテキスト**: `query()` は、上の規則のどれにも当てはまらないものの自分のテキストを持つ要素（見出し、段落、`<span>` など）も返します。ラベルはその要素のテキストで、トレイトは `staticText` 1 つだけです。`staticText` は、iOS がラベルに付けるトレイトと同じ名前です。そのため `{ label: Welcome, traits: [staticText] }` のようなセレクタは、両方のプラットフォームで同じ意味になります。次の 2 種類のテキストは返しません。どちらも、これまで 1 つの要素に解決していたセレクタを複数の要素に一致させてしまうからです。
+- `query()`: 文書ごと（メインページ、続いて各 iframe）に 1 本の `evaluate()` が、可視、操作可能、アクセシビリティ関連の DOM ノードを走査し、純粋なパーサ（`parse_dom`）が各ノードを `Element` に写像します。id 規約は iOS の accessibilityIdentifier の web 版です。`data-testid` → `Selector.id`、ARIA `role`（またはタグ）→ `traits`、accessible name / `aria-label` / テキスト → `label`。`value` は、タグごとに異なる出どころから読みます。`<a>` は `href`、`<img>` は `src`、`<time>` は `datetime` です。`<input>`、`<select>`、`<textarea>`、`<meter>`、および `value` 属性を持つ `<progress>` は、`role` を併せ持つ場合でも、その時点の `value` プロパティを読みます。これらの `aria-valuenow` は実際の値に追いつかないことがあるためです。`value` 属性を持たない `<progress>` と、`role="slider"` のように明示的な `role` を持つそれ以外の要素は、`aria-valuetext`（ないか空なら `aria-valuenow`）を読みます。
+- **プレーンテキスト**: `query()` は、上の規則のどれにも当てはまらないものの自分のテキストを持つ要素（見出し、段落、`<span>` など）も返します。ラベルはその要素のテキストで、トレイトは `staticText` 1 つだけです。`staticText` は、iOS がラベルに付けるトレイトと同じ名前です。そのため `{ label: Welcome, traits: [staticText] }` のようなセレクタは、両方のプラットフォームで同じ意味になります。iOS の WebView ブリッジも同じスクリプトを実行するので、ハイブリッドアプリの WebView でもプレーンテキストを同じように読みます。次の 2 種類のテキストは返しません。どちらも、これまで 1 つの要素に解決していたセレクタを複数の要素に一致させてしまうからです。
   - 操作できるコントロール（ボタン、リンク、入力欄）の中のテキストです。コントロールのラベルがすでにそのテキストを含んでいます。
   - もっとも近い祖先のうち `data-testid` か `role` を持つ要素と、同じラベルになるテキストです。
 
