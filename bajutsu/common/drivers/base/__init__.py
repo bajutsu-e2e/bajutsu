@@ -28,6 +28,7 @@ from ._functions import (
     topmost_at_point,
     validate_id_candidates,
     wait_until,
+    without_cross_origin_frames,
 )
 from ._functions import _collapse_identical_duplicates as _collapse_identical_duplicates
 from ._functions import _compile as _compile
@@ -145,4 +146,5 @@ __all__ = [
     "topmost_at_point",
     "validate_id_candidates",
     "wait_until",
+    "without_cross_origin_frames",
 ]

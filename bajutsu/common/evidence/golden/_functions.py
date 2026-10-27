@@ -22,11 +22,10 @@ from .golden_result import GoldenResult
 # The fields a golden file must carry. Derived from `Element` rather than listed by hand, minus the
 # diagnostic ones a golden neither pins nor compares: `nativeZ` (BE-0355) is a measured, app-reported
 # property of the moment, not part of the recorded contract, so requiring it would reject every
-# golden recorded before it existed while adding nothing a comparison reads.
+# golden recorded before it existed while adding nothing a comparison reads. An optional key
+# (`crossOriginFrame`, absent on every element but a cross-origin iframe's) is never required.
 _DIAGNOSTIC_FIELDS = frozenset({"nativeZ"})
-_ELEMENT_FIELDS = (
-    frozenset(Element.__required_keys__ | Element.__optional_keys__) - _DIAGNOSTIC_FIELDS
-)
+_ELEMENT_FIELDS = frozenset(Element.__required_keys__) - _DIAGNOSTIC_FIELDS
 
 
 def compare_element(expected: Element, actual: Element) -> list[FieldMismatch]:

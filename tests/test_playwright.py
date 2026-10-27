@@ -16,6 +16,7 @@ import pytest
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.dom import QUERY_JS, _norm_role, _str_or_none, parse_dom
 from bajutsu.common.drivers.playwright import PlaywrightDriver, _Started
+from bajutsu.common.drivers.playwright._functions import _FRAME_QUERY_JS
 
 
 def _rec(**kw: Any) -> dict[str, Any]:
@@ -1501,9 +1502,12 @@ class _FakeChildFrame:
         records: list[dict[str, Any]],
         host: _FakeIframeHost,
         children: list[_FakeChildFrame] | None = None,
+        *,
+        cross_origin: bool = False,
     ) -> None:
         self._records = records
         self._host = host
+        self._cross_origin = cross_origin
         self.child_frames = children or []
         self.evaluated: list[str] = []
         self.evaluate_returns: list[Any] = []
@@ -1512,8 +1516,8 @@ class _FakeChildFrame:
         return self._host
 
     def evaluate(self, expression: str) -> Any:
-        if expression == QUERY_JS:
-            return list(self._records)
+        if expression == _FRAME_QUERY_JS:
+            return {"crossOrigin": self._cross_origin, "records": list(self._records)}
         self.evaluated.append(expression)
         return self.evaluate_returns.pop(0)
 
@@ -1578,6 +1582,22 @@ def test_query_drops_an_iframe_element_starting_exactly_at_its_bottom_edge() -> 
     )
     drv, _ = _framed_driver([], [child])
     assert [el["identifier"] for el in drv.query()] == ["rule"]
+
+
+def test_query_marks_only_cross_origin_iframe_elements() -> None:
+    same = _FakeChildFrame(
+        [_rec(identifier="own", frame=[0, 0, 10, 10])], _FakeIframeHost([0, 0, 100, 100])
+    )
+    embed = _FakeChildFrame(
+        [_rec(identifier="ad", frame=[0, 0, 10, 10])],
+        _FakeIframeHost([200, 0, 100, 100]),
+        cross_origin=True,
+    )
+    drv, _ = _framed_driver([_rec(identifier="main", frame=[0, 0, 10, 10])], [same, embed])
+    marks = {el["identifier"]: el.get("crossOriginFrame", False) for el in drv.query()}
+    assert marks == {"main": False, "own": False, "ad": True}
+    kept = base.without_cross_origin_frames(drv.query())
+    assert [el["identifier"] for el in kept] == ["main", "own"]
 
 
 def test_query_skips_an_unrendered_iframe() -> None:

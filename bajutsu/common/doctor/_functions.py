@@ -55,6 +55,9 @@ def score(
         fail_coverage: id coverage < this drops to "Blocked" (configurable via
             ``defaults.doctor.idCoverageFail``, BE-0024).
     """
+    # An embedded third-party widget (a cross-origin iframe) is not the app's to instrument, so its
+    # controls neither lower the id coverage nor count as duplicate ids.
+    elements = base.without_cross_origin_frames(elements)
     actionable = [e for e in elements if _is_actionable(e)]
     with_id = sum(1 for e in actionable if e["identifier"])
     id_coverage = with_id / len(actionable) if actionable else 1.0

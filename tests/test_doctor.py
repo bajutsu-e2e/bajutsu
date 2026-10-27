@@ -71,6 +71,19 @@ def test_blocked_duplicate() -> None:
     assert s.duplicates == ["settings.open"]
 
 
+def test_cross_origin_iframe_controls_do_not_count() -> None:
+    """An embedded third-party widget's id-less buttons, or its ids repeated by a second embed,
+    are not the app's to fix, so they neither lower coverage nor read as duplicates."""
+    embed = [_el(None, ["button"]), _el("player.play", ["button"]), _el("player.play", ["button"])]
+    for el in embed:
+        el["crossOriginFrame"] = True
+    s = score([_el("settings.open", ["button"]), *embed], ["settings"])
+    assert s.grade == "Ready"
+    assert s.id_coverage == 1.0
+    assert s.actionable == 1
+    assert s.duplicates == []
+
+
 def test_partial_off_namespace() -> None:
     screen = [_el("settings.open", ["button"]), _el("foo.bar", ["button"])]
     s = score(screen, ["settings"])

@@ -656,7 +656,9 @@ fits the same toolchain as `make check`. Implementation: `common/drivers/playwri
   A text element's label also includes the text of the controls inside it. Take a paragraph that
   holds a "Terms" link. Both the paragraph and the link match `labelMatches: Terms`. A `count`
   over that pattern grows by one.
-  Add `traits: [button]`, `within`, or `index` to name the one you mean.
+  Add `traits: [button]`, `within`, or `index` to name the one you mean. Text elements count toward
+  `index` too, in document order. A `{ label: Settings, index: 1 }` that used to skip a "Settings"
+  heading now lands on that heading, without an error. Pair `index` with `traits`.
 - **Iframes**: `query()` also reads every iframe's document, nested ones included. Those
   elements join the same snapshot. The parent page's `contentDocument` stops at a cross-origin
   iframe. Playwright's frame tree reaches one, so the driver walks that tree. The driver offsets
@@ -664,7 +666,10 @@ fits the same toolchain as `make check`. Implementation: `common/drivers/playwri
   An element scrolled outside its iframe's visible box is off screen and stays out.
   Some iframes are not read at all: those under any CSS transform but a pure translation. A zoomed
   device preview and a mirrored frame are examples. Their inner coordinates would not match the
-  screen, so a tap would miss without an error.
+  screen, so a tap would miss without an error. An element from a cross-origin iframe carries
+  `crossOriginFrame: true`. Selectors and assertions treat it like any other element, but `doctor`'s
+  score and the crawl's screen model leave it out, since the app cannot instrument or explore an
+  embedded third-party page.
   - A selector resolves over the whole snapshot. When two iframes share a `data-testid`, that
     selector matches twice; `index` picks one. An embedded third-party service counts too. A
     video player's "Share" button can make an app's `{ label: Share }` ambiguous, and `within` or

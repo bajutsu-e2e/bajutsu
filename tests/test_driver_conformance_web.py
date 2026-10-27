@@ -466,3 +466,26 @@ def test_query_still_reads_a_translated_iframe(chromium: Any) -> None:
         assert base.resolve_unique(driver.query(), {"id": "inner.button"})["label"] == "clicked"
     finally:
         page.close()
+
+
+@pytest.mark.web
+def test_only_cross_origin_iframe_elements_are_marked(chromium: Any) -> None:
+    """`srcdoc` shares the page's origin; a `data:` iframe is opaque. Both pages here are opaque
+    too (`about:blank`), so the mark must not rest on comparing `location.origin` strings."""
+    srcdoc = html.escape(_IFRAME_INNER, quote=True)
+    data_url = html.escape("data:text/html," + _IFRAME_INNER, quote=True)
+    page = chromium.new_page()
+    try:
+        page.set_content(
+            f'<iframe srcdoc="{srcdoc}" style="border:0;width:200px;height:150px"></iframe>'
+            f'<iframe src="{data_url}" style="border:0;width:200px;height:150px"></iframe>'
+        )
+        driver = PlaywrightDriver("about:blank", page=page)
+        marks = [
+            e.get("crossOriginFrame", False)
+            for e in driver.query()
+            if e["identifier"] == "inner.button"
+        ]
+        assert marks == [False, True]
+    finally:
+        page.close()

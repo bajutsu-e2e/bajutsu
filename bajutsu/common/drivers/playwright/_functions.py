@@ -143,6 +143,18 @@ _IFRAME_CONTENT_BOX_JS = """
 """
 
 
+# A child frame's records, plus whether it is cross-origin to the top page. Reaching into
+# `window.top.document` throws across an origin boundary, which also tells two opaque origins apart
+# (a `data:` iframe in an `about:blank` page): both report `location.origin` as the string "null".
+_FRAME_QUERY_JS = f"""
+() => {{
+  let crossOrigin = false;
+  try {{ void window.top.document; }} catch (e) {{ crossOrigin = true; }}
+  return {{crossOrigin, records: ({QUERY_JS})()}};
+}}
+"""
+
+
 def _intersect(a: base.Frame, b: base.Frame | None) -> base.Frame | None:
     """The overlap of two rects, `a` itself when `b` is unbounded, or None when they do not meet.
 
@@ -162,7 +174,8 @@ def _iframe_elements(page: _Page) -> list[tuple[base.Element, _FrameScope]]:
     """Every iframe's elements (nested ones included), framed in main-page CSS pixels.
 
     Walks Playwright's frame tree rather than `contentDocument` from page JS, so a cross-origin
-    iframe — out of reach of the parent's script — is read too. An element scrolled or clipped
+    iframe — out of reach of the parent's script — is read too, its elements marked
+    `crossOriginFrame`. An element scrolled or clipped
     outside any enclosing iframe's box is not on screen and is left out; one outside the main
     viewport is kept, the same as a main-document element (BE-0326). A frame that detaches or
     navigates mid-snapshot is skipped: its content is not observable in this snapshot, and the next
@@ -194,16 +207,20 @@ def _iframe_elements(page: _Page) -> list[tuple[base.Element, _FrameScope]]:
                 child_clip = _intersect((*child_origin, box[2], box[3]), clip)
                 if child_clip is None:
                     continue
-                records = child.evaluate(QUERY_JS)
+                result = child.evaluate(_FRAME_QUERY_JS)
             except _playwright_error_types():
                 continue
             scope = _FrameScope(child, child_origin, (*hosts, (child, origin)))
+            records = result.get("records") if isinstance(result, dict) else None
+            cross_origin = isinstance(result, dict) and result.get("crossOrigin") is True
             for el in parse_dom(records if isinstance(records, list) else []):
                 x, y, w, h = el["frame"]
                 shifted = (x + child_origin[0], y + child_origin[1], w, h)
                 if _intersect(shifted, child_clip) is None:
                     continue
                 el["frame"] = shifted
+                if cross_origin:
+                    el["crossOriginFrame"] = True
                 out.append((el, scope))
             walk(child, child_origin, child_clip, scope.hosts)
 

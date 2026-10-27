@@ -42,7 +42,7 @@
 
 > `appTrace` はアプリの `os_signpost` / `os_log` が出す `<name> started` / `<name> finished` マーカーを、時刻つきの区間にペアリングします（`intervals.parse_app_trace`）。`network` は区間システムではなく request collector が生成し、その exchange を `<sid>/network.json` に書き出します（[network observation](drivers.md)、`--network` フラグ）。
 
-> `elements.json` の各要素は、`identifier`、`label`、`traits`、`value`、`frame` に加えて、診断用のフィールドを1つ持ちます。テスト対象のアプリ自身が測った、その要素の実際の前後位置を表す `nativeZ` です（[BE-0355](../../roadmaps/BE-0355-native-z-position/BE-0355-native-z-position-ja.md)）。このフィールドを読んでも、実行の判定は何も変わりません。`nativeZ` でマッチするセレクタはなく、重なりの判定（`is_tappable`、`topmost_at_point`、XCUITest 自身の `isHittable`）もフィールドが存在しなかったときとまったく同じように振る舞います。
+> `elements.json` の各要素は、`identifier`、`label`、`traits`、`value`、`frame` に加えて、診断用のフィールドを1つ持ちます。テスト対象のアプリ自身が測った、その要素の実際の前後位置を表す `nativeZ` です（[BE-0355](../../roadmaps/BE-0355-native-z-position/BE-0355-native-z-position-ja.md)）。このフィールドを読んでも、実行の判定は何も変わりません。`nativeZ` でマッチするセレクタはなく、重なりの判定（`is_tappable`、`topmost_at_point`、XCUITest 自身の `isHittable`）もフィールドが存在しなかったときとまったく同じように振る舞います。web バックエンドでは、クロスオリジンの iframe から読んだ要素がさらに `crossOriginFrame: true` を持ちます（[drivers](drivers.md#playwrightweb)）。それ以外の要素には、このフィールドがありません。
 >
 > **数値の意味はバックエンドごとに異なり、バックエンドをまたいで言えるのは向きだけです。** どちらのバックエンドでも、`nativeZ` が大きいほど手前にあります。それ以外は、同じバックエンドから得た2つの値どうしでなければ比較できません。iOS はアプリの実際の合成順を奥から数えた序数を報告します。`CALayer.zPosition` は通常の平坦なレイアウトではすべて 0 になり、Apple 自身が兄弟レイヤーの順序を決める用途には使うべきでないと明記しているためです。Android は `View.getZ()`、つまり elevation とZ軸方向の移動を合わせた値を device pixel で報告します。この値が決めるのは同じ親を持つ兄弟同士の順序だけで、それより広い範囲は決めません。`getZ()` が 8 の親の下にある 0 の子は、その親の兄弟である 4 の要素より依然として手前に描かれます。したがって2つの数値の大小が前後関係を表すのは、Android では兄弟同士のときに限られます。iOS では、同じ読み取りから得た値どうしなら、序数が画面全体に及ぶため常に比較できます。どちらの場合も、別のバックエンドの実行結果とのあいだでは表しません。
 >

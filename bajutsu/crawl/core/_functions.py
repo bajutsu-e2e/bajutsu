@@ -497,7 +497,9 @@ def crawl(  # noqa: C901, PLR0915
         if settle is not None:
             settle(d)
         dismissed = clear_blocking(d) if clear_blocking is not None else []
-        return d.query(), dismissed
+        # The crawl maps the app: a cross-origin iframe's controls (an embedded player, an ad) would
+        # be explored as if they were the app's own screens and churn the screen fingerprint.
+        return base.without_cross_origin_frames(d.query()), dismissed
 
     def _reconstruct_frontier(d: base.Driver, rst: Reset) -> None:
         # Full-frontier continuation (BE-0181): the map's nodes are already known, so instead of
