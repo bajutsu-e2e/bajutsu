@@ -43,7 +43,6 @@ from bajutsu.common.config import (
     ios_bundle_id,
     load_config_file,
     resolve,
-    scenario_conditions,
     web_engine,
 )
 from bajutsu.common.config.schema.platform.web import WebBrowser
@@ -57,6 +56,7 @@ from bajutsu.common.config_source import (
     source_provenance,
 )
 from bajutsu.common.deprecations import warn_once
+from bajutsu.common.devices.runs import condition_path
 from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.common.github import GitHubAccessError
 from bajutsu.common.run_meta.files import is_soft_deleted
@@ -387,7 +387,7 @@ def _note_fake_conditions(eff: Effective, backends: list[str]) -> bool:
     """
     if not eff.conditions or backends != ["fake"]:
         return False
-    named = ", ".join(f"runsOn.{field}" for field in eff.conditions)
+    named = ", ".join(condition_path(eff.schema_platform, field) for field in eff.conditions)
     warn_once(
         "conditions.fake",
         f"note: --backend fake evaluates no device condition; {named} of target "
@@ -448,20 +448,17 @@ def _precondition_checks(
 
 
 def _refuse_bad_preconditions(
-    checks: list[tuple[Scenario, list[Effective]]], *, erase: bool | None, fake: bool
+    checks: list[tuple[Scenario, list[Effective]]], *, erase: bool | None
 ) -> None:
     """Refuse every scenario whose preconditions its driven targets cannot honor (BE-0452).
 
     Runs before any device work, on the scenarios as written: an `app` or iOS-only `run` field no
-    driven platform has, a malformed `runsOn` block, and a merged `seedPhotos` without an effective
-    erase (`check_preconditions`). A `runsOn` condition the scenario declares (`model`, `os`, `avd`,
-    `apiLevel`, `browser.*`) is matched when the run forms its runs (BE-0452); `--backend fake`
-    evaluates none, and says so once.
+    driven platform has, and a merged `seedPhotos` without an effective erase
+    (`check_preconditions`).
 
     Args:
         checks: Each scenario with the targets it drives.
         erase: The `--erase` / `--no-erase` flag, or None when absent.
-        fake: Whether the run uses the fake backend.
 
     Raises:
         typer.Exit: Any scenario has a problem; each is printed with the scenario's name (exit 2).
@@ -472,14 +469,6 @@ def _refuse_bad_preconditions(
             f"{s.name}: {problem}"
             for problem in check_preconditions(s.preconditions, targets, erase_flag=erase)
         ]
-        conditions = scenario_conditions(s.preconditions, [t.schema_platform for t in targets])
-        if conditions and fake:
-            named = ", ".join(f"preconditions.{c}" for c in conditions)
-            warn_once(
-                "conditions.fake.scenario",
-                f"note: --backend fake evaluates no device condition; {named} of scenario "
-                f"'{s.name}' is not checked",
-            )
     if problems:
         for problem in problems:
             typer.echo(problem)

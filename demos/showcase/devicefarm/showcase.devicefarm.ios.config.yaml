@@ -3,7 +3,7 @@
 # It mirrors the `showcase-swiftui` target from ../showcase.config.yaml with the deliberate,
 # per-environment differences a real device on Device Farm needs — all of which live in config, not
 # in the tool (the app-agnostic principle):
-#   * **`runsOn.kind: device`.** This is the one key that generalizes the XCUITest backend's
+#   * **`runsOn.ios.kind: device`.** This is the one key that generalizes the XCUITest backend's
 #     `xcodebuild -destination` from a named Simulator to `platform=iOS`, so the same driving layer
 #     runs against the reserved physical device. It also skips the Simulator bring-up (erase, local
 #     install, up-front permission grants) that only `simctl` can perform.
@@ -42,7 +42,7 @@ targets:
       launch: { env: { SHOWCASE_UITEST: "1" } }
       idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
       startWhen: { exists: { id: [stable.row.1, stable_row_1] } }
-    runsOn: { kind: device }
+    runsOn: { ios: { kind: device } }
     driver:
       runner:
         # The XCUITest runner channel still drives the batch route, so it needs a device-built, signed

@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0469](BE-0469-runson-destination-blocks.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0469") |
 | Topic | Driver & backend architecture |
 <!-- /BE-METADATA -->
@@ -212,9 +212,27 @@ block's replace semantics.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1: destination blocks
-- [ ] Unit 2: scenario block
-- [ ] Unit 3: docs
+- [x] Unit 1: destination blocks
+- [x] Unit 2: scenario block
+- [x] Unit 3: docs
+
+### Log
+
+- PR_LINK (Units 1–3) — the whole item lands in one change.
+  - Each platform's `runsOn` model is now a group with one field per allowed destination, built on a
+    shared `RunsOnGroup` base. Its before-validator names the destination a flat key moved to, or
+    lists the destinations the platform allows, so the allowed-pair rule needs no platform table of
+    its own. `defaults.platforms.<platform>.runsOn` runs the same check.
+  - The internal condition keys (`model`, `os`, `avd`, `apiLevel`, `browser.engine`,
+    `browser.version`) stay as they were, so run coordinates, labels, and flakiness keys are
+    unchanged. Messages print the `runsOn` path through a new `condition_path` helper.
+  - `preconditions.device.ios` replaces the scenario's `runsOn`. `effective_conditions` no longer
+    merges a scenario, and `runs_on_problems`, `scenario_conditions`, and `scenario_runs_on_schema`
+    are gone with it. A stored run's `preconditions.runsOn` keeps its iOS device state under
+    `device.ios` and drops its conditions on load.
+  - Deviation: a `device.ios` block in a scenario that drives no iOS target has no effect, as a
+    `runsOn` block for an undriven platform had none. Device Farm's refusal names a target
+    condition by its path under `runsOn`, such as `runsOn.ios.model`.
 
 ## References
 

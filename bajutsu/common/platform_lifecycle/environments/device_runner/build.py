@@ -495,7 +495,7 @@ def resolve_device_runner(
     path = find_signing_file(None, env)
     if path is None:
         raise DeviceRunnerError(
-            "runsOn.kind: device with no driver.runner.testRunner needs a signing file at "
+            "runsOn.ios.kind: device with no driver.runner.testRunner needs a signing file at "
             f"{describe_lookup(env)} (then run `{BUILD_COMMAND}`)"
         )
     signing = load_signing(path)

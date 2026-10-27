@@ -91,7 +91,7 @@
     app:
       launch:
         env: { SHOWCASE_UITEST: "1" }
-    runsOn:
+    device:
       ios:
         locale: ja_JP
     run:
@@ -113,7 +113,7 @@
     app:
       launch:
         env: { SHOWCASE_UITEST: "1" }
-    runsOn:
+    device:
       ios:
         locale: ja_JP
     run:

@@ -858,7 +858,7 @@ def _sharing_problems(
         if route(effs[member]) != route(effs[first]):
             yield (
                 f"device group [{', '.join(group)}]: {member!r} differs from {first!r} in platform, "
-                "backend, or device route (device provider, runsOn.kind), so they "
+                "backend, or device route (device provider, runsOn.ios.kind), so they "
                 "cannot share a device"
             )
         if locale(effs[member]) != locale(effs[first]):
@@ -1094,7 +1094,6 @@ def _check_preconditions_or_exit(
     eff: Effective,
     *,
     erase: bool | None,
-    backend: str,
 ) -> None:
     """Refuse a scenario whose preconditions no driven target can honor, before any device work.
 
@@ -1104,11 +1103,9 @@ def _check_preconditions_or_exit(
     Raises:
         typer.Exit: Any scenario has a problem (exit code 2).
     """
-    checks = _precondition_checks(loaded, scenarios, target_name, eff)
-    # Read, not validated: the primary may be a stale inference that `--tag` / `--exclude` is about
-    # to replace, and `--backend` is checked against the primary the run settles on.
-    fake = [b.strip() for b in backend.split(",") if b.strip()] == ["fake"]
-    _refuse_bad_preconditions(checks, erase=erase, fake=fake)
+    _refuse_bad_preconditions(
+        _precondition_checks(loaded, scenarios, target_name, eff), erase=erase
+    )
 
 
 def _select_actuator(
@@ -2983,7 +2980,7 @@ def run_body(
             ios_tipkit_handling,
             eff.run_defaults.ios_tip_kit_handling,
             check=lambda selected: _check_preconditions_or_exit(
-                loaded, selected, primary, eff, erase=erase, backend=backend
+                loaded, selected, primary, eff, erase=erase
             ),
         )
         return (

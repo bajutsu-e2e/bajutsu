@@ -5,7 +5,7 @@ from __future__ import annotations
 from pydantic import Field, field_validator
 
 from .._model import _Model
-from ._shared import AppCommon, RangeField, Reinstall, check_list
+from ._shared import AppCommon, RangeField, Reinstall, RunsOnGroup, check_list
 
 
 class AndroidLaunch(_Model):
@@ -28,8 +28,8 @@ class AndroidApp(AppCommon):
     grant_permissions: list[str] = Field(default_factory=list, alias="grantPermissions")
 
 
-class AndroidRunsOn(_Model):
-    """`runsOn` on Android: the emulator's Android Virtual Device (AVD) name and API level."""
+class AndroidDestination(_Model):
+    """`runsOn.android`: the emulator's Android Virtual Device (AVD) name and API level."""
 
     avd: str | list[str] | None = None
     api_level: RangeField = Field(default=None, alias="apiLevel")
@@ -37,7 +37,13 @@ class AndroidRunsOn(_Model):
     @field_validator("avd")
     @classmethod
     def _valid_avd(cls, v: str | list[str] | None) -> str | list[str] | None:
-        return check_list("runsOn.avd", v)
+        return check_list("runsOn.android.avd", v)
+
+
+class AndroidRunsOn(RunsOnGroup):
+    """`runsOn` on Android: the one destination an Android target runs on (BE-0469)."""
+
+    android: AndroidDestination = Field(default_factory=AndroidDestination)
 
 
 class AndroidDriver(_Model):

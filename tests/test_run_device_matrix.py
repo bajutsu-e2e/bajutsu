@@ -119,7 +119,7 @@ def test_a_list_and_a_bounded_range_run_every_cell_on_its_own_devices(
         app,
         _args(
             tmp_path,
-            f"{{model: ['{SE}', '{IPAD}'], os: '>=17 <19'}}",
+            f"{{ios: {{model: ['{SE}', '{IPAD}'], os: '>=17 <19'}}}}",
             "- name: login\n  steps: []\n",
         ),
     )
@@ -141,29 +141,38 @@ def test_a_list_and_a_bounded_range_run_every_cell_on_its_own_devices(
     assert f'name="login [{IPAD} / iOS 18]"' in junit
 
 
-def test_a_scenario_range_no_device_falls_in_is_not_applicable_beside_a_pass(
+def test_a_target_range_no_device_falls_in_is_not_applicable_beside_a_pass(
     tmp_path: Path, harness: dict[str, Any]
 ) -> None:
+    # A scenario reaches a condition by naming a target that declares it (BE-0469).
     scenarios = (
-        "- name: plain\n  steps: []\n"
-        "- name: future\n  preconditions: { runsOn: { ios: { os: '>=19' } } }\n  steps: []\n"
+        "- name: plain\n  targets: [app]\n  steps: []\n"
+        "- name: future\n  targets: [later]\n  steps: []\n"
     )
-    result = invoke(runner, app, _args(tmp_path, "{os: '18'}", scenarios))
+    args = _args(tmp_path, "{ios: {os: '18'}}", scenarios)
+    del args[1:3]  # each scenario names its own target
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        cfg.read_text(encoding="utf-8")
+        + "  later:\n    platform: ios\n    app: {id: com.example.app}\n"
+        "    runsOn: {ios: {os: '>=19'}}\n",
+        encoding="utf-8",
+    )
+    result = invoke(runner, app, args)
     assert result.exit_code == 0, result.output
-    assert "not applicable: app/future" in result.output
+    assert "not applicable: later/future" in result.output
     assert '  runsOn.ios.os  ">=19"  available:' in result.output
     assert "1 passed, 0 failed, 1 not applicable" in result.output
     manifest = _manifest(tmp_path)
     assert manifest["ok"] is True
     assert [r["scenario"] for r in manifest["notApplicable"]] == ["future"]
-    # The scenario wins over the target, field by field: `future` widened nothing it could run.
     assert harness["runs"] == [["plain"]]
 
 
 def test_an_invocation_with_every_record_not_applicable_exits_1(
     tmp_path: Path, harness: dict[str, Any]
 ) -> None:
-    result = invoke(runner, app, _args(tmp_path, "{os: '>=19'}", "- name: s\n  steps: []\n"))
+    result = invoke(runner, app, _args(tmp_path, "{ios: {os: '>=19'}}", "- name: s\n  steps: []\n"))
     assert result.exit_code == 1, result.output
     assert "no run executed" in result.output
     assert harness["runs"] == []
@@ -172,7 +181,9 @@ def test_an_invocation_with_every_record_not_applicable_exits_1(
 
 def test_a_failed_scenario_in_a_cell_fails_the_run(tmp_path: Path, harness: dict[str, Any]) -> None:
     scenarios = "- name: works\n  steps: []\n- name: breaks\n  steps: []\n"
-    result = invoke(runner, app, _args(tmp_path, f"{{model: '{SE}', os: '17'}}", scenarios))
+    result = invoke(
+        runner, app, _args(tmp_path, f"{{ios: {{model: '{SE}', os: '17'}}}}", scenarios)
+    )
     assert result.exit_code == 1, result.output
     # Both scenarios take the same eligible set, so they share one cell and one pool.
     assert harness["runs"] == [["works", "breaks"]]
@@ -189,7 +200,7 @@ def test_fake_backend_evaluates_no_condition(
     result = invoke(
         runner,
         app,
-        _args(tmp_path, "{os: '>=19'}", "- name: s\n  steps: []\n", "--backend", "fake"),
+        _args(tmp_path, "{ios: {os: '>=19'}}", "- name: s\n  steps: []\n", "--backend", "fake"),
     )
     # No run is formed: the whole pool goes to today's single-engine path.
     assert result.exit_code == 7, result.output
@@ -200,15 +211,12 @@ def test_fake_backend_evaluates_no_condition(
 def test_browsers_beside_a_version_range_exits_2(tmp_path: Path) -> None:
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "targets:\n  site:\n    platform: web\n    app: {url: 'http://localhost:1/'}\n",
+        "targets:\n  site:\n    platform: web\n    app: {url: 'http://localhost:1/'}\n"
+        "    runsOn: {browser: {version: '>=120'}}\n",
         encoding="utf-8",
     )
     file = tmp_path / "s.yaml"
-    file.write_text(
-        "- name: s\n  preconditions: { runsOn: { web: { browser: { version: '>=120' } } } }\n"
-        "  steps: []\n",
-        encoding="utf-8",
-    )
+    file.write_text("- name: s\n  steps: []\n", encoding="utf-8")
     result = invoke(
         runner,
         app,
@@ -249,7 +257,7 @@ def _scenario(body: str) -> Scenario:
 
 def test_conditions_on_a_grid_target_fail_naming_the_field() -> None:
     grid = replace(
-        _eff("{os: '>=18'}"),
+        _eff("{ios: {os: '>=18'}}"),
         device_provider=DeviceProvider(kind="appium", endpoint="https://grid.example/"),
     )
     problems = condition_problems([_scenario("{}")], {"app": grid}, "app", engine_flag=False)
@@ -261,7 +269,7 @@ def test_conditions_on_a_grid_target_fail_naming_the_field() -> None:
 
 
 def test_a_device_group_whose_members_disagree_fails() -> None:
-    effs = {"a": replace(_eff("{os: '18'}"), target="a"), "b": replace(_eff(), target="b")}
+    effs = {"a": replace(_eff("{ios: {os: '18'}}"), target="a"), "b": replace(_eff(), target="b")}
     problems = condition_problems([_scenario("{targets: [[a, b]]}")], effs, "a", engine_flag=False)
     assert problems == [
         "s: the device group a, b shares one device, so its targets' runsOn conditions must agree"
@@ -275,7 +283,7 @@ def test_plan_reads_each_pool_once_and_skips_failed_scenarios() -> None:
         reads.append(lane.name)
         return [POOL[u] for u in lane.udids]
 
-    lanes = {"app": TargetLanes("app", _eff("{os: '>=17'}"), "xcuitest", tuple(POOL))}
+    lanes = {"app": TargetLanes("app", _eff("{ios: {os: '>=17'}}"), "xcuitest", tuple(POOL))}
     matrix = plan(
         [_scenario("{}"), _scenario("{}"), _scenario("{}")],
         lanes,
@@ -300,8 +308,13 @@ def test_plan_reads_each_compared_browser_once_and_narrows_by_its_version() -> N
     cfg = load_config(
         "targets:\n  site:\n    platform: web\n    app: {url: 'http://localhost:1/'}\n"
         "    runsOn: {browser: {version: '>=120'}}\n"
+        "  old:\n    platform: web\n    app: {url: 'http://localhost:1/'}\n"
+        "    runsOn: {browser: {version: '<100'}}\n"
     )
-    lanes = {"site": TargetLanes("site", resolve(cfg, "site"), "playwright", ("web-0",))}
+    lanes = {
+        name: TargetLanes(name, resolve(cfg, name), "playwright", ("web-0",))
+        for name in ("site", "old")
+    }
     reads: list[str] = []
 
     def browser(engine: str) -> DeviceFacts:
@@ -311,7 +324,7 @@ def test_plan_reads_each_compared_browser_once_and_narrows_by_its_version() -> N
     matrix = plan(
         [
             _scenario("{}"),
-            _scenario("{preconditions: {runsOn: {web: {browser: {version: '<100'}}}}}"),
+            _scenario("{targets: [old]}"),
         ],
         lanes,
         "site",
@@ -383,13 +396,14 @@ def test_a_web_engine_list_runs_each_engine_as_its_own_cell(
 
 
 def test_unconditioned_scenarios_share_one_cell_whether_or_not_a_pool_was_read() -> None:
-    lanes = {"app": TargetLanes("app", _eff(), "xcuitest", tuple(POOL))}
+    lanes = {
+        "app": TargetLanes("app", _eff(), "xcuitest", tuple(POOL)),
+        "old": TargetLanes(
+            "old", replace(_eff("{ios: {os: '17'}}"), target="old"), "xcuitest", tuple(POOL)
+        ),
+    }
     matrix = plan(
-        [
-            _scenario("{}"),
-            _scenario("{preconditions: {runsOn: {ios: {os: '17'}}}}"),
-            _scenario("{}"),
-        ],
+        [_scenario("{}"), _scenario("{targets: [old]}"), _scenario("{}")],
         lanes,
         "app",
         engine_flag=False,
@@ -398,7 +412,7 @@ def test_unconditioned_scenarios_share_one_cell_whether_or_not_a_pool_was_read()
     )
     assert [(cell.devices, [r.scenario for r in cell.runs]) for cell in matrix.cells] == [
         ({}, [0, 2]),
-        ({"app": ("se17",)}, [1]),
+        ({"old": ("se17",)}, [1]),
     ]
 
 
@@ -406,9 +420,9 @@ def test_a_target_the_fake_driver_runs_reads_no_device() -> None:
     def never(_lane: TargetLanes) -> list[DeviceFacts]:
         raise AssertionError("a fake target's pool is never read")
 
-    lanes = {"app": TargetLanes("app", _eff("{os: '18'}"), "fake", ("booted",))}
+    lanes = {"app": TargetLanes("app", _eff("{ios: {model: 'iPhone 99'}}"), "fake", ("booted",))}
     matrix = plan(
-        [_scenario("{preconditions: {runsOn: {ios: {model: 'iPhone 99'}}}}")],
+        [_scenario("{}")],
         lanes,
         "app",
         engine_flag=False,
@@ -456,7 +470,7 @@ def test_the_run_directory_is_owner_only_before_the_first_cell_writes(
         return object(), lambda: None
 
     monkeypatch.setattr("bajutsu.run.cli.device_pool", pool)
-    args = _args(tmp_path, "{os: '>=17 <19'}", "- name: s\n  steps: []\n")
+    args = _args(tmp_path, "{ios: {os: '>=17 <19'}}", "- name: s\n  steps: []\n")
     result = invoke(runner, app, args)
     assert result.exit_code == 0, result.output
     assert modes and set(modes) == {0o700}

@@ -69,7 +69,7 @@ misinterpret rather than merely reject; a purely additive optional field needs n
 | `primaryTarget` | str | none | The target a step or top-level `expect` entry runs against when it omits `target`; must be the first name in `targets`, the first member of the first group ([below](#targets--target-multi-target-scenarios-be-0428)) |
 | `installs` | list[str] | `[]` | The device-group members that install and launch at the start beside the primary; every other member of a group of two or more installs later through an `installApp` step ([device groups](#device-groups-several-apps-on-one-device-be-0447)) |
 | `data` / `dataFile` | list / str | none | Data-driven rows — inline `data`, or `dataFile` (a CSV path). Expands into one run per row, substituting `${row.col}`. Mutually exclusive ([reuse, data, and tags](#reuse-data-and-tags)) |
-| `preconditions` | object | `{}` | Per-test environment setup in the target's own group names, `app`, `runsOn`, and `run`, each merged over the target's ([below](#preconditions-environment-setup)) |
+| `preconditions` | object | `{}` | Per-test environment setup: the target's `app` and `run` groups merged over the target's, and the device state under `device` ([below](#preconditions-environment-setup)) |
 | `setup` | list | `[]` | Setup steps run as their **own phase** ahead of `steps`; a failure there aborts the scenario ([below](#setup--cleanup-setup-and-teardown-phases)) |
 | `steps` | list | required | The ordered actions (below) |
 | `expect` | list | `[]` | Final assertions after all steps pass ([selectors](selectors.md#assertion-evaluation)) |
@@ -105,11 +105,14 @@ Implementation: `Preconditions` in `scenario/models/scenario/preconditions.py`. 
 `bajutsu/common/config/preconditions.py` merges it over each target. The runner's `launch_driver`
 reads the merged result to build the launch sequence ([run-loop](run-loop.md#runner-the-run-pipeline)).
 
-A scenario's `preconditions` uses the target's own group names. A field thus has one spelling in the
-config and in the scenario
+A scenario's `preconditions` holds three groups. `app` and `run` use the target's own group names.
+A field thus has one spelling in the config and in the scenario
 ([BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)).
-The three groups are `app`, `runsOn`, and `run`. A scenario field overrides the same field of the
-target ([configuration](configuration.md)). Three fields combine with the target's instead:
+`device` holds the device state the scenario applies, keyed by destination. Today `device.ios` is
+the one block
+([BE-0469](../roadmaps/BE-0469-runson-destination-blocks/BE-0469-runson-destination-blocks.md)).
+A scenario field overrides the same field of the target ([configuration](configuration.md)). Three
+fields combine with the target's instead:
 
 - `app.launch.env` merges key by key.
 - `app.launch.args` appends after the target's arguments.
@@ -120,7 +123,7 @@ preconditions:
   app:
     reinstall: overwrite
     launch: { env: { FEATURE_X: "1" }, args: ["-debug"], deeplink: "showcase://cart" }
-  runsOn:
+  device:
     ios: { locale: ja_JP, seedPhotos: [photos/cat.jpg] }
   run: { erase: true, tipKitHandling: true }
 ```
@@ -131,18 +134,16 @@ preconditions:
 | `app.launch.env` | dict | `{}` | Launch environment, merged onto the target's `app.launch.env` key by key. iOS injects it through `SIMCTL_CHILD_*`, Android as intent extras; on the web the Playwright code generator reads it |
 | `app.launch.args` | list[str] | `[]` | Launch arguments, appended after the target's `app.launch.args`. iOS only |
 | `app.launch.deeplink` | str | unset (the target's `app.launch.deeplink`) | A URL the app opens after launch (`simctl openurl` on iOS, an intent on Android) |
-| `runsOn.<platform>` | object | none | The scenario's own `runsOn` for one platform: on iOS `locale` and `seedPhotos`; the device conditions (`model`, `os`, `avd`, `apiLevel`, `browser.engine`, `browser.version`) override the target's field by field, and the run matches devices against them ([configuration](configuration.md#device-conditions-runson)). A block for a platform the run does not drive has no effect |
-| `runsOn.ios.locale` | str | unset (the target's `runsOn.locale`) | Force the locale and language at launch (`-AppleLocale` / `-AppleLanguages`), and pin the Simulator's system language |
-| `runsOn.ios.seedPhotos` | list[str] | unset (the target's `runsOn.seedPhotos`) | Images seeded into the Simulator's photo library on the erase path, in order; paths resolve against the scenario file, and a scenario's list replaces the target's |
+| `device.ios.locale` | str | unset (the target's `runsOn.ios.locale`) | Force the locale and language at launch (`-AppleLocale` / `-AppleLanguages`), and pin the Simulator's system language. A value that differs from the target's forces a cold respawn |
+| `device.ios.seedPhotos` | list[str] | unset (the target's `runsOn.ios.seedPhotos`) | Images seeded into the Simulator's photo library on the erase path, in order; paths resolve against the scenario file, and a scenario's list replaces the target's |
 | `run.erase` | bool | unset (the target's `run.erase`, then off) | Wipe the whole device (`simctl erase`: apps, data, settings) before the test. `reinstall` keeps the app fresh without a full wipe, so set `true` only when a test needs a pristine device |
 | `run.systemAlertHandling` | bool / object | unset (on) | The reactive alert guard ([below](#systemalerthandling-the-system-alert-guard)) |
 | `run.tipKitHandling` | bool | unset (the target's `run.tipKitHandling`, then off) | Dismiss a blocking Apple TipKit tip (iOS only; [below](#tipkithandling-a-blocking-tipkit-tip)) |
 | `run.inheritSetup` | bool | `true` | `false` skips the `hooks.setup` of every target this scenario declares; their `hooks.cleanup` still runs ([below](#setup--cleanup-setup-and-teardown-phases)) |
 
 A scenario cannot set `id`, `path`, or `build`. Nor can it set `startWhen` or `idNamespaces`. The
-target owns these fields, which identify or build the app. `runsOn.kind` and `runsOn.emulate` stay
-on the target as well.
-`run.secrets` stays a target-level union, so a scenario cannot set it either.
+target owns these fields, which identify or build the app. `run.secrets` stays a target-level union,
+so a scenario cannot set it either.
 
 > **Each field is checked against the targets the scenario drives, before any device work.** An `app`
 > field or an iOS-only `run` field that no driven target's platform has fails the run and names the
@@ -150,33 +151,36 @@ on the target as well.
 > against an Android target alone. Each target applies the `app` fields its own platform has, so an
 > iOS-and-web scenario can still set `app.launch.args` for its iOS side. A scenario file that
 > several single-platform targets pick up through `paths.scenarios` therefore names its `targets`, or
-> sits in a directory only the matching targets read. A `runsOn` block is keyed by platform, so a
-> block for a platform the run does not drive is not an error.
+> sits in a directory only the matching targets read. The `device` block is keyed by destination.
+> A `device.ios` block in a scenario that drives no iOS target has no effect and is not an error.
 
-A scenario's `runsOn` block also declares where the scenario applies. A scenario for a screen that
-iPad alone has names the model. A scenario run against both an iOS and an Android target states a
-condition for each platform:
+**A scenario declares no device condition.** Where a run happens belongs to the target. A condition
+such as a model or an OS range thus lives in the target's
+[`runsOn`](configuration.md#device-conditions-runson). A scenario for a screen that iPad alone has
+names a target that runs on an iPad:
 
 ```yaml
-# a scenario for a screen that iPad alone has
-preconditions:
-  runsOn:
-    ios: { model: "iPad Pro 13-inch (M4)", os: ">=18" }
+# bajutsu.config.yaml
+targets:
+  app-ipad:
+    platform: ios
+    app: { id: com.example.app }
+    runsOn:
+      ios: { model: "iPad Pro 13-inch (M4)", os: ">=18" }
 ```
 
 ```yaml
-# one scenario run against an iOS target and against an Android target
-preconditions:
-  runsOn:
-    ios:     { os: ">=18" }
-    android: { apiLevel: ">=34" }
+# the scenario
+targets: [app-ipad]
 ```
 
-The scenario's block overrides the target's `runsOn` field by field. The scenario may thus widen
-the target's range too. A list or a range in the block multiplies the scenario into runs. An open
-range that no available device meets leaves a **not applicable** record rather than a failure.
-[Configuration](configuration.md#device-conditions-runson) has the rules. A block accepts the
-device conditions and, on iOS, `locale` and `seedPhotos`. `kind` and `emulate` stay on the target.
+A list or a range on that target multiplies each of its scenarios into runs, as
+[configuration](configuration.md#device-conditions-runson) describes.
+
+> **Earlier releases accepted `preconditions.runsOn`.** The loader now rejects it. A
+> `preconditions.runsOn.ios.locale` or `seedPhotos` fails and names
+> `preconditions.device.ios.<field>`. A condition such as `preconditions.runsOn.ios.model` fails and
+> names the target path that declares it instead, `runsOn.ios.model`.
 
 > **`run.erase` resolution order** is **CLI `--erase` / `--no-erase` > this scenario's own
 > `run.erase` > the target's `run.erase` > built-in off**. An unset scenario value (the common case)
@@ -197,11 +201,13 @@ device conditions and, on iOS, `locale` and `seedPhotos`. `kind` and `emulate` s
 > scenario's data across runs, and permission grants are part of that same preserved state, so a
 > scenario relying on an earlier one's grant under `overwrite` keeps seeing it.
 
-> **A run stored before BE-0452 still loads.** The scenario loader rejects the old flat keys:
-> `erase`, `reinstall`, `launchEnv`, `launchArgs`, `deeplink`, `locale`, and `seedPhotos`. It
-> rejects the top-level `systemAlertHandling` and `iosTipKitHandling` too. Each message names the
-> key's new home. The offline readers of a run directory translate the old keys in its stored
-> `scenario.yaml` instead. They are the report re-render, `trace`, and `triage`.
+> **A run stored before BE-0452 or BE-0469 still loads.** The scenario loader rejects the old flat
+> keys: `erase`, `reinstall`, `launchEnv`, `launchArgs`, `deeplink`, `locale`, and `seedPhotos`. It
+> rejects `preconditions.runsOn`, and the top-level `systemAlertHandling` and `iosTipKitHandling`.
+> Each message names the key's new home. The offline readers of a run directory translate the old
+> keys in its stored `scenario.yaml` instead. They are the report re-render, `trace`, and `triage`.
+> A stored `preconditions.runsOn` keeps its iOS `locale` and `seedPhotos` under `device.ios` and
+> drops its conditions, which already chose the devices that run used.
 
 ## tipKitHandling (a blocking TipKit tip)
 
@@ -542,7 +548,7 @@ To dismiss the prompt rather than accept it, target the dismissive button
 - **`sel` is label-based only.** A SpringBoard alert button carries no app-assigned identifier, trait,
   or value — only its visible text — so `sel` accepts `label` / `labelMatches` / `index` and rejects
   `id` / `idMatches` / `traits` / `value` / `within` at parse time.
-- **The label a run must match is the one the target's [`runsOn.locale`](configuration.md#config-layering-defaults--targets)
+- **The label a run must match is the one the target's [`runsOn.ios.locale`](configuration.md#config-layering-defaults--targets)
   renders.** SpringBoard owns the prompt, so it used to render in whatever system language the
   Simulator happened to carry — making `label: "Allow"` work by accident on an English machine and
   fail on a Japanese one. A run now pins the Simulator's own system language to that `locale` before
@@ -636,7 +642,7 @@ does not cover it still fails the scenario loudly before any device work, naming
 
 Two limits are worth knowing before reaching for it:
 
-- **The Simulator only.** The pin is a `simctl` operation, so a target on `runsOn.kind:
+- **The Simulator only.** The pin is a `simctl` operation, so a target on `runsOn.ios.kind:
   device` runs against whatever system language the physical device carries — the intent form would
   resolve a label nothing guarantees is on screen. Name the button with `sel.label` there.
 - **The interruption monitor carries no English assumption either.** A `rules` entry resolves its
@@ -1181,7 +1187,7 @@ The constraints come from driving an operating-system screen the scenario does n
   be empty wallpaper. After an erase and reinstall, SpringBoard opens on the page that holds the
   test apps, and that page leaves its lower half free. Erasing also removes the widgets an earlier
   run added, so the assertion on the new widget stays unambiguous.
-- **Pin the language with `preconditions.runsOn.ios.locale`.** Every label is SpringBoard's own text. Even an
+- **Pin the language with `preconditions.device.ios.locale`.** Every label is SpringBoard's own text. Even an
   icon's `identifier` is its localized name: `Calendar` in English, `カレンダー` in Japanese.
 - **A search result row is absent from the tree.** Once the gallery's search field holds text,
   SpringBoard's snapshot reports the result list as an empty container. The row still shows on
@@ -1205,7 +1211,7 @@ is a validation error).
 
 The **directional** form means "scroll", and each backend realizes it with the primitive that
 actually scrolls: a real OS drag on iOS / Android, and — since a mouse drag does not scroll a web
-page — a wheel event (desktop) or a touch drag (a mobile [`runsOn.emulate`](drivers.md#playwright-web))
+page — a wheel event (desktop) or a touch drag (a mobile [`runsOn.browser.emulate`](drivers.md#playwright-web))
 on web (BE-0227). The **coordinate** form is a literal pointer drag for its own sake (a canvas / map
 pan / drag handle), the same raw-drag last resort on every backend.
 
@@ -1717,7 +1723,7 @@ Each declared target keeps its own config, not the primary target's. Resolution 
 |---|---|
 | `hooks.setup` / `hooks.cleanup` lifecycle steps | Each target's own hooks fold in, in declared order, stamped with that target's name — so an app-side teardown and a web-side one each run against the right driver |
 | `services.mailbox` | An `email` or `totp` step polls the inbox its own target configured |
-| `runsOn.locale`, `app.launch.env`, `evidence.capture`, `hooks.interrupts` | Each is a property of the app under test, not of the run |
+| `runsOn.ios.locale`, `app.launch.env`, `evidence.capture`, `hooks.interrupts` | Each is a property of the app under test, not of the run |
 | `paths.baselines` / `paths.schemas` / `paths.goldens` | A `visual` or `golden` assertion compares against its own target's directory when that target configures one, else the run's |
 | Backend capabilities | Each target's steps are checked against its own backend before any device is leased, so a construct only one platform supports fails the right one |
 
@@ -1864,7 +1870,7 @@ adds a second app beside the first and retires nothing.
 `run` exits with status 2. The check refuses these cases:
 
 - Members of one group differ in platform, backend, device route, or effective `locale`. The device route is
-  the device provider (an `appium` environment named by `--worker-config`) and `runsOn.kind`.
+  the device provider (an `appium` environment named by `--worker-config`) and `runsOn.ios.kind`.
 - A web target sits in a group of two or more, since a browser has no device to share.
 - Two starting members of one group share an identifier. The second install would replace the first.
 - An `installApp.from` target has no `app.path`, or its `app.path` does not exist. A Git-sourced config
@@ -1986,7 +1992,7 @@ are in [selectors](selectors.md#assertion-evaluation).
 - `clipboard` reads the device pasteboard (`simctl pbpaste`) and checks **exactly one** of `equals` / `matches` (regex) — the read-back half of `setClipboard`, for verifying a "copy" action. It needs the per-device control channel, so it is unavailable on the fake driver / in parallel runs and fails cleanly there ([BE-0052](../roadmaps/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)).
 
 > **Locale caveat**: string comparisons on `label`/`value` and assertions that look at visible
-> text break under translation. Write these against the target's fixed `runsOn.locale`, and write the selector
+> text break under translation. Write these against the target's fixed `runsOn.ios.locale`, and write the selector
 > itself by `id`.
 
 ### `request` (network assertion)

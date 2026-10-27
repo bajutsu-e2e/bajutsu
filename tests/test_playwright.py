@@ -471,7 +471,7 @@ def test_device_context_kwargs_unknown_preset_raises() -> None:
     # An unknown preset fails loudly (at driver start), not silently as the desktop layout.
     from bajutsu.common.drivers.playwright import _device_context_kwargs
 
-    with pytest.raises(ValueError, match=r"unknown runsOn\.emulate"):
+    with pytest.raises(ValueError, match=r"unknown runsOn\.browser\.emulate"):
         _device_context_kwargs(_FakeSyncPw(), "iPhone 999")
 
 
@@ -520,7 +520,8 @@ def test_reset_context_carries_device_mode() -> None:
 def test_device_mode_descriptor_is_resolved_once() -> None:
     # The descriptor is fixed data, so it is resolved against playwright.devices once and cached: a
     # later context reuses the memoized value rather than re-resolving. Proven by deleting the preset
-    # after the first resolution — a re-resolution would raise "unknown runsOn.emulate"; the memo doesn't.
+    # after the first resolution — a re-resolution would raise "unknown runsOn.browser.emulate"; the
+    # memo doesn't.
     pw = _FakePw()
     pw.devices["iPhone 13"] = dict(_IPHONE_13)
     initial_ctx = _FakeContext(_FakePage([]))

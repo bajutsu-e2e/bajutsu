@@ -29,8 +29,8 @@ targets:
   old: {{ platform: ios, app: {{ id: com.example.showcase }} }}
   new: {{ platform: ios, app: {{ id: com.example.showcase, path: {build} }} }}
   auth: {{ platform: ios, app: {{ id: com.example.auth }} }}
-  ja: {{ platform: ios, app: {{ id: com.example.ja }}, runsOn: {{ locale: ja_JP }} }}
-  phone: {{ platform: ios, app: {{ id: com.example.phone }}, runsOn: {{ kind: device }} }}
+  ja: {{ platform: ios, app: {{ id: com.example.ja }}, runsOn: {{ios: {{locale: ja_JP}}}} }}
+  phone: {{ platform: ios, app: {{ id: com.example.phone }}, runsOn: {{ios: {{kind: device}}}} }}
   droid: {{ platform: android, app: {{ id: com.example.droid }} }}
   site: {{ platform: web, app: {{ url: "http://localhost:1/" }} }}
   nobuild: {{ platform: ios, app: {{ id: com.example.showcase }} }}
@@ -114,7 +114,7 @@ def test_a_scenario_locale_pins_every_member_alike(tmp_path: Path) -> None:
         targets=[["auth", "ja"]],
         primaryTarget="auth",
         installs=["ja"],
-        preconditions={"runsOn": {"ios": {"locale": "en_US"}}},
+        preconditions={"device": {"ios": {"locale": "en_US"}}},
     )
     _reject_bad_device_groups([s], _effs(tmp_path), checkout_root=None)
 

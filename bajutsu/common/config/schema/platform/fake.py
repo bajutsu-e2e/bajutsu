@@ -7,7 +7,7 @@ A `fake` target declares no condition to check: its `runsOn` and `driver` take n
 from __future__ import annotations
 
 from .._model import _Model
-from ._shared import AppCommon
+from ._shared import AppCommon, RunsOnGroup
 
 
 class FakeApp(AppCommon):
@@ -20,8 +20,8 @@ class FakeApp(AppCommon):
     id: str | None = None
 
 
-class FakeRunsOn(_Model):
-    """`runsOn` on the fake platform: no fields, since the fake driver has no device to read."""
+class FakeRunsOn(RunsOnGroup):
+    """`runsOn` on the fake platform: no destination, since the fake driver has no device to read."""
 
 
 class FakeDriver(_Model):

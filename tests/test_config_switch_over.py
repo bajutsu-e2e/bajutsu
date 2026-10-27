@@ -71,10 +71,12 @@ def test_the_cli_backend_check_exits_2(capsys: pytest.CaptureFixture[str]) -> No
 
 
 def test_conditions_resolve_onto_the_effective_config() -> None:
-    eff = _eff('targets:\n  t: { platform: ios, app: { id: com.x }, runsOn: { os: ">=18" } }\n')
+    eff = _eff(
+        'targets:\n  t: { platform: ios, app: { id: com.x }, runsOn: {ios: {os: ">=18"}} }\n'
+    )
     assert eff.conditions == {"os": ">=18"}
     android = _eff(
-        "targets:\n  t: { platform: android, app: { id: com.x }, runsOn: { avd: [A, B] } }\n"
+        "targets:\n  t: { platform: android, app: { id: com.x }, runsOn: {android: {avd: [A, B]}} }\n"
     )
     assert android.conditions == {"avd": ["A", "B"]}
     # One engine is how a web target is driven, not a condition; a listed one multiplies runs.
@@ -87,7 +89,7 @@ def test_conditions_resolve_onto_the_effective_config() -> None:
 
 
 def test_the_fake_driver_skips_conditions_with_one_notice(caplog: pytest.LogCaptureFixture) -> None:
-    eff = _eff('targets:\n  t: { platform: ios, app: { id: com.x }, runsOn: { os: "18" } }\n')
+    eff = _eff('targets:\n  t: { platform: ios, app: { id: com.x }, runsOn: {ios: {os: "18"}} }\n')
     deprecations._emitted.discard("conditions.fake")
     with caplog.at_level(logging.WARNING, logger=deprecations.logger.name):
         assert _shared._note_fake_conditions(eff, ["fake"])
@@ -105,12 +107,12 @@ def test_a_kind_device_target_cannot_declare_a_condition() -> None:
 
     with pytest.raises(ValidationError, match="kind: device cannot declare"):
         load_config(
-            "targets:\n  t: { platform: ios, app: { id: com.x }, runsOn: { kind: device, os: '18' } }\n"
+            "targets:\n  t: { platform: ios, app: { id: com.x }, runsOn: {ios: {kind: device, os: '18'}} }\n"
         )
     # A team-wide `model` default reaches here after the merge, and the target clears it with null.
     cfg = load_config(
-        "defaults:\n  platforms:\n    ios:\n      runsOn: { model: iPhone 16 }\n"
-        "targets:\n  t: { platform: ios, app: { id: com.x }, runsOn: { kind: device, model: null } }\n"
+        "defaults:\n  platforms:\n    ios:\n      runsOn: {ios: {model: iPhone 16}}\n"
+        "targets:\n  t: { platform: ios, app: { id: com.x }, runsOn: {ios: {kind: device, model: null}} }\n"
     )
     assert resolve(cfg, "t").conditions == {}
 
@@ -303,14 +305,14 @@ def test_merge_defaults_takes_the_targets_platform_block_and_skips_ai() -> None:
         "ai": {"model": "m"},
         "run": {"erase": True},
         "platforms": {
-            "ios": {"runsOn": {"locale": "ja_JP"}},
+            "ios": {"runsOn": {"ios": {"locale": "ja_JP"}}},
             "web": {"driver": {"headless": False}},
         },
     }
     merged = merge_defaults(defaults, {"platform": "ios", "app": {"id": "com.x"}})
     assert merged == {
         "run": {"erase": True},
-        "runsOn": {"locale": "ja_JP"},
+        "runsOn": {"ios": {"locale": "ja_JP"}},
         "platform": "ios",
         "app": {"id": "com.x"},
     }
@@ -483,7 +485,7 @@ def test_doctor_probes_the_first_run_of_a_condition(
     monkeypatch.setattr("bajutsu.cli.commands.doctor._current_screen", screen)
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        'targets:\n  t: { platform: ios, app: { id: com.x }, runsOn: { os: "18" } }\n',
+        'targets:\n  t: { platform: ios, app: { id: com.x }, runsOn: {ios: {os: "18"}} }\n',
         encoding="utf-8",
     )
     argv = ["doctor", "--target", "t", "--config", str(cfg), "--udid", "u17,u18"]
@@ -514,7 +516,9 @@ def test_the_mcp_probe_takes_its_device_through_the_worker(monkeypatch: pytest.M
     # A grid has no pool to read, so a condition on a target it serves fails by name.
     with pytest.raises(ValueError, match=r"runsOn\.ios\.os"):
         _probe_device(
-            _eff('targets:\n  t: { platform: ios, app: { id: com.x }, runsOn: { os: "18" } }\n'),
+            _eff(
+                'targets:\n  t: { platform: ios, app: { id: com.x }, runsOn: {ios: {os: "18"}} }\n'
+            ),
             "booted",
             _grid(),
         )

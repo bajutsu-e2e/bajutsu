@@ -53,7 +53,7 @@ class Effective:
     reinstall: Literal["clean", "overwrite"] | None = None
     # The target's `app.launch.deeplink` (BE-0452), opened after launch unless the scenario sets one.
     deeplink: str | None = None
-    # The target's `runsOn.seedPhotos` (BE-0452), rebased against the config file; a scenario's own
+    # The target's `runsOn.ios.seedPhotos` (BE-0452), rebased against the config file; a scenario's own
     # list replaces it.
     seed_photos: list[str] = field(default_factory=list)
     # The target's own `platform` key (BE-0452), which `schema_platform` reads. None for an
@@ -201,7 +201,7 @@ class Effective:
         # Seeded photos resolve against the file that declares them, as `app.path` does (BE-0452).
         common = replace(
             common,
-            seed_photos=[at("runsOn.seedPhotos", photo) or photo for photo in self.seed_photos],
+            seed_photos=[at("runsOn.ios.seedPhotos", photo) or photo for photo in self.seed_photos],
         )
 
         ios = self.platform_config

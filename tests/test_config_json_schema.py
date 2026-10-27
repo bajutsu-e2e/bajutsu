@@ -1,4 +1,4 @@
-"""`bajutsu config schema` and the scenario schema's `runsOn` stay in step with the models (BE-0452).
+"""`bajutsu config schema` and the scenario schema stay in step with the models (BE-0452, BE-0469).
 
 Both are generated from the config models and the platform registry, never written by hand, so these
 tests pin the generated shape to the models: each registered platform is one branch keyed by
@@ -20,7 +20,7 @@ from typer.testing import CliRunner
 from bajutsu.cli import app
 from bajutsu.common.backends import PLATFORMS
 from bajutsu.common.config import load_config
-from bajutsu.common.config.json_schema import config_json_schema, scenario_runs_on_schema
+from bajutsu.common.config.json_schema import config_json_schema
 from bajutsu.common.config.schema.defaults import DEFAULTS_KEYS
 from bajutsu.common.config.schema.platform.registry import (
     GROUPS,
@@ -85,16 +85,16 @@ defaults:
   platforms:
     ios:
       app: { launch: { env: { UITEST: "1" } } }
-      runsOn: { os: ">=17" }
+      runsOn: {ios: {os: ">=17"}}
 targets:
   phone:
     platform: ios
     app: { id: com.example.app }
-    runsOn: { model: ["iPhone 16", "iPad Pro 13-inch (M4)"] }
+    runsOn: {ios: {model: ["iPhone 16", "iPad Pro 13-inch (M4)"]}}
   emulator:
     platform: android
     app: { id: com.example.app }
-    runsOn: { avd: Pixel_8, apiLevel: 34 }
+    runsOn: {android: {avd: Pixel_8, apiLevel: 34}}
   site:
     platform: web
     app: { url: "http://localhost:3000/" }
@@ -143,7 +143,11 @@ def test_exists_is_stated_in_its_inline_form() -> None:
     "target",
     [
         # A key another platform takes: the loader names it unknown, the schema rejects it.
-        "{ platform: ios, app: { id: com.x }, runsOn: { avd: Pixel_8 } }",
+        "{ platform: ios, app: { id: com.x }, runsOn: {ios: {avd: Pixel_8}} }",
+        # A destination the platform does not run on, and a flat key from before BE-0469.
+        "{ platform: ios, app: { id: com.x }, runsOn: {android: {avd: Pixel_8}} }",
+        "{ platform: ios, app: { id: com.x }, runsOn: {model: iPhone 16} }",
+        "{ platform: web, app: { url: 'http://x/' }, runsOn: {emulate: iPhone 13} }",
         "{ platform: web, app: { url: 'http://x/' }, driver: { nativeZ: true } }",
         "{ platform: flutter, app: { id: com.x } }",
     ],
@@ -161,17 +165,31 @@ def test_the_command_prints_the_schema() -> None:
     assert json.loads(result.output) == _SCHEMA
 
 
-def test_the_scenario_schema_states_runs_on_per_platform() -> None:
+@pytest.mark.parametrize(
+    ("platform", "destination", "fields"),
+    [
+        ("ios", "ios", {"model", "os", "kind", "locale", "seedPhotos"}),
+        ("android", "android", {"avd", "apiLevel"}),
+        ("web", "browser", {"engine", "version", "emulate"}),
+    ],
+)
+def test_runs_on_is_one_block_per_destination(
+    platform: str, destination: str, fields: set[str]
+) -> None:
+    runs_on = _resolve(_branch(platform)["properties"]["runsOn"])
+    assert set(runs_on["properties"]) == {destination}
+    assert runs_on["additionalProperties"] is False
+    assert set(_resolve(runs_on["properties"][destination])["properties"]) == fields
+    assert _resolve(_branch("fake")["properties"]["runsOn"]).get("properties", {}) == {}
+
+
+def test_the_scenario_schema_states_device_and_no_runs_on() -> None:
     schema = json.loads(scenario_json_schema())
-    runs_on = schema["$defs"]["Preconditions"]["properties"]["runsOn"]
-    assert set(runs_on["properties"]) == set(PLATFORM_SCHEMAS)
-    expected = scenario_runs_on_schema()
-    for platform, block in runs_on["properties"].items():
-        fields = set(allowed_fields(PLATFORM_SCHEMAS[platform].runs_on)) - {"kind", "emulate"}
-        assert set(block["properties"]) == fields
-        assert block == expected["properties"][platform]
+    pre = schema["$defs"]["Preconditions"]["properties"]
+    assert "runsOn" not in pre
+    assert "device" in pre
     validator = Draft202012Validator(schema)
-    good = [{"name": "a", "steps": [], "preconditions": {"runsOn": {"ios": {"os": ">=18"}}}}]
+    good = [{"name": "a", "steps": [], "preconditions": {"device": {"ios": {"locale": "ja_JP"}}}}]
     assert not list(validator.iter_errors(good))
-    driven = [{"name": "a", "steps": [], "preconditions": {"runsOn": {"ios": {"kind": "device"}}}}]
-    assert list(validator.iter_errors(driven))
+    old = [{"name": "a", "steps": [], "preconditions": {"runsOn": {"ios": {"os": ">=18"}}}}]
+    assert list(validator.iter_errors(old))

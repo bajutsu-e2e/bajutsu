@@ -109,7 +109,7 @@ Reporter (manifest.json + JUnit/CTRF/HTML + スクショ/録画)
 - **アイソレーション単位 = ワーカー**：各ワーカーは固有の `udid`（`simctl clone` 等）を借り受けます。証跡の書き込み先は、run 全体で 1 つの `runs/<runId>` の下にある固有のサブディレクトリ `runs/<runId>/<scenarioId>` です。run ディレクトリは run に 1 つ、書き込み先はワーカーごとに別、という組み合わせが成果物の混線を防ぎます。`mocks` は in-protocol でアプリ内に閉じるため（§3.2）、ワーカー間で共有ポートを取り合いません
 - **ヘッドレス前提**：iOS Simulator はヘッドレスで動くため、N 台へ水平スケールできます（CI 向き）
 - **CLI**：`bajutsu run ... --workers N` です。既定は 1 です。`--udid` はデバイスのカンマ区切りリストを受け取り、`--workers` はそのリストの台数を上限として丸められます
-- **デバイスの条件と run の組み合わせ**：ターゲットやシナリオの `runsOn` には、デバイスの条件を書けます。iOS の `model` と `os`、Android の `avd` と `apiLevel`、web の `browser` です。run の前に、プールの各デバイスから読んだ事実とこれらの条件を照合します。リストは値ごとに、範囲はメジャーバージョンごとに run を作ります。各 run が使うデバイスの集合は、どれも同じモデルとリリースにそろえます。そのため、どのデバイスが run を受け持っても、観測する画面は変わりません。リストや両側が閉じた範囲で合うデバイスがなければ、その run は失敗します。片側が開いた範囲で合うデバイスがなければ、対象外（not applicable）の記録を残します。すべての記録が対象外なら、呼び出しは終了コード 1 で終わります。照合も run の数も決定的で、AI は関与しません（[BE-0452](roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)）
+- **デバイスの条件と run の組み合わせ**：ターゲットの `runsOn` には、宛先ごとのブロック（`ios`、`android`、`browser`）にデバイスの条件を書けます。iOS の `model` と `os`、Android の `avd` と `apiLevel`、web の `browser` です。シナリオは条件を宣言せず、必要な条件を持つターゲットを指定します（BE-0469）。run の前に、プールの各デバイスから読んだ事実とこれらの条件を照合します。リストは値ごとに、範囲はメジャーバージョンごとに run を作ります。各 run が使うデバイスの集合は、どれも同じモデルとリリースにそろえます。そのため、どのデバイスが run を受け持っても、観測する画面は変わりません。リストや両側が閉じた範囲で合うデバイスがなければ、その run は失敗します。片側が開いた範囲で合うデバイスがなければ、対象外（not applicable）の記録を残します。すべての記録が対象外なら、呼び出しは終了コード 1 で終わります。照合も run の数も決定的で、AI は関与しません（[BE-0452](roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)）
 - **不変条件**：並列でもシナリオ間で simulator / 索引 / モック状態を共有しません。共有が要る前提は `preconditions` で各テストが自前で構築します（§2）。この不変条件は、デバイスを実際に 2 台同時に起動する CI レーンが検証します（[BE-0298](roadmaps/BE-0298-device-pool-concurrent-real-verification/BE-0298-device-pool-concurrent-real-verification-ja.md)）。fake driver に架空の udid を渡すユニットテストが示せるのは、プール自身の記帳の整合性までです。OS レベルの競合は、実際に 2 台のデバイスを同時に動かしたときにしか表面化しません
 
 ---
@@ -212,12 +212,12 @@ UI 操作は **最も安定する選択手段から順に試し、成立した�
 
 ```yaml
 - name: ログタブでフィルタを開いて適用する
-  preconditions:                             # ターゲットと同じ app / runsOn / run のグループ（BE-0452）
+  preconditions:                             # ターゲットと同じ app / run のグループ（BE-0452）と device（BE-0469）
     app:
       launch:
         env: { SHOWCASE_UITEST: "1" }         # 状態注入（launch args / env）
         deeplink: "showcaseswiftui://log"    # 起動後に開く（任意）
-    runsOn:
+    device:
       ios: { locale: "ja_JP" }               # 省略時は config の固定 locale
     run:
       erase: true                            # 各テスト前にクリーン化（§2）
@@ -421,7 +421,7 @@ defaults:                       # 全アプリ共通の既定
     redact:  { headers: [Authorization, Cookie], fields: [token, password] }
   platforms:
     ios:
-      runsOn: { locale: ja_JP } # 固定 locale（§6.4）
+      runsOn: { ios: { locale: ja_JP } } # 固定 locale（§6.4）
 
 targets:
   showcase-swiftui:             # ← --target showcase-swiftui で選択

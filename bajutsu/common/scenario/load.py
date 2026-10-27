@@ -92,8 +92,8 @@ _PRECONDITION_MOVES: dict[str, tuple[str, ...]] = {
     "launchArgs": ("app", "launch", "args"),
     "deeplink": ("app", "launch", "deeplink"),
     # Only iOS read a scenario's locale and seeded photos before the regrouping.
-    "locale": ("runsOn", "ios", "locale"),
-    "seedPhotos": ("runsOn", "ios", "seedPhotos"),
+    "locale": ("device", "ios", "locale"),
+    "seedPhotos": ("device", "ios", "seedPhotos"),
 }
 
 # The top-level run-policy keys BE-0452 moved under `preconditions.run`.
@@ -112,7 +112,7 @@ def _place(tree: dict[str, Any], path: tuple[str, ...], value: Any) -> None:
 
 
 def _upgrade_preconditions(raw: dict[str, Any]) -> None:
-    """Regroup one stored scenario's flat `preconditions` and top-level run policy (BE-0452)."""
+    """Regroup one stored scenario's `preconditions` and top-level run policy (BE-0452, BE-0469)."""
     pre = raw.get("preconditions")
     if not isinstance(pre, dict):
         pre = {}
@@ -122,6 +122,13 @@ def _upgrade_preconditions(raw: dict[str, Any]) -> None:
     for old, new in _RUN_MOVES.items():
         if old in raw:
             _place(pre, ("run", new), raw.pop(old))
+    # BE-0469 removed the scenario's `runsOn`: its iOS device state moved to `device.ios`, and its
+    # conditions are dropped, since they already chose the devices this stored run ran on.
+    runs_on = pre.pop("runsOn", None)
+    ios = runs_on.get("ios") if isinstance(runs_on, dict) else None
+    for key in ("locale", "seedPhotos"):
+        if isinstance(ios, dict) and key in ios:
+            _place(pre, ("device", "ios", key), ios[key])
     if pre:
         raw["preconditions"] = pre
 
@@ -133,7 +140,9 @@ def _upgrade_scenario(raw: Any) -> None:
     the plan it ran, so only this offline reader translates them: `before` / `after` become `setup`
     / `cleanup`, the outcome word `error` in a cleanup rule's `on` and a `capturePolicy` trigger's
     `result` becomes `failure`, and the flat `preconditions` keys and the top-level
-    `systemAlertHandling` / `iosTipKitHandling` move into the `app`, `runsOn`, and `run` groups.
+    `systemAlertHandling` / `iosTipKitHandling` move into the `app`, `device`, and `run` groups. A
+    `preconditions.runsOn` keeps its device state under `device.ios` and drops its conditions
+    (BE-0469).
     """
     if not isinstance(raw, dict):
         return

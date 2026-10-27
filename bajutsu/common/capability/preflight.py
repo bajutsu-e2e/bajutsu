@@ -201,7 +201,7 @@ def doctor_environment_checks(
     answer "is this target healthy?".
 
     Args:
-        real_device: For a real-device target (`runsOn.kind: device`), whether the host
+        real_device: For a real-device target (`runsOn.ios.kind: device`), whether the host
             reaches that device. It replaces the booted-Simulator check, which such a target never
             needs.
     """

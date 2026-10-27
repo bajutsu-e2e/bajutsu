@@ -58,13 +58,17 @@ def test_every_registered_model_forbids_extra_keys(platform: str, group: Group) 
                 "idNamespaces": ["home"],
             },
         ),
-        ("ios", "runsOn", {"kind": "simulator", "locale": "en_US"}),
-        ("ios", "runsOn", {"model": ["iPhone SE (3rd generation)", "iPad Pro 13-inch (M4)"]}),
-        ("ios", "runsOn", {"model": "iPhone 16", "os": ">=17 <19"}),
+        ("ios", "runsOn", {"ios": {"kind": "simulator", "locale": "en_US"}}),
+        (
+            "ios",
+            "runsOn",
+            {"ios": {"model": ["iPhone SE (3rd generation)", "iPad Pro 13-inch (M4)"]}},
+        ),
+        ("ios", "runsOn", {"ios": {"model": "iPhone 16", "os": ">=17 <19"}}),
         ("ios", "driver", {"runner": {"testRunner": "build/Runner.xctestrun"}}),
         ("ios", "run", {"tipKitHandling": True}),
         ("web", "app", {"url": "http://127.0.0.1:8787/index.html"}),
-        ("web", "runsOn", {"browser": {"engine": "webkit"}, "emulate": "iPhone 13"}),
+        ("web", "runsOn", {"browser": {"engine": "webkit", "emulate": "iPhone 13"}}),
         ("web", "runsOn", {"browser": {"engine": ["chromium", "firefox"]}}),
         ("web", "runsOn", {"browser": {"version": ">=120"}}),
         ("web", "driver", {"headless": False}),
@@ -73,8 +77,12 @@ def test_every_registered_model_forbids_extra_keys(platform: str, group: Group) 
             "app",
             {"id": "com.example.showcase", "grantPermissions": ["android.permission.CAMERA"]},
         ),
-        ("android", "runsOn", {"avd": "Pixel_8", "apiLevel": ">=33"}),
-        ("android", "runsOn", {"avd": ["Pixel_8", "Pixel_Tablet"], "apiLevel": "33 - 35"}),
+        ("android", "runsOn", {"android": {"avd": "Pixel_8", "apiLevel": ">=33"}}),
+        (
+            "android",
+            "runsOn",
+            {"android": {"avd": ["Pixel_8", "Pixel_Tablet"], "apiLevel": "33 - 35"}},
+        ),
         ("android", "driver", {"nativeZ": True}),
         ("fake", "app", {}),
         ("fake", "app", {"id": "anything"}),
@@ -89,9 +97,9 @@ def test_spec_examples_validate(platform: str, group: Group, data: Any) -> None:
 
 def test_defaults_are_what_an_omitted_block_means() -> None:
     runs_on: Any = validate_group("web", "runsOn", None, where="targets.t.runsOn")
-    assert (runs_on.browser.engine, runs_on.emulate) == ("chromium", "desktop")
+    assert (runs_on.browser.engine, runs_on.browser.emulate) == ("chromium", "desktop")
     ios: Any = validate_group("ios", "runsOn", {}, where="targets.t.runsOn")
-    assert (ios.kind, ios.model, ios.os) == ("simulator", None, None)
+    assert (ios.ios.kind, ios.ios.model, ios.ios.os) == ("simulator", None, None)
     assert validate_group("web", "driver", {}, where="x").headless is True  # type: ignore[attr-defined]
 
 
@@ -102,11 +110,10 @@ def test_defaults_are_what_an_omitted_block_means() -> None:
         (
             "ios",
             "runsOn",
-            {"browser": {"engine": "webkit"}},
-            "runsOn.browser",
+            {"ios": {"avd": "Pixel_8"}},
+            "runsOn.ios.avd",
             "model, os, kind, locale, seedPhotos",
         ),
-        ("web", "runsOn", {"apiLevel": "34"}, "runsOn.apiLevel", "browser, emulate"),
         ("android", "driver", {"headless": True}, "driver.headless", "nativeZ"),
         ("web", "app", {"id": "x", "url": "u"}, "app.id", "startWhen, idNamespaces, url, launch"),
         # a nested unknown key lists the nested block's fields
@@ -122,7 +129,7 @@ def test_defaults_are_what_an_omitted_block_means() -> None:
             "runsOn",
             {"browser": {"engin": "webkit"}},
             "runsOn.browser.engin",
-            "engine, version",
+            "engine, version, emulate",
         ),
         (
             "android",
@@ -133,7 +140,6 @@ def test_defaults_are_what_an_omitted_block_means() -> None:
         ),
         # the iOS run extension, and a platform with none
         ("android", "run", {"tipKitHandling": True}, "run.tipKitHandling", "(none)"),
-        ("fake", "runsOn", {"model": "iPhone 16"}, "runsOn.model", "(none)"),
     ],
 )
 def test_unknown_key_error_lists_the_allowed_fields(
@@ -149,10 +155,12 @@ def test_unknown_key_error_lists_the_allowed_fields(
 
 def test_every_unknown_key_is_reported() -> None:
     with pytest.raises(ValueError, match="unknown field") as caught:
-        validate_group("ios", "runsOn", {"avd": "x", "emulate": "y"}, where="targets.t.runsOn")
+        validate_group(
+            "ios", "runsOn", {"ios": {"avd": "x", "emulate": "y"}}, where="targets.t.runsOn"
+        )
     assert [line.split(":")[0] for line in str(caught.value).splitlines()] == [
-        "targets.t.runsOn.avd",
-        "targets.t.runsOn.emulate",
+        "targets.t.runsOn.ios.avd",
+        "targets.t.runsOn.ios.emulate",
     ]
 
 
@@ -167,7 +175,7 @@ def test_every_unknown_key_is_reported() -> None:
             "app.launch.deeplink",
         ),
         ("android", "app", {"id": "p", "launch": {"deeplink": "x://y"}}, "app.launch.deeplink"),
-        ("ios", "runsOn", {"seedPhotos": ["photos/cat.jpg"]}, "runsOn.seedPhotos"),
+        ("ios", "runsOn", {"ios": {"seedPhotos": ["photos/cat.jpg"]}}, "runsOn.ios.seedPhotos"),
     ],
 )
 def test_unit_seven_fields_load(platform: str, group: Group, data: Any, where: str) -> None:
@@ -186,12 +194,17 @@ def test_other_failures_keep_pydantics_error() -> None:
         ("ios", "app", {"id": ""}, "at least 1 character"),
         ("web", "app", {"url": ""}, "at least 1 character"),
         ("android", "app", {"package": "p"}, r"targets\.t\.app\.id: Field required\n.*package"),
-        ("ios", "runsOn", {"os": ">=17.0.0-beta"}, "prerelease tags are not used"),
-        ("ios", "runsOn", {"os": "latest"}, "invalid version range"),
-        ("android", "runsOn", {"apiLevel": "thirty"}, "invalid version range"),
+        ("ios", "runsOn", {"ios": {"os": ">=17.0.0-beta"}}, "prerelease tags are not used"),
+        ("ios", "runsOn", {"ios": {"os": "latest"}}, "invalid version range"),
+        ("android", "runsOn", {"android": {"apiLevel": "thirty"}}, "invalid version range"),
         ("web", "runsOn", {"browser": {"version": "~"}}, "invalid version range"),
-        ("ios", "runsOn", {"model": []}, "runsOn.model lists no value"),
-        ("android", "runsOn", {"avd": ["a", "a"]}, "runsOn.avd lists a value twice"),
+        ("ios", "runsOn", {"ios": {"model": []}}, "runsOn.ios.model lists no value"),
+        (
+            "android",
+            "runsOn",
+            {"android": {"avd": ["a", "a"]}},
+            "runsOn.android.avd lists a value twice",
+        ),
         ("web", "runsOn", {"browser": {"engine": "safari"}}, "invalid browser 'safari'"),
         ("web", "runsOn", {"browser": {"engine": ["webkit", "edge"]}}, "invalid browser 'edge'"),
         (
@@ -200,25 +213,30 @@ def test_other_failures_keep_pydantics_error() -> None:
             {"browser": {"engine": ["chromium", "webkit"], "version": ">=120"}},
             "cannot be combined with a list of engines",
         ),
-        ("ios", "runsOn", {"kind": "tablet"}, "simulator"),
+        ("ios", "runsOn", {"ios": {"kind": "tablet"}}, "simulator"),
         (
             "ios",
             "runsOn",
-            {"kind": "device", "model": "iPhone 16"},
-            "runsOn.model is a device condition",
-        ),
-        ("ios", "runsOn", {"kind": "device", "os": ">=18"}, "runsOn.os is a device condition"),
-        (
-            "ios",
-            "runsOn",
-            {"kind": "device", "model": "iPhone 16", "os": ">=18"},
-            "runsOn.model and runsOn.os are device conditions",
+            {"ios": {"kind": "device", "model": "iPhone 16"}},
+            "runsOn.ios.model is a device condition",
         ),
         (
             "ios",
             "runsOn",
-            {"kind": "device", "model": ["a", "b"]},
-            "runsOn.model is a device condition",
+            {"ios": {"kind": "device", "os": ">=18"}},
+            "runsOn.ios.os is a device condition",
+        ),
+        (
+            "ios",
+            "runsOn",
+            {"ios": {"kind": "device", "model": "iPhone 16", "os": ">=18"}},
+            "runsOn.ios.model and runsOn.ios.os are device conditions",
+        ),
+        (
+            "ios",
+            "runsOn",
+            {"ios": {"kind": "device", "model": ["a", "b"]}},
+            "runsOn.ios.model is a device condition",
         ),
         (
             "ios",
@@ -238,9 +256,9 @@ def test_invalid_values_fail_at_load(platform: str, group: Group, data: Any, mes
 def test_a_physical_device_keeps_its_device_state() -> None:
     # `locale` is device state, not a condition, so `kind: device` still accepts it.
     runs_on: Any = validate_group(
-        "ios", "runsOn", {"kind": "device", "locale": "ja_JP", "model": None}, where="x"
+        "ios", "runsOn", {"ios": {"kind": "device", "locale": "ja_JP", "model": None}}, where="x"
     )
-    assert (runs_on.kind, runs_on.locale) == ("device", "ja_JP")
+    assert (runs_on.ios.kind, runs_on.ios.locale) == ("device", "ja_JP")
 
 
 def test_unknown_platform_lists_the_registered_ones() -> None:
@@ -282,7 +300,9 @@ def test_an_unknown_key_in_a_target_group_lists_the_allowed_fields() -> None:
 
     from bajutsu.common.config import load_config
 
-    with pytest.raises(ValidationError, match=r"runsOn\.browser: unknown field for platform 'ios'"):
+    with pytest.raises(
+        ValidationError, match=r"runsOn\.browser is not a destination this platform runs on"
+    ):
         load_config(
             "targets:\n  s: { platform: ios, app: { id: com.x }, runsOn: { browser: webkit } }\n"
         )
@@ -306,8 +326,8 @@ def test_the_run_group_lists_the_shared_and_the_platform_fields() -> None:
 @pytest.mark.parametrize(
     ("platform", "data", "read", "expected"),
     [
-        ("android", {"apiLevel": 34}, lambda m: m.api_level, "34"),
-        ("ios", {"os": 18}, lambda m: m.os, "18"),
+        ("android", {"android": {"apiLevel": 34}}, lambda m: m.android.api_level, "34"),
+        ("ios", {"ios": {"os": 18}}, lambda m: m.ios.os, "18"),
         ("web", {"browser": {"version": 120}}, lambda m: m.browser.version, "120"),
     ],
 )
@@ -321,11 +341,66 @@ def test_an_unquoted_integer_range_reads_as_its_text(
 @pytest.mark.parametrize(
     ("platform", "data"),
     [
-        ("ios", {"os": 18.10}),
-        ("android", {"apiLevel": 34.0}),
+        ("ios", {"ios": {"os": 18.10}}),
+        ("android", {"android": {"apiLevel": 34.0}}),
         ("web", {"browser": {"version": 120.5}}),
     ],
 )
 def test_an_unquoted_decimal_range_asks_for_quotes(platform: str, data: Any) -> None:
     with pytest.raises(ValueError, match=r'is a YAML number; quote it .*os: "18\.10"'):
         validate_group(platform, "runsOn", data, where="targets.t.runsOn")
+
+
+@pytest.mark.parametrize(
+    ("platform", "key", "value", "destination"),
+    [
+        ("ios", "model", "iPhone 16", "ios"),
+        ("ios", "os", ">=18", "ios"),
+        ("ios", "kind", "device", "ios"),
+        ("ios", "locale", "ja_JP", "ios"),
+        ("ios", "seedPhotos", ["a.png"], "ios"),
+        ("android", "avd", "Pixel_8", "android"),
+        ("android", "apiLevel", ">=34", "android"),
+        ("web", "emulate", "iPhone 13", "browser"),
+    ],
+)
+def test_a_flat_runs_on_key_names_the_destination_it_moved_to(
+    platform: str, key: str, value: Any, destination: str
+) -> None:
+    # BE-0469 grouped `runsOn` by destination; the pre-grouping spelling points at its new path.
+    with pytest.raises(ValueError, match=rf"runsOn\.{key} moved to runsOn\.{destination}\.{key}"):
+        validate_group(platform, "runsOn", {key: value}, where="targets.t.runsOn")
+
+
+@pytest.mark.parametrize(
+    ("platform", "data", "allowed"),
+    [
+        ("ios", {"browser": {"engine": "webkit"}}, "ios"),
+        ("web", {"ios": {"model": "iPhone 16"}}, "browser"),
+        ("android", {"ios": {}}, "android"),
+        ("fake", {"ios": {}}, r"\(none\)"),
+        ("fake", {"model": "iPhone 16"}, r"\(none\)"),
+    ],
+)
+def test_a_destination_the_platform_does_not_run_on_names_the_allowed_ones(
+    platform: str, data: Any, allowed: str
+) -> None:
+    key = next(iter(data))
+    with pytest.raises(
+        ValueError,
+        match=rf"runsOn\.{key} is not a destination this platform runs on; "
+        rf"allowed destinations: {allowed}",
+    ):
+        validate_group(platform, "runsOn", data, where="targets.t.runsOn")
+
+
+@pytest.mark.parametrize("platform", sorted(PLATFORM_SCHEMAS))
+def test_each_runs_on_group_declares_its_destinations(platform: str) -> None:
+    # The allowed-pair rule reads destinations from the group's own fields, so a field the rule
+    # cannot see would make every key of that block fail as a foreign destination.
+    from bajutsu.common.config.schema.platform._shared import RunsOnGroup, _destination_models
+
+    group = PLATFORM_SCHEMAS[platform].runs_on
+    assert issubclass(group, RunsOnGroup)
+    expected = {"ios": ["ios"], "android": ["android"], "web": ["browser"], "fake": []}[platform]
+    assert list(_destination_models(group)) == expected

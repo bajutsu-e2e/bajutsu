@@ -41,7 +41,7 @@ def test_html_preconditions_render_in_result_tab() -> None:
         "name": "s1",
         "steps": [{"tap": {"id": "a"}}],
         "preconditions": {
-            "runsOn": {"ios": {"locale": "ja_JP"}},
+            "device": {"ios": {"locale": "ja_JP"}},
             "app": {"launch": {"env": {"SAMPLE_SEED": "5"}}},
         },
     }

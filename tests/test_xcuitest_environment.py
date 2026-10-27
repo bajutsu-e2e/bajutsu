@@ -103,7 +103,7 @@ def _device_eff(*, app_path: str | None = None, test_runner: str | None = None) 
     lines = ["targets:", "  s:", "    platform: ios", "    app:", "      id: com.x"]
     if app_path is not None:
         lines.append(f"      path: {app_path}")
-    lines += ["    runsOn: {kind: device}"]
+    lines += ["    runsOn: {ios: {kind: device}}"]
     if test_runner is not None:
         lines += ["    driver:", f"      runner: {{testRunner: {test_runner}}}"]
     return resolve(load_config("\n".join(lines) + "\n"), "s")
@@ -536,7 +536,7 @@ def test_appium_lease_endpoint_routes_to_the_live_environment() -> None:
     from bajutsu.common.runner import device_provider as dp
 
     cfg = load_config(
-        "targets:\n  s:\n    platform: ios\n    app: {id: com.x}\n    runsOn: {kind: device}\n"
+        "targets:\n  s:\n    platform: ios\n    app: {id: com.x}\n    runsOn: {ios: {kind: device}}\n"
     )
     # The grid comes from an `appium` environment of the worker config (BE-0452), not the target.
     eff = replace(
@@ -758,7 +758,7 @@ def _sim_eff_locale(*, test_runner: str, locale: str) -> Effective:
         "defaults:\n"
         "  platforms:\n"
         "    ios:\n"
-        f"      runsOn: {{locale: {locale}}}\n"
+        f"      runsOn: {{ios: {{locale: {locale}}}}}\n"
         "targets:\n"
         "  s:\n"
         "    platform: ios\n"
@@ -3192,7 +3192,7 @@ def test_a_real_device_start_clears_a_replacement_request_without_serving_it(
         "  s:\n"
         "    platform: ios\n"
         f"    app: {{id: com.x}}\n"
-        f"    runsOn: {{kind: device}}\n"
+        f"    runsOn: {{ios: {{kind: device}}}}\n"
         "    driver:\n"
         f"      runner: {{testRunner: {_write_runner(tmp_path)}}}\n"
     )
