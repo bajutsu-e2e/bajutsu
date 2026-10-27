@@ -27,8 +27,6 @@
     "textlint-rule-ja-hiraku": "1.4.0"
   },
   "overrides": {
-    "@hono/node-server": "^2.0.5",
-    "hono": "^4.13.5",
     "js-yaml": "^4.3.2",
     "prh": {
       "js-yaml": "^3.15.2"
