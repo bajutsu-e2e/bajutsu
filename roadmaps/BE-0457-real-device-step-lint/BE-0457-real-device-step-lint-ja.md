@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0457](BE-0457-real-device-step-lint-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **承認済み** |
+| 状態 | **却下** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0457") |
 | トピック | プラットフォーム対応 |
 | 関連 | [BE-0082](../BE-0082-capability-preflight-check/BE-0082-capability-preflight-check-ja.md), [BE-0128](../BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight-ja.md), [BE-0212](../BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities-ja.md), [BE-0238](../BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution-ja.md) |
@@ -321,6 +321,14 @@ BE-0238 の実機のターゲットは、アプリの事前インストールを
 - [ ] `RunResult` に `skippedPreconditions` を追加し、マニフェスト、HTML、JUnit、CTRF の各レポートで描画する
 - [ ] 2つの除外記法と lint を `docs/` と `docs/ja/` に記載する（`dsl-grammar.md`、`scenarios.md`、`cli.md`、`drivers.md`）。
   実機の経路について `DESIGN.md` と `docs/architecture.md` を更新する
+
+ログ：
+
+- 作業単位を 1 つも出荷しないまま却下しました。
+  一部の環境で*ステップ*を飛ばすと、同じシナリオの結果が実行した場所によって変わります。実機の run が、検査が減ったために合格しうるためです。
+  代わりの方針では、すべてのステップを必須のままにし、飛ばせるのは環境に固有の*設定*だけにします。その宣言はターゲット設定に書き、lint と worker への振り分けの時点で検査します。
+  この項目は、環境に固有の設定の項目（`environment-specific-settings`）に置き換えられます。
+  最初の実装の試みである [#2211](https://github.com/bajutsu-e2e/bajutsu/pull/2211) は、マージせずに閉じました。
 
 ## 参考
 
