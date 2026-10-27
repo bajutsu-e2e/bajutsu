@@ -70,7 +70,7 @@ A step's `assert` list and the scenario's `expect` list run as a condition wait.
 
 The poll's budget is the lane's wait floor and nothing else. `_timeout_floor()` is zero unless `BAJUTSU_MIN_WAIT_TIMEOUT` is set (`bajutsu/common/orchestrator/waits/_functions.py:47`), and today only the iOS and Android lanes set it. The web lane therefore takes one read per block, and the poll adds nothing there. Unit 7 sets a wait floor on the web demo's run, as the Android lane does. A `wait` step cannot stand in for the floor, because no `until` form takes an assertion.
 
-1. On each tick, right after `driver.query()`, a helper `_attributes_for(driver, tree, block)` handles each `attribute` assertion in the block. The helper resolves the selector against that tick's tree, then calls `Driver.read_attribute(element, name)` once. If the read raises `SelectorError` (the live lookup found no node or more than one), the helper records that reason instead of a value, so the assertion fails with it and the poll reads again on the next tick rather than aborting the step.
+1. On each tick, right after `driver.query()`, a helper `_attributes_for(driver, block)` handles each `attribute` assertion in the block. The helper calls `Driver.read_attribute(sel, name)` once, with the assertion's interpolated selector. If the read raises `SelectorError` (no element matches, or more than one does), the helper records that reason instead of a value, so the assertion fails with it and the poll reads again on the next tick rather than aborting the step.
 2. The helper stores the results in a new `attributes` field on `EvalContext`, keyed by the assertion's interpolated selector and attribute name, because the evaluator receives the assertion alone from `evaluate_one` and never its position in the block. The tick evaluates the block with that context.
 3. The evaluator compares the read value with the operator and returns an ordinary `AssertionResult`. A selector that fails to resolve returns the same reason the `value` assertion gives.
 4. A still-failing `attribute` assertion keeps the poll going, like `value` and the other tree-derived kinds. The kind therefore stays out of `_READ_ONCE_KINDS` (`_functions.py:109`), the set of kinds whose result a re-read cannot change.
@@ -83,36 +83,38 @@ The assertion stays inside the prime directives:
 
 - **No large language model (LLM).** The verdict is a string comparison.
 - **No fixed pause.** Each read is one synchronous call inside the existing condition wait.
-- **No guessing.** An ambiguous selector still fails before any read.
+- **No guessing.** An ambiguous selector fails through `resolve_unique`, the same rule a tap uses.
 - **App-agnostic.** The attribute name lives in the scenario, and the tool holds no per-application list of attributes.
 
 ### Reading the attribute in the web driver
 
-`read_attribute` must find, in the live page, the same element that the snapshot describes. The Playwright driver locates the element in two ways:
+`read_attribute` takes a `Selector`, like every other element-addressing method on the `Driver` protocol (`tap`, `select_option`, `wait_for`, and the rest). The driver resolves the selector itself, through the same `resolve_unique` (`bajutsu/common/drivers/base/_functions.py:284`) that a tap uses. Element identity therefore stays in the determinism core, and `tap: { sel: … }` and `attribute: { sel: … }` reach the same verdict on the same selector.
 
-| The element has | The driver finds it by |
-|---|---|
-| a `data-testid` | the element whose `data-testid` equals the snapshot's `identifier`, among the nodes `QUERY_JS` would list (it skips `display: none`, `visibility: hidden`, and zero-size nodes). Two such elements fail the read as ambiguous |
-| no `data-testid` | walking the same node list that `QUERY_JS` walks (`bajutsu/common/drivers/dom.py`) and matching the bounding rectangle, the accessible name, and the traits derived from the tag or role. This extends the rule `_point_hits` already applies to a tap (`bajutsu/common/drivers/playwright/playwright_driver.py:389`). More than one matching node fails the read as ambiguous |
+The Playwright driver reads the attribute in one `page.evaluate` call:
 
-The driver then returns `el.getAttribute(name)`, which is `null` for a missing attribute. The name reaches the script `json.dumps`-encoded, as `_point_hits` encodes `identifier` and `label`, never spliced in raw. A walk by node list, rather than `document.elementFromPoint`, also reads an element that another element covers or that sits outside the viewport. Occlusion matters for a tap, but it does not change what an attribute says. The script returns a tagged object rather than throwing (`{found: false}` when the lookup finds nothing, `{found: false, ambiguous: true}` when it finds more than one, and `{found: true, value}` when it finds exactly one), for the reason `select_option` gives: a thrown script error passes through `_wedge_guard` as a browser fault. A bare sentinel string, which `select_option` can afford, would collide here with an attribute whose real value equals it.
+1. The script runs the same walk as `QUERY_JS` (`bajutsu/common/drivers/dom.py`). Each record also carries `el.getAttribute(name)`, which is `null` for a missing attribute.
+2. The driver maps the records to `Element`s with `parse_dom`, keeping each record's attribute beside its element.
+3. `resolve_unique(elements, sel)` picks the one element and returns its attribute. No match raises `ElementNotFound`, and two or more raise `AmbiguousSelector`, both of which are `SelectorError`s.
+
+Resolving against the same walk that carries the attribute leaves no gap in which the page could change between finding the element and reading it, so the driver never re-matches a snapshot element to a live node. The walk is the query's own, so a covered element and one outside the viewport read the same as any other listed element. The name reaches the script `json.dumps`-encoded, as `_point_hits` encodes `identifier` and `label` (`bajutsu/common/drivers/playwright/playwright_driver.py:389`), never spliced in raw. Each read costs one walk of the page, the price of a second query.
 
 ### Driver, capability, and preflight
 
 | Layer | Change | File |
 |---|---|---|
 | Scenario model | `AttributeMatch`; the `attribute` kind on `Assertion` | `bajutsu/common/scenario/models/assertions/attribute_match.py` (new), `assertion.py` |
-| Driver protocol | `def read_attribute(self, el: Element, name: str) -> str \| None` | `bajutsu/common/drivers/base/driver.py` |
+| Driver protocol | `def read_attribute(self, sel: Selector, name: str) -> str \| None` | `bajutsu/common/drivers/base/driver.py` |
 | Capability | `ELEMENT_ATTRIBUTE = "elementAttribute"` | `bajutsu/common/drivers/base/capability.py` |
-| Preflight | an `attribute` assertion needs `elementAttribute`. `_assertions_with_path` reaches neither `web:` / `app:` blocks nor `interrupts`, so the locator recurses into those blocks and into `interrupts` recovery steps as `_navigate_locations` (BE-0464) does, and also checks each `interrupts` condition; `_steps_for_target` also narrows `interrupts` to the entries the target can poll: an entry naming it, and an entry omitting `target` when the target is the initial primary or any `setPrimaryTarget` destination (an omitted-target entry follows the primary in force, `TargetRoster.interrupts_for`, BE-0447), so a web-only entry does not fail an iOS target that never becomes primary | `bajutsu/common/capability/capability_preflight.py` |
+| Preflight | an `attribute` assertion needs `elementAttribute`. `_assertions_with_path` reaches neither `web:` / `app:` blocks nor `interrupts`, so the locator recurses into those blocks and into `interrupts` recovery steps as `_navigate_locations` (BE-0464) does, and also checks each `interrupts` condition; `_steps_for_target` also narrows `interrupts` to the entries the target can poll: an entry naming it, and an entry omitting `target` when the target is the initial primary or any `setPrimaryTarget` destination (an omitted-target entry follows the primary in force, `TargetRoster.interrupts_for`, BE-0447), so a web-only entry does not fail an iOS target that never becomes primary | `bajutsu/common/capability/capability_preflight.py` (the locator), `bajutsu/common/runner/pipeline.py` (`_steps_for_target`, beside `_scenario_interrupts_for`) |
 | Evaluation | the `_attributes_for` helper, the `EvalContext.attributes` field, and the `attribute` evaluator | `bajutsu/common/orchestrator/loop/_functions.py` (the step/`expect` poll and `_run_if`), `bajutsu/common/orchestrator/loop/_interrupt_guard.py`, `bajutsu/common/assertions/evaluate/` |
 | Web driver | `read_attribute` as described above | `bajutsu/common/drivers/playwright/playwright_driver.py` |
-| Fake driver | returns attributes seeded per element and advertises the capability | `bajutsu/common/drivers/fake/fake_driver.py` |
+| Fake driver | resolves the selector against its seeded tree, returns the attribute seeded for that element, and advertises the capability | `bajutsu/common/drivers/fake/fake_driver.py` |
 | Other drivers | raise `UnsupportedAction`, the way `select_option` does on iOS and Android | `adb`, `xcuitest`, `xcuitest_live`, `webview` drivers |
+| Config validation | reject an `attribute` in a non-web target's `hooks.interrupts` | `bajutsu/common/config/schema/target_config.py` |
 
 Bajutsu also reaches the Document Object Model (DOM) of a WebView embedded in an iOS app, through the BajutsuKit bridge that `WebContextDriver` (`bajutsu/common/drivers/webview/web_context_driver.py`) drives. The bridge is out of scope for the first slice: `WebContextDriver` already raises `UnsupportedAction` for `selectOption`, and it will raise the same for `read_attribute`. The preflight therefore fails an `attribute` assertion nested in a `web:` block on an iOS target, before any device is leased.
 
-A target's config can declare interrupts of its own (`hooks.interrupts`, `bajutsu/common/config/schema/hooks.py:47`), which the runner merges with the scenario's entries. The preflight reads the scenario alone, so it never sees those entries. Config validation therefore rejects an `attribute` in the `hooks.interrupts` of a non-web target when the config loads. The target's platform already decides whether its backend advertises `elementAttribute`, so the check needs no device.
+A target's config can declare interrupts of its own (`hooks.interrupts`, `bajutsu/common/config/schema/hooks.py:47`), which the runner merges with the scenario's entries. The preflight reads the scenario alone, so it never sees those entries. Config validation therefore rejects an `attribute` in the `hooks.interrupts` of a non-web target when the config loads. The check belongs on the merged `TargetConfig` (`bajutsu/common/config/schema/target_config.py:79`) rather than on `Hooks` itself, which carries no platform. The same `Hooks` model backs the team-wide `defaults.hooks` (`defaults.py:53`), which merges into each target before that target is validated, so one check there judges both shapes under each target's own platform. The target's platform already decides whether its backend advertises `elementAttribute`, so the check needs no device.
 
 ### Reports, goldens, and secrets
 
@@ -147,7 +149,7 @@ Because the read is on demand, an attribute enters the run's output only when an
 | 1 | Scenario model: `AttributeMatch`, the `attribute` kind, name validation, exactly-one operator | model tests load each operator, and reject an empty name, two operators, and `absent: false` |
 | 2 | Driver protocol, capability token, preflight requirement, config validation, non-web drivers raise | preflight tests show iOS and Android targets, an `attribute` nested in an iOS `web:` block, and an `attribute` in an `interrupts` condition fail before device lease with a message naming `attribute`. A web-only `interrupts` entry does not fail an iOS target, and an untargeted entry fails a target that a `setPrimaryTarget` step makes primary. A config whose non-web target declares an `attribute` in `hooks.interrupts` fails to load |
 | 3 | `_attributes_for`, `EvalContext.attributes`, evaluator | fake-driver tests cover each operator, presence against emptiness, an absent attribute, and an ambiguous selector that fails without a read. An attribute that changes on a later tick passes within the wait floor. An `attribute` in an `if` condition and in an `interrupts` condition reads the attribute and decides the branch or the fire |
-| 4 | Playwright `read_attribute` | web driver tests in real Chromium read an attribute by `data-testid` and by the node-list walk, read a covered element and one outside the viewport, fail an ambiguous `data-testid`, ignore a hidden duplicate `data-testid`, and fail two nodes that match by rectangle, name, and traits |
+| 4 | Playwright `read_attribute` | web driver tests in real Chromium read an attribute through a `data-testid` selector and a label selector, read a covered element and one outside the viewport, return `None` for a missing attribute, and raise `ElementNotFound` and `AmbiguousSelector` exactly where `resolve_unique` does for `tap` |
 | 5 | Driver conformance case | the web conformance suite passes with a new `read_attribute` case, and non-web backends skip it by capability |
 | 6 | Codegen | the Playwright output for an `attribute` scenario matches a golden, and the other generators emit the labeled `TODO` |
 | 7 | Web demo scenario | a scenario under the web demo asserts a link's `href` and a `data-*` attribute that settles after an action. The web demo's run sets `BAJUTSU_MIN_WAIT_TIMEOUT`, and the scenario passes in the web E2E lane |
@@ -157,6 +159,7 @@ Because the read is on demand, an attribute enters the run's output only when an
 
 - **The kind's name.** We chose `attribute`, which reads naturally beside `value` and `label`. A shorter `attr` saves typing but departs from the spelled-out names the other kinds use.
 - **The `absent` operator.** We chose `absent: true` over reusing `exists` with a new field, because the question is about one attribute of an element that does exist.
+- **`read_attribute` takes a `Selector`, not an `Element`.** Taking the snapshot `Element` would save the second walk, but each backend would then re-match it to a live node with its own rule. That rule could call ambiguous what `resolve_unique` already accepted as unique, and every later DOM-capable backend would re-implement it. Resolving the selector in the driver keeps one matching rule, at the cost of one walk per read.
 
 ## Alternatives considered
 

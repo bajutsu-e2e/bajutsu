@@ -72,7 +72,7 @@ AttributeMatch ::= { sel: <Selector>, name: string }
 
 ポーリングの時間の上限は、lane の待機の下限だけで決まります。環境変数 `BAJUTSU_MIN_WAIT_TIMEOUT` が設定されていなければ、`_timeout_floor()` は 0 です。この環境変数は `bajutsu/common/orchestrator/waits/_functions.py:47` で定義されています。いまこの値を設定しているのは、iOS と Android の lane だけです。そのため web の lane では、まとまりごとに1回だけ読み、ポーリングは何も加えません。作業単位7では、Android の lane と同じく、web のデモの実行に待機の下限を設定します。アサーションを受け付ける `until` の形はないので、`wait` ステップで下限の代わりはできません。
 
-1. 各回の `driver.query()` の直後に、補助関数 `_attributes_for(driver, tree, block)` が、まとまりの中の各 `attribute` アサーションを処理します。補助関数は、セレクタをその回のツリーに対して解決し、`Driver.read_attribute(element, name)` を1回呼びます。読み出しが `SelectorError` を送出した場合（実際のページで要素が見つからない場合や、2つ以上見つかった場合）、補助関数は値の代わりにその理由を記録します。アサーションはその理由で失敗し、ステップを中断せずに次の回で読み直します。
+1. 各回の `driver.query()` の直後に、補助関数 `_attributes_for(driver, block)` が、まとまりの中の各 `attribute` アサーションを処理します。補助関数は、アサーションの展開済みのセレクタで `Driver.read_attribute(sel, name)` を1回呼びます。読み出しが `SelectorError` を送出した場合（一致する要素がない場合や、2つ以上ある場合）、補助関数は値の代わりにその理由を記録します。アサーションはその理由で失敗し、ステップを中断せずに次の回で読み直します。
 2. 補助関数は、結果を `EvalContext` の新しい `attributes` フィールドに、展開済みのセレクタと属性名をキーとして保存します。評価関数が `evaluate_one` から受け取るのはアサーションだけで、まとまりの中の位置は渡されないからです。その回の評価には、このコンテキストを使います。
 3. 評価関数は、読んだ値を比較の種類に従って比べ、通常の `AssertionResult` を返します。セレクタが解決できない場合は、`value` アサーションと同じ理由を返します。
 4. 失敗が続く `attribute` アサーションは、`value` などツリーから導く種類と同じく、ポーリングを続けさせます。そのため、この種類は `_READ_ONCE_KINDS`（`_functions.py:109`）に入れません。`_READ_ONCE_KINDS` は、読み直しても結果が変わらない種類の集合です。
@@ -85,42 +85,38 @@ AttributeMatch ::= { sel: <Selector>, name: string }
 
 - **大規模言語モデル（LLM）を使いません**：判定は文字列の比較です。
 - **固定の待機を入れません**：各回の読み出しは、既存の条件待ちの中での同期的な1回の呼び出しです。
-- **推測しません**：曖昧なセレクタは、読み出しの前に失敗します。
+- **推測しません**：曖昧なセレクタは、タップと同じ `resolve_unique` の規則で失敗します。
 - **アプリに依存しません**：属性名はシナリオに書き、ツールはアプリケーションごとの属性の一覧を持ちません。
 
 ### web ドライバーでの属性の読み方
 
-`read_attribute` は、スナップショットが表すのと同じ要素を、実際のページの中で見つける必要があります。Playwright ドライバーは、次の2つの方法で要素を見つけます。
+`read_attribute` は、`Driver` プロトコルで要素を指すほかのメソッド（`tap`、`select_option`、`wait_for` など）と同じく、`Selector` を受け取ります。ドライバーは、タップと同じ `resolve_unique`（`bajutsu/common/drivers/base/_functions.py:284`）で、自身でセレクタを解決します。そのため、要素の特定は決定性の中核にとどまります。同じセレクタに対して、`tap: { sel: … }` と `attribute: { sel: … }` の判定が食い違うことはありません。
 
-| 要素が持つもの | ドライバーが要素を見つける方法 |
-|---|---|
-| `data-testid` | `data-testid` がスナップショットの `identifier` に等しい要素を、`QUERY_JS` が一覧に入れるノード（`display: none`、`visibility: hidden`、大きさのないノードを除いたもの）の中から探します。該当する要素が2つあれば、曖昧として読み出しを失敗させます |
-| `data-testid` がない | `QUERY_JS`（`bajutsu/common/drivers/dom.py`）が走査するのと同じノードの一覧をたどり、境界の矩形、アクセシブルな名前、タグやロールから決まる trait で照合します。タップで `_point_hits`（`bajutsu/common/drivers/playwright/playwright_driver.py:389`）がすでに使っている規則を広げたものです。一致するノードが2つ以上あれば、曖昧として読み出しを失敗させます |
+Playwright ドライバーは、1回の `page.evaluate` で属性を読みます。
 
-見つけたら、ドライバーは `el.getAttribute(name)` を返します。属性がない場合の戻り値は `null` です。属性名は `json.dumps` で符号化してスクリプトに渡し、そのまま埋め込みません。`_point_hits` も、`identifier` や `label` を同じ方法で渡しています。`document.elementFromPoint` ではなくノードの一覧をたどるので、ほかの要素に覆われた要素や、表示領域の外にある要素も読めます。覆われているかどうかはタップでは問題になりますが、属性の値は変わりません。スクリプトは例外を投げず、次の3つの形のどれかを返します。
+1. スクリプトは、`QUERY_JS`（`bajutsu/common/drivers/dom.py`）と同じようにページを走査します。各記録には、`el.getAttribute(name)` の結果も載せます。属性がない場合の値は `null` です。
+2. ドライバーは、`parse_dom` で記録を `Element` に写像し、各記録の属性を対応する要素の隣に保ちます。
+3. `resolve_unique(elements, sel)` が要素を1つに決め、その要素の属性を返します。一致する要素がなければ `ElementNotFound` を、2つ以上あれば `AmbiguousSelector` を送出します。どちらも `SelectorError` です。
 
-- 要素が見つからない場合は `{found: false}` です。
-- 2つ以上見つかった場合は `{found: false, ambiguous: true}` です。
-- 1つだけ見つかった場合は `{found: true, value}` です。
-
-例外を投げない理由は `select_option` と同じで、投げられたスクリプトのエラーは `_wedge_guard` を通るとブラウザーの障害として扱われるからです。`select_option` のような目印の文字列を使わないのは、属性の本当の値が目印と同じだったとき、両者を区別できなくなるからです。
+要素の特定と属性の読み出しを同じ走査の中で行うので、その間にページが変わる余地はありません。スナップショットの要素を実際のノードに照合し直す処理も要りません。走査はクエリと同じものです。覆われた要素や表示領域の外にある要素も、ほかの要素と同じく読めます。属性名は `json.dumps` で符号化してスクリプトに渡し、そのまま埋め込みません。タップで使う `_point_hits`（`playwright_driver.py:389`）も、`identifier` や `label` を同じ方法で渡しています。読み出しのたびにページを1回走査するので、クエリを1回増やすのと同じ費用がかかります。
 
 ### ドライバー、capability、preflight
 
 | 層 | 変更 | ファイル |
 |---|---|---|
 | シナリオのモデル | `AttributeMatch` と、`Assertion` の `attribute` の種類 | `bajutsu/common/scenario/models/assertions/attribute_match.py`（新規）、`assertion.py` |
-| ドライバーのプロトコル | `def read_attribute(self, el: Element, name: str) -> str \| None` | `bajutsu/common/drivers/base/driver.py` |
+| ドライバーのプロトコル | `def read_attribute(self, sel: Selector, name: str) -> str \| None` | `bajutsu/common/drivers/base/driver.py` |
 | capability | `ELEMENT_ATTRIBUTE = "elementAttribute"` | `bajutsu/common/drivers/base/capability.py` |
-| preflight | `attribute` アサーションは `elementAttribute` を必要とします。`_assertions_with_path` は `web:` と `app:` のブロックも `interrupts` も扱いません。そのため、場所の探索は `_navigate_locations`（BE-0464）と同じく `web:` と `app:` のブロックの中と `interrupts` の回復のステップまでたどり、さらに `interrupts` の条件も確かめます。あわせて `_steps_for_target` で `interrupts` も、そのターゲットが監視しうる項目に絞ります。対象は、そのターゲットを名指しする項目と、`target` を省いた項目のうちそのターゲットが最初の primary か `setPrimaryTarget` の移動先である場合です（`target` を省いた項目はその時点の primary に従います。`TargetRoster.interrupts_for`、BE-0447）。これにより、primary にならない iOS のターゲットを、web だけを対象とする項目が失敗させないようにします | `bajutsu/common/capability/capability_preflight.py` |
+| preflight | `attribute` アサーションは `elementAttribute` を必要とします。`_assertions_with_path` は `web:` と `app:` のブロックも `interrupts` も扱いません。そのため、場所の探索は `_navigate_locations`（BE-0464）と同じく `web:` と `app:` のブロックの中と `interrupts` の回復のステップまでたどり、さらに `interrupts` の条件も確かめます。あわせて `_steps_for_target` で `interrupts` も、そのターゲットが監視しうる項目に絞ります。対象は、そのターゲットを名指しする項目と、`target` を省いた項目のうちそのターゲットが最初の primary か `setPrimaryTarget` の移動先である場合です（`target` を省いた項目はその時点の primary に従います。`TargetRoster.interrupts_for`、BE-0447）。これにより、primary にならない iOS のターゲットを、web だけを対象とする項目が失敗させないようにします | `bajutsu/common/capability/capability_preflight.py`（場所の探索）、`bajutsu/common/runner/pipeline.py`（`_scenario_interrupts_for` の隣の `_steps_for_target`） |
 | 評価 | 補助関数 `_attributes_for`、`EvalContext.attributes` フィールド、`attribute` の評価関数 | `bajutsu/common/orchestrator/loop/_functions.py`（ステップと `expect` のポーリング、`_run_if`）、`bajutsu/common/orchestrator/loop/_interrupt_guard.py`、`bajutsu/common/assertions/evaluate/` |
 | web ドライバー | 前節で述べた `read_attribute` | `bajutsu/common/drivers/playwright/playwright_driver.py` |
-| フェイクドライバー | 要素ごとに与えた属性を返し、capability を広告します | `bajutsu/common/drivers/fake/fake_driver.py` |
+| フェイクドライバー | 与えたツリーに対してセレクタを解決し、その要素に与えた属性を返し、capability を広告します | `bajutsu/common/drivers/fake/fake_driver.py` |
 | ほかのドライバー | iOS と Android の `select_option` と同じく `UnsupportedAction` を送出します | `adb`、`xcuitest`、`xcuitest_live`、`webview` の各ドライバー |
+| 設定の検証 | web 以外のターゲットの `hooks.interrupts` にある `attribute` を拒否します | `bajutsu/common/config/schema/target_config.py` |
 
 WebView を埋め込んだ iOS アプリでも、Bajutsu は BajutsuKit のブリッジを通して Document Object Model（DOM）にアクセスできます。ブリッジを操作するのは `WebContextDriver`（`bajutsu/common/drivers/webview/web_context_driver.py`）です。最初の段階では、このブリッジは対象外とします。`WebContextDriver` はいま `selectOption` に対して `UnsupportedAction` を送出しており、`read_attribute` にも同じく送出させます。そのため、iOS のターゲットで `web:` ブロックの中に置いた `attribute` アサーションも、デバイスを確保する前の preflight で失敗します。
 
-ターゲットの設定は、独自の interrupt を宣言できます（`hooks.interrupts`、`bajutsu/common/config/schema/hooks.py:47`）。ランナーは、それをシナリオの項目とあわせて使います。preflight はシナリオだけを読むので、設定側の項目は見えません。そのため、web 以外のターゲットの `hooks.interrupts` に `attribute` があれば、設定の読み込み時の検証で拒否します。バックエンドが `elementAttribute` を広告するかどうかはターゲットのプラットフォームで決まるので、この検証にデバイスは要りません。
+ターゲットの設定は、独自の interrupt を宣言できます（`hooks.interrupts`、`bajutsu/common/config/schema/hooks.py:47`）。ランナーは、それをシナリオの項目とあわせて使います。preflight はシナリオだけを読むので、設定側の項目は見えません。そのため、web 以外のターゲットの `hooks.interrupts` に `attribute` があれば、設定の読み込み時の検証で拒否します。この検証は、`Hooks` そのものではなく、統合後の `TargetConfig`（`bajutsu/common/config/schema/target_config.py:79`）に置きます。`Hooks` はプラットフォームを持たないからです。同じ `Hooks` モデルは、チーム共通の `defaults.hooks`（`defaults.py:53`）にも使われます。`defaults.hooks` は、各ターゲットを検証する前にそのターゲットへ統合されます。そのため、`TargetConfig` での1つの検証で、どちらの書き方もターゲットごとのプラットフォームに照らして判定できます。バックエンドが `elementAttribute` を広告するかどうかはターゲットのプラットフォームで決まるので、この検証にデバイスは要りません。
 
 ### レポート、golden、秘密情報
 
@@ -155,7 +151,7 @@ WebView を埋め込んだ iOS アプリでも、Bajutsu は BajutsuKit のブ�
 | 1 | シナリオのモデル：`AttributeMatch`、`attribute` の種類、属性名の検証、比較の種類はちょうど1つ | モデルのテストで、各比較の種類を読み込めることと、空の名前、2つの比較の種類、`absent: false` を拒否することを確かめます |
 | 2 | ドライバーのプロトコル、capability、preflight の要件、設定の検証、web 以外のドライバーの送出 | preflight のテストで、iOS と Android のターゲット、iOS の `web:` ブロック内の `attribute`、`interrupts` の条件の中の `attribute` が、デバイスの確保前に `attribute` を名指しするメッセージで失敗することを確かめます。web だけを対象とする `interrupts` の項目が iOS のターゲットを失敗させないこと、`target` を省いた項目が `setPrimaryTarget` で primary になるターゲットを失敗させること、web 以外のターゲットの `hooks.interrupts` に `attribute` を書いた設定が読み込みで失敗することも確かめます |
 | 3 | `_attributes_for`、`EvalContext.attributes`、評価関数 | フェイクドライバーのテストで、各比較の種類、存在と空の区別、属性がない場合、読み出しをせずに失敗する曖昧なセレクタを確かめます。後の回で変わる属性が待機の下限内に成功すること、`if` の条件と `interrupts` の条件に置いた `attribute` が属性を読んで分岐や発火を決めることも確かめます |
-| 4 | Playwright の `read_attribute` | 実際の Chromium を使う web ドライバーのテストで、`data-testid` とノードの一覧の走査のそれぞれで属性を読めること、覆われた要素と表示領域外の要素を読めること、`data-testid` が曖昧な場合と、矩形、名前、trait で一致するノードが2つある場合に失敗すること、非表示の重複した `data-testid` があっても曖昧にならないことを確かめます |
+| 4 | Playwright の `read_attribute` | 実際の Chromium を使う web ドライバーのテストで、`data-testid` のセレクタとラベルのセレクタのそれぞれで属性を読めること、覆われた要素と表示領域外の要素を読めること、属性がない場合に `None` を返すことを確かめます。`tap` で `resolve_unique` が送出するのと同じ場面で、`ElementNotFound` と `AmbiguousSelector` を送出することも確かめます |
 | 5 | ドライバーの適合性テスト | web の適合性テストに `read_attribute` のケースを加えて成功させ、web 以外のバックエンドでは capability によって省略します |
 | 6 | コード生成 | `attribute` を使うシナリオの Playwright 出力が golden と一致し、ほかのコード生成がラベル付きの `TODO` を出力することを確かめます |
 | 7 | web のデモシナリオ | web のデモに、リンクの `href` と、操作の後で値が定まる `data-*` 属性を確かめるシナリオを加えます。web のデモの実行には `BAJUTSU_MIN_WAIT_TIMEOUT` を設定し、web の E2E レーンで成功させます |
@@ -165,6 +161,7 @@ WebView を埋め込んだ iOS アプリでも、Bajutsu は BajutsuKit のブ�
 
 - **種類の名前**：`value` や `label` と並べて自然に読めるので、`attribute` を選びました。短い `attr` は入力の手間を減らしますが、ほかの種類が使う省略しない名前から外れます。
 - **`absent` の比較**：`exists` に新しいフィールドを加える案ではなく、`absent: true` を選びました。問いの対象は、存在する要素が持つ1つの属性だからです。
+- **`read_attribute` が `Element` ではなく `Selector` を受け取ること**：スナップショットの `Element` を受け取れば2回目の走査は省けます。しかしその場合、各バックエンドが、実際のノードとの照合を独自の規則でやり直すことになります。その規則は、`resolve_unique` が一意と認めた要素を曖昧と判定するおそれがあります。今後 DOM を扱うバックエンドも、それぞれ規則を実装し直すことになります。ドライバーの中でセレクタを解決すれば、照合の規則は1つで済みます。その代わり、読み出しのたびに1回の走査がかかります。
 
 ## 検討した代替案
 
