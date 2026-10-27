@@ -290,7 +290,7 @@ resolved `Effective` keeps `run_defaults` as an internal grouping, filled from t
   dotted and underscore forms are a selector decision, not a config-structure one. BE-0221 chose the
   explicit candidate list over a driver-side rewrite, because a rewrite could conflate distinct ids
   such as `a.b` and `a-b`. The gap that matters is verification: a scenario no Views target runs
-  carries underscore candidates nobody checks. A separate GitHub issue tracks running `device.yaml`
+  carries underscore candidates nobody checks. A separate GitHub issue ([#2233](https://github.com/bajutsu-e2e/bajutsu/issues/2233)) tracks running `device.yaml`
   on the Views lane and deleting the candidates no lane resolves.
 - **An `extends:` key** for one target to inherit another; see *Alternatives considered*.
 - **Reading the old keys**, and a migration command.
