@@ -17,9 +17,9 @@
 A target's `runsOn` names the device it needs by an exact string. On iOS, `model` must equal the
 Simulator's device-type name, such as `"iPad Pro 13-inch (M4)"`. On the web, `browser.engine` is
 one engine, and a list of engines multiplies the runs. This item adds two ways to say "any of
-these" without naming a model. On iOS, `family: [iphone, ipad]` takes one Simulator of the first
-listed family that the pool has. On the web, `browser: { anyOf: [chromium, firefox, webkit] }` takes
-the first listed engine that launches. Both resolve to one run, and the manifest records what
+these" without naming a model. On iOS, `family: [iphone, ipad]` takes one device of the first listed
+family that the pool has, a Simulator or a connected real device. On the web,
+`browser: { anyOf: [chromium, firefox, webkit] }` takes the first listed engine that reads. Both resolve to one run, and the manifest records what
 each run took.
 
 ## Motivation
@@ -70,6 +70,59 @@ The web has one spelling for "any engine": `anyOf` with every engine listed. Omi
 serve, because the engine has a built-in default, `chromium`. iOS has no default model, so omission
 already means "any", and a target clears an inherited `family` with `family: null`.
 
+### Examples by destination
+
+A Simulator target names a family, or leaves `runsOn` without one to take any Simulator.
+
+```yaml
+targets:
+  app-sim:
+    platform: ios
+    app: { id: com.example.app }
+    runsOn:
+      family: [iphone, ipad]   # one Simulator; an iPhone when the pool has one, else an iPad
+      os: "18"                 # composes with family, as with model today
+```
+
+`family: ipad` alone takes any iPad. A target that writes neither `family` nor `model` takes any
+Simulator, as today.
+
+A real-device target declares `kind: device`. Its pool is every udid of `--udid`, the real
+devices connected to the host. `family` matches against that pool, so `family: ipad` takes any
+connected iPad. Without `family`, the target takes any device of the pool, as today.
+
+```yaml
+targets:
+  app-device:
+    platform: ios
+    app: { id: com.example.app }
+    runsOn:
+      kind: device
+      family: ipad   # any connected iPad among the --udid devices
+```
+
+`model` and `os` stay refused on a real device. *Reading the family* gives the reason.
+
+A browser target lists its engines in priority order. Listing all three engines means "any
+browser".
+
+```yaml
+targets:
+  site:
+    platform: web
+    app: { url: https://example.com }
+    runsOn:
+      browser: { anyOf: [chromium, firefox, webkit] }   # the first engine that reads wins
+```
+
+A scenario may replace its target's choice for itself, under the cross-layer rule below.
+
+```yaml
+preconditions:
+  runsOn:
+    ios: { family: ipad }
+```
+
 ### Rules the loader enforces
 
 Each rule inside one `runsOn` block runs on the merged config block, after team defaults have
@@ -88,8 +141,9 @@ the rules below hold.
 
 - `family` and `model` together fail the load and name both fields. A target clears an inherited
   one with `null`.
-- `family` on a target with `kind: device` fails the load, like `model` and `os` today. A physical
-  device has no pool to match.
+- `family` is allowed on a target with `kind: device`; `model` and `os` still fail the load there.
+  A target that an `appium` grid or a Device Farm job serves has no pool to read, so a `family`
+  there fails before any device work, as every condition does today.
 - `anyOf` and an explicit `engine` together fail the load. `engine` therefore loses its
   field-level `"chromium"` default and becomes `str | list[str] | None`. The merge pops a `null`
   before validation, so a field default would fire again and win over `anyOf`. The built-in
@@ -147,6 +201,44 @@ from the `productFamily` of the device type it already looks up for the name. A 
 `productFamily` raises `DeviceReadError`, because the reader fails loudly rather than guessing.
 Android and web devices carry `None`.
 
+A real device gains a reader of its own, `read_ios_device`. It reads every udid of the pool from
+`xcrun devicectl list devices` with JSON output, taking `hardwareProperties.deviceType` (`iPhone`,
+`iPad`) as the family. A udid that the listing does not show, or that reports no device type, raises
+`DeviceReadError`. The reader reads the family alone. A real device's model and release are
+readable too, but a `model` condition would compare a product identifier such as `iPad13,8`, not
+the Simulator's device-type name. Matching on that identifier needs a separate design, so `model`
+and `os` stay refused on a real device. The read runs before any device work, in the same pool
+read that `read_ios` serves for Simulators.
+
+### Checking on the worker
+
+A server worker already knows which real devices it can drive, so the worker checks a real-device
+`family` before it takes a job. The check reuses the capability routing of
+[BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues.md). Under that routing, a job
+carries the tokens it requires, and a worker leases the job only when it advertises all of them
+(`can_serve` in `bajutsu/serve/capabilities.py`). Workers already advertise `iphone` and `ipad`
+from their Simulator inventory (`simctl_capabilities`).
+
+- **What the worker advertises.** A worker adds `device:iphone` and `device:ipad` tokens for the
+  real devices connected to it, read through the same `devicectl` reader as `read_ios_device`.
+  Real devices come and go, so the worker refreshes these tokens before each lease attempt rather
+  than once at registration. `device:` becomes a reserved prefix, like `environment:` and `host:`,
+  so an operator's hand-written tokens cannot claim a device the worker lacks.
+- **What a job requires.** A real-device target with one family adds that token to the job's
+  required set, for example `device:ipad`. A priority list cannot become a subset requirement,
+  because any one family suffices. The job instead carries an any-of group,
+  `[device:iphone, device:ipad]`, stored beside its required tokens. `can_serve` accepts the job
+  when the worker advertises every required token and at least one token of each group.
+- **What the leasing worker does.** The worker resolves the priority list over its own pool, as a
+  local `run` does. The routing decides which worker runs the job; the priority list decides which
+  device on that worker runs it. The winner lands in the run's coordinates, so the flakiness key
+  separates runs that took different families.
+
+A job that no worker can serve stays queued, as a job with an unmet token does today. A device that
+disconnects between the lease and the run fails the run when the worker reads its pool, because
+the reader raises `DeviceReadError` rather than skipping the device. Routing never touches the
+verdict: it decides where a job runs, and the run itself stays deterministic.
+
 ### Schema, reports, and docs
 
 - `IosRunsOn` in `bajutsu/common/config/schema/platform/ios.py` gains `family`. `WebBrowser` in
@@ -170,6 +262,7 @@ in config.
 
 ### Out of scope
 
+- `model` and `os` on a real device. The reason is under *Reading the family*.
 - Android form factor. A tablet-or-phone fact needs `ro.build.characteristics` read on an
   emulator, which this item leaves to its own proposal.
 - `runsOn.emulate`. It picks a Playwright viewport profile rather than a device from a pool, so
@@ -181,7 +274,8 @@ in config.
 ### Work breakdown
 
 1. **Read the family.** Add `family` to `DeviceFacts` and read it in `read_ios` from
-   `productFamily`. Confirm on a real `simctl list devicetypes` that every iPhone and iPad type
+   `productFamily`. Add `read_ios_device` for real devices over `devicectl`, and confirm on a
+   connected iPhone and iPad that `hardwareProperties.deviceType` carries the family. Confirm on a real `simctl list devicetypes` that every iPhone and iPad type
    carries it.
 2. **Schema.** Add `IosRunsOn.family` and `WebBrowser.anyOf`, move the `chromium` default from
    the `engine` field to run resolution, and add the load-time rules above. Apply the cross-layer
@@ -194,8 +288,13 @@ in config.
 4. **Wiring.** Carry the fields through `_conditions` and `unpack_conditions`, make `--browser`
    clear `anyOf`, and thread the winning engine into the web lane.
 5. **Reporting.** Show the winner in the run label, the manifest, `doctor`, and the flakiness key.
-6. **Docs and demos.** Update the bilingual docs named above, and switch one demo config from an
-   exact model to `family` as a worked example.
+6. **Worker routing.** Advertise `device:iphone` and `device:ipad` from the worker's connected
+   real devices, refreshed before each lease. Reserve the `device:` prefix, add the any-of group to
+   a job's requirement, and extend `can_serve` to accept it.
+7. **Docs and demos.** Update the bilingual docs named above, and carry the three examples of
+   *Examples by destination* (Simulator, real device, and browser) into the configuration page's
+   `runsOn` section in both languages. Switch one demo config from an exact model to `family` as a
+   worked example.
 
 Each unit carries its own tests: the schema rules, a fake pool for each resolution branch, and
 the failure messages.
@@ -223,11 +322,13 @@ the failure messages.
 - [ ] Unit 3: resolution
 - [ ] Unit 4: wiring
 - [ ] Unit 5: reporting
-- [ ] Unit 6: docs and demos
+- [ ] Unit 6: worker routing
+- [ ] Unit 7: docs and demos
 
 ## References
 
 - [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure.md): the `runsOn` conditions, device matching, and runs this item extends.
 - [BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact.md): the device facts that the flakiness key reads.
+- [BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues.md): the capability routing a worker uses to check a real-device family before it leases a job.
 - [BE-0076](../BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md): the web engines this item makes selectable by priority.
 - `bajutsu/common/devices/facts.py` and `bajutsu/common/devices/runs.py`: where the family is read and resolved.
