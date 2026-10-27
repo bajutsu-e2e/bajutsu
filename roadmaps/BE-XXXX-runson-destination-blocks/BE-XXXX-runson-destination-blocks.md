@@ -18,8 +18,10 @@ A target's `runsOn` limits where the target can run. This item groups that limit
 `runsOn.ios`, `runsOn.android`, and `runsOn.browser`. The browser block already names its
 destination; the iOS and Android fields sit bare beside it today. The item also removes
 `preconditions.runsOn` from the scenario, because where a run can happen belongs to the target. A
-scenario's device state (`locale`, `seedPhotos`) moves to `preconditions.device.ios`. No field
-changes meaning: every condition matches devices exactly as it does today, from its new path.
+scenario's device state (`locale`, `seedPhotos`) moves to `preconditions.device.ios`. No field that
+moves changes meaning: every condition a target declares matches devices exactly as it does today,
+from its new path. A scenario's own conditions have no new path; the target a scenario names
+declares them instead.
 
 ## Motivation
 
@@ -46,7 +48,8 @@ path that replaces it.
 
 ### The shape of `runsOn`
 
-Each target writes one destination block. Today each platform allows exactly one destination.
+Each target writes at most one destination block. Today the iOS, Android, and web platforms each
+allow exactly one destination, and `fake` allows none.
 
 | Platform | Block | Fields |
 |---|---|---|
@@ -60,11 +63,12 @@ decides how the app is given (`app.id` or `app.url`) and which driver runs it. `
 where that app can run. The two coincide for every platform today, but they need not. A web app
 that runs in mobile Safari on an iOS Simulator has `platform: web` and an iOS destination, and a
 Flutter app would run on both iOS and Android. The loader therefore checks that the pair is an
-allowed one, not that the two names are equal. The allowed pairs are the four rows above. A
+allowed one, not that the two names are equal. The three rows above that name a block are the
+allowed pairs; `fake` has no destination, so any destination key fails for a `fake` target. A
 `platform: ios` target with `runsOn.browser`, for example, fails and names the destinations that
 `ios` allows. A later proposal can widen a platform's destinations without reshaping `runsOn`. Team
-defaults may hold several blocks under `defaults.runsOn`. Each target takes the block for its own
-platform, so a team default for iOS no longer reaches a web target.
+defaults stay under `defaults.platforms.<platform>.runsOn`, where BE-0452 put them, and each one
+now holds that platform's destination block.
 
 [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure.md) rejected the
 platform name as a key at the target level. That alternative nested the same word twice, as in
@@ -149,8 +153,13 @@ preconditions:
 - `bajutsu config schema` emits the destination blocks.
 - [Configuration](../../docs/configuration.md#device-conditions-runson) and its `docs/ja/` mirror
   take the new shape, the migration table, and the examples. [CLI](../../docs/cli.md) drops the
-  scenario's `runsOn` section. [Architecture](../../docs/architecture.md) updates the
-  `common/config/` row.
+  scenario's `runsOn` section, and [scenarios](../../docs/scenarios.md) drops the
+  `preconditions.runsOn` group from the scenario schema; both have `docs/ja/` mirrors that change
+  with them. [Architecture](../../docs/architecture.md) updates the `common/config/` row.
+- [run-loop](../../docs/run-loop.md) and `demos/showcase/SPEC.md` name
+  `preconditions.runsOn.ios.locale` or `seedPhotos` in prose and take the new path, as do
+  `docs/ja/run-loop.md`, `demos/showcase/SPEC.ja.md`, and
+  `docs/specs/ios-home-screen-widget-feasibility.md`.
 
 ### Prime-directive compliance
 
@@ -171,13 +180,17 @@ and removes an override, so every difference stays in config, now in one place p
 
 1. **Destination blocks.** Wrap each platform's `runsOn` model in `ios`, `android`, or `browser`,
    check that `platform` allows the key, take per-platform team defaults, move `emulate` under
-   `browser`, and fail each old key with its new path. Rewrite the `demos/` configs and the test
-   fixtures. Extend the JSON Schema output.
+   `browser`, and fail each old key with its new path. Move the device-state and driving-mode skip
+   list of `unpack_conditions` (`bajutsu/common/devices/runs.py`) down a level with the fields.
+   Its Device Farm caller `_check_no_conditions`
+   (`bajutsu/serve/batch_provider/device_farm_batch_provider.py`) reads a raw `runsOn` block, so it
+   moves too. Rewrite the `demos/` configs and the test fixtures. Extend the JSON Schema output.
 2. **Scenario block.** Remove `preconditions.runsOn`, add `preconditions.device.ios` for `locale`
    and `seedPhotos`, and fail the old block with the replacement for each field. Drop the scenario
-   merge from `effective_conditions`, and rewrite the four demo scenarios that set device state.
-3. **Docs.** Update the bilingual docs named above with the new shape, the migration table, and
-   the examples.
+   merge from `effective_conditions` and the scenario branch of `_check_no_conditions`, and rewrite
+   the four demo scenarios that set device state.
+3. **Docs.** Update the bilingual docs and the prose pages named above with the new shape, the
+   migration table, and the examples.
 
 Each unit carries its own tests: the allowed-pair rule, each migration message, and the device
 block's replace semantics.

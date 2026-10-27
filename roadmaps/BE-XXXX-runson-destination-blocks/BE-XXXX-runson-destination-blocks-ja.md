@@ -18,8 +18,10 @@
 `runsOn.ios`、`runsOn.android`、`runsOn.browser` へまとめます。ブラウザのブロックはすでに実行先を
 名指ししていますが、iOS と Android のフィールドは現在その隣にむき出しで並んでいます。あわせて、
 シナリオから `preconditions.runsOn` を取り除きます。実行できる場所はターゲットが持つ性質だからです。
-シナリオのデバイス状態（`locale`、`seedPhotos`）は `preconditions.device.ios` に移します。意味の
-変わるフィールドはありません。どの条件も、新しいパスから現在とまったく同じようにデバイスを照合します。
+シナリオのデバイス状態（`locale`、`seedPhotos`）は `preconditions.device.ios` に移します。移る
+フィールドで意味の変わるものはありません。ターゲットが書く条件はどれも、新しいパスから現在とまったく
+同じようにデバイスを照合します。シナリオ自身の条件には新しいパスがありません。代わりに、シナリオの
+名指しするターゲットに書きます。
 
 ## 動機
 
@@ -47,7 +49,8 @@
 
 ### `runsOn` の形
 
-各ターゲットは、実行先のブロックを 1 つ書きます。現在は、どのプラットフォームも実行先を 1 つだけ許します。
+各ターゲットが書く実行先のブロックは、多くても 1 つです。現在、iOS、Android、web の各プラットフォームは
+実行先を 1 つだけ許し、`fake` は 1 つも許しません。
 
 | プラットフォーム | ブロック | フィールド |
 |---|---|---|
@@ -61,12 +64,12 @@
 できる場所を限定します。現在はどのプラットフォームでも両者が一致しますが、一致する必要はありません。
 iOS Simulator のモバイル Safari で動く web アプリは、`platform: web` で実行先が iOS です。Flutter の
 アプリなら iOS と Android の両方で動きます。そこでローダーは、2 つの名前が等しいかではなく、組が
-許されたものかを確かめます。許される組は上の表の 4 行です。たとえば `runsOn.browser` を書いた
+許されたものかを確かめます。許される組は、上の表でブロックを名指しする 3 行です。`fake` には実行先が
+ないので、`fake` のターゲットではどの実行先のキーも失敗します。たとえば `runsOn.browser` を書いた
 `platform: ios` のターゲットは、`ios` が許す実行先を示して失敗します。後の提案は、`runsOn` の形を
 変えずにプラットフォームの実行先を広げられます。
-チームのデフォルト値は、`defaults.runsOn` に複数のブロックを持てます。各ターゲットは自分の
-プラットフォームのブロックだけを受け取るので、iOS 向けのデフォルト値が web のターゲットに届くことは
-なくなります。
+チームのデフォルト値は、BE-0452 が置いた `defaults.platforms.<platform>.runsOn` にとどまります。
+それぞれの値は、そのプラットフォームの実行先のブロックを持つようになります。
 
 [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md) は、
 ターゲットの階層でプラットフォーム名をキーにする案を退けています。その案では `targets.web.web:` のように
@@ -149,8 +152,14 @@ preconditions:
 - シナリオのスキーマから `preconditions.runsOn` を外し、`preconditions.device.ios` を加えます。
 - `bajutsu config schema` は実行先のブロックを出力します。
 - [設定](../../docs/ja/configuration.md#device-conditions-runson)と英語版には、新しい形、移行の表、
-  例を載せます。[CLI](../../docs/ja/cli.md)からはシナリオの `runsOn` の節を外します。
-  [アーキテクチャ](../../docs/ja/architecture.md)では `common/config/` の行を更新します。
+  例を載せます。[CLI](../../docs/ja/cli.md)からはシナリオの `runsOn` の節を外し、
+  [シナリオ](../../docs/ja/scenarios.md)のシナリオのスキーマからは `preconditions.runsOn` の項目群を
+  外します。どちらも英語版を一緒に変えます。[アーキテクチャ](../../docs/ja/architecture.md)では
+  `common/config/` の行を更新します。
+- [run-loop](../../docs/ja/run-loop.md)と `demos/showcase/SPEC.ja.md` は、地の文で
+  `preconditions.runsOn.ios.locale` か `seedPhotos` を挙げているので、新しいパスに書き換えます。
+  `docs/run-loop.md`、`demos/showcase/SPEC.md`、`docs/specs/ios-home-screen-widget-feasibility.md`
+  も同様です。
 
 ### 原則との整合
 
@@ -171,13 +180,17 @@ run に LLM は入らず、照合の方法が変わる条件もありません�
 
 1. **実行先のブロック。** 各プラットフォームの `runsOn` のモデルを `ios`、`android`、`browser` で包み、
    `platform` がキーを許すかを確かめ、プラットフォームごとのチームのデフォルト値を受け取り、`emulate` を
-   `browser` の下へ移し、旧キーごとに新しいパスを示して失敗させます。`demos/` の config とテストの
-   フィクスチャを書き換え、JSON Schema の出力も広げます。
+   `browser` の下へ移し、旧キーごとに新しいパスを示して失敗させます。`unpack_conditions`
+   （`bajutsu/common/devices/runs.py`）が読み飛ばすデバイス状態と駆動方式のリストも、フィールドと一緒に
+   1 段下へ移します。その呼び出し元である Device Farm の `_check_no_conditions`
+   （`bajutsu/serve/batch_provider/device_farm_batch_provider.py`）も、生の `runsOn` のブロックを
+   読むので合わせて移します。`demos/` の config とテストのフィクスチャを書き換え、JSON Schema の出力も
+   広げます。
 2. **シナリオのブロック。** `preconditions.runsOn` を外し、`locale` と `seedPhotos` のために
    `preconditions.device.ios` を加え、旧ブロックはフィールドごとの置き換え先を示して失敗させます。
-   `effective_conditions` からシナリオの畳み込みを外し、デバイス状態を書いているデモのシナリオ 4 本を
-   書き換えます。
-3. **ドキュメント。** 上記の日英ドキュメントに、新しい形、移行の表、例を載せます。
+   `effective_conditions` からシナリオの畳み込みを、`_check_no_conditions` からシナリオの分岐を外し、
+   デバイス状態を書いているデモのシナリオ 4 本を書き換えます。
+3. **ドキュメント。** 上記の日英ドキュメントと地の文のページに、新しい形、移行の表、例を載せます。
 
 各ユニットが自分のテストを持ちます。許される組の規則、移行メッセージのそれぞれ、デバイスのブロックの
 置き換えの意味です。
