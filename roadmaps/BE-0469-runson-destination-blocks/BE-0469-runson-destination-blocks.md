@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0469") |
+| Implementing PR | [#2235](https://github.com/bajutsu-e2e/bajutsu/pull/2235) (Units 1–3) |
 | Topic | Driver & backend architecture |
 <!-- /BE-METADATA -->
 
@@ -218,7 +219,7 @@ block's replace semantics.
 
 ### Log
 
-- PR_LINK (Units 1–3) — the whole item lands in one change.
+- [#2235](https://github.com/bajutsu-e2e/bajutsu/pull/2235) (Units 1–3) — the whole item lands in one change.
   - Each platform's `runsOn` model is now a group with one field per allowed destination, built on a
     shared `RunsOnGroup` base. Its before-validator names the destination a flat key moved to, or
     lists the destinations the platform allows, so the allowed-pair rule needs no platform table of
