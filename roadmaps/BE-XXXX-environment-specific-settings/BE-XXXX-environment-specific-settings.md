@@ -1,6 +1,6 @@
 **English** · [日本語](BE-XXXX-environment-specific-settings-ja.md)
 
-# BE-XXXX — Environment-specific settings: a support table, target-declared skips, and checks at lint and dispatch
+# BE-XXXX — Environment-specific settings: a support table, target-declared ignored settings, and checks at lint and dispatch
 
 <!-- BE-METADATA -->
 | Field | Value |
@@ -24,8 +24,8 @@ This item makes those settings behave the same way everywhere, by one rule:
 
 - **A step is never skipped.** A step the routed [target](../../docs/glossary.md#target-app-device)
   cannot run is an error, with no opt-out.
-- **A setting the environment cannot apply is an error by default.** The one opt-out is a skip,
-  declared with a reason in the target config (`targets.<name>`), never in the scenario.
+- **A setting the environment cannot apply is an error by default.** The one opt-out is to declare it
+  ignored, with a reason, in the target config (`targets.<name>`), never in the scenario.
 - **Both checks run before any device work:** in `bajutsu lint --config --target`, and when serve
   hands a job to a worker. A job reaches only a worker that can run every step and apply every
   setting it needs.
@@ -71,12 +71,12 @@ rejected.
 Once this item ships, one command shows the change. `bajutsu lint --config <file> --target
 <real-device>` exits 1 and names each step and each setting the target cannot honour, before the run
 leases any device. A web run of a scenario that sets `app.launch.env` fails before the browser
-starts, unless the web target declares the skip, and its report then lists the skipped setting with
+starts, unless the web target declares it ignored, and its report then lists the ignored setting with
 its reason. serve never hands a `setLocation` job to a worker whose environment lacks the capability.
 
 ## Detailed design
 
-The design has six parts: the support table, the skip declaration, the run, the lint, the dispatch,
+The design has six parts: the support table, the ignore declaration, the run, the lint, the dispatch,
 and the evidence kinds. No part adds a model call or a fixed pause. Every difference between
 environments stays in the table and the target config.
 
@@ -89,7 +89,7 @@ setting and answers, per environment route, how the route handles it:
 |---|---|---|
 | `supported` | The route applies the setting | Apply it |
 | `satisfied` | The route already guarantees what the setting asks for | Do nothing; never an error |
-| `unsupported` | The route cannot apply it | Error, unless the target declares a skip |
+| `unsupported` | The route cannot apply it | Error, unless the target declares it ignored |
 
 `satisfied` covers a request the route meets by construction. A web run starts a fresh browser
 context every time, so `erase: true` is already true there. Treating that case as `unsupported` would
@@ -111,7 +111,7 @@ the actuator, the target's `runsOn.kind`, and a WebDriver endpoint. One function
 `settings_support(actuator, eff, udid_spec)`, returns the table for that route. A permission is
 a setting applied before the steps, so its rows move here from `capability_preflight._REQUIREMENTS`.
 The per-service capability tokens stay the route's statement of support, and the BE-0082 step check
-no longer judges `permissions`. A declared skip of `permissions.<service>` is thus honoured by one
+no longer judges `permissions`. An ignored `permissions.<service>` is thus honoured by one
 check alone. `erase_precondition_supported` (`backends.py:326`) becomes a lookup in the same
 table.
 
@@ -119,7 +119,7 @@ The table, not the environment, now decides. Each environment's launch reads the
 applies only the `supported` settings. The raises and the silent ignores in the four environment
 modules give way to that plan.
 
-### The skip declaration
+### The ignore declaration
 
 `RunPolicy` (`bajutsu/common/config/schema/run_policy.py:14`) gains one map:
 
@@ -127,7 +127,7 @@ modules give way to that plan.
 targets:
   iphone-device:
     run:
-      skipUnsupported:
+      ignoredSettings:
         erase: "A real device keeps app data; this lane accepts state from earlier runs"
         seedPhotos: "The photo library on this device is curated by hand"
 ```
@@ -137,9 +137,9 @@ targets:
 | Key | A setting key from the table above; an unknown key fails at config load |
 | Value | A non-blank reason, shown in the report |
 | A key the route supports | An error at the run preflight and in `bajutsu lint --config`, once the route is resolved, so a stale declaration cannot hide a regression |
-| Scope | The one target; `defaults.run` may not carry it, since a skip belongs to one environment |
+| Scope | The one target; `defaults.run` may not carry it, since an ignored setting belongs to one environment |
 
-The scenario never carries a skip. The environment owner, who knows what the environment cannot do,
+The scenario never declares a setting ignored. The environment owner, who knows what the environment cannot do,
 accepts the trade-off. The scenario stays a single, environment-independent definition of the test.
 
 ### The run
@@ -149,16 +149,16 @@ path) adds one check beside the step check of BE-0082. For each target, it resol
 the scenario puts in effect, then looks each one up in that target's table:
 
 - `supported` or `satisfied`: no finding.
-- `unsupported` and declared: recorded as skipped.
+- `unsupported` and declared: recorded as ignored, and not applied.
 - `unsupported` and not declared: the scenario fails before any device work. The reason names the
-  setting, the target, and the declaration that would accept the skip.
+  setting, the target, and the declaration that would ignore it.
 
-`RunResult` gains `skipped_settings: dict[str, str]`, keyed by setting and holding the reason. Each
+`RunResult` gains `ignored_settings: dict[str, str]`, keyed by setting and holding the reason. Each
 report renders it without changing the verdict:
 
-- The manifest writes it as `skippedSettings`.
+- The manifest writes it as `ignoredSettings`.
 - The HyperText Markup Language (HTML) report lists it beside the run's environment.
-- JUnit records it as a `bajutsu.skippedSettings` property.
+- JUnit records it as a `bajutsu.ignoredSettings` property.
 - The Common Test Report Format (CTRF) puts it in the test's `extra`.
 
 Steps keep today's behaviour: the BE-0082 preflight fails a scenario holding a step its
@@ -192,7 +192,7 @@ job to a worker that advertises every token the job requires. This item adds two
 | Token | The job requires it when | The worker advertises it when |
 |---|---|---|
 | `cap:<platform>:<capability>` | A step routed to a `<platform>` target needs the capability | The worker's route for `<platform>` supports it |
-| `setting:<platform>:<key>` | A setting is in effect on a `<platform>` target that declares no skip for it | The worker's route for `<platform>` supports or satisfies it |
+| `setting:<platform>:<key>` | A setting is in effect on a `<platform>` target that does not declare it ignored | The worker's route for `<platform>` supports or satisfies it |
 
 Each token names its platform, so a worker serving the iOS Simulator and the web advertises each
 route's set apart. Without the platform, intersecting the two sets would hide the Simulator's
@@ -243,8 +243,8 @@ reason on the lease's `skipped_captures`, which the report already renders.
 | Alternative | Summary | Why not adopted |
 |---|---|---|
 | Skip steps per environment (BE-0457) | A `skipOnRealDevice` / `skipIfUnsupported` step modifier | The result of one scenario then depends on where it ran; a run passes because it checked less |
-| Declare the skip in the scenario | A reason beside the setting in the scenario file | The scenario stops being environment-independent, and the author decides for environments they may never see |
-| Declare the skip in `worker.yaml` | Each worker states what it may skip | The same target then behaves differently by worker, and a lint without a worker cannot know the verdict |
+| Declare ignored settings in the scenario | A reason beside the setting in the scenario file | The scenario stops being environment-independent, and the author decides for environments they may never see |
+| Declare ignored settings in `worker.yaml` | Each worker states what it may ignore | The same target then behaves differently by worker, and a lint without a worker cannot know the verdict |
 | Warn instead of failing | Report an unsupported setting and continue | A warning does not change the verdict, so a silently broken precondition still passes |
 | Reject at claim alone | Keep routing as is; the worker refuses an unrunnable job | The job still waits for, and then reaches, a worker that cannot run it; the user learns late |
 
@@ -259,10 +259,10 @@ environments genuinely differ.
 
 - [ ] Add `settings_support.py`: the setting keys, the three support states, and the table per route,
   moving the permission rows out of the step check and replacing `erase_precondition_supported`
-- [ ] Add `run.skipUnsupported` to `RunPolicy` with its load-time rules
+- [ ] Add `run.ignoredSettings` to `RunPolicy` with its load-time rules
 - [ ] Add the settings check to the run preflight, and make each environment apply only the
   `supported` settings in place of its raises and silent ignores
-- [ ] Add `RunResult.skipped_settings` and render it in the manifest, HTML, JUnit, and CTRF reports
+- [ ] Add `RunResult.ignored_settings` and render it in the manifest, HTML, JUnit, and CTRF reports
 - [ ] Keep the evidence skip reasons on the lease instead of discarding them in `pool.py`
 - [ ] Add `--config` and `--target` to `bajutsu lint`, running the step check, the settings check,
   and `check_preconditions` per target on the expanded scenario

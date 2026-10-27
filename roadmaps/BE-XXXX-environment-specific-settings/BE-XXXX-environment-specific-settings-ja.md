@@ -1,6 +1,6 @@
 [English](BE-XXXX-environment-specific-settings.md) · **日本語**
 
-# BE-XXXX — 環境に固有の設定：対応表、ターゲット設定での skip 宣言、lint と振り分け時の検査
+# BE-XXXX — 環境に固有の設定：対応表、ターゲット設定での無視の宣言、lint と振り分け時の検査
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
@@ -23,7 +23,7 @@ iOS Simulator、実機の iPhone、WebDriver エンドポイントの向こう�
 この項目では、そうした設定の扱いを次の規則でどの環境でも揃えます。
 
 - **ステップは決して飛ばしません。** 振り分け先の[ターゲット](../../docs/ja/glossary.md#target-app-device)が実行できないステップはエラーで、除外の手段はありません。
-- **環境が適用できない設定は、デフォルトでエラーにします。** 唯一の除外は skip で、ターゲット設定（`targets.<name>`）に理由付きで宣言します。シナリオには書きません。
+- **環境が適用できない設定は、デフォルトでエラーにします。** 唯一の除外は、その設定を無視するとターゲット設定（`targets.<name>`）に理由付きで宣言することです。シナリオには書きません。
 - **どちらの検査もデバイスを使う前に行います。** `bajutsu lint --config --target` と、serve がジョブを worker に渡すときです。ジョブは、必要なステップをすべて実行でき、必要な設定をすべて適用できる worker にだけ届きます。
 
 環境のルートごとに 1 つの対応表がこの 3 つを決めるため、lint、run、振り分けの判定が食い違いません。
@@ -56,12 +56,12 @@ BE-0457 は、実機で*ステップ*を飛ばす修飾子 `skipOnRealDevice` �
 
 この項目が入ると、変化は 1 つのコマンドで確かめられます。
 `bajutsu lint --config <file> --target <実機>` は、ターゲットが扱えないステップと設定を列挙して終了コード 1 で終わります。この時点でデバイスは借りません。
-`app.launch.env` を設定したシナリオを web で実行すると、ブラウザを起動する前に失敗します。web のターゲットが skip を宣言していれば失敗せず、レポートに飛ばした設定とその理由が載ります。
+`app.launch.env` を設定したシナリオを web で実行すると、ブラウザを起動する前に失敗します。web のターゲットがその設定の無視を宣言していれば失敗せず、レポートに無視した設定とその理由が載ります。
 serve は、`setLocation` を含むジョブを、その capability を持たない環境の worker に渡しません。
 
 ## 詳細設計
 
-設計は、対応表、skip の宣言、run、lint、振り分け、証跡の種類の 6 つからなります。
+設計は、対応表、無視の宣言、run、lint、振り分け、証跡の種類の 6 つからなります。
 どれもモデルの呼び出しや固定の待機を加えません。環境ごとの差は、対応表とターゲット設定の中に収めます。
 
 ### 対応表
@@ -72,7 +72,7 @@ serve は、`setLocation` を含むジョブを、その capability を持たな
 |---|---|---|
 | `supported` | ルートが設定を適用できる | 適用する |
 | `satisfied` | 設定が求める状態を、ルートがすでに保証している | 何もしない。エラーにもしない |
-| `unsupported` | ルートが設定を適用できない | エラー。ターゲットが skip を宣言していれば飛ばす |
+| `unsupported` | ルートが設定を適用できない | エラー。ターゲットが無視を宣言していれば適用しない |
 
 `satisfied` は、ルートが仕組みとして満たしている要求を扱います。
 web の run は毎回新しいブラウザコンテキストで始まるため、`erase: true` はすでに成り立っています。
@@ -93,22 +93,22 @@ web の run は毎回新しいブラウザコンテキストで始まるため�
 関数 `settings_support(actuator, eff, udid_spec)` が、そのルートの対応表を返します。
 権限はステップより前に適用する設定なので、その行を `capability_preflight._REQUIREMENTS` からこちらへ移します。
 サービスごとの capability トークンは引き続きルートの対応を表し、BE-0082 のステップの検査は `permissions` を判定しなくなります。
-そのため、`permissions.<service>` の skip の宣言は 1 つの検査だけで扱われます。
+そのため、`permissions.<service>` の無視の宣言は 1 つの検査だけで扱われます。
 `erase_precondition_supported`（`backends.py:326`）は、同じ表の参照に置き換えます。
 
 判定するのは環境ではなく対応表です。
 各環境の起動処理は解決済みの計画を読み、`supported` の設定だけを適用します。
 4 つの環境モジュールにある例外と、黙って無視する処理は、この計画に置き換わります。
 
-### skip の宣言
+### 無視の宣言
 
-`RunPolicy`（`bajutsu/common/config/schema/run_policy.py:14`）に、マップ `skipUnsupported` を 1 つ追加します。
+`RunPolicy`（`bajutsu/common/config/schema/run_policy.py:14`）に、マップ `ignoredSettings` を 1 つ追加します。
 
 ```yaml
 targets:
   iphone-device:
     run:
-      skipUnsupported:
+      ignoredSettings:
         erase: "実機はアプリのデータを保持する。このレーンは前回の状態を受け入れる"
         seedPhotos: "この端末の写真ライブラリは手で整えている"
 ```
@@ -118,9 +118,9 @@ targets:
 | キー | 上の表のキー。未知のキーは設定の読み込み時に失敗します |
 | 値 | 空白でない理由。レポートに表示します |
 | ルートが対応しているキー | ルートを解決した時点（run の preflight と `bajutsu lint --config`）でエラーにします。古い宣言がリグレッションを隠さないようにするためです |
-| 範囲 | そのターゲットだけ。skip は 1 つの環境に属するため、`defaults.run` には書けません |
+| 範囲 | そのターゲットだけ。無視の宣言は 1 つの環境に属するため、`defaults.run` には書けません |
 
-シナリオには skip を書きません。
+シナリオには無視の宣言を書きません。
 環境が何をできないかを知っている環境の持ち主が、そのトレードオフを受け入れます。
 シナリオは、環境に依存しない 1 つのテストの定義のままです。
 
@@ -130,15 +130,15 @@ targets:
 ターゲットごとに、シナリオが有効にする設定を解決し、そのターゲットの対応表で引きます。
 
 - `supported` か `satisfied`：指摘しません。
-- `unsupported` で宣言あり：skip として記録します。
-- `unsupported` で宣言なし：デバイスを使う前にシナリオを失敗させます。理由には、設定、ターゲット、そして skip を受け入れる宣言の書き方を示します。
+- `unsupported` で宣言あり：適用せず、無視した設定として記録します。
+- `unsupported` で宣言なし：デバイスを使う前にシナリオを失敗させます。理由には、設定、ターゲット、そしてその設定を無視する宣言の書き方を示します。
 
-`RunResult` に `skipped_settings: dict[str, str]` を追加し、設定ごとに理由を持たせます。
+`RunResult` に `ignored_settings: dict[str, str]` を追加し、設定ごとに理由を持たせます。
 各レポートは、判定を変えずに次のように描画します。
 
-- マニフェストには `skippedSettings` として書き出します。
+- マニフェストには `ignoredSettings` として書き出します。
 - HyperText Markup Language（HTML）レポートは、run の環境の隣に一覧を表示します。
-- JUnit は `bajutsu.skippedSettings` プロパティに記録します。
+- JUnit は `bajutsu.ignoredSettings` プロパティに記録します。
 - Common Test Report Format（CTRF）は、テストの `extra` に入れます。
 
 ステップの扱いは現状のままです。BE-0082 の preflight は、ターゲットが実行できないステップを含むシナリオを失敗させます。
@@ -171,7 +171,7 @@ serve はジョブを capability のトークンで振り分けます（BE-0166�
 | トークン | ジョブが必要とする条件 | worker が掲げる条件 |
 |---|---|---|
 | `cap:<platform>:<capability>` | `<platform>` のターゲットへ振り分けたステップが、その capability を必要とする | worker の `<platform>` のルートがそれに対応している |
-| `setting:<platform>:<key>` | `<platform>` のターゲットで設定が有効で、ターゲットがその skip を宣言していない | worker の `<platform>` のルートがそれに対応しているか、満たしている |
+| `setting:<platform>:<key>` | `<platform>` のターゲットで設定が有効で、ターゲットがその設定の無視を宣言していない | worker の `<platform>` のルートがそれに対応しているか、満たしている |
 
 各トークンはプラットフォームを名前に含むため、iOS Simulator と web の両方を扱う worker は、ルートごとの集合を別々に掲げます。
 プラットフォームを含めずに 2 つの集合の共通部分を取ると、Simulator の `setLocation` が消え、その worker が実行できる iOS のジョブまで断ることになります。
@@ -214,8 +214,8 @@ pool はその理由を lease の `skipped_captures` に残し、レポートは
 | 代替案 | 概要 | 採らなかった理由 |
 |---|---|---|
 | 環境ごとにステップを飛ばす（BE-0457） | ステップ修飾子 `skipOnRealDevice` / `skipIfUnsupported` | 同じシナリオの結果が実行した場所によって変わります。検査が減ったことで合格してしまいます |
-| シナリオに skip を宣言する | シナリオファイルの設定の隣に理由を書きます | シナリオが環境に依存するようになり、作者が見たこともない環境について判断することになります |
-| `worker.yaml` に skip を宣言する | 各 worker が飛ばしてよいものを述べます | 同じターゲットの振る舞いが worker ごとに変わり、worker を持たない lint では判定を知りえません |
+| シナリオに無視の宣言を書く | シナリオファイルの設定の隣に理由を書きます | シナリオが環境に依存するようになり、作者が見たこともない環境について判断することになります |
+| `worker.yaml` に無視の宣言を書く | 各 worker が無視してよい設定を述べます | 同じターゲットの振る舞いが worker ごとに変わり、worker を持たない lint では判定を知りえません |
 | 失敗させず警告にとどめる | 未対応の設定を報告して実行を続けます | 警告は判定を変えないため、黙って壊れた前提条件が合格し続けます |
 | 受け取り時の拒否だけにする | 振り分けは現状のまま、worker が実行できないジョブを断ります | ジョブは実行できない worker を待ち、そこへ届いてしまいます。利用者が気付くのが遅れます |
 
@@ -228,9 +228,9 @@ worker 単位の宣言は、1 つのターゲットを本当に異なる環境�
 > ともに記録します。
 
 - [ ] `settings_support.py` を追加する。設定のキー、3 つの対応状態、ルートごとの表を持ち、権限の行をステップの検査から移し、`erase_precondition_supported` を置き換える
-- [ ] `RunPolicy` に `run.skipUnsupported` と読み込み時の規則を追加する
+- [ ] `RunPolicy` に `run.ignoredSettings` と読み込み時の規則を追加する
 - [ ] 実行の preflight に設定の検査を追加し、各環境が例外や黙って無視する処理の代わりに `supported` の設定だけを適用するようにする
-- [ ] `RunResult.skipped_settings` を追加し、マニフェスト、HTML、JUnit、CTRF の各レポートで描画する
+- [ ] `RunResult.ignored_settings` を追加し、マニフェスト、HTML、JUnit、CTRF の各レポートで描画する
 - [ ] `pool.py` で捨てている証跡の skip の理由を lease に残す
 - [ ] `bajutsu lint` に `--config` と `--target` を追加し、展開後のシナリオに対してターゲットごとにステップの検査、設定の検査、`check_preconditions` を行う
 - [ ] serve のエディタの `/api/lint` リクエストで、選択中のターゲットを送る
