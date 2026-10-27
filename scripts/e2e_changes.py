@@ -372,6 +372,7 @@ _LANE_PATHS: dict[str, str] = {
         r"|demos/serve-ui/"
         r"|demos/web/"
         r"|tests/test_driver_conformance_web\.py$"
+        r"|tests/test_dom_query_js_web\.py$"
         r"|Makefile$"
         r"|\.github/workflows/web-e2e\.yml$"
     ),

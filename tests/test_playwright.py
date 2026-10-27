@@ -172,6 +172,22 @@ def test_query_js_reads_the_password_type_off_the_node() -> None:
     assert "secure:" in QUERY_JS
 
 
+def test_query_js_reads_value_from_each_tags_own_attribute() -> None:
+    """A link's value is its `href`, not the (absent) `value` property; the other attribute-valued
+    tags and ARIA range widgets follow the same rule. The real-DOM check is
+    `test_dom_query_js_web.py`; this pins the script on the fast gate."""
+    assert "value: valueOf(el)" in QUERY_JS
+    for source in (
+        "getAttribute('href')",
+        "getAttribute('src')",
+        "getAttribute('datetime')",
+        "getAttribute('aria-valuetext')",
+        "el.hasAttribute('role')",
+        "getAttribute('aria-valuenow')",
+    ):
+        assert source in QUERY_JS
+
+
 # --- fake page + driver actions ---
 
 

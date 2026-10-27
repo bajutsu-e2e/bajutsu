@@ -12,6 +12,27 @@ from bajutsu.common.drivers import base
 
 QUERY_JS = """
 () => {
+  // A link, image, or <time> keeps its meaningful value in an attribute, not the `value`
+  // property. A custom ARIA range widget (role=slider/progressbar/…) reports through aria-value*,
+  // which wins even when its host element has a `value` of its own (`<button>`'s "", `<li>`'s 0).
+  // A native control (form field, determinate <progress>, <meter>) keeps its live `value`: its
+  // aria-valuenow can lag what was typed or set. An indeterminate <progress> publishes its ARIA
+  // value or nothing — never the 0 its `value` property reports, which would read as a
+  // determinate 0%. An empty aria-valuetext falls through to aria-valuenow. (<area> needs no arm:
+  // the UA stylesheet hides it, so the walk below never collects one.)
+  const valueOf = (el) => {
+    const tag = el.tagName.toLowerCase();
+    if (tag === 'a') return el.getAttribute('href');
+    if (tag === 'img') return el.getAttribute('src');
+    if (tag === 'time') return el.getAttribute('datetime');
+    const aria = el.getAttribute('aria-valuetext') || el.getAttribute('aria-valuenow');
+    if (tag === 'progress' && !el.hasAttribute('value')) return aria;
+    const native = tag === 'input' || tag === 'select' || tag === 'textarea'
+                   || tag === 'progress' || tag === 'meter';
+    if (aria !== null && !native && el.hasAttribute('role')) return aria;
+    if ('value' in el) return el.value;
+    return aria;
+  };
   const out = [];
   const sel = '[data-testid], button, a, input, select, textarea, [role]';
   for (const el of document.querySelectorAll(sel)) {
@@ -24,7 +45,7 @@ QUERY_JS = """
       identifier: el.getAttribute('data-testid'),
       role: el.getAttribute('role') || el.tagName.toLowerCase(),
       label: el.getAttribute('aria-label') || (text ? text.slice(0, 200) : null),
-      value: ('value' in el) ? el.value : null,
+      value: valueOf(el),
       secure: el.type === 'password',
       disabled: el.disabled === true || el.getAttribute('aria-disabled') === 'true',
       selected: el.getAttribute('aria-selected') === 'true'
