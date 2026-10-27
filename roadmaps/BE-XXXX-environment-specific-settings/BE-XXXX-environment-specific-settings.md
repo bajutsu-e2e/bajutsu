@@ -115,9 +115,12 @@ no longer judges `permissions`. An ignored `permissions.<service>` is thus honou
 check alone. `erase_precondition_supported` (`backends.py:326`) becomes a lookup in the same
 table.
 
-The table, not the environment, now decides. Each environment's launch reads the resolved plan and
-applies only the `supported` settings. The raises and the silent ignores in the four environment
-modules give way to that plan.
+The table, not each environment, now decides. Each environment's launch reads the resolved plan,
+applies the `supported` settings, and raises for a setting the plan marks `unsupported` that the
+target does not ignore. The raise stays because the preflight is skippable: a lease driven directly
+has no actuator, so `caps` is `None` (`bajutsu/common/runner/pipeline.py:1989`), and the raise is the
+runtime backstop the environment modules already name. The plan replaces the per-environment
+conditions and the silent ignores, not the failure itself.
 
 ### The ignore declaration
 
@@ -136,7 +139,7 @@ targets:
 |---|---|
 | Key | A setting key from the table above; an unknown key fails at config load |
 | Value | A non-blank reason, shown in the report |
-| A key the route supports | An error at the run preflight and in `bajutsu lint --config`, once the route is resolved, so a stale declaration cannot hide a regression |
+| A key the route supports or satisfies | An error at the run preflight and in `bajutsu lint --config`, once the route is resolved, so a stale declaration cannot hide a regression |
 | Scope | The one target; `defaults.run` may not carry it, since an ignored setting belongs to one environment |
 
 The scenario never declares a setting ignored. The environment owner, who knows what the environment cannot do,
@@ -153,8 +156,10 @@ the scenario puts in effect, then looks each one up in that target's table:
 - `unsupported` and not declared: the scenario fails before any device work. The reason names the
   setting, the target, and the declaration that would ignore it.
 
-`RunResult` gains `ignored_settings: dict[str, str]`, keyed by setting and holding the reason. Each
-report renders it without changing the verdict:
+`RunResult` gains `ignored_settings: list[IgnoredSetting]`. Each entry names the target, the setting
+key, and the reason, the shape `skipped_captures` already uses
+(`bajutsu/common/orchestrator/types/run_result.py:83`), so two targets that ignore the same setting
+for different reasons both reach the report. Each report renders it without changing the verdict:
 
 - The manifest writes it as `ignoredSettings`.
 - The HyperText Markup Language (HTML) report lists it beside the run's environment.
@@ -191,21 +196,28 @@ job to a worker that advertises every token the job requires. This item adds two
 
 | Token | The job requires it when | The worker advertises it when |
 |---|---|---|
-| `cap:<platform>:<capability>` | A step routed to a `<platform>` target needs the capability | The worker's route for `<platform>` supports it |
-| `setting:<platform>:<key>` | A setting is in effect on a `<platform>` target that does not declare it ignored | The worker's route for `<platform>` supports or satisfies it |
+| `cap:<route>:<capability>` | A step routed to a target on `<route>` needs the capability | The worker can drive `<route>`, and that route supports the capability |
+| `setting:<route>:<key>` | A setting is in effect on a target on `<route>` that does not declare it ignored | The worker can drive `<route>`, and that route supports or satisfies the setting |
 
-Each token names its platform, so a worker serving the iOS Simulator and the web advertises each
-route's set apart. Without the platform, intersecting the two sets would hide the Simulator's
-`setLocation` and turn away an iOS job the worker can run.
+Each token names its route, one of the columns of the Motivation table: `ios-simulator`,
+`ios-device`, `ios-live`, `android`, or `web`. A platform alone is not enough, because the three iOS
+routes support different settings. A worker advertises one set per route it can drive. A Mac that
+serves both the Simulator and an attached iPhone thus never takes an `erase` job on the device route,
+and never turns away a Simulator job it can run. Intersecting the sets of two routes would instead
+hide the Simulator's `setLocation`.
 
 `required_capabilities` derives the job's tokens from the expanded scenario and the target config.
 `worker_capabilities` (`bajutsu/serve/capabilities.py:195`) derives the worker's tokens from its `worker.yaml`
 environment and drivers (BE-0450), through the same support table and `capabilities_for_run`. A
-`local` iOS worker thus advertises the Simulator's set. An `appium` worker advertises the live
-route's set, which lacks `cap:ios:deviceControl.setLocation`.
+`local` iOS worker thus advertises the Simulator's set, and the device route's set too when its
+`worker.yaml` lists a real device. An `appium` worker advertises the live route's set, which lacks
+`cap:ios-live:deviceControl.setLocation`.
 
-A job whose tokens no registered worker advertises fails at submission, before it is queued. The
-failure lists each missing token and the steps or settings that need it. The worker re-runs the
+A job whose tokens no live worker advertises stays queued and counts toward
+`bajutsu_unroutable_jobs` (BE-0166), so a submission during a cold start or a worker restart is never
+rejected. Submission fails only when a live worker already drives the job's route and none of those
+workers advertises every token the job needs. The failure lists each missing token and the steps or
+settings that need it. The worker re-runs the
 same checks when it claims a job, before it leases a device, because a worker's environment can
 change between registration and claim.
 
@@ -225,9 +237,11 @@ an unchecked worker ran it, and the report shows that note.
 
 `video`, `deviceLog`, and `appTrace` stay outside the error rule. Evidence never decides a verdict,
 so a route that cannot record one should not fail the scenario. The gap must still be visible.
-`resolve_evidence_providers` (`bajutsu/common/backends.py:631`) already computes a skip reason for
-each missing provider, and `bajutsu/common/runner/pool.py:325` discards it. The pool keeps that
-reason on the lease's `skipped_captures`, which the report already renders.
+`resolve_evidence_providers` (`bajutsu/common/backends.py:631`) computes a skip reason only for the
+kinds in `KIND_CAPABILITY` (`backends.py:589`), which today holds `network` alone, and
+`bajutsu/common/runner/pool.py:325` discards even that. This item keeps that reason on the lease's
+`skipped_captures`, which the report already renders. It also gives `video`, `deviceLog`, and
+`appTrace` a capability each, so the same resolution can answer for them.
 
 ### Out of scope
 
@@ -260,16 +274,18 @@ environments genuinely differ.
 - [ ] Add `settings_support.py`: the setting keys, the three support states, and the table per route,
   moving the permission rows out of the step check and replacing `erase_precondition_supported`
 - [ ] Add `run.ignoredSettings` to `RunPolicy` with its load-time rules
-- [ ] Add the settings check to the run preflight, and make each environment apply only the
-  `supported` settings in place of its raises and silent ignores
+- [ ] Add the settings check to the run preflight, and make each environment apply the `supported`
+  settings and raise for an unsupported one that is not ignored, in place of its own conditions and
+  silent ignores
 - [ ] Add `RunResult.ignored_settings` and render it in the manifest, HTML, JUnit, and CTRF reports
-- [ ] Keep the evidence skip reasons on the lease instead of discarding them in `pool.py`
+- [ ] Give `video`, `deviceLog`, and `appTrace` a capability each, and keep the evidence skip reasons
+  on the lease instead of discarding them in `pool.py`
 - [ ] Add `--config` and `--target` to `bajutsu lint`, running the step check, the settings check,
   and `check_preconditions` per target on the expanded scenario
 - [ ] Send the selected target with the serve editor's `/api/lint` request
 - [ ] Add the `cap:` and `setting:` tokens to the job's required set and to the worker's advertised
-  set, reserve both prefixes, fail a job no registered worker can serve at submission, and match a
-  pre-item worker on today's tokens while recording on the job that it ran unchecked
+  set, reserve both prefixes, keep a job no live worker can serve queued, fail it at submission only
+  when a live worker drives its route but none advertises every token, and match a pre-item worker on today's tokens while recording on the job that it ran unchecked
 - [ ] Re-run the step and settings checks when a worker claims a job, before it leases a device
 - [ ] Document the table, the declaration, the lint flags, and the dispatch tokens in `docs/` and
   `docs/ja/` (`configuration.md`, `cli.md`, `drivers.md`, `scenarios.md`); update `DESIGN.md` and

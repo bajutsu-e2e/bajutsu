@@ -96,9 +96,10 @@ web の run は毎回新しいブラウザコンテキストで始まるため�
 そのため、`permissions.<service>` の無視の宣言は 1 つの検査だけで扱われます。
 `erase_precondition_supported`（`backends.py:326`）は、同じ表の参照に置き換えます。
 
-判定するのは環境ではなく対応表です。
-各環境の起動処理は解決済みの計画を読み、`supported` の設定だけを適用します。
-4 つの環境モジュールにある例外と、黙って無視する処理は、この計画に置き換わります。
+判定するのは各環境ではなく対応表です。
+各環境の起動処理は解決済みの計画を読み、`supported` の設定を適用し、計画が `unsupported` とした設定をターゲットが無視していなければ例外を投げます。
+例外を残すのは、preflight が省略されうるためです。lease を直接駆動するときは actuator がなく、`caps` が `None` になります（`bajutsu/common/runner/pipeline.py:1989`）。そのため、例外は環境モジュールがすでに実行時の最後の砦と呼んでいる役割を担い続けます。
+計画が置き換えるのは、環境ごとの条件分岐と黙って無視する処理であり、失敗そのものではありません。
 
 ### 無視の宣言
 
@@ -117,7 +118,7 @@ targets:
 |---|---|
 | キー | 上の表のキー。未知のキーは設定の読み込み時に失敗します |
 | 値 | 空白でない理由。レポートに表示します |
-| ルートが対応しているキー | ルートを解決した時点（run の preflight と `bajutsu lint --config`）でエラーにします。古い宣言がリグレッションを隠さないようにするためです |
+| ルートが対応しているか、満たしているキー | ルートを解決した時点（run の preflight と `bajutsu lint --config`）でエラーにします。古い宣言がリグレッションを隠さないようにするためです |
 | 範囲 | そのターゲットだけ。無視の宣言は 1 つの環境に属するため、`defaults.run` には書けません |
 
 シナリオには無視の宣言を書きません。
@@ -133,7 +134,8 @@ targets:
 - `unsupported` で宣言あり：適用せず、無視した設定として記録します。
 - `unsupported` で宣言なし：デバイスを使う前にシナリオを失敗させます。理由には、設定、ターゲット、そしてその設定を無視する宣言の書き方を示します。
 
-`RunResult` に `ignored_settings: dict[str, str]` を追加し、設定ごとに理由を持たせます。
+`RunResult` に `ignored_settings: list[IgnoredSetting]` を追加します。
+各要素はターゲット、設定のキー、理由を持ちます。これは `skipped_captures` がすでに使っている形（`bajutsu/common/orchestrator/types/run_result.py:83`）で、2 つのターゲットが同じ設定を別の理由で無視しても、両方がレポートに残ります。
 各レポートは、判定を変えずに次のように描画します。
 
 - マニフェストには `ignoredSettings` として書き出します。
@@ -170,19 +172,23 @@ serve はジョブを capability のトークンで振り分けます（BE-0166�
 
 | トークン | ジョブが必要とする条件 | worker が掲げる条件 |
 |---|---|---|
-| `cap:<platform>:<capability>` | `<platform>` のターゲットへ振り分けたステップが、その capability を必要とする | worker の `<platform>` のルートがそれに対応している |
-| `setting:<platform>:<key>` | `<platform>` のターゲットで設定が有効で、ターゲットがその設定の無視を宣言していない | worker の `<platform>` のルートがそれに対応しているか、満たしている |
+| `cap:<route>:<capability>` | `<route>` のターゲットへ振り分けたステップが、その capability を必要とする | worker が `<route>` を駆動でき、そのルートが capability に対応している |
+| `setting:<route>:<key>` | `<route>` のターゲットで設定が有効で、ターゲットがその設定の無視を宣言していない | worker が `<route>` を駆動でき、そのルートが設定に対応しているか、満たしている |
 
-各トークンはプラットフォームを名前に含むため、iOS Simulator と web の両方を扱う worker は、ルートごとの集合を別々に掲げます。
-プラットフォームを含めずに 2 つの集合の共通部分を取ると、Simulator の `setLocation` が消え、その worker が実行できる iOS のジョブまで断ることになります。
+各トークンは、動機の表の列にあたるルート名（`ios-simulator`、`ios-device`、`ios-live`、`android`、`web`）を含みます。
+iOS の 3 つのルートは対応する設定が異なるため、プラットフォーム名だけでは足りません。
+worker は、駆動できるルートごとに集合を 1 つ掲げます。
+そのため、Simulator と接続した iPhone の両方を扱う Mac が、実機のルートで `erase` を求めるジョブを受け取ることはなく、実行できる Simulator のジョブを断ることもありません。
+2 つのルートの集合の共通部分を取ると、Simulator の `setLocation` が消えてしまいます。
 
 `required_capabilities` は、展開後のシナリオとターゲット設定からジョブのトークンを導きます。
 `worker_capabilities`（`bajutsu/serve/capabilities.py:195`）は、worker のトークンを `worker.yaml` の環境とドライバ（BE-0450）から導きます。
 導くときは、同じ対応表と `capabilities_for_run` を通します。
-そのため、`local` の iOS worker は Simulator の集合を掲げます。
-`appium` の worker はライブのルートの集合を掲げ、そこには `cap:ios:deviceControl.setLocation` が含まれません。
+そのため、`local` の iOS worker は Simulator の集合を掲げ、`worker.yaml` に実機があれば実機のルートの集合も掲げます。
+`appium` の worker はライブのルートの集合を掲げ、そこには `cap:ios-live:deviceControl.setLocation` が含まれません。
 
-登録済みのどの worker も掲げないトークンを必要とするジョブは、キューに入る前の投入時点で失敗します。
+生きているどの worker も掲げないトークンを必要とするジョブは、キューに残り、`bajutsu_unroutable_jobs`（BE-0166）に数えられます。そのため、コールドスタート中や worker の再起動中に投入しても拒否されません。
+投入時点で失敗するのは、ジョブのルートを駆動する worker が生きているのに、そのどれもジョブが必要とするトークンをすべては掲げていない場合だけです。
 失敗には、足りないトークンと、それを必要とするステップや設定を列挙します。
 worker の環境は登録から受け取りまでの間に変わりうるため、worker はジョブを受け取ったとき、デバイスを借りる前に同じ検査をもう一度行います。
 
@@ -199,9 +205,10 @@ worker の環境は登録から受け取りまでの間に変わりうるため�
 `video`、`deviceLog`、`appTrace` は、エラーの規則の対象外とします。
 証跡は判定を決めないため、記録できないルートでシナリオを失敗させるべきではありません。
 それでも、記録できなかったことは見えなければなりません。
-`resolve_evidence_providers`（`bajutsu/common/backends.py:631`）は、足りない証跡ごとに skip の理由をすでに計算しています。
-しかし、`bajutsu/common/runner/pool.py:325` がその理由を捨てています。
-pool はその理由を lease の `skipped_captures` に残し、レポートはそれをすでに描画できます。
+`resolve_evidence_providers`（`bajutsu/common/backends.py:631`）が skip の理由を計算するのは、`KIND_CAPABILITY`（`backends.py:589`）にある種類だけで、現在は `network` しかありません。
+しかも、`bajutsu/common/runner/pool.py:325` がその理由まで捨てています。
+この項目では、その理由を lease の `skipped_captures` に残します。レポートはそれをすでに描画できます。
+あわせて `video`、`deviceLog`、`appTrace` にもそれぞれ capability を与え、同じ解決処理で答えられるようにします。
 
 ### 対象外
 
@@ -229,12 +236,12 @@ worker 単位の宣言は、1 つのターゲットを本当に異なる環境�
 
 - [ ] `settings_support.py` を追加する。設定のキー、3 つの対応状態、ルートごとの表を持ち、権限の行をステップの検査から移し、`erase_precondition_supported` を置き換える
 - [ ] `RunPolicy` に `run.ignoredSettings` と読み込み時の規則を追加する
-- [ ] 実行の preflight に設定の検査を追加し、各環境が例外や黙って無視する処理の代わりに `supported` の設定だけを適用するようにする
+- [ ] 実行の preflight に設定の検査を追加し、各環境が独自の条件分岐や黙って無視する処理の代わりに、`supported` の設定を適用し、無視されていない未対応の設定で例外を投げるようにする
 - [ ] `RunResult.ignored_settings` を追加し、マニフェスト、HTML、JUnit、CTRF の各レポートで描画する
-- [ ] `pool.py` で捨てている証跡の skip の理由を lease に残す
+- [ ] `video`、`deviceLog`、`appTrace` にそれぞれ capability を与え、`pool.py` で捨てている証跡の skip の理由を lease に残す
 - [ ] `bajutsu lint` に `--config` と `--target` を追加し、展開後のシナリオに対してターゲットごとにステップの検査、設定の検査、`check_preconditions` を行う
 - [ ] serve のエディタの `/api/lint` リクエストで、選択中のターゲットを送る
-- [ ] ジョブの必要な集合と worker の掲げる集合に `cap:` と `setting:` のトークンを加え、両方の接頭辞を予約し、登録済みのどの worker も扱えないジョブを投入時点で失敗させる。この項目より前の worker は現状のトークンで照合し、検査なしで実行したことをジョブに記録する
+- [ ] ジョブの必要な集合と worker の掲げる集合に `cap:` と `setting:` のトークンを加え、両方の接頭辞を予約し、生きているどの worker も扱えないジョブはキューに残し、ジョブのルートを駆動する worker が生きていてもどれもトークンをすべては掲げていない場合だけ投入時点で失敗させる。この項目より前の worker は現状のトークンで照合し、検査なしで実行したことをジョブに記録する
 - [ ] worker がジョブを受け取ったとき、デバイスを借りる前にステップと設定の検査をもう一度行う
 - [ ] 対応表、宣言、lint のフラグ、振り分けのトークンを `docs/` と `docs/ja/` に記載する（`configuration.md`、`cli.md`、`drivers.md`、`scenarios.md`）。`DESIGN.md` と `docs/architecture.md` を更新する
 
