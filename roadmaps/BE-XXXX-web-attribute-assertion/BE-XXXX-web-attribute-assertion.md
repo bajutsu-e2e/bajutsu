@@ -49,8 +49,8 @@ AttributeMatch ::= { sel: <Selector>, name: string }
                  & ( {equals:string} | {contains:string} | {matches:string} | {absent:true} )
 ```
 
-- **`sel`** is an ordinary selector. It resolves exactly as it does for `value`. No match fails the assertion, and two or more matches fail it as ambiguous.
-- **`name`** is the attribute name. Validation accepts the HTML attribute-name syntax and rejects an empty name. The name is case-insensitive, as HTML makes it.
+- **`sel`** is an ordinary selector. It resolves exactly as it does for `value`. No match fails the assertion, and two or more matches fail it as ambiguous. The element must be one the query lists (a `data-testid`, a `role`, or an interactive tag), so a bare `<img>` needs a `data-testid` to be asserted on.
+- **`name`** is the attribute name. Validation accepts the HTML attribute-name syntax and rejects an empty name. The name reaches `getAttribute` unchanged, so it matches case-insensitively on HTML elements and exactly on SVG or MathML elements, as the DOM does; validation never lowercases it.
 - **The operator** is exactly one of four. `equals`, `contains`, and `matches` follow the `TextMatch` rules that `value` and `label` already use. `matches` is a regular expression. `absent: true` passes when the element has no attribute by that name.
 - **Presence differs from emptiness.** An attribute that is present with an empty value reads as `""`, so `equals: ""` passes and `absent: true` fails. An attribute that is missing fails `equals`, `contains`, and `matches`, with a reason that says the attribute is absent.
 - **`${...}` tokens** in the expected string are expanded like any other assertion field.
@@ -102,13 +102,13 @@ The driver then returns `el.getAttribute(name)`, which is `null` for a missing a
 | Scenario model | `AttributeMatch`; the `attribute` kind on `Assertion` | `bajutsu/common/scenario/models/assertions/attribute_match.py` (new), `assertion.py` |
 | Driver protocol | `def read_attribute(self, el: Element, name: str) -> str \| None` | `bajutsu/common/drivers/base/driver.py` |
 | Capability | `ELEMENT_ATTRIBUTE = "elementAttribute"` | `bajutsu/common/drivers/base/capability.py` |
-| Preflight | an `attribute` assertion needs `elementAttribute`. `_assertions_with_path` reaches neither `web:` / `app:` blocks nor `interrupts`, so the locator recurses into those blocks and into `interrupts` recovery steps as `_navigate_locations` (BE-0464) does, and also checks each `interrupts` condition; `_steps_for_target` also narrows `interrupts` to the entries the target polls (an entry's `target`, else the primary), so a web-only entry does not fail an iOS target | `bajutsu/common/capability/capability_preflight.py` |
+| Preflight | an `attribute` assertion needs `elementAttribute`. `_assertions_with_path` reaches neither `web:` / `app:` blocks nor `interrupts`, so the locator recurses into those blocks and into `interrupts` recovery steps as `_navigate_locations` (BE-0464) does, and also checks each `interrupts` condition; `_steps_for_target` also narrows `interrupts` to the entries the target can poll: an entry naming it, and an entry omitting `target` when the target is the initial primary or any `setPrimaryTarget` destination (an omitted-target entry follows the primary in force, `TargetRoster.interrupts_for`, BE-0447), so a web-only entry does not fail an iOS target that never becomes primary | `bajutsu/common/capability/capability_preflight.py` |
 | Evaluation | the `_attributes_for` helper, the `EvalContext.attributes` field, and the `attribute` evaluator | `bajutsu/common/orchestrator/loop/_functions.py` (the step/`expect` poll and `_run_if`), `bajutsu/common/orchestrator/loop/_interrupt_guard.py`, `bajutsu/common/assertions/evaluate/` |
 | Web driver | `read_attribute` as described above | `bajutsu/common/drivers/playwright/playwright_driver.py` |
 | Fake driver | returns attributes seeded per element and advertises the capability | `bajutsu/common/drivers/fake/fake_driver.py` |
 | Other drivers | raise `UnsupportedAction`, the way `select_option` does on iOS and Android | `adb`, `xcuitest`, `xcuitest_live`, `webview` drivers |
 
-An iOS app that embeds a WebView also reaches the Document Object Model (DOM), through the BajutsuKit bridge (`bajutsu/common/drivers/webview/web_context_driver.py`). The bridge is out of scope for the first slice. It raises `UnsupportedAction` for `selectOption` today, and it does the same for `read_attribute`. The preflight therefore fails an `attribute` assertion nested in a `web:` block on an iOS target, before any device is leased.
+Bajutsu also reaches the Document Object Model (DOM) of a WebView embedded in an iOS app, through the BajutsuKit bridge that `WebContextDriver` (`bajutsu/common/drivers/webview/web_context_driver.py`) drives. The bridge is out of scope for the first slice: `WebContextDriver` already raises `UnsupportedAction` for `selectOption`, and it will raise the same for `read_attribute`. The preflight therefore fails an `attribute` assertion nested in a `web:` block on an iOS target, before any device is leased.
 
 A target's config can declare interrupts of its own (`hooks.interrupts`, `bajutsu/common/config/schema/hooks.py:47`), which the runner merges with the scenario's entries. The preflight reads the scenario alone, so it never sees those entries. Config validation therefore rejects an `attribute` in the `hooks.interrupts` of a non-web target when the config loads. The target's platform already decides whether its backend advertises `elementAttribute`, so the check needs no device.
 
@@ -127,7 +127,6 @@ Because the read is on demand, an attribute enters the run's output only when an
 
   | Surface | Where |
   |---|---|
-  | the Author editor's assertion list | `bajutsu/common/scenario/edit.py` |
   | the JavaScript Object Notation (JSON) schema | the output of `bajutsu schema` |
   | the English pages | `docs/scenarios.md`, `docs/dsl-grammar.md`, `docs/drivers.md`, `docs/codegen.md` |
   | the Japanese mirrors | the same pages under `docs/ja/` |
@@ -144,7 +143,7 @@ Because the read is on demand, an attribute enters the run's output only when an
 | # | Unit | Done when |
 |---|---|---|
 | 1 | Scenario model: `AttributeMatch`, the `attribute` kind, name validation, exactly-one operator | model tests load each operator, and reject an empty name, two operators, and `absent: false` |
-| 2 | Driver protocol, capability token, preflight requirement, config validation, non-web drivers raise | preflight tests show iOS and Android targets, an `attribute` nested in an iOS `web:` block, and an `attribute` in an `interrupts` condition fail before device lease with a message naming `attribute`. A web-only `interrupts` entry does not fail an iOS target. A config whose non-web target declares an `attribute` in `hooks.interrupts` fails to load |
+| 2 | Driver protocol, capability token, preflight requirement, config validation, non-web drivers raise | preflight tests show iOS and Android targets, an `attribute` nested in an iOS `web:` block, and an `attribute` in an `interrupts` condition fail before device lease with a message naming `attribute`. A web-only `interrupts` entry does not fail an iOS target, and an untargeted entry fails a target that a `setPrimaryTarget` step makes primary. A config whose non-web target declares an `attribute` in `hooks.interrupts` fails to load |
 | 3 | `_attributes_for`, `EvalContext.attributes`, evaluator | fake-driver tests cover each operator, presence against emptiness, an absent attribute, and an ambiguous selector that fails without a read. An attribute that changes on a later tick passes within the wait floor. An `attribute` in an `if` condition and in an `interrupts` condition reads the attribute and decides the branch or the fire |
 | 4 | Playwright `read_attribute` | web driver tests in real Chromium read an attribute by `data-testid` and by the node-list walk, read a covered element and one outside the viewport, fail an ambiguous `data-testid`, ignore a hidden duplicate `data-testid`, and fail two nodes that match by rectangle, name, and traits |
 | 5 | Driver conformance case | the web conformance suite passes with a new `read_attribute` case, and non-web backends skip it by capability |

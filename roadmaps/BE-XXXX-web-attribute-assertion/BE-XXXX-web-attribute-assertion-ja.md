@@ -51,8 +51,8 @@ AttributeMatch ::= { sel: <Selector>, name: string }
                  & ( {equals:string} | {contains:string} | {matches:string} | {absent:true} )
 ```
 
-- **`sel`**：通常のセレクタです。`value` と同じ規則で解決します。一致する要素がなければアサーションは失敗し、2つ以上あれば曖昧として失敗します。
-- **`name`**：属性名です。検証では HTML の属性名の構文を受け付け、空の名前を拒否します。HTML と同じく、属性名の大文字と小文字は区別しません。
+- **`sel`**：通常のセレクタです。`value` と同じ規則で解決します。一致する要素がなければアサーションは失敗し、2つ以上あれば曖昧として失敗します。要素は、クエリが一覧に入れるもの（`data-testid` か `role` を持つもの、または操作できるタグ）でなければなりません。そのため、何も持たない `<img>` を確かめるには `data-testid` が必要です。
+- **`name`**：属性名です。検証では HTML の属性名の構文を受け付け、空の名前を拒否します。属性名は、そのままの形で `getAttribute` へ渡します。そのため、HTML の要素では大文字と小文字を区別せず、SVG や MathML の要素では区別します。これは DOM と同じ振る舞いで、検証で小文字に変えることはしません。
 - **比較の種類**：4つのうちちょうど1つを指定します。`equals`、`contains`、`matches` は、`value` と `label` がすでに使う `TextMatch` の規則に従います。`matches` は正規表現です。`absent: true` は、その名前の属性を要素が持たないときに成功します。
 - **存在と空は区別します**：空の値で存在する属性は `""` として読まれます。この場合、`equals: ""` は成功し、`absent: true` は失敗します。属性がない場合、`equals`、`contains`、`matches` は失敗し、失敗の理由には属性がないことを示します。
 - **`${...}` トークン**：期待値の文字列に含まれるトークンは、ほかのアサーションのフィールドと同じく展開します。
@@ -110,13 +110,13 @@ AttributeMatch ::= { sel: <Selector>, name: string }
 | シナリオのモデル | `AttributeMatch` と、`Assertion` の `attribute` の種類 | `bajutsu/common/scenario/models/assertions/attribute_match.py`（新規）、`assertion.py` |
 | ドライバーのプロトコル | `def read_attribute(self, el: Element, name: str) -> str \| None` | `bajutsu/common/drivers/base/driver.py` |
 | capability | `ELEMENT_ATTRIBUTE = "elementAttribute"` | `bajutsu/common/drivers/base/capability.py` |
-| preflight | `attribute` アサーションは `elementAttribute` を必要とします。`_assertions_with_path` は `web:` と `app:` のブロックも `interrupts` も扱いません。そのため、場所の探索は `_navigate_locations`（BE-0464）と同じく `web:` と `app:` のブロックの中と `interrupts` の回復のステップまでたどり、さらに `interrupts` の条件も確かめます。あわせて `_steps_for_target` で `interrupts` もそのターゲットが監視する項目（項目の `target`、なければ primary）に絞り、web だけを対象とする項目が iOS のターゲットを失敗させないようにします | `bajutsu/common/capability/capability_preflight.py` |
+| preflight | `attribute` アサーションは `elementAttribute` を必要とします。`_assertions_with_path` は `web:` と `app:` のブロックも `interrupts` も扱いません。そのため、場所の探索は `_navigate_locations`（BE-0464）と同じく `web:` と `app:` のブロックの中と `interrupts` の回復のステップまでたどり、さらに `interrupts` の条件も確かめます。あわせて `_steps_for_target` で `interrupts` も、そのターゲットが監視しうる項目に絞ります。対象は、そのターゲットを名指しする項目と、`target` を省いた項目のうちそのターゲットが最初の primary か `setPrimaryTarget` の移動先である場合です（`target` を省いた項目はその時点の primary に従います。`TargetRoster.interrupts_for`、BE-0447）。これにより、primary にならない iOS のターゲットを、web だけを対象とする項目が失敗させないようにします | `bajutsu/common/capability/capability_preflight.py` |
 | 評価 | 補助関数 `_attributes_for`、`EvalContext.attributes` フィールド、`attribute` の評価関数 | `bajutsu/common/orchestrator/loop/_functions.py`（ステップと `expect` のポーリング、`_run_if`）、`bajutsu/common/orchestrator/loop/_interrupt_guard.py`、`bajutsu/common/assertions/evaluate/` |
 | web ドライバー | 前節で述べた `read_attribute` | `bajutsu/common/drivers/playwright/playwright_driver.py` |
 | フェイクドライバー | 要素ごとに与えた属性を返し、capability を広告します | `bajutsu/common/drivers/fake/fake_driver.py` |
 | ほかのドライバー | iOS と Android の `select_option` と同じく `UnsupportedAction` を送出します | `adb`、`xcuitest`、`xcuitest_live`、`webview` の各ドライバー |
 
-WebView を埋め込んだ iOS アプリでも、Bajutsu は BajutsuKit のブリッジを通して Document Object Model（DOM）にアクセスできます。ブリッジの実装は `bajutsu/common/drivers/webview/web_context_driver.py` にあります。最初の段階では、このブリッジは対象外とします。ブリッジはいま `selectOption` に対して `UnsupportedAction` を送出しており、`read_attribute` にも同じ扱いをします。そのため、iOS のターゲットで `web:` ブロックの中に置いた `attribute` アサーションも、デバイスを確保する前の preflight で失敗します。
+WebView を埋め込んだ iOS アプリでも、Bajutsu は BajutsuKit のブリッジを通して Document Object Model（DOM）にアクセスできます。ブリッジを操作するのは `WebContextDriver`（`bajutsu/common/drivers/webview/web_context_driver.py`）です。最初の段階では、このブリッジは対象外とします。`WebContextDriver` はいま `selectOption` に対して `UnsupportedAction` を送出しており、`read_attribute` にも同じく送出させます。そのため、iOS のターゲットで `web:` ブロックの中に置いた `attribute` アサーションも、デバイスを確保する前の preflight で失敗します。
 
 ターゲットの設定は、独自の interrupt を宣言できます（`hooks.interrupts`、`bajutsu/common/config/schema/hooks.py:47`）。ランナーは、それをシナリオの項目とあわせて使います。preflight はシナリオだけを読むので、設定側の項目は見えません。そのため、web 以外のターゲットの `hooks.interrupts` に `attribute` があれば、設定の読み込み時の検証で拒否します。バックエンドが `elementAttribute` を広告するかどうかはターゲットのプラットフォームで決まるので、この検証にデバイスは要りません。
 
@@ -135,7 +135,6 @@ WebView を埋め込んだ iOS アプリでも、Bajutsu は BajutsuKit のブ�
 
   | 面 | 場所 |
   |---|---|
-  | Author エディターのアサーション一覧 | `bajutsu/common/scenario/edit.py` |
   | JavaScript Object Notation（JSON）スキーマ | `bajutsu schema` の出力 |
   | 英語のページ | `docs/scenarios.md`、`docs/dsl-grammar.md`、`docs/drivers.md`、`docs/codegen.md` |
   | 日本語のミラー | `docs/ja/` 以下の同じページ |
@@ -152,7 +151,7 @@ WebView を埋め込んだ iOS アプリでも、Bajutsu は BajutsuKit のブ�
 | # | 単位 | 完了の条件 |
 |---|---|---|
 | 1 | シナリオのモデル：`AttributeMatch`、`attribute` の種類、属性名の検証、比較の種類はちょうど1つ | モデルのテストで、各比較の種類を読み込めることと、空の名前、2つの比較の種類、`absent: false` を拒否することを確かめます |
-| 2 | ドライバーのプロトコル、capability、preflight の要件、設定の検証、web 以外のドライバーの送出 | preflight のテストで、iOS と Android のターゲット、iOS の `web:` ブロック内の `attribute`、`interrupts` の条件の中の `attribute` が、デバイスの確保前に `attribute` を名指しするメッセージで失敗することを確かめます。web だけを対象とする `interrupts` の項目が iOS のターゲットを失敗させないこと、web 以外のターゲットの `hooks.interrupts` に `attribute` を書いた設定が読み込みで失敗することも確かめます |
+| 2 | ドライバーのプロトコル、capability、preflight の要件、設定の検証、web 以外のドライバーの送出 | preflight のテストで、iOS と Android のターゲット、iOS の `web:` ブロック内の `attribute`、`interrupts` の条件の中の `attribute` が、デバイスの確保前に `attribute` を名指しするメッセージで失敗することを確かめます。web だけを対象とする `interrupts` の項目が iOS のターゲットを失敗させないこと、`target` を省いた項目が `setPrimaryTarget` で primary になるターゲットを失敗させること、web 以外のターゲットの `hooks.interrupts` に `attribute` を書いた設定が読み込みで失敗することも確かめます |
 | 3 | `_attributes_for`、`EvalContext.attributes`、評価関数 | フェイクドライバーのテストで、各比較の種類、存在と空の区別、属性がない場合、読み出しをせずに失敗する曖昧なセレクタを確かめます。後の回で変わる属性が待機の下限内に成功すること、`if` の条件と `interrupts` の条件に置いた `attribute` が属性を読んで分岐や発火を決めることも確かめます |
 | 4 | Playwright の `read_attribute` | 実際の Chromium を使う web ドライバーのテストで、`data-testid` とノードの一覧の走査のそれぞれで属性を読めること、覆われた要素と表示領域外の要素を読めること、`data-testid` が曖昧な場合と、矩形、名前、trait で一致するノードが2つある場合に失敗すること、非表示の重複した `data-testid` があっても曖昧にならないことを確かめます |
 | 5 | ドライバーの適合性テスト | web の適合性テストに `read_attribute` のケースを加えて成功させ、web 以外のバックエンドでは capability によって省略します |
