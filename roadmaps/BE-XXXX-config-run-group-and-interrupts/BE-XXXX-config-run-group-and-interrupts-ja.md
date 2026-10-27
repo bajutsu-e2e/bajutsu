@@ -37,7 +37,7 @@
 ## 動機
 
 `run` グループ（`bajutsu/common/config/schema/run_policy.py`）は、「実行の方針」という名目で6つの
-フィールドを集めています。6つのフィールドが答える問いは、次の4種類に分かれます。
+フィールドを集めています。6つのフィールドが答える問いは、次の3種類に分かれます。
 
 | フィールド | 答える問い |
 |---|---|
@@ -71,7 +71,7 @@ Android の「アプリが応答しません」ダイアログが、その例で
 `services.mailbox` は、実行が問い合わせるだけで起動はしない外部の受信箱です。
 
 最後に、兄弟の target がブロックをまるごと繰り返しています。`demos/showcase/showcase.config.yaml` は、
-`driver.runner.testRunner` の同じパスを7回書いています。同じ `app.launch.env` は14回です。
+`driver.runner.testRunner` の同じパスを6回書いています。同じ `app.launch.env` は14回です。
 `defaults.platforms.<platform>` を使えば繰り返しの大半は消せますが、このファイルは使っていません。
 `showcase-swiftui-noax` のような同じアプリの変種は、元の target の `app` と `driver` のブロックの大半を繰り返しています。YAML のアンカーを
 使えば残りを共有できますが、ローダーはスキーマにないトップレベルのキーをすべて弾きます。アンカーを置く場所が
@@ -112,10 +112,11 @@ hooks:
 | システムアラート | `systemAlert`、`choice` | `pollInterval`、`frozenScreenTimeout` | `run.systemAlertHandling` |
 | TipKit | `tipKit` | なし | `run.tipKitHandling` |
 
-`systemAlert` は、`handleSystemAlert` ステップがすでに使っているプロンプト名を受け付けます。名前は
+`systemAlert` は、`systemAlertHandling.rules` がすでに使っている `SystemAlertPrompt` の名前を受け付けます。名前は
 `notifications`、`tracking`、`paste`、`savePassword`、`localNetwork` の5つです。`choice` は `grant`、
 `deny`、新しい値の `leave` のどれかをとります。`leave` は、そのプロンプトには何も答えないようガードに
-伝えます。いま `paste_system_alert.yaml` のようなシナリオは `systemAlertHandling: false` と書き、
+伝えます。能動的な `handleSystemAlert` ステップも同じ `choice` の語彙を共有しますが、`leave` は読み込みで
+弾きます。ボタンを押さないステップには意味がないからです。いま `paste_system_alert.yaml` のようなシナリオは `systemAlertHandling: false` と書き、
 自身の `handleSystemAlert` ステップが処理することを示しています。`leave` はこの書き方を置き換えます。
 `tipKit` は `dismiss` か `leave` をとります。ヒントそのものをシナリオがアサーションで確かめる場合も
 あるので、シナリオは `- tipKit: leave` と書いて target の TipKit エントリを止められます。
@@ -148,7 +149,7 @@ hooks:
 | エントリの形 | target とシナリオのエントリの組み合わせ方 |
 |---|---|
 | 画面 | 連結します。target のエントリが先です（BE-0314） |
-| システムアラート | プロンプトごとに決まります。シナリオのエントリは、同じプロンプトの target のエントリの `choice` を置き換え、書かなかった調整値は受け継ぎます。他のプロンプトは両方とも適用されます（BE-0401、BE-0406） |
+| システムアラート | プロンプトごとに決まります。シナリオのエントリは、同じプロンプトの target のエントリの `choice` を置き換え、書かなかった `frozenScreenTimeout` は受け継ぎます。`pollInterval` は、「エントリに載せる調整値」で述べたとおり層ごとに決まります。他のプロンプトは両方とも適用されます（BE-0401、BE-0406） |
 | TipKit | シナリオのエントリ（`dismiss` か `leave`）を使い、なければ target のエントリを使います。どちらにもなければ無効です |
 
 シナリオが `choice: leave` のエントリを書くと、そのプロンプトの target の答えを置き換えます。
@@ -180,14 +181,18 @@ web には `reinstall` を置きません。シナリオは `preconditions.app.r
 target では、いまの `run.erase` と同じく、この値は効果を持ちません。
 
 `--erase` は、有効な値を `erase` にします。`--no-erase` は、有効な値が `erase` なら `clean` に下げ、
-`overwrite` と `clean` はそのままにします。`runsOn.seedPhotos` は有効な `app.reinstall: erase` を
+`overwrite` と `clean` はそのままにします。この段階化は、挙動を1つ意図して変えます。いまの `erase` と
+`reinstall` は独立しているので、`run.erase: true` と `app.reinstall: overwrite` を持つ target に
+`--no-erase` を付けると、アプリのデータが残ります。この項目のあとは、そのような target は `erase` だけを
+書くことになり、`--no-erase` はアプリをアンインストールします。データを残したいシナリオは、フラグに頼らず
+`preconditions.app.reinstall: overwrite` を書きます。`runsOn.seedPhotos` は有効な `app.reinstall: erase` を
 求めるようになり、エラーの文面もこのキーを示します。
 
 ### evidence に加わる3つのフィールド
 
 | フィールド | 意味 | デフォルト値 |
 |---|---|---|
-| `evidence.network` | `request` アサーションのために、アプリのネットワーク通信を収集します | `true` |
+| `evidence.collectNetwork` | `request` アサーションのために、アプリのネットワーク通信を収集します。`network` という証跡の種類の前提になります | `true` |
 | `evidence.visualCompare` | `visual` アサーションの比較方法で、`exact` か `pixelmatch` です | 組み込みの値 |
 | `evidence.secrets` | `${secrets.X}` で使える環境変数名で、証跡では伏せ字になります | 空 |
 
@@ -203,6 +208,7 @@ target の `run` とともに、`preconditions.run` もなくなります。
 | 旧シナリオキー | 新しい置き場所 |
 |---|---|
 | `preconditions.run.erase: true` | `preconditions.app.reinstall: erase` |
+| `preconditions.run.erase: false` | `preconditions.app.reinstall: clean`、データを残すなら `overwrite` |
 | `preconditions.run.systemAlertHandling` | シナリオ自身の `interrupts` のエントリ |
 | `preconditions.run.tipKitHandling: true` | シナリオ自身の `interrupts` の `- tipKit: dismiss` |
 | `preconditions.run.tipKitHandling: false` | シナリオ自身の `interrupts` の `- tipKit: leave` |
@@ -258,7 +264,7 @@ YAML の `<<` がマージするのは1階層だけです。そのため、ア�
 | 旧キー | 新しい置き場所 |
 |---|---|
 | `run.erase` | `app.reinstall: erase` |
-| `run.network`、`run.visualCompare`、`run.secrets` | `evidence.network`、`evidence.visualCompare`、`evidence.secrets` |
+| `run.network`、`run.visualCompare`、`run.secrets` | `evidence.collectNetwork`、`evidence.visualCompare`、`evidence.secrets` |
 | `run.systemAlertHandling.rules[]` | 規則1つにつき、`hooks.interrupts` の `systemAlert` エントリ1つ |
 | `run.systemAlertHandling.pollInterval`、`.frozenScreenTimeout` | 値が働きかけるエントリの同名のキー |
 | `run.systemAlertHandling: false` | 答えないプロンプトに `choice: leave`、または `--no-system-alert-handling` |
@@ -268,7 +274,8 @@ YAML の `<<` がマージするのは1階層だけです。そのため、ア�
 | `targets.<name>.notify` | トップレベルの `notify` に `targets: [<name>]` を添えます |
 | シナリオのフィールド | 「シナリオの preconditions」を参照してください |
 
-`TARGET_KEYS` と `DEFAULTS_KEYS` から `run` を外すので、target が受け付けるキーは10個になります。
+`TARGET_KEYS` からは `run` を外し、単位 5 で `notify` も外します。`DEFAULTS_KEYS` からは `run` を
+外します。そのため、target が受け付けるキーは9個になります。
 `PlatformDefaults` とプラットフォームのレジストリからも `run` グループを外します。このグループのフィールドは
 iOS の `tipKitHandling` だけだったからです。解決後の `Effective` は、内部のまとまりとして `run_defaults` を
 残し、新しい置き場所から値を埋めます。
@@ -339,13 +346,13 @@ iOS の `tipKitHandling` だけだったからです。解決後の `Effective` 
   扱うシナリオはプラットフォームの数だけ `erase` を書くことになります。Android のライフサイクルはすでに
   `erase` と `reinstall` を1つの判断として読んでおり、`app.reinstall` のほうが振る舞いに合います。
 - **`secrets` を target のトップレベルへ移す案。** `secrets` は `${secrets.X}` の入力にもなるので、証跡だけの
-  設定ではありません。独立したキーにすれば、target のキーは11個のままです。それでも、このフィールドが
+  設定ではありません。独立したキーにすれば、target のキーは10個になります。それでも、このフィールドが
   ある理由は伏せ字にすることで、その規則を持つ `evidence.redact` がすぐ隣にあります。
 - **target 内の `notify` を残し、送信先ごとの絞り込みを外す案。** `defaults.notify` と target による
   上書きで、他のグループと同じ重ね方になります。そのかわり、送信先の全体像がすべての target に散らばります。
   「失敗を誰が知るのか」には、1つの一覧を読んで答えられるほうを選びます。
 - **`extends:` キーを足す案。** target が別の target を深いマージで継承できます。YAML の1階層だけの
-  マージでは届かない、入れ子のフィールドまで共有できます。そのかわり、11個目のキーが戻り、循環と多段の
+  マージでは届かない、入れ子のフィールドまで共有できます。そのかわり、10個目のキーが戻り、循環と多段の
   継承の規則も増えます。アンカーを使ったあとも showcase の変種が入れ子のブロックを繰り返すようなら、この案を
   見直す価値があります。
 

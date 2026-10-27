@@ -37,7 +37,7 @@ change drops backward compatibility: an old key fails to load and names its new 
 ## Motivation
 
 The `run` group (`bajutsu/common/config/schema/run_policy.py`) collects six fields under the label
-"the policy of a run". The six fields answer four different questions:
+"the policy of a run". The six fields answer three unrelated questions:
 
 | Field | Question it answers |
 |---|---|
@@ -72,7 +72,7 @@ list. Both answer "which results go where", and neither tells the reader the oth
 an external inbox that the run polls and never starts.
 
 Finally, sibling targets repeat whole blocks. `demos/showcase/showcase.config.yaml` writes the same
-`driver.runner.testRunner` path seven times and the same `app.launch.env` fourteen times.
+`driver.runner.testRunner` path six times and the same `app.launch.env` fourteen times.
 `defaults.platforms.<platform>` already removes most of that repetition, but the file does not use
 it. Variants of one app, such as `showcase-swiftui-noax`, repeat most of the `app` and `driver` blocks of the target they vary.
 YAML anchors would let them share the rest, yet the loader rejects any top-level key outside the
@@ -113,9 +113,11 @@ hooks:
 | System alert | `systemAlert`, `choice` | `pollInterval`, `frozenScreenTimeout` | `run.systemAlertHandling` |
 | TipKit | `tipKit` | none | `run.tipKitHandling` |
 
-`systemAlert` takes the prompt names `handleSystemAlert` already uses: `notifications`, `tracking`,
+`systemAlert` takes the `SystemAlertPrompt` names `systemAlertHandling.rules` already uses: `notifications`, `tracking`,
 `paste`, `savePassword`, and `localNetwork`. `choice` takes `grant`, `deny`, or a new value,
-`leave`. `leave` tells the guard to answer nothing for that prompt. It replaces
+`leave`. `leave` tells the guard to answer nothing for that prompt. The `handleSystemAlert`
+step shares the same `choice` vocabulary and rejects `leave` at load, since a step that taps no
+button has no meaning. `leave` replaces
 `systemAlertHandling: false`, which a scenario such as `paste_system_alert.yaml` writes today to
 prove that its own `handleSystemAlert` step does the work. `tipKit` takes `dismiss` or
 `leave`. A scenario writes `- tipKit: leave` to turn off a target's TipKit entry, since a tip is
@@ -150,7 +152,7 @@ the two keys this item merges:
 | Entry form | How the target's and the scenario's entries combine |
 |---|---|
 | Screen | Concatenated, target entries first (BE-0314) |
-| System alert | Per prompt: a scenario entry replaces the target entry's `choice` for the same prompt and inherits any tuning value it omits; other prompts from both apply (BE-0401, BE-0406) |
+| System alert | Per prompt: a scenario entry replaces the target entry's `choice` for the same prompt and inherits an omitted `frozenScreenTimeout` from it; `pollInterval` resolves by layer instead, as *Tuning values on an entry* describes; other prompts from both apply (BE-0401, BE-0406) |
 | TipKit | The scenario's entry (`dismiss` or `leave`), else the target's; absent from both means off |
 
 A scenario entry with `choice: leave` replaces the target's answer for that prompt, which is how a
@@ -183,14 +185,18 @@ run already starts in a fresh browser context. A scenario sets the same value th
 today.
 
 `--erase` makes the effective value `erase`. `--no-erase` lowers an effective `erase` to `clean`
-and leaves `overwrite` and `clean` alone. `runsOn.seedPhotos` now requires an effective
+and leaves `overwrite` and `clean` alone. The ladder changes one behavior on purpose. Today `erase`
+and `reinstall` are independent, so a target with `run.erase: true` and `app.reinstall: overwrite`
+under `--no-erase` keeps the app's data. After this item, such a target can state `erase` alone,
+and `--no-erase` uninstalls the app. A scenario that wants to keep the data writes
+`preconditions.app.reinstall: overwrite` instead of relying on the flag. `runsOn.seedPhotos` now requires an effective
 `app.reinstall: erase`, and its error message names that key.
 
 ### Evidence gains three fields
 
 | Field | Meaning | Default |
 |---|---|---|
-| `evidence.network` | Collect the app's network exchanges for `request` assertions | `true` |
+| `evidence.collectNetwork` | Collect the app's network exchanges for `request` assertions, a precondition of the `network` capture kind | `true` |
 | `evidence.visualCompare` | How `visual` assertions compare, `exact` or `pixelmatch` | built-in |
 | `evidence.secrets` | Environment variable names usable as `${secrets.X}`, masked in evidence | empty |
 
@@ -206,6 +212,7 @@ drops `run` from both.
 | Old scenario key | New location |
 |---|---|
 | `preconditions.run.erase: true` | `preconditions.app.reinstall: erase` |
+| `preconditions.run.erase: false` | `preconditions.app.reinstall: clean`, or `overwrite` to keep the app's data |
 | `preconditions.run.systemAlertHandling` | entries in the scenario's own `interrupts` |
 | `preconditions.run.tipKitHandling: true` | `- tipKit: dismiss` in the scenario's own `interrupts` |
 | `preconditions.run.tipKitHandling: false` | `- tipKit: leave` in the scenario's own `interrupts` |
@@ -262,7 +269,7 @@ Compose files, so a reader may already know it.
 | Old key | New location |
 |---|---|
 | `run.erase` | `app.reinstall: erase` |
-| `run.network`, `run.visualCompare`, `run.secrets` | `evidence.network`, `evidence.visualCompare`, `evidence.secrets` |
+| `run.network`, `run.visualCompare`, `run.secrets` | `evidence.collectNetwork`, `evidence.visualCompare`, `evidence.secrets` |
 | `run.systemAlertHandling.rules[]` | one `systemAlert` entry per rule in `hooks.interrupts` |
 | `run.systemAlertHandling.pollInterval`, `.frozenScreenTimeout` | the same keys on the entries they serve |
 | `run.systemAlertHandling: false` | `choice: leave` on the prompts to leave, or `--no-system-alert-handling` |
@@ -272,7 +279,8 @@ Compose files, so a reader may already know it.
 | `targets.<name>.notify` | top-level `notify` with `targets: [<name>]` |
 | scenario fields | see *A scenario's preconditions* |
 
-`TARGET_KEYS` and `DEFAULTS_KEYS` drop `run`, so a target accepts ten keys. `PlatformDefaults` and
+`TARGET_KEYS` drops `run` and, with unit 5, `notify`; `DEFAULTS_KEYS` drops `run`. A target
+accepts nine keys as a result. `PlatformDefaults` and
 the platform registry drop their `run` group, since iOS's `tipKitHandling` was its only field. The
 resolved `Effective` keeps `run_defaults` as an internal grouping, filled from the new locations.
 
@@ -343,14 +351,14 @@ resolved `Effective` keeps `run_defaults` as an internal grouping, filled from t
   `erase` once per platform. The Android lifecycle already reads `erase` and `reinstall` as one
   decision, so `app.reinstall` fits the behavior.
 - **Move `secrets` to the top level of a target.** `secrets` also feeds `${secrets.X}`, which is
-  input rather than evidence. As a separate key it would keep the target at eleven keys. The field
+  input rather than evidence. As a separate key it would bring the target to ten keys. The field
   exists because of masking, though, and `evidence.redact` already holds the masking rules beside
   it.
 - **Keep a target-level `notify` and drop the endpoint filter.** This would layer `notify` like the
   other groups, with `defaults.notify` and a target override. The full set of sinks would then be
   spread across every target. A team reads one list to answer "who hears about failures".
 - **Add an `extends:` key.** A target could inherit another target with a deep merge. This would
-  reach nested fields that YAML's one-level merge cannot. It would also add an eleventh key back,
+  reach nested fields that YAML's one-level merge cannot. It would also add a tenth key back,
   plus rules for cycles and chains. Should the showcase's variants still repeat nested blocks once
   anchors are in use, this alternative becomes worth revisiting.
 
