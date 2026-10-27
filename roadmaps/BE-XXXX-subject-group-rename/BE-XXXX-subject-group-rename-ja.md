@@ -43,7 +43,7 @@ iOS と Android では `id`、`path`、`build`、`reinstall`、`launch` を持�
 | 旧キー | 新キー |
 |---|---|
 | `targets.<name>.app` | `targets.<name>.subject` |
-| `defaults.app` | `defaults.subject` |
+| `defaults.platforms.<platform>.app` | `defaults.platforms.<platform>.subject` |
 | `preconditions.app`（`reinstall`、`launch.env`、`launch.args`、`launch.deeplink`） | `preconditions.subject` |
 
 グループの中のフィールドは、どれも名前と意味を保ちます。`subject.id` は引き続きバンドル ID か
@@ -64,13 +64,17 @@ targets:
 
 旧キーの `app` は読み込みに失敗し、`subject` を示します。BE-0452 が自身の移動で採ったのと同じ方法です。
 ローダーが両方の書き方を受け付けることはありません。改名前に保存したシナリオのプランは、引き続き
-読み込めます。ローダーはすでに `bajutsu/common/scenario/load.py` の `_PRECONDITION_MOVES` で古い平らな
-前提条件のキーを移しており、保存済みのプランに限って `app` から `subject` への段階を加えます。
+読み込めます。そのために、次の 2 つの対応表を変えます。
+
+| 対応表 | 変更 |
+|---|---|
+| `bajutsu/common/scenario/load.py` の `_PRECONDITION_MOVES` | BE-0452 より前に保存した平らなキーのために、各移動先を `app` から `subject` に移します。BE-0452 より後に保存した入れ子のグループのために、`app` から `subject` への段階も加え、保存済みのプランに限って適用します。 |
+| `bajutsu/common/scenario/models/scenario/preconditions.py` の `FLAT_PRECONDITION_KEYS` | 移行のエラーが示す移動先のパスを、それぞれ `subject` に移します。これにより、ローダーの受け付けないキーをメッセージが示すことはなくなります。 |
 
 ### 変更が入る場所
 
 - `bajutsu/common/config/schema/platform/registry.py` のプラットフォームの registry が、`Group`、
-  `GROUPS`、`PlatformSchema` でグループを `subject` と名付けます。`TargetConfig`、`Defaults`、
+  `GROUPS`、`PlatformSchema` でグループを `subject` と名付けます。`TargetConfig`、`PlatformDefaults`、
   `json_schema.py` の JSON Schema の生成もこれに従います。
 - シナリオの `Preconditions` モデルは、`app` フィールドを `subject` に改名します。
 - `IosApp` や `AppCommon` のような内部のクラス名は、同じ変更で追随しても、後回しにしてもかまいません。
@@ -100,7 +104,7 @@ run に LLM は入らず、振る舞いも変わりません。本項目は conf
 
 ### 作業分解
 
-1. **スキーマ。** registry、`TargetConfig`、`Defaults`、シナリオの `Preconditions`、JSON Schema の出力で
+1. **スキーマ。** registry、`TargetConfig`、`PlatformDefaults`、シナリオの `Preconditions`、JSON Schema の出力で
    グループを改名します。旧キーの `app` は新しいパスを示して失敗させ、保存済みのシナリオのプランでは
    移します。
 2. **config とシナリオ。** `demos/` の config、デモのシナリオ、テストのフィクスチャで `app` を

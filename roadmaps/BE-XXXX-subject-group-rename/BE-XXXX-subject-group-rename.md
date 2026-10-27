@@ -43,7 +43,7 @@ writes `app:` as a group key, `bajutsu config schema` shows `subject` on every p
 | Old key | New key |
 |---|---|
 | `targets.<name>.app` | `targets.<name>.subject` |
-| `defaults.app` | `defaults.subject` |
+| `defaults.platforms.<platform>.app` | `defaults.platforms.<platform>.subject` |
 | `preconditions.app` (`reinstall`, `launch.env`, `launch.args`, `launch.deeplink`) | `preconditions.subject` |
 
 Every field inside the group keeps its name and meaning. `subject.id` is still a bundle id or a
@@ -63,14 +63,18 @@ targets:
 ### Migration
 
 An old `app` key fails the load and names `subject`, as BE-0452 did for its own moves. The loader
-never accepts both spellings. A scenario plan stored before the rename still loads: the loader
-already maps old flat precondition keys through `_PRECONDITION_MOVES` in
-`bajutsu/common/scenario/load.py`, and it gains the `app` to `subject` step for stored plans alone.
+never accepts both spellings. A scenario plan stored before the rename still loads. Two maps
+change for that:
+
+| Map | Change |
+|---|---|
+| `_PRECONDITION_MOVES` in `bajutsu/common/scenario/load.py` | Each destination moves from `app` to `subject`, for flat keys stored before BE-0452. The map also gains an `app` to `subject` step for a nested group stored after BE-0452, applied to stored plans alone. |
+| `FLAT_PRECONDITION_KEYS` in `bajutsu/common/scenario/models/scenario/preconditions.py` | Each replacement path a migration error names moves to `subject`, so no message points at a key the loader no longer accepts. |
 
 ### Where the change lands
 
 - The platform registry in `bajutsu/common/config/schema/platform/registry.py` names the group
-  `subject` in `Group`, `GROUPS`, and `PlatformSchema`. `TargetConfig`, `Defaults`, and the JSON
+  `subject` in `Group`, `GROUPS`, and `PlatformSchema`. `TargetConfig`, `PlatformDefaults`, and the JSON
   Schema builder in `json_schema.py` follow.
 - The scenario's `Preconditions` model renames its `app` field to `subject`.
 - Internal class names such as `IosApp` and `AppCommon` may follow in the same change or later. They
@@ -99,7 +103,7 @@ difference in config.
 
 ### Work breakdown
 
-1. **Schema.** Rename the group in the registry, `TargetConfig`, `Defaults`, the scenario's
+1. **Schema.** Rename the group in the registry, `TargetConfig`, `PlatformDefaults`, the scenario's
    `Preconditions`, and the JSON Schema output. Fail an old `app` key with the new path, and map it
    for stored scenario plans.
 2. **Configs and scenarios.** Rewrite `app` to `subject` in the `demos/` configs, the demo
