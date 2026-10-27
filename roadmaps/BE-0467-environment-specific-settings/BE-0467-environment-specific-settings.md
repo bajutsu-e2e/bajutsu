@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-environment-specific-settings-ja.md)
+**English** · [日本語](BE-0467-environment-specific-settings-ja.md)
 
-# BE-XXXX — Environment-specific settings: a support table, target-declared ignored settings, and checks at lint and dispatch
+# BE-0467 — Environment-specific settings: a support table, target-declared ignored settings, and checks at lint and dispatch
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-environment-specific-settings.md) |
+| Proposal | [BE-0467](BE-0467-environment-specific-settings.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0467") |
 | Topic | Platform support |
 | Related | [BE-0082](../BE-0082-capability-preflight-check/BE-0082-capability-preflight-check.md), [BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues.md), [BE-0238](../BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md), [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md), [BE-0457](../BE-0457-real-device-step-lint/BE-0457-real-device-step-lint.md) |
 <!-- /BE-METADATA -->

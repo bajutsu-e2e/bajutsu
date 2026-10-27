@@ -1,14 +1,14 @@
-[English](BE-XXXX-environment-specific-settings.md) · **日本語**
+[English](BE-0467-environment-specific-settings.md) · **日本語**
 
-# BE-XXXX — 環境に固有の設定：対応表、ターゲット設定での無視の宣言、lint と振り分け時の検査
+# BE-0467 — 環境に固有の設定：対応表、ターゲット設定での無視の宣言、lint と振り分け時の検査
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-environment-specific-settings-ja.md) |
+| 提案 | [BE-0467](BE-0467-environment-specific-settings-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **承認済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0467") |
 | トピック | プラットフォーム対応 |
 | 関連 | [BE-0082](../BE-0082-capability-preflight-check/BE-0082-capability-preflight-check-ja.md), [BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues-ja.md), [BE-0238](../BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution-ja.md), [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md), [BE-0457](../BE-0457-real-device-step-lint/BE-0457-real-device-step-lint-ja.md) |
 <!-- /BE-METADATA -->
