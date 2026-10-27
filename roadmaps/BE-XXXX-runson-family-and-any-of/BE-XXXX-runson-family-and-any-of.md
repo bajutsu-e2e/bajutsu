@@ -1,6 +1,6 @@
 **English** · [日本語](BE-XXXX-runson-family-and-any-of-ja.md)
 
-# BE-XXXX — Let runsOn name a device family or any of several browsers instead of one exact model
+# BE-XXXX — Let runsOn.ios name a device family and runsOn.browser any of several engines
 
 <!-- BE-METADATA -->
 | Field | Value |
@@ -15,56 +15,60 @@
 ## Introduction
 
 A target's `runsOn` names the device it needs by an exact string. On iOS, `model` must equal the
-Simulator's device-type name, such as `"iPad Pro 13-inch (M4)"`. On the web, `browser.engine` is
-one engine, and a list of engines multiplies the runs. This item adds two ways to say "any of
-these" without naming a model. On iOS, `family: [iphone, ipad]` takes one device of the first listed
-family that the pool has, a Simulator or a connected real device. On the web,
-`browser: { anyOf: [chromium, firefox, webkit] }` takes the first listed engine that reads. Both resolve to one run, and the manifest records what
-each run took.
+Simulator's device-type name, such as `"iPad Pro 13-inch (M4)"`. On the web, `engine` is one engine,
+and a list of engines multiplies the runs. This item adds two ways to say "any of these" without
+naming one exact model. `runsOn.ios.family: [iphone, ipad]` takes one device of the first listed
+family that the pool has, a Simulator or a connected real device. `runsOn.browser.anyOf: [chromium,
+firefox, webkit]` takes the first listed engine that reads. Both resolve to one run, and the
+manifest records what each run took. A server worker checks a real-device family before it takes a
+job.
 
 ## Motivation
 
 Today a config cannot say "an iPad, any iPad". It must name one device type, and Apple renames and
 replaces device types with each Xcode release. A target pinned to `"iPad Pro 13-inch (M4)"` stops
-matching on the first host whose Xcode lacks that type. The run then fails with `runsOn.ios.model`
-unmet, although the scenario only needed a tablet-sized screen. A target that names no model avoids
-the failure, but it also loses the intent: the run takes the first model in pool order, which may be
-an iPhone on one host and an iPad on another.
+matching on the first host whose Xcode lacks that type. The run then fails with the `model`
+condition unmet, although the scenario only needed a tablet-sized screen. A target that names no
+model avoids the failure, but it also loses the intent: the run takes the first model in pool
+order, which may be an iPhone on one host and an iPad on another.
 
 The list syntax does not fill the gap. A list on `model` or `browser.engine` means "run once per
 value", so `model: [iPhone ..., iPad ...]` doubles the runs when the author wanted either one. The
 config has no spelling for "one of these will do".
 
 The outcome a reader can check after this ships is concrete. A config written as
-`family: [iphone, ipad]` keeps resolving after an Xcode update renames every device type, with no
-edit to the config. Each run's label, manifest, and `doctor` listing then show which family and
-model the run took.
+`runsOn.ios.family: [iphone, ipad]` keeps resolving after an Xcode update renames every device type,
+with no edit to the config. Each run's label, manifest, and `doctor` listing then show which family
+and model the run took.
 
 ### Scope
 
-The item covers iOS (`family`) and the web (`browser.anyOf`). It leaves Android alone. An Android
-target that omits `avd` already accepts any emulator, so "any" has a spelling there today. Android
-form factor (phone or tablet) is a separate fact that would need its own device read, so it stays
-out of this item.
+The item builds on the companion proposal *Group runsOn by destination and drop the scenario's
+runsOn*, which lands first. That proposal moves every field under `runsOn.ios`, `runsOn.android`,
+or `runsOn.browser`, and removes the scenario's `runsOn`. This item adds new matching semantics to
+that shape and moves no field. The `family` and `anyOf` additions cover iOS and the web. Android
+gains no family. An Android target that omits `avd` already accepts any emulator, so "any" has a
+spelling there today. Android form factor (phone or tablet) is a separate fact that would need its
+own device read, so it stays out of this item.
 
 ## Detailed design
 
-### What the config says
+### What a priority list says
 
-| Platform | Field | Meaning |
+| Block | Field | Meaning |
 |---|---|---|
-| iOS | `runsOn.family: iphone` | one Simulator whose device-type family is iPhone |
-| iOS | `runsOn.family: [iphone, ipad]` | one Simulator of the first listed family the pool has |
-| iOS | `runsOn.family` omitted | any Simulator, as today |
-| web | `runsOn.browser.anyOf: [chromium, firefox]` | the first listed engine that launches |
+| `runsOn.ios` | `family: iphone` | one device whose family is iPhone |
+| `runsOn.ios` | `family: [iphone, ipad]` | one device of the first listed family the pool has |
+| `runsOn.ios` | `family` omitted | any device of the pool, as today |
+| `runsOn.browser` | `anyOf: [chromium, firefox]` | the first listed engine that reads |
 
 A list in `family` and in `anyOf` is a priority list. The first entry wins when it fits, and the
 run falls to the next entry only when no device or engine fits the earlier one. Order in the config
 therefore decides the result, and the same pool always resolves the same way.
 
-`family` takes `iphone` and `ipad`. Both are lowercase and case-sensitive. The reader maps the
-`productFamily` that `simctl list devicetypes` reports for each device type (`iPhone`, `iPad`).
-A device type of another family (Apple TV, Apple Watch) is readable but never matches.
+`family` takes `iphone` and `ipad`. Both are lowercase and case-sensitive. A Simulator's family is
+the `productFamily` that `simctl list devicetypes` reports for its device type (`iPhone`, `iPad`). A
+device type of another family (Apple TV, Apple Watch) is readable but never matches.
 
 The web has one spelling for "any engine": `anyOf` with every engine listed. Omission cannot
 serve, because the engine has a built-in default, `chromium`. iOS has no default model, so omission
@@ -72,7 +76,7 @@ already means "any", and a target clears an inherited `family` with `family: nul
 
 ### Examples by destination
 
-A Simulator target names a family, or leaves `runsOn` without one to take any Simulator.
+A Simulator target names a family, or omits it to take any Simulator.
 
 ```yaml
 targets:
@@ -80,16 +84,17 @@ targets:
     platform: ios
     app: { id: com.example.app }
     runsOn:
-      family: [iphone, ipad]   # one Simulator; an iPhone when the pool has one, else an iPad
-      os: "18"                 # composes with family, as with model today
+      ios:
+        family: [iphone, ipad]   # one Simulator; an iPhone when the pool has one, else an iPad
+        os: "18"                 # composes with family, as with model today
 ```
 
 `family: ipad` alone takes any iPad. A target that writes neither `family` nor `model` takes any
 Simulator, as today.
 
-A real-device target declares `kind: device`. Its pool is every udid of `--udid`, the real
-devices connected to the host. `family` matches against that pool, so `family: ipad` takes any
-connected iPad. Without `family`, the target takes any device of the pool, as today.
+A real-device target declares `kind: device`. Its pool is every udid of `--udid`, the real devices
+connected to the host. `family` matches against that pool, so `family: ipad` takes any connected
+iPad. Without `family`, the target takes any device of the pool, as today.
 
 ```yaml
 targets:
@@ -97,8 +102,9 @@ targets:
     platform: ios
     app: { id: com.example.app }
     runsOn:
-      kind: device
-      family: ipad   # any connected iPad among the --udid devices
+      ios:
+        kind: device
+        family: ipad   # any connected iPad among the --udid devices
 ```
 
 `model` and `os` stay refused on a real device. *Reading the family* gives the reason.
@@ -112,32 +118,14 @@ targets:
     platform: web
     app: { url: https://example.com }
     runsOn:
-      browser: { anyOf: [chromium, firefox, webkit] }   # the first engine that reads wins
-```
-
-A scenario may replace its target's choice for itself, under the cross-layer rule below.
-
-```yaml
-preconditions:
-  runsOn:
-    ios: { family: ipad }
+      browser:
+        anyOf: [chromium, firefox, webkit]   # the first engine that reads wins
 ```
 
 ### Rules the loader enforces
 
-Each rule inside one `runsOn` block runs on the merged config block, after team defaults have
-folded in, as the existing `kind: device` rule does. A scenario's `preconditions.runsOn` is not part
-of that block. The loader validates it on its own and folds it in later as flat conditions, and a
-`null` drops out on the way, so a scenario cannot clear a target's field. The cross-layer pairs
-therefore get a replacement rule instead:
-
-- A scenario's `family` replaces the target's `model`, and a scenario's `model` replaces the
-  target's `family`.
-- A scenario's `anyOf` replaces the target's `engine`, and a scenario's `engine` replaces the
-  target's `anyOf`.
-
-`form_target_runs` never receives two conditions that exclude each other. Within one config block,
-the rules below hold.
+Each rule runs on the merged config block, after team defaults have folded in, as the existing
+`kind: device` rule does.
 
 - `family` and `model` together fail the load and name both fields. A target clears an inherited
   one with `null`.
@@ -214,10 +202,10 @@ read that `read_ios` serves for Simulators.
 
 A server worker already knows which real devices it can drive, so the worker checks a real-device
 `family` before it takes a job. The check reuses the capability routing of
-[BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues.md). Under that routing, a job
-carries the tokens it requires, and a worker leases the job only when it advertises all of them
-(`can_serve` in `bajutsu/serve/capabilities.py`). Workers already advertise `iphone` and `ipad`
-from their Simulator inventory (`simctl_capabilities`).
+[BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues.md). Under that
+routing, a job carries the tokens it requires, and a worker leases the job only when it advertises
+all of them (`can_serve` in `bajutsu/serve/capabilities.py`). Workers already advertise `iphone`
+and `ipad` from their Simulator inventory (`simctl_capabilities`).
 
 - **What the worker advertises.** A worker adds `device:iphone` and `device:ipad` tokens for the
   real devices connected to it, read through the same `devicectl` reader as `read_ios_device`.
@@ -242,16 +230,14 @@ verdict: it decides where a job runs, and the run itself stays deterministic.
 ### Schema, reports, and docs
 
 - `IosRunsOn` in `bajutsu/common/config/schema/platform/ios.py` gains `family`. `WebBrowser` in
-  `web.py` gains `anyOf`, and its `engine` loses the field-level default. The platform registry
-  supplies the same fields to a scenario's `preconditions.runsOn`, so a scenario may replace its
-  target's choice under the rule above.
+  `web.py` gains `anyOf`, and its `engine` loses the field-level default.
 - `bajutsu config schema` emits `family` as an enum or a list of the enum, and `anyOf` as a list
   of engines.
 - `doctor` lists each run with the winning family or engine and the devices that fit.
 - [Configuration](../../docs/configuration.md#device-conditions-runson) and its `docs/ja/` mirror
-  gain the table above. [CLI](../../docs/cli.md) documents `--browser`'s effect on `anyOf`.
-  [Architecture](../../docs/architecture.md) updates the `common/devices/` rows for `facts.py` and
-  `runs.py`.
+  gain the priority-list table and the examples. [CLI](../../docs/cli.md) documents `--browser`'s
+  effect on `anyOf`. [Architecture](../../docs/architecture.md) updates the `common/devices/` rows
+  for `facts.py` and `runs.py`.
 
 ### Prime-directive compliance
 
@@ -265,21 +251,20 @@ in config.
 - `model` and `os` on a real device. The reason is under *Reading the family*.
 - Android form factor. A tablet-or-phone fact needs `ro.build.characteristics` read on an
   emulator, which this item leaves to its own proposal.
-- `runsOn.emulate`. It picks a Playwright viewport profile rather than a device from a pool, so
-  it has no availability to resolve. A list there would mean coverage across profiles, a separate
-  question from "any one of these".
+- A priority list on `emulate`. It picks a Playwright viewport profile rather than a device from a
+  pool, so it has no availability to resolve.
 - Glob or regular-expression matching on `model`. The alternatives table gives the reason.
 - Changing the meaning of a list in `model`, `avd`, or `engine`. Existing configs keep their runs.
 
 ### Work breakdown
 
 1. **Read the family.** Add `family` to `DeviceFacts` and read it in `read_ios` from
-   `productFamily`. Add `read_ios_device` for real devices over `devicectl`, and confirm on a
-   connected iPhone and iPad that `hardwareProperties.deviceType` carries the family. Confirm on a real `simctl list devicetypes` that every iPhone and iPad type
-   carries it.
-2. **Schema.** Add `IosRunsOn.family` and `WebBrowser.anyOf`, move the `chromium` default from
-   the `engine` field to run resolution, and add the load-time rules above. Apply the cross-layer
-   replacement rule where a scenario's conditions fold in. Extend the JSON Schema output.
+   `productFamily`; confirm on a real `simctl list devicetypes` that every iPhone and iPad type
+   carries it. Add `read_ios_device` for real devices over `devicectl`, and confirm on a connected
+   iPhone and iPad that `hardwareProperties.deviceType` carries the family.
+2. **Priority-list schema.** Add `runsOn.ios.family` and `runsOn.browser.anyOf`, move the
+   `chromium` default from the `engine` field to run resolution, and add the load-time rules
+   above. Extend the JSON Schema output.
 3. **Resolution.** Resolve the priority lists in `form_target_runs`, narrow `eligible_set` by the
    winning family, and add the coordinate for any-of runs. Cover `first_run` and `declared_runs`.
    `declared_runs` has no pool to resolve against. It lists a priority list as one run whose family
@@ -291,13 +276,13 @@ in config.
 6. **Worker routing.** Advertise `device:iphone` and `device:ipad` from the worker's connected
    real devices, refreshed before each lease. Reserve the `device:` prefix, add the any-of group to
    a job's requirement, and extend `can_serve` to accept it.
-7. **Docs and demos.** Update the bilingual docs named above, and carry the three examples of
+7. **Docs and demos.** Update the bilingual docs named above, and carry the examples of
    *Examples by destination* (Simulator, real device, and browser) into the configuration page's
    `runsOn` section in both languages. Switch one demo config from an exact model to `family` as a
    worked example.
 
-Each unit carries its own tests: the schema rules, a fake pool for each resolution branch, and
-the failure messages.
+Each unit carries its own tests: the schema rules, a fake pool for each
+resolution branch, and the failure messages.
 
 ## Alternatives considered
 
@@ -318,7 +303,7 @@ the failure messages.
 > (oldest first), linking the PRs.
 
 - [ ] Unit 1: read the family
-- [ ] Unit 2: schema
+- [ ] Unit 2: priority-list schema
 - [ ] Unit 3: resolution
 - [ ] Unit 4: wiring
 - [ ] Unit 5: reporting

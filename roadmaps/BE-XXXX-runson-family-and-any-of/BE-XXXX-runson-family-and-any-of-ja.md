@@ -1,6 +1,6 @@
 [English](BE-XXXX-runson-family-and-any-of.md) · **日本語**
 
-# BE-XXXX — runsOn で正確なモデル名の代わりにデバイスファミリーやいずれかのブラウザを指定できるようにする
+# BE-XXXX — runsOn.ios でデバイスファミリーを、runsOn.browser で複数エンジンのいずれかを指定できるようにする
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
@@ -14,56 +14,60 @@
 
 ## はじめに
 
-ターゲットの `runsOn` は、必要なデバイスを正確な文字列で指定します。iOS の `model` は、
-Simulator のデバイスタイプ名（たとえば `"iPad Pro 13-inch (M4)"`）と一致しなければなりません。
-web の `browser.engine` はエンジン 1 つで、エンジンのリストは run を倍増させます。本項目は、
-モデル名を書かずに「このうちのどれか」と書く方法を 2 つ加えます。iOS では
-`family: [iphone, ipad]` と書くと、プールにある最初のファミリーからデバイスを 1 台使います。
-デバイスは Simulator でも、接続した実機でもかまいません。web では
-`browser: { anyOf: [chromium, firefox, webkit] }` と書くと、読み取れた最初のエンジンを使います。どちらも run は 1 つで、マニフェストが各 run の選択結果を記録します。
+ターゲットの `runsOn` は、必要なデバイスを正確な文字列で指定します。iOS の `model` は、Simulator の
+デバイスタイプ名（たとえば `"iPad Pro 13-inch (M4)"`）と一致しなければなりません。web の `engine` は
+エンジン 1 つで、エンジンのリストは run を倍増させます。本項目は、正確なモデル名を書かずに
+「このうちのどれか」と書く方法を 2 つ加えます。`runsOn.ios.family: [iphone, ipad]` と書くと、
+プールにある最初のファミリーからデバイスを 1 台使います。デバイスは Simulator でも、接続した実機でも
+かまいません。`runsOn.browser.anyOf: [chromium, firefox, webkit]` と書くと、読み取れた最初のエンジンを
+使います。どちらも run は 1 つで、マニフェストが各 run の選択結果を記録します。サーバーの worker は、
+ジョブを引き受ける前に実機のファミリーを検査します。
 
 ## 動機
 
 現状の config は「どの iPad でもよい」と書けません。デバイスタイプを 1 つ名指しする必要があり、
 Apple は Xcode のリリースごとにデバイスタイプを改名・入れ替えします。`"iPad Pro 13-inch (M4)"` を
 固定したターゲットは、その型を持たない Xcode のホストで一致しなくなります。シナリオが必要としたのは
-タブレット程度の画面だけなのに、run は `runsOn.ios.model` 不一致で失敗します。モデルを書かない
-ターゲットなら失敗は避けられますが、意図も失われます。run はプール順で最初のモデルを使うので、
-ホストによって iPhone になることも iPad になることもあります。
+タブレット程度の画面だけなのに、run は `model` の条件不一致で失敗します。モデルを書かないターゲットなら
+失敗は避けられますが、意図も失われます。run はプール順で最初のモデルを使うので、ホストによって
+iPhone になることも iPad になることもあります。
 
 リスト構文はこの隙間を埋めません。`model` や `browser.engine` のリストは、値ごとに 1 回ずつ実行する
 意味です。そのため、`model: [iPhone …, iPad …]` と書くと、どちらか一方でよい場合でも run が倍になります。
 「どれか 1 つで足りる」を表す書き方が、config にはありません。
 
-出荷後に確かめられる結果は具体的です。`family: [iphone, ipad]` と書いた config は、Xcode の更新で
-すべてのデバイスタイプが改名されても、config を直さずに解決し続けます。各 run のラベル、マニフェスト、
-`doctor` の一覧には、その run が使ったファミリーとモデルが表示されます。
+出荷後に確かめられる結果は具体的です。`runsOn.ios.family: [iphone, ipad]` と書いた config は、
+Xcode の更新ですべてのデバイスタイプが改名されても、config を直さずに解決し続けます。各 run のラベル、
+マニフェスト、`doctor` の一覧には、その run が使ったファミリーとモデルが表示されます。
 
 ### 対象範囲
 
-対象は iOS（`family`）と web（`browser.anyOf`）です。Android は変更しません。`avd` を省略した
-Android ターゲットは、すでに任意のエミュレーターを受け入れるので、「何でもよい」を表す書き方が
-現状にもあります。Android のフォームファクターは別の事実であり、
+本項目は、対になる提案「runsOn を実行先ごとにまとめ、シナリオの runsOn を廃止する」の上に載り、
+その提案が先に入ります。対になる提案は、すべてのフィールドを `runsOn.ios`、`runsOn.android`、
+`runsOn.browser` の下へ移し、シナリオの `runsOn` を取り除きます。本項目はその形に新しい照合の意味を
+加えるだけで、フィールドは移しません。`family` と `anyOf` の対象は iOS と web です。Android には
+ファミリーを加えません。`avd` を省略した Android ターゲットは、すでに任意のエミュレーターを受け入れる
+ので、「何でもよい」を表す書き方が現状にもあります。Android のフォームファクターは別の事実であり、
 デバイスの読み取りも別に要るため、本項目の外に置きます。
 
 ## 詳細設計
 
-### config の書き方
+### 優先順位リストの意味
 
-| プラットフォーム | フィールド | 意味 |
+| ブロック | フィールド | 意味 |
 |---|---|---|
-| iOS | `runsOn.family: iphone` | デバイスタイプのファミリーが iPhone である Simulator 1 台 |
-| iOS | `runsOn.family: [iphone, ipad]` | プールにある、最初に挙げたファミリーの Simulator 1 台 |
-| iOS | `runsOn.family` を省略 | 従来どおり任意の Simulator |
-| web | `runsOn.browser.anyOf: [chromium, firefox]` | 起動できた、最初に挙げたエンジン |
+| `runsOn.ios` | `family: iphone` | ファミリーが iPhone であるデバイス 1 台 |
+| `runsOn.ios` | `family: [iphone, ipad]` | プールにある、最初に挙げたファミリーのデバイス 1 台 |
+| `runsOn.ios` | `family` を省略 | 従来どおりプールの任意のデバイス |
+| `runsOn.browser` | `anyOf: [chromium, firefox]` | 読み取れた、最初に挙げたエンジン |
 
 `family` と `anyOf` のリストは優先順位リストです。最初の項目が合えばそれを使い、それより前の
 項目に合うデバイスやエンジンがないときに限り、次の項目へ進みます。結果は config の記載順で決まり、
 同じプールからは常に同じ結果になります。
 
 `family` が取る値は `iphone` と `ipad` です。どちらも小文字で、大文字と小文字を区別します。
-読み取りには、`simctl list devicetypes` がデバイスタイプごとに報告する `productFamily`（`iPhone`、
-`iPad`）を使います。ほかのファミリー（Apple TV、Apple Watch）のデバイスタイプは読み取れますが、
+Simulator のファミリーは、`simctl list devicetypes` がデバイスタイプごとに報告する `productFamily`
+（`iPhone`、`iPad`）です。ほかのファミリー（Apple TV、Apple Watch）のデバイスタイプは読み取れますが、
 一致することはありません。
 
 web で「どのエンジンでもよい」を書く方法は、すべてのエンジンを挙げた `anyOf` の 1 通りです。
@@ -81,8 +85,9 @@ targets:
     platform: ios
     app: { id: com.example.app }
     runsOn:
-      family: [iphone, ipad]   # Simulator 1 台。プールに iPhone があれば iPhone、なければ iPad
-      os: "18"                 # 現在の model と同じく family と組み合わせられる
+      ios:
+        family: [iphone, ipad]   # Simulator 1 台。プールに iPhone があれば iPhone、なければ iPad
+        os: "18"                 # 現在の model と同じく family と組み合わせられる
 ```
 
 `family: ipad` だけを書くと、任意の iPad を使います。`family` も `model` も書かないターゲットは、
@@ -98,8 +103,9 @@ targets:
     platform: ios
     app: { id: com.example.app }
     runsOn:
-      kind: device
-      family: ipad   # --udid のデバイスのうち、接続した任意の iPad
+      ios:
+        kind: device
+        family: ipad   # --udid のデバイスのうち、接続した任意の iPad
 ```
 
 実機では、`model` と `os` は引き続き書けません。理由は「ファミリーの読み取り」に書きます。
@@ -113,32 +119,14 @@ targets:
     platform: web
     app: { url: https://example.com }
     runsOn:
-      browser: { anyOf: [chromium, firefox, webkit] }   # 読み取れた最初のエンジンが勝つ
-```
-
-シナリオは、次節の層をまたぐ規則に従って、ターゲットの選択を自分の分だけ置き換えられます。
-
-```yaml
-preconditions:
-  runsOn:
-    ios: { family: ipad }
+      browser:
+        anyOf: [chromium, firefox, webkit]   # 読み取れた最初のエンジンが勝つ
 ```
 
 ### ローダーが強制する規則
 
-1 つの `runsOn` ブロックの中の規則は、チームのデフォルト値を畳み込んだ後の config ブロックで判定します。
-既存の `kind: device` の規則と同じです。シナリオの `preconditions.runsOn` は、このブロックに含まれません。
-ローダーはシナリオのブロックを単独で検証し、後から平らな条件として畳み込みます。その途中で `null` は
-落ちるので、シナリオはターゲットのフィールドを解除できません。そこで、層をまたぐ組には置き換えの規則を
-設けます。
-
-- シナリオの `family` はターゲットの `model` を置き換え、シナリオの `model` はターゲットの `family` を
-  置き換えます。
-- シナリオの `anyOf` はターゲットの `engine` を置き換え、シナリオの `engine` はターゲットの `anyOf` を
-  置き換えます。
-
-`form_target_runs` が、互いに排他な 2 つの条件を受け取ることはありません。1 つの config ブロックの中では、
-次の規則が成り立ちます。
+どの規則も、チームのデフォルト値を畳み込んだ後の config ブロックで判定します。既存の `kind: device` の
+規則と同じです。
 
 - `family` と `model` を併記すると、読み込みが失敗し、両方のフィールド名を示します。継承された側は
   ターゲットが `null` で解除します。
@@ -176,7 +164,7 @@ preconditions:
 マニフェストの `run_coordinates`、flakiness のキー（デバイス OS の隣）に表示されます。座標がないと、
 勝者の違うホストにまたがって同じシナリオが 1 本の履歴に入り、iPhone と iPad のレイアウト差が
 flakiness に見えてしまいます
-（[BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact.md)）。
+（[BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact-ja.md)）。
 `family: ipad` の単独指定は、単独の `model` と同じく座標を加えません。
 
 web の `anyOf` も同じ方法で、プールの読み取りが返すエンジンに対して解決します。
@@ -214,10 +202,10 @@ Android と web のデバイスは `None` を持ちます。
 
 サーバーの worker は、自分が動かせる実機をすでに知っています。そこで、実機の `family` は worker が
 ジョブを引き受ける前に検査します。この検査は
-[BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues.md) の capability ルーティングを
-使います。このルーティングでは、ジョブが必要なトークンを持ち、worker はそのすべてを広告している
-ときに限りジョブを借ります（`bajutsu/serve/capabilities.py` の `can_serve`）。worker はすでに、
-Simulator の一覧から `iphone` と `ipad` を広告しています（`simctl_capabilities`）。
+[BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues-ja.md) の capability
+ルーティングを使います。このルーティングでは、ジョブが必要なトークンを持ち、worker はそのすべてを
+広告しているときに限りジョブを借ります（`bajutsu/serve/capabilities.py` の `can_serve`）。worker は
+すでに、Simulator の一覧から `iphone` と `ipad` を広告しています（`simctl_capabilities`）。
 
 - **worker が広告するもの。** worker は、接続している実機について `device:iphone` と `device:ipad` の
   トークンを加えます。読み取りには `read_ios_device` と同じ `devicectl` の読み取りを使います。実機は
@@ -243,13 +231,11 @@ Simulator の一覧から `iphone` と `ipad` を広告しています（`simctl
 
 - `bajutsu/common/config/schema/platform/ios.py` の `IosRunsOn` に `family` を加えます。
   `web.py` の `WebBrowser` には `anyOf` を加え、`engine` のフィールドのデフォルト値を外します。
-  プラットフォームの registry は同じフィールドをシナリオの `preconditions.runsOn` にも渡すので、
-  シナリオは上記の規則に従ってターゲットの選択を置き換えられます。
 - `bajutsu config schema` は、`family` を enum またはその enum のリストとして、`anyOf` をエンジンの
   リストとして出力します。
 - `doctor` は、各 run を勝ったファミリーまたはエンジンと、合致したデバイスとともに一覧します。
-- [設定](../../docs/ja/configuration.md#device-conditions-runson)と英語版に、上の表を追加します。
-  [CLI](../../docs/ja/cli.md)には `--browser` が `anyOf` に及ぼす効果を書きます。
+- [設定](../../docs/ja/configuration.md#device-conditions-runson)と英語版に、優先順位リストの表と
+  例を載せます。[CLI](../../docs/ja/cli.md)には `--browser` が `anyOf` に及ぼす効果を書きます。
   [アーキテクチャ](../../docs/ja/architecture.md)では、`common/devices/` の `facts.py` と `runs.py` の
   行を更新します。
 
@@ -264,35 +250,34 @@ run に LLM は入りません。解決は config とプールだけの純粋関
 - 実機での `model` と `os`。理由は「ファミリーの読み取り」に書きます。
 - Android のフォームファクター。タブレットかスマートフォンかを知るには、エミュレーターで
   `ro.build.characteristics` を読む必要があり、本項目では別の提案に回します。
-- `runsOn.emulate`。これはプールのデバイスではなく Playwright のビューポートプロファイルを選ぶので、
-  解決すべき可用性がありません。ここでのリストはプロファイルをまたぐカバレッジの話であり、
-  「どれか 1 つ」とは別の問いです。
+- `emulate` の優先順位リスト。これはプールのデバイスではなく Playwright のビューポートプロファイルを
+  選ぶので、解決すべき可用性がありません。
 - `model` に対する glob や正規表現の照合。理由は代替案の表に書きます。
 - `model`、`avd`、`engine` のリストの意味の変更。既存の config の run は変わりません。
 
 ### 作業分解
 
 1. **ファミリーの読み取り。** `DeviceFacts` に `family` を加え、`read_ios` で `productFamily` から
-   読みます。実機向けに `devicectl` を使う `read_ios_device` を加え、接続した iPhone と iPad で
-   `hardwareProperties.deviceType` がファミリーを持つことを確かめます。実機の `simctl list devicetypes` で、iPhone と iPad のすべての型が `productFamily` を
-   持つことを確かめます。
-2. **スキーマ。** `IosRunsOn.family` と `WebBrowser.anyOf` を加え、`chromium` のデフォルト値を
-   `engine` フィールドから run の解決へ移し、上記の読み込み時の規則を加えます。シナリオの条件を
-   畳み込む箇所には、層をまたぐ置き換えの規則を適用します。JSON Schema の出力も広げます。
+   読みます。実際の `simctl list devicetypes` で、iPhone と iPad のすべての型が `productFamily` を
+   持つことを確かめます。実機向けに `devicectl` を使う `read_ios_device` を加え、接続した iPhone と
+   iPad で `hardwareProperties.deviceType` がファミリーを持つことを確かめます。
+2. **優先順位リストのスキーマ。** `runsOn.ios.family` と `runsOn.browser.anyOf` を加え、`chromium` の
+   デフォルト値を `engine` フィールドから run の解決へ移し、上記の読み込み時の規則を加えます。
+   JSON Schema の出力も広げます。
 3. **解決。** `form_target_runs` で優先順位リストを解決し、`eligible_set` を勝ったファミリーで絞り、
    any-of の run に座標を加えます。`first_run` と `declared_runs` も対象です。`declared_runs` には
    解決に使うプールがありません。そのため優先順位リストを、プール次第でファミリーやエンジンが決まる
    1 つの run として示します。開いた範囲を `PER_AVAILABLE_MAJOR` で表すのと同じ扱いで、挙げた項目ごとの
    run としては示しません。
-4. **配線。** `_conditions` と `unpack_conditions` にフィールドを通します。
-   `--browser` が `anyOf` を解除するようにし、勝ったエンジンを web のレーンへ渡します。
+4. **配線。** `_conditions` と `unpack_conditions` にフィールドを通します。`--browser` が `anyOf` を
+   解除するようにし、勝ったエンジンを web のレーンへ渡します。
 5. **レポート。** 勝者を run のラベル、マニフェスト、`doctor`、flakiness のキーに表示します。
 6. **worker のルーティング。** worker に接続した実機から `device:iphone` と `device:ipad` を広告し、
    ジョブを借りるたびに更新します。`device:` 接頭辞を予約し、ジョブの要求に any-of のグループを加え、
    `can_serve` がそれを受け入れるように広げます。
-7. **ドキュメントとデモ。** 上記の日英ドキュメントを更新し、「実行先ごとの書き方」の 3 つの例
-   （Simulator、実機、ブラウザ）を、設定ページの `runsOn` の節へ日英両方で載せます。デモ config の
-   1 つを、正確なモデル名から `family` に切り替えて実例にします。
+7. **ドキュメントとデモ。** 上記の日英ドキュメントを更新し、「実行先ごとの書き方」の例（Simulator、
+   実機、ブラウザ）を、設定ページの `runsOn` の節へ日英両方で載せます。デモ config の 1 つを、
+   正確なモデル名から `family` に切り替えて実例にします。
 
 各ユニットが自分のテストを持ちます。スキーマの規則、解決の分岐ごとの偽プール、失敗メッセージです。
 
@@ -315,7 +300,7 @@ run に LLM は入りません。解決は config とプールだけの純粋関
 > ともに記録します。
 
 - [ ] ユニット 1: ファミリーの読み取り
-- [ ] ユニット 2: スキーマ
+- [ ] ユニット 2: 優先順位リストのスキーマ
 - [ ] ユニット 3: 解決
 - [ ] ユニット 4: 配線
 - [ ] ユニット 5: レポート
@@ -324,8 +309,8 @@ run に LLM は入りません。解決は config とプールだけの純粋関
 
 ## 参考
 
-- [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)：本項目が拡張する `runsOn` の条件、デバイスの照合、run。
-- [BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact.md)：flakiness のキーが読むデバイス情報。
-- [BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues.md)：worker がジョブを借りる前に実機のファミリーを検査するのに使う capability ルーティング。
-- [BE-0076](../BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md)：本項目が優先順位で選べるようにする web のエンジン。
+- [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)：本項目が拡張する `runsOn` の条件、デバイスの照合、run。
+- [BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact-ja.md)：flakiness のキーが読むデバイス情報。
+- [BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues-ja.md)：worker がジョブを借りる前に実機のファミリーを検査するのに使う capability ルーティング。
+- [BE-0076](../BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md)：本項目が優先順位で選べるようにする web のエンジン。
 - `bajutsu/common/devices/facts.py` と `bajutsu/common/devices/runs.py`：ファミリーを読み取り、解決する場所。
