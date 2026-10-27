@@ -77,6 +77,10 @@ change for that:
   `subject` in `Group`, `GROUPS`, and `PlatformSchema`. `TargetConfig`, `PlatformDefaults`, and the JSON
   Schema builder in `json_schema.py` follow.
 - The scenario's `Preconditions` model renames its `app` field to `subject`.
+- Two readers in `bajutsu/serve/batch_provider/device_farm_batch_provider.py` follow by hand.
+  They reach the group as a raw mapping, which no model catches:
+  - The launch-env collision guard reads `preconditions["app"]["launch"]["env"]`.
+  - The packaged Device Farm config gets its injected environment at `targets.<name>.app.launch.env`.
 - Internal class names such as `IosApp` and `AppCommon` may follow in the same change or later. They
   are not part of the config surface.
 - [Configuration](../../docs/configuration.md) and its `docs/ja/` mirror, the
@@ -125,6 +129,12 @@ JSON Schema output.
 | `artifact` | A web target's URL is not a build artifact. |
 | Accept both `app` and `subject` for a grace period | Two spellings would coexist in the loader, the JSON Schema, and the docs. A failing load that names the new key moves a config in one edit. |
 
+`subject` meets a milder form of the objection to `testTarget`. A scenario's `email.match` already
+takes `subject` and `subjectMatches` for a mail header. One scenario file can then hold
+`preconditions.subject` beside `email.match.subject`. We accept that collision. The two
+uses sit in unrelated blocks and never share a path, while `targets.site.testTarget` repeats the
+word inside one path. The glossary entry for `subject` names both senses.
+
 ## Progress
 
 > Keep this current as work proceeds. The checklist mirrors the MECE work breakdown in
@@ -137,5 +147,5 @@ JSON Schema output.
 
 ## References
 
-- [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure.md): the target groups, including `app`, that this item renames one of.
+- [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure.md): the item that grouped a target's config, introducing the `app` group this one renames.
 - `bajutsu/common/config/schema/platform/registry.py` and `bajutsu/common/scenario/load.py`: the group registry and the stored-plan migration this item extends.

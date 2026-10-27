@@ -77,6 +77,10 @@ targets:
   `GROUPS`、`PlatformSchema` でグループを `subject` と名付けます。`TargetConfig`、`PlatformDefaults`、
   `json_schema.py` の JSON Schema の生成もこれに従います。
 - シナリオの `Preconditions` モデルは、`app` フィールドを `subject` に改名します。
+- `bajutsu/serve/batch_provider/device_farm_batch_provider.py` の 2 つの読み手は、モデルを通さずに
+  グループを生の辞書として扱います。どのモデルも検出しないため、手で追随させます。
+  - 起動時の環境変数の衝突ガードは、`preconditions["app"]["launch"]["env"]` を読みます。
+  - Device Farm 向けにまとめる config は、注入する環境変数を `targets.<name>.app.launch.env` に書きます。
 - `IosApp` や `AppCommon` のような内部のクラス名は、同じ変更で追随しても、後回しにしてもかまいません。
   config の表面には現れないからです。
 - [設定](../../docs/ja/configuration.md)と英語版、[CLI](../../docs/ja/cli.md)、
@@ -125,6 +129,12 @@ run に LLM は入らず、振る舞いも変わりません。本項目は conf
 | `sut`（system under test） | テストの用語としては正確ですが、初めて読む人が調べる必要のある略語です。 |
 | `artifact` | web のターゲットの URL はビルド成果物ではありません。 |
 | `app` と `subject` を猶予期間だけ両方受け付ける | ローダー、JSON Schema、ドキュメントに 2 つの書き方が並びます。新しいキーを示して読み込みが失敗すれば、config は 1 回の編集で移れます。 |
+
+`subject` にも、`testTarget` を退けた理由が弱い形で当てはまります。シナリオの `email.match` は、
+メールの件名を表す `subject` と `subjectMatches` をすでに受け取ります。そのため 1 つのシナリオのファイルに
+`preconditions.subject` と `email.match.subject` が並びえます。この衝突は受け入れます。
+2 つの用法は互いに無関係なブロックにあり、同じパスを共有しません。一方 `targets.site.testTarget` では、
+1 つのパスの中で同じ語が繰り返されます。用語集の `subject` の項目では、両方の意味を示します。
 
 ## 進捗
 
