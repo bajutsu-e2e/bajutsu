@@ -54,7 +54,9 @@ A `capture:` token is `<kind>[.<modifier>]` ([scenarios](scenarios.md#capture-to
 > ([BE-0355](../roadmaps/BE-0355-native-z-position/BE-0355-native-z-position.md)). Reading it changes
 > nothing a run decides — no selector matches on `nativeZ`, and the occlusion checks
 > (`is_tappable`, `topmost_at_point`, and XCUITest's own `isHittable`) behave exactly as they did
-> before the field existed.
+> before the field existed. On the web backend, an element read from a cross-origin iframe also
+> carries `crossOriginFrame: true` ([drivers](drivers.md#playwright-web)); every other element omits
+> the field.
 >
 > **What the number means is the backend's own, and only its direction carries across.** On both
 > backends a larger `nativeZ` is closer to the viewer; nothing else about two values is comparable

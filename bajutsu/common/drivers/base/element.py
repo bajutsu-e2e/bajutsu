@@ -1,8 +1,9 @@
 """One on-screen element, normalized from whatever shape a backend reports."""
 
-from __future__ import annotations
-
-from typing import TypedDict
+# No `from __future__ import annotations` here: under it the annotations stay strings, and the
+# runtime `TypedDict` then cannot see `NotRequired`, so `crossOriginFrame` would land in
+# `__required_keys__` (which the golden loader reads) even though mypy treats it as optional.
+from typing import NotRequired, TypedDict
 
 from ._shared import Frame
 
@@ -26,3 +27,9 @@ class Element(TypedDict):
     # `_collapse_identical_duplicates`'s content key deliberately omits it: two candidates that
     # agree on every other reported field still collapse, however far apart they measure.
     nativeZ: float | None
+    # True when the element was read from a cross-origin iframe (the web backend's embedded
+    # third-party content: a video player, a chat widget, a payment form). Selectors and assertions
+    # see such elements like any other; the app-scoring readers (`doctor`'s convention score, the
+    # crawl's screen model) drop them via `without_cross_origin_frames`, since the app's developer
+    # cannot add ids to, or explore, a page they do not serve. Absent on every other element.
+    crossOriginFrame: NotRequired[bool]

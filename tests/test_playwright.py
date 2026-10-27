@@ -16,6 +16,7 @@ import pytest
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.dom import QUERY_JS, _norm_role, _str_or_none, parse_dom
 from bajutsu.common.drivers.playwright import PlaywrightDriver, _Started
+from bajutsu.common.drivers.playwright._functions import _FRAME_QUERY_JS
 
 
 def _rec(**kw: Any) -> dict[str, Any]:
@@ -170,6 +171,16 @@ def test_query_js_reads_the_password_type_off_the_node() -> None:
     page reported a plain input."""
     assert "el.type === 'password'" in QUERY_JS
     assert "secure:" in QUERY_JS
+
+
+def test_a_text_record_carries_the_static_text_trait_and_nothing_else() -> None:
+    """A plain text element has no role of its own: `staticText` (iOS's name for a label) is its
+    only trait, so `{ label, traits: [staticText] }` reads the same on both platforms."""
+    [el] = parse_dom([_rec(label="Welcome back", text=True)])
+    assert el["traits"] == ["staticText"]
+    assert el["label"] == "Welcome back"
+    [control] = parse_dom([_rec(role="button", label="Save")])
+    assert "staticText" not in control["traits"]
 
 
 def test_query_js_reads_value_from_each_tags_own_attribute() -> None:
@@ -1475,3 +1486,206 @@ def test_enter_app_and_leave_app_unsupported() -> None:
         drv.enter_app("com.example")
     with pytest.raises(base.UnsupportedAction):
         drv.leave_app()
+
+
+# --- iframes: every frame's elements in one snapshot, actions reaching into the element's frame ---
+
+_HIT = {"ok": True, "cover": None, "rect": None}
+
+
+class _FakeIframeHost:
+    """An `<iframe>` element handle: its content box, and the hit verdict at a point on it."""
+
+    def __init__(self, box: list[float] | None, hit: dict[str, Any] | None = None) -> None:
+        self._box = box
+        self._hit = hit if hit is not None else _HIT
+        self.hit_points: list[list[float]] = []
+        self.disposed = 0
+
+    def dispose(self) -> None:
+        self.disposed += 1
+
+    def evaluate(self, expression: str, arg: Any = None) -> Any:
+        if arg is None:
+            return self._box
+        self.hit_points.append(arg)
+        return self._hit
+
+
+class _FakeChildFrame:
+    def __init__(
+        self,
+        records: list[dict[str, Any]],
+        host: _FakeIframeHost,
+        children: list[_FakeChildFrame] | None = None,
+        *,
+        cross_origin: bool = False,
+    ) -> None:
+        self._records = records
+        self._host = host
+        self._cross_origin = cross_origin
+        self.child_frames = children or []
+        self.evaluated: list[str] = []
+        self.evaluate_returns: list[Any] = []
+
+    def frame_element(self) -> _FakeIframeHost:
+        return self._host
+
+    def evaluate(self, expression: str) -> Any:
+        if expression == _FRAME_QUERY_JS:
+            return {"crossOrigin": self._cross_origin, "records": list(self._records)}
+        self.evaluated.append(expression)
+        return self.evaluate_returns.pop(0)
+
+
+class _FakeMainFrame:
+    def __init__(self, children: list[_FakeChildFrame]) -> None:
+        self.child_frames = children
+
+
+class _FramedPage(_FakePage):
+    def __init__(self, records: list[dict[str, Any]], children: list[_FakeChildFrame]) -> None:
+        super().__init__(records)
+        self.main_frame = _FakeMainFrame(children)
+
+
+def _framed_driver(
+    records: list[dict[str, Any]], children: list[_FakeChildFrame]
+) -> tuple[PlaywrightDriver, _FramedPage]:
+    page = _FramedPage(records, children)
+    return PlaywrightDriver("http://app.test/index.html", page=page), page
+
+
+def test_query_reads_iframe_elements_in_main_page_pixels() -> None:
+    # Nested iframes: each frame's records are shifted by every enclosing content box's origin.
+    nested = _FakeChildFrame(
+        [_rec(identifier="deep", frame=[1, 2, 10, 10])], _FakeIframeHost([5, 5, 50, 50])
+    )
+    child = _FakeChildFrame(
+        [_rec(identifier="inner", frame=[10, 20, 30, 10])],
+        _FakeIframeHost([100, 50, 200, 150]),
+        [nested],
+    )
+    drv, _ = _framed_driver([_rec(identifier="outer", frame=[0, 0, 10, 10])], [child])
+    frames = {el["identifier"]: el["frame"] for el in drv.query()}
+    assert frames == {
+        "outer": (0, 0, 10, 10),
+        "inner": (110, 70, 30, 10),
+        "deep": (106, 57, 10, 10),
+    }
+
+
+def test_query_drops_iframe_elements_outside_the_iframe_box() -> None:
+    # Scrolled below the iframe's own viewport: not on screen, so not in the snapshot.
+    child = _FakeChildFrame(
+        [
+            _rec(identifier="seen", frame=[0, 0, 10, 10]),
+            _rec(identifier="gone", frame=[0, 500, 10, 10]),
+        ],
+        _FakeIframeHost([100, 50, 200, 150]),
+    )
+    drv, _ = _framed_driver([], [child])
+    assert [el["identifier"] for el in drv.query()] == ["seen"]
+
+
+def test_query_drops_an_iframe_element_starting_exactly_at_its_bottom_edge() -> None:
+    child = _FakeChildFrame(
+        [
+            _rec(identifier="edge", frame=[0, 150, 10, 10]),
+            _rec(identifier="rule", frame=[0, 0, 10, 0]),
+        ],
+        _FakeIframeHost([100, 50, 200, 150]),
+    )
+    drv, _ = _framed_driver([], [child])
+    assert [el["identifier"] for el in drv.query()] == ["rule"]
+
+
+def test_query_marks_only_cross_origin_iframe_elements() -> None:
+    same = _FakeChildFrame(
+        [_rec(identifier="own", frame=[0, 0, 10, 10])], _FakeIframeHost([0, 0, 100, 100])
+    )
+    embed = _FakeChildFrame(
+        [_rec(identifier="ad", frame=[0, 0, 10, 10])],
+        _FakeIframeHost([200, 0, 100, 100]),
+        cross_origin=True,
+    )
+    drv, _ = _framed_driver([_rec(identifier="main", frame=[0, 0, 10, 10])], [same, embed])
+    marks = {el["identifier"]: el.get("crossOriginFrame", False) for el in drv.query()}
+    assert marks == {"main": False, "own": False, "ad": True}
+    kept = base.without_cross_origin_frames(drv.query())
+    assert [el["identifier"] for el in kept] == ["main", "own"]
+
+
+def test_query_skips_an_unrendered_iframe() -> None:
+    child = _FakeChildFrame([_rec(identifier="x", frame=[0, 0, 10, 10])], _FakeIframeHost(None))
+    drv, _ = _framed_driver([], [child])
+    assert drv.query() == []
+
+
+def test_query_skips_a_frame_that_detaches_mid_snapshot(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _PwError(Exception):
+        pass
+
+    monkeypatch.setattr(
+        sys.modules["bajutsu.common.drivers.playwright._functions"], "_PW_ERRORS", (_PwError,)
+    )
+
+    class _DetachedFrame(_FakeChildFrame):
+        def frame_element(self) -> _FakeIframeHost:
+            raise _PwError("Frame was detached")
+
+    detached = _DetachedFrame([_rec(identifier="x", frame=[0, 0, 10, 10])], _FakeIframeHost(None))
+    drv, _ = _framed_driver([_rec(identifier="outer", frame=[0, 0, 10, 10])], [detached])
+    assert [el["identifier"] for el in drv.query()] == ["outer"]
+
+
+def test_tap_on_an_iframe_element_checks_the_hit_inside_its_frame() -> None:
+    host = _FakeIframeHost([100, 50, 200, 150])
+    child = _FakeChildFrame([_rec(identifier="inner", frame=[10, 20, 30, 10])], host)
+    child.evaluate_returns = [_HIT]
+    drv, page = _framed_driver([], [child])
+    drv.tap({"id": "inner"})
+    # The click lands at main-page coordinates; the iframe is confirmed hit at its owner's point,
+    # and the element check runs in the child document at the frame-local point.
+    assert page.mouse.calls == [("click", 125.0, 75.0)]
+    assert host.hit_points == [[125.0, 75.0]]
+    assert "elementFromPoint(25.0, 25.0)" in child.evaluated[0]
+    # Every handle taken (the snapshot's box read, the tap's hit check) is released.
+    assert host.disposed == 2
+
+
+def test_tap_on_an_iframe_element_fails_when_the_iframe_is_covered() -> None:
+    cover = {"ok": False, "cover": "div#overlay", "rect": [0.0, 0.0, 400.0, 400.0]}
+    child = _FakeChildFrame(
+        [_rec(identifier="inner", frame=[10, 20, 30, 10])],
+        _FakeIframeHost([100, 50, 200, 150], hit=cover),
+    )
+    drv, page = _framed_driver([], [child])
+    with pytest.raises(base.ElementNotTappable, match="div#overlay"):
+        drv.tap({"id": "inner"})
+    assert page.mouse.calls == []
+    assert child.evaluated == []  # the inner check never ran
+
+
+def test_tap_on_an_iframe_element_reports_an_inner_cover_in_main_page_pixels() -> None:
+    child = _FakeChildFrame(
+        [_rec(identifier="inner", frame=[10, 20, 30, 10])], _FakeIframeHost([100, 50, 200, 150])
+    )
+    child.evaluate_returns = [{"ok": False, "cover": "modal", "rect": [0.0, 0.0, 50.0, 50.0]}]
+    drv, _ = _framed_driver([], [child])
+    with pytest.raises(
+        base.ElementNotTappable, match=r"'modal' at \(100\.0, 50\.0, 50\.0, 50\.0\)"
+    ):
+        drv.tap({"id": "inner"})
+
+
+def test_select_option_in_an_iframe_runs_in_that_frame() -> None:
+    child = _FakeChildFrame(
+        [_rec(identifier="pick", role="select", frame=[10, 20, 30, 10])],
+        _FakeIframeHost([100, 50, 200, 150]),
+    )
+    child.evaluate_returns = [_HIT, "ok"]
+    drv, page = _framed_driver([], [child])
+    drv.select_option({"id": "pick"}, "b")
+    assert "elementFromPoint(25.0, 25.0)" in child.evaluated[1]
+    assert not any("closest('select')" in e for e in page.evaluated)

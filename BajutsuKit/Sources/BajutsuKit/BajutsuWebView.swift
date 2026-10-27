@@ -72,16 +72,48 @@ public enum BajutsuWebView {
       };
       const out = [];
       const sel = '[data-testid], button, a, input, select, textarea, [role]';
-      for (const el of document.querySelectorAll(sel)) {
+      const controls = 'button, a, input, select, textarea, [role=button], [role=link], '
+        + '[role=tab], [role=menuitem], [role=menuitemcheckbox], [role=menuitemradio], [role=option], '
+        + '[role=checkbox], [role=radio], [role=switch], [role=combobox], [role=listbox], '
+        + '[role=slider], [role=spinbutton], [role=textbox], [role=searchbox]';
+      // A replaced element's children are fallback content no user sees while the element renders.
+      const skip = 'head, script, style, noscript, template, select, datalist, '
+        + 'video, audio, canvas, object, iframe';
+      const labels = new Map();
+      const ownsText = (el) => {
+        for (const n of el.childNodes) {
+          if (n.nodeType === Node.TEXT_NODE && n.data.trim()) return true;
+        }
+        return false;
+      };
+      for (const el of document.querySelectorAll('*')) {
+        const tagged = el.matches(sel);
+        if (!tagged && (!ownsText(el) || el.closest(skip))) continue;
+        // A stray text node directly under <body> would otherwise make the whole page one label.
+        if (!tagged && (el === document.body || el === document.documentElement)) continue;
         const r = el.getBoundingClientRect();
         const style = getComputedStyle(el);
         if (style.display === 'none' || style.visibility === 'hidden') continue;
         if (r.width === 0 && r.height === 0) continue;
         const text = (el.innerText || el.textContent || '').trim();
+        const label = el.getAttribute('aria-label') || (text ? text.slice(0, 200) : null);
+        if (!tagged) {
+          const parent = el.parentElement;
+          if (parent && parent.closest(controls)) continue;
+          const host = parent && parent.closest(sel);
+          if (host && labels.get(host) === label) continue;
+          out.push({
+            identifier: null, role: null, label: label, value: null, text: true,
+            secure: false, disabled: false, selected: false,
+            frame: [r.x, r.y, r.width, r.height],
+          });
+          continue;
+        }
+        labels.set(el, label);
         out.push({
           identifier: el.getAttribute('data-testid'),
           role: el.getAttribute('role') || el.tagName.toLowerCase(),
-          label: el.getAttribute('aria-label') || (text ? text.slice(0, 200) : null),
+          label: label,
           value: valueOf(el),
           secure: el.type === 'password',
           disabled: el.disabled === true || el.getAttribute('aria-disabled') === 'true',

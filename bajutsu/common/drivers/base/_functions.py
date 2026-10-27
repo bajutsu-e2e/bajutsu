@@ -54,6 +54,16 @@ def permission_capability(service: str) -> str:
     return f"deviceControl.permissions.{service}"
 
 
+def without_cross_origin_frames(elements: list[Element]) -> list[Element]:
+    """The elements the app itself serves, dropping those read from a cross-origin iframe.
+
+    For readers that judge the app rather than the screen — `doctor`'s id coverage and the crawl's
+    screen model — an embedded third-party widget is noise the app cannot change. Every backend
+    but the web one never marks an element, so for them this returns the list unchanged.
+    """
+    return [el for el in elements if not el.get("crossOriginFrame")]
+
+
 def native_z_from_json(value: object) -> float | None:
     """Read a persisted `nativeZ` back off JSON, degrading anything unrepresentable to `None`.
 

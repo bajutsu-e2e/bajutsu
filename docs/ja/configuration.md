@@ -443,6 +443,8 @@ showcase の id カタログは [showcase](showcase.md)（全体は `demos/showc
 
 操作可能要素（trait ∈ `ACTIONABLE_TRAITS` = button / link / textField / searchField / textView / switch / slider / tab / cell）を母数として測定します。
 
+web バックエンドでは、クロスオリジンの iframe から読んだ要素を除きます。埋め込んだ動画プレイヤーやチャットのコントロールには、アプリの開発者が id を付けられないからです。そのため、それらが `idCoverage` を下げることも、id の重複として数えられることもありません。同一オリジンの iframe はアプリ自身の画面なので、採点に含めます。
+
 | 指標 | 定義 | しきい値（既定） |
 |---|---|---|
 | `idCoverage` | id を持つ操作可能要素の割合 | ✓ ≥ 0.9 / warn 0.7–0.9 / fail < 0.7 |

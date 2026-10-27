@@ -637,8 +637,9 @@ Headless Chromium via Playwright (Python). Runs on Linux with **no Mac and no Si
 fits the same toolchain as `make check`. Implementation: `common/drivers/playwright.py` (roadmap
 [BE-0041](../roadmaps/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)).
 
-- `query()`: one `page.evaluate()` walks the visible / interactive / a11y-relevant DOM nodes and a
-  pure parser (`parse_dom`) maps each to an `Element`. The id convention is the web equivalent of
+- `query()`: one `evaluate()` per document walks the visible / interactive / a11y-relevant DOM
+  nodes, the main page first and then each iframe. A pure parser (`parse_dom`) maps each node to an
+  `Element`. The id convention is the web equivalent of
   iOS accessibilityIdentifier: `data-testid` → `Selector.id`, ARIA `role` (or tag) → `traits`,
   accessible name / `aria-label` / text → `label`. `value` comes from each tag's own source:
   `href` for `<a>`, `src` for `<img>`, and `datetime` for `<time>`. `<input>`, `<select>`,
@@ -647,6 +648,42 @@ fits the same toolchain as `make check`. Implementation: `common/drivers/playwri
   A `<progress>` with no `value` attribute, and any other element with an explicit `role` such as
   `role="slider"`, report `aria-valuetext` — or `aria-valuenow` when `aria-valuetext` is absent or
   empty.
+- **Plain text**: `query()` also returns an element that holds its own text yet matches no rule
+  above. A heading, a paragraph, and a `<span>` are typical. Its label is the element's text. Its
+  one trait is `staticText`, the trait iOS reports for a label, so a selector such as
+  `{ label: Welcome, traits: [staticText] }` reads the same on both platforms. The iOS WebView
+  bridge runs the same script, so a hybrid app's WebView reads plain text this way too. Two kinds
+  of text stay out. Each would make a once-unique selector match twice:
+  - Text inside an interactive control (a button, a link, or an input). The control's label
+    already carries it.
+  - Text that repeats the label of its nearest ancestor with a `data-testid` or a `role`.
+
+  Text elsewhere on the page still counts. Take a page with a heading and a button that both read
+  "Sign in". There `tap: { label: Sign in }` matches both and fails as ambiguous, as on iOS.
+  A text element's label also includes the text of the controls inside it. Take a paragraph that
+  holds a "Terms" link. Both the paragraph and the link match `labelMatches: Terms`. A `count`
+  over that pattern grows by one.
+  Add `traits: [button]`, `within`, or `index` to name the one you mean. Text elements count toward
+  `index` too, in document order. A `{ label: Settings, index: 1 }` that used to skip a "Settings"
+  heading now lands on that heading, without an error. Pair `index` with `traits`.
+- **Iframes**: `query()` also reads every iframe's document, nested ones included. Those
+  elements join the same snapshot. The parent page's `contentDocument` stops at a cross-origin
+  iframe. Playwright's frame tree reaches one, so the driver walks that tree. The driver offsets
+  each element by its iframe's content-box origin. Every frame then reads in main-page CSS pixels.
+  An element scrolled outside its iframe's visible box is off screen and stays out.
+  Some iframes are not read at all: those under any CSS transform but a pure translation. A zoomed
+  device preview and a mirrored frame are examples. Their inner coordinates would not match the
+  screen, so a tap would miss without an error. An element from a cross-origin iframe carries
+  `crossOriginFrame: true`. Selectors and assertions treat it like any other element, but `doctor`'s
+  score and the crawl's screen model leave it out, since the app cannot instrument or explore an
+  embedded third-party page.
+  - A selector resolves over the whole snapshot. When two iframes share a `data-testid`, that
+    selector matches twice; `index` picks one. An embedded third-party service counts too. A
+    video player's "Share" button can make an app's `{ label: Share }` ambiguous, and `within` or
+    `traits` narrows it back to the app.
+  - `tap` and `selectOption` hit-test with `elementFromPoint` inside the element's own document.
+    First, the driver checks that the point lands on each enclosing `<iframe>`. An overlay above
+    the iframe raises `ElementNotTappable`, naming the overlay.
 - `tap(sel)`: like the adb backend, it resolves a **unique** element through the shared
   `resolve_unique`/`find_all` against a `query()` snapshot and clicks the **frame center** by
   coordinate (`page.mouse.click`). It deliberately does **not** use Playwright's own

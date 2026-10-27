@@ -1394,6 +1394,14 @@ def test_screen_fingerprints_matches_the_crawl_reduction() -> None:
     assert screen_fingerprints([elements]) == {screen_fingerprint(elements).value}  # type: ignore[arg-type]
 
 
+def test_screen_fingerprints_drops_cross_origin_iframe_elements_like_the_crawl() -> None:
+    """The crawl fingerprints a screen without its embedded third-party widget, so a run's
+    elements.json for the same screen must reduce the same way to count as visited."""
+    app = [{"identifier": "home.title"}, {"identifier": "home.cta"}]
+    embed = {"identifier": "ad.click", "traits": ["button"], "crossOriginFrame": True}
+    assert screen_fingerprints([[*app, embed]]) == {screen_fingerprint(app).value}  # type: ignore[arg-type]
+
+
 def test_screen_fingerprints_ignores_a_capture_holding_no_elements() -> None:
     assert screen_fingerprints([[], ["not-an-element"]]) == frozenset()
 

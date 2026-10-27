@@ -813,6 +813,10 @@ Implementation: `bajutsu/common/doctor.py`. **AI-independent and deterministic.*
 Measured over actionable elements (trait ∈ `ACTIONABLE_TRAITS` = button / link / textField /
 searchField / textView / switch / slider / tab / cell).
 
+On the web backend, `doctor` skips elements read from a cross-origin iframe. The app's developer
+cannot give ids to an embedded video player or chat. Those controls neither lower `idCoverage` nor
+count as duplicate ids. Same-origin iframes belong to the app, and `doctor` scores them.
+
 | Metric | Definition | Threshold (default) |
 |---|---|---|
 | `idCoverage` | fraction of actionable elements with an id | ✓ ≥ 0.9 / warn 0.7–0.9 / fail < 0.7 |

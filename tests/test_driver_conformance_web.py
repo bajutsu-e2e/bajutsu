@@ -314,3 +314,183 @@ def test_goto_loads_a_page_without_reading_its_status(chromium: Any) -> None:
         assert [e["identifier"] for e in driver.query()] == ["landed"]
     finally:
         page.close()
+
+
+# A button and a <select> at known spots, for an iframe to host. Clicking the button relabels it,
+# so the test reads the click's effect back through `query()` itself.
+_IFRAME_INNER = (
+    '<body style="margin:0">'
+    '<button data-testid="inner.button" onclick="this.textContent=\'clicked\'" '
+    'style="position:absolute;left:10px;top:20px;width:80px;height:30px">Inner</button>'
+    '<select data-testid="inner.select" style="position:absolute;left:10px;top:60px">'
+    '<option value="a">A</option><option value="b">B</option></select>'
+    '<button data-testid="inner.below" style="position:absolute;left:10px;top:500px">Below</button>'
+    "</body>"
+)
+
+
+@pytest.mark.web
+def test_query_and_actions_reach_into_same_and_cross_origin_iframes(chromium: Any) -> None:
+    """`srcdoc` shares the parent's origin; a `data:` URL is opaque, out of the parent script's reach."""
+    srcdoc = html.escape(_IFRAME_INNER, quote=True)
+    data_url = html.escape("data:text/html," + _IFRAME_INNER, quote=True)
+    page = chromium.new_page()
+    try:
+        page.set_content(
+            '<body style="margin:0">'
+            f'<iframe data-testid="same" srcdoc="{srcdoc}" style="position:absolute;left:100px;'
+            'top:50px;width:200px;height:150px;border:5px solid;padding:3px"></iframe>'
+            f'<iframe data-testid="cross" src="{data_url}" style="position:absolute;left:400px;'
+            'top:50px;width:200px;height:150px;border:0"></iframe>'
+            "</body>"
+        )
+        driver = PlaywrightDriver("about:blank", page=page)
+        buttons = [e["frame"] for e in driver.query() if e["identifier"] == "inner.button"]
+        # Border + padding of the first iframe put its document's origin at (108, 58).
+        assert buttons == [(118, 78, 80, 30), (410, 70, 80, 30)]
+        # Clipped below the iframe's own viewport, so it is not on screen.
+        assert all(e["identifier"] != "inner.below" for e in driver.query())
+
+        driver.tap({"id": "inner.button", "index": 0})
+        driver.tap({"id": "inner.button", "index": 1})
+        driver.select_option({"id": "inner.select", "index": 1}, "b")
+        after = driver.query()
+        assert [e["label"] for e in after if e["identifier"] == "inner.button"] == ["clicked"] * 2
+        assert [e["value"] for e in after if e["identifier"] == "inner.select"] == ["a", "b"]
+
+        page.evaluate(
+            "() => { const d = document.createElement('div'); d.id = 'overlay';"
+            " d.style.cssText = 'position:absolute;inset:0;z-index:9'; document.body.append(d); }"
+        )
+        with pytest.raises(base.ElementNotTappable, match="div#overlay"):
+            driver.tap({"id": "inner.button", "index": 1})
+    finally:
+        page.close()
+
+
+@pytest.mark.web
+def test_query_reads_plain_text_as_static_text(chromium: Any) -> None:
+    """Copy outside any control comes back as `staticText`; text a control or tag already carries
+    does not come back a second time, so a selector that was unique stays unique."""
+    page = chromium.new_page()
+    try:
+        page.set_content(
+            "<h1>Welcome</h1>"
+            "<p>Hello <b>world</b></p>"
+            "<button><span>Save</span></button>"
+            '<a href="#"><span>Profile</span><span>3 new</span></a>'
+            '<div data-testid="status"><span>Ready</span></div>'
+            '<div data-testid="card"><h2>Title</h2><p>Body</p></div>'
+            "<label>Email <input></label>"
+            '<p style="display:none">Hidden</p>'
+            "<select><option>Only option</option></select>"
+            '<div role="menuitemcheckbox"><span>Show grid</span></div>'
+            "Stray body text"
+            '<video style="width:40px;height:20px">Unsupported</video>'
+        )
+        driver = PlaywrightDriver("about:blank", page=page)
+        texts = [e["label"] for e in driver.query() if "staticText" in e["traits"]]
+        assert texts == ["Welcome", "Hello world", "world", "Title", "Body", "Email"]
+        # The tag keeps its label; its repeating child adds nothing to resolve against.
+        assert base.resolve_unique(driver.query(), {"label": "Ready"})["identifier"] == "status"
+        assert base.resolve_unique(driver.query(), {"label": "Save"})["traits"] == ["button"]
+        heading = base.resolve_unique(
+            driver.query(), {"label": "Welcome", "traits": ["staticText"]}
+        )
+        assert heading["frame"][2] > 0
+    finally:
+        page.close()
+
+
+@pytest.mark.web
+def test_tap_reaches_an_iframe_inside_a_shadow_root(chromium: Any) -> None:
+    """`elementFromPoint` stops at a shadow host; the `<iframe>` check must look through it."""
+    srcdoc = html.escape(_IFRAME_INNER, quote=True)
+    page = chromium.new_page()
+    try:
+        page.set_content(
+            '<div id="embed"></div><script>'
+            "document.getElementById('embed').attachShadow({mode: 'open'}).innerHTML ="
+            f' \'<iframe srcdoc="{srcdoc}" style="border:0;width:200px;height:150px"></iframe>\';'
+            "</script>"
+        )
+        page.wait_for_function(
+            "() => document.getElementById('embed').shadowRoot"
+            ".querySelector('iframe').contentDocument?.querySelector('button')"
+        )
+        driver = PlaywrightDriver("about:blank", page=page)
+        driver.tap({"id": "inner.button"})
+        clicked = base.resolve_unique(driver.query(), {"id": "inner.button"})
+        assert clicked["label"] == "clicked"
+    finally:
+        page.close()
+
+
+@pytest.mark.web
+@pytest.mark.parametrize(
+    "transform",
+    ["transform:scale(0.5)", "transform:rotate(180deg)", "transform:scaleX(-1)", "rotate:180deg"],
+)
+def test_query_does_not_read_a_css_transformed_iframe(chromium: Any, transform: str) -> None:
+    """A transformed iframe's inner rects are untransformed, so offsetting them would aim taps
+    elsewhere. Leaving it unread turns that silent miss into a loud ElementNotFound — including for
+    the size-preserving transforms a bounding-rect size check alone would let through."""
+    srcdoc = html.escape(_IFRAME_INNER, quote=True)
+    page = chromium.new_page()
+    try:
+        page.set_content(
+            f'<div style="width:400px;{transform};transform-origin:0 0">'
+            f'<iframe srcdoc="{srcdoc}" style="border:0;width:400px;height:300px"></iframe></div>'
+        )
+        driver = PlaywrightDriver("about:blank", page=page)
+        assert all(e["identifier"] != "inner.button" for e in driver.query())
+        with pytest.raises(base.ElementNotFound):
+            driver.tap({"id": "inner.button"})
+    finally:
+        page.close()
+
+
+@pytest.mark.web
+@pytest.mark.parametrize(
+    "transform",
+    ["transform:translate(-50%,-50%)", "transform:translate(-50%,-50%);scale:1", "rotate:0deg"],
+)
+def test_query_still_reads_a_translated_iframe(chromium: Any, transform: str) -> None:
+    """A pure translation (a centred modal), or an identity `scale` / `rotate` left on by a CSS
+    utility class, keeps rects aligned, so the iframe is read and tappable."""
+    srcdoc = html.escape(_IFRAME_INNER, quote=True)
+    page = chromium.new_page()
+    try:
+        page.set_content(
+            f'<div style="position:absolute;left:50%;top:50%;{transform}">'
+            f'<iframe srcdoc="{srcdoc}" style="display:block;border:0;width:200px;height:150px">'
+            "</iframe></div>"
+        )
+        driver = PlaywrightDriver("about:blank", page=page)
+        driver.tap({"id": "inner.button"})
+        assert base.resolve_unique(driver.query(), {"id": "inner.button"})["label"] == "clicked"
+    finally:
+        page.close()
+
+
+@pytest.mark.web
+def test_only_cross_origin_iframe_elements_are_marked(chromium: Any) -> None:
+    """`srcdoc` shares the page's origin; a `data:` iframe is opaque. Both pages here are opaque
+    too (`about:blank`), so the mark must not rest on comparing `location.origin` strings."""
+    srcdoc = html.escape(_IFRAME_INNER, quote=True)
+    data_url = html.escape("data:text/html," + _IFRAME_INNER, quote=True)
+    page = chromium.new_page()
+    try:
+        page.set_content(
+            f'<iframe srcdoc="{srcdoc}" style="border:0;width:200px;height:150px"></iframe>'
+            f'<iframe src="{data_url}" style="border:0;width:200px;height:150px"></iframe>'
+        )
+        driver = PlaywrightDriver("about:blank", page=page)
+        marks = [
+            e.get("crossOriginFrame", False)
+            for e in driver.query()
+            if e["identifier"] == "inner.button"
+        ]
+        assert marks == [False, True]
+    finally:
+        page.close()

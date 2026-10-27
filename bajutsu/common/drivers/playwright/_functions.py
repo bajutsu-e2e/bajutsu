@@ -10,7 +10,9 @@ from typing import TYPE_CHECKING, Any, cast
 
 from bajutsu.common.backend_cli import simctl
 from bajutsu.common.drivers import base
+from bajutsu.common.drivers.dom import QUERY_JS, parse_dom
 
+from ._frame_scope import _FrameScope
 from ._page import _Page
 from ._shared import Starter
 from ._started import _Started
@@ -105,6 +107,130 @@ def _playwright_error_types() -> tuple[type[BaseException], ...]:
         except ImportError:
             _PW_ERRORS = ()
     return _PW_ERRORS
+
+
+# An `<iframe>`'s content box — where its document's (0, 0) sits — in its owner document's viewport,
+# or null when the iframe is not rendered. Border and padding are inside the bounding rect but outside
+# the child viewport, so both are stepped over. Any transform but a pure translation on the iframe or an
+# ancestor (a zoomed device preview, a mirrored or rotated frame) also yields null: the child's rects
+# are untransformed, so offsetting them by the iframe's origin would aim a click somewhere else with no
+# error. Not reading it fails loudly. A size-preserving one (`rotate(180deg)`, `scaleX(-1)`) leaves the
+# bounding rect's size unchanged, so the transform itself is read up the ancestor chain, across shadow
+# roots; the size comparison still catches `zoom`, which no transform property reports.
+_IFRAME_CONTENT_BOX_JS = """
+(el) => {
+  const style = getComputedStyle(el);
+  if (style.display === 'none' || style.visibility === 'hidden') return null;
+  const up = (n) => n.parentElement
+    || (n.getRootNode() instanceof ShadowRoot ? n.getRootNode().host : null);
+  for (let n = el; n; n = up(n)) {
+    const s = getComputedStyle(n);
+    // An identity `scale: 1` / `rotate: 0deg` (what Tailwind's `scale-100` / `rotate-0` compile to)
+    // computes to a string other than 'none' yet moves nothing, so the value itself is checked.
+    if (s.rotate && s.rotate !== 'none' && parseFloat(s.rotate.split(' ').pop()) !== 0) return null;
+    if (s.scale && s.scale !== 'none' && s.scale.split(' ').some((v) => parseFloat(v) !== 1)) {
+      return null;
+    }
+    if (s.transform && s.transform !== 'none') {
+      const m = new DOMMatrixReadOnly(s.transform);
+      if (m.a !== 1 || m.b !== 0 || m.c !== 0 || m.d !== 1 || !m.is2D) return null;
+    }
+  }
+  const r = el.getBoundingClientRect();
+  if (Math.abs(r.width - el.offsetWidth) > 0.5 || Math.abs(r.height - el.offsetHeight) > 0.5) {
+    return null;
+  }
+  const pl = parseFloat(style.paddingLeft) || 0, pt = parseFloat(style.paddingTop) || 0;
+  const pr = parseFloat(style.paddingRight) || 0, pb = parseFloat(style.paddingBottom) || 0;
+  return [r.x + el.clientLeft + pl, r.y + el.clientTop + pt,
+          el.clientWidth - pl - pr, el.clientHeight - pt - pb];
+}
+"""
+
+
+# A child frame's records, plus whether it is cross-origin to the top page. Reaching into
+# `window.top.document` throws across an origin boundary, which also tells two opaque origins apart
+# (a `data:` iframe in an `about:blank` page): both report `location.origin` as the string "null".
+_FRAME_QUERY_JS = f"""
+() => {{
+  let crossOrigin = false;
+  try {{ void window.top.document; }} catch (e) {{ crossOrigin = true; }}
+  return {{crossOrigin, records: ({QUERY_JS})()}};
+}}
+"""
+
+
+def _intersect(a: base.Frame, b: base.Frame | None) -> base.Frame | None:
+    """The overlap of two rects, `a` itself when `b` is unbounded, or None when they do not meet.
+
+    Touching edges do not meet: a row starting exactly at an iframe's bottom edge is not on screen.
+    A rect with a zero side (a hairline rule) still meets whatever it lies inside.
+    """
+    if b is None:
+        return a
+    x, y = max(a[0], b[0]), max(a[1], b[1])
+    right, bottom = min(a[0] + a[2], b[0] + b[2]), min(a[1] + a[3], b[1] + b[3])
+    if right < x or bottom < y or (right == x and a[2] > 0) or (bottom == y and a[3] > 0):
+        return None
+    return (x, y, right - x, bottom - y)
+
+
+def _iframe_elements(page: _Page) -> list[tuple[base.Element, _FrameScope]]:
+    """Every iframe's elements (nested ones included), framed in main-page CSS pixels.
+
+    Walks Playwright's frame tree rather than `contentDocument` from page JS, so a cross-origin
+    iframe — out of reach of the parent's script — is read too, its elements marked
+    `crossOriginFrame`. An element scrolled or clipped
+    outside any enclosing iframe's box is not on screen and is left out; one outside the main
+    viewport is kept, the same as a main-document element (BE-0326). A frame that detaches or
+    navigates mid-snapshot is skipped: its content is not observable in this snapshot, and the next
+    condition-wait poll reads it again. An injected page without a frame tree yields nothing.
+    """
+    main = getattr(page, "main_frame", None)
+    if main is None:
+        return []
+    out: list[tuple[base.Element, _FrameScope]] = []
+
+    def walk(
+        frame: Any,
+        origin: base.Point,
+        clip: base.Frame | None,
+        hosts: tuple[tuple[Any, base.Point], ...],
+    ) -> None:
+        for child in frame.child_frames:
+            try:
+                # A handle pins its DOM node until disposed, and query() is what condition waits
+                # poll, so the box is read and the handle released at once.
+                host = child.frame_element()
+                try:
+                    box = host.evaluate(_IFRAME_CONTENT_BOX_JS)
+                finally:
+                    host.dispose()
+                if not box or box[2] <= 0 or box[3] <= 0:
+                    continue
+                child_origin = (origin[0] + box[0], origin[1] + box[1])
+                child_clip = _intersect((*child_origin, box[2], box[3]), clip)
+                if child_clip is None:
+                    continue
+                result = child.evaluate(_FRAME_QUERY_JS)
+            except _playwright_error_types():
+                continue
+            scope = _FrameScope(child, child_origin, (*hosts, (child, origin)))
+            records = result.get("records") if isinstance(result, dict) else None
+            cross_origin = isinstance(result, dict) and result.get("crossOrigin") is True
+            for el in parse_dom(records if isinstance(records, list) else []):
+                x, y, w, h = el["frame"]
+                shifted = (x + child_origin[0], y + child_origin[1], w, h)
+                if _intersect(shifted, child_clip) is None:
+                    continue
+                el["frame"] = shifted
+                if cross_origin:
+                    el["crossOriginFrame"] = True
+                out.append((el, scope))
+            walk(child, child_origin, child_clip, scope.hosts)
+
+    walk(main, (0.0, 0.0), None, ())
+    return out
 
 
 def _wedge_guard[F: Callable[..., Any]](method: F) -> F:

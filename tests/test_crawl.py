@@ -179,6 +179,28 @@ def test_prune_global_explores_a_shared_control_once_and_records_the_rest() -> N
     assert serialize.screenmap_dict(pruned_off)["pruned"] == []
 
 
+def test_crawl_never_explores_a_cross_origin_iframe_control() -> None:
+    """An embedded third-party widget is not the app: its controls are neither tapped nor part of
+    the screen's identity, so an ad that rotates its ids does not split one screen into many."""
+    react, home = _three_screen_app()
+    embed = el(identifier="ad.click", traits=["button"])
+    embed["crossOriginFrame"] = True
+
+    def with_embed(d: FakeDriver, kind: str, arg: object) -> None:
+        react(d, kind, arg)
+        d.screen = [*d.screen, embed] if embed not in d.screen else d.screen
+
+    def reset(d: base.Driver) -> None:
+        assert isinstance(d, FakeDriver)
+        d.screen = [*home, embed]
+
+    result = crawl.crawl(FakeDriver(screen=[*home, embed], react=with_embed), reset, max_steps=100)
+    assert not any("ad.click" in e.action for e in result.edges)
+    # The three app screens, each mapped once under the fingerprint of its own controls alone.
+    assert crawl.fingerprint(home).value in result.nodes
+    assert len(result.nodes) == 3
+
+
 def test_resume_a_pruned_branch_explores_it_and_appends_to_the_map() -> None:
     """A pruned op carries a replayable `path`; feeding it back as a resume seed (base_map +
     seed_path/ops) re-walks to the screen, performs the op, and continues exploring — merging new
