@@ -39,7 +39,7 @@
 スキーマが強制します。例外は **制御フローのステップ**（`if` / `forEach`）で、こちらは capture や
 extract の修飾子を持ちません。定義は `bajutsu/scenario/models/steps.py` の `Step` です。
 
-**precondition（前提条件）**：run の前に適用する、シナリオ単位の環境準備です。ターゲットと同じ
+**precondition（前提条件）**：run の前に適用する、シナリオ単位の環境準備です。
 シナリオが動かす各ターゲットの値に重ねます。
 フィールドは次のとおりです。
 

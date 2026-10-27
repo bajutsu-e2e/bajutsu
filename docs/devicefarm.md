@@ -179,8 +179,9 @@ apply to this run.
 A Device Farm job cannot use a device condition such as `runsOn.ios.model` or `runsOn.ios.os`
 ([configuration](configuration.md#device-conditions-runson)). Bajutsu reads each device before a
 run and matches the conditions against it. A reserved Device Farm device offers nothing to read
-beforehand. The provider thus refuses a job whose target or scenario declares a condition. It
-refuses before any upload, and names each field. `runsOn.ios.locale` and `runsOn.ios.seedPhotos` stay
+beforehand. The provider thus refuses a job whose target declares a condition, or still writes a
+`runsOn` field flat, from before the destination blocks. It refuses before any upload, and names
+each field. `runsOn.ios.locale` and `runsOn.ios.seedPhotos` stay
 allowed: they are device state rather than conditions.
 
 ## The GitHub Actions workflow
