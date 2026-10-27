@@ -37,12 +37,12 @@ iOS Simulator、実機の iPhone、WebDriver エンドポイントの向こう�
 | `run.erase` | 適用 | 起動時に例外 | 起動時に例外 | 適用 | 無視 |
 | `app.path` のインストール、`app.reinstall` | 適用 | 起動時に例外 | 無視 | 適用 | 無視 |
 | `permissions` | 適用 | preflight で失敗（BE-0082） | preflight で失敗（BE-0082） | 適用 | preflight で失敗（BE-0082） |
-| `runsOn.ios.seedPhotos` | 適用 | 到達しない | 到達しない | 設定できない | 設定できない |
-| `runsOn.ios.locale` | 適用 | アプリへ渡すだけ | 起動時に例外 | 設定できない | 設定できない |
+| `runsOn.ios.seedPhotos` | 適用 | 未到達 | 未到達 | 設定不可 | 設定不可 |
+| `runsOn.ios.locale` | 適用 | アプリへの受け渡しのみ | 起動時に例外 | 設定不可 | 設定不可 |
 | `app.launch.env`、`args`、`deeplink` | 適用 | 適用 | 起動時に例外 | 適用 | 無視 |
 
 根拠は `bajutsu/common/platform_lifecycle/environments/` 配下の `xcuitest_environment.py:352-372`、`xcuitest_live.py:73-125`、`android_environment.py:186-243`、`web.py:40-61` です。
-「設定できない」は iOS 専用のフィールドで、読み込み時に Android や web のブロックへは書けません（BE-0452）。プラットフォームごとの書き分けであり、欠落ではありません。
+「設定不可」は、iOS 専用のフィールドであることを表します。このフィールドは、読み込み時に Android や web のブロックへは書けません（BE-0452）。プラットフォームごとの書き分けであり、欠落ではありません。
 この混在から、次の 3 つの負担が生じています。
 
 - **黙って無視すると、壊れた前提条件が隠れます。** ライブ WebDriver のルートではターゲットの `app.path` が使われないため、run は直前にビルドしたものではなく、デバイスにすでに入っているビルドを操作します。web では `app.launch.env` がページに届きません。結果は緑でも、シナリオは別のものを検査しています。
@@ -70,9 +70,9 @@ serve は、`setLocation` を含むジョブを、その capability を持たな
 
 | 対応 | 意味 | run での振る舞い |
 |---|---|---|
-| `supported` | ルートが設定を適用できる | 適用する |
-| `satisfied` | 設定が求める状態を、ルートがすでに保証している | 何もしない。エラーにもしない |
-| `unsupported` | ルートが設定を適用できない | エラー。ターゲットが無視を宣言していれば適用しない |
+| `supported` | ルートが設定を適用できます | 適用します |
+| `satisfied` | 設定が求める状態を、ルートがすでに保証しています | 何もしません。エラーにもしません |
+| `unsupported` | ルートが設定を適用できません | エラーにします。ターゲットが無視を宣言していれば適用しません |
 
 `satisfied` は、ルートが仕組みとして満たしている要求を扱います。
 web の run は毎回新しいブラウザコンテキストで始まるため、`erase: true` はすでに成り立っています。
@@ -172,8 +172,8 @@ serve はジョブを capability のトークンで振り分けます（BE-0166�
 
 | トークン | ジョブが必要とする条件 | worker が掲げる条件 |
 |---|---|---|
-| `cap:<route>:<capability>` | `<route>` のターゲットへ振り分けたステップが、その capability を必要とする | worker が `<route>` を駆動でき、そのルートが capability に対応している |
-| `setting:<route>:<key>` | `<route>` のターゲットで設定が有効で、ターゲットがその設定の無視を宣言していない | worker が `<route>` を駆動でき、そのルートが設定に対応しているか、満たしている |
+| `cap:<route>:<capability>` | `<route>` のターゲットへ振り分けたステップが、その capability を必要とします | worker が `<route>` を駆動でき、そのルートが capability に対応しています |
+| `setting:<route>:<key>` | `<route>` のターゲットで設定が有効で、ターゲットがその設定の無視を宣言していません | worker が `<route>` を駆動でき、そのルートが設定に対応しているか、満たしています |
 
 各トークンは、動機の表の列にあたるルート名（`ios-simulator`、`ios-device`、`ios-live`、`android`、`web`）を含みます。
 iOS の 3 つのルートは対応する設定が異なるため、プラットフォーム名だけでは足りません。
