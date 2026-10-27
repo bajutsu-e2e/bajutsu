@@ -1,14 +1,14 @@
-[English](BE-XXXX-target-templates.md) · **日本語**
+[English](BE-0471-target-templates.md) · **日本語**
 
-# BE-XXXX — ターゲットテンプレート：名前付きテンプレートの継承でターゲット設定を共通化する
+# BE-0471 — ターゲットテンプレート：名前付きテンプレートの継承でターゲット設定を共通化する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-target-templates-ja.md) |
+| 提案 | [BE-0471](BE-0471-target-templates-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **承認済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0471") |
 | トピック | config の取得元 |
 | 関連 | [BE-0030](../BE-0030-parameterized-shared-steps/BE-0030-parameterized-shared-steps-ja.md), [BE-0174](../BE-0174-scenario-ref-path-containment/BE-0174-scenario-ref-path-containment-ja.md), [BE-0422](../BE-0422-inline-scenario-components/BE-0422-inline-scenario-components-ja.md), [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md), [BE-0467](../BE-0467-environment-specific-settings/BE-0467-environment-specific-settings-ja.md) |
 <!-- /BE-METADATA -->

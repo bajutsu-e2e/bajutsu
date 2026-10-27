@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-target-templates-ja.md)
+**English** · [日本語](BE-0471-target-templates-ja.md)
 
-# BE-XXXX — Target templates: share target settings by extending a named template
+# BE-0471 — Target templates: share target settings by extending a named template
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-target-templates.md) |
+| Proposal | [BE-0471](BE-0471-target-templates.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0471") |
 | Topic | Configuration sourcing |
 | Related | [BE-0030](../BE-0030-parameterized-shared-steps/BE-0030-parameterized-shared-steps.md), [BE-0174](../BE-0174-scenario-ref-path-containment/BE-0174-scenario-ref-path-containment.md), [BE-0422](../BE-0422-inline-scenario-components/BE-0422-inline-scenario-components.md), [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure.md), [BE-0467](../BE-0467-environment-specific-settings/BE-0467-environment-specific-settings.md) |
 <!-- /BE-METADATA -->
