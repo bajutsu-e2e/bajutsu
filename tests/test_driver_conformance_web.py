@@ -451,13 +451,18 @@ def test_query_does_not_read_a_css_transformed_iframe(chromium: Any, transform: 
 
 
 @pytest.mark.web
-def test_query_still_reads_a_translated_iframe(chromium: Any) -> None:
-    """A pure translation (a centred modal) keeps rects aligned, so the iframe is read and tappable."""
+@pytest.mark.parametrize(
+    "transform",
+    ["transform:translate(-50%,-50%)", "transform:translate(-50%,-50%);scale:1", "rotate:0deg"],
+)
+def test_query_still_reads_a_translated_iframe(chromium: Any, transform: str) -> None:
+    """A pure translation (a centred modal), or an identity `scale` / `rotate` left on by a CSS
+    utility class, keeps rects aligned, so the iframe is read and tappable."""
     srcdoc = html.escape(_IFRAME_INNER, quote=True)
     page = chromium.new_page()
     try:
         page.set_content(
-            '<div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%)">'
+            f'<div style="position:absolute;left:50%;top:50%;{transform}">'
             f'<iframe srcdoc="{srcdoc}" style="display:block;border:0;width:200px;height:150px">'
             "</iframe></div>"
         )

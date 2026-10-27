@@ -125,7 +125,12 @@ _IFRAME_CONTENT_BOX_JS = """
     || (n.getRootNode() instanceof ShadowRoot ? n.getRootNode().host : null);
   for (let n = el; n; n = up(n)) {
     const s = getComputedStyle(n);
-    if ((s.rotate && s.rotate !== 'none') || (s.scale && s.scale !== 'none')) return null;
+    // An identity `scale: 1` / `rotate: 0deg` (what Tailwind's `scale-100` / `rotate-0` compile to)
+    // computes to a string other than 'none' yet moves nothing, so the value itself is checked.
+    if (s.rotate && s.rotate !== 'none' && parseFloat(s.rotate.split(' ').pop()) !== 0) return null;
+    if (s.scale && s.scale !== 'none' && s.scale.split(' ').some((v) => parseFloat(v) !== 1)) {
+      return null;
+    }
     if (s.transform && s.transform !== 'none') {
       const m = new DOMMatrixReadOnly(s.transform);
       if (m.a !== 1 || m.b !== 0 || m.c !== 0 || m.d !== 1 || !m.is2D) return null;
