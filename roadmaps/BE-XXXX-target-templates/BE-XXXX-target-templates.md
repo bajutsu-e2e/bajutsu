@@ -93,9 +93,11 @@ targets:
   - the component a `hooks` step calls with `use`.
 
   When the loader reads the file, it rewrites each such value to resolve against the config file's directory. Everything after the merge therefore sees one base. A file template's `extends` names files alone. The template file has no `templates:` of its own to look names up in. Shell commands such as `app.build` are not paths. `services.server.cwd`, `services.server.dockerfile`, and `services.mockServer.stubs` do not resolve against the config file today. The loader leaves them unchanged, so they keep the base they have today.
-- **`platform`.** A template may declare it. The target's platform is its own `platform`, else the one
-  its templates declare. Two layers that declare different platforms fail the load, naming both. A
-  target with no platform from any layer fails as it does today.
+- **`platform`.** A template may declare it, and a target may omit it to take it from its templates.
+  Every layer that declares `platform` must agree, the target itself included. Any two that differ
+  fail the load, naming both. The target's key does not override a template's: `platform` selects
+  the shape of `app`, `runsOn`, and `driver`, so an override would hand a template's iOS-shaped
+  blocks to a web target. A target with no platform from any layer fails as it does today.
 - **A template is never a target.** `bajutsu run --target <name>` and every serve endpoint accept
   only names under `targets:`. When the name matches a template, the error says so and lists the
   targets: `'showcase-ios' is a template, not a target`. A template and a target may share a name,
