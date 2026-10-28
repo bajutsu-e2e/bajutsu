@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -68,6 +68,14 @@ class RunArtifactWriter:
     def redactor(self) -> Redactor:
         """The run's redactor, for a caller that must scrub content it streams itself."""
         return self._redactor
+
+    def add_secret_values(self, values: Sequence[str]) -> None:
+        """Mask *values* in every artifact written from now on (BE-0472).
+
+        Swaps in a widened copy rather than changing the redactor in place, which other writers in
+        the run may share.
+        """
+        self._redactor = self._redactor.with_values(values)
 
     def write_elements(self, name: str, elements: list[base.Element]) -> Path:
         """Write an element tree, masking each element's value structurally first."""

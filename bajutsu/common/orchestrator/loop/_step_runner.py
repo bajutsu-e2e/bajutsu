@@ -16,6 +16,7 @@ from bajutsu.common.orchestrator.actions import (
     _action_of,
     _step_label,
 )
+from bajutsu.common.orchestrator.actions.handlers.eval_ import record_eval
 from bajutsu.common.orchestrator.evidence_rules import _collect_captures, _kind_of, _run_extract
 from bajutsu.common.orchestrator.substitution import _interp_step, _resolve_system_alert
 from bajutsu.common.orchestrator.types import (
@@ -1486,6 +1487,18 @@ class _StepRunner:
             # unchanged either way.
             if outcome.ok and interp_step.generate is not None:
                 outcome.generated = self.state.bindings.get(f"vars.{interp_step.generate.into.var}")
+            # Registered here, before the post-step capture below writes this step's own evidence,
+            # so that capture — and the report row built from `generated` — already masks a value
+            # derived from a secret (BE-0472). `step`, not `interp_step`, is read for the tokens:
+            # the written form is what says whether an input was a secret. Not gated on
+            # `outcome.ok`: a check that fails the step after the handler wrote leaves the value in
+            # `bindings` all the same, so a security control cannot skip it.
+            if step.eval_ is not None:
+                produced = record_eval(
+                    step.eval_, self.state.bindings, self.state.derived, completed=outcome.ok
+                )
+                if outcome.ok:
+                    outcome.generated = produced
 
             # Which button a `handleSystemAlert` step tapped and why (BE-0445), so a run under a
             # language the label table does not cover still shows what its position rule landed on.

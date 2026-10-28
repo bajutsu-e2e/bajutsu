@@ -11,10 +11,12 @@ from __future__ import annotations
 
 import base64
 import binascii
+import copy
 import html
 import json
 import re
 import urllib.parse
+from collections.abc import Sequence
 from typing import Any
 
 from bajutsu.common.drivers import base
@@ -206,6 +208,16 @@ def _patterns(keys: list[str]) -> list[re.Pattern[str]]:
     return pats
 
 
+def _search_terms(raw_values: list[str]) -> list[str]:
+    """Each value plus its common encodings (BE-0153), longest first.
+
+    Longest first so a term that is a substring of another never leaves a partial leak.
+    """
+    raw = set(raw_values)
+    terms = raw | {enc for v in raw for enc in _encoded_variants(v)}
+    return sorted(terms, key=len, reverse=True)
+
+
 class Redactor:
     """Applies a `Redact` config to evidence. A no-op when nothing is configured.
 
@@ -233,15 +245,31 @@ class Redactor:
         self._mask_credential_names = not redact.unmask_credential_names
         self._patterns = _patterns(self._keys)
         self._raw_values: list[str] = [v for v in (values or []) if v]
-        raw = set(self._raw_values)
-        # Search terms are each raw value plus its common encodings (BE-0153). Longest
-        # first so a term that is a substring of another never leaves a partial leak.
-        terms = raw | {enc for v in raw for enc in _encoded_variants(v)}
-        self._values: list[str] = sorted(terms, key=len, reverse=True)
+        self._values = _search_terms(self._raw_values)
+        # Values an `eval` step derived from a secret mid-scenario (BE-0472), kept apart from the
+        # configured ones: a derived value can be a single character, so it masks free text and a
+        # structure's string leaves but never the pass over a serialized document, where replacing
+        # "1" would turn `1.5` into `[REDACTED].5` and the artifact would stop parsing.
+        self._derived: list[str] = []
+        self._derived_terms: list[str] = []
+
+    def with_values(self, extra: Sequence[str]) -> Redactor:
+        """A new redactor that also masks *extra*, values derived mid-scenario (BE-0472).
+
+        The original is left as it was: a run shares its redactors across worker threads, and a value
+        an `eval` step derives from a secret belongs to that scenario alone.
+        """
+        new = [v for v in dict.fromkeys(extra) if v and v not in self._derived]
+        if not new:
+            return self
+        clone = copy.copy(self)
+        clone._derived = [*self._derived, *new]  # noqa: SLF001  # this class's own copy
+        clone._derived_terms = _search_terms(clone._derived)  # noqa: SLF001
+        return clone
 
     @property
     def active(self) -> bool:
-        return bool(self._keys or self._labels or self._values)
+        return bool(self._keys or self._labels or self._values or self._derived_terms)
 
     @property
     def has_label_rules(self) -> bool:
@@ -262,7 +290,16 @@ class Redactor:
         """
         for pattern in self._patterns:
             text = pattern.sub(_masked, text)
-        return self.redact_values(text)
+        return self.redact_derived(self.redact_values(text))
+
+    def redact_derived(self, text: str) -> str:
+        """Mask the values derived mid-scenario (BE-0472) in free text or one string value.
+
+        Never run over a serialized document; see `__init__` for why.
+        """
+        for value in self._derived_terms:
+            text = text.replace(value, PLACEHOLDER)
+        return text
 
     def redact_values(self, text: str) -> str:
         """Mask only the literal secret values (and a Basic-auth token carrying one) in text.

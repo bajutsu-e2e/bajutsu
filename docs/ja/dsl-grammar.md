@@ -236,6 +236,7 @@ Action    ::=
   | { totp:        { secret: string, into: { var: string } } }  # RFC 6238 OTP → vars.<var>（secret は base32）
   | { email:       { match: { to?: string, subject?: string, subjectMatches?: string }, extract: { var: string, bodyMatches: string }, timeout: number } }  # メールボックスをポーリング → vars.<var>
   | { generate:    <Generate> }                            # 実行時に計算した乱数または現在日時の値 → vars.<var>（BE-0377）
+  | { eval:        <Eval> }                                # 保持している値を固定語彙の操作で変換 → vars.*（BE-0472）
   | { background:       {} }                               # Home ボタン（SpringBoard 経由でバックグラウンド化。終了はしない）
   | { foreground:       {} }                               # アプリを終了させずに前面に出す。動いていないアプリは `relaunch` と同じように起動し、準備が整うまで待つ（iOS と Android、BE-0447）。background の対
   | { installApp:       { from: string, keepData?: boolean } }  # 後から入るデバイスグループのメンバーのビルドをステップのデバイスにインストールする。keepData 既定 true（上書きでデータを保持）、false は先にアンインストール。何も起動しない（BE-0447）
@@ -291,6 +292,24 @@ Random ::=
 Datetime ::= { format?: string, offsetSeconds?: integer, offsetMinutes?: integer, offsetHours?: integer, offsetDays?: integer, timezone?: string }
     # format: strftime のパターン。省略時は秒までの ISO 8601。4つの offset は符号付きで、加算されます。
     # timezone: IANA 名（例 "America/Los_Angeles"）。省略時は UTC。描画できない format と解決できないゾーンはロード時に失敗します。
+
+Eval ::= { from: string, ops: list(<EvalOp>), into: { var: string } | { vars: list(string) } }
+    # ops: 空にできません。各操作は直前の結果に適用します。ローダは from（文字列）から最後まで文字列かリストかを追跡します。
+    # into.var: リストの結果はコンパクトな JSON 配列テキストで保存します。into.vars: リストの結果が必要です。要素 i → vars[i]、
+    #   余った要素は捨て、リストが短ければステップを失敗させます。vars の名前は重複できません。
+EvalOp ::=
+    "trim" | "json" | "count" | "unique" | "reverse" | "sort"                     # 名前だけで書く操作
+  | { split:     string | { by: string, regex?: boolean } }                       # 文字列 → リスト。by は空にできません
+  | { join:      string }                                                         # リスト → 文字列
+  | { filter:    { matches: string | equals: string | contains: string | notEmpty: true, not?: boolean } }  # 条件はちょうど1つ
+  | { pick:      "first" | "last" | integer }                                     # リスト → 文字列。添字 ≥ 0
+  | { sort:      ("asc"|"desc") | { order?: ("asc"|"desc"), numeric?: boolean } }
+  | { regex:     { pattern: string, group?: integer } }                          # 文字列 → 文字列。group の既定は 0
+  | { replace:   { find: string, with: string, regex?: boolean } }               # 文字列 → 文字列
+  | { substring: { start: integer, end?: integer } }                             # 文字列 → 文字列。どちらも ≥ 0
+  | { case:      ("lower"|"upper") }                                              # 文字列 → 文字列
+    # 自由文と添字の引数には ${vars.*} / ${secrets.*} を書けます。その引数はロード時ではなく置換後に検査します。
+    # sort の order、case、フラグの regex / not / numeric にはリテラルだけを書けます。
 
 # ── Selector（1 条件以上・指定フィールドは AND）────────────────────────
 Selector ::= {

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import subprocess
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -75,6 +75,14 @@ class FileSink:
         # sink built outside a lease) simply drops the signal. Purely advisory — the evidence gap
         # itself is already warned about where the confirmation timed out.
         self.on_video_start_stall = on_video_start_stall
+
+    def add_secret_values(self, values: Sequence[str]) -> None:
+        """Mask *values*, derived mid-scenario, in every artifact this sink writes next (BE-0472).
+
+        A lease builds one sink per scenario, so widening it here reaches no other scenario.
+        """
+        self._writer.add_secret_values(values)
+        self.redactor = self._writer.redactor
 
     def capture(
         self,

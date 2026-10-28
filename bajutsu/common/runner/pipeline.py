@@ -54,7 +54,13 @@ from bajutsu.common.orchestrator import (
     scenario_slug,
 )
 from bajutsu.common.orchestrator.evidence_rules import requested_intervals
-from bajutsu.common.orchestrator.types import StepGate, StepOutcome, _no_network
+from bajutsu.common.orchestrator.types import (
+    DerivedSecrets,
+    StepGate,
+    StepOutcome,
+    _no_network,
+    mask_derived_text,
+)
 from bajutsu.common.platform_lifecycle.protocols import ReadinessResult
 from bajutsu.common.report import (
     ScenarioPlanSource,
@@ -397,9 +403,15 @@ class _ScenarioRunner:
             raise
         return held
 
-    def _artifacts(self) -> RunArtifactWriter | None:
-        """The run's artifact sink, or None when this run keeps no run directory at all."""
-        return None if self.run_dir is None else RunArtifactWriter(self.run_dir, self.redactor)
+    def _artifacts(self, derived: Sequence[str] = ()) -> RunArtifactWriter | None:
+        """The run's artifact sink, or None when this run keeps no run directory at all.
+
+        *derived* names the secret values one scenario's `eval` steps produced (BE-0472); a writer
+        for that scenario's evidence masks them too, without widening the shared run redactor.
+        """
+        if self.run_dir is None:
+            return None
+        return RunArtifactWriter(self.run_dir, self.redactor.with_values(derived))
 
     def _now(self) -> float:
         """Monotonic seconds from the injected clock, or the real clock when none is wired.
@@ -417,13 +429,22 @@ class _ScenarioRunner:
             s: The scenario to run.
         """
         sid = _evidence_sid(i, s)
+        # What this scenario's `eval` steps derive from a secret (BE-0472). Created here, once per
+        # scenario rather than per attempt, so a crash retry and every writer after a raise still
+        # mask what an earlier attempt derived; never stored on the shared runner.
+        derived = DerivedSecrets()
         if self.trace_driver:
-            return self._run_one_traced(i, s, sid)
-        return self._run_one_recorded(i, s, sid)
+            return self._run_one_traced(i, s, sid, derived)
+        return self._run_one_recorded(i, s, sid, derived)
 
-    def _run_one_recorded(self, i: int, s: Scenario, sid: str) -> RunResult:
+    def _run_one_recorded(
+        self, i: int, s: Scenario, sid: str, derived: DerivedSecrets
+    ) -> RunResult:
         """`_run_one_impl`, then its verdict persisted to `<sid>/result.json` straight away."""
-        result = self._run_one_impl(i, s, sid)
+        result = self._run_one_impl(i, s, sid, derived)
+        # Every consumer from here on — result.json, the manifest and reports, CI annotations, a
+        # webhook — reads these fields, so masking them once here covers each (BE-0472).
+        mask_derived_text(result, Redactor(None).with_values(derived.values))
         self._write_result(s, sid, result)
         return result
 
@@ -446,7 +467,7 @@ class _ScenarioRunner:
             # fails loudly when `manifest.json` is written, but must not abort the suite here.
             _logger.warning("scenario %s: writing result.json failed (%s)", s.name, exc)
 
-    def _run_one_traced(self, i: int, s: Scenario, sid: str) -> RunResult:
+    def _run_one_traced(self, i: int, s: Scenario, sid: str, derived: DerivedSecrets) -> RunResult:
         """`_run_one_impl` under an open driver trace, flushed to `<sid>/driver_trace.json`."""
         # BE-0415: opened *before* `_run_one_impl` leases a device, so the driver it constructs
         # (`self.lease(...)` -> `launch_driver` -> `backends.make_driver`) sees a trace already open
@@ -458,9 +479,10 @@ class _ScenarioRunner:
         # while serializing the (diagnostic) trace still leaves the finished scenario's result.
         with tracing.open_trace() as trace_ctx:
             try:
-                return self._run_one_recorded(i, s, sid)
+                result = self._run_one_recorded(i, s, sid, derived)
             finally:
-                writer = self._artifacts()
+                # Masks what the scenario derived from a secret, even when it raised (BE-0472).
+                writer = self._artifacts(derived.values)
                 if writer is not None:
                     try:
                         writer.write_json(
@@ -474,12 +496,13 @@ class _ScenarioRunner:
                         _logger.warning(
                             "scenario %s: writing driver_trace.json failed (%s)", s.name, exc
                         )
+        return result
 
     # Genuinely long: the per-scenario run on the deterministic run path. Splitting it carries real
     # behavioral risk, so it waits for a refactor of its own rather than riding a lint ceiling
     # (BE-0386).
     def _run_one_impl(  # noqa: C901, PLR0912, PLR0915
-        self, i: int, s: Scenario, sid: str
+        self, i: int, s: Scenario, sid: str, derived: DerivedSecrets
     ) -> RunResult:
         """`run_one`'s actual body.
 
@@ -817,7 +840,7 @@ class _ScenarioRunner:
                         # work, not recovery. A mid-step crash below re-arms the clock.
                         self.run_crash_budget.add_recovery_time(self._now() - recovery_started)
                         recovery_started = None
-                    return self._run_on_lease(lz, others, handler, i, s, sid)
+                    return self._run_on_lease(lz, others, handler, i, s, sid, derived)
                 except BackendCrashError as crash:
                     # Nothing is released here: `_lease_set` already rolls back its own partial
                     # bring-up, and `_run_on_lease` owns the whole set's release in its `finally`
@@ -968,7 +991,7 @@ class _ScenarioRunner:
         # the type-checker cannot see from here.
         assert last_crash is not None
         if crashed_lz is not None:
-            failure += self._write_crash_artifacts(crashed_lz, s, sid)
+            failure += self._write_crash_artifacts(crashed_lz, s, sid, derived.values)
         # `partial_artifacts` names the newest attempt that actually finalized a recording before
         # crashing (not necessarily the last attempt — a later one can crash during lease bring-up,
         # before `run_scenario`'s own finalize ever runs). Only the video is attached: it is what the
@@ -989,6 +1012,7 @@ class _ScenarioRunner:
             sid=sid,
             failure=failure,
             artifacts=[recovered] if recovered is not None else [],
+            derived_secrets=list(derived.values),
             # Disclose the gap only when video was requested and no recording survived the crash —
             # otherwise either the video attached above already answers "where is the recording", or
             # this scenario was never going to have one, and a skip entry would falsely claim it was.
@@ -999,7 +1023,9 @@ class _ScenarioRunner:
             ),
         )
 
-    def _write_crash_artifacts(self, lz: Lease, s: Scenario, sid: str) -> str:
+    def _write_crash_artifacts(
+        self, lz: Lease, s: Scenario, sid: str, derived: Sequence[str] = ()
+    ) -> str:
         """Copy the crashed backend's own evidence into this scenario's directory (BE-0421).
 
         Called once, where the retry loop has already given up: a scenario that recovered passes, and a
@@ -1012,7 +1038,7 @@ class _ScenarioRunner:
         logged and nothing more: a diagnostic artifact must never turn an already-decided failure into
         a different, unrelated one.
         """
-        writer = self._artifacts()
+        writer = self._artifacts(derived)
         if writer is None:
             return ""
         directory: Path | None = None
@@ -1034,7 +1060,7 @@ class _ScenarioRunner:
         return f"; the backend's own crash evidence is in {directory}"
 
     def _write_app_crash_artifacts(
-        self, lz: Lease, outcome: StepOutcome, s: Scenario, sid: str
+        self, lz: Lease, outcome: StepOutcome, s: Scenario, sid: str, derived: Sequence[str] = ()
     ) -> str:
         """Copy the crashed *app's* own platform report into this scenario's directory (BE-0424).
 
@@ -1050,7 +1076,7 @@ class _ScenarioRunner:
         through `write_text`, not `write_bytes`: a crash report is text a crashing app can echo a
         secret into, so it still crosses the free-text scrub (BE-0331).
         """
-        writer = self._artifacts()
+        writer = self._artifacts(derived)
         if writer is None:
             return ""
         try:
@@ -1295,7 +1321,7 @@ class _ScenarioRunner:
             None,
         )
         if crashed is not None:
-            trailer = self._write_app_crash_artifacts(lz, crashed, s, sid)
+            trailer = self._write_app_crash_artifacts(lz, crashed, s, sid, result.derived_secrets)
             # `result.ok` is already fixed by `run_scenario` (`ok=failure is None`) before this
             # scan ever runs, so an empty trailer here cannot flip it — but `result.failure` would
             # still silently become `""` instead of staying `None`, a stale non-`None`-yet-empty
@@ -1314,6 +1340,7 @@ class _ScenarioRunner:
         i: int,
         s: Scenario,
         sid: str,
+        derived: DerivedSecrets,
     ) -> RunResult:
         """Run one scenario on an already-leased device and return its result.
 
@@ -1339,7 +1366,12 @@ class _ScenarioRunner:
             for extra in others.values():
                 if extra.collector is not None:
                     extra.collector.clear()
-            writer = self._artifacts()
+            writer = self._artifacts(derived.values)
+            # Built before the run, and read by `expect`'s visual / golden captures during it, so it
+            # learns each value the scenario's `eval` steps derive from a secret as it is derived
+            # (BE-0472). This attempt's writer serves this scenario alone.
+            if writer is not None:
+                derived.listeners.append(writer.add_secret_values)
             # The primary's own evidence nests under its own name once a second target is declared,
             # matching every other declared target's own `f"{sid}/{name}"` convention rather than
             # leaving the primary's evidence bare at `sid`. `others` is empty for a zero/one-
@@ -1450,6 +1482,7 @@ class _ScenarioRunner:
                 roster=self._roster_for(
                     s, lz, others, handler, writer, sid, primary_ctx, primary_target
                 ),
+                derived_secrets=derived,
             )
             result.sid = sid  # the evidence-dir slug, so the matrix links to the real dir (BE-0076)
             if multi:

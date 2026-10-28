@@ -24,6 +24,7 @@ from bajutsu.common.scenario.models.actions import (
     Delete,
     Drag,
     Email,
+    Eval,
     Foreground,
     Generate,
     HandleSystemAlert,
@@ -113,6 +114,8 @@ class Step(_Model):
     http: HttpRequest | None = None
     totp: Totp | None = None
     generate: Generate | None = None
+    # `eval_` (alias `eval`) for the same reason as `copy_`: the Python name would shadow a builtin.
+    eval_: Eval | None = Field(default=None, alias="eval")
     email: Email | None = None
     clear_keychain: ClearKeychain | None = Field(default=None, alias="clearKeychain")
     clear_clipboard: ClearClipboard | None = Field(default=None, alias="clearClipboard")
