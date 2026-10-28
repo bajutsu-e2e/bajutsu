@@ -299,7 +299,7 @@ Log:
   made `erase_precondition_supported` a lookup in the table. Added `run.ignoredSettings` to
   `RunPolicy`, refused under `defaults`. The run preflight now judges every target's settings before
   any lease, and the iOS Simulator, real-device, live WebDriver, Android, and web launches read the
-  table instead of their own conditions, device-group members included. Four points depart from the
+  table instead of their own conditions, device-group members included. Five points depart from the
   design text. Android's `launchArgs` is `unsupported`, since Android has no `app.launch.args` and
   `am start` takes none. A scenario's `app.launch` value is in effect only on a target whose platform
   has that field, as BE-0452 keys it, so an iOS-and-web scenario's deeplink does not fail the web

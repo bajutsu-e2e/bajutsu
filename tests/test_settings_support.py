@@ -269,3 +269,17 @@ def test_an_ignored_launch_env_keeps_bajutsus_own_keys() -> None:
     pre = ResolvedPreconditions(launch_env={"BAJUTSU_MOCKS": "[]", "A": "1"})
     dropped, _ = without_ignored(pre, None, ["launchEnv"])
     assert dropped.launch_env == {"BAJUTSU_MOCKS": "[]"}
+
+
+def test_a_mixed_permissions_map_names_only_the_unsupported_service() -> None:
+    # BE-0276 granularity, moved here with the rows: a Simulator grants camera but has no TCC
+    # service for notifications, so only notifications is a problem and camera is never named.
+    check = check_settings(
+        "xcuitest",
+        _eff("ios"),
+        ResolvedPreconditions(),
+        {"camera": "grant", "notifications": "grant"},
+    )
+    assert check.unsupported == ["permissions.notifications"]
+    [problem] = check.problems()
+    assert "permissions.notifications" in problem and "camera" not in problem

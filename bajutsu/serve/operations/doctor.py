@@ -145,7 +145,7 @@ def doctor_check(
         query = screen_query or functools.partial(_current_screen, state)
         try:
             elements = query(actuator, udid, eff)
-        except device_errors.DeviceError as e:
+        except (device_errors.DeviceError, base.UnsupportedAction) as e:
             all_checks = [*all_checks, preflight.Check("screen readable", False, str(e))]
             ok = False
         else:

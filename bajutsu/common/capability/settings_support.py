@@ -64,9 +64,11 @@ _SAT: SettingSupport = "satisfied"
 _U: SettingSupport = "unsupported"
 
 # Every key but the per-service permissions, which follow the route's capability tokens instead.
-# Android has no `app.launch.args` and `am start` takes none, and it has no iOS photo library or
-# locale; the loader keeps those fields off an Android or web target, so their rows only matter for a
-# scenario that sets one while driving a second, iOS target.
+# Android has no `app.launch.args` (`am start` takes none) and no iOS photo library or locale, and the
+# web has no install, photo library, locale, launch arguments, or deeplink. `settings_in_effect`
+# never puts those keys in effect on those routes, because the loader and the platform-keyed
+# preconditions keep the fields off them (BE-0452); the rows read `unsupported` so a later change
+# that does reach one fails loudly instead of applying nothing.
 _ROWS: dict[Route, dict[str, SettingSupport]] = {
     "ios-simulator": {
         "erase": _S,

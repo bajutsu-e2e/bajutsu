@@ -14,6 +14,7 @@ from bajutsu.common.capability.worker_capability import WorkerCapability, load_w
 from bajutsu.common.config import Effective, load_config_file, resolve
 from bajutsu.common.devices import errors as device_errors
 from bajutsu.common.doctor import DoctorProbeError, probe_screen, render, score
+from bajutsu.common.drivers import base
 from bajutsu.run import INTERNAL_MODULE as INTERNAL_RUN_MODULE
 from bajutsu.run.device_matrix import first_run_device
 
@@ -111,7 +112,7 @@ def register_tools(
             elements = probe_screen(actuator, udid_spec, eff)
         except DoctorProbeError as e:
             return str(e)
-        except device_errors.DeviceError as e:
+        except (device_errors.DeviceError, base.UnsupportedAction) as e:
             return f"could not read the screen to score: {e}"
         s = score(
             elements,
