@@ -119,7 +119,7 @@ Scenario ::= {
   installs?:       list(string),            # 既定 []  — プライマリと並んで開始時にインストールして起動するデバイスグループのメンバー（BE-0447）。2つ以上のメンバーを持つグループのそれ以外のメンバーは後から入るメンバーで、`installApp` と `foreground` が立ち上げる（§4）
   data?:           list(map(string,string)),# インライン行  ┐ XOR
   dataFile?:       string,                  # CSV パス      ┘ （§6.3）
-  preconditions?:  <Preconditions>,         # 既定 {}  — ターゲットの `app` / `runsOn` / `run` をシナリオごとに上書き（BE-0452）
+  preconditions?:  <Preconditions>,         # 既定 {}  — ターゲットの `app` / `run` をシナリオごとに上書き（BE-0452）し、デバイスの状態を持つ（BE-0469）
   setup?:          list(<Step>),            # 既定 []  — steps の前に独立したフェーズとして走るセットアップ（BE-0392）。宣言した各ターゲットの `hooks.setup` の後に連結される
   steps:           list(<Step>),            # 必須
   expect?:         list(<Assertion>),       # 既定 []  — 最終チェック
@@ -145,10 +145,11 @@ Interrupt ::= { condition: <Assertion>, steps: list(<Step>), target?: string }
 CleanupRule ::= { on: "always" | "success" | "failure", steps: list(<Step>) }
 
 # ── Preconditions ──────────────────────────────────────────────────────
-# ターゲットと同じグループ名を使います（BE-0452）。各フィールドは、シナリオが動かす各ターゲットの
+# `app` と `run` はターゲットと同じグループ名を使います（BE-0452）。各フィールドは、シナリオが動かす各ターゲットの
 # 同じフィールドを上書きします。`app.launch.env` はキーごとにマージし、`app.launch.args` は追記し、
 # `run.systemAlertHandling` の規則は連結します（シナリオの規則が先）。動かすどのターゲットの
-# プラットフォームにもないフィールドは、デバイスを操作する前に run を失敗させます。
+# プラットフォームにもないフィールドは、デバイスを操作する前に run を失敗させます。シナリオは
+# デバイスの条件を宣言しません。`runsOn` はターゲットだけが持ちます（BE-0469）。
 Preconditions ::= {
   app?:    {
     reinstall?: ("clean" | "overwrite"),    # 未設定はターゲットの `app.reinstall`、なければ "clean"。iOS と Android
@@ -158,7 +159,7 @@ Preconditions ::= {
       deeplink?: string,                    # 未設定はターゲットの `app.launch.deeplink`。iOS と Android
     },
   },
-  runsOn?: map(<Platform>, <RunsOn>),       # プラットフォームがキー。動かさないプラットフォームのブロックは効果なし
+  device?: { ios?: <IosDevice> },           # 宛先がキー。動かさないプラットフォームのブロックは効果なし
   run?:    {
     erase?:               boolean,          # 未設定はターゲットの `run.erase` を継承し、それもなければオフ（BE-0177）
     systemAlertHandling?: <SystemAlertHandling>,  # アラートガード; 未指定で ON
@@ -167,14 +168,10 @@ Preconditions ::= {
   },
 }
 
-# 1 つのプラットフォームに対するシナリオの `runsOn` ブロックです。そのプラットフォームに登録された
-# `runsOn` のモデルから、ターゲットに残す `kind` と `emulate` を除いたものです。iOS の `locale` と
-# `seedPhotos`（シナリオファイルからの相対パス）はデバイスの状態です。`model`、`os`、`avd`、
-# `apiLevel`、`browser.*` はデバイスの条件で、run の前にプールのデバイスと照合します。リストや範囲は
-# run を増やします。片側が開いた範囲に合うデバイスがなければ、対象外の記録が残ります
-# （configuration.md#デバイスの条件runson）。
-# 重ね合わせたあとの `seedPhotos` が空でなければ、実効の `run.erase` が必要です。
-RunsOn ::= { locale?: string, seedPhotos?: list(string), model?: …, os?: …, avd?: …, apiLevel?: …, browser?: { engine?: …, version?: … } }
+# シナリオが適用する iOS のデバイスの状態です。各フィールドは、ターゲットの `runsOn.ios` の同名の値を
+# 置き換えます。`seedPhotos` のパスはシナリオファイルを基準に解決します。重ね合わせたあとのリストが
+# 空でなければ、実効の `run.erase` が必要です。
+IosDevice ::= { locale?: string, seedPhotos?: list(string) }
 
 # ── SystemAlertHandling（リアクティブなシステムアラートガード; 既定 ON）─
 # XCUITest ではネイティブの SpringBoard 照会 + tap（モデルなし、BE-0316 を再利用。BE-0315）に加え、

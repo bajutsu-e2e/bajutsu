@@ -277,7 +277,7 @@ provider だけで、Anthropic API と `ant` の実装にはこの仕組みが�
 （[BE-0188](../../roadmaps/BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language-ja.md)）は
 AI が生成する文章、すなわち `record` の `from:` 由来と `crawl` が逐次出力する推論テキストを、どの言語で書くかを固定します。
 既定の *auto* は現状の挙動を保ちます（`record` はゴールに追従し、`crawl` は英語のままです）。決定論的な
-`run` の判定には触れず、対象のデバイスのロケール（`runsOn.locale`）とは別物です。
+`run` の判定には触れず、対象のデバイスのロケール（`runsOn.ios.locale`）とは別物です。
 
 **Claude API key**（Anthropic API provider を選ぶと現れます）は **write-once** です。キーを入力して **Save** すると、以後はマスクした表示だけになり、
 内容が再表示されることはありません。変更するには新しいキーを設定します。**Clear** で削除します。これは

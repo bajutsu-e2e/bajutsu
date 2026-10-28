@@ -145,7 +145,7 @@ def test_a_web_engine_list_multiplies_and_a_version_range_narrows() -> None:
         "site", "web", {"browser.version": "120 - 125"}, browsers, engine="chromium"
     )
     assert run.outcome == "failed"
-    assert run.reason == 'runsOn.web.browser.version  "120 - 125"  launched: chromium 130.0.6723.31'
+    assert run.reason == 'runsOn.browser.version  "120 - 125"  launched: chromium 130.0.6723.31'
     with pytest.raises(ValueError, match="no browser version"):
         form_target_runs("site", "web", {"browser.version": ">=1"}, [], engine="firefox")
 
@@ -214,12 +214,26 @@ def test_first_run_takes_the_first_value_and_the_newest_major_in_range() -> None
 
 
 def test_unpack_conditions_flattens_and_drops_device_state() -> None:
+    # A raw group is read one destination block down (BE-0469), keyed by its path under `runsOn`.
     assert unpack_conditions(
-        {"os": ">=18", "locale": "ja_JP", "seedPhotos": ["a.png"], "apiLevel": 34}
-    ) == {"os": ">=18", "apiLevel": "34"}
-    assert unpack_conditions({"browser": {"engine": "webkit", "version": None}}) == {
-        "browser.engine": "webkit"
+        {"ios": {"os": ">=18", "kind": "simulator", "locale": "ja_JP", "seedPhotos": ["a.png"]}}
+    ) == {"ios.os": ">=18"}
+    assert unpack_conditions({"android": {"apiLevel": 34, "avd": None}}) == {
+        "android.apiLevel": "34"
     }
+    assert unpack_conditions(
+        {"browser": {"engine": "webkit", "version": None, "emulate": "iPhone 13"}}
+    ) == {"browser.engine": "webkit"}
+    # A flat value is not a destination block, so it names no condition.
+    assert unpack_conditions({"os": ">=18"}) == {}
+
+
+def test_condition_path_names_where_the_target_writes_it() -> None:
+    from bajutsu.common.devices.runs import condition_path
+
+    assert condition_path("ios", "model") == "runsOn.ios.model"
+    assert condition_path("android", "apiLevel") == "runsOn.android.apiLevel"
+    assert condition_path("web", "browser.version") == "runsOn.browser.version"
 
 
 def test_a_web_union_keeps_each_sides_rule_and_a_bounded_miss_fails() -> None:

@@ -222,7 +222,7 @@ def test_a_file_template_resolves_its_own_relative_paths(tmp_path: Path) -> None
         """
 platform: ios
 app: { path: build/App.app }
-runsOn: { seedPhotos: [photos/a.png, /abs/b.png] }
+runsOn: { ios: { seedPhotos: [photos/a.png, /abs/b.png] } }
 driver: { runner: { testRunner: ../runner/R.xctestrun } }
 paths: { baselines: baselines }
 """,

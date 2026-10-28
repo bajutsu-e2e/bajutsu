@@ -35,7 +35,7 @@ CONFIG_YAML = (
     "defaults:\n"
     "  platforms:\n"
     "    ios:\n"
-    "      runsOn: {locale: ja_JP}\n"
+    "      runsOn: {ios: {locale: ja_JP}}\n"
     "  evidence:\n"
     "    capture: [screenshot.after, elements, actionLog]\n"
     "    redact:\n"
@@ -204,12 +204,12 @@ def test_target_overrides_platform_defaults() -> None:
         "defaults:\n"
         "  platforms:\n"
         "    ios:\n"
-        "      runsOn: {locale: ja_JP}\n"
+        "      runsOn: {ios: {locale: ja_JP}}\n"
         "targets:\n"
         "  x:\n"
         "    platform: ios\n"
         "    app: {id: com.x}\n"
-        "    runsOn: {locale: en_GB}\n"
+        "    runsOn: {ios: {locale: en_GB}}\n"
         "  y:\n"
         "    platform: ios\n"
         "    app: {id: com.y}\n"
@@ -276,10 +276,32 @@ def test_lists_replace_except_the_two_unions() -> None:
 
 
 def test_unknown_defaults_platform_field_is_rejected() -> None:
-    with pytest.raises(ValidationError, match=r"defaults\.platforms\.ios\.runsOn"):
+    with pytest.raises(
+        ValidationError,
+        match=r"defaults\.platforms\.ios: runsOn\.browser is not a destination this platform runs on",
+    ):
         load_config(
             "defaults:\n  platforms:\n    ios:\n      runsOn: {browser: chromium}\ntargets: {}\n"
         )
+
+
+def test_a_flat_defaults_runs_on_key_names_its_new_path() -> None:
+    # BE-0469: the pre-grouping spelling fails under `defaults.platforms` too, naming where it moved.
+    with pytest.raises(
+        ValidationError,
+        match=r"defaults\.platforms\.ios: runsOn\.locale moved to runsOn\.ios\.locale",
+    ):
+        load_config(
+            "defaults:\n  platforms:\n    ios:\n      runsOn: {locale: ja_JP}\ntargets: {}\n"
+        )
+
+
+def test_an_unknown_defaults_group_field_lists_the_allowed_ones() -> None:
+    # The groups other than `runsOn` still check their top-level keys by name.
+    with pytest.raises(
+        ValidationError, match=r"defaults\.platforms\.ios\.app: unknown field\(s\) 'bogus'"
+    ):
+        load_config("defaults:\n  platforms:\n    ios:\n      app: {bogus: 1}\ntargets: {}\n")
 
 
 def test_unknown_defaults_platform_is_rejected() -> None:
@@ -500,7 +522,7 @@ def test_web_app_device_mode_config_resolves() -> None:
         "  web:\n"
         "    platform: web\n"
         "    app: {url: 'http://127.0.0.1:8787/'}\n"
-        "    runsOn: {emulate: iPhone 13}\n"
+        "    runsOn: {browser: {emulate: iPhone 13}}\n"
     )
     assert _web(resolve(cfg, "web")).device_mode == "iPhone 13"
 
@@ -753,7 +775,7 @@ def test_rebased_preserves_xcuitest_device_type() -> None:
             "    app: {id: com.x}\n"
             "    driver:\n"
             "      runner: {testRunner: build/Runner.xctestrun}\n"
-            "    runsOn: {kind: device}\n"
+            "    runsOn: {ios: {kind: device}}\n"
         ),
         "x",
     )
@@ -1021,7 +1043,7 @@ def test_xcuitest_device_type_resolves_device() -> None:
         "    app: {id: com.x}\n"
         "    driver:\n"
         "      runner: {testRunner: build/Runner.xctestrun}\n"
-        "    runsOn: {kind: device}\n"
+        "    runsOn: {ios: {kind: device}}\n"
     )
     xcuitest = _ios(resolve(cfg, "s")).xcuitest
     assert xcuitest is not None
@@ -1037,7 +1059,7 @@ def test_xcuitest_device_type_invalid_rejected() -> None:
             "    app: {id: com.x}\n"
             "    driver:\n"
             "      runner: {testRunner: build/Runner.xctestrun}\n"
-            "    runsOn: {kind: physical}\n"
+            "    runsOn: {ios: {kind: physical}}\n"
         )
 
 
@@ -1045,17 +1067,17 @@ def test_xcuitest_device_type_invalid_rejected() -> None:
 
 
 def test_xcuitest_targets_real_device_true_for_device() -> None:
-    # `runsOn.kind: device` is the one shape that drives a physical device — the accessor the
+    # `runsOn.ios.kind: device` is the one shape that drives a physical device — the accessor the
     # Unit 3 capability narrowing consults to drop the simctl-backed DeviceControl / permission tokens.
     cfg = load_config(
-        "targets:\n  s:\n    platform: ios\n    app: {id: com.x}\n    runsOn: {kind: device}\n"
+        "targets:\n  s:\n    platform: ios\n    app: {id: com.x}\n    runsOn: {ios: {kind: device}}\n"
     )
     assert xcuitest_targets_real_device(resolve(cfg, "s")) is True
 
 
 def test_xcuitest_targets_real_device_false_for_simulator() -> None:
     cfg = load_config(
-        "targets:\n  s:\n    platform: ios\n    app: {id: com.x}\n    runsOn: {kind: simulator}\n"
+        "targets:\n  s:\n    platform: ios\n    app: {id: com.x}\n    runsOn: {ios: {kind: simulator}}\n"
     )
     assert xcuitest_targets_real_device(resolve(cfg, "s")) is False
 
@@ -1474,3 +1496,30 @@ def test_target_renamed_alert_keys_fail_naming_the_canonical_key(old: str) -> No
             f"targets:\n  s:\n    platform: ios\n    app: {{id: com.x}}\n    run: {{{old}: false}}\n"
         )
     assert "systemAlertHandling" in str(exc.value)
+
+
+def test_destination_blocks_resolve_to_the_target_conditions_and_state() -> None:
+    # BE-0469 moved the fields under a destination block; what a run reads from them is unchanged.
+    cfg = load_config(
+        "targets:\n"
+        "  i:\n"
+        "    platform: ios\n"
+        "    app: {id: com.x}\n"
+        "    runsOn:\n"
+        "      ios: {model: iPhone 16, os: '>=18', locale: ja_JP, seedPhotos: [a.png]}\n"
+        "  a:\n"
+        "    platform: android\n"
+        "    app: {id: com.x}\n"
+        "    runsOn: {android: {avd: [P1, P2], apiLevel: 34}}\n"
+        "  w:\n"
+        "    platform: web\n"
+        "    app: {url: 'http://x/'}\n"
+        "    runsOn: {browser: {engine: webkit, version: '>=17', emulate: iPhone 13}}\n"
+    )
+    ios = resolve(cfg, "i")
+    assert ios.conditions == {"model": "iPhone 16", "os": ">=18"}
+    assert (ios.locale, ios.seed_photos) == ("ja_JP", ["a.png"])
+    assert resolve(cfg, "a").conditions == {"avd": ["P1", "P2"], "apiLevel": "34"}
+    web = resolve(cfg, "w")
+    assert web.conditions == {"browser.version": ">=17"}  # one engine is the default, not a list
+    assert _web(web).device_mode == "iPhone 13"

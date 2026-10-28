@@ -22,7 +22,7 @@ TEMPLATE_KEYS: tuple[str, ...] = (*TARGET_KEYS, "extends")
 # a test checks; `services.*` paths do not resolve against the config file today, so they stay.
 REBASED_PATHS: tuple[tuple[str, ...], ...] = (
     ("app", "path"),
-    ("runsOn", "seedPhotos"),
+    ("runsOn", "ios", "seedPhotos"),
     ("driver", "runner", "testRunner"),
     ("paths", "scenarios"),
     ("paths", "baselines"),

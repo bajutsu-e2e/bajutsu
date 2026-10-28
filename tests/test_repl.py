@@ -1437,7 +1437,7 @@ def _refuse_device_access(monkeypatch: pytest.MonkeyPatch) -> None:
         ("adb", [], ""),
         ("playwright", [], ""),
         ("xcuitest", ["--worker-config", "GRID"], ""),
-        ("xcuitest", [], "kind: device"),
+        ("xcuitest", [], "ios: { kind: device }"),
     ],
 )
 def test_attach_outside_the_local_simulator_exits_2_before_any_device_is_touched(

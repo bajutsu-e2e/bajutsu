@@ -5,7 +5,7 @@
     app:
       launch:
         env: { SHOWCASE_UITEST: "1" }
-    runsOn:
+    device:
       ios:
         seedPhotos:
           - fixtures/photos/fixture-red.png

@@ -27,6 +27,8 @@ from bajutsu.common.cloud.devicefarm import (
 )
 from bajutsu.common.config.schema._merge import merge_defaults
 from bajutsu.common.config.schema._templates import expand_extends
+from bajutsu.common.config.schema.platform import PLATFORM_SCHEMAS
+from bajutsu.common.config.schema.platform._shared import destination_problems
 from bajutsu.common.devices.runs import unpack_conditions
 
 from .batch_checkpoint import BatchCheckpoint
@@ -78,29 +80,21 @@ def _check_launch_env_collisions(
                 )
 
 
-def _check_no_conditions(
-    config_path: Path,
-    scenario_path: Path,
-    target: str,
-    platform: str,
-    *,
-    root: Path | None = None,
-) -> None:
-    """Raise when the job's target or scenario declares a `runsOn` condition (BE-0452).
+def _check_no_conditions(config_path: Path, target: str, *, root: Path | None = None) -> None:
+    """Raise when the job's target declares a `runsOn` condition (BE-0452).
 
     A Device Farm device is reserved by the worker, not read from a pool, so no condition can be
     matched against it; the worker refuses the job before it submits anything rather than letting
     the condition go ignored. `locale` and `seedPhotos` are device state, so they stay allowed. A
-    config or scenario file the job does not carry declares nothing here; the run on the device
-    reports it missing. A template file the target extends must be in the bundle, since its `runsOn`
-    cannot be known otherwise: a missing one fails here. *root* is the bundle root a template file
-    must stay inside, None meaning the config's directory.
+    scenario declares no condition since BE-0469, so the target is the one place to look. A config
+    file the job does not carry declares nothing here; the run on the device reports it missing. A
+    template file the target extends must be in the bundle, since its `runsOn` cannot be known
+    otherwise: a missing one fails here. *root* is the bundle root a template file must stay inside,
+    None meaning the config's directory.
     """
-
-    def read(path: Path) -> Any:
-        return yaml.safe_load(path.read_text(encoding="utf-8")) if path.is_file() else None
-
-    config = read(config_path) or {}
+    config = (
+        yaml.safe_load(config_path.read_text(encoding="utf-8")) if config_path.is_file() else None
+    ) or {}
     targets = config.get("targets") if isinstance(config, dict) else None
     defaults = config.get("defaults") if isinstance(config, dict) else None
     raw = targets.get(target) if isinstance(targets, dict) else None
@@ -117,18 +111,13 @@ def _check_no_conditions(
     merged = merge_defaults(defaults if isinstance(defaults, dict) else None, *layers)
     runs_on = merged.get("runsOn")
     declared: dict[str, object] = runs_on if isinstance(runs_on, dict) else {}
+    # A flat key from before BE-0469 holds no destination block, so `unpack_conditions` would skip
+    # it; it fails here, with its new path, rather than reaching the reserved device.
+    platform = merged.get("platform")
+    schema = PLATFORM_SCHEMAS.get(platform) if isinstance(platform, str) else None
+    if schema is not None and (moved := destination_problems(schema.runs_on, declared)):
+        raise ValueError(f"target {target!r}: {'; '.join(moved)}")
     found = [f"target {target!r} runsOn.{name}" for name in unpack_conditions(declared)]
-    scenarios = read(scenario_path)
-    for scenario in scenarios if isinstance(scenarios, list) else []:
-        pre = scenario.get("preconditions") if isinstance(scenario, dict) else None
-        runs_on = pre.get("runsOn") if isinstance(pre, dict) else None
-        block = runs_on.get(platform) if isinstance(runs_on, dict) else None
-        if isinstance(block, dict):
-            name = scenario.get("name", "<unnamed>")
-            found += [
-                f"scenario {name!r} preconditions.runsOn.{platform}.{field}"
-                for field in unpack_conditions(block)
-            ]
     if found:
         raise ValueError(
             f"{', '.join(found)}: a Device Farm device has no pool to match a runsOn condition "
@@ -215,13 +204,7 @@ class DeviceFarmBatchProvider:
                     interrupt=interrupt,
                 )
             else:
-                _check_no_conditions(
-                    work_dir / request.config,
-                    work_dir / request.scenario,
-                    request.target,
-                    request.platform,
-                    root=work_dir,
-                )
+                _check_no_conditions(work_dir / request.config, request.target, root=work_dir)
                 for hook in self._hooks:
                     hook.before_submit(ctx)
 

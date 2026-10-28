@@ -294,7 +294,7 @@ and **Output language** ([BE-0188](../roadmaps/BE-0188-configurable-ai-output-la
 fixes the language the AI writes its generated prose in — `record`'s `from:` provenance and
 `crawl`'s streamed reasoning. Its default *auto* keeps today's behavior (record follows the goal,
 crawl stays English); it never affects the deterministic `run` verdict, and it is separate from a
-target's device locale (`runsOn.locale`).
+target's device locale (`runsOn.ios.locale`).
 
 **Claude API key** (shown when the Anthropic API provider is selected) is **write-once**: enter a
 key and **Save**, and it is shown only masked and never

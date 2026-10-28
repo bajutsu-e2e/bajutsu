@@ -2,9 +2,17 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Annotated, Any, Literal, Self
 
-from pydantic import AfterValidator, BeforeValidator, Field, WithJsonSchema, model_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    BeforeValidator,
+    Field,
+    WithJsonSchema,
+    model_validator,
+)
 
 from bajutsu.common.devices.version import VersionSpec
 from bajutsu.common.scenario import Exists
@@ -86,6 +94,67 @@ RangeField = Annotated[
     AfterValidator(check_range),
     WithJsonSchema({"anyOf": [{"type": "string"}, {"type": "integer"}, {"type": "null"}]}),
 ]
+
+
+def _destination_models(model: type[BaseModel]) -> dict[str, type[BaseModel]]:
+    # A `runsOn` group's destination keys, each with the model of its block.
+    out: dict[str, type[BaseModel]] = {}
+    for name, field in model.model_fields.items():
+        if isinstance(field.annotation, type) and issubclass(field.annotation, BaseModel):
+            out[field.alias or name] = field.annotation
+    return out
+
+
+def destination_problems(model: type[BaseModel], block: Mapping[str, Any]) -> list[str]:
+    """Each key of a `runsOn` group that is not one of the destinations *model* allows (BE-0469).
+
+    A key that a destination block holds is a flat spelling from before the grouping, so its message
+    names the path it moved to; any other key is a destination the platform does not run on.
+
+    Args:
+        model: The platform's registered `runsOn` model.
+        block: The group as written, before validation.
+
+    Returns:
+        One message per key, each naming it; empty when every key is an allowed destination.
+    """
+    destinations = _destination_models(model)
+    allowed = ", ".join(destinations) or "(none)"
+    problems: list[str] = []
+    for key in block:
+        if key in destinations:
+            continue
+        owner = next(
+            (
+                dest
+                for dest, inner in destinations.items()
+                if any(key in (n, f.alias) for n, f in inner.model_fields.items())
+            ),
+            None,
+        )
+        if owner is not None:
+            problems.append(f"runsOn.{key} moved to runsOn.{owner}.{key}")
+        else:
+            problems.append(
+                f"runsOn.{key} is not a destination this platform runs on; "
+                f"allowed destinations: {allowed}"
+            )
+    return problems
+
+
+class RunsOnGroup(_Model):
+    """The base of a platform's `runsOn` group: one block per destination it allows (BE-0469).
+
+    `platform` names the app under test and `runsOn` where it runs, so the pair is checked rather than
+    the two names compared: the destination keys a subclass declares are the allowed ones.
+    """
+
+    @model_validator(mode="before")
+    @classmethod
+    def _destinations_only(cls, data: Any) -> Any:
+        if isinstance(data, dict) and (problems := destination_problems(cls, data)):
+            raise ValueError("; ".join(problems))
+        return data
 
 
 def check_list(field: str, value: str | list[str] | None) -> str | list[str] | None:

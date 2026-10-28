@@ -121,7 +121,7 @@ Scenario ::= {
   installs?:       list(string),            # default []  — device-group members that install and launch at the start beside the primary (BE-0447); every other member of a group of ≥ 2 is a later member, brought up by `installApp` + `foreground` (§4)
   data?:           list(map(string,string)),# inline rows   ┐ XOR
   dataFile?:       string,                  # CSV path      ┘ (§6.3)
-  preconditions?:  <Preconditions>,         # default {}  — the target's `app` / `runsOn` / `run`, overridden per scenario (BE-0452)
+  preconditions?:  <Preconditions>,         # default {}  — the target's `app` / `run` overridden per scenario (BE-0452), and the device state (BE-0469)
   setup?:          list(<Step>),            # default []  — setup phase run ahead of `steps`, reported apart from it (BE-0392); each declared target's `hooks.setup` precede these
   steps:           list(<Step>),            # required
   expect?:         list(<Assertion>),       # default []  — final checks
@@ -147,10 +147,11 @@ Interrupt ::= { condition: <Assertion>, steps: list(<Step>), target?: string }
 CleanupRule ::= { on: "always" | "success" | "failure", steps: list(<Step>) }
 
 # ── Preconditions ──────────────────────────────────────────────────────
-# The target's own group names (BE-0452). Each field overrides the same field of every target the
+# `app` and `run` take the target's own group names (BE-0452). Each field overrides the same field of every target the
 # scenario drives; `app.launch.env` merges key by key, `app.launch.args` appends, and the rules of
 # `run.systemAlertHandling` concatenate (the scenario's first). A field no driven target's platform
-# has fails the run before any device work.
+# has fails the run before any device work. A scenario declares no device condition: `runsOn` belongs
+# to the target alone (BE-0469).
 Preconditions ::= {
   app?:    {
     reinstall?: ("clean" | "overwrite"),    # unset: the target's `app.reinstall`, else "clean"; iOS and Android
@@ -160,7 +161,7 @@ Preconditions ::= {
       deeplink?: string,                    # unset: the target's `app.launch.deeplink`; iOS and Android
     },
   },
-  runsOn?: map(<Platform>, <RunsOn>),       # keyed by platform; a block for an undriven platform has no effect
+  device?: { ios?: <IosDevice> },           # keyed by destination; a block for an undriven platform has no effect
   run?:    {
     erase?:               boolean,          # unset inherits the target's `run.erase`, else off (BE-0177)
     systemAlertHandling?: <SystemAlertHandling>,  # alert guard; on when unset
@@ -169,14 +170,10 @@ Preconditions ::= {
   },
 }
 
-# A scenario's `runsOn` block for one platform: the platform's registered `runsOn` model without
-# `kind` and `emulate`, which stay on the target. On iOS `locale` and `seedPhotos` (paths relative to
-# the scenario file) are device state; `model`, `os`, `avd`, `apiLevel`, and `browser.*` are device
-# conditions, matched against the pool's devices before the run. A list or a range multiplies runs;
-# an open range that no device fits leaves a not-applicable record
-# (configuration.md#device-conditions-runson). A merged, non-empty `seedPhotos` needs an effective
-# `run.erase`.
-RunsOn ::= { locale?: string, seedPhotos?: list(string), model?: …, os?: …, avd?: …, apiLevel?: …, browser?: { engine?: …, version?: … } }
+# The iOS device state a scenario applies; each field replaces the target's `runsOn.ios` value of the
+# same name. `seedPhotos` paths resolve against the scenario file, and a merged, non-empty list needs
+# an effective `run.erase`.
+IosDevice ::= { locale?: string, seedPhotos?: list(string) }
 
 # ── SystemAlertHandling (reactive system-alert guard; on by default) ───
 # Native SpringBoard query + tap on XCUITest (no model, reusing BE-0316; BE-0315), plus an in-tree

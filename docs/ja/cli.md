@@ -124,9 +124,9 @@ web backend が動く Windows では、`run` は BE-0449 以前と同じく run 
   run の結果とレポートに記録されます。そのシナリオのためにデバイスは確保せず、残りのシナリオは実行します。
   実行できるシナリオが 1 つもなければ、`run` は理由を列挙して終了コード 2 で終了します。
 - **デバイス条件から run を作ります（BE-0452）。** ターゲットはデバイス条件を宣言できます。
-  `runsOn.model`、`runsOn.os`、`runsOn.avd`、`runsOn.apiLevel`、`runsOn.browser.version`、および
-  `model`、`avd`、`browser.engine` に書いたリストがデバイス条件です。シナリオの `preconditions.runsOn`
-  のブロックは、ターゲットの条件をフィールドごとに上書きします。`run` は `--udid` のプールの
+  `runsOn.ios.model`、`runsOn.ios.os`、`runsOn.android.avd`、`runsOn.android.apiLevel`、`runsOn.browser.version`、および
+  `model`、`avd`、`browser.engine` に書いたリストがデバイス条件です。シナリオは自分では条件を
+  宣言しません（BE-0469）。`run` は `--udid` のプールの
   すべてのデバイスを読みます。並べた値ごと、範囲のメジャーバージョンごとに run を 1 つ作り、
   それぞれを自分の適格なデバイスで実行します（[configuration](configuration.md#デバイスの条件runson)）。
   各 run の証跡は `runs/<id>/run-NN/` に置き、JUnit と CTRF のテスト名には座標が付きます。
@@ -141,8 +141,7 @@ web backend が動く Windows では、`run` は BE-0449 以前と同じく run 
 - **シナリオの preconditions は、デバイスを操作する前に検査します（BE-0452）。** `run` と `audit` は、
   各シナリオを、そのシナリオが動かすターゲットと照合します。動かすどのターゲットのプラットフォームにも
   ない `app` のフィールドや、iOS 専用の `run` のフィールドは、フィールド名を示して終了コード 2 で
-  終わります。形の誤った `preconditions.runsOn` のブロックや、実効の `run.erase` を伴わない
-  `seedPhotos` も同じです（[scenarios](scenarios.md#preconditions環境準備)）。
+  終わります。実効の `run.erase` を伴わない `seedPhotos` も同じです（[scenarios](scenarios.md#preconditions環境準備)）。
 - `AI usage:` 行は出力しません。`run` はどのフラグを付けてもトークンを消費しないため（BE-0402）、
   使用量台帳を導入せず、報告もしません。`record`、`crawl`、`triage --ai` は従来どおり出力します。
 
@@ -204,8 +203,9 @@ bajutsu doctor --target <name> [--udid booted] [--backend ...] [--config ...] [-
 - `--worker-config` は [`run`](#run) と同じ worker 能力ファイルを受け付けます。`appium` のファイルを
   渡すと、グリッドの platform のターゲットに対する画面プローブはグリッドで動きます。
 - 端末の条件があるとき、`runs:` セクションに条件が作る実行を列挙します。条件とは、iOS の `model` と
-  `os`、Android の `avd` と `apiLevel`、web の `browser.*` です。条件はターゲットの `runsOn` にも、
-  `--scenario` ファイルのシナリオにも書けます。`--scenario` がなければ、ターゲット自身の実行を列挙します。`doctor` は `run` と同じ方法で `--udid` の
+  `os`、Android の `avd` と `apiLevel`、web の `browser.*` です。条件はターゲットの `runsOn` に
+  書きます。`--scenario` があればそのファイルの各シナリオについて、なければターゲット自身について、
+  条件が作る実行を列挙します。`doctor` は `run` と同じ方法で `--udid` の
   プールを読み、同じ実行を作ります。そのため各行には、その実行に合う端末が並びます。
 
   ```
@@ -774,7 +774,7 @@ attach での開始は、デバイス全体に及ぶ操作を何もしません�
 | アプリがインストールされていない | bundle id を示して終了コード 2 で終わります |
 
 それ以外の経路では、`--attach` はデバイスへ触れる前に終了コード 2 で終わります。対象は、`playwright` と
-`adb` の backend、`appium` グリッドへの live 経路、`runsOn.kind: device` のターゲットです。
+`adb` の backend、`appium` グリッドへの live 経路、`runsOn.ios.kind: device` のターゲットです。
 bundle id と id の名前空間はターゲットの config から取るので、`--target` は引き続き必須です。
 
 ## `codegen`
@@ -1098,10 +1098,6 @@ bajutsu lint <scenario.yaml>
 bajutsu schema > bajutsu.schema.json
 ```
 
-シナリオのスキーマは、シナリオの `preconditions.runsOn` を platform ごとに示します。各 platform に並ぶのは、
-その platform の `runsOn` のうちシナリオで書けるフィールドです。フィールドは platform のレジストリから
-生成するため、platform を追加してもこの出力を手で直す必要はありません。
-
 ## `config schema`
 
 `bajutsu.config.yaml` の **JSON Schema** を stdout に出力します。エディタ連携用です。オプションはありません。
@@ -1124,7 +1120,7 @@ bajutsu config schema > bajutsu.config.schema.json
 
 汎用の XCUITest runner をビルドします。
 
-現在のサブコマンドは `build --device` の 1 つだけで、実機の iPhone や iPad 向けに runner を署名してビルドします。署名はユーザーごとの署名ファイルから取り、ビルド結果はキャッシュに置きます。以後、`runsOn.kind: device` を指定して `driver.runner.testRunner` を指定しないターゲットは、そのキャッシュに解決します。このビルドは Xcode のある macOS で行うオーサリングの手順で、`bajutsu run` の中では動きません。署名ファイル、キャッシュのキー、実行時のエラーは [iOS の実機](ios-device-cloud.md#署名済みの実機用-runner)で説明しています。
+現在のサブコマンドは `build --device` の 1 つだけで、実機の iPhone や iPad 向けに runner を署名してビルドします。署名はユーザーごとの署名ファイルから取り、ビルド結果はキャッシュに置きます。以後、`runsOn.ios.kind: device` を指定して `driver.runner.testRunner` を指定しないターゲットは、そのキャッシュに解決します。このビルドは Xcode のある macOS で行うオーサリングの手順で、`bajutsu run` の中では動きません。署名ファイル、キャッシュのキー、実行時のエラーは [iOS の実機](ios-device-cloud.md#署名済みの実機用-runner)で説明しています。
 
 ```bash
 bajutsu runner build --device [--signing PATH] [--out DIR] [--force]

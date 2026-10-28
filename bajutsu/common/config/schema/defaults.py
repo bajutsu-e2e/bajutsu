@@ -11,6 +11,7 @@ from .ai_settings import AiSettings
 from .evidence import Evidence
 from .hooks import Hooks
 from .paths import Paths
+from .platform._shared import destination_problems
 from .platform.registry import GROUPS, allowed_fields, schema_for
 from .run_policy import MOVED_RUN_KEYS, RunPolicy
 from .services import Services
@@ -78,6 +79,11 @@ class Defaults(_Model):
                     "driver": groups.driver,
                     "run": groups.run,
                 }[group]
+                if group == "runsOn":
+                    # A flat key is named with the destination path it moved to (BE-0469).
+                    if problems := destination_problems(schema.model(group), written):
+                        raise ValueError(f"defaults.platforms.{platform}: {'; '.join(problems)}")
+                    continue
                 accepted = allowed_fields(schema.model(group))
                 if group == "run":
                     accepted = (*allowed_fields(RunPolicy), *accepted)

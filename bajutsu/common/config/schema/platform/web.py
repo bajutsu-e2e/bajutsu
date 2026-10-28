@@ -7,7 +7,7 @@ from typing import Self
 from pydantic import Field, field_validator, model_validator
 
 from .._model import _Model
-from ._shared import AppCommon, LaunchEnv, RangeField, check_list
+from ._shared import AppCommon, LaunchEnv, RangeField, RunsOnGroup, check_list
 
 # Playwright rendering engines a web target can drive (BE-0076). Chromium is the default, and all
 # three run headless on Linux.
@@ -23,10 +23,13 @@ class WebApp(AppCommon):
 
 
 class WebBrowser(_Model):
-    """`runsOn.browser`: which engine runs the page, and the version range it must fall in."""
+    """`runsOn.browser`: which engine runs the page, its version range, and the device it emulates."""
 
     engine: str | list[str] = "chromium"
     version: RangeField = None
+    # A Playwright device preset name (BE-0228), resolved when the driver starts so loading never
+    # imports Playwright; "desktop" is the plain desktop context.
+    emulate: str = "desktop"
 
     @field_validator("engine")
     @classmethod
@@ -50,13 +53,10 @@ class WebBrowser(_Model):
         return self
 
 
-class WebRunsOn(_Model):
-    """`runsOn` on the web: the browser, and the device mode a context emulates (BE-0228)."""
+class WebRunsOn(RunsOnGroup):
+    """`runsOn` on the web: the one destination a web target runs on, a browser (BE-0469)."""
 
     browser: WebBrowser = Field(default_factory=WebBrowser)
-    # A Playwright device preset name, resolved when the driver starts so loading never imports
-    # Playwright; "desktop" is the plain desktop context.
-    emulate: str = "desktop"
 
 
 class WebDriver(_Model):

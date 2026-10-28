@@ -394,7 +394,7 @@ def test_a_real_device_target_checks_usbmuxd_instead_of_a_booted_simulator(
             "  demo:\n"
             "    platform: ios\n"
             "    app: {id: com.demo}\n"
-            "    runsOn: {kind: device}\n"
+            "    runsOn: {ios: {kind: device}}\n"
         ),
     )
     payload, status = ops.doctor_check(state, {"target": "demo", "udid": "00008120-AAAA"})

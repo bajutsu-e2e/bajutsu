@@ -26,7 +26,7 @@ keys a target accepts. It never reads the flat keys of earlier releases, such as
 |---|---|---|
 | `platform` | Which backend drives the target: `ios`, `android`, `web`, or `fake` | — |
 | `app` | What is under test: its identifier, how to build and launch it, readiness, and the id contract | Yes |
-| `runsOn` | What the target runs on: device conditions, browser, and device state | Yes |
+| `runsOn` | Where the target runs: one block per destination, holding device conditions and device state | Yes |
 | `driver` | How Bajutsu drives the target | Yes |
 | `services` | The servers a run starts or stands in for | No |
 | `run` | The policy of a run | iOS adds `tipKitHandling` |
@@ -48,7 +48,7 @@ defaults:                         # shared across all targets
   ai:      { provider: api-key, keyEnv: ANTHROPIC_API_KEY }   # the AI paths' provider/model/endpoint/key (below)
   platforms:                      # the platform-shaped groups, per platform
     ios:
-      runsOn: { locale: en_US }
+      runsOn: { ios: { locale: en_US } }
 reservedNamespaces: [auth, nav]   # team-wide: the id contract for shared flows / components (informational)
 
 targets:
@@ -72,8 +72,9 @@ targets:
     platform: web
     app: { url: "http://127.0.0.1:8787/index.html" }
     runsOn:
-      browser: { engine: chromium }            # chromium / firefox / webkit; --browser overrides per run
-      emulate: iPhone 13                       # omitted = a desktop context; else a Playwright device preset
+      browser:
+        engine: chromium                       # chromium / firefox / webkit; --browser overrides per run
+        emulate: iPhone 13                     # omitted = a desktop context; else a Playwright device preset
     driver: { headless: true }                 # false = a visible (headed) browser; --headed overrides per run
     services:
       server: { cmd: "python -m http.server 8787", readyUrl: "http://127.0.0.1:8787/" }
@@ -86,7 +87,7 @@ so a key another platform takes fails as unknown on this one, with the accepted 
 | Group | iOS | Android | Web |
 |---|---|---|---|
 | `app` | `id`, `path`, `build`, `reinstall`, `launch.env`, `launch.args`, `launch.deeplink`, `startWhen`, `idNamespaces` | `id`, `path`, `build`, `reinstall`, `launch.env`, `launch.deeplink`, `grantPermissions`, `startWhen`, `idNamespaces` | `url`, `launch.env`, `startWhen`, `idNamespaces` |
-| `runsOn` | `model`, `os`, `kind`, `locale`, `seedPhotos` | `avd`, `apiLevel` | `browser.engine`, `browser.version`, `emulate` |
+| `runsOn` | `ios.model`, `ios.os`, `ios.kind`, `ios.locale`, `ios.seedPhotos` | `android.avd`, `android.apiLevel` | `browser.engine`, `browser.version`, `browser.emulate` |
 | `driver` | `runner.testRunner`, `runner.build`, `runner.hostAddress` | `nativeZ` | `headless` |
 | `run`, extra fields | `tipKitHandling` | — | — |
 
@@ -213,7 +214,7 @@ a component file:
 - The file must stay inside the suite root.
 - A relative value inside the file resolves against the file's own directory. The value can be a
   nested `extends` entry, a path field, or a component its `hooks` call with `use`. The path fields
-  are `app.path`, `runsOn.seedPhotos`, `driver.runner.testRunner`, and `paths.*`.
+  are `app.path`, `runsOn.ios.seedPhotos`, `driver.runner.testRunner`, and `paths.*`.
 - A build command (`app.build`, `driver.runner.build`) is not rewritten. It runs in the config
   file's directory, as a target's own does. Keep a build command and the path it produces in the
   same place. Split across files, the build writes to one directory and the path points at another.
@@ -230,12 +231,61 @@ that omits `platform` gets any platform's partial shape.
 
 ### Device conditions (`runsOn`)
 
+A target's `runsOn` says where the target runs. Its fields sit in one block named for the
+destination: `runsOn.ios`, `runsOn.android`, or `runsOn.browser`
+([BE-0469](../roadmaps/BE-0469-runson-destination-blocks/BE-0469-runson-destination-blocks.md)).
+Each field thus names what it limits, so `runsOn.ios.os` reads as an iOS version.
+
+| Platform | Destination block | Fields |
+|---|---|---|
+| iOS | `runsOn.ios` | `model`, `os`, `kind`, `locale`, `seedPhotos` |
+| Android | `runsOn.android` | `avd`, `apiLevel` |
+| Web | `runsOn.browser` | `engine`, `version`, `emulate` |
+| fake | none | none |
+
+`platform` and `runsOn` are separate settings. `platform` names the kind of app under test, which
+decides the shape of `app` and `driver`. `runsOn` limits where that app runs. The loader checks
+that the pair is one the table allows, rather than that the two names match. A
+`platform: ios` target with `runsOn.browser` fails and names the destinations iOS allows. A `fake`
+target has no destination, so any key under its `runsOn` fails. Team defaults hold the same block
+under `defaults.platforms.<platform>.runsOn`.
+
+```yaml
+targets:
+  app-sim:                     # a Simulator
+    platform: ios
+    app: { id: com.example.app }
+    runsOn:
+      ios: { model: "iPhone 16", os: "18" }
+
+  app-device:                  # a real device, taken from --udid
+    platform: ios
+    app: { id: com.example.app }
+    runsOn:
+      ios: { kind: device }
+
+  site:                        # a browser
+    platform: web
+    app: { url: https://example.com }
+    runsOn:
+      browser: { engine: firefox, emulate: "iPhone 15" }
+```
+
+Earlier releases wrote these fields flat under `runsOn`. The loader reads no flat spelling. A flat
+key fails the load and names the path it moved to:
+
+| Old key | New key |
+|---|---|
+| `runsOn.model`, `os`, `kind`, `locale`, `seedPhotos` | `runsOn.ios.<same field>` |
+| `runsOn.avd`, `apiLevel` | `runsOn.android.<same field>` |
+| `runsOn.emulate` | `runsOn.browser.emulate` |
+
 Some `runsOn` fields are device conditions:
 
 | Platform | Conditions |
 |---|---|
-| iOS | `model`, `os` |
-| Android | `avd`, `apiLevel` |
+| iOS | `ios.model`, `ios.os` |
+| Android | `android.avd`, `android.apiLevel` |
 | Web | `browser.version`, and a list on `browser.engine` |
 
 A list on `model` or `avd` counts as a condition too. A version range uses npm's
@@ -278,18 +328,23 @@ own. Every output lists it apart from the passes and failures ([reporting](repor
 An invocation where every record is not applicable exits with code 1 and prints `no run executed`.
 A multi-target scenario runs every combination of its targets' runs.
 
-The scenario below lists two models over a range bounded on both sides. It makes four runs, one for
-each model on iOS 17 and on iOS 18:
+The target below lists two models over a range bounded on both sides. Each of its scenarios makes
+four runs, one for each model on iOS 17 and on iOS 18:
 
 ```yaml
-preconditions:
-  runsOn:
-    ios:
-      model: ["iPhone SE (3rd generation)", "iPad Pro 13-inch (M4)"]
-      os: ">=17 <19"
+targets:
+  app:
+    platform: ios
+    app: { id: com.example.app }
+    runsOn:
+      ios:
+        model: ["iPhone SE (3rd generation)", "iPad Pro 13-inch (M4)"]
+        os: ">=17 <19"
 ```
 
-A target-level range multiplies every scenario of the target. Take a pool with iOS 17 and iOS 18:
+A scenario declares no condition of its own. A scenario that needs an iPad names a target that runs
+on one, such as `targets: [app-ipad]` ([scenarios](scenarios.md#preconditions-environment-setup)).
+A range on a target thus multiplies every scenario of the target. Take a pool with iOS 17 and iOS 18:
 `os: ">=17"` then runs every scenario twice. For one run per scenario, a target names one major
 version, such as `os: "18"`. It may also leave `os` out.
 
@@ -303,13 +358,15 @@ major version the pool has within the range. They exit 2 when no device fits. `d
 target's own runs, and each scenario's runs when `--scenario` names a file, with the devices that
 fit each one ([doctor output](#output)). Its screen probe
 scores the device of the first run. `--backend fake` matches no condition, and says so once. A
-target that runs on a physical iPhone (`runsOn.kind: device`) may not declare
+target that runs on a physical iPhone (`runsOn.ios.kind: device`) may not declare
 `model` or `os`. A target an `appium` grid serves has no pool to read, and neither does a Device
 Farm job. A condition there fails before any device work and names the field.
 
-Two `runsOn` fields are device state rather than conditions. `kind` (`simulator` or `device`)
+Three `runsOn.ios` fields are device state rather than conditions. `kind` (`simulator` or `device`)
 selects the XCUITest destination. `locale` pins the language a run applies. iOS keeps the built-in
-`en_US` when `locale` is unset.
+`en_US` when `locale` is unset. `seedPhotos` lists the images seeded into the photo library. A
+scenario may replace `locale` and `seedPhotos` under `preconditions.device.ios`. The web block's
+`emulate` likewise selects a device mode rather than matching a device.
 
 ### Resolution (`resolve` → `Effective`)
 
@@ -332,22 +389,22 @@ platforms — rather than `effective.bundle_id` directly, which does not exist.
 | `platform_config.base_url` (`WebConfig`) | `app.url` | web target URL (Playwright backend) |
 | `platform_config.package` (`AndroidConfig`) | `app.id` | Android target identifier |
 | `platform_config.app_path` / `.build` (`IosConfig`, `AndroidConfig`) | `app.path` / `app.build` | the built app a run installs before each scenario (if missing), and the shell command that builds it on demand |
-| `platform_config.xcuitest` (`IosConfig`) | `driver.runner` + `runsOn.kind` | the XCUITest runner: `testRunner` (a prebuilt `.xctestrun`), `build` (the command that builds it), `hostAddress` ([below](#real-device-host-address-driverrunnerhostaddress)), and the destination `kind` |
+| `platform_config.xcuitest` (`IosConfig`) | `driver.runner` + `runsOn.ios.kind` | the XCUITest runner: `testRunner` (a prebuilt `.xctestrun`), `build` (the command that builds it), `hostAddress` ([below](#real-device-host-address-driverrunnerhostaddress)), and the destination `kind` |
 | `platform_config.grant_permissions` (`AndroidConfig`) | `app.grantPermissions` | Android only: runtime permissions granted before launch (`pm grant`), so a permission prompt never blocks a scenario |
 | `platform_config.native_z` (`AndroidConfig`) | `driver.nativeZ` | Android only: `nativeZ: true` asks the device for each opted-in view's own `View.getZ()`, which `elements.json` reports as the diagnostic `nativeZ` field ([BE-0355](../roadmaps/BE-0355-native-z-position/BE-0355-native-z-position.md)). Off by default, because the node walk that answers it runs on every screen read — 20-100 ms — and reports nothing at all unless the app under test links `BajutsuAndroid` and opts views in. A target that turns it on also gives up the round trip a confirmed gesture's own reply would otherwise have saved: that reply cannot carry a `nativeZ` reading, so such a target asks the device not to build the tree at all rather than take one whose positions would all read absent ([BE-0407](../roadmaps/BE-0407-step-latency-driver-internal-tuning/BE-0407-step-latency-driver-internal-tuning.md) units 18-19). iOS needs no such flag: its responder answers only for an app that linked BajutsuKit |
 | `platform_config.headless` (`WebConfig`) | `driver.headless` | web only: `true` (default) runs headless; `false` shows a visible (headed) browser, in slow-motion. `bajutsu run --headed / --no-headed` and the Web UI's "show browser" toggle override per run |
 | `platform_config.browser` (`WebConfig`) | `runsOn.browser.engine` | web only: the Playwright rendering engine to drive — `chromium` (default), `firefox`, or `webkit`. All three run headless on Linux. `bajutsu run/record --browser <engine>` overrides per run (flag > config > default), and `bajutsu run --browsers <list>` runs the cross-browser matrix (below); a missing engine binary is installed on demand. An unknown value is rejected at config load ([BE-0076](../roadmaps/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md)) |
-| `platform_config.device_mode` (`WebConfig`) | `runsOn.emulate` | web only: the device mode a browser context is created with — omitted for a desktop context, or a Playwright device preset name (e.g. `iPhone 13`) that emulates its viewport / touch / device scale / user agent, driving the web target as that mobile device. It is desktop-browser emulation (Chrome DevTools' device toolbar), not a real device ([drivers → Playwright](drivers.md#playwright-web)). Resolved **lazily** against `playwright.devices` in the driver, so config load never imports Playwright; an unknown preset fails loudly at driver start, not at config load ([BE-0228](../roadmaps/BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation.md)) |
+| `platform_config.device_mode` (`WebConfig`) | `runsOn.browser.emulate` | web only: the device mode a browser context is created with — omitted for a desktop context, or a Playwright device preset name (e.g. `iPhone 13`) that emulates its viewport / touch / device scale / user agent, driving the web target as that mobile device. It is desktop-browser emulation (Chrome DevTools' device toolbar), not a real device ([drivers → Playwright](drivers.md#playwright-web)). Resolved **lazily** against `playwright.devices` in the driver, so config load never imports Playwright; an unknown preset fails loudly at driver start, not at config load ([BE-0228](../roadmaps/BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation.md)) |
 | `conditions` | `runsOn` | the device conditions the target declares ([above](#device-conditions-runson)), ranges as written; `run` forms its runs from them, and `doctor` lists those runs |
 | `device_provider` | `--worker-config` | where this target's devices come from. The config no longer names it: an `appium` environment in the `worker.yaml` the command runs under hands the grid's endpoint to the targets of the grid's platform ([what a machine can run](#what-a-machine-can-run-outside-the-config-be-0450)), and every other target takes the built-in `local` provider (the `--udid` path). Bajutsu drives that endpoint end to end over a live W3C WebDriver transport ([iOS device cloud](ios-device-cloud.md#live--an-appium-endpoint-provider), [BE-0236](../roadmaps/BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md), [BE-0238](../roadmaps/BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md)) |
 | `launch_server` | `services.server` | optional `{cmd, readyUrl, readyTimeout, cwd, env}` — bring up the app's host for the run, then tear it down: probe `readyUrl` (default `app.url`), reuse it if already serving, else run `cmd` and wait until ready (a condition wait, never a fixed sleep). The web analogue of `app.build` ([BE-0059](../roadmaps/BE-0059-launch-target-server/BE-0059-launch-target-server.md)). For an **uploaded** bundle in `serve`, the host never runs `cmd` directly — `serve --upload-exec` governs it (see [self-hosting](self-hosting.md#uploaded-config-command-execution-be-0090)); a `sandbox` run needs the extra fields `dockerImage` (a Docker image reference, e.g. `node:20-slim`) **or** `dockerfile` (a bundle-relative path built with `docker build`) — exactly one — plus `port` (the in-container listen port, published to a loopback host port) ([BE-0090](../roadmaps/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md)) |
 | `run_defaults.system_alert_handling` / `.erase` / `.ios_tip_kit_handling` | `run` | per-app defaults for run-behavior settings otherwise set per scenario or on a CLI flag ([BE-0177](../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md)). `run.systemAlertHandling` takes the scenario form (`false`, or `{ rules, visionInstruction, pollInterval }`) and defaults the alert guard; `run.erase` defaults `preconditions.run.erase`, and resolves **flag > scenario > this > built-in off**, mirroring `--headed`/`headless`. Inside `systemAlertHandling`, the on/off bit resolves that way too (`--system-alert-handling`/`--no-system-alert-handling` > scenario > this > on), but each policy key composes by its own type ([BE-0401](../roadmaps/BE-0401-system-alert-handling-dsl-consolidation/BE-0401-system-alert-handling-dsl-consolidation.md)): the list `rules` is **concatenated** innermost layer first, so a scenario's answers are tried before this default's and neither layer deletes the other; the scalar `pollInterval` takes the innermost layer that supplies one (scenario, else `--alert-poll-interval`, else this). `visionInstruction` reaches `run` from no layer at all: [BE-0402](../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md) removed the fallback it steered, so a scenario or a target config carrying it is rejected before the run starts. A rule here answers its prompt even inside a scenario that rules on other prompts — the guard prints a notice when it does, and the scenario overrides it by writing its own rule for that prompt. `labels` was removed by [BE-0406](../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts.md): a button label named a button, never the alert it sat on, so a target config could license a tap on a screen no scenario had described. See [`systemAlertHandling` layering](scenarios.md#layering-a-key-reaches-a-run-from-three-places). `run.tipKitHandling` defaults the TipKit tip guard (iOS only, built-in **off**) and rides the same precedence via `--ios-tipkit-handling`/`--no-ios-tipkit-handling` |
 | `run_defaults.setup` / `.cleanup` / `.interrupts` | `hooks.setup` / `hooks.cleanup` / `hooks.interrupts` | steps that wrap every scenario of the target: `setup` runs ahead of a scenario's own `setup`, `cleanup` behind its own `cleanup` (a rule takes `on: always`, `success`, or `failure`, the words a scenario's `cleanup` rule uses), and `interrupts` are checked before the scenario's. A hook step may call a component with `use: { component: <file>, with: … }`: the loader resolves it when the config loads, against the config file's directory, and refuses a reference that leaves the suite root ([BE-0174](../roadmaps/BE-0174-scenario-ref-path-containment/BE-0174-scenario-ref-path-containment.md)). `group:` and `setMocks` stay rejected there. A scenario skips every declared target's `hooks.setup` with `preconditions.run.inheritSetup: false`; the cleanup still runs |
-| `locale` | `runsOn.locale` | iOS: applied at launch (`simctl` launch args), built-in `en_US`. On the XCUITest backend it also pins the **Simulator's own system language** on every cold spawn — written to the device's global preference domain, then rebooted so SpringBoard renders it — so an out-of-process permission prompt's button text is the one this `locale` predicts rather than whatever language the Simulator happened to carry; a scenario whose `preconditions.runsOn.ios.locale` differs from the pinned one forces a cold respawn rather than reusing a warm runner ([BE-0320](../roadmaps/BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md)). A `handleSystemAlert` step under a language outside the label table (English and Japanese) answers by the button's position instead; a `systemAlertHandling.rules` entry under such a language still fails the scenario before any device work ([BE-0445](../roadmaps/BE-0445-system-alert-locale-agnostic-answer/BE-0445-system-alert-locale-agnostic-answer.md)) |
+| `locale` | `runsOn.ios.locale` | iOS: applied at launch (`simctl` launch args), built-in `en_US`. On the XCUITest backend it also pins the **Simulator's own system language** on every cold spawn — written to the device's global preference domain, then rebooted so SpringBoard renders it — so an out-of-process permission prompt's button text is the one this `locale` predicts rather than whatever language the Simulator happened to carry; a scenario whose `preconditions.device.ios.locale` differs from the pinned one forces a cold respawn rather than reusing a warm runner ([BE-0320](../roadmaps/BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md)). A `handleSystemAlert` step under a language outside the label table (English and Japanese) answers by the button's position instead; a `systemAlertHandling.rules` entry under such a language still fails the scenario before any device work ([BE-0445](../roadmaps/BE-0445-system-alert-locale-agnostic-answer/BE-0445-system-alert-locale-agnostic-answer.md)) |
 | `launch_env` / `launch_args` | `app.launch.env` / `app.launch.args` | a scenario's `preconditions.app.launch.env` merges over the environment key by key, and its `.args` append after the arguments; `launch.args` is iOS only |
 | `reinstall` | `app.reinstall` | iOS and Android: how the app is reinstalled before each scenario when `app.path` is set, `clean` (uninstall, then install) or `overwrite` (install over the app and keep its data). A scenario's `preconditions.app.reinstall` wins; unset on both, the built-in `clean` applies ([BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)) |
 | `deeplink` | `app.launch.deeplink` | iOS and Android: a URL the app opens once it has launched; a scenario's `preconditions.app.launch.deeplink` replaces it |
-| `seed_photos` | `runsOn.seedPhotos` | iOS: images seeded into the Simulator's photo library, in order, on the erase path, so `selectPhotos` addresses a known library. Paths resolve against the config file. A scenario's `preconditions.runsOn.ios.seedPhotos` replaces the list, and after merging a non-empty list needs an effective `run.erase` (the flag, then the scenario, then the target), or the run exits 2 before any device work |
+| `seed_photos` | `runsOn.ios.seedPhotos` | iOS: images seeded into the Simulator's photo library, in order, on the erase path, so `selectPhotos` addresses a known library. Paths resolve against the config file. A scenario's `preconditions.device.ios.seedPhotos` replaces the list, and after merging a non-empty list needs an effective `run.erase` (the flag, then the scenario, then the target), or the run exits 2 before any device work |
 | `start_when` | `app.startWhen` | optional `startWhen: { exists: { id: … } }` — a selector the launch waits for before the run starts, instead of the default "the app rendered any 2+ elements". It takes the form an `interrupts` entry uses for its `condition`, without `negate`. Use it for an app whose first interactive screen is a modal over always-present chrome (the element-count heuristic can return before the modal presents). Its `id` / `idMatches` accept an OR candidate list like a scenario selector (`startWhen: { exists: { id: [stable.row.1, stable_row_1] } }`, BE-0221), so one `startWhen` covers a target whose native id syntax differs. A condition wait, never a fixed sleep. Set it only when **every** scenario for the target starts on that same screen; when first screens vary per scenario, lead each scenario with a `wait` step instead. `startWhen` stays the strongest readiness signal: on iOS, a target linking `BajutsuKit`'s screen-transition observer (BE-0310) gets a reported-screen-change rung above the namespace/count heuristics for free, but an explicit `startWhen` still outranks it. The observer signal governs only when no `startWhen` is set |
 | `id_namespaces` | `app.idNamespaces` | referenced by doctor |
 | `reserved_namespaces` | top-level `reservedNamespaces` | informational (doctor scores against the app's `idNamespaces` only) |
@@ -384,7 +441,7 @@ config carries none of that signing by design. The config travels with the repos
 written there would reach every other user. A per-user signing file holds those settings instead,
 outside the repository.
 
-`bajutsu runner build --device` reads that file. A target with `runsOn.kind: device` and no
+`bajutsu runner build --device` reads that file. A target with `runsOn.ios.kind: device` and no
 `driver.runner.testRunner` then resolves to the build.
 [iOS on a real device](ios-device-cloud.md#the-signing-file) gives the file format and its lookup
 order.
@@ -434,7 +491,7 @@ targets:
   my-app:
     platform: ios
     app: { id: com.example.app }
-    runsOn: { kind: device }
+    runsOn: { ios: { kind: device } }
     driver:
       runner: { hostAddress: 192.168.1.20 }
 ```
