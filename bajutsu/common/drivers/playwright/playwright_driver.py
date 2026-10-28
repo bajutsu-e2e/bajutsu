@@ -441,7 +441,7 @@ class PlaywrightDriver:
         values = {v for e, v in pairs if len(_collapse_identical_duplicates([el, e])) == 1}
         if len(values) > 1:
             raise base.AmbiguousSelector(
-                f"{len(values)} content-identical elements matched {sel!r} with different "
+                f"content-identical elements matched {sel!r} with different "
                 f"{name!r} values — give them a distinguishing `data-testid`"
             )
         return values.pop()
