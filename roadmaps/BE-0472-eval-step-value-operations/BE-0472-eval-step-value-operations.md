@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-eval-step-value-operations-ja.md)
+**English** · [日本語](BE-0472-eval-step-value-operations-ja.md)
 
-# BE-XXXX — An `eval` step that splits, joins, and filters values held in variables
+# BE-0472 — An `eval` step that splits, joins, and filters values held in variables
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-eval-step-value-operations.md) |
+| Proposal | [BE-0472](BE-0472-eval-step-value-operations.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0472") |
 | Implementing PR | — |
 | Topic | Scenario authoring features |
 <!-- /BE-METADATA -->

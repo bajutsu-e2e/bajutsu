@@ -1,14 +1,14 @@
-[English](BE-XXXX-eval-step-value-operations.md) · **日本語**
+[English](BE-0472-eval-step-value-operations.md) · **日本語**
 
-# BE-XXXX — 変数に格納した値を分割、結合、絞り込みできる `eval` ステップ
+# BE-0472 — 変数に格納した値を分割、結合、絞り込みできる `eval` ステップ
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-eval-step-value-operations-ja.md) |
+| 提案 | [BE-0472](BE-0472-eval-step-value-operations-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **承認済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0472") |
 | 実装 PR | — |
 | トピック | シナリオ記述機能 |
 <!-- /BE-METADATA -->
