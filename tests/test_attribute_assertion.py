@@ -27,6 +27,7 @@ from bajutsu.common.drivers.xcuitest.xcuitest_driver import XcuitestDriver
 from bajutsu.common.drivers.xcuitest_live.xcuitest_live_driver import XcuitestLiveDriver
 from bajutsu.common.runner.pipeline import _steps_for_target
 from bajutsu.common.scenario import Assertion, Scenario
+from bajutsu.record.loop import settle_step
 
 
 def _attr(**fields: object) -> Assertion:
@@ -297,3 +298,10 @@ def test_the_fake_driver_reads_seeded_attributes() -> None:
     with pytest.raises(base.ElementNotFound):
         driver.read_attribute({"id": "missing"}, "href")
     assert base.Capability.ELEMENT_ATTRIBUTE in driver.capabilities()
+
+
+def test_record_settles_on_an_attribute_assertions_element() -> None:
+    # The asserted element must be present before its attribute can be read, so `record` waits for it.
+    step = settle_step([_attr(name="href", equals="/docs")])
+    assert step is not None and step.wait is not None and step.wait.for_ is not None
+    assert step.wait.for_.id == "docs.link"
