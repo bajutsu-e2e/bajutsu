@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0468](BE-0468-runson-family-and-any-of.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0468") |
 | Topic | Driver & backend architecture |
 <!-- /BE-METADATA -->
@@ -336,13 +336,21 @@ fake pool for each resolution branch, and the failure messages.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1: read the family
+- [x] Unit 1: read the family
 - [ ] Unit 2: schema
 - [ ] Unit 3: resolution
 - [ ] Unit 4: arguments and launch
 - [ ] Unit 5: reporting
 - [ ] Unit 6: worker routing
 - [ ] Unit 7: docs and demos
+
+### Log
+
+- [#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM) (Unit 1) — read the family of every iOS device.
+  - `DeviceFacts` gains `family`. `read_ios` takes it from the `productFamily` of the device type it already reads for the name, and a type with no `productFamily` raises `DeviceReadError`. On this host's `simctl list devicetypes`, all 45 iPhone types and all 43 iPad types carry one.
+  - `read_ios_device` reads real devices from `xcrun devicectl list devices --json-output -`. A connected iPhone 14 Pro reported `deviceType: iPhone`; no iPad was connected, so the iPad value is not yet confirmed on hardware. Nothing calls the reader yet: unit 3 reads the pool through it.
+  - Deviation from the design: the devicectl listing shows Simulators too, so the reader keeps only entries whose `hardwareProperties.reality` is `physical`, and matches the udid on `hardwareProperties.udid`, the id an XCUITest destination takes, rather than devicectl's own `identifier`. The reader also requires `deviceProperties.osVersionNumber`, because `DeviceFacts.release` feeds the version and the device's description, and the module fails rather than store an unreadable release.
+  - A second deviation: the reader does not tell a reachable device from an unplugged one. A connected iPhone in use reported `connectionProperties.tunnelState: disconnected`, because the tunnel opens only when a run drives the device, so that field cannot separate the two. A device that disconnects between the lease and the run therefore fails when the run drives it, not at the pool read as *Checking on the worker* states. Unit 6 revisits this with an unplugged device at hand.
 
 ## References
 

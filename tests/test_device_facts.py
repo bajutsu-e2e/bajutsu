@@ -12,6 +12,7 @@ from bajutsu.common.devices.facts import (
     DeviceReadError,
     read_android,
     read_ios,
+    read_ios_device,
     read_web,
 )
 
@@ -41,12 +42,18 @@ _TYPES = {
         {
             "identifier": "com.apple.CoreSimulator.SimDeviceType.iPhone-SE-3rd-generation",
             "name": "iPhone SE (3rd generation)",
+            "productFamily": "iPhone",
         },
         {
             "identifier": "com.apple.CoreSimulator.SimDeviceType.iPad-Pro-13-inch-M4",
             "name": "iPad Pro 13-inch (M4)",
+            "productFamily": "iPad",
         },
-        {"identifier": "com.apple.CoreSimulator.SimDeviceType.Watch", "name": "Watch"},
+        {
+            "identifier": "com.apple.CoreSimulator.SimDeviceType.Watch",
+            "name": "Watch",
+            "productFamily": "Apple Watch",
+        },
     ]
 }
 
@@ -65,6 +72,43 @@ def test_ios_reads_the_device_type_name_not_the_device_name() -> None:
         ("A", "iPhone SE (3rd generation)", "17.5"),
     ]
     assert facts[1].describe == 'iOS 17.5 "iPhone SE (3rd generation)" (A)'
+
+
+def test_ios_reads_the_family_from_the_device_type() -> None:
+    assert [f.family for f in read_ios(["A", "B"], _simctl())] == ["iPhone", "iPad"]
+
+
+def test_ios_reads_a_family_no_condition_names_rather_than_failing() -> None:
+    devices = {
+        "devices": {
+            "com.apple.CoreSimulator.SimRuntime.iOS-18-2": [
+                {"udid": "V", "deviceTypeIdentifier": "com.apple.CoreSimulator.SimDeviceType.TV"}
+            ]
+        }
+    }
+    types = {
+        "devicetypes": [
+            {
+                "identifier": "com.apple.CoreSimulator.SimDeviceType.TV",
+                "name": "Apple TV",
+                "productFamily": "Apple TV",
+            }
+        ]
+    }
+    assert read_ios(["V"], _simctl(devices, types))[0].family == "Apple TV"
+
+
+def test_ios_fails_on_a_device_type_with_no_family() -> None:
+    types = {
+        "devicetypes": [
+            {
+                "identifier": "com.apple.CoreSimulator.SimDeviceType.iPhone-SE-3rd-generation",
+                "name": "iPhone SE (3rd generation)",
+            }
+        ]
+    }
+    with pytest.raises(DeviceReadError, match="reports no productFamily"):
+        read_ios(["A"], _simctl(types=types))
 
 
 def test_ios_fails_on_an_unknown_udid_a_foreign_runtime_or_an_unnamed_type() -> None:
@@ -179,3 +223,94 @@ def test_the_default_android_reader_passes_a_timeout(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr(subprocess, "run", run)
     assert facts._timed_adb(["adb", "-s", "x", "shell", "getprop", "p"]) == "34\n"
     assert seen["timeout"] == facts._ADB_READ_TIMEOUT_S
+
+
+def _device(udid: str, reality: str = "physical", **hardware: str) -> dict[str, object]:
+    return {
+        "identifier": f"core-{udid}",
+        "hardwareProperties": {"udid": udid, "reality": reality, **hardware},
+        "deviceProperties": {"osVersionNumber": "18.1"},
+    }
+
+
+def _devicectl(*devices: dict[str, object]):  # type: ignore[no-untyped-def]
+    def run(args: list[str]) -> str:
+        assert args[-2:] == ["--json-output", "-"]
+        return json.dumps({"info": {"outcome": "success"}, "result": {"devices": list(devices)}})
+
+    return run
+
+
+def test_ios_device_reads_the_family_of_each_real_device_in_order() -> None:
+    run = _devicectl(
+        _device("P1", deviceType="iPhone", marketingName="iPhone 14 Pro", productType="iPhone15,2"),
+        _device("T1", deviceType="iPad", productType="iPad13,8"),
+    )
+    facts = read_ios_device(["T1", "P1"], run)
+    assert facts == [
+        DeviceFacts("T1", "ios", "iPad13,8", "18.1", family="iPad"),
+        DeviceFacts("P1", "ios", "iPhone 14 Pro", "18.1", family="iPhone"),
+    ]
+
+
+def test_ios_device_matches_on_the_hardware_udid_and_skips_simulators() -> None:
+    run = _devicectl(_device("S1", reality="simulated", deviceType="iPhone"))
+    with pytest.raises(DeviceReadError, match="not a paired real device"):
+        read_ios_device(["S1"], run)
+    with pytest.raises(DeviceReadError, match="not a paired real device"):
+        read_ios_device(["core-S1"], run)
+
+
+def test_ios_device_fails_on_a_missing_device_type_or_os_version() -> None:
+    with pytest.raises(DeviceReadError, match="reports no deviceType"):
+        read_ios_device(["P1"], _devicectl(_device("P1")))
+    bare = _device("P1", deviceType="iPhone")
+    bare["deviceProperties"] = {}
+    with pytest.raises(DeviceReadError, match="reports no osVersionNumber"):
+        read_ios_device(["P1"], _devicectl(bare))
+    bare["deviceProperties"] = {"osVersionNumber": "n/a"}
+    with pytest.raises(DeviceReadError, match="'n/a', which is not one"):
+        read_ios_device(["P1"], _devicectl(bare))
+
+
+def test_ios_device_names_a_device_by_its_family_when_nothing_else_names_it() -> None:
+    facts = read_ios_device(["P1"], _devicectl(_device("P1", deviceType="iPad")))
+    assert facts[0].model == "iPad"
+
+
+def test_ios_device_fails_on_an_empty_or_malformed_listing() -> None:
+    with pytest.raises(DeviceReadError, match="not a paired real device"):
+        read_ios_device(["P1"], lambda args: json.dumps({"info": {}}))
+    with pytest.raises(DeviceReadError, match="unexpected shape"):
+        read_ios_device(["P1"], lambda args: json.dumps({"result": {"devices": ["P1"]}}))
+    odd = _device("P1", deviceType="iPhone")
+    odd["deviceProperties"] = ["x"]
+    with pytest.raises(DeviceReadError, match="unexpected shape"):
+        read_ios_device(["P1"], _devicectl(odd))
+
+
+def test_ios_device_fails_when_devicectl_cannot_be_read_or_hangs() -> None:
+    def broken(args: list[str]) -> str:
+        raise subprocess.CalledProcessError(1, args)
+
+    def hangs(args: list[str]) -> str:
+        raise subprocess.TimeoutExpired(args, 30)
+
+    with pytest.raises(DeviceReadError, match="could not list the real devices"):
+        read_ios_device(["P1"], broken)
+    with pytest.raises(DeviceReadError, match="devicectl did not answer"):
+        read_ios_device(["P1"], hangs)
+
+
+def test_the_default_devicectl_reader_passes_a_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    from bajutsu.common.devices import facts
+
+    seen: dict[str, object] = {}
+
+    def run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        seen.update(kwargs)
+        return subprocess.CompletedProcess(args, 0, stdout="{}")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    assert facts._timed_devicectl(["xcrun", "devicectl"]) == "{}"
+    assert seen["timeout"] == facts._DEVICECTL_READ_TIMEOUT_S
