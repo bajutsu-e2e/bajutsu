@@ -241,6 +241,7 @@ def resolve(config: Config, target: str) -> Effective:
             interrupts=list(a.hooks.interrupts),
             setup=list(a.hooks.setup),
             cleanup=list(a.hooks.cleanup),
+            ignored_settings=dict(run.ignored_settings),
         ),
     )
 

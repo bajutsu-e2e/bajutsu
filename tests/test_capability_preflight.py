@@ -301,38 +301,14 @@ def test_subset_backend_admits_supported_and_names_only_unsupported() -> None:
     assert base.Capability.DC_PUSH in reasons[0]
 
 
-# --- permissions gated per service, not per field (BE-0276) ---
+# --- permissions are a setting, judged by the BE-0467 settings check ---
 
 
-def test_permissions_supported_on_every_service_passes() -> None:
-    # Android supports the whole vocabulary, including notifications.
-    sc = _sc(permissions={"camera": "grant", "notifications": "revoke"}, steps=[])
-    assert capability_preflight.unsupported(sc, _SUBSET) == []
-
-
-def test_permissions_names_each_unsupported_service_individually() -> None:
-    # a simctl-backed iOS backend has no TCC service for notifications; a scenario naming it alongside a supported service
-    # is rejected for notifications only, named by its own per-service token.
+def test_permissions_are_not_gated_by_the_step_check() -> None:
+    # A permission is applied before the steps, so `settings_support.check_settings` judges it per
+    # service (tests/test_settings_support.py); the step check leaves it alone on every backend.
     sc = _sc(permissions={"camera": "grant", "notifications": "grant"}, steps=[])
-    reasons = capability_preflight.unsupported(sc, _LEAN_IOS)
-    assert len(reasons) == 1
-    assert "permissions.notifications" in reasons[0]
-    assert base.permission_capability("notifications") in reasons[0]
-    assert "camera" not in reasons[0]
-
-
-def test_permissions_whole_mechanism_unsupported_names_every_service() -> None:
-    # A backend with no permission capability at all (web, fake) names every requested service.
-    sc = _sc(permissions={"camera": "grant", "location": "revoke"}, steps=[])
-    reasons = capability_preflight.unsupported(sc, _NO_CONTROL)
-    assert len(reasons) == 2
-    assert any("permissions.camera" in r for r in reasons)
-    assert any("permissions.location" in r for r in reasons)
-
-
-def test_permissions_empty_field_never_gated() -> None:
-    # No permissions entry, so nothing to check even on a backend with zero permission support.
-    sc = _sc(steps=[])
+    assert capability_preflight.unsupported(sc, _LEAN_IOS) == []
     assert capability_preflight.unsupported(sc, _NO_CONTROL) == []
 
 

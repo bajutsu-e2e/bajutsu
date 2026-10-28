@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0467](BE-0467-environment-specific-settings.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0467") |
 | Topic | Platform support |
 | Related | [BE-0082](../BE-0082-capability-preflight-check/BE-0082-capability-preflight-check.md), [BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues.md), [BE-0238](../BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md), [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md), [BE-0457](../BE-0457-real-device-step-lint/BE-0457-real-device-step-lint.md) |
@@ -271,10 +271,10 @@ environments genuinely differ.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Add `settings_support.py`: the setting keys, the three support states, and the table per route,
+- [x] Add `settings_support.py`: the setting keys, the three support states, and the table per route,
   moving the permission rows out of the step check and replacing `erase_precondition_supported`
-- [ ] Add `run.ignoredSettings` to `RunPolicy` with its load-time rules
-- [ ] Add the settings check to the run preflight, and make each environment apply the `supported`
+- [x] Add `run.ignoredSettings` to `RunPolicy` with its load-time rules
+- [x] Add the settings check to the run preflight, and make each environment apply the `supported`
   settings and raise for an unsupported one that is not ignored, in place of its own conditions and
   silent ignores
 - [ ] Add `RunResult.ignored_settings` and render it in the manifest, HTML, JUnit, and CTRF reports
@@ -290,6 +290,25 @@ environments genuinely differ.
 - [ ] Document the table, the declaration, the lint flags, and the dispatch tokens in `docs/` and
   `docs/ja/` (`configuration.md`, `cli.md`, `drivers.md`, `scenarios.md`); update `DESIGN.md` and
   `docs/architecture.md`
+
+Log:
+
+- Units 1–3. Added `bajutsu/common/capability/settings_support.py` with the per-route table, the
+  check, and the launch-time backstop; moved the `permissions` rows out of the BE-0082 step check;
+  made `erase_precondition_supported` a lookup in the table. Added `run.ignoredSettings` to
+  `RunPolicy`, refused under `defaults`. The run preflight now judges every target's settings before
+  any lease, and the iOS Simulator, real-device, live WebDriver, Android, and web launches read the
+  table instead of their own conditions, device-group members included. Four points depart from the
+  design text. Android's `launchArgs` is `unsupported`, since Android has no `app.launch.args` and
+  `am start` takes none. A scenario's `app.launch` value is in effect only on a target whose platform
+  has that field, as BE-0452 keys it, so an iOS-and-web scenario's deeplink does not fail the web
+  target. The real-device `locale` is `supported`, since it reaches the app as a launch argument. The
+  live route keeps refusing `extra_env` outside the table, because that value is Bajutsu's own
+  injection, not a setting. A web target's own `app.launch.env` is not in effect either, since its
+  schema keeps it for Playwright code generation, while a scenario's still is: the showcase `web`
+  target therefore declares `launchEnv` ignored for `cross_platform_app_web.yaml`. `record`, `crawl`,
+  `repl`, and `doctor` report a refused setting as a clean error. Until unit 4 renders it in the report, a launch logs each ignored setting
+  as a warning. Documented `run.ignoredSettings` in `docs/configuration.md` and its Japanese mirror.
 
 ## References
 

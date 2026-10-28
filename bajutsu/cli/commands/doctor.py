@@ -470,7 +470,7 @@ def doctor(
     eff, udid = _first_run_or_exit(eff, actuator, udid)
     try:
         elements = _current_screen(actuator, udid, eff)
-    except device_errors.DeviceError as e:
+    except (device_errors.DeviceError, base.UnsupportedAction) as e:
         typer.echo(f"could not read the screen to score: {e}")
         raise typer.Exit(1) from None
     result = score(

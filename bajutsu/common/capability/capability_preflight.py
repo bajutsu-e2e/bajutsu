@@ -39,10 +39,9 @@ The map gates only the **true hard requirements** the capability set cleanly dec
   emulator: setLocation + clipboard) thus passes preflight for what it supports and fails fast for
   the rest, each unsupported step named individually. `relaunch` is not here: it is gated by the
   injected relauncher, not `DeviceControl`.
-- a `permissions` entry needs the capability token for its own *service* (BE-0276), not one token
-  for the field: `deviceControl.permissions.<service>`. Backends honor different subsets of the
-  shared vocabulary (iOS has no TCC service for `notifications`), so each named service is gated —
-  and, if unsupported, reported — individually, the same per-occurrence shape as device control.
+- a `permissions` entry is not gated here: it is a setting applied before the steps, not a step, so
+  the BE-0467 settings check (`settings_support.py`) judges each service against the same BE-0276
+  token, and honours a target's `run.ignoredSettings` declaration in one place.
 - every run needs `query` + `elements` (the baseline read path).
 
 Deliberately **not** gated (an audit of what each construct actually depends on, BE-0082):
@@ -191,11 +190,6 @@ def _visual_locations(sc: Scenario) -> list[str]:
     return [path for path, a in _assertions_with_path(sc) if a.visual is not None]
 
 
-def _permission_service_locations(service: str) -> Callable[[Scenario], list[str]]:
-    """One location (`scenario.permissions`) when `service` is named in the scenario's field."""
-    return lambda sc: ["scenario.permissions"] if service in sc.permissions else []
-
-
 # Each device-control operation, paired with the per-operation capability token it needs (BE-0212)
 # and a predicate matching the step that triggers it. Clipboard read/write/clear share one token,
 # as do background/foreground and the status-bar override/clear pair — operations that always ship
@@ -278,19 +272,6 @@ _REQUIREMENTS = (
     *(
         _Requirement(token, f"{label} (device control)", _step_locations(matches))
         for token, label, matches in _DEVICE_CONTROL_OPS
-    ),
-    # One requirement per vocabulary service (BE-0276), not per operation: `permissions` is gated
-    # per service because backends honor different subsets of the shared vocabulary (iOS has no TCC
-    # service for `notifications`), so an unsupported service is named individually rather than the
-    # field as a whole. Built from the fixed vocabulary (`base.PERMISSION_SERVICES`), not the
-    # scenario, exactly like every other requirement here — `locations` does the per-scenario work.
-    *(
-        _Requirement(
-            base.permission_capability(service),
-            f"permissions.{service} (device control)",
-            _permission_service_locations(service),
-        )
-        for service in base.PERMISSION_SERVICES
     ),
 )
 

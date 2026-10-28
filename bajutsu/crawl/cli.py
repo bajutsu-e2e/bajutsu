@@ -358,7 +358,7 @@ def _execute(plan: _CrawlPlan, guide: crawl_engine.Guide, report: Report) -> cra
         # The primary lane is built here (on the main thread): it drives bootstrap and the in-place
         # walk, so its driver lives on this thread. A launch failure surfaces cleanly as exit 2.
         primary = build_lane(plan.udids[0])
-    except device_errors.DeviceError as e:
+    except (device_errors.DeviceError, base.UnsupportedAction) as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
 
@@ -402,7 +402,7 @@ def _execute(plan: _CrawlPlan, guide: crawl_engine.Guide, report: Report) -> cra
             extra_workers=extra_factories,  # built on their own threads (BE-0064 sims / BE-0077 browsers)
             app_crash_artifacts=primary[2],
         )
-    except device_errors.DeviceError as e:
+    except (device_errors.DeviceError, base.UnsupportedAction) as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
     _write_screenmap(plan.writer, screen_map)
