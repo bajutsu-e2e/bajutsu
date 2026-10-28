@@ -230,7 +230,7 @@ Action    ::=
   | { setLocation: { lat: number, lon: number } }
   | { push:        { payload: map(string,any) } }          # APNs ペイロード 例 {aps:{alert:"…"}}
   | { http:        { method?: string, url: string, headers?: map(string,string), body?: string, status?: integer, saveBody?: string, extractBody?: list({ var: string, path: string }) } }  # method 既定 GET; saveBody → vars.<name>; extractBody → JSON path ごとに vars.<var>（BE-0440）
-  | { totp:        { secret: string, into: { var: string } } }  # RFC 6238 OTP → vars.<var>（secret は base32）
+  | { totp:        { secret: string, into: { var: string }, minRemaining?: integer } }  # RFC 6238 OTP → vars.<var>（secret は base32）。minRemaining は 1〜30 で、残りがそれ未満なら次の 30 秒ウィンドウを待つ（BE-0474）
   | { email:       { match: { to?: string, subject?: string, subjectMatches?: string }, extract: { var: string, bodyMatches: string }, timeout: number } }  # メールボックスをポーリング → vars.<var>
   | { generate:    <Generate> }                            # 実行時に計算した乱数または現在日時の値 → vars.<var>（BE-0377）
   | { eval:        <Eval> }                                # 保持している値を固定語彙の操作で変換 → vars.*（BE-0472）

@@ -1440,6 +1440,24 @@ the current time — and stores the current code in `${vars.<var>}` for a later 
 This automates a 2FA sign-in without a scripting escape hatch or an LLM: the value is a deterministic
 function of the secret and the clock ([BE-0046](../roadmaps/BE-0046-otp-email-steps/BE-0046-otp-email-steps.md)).
 
+A code is valid for one 30-second window of the clock, so a `totp` step that lands in the last
+seconds of a window can hand the app a code that expires before the following `type` and `tap`
+submit it. Set `minRemaining` to the seconds those steps need:
+
+```yaml
+- totp: { secret: "${secrets.TOTP_SEED}", into: { var: code }, minRemaining: 10 }
+```
+
+When the current window has fewer than `minRemaining` seconds left, the step waits for the next
+window to start, then generates the code
+([BE-0474](../roadmaps/BE-0474-totp-window-alignment/BE-0474-totp-window-alignment.md)). The value
+is an integer from 1 to 30. Omitting it means no wait. The wait ends on the window boundary the
+clock decides, never on an author-chosen pause, so it is bounded by one window and the determinism
+audit does not list it as a `fixed-sleep`. The live log labels the step `totp (≥10s left)`, and the
+report shows the time the wait took as the step's duration. If the wall clock jumps during the wait
+(a Network Time Protocol (NTP) correction, say), the step still passes and records a warning on its report row that states
+the jump and the seconds left, so a later sign-in that fails on an expired code shows its cause.
+
 ### `email` (poll a mailbox for a received code)
 
 ```yaml

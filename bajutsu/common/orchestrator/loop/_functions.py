@@ -87,7 +87,7 @@ from bajutsu.common.scenario import (
     Step,
     interp,
 )
-from bajutsu.common.scenario.models.actions import TOTP_PERIOD_SECONDS
+from bajutsu.common.scenario.models.actions import TOTP_PERIOD_SECONDS, Totp
 
 from ._loop_config import _LoopConfig
 from ._shared import _ExecSteps, _logger
@@ -426,6 +426,17 @@ def _wait_for_totp_window(
     return f"totp: wall clock jumped {drift:+.0f}s during window wait; {left_s:.0f}s left"
 
 
+def _align_totp_window(
+    totp: Totp, clock: Clock, cancelled: CancelSource, warnings: list[str] | None
+) -> None:
+    """Run a `totp` step's `minRemaining` wait, if it asks for one, and keep any jump warning."""
+    if totp.min_remaining is None:
+        return
+    warning = _wait_for_totp_window(totp.min_remaining, clock, cancelled)
+    if warning is not None and warnings is not None:
+        warnings.append(warning)
+
+
 def _run_step_body(
     driver: base.Driver,
     step: Step,
@@ -594,16 +605,11 @@ def _run_step_body(
             )
             ok = assertions.passed(results)
             return ok, "" if ok else _fail_reason(results), results, tree
-        if (
-            step.totp is not None
-            and step.totp.min_remaining is not None
-            and bindings is not None  # the handler writes nothing without a var scope either
-        ):
+        if step.totp is not None and bindings is not None:
             # Here rather than in the handler, like `sleep`: the wait needs the clock and the cancel
-            # source, which the action-handler signature carries neither of (BE-0474).
-            warning = _wait_for_totp_window(step.totp.min_remaining, clock, cancelled)
-            if warning is not None and warnings is not None:
-                warnings.append(warning)
+            # source, which the action-handler signature carries neither of (BE-0474). No var scope
+            # means the handler writes nothing, so there is no code to keep fresh either.
+            _align_totp_window(step.totp, clock, cancelled, warnings)
         _do_action(
             _action_driver(driver, resolving),
             step,

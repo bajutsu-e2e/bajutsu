@@ -149,6 +149,11 @@ means the same thing after the run that produced it exits
   a language the label table does not cover still shows what was tapped and why
   ([BE-0445](../roadmaps/BE-0445-system-alert-locale-agnostic-answer/BE-0445-system-alert-locale-agnostic-answer.md)).
   Absent on every other action, and on every run recorded before `schemaVersion` 12.
+- `steps[].warnings`: non-fatal notes about how the step ran, shown on the step's report row. Today
+  the only source is a `totp` step whose `minRemaining` window wait saw the wall clock jump
+  ([BE-0474](../roadmaps/BE-0474-totp-window-alignment/BE-0474-totp-window-alignment.md)). A warning
+  never changes `ok` or `reason`. Empty on a step that has none, and absent on every run recorded
+  before `schemaVersion` 16, which a reader treats as no warnings.
 - `network.json`'s `startedAt` (one file per scenario, not shown in the manifest above): each
   observed exchange's absolute start, on the same footing as `steps[].started_at` and derived
   through the same scenario anchor, so a viewer subtracts `video_anchor_s` from both — see
@@ -161,7 +166,7 @@ means the same thing after the run that produced it exits
   `configSource` (`{ host, owner, repo, ref, sha }`, the exact commit a branch-based run executed).
   It groups accumulated runs by identity, so a verdict that flips while the fingerprint is
   unchanged is **true flakiness** rather than an edited scenario. Pure metadata — it never enters
-  `ok`. (`schemaVersion` is `3` or higher once this block can appear — it is `15` today.)
+  `ok`. (`schemaVersion` is `3` or higher once this block can appear — it is `16` today.)
 - `target` (top, optional): the target the run ran, so "the Android target passes while the iOS
   target fails" is computable from stored data ([BE-0404](../roadmaps/BE-0404-collapse-project-layer/BE-0404-collapse-project-layer.md)).
   One run resolves one target, so it sits beside `backend` rather than on each scenario. `serve`
