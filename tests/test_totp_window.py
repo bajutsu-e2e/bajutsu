@@ -17,6 +17,10 @@ from bajutsu.common.orchestrator.loop._functions import _SLEEP_SLICE, _wait_for_
 from bajutsu.common.orchestrator.types import RunResult
 from bajutsu.common.report.rows import _step_run_row
 from bajutsu.common.scenario import Scenario, Step
+from bajutsu.common.totp import totp
+
+# The RFC 6238 test seed, built rather than written so no key-shaped literal sits in the file.
+_SEED = base64.b32encode(b"1234567890" * 2).decode()
 
 # A window boundary, so each test states its start as an offset into the window.
 _BOUNDARY = 1_800_000_000.0
@@ -63,6 +67,16 @@ def test_too_little_time_left_waits_for_the_boundary() -> None:
     assert _wait(c, 10) is None
     assert c.wall_t == pytest.approx(_BOUNDARY + 30)
     assert max(c.slept) <= _SLEEP_SLICE
+
+
+def test_the_wait_ends_where_the_generated_code_rotates() -> None:
+    # The wait and the generator share one window definition, so the boundary waited for is the one
+    # the code changes on: a code taken just after the wait differs from the one just before it.
+    c = Clocks(phase=25)
+    before = totp(_SEED, now=c.wall())
+    _wait(c, 10)
+    assert totp(_SEED, now=c.wall()) != before
+    assert totp(_SEED, now=c.wall()) == totp(_SEED, now=_BOUNDARY + 30)
 
 
 def test_min_remaining_30_ends_on_the_boundary() -> None:
@@ -113,12 +127,9 @@ def test_a_cancelled_run_leaves_the_wait() -> None:
 
 # --- the run loop ---
 
-# The RFC 6238 test seed, built rather than written so no key-shaped literal sits in the file.
-_SECRET = base64.b32encode(b"1234567890" * 2).decode()
-
 
 def _totp_step(min_remaining: int | None = 10, name: str | None = None) -> dict[str, object]:
-    totp: dict[str, object] = {"secret": _SECRET, "into": {"var": "code"}}
+    totp: dict[str, object] = {"secret": _SEED, "into": {"var": "code"}}
     if min_remaining is not None:
         totp["minRemaining"] = min_remaining
     return {"totp": totp, **({"name": name} if name else {})}

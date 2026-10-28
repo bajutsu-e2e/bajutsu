@@ -5,11 +5,9 @@ from __future__ import annotations
 from pydantic import Field, field_validator
 
 from bajutsu.common.scenario.models._base import _Model
+from bajutsu.common.totp import TOTP_PERIOD_SECONDS
 
 from .var_target import VarTarget
-
-# The step fixes the RFC 6238 default period, so it is also the most `minRemaining` can ask for.
-TOTP_PERIOD_SECONDS = 30
 
 
 class Totp(_Model):
@@ -24,8 +22,10 @@ class Totp(_Model):
 
     secret: str
     into: VarTarget
-    # Strict, so a YAML `true` or `"10"` is refused rather than coerced. The bounds are published for
-    # schema-driven clients; the validator enforces them with an error that names the window length.
+    # Strict, so a YAML `true` or `"10"` is refused rather than coerced. The step fixes the window at
+    # the generator's default period, which is therefore the most it can ask for. The bounds are
+    # published for schema-driven clients; the validator enforces them with an error that names the
+    # window length.
     min_remaining: int | None = Field(
         default=None,
         alias="minRemaining",
