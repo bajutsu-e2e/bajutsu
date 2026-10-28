@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0471](BE-0471-target-templates.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0471") |
+| Implementing PR | [#2237](https://github.com/bajutsu-e2e/bajutsu/pull/2237) |
 | Topic | Configuration sourcing |
 | Related | [BE-0030](../BE-0030-parameterized-shared-steps/BE-0030-parameterized-shared-steps.md), [BE-0174](../BE-0174-scenario-ref-path-containment/BE-0174-scenario-ref-path-containment.md), [BE-0422](../BE-0422-inline-scenario-components/BE-0422-inline-scenario-components.md), [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure.md), [BE-0467](../BE-0467-environment-specific-settings/BE-0467-environment-specific-settings.md) |
 <!-- /BE-METADATA -->
@@ -186,12 +187,27 @@ the target's `ai` in the layer order above, and the result then merges with `def
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Refactor `merge_defaults` into a layer fold, with no behavior change
-- [ ] Add `templates:`, the `extends` expansion with file-template path rebasing, and its load errors
-- [ ] Add the shared template-name error to `resolve` and the serve endpoints, and `extends` and `templates` to the JSON Schema
-- [ ] Add the tests for layer order, clearing, files, cycles, and platform conflicts
-- [ ] Document the feature in `docs/` and `docs/ja/`, and update `docs/architecture.md` and `DESIGN.md`
-- [ ] Move the showcase config's shared blocks into templates, with an unchanged `Effective` per target
+- [x] Refactor `merge_defaults` into a layer fold, with no behavior change
+- [x] Add `templates:`, the `extends` expansion with file-template path rebasing, and its load errors
+- [x] Add the shared template-name error to `resolve` and the serve endpoints, and `extends` and `templates` to the JSON Schema
+- [x] Add the tests for layer order, clearing, files, cycles, and platform conflicts
+- [x] Document the feature in `docs/` and `docs/ja/`, and update `docs/architecture.md` and `DESIGN.md`
+- [x] Move the showcase config's shared blocks into templates, with an unchanged `Effective` per target
+
+Log:
+
+- [#2237](https://github.com/bajutsu-e2e/bajutsu/pull/2237) — All six units. `merge_defaults` folds an
+  ordered list of layers onto `defaults`. The new `schema/_templates.py` expands `extends` depth-first,
+  bases first, each template once. It fails the load on an unknown name, a cycle, an unknown key, a
+  platform conflict, or a file outside the suite root. It also rewrites a template file's relative
+  paths, and the components its `hooks` call, to resolve against the config file. `resolve` and the six
+  serve endpoints share `unknown_target`, which names a template. The CLI lists the targets; a
+  server error omits the list, since one config may hold several orgs' targets. Crawl refuses an
+  unknown target up front, keeping that list out of its job log. The JSON Schema gains `extends` and
+  `templates`. The showcase moves its three shared blocks (`SHOWCASE_UITEST`, the local runner, the ANR
+  guard) into templates, from 397 lines to 362. All 15 targets resolved to an identical `Effective`
+  against the pre-move file. The committed test pins the moved settings instead of keeping a copy of
+  the old config, which would have to change with every later showcase edit.
 
 ## References
 

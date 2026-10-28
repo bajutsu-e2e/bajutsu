@@ -38,10 +38,11 @@ targets:
     platform: ios
     app: { id: com.example.myapp }
     runsOn:
-      kind: device   # "simulator" (the default) or "device"
+      ios:
+        kind: device   # "simulator" (the default) or "device"
 ```
 
-With `runsOn.kind: device`, the backend generalizes its `xcodebuild` `-destination` from a named
+With `runsOn.ios.kind: device`, the backend generalizes its `xcodebuild` `-destination` from a named
 Simulator to `platform=iOS`, so the same `xcodebuild test-without-building` driving layer runs
 against a real device. The device the destination resolves to comes from the run's udid — a locally
 attached device's udid, or the udid a device cloud hands the run.
@@ -57,7 +58,7 @@ real-device work is useful on its own, before any cloud is involved.
 
 On the Simulator, the host and the app share one loopback address, `127.0.0.1`. Every channel
 between Bajutsu and an iOS app relies on that. A real device has a loopback of its own. With
-`runsOn.kind: device`, each channel crosses the host–device boundary another way. The table lists
+`runsOn.ios.kind: device`, each channel crosses the host–device boundary another way. The table lists
 how.
 
 | Channel | Who listens | Direction | On a real device |
@@ -160,7 +161,7 @@ and fresh. Two properties stay out of its reach:
 
 ### Checking the channels before a run
 
-Run `bajutsu doctor --udid <udid> --environment-only` for a `runsOn.kind: device` target. It reports
+Run `bajutsu doctor --udid <udid> --environment-only` for a `runsOn.ios.kind: device` target. It reports
 both routes. A real device needs no booted Simulator. In that check's place,
 doctor checks whether usbmuxd lists the device, and over which attachment. A device usbmuxd does not list
 fails that check, and doctor exits non-zero. Doctor also lists the host addresses that the app would
@@ -173,7 +174,7 @@ Farm route depends on the same two routes. Nobody has verified them on Device Fa
 A real device installs an XCUITest runner signed by a team the device trusts. Bajutsu cannot ship
 such a runner prebuilt, unlike the Simulator runner. Each user builds the device runner with
 `bajutsu runner build --device`. One build serves until an input listed under Building changes. The build signs with that user's own Apple Developer account. A target with
-`runsOn.kind: device` and no `driver.runner.testRunner` then resolves to that build. The target config
+`runsOn.ios.kind: device` and no `driver.runner.testRunner` then resolves to that build. The target config
 stays free of anything specific to one user.
 
 ### The signing file
@@ -258,7 +259,7 @@ copies the `Products` directory to `DIR` as well. Device Farm packaging needs th
 
 ### What a run does
 
-A `runsOn.kind: device` run with no `driver.runner.testRunner` reads the signing file. It computes
+A `runsOn.ios.kind: device` run with no `driver.runner.testRunner` reads the signing file. It computes
 the same key. The run then uses the cached `.xctestrun`. An explicit `testRunner` still wins over the cache.
 
 A run never builds the runner itself. A signing build is slow, can raise a Keychain prompt, and can
@@ -354,7 +355,7 @@ bajutsu run --target showcase-swiftui-live --config demos/showcase/live/showcase
 
 Running on a real device rather than the Simulator changes two things Bajutsu accounts for up front.
 Both are properties of physical hardware, not of any one cloud, so they hold for every real device
-the XCUITest backend drives — whether reached by `runsOn.kind: device` (Device Farm or a
+the XCUITest backend drives — whether reached by `runsOn.ios.kind: device` (Device Farm or a
 locally attached device) or over the live WebDriver route above.
 
 - **Re-signing strips entitlements.** A device cloud re-signs the uploaded app with its own
@@ -378,7 +379,7 @@ two caveats in the batch context, including the specific entitlement keys Device
 - [AWS Device Farm](devicefarm.md) — the batch route: the submitter, the test-spec, and the manual
   proof of concept.
 - [Drivers](drivers.md) — the `Driver` interface and the backends behind it, including XCUITest.
-- [Configuration](configuration.md) — the `runsOn.kind` target key.
+- [Configuration](configuration.md) — the `runsOn.ios.kind` target key.
 - [Self-hosting](self-hosting.md) — the `appium` environment of a worker capability file.
 - [Command reference](cli.md#runner) — `bajutsu runner build --device`.
 - [BE-0019 — XCUITest backend](../roadmaps/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md)

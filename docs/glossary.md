@@ -34,12 +34,15 @@ in the finished scenario only as provenance (see `from`). See [recording](record
 schema. A **control-flow step** (`if` / `forEach`) is the exception: it carries no capture or
 extract modifiers. Defined by `Step` in `bajutsu/scenario/models/steps.py`.
 
-**precondition** — Per-scenario environment setup applied before the run. It uses the target's own
-groups: `app`, `runsOn`, and `run`. It merges over each target the scenario drives. Its fields:
+**precondition** — Per-scenario environment setup applied before the run. It merges over each
+target the scenario drives. Its fields:
 
 - `app.reinstall` and `app.launch.env` / `.args` / `.deeplink`
-- `runsOn.<platform>`: the device conditions, and on iOS `locale` and `seedPhotos`
+- `device.ios.locale` / `.seedPhotos`: the iOS device state, replacing the target's `runsOn.ios`
+  values
 - `run.erase` / `.systemAlertHandling` / `.tipKitHandling` / `.inheritSetup`
+
+A precondition declares no device condition; the target's `runsOn` holds those.
 
 Distinct from runtime concerns (`mocks` / `network`) and from config-level `defaults` / `targets`.
 Defined by `Preconditions` in `bajutsu/common/scenario/models/scenario/preconditions.py`.
@@ -119,7 +122,7 @@ is why BE-0057 renamed the config concept from `app` to `target`.
 |---|---|
 | **target** | One config entry under `targets.<name>` describing an app to test: its required `platform`, its per-platform identifier (iOS and Android `app.id`, web `app.url`), plus `app.path`, `runsOn`, `driver`, and so on. A *config unit*. Defined by `TargetConfig` in `bajutsu/common/config/schema/target_config.py`. |
 | **app** | The application under test itself — the software the target points at and that gets installed on a device. |
-| **device** | The concrete runtime instance the target is driven on — a Simulator / emulator / browser context, addressed at runtime by `udid`. A target's `runsOn` group describes it. Its device conditions (`runsOn.model`, `runsOn.os`, and the like) are matched against each available device before a run ([configuration](configuration.md#device-conditions-runson)). A list or a range splits a scenario into one run per value or major version. An open range that no device meets leaves a *not applicable* record instead of a failed run. |
+| **device** | The concrete runtime instance the target is driven on — a Simulator / emulator / browser context, addressed at runtime by `udid`. A target's `runsOn` group describes it, with one block per destination (`runsOn.ios`, `runsOn.android`, `runsOn.browser`). Its device conditions (`runsOn.ios.model`, `runsOn.ios.os`, and the like) are matched against each available device before a run ([configuration](configuration.md#device-conditions-runson)). A list or a range splits a scenario into one run per value or major version. An open range that no device meets leaves a *not applicable* record instead of a failed run. |
 
 So a **target** (config) points at an **app** (software) driven on a **device** (runtime instance).
 

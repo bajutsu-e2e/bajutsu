@@ -26,7 +26,7 @@ Bajutsuのシナリオから、iOSのホーム画面にウィジェットを追�
 
 SpringBoardのツリーは、`app: { bundleId: com.apple.springboard }`の中から`elements.json`として読めました。常駐ランナーは最後まで落ちませんでした。`activate()`が拒否されることも、ツリーが丸ごと空になることもありませんでした。
 
-各画面で操作に使った要素を次の表に示します。`en_US`と`ja_JP`の文言は、どちらも`preconditions.runsOn.ios.locale`でSimulatorのシステム言語を固定して実測しました（BE-0320の仕組みです）。
+各画面で操作に使った要素を次の表に示します。`en_US`と`ja_JP`の文言は、どちらも`preconditions.device.ios.locale`でSimulatorのシステム言語を固定して実測しました（BE-0320の仕組みです）。
 
 | 画面 | 要素 | traits | `en_US` | `ja_JP` |
 |---|---|---|---|---|

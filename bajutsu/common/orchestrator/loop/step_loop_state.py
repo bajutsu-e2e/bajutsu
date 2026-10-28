@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 
 from bajutsu.common.drivers import base
 from bajutsu.common.evidence import Artifact
-from bajutsu.common.orchestrator.types import SelectionState, StepOutcome
+from bajutsu.common.orchestrator.types import DerivedSecrets, SelectionState, StepOutcome
 
 from ._step_counter import _StepCounter
 from .app_crash_latches import AppCrashLatches
@@ -35,6 +35,9 @@ class StepLoopState:
     # One selection tracker per run, shared across the recursive step loop (like `_StepCounter`), so
     # a `copy` sees the selection a prior `select` left — and any action in between clears it (BE-0265).
     selection: SelectionState = field(default_factory=SelectionState)
+    # Scenario-scoped like `bindings` and shared by every phase the same way: a `cleanup` step that
+    # reads a variable `steps` derived from a secret must still know it is secret (BE-0472).
+    derived: DerivedSecrets = field(default_factory=DerivedSecrets)
     # `prev_after` carries a step's post-step tree to the next step's `before` (BE-0234 Unit 2):
     # nothing actuates between the two, so they observe the same device state and the `before` read
     # is skipped. It holds only a tree we actually read; a step that took no read leaves it None so

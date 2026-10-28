@@ -38,7 +38,7 @@ def test_relauncher_relaunches_with_locale_and_overrides() -> None:
     scn = Scenario.model_validate(
         {
             "name": "a",
-            "preconditions": {"runsOn": {"ios": {"locale": "ja_JP"}}},
+            "preconditions": {"device": {"ios": {"locale": "ja_JP"}}},
             "steps": [{"tap": {"id": "ok"}}],
         }
     )

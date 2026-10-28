@@ -1,9 +1,8 @@
-"""A scenario's preconditions: the target's `app`, `runsOn`, and `run` groups, overridden per scenario.
+"""A scenario's preconditions: the target's `app` and `run` groups overridden, and the device state.
 
-The groups take the target's names (BE-0452), so a field has one spelling at both levels. The
-scenario schema stays a portable inner contract (it never imports the config), so `runsOn` blocks are
-kept as written here and checked against each platform's registered model when a run resolves the
-scenario against its targets (`bajutsu.common.config.preconditions`).
+`app` and `run` take the target's names (BE-0452), so a field has one spelling at both levels. Where
+a run happens belongs to the target alone (BE-0469): a scenario names a target that declares the
+`runsOn` it needs, and sets only the device state it applies under `device`.
 """
 
 from __future__ import annotations
@@ -36,9 +35,43 @@ FLAT_PRECONDITION_KEYS: dict[str, str] = {
     "launchEnv": "preconditions.app.launch.env",
     "launchArgs": "preconditions.app.launch.args",
     "deeplink": "preconditions.app.launch.deeplink",
-    "locale": "preconditions.runsOn.ios.locale",
-    "seedPhotos": "preconditions.runsOn.ios.seedPhotos",
+    "locale": "preconditions.device.ios.locale",
+    "seedPhotos": "preconditions.device.ios.seedPhotos",
 }
+
+# The device state BE-0469 moved from `preconditions.runsOn.<platform>` to `preconditions.device.ios`.
+_DEVICE_STATE = ("locale", "seedPhotos")
+
+
+def _runs_on_moves(runs_on: Any) -> list[str]:
+    """Where each field of a scenario's former `preconditions.runsOn` went (BE-0469).
+
+    Device state moved to `preconditions.device.ios`; a condition has no scenario-level home, so its
+    message points at the target's `runsOn` path instead.
+    """
+    if not isinstance(runs_on, dict):
+        return ["preconditions.runsOn was removed: name a target whose runsOn declares the device"]
+    moves: list[str] = []
+    for platform, block in runs_on.items():
+        for key in block if isinstance(block, dict) else ():
+            old = f"preconditions.runsOn.{platform}.{key}"
+            if key in _DEVICE_STATE and platform == "ios":
+                moves.append(f"{old} moved to preconditions.device.ios.{key}")
+            elif key in _DEVICE_STATE:
+                # Only iOS ever read a scenario's device state, so another platform's has no home.
+                moves.append(
+                    f"{old} was removed: platform {platform!r} takes no scenario device state"
+                )
+            else:
+                # The web block already sits at its destination (`browser`). This mirrors
+                # `condition_path` in `common/devices/runs.py`, which the portable scenario schema
+                # may not import.
+                where = f"runsOn.{key}" if platform == "web" else f"runsOn.{platform}.{key}"
+                moves.append(
+                    f"{old} was removed: a scenario no longer declares where it runs; "
+                    f"name a target whose {where} declares it"
+                )
+    return moves or ["preconditions.runsOn was removed: name a target that declares its runsOn"]
 
 
 class PreconditionsLaunch(_Model):
@@ -94,15 +127,36 @@ class PreconditionsRun(_Model):
     inherit_setup: bool = Field(default=True, alias="inheritSetup")
 
 
+class PreconditionsIosDevice(_Model):
+    """`preconditions.device.ios`: the iOS device state a scenario applies over its target's (BE-0469).
+
+    Each field replaces the target's `runsOn.ios` value of the same name when set.
+    """
+
+    # The app's and the Simulator's language; a value that differs from the target's forces a cold
+    # respawn (BE-0320).
+    # An empty value would silently fall back to the target's locale, so it fails instead.
+    locale: str | None = Field(default=None, min_length=1)
+    # Images seeded into the photo library on the erase path, in order. Paths resolve against the
+    # scenario file when it loads; None keeps the target's list, and the merged list needs an
+    # effective `run.erase`.
+    seed_photos: list[str] | None = Field(default=None, alias="seedPhotos")
+
+
+class PreconditionsDevice(_Model):
+    """`preconditions.device`: device state keyed by destination; only iOS has any (BE-0469).
+
+    A block for a platform the run does not drive has no effect.
+    """
+
+    ios: PreconditionsIosDevice = Field(default_factory=PreconditionsIosDevice)
+
+
 class Preconditions(_Model):
-    """Per-test environment setup, grouped as the target's `app`, `runsOn`, and `run` (BE-0452)."""
+    """Per-test environment setup: the target's `app` and `run` overridden, and the device state."""
 
     app: PreconditionsApp = Field(default_factory=PreconditionsApp)
-    # Keyed by platform, because its fields differ by platform. A block for a platform the run does
-    # not drive has no effect. Each block is checked against that platform's registered `runsOn`
-    # model, restricted to the fields a scenario may set, when the run resolves the scenario. Paths in
-    # an iOS block's `seedPhotos` resolve against the scenario file when it loads.
-    runs_on: dict[str, dict[str, Any]] = Field(default_factory=dict, alias="runsOn")
+    device: PreconditionsDevice = Field(default_factory=PreconditionsDevice)
     run: PreconditionsRun = Field(default_factory=PreconditionsRun)
 
     @model_validator(mode="before")
@@ -114,14 +168,16 @@ class Preconditions(_Model):
             for old, new in FLAT_PRECONDITION_KEYS.items():
                 if old in data:
                     raise ValueError(f"scenario field 'preconditions.{old}' moved to '{new}'")
+            if "runsOn" in data:
+                raise ValueError("; ".join(_runs_on_moves(data["runsOn"])))
         return data
 
-    def runs_on_for(self, platform: str) -> dict[str, Any]:
-        """The scenario's `runsOn` block for *platform*, or an empty block when it writes none."""
-        return self.runs_on.get(platform) or {}
+    def _ios_device(self, platform: str) -> PreconditionsIosDevice | None:
+        # The device block that applies to a target driven as *platform*; only iOS has one.
+        return self.device.ios if platform == "ios" else None
 
     def resolved_locale(self, target_locale: str, platform: str = "ios") -> str:
-        """The locale this scenario runs under: its own `runsOn` value, else the target's locale.
+        """The locale this scenario runs under: its own `device` value, else the target's locale.
 
         The one place the precedence lives, so everything that acts on it agrees — the app's launch
         arguments, the Simulator's own system language, and the system-alert label lookup that
@@ -129,24 +185,25 @@ class Preconditions(_Model):
         config, keeping the scenario schema a portable inner contract.
 
         Args:
-            target_locale: The target's resolved `runsOn.locale`.
-            platform: The driven target's platform, whose `runsOn` block may override the locale.
+            target_locale: The target's resolved `runsOn.ios.locale`.
+            platform: The platform the target is driven as; only an iOS one reads the scenario's
+                `device.ios.locale`.
         """
-        locale = self.runs_on_for(platform).get("locale")
-        return locale if isinstance(locale, str) and locale else target_locale
+        device = self._ios_device(platform)
+        locale = device.locale if device is not None else None
+        return locale or target_locale
 
     def resolve_seed_photos(self, resolve: Callable[[str], str]) -> None:
-        """Rewrite every `runsOn` block's `seedPhotos` through *resolve*, in place.
+        """Rewrite `device.ios.seedPhotos` through *resolve*, in place.
 
         A file loader passes the scenario-file-relative resolution `dataFile` uses (`contained_ref`),
         so a path never escapes the suite root and no later reader depends on the working directory.
         """
-        for block in self.runs_on.values():
-            photos = block.get("seedPhotos")
-            if isinstance(photos, list):
-                block["seedPhotos"] = [resolve(str(ref)) for ref in photos]
+        photos = self.device.ios.seed_photos
+        if photos is not None:
+            self.device.ios.seed_photos = [resolve(ref) for ref in photos]
 
     def seed_photos_for(self, platform: str) -> list[str] | None:
         """The scenario's `seedPhotos` for *platform*, or None when the scenario does not set them."""
-        photos = self.runs_on_for(platform).get("seedPhotos")
-        return [str(p) for p in photos] if isinstance(photos, list) else None
+        device = self._ios_device(platform)
+        return list(device.seed_photos) if device and device.seed_photos is not None else None

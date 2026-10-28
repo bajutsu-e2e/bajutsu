@@ -7,7 +7,7 @@ from typing import Literal, Self
 from pydantic import Field, field_validator, model_validator
 
 from .._model import _Model
-from ._shared import AppCommon, RangeField, Reinstall, check_list
+from ._shared import AppCommon, RangeField, Reinstall, RunsOnGroup, check_list
 
 
 class IosLaunch(_Model):
@@ -29,8 +29,8 @@ class IosApp(AppCommon):
     launch: IosLaunch = Field(default_factory=IosLaunch)
 
 
-class IosRunsOn(_Model):
-    """`runsOn` on iOS: the conditions a Simulator must meet, and its device state.
+class IosDestination(_Model):
+    """`runsOn.ios`: the conditions a Simulator must meet, and its device state.
 
     `model` and `os` are conditions the run matches against the available Simulators; `locale` is
     device state the run applies. `kind` says whether the target is a Simulator or a physical device.
@@ -48,7 +48,7 @@ class IosRunsOn(_Model):
     @field_validator("model")
     @classmethod
     def _valid_model(cls, v: str | list[str] | None) -> str | list[str] | None:
-        return check_list("runsOn.model", v)
+        return check_list("runsOn.ios.model", v)
 
     @model_validator(mode="after")
     def _no_condition_on_a_physical_device(self) -> Self:
@@ -59,13 +59,19 @@ class IosRunsOn(_Model):
             declared = [f for f in ("model", "os") if getattr(self, f) is not None]
             if declared:
                 # Every offending field at once, so removing one never uncovers the next.
-                names = " and ".join(f"runsOn.{f}" for f in declared)
+                names = " and ".join(f"runsOn.ios.{f}" for f in declared)
                 verb = "is a device condition" if len(declared) == 1 else "are device conditions"
                 raise ValueError(
                     f"{names} {verb}, which a target with "
                     "kind: device cannot declare: a physical device has no pool to match"
                 )
         return self
+
+
+class IosRunsOn(RunsOnGroup):
+    """`runsOn` on iOS: the one destination an iOS target runs on (BE-0469)."""
+
+    ios: IosDestination = Field(default_factory=IosDestination)
 
 
 class IosRunner(_Model):

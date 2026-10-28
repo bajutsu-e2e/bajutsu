@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Self
+from typing import Any, Self
 
 from pydantic import Field, ValidationInfo, model_validator
 
@@ -12,21 +12,28 @@ from bajutsu.common.scenario import CleanupRule, Interrupt, Step
 
 from ._model import _Model
 
+# Where a step nests further steps, as (model attribute path, YAML key path). `_nested_steps` walks
+# the models by the first and a template file's `use` rewrite (BE-0471) walks raw YAML by the second,
+# so a container added here reaches both. A target group (BE-0437) is never flattened in a config, so
+# its own `steps` count too.
+STEP_CONTAINERS: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
+    (("steps",), ("steps",)),
+    (("if_", "then"), ("if", "then")),
+    (("if_", "else_"), ("if", "else")),
+    (("for_each", "steps"), ("forEach", "steps")),
+    (("web", "steps"), ("web", "steps")),
+    (("app", "steps"), ("app", "steps")),
+)
+
 
 def _nested_steps(steps: list[Step]) -> Iterator[Step]:
     for step in steps:
         yield step
-        # A target group (BE-0437) is never flattened in a config, so its own steps count too.
-        yield from _nested_steps(step.steps or [])
-        if step.if_ is not None:
-            yield from _nested_steps(step.if_.then)
-            yield from _nested_steps(step.if_.else_ or [])
-        if step.for_each is not None:
-            yield from _nested_steps(step.for_each.steps)
-        if step.web is not None:
-            yield from _nested_steps(step.web.steps)
-        if step.app is not None:
-            yield from _nested_steps(step.app.steps)
+        for attrs, _ in STEP_CONTAINERS:
+            nested: Any = step
+            for attr in attrs:
+                nested = getattr(nested, attr, None)
+            yield from _nested_steps(nested or [])
 
 
 class Hooks(_Model):

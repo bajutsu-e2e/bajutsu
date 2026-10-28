@@ -202,7 +202,6 @@ def _repeat_audit(
     _refuse_bad_preconditions(
         _precondition_checks(loaded, scenarios, target_name, eff),
         erase=None,
-        fake=_backends(backend, eff.backend) == ["fake"],
     )
     # `with_lifecycle_phases` re-validates its own folded result already, but only `run_all` calls
     # it — deep inside a path whose `finally` below only tears down the device pool / server, not a

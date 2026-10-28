@@ -119,7 +119,7 @@ Scenario ::= {
   installs?:       list(string),            # 既定 []  — プライマリと並んで開始時にインストールして起動するデバイスグループのメンバー（BE-0447）。2つ以上のメンバーを持つグループのそれ以外のメンバーは後から入るメンバーで、`installApp` と `foreground` が立ち上げる（§4）
   data?:           list(map(string,string)),# インライン行  ┐ XOR
   dataFile?:       string,                  # CSV パス      ┘ （§6.3）
-  preconditions?:  <Preconditions>,         # 既定 {}  — ターゲットの `app` / `runsOn` / `run` をシナリオごとに上書き（BE-0452）
+  preconditions?:  <Preconditions>,         # 既定 {}  — ターゲットの `app` / `run` をシナリオごとに上書き（BE-0452）し、デバイスの状態を持つ（BE-0469）
   setup?:          list(<Step>),            # 既定 []  — steps の前に独立したフェーズとして走るセットアップ（BE-0392）。宣言した各ターゲットの `hooks.setup` の後に連結される
   steps:           list(<Step>),            # 必須
   expect?:         list(<Assertion>),       # 既定 []  — 最終チェック
@@ -145,10 +145,11 @@ Interrupt ::= { condition: <Assertion>, steps: list(<Step>), target?: string }
 CleanupRule ::= { on: "always" | "success" | "failure", steps: list(<Step>) }
 
 # ── Preconditions ──────────────────────────────────────────────────────
-# ターゲットと同じグループ名を使います（BE-0452）。各フィールドは、シナリオが動かす各ターゲットの
+# `app` と `run` はターゲットと同じグループ名を使います（BE-0452）。各フィールドは、シナリオが動かす各ターゲットの
 # 同じフィールドを上書きします。`app.launch.env` はキーごとにマージし、`app.launch.args` は追記し、
 # `run.systemAlertHandling` の規則は連結します（シナリオの規則が先）。動かすどのターゲットの
-# プラットフォームにもないフィールドは、デバイスを操作する前に run を失敗させます。
+# プラットフォームにもないフィールドは、デバイスを操作する前に run を失敗させます。シナリオは
+# デバイスの条件を宣言しません。`runsOn` はターゲットだけが持ちます（BE-0469）。
 Preconditions ::= {
   app?:    {
     reinstall?: ("clean" | "overwrite"),    # 未設定はターゲットの `app.reinstall`、なければ "clean"。iOS と Android
@@ -158,7 +159,7 @@ Preconditions ::= {
       deeplink?: string,                    # 未設定はターゲットの `app.launch.deeplink`。iOS と Android
     },
   },
-  runsOn?: map(<Platform>, <RunsOn>),       # プラットフォームがキー。動かさないプラットフォームのブロックは効果なし
+  device?: { ios?: <IosDevice> },           # 宛先がキー。動かさないプラットフォームのブロックは効果なし
   run?:    {
     erase?:               boolean,          # 未設定はターゲットの `run.erase` を継承し、それもなければオフ（BE-0177）
     systemAlertHandling?: <SystemAlertHandling>,  # アラートガード; 未指定で ON
@@ -167,14 +168,10 @@ Preconditions ::= {
   },
 }
 
-# 1 つのプラットフォームに対するシナリオの `runsOn` ブロックです。そのプラットフォームに登録された
-# `runsOn` のモデルから、ターゲットに残す `kind` と `emulate` を除いたものです。iOS の `locale` と
-# `seedPhotos`（シナリオファイルからの相対パス）はデバイスの状態です。`model`、`os`、`avd`、
-# `apiLevel`、`browser.*` はデバイスの条件で、run の前にプールのデバイスと照合します。リストや範囲は
-# run を増やします。片側が開いた範囲に合うデバイスがなければ、対象外の記録が残ります
-# （configuration.md#デバイスの条件runson）。
-# 重ね合わせたあとの `seedPhotos` が空でなければ、実効の `run.erase` が必要です。
-RunsOn ::= { locale?: string, seedPhotos?: list(string), model?: …, os?: …, avd?: …, apiLevel?: …, browser?: { engine?: …, version?: … } }
+# シナリオが適用する iOS のデバイスの状態です。各フィールドは、ターゲットの `runsOn.ios` の同名の値を
+# 置き換えます。`seedPhotos` のパスはシナリオファイルを基準に解決します。重ね合わせたあとのリストが
+# 空でなければ、実効の `run.erase` が必要です。
+IosDevice ::= { locale?: string, seedPhotos?: list(string) }
 
 # ── SystemAlertHandling（リアクティブなシステムアラートガード; 既定 ON）─
 # XCUITest ではネイティブの SpringBoard 照会 + tap（モデルなし、BE-0316 を再利用。BE-0315）に加え、
@@ -236,6 +233,7 @@ Action    ::=
   | { totp:        { secret: string, into: { var: string } } }  # RFC 6238 OTP → vars.<var>（secret は base32）
   | { email:       { match: { to?: string, subject?: string, subjectMatches?: string }, extract: { var: string, bodyMatches: string }, timeout: number } }  # メールボックスをポーリング → vars.<var>
   | { generate:    <Generate> }                            # 実行時に計算した乱数または現在日時の値 → vars.<var>（BE-0377）
+  | { eval:        <Eval> }                                # 保持している値を固定語彙の操作で変換 → vars.*（BE-0472）
   | { background:       {} }                               # Home ボタン（SpringBoard 経由でバックグラウンド化。終了はしない）
   | { foreground:       {} }                               # アプリを終了させずに前面に出す。動いていないアプリは `relaunch` と同じように起動し、準備が整うまで待つ（iOS と Android、BE-0447）。background の対
   | { installApp:       { from: string, keepData?: boolean } }  # 後から入るデバイスグループのメンバーのビルドをステップのデバイスにインストールする。keepData 既定 true（上書きでデータを保持）、false は先にアンインストール。何も起動しない（BE-0447）
@@ -291,6 +289,24 @@ Random ::=
 Datetime ::= { format?: string, offsetSeconds?: integer, offsetMinutes?: integer, offsetHours?: integer, offsetDays?: integer, timezone?: string }
     # format: strftime のパターン。省略時は秒までの ISO 8601。4つの offset は符号付きで、加算されます。
     # timezone: IANA 名（例 "America/Los_Angeles"）。省略時は UTC。描画できない format と解決できないゾーンはロード時に失敗します。
+
+Eval ::= { from: string, ops: list(<EvalOp>), into: { var: string } | { vars: list(string) } }
+    # ops: 空にできません。各操作は直前の結果に適用します。ローダは from（文字列）から最後まで文字列かリストかを追跡します。
+    # into.var: リストの結果はコンパクトな JSON 配列テキストで保存します。into.vars: リストの結果が必要です。要素 i → vars[i]、
+    #   余った要素は捨て、リストが短ければステップを失敗させます。vars の名前は重複できません。
+EvalOp ::=
+    "trim" | "json" | "count" | "unique" | "reverse" | "sort"                     # 名前だけで書く操作
+  | { split:     string | { by: string, regex?: boolean } }                       # 文字列 → リスト。by は空にできません
+  | { join:      string }                                                         # リスト → 文字列
+  | { filter:    { matches: string | equals: string | contains: string | notEmpty: true, not?: boolean } }  # 条件はちょうど1つ
+  | { pick:      "first" | "last" | integer }                                     # リスト → 文字列。添字 ≥ 0
+  | { sort:      ("asc"|"desc") | { order?: ("asc"|"desc"), numeric?: boolean } }
+  | { regex:     { pattern: string, group?: integer } }                          # 文字列 → 文字列。group の既定は 0
+  | { replace:   { find: string, with: string, regex?: boolean } }               # 文字列 → 文字列
+  | { substring: { start: integer, end?: integer } }                             # 文字列 → 文字列。どちらも ≥ 0
+  | { case:      ("lower"|"upper") }                                              # 文字列 → 文字列
+    # 自由文と添字の引数には ${vars.*} / ${secrets.*} を書けます。その引数はロード時ではなく置換後に検査します。
+    # sort の order、case、フラグの regex / not / numeric にはリテラルだけを書けます。
 
 # ── Selector（1 条件以上・指定フィールドは AND）────────────────────────
 Selector ::= {

@@ -711,7 +711,7 @@ def test_runner_source_reports_a_device_without_a_signing_file(
     monkeypatch.delenv(SIGNING_FILE_ENV, raising=False)
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
     source = xcuitest.runner_source(None, "device")
-    assert source.startswith("none: runsOn.kind: device needs driver.runner.testRunner")
+    assert source.startswith("none: runsOn.ios.kind: device needs driver.runner.testRunner")
     assert str(tmp_path / "xdg" / "bajutsu" / "signing.yaml") in source
 
 

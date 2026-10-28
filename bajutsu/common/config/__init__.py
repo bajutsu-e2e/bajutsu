@@ -36,14 +36,13 @@ from bajutsu.common.config.preconditions import (
     check_preconditions,
     command_preconditions,
     resolve_preconditions,
-    runs_on_problems,
-    scenario_conditions,
 )
 from bajutsu.common.config.resolve import (
     load_config,
     load_config_file,
     parse_config_dict,
     resolve,
+    unknown_target,
 )
 from bajutsu.common.config.schema import (
     WEB_ENGINES,
@@ -100,8 +99,7 @@ __all__ = [
     "require_web",
     "resolve",
     "resolve_preconditions",
-    "runs_on_problems",
-    "scenario_conditions",
+    "unknown_target",
     "web_base_url",
     "web_engine",
     "xcuitest_pins_runner",

@@ -397,7 +397,7 @@ modal and return the recording to its own player.
 Device Log / App Trace remain separate tabs.
 ## Runs that device conditions form
 
-A target or a scenario may declare device conditions under `runsOn`
+A target may declare device conditions under `runsOn`
 ([configuration](configuration.md)). A list of models is one such condition. An OS version range is a condition too. The conditions split
 one scenario into *runs*, one per set of coordinates. `iPhone SE (3rd generation) / iOS 17` names
 one such set. An open range with no device in it leaves a *not-applicable* record instead of a run.

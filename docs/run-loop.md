@@ -49,7 +49,7 @@ What each target's own bundle carries:
 | `network` / `transitions` / `channel` | that target's own collector |
 | `webview_bridge` | that target's WebView bridge, so a `web:` block opens the right app |
 | `control` / `relaunch` | that target's device |
-| `mailbox` / `locale` / `capture` / `interrupts` | that target's own config (`services.mailbox`, `runsOn.locale`, `evidence.capture`, `hooks.interrupts`) |
+| `mailbox` / `locale` / `capture` / `interrupts` | that target's own config (`services.mailbox`, `runsOn.ios.locale`, `evidence.capture`, `hooks.interrupts`) |
 | `ctx` | that target's `paths.baselines` / `paths.schemas` / `paths.goldens` directories |
 
 Three consequences follow from the shared loop state:
@@ -248,7 +248,7 @@ erase (if pre.erase: shutdown → erase) → boot → bootstatus -b (wait out th
 > the `screenChanged` rung, which has none of its own; it is capped at three, after which the gate
 > returns ready anyway and records `settled: false` in the first-wait diagnostic rather than holding
 > a screen that never holds still. It never turns a ready app into a timeout. `locale` **is**
-> applied at launch (the scenario's `preconditions.runsOn.ios.locale` overrides the target's `runsOn.locale`, passed as
+> applied at launch (the scenario's `preconditions.device.ios.locale` overrides the target's `runsOn.ios.locale`, passed as
 > launch args via `env.locale_args`). `simctl boot` returns as soon as the boot has been *requested*,
 > so every step that follows it waits the boot out with `bootstatus` first — including the extra boot
 > cycle the system-locale pin runs ([BE-0359](../roadmaps/BE-0359-xcuitest-boot-completion-wait/BE-0359-xcuitest-boot-completion-wait.md)).
@@ -284,8 +284,8 @@ propagating. The scenario's own end releases the whole set.
 
 The CLI's `run` calls this `run_and_report` ([cli](cli.md#run)).
 
-**Runs formed by device conditions (BE-0452).** A scenario's effective `runsOn` may declare a
-condition. `bajutsu/run/device_matrix.py` then plans the invocation before any scenario
+**Runs formed by device conditions (BE-0452).** The `runsOn` of a target a scenario runs against
+may declare a condition. `bajutsu/run/device_matrix.py` then plans the invocation before any scenario
 runs:
 
 1. It reads each pool once, through `common/devices/facts.py`.
@@ -297,7 +297,7 @@ The cells run one after another. Each goes through `run_and_report` on a pool na
 eligible devices. `--workers` thus spreads a cell's runs over identical devices. A run that no
 device fits fails. Under an open range, it becomes a not-applicable record instead
 ([configuration](configuration.md#device-conditions-runson)). Such a record never reaches a
-driver. An invocation where no scenario declares a condition keeps the path above unchanged.
+driver. An invocation whose targets declare no condition keeps the path above unchanged.
 
 > **Warm XCUITest runner (BE-0291).** Each scenario still gets a freshly launched app and a fresh
 > driver (clean isolation), but the XCUITest backend's resident `xcodebuild` runner — whose cold
@@ -355,7 +355,7 @@ driver. An invocation where no scenario declares a condition keeps the path abov
 > `erase: true` — a Simulator restart on XCUITest, an app-level clean state on adb — instead of a bare
 > in-place respawn onto the very device that just crashed it, unless the scenario declares
 > `reinstall: overwrite` to keep its app's data across the lease, or the route itself rejects any
-> `erase` precondition outright (a real device, `runsOn.kind: device`, or the live route to an `appium`
+> `erase` precondition outright (a real device, `runsOn.ios.kind: device`, or the live route to an `appium`
 > grid). A plain `erase: false` does *not* skip the forced retry: the CLI (`_filter_scenarios` in
 > `bajutsu/cli/commands/run.py`) resolves every scenario's `erase` to a concrete bool, most commonly
 > `false`, before the pipeline ever sees it, so a guard on that value alone would disable the forced

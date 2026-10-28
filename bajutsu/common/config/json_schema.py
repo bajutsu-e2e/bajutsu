@@ -26,8 +26,8 @@ DIALECT = "https://json-schema.org/draft/2020-12/schema"
 def _target_model(platform: str) -> type[_Model]:
     """One platform's target as a model of its own: the shared keys plus its registered groups.
 
-    A target's groups are optional in the file, because `defaults.platforms.<platform>` may supply
-    them before the target is validated.
+    A target's groups are optional in the file, because `defaults.platforms.<platform>` or a
+    template may supply them before the target is validated.
     """
     schema = PLATFORM_SCHEMAS[platform]
     groups: dict[str, type[_Model]] = {
@@ -44,6 +44,13 @@ def _target_model(platform: str) -> type[_Model]:
             fields[name] = (groups[name] | None, Field(default=None, alias=info.alias))
         else:
             fields[name] = (info.annotation, info)
+    fields["extends"] = (
+        str | list[str] | None,
+        Field(
+            default=None,
+            description="Templates folded under this block, a name or a file path; later wins.",
+        ),
+    )
     title = f"{platform.capitalize()}Target"
     return create_model(
         title, __base__=_Model, __doc__=f"A target of platform `{platform}`.", **fields
@@ -96,39 +103,51 @@ def config_json_schema() -> dict[str, Any]:
         "additionalProperties": False,
     }
     defs.pop("PlatformDefaults", None)
+    schema["properties"]["templates"] = _templates_schema(defs, branches, platforms)
     return {"$schema": DIALECT, **schema}
 
 
-def scenario_runs_on_schema() -> dict[str, Any]:
-    """The JSON Schema of a scenario's `preconditions.runsOn`, keyed by platform from the registry.
+def _templates_schema(
+    defs: dict[str, Any], branches: tuple[type[_Model], ...], platforms: dict[str, Any]
+) -> dict[str, Any]:
+    """The `templates` map: each entry a partial target, of one platform or of none (BE-0471).
 
-    The scenario model keeps each block as written, since the scenario schema never imports the
-    config; this states what `runs_on_problems` accepts instead: each platform's `runsOn` fields
-    except how a target is driven (`kind`, `emulate`), every one optional.
-
-    Returns:
-        The schema, with the definitions its fields refer to under `$defs`.
+    An `anyOf`, not the targets' discriminated `oneOf`, because a template may omit `platform` and a
+    discriminator has no branch for that. A template that names its platform is that platform's
+    target with every field optional; one that does not forbids `platform` and takes any platform's
+    partial shape for the platform-shaped groups.
     """
-    from .preconditions import _TARGET_ONLY_RUNS_ON
-
-    platforms: dict[str, Any] = {}
-    defs: dict[str, Any] = {}
-    for platform, schema in PLATFORM_SCHEMAS.items():
-        generated = schema.runs_on.model_json_schema(by_alias=True, mode="validation")
-        defs.update(generated.pop("$defs", {}))
-        properties = {
-            k: v
-            for k, v in generated.get("properties", {}).items()
-            if k not in _TARGET_ONLY_RUNS_ON
+    refs: list[dict[str, str]] = []
+    for platform, branch in zip(PLATFORM_SCHEMAS, branches, strict=True):
+        template = copy.deepcopy(defs[branch.__name__])
+        template["title"] = f"{platform.capitalize()}Template"
+        template["description"] = f"A template of platform `{platform}`, every field optional."
+        template["required"] = ["platform"]
+        # Nullable like the target branches' groups: a template's `null` clears what `defaults` set.
+        template["properties"].update(
+            {
+                group: {"anyOf": [partial, {"type": "null"}]}
+                for group, partial in platforms[platform]["properties"].items()
+            }
+        )
+        defs[template["title"]] = template
+        refs.append({"$ref": f"#/$defs/{template['title']}"})
+    any_platform = copy.deepcopy(defs[branches[0].__name__])
+    del any_platform["properties"]["platform"]
+    any_platform.pop("required", None)
+    for group in GROUPS:
+        any_platform["properties"][group] = {
+            "anyOf": [
+                *(platforms[p]["properties"][group] for p in PLATFORM_SCHEMAS),
+                {"type": "null"},
+            ]
         }
-        platforms[platform] = {
-            "type": "object",
-            "properties": properties,
-            "additionalProperties": False,
-        }
+    any_platform["title"] = "PlatformlessTemplate"
+    any_platform["description"] = "A template with no `platform`, which its targets supply."
+    defs["PlatformlessTemplate"] = any_platform
+    refs.append({"$ref": "#/$defs/PlatformlessTemplate"})
     return {
         "type": "object",
-        "properties": platforms,
-        "additionalProperties": False,
-        "$defs": defs,
+        "description": "Named, partial target blocks a target pulls in with `extends`.",
+        "additionalProperties": {"anyOf": refs},
     }

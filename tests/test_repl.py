@@ -662,6 +662,24 @@ def test_step_generate_shows_the_written_value() -> None:
     assert driver.actions == []
 
 
+def test_step_eval_shows_every_written_value() -> None:
+    session, driver = _session()
+    (line,) = session.dispatch(
+        "step {eval: {from: 'Taro Yamada', ops: [{split: ' '}], into: {vars: [given, family]}}}"
+    )
+    assert line == "ran step: eval (vars.given = 'Taro', vars.family = 'Yamada')"
+    assert driver.actions == []
+
+
+def test_step_eval_on_a_secret_fails_before_printing_anything() -> None:
+    # The shell binds no `${secrets.*}`, so a secret input is an unbound token: the step fails as a
+    # command error the shell reports and moves on from, without writing or printing a value
+    # (BE-0472).
+    session, _ = _session()
+    with pytest.raises(COMMAND_ERRORS, match=r"no value is bound for \$\{secrets.T\}"):
+        session.dispatch("step {eval: {from: '${secrets.T}', ops: [trim], into: {var: v}}}")
+
+
 # --- back / screenshot -------------------------------------------------------------------------
 
 
@@ -1419,7 +1437,7 @@ def _refuse_device_access(monkeypatch: pytest.MonkeyPatch) -> None:
         ("adb", [], ""),
         ("playwright", [], ""),
         ("xcuitest", ["--worker-config", "GRID"], ""),
-        ("xcuitest", [], "kind: device"),
+        ("xcuitest", [], "ios: { kind: device }"),
     ],
 )
 def test_attach_outside_the_local_simulator_exits_2_before_any_device_is_touched(

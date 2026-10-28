@@ -49,7 +49,7 @@ iOS on Device Farm runs on real devices, which adds the two constraints in
 
 This shift to a real device changes two things Bajutsu accounts for up front (BE-0238). Both are
 properties of a physical device rather than of Device Farm's classification, so they hold for any
-real iOS device the XCUITest backend drives (`runsOn.kind: device`) — Device Farm or a
+real iOS device the XCUITest backend drives (`runsOn.ios.kind: device`) — Device Farm or a
 locally attached device.
 
 - **Re-signing strips entitlements.** Device Farm re-signs the uploaded `.ipa` with its own
@@ -168,7 +168,7 @@ uv run python scripts/devicefarm_submit.py \
   --package-only
 ```
 
-`showcase.devicefarm.ios.config.yaml` sets `runsOn.kind: device` (the XCUITest backend
+`showcase.devicefarm.ios.config.yaml` sets `runsOn.ios.kind: device` (the XCUITest backend
 drives a physical device instead of a Simulator) and carries no `app.path` (Device Farm installs the
 uploaded `.ipa` on the reserved device itself). The `--package
 BajutsuKit/Runner/build/dd-device/Build/Products=.` line places the device-signed `.xctestrun` and
@@ -176,11 +176,12 @@ its test bundles at the package root, where the config's `driver.runner.testRunn
 resolves them. The re-signing and simctl caveats described [above](#ios-re-signing-and-real-device-capabilities)
 apply to this run.
 
-A Device Farm job cannot use a device condition such as `runsOn.model` or `runsOn.os`
+A Device Farm job cannot use a device condition such as `runsOn.ios.model` or `runsOn.ios.os`
 ([configuration](configuration.md#device-conditions-runson)). Bajutsu reads each device before a
 run and matches the conditions against it. A reserved Device Farm device offers nothing to read
-beforehand. The provider thus refuses a job whose target or scenario declares a condition. It
-refuses before any upload, and names each field. `runsOn.locale` and `runsOn.seedPhotos` stay
+beforehand. The provider thus refuses a job whose target declares a condition, or still writes a
+`runsOn` field flat, from before the destination blocks. It refuses before any upload, and names
+each field. `runsOn.ios.locale` and `runsOn.ios.seedPhotos` stay
 allowed: they are device state rather than conditions.
 
 ## The GitHub Actions workflow

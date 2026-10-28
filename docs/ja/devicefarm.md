@@ -21,7 +21,7 @@ Device Farm の iOS は実機で動作するため、下記の [iOS: 再署名�
 
 ## iOS: 再署名と実機のケーパビリティ
 
-実機で動作させることにより、Bajutsu が前もって織り込む点が 2 つあります（BE-0238）。いずれも Device Farm の分類ではなく物理デバイスそのものの性質なので、XCUITest バックエンドが駆動する実機（`runsOn.kind: device`）であれば、Device Farm でもローカル接続のデバイスでも同じように当てはまります。
+実機で動作させることにより、Bajutsu が前もって織り込む点が 2 つあります（BE-0238）。いずれも Device Farm の分類ではなく物理デバイスそのものの性質なので、XCUITest バックエンドが駆動する実機（`runsOn.ios.kind: device`）であれば、Device Farm でもローカル接続のデバイスでも同じように当てはまります。
 
 - **再署名でエンタイトルメントが剥がれます。** Device Farm はアップロードされた `.ipa` を自前のプロビジョニングプロファイルで再署名し、予約されたデバイスにインストールできるようにします。この再署名では、新しいプロファイルが持たないエンタイトルメント（多くは Push（`aps-environment`）と App Groups（`com.apple.security.application-groups`））が落ちます。剥がれたエンタイトルメントに依存するアプリの機能（リモートプッシュの登録、App Group の共有コンテナ）は再署名後のビルドでは動作しないため、そうした機能をアサートするシナリオは、App Store 版ではなく再署名後の挙動を前提にしてください。
 - **simctl のデバイス制御と権限付与は適用されません。** Bajutsu の iOS デバイス制御（`setLocation`、クリップボード系のステップ、`push`、`clearKeychain`、`background` / `foreground`、ステータスバーの上書き）と権限付与は、いずれも `simctl` に支えられています。`simctl` が届くのはシミュレータだけで、物理デバイスには届きません。そのため実機では XCUITest バックエンドはこれらを宣言せず、いずれかを使うシナリオは、デバイス操作を始める前に **preflight でスキップ**され（BE-0082）、実行の途中で `simctl` エラーとして遅れて失敗する代わりに、明確な理由とともに弾かれます。XCTest ランナー自身が駆動する実機側のケーパビリティ（query、elements、スクリーンショット、タップ、2 本指ジェスチャー）は影響を受けません。
@@ -86,9 +86,9 @@ uv run python scripts/devicefarm_submit.py \
   --package-only
 ```
 
-`showcase.devicefarm.ios.config.yaml` は `runsOn.kind: device`（XCUITest バックエンドがシミュレーターではなく実機を操作します）を設定し、`app.path` を持ちません（Device Farm がアップロードした `.ipa` を予約デバイスへ自分でインストールします）。`--package BajutsuKit/Runner/build/dd-device/Build/Products=.` は、デバイス署名済みの `.xctestrun` とテストバンドルをパッケージのルートに配置します。これは設定の `driver.runner.testRunner: BajutsuRunner.xctestrun` が参照する場所です。再署名と simctl に関する注意事項は[上記](#ios-再署名と実機のケーパビリティ)をご参照ください。
+`showcase.devicefarm.ios.config.yaml` は `runsOn.ios.kind: device`（XCUITest バックエンドがシミュレーターではなく実機を操作します）を設定し、`app.path` を持ちません（Device Farm がアップロードした `.ipa` を予約デバイスへ自分でインストールします）。`--package BajutsuKit/Runner/build/dd-device/Build/Products=.` は、デバイス署名済みの `.xctestrun` とテストバンドルをパッケージのルートに配置します。これは設定の `driver.runner.testRunner: BajutsuRunner.xctestrun` が参照する場所です。再署名と simctl に関する注意事項は[上記](#ios-再署名と実機のケーパビリティ)をご参照ください。
 
-Device Farm のジョブでは、`runsOn.model` や `runsOn.os` のようなデバイスの条件を使えません（[configuration](configuration.md#デバイスの条件runson)）。Bajutsu は run の前に読み取れるデバイスに対して条件を照合しますが、Device Farm が予約するデバイスには、事前に読み取るものがありません。そのため provider は、ターゲットかシナリオが条件を宣言しているジョブを、アップロードの前に拒否し、該当するフィールドを示します。`runsOn.locale` と `runsOn.seedPhotos` は条件ではなくデバイスの状態なので、引き続き使えます。
+Device Farm のジョブでは、`runsOn.ios.model` や `runsOn.ios.os` のようなデバイスの条件を使えません（[configuration](configuration.md#デバイスの条件runson)）。Bajutsu は run の前に読み取れるデバイスに対して条件を照合しますが、Device Farm が予約するデバイスには、事前に読み取るものがありません。そのため provider は、ターゲットが条件を宣言しているジョブや、`runsOn` のフィールドを宛先のブロックに入れずに直下に書いたままのジョブを、アップロードの前に拒否し、該当するフィールドを示します。`runsOn.ios.locale` と `runsOn.ios.seedPhotos` は条件ではなくデバイスの状態なので、引き続き使えます。
 
 ## GitHub Actions ワークフロー
 

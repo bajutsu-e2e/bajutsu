@@ -696,7 +696,7 @@ def _mapping(value: Any) -> dict[str, Any]:
 
 
 def _preconditions_rows(definition: dict[str, Any] | None) -> list[tuple[str, str]]:
-    # The grouped shape BE-0452 introduced; a stored plan from before it is upgraded on load.
+    # The grouped shape BE-0452 and BE-0469 introduced; a stored plan from before is upgraded on load.
     pre = _mapping((definition or {}).get("preconditions"))
     app, run = _mapping(pre.get("app")), _mapping(pre.get("run"))
     launch = _mapping(app.get("launch"))
@@ -709,7 +709,7 @@ def _preconditions_rows(definition: dict[str, Any] | None) -> list[tuple[str, st
         rows.append(("deeplink", str(launch["deeplink"])))
     rows.extend(
         ("locale", str(block["locale"]))
-        for block in _mapping(pre.get("runsOn")).values()
+        for block in _mapping(pre.get("device")).values()
         if _mapping(block).get("locale")
     )
     rows += [(str(k), str(v)) for k, v in _mapping(launch.get("env")).items()]

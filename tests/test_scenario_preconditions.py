@@ -1,12 +1,14 @@
-"""A scenario's preconditions grouped as the target's `app`, `runsOn`, and `run` (BE-0452 unit 7).
+"""A scenario's preconditions grouped as the target's `app` and `run` (BE-0452 unit 7), with its
+device state under `device` (BE-0469).
 
-Covers the model's refusal of the old flat keys, the merge over each target's config, the checks a
-run makes against the platforms it drives before any device work, and the upgrade that keeps a run
-stored before the regrouping loadable.
+Covers the model's refusal of the old flat keys and of `preconditions.runsOn`, the merge over each
+target's config, the checks a run makes against the platforms it drives before any device work, and
+the upgrade that keeps a run stored before either regrouping loadable.
 """
 
 from __future__ import annotations
 
+import re
 from dataclasses import replace
 from pathlib import Path
 
@@ -30,7 +32,6 @@ from bajutsu.common.config import (
     load_config,
     resolve,
     resolve_preconditions,
-    scenario_conditions,
 )
 from bajutsu.common.lint import lint_diagnostics, lint_text
 from bajutsu.common.report.rows import _preconditions_rows
@@ -46,7 +47,7 @@ targets:
       id: com.example.phone
       reinstall: overwrite
       launch: { env: { A: "1" }, args: ["-target"], deeplink: "app://home" }
-    runsOn: { locale: ja_JP, seedPhotos: [photos/red.png] }
+    runsOn: {ios: {locale: ja_JP, seedPhotos: [photos/red.png]}}
     run: { erase: true }
   droid:
     platform: android
@@ -79,8 +80,8 @@ def _pre(text: str) -> Preconditions:
         ("launchEnv: { A: '1' }", "preconditions.app.launch.env"),
         ("launchArgs: [-x]", "preconditions.app.launch.args"),
         ("deeplink: 'app://x'", "preconditions.app.launch.deeplink"),
-        ("locale: ja_JP", "preconditions.runsOn.ios.locale"),
-        ("seedPhotos: [a.png]", "preconditions.runsOn.ios.seedPhotos"),
+        ("locale: ja_JP", "preconditions.device.ios.locale"),
+        ("seedPhotos: [a.png]", "preconditions.device.ios.seedPhotos"),
     ],
 )
 def test_a_flat_key_fails_naming_its_new_home(old: str, new: str) -> None:
@@ -111,12 +112,12 @@ def test_a_non_mapping_preconditions_fails_as_a_type_error() -> None:
 
 
 def test_seed_photo_paths_resolve_only_where_a_block_lists_them() -> None:
-    pre = _pre("{ runsOn: { ios: { locale: ja_JP, seedPhotos: [a.png] }, web: { browser: {} } } }")
+    pre = _pre("{ device: { ios: { locale: ja_JP, seedPhotos: [a.png] } } }")
     pre.resolve_seed_photos(lambda ref: f"/root/{ref}")
-    assert pre.runs_on == {
-        "ios": {"locale": "ja_JP", "seedPhotos": ["/root/a.png"]},
-        "web": {"browser": {}},
-    }
+    assert (pre.device.ios.locale, pre.device.ios.seed_photos) == ("ja_JP", ["/root/a.png"])
+    unset = _pre("{ device: { ios: { locale: ja_JP } } }")
+    unset.resolve_seed_photos(lambda ref: f"/root/{ref}")
+    assert unset.device.ios.seed_photos is None
 
 
 def test_the_groups_round_trip_through_a_dump() -> None:
@@ -124,7 +125,7 @@ def test_the_groups_round_trip_through_a_dump() -> None:
         "- name: s\n"
         "  preconditions:\n"
         "    app: { reinstall: overwrite, launch: { env: { A: '1' }, deeplink: 'app://x' } }\n"
-        "    runsOn: { ios: { locale: ja_JP } }\n"
+        "    device: { ios: { locale: ja_JP } }\n"
         "    run: { erase: true, tipKitHandling: true, systemAlertHandling: false }\n"
         "  steps: []\n"
     )
@@ -172,7 +173,7 @@ def test_the_target_fills_what_the_scenario_leaves_unset() -> None:
 def test_the_scenario_wins_over_the_target() -> None:
     pre = _pre(
         "{ app: { reinstall: clean, launch: { env: { B: '2' }, args: [-s], deeplink: 'app://s' } },"
-        " runsOn: { ios: { locale: en_GB, seedPhotos: [] } }, run: { erase: false } }"
+        " device: { ios: { locale: en_GB, seedPhotos: [] } }, run: { erase: false } }"
     )
     merged = resolve_preconditions(_effs()["phone"], pre)
     assert merged.reinstall == "clean"
@@ -189,8 +190,9 @@ def test_reinstall_falls_back_to_the_built_in_clean() -> None:
 
 
 def test_a_block_for_another_platform_has_no_effect() -> None:
-    pre = _pre("{ runsOn: { ios: { locale: en_GB } } }")
+    pre = _pre("{ device: { ios: { locale: en_GB } } }")
     assert resolve_preconditions(_effs()["droid"], pre).locale is None
+    assert pre.seed_photos_for("android") is None
 
 
 def test_a_command_with_no_scenario_takes_the_target_and_its_own_erase() -> None:
@@ -210,12 +212,12 @@ def test_a_command_refuses_no_erase_on_a_target_that_seeds_photos(
     with pytest.raises(typer.Exit) as exc:
         _command_preconditions_or_exit(_effs()["phone"], erase=False)
     assert exc.value.exit_code == 2
-    assert "runsOn.seedPhotos" in capsys.readouterr().out
+    assert "runsOn.ios.seedPhotos" in capsys.readouterr().out
 
 
 def test_a_fake_target_runs_under_the_scenario_ios_locale() -> None:
     # A `fake` target resolves to the iOS-shaped sub-config, so the scenario's iOS block applies.
-    pre = _pre("{ runsOn: { ios: { locale: ja_JP } } }")
+    pre = _pre("{ device: { ios: { locale: ja_JP } } }")
     fake = _effs()["fake"]
     assert resolve_preconditions(fake, pre).locale == "ja_JP"
     assert pre.resolved_locale(fake.locale, fake.platform) == "ja_JP"
@@ -231,17 +233,16 @@ def test_seed_photos_on_a_non_primary_target_are_refused() -> None:
     assert "seedPhotos on target 'phone' applies to the primary target alone" in problem
 
 
-def test_lint_reports_a_malformed_runs_on_block() -> None:
-    text = (
-        "- name: s\n  preconditions: { runsOn: { ios: { modle: x }, flutter: {} } }\n  steps: []\n"
-    )
-    errors = lint_text(text)
-    assert any("preconditions.runsOn.ios.modle" in e for e in errors)
-    assert any("invalid platform 'flutter'" in e for e in errors)
-    assert [d["message"] for d in lint_diagnostics(text)] == errors
+def test_lint_reports_a_scenario_runs_on_and_a_malformed_device_block() -> None:
+    old = "- name: s\n  preconditions: { runsOn: { ios: { locale: ja_JP } } }\n  steps: []\n"
+    (error,) = lint_text(old)
+    assert "preconditions.runsOn.ios.locale moved to preconditions.device.ios.locale" in error
+    typo = "- name: s\n  preconditions: { device: { ios: { modle: x } } }\n  steps: []\n"
+    assert any("preconditions.device.ios.modle" in e for e in lint_text(typo))
+    assert lint_diagnostics(typo)
     assert (
         lint_text(
-            "- name: s\n  preconditions: { runsOn: { ios: { locale: ja_JP } } }\n  steps: []\n"
+            "- name: s\n  preconditions: { device: { ios: { locale: ja_JP } } }\n  steps: []\n"
         )
         == []
     )
@@ -282,41 +283,27 @@ def test_an_ios_only_run_field_fails_without_an_ios_target() -> None:
 @pytest.mark.parametrize(
     ("block", "message"),
     [
-        ("{ flutter: { os: '>=1' } }", "invalid platform 'flutter'"),
-        ("{ ios: { kind: device } }", "preconditions.runsOn.ios.kind: a scenario cannot set"),
-        ("{ web: { emulate: iPhone 13 } }", "preconditions.runsOn.web.emulate: a scenario cannot"),
-        ("{ android: { locale: ja_JP } }", "preconditions.runsOn.android.locale: a scenario"),
-        ("{ ios: { os: '18.x.y.z' } }", "os"),
+        (
+            "{ ios: { locale: ja_JP } }",
+            "preconditions.runsOn.ios.locale moved to preconditions.device.ios.locale",
+        ),
+        (
+            "{ ios: { seedPhotos: [a.png] } }",
+            "preconditions.runsOn.ios.seedPhotos moved to preconditions.device.ios.seedPhotos",
+        ),
+        ("{ ios: { model: iPhone 16 } }", "name a target whose runsOn.ios.model declares it"),
+        # Only iOS ever read a scenario's device state, so another platform's is not sent to `ios`.
+        ("{ android: { locale: ja_JP } }", "platform 'android' takes no scenario device state"),
+        ("{ android: { apiLevel: '34' } }", "name a target whose runsOn.android.apiLevel declares"),
+        ("{ web: { browser: { version: '>=120' } } }", "name a target whose runsOn.browser"),
+        ("ios", "preconditions.runsOn was removed"),
+        ("{}", "preconditions.runsOn was removed"),
     ],
 )
-def test_a_malformed_runs_on_block_fails_even_for_an_undriven_platform(
-    block: str, message: str
-) -> None:
-    problems = check_preconditions(_pre(f"{{ runsOn: {block} }}"), [_effs()["site"]])
-    assert any(message in p for p in problems), problems
-
-
-def test_scenario_conditions_name_only_the_driven_platforms() -> None:
-    pre = _pre(
-        "{ runsOn: { ios: { model: iPhone 16, os: '>=18', locale: ja_JP },"
-        " web: { browser: { version: '>=120' } } } }"
-    )
-    assert scenario_conditions(pre, ["ios"]) == ["runsOn.ios.model", "runsOn.ios.os"]
-    assert scenario_conditions(pre, ["web"]) == ["runsOn.web.browser.version"]
-    assert scenario_conditions(pre, ["android"]) == []
-
-
-def test_a_scenario_condition_passes_the_check_and_fake_says_it_is_not_evaluated(
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    (scenario,) = load_scenarios(
-        "- name: s\n  preconditions: { runsOn: { ios: { os: '>=18' } } }\n  steps: []\n"
-    )
-    # Unit 9 matches the condition when the run forms its runs, so the check lets it through.
-    _refuse_bad_preconditions([(scenario, [_effs()["phone"]])], erase=None, fake=False)
-    assert "not yet supported" not in capsys.readouterr().out
-    # The fake backend evaluates no condition, and says so.
-    _refuse_bad_preconditions([(scenario, [_effs()["phone"]])], erase=None, fake=True)
+def test_a_scenario_runs_on_fails_naming_where_it_went(block: str, message: str) -> None:
+    # Where a run happens belongs to the target alone since BE-0469; device state moved to `device`.
+    with pytest.raises(ValueError, match=re.escape(message)):
+        _pre(f"{{ runsOn: {block} }}")
 
 
 def test_each_scenario_is_checked_against_the_targets_it_declares() -> None:
@@ -337,7 +324,7 @@ def test_each_scenario_is_checked_against_the_targets_it_declares() -> None:
         ("own", ["site"]),
     ]
     both.preconditions = _pre("{ app: { launch: { args: [-x] } } }")
-    _refuse_bad_preconditions(checks, erase=None, fake=False)
+    _refuse_bad_preconditions(checks, erase=None)
 
 
 _WEB_CONFIG = """
@@ -399,7 +386,28 @@ def test_a_plan_stored_before_the_regrouping_still_loads() -> None:
         ["-x"],
         "app://x",
     )
-    assert pre.runs_on == {"ios": {"locale": "ja_JP", "seedPhotos": ["red.png"]}}
+    assert (pre.device.ios.locale, pre.device.ios.seed_photos) == ("ja_JP", ["red.png"])
+
+
+def test_a_plan_stored_with_a_scenario_runs_on_keeps_its_device_state() -> None:
+    # BE-0469: the iOS device state moves to `device.ios`; the conditions are dropped, since they
+    # already chose the devices the stored run ran on.
+    text = (
+        "- name: old\n"
+        "  preconditions:\n"
+        "    runsOn:\n"
+        "      ios: { locale: ja_JP, seedPhotos: [red.png], model: iPhone 16, os: '>=18' }\n"
+        "      web: { browser: { version: '>=120' } }\n"
+        "  steps: []\n"
+    )
+    upgraded = _yaml.safe_load(_upgraded_scenario_text(text))
+    assert upgraded[0]["preconditions"] == {
+        "device": {"ios": {"locale": "ja_JP", "seedPhotos": ["red.png"]}}
+    }
+    (scenario,) = load_stored_scenario_file(text).scenarios
+    assert scenario.preconditions.resolved_locale("en_US") == "ja_JP"
+    conditions_only = "- name: c\n  preconditions: { runsOn: { ios: { os: '18' } } }\n  steps: []\n"
+    assert not _yaml.safe_load(_upgraded_scenario_text(conditions_only))[0].get("preconditions")
 
 
 def test_the_upgrade_leaves_a_regrouped_plan_alone() -> None:
@@ -418,3 +426,9 @@ def test_the_report_rows_read_the_groups() -> None:
         ("A", "1"),
         ("launch args", "-x"),
     ]
+
+
+def test_an_empty_device_locale_fails_rather_than_falling_back() -> None:
+    # An empty value would quietly yield the target's locale, so a written key would do nothing.
+    with pytest.raises(ValueError, match="locale"):
+        _pre('{ device: { ios: { locale: "" } } }')

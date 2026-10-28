@@ -43,6 +43,7 @@ from bajutsu.common.orchestrator.types import (
     AlertGuardConfig,
     AlertTitleCheck,
     Clock,
+    DerivedSecrets,
     DeviceControl,
     MailboxReader,
     NetworkSource,
@@ -781,6 +782,7 @@ def run_scenario(  # noqa: C901, PLR0915
     capture_app_crash: Callable[[], list[tuple[str, bytes]]] | None = None,
     app_launch_unconfirmed: bool = False,
     roster: TargetRoster | None = None,
+    derived_secrets: DerivedSecrets | None = None,
 ) -> RunResult:
     """Run one scenario deterministically, firing capturePolicy rules into `sink`.
 
@@ -936,6 +938,14 @@ def run_scenario(  # noqa: C901, PLR0915
     # failing `relaunch` in `steps` latched must still suppress the probe for a `cleanup: on: failure`
     # rule dispatched afterward, which runs through its own freshly built `StepLoopState` (BE-0424).
     app_crash_latches = AppCrashLatches(unconfirmed_launch=app_launch_unconfirmed)
+    # Scenario-scoped for the same reason (BE-0472): a value `steps` derived from a secret stays
+    # secret in `cleanup`. The runner passes one object across crash-recovery attempts, so a sink
+    # this attempt leased starts out masking what an earlier attempt already derived.
+    derived = derived_secrets if derived_secrets is not None else DerivedSecrets()
+    for each_sink in (sink, *(rt.sink for rt in (target_runtimes or {}).values())):
+        if derived.values:
+            each_sink.add_secret_values(derived.values)
+        derived.listeners.append(each_sink.add_secret_values)
 
     def run_phase(
         steps: list[Step],
@@ -980,6 +990,7 @@ def run_scenario(  # noqa: C901, PLR0915
             capture_app_crash,
             roster,
             step_gate,
+            derived,
         )
 
     try:
@@ -1162,6 +1173,7 @@ def run_scenario(  # noqa: C901, PLR0915
         after_outcomes=after_outcomes,
         after_verdict=after_verdict,
         interactive=manual_action or "",
+        derived_secrets=list(derived.values),
     )
 
 
@@ -1458,6 +1470,7 @@ def _run_steps(
     capture_app_crash: Callable[[], list[tuple[str, bytes]]] | None = None,
     roster: TargetRoster | None = None,
     step_gate: StepGate | None = None,
+    derived: DerivedSecrets | None = None,
 ) -> str | None:
     """Run one phase's step loop, appending outcomes; return the failure string or None.
 
@@ -1490,6 +1503,7 @@ def _run_steps(
         # phase directly) gets a fresh one, which simply starts every latch cleared.
         app_crash=app_crash if app_crash is not None else AppCrashLatches(),
         roster=roster,
+        derived=derived if derived is not None else DerivedSecrets(),
     )
     cfg = _LoopConfig(
         driver=driver,

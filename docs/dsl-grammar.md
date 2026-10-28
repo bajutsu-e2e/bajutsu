@@ -121,7 +121,7 @@ Scenario ::= {
   installs?:       list(string),            # default []  — device-group members that install and launch at the start beside the primary (BE-0447); every other member of a group of ≥ 2 is a later member, brought up by `installApp` + `foreground` (§4)
   data?:           list(map(string,string)),# inline rows   ┐ XOR
   dataFile?:       string,                  # CSV path      ┘ (§6.3)
-  preconditions?:  <Preconditions>,         # default {}  — the target's `app` / `runsOn` / `run`, overridden per scenario (BE-0452)
+  preconditions?:  <Preconditions>,         # default {}  — the target's `app` / `run` overridden per scenario (BE-0452), and the device state (BE-0469)
   setup?:          list(<Step>),            # default []  — setup phase run ahead of `steps`, reported apart from it (BE-0392); each declared target's `hooks.setup` precede these
   steps:           list(<Step>),            # required
   expect?:         list(<Assertion>),       # default []  — final checks
@@ -147,10 +147,11 @@ Interrupt ::= { condition: <Assertion>, steps: list(<Step>), target?: string }
 CleanupRule ::= { on: "always" | "success" | "failure", steps: list(<Step>) }
 
 # ── Preconditions ──────────────────────────────────────────────────────
-# The target's own group names (BE-0452). Each field overrides the same field of every target the
+# `app` and `run` take the target's own group names (BE-0452). Each field overrides the same field of every target the
 # scenario drives; `app.launch.env` merges key by key, `app.launch.args` appends, and the rules of
 # `run.systemAlertHandling` concatenate (the scenario's first). A field no driven target's platform
-# has fails the run before any device work.
+# has fails the run before any device work. A scenario declares no device condition: `runsOn` belongs
+# to the target alone (BE-0469).
 Preconditions ::= {
   app?:    {
     reinstall?: ("clean" | "overwrite"),    # unset: the target's `app.reinstall`, else "clean"; iOS and Android
@@ -160,7 +161,7 @@ Preconditions ::= {
       deeplink?: string,                    # unset: the target's `app.launch.deeplink`; iOS and Android
     },
   },
-  runsOn?: map(<Platform>, <RunsOn>),       # keyed by platform; a block for an undriven platform has no effect
+  device?: { ios?: <IosDevice> },           # keyed by destination; a block for an undriven platform has no effect
   run?:    {
     erase?:               boolean,          # unset inherits the target's `run.erase`, else off (BE-0177)
     systemAlertHandling?: <SystemAlertHandling>,  # alert guard; on when unset
@@ -169,14 +170,10 @@ Preconditions ::= {
   },
 }
 
-# A scenario's `runsOn` block for one platform: the platform's registered `runsOn` model without
-# `kind` and `emulate`, which stay on the target. On iOS `locale` and `seedPhotos` (paths relative to
-# the scenario file) are device state; `model`, `os`, `avd`, `apiLevel`, and `browser.*` are device
-# conditions, matched against the pool's devices before the run. A list or a range multiplies runs;
-# an open range that no device fits leaves a not-applicable record
-# (configuration.md#device-conditions-runson). A merged, non-empty `seedPhotos` needs an effective
-# `run.erase`.
-RunsOn ::= { locale?: string, seedPhotos?: list(string), model?: …, os?: …, avd?: …, apiLevel?: …, browser?: { engine?: …, version?: … } }
+# The iOS device state a scenario applies; each field replaces the target's `runsOn.ios` value of the
+# same name. `seedPhotos` paths resolve against the scenario file, and a merged, non-empty list needs
+# an effective `run.erase`.
+IosDevice ::= { locale?: string, seedPhotos?: list(string) }
 
 # ── SystemAlertHandling (reactive system-alert guard; on by default) ───
 # Native SpringBoard query + tap on XCUITest (no model, reusing BE-0316; BE-0315), plus an in-tree
@@ -239,6 +236,7 @@ Action    ::=
   | { totp:        { secret: string, into: { var: string } } }  # RFC 6238 OTP → vars.<var> (secret is base32)
   | { email:       { match: { to?: string, subject?: string, subjectMatches?: string }, extract: { var: string, bodyMatches: string }, timeout: number } }  # poll mailbox → vars.<var>
   | { generate:    <Generate> }                            # a random or current-datetime value computed at run time → vars.<var> (BE-0377)
+  | { eval:        <Eval> }                                # transform a held value through a fixed op vocabulary → vars.* (BE-0472)
   | { background:       {} }                               # Home button (backgrounds via SpringBoard, no terminate)
   | { foreground:       {} }                               # bring the app to the front, no terminate; an app that is not running launches as `relaunch` would and waits until ready (iOS and Android, BE-0447); the other half of background
   | { installApp:       { from: string, keepData?: boolean } }  # install a later device-group member's build on the step's device; keepData default true (install over, data kept), false uninstalls first; launches nothing (BE-0447)
@@ -293,6 +291,24 @@ Random ::=
 Datetime ::= { format?: string, offsetSeconds?: integer, offsetMinutes?: integer, offsetHours?: integer, offsetDays?: integer, timezone?: string }
     # format: a strftime pattern; omitted = ISO 8601 to the second. The four offsets are signed and additive.
     # timezone: an IANA name (e.g. "America/Los_Angeles"); omitted = UTC. An unrenderable format or an unknown zone fails at load.
+
+Eval ::= { from: string, ops: list(<EvalOp>), into: { var: string } | { vars: list(string) } }
+    # ops: non-empty; each runs on the previous result. The loader tracks string/list from `from` (a string) to the end.
+    # into.var: a list result is stored as compact JSON array text. into.vars: needs a list result; element i → vars[i],
+    #   extra elements dropped, a shorter list fails the step. Names in vars are distinct.
+EvalOp ::=
+    "trim" | "json" | "count" | "unique" | "reverse" | "sort"                     # bare names
+  | { split:     string | { by: string, regex?: boolean } }                       # string → list; by non-empty
+  | { join:      string }                                                         # list → string
+  | { filter:    { matches: string | equals: string | contains: string | notEmpty: true, not?: boolean } }  # exactly one predicate
+  | { pick:      "first" | "last" | integer }                                     # list → string; index ≥ 0
+  | { sort:      ("asc"|"desc") | { order?: ("asc"|"desc"), numeric?: boolean } }
+  | { regex:     { pattern: string, group?: integer } }                          # string → string; group default 0
+  | { replace:   { find: string, with: string, regex?: boolean } }               # string → string
+  | { substring: { start: integer, end?: integer } }                             # string → string; both ≥ 0
+  | { case:      ("lower"|"upper") }                                              # string → string
+    # A free-text or index argument may hold ${vars.*} / ${secrets.*}; it is checked after substitution instead of at load.
+    # sort's order, case, and the regex / not / numeric flags take literal values only.
 
 # ── Selector (≥1 field; provided fields are AND-ed) ────────────────────
 Selector ::= {

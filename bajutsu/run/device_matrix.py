@@ -134,7 +134,7 @@ def scenario_conditions(
         name: (
             {}
             if lanes[name].pool == FAKE_ACTUATOR
-            else effective_conditions(lanes[name].eff, s.preconditions, engine_flag=engine_flag)
+            else effective_conditions(lanes[name].eff, engine_flag=engine_flag)
         )
         for group in participants_of(s, primary)
         for name in group
@@ -166,17 +166,14 @@ def condition_problems(
     """Every scenario whose conditions cannot be matched, named, before any device work.
 
     A target with no pool to read before the run (a physical iPhone, or a target an `appium` grid
-    serves) fails on any condition, from the target or the scenario; the check looks at each target
+    serves) fails on any condition; the check looks at each target
     alone, so a local target beside a grid target is matched as usual. The members of a device group
     share one device, so their effective conditions must agree.
     """
     problems: list[str] = []
     for s in scenarios:
         for group in participants_of(s, primary):
-            merged = [
-                effective_conditions(effs[name], s.preconditions, engine_flag=engine_flag)
-                for name in group
-            ]
+            merged = [effective_conditions(effs[name], engine_flag=engine_flag) for name in group]
             for name, conditions in zip(group, merged, strict=True):
                 problems += [
                     f"{s.name}: {problem}"
@@ -207,7 +204,7 @@ def plan(
         lanes: Every declared target, keyed by name.
         primary: The target a scenario that declares none runs on.
         engine_flag: Whether `--browser` or `--browsers` names the web engine, which wins over the
-            scenario's own.
+            target's listed engines.
         read_facts: Reads the device facts of a target's pool, in pool order; called at most once
             per pool, and only for a pool a condition reads.
         read_browser: Reads the version of the browser an engine launches; called at most once per

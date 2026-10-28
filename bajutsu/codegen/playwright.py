@@ -27,6 +27,7 @@ from bajutsu.codegen._playwright_dict_match import DICT_MATCH_JS
 from bajutsu.codegen.common import (
     CleanupEmission,
     device_group_todo,
+    eval_todo,
     indent_lines,
     interrupts_setup_lines,
     manual_todo,
@@ -461,6 +462,8 @@ def _emit_step(step: Step) -> list[str]:  # noqa: C901, PLR0911, PLR0912
         # TODO rather than a silent skip — the same honest boundary the device-control TODOs keep.
         return [f"// TODO: manual step — {manual_todo(step.manual.label, step.manual.bypass)}"]
     if (todo := device_group_todo(step)) is not None:
+        return [todo]
+    if (todo := eval_todo(step)) is not None:
         return [todo]
     return ["// TODO: unsupported step"]
 

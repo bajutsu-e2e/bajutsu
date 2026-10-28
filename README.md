@@ -256,7 +256,7 @@ which picks the actuator. `app.id` names an iOS app, and `app.url` names a web a
 defaults:
   platforms:
     ios:
-      runsOn: { locale: en_US }
+      runsOn: { ios: { locale: en_US } }
 
 targets:
   showcase-swiftui:         # iOS app — driven on the Simulator via XCUITest

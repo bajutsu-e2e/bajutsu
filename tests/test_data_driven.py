@@ -69,13 +69,13 @@ def test_row_substitution_reaches_preconditions() -> None:
   data:
     - { loc: ja_JP }
   preconditions:
-    runsOn: { ios: { locale: "${row.loc}" } }
+    device: { ios: { locale: "${row.loc}" } }
   steps:
     - tap: { id: x }
 """
     )
     out = expand_data(scns, _no_csv)
-    assert out[0].preconditions.runs_on_for("ios").get("locale") == "ja_JP"
+    assert out[0].preconditions.device.ios.locale == "ja_JP"
 
 
 def test_row_substitution_into_multiple_fields_stays_fully_typed() -> None:
@@ -87,7 +87,7 @@ def test_row_substitution_into_multiple_fields_stays_fully_typed() -> None:
   data:
     - { q: dog, target: btn.go, loc: en_US }
   preconditions:
-    runsOn: { ios: { locale: "${row.loc}" } }
+    device: { ios: { locale: "${row.loc}" } }
   steps:
     - type: { into: { id: search.field }, text: "${row.q}", submit: true }
     - tap: { id: "${row.target}" }
@@ -99,7 +99,7 @@ def test_row_substitution_into_multiple_fields_stays_fully_typed() -> None:
     assert len(out) == 1
     s = out[0]
     # Every substituted field carries through, and nested models are real objects (not raw dicts).
-    assert s.preconditions.runs_on_for("ios").get("locale") == "en_US"
+    assert s.preconditions.device.ios.locale == "en_US"
     assert s.steps[0].type is not None and s.steps[0].type.text == "dog"
     assert s.steps[1].tap is not None and s.steps[1].tap.id == "btn.go"
     assert s.expect[0].value is not None and s.expect[0].value.sel.id == "out"

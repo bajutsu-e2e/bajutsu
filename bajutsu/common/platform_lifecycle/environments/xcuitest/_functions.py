@@ -629,7 +629,7 @@ def _destination(device_type: str, udid: str) -> str:
 
 
 def effective_device_type(xcfg: XcuitestConfig | None) -> str:
-    """The target's `runsOn.kind`, defaulting to `"simulator"` when unconfigured.
+    """The target's `runsOn.ios.kind`, defaulting to `"simulator"` when unconfigured.
 
     The one place this default lives, so `XcuitestEnvironment.start` and `runner_source`'s caller
     (BE-0292's doctor disclosure) read the same value instead of each re-deriving it.
@@ -739,7 +739,7 @@ def runner_source(xcfg: XcuitestConfig | None, device_type: str) -> str:
             return f"none: {exc}"
         if signing_path is None:
             return (
-                "none: runsOn.kind: device needs driver.runner.testRunner or a signing file "
+                "none: runsOn.ios.kind: device needs driver.runner.testRunner or a signing file "
                 f"({describe_lookup()})"
             )
         return (

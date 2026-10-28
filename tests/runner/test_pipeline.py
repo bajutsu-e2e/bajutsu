@@ -393,7 +393,7 @@ def test_run_all_forces_erase_on_a_crash_triggered_retry() -> None:
 
 def test_run_all_forces_erase_on_a_crash_triggered_retry_against_an_xcuitest_simulator() -> None:
     # The production route this unit was written for: XCUITest against a Simulator (no
-    # `runsOn.kind: device`, no live WebDriver udid spec). The test above passes
+    # `runsOn.ios.kind: device`, no live WebDriver udid spec). The test above passes
     # `actuator=None`, which short-circuits `erase_precondition_supported` at its very first branch
     # (`actuator != "xcuitest" -> True`) without ever exercising `xcuitest_targets_real_device` /
     # `is_webdriver_endpoint` — so it proves nothing about the iOS lane specifically. This pins the
@@ -908,7 +908,7 @@ def test_run_all_honors_an_explicit_no_erase_override_on_a_crash_triggered_retry
 
 
 def test_run_all_skips_forced_erase_on_a_real_device() -> None:
-    # A real device (`runsOn.kind: device`) raises loudly on any `erase` precondition
+    # A real device (`runsOn.ios.kind: device`) raises loudly on any `erase` precondition
     # (`XcuitestEnvironment.start`) instead of honoring it — simctl cannot reach a physical device.
     # Forcing `erase` on a crash-triggered retry there would raise past this loop's own
     # `except BackendCrashError` and abort the whole run, not just fail the one scenario.
@@ -2506,7 +2506,7 @@ def test_the_run_resolves_a_system_alert_prompt_against_the_scenario_locale() ->
     scenario = Scenario.model_validate(
         {
             "name": "grant",
-            "preconditions": {"runsOn": {"ios": {"locale": "ja_JP"}}},  # overrides `_eff()`'s en_US
+            "preconditions": {"device": {"ios": {"locale": "ja_JP"}}},  # overrides `_eff()`'s en_US
             "steps": [
                 {"handleSystemAlert": {"prompt": "notifications", "choice": "grant", "timeout": 5}}
             ],

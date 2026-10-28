@@ -14,7 +14,7 @@ from bajutsu.analysis import stats as _stats
 from bajutsu.common import handoff
 from bajutsu.common.analytics import ledger as _usage_ledger
 from bajutsu.common.analytics import stats as _usage_stats
-from bajutsu.common.config import Config, load_config_file, resolve
+from bajutsu.common.config import Config, load_config_file, resolve, unknown_target
 from bajutsu.common.devices import os as device_os
 from bajutsu.common.drivers import base as driver_base
 from bajutsu.common.evidence import StepView, step_view
@@ -1196,7 +1196,7 @@ def resolve_scenario_pick(  # noqa: C901, PLR0911
 
     config = load_config_file(cfg)
     if target not in config.targets:
-        return {"error": f"unknown target: {target}"}, 400
+        return {"error": unknown_target(config, target, list_targets=False)}, 400
     namespaces: list[str] = list(resolve(config, target).id_namespaces)
 
     try:

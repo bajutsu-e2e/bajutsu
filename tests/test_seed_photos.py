@@ -81,7 +81,7 @@ def _pre(text: str) -> Preconditions:
     return load_scenarios(f"- name: t\n  preconditions: {text}\n  steps: []\n")[0].preconditions
 
 
-_SEED = "runsOn: { ios: { seedPhotos: [/fixtures/red.png] } }"
+_SEED = "device: { ios: { seedPhotos: [/fixtures/red.png] } }"
 
 
 def test_seed_photos_without_erase_is_a_problem() -> None:
@@ -106,12 +106,12 @@ def test_the_erase_flag_wins_over_the_scenario() -> None:
 
 
 def test_target_seed_photos_merge_under_the_scenario() -> None:
-    eff = _eff("    runsOn: { seedPhotos: [/fixtures/green.png] }\n")
+    eff = _eff("    runsOn: {ios: {seedPhotos: [/fixtures/green.png]}}\n")
     # The target's own list reaches a scenario that writes none, and needs the same erase.
     assert resolve_preconditions(eff, _pre("{}")).seed_photos == ["/fixtures/green.png"]
     assert check_preconditions(_pre("{}"), [eff])
     # A scenario's list replaces the target's, so an empty one seeds nothing and needs no erase.
-    empty = _pre("{ runsOn: { ios: { seedPhotos: [] } } }")
+    empty = _pre("{ device: { ios: { seedPhotos: [] } } }")
     assert resolve_preconditions(eff, empty).seed_photos == []
     assert check_preconditions(empty, [eff]) == []
 
@@ -125,7 +125,7 @@ def test_parse_seed_photos_in_yaml() -> None:
         "- name: t\n"
         "  preconditions:\n"
         "    run: { erase: true }\n"
-        "    runsOn: { ios: { seedPhotos: [fixtures/red.png, fixtures/green.png] } }\n"
+        "    device: { ios: { seedPhotos: [fixtures/red.png, fixtures/green.png] } }\n"
         "  steps:\n    - tap: { id: a }\n"
     )[0]
     assert scenario.preconditions.seed_photos_for("ios") == [

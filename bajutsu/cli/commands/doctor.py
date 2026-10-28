@@ -281,12 +281,12 @@ def _print_disclosures(
 def _subjects(eff: Effective, scenario: str) -> list[tuple[str, dict[str, str | list[str]]]]:
     """What `doctor` lists runs for: each scenario of *scenario*, or else the target itself.
 
-    A scenario's conditions are its `runsOn` block merged over the target's, as `run` merges them.
+    A scenario runs under its target's `runsOn` conditions, since a scenario declares none (BE-0469).
     """
     if not scenario:
         return [(f"target '{eff.target}'", dict(eff.conditions))]
     return [
-        (s.name, effective_conditions(eff, s.preconditions, engine_flag=False))
+        (s.name, effective_conditions(eff, engine_flag=False))
         for s in load_scenario_file(Path(scenario).read_text(encoding="utf-8")).scenarios
     ]
 
@@ -363,12 +363,9 @@ def runs_summary(
     if devices is None:
         lines.append(f"  declared runs only — {note}")
     for name, conditions in subjects:
+        # Every condition is the target's, whose ranges the loader already parsed (BE-0469).
         lines.append(f"  {name}:")
-        try:
-            lines += [_listed_line(run) for run in list_runs(eff, conditions, devices)]
-        except ValueError as e:
-            # A malformed range in the scenario fails its own `run` the same way; doctor names it.
-            lines.append(f"    {_RUN_MARKS['failed']} {e}")
+        lines += [_listed_line(run) for run in list_runs(eff, conditions, devices)]
     return lines
 
 

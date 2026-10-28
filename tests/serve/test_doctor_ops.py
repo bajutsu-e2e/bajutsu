@@ -394,7 +394,7 @@ def test_a_real_device_target_checks_usbmuxd_instead_of_a_booted_simulator(
             "  demo:\n"
             "    platform: ios\n"
             "    app: {id: com.demo}\n"
-            "    runsOn: {kind: device}\n"
+            "    runsOn: {ios: {kind: device}}\n"
         ),
     )
     payload, status = ops.doctor_check(state, {"target": "demo", "udid": "00008120-AAAA"})
@@ -405,3 +405,19 @@ def test_a_real_device_target_checks_usbmuxd_instead_of_a_booted_simulator(
     assert "Simulator booted" not in names
     (check,) = [c for c in payload["checks"] if c["name"] == "real device reachable"]
     assert "does not list device 00008120-AAAA" in check["detail"]
+
+
+def test_a_template_name_is_refused_as_a_template_not_a_target(tmp_path: Path) -> None:
+    # A template is never runnable (BE-0471), so the endpoint names it as one. It lists no targets:
+    # one config can hold several orgs' targets, and the list would show a caller the others'.
+    state = _state(
+        tmp_path,
+        "templates: { tpl: { platform: ios } }\n"
+        "targets:\n  real: { extends: tpl, app: { id: com.x } }\n",
+    )
+    payload, status = ops.doctor_check(state, {"target": "tpl"})
+    assert status == 400
+    assert payload["error"] == "'tpl' is a template, not a target"
+    payload, status = ops.doctor_check(state, {"target": "nope"})
+    assert status == 400
+    assert "real" not in payload["error"]

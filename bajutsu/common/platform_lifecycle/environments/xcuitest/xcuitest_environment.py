@@ -357,18 +357,18 @@ class XcuitestEnvironment(_DeviceEnvironment):
             if pre.erase:
                 raise simctl.DeviceError(
                     "erase is a simctl operation and does not apply to a real device "
-                    "(runsOn.kind: device)"
+                    "(runsOn.ios.kind: device)"
                 )
             if ios.app_path:
                 raise simctl.DeviceError(
                     "installing app.path through simctl does not apply to a real device "
-                    "(runsOn.kind: device); install the app and its device-build test "
+                    "(runsOn.ios.kind: device); install the app and its device-build test "
                     "runner out of band"
                 )
             if permissions:
                 raise simctl.DeviceError(
                     "permission grants use simctl and do not apply to a real device "
-                    "(runsOn.kind: device)"
+                    "(runsOn.ios.kind: device)"
                 )
             return self._spawn_cold(eff, pre, device_type, extra_env, permissions)
 

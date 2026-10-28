@@ -16,6 +16,7 @@ from bajutsu.common.config import (
     load_config_file,
     require_ios,
     resolve,
+    unknown_target,
     web_base_url,
     web_engine,
 )
@@ -84,7 +85,7 @@ def doctor_check(
     config = load_config_file(cfg)
     target_cfg = config.targets.get(target)
     if target_cfg is None:
-        return {"error": f"unknown target: {target}"}, 400
+        return {"error": unknown_target(config, target, list_targets=False)}, 400
 
     eff = resolve(config, target)
 

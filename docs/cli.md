@@ -142,9 +142,9 @@ uses it as always. Each self-declaring file has it checked for membership instea
   scenario that did not pass. `run` acquires no device for that scenario and runs the rest. When no scenario
   can run, `run` exits 2 and lists each reason.
 - **Device conditions form runs (BE-0452).** A target may declare a device condition:
-  `runsOn.model`, `runsOn.os`, `runsOn.avd`, `runsOn.apiLevel`, `runsOn.browser.version`, or a list
-  on `model`, `avd`, or `browser.engine`. A scenario's `preconditions.runsOn` block overrides the
-  target's conditions field by field. `run` reads every device of the `--udid` pool, makes one run
+  `runsOn.ios.model`, `runsOn.ios.os`, `runsOn.android.avd`, `runsOn.android.apiLevel`, `runsOn.browser.version`, or a list
+  on `model`, `avd`, or `browser.engine`. A scenario declares no condition of its own (BE-0469).
+  `run` reads every device of the `--udid` pool, makes one run
   per listed value and per major version of a range, and runs each on its own eligible devices
   ([configuration](configuration.md#device-conditions-runson)). Each run's evidence lands under
   `runs/<id>/run-NN/`. Its JUnit and Common Test Report Format (CTRF) test names carry its
@@ -160,8 +160,7 @@ uses it as always. Each self-declaring file has it checked for membership instea
 - **Preconditions come first (BE-0452).** Before any device work, `run` and `audit` check each
   scenario. They check it against the targets it drives. Some fields exist on one platform alone, such
   as `app.launch.args` or `run.tipKitHandling`. When no driven target's platform has such a field,
-  the command exits 2 and names it. So does a malformed `preconditions.runsOn` block, or a merged
-  `seedPhotos` without an effective `run.erase`
+  the command exits 2 and names it. So does a merged `seedPhotos` without an effective `run.erase`
   ([scenarios](scenarios.md#preconditions-environment-setup)).
 - No `AI usage:` line: `run` spends no tokens under any flag (BE-0402), so it installs no usage
   ledger and reports none. `record`, `crawl`, and `triage --ai` still do.
@@ -230,8 +229,8 @@ bajutsu doctor --target <name> [--udid booted] [--backend ...] [--config ...] [-
   the screen probe of a target on the grid's platform to the grid.
 - A device condition adds a `runs:` section. The conditions are `model` and `os` on iOS, `avd` and
   `apiLevel` on Android, and `browser.*` on the web.
-  The condition may come from the target's `runsOn` or from a scenario in the `--scenario` file.
-  The section lists the runs the conditions form, or the target's own runs without `--scenario`.
+  The conditions come from the target's `runsOn`. The section lists the runs they form, for each
+  scenario of the `--scenario` file, or for the target itself without `--scenario`.
   `doctor` reads the `--udid` pool the way `run` does and forms the same runs. Each line names the
   devices that fit the run:
 
@@ -1005,7 +1004,7 @@ On every other route, `--attach` exits 2 before touching any device. Those route
 
 - the `playwright` and `adb` backends;
 - the live route to an `appium` grid;
-- a target with `runsOn.kind: device`.
+- a target with `runsOn.ios.kind: device`.
 
 `--target` stays required. The bundle id and the id namespaces come from the target's config.
 
@@ -1416,10 +1415,6 @@ validation). No options.
 bajutsu schema > bajutsu.schema.json
 ```
 
-The scenario schema states a scenario's `preconditions.runsOn` per platform. Each platform lists
-the `runsOn` fields a scenario may set. The platform registry supplies the fields, so a new
-platform appears with no edit.
-
 ## `config schema`
 
 Prints the **JSON Schema** of `bajutsu.config.yaml` to stdout, for editor integration. No options.
@@ -1444,7 +1439,7 @@ Builds the generic XCUITest runner.
 
 Its one subcommand today, `build --device`, signs the runner for a real iPhone or iPad. The signing
 comes from the per-user signing file, and the build lands in a cache. A target with
-`runsOn.kind: device` and no `driver.runner.testRunner` then resolves to that cache. The build is an
+`runsOn.ios.kind: device` and no `driver.runner.testRunner` then resolves to that cache. The build is an
 authoring step on macOS with Xcode, and never runs inside `bajutsu run`.
 [iOS on a real device](ios-device-cloud.md#the-signed-device-runner) covers the signing file, the
 cache key, and the errors a run reports.

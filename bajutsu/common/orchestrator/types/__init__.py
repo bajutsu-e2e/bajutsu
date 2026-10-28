@@ -33,6 +33,7 @@ from .alert_guard_config import (
     AlertGuardConfig,
 )
 from .clock import Clock
+from .derived_secrets import DerivedSecrets, mask_derived_text
 from .device_control import DeviceControl
 from .drained_interruption_events import DrainedInterruptionEvents
 from .mailbox_reader import MailboxReader
@@ -59,6 +60,7 @@ __all__ = [
     "AlertTitleCheck",
     "BlockedHandler",
     "Clock",
+    "DerivedSecrets",
     "DeviceControl",
     "DrainedInterruptionEvents",
     "MailboxReader",
@@ -82,6 +84,7 @@ __all__ = [
     "collapsed_tree_note",
     "drain_actuations",
     "drain_interruptions",
+    "mask_derived_text",
     "observed_alert_labels",
     "prompt_title_check",
     "push_interruption_policy",
