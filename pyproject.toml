@@ -34,7 +34,9 @@ ai = ["anthropic>=0.50"]
 # Chromium binary is a separate `playwright install chromium` (see demos/web), not a pip dep.
 web = ["playwright>=1.49"]
 visual = ["pillow>=10.0"]
-mcp = ["fastmcp>=2.0.0"]
+# Capped below 4: fastmcp 4 (and mcp 2 behind it) is a breaking API move for bajutsu/mcp, so a
+# lock refresh or a grouped Dependabot bump must not take it implicitly.
+mcp = ["fastmcp>=2.0.0,<4"]
 # Amazon Bedrock provider for the AI paths (BAJUTSU_AI_PROVIDER=bedrock); pulls in boto3 for SigV4.
 # Layers the Bedrock variant onto the `ai` extra, which is the single source of the `anthropic`
 # version pin — so the Bedrock line only adds the `[bedrock]` extra, never a second version (BE-0111).
