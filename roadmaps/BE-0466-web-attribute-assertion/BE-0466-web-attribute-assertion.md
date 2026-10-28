@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0466](BE-0466-web-attribute-assertion.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0466") |
 | Topic | Verification & coverage |
 <!-- /BE-METADATA -->
@@ -173,14 +173,28 @@ Because the read is on demand, an attribute enters the run's output only when an
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Scenario model: `AttributeMatch`, the `attribute` kind, name validation
-- [ ] Driver protocol, capability token, preflight requirement, config validation, non-web drivers raise
-- [ ] `_attributes_for`, `EvalContext.attributes`, evaluator
-- [ ] Playwright `read_attribute`
-- [ ] Driver conformance case
-- [ ] Codegen
-- [ ] Web demo scenario
-- [ ] Documentation, schema, and vocabulary lists
+- [x] Scenario model: `AttributeMatch`, the `attribute` kind, name validation
+- [x] Driver protocol, capability token, preflight requirement, config validation, non-web drivers raise
+- [x] `_attributes_for`, `EvalContext.attributes`, evaluator
+- [x] Playwright `read_attribute`
+- [x] Driver conformance case
+- [x] Codegen
+- [x] Web demo scenario
+- [x] Documentation, schema, and vocabulary lists
+
+Log:
+
+- Proposed.
+- PR_LINK — Shipped all eight units in one change, built against today's tree with three deviations
+  from the design text. The config check reads a new `PlatformSchema.element_attribute` flag (true
+  for `web` and `fake`), because the config schema imports no driver and so cannot ask a backend
+  for its capabilities; a test pins the flag to each platform's `CAPABILITIES`. `QUERY_JS` stays
+  unchanged, because the BajutsuKit WebView bridge keeps a hand-copied twin of it
+  (`tests/test_dom_query_js_sync.py`); the driver reads through `ATTRIBUTE_QUERY_JS`, derived from
+  `QUERY_JS` by string substitution so the two walks cannot drift. The conformance suite has no
+  per-capability skip, so the new case follows the existing capability-promise shape. The web demo
+  scenario passes under the new `E2E_WAIT_FLOOR` and fails without it (`actual='loading'`), which
+  shows the poll is what catches the settling `data-state`.
 
 ## References
 

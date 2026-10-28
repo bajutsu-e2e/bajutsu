@@ -132,6 +132,7 @@ final class ComponentsUITests: XCTestCase {
 | `enabled` / `disabled` | `XCTAssertTrue/False(...isEnabled)` |
 | `selected` | `XCTAssertTrue(...isSelected)` |
 | `count` (equals/atLeast/atMost) | `matchingId(glob).count`（id 単体は `exists ? 1 : 0`）を `XCTAssertEqual/GreaterThanOrEqual/LessThanOrEqual` |
+| `attribute` | `// TODO: attribute(name: "href", equals: "/docs") — web-only; not generated`（BE-0466） |
 
 ## 未対応は TODO コメントに落とす
 
@@ -242,6 +243,7 @@ test.describe('Components', () => {
 | `enabled` / `disabled` | `.toBeEnabled()` / `.toBeDisabled()` |
 | `selected` | `.toBeChecked()` |
 | `count` (equals/atLeast/atMost) | `.toHaveCount(n)`。atLeast/atMost は `await loc.count()` を比較 |
+| `attribute` (equals/contains/matches/absent) | `await expect(loc).toHaveAttribute('name', '…')`。`contains` はエスケープした正規表現、`matches` は正規表現そのものを渡します。`absent` は `await expect(loc).not.toHaveAttribute('name')` を出力します（BE-0466） |
 
 XCUITest や UI Automator と異なり、web backend はネットワーク通信を実際に傍受します。そのため
 `request` / `requestSequence` アサーション（および `until: { request }` の待機）は、この出力先では
@@ -659,6 +661,7 @@ Gradle 自身のレポートとあわせて回収済みのディレクトリを�
 | `enabled` / `disabled` | `assertTrue/False(device.findObject(<by>).isEnabled)` |
 | `selected` | `assertTrue(device.findObject(<by>).isSelected)` |
 | `count` (equals/atLeast/atMost) | `device.findObjects(<by>).size` を `assertEquals` / `assertTrue(size >= n)` / `assertTrue(size <= n)` |
+| `attribute` | `// TODO: attribute(name: "href", equals: "/docs") — web-only; not generated`（BE-0466） |
 
 adb backend にはネットワーク傍受の面が無いので、ネットワークのアサーション（`request` / `requestSequence` /
 `responseSchema`）とデバイス制御の一群（`setLocation` / `push` / `setClipboard` など）はすべて、理由を明記した

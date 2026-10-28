@@ -12,6 +12,7 @@ Bajutsu の **Playwright** backend（[BE-0041](../../roadmaps/BE-0041-web-playwr
 | `app/help.html` | `index.html` のどこからもリンクされておらず、アドレスでしか開けないページ。`scenarios/navigate.yaml` が開きます |
 | `scenarios/smoke.yaml` | 決定論的なスモークシナリオ（iOS デモと同じ step/expect スキーマ） |
 | `scenarios/navigate.yaml` | `navigate` ステップで `help.html` を開き、相対参照で元のページへ戻ります（[BE-0464](../../roadmaps/BE-0464-web-navigate-step/BE-0464-web-navigate-step-ja.md)） |
+| `scenarios/attribute.yaml` | ホーム画面の `docs.link` の `href` を検証します。続いて `panel.load` をタップし、パネルの `data-state` が `loading` から `ready` に落ち着いて `aria-busy` が外れるのを待ちます（[BE-0466](../../roadmaps/BE-0466-web-attribute-assertion/BE-0466-web-attribute-assertion-ja.md)） |
 | `scenarios/network.yaml` | ネットワークスモーク（[BE-0282](../../roadmaps/BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md)）。モックされ、キャプチャされる `POST /api/sync` が秘密情報を運びます。`network` タグを付けてあるので、既定の `e2e`（`--no-network`）はこれを除外します |
 | `network/assert_redaction.py` | 永続化された `network.json` が Sync リクエストの秘密情報をマスクしていることを確認します。run の文法ではアサートできない redaction のギャップを塞ぎます |
 | `record/goals.txt` | `make -C demos/web record` が記述の起点にする自然言語ゴール |
@@ -29,6 +30,8 @@ make -C demos/web e2e
 ```
 
 web backend をインストールし（`uv sync --extra web` ＋ `playwright install chromium`）、`app/` を `127.0.0.1:8787` で配信し、スモークシナリオを Playwright backend で実行して、サーバを後始末します。実行は完全に決定論的で、合否はシナリオの機械アサーション（カウンタが `2` を示す）だけから決まり、LLM は関与しません。
+
+`e2e` は、Android のレーンと同じく `BAJUTSU_MIN_WAIT_TIMEOUT` を `E2E_WAIT_FLOOR`（既定は `10` 秒）に設定します。これにより、ステップの `assert` はこの下限の範囲でポーリングします。`scenarios/attribute.yaml` にはこのポーリングが必要です。パネルの `data-state` は、タップのあと約 400 ミリ秒のあいだ `loading` のままだからです。アサーションが成功した時点でポーリングは終わるので、この下限は上限としての待ち時間であって、固定の待機ではありません。値は `make -C demos/web e2e E2E_WAIT_FLOOR=<秒数>` で上書きできます。
 
 手で触る（または Web UI を向ける）には、`make -C demos/web app-serve` を実行し <http://127.0.0.1:8787/index.html> を開きます。
 

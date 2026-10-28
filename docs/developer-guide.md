@@ -310,7 +310,7 @@ classDiagram
         +Exists exists
         +TextMatch value
         +RequestMatch request
-        +14 kinds in all
+        +15 kinds in all
     }
     class Driver {
         <<Protocol, runtime>>
@@ -360,7 +360,7 @@ classDiagram
 
 **`Scenario`** ([`common/scenario/models/`](https://github.com/bajutsu-e2e/bajutsu/tree/main/bajutsu/common/scenario/models))
 is the authoring model, built on pydantic with `extra="forbid"`, so an unknown key fails the load
-rather than passing unnoticed. A `Step` carries one of 39 action fields, an `Assertion` one of 14
+rather than passing unnoticed. A `Step` carries one of 39 action fields, an `Assertion` one of 15
 kinds. The strictness matters because the scenario is the single artifact that outlives a session.
 
 **`Driver`** ([`common/drivers/base.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/bajutsu/common/drivers/base.py))
@@ -472,9 +472,9 @@ step loop polls directly; the rest dispatch through the action registry (section
 | Data and values | `http`, `totp`, `generate`, `email` | Produce or fetch a value: an HTTP call, a time-based one-time password (TOTP) code, a random value, a mailbox lookup. |
 | Composition and control flow | `use`, `web`, `manual`, `if`, `forEach` | Expand a component, scope a block to a WebView, mark a human takeover, or branch and loop. |
 
-### 4.4 The 14 assertion kinds
+### 4.4 The 15 assertion kinds
 
-Every `Assertion` (`common/scenario/models/assertions.py`) carries one of 14 fields, evaluated by
+Every `Assertion` (`common/scenario/models/assertions.py`) carries one of 15 fields, evaluated by
 `assertions/evaluate.py` (section 7.6) — a total function that returns a failing result rather than
 raising.
 
@@ -484,6 +484,7 @@ raising.
 | Network | `request`, `event`, `requestSequence`, `responseSchema` | Observed HTTP traffic — one exchange, an ordered sequence, or a response body against a schema. |
 | Screen comparison | `visual`, `golden` | A screenshot against a baseline image, or an element tree against a recorded one. |
 | Clipboard | `clipboard` | The device clipboard's current text. |
+| Element attribute | `attribute` | One HTML attribute of an element, read on demand (web only; BE-0466). |
 
 ### 4.5 Control flow, composition, and data
 
@@ -664,7 +665,7 @@ the authoring schema in `models/` and the pipeline that turns text into runnable
 |---|---|---|
 | `models/scenario.py` | `Scenario`, `Component`, `ScenarioFile`, `Preconditions`, `SystemAlertHandling` | The top-level document and the per-scenario setup. |
 | `models/steps.py` | `Step`, `If`, `ForEach`, `Use`, `Web`, `Interrupt`, `CleanupRule`, `Extract` | One step, plus the control-flow and lifecycle wrappers. |
-| `models/assertions.py` | `Assertion`, `Exists`, `TextMatch`, `CountMatch`, `RequestMatch`, `VisualMatch`, `GoldenMatch` | The 14 assertion kinds. |
+| `models/assertions.py` | `Assertion`, `Exists`, `TextMatch`, `CountMatch`, `RequestMatch`, `VisualMatch`, `GoldenMatch` | The 15 assertion kinds. |
 | `models/actions.py` | `TypeText`, `Swipe`, `Scroll`, `HttpRequest`, `Generate`, `Email`, `Totp`, and more | One model per action's arguments. |
 | `models/selector.py` | `Selector` | The authoring selector, converted to the runtime one by `as_selector()`. |
 | `load.py` · `load_expanded.py` | `load_scenario_file`, `load_scenarios` | Parse YAML, check the schema version. |

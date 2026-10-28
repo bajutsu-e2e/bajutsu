@@ -133,6 +133,7 @@ the selector at `el("UNSUPPORTED_SELECTOR")` — an honest gap, not a wrong gues
 | `enabled` / `disabled` | `XCTAssertTrue/False(...isEnabled)` |
 | `selected` | `XCTAssertTrue(...isSelected)` |
 | `count` (equals/atLeast/atMost) | `matchingId(glob).count` (a bare id uses `exists ? 1 : 0`) with `XCTAssertEqual/GreaterThanOrEqual/LessThanOrEqual` |
+| `attribute` | `// TODO: attribute(name: "href", equals: "/docs") — web-only; not generated` (BE-0466) |
 
 ## Unsupported constructs fall back to TODO comments
 
@@ -246,6 +247,7 @@ test.describe('Components', () => {
 | `enabled` / `disabled` | `.toBeEnabled()` / `.toBeDisabled()` |
 | `selected` | `.toBeChecked()` |
 | `count` (equals/atLeast/atMost) | `.toHaveCount(n)`; atLeast/atMost compare `await loc.count()` |
+| `attribute` (equals/contains/matches/absent) | `await expect(loc).toHaveAttribute('name', '…')`; `contains` passes an escaped regex and `matches` the regex itself; `absent` emits `await expect(loc).not.toHaveAttribute('name')` (BE-0466) |
 
 Unlike XCUITest and UI Automator, the web backend intercepts network traffic, so a `request` /
 `requestSequence` assertion (or an `until: { request }` wait) is not a TODO here. The emitted test
@@ -675,6 +677,7 @@ same limit the XCUITest emitter hits for NSPredicate `MATCHES`), so it stays a `
 | `enabled` / `disabled` | `assertTrue/False(device.findObject(<by>).isEnabled)` |
 | `selected` | `assertTrue(device.findObject(<by>).isSelected)` |
 | `count` (equals/atLeast/atMost) | `device.findObjects(<by>).size` with `assertEquals` / `assertTrue(size >= n)` / `assertTrue(size <= n)` |
+| `attribute` | `// TODO: attribute(name: "href", equals: "/docs") — web-only; not generated` (BE-0466) |
 
 The adb backend has no network-interception surface, so every network assertion (`request` /
 `requestSequence` / `responseSchema`) and the device-control family (`setLocation` / `push` /

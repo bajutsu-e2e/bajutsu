@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0466](BE-0466-web-attribute-assertion-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **承認済み** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0466") |
 | トピック | 検証とカバレッジ |
 <!-- /BE-METADATA -->
@@ -175,14 +175,23 @@ WebView を埋め込んだ iOS アプリでも、Bajutsu は BajutsuKit のブ�
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] シナリオのモデル：`AttributeMatch`、`attribute` の種類、属性名の検証
-- [ ] ドライバーのプロトコル、capability、preflight の要件、設定の検証、web 以外のドライバーの送出
-- [ ] `_attributes_for`、`EvalContext.attributes`、評価関数
-- [ ] Playwright の `read_attribute`
-- [ ] ドライバーの適合性テスト
-- [ ] コード生成
-- [ ] web のデモシナリオ
-- [ ] 文書、スキーマ、語彙の一覧
+- [x] シナリオのモデル：`AttributeMatch`、`attribute` の種類、属性名の検証
+- [x] ドライバーのプロトコル、capability、preflight の要件、設定の検証、web 以外のドライバーの送出
+- [x] `_attributes_for`、`EvalContext.attributes`、評価関数
+- [x] Playwright の `read_attribute`
+- [x] ドライバーの適合性テスト
+- [x] コード生成
+- [x] web のデモシナリオ
+- [x] 文書、スキーマ、語彙の一覧
+
+ログ：
+
+- 提案しました。
+- PR_LINK：8 つの単位をすべて 1 つの変更で実装しました。現在のコードに合わせて、設計の記述から 3 点を変えています。
+  1 点目として、設定の検証は `PlatformSchema` に新設した `element_attribute` を読みます（`web` と `fake` だけが真です）。設定のスキーマはドライバーを import しないので、バックエンドに capability を問い合わせられないためです。この値と各 platform の `CAPABILITIES` が一致することは、テストで固定しています。
+  2 点目として、`QUERY_JS` には手を加えていません。BajutsuKit の WebView ブリッジが `QUERY_JS` の写しを手で保っており、一致をテスト（`tests/test_dom_query_js_sync.py`）で確かめているためです。ドライバーは、`QUERY_JS` を文字列置換して作る `ATTRIBUTE_QUERY_JS` で読みます。置換で作るので、2 つの走査がずれることはありません。
+  3 点目として、ドライバーの適合性テストには capability ごとに省略する仕組みがありません。そこで新しいケースは、既存の「capability は約束」の形に合わせました。
+  Web デモのシナリオは、新設した `E2E_WAIT_FLOOR` の下では通り、外すと `actual='loading'` で失敗します。遅れて確定する `data-state` をとらえているのがポーリングであることを、この差で確かめました。
 
 ## 参考
 

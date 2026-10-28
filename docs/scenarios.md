@@ -2082,6 +2082,7 @@ are in [selectors](selectors.md#assertion-evaluation).
 | `responseSchema` | a captured response body conforms to a JSON Schema (needs `--network`) | `responseSchema: { request: { urlMatches: "/api/items" }, schema: items.json }` |
 | `visual` | the screen matches a baseline image (visual regression) | `visual: { baseline: home.png, threshold: 0.02 }` |
 | `clipboard` | the device pasteboard matches (read back via `simctl pbpaste`) | `clipboard: { equals: "COUPON123" }` / `clipboard: { matches: "\\d{6}" }` |
+| `attribute` | an element's HTML attribute matches, or is absent (web only) | `attribute: { sel: { id: docs.link }, name: href, equals: /docs }` / `attribute: { sel: { id: panel }, name: aria-busy, absent: true }` |
 
 - `exists` writes its selector **inline** (`{ id: ... }` directly). `negate` is optional.
 - `value` / `label` take `sel:` + **exactly one** of `equals` / `contains` / `matches`.
@@ -2093,6 +2094,7 @@ are in [selectors](selectors.md#assertion-evaluation).
 - `responseSchema` validates a captured **response body against a JSON Schema** ([details below](#responseschema-json-schema-of-a-response)); needs the `--network` run flag.
 - `visual` pixel-compares a screenshot against a baseline image ([details below](#visual-visual-regression)).
 - `clipboard` reads the device pasteboard (`simctl pbpaste`) and checks **exactly one** of `equals` / `matches` (regex) — the read-back half of `setClipboard`, for verifying a "copy" action. It needs the per-device control channel, so it is unavailable on the fake driver / in parallel runs and fails cleanly there ([BE-0052](../roadmaps/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)).
+- `attribute` takes `sel:` + `name:` + **exactly one** of `equals` / `contains` / `matches` / `absent: true`. See [details below](#attribute-html-attribute-of-an-element) and [BE-0466](../roadmaps/BE-0466-web-attribute-assertion/BE-0466-web-attribute-assertion.md). The web (Playwright) backend reads the attribute on demand. Any other backend fails it before the device lease.
 
 > **Locale caveat**: string comparisons on `label`/`value` and assertions that look at visible
 > text break under translation. Write these against the target's fixed `runsOn.ios.locale`, and write the selector
@@ -2312,6 +2314,51 @@ masked exactly as a rectangle is. A mask selector that matches nothing is a no-o
 on screen to hide); an ambiguous one fails, consistent with the determinism rule. Selector masks
 and rectangles can be mixed in one `exclude` list, and both work with an element-scoped comparison
 (a mask inside the cropped element is translated into the crop's coordinates).
+
+### `attribute` (HTML attribute of an element)
+
+```yaml
+- assert:
+    - attribute: { sel: { id: docs.link }, name: href, equals: /docs }
+    - attribute: { sel: { id: hero.image }, name: alt, contains: Bajutsu }
+    - attribute: { sel: { id: panel }, name: data-state, matches: "^(ready|idle)$" }
+    - attribute: { sel: { id: panel }, name: aria-busy, absent: true }
+```
+
+`attribute` checks one HTML attribute of one element on the web (Playwright) backend
+([BE-0466](../roadmaps/BE-0466-web-attribute-assertion/BE-0466-web-attribute-assertion.md)). It
+covers what the element tree does not carry. Examples are a link's `href`, an image's `alt`, and a
+`data-*` or `aria-*` state attribute.
+
+- **`sel`** resolves the same way it does for `value`. No match fails the assertion, and two or
+  more matches fail it as ambiguous. The element must be one the web query lists: one with a
+  `data-testid`, a `role`, or an interactive tag. A bare `<img>` needs a `data-testid`.
+- **`name`** must be a valid HTML attribute name. An empty name fails to load. A name holding a
+  space, a quote, `>`, `/`, `=`, or a control character fails too. Bajutsu never lowercases the name. It
+  reaches the DOM's `getAttribute` as written. HTML elements match it case-insensitively. SVG and
+  MathML elements match it case-sensitively.
+- **The operator** is one of four, and a scenario names one alone. `equals`, `contains`, and
+  `matches` (a regular expression) follow the rules of `value` and `label`. `absent: true` passes
+  when the element has no attribute by that name. The scenario loader refuses `absent: false`.
+- **Presence differs from emptiness.** A present attribute with an empty value reads as `""`. So
+  `equals: ""` passes and `absent: true` fails. A missing attribute fails `equals`, `contains`, and
+  `matches`. The reason says so: `expected equals='x' but attribute 'href' is absent`. A mismatch
+  prints the actual value: `expected equals='/docs' but actual='/about'`. That reason passes the
+  artifact redaction boundary like every other reason.
+- **`${...}` tokens** in the expected string expand like any other assertion field.
+
+`attribute` works in a step's `assert`, in `expect`, in an `if` condition, and in an `interrupts`
+condition. A `wait` step cannot use it. The runner reads the attribute on demand, right after each
+query that feeds the block. A step's `assert` re-reads it on every tick of the condition wait. The poll stops once the attribute matches or the lane's wait floor runs out. The floor comes
+from `BAJUTSU_MIN_WAIT_TIMEOUT`. Element snapshots, goldens, crawl output, and reports gain no
+field. A report shows merely the attributes an assertion names.
+
+The assertion needs the `elementAttribute` capability, and the web backend alone declares it. On
+any other backend, the capability preflight fails the scenario before any device lease. The check
+finds an `attribute` anywhere, the iOS WebView context of a `web:` block included. Config
+validation also refuses an `attribute` in a non-web target's `hooks.interrupts` at load time. `attribute`
+reads attributes, not DOM properties: the `value` assertion keeps covering a form control's live
+value.
 
 ## Network mocks (deterministic stubs)
 

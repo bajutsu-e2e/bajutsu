@@ -344,12 +344,15 @@ Assertion ::=
   | { responseSchema: <ResponseSchemaMatch> }   # validate a captured response body against a JSON Schema (BE-0048)
   | { visual:   <VisualMatch> }
   | { clipboard: <ClipboardMatch> }   # read-back of the device pasteboard (simctl pbpaste)
+  | { attribute: <AttributeMatch> }   # an HTML attribute of one element, read on demand (web only; BE-0466)
   | { golden:   <GoldenMatch> }       # compare the live element tree to a recorded golden file (BE-0006)
 
 TextMatch  ::= { sel: <Selector> } & ( {equals:string} | {contains:string} | {matches:string} )
 CountMatch ::= { sel: <Selector> } & ( {equals:integer} | {atLeast:integer} | {atMost:integer} )
 CountOp    ::= ( {equals:integer} | {atLeast:integer} | {atMost:integer} )   # a count comparison with no selector — an EventMatch's multiplicity
 ClipboardMatch ::= ( {equals:string} | {matches:string} )   # exactly one; matches is a regex
+AttributeMatch ::= { sel: <Selector>, name: string }   # name: a valid HTML attribute name, never lowercased
+               & ( {equals:string} | {contains:string} | {matches:string} | {absent:true} )   # exactly one
 GoldenMatch ::= { path: string }   # resolved against the golden context's base directory (BE-0006)
 
 VisualMatch ::= {                  # pixel-compare the screen against a baseline image
@@ -463,6 +466,7 @@ error). This table is the **authoritative list of "exactly one / at least one / 
 | `TextMatch` (`value`/`label`) | **exactly one** of `equals` / `contains` / `matches` | `scenario/models/assertions.py` |
 | `CountMatch` (`count`) | **exactly one** of `equals` / `atLeast` / `atMost` | `scenario/models/assertions.py` |
 | `ClipboardMatch` (`clipboard`) | **exactly one** of `equals` / `matches` | `scenario/models/assertions.py` |
+| `AttributeMatch` (`attribute`) | **exactly one** of `equals` / `contains` / `matches` / `absent: true` (`absent: false` is rejected); `name` a non-empty, valid HTML attribute name | `scenario/models/assertions/attribute_match.py` |
 | `RequestMatch` | **≥ 1** of `method`/`url`/`urlMatches`/`path`/`pathMatches`/`query`/`body`/`status`/`bodyMatches` (`count` is not a match field); a `query`/`body` dictionary is non-empty and holds only quoted scalars, `$matches`/`$exists` operator maps, and (in `body`) nested maps and lists | `scenario/models/assertions.py` |
 | `EventMatch` (`event`) | **≥ 1** of `method`/`url`/`urlMatches`/`path`/`pathMatches`/`query`/`body` | `scenario/models/assertions.py` |
 | `CountOp` (`event.count`) | **exactly one** of `equals` / `atLeast` / `atMost` | `scenario/models/assertions.py` |

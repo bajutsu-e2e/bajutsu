@@ -285,5 +285,6 @@ class AssertionResult:
 | `disabled` | `resolve_unique` | `notEnabled` トレイトが **有る** |
 | `selected` | `resolve_unique` | `selected` トレイトが有る |
 | `request` | 観測した通信を照合（要素ツリーではない） | `count` 指定時は `equals`/`atLeast`/…、無指定なら 1 件以上（[network](network.md)） |
+| `attribute` | driver の `read_attribute` の中で `resolve_unique`（web のみ） | 属性を `equals`/`contains`/`matches` で比較、または `absent` を確認 |
 
-> `exists` だけ `find_all`（複数許容）を使い、他の単一要素アサーションは `resolve_unique`（曖昧は失敗）を使います。「2 件あるのに値を検証しようとした」場合も決定的に失敗します。上の表は、このページの解決セマンティクスが関わる 8 種別（要素ツリーを読む 7 種別と、要素ではなくキャプチャした HTTP(S) 通信を検査する `request`）をカバーします。残る `event` / `requestSequence` / `responseSchema` / `visual` / `clipboard` / `golden` の 6 種別は要素解決を経由しません。全種別は [scenarios](scenarios.md#アサーション-dsl) を参照してください。
+> `exists` だけ `find_all`（複数許容）を使い、他の単一要素アサーションは `resolve_unique`（曖昧は失敗）を使います。「2 件あるのに値を検証しようとした」場合も決定的に失敗します。上の表は、このページの解決セマンティクスが関わる 9 種別（要素ツリーを読む 7 種別、要素ではなくキャプチャした HTTP(S) 通信を検査する `request`、web ドライバーの中で同じ `resolve_unique` によりセレクタを解決して実際のページから属性を読む `attribute`）をカバーします。残る `event` / `requestSequence` / `responseSchema` / `visual` / `clipboard` / `golden` の 6 種別は要素解決を経由しません。全種別は [scenarios](scenarios.md#アサーション-dsl) を参照してください。
