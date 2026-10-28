@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-totp-window-alignment-ja.md)
+**English** · [日本語](BE-0474-totp-window-alignment-ja.md)
 
-# BE-XXXX — Wait for a TOTP window with enough time left
+# BE-0474 — Wait for a TOTP window with enough time left
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-totp-window-alignment.md) |
+| Proposal | [BE-0474](BE-0474-totp-window-alignment.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0474") |
 | Topic | Scenario authoring features |
 <!-- /BE-METADATA -->
 
