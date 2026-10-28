@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0473](BE-0473-config-run-group-and-interrupts-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **承認済み** |
+| 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0473") |
 | トピック | ドライバとバックエンドのアーキテクチャ |
 | 関連 | [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)、[BE-0314](../BE-0314-scenario-interrupt-handlers/BE-0314-scenario-interrupt-handlers-ja.md)、[BE-0406](../BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md)、[BE-0401](../BE-0401-system-alert-handling-dsl-consolidation/BE-0401-system-alert-handling-dsl-consolidation-ja.md)、[BE-0177](../BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)、[BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications-ja.md)、[BE-0221](../BE-0221-android-scenario-portability-guarantee/BE-0221-android-scenario-portability-guarantee-ja.md) |
@@ -364,12 +364,22 @@ iOS の `tipKitHandling` だけだったからです。解決後の `Effective` 
 
 - [ ] 単位 1：割り込みエントリ
 - [ ] 単位 2：reinstall の段階
-- [ ] 単位 3：evidence のフィールド
+- [x] 単位 3：evidence のフィールド
 - [ ] 単位 4：`run` の削除
-- [ ] 単位 5：通知の範囲
-- [ ] 単位 6：アンカー用のキー
+- [x] 単位 5：通知の範囲
+- [x] 単位 6：アンカー用のキー
 - [ ] 単位 7：設定ファイルとシナリオ
 - [ ] 単位 8：ドキュメント
+
+ログ：
+
+- PR A：単位 3、5、6 を実装しました。`evidence` に `collectNetwork`、`visualCompare`、`secrets` を
+  加え、`run` はこの 3 つのキーを、移動先を示すエラーで拒否します。ターゲットは `notify` を受け付けなく
+  なり、ローダは `x-` で始まるトップレベルのキーを無視します。これらのキーを書いているデモの設定と
+  ドキュメントも同じ変更で直しました。後の単位が動かすキーが残るので、単位 7 と 8 は未完了のままです。
+  *通知の範囲* からは 1 点ずれています。エンドポイントの `targets:` は config のターゲット名ではなく
+  シナリオ名で絞り込むので、ターゲット自身の `notify` を config で置き換える手段はありません。
+  それでも、メンテナの判断で設計どおり削除しました。
 
 ## 参考
 

@@ -90,7 +90,7 @@ def _eff_with_secrets(*names: str) -> Effective:
     decl = "".join(f"        - {n}\n" for n in names)
     return resolve(
         load_config(
-            f"targets:\n  x:\n    platform: ios\n    app: {{id: com.x}}\n    run:\n      secrets:\n{decl}"
+            f"targets:\n  x:\n    platform: ios\n    app: {{id: com.x}}\n    evidence:\n      secrets:\n{decl}"
         ),
         "x",
     )

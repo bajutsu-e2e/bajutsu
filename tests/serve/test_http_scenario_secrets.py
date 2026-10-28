@@ -34,7 +34,7 @@ def _project_with_secrets(tmp_path: Path, *, demo_secrets: str, other_secrets: s
     scn_dir.mkdir()
     (scn_dir / "smoke.yaml").write_text("- name: a\n  steps:\n    - tap: { id: x }\n")
     cfg = tmp_path / "bajutsu.config.yaml"
-    other = f"    run: {{secrets: {other_secrets}}}\n" if other_secrets else ""
+    other = f"    evidence: {{secrets: {other_secrets}}}\n" if other_secrets else ""
     cfg.write_text(
         (
             "targets:\n"
@@ -42,7 +42,7 @@ def _project_with_secrets(tmp_path: Path, *, demo_secrets: str, other_secrets: s
             "    platform: ios\n"
             f"    app: {{id: com.example.demo}}\n"
             f"    paths: {{scenarios: {scn_dir}}}\n"
-            f"    run: {{secrets: {demo_secrets}}}\n"
+            f"    evidence: {{secrets: {demo_secrets}}}\n"
             "  other:\n"
             "    platform: ios\n"
             "    app: {id: com.example.other}\n"

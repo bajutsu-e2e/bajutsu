@@ -289,11 +289,11 @@ def test_a_scenarios_setup_prelude_key_is_gone() -> None:
 
 
 def test_merge_layer_merges_dicts_replaces_lists_unions_two_and_clears_with_null() -> None:
-    base = {"run": {"secrets": ["A"], "erase": True}, "evidence": {"capture": ["x"]}, "keep": 1}
-    over = {"run": {"secrets": ["B", "A"], "erase": None}, "evidence": {"capture": ["y"]}}
+    base = {"run": {"erase": True}, "evidence": {"capture": ["x"], "secrets": ["A"]}, "keep": 1}
+    over = {"run": {"erase": None}, "evidence": {"capture": ["y"], "secrets": ["B", "A"]}}
     assert merge_layer(base, over) == {
-        "run": {"secrets": ["A", "B"]},
-        "evidence": {"capture": ["y"]},
+        "run": {},
+        "evidence": {"capture": ["y"], "secrets": ["A", "B"]},
         "keep": 1,
     }
 
@@ -596,16 +596,13 @@ def test_an_appium_worker_runs_run_specs_and_refuses_a_batch() -> None:
         "evidence: { redact: { fields: null } }",
         "evidence: { redact: null }",
         "evidence: null",
-        "run: { secrets: null }",
-        "run: null",
+        "evidence: { secrets: null }",
     ],
 )
 def test_null_cannot_clear_a_team_wide_secret_or_redaction(written: str) -> None:
     from pydantic import ValidationError
 
-    defaults = (
-        "defaults:\n  run: { secrets: [TEAM] }\n  evidence: { redact: { fields: [password] } }\n"
-    )
+    defaults = "defaults:\n  evidence: { secrets: [TEAM], redact: { fields: [password] } }\n"
     with pytest.raises(ValidationError, match="null cannot clear it"):
         load_config(
             defaults + f"targets:\n  t: {{ platform: ios, app: {{ id: com.x }}, {written} }}\n"

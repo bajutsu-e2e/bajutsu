@@ -12,13 +12,12 @@ from ._model import _Model
 from .ai_settings import AiSettings
 from .evidence import Evidence
 from .hooks import Hooks
-from .notify_endpoint import NotifyEndpoint
 from .paths import Paths
 from .platform.registry import schema_for, validate_group, validate_model
 from .run_policy import RunPolicy
 from .services import Services
 
-# The eleven keys a target accepts, in the order the documentation lists them.
+# The ten keys a target accepts, in the order the documentation lists them.
 TARGET_KEYS: tuple[str, ...] = (
     "platform",
     "app",
@@ -30,8 +29,14 @@ TARGET_KEYS: tuple[str, ...] = (
     "evidence",
     "paths",
     "ai",
-    "notify",
 )
+
+# A key a target no longer accepts, and where its value goes now. The loader reads none of them, so
+# the error is the whole migration path an author gets.
+MOVED_TARGET_KEYS: dict[str, str] = {
+    "notify": "the top-level `notify` list, which alone says where results go; an endpoint's "
+    "`targets:` narrows it to scenario names (BE-0473)",
+}
 
 
 @cache
@@ -81,14 +86,15 @@ class TargetConfig(_Model):
     paths: Paths = Field(default_factory=Paths)
     # Per-target AI provider/model/endpoint/key (BE-0047), overriding `defaults.ai` field by field.
     ai: AiSettings | None = None
-    # Per-target webhook notification override (BE-0099). None inherits the top-level `notify:`.
-    notify: list[NotifyEndpoint] | None = None
 
     @model_validator(mode="before")
     @classmethod
     def _platform_groups(cls, data: Any, info: ValidationInfo) -> Any:
         if not isinstance(data, dict):
             return data
+        for old, new in MOVED_TARGET_KEYS.items():
+            if old in data:
+                raise ValueError(f"targets.<name>.{old} moved to {new}")
         unknown = [k for k in data if k not in TARGET_KEYS]
         if unknown:
             raise ValueError(

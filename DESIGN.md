@@ -404,13 +404,13 @@ bajutsu codegen <scenario.yaml> --target <name> --emit xcuitest -o UITests/   # 
 
 `bajutsu.config.yaml` を 2 層（`defaults` × `targets`）で持ちます。値の解決順は **既定 < アプリ < シナリオ** で、右ほど優先します（テストに近いほうが勝ちます）。
 
-target が受け付けるキーは次の 11 個で、未知のキーは読み込み時に失敗します。
+target が受け付けるキーは次の 10 個で、未知のキーは読み込み時に失敗します。
 
 - `platform`（必須。`ios` / `android` / `web` / `fake`）
 - `app` / `runsOn` / `driver`（形がプラットフォームで変わるグループ）
-- `services` / `run` / `hooks` / `evidence` / `paths` / `ai` / `notify`
+- `services` / `run` / `hooks` / `evidence` / `paths` / `ai`
 
-`defaults` は、プラットフォームに依らないグループ（`services` / `run` / `hooks` / `evidence` / `paths` / `ai`）を直接持ちます。形がプラットフォームで変わるグループは `defaults.platforms.<platform>` の下に置きます。辞書はキーごとにマージし（target が優先）、target の `null` は継承した値を消します。リストは置き換えますが、`run.secrets` と `evidence.redact` だけは和集合を取ります。グループ分けの理由は [BE-0452](roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md) にあります。
+`defaults` は、プラットフォームに依らないグループ（`services` / `run` / `hooks` / `evidence` / `paths` / `ai`）を直接持ちます。形がプラットフォームで変わるグループは `defaults.platforms.<platform>` の下に置きます。辞書はキーごとにマージし（target が優先）、target の `null` は継承した値を消します。リストは置き換えますが、`evidence.secrets` と `evidence.redact` だけは和集合を取ります。グループ分けの理由は [BE-0452](roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md) にあります。結果の通知先（`notify`）はトップレベルのリストだけが決め、target ごとには持ちません（[BE-0473](roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts-ja.md)）。名前が `x-` で始まるトップレベルのキーは読み込み時に無視するので、target 同士で共有する YAML アンカーの置き場所に使えます。
 
 ```yaml
 reservedNamespaces: [auth, nav]  # 共有フロー / コンポーネントの id 契約（§7.3）

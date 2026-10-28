@@ -16,13 +16,13 @@ from bajutsu.common.scenario import Redact, Scenario, Selector, Step, TypeText
 def test_secrets_union_defaults_and_app() -> None:
     cfg = load_config(
         "defaults:\n"
-        "  run:\n"
+        "  evidence:\n"
         "    secrets: [globalKey]\n"
         "targets:\n"
         "  demo:\n"
         "    platform: ios\n"
         "    app: {id: com.demo}\n"
-        "    run:\n"
+        "    evidence:\n"
         "      secrets: [appToken]\n"
     )
     eff = resolve(cfg, "demo")

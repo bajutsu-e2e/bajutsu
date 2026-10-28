@@ -525,7 +525,7 @@ worker both drop such a name and log it, without its value:
 | Name prefixes | `LD_`, `DYLD_`, `PYTHON`, `BAJUTSU_` |
 
 On macOS and Linux the deny list matches a name in its exact case; on Windows, case does not matter. The same rule
-applies to a config's `ai.keyEnv` and its `run.secrets` names. A denied `ai.keyEnv` makes the server
+applies to a config's `ai.keyEnv` and its `evidence.secrets` names. A denied `ai.keyEnv` makes the server
 read `ANTHROPIC_API_KEY` and log a warning.
 
 A run that waits for a worker says why. The wait ends once a live worker advertises every
@@ -966,7 +966,7 @@ It is stored, masked, and rotated exactly like the API key above.
 
 The same store also holds a scenario's **own** declared secrets
 ([BE-0274](../roadmaps/BE-0274-serve-scenario-secrets/BE-0274-serve-scenario-secrets.md)) — the
-`run.secrets` names a config lists for `${secrets.X}`. Previously the only way to supply these was the
+`evidence.secrets` names a config lists for `${secrets.X}`. Previously the only way to supply these was the
 `.env` the process inherited; now an admin sets each one from the settings panel's **Scenario
 secrets** section, and on the hosted control plane it lands in the same per-org encrypted `secrets`
 table (reusing `BAJUTSU_SECRETS_KEY`, already required above — no new key), write-once and masked

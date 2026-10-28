@@ -132,7 +132,7 @@ preconditions:
 
 シナリオは、アプリを識別したりビルドしたりするフィールド（`id`、`path`、`build`、`startWhen`、
 `idNamespaces`）を設定できません。`runsOn.kind` と `runsOn.emulate` も同じです。これらはターゲットが
-持ちます。`run.secrets` はターゲット側の和集合のままなので、シナリオからは設定できません。
+持ちます。`evidence.secrets` はターゲット側の和集合のままなので、シナリオからは設定できません。
 
 > **各フィールドは、デバイスを操作する前に、シナリオが動かすターゲットと照合します。** 動かすどの
 > ターゲットのプラットフォームにもない `app` のフィールドや、iOS 専用の `run` のフィールドは、無視せずに
@@ -1379,7 +1379,7 @@ run を止めます。ファイルが外したターゲットを選ぶことは�
 解決されます。シナリオの `primaryTarget` には解決されません。上で述べた、入れ子の深さによらない
 省略時の解決は、シナリオ自身のステップにだけ働きます。
 
-run 全体で共有されるものが2つあります。`redact` の秘密情報の集合は、宣言済みの各ターゲット自身の秘密情報（`run.secrets`）
+run 全体で共有されるものが2つあります。`redact` の秘密情報の集合は、宣言済みの各ターゲット自身の秘密情報（`evidence.secrets`）
 の和集合を取ります。その和集合が、すべてのターゲットの証跡をマスクします。広くマスクしすぎるほうが安全な
 誤りだからです。run ディレクトリは run 単位の成果物で、もともとターゲットごとではありません。
 
@@ -1823,7 +1823,7 @@ expect:
 | `exact` | ピクセル完全一致。いずれかのチャネルが異なればそのピクセルは「差分」として計上されます。 | はい（後方互換） |
 | `pixelmatch` | 知覚的 YIQ 色差 + アンチエイリアシング検出。サブピクセルレンダリングノイズや 1 ピクセルのエッジシフトを許容します。 | いいえ |
 
-`compare` を省略すると、ターゲットの `run.visualCompare` 設定（`defaults.run` または `targets.<name>.run` で指定）にフォールバックし、さらに未設定なら `exact` になります。
+`compare` を省略すると、ターゲットの `evidence.visualCompare` 設定（`defaults.evidence` または `targets.<name>.evidence` で指定）にフォールバックし、さらに未設定なら `exact` になります。
 
 `threshold` は許容する差分ピクセルの割合（既定 `0.0` = 完全一致）で、すべてのエンジン共通です。`colorTolerance`（0–1、既定 `0.1`）は `pixelmatch` のピクセル単位の知覚的色差許容値、`antialiasing`（既定 `true`）はアンチエイリアスされたピクセルを差分から除外します。`exclude` は比較前にマスクする領域のリストで、ステータスバーや時計などに使います。各要素は、スクリーンショットのピクセル座標で表す矩形（`{ x, y, w, h }`）か、マスク対象の要素を指す `{ selector: <Selector> }`（BE-0171）のどちらかです。後者は評価時に要素のフレームへ解決されます。baseline は `approve` コマンド（[cli](cli.md#approve)）か `serve` UI で作成・更新します。baseline が無いとアサーションは失敗します。`overrideStatusBar` と併用すると時計やバッテリーを固定できます。差分は `report.html` に表示されます。`pixelmatch` では、除外されなかった（非 AA）ピクセルのみが差分画像に表示されます。`approve` とレポートの差分ストリップが読むのは、シナリオ末尾の `expect` の結果だけです。ステップ自身の `assert` に含めた `visual` エントリは、最初の baseline を手動で用意してください（上記の[`assert`](#assert中間検証)を参照）。
 
@@ -2089,10 +2089,10 @@ uv run bajutsu run --target showcase-swiftui --tag smoke --exclude wip   # run @
 
 ### シークレット（`${secrets.X}`）
 
-シークレットの環境変数名を config で宣言します（`run: { secrets: [API_TOKEN, ...] }`）。宣言した各名 `X` は環境から解決され、**アクション時**に実行ステップへ `${secrets.X}` として置換されます。シナリオファイルは **トークン**を保持し、実値は持ちません。さらにリテラル値は証跡で **自動マスク**されるため、シークレットはコミットしてもレビューしても安全です。`${params.*}` / `${row.*}`（ロード時の展開）と異なり、この名前空間は run ループが解決します。
+シークレットの環境変数名を config で宣言します（`evidence: { secrets: [API_TOKEN, ...] }`）。宣言した各名 `X` は環境から解決され、**アクション時**に実行ステップへ `${secrets.X}` として置換されます。シナリオファイルは **トークン**を保持し、実値は持ちません。さらにリテラル値は証跡で **自動マスク**されるため、シークレットはコミットしてもレビューしても安全です。`${params.*}` / `${row.*}`（ロード時の展開）と異なり、この名前空間は run ループが解決します。
 
 ```yaml
-# config が宣言: run: { secrets: [API_TOKEN] }
+# config が宣言: evidence: { secrets: [API_TOKEN] }
 steps:
   - type: { text: "${secrets.API_TOKEN}", into: { id: auth.token } }   # real value typed; token kept in the report
 ```

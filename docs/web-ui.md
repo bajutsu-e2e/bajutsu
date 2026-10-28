@@ -306,15 +306,15 @@ its alert guard is the native path alone (BE-0315), which clears the common prom
 consults none.
 
 **Scenario secrets** ([BE-0274](../roadmaps/BE-0274-serve-scenario-secrets/BE-0274-serve-scenario-secrets.md))
-lists the secrets the *bound config* declares — the environment-variable names under its `run.secrets`
+lists the secrets the *bound config* declares — the environment-variable names under its `evidence.secrets`
 list that a scenario references as `${secrets.X}`
-([Secrets](configuration.md#secrets-runsecrets), [BE-0032](../roadmaps/BE-0032-secret-variables/BE-0032-secret-variables.md)). The panel shows
+([Secrets](configuration.md#secrets-evidencesecrets), [BE-0032](../roadmaps/BE-0032-secret-variables/BE-0032-secret-variables.md)). The panel shows
 one **write-once** field per declared name (masked, never displayed again, just like the API key), so
 you can provision a scenario's credentials from the Web UI instead of `export`ing them or hand-editing
 a `.env` before launching `serve`. A value set here materializes under its own declared name, and a
 spawned **Replay** / **Record** / **Crawl** inherits it so `${secrets.X}` resolves in the run. The
 panel always shows, with an empty-state message explaining the feature when the bound config
-declares no secrets, and it refreshes when you switch to a config with a different `run.secrets` list —
+declares no secrets, and it refreshes when you switch to a config with a different `evidence.secrets` list —
 only names the config itself declares are settable, never an arbitrary environment variable. Setting
 one is an **admin** action on a role-gated deployment.
 

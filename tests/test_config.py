@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -261,14 +262,12 @@ def test_a_target_clears_an_inherited_value_with_null() -> None:
 def test_lists_replace_except_the_two_unions() -> None:
     cfg = load_config(
         "defaults:\n"
-        "  run: {secrets: [TEAM]}\n"
-        "  evidence: {capture: [screenshot.after], redact: {fields: [password]}}\n"
+        "  evidence: {capture: [screenshot.after], redact: {fields: [password]}, secrets: [TEAM]}\n"
         "targets:\n"
         "  x:\n"
         "    platform: ios\n"
         "    app: {id: com.x}\n"
-        "    run: {secrets: [OWN]}\n"
-        "    evidence: {capture: [elements], redact: {fields: [token]}}\n"
+        "    evidence: {capture: [elements], redact: {fields: [token]}, secrets: [OWN]}\n"
     )
     eff = resolve(cfg, "x")
     assert eff.secrets == ["TEAM", "OWN"]  # union: a target never unmasks a team-wide secret
@@ -303,7 +302,7 @@ def test_unknown_defaults_platform_is_rejected() -> None:
 )
 def test_a_flat_or_removed_target_key_is_rejected(removed: str) -> None:
     # BE-0452 regrouped the keys and moved where a run happens out of the target; the error names
-    # the eleven keys a target accepts rather than Pydantic's generic extra-field message.
+    # the keys a target accepts rather than Pydantic's generic extra-field message.
     with pytest.raises(ValidationError, match="a target accepts platform, app, runsOn"):
         load_config(f"targets:\n  s:\n    platform: ios\n    app: {{id: com.x}}\n    {removed}\n")
 
@@ -1189,23 +1188,17 @@ def test_notify_unknown_event_rejected() -> None:
         )
 
 
-def test_notify_target_override() -> None:
-    cfg = load_config(
-        "notify:\n"
-        "- {format: slack, url: '${secrets.A}'}\n"
-        "targets:\n"
-        "  s:\n"
-        "    platform: ios\n"
-        "    app: {id: com.x}\n"
-        "    notify:\n"
-        "    - format: slack\n"
-        "      url: ${secrets.B}\n"
-        "      'on': [always]\n"
-    )
-    eff = resolve(cfg, "s")
-    assert len(eff.notify) == 1
-    assert eff.notify[0].url == "${secrets.B}"
-    assert eff.notify[0].on == ["always"]
+def test_a_target_level_notify_names_the_top_level_list() -> None:
+    # BE-0473: the top-level list alone says where results go.
+    with pytest.raises(ValidationError, match=r"targets\.<name>\.notify moved to the top-level"):
+        load_config(
+            "targets:\n"
+            "  s:\n"
+            "    platform: ios\n"
+            "    app: {id: com.x}\n"
+            "    notify:\n"
+            "    - {format: slack, url: '${secrets.B}'}\n"
+        )
 
 
 def test_notify_absent_resolves_to_empty() -> None:
@@ -1236,7 +1229,7 @@ def test_visual_compare_defaults_to_exact() -> None:
 def test_visual_compare_from_defaults() -> None:
     cfg = load_config(
         "defaults:\n"
-        "  run: {visualCompare: pixelmatch}\n"
+        "  evidence: {visualCompare: pixelmatch}\n"
         "targets:\n"
         "  s:\n"
         "    platform: ios\n"
@@ -1248,12 +1241,12 @@ def test_visual_compare_from_defaults() -> None:
 def test_visual_compare_target_overrides_defaults() -> None:
     cfg = load_config(
         "defaults:\n"
-        "  run: {visualCompare: pixelmatch}\n"
+        "  evidence: {visualCompare: pixelmatch}\n"
         "targets:\n"
         "  s:\n"
         "    platform: ios\n"
         "    app: {id: com.x}\n"
-        "    run: {visualCompare: exact}\n"
+        "    evidence: {visualCompare: exact}\n"
     )
     assert resolve(cfg, "s").visual_compare == "exact"
 
@@ -1264,7 +1257,7 @@ def test_visual_compare_target_only() -> None:
         "  s:\n"
         "    platform: ios\n"
         "    app: {id: com.x}\n"
-        "    run: {visualCompare: pixelmatch}\n"
+        "    evidence: {visualCompare: pixelmatch}\n"
     )
     assert resolve(cfg, "s").visual_compare == "pixelmatch"
 
@@ -1276,7 +1269,7 @@ def test_visual_compare_invalid_rejected() -> None:
             "  s:\n"
             "    platform: ios\n"
             "    app: {id: com.x}\n"
-            "    run: {visualCompare: ssim}\n"
+            "    evidence: {visualCompare: ssim}\n"
         )
 
 
@@ -1307,6 +1300,37 @@ def test_parse_config_dict_drops_orgs() -> None:
     )
     assert not hasattr(cfg, "orgs")
     assert "demo" in cfg.targets
+
+
+def test_an_anchor_under_an_x_key_validates_like_the_written_out_block() -> None:
+    # BE-0473: an `x-` key only hosts a YAML anchor, so a merged `<<` block resolves exactly as the
+    # same block written in place, and the host key itself never reaches validation.
+    anchored = load_config(
+        "x-app: &app\n"
+        "  launch: {env: {UITEST: '1'}}\n"
+        "  idNamespaces: [stable, horse]\n"
+        "targets:\n"
+        "  s:\n"
+        "    platform: ios\n"
+        "    app:\n"
+        "      <<: *app\n"
+        "      id: com.x\n"
+        "      idNamespaces: []\n"
+    )
+    written = load_config(
+        "targets:\n"
+        "  s:\n"
+        "    platform: ios\n"
+        "    app: {id: com.x, launch: {env: {UITEST: '1'}}, idNamespaces: []}\n"
+    )
+    assert anchored == written
+    assert resolve(anchored, "s") == resolve(written, "s")
+
+
+def test_only_the_x_prefix_is_ignored_at_the_top_level() -> None:
+    # The prefix is the whole exception: a misspelled top-level key still fails as unknown.
+    with pytest.raises(ValidationError, match="xapp"):
+        load_config("xapp: {a: 1}\ntargets: {}\n")
 
 
 def test_load_config_drops_top_level_ui() -> None:
@@ -1373,11 +1397,38 @@ def test_target_erase_and_network_resolve() -> None:
         "  s:\n"
         "    platform: ios\n"
         "    app: {id: com.x}\n"
-        "    run: {erase: true, network: false}\n"
+        "    run: {erase: true}\n"
+        "    evidence: {collectNetwork: false}\n"
     )
     eff = resolve(cfg, "s")
     assert eff.run_defaults.erase is True
     assert eff.run_defaults.network is False
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("network: false", "evidence.collectNetwork"),
+        ("visualCompare: exact", "evidence.visualCompare"),
+        ("secrets: [A]", "evidence.secrets"),
+    ],
+)
+def test_a_run_key_moved_to_evidence_names_its_new_location(old: str, new: str) -> None:
+    # BE-0473 reads none of the old keys, so the error is the whole migration path an author gets.
+    target = f"targets:\n  s:\n    platform: ios\n    app: {{id: com.x}}\n    run: {{{old}}}\n"
+    with pytest.raises(ValidationError, match=rf"run\.\w+ moved to {re.escape(new)}"):
+        load_config(target)
+    with pytest.raises(ValidationError, match=rf"run\.\w+ moved to {re.escape(new)}"):
+        load_config(f"defaults:\n  run: {{{old}}}\ntargets: {{}}\n")
+    with pytest.raises(ValidationError, match=rf"ios\.run\.\w+ moved to {re.escape(new)}"):
+        load_config(f"defaults:\n  platforms:\n    ios:\n      run: {{{old}}}\ntargets: {{}}\n")
+
+
+def test_collect_network_defaults_on_and_inherits_from_defaults() -> None:
+    target = "  s:\n    platform: ios\n    app: {id: com.x}\n"
+    assert resolve(load_config("targets:\n" + target), "s").run_defaults.network is True
+    cfg = load_config("defaults:\n  evidence: {collectNetwork: false}\ntargets:\n" + target)
+    assert resolve(cfg, "s").run_defaults.network is False
 
 
 def test_target_system_alert_handling_bool_carries_off() -> None:

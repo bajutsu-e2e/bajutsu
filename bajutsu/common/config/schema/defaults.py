@@ -12,7 +12,7 @@ from .evidence import Evidence
 from .hooks import Hooks
 from .paths import Paths
 from .platform.registry import GROUPS, allowed_fields, schema_for
-from .run_policy import RunPolicy
+from .run_policy import MOVED_RUN_KEYS, RunPolicy
 from .services import Services
 
 DEFAULTS_KEYS: tuple[str, ...] = (
@@ -45,7 +45,7 @@ class Defaults(_Model):
 
     The shared groups sit directly here; the platform-shaped groups sit under `platforms.<platform>`.
     `ai` merges field by field in `resolve`; every other dictionary merges key by key, with the
-    target winning, and the lists replace except `run.secrets` and `evidence.redact`, which union.
+    target winning, and the lists replace except `evidence.secrets` and `evidence.redact`, which union.
     """
 
     services: Services | None = None
@@ -81,6 +81,11 @@ class Defaults(_Model):
                 accepted = allowed_fields(schema.model(group))
                 if group == "run":
                     accepted = (*allowed_fields(RunPolicy), *accepted)
+                    if moved := [k for k in written if k in MOVED_RUN_KEYS]:
+                        raise ValueError(
+                            f"defaults.platforms.{platform}.run.{moved[0]} moved to "
+                            f"{MOVED_RUN_KEYS[moved[0]]} (BE-0473)"
+                        )
                 if unknown := [k for k in written if k not in accepted]:
                     raise ValueError(
                         f"defaults.platforms.{platform}.{group}: unknown field(s) "

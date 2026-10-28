@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
-# The two lists that union rather than replace: replacing `run.secrets` would let a target that adds
+# The lists that union rather than replace: replacing `evidence.secrets` would let a target that adds
 # one secret stop masking every team-wide one, and the same holds for each `redact` rule list.
 _UNION_LISTS: frozenset[tuple[str, ...]] = frozenset(
     {
-        ("run", "secrets"),
+        ("evidence", "secrets"),
         ("evidence", "redact", "labels"),
         ("evidence", "redact", "headers"),
         ("evidence", "redact", "fields"),
@@ -19,7 +19,6 @@ _UNION_LISTS: frozenset[tuple[str, ...]] = frozenset(
 # A `null` here would clear the union, or the block that holds it, and so silently drop every
 # team-wide secret or redaction rule; a target may add to them but never wipe them.
 _NO_NULL: frozenset[tuple[str, ...]] = _UNION_LISTS | {
-    ("run",),
     ("evidence",),
     ("evidence", "redact"),
 }

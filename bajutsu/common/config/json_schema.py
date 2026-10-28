@@ -96,6 +96,9 @@ def config_json_schema() -> dict[str, Any]:
         "additionalProperties": False,
     }
     defs.pop("PlatformDefaults", None)
+    # The loader drops a top-level `x-` key, which hosts a YAML anchor (BE-0473); an editor
+    # validating against this schema would otherwise flag the documented pattern.
+    schema["patternProperties"] = {"^x-": {}}
     return {"$schema": DIALECT, **schema}
 
 

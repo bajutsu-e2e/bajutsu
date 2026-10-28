@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 import yaml
-from jsonschema import Draft202012Validator
+from jsonschema import Draft202012Validator, ValidationError
 from typer.testing import CliRunner
 
 from bajutsu.cli import app
@@ -105,6 +105,15 @@ targets:
 def test_a_config_the_loader_accepts_validates() -> None:
     load_config(_EXAMPLE)
     Draft202012Validator(_SCHEMA).validate(yaml.safe_load(_EXAMPLE))
+
+
+def test_an_x_anchor_host_validates_and_any_other_unknown_key_fails() -> None:
+    # The loader drops a top-level `x-` key (BE-0473), so the schema admits it too, and only it.
+    anchored = "x-app: &app { idNamespaces: [stable] }\n" + _EXAMPLE
+    load_config(anchored)
+    Draft202012Validator(_SCHEMA).validate(yaml.safe_load(anchored))
+    with pytest.raises(ValidationError):
+        Draft202012Validator(_SCHEMA).validate({"xapp": {}, "targets": {}})
 
 
 # Every config the repository ships: the root one and each demo's (`tmp/` and worktrees are not).
