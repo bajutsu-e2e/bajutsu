@@ -19,7 +19,7 @@ _ATTRIBUTE_NAME = re.compile(r"[^\s\"'>/=\x00-\x1f\x7f]+")
 class AttributeMatch(_Model):
     """`attribute`: exactly one of equals / contains / matches / `absent: true`, on attribute `name`.
 
-    Read on demand by the web driver (`Driver.read_attribute`) when the assertion is evaluated, so
+    Read on demand by the web driver (`Driver.read_attributes`) when the assertion is evaluated, so
     the element snapshot never carries attributes no assertion names.
     """
 

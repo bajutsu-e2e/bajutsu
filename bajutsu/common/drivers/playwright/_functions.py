@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from bajutsu.common.backend_cli import simctl
 from bajutsu.common.drivers import base
-from bajutsu.common.drivers.dom import ATTRIBUTE_QUERY_JS, QUERY_JS, parse_dom_with_attribute
+from bajutsu.common.drivers.dom import ATTRIBUTE_QUERY_JS, QUERY_JS, parse_dom_with_attributes
 
 from ._frame_scope import _FrameScope
 from ._page import _Page
@@ -160,12 +160,12 @@ _FRAME_QUERY_JS = f"""
 }}
 """
 
-# `_FRAME_QUERY_JS` reading one attribute per record (BE-0466), for `_iframe_records`.
+# `_FRAME_QUERY_JS` reading the named attributes per record (BE-0466), for `_iframe_records`.
 _FRAME_ATTRIBUTE_QUERY_JS = f"""
-(attr) => {{
+(attrs) => {{
   let crossOrigin = false;
   try {{ void window.top.document; }} catch (e) {{ crossOrigin = true; }}
-  return {{crossOrigin, records: ({ATTRIBUTE_QUERY_JS})(attr)}};
+  return {{crossOrigin, records: ({ATTRIBUTE_QUERY_JS})(attrs)}};
 }}
 """
 
@@ -191,11 +191,11 @@ def _iframe_elements(page: _Page) -> list[tuple[base.Element, _FrameScope]]:
 
 
 def _iframe_records(
-    page: _Page, attribute: str | None = None
-) -> list[tuple[base.Element, _FrameScope, str | None]]:
-    """Every iframe's elements, each with its frame and the `attribute` read for it (BE-0466).
+    page: _Page, attributes: list[str] | None = None
+) -> list[tuple[base.Element, _FrameScope, list[str | None]]]:
+    """Every iframe's elements, each with its frame and the `attributes` read for it (BE-0466).
 
-    `attribute` None reads none, and every third member is None.
+    `attributes` None reads none, and every third member is empty.
 
     Walks Playwright's frame tree rather than `contentDocument` from page JS, so a cross-origin
     iframe — out of reach of the parent's script — is read too, its elements marked
@@ -208,11 +208,11 @@ def _iframe_records(
     main = getattr(page, "main_frame", None)
     if main is None:
         return []
-    out: list[tuple[base.Element, _FrameScope, str | None]] = []
+    out: list[tuple[base.Element, _FrameScope, list[str | None]]] = []
     script = (
         _FRAME_QUERY_JS
-        if attribute is None
-        else f"() => ({_FRAME_ATTRIBUTE_QUERY_JS})({json.dumps(attribute)})"
+        if attributes is None
+        else f"() => ({_FRAME_ATTRIBUTE_QUERY_JS})({json.dumps(attributes)})"
     )
 
     def walk(
@@ -242,7 +242,9 @@ def _iframe_records(
             scope = _FrameScope(child, child_origin, (*hosts, (child, origin)))
             records = result.get("records") if isinstance(result, dict) else None
             cross_origin = isinstance(result, dict) and result.get("crossOrigin") is True
-            for el, value in parse_dom_with_attribute(records if isinstance(records, list) else []):
+            for el, value in parse_dom_with_attributes(
+                records if isinstance(records, list) else []
+            ):
                 x, y, w, h = el["frame"]
                 shifted = (x + child_origin[0], y + child_origin[1], w, h)
                 if _intersect(shifted, child_clip) is None:

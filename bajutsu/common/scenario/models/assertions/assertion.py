@@ -39,7 +39,7 @@ class Assertion(_Model):
     response_schema: ResponseSchemaMatch | None = Field(default=None, alias="responseSchema")
     visual: VisualMatch | None = None
     clipboard: ClipboardMatch | None = None
-    # Web only (BE-0466): read on demand through `Driver.read_attribute`, gated by `elementAttribute`.
+    # Web only (BE-0466): read on demand through `Driver.read_attributes`, gated by `elementAttribute`.
     attribute: AttributeMatch | None = None
     golden: GoldenMatch | None = None
     # Provenance (BE-0044): the natural-language phrase this check was normalized from. Not one of

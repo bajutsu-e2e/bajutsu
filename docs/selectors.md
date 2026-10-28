@@ -362,7 +362,7 @@ Per-kind mechanics:
 | `disabled` | `resolve_unique` | the `notEnabled` trait is **present** |
 | `selected` | `resolve_unique` | the `selected` trait is present |
 | `request` | matches over the observed network exchanges (not the element tree) | `equals`/`atLeast`/… via `count`, else ≥ 1 ([network](network.md)) |
-| `attribute` | `resolve_unique` inside the driver's `read_attribute` (web only) | compares the attribute via `equals`/`contains`/`matches`, or checks `absent` |
+| `attribute` | `resolve_unique` inside the driver's `read_attributes` (web only) | compares the attribute via `equals`/`contains`/`matches`, or checks `absent` |
 
 > Only `exists` uses `find_all` (allows multiple); the other single-element assertions use
 > `resolve_unique` (ambiguous fails). So "tried to check the value when there were two matches" also

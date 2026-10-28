@@ -714,7 +714,10 @@ class XcuitestDriver:
             "selectOption is web-backend-only, for a <select>; iOS has no native <select>"
         )
 
-    def read_attribute(self, sel: base.Selector, name: str) -> str | None:  # noqa: ARG002  # Driver shape
+    def read_attributes(
+        self,
+        reads: Sequence[tuple[base.Selector, str]],  # noqa: ARG002  # Driver shape
+    ) -> list[str | None | base.SelectorError]:
         raise base.UnsupportedAction("attribute is web-backend-only; iOS has no HTML attributes")
 
     def set_picker_value(self, sel: base.Selector, value: str) -> None:

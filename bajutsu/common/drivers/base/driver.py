@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Protocol, runtime_checkable
 
 from ._shared import Frame, Point
 from .element import Element
 from .selector import Selector
+from .selector_error import SelectorError
 
 
 @runtime_checkable
@@ -79,11 +81,15 @@ class Driver(Protocol):
     # a `<select>` has no native counterpart on iOS / Android, so those backends raise
     # UnsupportedAction (BE-0191).
     def select_option(self, sel: Selector, option: str) -> None: ...
-    # The value of the HTML attribute `name` on the element `sel` resolves to (via `resolve_unique`,
-    # so no match / two matches raise SelectorError), or None when the element has no such
-    # attribute. Read on demand rather than carried in every snapshot (BE-0466). Web-only: a backend
-    # without ELEMENT_ATTRIBUTE raises UnsupportedAction.
-    def read_attribute(self, sel: Selector, name: str) -> str | None: ...
+    # For each `(sel, name)`, the value of HTML attribute `name` on the element `sel` resolves to
+    # (via `resolve_unique`), None when the element has no such attribute, or the SelectorError
+    # resolving `sel` raised — returned, not raised, so one bad selector leaves the other reads
+    # intact. Every pair comes from one snapshot, so a block's attribute assertions are judged
+    # against one instant rather than one read apiece (BE-0466). Web-only: a backend without
+    # ELEMENT_ATTRIBUTE raises UnsupportedAction.
+    def read_attributes(
+        self, reads: Sequence[tuple[Selector, str]]
+    ) -> list[str | None | SelectorError]: ...
     # Move the picker wheel resolved by `sel` to the row whose value is `value` (BE-0356). iOS-only:
     # a wheel exposes no addressable row, so only XCUITest's `adjust(toPickerWheelValue:)` can land
     # on one deterministically; a backend without the PICKER_WHEEL capability raises

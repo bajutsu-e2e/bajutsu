@@ -20,10 +20,18 @@ from bajutsu.common.drivers.dom import (
     _norm_role,
     _str_or_none,
     parse_dom,
-    parse_dom_with_attribute,
+    parse_dom_with_attributes,
 )
 from bajutsu.common.drivers.playwright import PlaywrightDriver, _Started
 from bajutsu.common.drivers.playwright._functions import _FRAME_ATTRIBUTE_QUERY_JS, _FRAME_QUERY_JS
+
+
+def _one(driver: base.Driver, sel: base.Selector, name: str) -> str | None:
+    # One pair through the batch read; a selector failure comes back as a value, so re-raise it.
+    (result,) = driver.read_attributes([(sel, name)])
+    if isinstance(result, base.SelectorError):
+        raise result
+    return result
 
 
 def _rec(**kw: Any) -> dict[str, Any]:
@@ -1699,64 +1707,86 @@ def test_select_option_in_an_iframe_runs_in_that_frame() -> None:
     assert not any("closest('select')" in e for e in page.evaluated)
 
 
-# --- read_attribute (BE-0466) ---------------------------------------------------------------------
+# --- read_attributes (BE-0466) --------------------------------------------------------------------
 
 
 def test_attribute_query_js_is_the_query_walk_plus_one_field() -> None:
     # Derived from QUERY_JS, so the walk `resolve_unique` sees cannot drift from the query's.
-    assert ATTRIBUTE_QUERY_JS.count("attribute: el.getAttribute(attr)") == 2
-    assert (
-        ATTRIBUTE_QUERY_JS.replace(" attribute: el.getAttribute(attr),", "").replace(
-            "(attr) => {", "() => {", 1
-        )
-        == QUERY_JS
-    )
+    field = " attributes: attrs.map((a) => el.getAttribute(a)),"
+    assert ATTRIBUTE_QUERY_JS.count(field) == 2
+    assert ATTRIBUTE_QUERY_JS.replace(field, "").replace("(attrs) => {", "() => {", 1) == QUERY_JS
 
 
-def test_parse_dom_with_attribute_keeps_empty_apart_from_missing() -> None:
-    pairs = parse_dom_with_attribute(
+def test_parse_dom_with_attributes_keeps_empty_apart_from_missing() -> None:
+    pairs = parse_dom_with_attributes(
         [
-            _rec(identifier="a", attribute="/docs"),
-            _rec(identifier="b", attribute=""),
-            _rec(identifier="c", attribute=None),
+            _rec(identifier="a", attributes=["/docs"]),
+            _rec(identifier="b", attributes=[""]),
+            _rec(identifier="c", attributes=[None]),
             "nope",  # type: ignore[list-item]
         ]
     )
-    assert [(el["identifier"], v) for el, v in pairs] == [("a", "/docs"), ("b", ""), ("c", None)]
+    assert [(el["identifier"], v) for el, v in pairs] == [
+        ("a", ["/docs"]),
+        ("b", [""]),
+        ("c", [None]),
+    ]
 
 
 def test_read_attribute_resolves_through_resolve_unique() -> None:
     drv, page = _driver(
         [
-            _rec(identifier="docs", role="a", attribute="/docs", frame=[0, 0, 10, 10]),
-            _rec(identifier="twin", role="button", label="A", attribute="1", frame=[0, 20, 10, 10]),
-            _rec(identifier="twin", role="button", label="B", attribute="2", frame=[0, 40, 10, 10]),
+            _rec(identifier="docs", role="a", attributes=["/docs"], frame=[0, 0, 10, 10]),
+            _rec(
+                identifier="twin", role="button", label="A", attributes=["1"], frame=[0, 20, 10, 10]
+            ),
+            _rec(
+                identifier="twin", role="button", label="B", attributes=["2"], frame=[0, 40, 10, 10]
+            ),
         ]
     )
-    assert drv.read_attribute({"id": "docs"}, "href") == "/docs"
+    assert _one(drv, {"id": "docs"}, "href") == "/docs"
     # The name reaches the page JSON-encoded inside the derived walk, never spliced in raw.
-    assert page.evaluated[-1] == f'() => ({ATTRIBUTE_QUERY_JS})("href")'
-    assert drv.read_attribute({"id": "twin", "index": 1}, "data-n") == "2"
+    assert page.evaluated[-1] == f'() => ({ATTRIBUTE_QUERY_JS})(["href"])'
+    assert _one(drv, {"id": "twin", "index": 1}, "data-n") == "2"
     with pytest.raises(base.AmbiguousSelector):
-        drv.read_attribute({"id": "twin"}, "data-n")
+        _one(drv, {"id": "twin"}, "data-n")
     with pytest.raises(base.ElementNotFound):
-        drv.read_attribute({"id": "missing"}, "href")
+        _one(drv, {"id": "missing"}, "href")
 
 
 def test_read_attribute_reaches_an_iframe_element() -> None:
     child = _FakeChildFrame([], _FakeIframeHost([100, 50, 200, 150]))
-    rec = _rec(identifier="framed", role="a", attribute="/inside", frame=[10, 20, 30, 10])
+    rec = _rec(identifier="framed", role="a", attributes=["/inside"], frame=[10, 20, 30, 10])
     child.evaluate_returns = [{"crossOrigin": False, "records": [rec]}]
     drv, _ = _framed_driver([], [child])
-    assert drv.read_attribute({"id": "framed"}, "href") == "/inside"
+    assert _one(drv, {"id": "framed"}, "href") == "/inside"
     # The frame runs the attribute-reading walk with the name JSON-encoded, not the plain query.
-    assert child.evaluated == [f'() => ({_FRAME_ATTRIBUTE_QUERY_JS})("href")']
+    assert child.evaluated == [f'() => ({_FRAME_ATTRIBUTE_QUERY_JS})(["href"])']
 
 
 def test_read_attribute_refuses_content_identical_twins_that_disagree() -> None:
     twin = {"identifier": "status", "role": "status", "label": "Hi", "frame": [0, 0, 10, 10]}
-    drv, _ = _driver([_rec(**twin, attribute="a"), _rec(**twin, attribute="b")])
+    drv, _ = _driver([_rec(**twin, attributes=["a"]), _rec(**twin, attributes=["b"])])
     with pytest.raises(base.AmbiguousSelector, match="different 'data-state' values"):
-        drv.read_attribute({"id": "status"}, "data-state")
-    agree, _ = _driver([_rec(**twin, attribute="a"), _rec(**twin, attribute="a")])
-    assert agree.read_attribute({"id": "status"}, "data-state") == "a"
+        _one(drv, {"id": "status"}, "data-state")
+    agree, _ = _driver([_rec(**twin, attributes=["a"]), _rec(**twin, attributes=["a"])])
+    assert _one(agree, {"id": "status"}, "data-state") == "a"
+
+
+def test_read_attributes_reads_a_whole_block_in_one_walk() -> None:
+    drv, page = _driver(
+        [_rec(identifier="panel", role="status", attributes=["ready", None], frame=[0, 0, 10, 10])]
+    )
+    before = len(page.evaluated)
+    values = drv.read_attributes(
+        [
+            ({"id": "panel"}, "data-state"),
+            ({"id": "panel"}, "aria-busy"),
+            ({"id": "x"}, "data-state"),
+        ]
+    )
+    # One evaluate for every pair, the repeated name sent once, in first-seen order.
+    assert page.evaluated[before:] == [f'() => ({ATTRIBUTE_QUERY_JS})(["data-state", "aria-busy"])']
+    assert values[:2] == ["ready", None]
+    assert isinstance(values[2], base.ElementNotFound)

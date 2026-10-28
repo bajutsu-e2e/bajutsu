@@ -558,12 +558,12 @@ class DriverConformanceContract:
         # for no match — and one without it refuses with UnsupportedAction rather than reading None.
         driver = harness.with_screen([element(identifier="a")])
         if base.Capability.ELEMENT_ATTRIBUTE in driver.capabilities():
-            assert driver.read_attribute({"id": "a"}, "data-bajutsu-unset") is None
+            assert _one(driver, {"id": "a"}, "data-bajutsu-unset") is None
             with pytest.raises(base.ElementNotFound):
-                driver.read_attribute({"id": "missing"}, "data-bajutsu-unset")
+                _one(driver, {"id": "missing"}, "data-bajutsu-unset")
         else:
             with pytest.raises(base.UnsupportedAction):
-                driver.read_attribute({"id": "a"}, "data-bajutsu-unset")
+                _one(driver, {"id": "a"}, "data-bajutsu-unset")
 
     def test_picker_wheel_capability_matches_behavior(self, harness: ConformanceHarness) -> None:
         # capabilities() is a promise (BE-0356): a PICKER_WHEEL backend must not raise
@@ -883,3 +883,11 @@ class DriverConformanceContract:
         with pytest.raises(base.ElementNotTappable):
             driver.tap({"id": OBSTRUCTION_TARGET_ID})
         driver.tap({"id": OBSTRUCTION_CLEAR_ID})  # unobstructed — must not raise
+
+
+def _one(driver: base.Driver, sel: base.Selector, name: str) -> str | None:
+    # One pair through the batch read; a selector failure comes back as a value, so re-raise it.
+    (result,) = driver.read_attributes([(sel, name)])
+    if isinstance(result, base.SelectorError):
+        raise result
+    return result

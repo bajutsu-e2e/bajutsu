@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Sequence
 from pathlib import Path
 
 from bajutsu.common.drivers import base
@@ -336,7 +337,10 @@ class XcuitestLiveDriver:
     def select_option(self, sel: base.Selector, option: str) -> None:  # noqa: ARG002  # Driver shape
         raise base.UnsupportedAction("selectOption is web-only; iOS has no native <select>")
 
-    def read_attribute(self, sel: base.Selector, name: str) -> str | None:  # noqa: ARG002  # Driver shape
+    def read_attributes(
+        self,
+        reads: Sequence[tuple[base.Selector, str]],  # noqa: ARG002  # Driver shape
+    ) -> list[str | None | base.SelectorError]:
         raise base.UnsupportedAction("attribute is web-only; iOS has no HTML attributes")
 
     def set_picker_value(self, sel: base.Selector, value: str) -> None:  # noqa: ARG002  # Driver shape

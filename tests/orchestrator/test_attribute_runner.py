@@ -6,6 +6,8 @@ the lane's wait floor, and an `if` / `interrupts` condition reads it against the
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 import pytest
 from _orch import FakeClock, _scenario
 from conftest import el
@@ -105,7 +107,9 @@ def test_a_backend_that_cannot_read_fails_the_step_loudly() -> None:
     # The preflight refuses this before a lease; were it bypassed, the refusal must surface as the
     # step's failure rather than as an attribute that merely never matched.
     class _NoAttributes(FakeDriver):
-        def read_attribute(self, sel: base.Selector, name: str) -> str | None:
+        def read_attributes(
+            self, reads: Sequence[tuple[base.Selector, str]]
+        ) -> list[str | None | base.SelectorError]:
             raise base.UnsupportedAction("attribute is web-only")
 
     driver = _NoAttributes([el("cart", "Cart", ["button"])])
@@ -124,7 +128,9 @@ def test_a_backend_that_cannot_read_fails_the_step_loudly() -> None:
 )
 def test_a_refusal_outside_a_step_body_fails_only_the_scenario(body: dict[str, object]) -> None:
     class _NoAttributes(FakeDriver):
-        def read_attribute(self, sel: base.Selector, name: str) -> str | None:
+        def read_attributes(
+            self, reads: Sequence[tuple[base.Selector, str]]
+        ) -> list[str | None | base.SelectorError]:
             raise base.UnsupportedAction("attribute is web-only")
 
     result = run_scenario(
@@ -134,3 +140,36 @@ def test_a_refusal_outside_a_step_body_fails_only_the_scenario(body: dict[str, o
     )
     assert not result.ok
     assert result.failure is not None and "attribute is web-only" in result.failure
+
+
+def test_a_block_reads_all_its_attributes_in_one_call() -> None:
+    # One instant per tick: two reads a few milliseconds apart could pass a pair of values that
+    # never held together, so the whole block goes to the driver at once.
+    calls: list[list[tuple[base.Selector, str]]] = []
+
+    class _Counting(FakeDriver):
+        def read_attributes(
+            self, reads: Sequence[tuple[base.Selector, str]]
+        ) -> list[str | None | base.SelectorError]:
+            calls.append(list(reads))
+            return super().read_attributes(reads)
+
+    driver = _Counting([el("cart", "Cart", ["button"]), el("go", "Go", ["button"])])
+    driver.attributes[id(driver.screen[0])] = {"data-state": "ready", "aria-busy": "false"}
+    busy = {"attribute": {"sel": {"id": "cart"}, "name": "aria-busy", "equals": "false"}}
+    sc = _scenario({"name": "a", "steps": [{"assert": [_state("ready"), busy, _state("ready")]}]})
+    result = run_scenario(driver, sc, clock=FakeClock())
+    assert result.ok, result.failure
+    assert calls == [[({"id": "cart"}, "data-state"), ({"id": "cart"}, "aria-busy")]]
+
+
+def test_one_unresolved_selector_leaves_the_other_reads_intact() -> None:
+    driver = _driver("ready")
+    missing = {"attribute": {"sel": {"id": "nope"}, "name": "href", "equals": "/"}}
+    sc = _scenario({"name": "a", "steps": [{"assert": [_state("ready"), missing]}]})
+    result = run_scenario(driver, sc, clock=FakeClock())
+    assert not result.ok
+    step = result.steps[0]
+    by_kind = [(r.ok, r.reason) for r in step.assertion_results]
+    assert by_kind[0] == (True, "")
+    assert by_kind[1][0] is False and "nope" in by_kind[1][1]

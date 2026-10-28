@@ -22,29 +22,30 @@ _ExecSteps = Callable[[list[Step], base.Driver], str | None]
 def _attributes_for(
     driver: base.Driver, block: list[Assertion]
 ) -> dict[tuple[str, str], AttributeRead] | None:
-    """Read every `attribute` assertion's element in `block` once; None when the block has none.
+    """Read every `attribute` assertion's element in `block`; None when the block has none.
 
     Called right after each `query()` the block is polled against (BE-0466), so the read follows the
-    tree and a value an action settles a beat late is caught on a later tick. A selector that fails
-    to resolve becomes the assertion's reason rather than an exception, so the poll reads again
-    instead of aborting the step. A backend that cannot read raises `UnsupportedAction` through: the
-    preflight should have refused it, and a quiet `else` branch or a never-firing interrupt would hide
-    that it did not.
+    tree and a value an action settles a beat late is caught on a later tick. The whole block goes
+    in one `read_attributes` call, so its assertions are judged against one instant: two reads a few
+    milliseconds apart could pass a pair of values that never held together. A selector that fails
+    to resolve comes back as that pair's reason, so the poll reads again instead of aborting the
+    step. A backend that cannot read raises `UnsupportedAction` through: the preflight should have
+    refused it, and a quiet `else` branch or a never-firing interrupt would hide that it did not.
     """
-    reads: dict[tuple[str, str], AttributeRead] = {}
+    wanted: dict[tuple[str, str], tuple[base.Selector, str]] = {}
     for a in block:
-        if a.attribute is None:
-            continue
-        key = attribute_key(a.attribute)
-        if key in reads:
-            continue
-        try:
-            reads[key] = AttributeRead(
-                value=driver.read_attribute(a.attribute.sel.as_selector(), a.attribute.name)
-            )
-        except base.SelectorError as e:
-            reads[key] = AttributeRead(error=str(e))
-    return reads or None
+        if a.attribute is not None:
+            key = attribute_key(a.attribute)
+            wanted.setdefault(key, (a.attribute.sel.as_selector(), a.attribute.name))
+    if not wanted:
+        return None
+    results = driver.read_attributes(list(wanted.values()))
+    return {
+        key: AttributeRead(error=str(r))
+        if isinstance(r, base.SelectorError)
+        else AttributeRead(value=r)
+        for key, r in zip(wanted, results, strict=True)
+    }
 
 
 def _with_attributes(ctx: EvalContext, driver: base.Driver, block: list[Assertion]) -> EvalContext:

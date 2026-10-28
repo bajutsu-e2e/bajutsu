@@ -6,6 +6,7 @@ import contextlib
 import json
 import shutil
 import time
+from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import urljoin
@@ -18,7 +19,7 @@ from bajutsu.common.drivers.dom import (
     ATTRIBUTE_QUERY_JS,
     QUERY_JS,
     parse_dom,
-    parse_dom_with_attribute,
+    parse_dom_with_attributes,
 )
 from bajutsu.common.evidence import intervals
 
@@ -427,24 +428,25 @@ class PlaywrightDriver:
         return main + list(_iframe_elements(self._page))
 
     @_wedge_guard
-    def read_attribute(self, sel: base.Selector, name: str) -> str | None:
-        # One walk that carries the attribute beside each record, resolved by the same
-        # `resolve_unique` a tap uses (BE-0466): no window between finding the element and reading
-        # it, and no second matching rule that could disagree with the first. `name` reaches the
-        # script `json.dumps`-encoded, as `_point_hits` encodes its strings, never spliced in raw.
-        records = self._page.evaluate(f"() => ({ATTRIBUTE_QUERY_JS})({json.dumps(name)})")
-        pairs = parse_dom_with_attribute(records if isinstance(records, list) else [])
-        pairs += [(el, value) for el, _, value in _iframe_records(self._page, name)]
-        el = base.resolve_unique([e for e, _ in pairs], sel)
-        # `resolve_unique` collapses content-identical twins, which compare no attribute; twins that
-        # disagree on this one are two elements the read cannot tell apart, so they stay ambiguous.
-        values = {v for e, v in pairs if len(_collapse_identical_duplicates([el, e])) == 1}
-        if len(values) > 1:
-            raise base.AmbiguousSelector(
-                f"content-identical elements matched {sel!r} with different "
-                f"{name!r} values — give them a distinguishing `data-testid`"
-            )
-        return values.pop()
+    def read_attributes(
+        self, reads: Sequence[tuple[base.Selector, str]]
+    ) -> list[str | None | base.SelectorError]:
+        # One walk carries every requested attribute beside each record, so a whole block is read
+        # from one instant, and each pair resolves by the same `resolve_unique` a tap uses (BE-0466):
+        # no window between finding an element and reading it, and no second matching rule. The
+        # names reach the script `json.dumps`-encoded, as `_point_hits` encodes its strings.
+        names = list(dict.fromkeys(name for _, name in reads))
+        records = self._page.evaluate(f"() => ({ATTRIBUTE_QUERY_JS})({json.dumps(names)})")
+        rows = parse_dom_with_attributes(records if isinstance(records, list) else [])
+        rows += [(el, values) for el, _, values in _iframe_records(self._page, names)]
+        elements = [el for el, _ in rows]
+        out: list[str | None | base.SelectorError] = []
+        for sel, name in reads:
+            try:
+                out.append(_attribute_of(rows, elements, sel, name, names.index(name)))
+            except base.SelectorError as e:
+                out.append(e)
+        return out
 
     def _center(self, sel: base.Selector) -> base.Point:
         point, _, _ = self._center_with_element(sel)
@@ -980,3 +982,27 @@ class PlaywrightDriver:
 
     def capabilities(self) -> set[str]:
         return set(self.CAPABILITIES)
+
+
+def _attribute_of(
+    rows: list[tuple[base.Element, list[str | None]]],
+    elements: list[base.Element],
+    sel: base.Selector,
+    name: str,
+    column: int,
+) -> str | None:
+    """`name`'s value on the one element `sel` resolves to among `rows` (BE-0466)."""
+    el = base.resolve_unique(elements, sel)
+    # `resolve_unique` collapses content-identical twins, which compare no attribute; twins that
+    # disagree on this one are two elements the read cannot tell apart, so they stay ambiguous.
+    values = {
+        vals[column] if column < len(vals) else None
+        for e, vals in rows
+        if len(_collapse_identical_duplicates([el, e])) == 1
+    }
+    if len(values) > 1:
+        raise base.AmbiguousSelector(
+            f"content-identical elements matched {sel!r} with different "
+            f"{name!r} values — give them a distinguishing `data-testid`"
+        )
+    return values.pop()

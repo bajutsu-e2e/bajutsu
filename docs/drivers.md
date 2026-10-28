@@ -692,9 +692,12 @@ fits the same toolchain as `make check`. Implementation: `common/drivers/playwri
   `resolve_unique`/`find_all` against a `query()` snapshot and clicks the **frame center** by
   coordinate (`page.mouse.click`). It deliberately does **not** use Playwright's own
   `get_by_test_id().click()`, so selector semantics stay byte-identical to every other backend.
-- `read_attribute(sel, name)` (BE-0466) backs the `attribute` assertion. One `page.evaluate` runs
-  the same walk as `QUERY_JS`, with each record also carrying `getAttribute(name)`, and resolves
-  `sel` with the same `resolve_unique` a tap uses. It returns `None` for a missing attribute. Iframe,
+- `read_attributes(reads)` (BE-0466) backs the `attribute` assertion. It takes every
+  `(sel, name)` pair of an assertion block at once. One `page.evaluate` runs the same walk as
+  `QUERY_JS`, with each record also carrying `getAttribute` for every requested name, so the whole
+  block reads from one instant. Each `sel` resolves with the same `resolve_unique` a tap uses. A pair
+  gets its value, `None` for a missing attribute, or the `SelectorError` its selector raised, which
+  is returned rather than raised so the other pairs keep their reads. Iframe,
   covered, and off-viewport elements read like any other listed element. The other backends
   (XCUITest, adb, and the iOS WebView context) raise `UnsupportedAction`.
 - `type_text` types via `page.keyboard` (the orchestrator taps `into` first, focusing the field);

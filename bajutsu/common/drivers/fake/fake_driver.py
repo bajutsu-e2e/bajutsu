@@ -68,7 +68,7 @@ class FakeDriver:
         # are told apart by `within` / `traits` / `index` — so an identifier key could not separate
         # them. Seeded after construction, like `system_alert_buttons`.
         self.picker_wheel_options: dict[int, list[str]] = {}
-        # The HTML attributes `read_attribute` returns (BE-0466), keyed by `id()` of the `Element`
+        # The HTML attributes `read_attributes` returns (BE-0466), keyed by `id()` of the `Element`
         # in `screen` for the same reason as `picker_wheel_options`. Seeded after construction.
         self.attributes: dict[int, dict[str, str]] = {}
         # Identifiers of the two nodes `dismiss_blocking_tip` looks for in `screen`: the dismiss
@@ -239,11 +239,20 @@ class FakeDriver:
         self._log_target("selectOption", base.resolve_unique(self.screen, sel))
         self._record("select_option", (sel, option))
 
-    def read_attribute(self, sel: base.Selector, name: str) -> str | None:
-        # Resolved like an action (zero / ambiguous raise), then the seeded attributes decide; an
+    def read_attributes(
+        self, reads: Sequence[tuple[base.Selector, str]]
+    ) -> list[str | None | base.SelectorError]:
+        # Resolved like an action (zero / ambiguous fail), then the seeded attributes decide; an
         # element nobody seeded simply has none. Not recorded: a read is no actuation.
-        el = base.resolve_unique(self.screen, sel)
-        return self.attributes.get(id(el), {}).get(name)
+        out: list[str | None | base.SelectorError] = []
+        for sel, name in reads:
+            try:
+                el = base.resolve_unique(self.screen, sel)
+            except base.SelectorError as e:
+                out.append(e)
+                continue
+            out.append(self.attributes.get(id(el), {}).get(name))
+        return out
 
     def set_picker_value(self, sel: base.Selector, value: str) -> None:
         # Same resolution discipline as every other action: zero -> ElementNotFound, ambiguous ->

@@ -99,14 +99,14 @@ QUERY_JS = """
 }
 """
 
-# `QUERY_JS` with each record also carrying `getAttribute(attr)` (BE-0466's `read_attribute`), `null`
-# for a missing attribute. Derived rather than written out, so the walk — and with it what
+# `QUERY_JS` with each record also carrying `getAttribute(name)` for every name in `attrs` (BE-0466's
+# `read_attributes`), `null` for a missing attribute, so one walk serves a whole assertion block. Derived rather than written out, so the walk — and with it what
 # `resolve_unique` sees — cannot drift from the query's; `QUERY_JS` itself stays the string the
 # BajutsuKit WebView bridge mirrors (`tests/test_dom_query_js_sync.py`), which reads no attribute.
 _FRAME_FIELD = "frame: [r.x, r.y, r.width, r.height],"
 assert QUERY_JS.count(_FRAME_FIELD) == 2 and QUERY_JS.startswith("\n() => {")
-ATTRIBUTE_QUERY_JS = QUERY_JS.replace("() => {", "(attr) => {", 1).replace(
-    _FRAME_FIELD, f"{_FRAME_FIELD} attribute: el.getAttribute(attr),"
+ATTRIBUTE_QUERY_JS = QUERY_JS.replace("() => {", "(attrs) => {", 1).replace(
+    _FRAME_FIELD, f"{_FRAME_FIELD} attributes: attrs.map((a) => el.getAttribute(a)),"
 )
 
 # The trait a plain text element carries — the same name iOS reports for a static label.
@@ -187,17 +187,19 @@ def parse_dom(records: list[dict[str, Any]]) -> list[base.Element]:
     return [_to_element(r) for r in records if isinstance(r, dict)]
 
 
-def parse_dom_with_attribute(
+def parse_dom_with_attributes(
     records: list[dict[str, Any]],
-) -> list[tuple[base.Element, str | None]]:
-    """`parse_dom`, each Element paired with the attribute QUERY_JS read for it (BE-0466).
+) -> list[tuple[base.Element, list[str | None]]]:
+    """`parse_dom`, each Element paired with the attributes `ATTRIBUTE_QUERY_JS` read for it (BE-0466).
 
-    Unlike `value`, an empty string is kept: an attribute present with no value reads as `""`, which
-    an `attribute` assertion tells apart from a missing one (`None`).
+    Positional, in the order the names were passed to the script. Unlike `value`, an empty string is
+    kept: an attribute present with no value reads as `""`, which an `attribute` assertion tells
+    apart from a missing one (`None`).
     """
-    out: list[tuple[base.Element, str | None]] = []
+    out: list[tuple[base.Element, list[str | None]]] = []
     for r in records:
         if isinstance(r, dict):
-            v = r.get("attribute")
-            out.append((_to_element(r), None if v is None else str(v)))
+            raw = r.get("attributes")
+            values = [None if v is None else str(v) for v in raw] if isinstance(raw, list) else []
+            out.append((_to_element(r), values))
     return out

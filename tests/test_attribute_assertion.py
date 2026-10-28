@@ -30,6 +30,14 @@ from bajutsu.common.scenario import Assertion, Scenario
 from bajutsu.record.loop import settle_step
 
 
+def _one(driver: base.Driver, sel: base.Selector, name: str) -> str | None:
+    # One pair through the batch read; a selector failure comes back as a value, so re-raise it.
+    (result,) = driver.read_attributes([(sel, name)])
+    if isinstance(result, base.SelectorError):
+        raise result
+    return result
+
+
 def _attr(**fields: object) -> Assertion:
     return Assertion.model_validate({"attribute": {"sel": {"id": "docs.link"}, **fields}})
 
@@ -149,7 +157,7 @@ def test_preflight_fails_an_attribute_without_the_capability(
 def test_non_web_drivers_neither_advertise_nor_read(driver_cls: type) -> None:
     driver: Any = object.__new__(driver_cls)  # the refusal touches no device, so no construction
     with pytest.raises(base.UnsupportedAction, match="attribute"):
-        driver.read_attribute({"id": "a"}, "href")
+        _one(driver, {"id": "a"}, "href")
     caps: frozenset[str] = getattr(driver_cls, "CAPABILITIES", frozenset())
     assert base.Capability.ELEMENT_ATTRIBUTE not in caps
 
@@ -292,11 +300,11 @@ def test_the_mismatch_reason_prints_the_actual_value() -> None:
 def test_the_fake_driver_reads_seeded_attributes() -> None:
     driver = FakeDriver([el("docs.link", "Docs", ["link"]), el("other", "Other")])
     driver.attributes[id(driver.screen[0])] = {"href": "/docs"}
-    assert driver.read_attribute({"id": "docs.link"}, "href") == "/docs"
-    assert driver.read_attribute({"id": "docs.link"}, "alt") is None
-    assert driver.read_attribute({"id": "other"}, "href") is None
+    assert _one(driver, {"id": "docs.link"}, "href") == "/docs"
+    assert _one(driver, {"id": "docs.link"}, "alt") is None
+    assert _one(driver, {"id": "other"}, "href") is None
     with pytest.raises(base.ElementNotFound):
-        driver.read_attribute({"id": "missing"}, "href")
+        _one(driver, {"id": "missing"}, "href")
     assert base.Capability.ELEMENT_ATTRIBUTE in driver.capabilities()
 
 
@@ -328,3 +336,11 @@ def test_config_accepts_a_non_web_target_whose_interrupts_read_no_attribute() ->
         "attribute: {sel: {id: banner}, name: data-state, equals: open}", "exists: {id: b}"
     )
     assert load_config(text) is not None
+
+
+def test_the_fake_driver_returns_a_selector_failure_per_pair() -> None:
+    driver = FakeDriver([el("docs.link", "Docs", ["link"])])
+    driver.attributes[id(driver.screen[0])] = {"href": "/docs"}
+    found, missing = driver.read_attributes([({"id": "docs.link"}, "href"), ({"id": "x"}, "href")])
+    assert found == "/docs"
+    assert isinstance(missing, base.ElementNotFound)

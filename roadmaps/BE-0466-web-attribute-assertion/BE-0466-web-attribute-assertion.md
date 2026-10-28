@@ -196,6 +196,12 @@ Log:
   per-capability skip, so the new case follows the existing capability-promise shape. The web demo
   scenario passes under the new `E2E_WAIT_FLOOR` and fails without it (`actual='loading'`), which
   shows the poll is what catches the settling `data-state`.
+- [#2248](https://github.com/bajutsu-e2e/bajutsu/pull/2248) — Review follow-up: the driver method is `read_attributes(reads)`, a batch over every
+  `(sel, name)` pair of an assertion block, instead of the design's per-pair
+  `read_attribute(sel, name)`. One read per assertion let a block pass on values taken a few
+  milliseconds apart that never held together. One walk per block judges every assertion against
+  one instant, and costs one walk per tick instead of one per assertion. A selector failure comes
+  back as that pair's value, so the other pairs keep their reads.
 
 ## References
 

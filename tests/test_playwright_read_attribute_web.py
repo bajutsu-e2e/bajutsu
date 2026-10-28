@@ -1,4 +1,4 @@
-"""`PlaywrightDriver.read_attribute` against a real headless Chromium (BE-0466).
+"""`PlaywrightDriver.read_attributes` against a real headless Chromium (BE-0466).
 
 The read rides the query's own walk and resolves through `resolve_unique`, so it can only be pinned
 against a real DOM: whether `getAttribute` lands beside the right record, and whether a covered, an
@@ -16,6 +16,15 @@ import pytest
 
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.playwright import PlaywrightDriver
+
+
+def _one(driver: base.Driver, sel: base.Selector, name: str) -> str | None:
+    # One pair through the batch read; a selector failure comes back as a value, so re-raise it.
+    (result,) = driver.read_attributes([(sel, name)])
+    if isinstance(result, base.SelectorError):
+        raise result
+    return result
+
 
 if importlib.util.find_spec("playwright") is None:
     pytest.skip("Playwright (the web extra) is not installed", allow_module_level=True)
@@ -55,48 +64,48 @@ def driver() -> Iterator[PlaywrightDriver]:
 
 @pytest.mark.web
 def test_reads_through_an_identifier_and_a_label_selector(driver: PlaywrightDriver) -> None:
-    assert driver.read_attribute({"id": "docs.link"}, "href") == "/docs"
-    assert driver.read_attribute({"label": "Docs"}, "data-state") == "ready"
+    assert _one(driver, {"id": "docs.link"}, "href") == "/docs"
+    assert _one(driver, {"label": "Docs"}, "data-state") == "ready"
 
 
 @pytest.mark.web
 def test_missing_differs_from_empty(driver: PlaywrightDriver) -> None:
-    assert driver.read_attribute({"id": "bare"}, "href") is None
-    assert driver.read_attribute({"id": "busy"}, "aria-busy") == ""
+    assert _one(driver, {"id": "bare"}, "href") is None
+    assert _one(driver, {"id": "busy"}, "aria-busy") == ""
 
 
 @pytest.mark.web
 def test_covered_and_off_viewport_elements_read_like_any_other(driver: PlaywrightDriver) -> None:
-    assert driver.read_attribute({"id": "covered"}, "data-state") == "hidden"
-    assert driver.read_attribute({"id": "far"}, "data-state") == "far"
+    assert _one(driver, {"id": "covered"}, "data-state") == "hidden"
+    assert _one(driver, {"id": "far"}, "data-state") == "far"
 
 
 @pytest.mark.web
 def test_an_iframe_element_reads_from_its_own_document(driver: PlaywrightDriver) -> None:
-    assert driver.read_attribute({"id": "framed"}, "href") == "/inside"
+    assert _one(driver, {"id": "framed"}, "href") == "/inside"
 
 
 @pytest.mark.web
 def test_the_name_reaches_getattribute_as_written(driver: PlaywrightDriver) -> None:
     # HTML attribute names match case-insensitively; an SVG element's match exactly, as the DOM does.
-    assert driver.read_attribute({"id": "docs.link"}, "HREF") == "/docs"
-    assert driver.read_attribute({"id": "icon"}, "viewBox") == "0 0 10 10"
-    assert driver.read_attribute({"id": "icon"}, "viewbox") is None
+    assert _one(driver, {"id": "docs.link"}, "HREF") == "/docs"
+    assert _one(driver, {"id": "icon"}, "viewBox") == "0 0 10 10"
+    assert _one(driver, {"id": "icon"}, "viewbox") is None
     # Encoded, never spliced: a quote in the name cannot break out of the script.
-    assert driver.read_attribute({"id": "docs.link"}, "x\"');throw 1;//") is None
+    assert _one(driver, {"id": "docs.link"}, "x\"');throw 1;//") is None
 
 
 @pytest.mark.web
 def test_selector_failures_match_what_a_tap_raises(driver: PlaywrightDriver) -> None:
     with pytest.raises(base.ElementNotFound):
-        driver.read_attribute({"id": "missing"}, "href")
+        _one(driver, {"id": "missing"}, "href")
     with pytest.raises(base.ElementNotFound):
         driver.tap({"id": "missing"})
     with pytest.raises(base.AmbiguousSelector):
-        driver.read_attribute({"id": "twin"}, "data-n")
+        _one(driver, {"id": "twin"}, "data-n")
     with pytest.raises(base.AmbiguousSelector):
         driver.tap({"id": "twin"})
-    assert driver.read_attribute({"id": "twin", "index": 1}, "data-n") == "2"
+    assert _one(driver, {"id": "twin", "index": 1}, "data-n") == "2"
 
 
 @pytest.mark.web
@@ -104,3 +113,18 @@ def test_the_query_snapshot_carries_no_attribute(driver: PlaywrightDriver) -> No
     # Read on demand only: the element every query returns gains no field (BE-0466).
     for el in driver.query():
         assert "attribute" not in el
+
+
+@pytest.mark.web
+def test_a_whole_block_reads_from_one_walk(driver: PlaywrightDriver) -> None:
+    # Several pairs, several elements and names, one bad selector: each pair gets its own answer.
+    values = driver.read_attributes(
+        [
+            ({"id": "docs.link"}, "href"),
+            ({"id": "docs.link"}, "data-state"),
+            ({"id": "framed"}, "href"),
+            ({"id": "missing"}, "href"),
+        ]
+    )
+    assert values[:3] == ["/docs", "ready", "/inside"]
+    assert isinstance(values[3], base.ElementNotFound)
