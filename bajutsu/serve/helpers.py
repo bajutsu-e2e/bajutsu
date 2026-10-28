@@ -20,7 +20,7 @@ import yaml
 
 from bajutsu.common.backend_cli import simctl as _simctl
 from bajutsu.common.backends import KNOWN_ACTUATORS, PLATFORMS, backend_override, resolve_actuators
-from bajutsu.common.config import Config, IosConfig, resolve
+from bajutsu.common.config import Config, IosConfig, resolve, unknown_target
 from bajutsu.common.devices.id import is_valid_device_id
 from bajutsu.common.report.manifest import history_summary
 from bajutsu.common.run_meta.files import is_soft_deleted
@@ -381,6 +381,20 @@ def target_platforms(config_path: Path) -> dict[str, str]:
     except (OSError, ValueError):
         return {}
     return {name: t.platform for name, t in config.targets.items()}
+
+
+def unknown_target_error(config_path: Path, target: str) -> str | None:
+    """Why *target* names no target in the config at *config_path*, or None when it does.
+
+    For an endpoint that would otherwise hand the name to a CLI job: the CLI's own error lists every
+    target, and a job log reaches the caller, who on a multi-tenant server must not see other orgs'
+    targets (BE-0471). An unreadable config answers None and is left to the job's own load error.
+    """
+    try:
+        config = _load_config_cached(config_path)
+    except (OSError, ValueError):
+        return None
+    return None if target in config.targets else unknown_target(config, target, list_targets=False)
 
 
 def target_scenarios_dir(config_path: Path, target: str) -> Path | None:

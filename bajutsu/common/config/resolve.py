@@ -155,10 +155,35 @@ def _launch(app: _Model) -> tuple[dict[str, str], list[str], str | None]:
     return dict(env), list(args), deeplink
 
 
+def unknown_target(config: Config, target: str, *, list_targets: bool = True) -> str:
+    """The error for a *target* name `targets:` lacks, which says so when it names a template.
+
+    A template is a building block under `templates:` and never runnable (BE-0471), so a name that
+    matches one gets that reason rather than a bare "unknown".
+
+    Args:
+        config: The loaded config.
+        target: The name asked for.
+        list_targets: Append every target the config declares. The server passes False: one
+            config can hold several orgs' targets, and the list would show a caller the others'.
+    """
+    if target in config.templates:
+        message = f"{target!r} is a template, not a target"
+    else:
+        message = f"unknown target: {target!r} (define targets.{target} in config)"
+    if not list_targets:
+        return message
+    return f"{message}; targets: {', '.join(sorted(config.targets)) or 'none'}"
+
+
 def resolve(config: Config, target: str) -> Effective:
-    """Resolve the effective config for one target, whose `defaults` the loader already merged."""
+    """Resolve the effective config for one target, whose `defaults` and templates the loader merged.
+
+    Raises:
+        KeyError: *target* is not under `targets:` (`unknown_target` words it).
+    """
     if target not in config.targets:
-        raise KeyError(f"unknown target: {target!r} (define targets.{target} in config)")
+        raise KeyError(unknown_target(config, target))
     a = config.targets[target]
     app = a.app
     start_when = app.start_when if isinstance(app, AppCommon) else None

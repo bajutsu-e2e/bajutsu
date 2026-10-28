@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from bajutsu.common.config import load_config_file
+from bajutsu.common.config import load_config_file, unknown_target
 from bajutsu.common.drivers import base
 from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.serve.operations._common import (
@@ -47,7 +47,7 @@ def start_capture(
     config = load_config_file(cfg)
     target_cfg = config.targets.get(target)
     if target_cfg is None:
-        return {"error": f"unknown target: {target}"}, 400
+        return {"error": unknown_target(config, target, list_targets=False)}, 400
 
     backends_list, udid, err = _session_device(body, target_cfg.platform)
     if err:

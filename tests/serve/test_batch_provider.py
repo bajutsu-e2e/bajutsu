@@ -854,3 +854,78 @@ def test_devicefarm_provider_refuses_a_runs_on_condition_before_submitting(tmp_p
         "target 'demo' runsOn.apiLevel, scenario 'alpha' preconditions.runsOn.android.avd: "
     )
     assert transfer.uploaded == [] and client.scheduled is None
+
+
+def test_devicefarm_provider_refuses_a_runs_on_condition_a_template_supplies(
+    tmp_path: Path,
+) -> None:
+    # A template's `runsOn` reaches the target through the loader's own expansion (BE-0471), so a
+    # condition it declares is refused like one written on the target.
+    client = _FakeClient()
+    transfer = _FakeTransfer(manifest_ok=True)
+    provider = bp.DeviceFarmBatchProvider(
+        client=client, transfer=transfer, project_arn="arn:project/1", sleep=lambda _: None
+    )
+    work = tmp_path / "project"
+    (work / "shared").mkdir(parents=True)
+    (work / "shared" / "pixel.yaml").write_text("runsOn: { avd: Pixel_8 }\n", encoding="utf-8")
+    (work / "bajutsu.config.yaml").write_text(
+        "templates:\n  android-base: { platform: android, extends: ./shared/pixel.yaml }\n"
+        "targets:\n  demo: { extends: android-base, app: { id: com.x } }\n",
+        encoding="utf-8",
+    )
+    (work / "smoke.yaml").write_text("- name: alpha\n  steps: []\n", encoding="utf-8")
+    (tmp_path / "app.apk").write_bytes(b"apk")
+    request = bp.BatchRequest(
+        provider="devicefarm",
+        scenario="smoke.yaml",
+        target="demo",
+        config="bajutsu.config.yaml",
+        platform="android",
+        app_path=str(tmp_path / "app.apk"),
+    )
+    with pytest.raises(ValueError, match=r"target 'demo' runsOn\.avd") as exc:
+        provider.submit(request, work_dir=work, dest=tmp_path / "download")
+    assert "has no pool to match a runsOn condition" in str(exc.value)
+    assert transfer.uploaded == [] and client.scheduled is None
+
+
+@pytest.mark.parametrize(
+    ("ref", "expected"),
+    [
+        # Outside the config's directory but inside the bundle: allowed, so its condition is read.
+        ("../shared/pixel.yaml", "target 'demo' runsOn\\.avd"),
+        # Outside the bundle: refused before anything is read.
+        ("../../outside.yaml", "resolves outside the suite root"),
+    ],
+)
+def test_devicefarm_provider_confines_a_template_file_to_the_bundle(
+    tmp_path: Path, ref: str, expected: str
+) -> None:
+    client = _FakeClient()
+    transfer = _FakeTransfer(manifest_ok=True)
+    provider = bp.DeviceFarmBatchProvider(
+        client=client, transfer=transfer, project_arn="arn:project/1", sleep=lambda _: None
+    )
+    work = tmp_path / "project"
+    (work / "sub").mkdir(parents=True)
+    (work / "shared").mkdir()
+    (work / "shared" / "pixel.yaml").write_text("runsOn: { avd: Pixel_8 }\n", encoding="utf-8")
+    (tmp_path / "outside.yaml").write_text("runsOn: { avd: Pixel_8 }\n", encoding="utf-8")
+    (work / "sub" / "bajutsu.config.yaml").write_text(
+        f"targets:\n  demo: {{ extends: {ref}, platform: android, app: {{ id: com.x }} }}\n",
+        encoding="utf-8",
+    )
+    (work / "smoke.yaml").write_text("- name: alpha\n  steps: []\n", encoding="utf-8")
+    (tmp_path / "app.apk").write_bytes(b"apk")
+    request = bp.BatchRequest(
+        provider="devicefarm",
+        scenario="smoke.yaml",
+        target="demo",
+        config="sub/bajutsu.config.yaml",
+        platform="android",
+        app_path=str(tmp_path / "app.apk"),
+    )
+    with pytest.raises(ValueError, match=expected):
+        provider.submit(request, work_dir=work, dest=tmp_path / "download")
+    assert transfer.uploaded == [] and client.scheduled is None

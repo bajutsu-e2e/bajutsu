@@ -12,8 +12,9 @@ Related: [app-agnostic in concepts](concepts.md#6-app-agnostic-push-differences-
 
 ## Config layering (defaults × targets)
 
-`bajutsu.config.yaml` has two layers. The resolution order is **defaults < target < scenario** (the
-one closer to the test wins).
+`bajutsu.config.yaml` has three layers. The resolution order is **defaults < templates < target <
+scenario** (the one closer to the test wins). A template is optional. It joins the chain when a
+target names one ([below](#templates-templates-be-0471)).
 
 A target accepts ten keys. Each key groups the settings for one purpose
 ([BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)).
@@ -148,6 +149,84 @@ replaces the anchor's whole `launch` block rather than merging into it. Place th
 level of the block that differs, here `app`, not at the level of the whole target. The `x-` prefix
 follows the extension-field convention of Docker Compose files. Every other unknown top-level key
 still fails to load.
+
+### Templates (`templates:`, BE-0471)
+
+A template is a named, partial target block. A target pulls one in with `extends`. A setting that
+targets would otherwise repeat then sits in one place. `defaults` applies to every target, and
+`defaults.platforms.<platform>` to every target of one platform. A template fills the gap between
+those two layers and a single target. It covers, for example, the targets that build one app in
+different ways.
+
+```yaml
+templates:
+  showcase-ios:                    # any target key, none required
+    platform: ios
+    app:
+      launch: { env: { SHOWCASE_UITEST: "1" } }
+  masked-password:
+    evidence: { redact: { fields: [password] } }
+
+targets:
+  showcase-swiftui:
+    extends: [showcase-ios, masked-password]     # later entries win over earlier ones
+    app: { id: com.bajutsu.showcase.ios.swiftui }
+  showcase-uikit:
+    extends: ./templates/uikit.template.yaml     # a template kept in its own file
+    app: { id: com.bajutsu.showcase.ios.uikit }
+```
+
+A template lives under its own top-level key `templates:`, never under `targets:`. `--target` and
+every server endpoint refuse a template's name. `--target` and most endpoints say the name is a
+template. Four endpoints refuse it earlier in their scenarios check: `run`, `run_set`, `record`,
+and `triage`. Their error reads `target '<name>' has no scenarios dir`. The CLI also lists the
+targets. A server error leaves the list out, because one config can hold the targets of other orgs.
+A template and a target may share a name, since `extends` looks up templates alone.
+
+The layers fold from the weakest to the strongest:
+
+1. `defaults`
+2. `defaults.platforms.<platform>`
+3. each `extends` entry, in listed order
+4. the target itself
+
+A template may extend other templates. The base folds first, so the extending template wins over
+it. A template that two entries both reach, such as a shared base, folds once, at its first position.
+A base thus stays weaker than every template that extends it.
+
+Each layer merges under the five rules of [Defaults](#defaults). A template can clear a value
+`defaults` supplies with `null`. `evidence.secrets` and the `evidence.redact` lists union across every
+layer. A template's `ai` folds into the target's `ai` first. The result then merges with
+`defaults.ai` field by field.
+
+`platform` may come from a template, so a target can omit the key. Every layer that declares
+`platform` must agree, the target included. The target cannot override a template's platform.
+`platform` decides the shape of `app`, `runsOn`, and `driver`. A web target must never receive a
+template's iOS-shaped blocks. The load fails and names both layers when two of them differ.
+
+An `extends` entry that contains `/` or ends in `.yaml` or `.yml` names a file. Any other entry
+names a template under `templates:`. A component's `use` step tells a name from a path the same way
+([Scenarios](scenarios.md)). A template file holds one template block, and its rules follow those of
+a component file:
+
+- The path resolves against the directory of the file that holds the `extends`.
+- The file must stay inside the suite root.
+- A relative value inside the file resolves against the file's own directory. The value can be a
+  nested `extends` entry, a path field, or a component its `hooks` call with `use`. The path fields
+  are `app.path`, `runsOn.seedPhotos`, `driver.runner.testRunner`, and `paths.*`.
+- A build command (`app.build`, `driver.runner.build`) is not rewritten. It runs in the config
+  file's directory, as a target's own does. Keep a build command and the path it produces in the
+  same place. Split across files, the build writes to one directory and the path points at another.
+- The file's `extends` names other files alone, since the file has no `templates:` of its own.
+
+A config read from a document with no file may name inline templates alone.
+
+The load fails on an unknown template name, and lists the known ones. It fails on a cycle too, and
+prints the cycle's path (`a → b → a`). A key outside the eleven target keys and `extends` also fails, on any template, extended or not.
+The loader checks a template's nested fields through the targets that extend it. A template that no
+target extends keeps its nested fields unchecked. `bajutsu config schema` narrows that gap for an
+editor. It states each template as a partial target of the template's own platform. A template
+that omits `platform` gets any platform's partial shape.
 
 ### Device conditions (`runsOn`)
 

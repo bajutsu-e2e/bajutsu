@@ -178,6 +178,37 @@ def test_http_crawl_rejects_unknown_backend(tmp_path: Path) -> None:
         server.server_close()
 
 
+def test_http_crawl_rejects_unknown_target_without_listing_targets(tmp_path: Path) -> None:
+    # The CLI's unknown-target error lists every target, and a crawl job's log reaches the caller, so
+    # the endpoint refuses first with the server's unlisted wording and spawns nothing (BE-0471).
+    scn_dir, cfg, runs = project(tmp_path)
+    spawned: list[list[str]] = []
+
+    def popen(cmd: list[str], **_kw: Any) -> FakeProc:
+        spawned.append(cmd)
+        return FakeProc(["done\n"])
+
+    server, port = _serve(
+        srv.ServeState(
+            executor=WorkerStandIn(),
+            scenarios_dir=scn_dir,
+            config=cfg,
+            runs_dir=runs,
+            cwd=tmp_path,
+            popen=popen,
+        )
+    )
+    try:
+        status, resp = _post(port, "/api/crawl", {"target": "ghost"})
+        assert status == 400
+        assert resp["error"] == "unknown target: 'ghost' (define targets.ghost in config)"
+        assert "demo" not in resp["error"]
+        assert spawned == []
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def test_http_crawl_rejects_invalid_udid(tmp_path: Path) -> None:
     server, port = _crawl_server(tmp_path)
     try:

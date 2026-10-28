@@ -24,174 +24,26 @@ defaults:
   evidence:
     capture: [screenshot.after, elements, actionLog, video]
 
-targets:
-  # ---- SwiftUI, accessibility ON (the `run` / `doctor`-Ready target) -------------
-  showcase-swiftui:
-    # `ios` resolves to XCUITest, the sole iOS backend since idb was retired (BE-0290). Its generic
-    # runner drives this a11y app by bundle id, so the whole suite — including
-    # gestures_multitouch.yaml's pinch/rotate and the driver conformance contract (BE-0114) — runs on
-    # identifier-bearing elements in one invocation with no --backend.
-    platform: ios
-    app:
-      id: com.bajutsu.showcase.ios.swiftui
-      launch: { env: { SHOWCASE_UITEST: "1" } }
-      # `saved`: the SHOWCASE_SAVED_NOTE screen (SPEC §5.6), which this app and showcase-compose alone
-      # implement.
-      idNamespaces: [stable, horse, search, log, notice, perm, sys, net, saved]
-      # BE-0231: gate readiness on the first Stable row — the element the smoke scenario's opening
-      # `wait` needs — not on any in-namespace node. On a cold-boot CI Simulator some other namespace
-      # element can render first, letting `_await_ready` return early and the first step race the row.
-      # Both id forms (BE-0221) to mirror the scenario's own selector and the `showcase-views`
-      # precedent; this iOS target's tree only ever renders the dotted form. `saved.build` is the one
-      # launch element of the SHOWCASE_SAVED_NOTE screen (SPEC §5.6), which shows no Stable row:
-      # device_group_update.yaml's `foreground` waits on it after installing this build.
-      startWhen: { exists: { id: [stable.row.1, stable_row_1, saved.build] } }
-      path: ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app
-      build: make swiftui-build
-    driver:
-      runner:
-        testRunner: ../../BajutsuKit/Runner/build/dd/Build/Products/BajutsuRunner.xctestrun
-        build: make runner-build
-    evidence:
-      # Mask the Log submit's secret in captured network evidence (BE-0282), the iOS twin of the web
-      # demo's own policy. `Authorization` is masked by default (BE-0130); the `password` body field the
-      # app sends (ios/swiftui/Sources/LogView.swift) is app-specific, so it is named here.
-      # network_mock.yaml exercises this; network/assert_network_evidence.py checks the persisted
-      # evidence.
-      redact:
-        fields: [password]
-    paths:
-      scenarios: scenarios
+templates:
+  # Blocks several targets share, each written once and pulled in with `extends` (BE-0471). A target
+  # keeps its own `platform`; these templates name none, so one template serves both platforms.
 
-  # ---- SwiftUI, same app, exercises the BE-0292 bundled XCUITest runner ----------
-  # A twin of showcase-swiftui with no `driver.runner` block: a Simulator run for this target has
-  # no testRunner and no build, so it resolves to the wheel-bundled runner (`bajutsu doctor
-  # --target showcase-swiftui-bundled` reports `xcuitest runner: bundled`) instead of the
-  # locally built BajutsuKit/Runner product. Kept separate from showcase-swiftui so the driver
-  # conformance suite (BE-0114) above keeps exercising the locally built runner unchanged.
-  showcase-swiftui-bundled:
-    platform: ios
+  # Every showcase app reads SHOWCASE_UITEST to start in its test configuration.
+  showcase-app:
     app:
-      id: com.bajutsu.showcase.ios.swiftui
       launch: { env: { SHOWCASE_UITEST: "1" } }
-      idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
-      startWhen: { exists: { id: [stable.row.1, stable_row_1] } }
-      path: ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app
-      build: make swiftui-build
-    hooks:
-      # App-wide interstitial handler (BE-0314): an onboarding overlay this app could show at an
-      # unpredictable point, cleared wherever it surfaces. This config-level list is prepended to each
-      # scenario's own `interrupts` (config entries checked first) — see scenarios/interrupts.yaml for
-      # the scenario-level counterpart. Illustrative on this app, which renders no such overlay, so the
-      # handler stays inert; it demonstrates the config/scenario layering the field composes.
-      interrupts:
-        - condition: { exists: { id: [notice.onboarding.skip, notice_onboarding_skip] } }
-          steps:
-            - tap: { id: [notice.onboarding.skip, notice_onboarding_skip] }
-    paths:
-      scenarios: scenarios
 
-  # ---- SwiftUI, accessibility OFF (the `record` / `doctor`-Blocked target) -------
-  showcase-swiftui-noax:
-    platform: ios   # XCUITest, the sole iOS backend (BE-0290); its runner reaches labels
-    app:
-      id: com.bajutsu.showcase.ios.swiftui.noax
-      launch: { env: { SHOWCASE_UITEST: "1" } }
-      idNamespaces: []   # honest: this build exposes no identifiers
-      path: ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUINoAx.app
-      build: make swiftui-noax-build
-    driver:
-      runner:
-        testRunner: ../../BajutsuKit/Runner/build/dd/Build/Products/BajutsuRunner.xctestrun
-        build: make runner-build
-    paths:
-      # The `-noax` twin of the shared `scenarios/` suite: the same flows, but every step addresses
-      # elements by their visible label (never an identifier — this build has none) and every
-      # assertion reads the on-screen mirror `Text` instead of the a11y value the -noax tree drops.
-      # `ios` resolves to XCUITest, whose automation snapshot descends into the tab bar and reaches a
-      # `-noax` element (including a TabView's tabs) by label — the case a coordinate backend could
-      # not address without vision (BE-0290 retired idb, which needed that vision path).
-      scenarios: ios/scenarios-noax
-
-  # ---- SwiftUI, the "previous" release of showcase-swiftui (BE-0447) -----------
-  # The same bundle id built with SHOWCASE_PREVIOUS (SPEC §5.6). Only device_group_update.yaml drives
-  # it: the scenario starts here and installs showcase-swiftui over it, so the two never start
-  # together. No `paths.scenarios` dir, so no bulk lane picks it up.
-  showcase-swiftui-previous:
-    platform: ios
-    app:
-      id: com.bajutsu.showcase.ios.swiftui
-      launch: { env: { SHOWCASE_UITEST: "1" } }
-      idNamespaces: [saved]
-      startWhen: { exists: { id: [saved.build] } }
-      path: ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUIPrevious.app
-      build: make swiftui-previous-build
+  # The locally built BajutsuKit/Runner product, which every iOS target but showcase-swiftui-bundled
+  # drives through. The generic XCUITest runner drives each app by bundle id and never links it, so
+  # the Flutter app needs no runner of its own either (BE-0008).
+  local-runner:
     driver:
       runner:
         testRunner: ../../BajutsuKit/Runner/build/dd/Build/Products/BajutsuRunner.xctestrun
         build: make runner-build
 
-  # ---- UIKit, accessibility ON (same identifier contract as showcase-swiftui) ----
-  showcase-uikit:
-    # `ios` resolves to XCUITest (BE-0290), as for showcase-swiftui. The a11y UIKit scenarios cross
-    # tabs by tapping the native tab bar (BE-0107), which the generic XCUITest runner drives.
-    platform: ios
-    app:
-      id: com.bajutsu.showcase.ios.uikit
-      launch: { env: { SHOWCASE_UITEST: "1" } }
-      idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
-      path: ios/uikit/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseUIKit.app
-      build: make uikit-build
-    driver:
-      runner:
-        testRunner: ../../BajutsuKit/Runner/build/dd/Build/Products/BajutsuRunner.xctestrun
-        build: make runner-build
-    paths:
-      scenarios: scenarios
-
-  # ---- UIKit, accessibility OFF -------------------------------------------------
-  showcase-uikit-noax:
-    platform: ios   # XCUITest, the sole iOS backend (BE-0290); its runner reaches labels
-    app:
-      id: com.bajutsu.showcase.ios.uikit.noax
-      launch: { env: { SHOWCASE_UITEST: "1" } }
-      idNamespaces: []
-      path: ios/uikit/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseUIKitNoAx.app
-      build: make uikit-noax-build
-    driver:
-      runner:
-        testRunner: ../../BajutsuKit/Runner/build/dd/Build/Products/BajutsuRunner.xctestrun
-        build: make runner-build
-    paths:
-      # Same `ios/scenarios-noax` suite as showcase-swiftui-noax — the label/visible-text twin of the
-      # shared `scenarios/` flows, run over XCUITest. The UIKit `-noax` app renders the identical
-      # visible mirror strings (AppModel + *Controller labels), so the one suite drives both `-noax`
-      # toolkits. XCUITest drives the -noax UITabBar tabs by label — a coordinate backend collapsed
-      # them into one opaque group (BE-0290 retired idb, which hit that limit).
-      scenarios: ios/scenarios-noax
-
-  # ==== Android (BE-0007 preparation) =============================================
-  # The Android twins of the four iOS products (demos/showcase/android). `platform: android`
-  # resolves to `adb`, the BE-0007 driver: `run` against these drives the app on an attached
-  # emulator/device (id-based taps, value assertions over `uiautomator dump`). `app.id` carries the
-  # applicationId; `app.launch.env` arrives as intent extras. Interval evidence (screenrecord/logcat),
-  # device control, and the by-scheme deeplink/back paths are BE-0007 follow-up slices.
-
-  # ---- Compose, accessibility ON — testTags surface the dotted SPEC ids verbatim
-  # (testTagsAsResourceId), so the shared id-based scenarios drive this app unchanged.
-  showcase-compose:
-    platform: android
-    app:
-      id: com.bajutsu.showcase.android.compose
-      launch: { env: { SHOWCASE_UITEST: "1" } }
-      # Granted up front (`pm grant`) at lease time, so the notification prompt never blocks the run
-      # (BE-0210); the shared permission.yaml relies on this on Android to stay deterministic — no dialog
-      # appears, so its `systemAlertHandling` guard no-ops (on iOS, which can't pre-grant, that guard grants).
-      grantPermissions: [android.permission.POST_NOTIFICATIONS]
-      # `saved`: the SHOWCASE_SAVED_NOTE screen (SPEC §5.6), as on showcase-swiftui.
-      idNamespaces: [stable, horse, search, log, notice, perm, sys, net, saved]
-      path: android/compose/build/outputs/apk/a11y/debug/compose-a11y-debug.apk
-      build: make -C android compose-build
+  # The ANR-dialog guard every Android target carries.
+  anr-guard:
     hooks:
       # ANR dialog ("<process> isn't responding") can surface from the OS/launcher at an
       # unpredictable point during a run, unrelated to this app's own state — most often a
@@ -216,7 +68,7 @@ targets:
       # `wait`, so that lane's own screen-read counter (BE-0234) measures 0 extra reads with this block
       # present versus absent — it is not the lane that pays for this coverage. No showcase scenario
       # declares a `screenChanged` capture rule at all, so the guard never has a fresh tree to reuse
-      # here: on these six targets *every* scenario pays one such read on *every* non-`wait` step, not
+      # here: on these targets *every* scenario pays one such read on *every* non-`wait` step, not
       # just the first — measured at 4/3/6/3 extra reads across modals.yaml's four scenarios, and
       # `foreach` pays again per iteration. Each read is on the resident channel's fast path
       # (~0.1-0.3s) where the resident server is built, and on the same ~2.4s dump path otherwise.
@@ -234,11 +86,160 @@ targets:
       # opaque timeout — Close app ends the run loudly instead, and is harmless for the Pixel Launcher
       # case this exists for (Android restarts its own launcher). Both ids are the local form the adb
       # driver reports, stripped of the `android:id/` prefix a uiautomator dump shows. Same interrupts
-      # block on every Android target below: the dialog is OS-owned, not app-specific.
+      # block on every Android target, through this template: the dialog is OS-owned, not app-specific.
       interrupts:
         - condition: { exists: { id: [aerr_wait] } }
           steps:
             - tap: { id: [aerr_close] }
+
+targets:
+  # ---- SwiftUI, accessibility ON (the `run` / `doctor`-Ready target) -------------
+  showcase-swiftui:
+    # `ios` resolves to XCUITest, the sole iOS backend since idb was retired (BE-0290). Its generic
+    # runner drives this a11y app by bundle id, so the whole suite — including
+    # gestures_multitouch.yaml's pinch/rotate and the driver conformance contract (BE-0114) — runs on
+    # identifier-bearing elements in one invocation with no --backend.
+    platform: ios
+    extends: [showcase-app, local-runner]
+    app:
+      id: com.bajutsu.showcase.ios.swiftui
+      # `saved`: the SHOWCASE_SAVED_NOTE screen (SPEC §5.6), which this app and showcase-compose alone
+      # implement.
+      idNamespaces: [stable, horse, search, log, notice, perm, sys, net, saved]
+      # BE-0231: gate readiness on the first Stable row — the element the smoke scenario's opening
+      # `wait` needs — not on any in-namespace node. On a cold-boot CI Simulator some other namespace
+      # element can render first, letting `_await_ready` return early and the first step race the row.
+      # Both id forms (BE-0221) to mirror the scenario's own selector and the `showcase-views`
+      # precedent; this iOS target's tree only ever renders the dotted form. `saved.build` is the one
+      # launch element of the SHOWCASE_SAVED_NOTE screen (SPEC §5.6), which shows no Stable row:
+      # device_group_update.yaml's `foreground` waits on it after installing this build.
+      startWhen: { exists: { id: [stable.row.1, stable_row_1, saved.build] } }
+      path: ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app
+      build: make swiftui-build
+    evidence:
+      # Mask the Log submit's secret in captured network evidence (BE-0282), the iOS twin of the web
+      # demo's own policy. `Authorization` is masked by default (BE-0130); the `password` body field the
+      # app sends (ios/swiftui/Sources/LogView.swift) is app-specific, so it is named here.
+      # network_mock.yaml exercises this; network/assert_network_evidence.py checks the persisted
+      # evidence.
+      redact:
+        fields: [password]
+    paths:
+      scenarios: scenarios
+
+  # ---- SwiftUI, same app, exercises the BE-0292 bundled XCUITest runner ----------
+  # A twin of showcase-swiftui with no `driver.runner` block: a Simulator run for this target has
+  # no testRunner and no build, so it resolves to the wheel-bundled runner (`bajutsu doctor
+  # --target showcase-swiftui-bundled` reports `xcuitest runner: bundled`) instead of the
+  # locally built BajutsuKit/Runner product. Kept separate from showcase-swiftui so the driver
+  # conformance suite (BE-0114) above keeps exercising the locally built runner unchanged.
+  showcase-swiftui-bundled:
+    platform: ios
+    extends: showcase-app
+    app:
+      id: com.bajutsu.showcase.ios.swiftui
+      idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
+      startWhen: { exists: { id: [stable.row.1, stable_row_1] } }
+      path: ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app
+      build: make swiftui-build
+    hooks:
+      # App-wide interstitial handler (BE-0314): an onboarding overlay this app could show at an
+      # unpredictable point, cleared wherever it surfaces. This config-level list is prepended to each
+      # scenario's own `interrupts` (config entries checked first) — see scenarios/interrupts.yaml for
+      # the scenario-level counterpart. Illustrative on this app, which renders no such overlay, so the
+      # handler stays inert; it demonstrates the config/scenario layering the field composes.
+      interrupts:
+        - condition: { exists: { id: [notice.onboarding.skip, notice_onboarding_skip] } }
+          steps:
+            - tap: { id: [notice.onboarding.skip, notice_onboarding_skip] }
+    paths:
+      scenarios: scenarios
+
+  # ---- SwiftUI, accessibility OFF (the `record` / `doctor`-Blocked target) -------
+  showcase-swiftui-noax:
+    platform: ios   # XCUITest, the sole iOS backend (BE-0290); its runner reaches labels
+    extends: [showcase-app, local-runner]
+    app:
+      id: com.bajutsu.showcase.ios.swiftui.noax
+      idNamespaces: []   # honest: this build exposes no identifiers
+      path: ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUINoAx.app
+      build: make swiftui-noax-build
+    paths:
+      # The `-noax` twin of the shared `scenarios/` suite: the same flows, but every step addresses
+      # elements by their visible label (never an identifier — this build has none) and every
+      # assertion reads the on-screen mirror `Text` instead of the a11y value the -noax tree drops.
+      # `ios` resolves to XCUITest, whose automation snapshot descends into the tab bar and reaches a
+      # `-noax` element (including a TabView's tabs) by label — the case a coordinate backend could
+      # not address without vision (BE-0290 retired idb, which needed that vision path).
+      scenarios: ios/scenarios-noax
+
+  # ---- SwiftUI, the "previous" release of showcase-swiftui (BE-0447) -----------
+  # The same bundle id built with SHOWCASE_PREVIOUS (SPEC §5.6). Only device_group_update.yaml drives
+  # it: the scenario starts here and installs showcase-swiftui over it, so the two never start
+  # together. No `paths.scenarios` dir, so no bulk lane picks it up.
+  showcase-swiftui-previous:
+    platform: ios
+    extends: [showcase-app, local-runner]
+    app:
+      id: com.bajutsu.showcase.ios.swiftui
+      idNamespaces: [saved]
+      startWhen: { exists: { id: [saved.build] } }
+      path: ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUIPrevious.app
+      build: make swiftui-previous-build
+
+  # ---- UIKit, accessibility ON (same identifier contract as showcase-swiftui) ----
+  showcase-uikit:
+    # `ios` resolves to XCUITest (BE-0290), as for showcase-swiftui. The a11y UIKit scenarios cross
+    # tabs by tapping the native tab bar (BE-0107), which the generic XCUITest runner drives.
+    platform: ios
+    extends: [showcase-app, local-runner]
+    app:
+      id: com.bajutsu.showcase.ios.uikit
+      idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
+      path: ios/uikit/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseUIKit.app
+      build: make uikit-build
+    paths:
+      scenarios: scenarios
+
+  # ---- UIKit, accessibility OFF -------------------------------------------------
+  showcase-uikit-noax:
+    platform: ios   # XCUITest, the sole iOS backend (BE-0290); its runner reaches labels
+    extends: [showcase-app, local-runner]
+    app:
+      id: com.bajutsu.showcase.ios.uikit.noax
+      idNamespaces: []
+      path: ios/uikit/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseUIKitNoAx.app
+      build: make uikit-noax-build
+    paths:
+      # Same `ios/scenarios-noax` suite as showcase-swiftui-noax — the label/visible-text twin of the
+      # shared `scenarios/` flows, run over XCUITest. The UIKit `-noax` app renders the identical
+      # visible mirror strings (AppModel + *Controller labels), so the one suite drives both `-noax`
+      # toolkits. XCUITest drives the -noax UITabBar tabs by label — a coordinate backend collapsed
+      # them into one opaque group (BE-0290 retired idb, which hit that limit).
+      scenarios: ios/scenarios-noax
+
+  # ==== Android (BE-0007 preparation) =============================================
+  # The Android twins of the four iOS products (demos/showcase/android). `platform: android`
+  # resolves to `adb`, the BE-0007 driver: `run` against these drives the app on an attached
+  # emulator/device (id-based taps, value assertions over `uiautomator dump`). `app.id` carries the
+  # applicationId; `app.launch.env` arrives as intent extras. Interval evidence (screenrecord/logcat),
+  # device control, and the by-scheme deeplink/back paths are BE-0007 follow-up slices.
+
+  # ---- Compose, accessibility ON — testTags surface the dotted SPEC ids verbatim
+  # (testTagsAsResourceId), so the shared id-based scenarios drive this app unchanged.
+  showcase-compose:
+    platform: android
+    extends: [showcase-app, anr-guard]
+    app:
+      id: com.bajutsu.showcase.android.compose
+      # Granted up front (`pm grant`) at lease time, so the notification prompt never blocks the run
+      # (BE-0210); the shared permission.yaml relies on this on Android to stay deterministic — no dialog
+      # appears, so its `systemAlertHandling` guard no-ops (on iOS, which can't pre-grant, that guard grants).
+      grantPermissions: [android.permission.POST_NOTIFICATIONS]
+      # `saved`: the SHOWCASE_SAVED_NOTE screen (SPEC §5.6), as on showcase-swiftui.
+      idNamespaces: [stable, horse, search, log, notice, perm, sys, net, saved]
+      path: android/compose/build/outputs/apk/a11y/debug/compose-a11y-debug.apk
+      build: make -C android compose-build
     paths:
       scenarios: scenarios
 
@@ -247,34 +248,24 @@ targets:
   # showcase-swiftui-previous: only device_group_update.yaml drives it.
   showcase-compose-previous:
     platform: android
+    extends: [showcase-app, anr-guard]
     app:
       id: com.bajutsu.showcase.android.compose
-      launch: { env: { SHOWCASE_UITEST: "1" } }
       grantPermissions: [android.permission.POST_NOTIFICATIONS]
       idNamespaces: [saved]
       startWhen: { exists: { id: [saved.build] } }
       path: android/compose/build/outputs/apk/previous/debug/compose-previous-debug.apk
       build: make -C android compose-previous-build
-    hooks:
-      interrupts:   # ANR-dialog dismissal — see showcase-compose above
-        - condition: { exists: { id: [aerr_wait] } }
-          steps:
-            - tap: { id: [aerr_close] }
 
   # ---- Compose, accessibility OFF ------------------------------------------------
   showcase-compose-noax:
     platform: android
+    extends: [showcase-app, anr-guard]
     app:
       id: com.bajutsu.showcase.android.compose.noax
-      launch: { env: { SHOWCASE_UITEST: "1" } }
       idNamespaces: []   # honest: this build exposes no identifiers
       path: android/compose/build/outputs/apk/noax/debug/compose-noax-debug.apk
       build: make -C android compose-noax-build
-    hooks:
-      interrupts:   # ANR-dialog dismissal — see showcase-compose above
-        - condition: { exists: { id: [aerr_wait] } }
-          steps:
-            - tap: { id: [aerr_close] }
     paths:
       scenarios: scenarios
 
@@ -286,35 +277,25 @@ targets:
   # `idNamespaces` heuristic can't gate on it because `namespace_of` splits on `.`, absent here.
   showcase-views:
     platform: android
+    extends: [showcase-app, anr-guard]
     app:
       id: com.bajutsu.showcase.android.views
-      launch: { env: { SHOWCASE_UITEST: "1" } }
       idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
       startWhen: { exists: { id: [stable.row.1, stable_row_1] } }
       path: android/views/build/outputs/apk/a11y/debug/views-a11y-debug.apk
       build: make -C android views-build
-    hooks:
-      interrupts:   # ANR-dialog dismissal — see showcase-compose above
-        - condition: { exists: { id: [aerr_wait] } }
-          steps:
-            - tap: { id: [aerr_close] }
     paths:
       scenarios: scenarios
 
   # ---- Views, accessibility OFF ---------------------------------------------------
   showcase-views-noax:
     platform: android
+    extends: [showcase-app, anr-guard]
     app:
       id: com.bajutsu.showcase.android.views.noax
-      launch: { env: { SHOWCASE_UITEST: "1" } }
       idNamespaces: []
       path: android/views/build/outputs/apk/noax/debug/views-noax-debug.apk
       build: make -C android views-noax-build
-    hooks:
-      interrupts:   # ANR-dialog dismissal — see showcase-compose above
-        - condition: { exists: { id: [aerr_wait] } }
-          steps:
-            - tap: { id: [aerr_close] }
     paths:
       scenarios: scenarios
 
@@ -332,55 +313,39 @@ targets:
   # ---- Flutter on iOS, accessibility ON (drives through XCUITest) ----------------
   showcase-flutter:
     platform: ios
+    extends: [showcase-app, local-runner]
     app:
       id: com.bajutsu.showcase.ios.flutter
-      launch: { env: { SHOWCASE_UITEST: "1" } }
       idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
       startWhen: { exists: { id: [stable.row.1, stable_row_1] } }
       path: flutter/build/ios/iphonesimulator/Runner.app
       build: cd flutter && flutter build ios --simulator --debug --dart-define=ACCESSIBLE=true
-    driver:
-      # The generic XCUITest runner drives this Flutter app by bundle id exactly as it drives the
-      # native apps — it never links the app, so no Flutter-specific runner is needed (BE-0008).
-      runner:
-        testRunner: ../../BajutsuKit/Runner/build/dd/Build/Products/BajutsuRunner.xctestrun
-        build: make runner-build
     paths:
       scenarios: scenarios
 
   # ---- Flutter on Android, accessibility ON (drives through adb) -----------------
   showcase-flutter-android:
     platform: android
+    extends: [showcase-app, anr-guard]
     app:
       id: com.bajutsu.showcase.android.flutter
-      launch: { env: { SHOWCASE_UITEST: "1" } }
       grantPermissions: [android.permission.POST_NOTIFICATIONS]
       idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
       startWhen: { exists: { id: [stable.row.1, stable_row_1] } }
       path: flutter/build/app/outputs/flutter-apk/app-a11y-debug.apk
       build: cd flutter && flutter build apk --debug --flavor a11y --dart-define=ACCESSIBLE=true
-    hooks:
-      interrupts:   # ANR-dialog dismissal — see showcase-compose above
-        - condition: { exists: { id: [aerr_wait] } }
-          steps:
-            - tap: { id: [aerr_close] }
     paths:
       scenarios: scenarios
 
   # ---- Flutter on Android, accessibility OFF -------------------------------------
   showcase-flutter-android-noax:
     platform: android
+    extends: [showcase-app, anr-guard]
     app:
       id: com.bajutsu.showcase.android.flutter.noax
-      launch: { env: { SHOWCASE_UITEST: "1" } }
       idNamespaces: []   # honest: this build exposes no identifiers
       path: flutter/build/app/outputs/flutter-apk/app-noax-debug.apk
       build: cd flutter && flutter build apk --debug --flavor noax --dart-define=ACCESSIBLE=false
-    hooks:
-      interrupts:   # ANR-dialog dismissal — see showcase-compose above
-        - condition: { exists: { id: [aerr_wait] } }
-          steps:
-            - tap: { id: [aerr_close] }
     paths:
       scenarios: scenarios
 
