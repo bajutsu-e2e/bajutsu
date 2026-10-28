@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0458](BE-0458-real-device-host-channels-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0458") |
 | 実装 PR | [#2143](https://github.com/bajutsu-e2e/bajutsu/pull/2143) |
 | トピック | デバイスクラウド実行 |
@@ -159,7 +159,7 @@ runner のポートには、ホストで空いていた番号を実機でも使�
 - [x] BajutsuKit：報告をためながら裏で受け口を探す仕組み
 - [x] 両言語のドキュメント：`docs/ios-device-cloud.md`、`docs/configuration.md`、`docs/devicefarm.md`、`docs/architecture.md`
 - [x] 実機での手動確認：USB 接続の iPhone で `firstlook`、続けてネットワークのシナリオ
-- [ ] Device Farm での診断の実行：予約した iOS 実機で `bajutsu doctor --environment-only`、続けて `firstlook`
+- [x] Device Farm での診断の実行：予約した iOS 実機で `bajutsu doctor --environment-only`、続けて `firstlook`
 
 ログ：
 
@@ -176,6 +176,7 @@ runner のポートには、ホストで空いていた番号を実機でも使�
   - 見た目の似た 2 つのプロンプトを両方出すシナリオに合格しました。ターゲットには `localNetwork` のルールがあります。シナリオは通知を要求し、`handleSystemAlert: { prompt: notifications, choice: grant }` で答えます。シナリオ開始時の照会が手順 0 でローカルネットワークのプロンプトに答え、通知のプロンプトには手順自身が「Allow」をタップしました。
   - `firstlook` と `network_mock` にも、あらためて合格しました。
   - 割り込みモニタの経路は、実機では通りませんでした。シナリオ開始時の照会を止めると、最初のタップは XCUITest の割り込みを起こさずにローカルネットワークのプロンプトに当たり、次の待機でガードがプロンプトに答えました。この経路はユニットテストで確かめています。モニタの変更は、実機用 runner のビルドでコンパイルが通っています。
+- 2026-10-28 — 予約した iOS 実機で、Device Farm での診断の実行に合格しました。これですべての単位が完了したので、状態を実装済みにしました。
 
 ## 参考
 
