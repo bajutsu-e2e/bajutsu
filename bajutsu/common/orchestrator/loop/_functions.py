@@ -87,7 +87,8 @@ from bajutsu.common.scenario import (
     Step,
     interp,
 )
-from bajutsu.common.scenario.models.actions import TOTP_PERIOD_SECONDS, Totp
+from bajutsu.common.scenario.models.actions import Totp
+from bajutsu.common.totp import TOTP_PERIOD_SECONDS
 
 from ._loop_config import _LoopConfig
 from ._shared import _ExecSteps, _logger
@@ -419,8 +420,9 @@ def _wait_for_totp_window(
         clock.sleep(min(_SLEEP_SLICE, left, target - now_wall))
     end_wall = wall()
     drift = (end_wall - start_wall) - (clock.now() - start_mono)
-    # A late wake-up moves both clocks together, so only a gap between them names a jump.
-    if abs(drift) <= _SLEEP_SLICE:
+    # A late wake-up moves both clocks together, so only a gap between them names a jump. One second,
+    # not one slice: `{drift:+.0f}` below would print a smaller gap as "+0s".
+    if abs(drift) <= 1.0:
         return None
     left_s = TOTP_PERIOD_SECONDS - end_wall % TOTP_PERIOD_SECONDS
     return f"totp: wall clock jumped {drift:+.0f}s during window wait; {left_s:.0f}s left"

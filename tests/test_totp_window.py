@@ -42,7 +42,8 @@ class Clocks:
 
     def sleep(self, seconds: float) -> None:
         self.slept.append(seconds)
-        # A late wake-up overshoots on both clocks: the host was busy, the wall clock didn't move.
+        # A late wake-up overshoots both clocks together: the host was busy, so neither moved
+        # relative to the other — the gap `_wait_for_totp_window` warns on stays zero.
         self.mono += seconds + self.late
         self.wall_t += seconds + self.late
         if self.jump is not None and len(self.slept) == self.jump[0]:
@@ -97,6 +98,13 @@ def test_a_late_wake_up_records_no_warning() -> None:
     c = Clocks(phase=29.9, late=2.0)
     assert _wait(c, 30) is None
     assert c.wall_t >= _BOUNDARY + 30
+
+
+def test_a_sub_second_jump_records_no_warning() -> None:
+    # Rounded to whole seconds it would read "jumped +0s", which explains nothing.
+    c = Clocks(phase=25)
+    c.jump = (2, 0.4)
+    assert _wait(c, 10) is None
 
 
 def test_a_backward_jump_ends_within_the_bound_and_warns() -> None:
