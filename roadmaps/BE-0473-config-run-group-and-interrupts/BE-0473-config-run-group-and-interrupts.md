@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-config-run-group-and-interrupts-ja.md)
+**English** · [日本語](BE-0473-config-run-group-and-interrupts-ja.md)
 
-# BE-XXXX — Dissolve the target's run group and declare every reactive handler under interrupts
+# BE-0473 — Dissolve the target's run group and declare every reactive handler under interrupts
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-config-run-group-and-interrupts.md) |
+| Proposal | [BE-0473](BE-0473-config-run-group-and-interrupts.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0473") |
 | Topic | Driver & backend architecture |
 | Related | [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure.md), [BE-0314](../BE-0314-scenario-interrupt-handlers/BE-0314-scenario-interrupt-handlers.md), [BE-0406](../BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts.md), [BE-0401](../BE-0401-system-alert-handling-dsl-consolidation/BE-0401-system-alert-handling-dsl-consolidation.md), [BE-0177](../BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md), [BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications.md), [BE-0221](../BE-0221-android-scenario-portability-guarantee/BE-0221-android-scenario-portability-guarantee.md) |
 <!-- /BE-METADATA -->

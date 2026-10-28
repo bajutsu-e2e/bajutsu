@@ -1,14 +1,14 @@
-[English](BE-XXXX-config-run-group-and-interrupts.md) · **日本語**
+[English](BE-0473-config-run-group-and-interrupts.md) · **日本語**
 
-# BE-XXXX — target の run グループを解体し、自動で処理する割り込みを interrupts に集める
+# BE-0473 — target の run グループを解体し、自動で処理する割り込みを interrupts に集める
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-config-run-group-and-interrupts-ja.md) |
+| 提案 | [BE-0473](BE-0473-config-run-group-and-interrupts-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **承認済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0473") |
 | トピック | ドライバとバックエンドのアーキテクチャ |
 | 関連 | [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)、[BE-0314](../BE-0314-scenario-interrupt-handlers/BE-0314-scenario-interrupt-handlers-ja.md)、[BE-0406](../BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md)、[BE-0401](../BE-0401-system-alert-handling-dsl-consolidation/BE-0401-system-alert-handling-dsl-consolidation-ja.md)、[BE-0177](../BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)、[BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications-ja.md)、[BE-0221](../BE-0221-android-scenario-portability-guarantee/BE-0221-android-scenario-portability-guarantee-ja.md) |
 <!-- /BE-METADATA -->
