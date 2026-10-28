@@ -23,7 +23,7 @@ from bajutsu.common.drivers.dom import (
     parse_dom_with_attribute,
 )
 from bajutsu.common.drivers.playwright import PlaywrightDriver, _Started
-from bajutsu.common.drivers.playwright._functions import _FRAME_QUERY_JS
+from bajutsu.common.drivers.playwright._functions import _FRAME_ATTRIBUTE_QUERY_JS, _FRAME_QUERY_JS
 
 
 def _rec(**kw: Any) -> dict[str, Any]:
@@ -1741,3 +1741,22 @@ def test_read_attribute_resolves_through_resolve_unique() -> None:
         drv.read_attribute({"id": "twin"}, "data-n")
     with pytest.raises(base.ElementNotFound):
         drv.read_attribute({"id": "missing"}, "href")
+
+
+def test_read_attribute_reaches_an_iframe_element() -> None:
+    child = _FakeChildFrame([], _FakeIframeHost([100, 50, 200, 150]))
+    rec = _rec(identifier="framed", role="a", attribute="/inside", frame=[10, 20, 30, 10])
+    child.evaluate_returns = [{"crossOrigin": False, "records": [rec]}]
+    drv, _ = _framed_driver([], [child])
+    assert drv.read_attribute({"id": "framed"}, "href") == "/inside"
+    # The frame runs the attribute-reading walk with the name JSON-encoded, not the plain query.
+    assert child.evaluated == [f'() => ({_FRAME_ATTRIBUTE_QUERY_JS})("href")']
+
+
+def test_read_attribute_refuses_content_identical_twins_that_disagree() -> None:
+    twin = {"identifier": "status", "role": "status", "label": "Hi", "frame": [0, 0, 10, 10]}
+    drv, _ = _driver([_rec(**twin, attribute="a"), _rec(**twin, attribute="b")])
+    with pytest.raises(base.AmbiguousSelector, match="different 'data-state' values"):
+        drv.read_attribute({"id": "status"}, "data-state")
+    agree, _ = _driver([_rec(**twin, attribute="a"), _rec(**twin, attribute="a")])
+    assert agree.read_attribute({"id": "status"}, "data-state") == "a"

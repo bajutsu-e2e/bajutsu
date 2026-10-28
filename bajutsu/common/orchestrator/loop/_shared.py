@@ -26,8 +26,10 @@ def _attributes_for(
 
     Called right after each `query()` the block is polled against (BE-0466), so the read follows the
     tree and a value an action settles a beat late is caught on a later tick. A selector that fails
-    to resolve, or a backend that cannot read, becomes the assertion's reason rather than an
-    exception, so the poll reads again instead of aborting the step.
+    to resolve becomes the assertion's reason rather than an exception, so the poll reads again
+    instead of aborting the step. A backend that cannot read raises `UnsupportedAction` through: the
+    preflight should have refused it, and a quiet `else` branch or a never-firing interrupt would hide
+    that it did not.
     """
     reads: dict[tuple[str, str], AttributeRead] = {}
     for a in block:
@@ -40,7 +42,7 @@ def _attributes_for(
             reads[key] = AttributeRead(
                 value=driver.read_attribute(a.attribute.sel.as_selector(), a.attribute.name)
             )
-        except (base.SelectorError, base.UnsupportedAction) as e:
+        except base.SelectorError as e:
             reads[key] = AttributeRead(error=str(e))
     return reads or None
 

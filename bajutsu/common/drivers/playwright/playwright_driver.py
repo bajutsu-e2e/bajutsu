@@ -13,6 +13,7 @@ from urllib.parse import urljoin
 from bajutsu.common.backend_cli import simctl
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.actuation import Actuation, ActuationLog, Drained
+from bajutsu.common.drivers.base import _collapse_identical_duplicates
 from bajutsu.common.drivers.dom import (
     ATTRIBUTE_QUERY_JS,
     QUERY_JS,
@@ -435,7 +436,15 @@ class PlaywrightDriver:
         pairs = parse_dom_with_attribute(records if isinstance(records, list) else [])
         pairs += [(el, value) for el, _, value in _iframe_records(self._page, name)]
         el = base.resolve_unique([e for e, _ in pairs], sel)
-        return next(value for e, value in pairs if e is el)
+        # `resolve_unique` collapses content-identical twins, which compare no attribute; twins that
+        # disagree on this one are two elements the read cannot tell apart, so they stay ambiguous.
+        values = {v for e, v in pairs if len(_collapse_identical_duplicates([el, e])) == 1}
+        if len(values) > 1:
+            raise base.AmbiguousSelector(
+                f"{len(values)} content-identical elements matched {sel!r} with different "
+                f"{name!r} values — give them a distinguishing `data-testid`"
+            )
+        return values.pop()
 
     def _center(self, sel: base.Selector) -> base.Point:
         point, _, _ = self._center_with_element(sel)

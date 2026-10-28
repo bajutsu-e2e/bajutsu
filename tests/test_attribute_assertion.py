@@ -280,7 +280,7 @@ def test_a_failed_read_becomes_the_reason() -> None:
 
 def test_no_read_fails_cleanly() -> None:
     r = _eval(_attr(name="href", equals="/"), None)
-    assert not r.ok and "no attribute read" in r.reason
+    assert not r.ok and "attribute not read" in r.reason
 
 
 def test_the_mismatch_reason_prints_the_actual_value() -> None:

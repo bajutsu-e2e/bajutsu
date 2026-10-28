@@ -94,7 +94,10 @@ def _eval_attribute(read: AttributeRead | None, a: AttributeMatch) -> AssertionR
     detail_base = f"attribute {a.name}: {sel_str(a.sel)}"
     if read is None:
         return AssertionResult(
-            False, "attribute", detail_base, "no attribute read (backend cannot read attributes)"
+            False,
+            "attribute",
+            detail_base,
+            "attribute not read: the caller supplied no EvalContext.attributes",
         )
     if read.error is not None:
         return AssertionResult(False, "attribute", detail_base, read.error)

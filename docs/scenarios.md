@@ -2332,7 +2332,9 @@ covers what the element tree does not carry. Examples are a link's `href`, an im
 
 - **`sel`** resolves the same way it does for `value`. No match fails the assertion, and two or
   more matches fail it as ambiguous. The element must be one the web query lists: one with a
-  `data-testid`, a `role`, or an interactive tag. A bare `<img>` needs a `data-testid`.
+  `data-testid`, a `role`, or an interactive tag, or a text element addressed by its `label`. A bare
+  `<img>` carries no text, so it needs a `data-testid`. Two content-identical elements whose
+  attribute values differ also fail as ambiguous, since nothing else tells them apart.
 - **`name`** must be a valid HTML attribute name. An empty name fails to load. A name holding a
   space, a quote, `>`, `/`, `=`, or a control character fails too. Bajutsu never lowercases the name. It
   reaches the DOM's `getAttribute` as written. HTML elements match it case-insensitively. SVG and

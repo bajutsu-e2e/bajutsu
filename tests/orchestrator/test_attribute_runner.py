@@ -10,6 +10,7 @@ import pytest
 from _orch import FakeClock, _scenario
 from conftest import el
 
+from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.orchestrator import run_scenario
 from bajutsu.common.scenario import Interrupt
@@ -98,3 +99,17 @@ def test_an_interrupt_condition_reads_the_attribute_to_fire() -> None:
     result = run_scenario(driver, sc, clock=FakeClock(), interrupts=[entry])
     assert result.ok, result.failure
     assert ("tap", {"id": "cart"}) in driver.actions
+
+
+def test_a_backend_that_cannot_read_fails_the_step_loudly() -> None:
+    # The preflight refuses this before a lease; were it bypassed, the refusal must surface as the
+    # step's failure rather than as an attribute that merely never matched.
+    class _NoAttributes(FakeDriver):
+        def read_attribute(self, sel: base.Selector, name: str) -> str | None:
+            raise base.UnsupportedAction("attribute is web-only")
+
+    driver = _NoAttributes([el("cart", "Cart", ["button"])])
+    sc = _scenario({"name": "a", "steps": [{"assert": [_state("ready")]}]})
+    result = run_scenario(driver, sc, clock=FakeClock())
+    assert not result.ok
+    assert result.failure is not None and "attribute is web-only" in result.failure
