@@ -493,7 +493,8 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   iOS-only (`os_log`/simctl-based). `query()` fills `value` from each tag's own source — `href` for
   `<a>`, `src` for `<img>`, `datetime` for `<time>` — while a form control, a `<meter>`, and a
   `<progress>` carrying a `value` attribute report their live `value` even under a `role`, and any
-  other `role`'d element (including a role-less `<progress>`) reports `aria-valuetext` or
+  other `role`'d element — plus an indeterminate `<progress>`, one carrying no `value` attribute —
+  reports `aria-valuetext` or
   `aria-valuenow`; an element that holds its own text but matches no other rule is read too, labeled
   with the `staticText` trait iOS uses for a label. The same walk descends into every iframe
   (nested and cross-origin included, offset into main-page CSS pixels), except one sitting under a
