@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0473") |
+| 実装 PR | [#2242](https://github.com/bajutsu-e2e/bajutsu/pull/2242)（単位 3、5、6） |
 | トピック | ドライバとバックエンドのアーキテクチャ |
 | 関連 | [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)、[BE-0314](../BE-0314-scenario-interrupt-handlers/BE-0314-scenario-interrupt-handlers-ja.md)、[BE-0406](../BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md)、[BE-0401](../BE-0401-system-alert-handling-dsl-consolidation/BE-0401-system-alert-handling-dsl-consolidation-ja.md)、[BE-0177](../BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)、[BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications-ja.md)、[BE-0221](../BE-0221-android-scenario-portability-guarantee/BE-0221-android-scenario-portability-guarantee-ja.md) |
 <!-- /BE-METADATA -->
@@ -373,7 +374,7 @@ iOS の `tipKitHandling` だけだったからです。解決後の `Effective` 
 
 ログ：
 
-- PR A：単位 3、5、6 を実装しました。`evidence` に `collectNetwork`、`visualCompare`、`secrets` を
+- [#2242](https://github.com/bajutsu-e2e/bajutsu/pull/2242)：単位 3、5、6 を実装しました。`evidence` に `collectNetwork`、`visualCompare`、`secrets` を
   加え、`run` はこの 3 つのキーを、移動先を示すエラーで拒否します。ターゲットは `notify` を受け付けなく
   なり、ローダは `x-` で始まるトップレベルのキーを無視します。これらのキーを書いているデモの設定と
   ドキュメントも同じ変更で直しました。後の単位が動かすキーが残るので、単位 7 と 8 は未完了のままです。
