@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0471](BE-0471-target-templates-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **承認済み** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0471") |
+| 実装 PR | [#2237](https://github.com/bajutsu-e2e/bajutsu/pull/2237) |
 | トピック | config の取得元 |
 | 関連 | [BE-0030](../BE-0030-parameterized-shared-steps/BE-0030-parameterized-shared-steps-ja.md), [BE-0174](../BE-0174-scenario-ref-path-containment/BE-0174-scenario-ref-path-containment-ja.md), [BE-0422](../BE-0422-inline-scenario-components/BE-0422-inline-scenario-components-ja.md), [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md), [BE-0467](../BE-0467-environment-specific-settings/BE-0467-environment-specific-settings-ja.md) |
 <!-- /BE-METADATA -->
@@ -181,12 +182,16 @@ targets:
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] `merge_defaults` を、振る舞いを変えずに層の畳み込みへリファクタリングする
-- [ ] `templates:`、ファイル形式のテンプレートのパスの付け替えを含む `extends` の展開、ロード時のエラーを加える
-- [ ] `resolve` と serve のエンドポイントに共有のテンプレート名のエラーを、JSON Schema に `extends` と `templates` を加える
-- [ ] 層の順序、消去、ファイル、循環、プラットフォームの衝突のテストを加える
-- [ ] `docs/` と `docs/ja/` に機能を記述し、`docs/architecture.md` と `DESIGN.md` を更新する
-- [ ] showcase の config の共通ブロックをテンプレートへ移し、ターゲットごとの `Effective` を変えない
+- [x] `merge_defaults` を、振る舞いを変えずに層の畳み込みへリファクタリングする
+- [x] `templates:`、ファイル形式のテンプレートのパスの付け替えを含む `extends` の展開、ロード時のエラーを加える
+- [x] `resolve` と serve のエンドポイントに共有のテンプレート名のエラーを、JSON Schema に `extends` と `templates` を加える
+- [x] 層の順序、消去、ファイル、循環、プラットフォームの衝突のテストを加える
+- [x] `docs/` と `docs/ja/` に機能を記述し、`docs/architecture.md` と `DESIGN.md` を更新する
+- [x] showcase の config の共通ブロックをテンプレートへ移し、ターゲットごとの `Effective` を変えない
+
+ログ：
+
+- [#2237](https://github.com/bajutsu-e2e/bajutsu/pull/2237) — 6 つの作業単位すべてを実装しました。`merge_defaults` は、順序付きの層の並びを `defaults` に 1 枚ずつ重ねるようになりました。新しい `schema/_templates.py` は `extends` を深さ優先で展開し、基底を先に置き、各テンプレートを 1 回だけ重ねます。未知の名前、循環、未知のキー、プラットフォームの食い違い、スイートのルート外のファイルでは、読み込みを失敗させます。テンプレートファイル内の相対パスと、その `hooks` が呼ぶコンポーネントは、config ファイル基準に書き換えます。`resolve` と serve の 6 つのエンドポイントは `unknown_target` を共有し、テンプレート名ならそう伝えます。ターゲットの一覧は CLI だけが添え、サーバーのエラーには載せません。1 つの config に複数の組織のターゲットが入りうるためです。crawl のエンドポイントは未知のターゲットを自分で弾くので、CLI の一覧が crawl ジョブのログに出ることはありません。JSON Schema には `extends` と `templates` を加えました。showcase は 3 つの共通ブロック（`SHOWCASE_UITEST`、ローカルの runner、ANR ガード）をテンプレートへ移し、397 行から 362 行になりました。移行前のファイルと比べ、15 ターゲットすべての `Effective` が一致することを確認しています。コミットしたテストは、移した設定を固定する形にしました。古い config の写しを残すと、以後の showcase の編集のたびに写しも直す必要が出るためです。
 
 ## 参考
 

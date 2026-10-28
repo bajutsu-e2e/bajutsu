@@ -402,7 +402,7 @@ bajutsu codegen <scenario.yaml> --target <name> --emit xcuitest -o UITests/   # 
 
 ### 設定の階層（チーム既定 × アプリ別）
 
-`bajutsu.config.yaml` を 2 層（`defaults` × `targets`）で持ちます。値の解決順は **既定 < アプリ < シナリオ** で、右ほど優先します（テストに近いほうが勝ちます）。
+`bajutsu.config.yaml` を `defaults` と `targets` の 2 層で持ち、その間に省略可能な `templates` を挟めます。値の解決順は **既定 < テンプレート < アプリ < シナリオ** で、右ほど優先します（テストに近いほうが勝ちます）。
 
 target が受け付けるキーは次の 11 個で、未知のキーは読み込み時に失敗します。
 
@@ -411,6 +411,8 @@ target が受け付けるキーは次の 11 個で、未知のキーは読み込
 - `services` / `run` / `hooks` / `evidence` / `paths` / `ai` / `notify`
 
 `defaults` は、プラットフォームに依らないグループ（`services` / `run` / `hooks` / `evidence` / `paths` / `ai`）を直接持ちます。形がプラットフォームで変わるグループは `defaults.platforms.<platform>` の下に置きます。辞書はキーごとにマージし（target が優先）、target の `null` は継承した値を消します。リストは置き換えますが、`run.secrets` と `evidence.redact` だけは和集合を取ります。グループ分けの理由は [BE-0452](roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md) にあります。
+
+`templates:` は、名前の付いた部分的な target ブロックを持ちます。target は `extends` でテンプレート名かテンプレートファイルを挙げ、`defaults` と `defaults.platforms.<platform>` の上、target 自身の下に順に重ねます。マージ規則は上と同じです。テンプレートは `targets:` の外に置くので、実行対象として選ばれることはありません。設計の理由は [BE-0471](roadmaps/BE-0471-target-templates/BE-0471-target-templates-ja.md) にあります。
 
 ```yaml
 reservedNamespaces: [auth, nav]  # 共有フロー / コンポーネントの id 契約（§7.3）

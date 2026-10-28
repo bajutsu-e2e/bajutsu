@@ -26,8 +26,8 @@ DIALECT = "https://json-schema.org/draft/2020-12/schema"
 def _target_model(platform: str) -> type[_Model]:
     """One platform's target as a model of its own: the shared keys plus its registered groups.
 
-    A target's groups are optional in the file, because `defaults.platforms.<platform>` may supply
-    them before the target is validated.
+    A target's groups are optional in the file, because `defaults.platforms.<platform>` or a
+    template may supply them before the target is validated.
     """
     schema = PLATFORM_SCHEMAS[platform]
     groups: dict[str, type[_Model]] = {
@@ -44,6 +44,13 @@ def _target_model(platform: str) -> type[_Model]:
             fields[name] = (groups[name] | None, Field(default=None, alias=info.alias))
         else:
             fields[name] = (info.annotation, info)
+    fields["extends"] = (
+        str | list[str] | None,
+        Field(
+            default=None,
+            description="Templates folded under this block, a name or a file path; later wins.",
+        ),
+    )
     title = f"{platform.capitalize()}Target"
     return create_model(
         title, __base__=_Model, __doc__=f"A target of platform `{platform}`.", **fields
@@ -96,7 +103,54 @@ def config_json_schema() -> dict[str, Any]:
         "additionalProperties": False,
     }
     defs.pop("PlatformDefaults", None)
+    schema["properties"]["templates"] = _templates_schema(defs, branches, platforms)
     return {"$schema": DIALECT, **schema}
+
+
+def _templates_schema(
+    defs: dict[str, Any], branches: tuple[type[_Model], ...], platforms: dict[str, Any]
+) -> dict[str, Any]:
+    """The `templates` map: each entry a partial target, of one platform or of none (BE-0471).
+
+    An `anyOf`, not the targets' discriminated `oneOf`, because a template may omit `platform` and a
+    discriminator has no branch for that. A template that names its platform is that platform's
+    target with every field optional; one that does not forbids `platform` and takes any platform's
+    partial shape for the platform-shaped groups.
+    """
+    refs: list[dict[str, str]] = []
+    for platform, branch in zip(PLATFORM_SCHEMAS, branches, strict=True):
+        template = copy.deepcopy(defs[branch.__name__])
+        template["title"] = f"{platform.capitalize()}Template"
+        template["description"] = f"A template of platform `{platform}`, every field optional."
+        template["required"] = ["platform"]
+        # Nullable like the target branches' groups: a template's `null` clears what `defaults` set.
+        template["properties"].update(
+            {
+                group: {"anyOf": [partial, {"type": "null"}]}
+                for group, partial in platforms[platform]["properties"].items()
+            }
+        )
+        defs[template["title"]] = template
+        refs.append({"$ref": f"#/$defs/{template['title']}"})
+    any_platform = copy.deepcopy(defs[branches[0].__name__])
+    del any_platform["properties"]["platform"]
+    any_platform.pop("required", None)
+    for group in GROUPS:
+        any_platform["properties"][group] = {
+            "anyOf": [
+                *(platforms[p]["properties"][group] for p in PLATFORM_SCHEMAS),
+                {"type": "null"},
+            ]
+        }
+    any_platform["title"] = "PlatformlessTemplate"
+    any_platform["description"] = "A template with no `platform`, which its targets supply."
+    defs["PlatformlessTemplate"] = any_platform
+    refs.append({"$ref": "#/$defs/PlatformlessTemplate"})
+    return {
+        "type": "object",
+        "description": "Named, partial target blocks a target pulls in with `extends`.",
+        "additionalProperties": {"anyOf": refs},
+    }
 
 
 def scenario_runs_on_schema() -> dict[str, Any]:

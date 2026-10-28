@@ -26,6 +26,7 @@ from bajutsu.common.cloud.devicefarm import (
     submit_and_collect,
 )
 from bajutsu.common.config.schema._merge import merge_defaults
+from bajutsu.common.config.schema._templates import expand_extends
 from bajutsu.common.devices.runs import unpack_conditions
 
 from .batch_checkpoint import BatchCheckpoint
@@ -78,14 +79,22 @@ def _check_launch_env_collisions(
 
 
 def _check_no_conditions(
-    config_path: Path, scenario_path: Path, target: str, platform: str
+    config_path: Path,
+    scenario_path: Path,
+    target: str,
+    platform: str,
+    *,
+    root: Path | None = None,
 ) -> None:
     """Raise when the job's target or scenario declares a `runsOn` condition (BE-0452).
 
     A Device Farm device is reserved by the worker, not read from a pool, so no condition can be
     matched against it; the worker refuses the job before it submits anything rather than letting
     the condition go ignored. `locale` and `seedPhotos` are device state, so they stay allowed. A
-    file the job does not carry declares nothing here; the run on the device reports it missing.
+    config or scenario file the job does not carry declares nothing here; the run on the device
+    reports it missing. A template file the target extends must be in the bundle, since its `runsOn`
+    cannot be known otherwise: a missing one fails here. *root* is the bundle root a template file
+    must stay inside, None meaning the config's directory.
     """
 
     def read(path: Path) -> Any:
@@ -96,9 +105,16 @@ def _check_no_conditions(
     defaults = config.get("defaults") if isinstance(config, dict) else None
     raw = targets.get(target) if isinstance(targets, dict) else None
     raw = raw if isinstance(raw, dict) else {}
-    # The loader's own merge, so a team-wide `defaults.platforms.<platform>.runsOn` reaches the
-    # target as it does at load, and a target's `null` clears it.
-    merged = merge_defaults(defaults, raw) if isinstance(defaults, dict) else raw
+    # The loader's own expansion and merge, so a team-wide `defaults.platforms.<platform>.runsOn`
+    # or a template's `runsOn` (BE-0471) reaches the target as it does at load, and a `null` clears it.
+    layers = expand_extends(
+        target,
+        raw,
+        config.get("templates") if isinstance(config, dict) else None,
+        config_path=config_path,
+        root=root,
+    )
+    merged = merge_defaults(defaults if isinstance(defaults, dict) else None, *layers)
     runs_on = merged.get("runsOn")
     declared: dict[str, object] = runs_on if isinstance(runs_on, dict) else {}
     found = [f"target {target!r} runsOn.{name}" for name in unpack_conditions(declared)]
@@ -204,6 +220,7 @@ class DeviceFarmBatchProvider:
                     work_dir / request.scenario,
                     request.target,
                     request.platform,
+                    root=work_dir,
                 )
                 for hook in self._hooks:
                     hook.before_submit(ctx)

@@ -29,6 +29,7 @@ from bajutsu.serve.helpers import (
     target_capabilities,
     target_platforms,
     target_scenarios_dir,
+    unknown_target_error,
     valid_relative_key,
     valid_run_id,
     valid_scenario_ref,
@@ -933,6 +934,10 @@ def start_crawl(
     org, forbidden = _resolve_org_or_forbid(state, target, actor, session)
     if forbidden:
         return forbidden
+    # run and record reject an unknown target through their scenarios scope; crawl has none, so it
+    # checks here before the CLI's target-listing error can reach the job log.
+    if unknown := unknown_target_error(cfg, target):
+        return {"error": unknown}, 400
     # Two ways to warm-start an existing run (both take its runId from the UI): resume one pruned
     # branch tapped in the graph, or continue the whole remaining frontier (BE-0181). They're
     # mutually exclusive — one names a single branch, the other means "everything left". Anything

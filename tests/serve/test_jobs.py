@@ -19,6 +19,7 @@ from bajutsu.common.backend_cli import simctl as simctl_mod
 from bajutsu.serve import jobs as srv_jobs
 from bajutsu.serve import operations as ops
 from bajutsu.serve import state as srv_state
+from bajutsu.serve.helpers import unknown_target_error
 from bajutsu.serve.logbus import InMemoryLogBus
 from bajutsu.serve.uploads import Upload
 
@@ -407,6 +408,28 @@ def test_target_build_info_reads_config(tmp_path: Path) -> None:
     assert srv.target_build_info(cfg, "bare") == (None, None)  # neither set
     assert srv.target_build_info(cfg, "nope") == (None, None)  # unknown app → no build
     assert srv.target_build_info(tmp_path / "missing.yaml", "demo") == (None, None)  # no config
+
+
+def test_unknown_target_error_names_a_template_and_lists_no_targets(tmp_path: Path) -> None:
+    cfg = tmp_path / "c.yaml"
+    cfg.write_text(
+        (
+            "templates:\n"
+            "  tpl: {platform: ios}\n"
+            "targets:\n"
+            "  demo:\n"
+            "    extends: tpl\n"
+            "    app: {id: com.example.demo}\n"
+        ),
+        encoding="utf-8",
+    )
+    assert unknown_target_error(cfg, "demo") is None
+    assert unknown_target_error(cfg, "tpl") == "'tpl' is a template, not a target"
+    assert unknown_target_error(cfg, "ghost") == (
+        "unknown target: 'ghost' (define targets.ghost in config)"
+    )
+    # An unreadable config is the job's own load error to report, not this guard's.
+    assert unknown_target_error(tmp_path / "missing.yaml", "demo") is None
 
 
 def test_target_scenarios_dir_reads_config(tmp_path: Path) -> None:
