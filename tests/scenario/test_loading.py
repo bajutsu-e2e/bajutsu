@@ -24,7 +24,7 @@ SCENARIO_YAML = """
   preconditions:
     app:
       launch: { env: { SAMPLE_SCREEN: "settings" }, deeplink: "bajutsusample://settings" }
-    runsOn:
+    device:
       ios: { locale: "ja_JP" }
     run: { erase: true }
   steps:

@@ -57,13 +57,13 @@ def test_a_target_without_conditions_keeps_the_udid() -> None:
 
 
 def test_the_first_run_takes_the_first_model_at_the_newest_major_in_the_pool() -> None:
-    eff = _eff("ios", f"{{model: ['{SE}'], os: '>=17 <19'}}")
+    eff = _eff("ios", f"{{ios: {{model: ['{SE}'], os: '>=17 <19'}}}}")
     _, udid = _first_run_or_exit(eff, "xcuitest", "se17,se18,ipad18", read_ios=_read)
     assert udid == "se18"
 
 
 def test_no_device_fitting_the_first_run_exits_2(capsys: pytest.CaptureFixture[str]) -> None:
-    eff = _eff("ios", "{os: '>=19'}")
+    eff = _eff("ios", "{ios: {os: '>=19'}}")
     with pytest.raises(typer.Exit) as exc:
         _first_run_or_exit(eff, "xcuitest", "se17,se18", read_ios=_read)
     assert exc.value.exit_code == 2
@@ -71,7 +71,7 @@ def test_no_device_fitting_the_first_run_exits_2(capsys: pytest.CaptureFixture[s
 
 
 def test_a_device_that_cannot_be_read_exits_2(capsys: pytest.CaptureFixture[str]) -> None:
-    eff = _eff("android", "{apiLevel: '34'}")
+    eff = _eff("android", "{android: {apiLevel: '34'}}")
 
     def broken(_serials: object) -> list[DeviceFacts]:
         from bajutsu.common.devices.facts import DeviceReadError
@@ -102,7 +102,7 @@ def test_a_web_version_range_the_browser_misses_exits_2() -> None:
 
 def test_a_grid_target_with_a_condition_exits_2(capsys: pytest.CaptureFixture[str]) -> None:
     eff = replace(
-        _eff("ios", "{os: '18'}"),
+        _eff("ios", "{ios: {os: '18'}}"),
         device_provider=DeviceProvider(kind="appium", endpoint="https://grid.example/"),
     )
     with pytest.raises(typer.Exit):
@@ -111,50 +111,47 @@ def test_a_grid_target_with_a_condition_exits_2(capsys: pytest.CaptureFixture[st
 
 
 def test_fake_takes_the_udid_as_given() -> None:
-    eff = _eff("ios", "{os: '18'}")
+    eff = _eff("ios", "{ios: {os: '18'}}")
     assert _first_run_or_exit(eff, "fake", "booted") == (eff, "booted")
 
 
 # --- audit --repeat ------------------------------------------------------------------------------
 
 
-def _scenarios(*runs_on: str) -> list[Scenario]:
-    import yaml
-
-    return [
-        Scenario.model_validate(
-            {"name": f"s{i}", "steps": [], "preconditions": {"runsOn": yaml.safe_load(r)}}
-        )
-        for i, r in enumerate(runs_on)
-    ]
+def _scenarios(count: int = 1) -> list[Scenario]:
+    return [Scenario.model_validate({"name": f"s{i}", "steps": []}) for i in range(count)]
 
 
 def test_audit_forms_one_run_per_major_on_its_own_device(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    eff = _eff("ios", "{os: '>=17'}")
-    runs, failed = _audit_runs(
-        _scenarios("{}", "{ios: {os: '>=19'}}", "{ios: {model: 'iPhone 99'}}"),
-        eff,
-        "xcuitest",
-        ["se17"],
-        "se17,se18",
-        fake=False,
-        read_facts=lambda lane: _read(list(lane.udids)),
-    )
+    def audit(runs_on: str) -> tuple[list[tuple[Scenario, str, Any, list[str]]], bool]:
+        return _audit_runs(
+            _scenarios(),
+            _eff("ios", runs_on),
+            "xcuitest",
+            ["se17"],
+            "se17,se18",
+            fake=False,
+            read_facts=lambda lane: _read(list(lane.udids)),
+        )
+
+    runs, failed = audit("{ios: {os: '>=17'}}")
     assert [(s.name, label, udids) for s, label, _eff, udids in runs] == [
         ("s0", "iOS 17", ["se17"]),
         ("s0", "iOS 18", ["se18"]),
     ]
-    assert failed
-    out = capsys.readouterr().out
-    assert "not applicable: t/s1" in out
-    assert 's2: no device fits this run: runsOn.ios.model  "iPhone 99"' in out
+    assert not failed
+    assert audit("{ios: {os: '>=19'}}") == ([], False)
+    assert "not applicable: t/s0" in capsys.readouterr().out
+    runs, failed = audit("{ios: {model: 'iPhone 99'}}")
+    assert (runs, failed) == ([], True)
+    assert 's0: no device fits this run: runsOn.ios.model  "iPhone 99"' in capsys.readouterr().out
 
 
 def test_audit_without_conditions_keeps_one_run_per_scenario() -> None:
     eff = _eff("ios", "{}")
-    runs, failed = _audit_runs(_scenarios("{}"), eff, "xcuitest", ["se17"], "se17", fake=False)
+    runs, failed = _audit_runs(_scenarios(), eff, "xcuitest", ["se17"], "se17", fake=False)
     assert [(s.name, label, udids) for s, label, _e, udids in runs] == [("s0", "", ["se17"])]
     assert not failed
 
@@ -167,11 +164,11 @@ def test_audit_names_a_report_by_its_coordinates() -> None:
 
 def test_audit_refuses_a_condition_on_a_grid_target(capsys: pytest.CaptureFixture[str]) -> None:
     eff = replace(
-        _eff("ios", "{os: '18'}"),
+        _eff("ios", "{ios: {os: '18'}}"),
         device_provider=DeviceProvider(kind="appium", endpoint="https://grid.example/"),
     )
     with pytest.raises(typer.Exit) as exc:
-        _audit_runs(_scenarios("{}"), eff, "xcuitest", ["grid"], "grid", fake=False)
+        _audit_runs(_scenarios(), eff, "xcuitest", ["grid"], "grid", fake=False)
     assert exc.value.exit_code == 2
     assert "remote environment (appium)" in capsys.readouterr().out
 
@@ -184,8 +181,8 @@ def test_audit_exits_2_when_a_device_cannot_be_read(capsys: pytest.CaptureFixtur
 
     with pytest.raises(typer.Exit):
         _audit_runs(
-            _scenarios("{}"),
-            _eff("ios", "{os: '18'}"),
+            _scenarios(),
+            _eff("ios", "{ios: {os: '18'}}"),
             "xcuitest",
             ["se17"],
             "se17",
@@ -197,7 +194,7 @@ def test_audit_exits_2_when_a_device_cannot_be_read(capsys: pytest.CaptureFixtur
 
 def test_audit_runs_each_listed_engine_with_that_engine() -> None:
     eff = _eff("web", "{browser: {engine: [webkit, firefox]}}")
-    runs, failed = _audit_runs(_scenarios("{}"), eff, "playwright", ["web"], "booted", fake=False)
+    runs, failed = _audit_runs(_scenarios(), eff, "playwright", ["web"], "booted", fake=False)
     assert [(label, web_engine(e), udids) for _s, label, e, udids in runs] == [
         ("webkit", "webkit", ["web"]),
         ("firefox", "firefox", ["web"]),

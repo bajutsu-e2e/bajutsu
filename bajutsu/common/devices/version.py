@@ -1,6 +1,6 @@
 """Version ranges in npm's node-semver grammar, for the device conditions a target declares (BE-0452).
 
-A target's `runsOn.os` (iOS), `runsOn.apiLevel` (Android), and `runsOn.browser.version` (web) take
+A target's `runsOn.ios.os` (iOS), `runsOn.android.apiLevel` (Android), and `runsOn.browser.version` (web) take
 a range such as `>=17 <19`, `^17`, `33 - 35`, or `17 || >=19`. The grammar is npm's in full rather
 than a notation of Bajutsu's own, so there is nothing Bajutsu-specific to explain; the one departure
 is that prerelease tags are not used (see `VersionSpec.parse`).

@@ -298,7 +298,7 @@ than resolving through frame-center coordinates. Needs Xcode's `xcodebuild`.
 > no app-side cooperation. A Simulator run needs no runner config at all: when a target names neither
 > `driver.runner.testRunner` nor `driver.runner.build`, it resolves to the Simulator runner bundled in the wheel
 > as package data (BE-0292) — an explicit `testRunner` or `build` still overrides that default, and
-> `runsOn.kind: device` resolves to the runner the user built and signed with `bajutsu runner build
+> `runsOn.ios.kind: device` resolves to the runner the user built and signed with `bajutsu runner build
 > --device` (BE-0456), since Bajutsu cannot ship one signed for the operator's team. The backend is **validated on-device** (iPhone 17 Pro, recent iOS) via
 > `make -C demos/showcase run-swiftui` + the `ios-e2e.yml` CI workflow. The XCUITest backend needs no
 > pip extra — Xcode supplies `xcodebuild`.
@@ -694,7 +694,7 @@ fits the same toolchain as `make check`. Implementation: `common/drivers/playwri
 - Lifecycle is owned by the driver: a fresh `BrowserContext` is the `erase` equivalent, `navigate()`
   (`page.goto(app.url)`) is the `launch`, and `close()` tears the browser down. There is no simctl
   device, so the run uses a dummy lease and no device control.
-- **Device mode** (BE-0228): a web target's `runsOn.emulate` config selects how each `BrowserContext` is
+- **Device mode** (BE-0228): a web target's `runsOn.browser.emulate` config selects how each `BrowserContext` is
   created — `desktop` (the default when omitted, a plain desktop context, unchanged from before) or a Playwright
   device preset name (e.g. `iPhone 13`). A preset is resolved against `playwright.devices` and its
   descriptor (viewport / `device_scale_factor` / `is_mobile` / `has_touch` / `user_agent`) is merged
@@ -708,10 +708,10 @@ fits the same toolchain as `make check`. Implementation: `common/drivers/playwri
   real device or a device cloud; for a real mobile OS the Android backend is the path.
 - **Directional `swipe` scrolls** (BE-0227): the directional form `swipe: { on, direction }` means
   "scroll", and a mouse drag does not scroll a web page, so the web backend dispatches the input
-  primitive that actually scrolls, keyed on the context's input mode (the `runsOn.emulate` above). On a
+  primitive that actually scrolls, keyed on the context's input mode (the `runsOn.browser.emulate` above). On a
   **desktop** (pointer) context it emits a `page.mouse.wheel(...)` over the gesture's start — the
   wheel is the reverse of the travel, so an `up` swipe scrolls the page **down**, exactly as a
-  trackpad or wheel would. On a **touch** context (a mobile `runsOn.emulate`) it uses a real
+  trackpad or wheel would. On a **touch** context (a mobile `runsOn.browser.emulate`) it uses a real
   single-finger touch drag over CDP (the same path `pinch` / `rotate` take), so the page's touch and
   scroll listeners fire. The **coordinate** form `swipe: { from, to }` is unchanged — it stays a
   literal `page.mouse` drag, the raw-drag last resort for a canvas / map pan / drag handle. `codegen`

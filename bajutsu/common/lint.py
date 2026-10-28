@@ -13,7 +13,6 @@ import yaml
 from pydantic import ValidationError
 
 from bajutsu.common import _yaml
-from bajutsu.common.config import runs_on_problems
 from bajutsu.common.scenario import Scenario, load_scenario_file
 
 
@@ -26,23 +25,15 @@ class Diagnostic(TypedDict):
     severity: str  # "error" — the only level lint emits today.
 
 
-def _runs_on_findings(scenarios: list[Scenario]) -> list[str]:
-    # The scenario model keeps each `preconditions.runsOn` block as written (BE-0452), so the platform
-    # registry checks the blocks here, as `run` and `audit` do before any device work.
-    return [
-        f"{s.name}: {problem}" for s in scenarios for problem in runs_on_problems(s.preconditions)
-    ]
-
-
 def lint_text(text: str) -> list[str]:
     """Validate scenario YAML text. Returns a list of error messages (empty = ok)."""
     try:
-        scenario_file = load_scenario_file(text)
+        load_scenario_file(text)
     except (ValidationError, ValueError) as e:
         return _format_validation_error(e)
     except yaml.YAMLError as e:
         return [f"YAML parse error: {e}"]
-    return _runs_on_findings(scenario_file.scenarios)
+    return []
 
 
 def lint_file(path: Path) -> list[str]:
@@ -64,17 +55,14 @@ def lint_diagnostics(text: str) -> list[Diagnostic]:
     walking the YAML node tree, falling back to `line: None` when the path cannot be followed.
     """
     try:
-        scenario_file = load_scenario_file(text)
+        load_scenario_file(text)
     except ValidationError as e:
         return _diagnostics_from_validation(text, e)
     except yaml.YAMLError as e:
         return [_diagnostic_from_yaml_error(e)]
     except ValueError as e:
         return [Diagnostic(line=None, column=None, message=str(e), severity="error")]
-    return [
-        Diagnostic(line=None, column=None, message=message, severity="error")
-        for message in _runs_on_findings(scenario_file.scenarios)
-    ]
+    return []
 
 
 def provenance_coverage(scenarios: list[Scenario]) -> str | None:
@@ -107,14 +95,6 @@ def scenario_json_schema() -> str:
         scenario_schema = Scenario.model_json_schema()
         defs.update(scenario_schema.pop("$defs", {}))
         defs["Scenario"] = {k: v for k, v in scenario_schema.items() if k != "$defs"}
-    # The scenario model keeps each `runsOn` block as written, because it never imports the config;
-    # the editor schema states each platform's fields from the registry instead (BE-0452).
-    from bajutsu.common.config.json_schema import scenario_runs_on_schema
-
-    runs_on = scenario_runs_on_schema()
-    defs.update(runs_on.pop("$defs"))
-    runs_on["description"] = defs["Preconditions"]["properties"]["runsOn"].get("description", "")
-    defs["Preconditions"]["properties"]["runsOn"] = runs_on
 
     return json.dumps(
         {"anyOf": [list_schema, file_schema], "$defs": defs},

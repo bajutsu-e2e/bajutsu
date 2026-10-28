@@ -235,7 +235,7 @@ def _web_runs(
                 engine=name,
                 coordinates=coords,
                 outcome=outcome,
-                reason=f'runsOn.web.browser.version  "{spec}"  launched: {launched.describe}',
+                reason=f'runsOn.browser.version  "{spec}"  launched: {launched.describe}',
             )
         )
     return runs
@@ -461,22 +461,32 @@ def declared_runs(
     return labels
 
 
+def condition_path(platform: str, name: str) -> str:
+    """Where a *platform* target writes the condition keyed *name*, as a `runsOn` path (BE-0469).
+
+    A web condition's key already starts at its destination (`browser.version`); a mobile one sits
+    under the destination block its platform names (`runsOn.ios.model`).
+    """
+    return f"runsOn.{name}" if platform == "web" else f"runsOn.{platform}.{name}"
+
+
 def unpack_conditions(
     value: Mapping[str, object],
 ) -> dict[str, str | list[str]]:
-    """A `runsOn` block's condition fields, flattened to the keys `form_target_runs` reads.
+    """A raw `runsOn` group's condition fields, keyed by their path under `runsOn` (`ios.model`).
 
-    Device state (`locale`, `seedPhotos`) and how a target is driven (`kind`, `emulate`) are not
-    conditions; an integer range (`apiLevel: 34`) becomes its text, as the target's model reads it.
+    Reads each destination block (BE-0469). Device state (`locale`, `seedPhotos`) and how a target is
+    driven (`kind`, `emulate`) are not conditions; an integer range (`apiLevel: 34`) becomes its
+    text, as the target's model reads it.
     """
     out: dict[str, str | list[str]] = {}
-    for key, raw in value.items():
-        if key in ("locale", "seedPhotos", "kind", "emulate"):
+    for destination, block in value.items():
+        if not isinstance(block, Mapping):
             continue
-        if isinstance(raw, Mapping):
-            out.update({f"{key}.{sub}": _text(v) for sub, v in raw.items() if v is not None})
-        elif raw is not None:
-            out[key] = _text(raw)
+        for key, raw in block.items():
+            if key in ("locale", "seedPhotos", "kind", "emulate") or raw is None:
+                continue
+            out[f"{destination}.{key}"] = _text(raw)
     return out
 
 

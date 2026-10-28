@@ -151,38 +151,3 @@ def _templates_schema(
         "description": "Named, partial target blocks a target pulls in with `extends`.",
         "additionalProperties": {"anyOf": refs},
     }
-
-
-def scenario_runs_on_schema() -> dict[str, Any]:
-    """The JSON Schema of a scenario's `preconditions.runsOn`, keyed by platform from the registry.
-
-    The scenario model keeps each block as written, since the scenario schema never imports the
-    config; this states what `runs_on_problems` accepts instead: each platform's `runsOn` fields
-    except how a target is driven (`kind`, `emulate`), every one optional.
-
-    Returns:
-        The schema, with the definitions its fields refer to under `$defs`.
-    """
-    from .preconditions import _TARGET_ONLY_RUNS_ON
-
-    platforms: dict[str, Any] = {}
-    defs: dict[str, Any] = {}
-    for platform, schema in PLATFORM_SCHEMAS.items():
-        generated = schema.runs_on.model_json_schema(by_alias=True, mode="validation")
-        defs.update(generated.pop("$defs", {}))
-        properties = {
-            k: v
-            for k, v in generated.get("properties", {}).items()
-            if k not in _TARGET_ONLY_RUNS_ON
-        }
-        platforms[platform] = {
-            "type": "object",
-            "properties": properties,
-            "additionalProperties": False,
-        }
-    return {
-        "type": "object",
-        "properties": platforms,
-        "additionalProperties": False,
-        "$defs": defs,
-    }

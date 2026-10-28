@@ -1,10 +1,11 @@
 """A scenario's preconditions merged over one target's config, and the checks run before device work.
 
-A scenario writes its preconditions in the target's group names (`app`, `runsOn`, `run`), and every
-group merges over the target's (BE-0452). The scenario schema cannot import the config, so the
-platform-aware half lives here: `check_preconditions` validates the scenario's fields against the
-platforms it drives, and `resolve_preconditions` builds what a platform environment reads for one
-target.
+A scenario writes its preconditions in the target's group names (`app`, `run`), each merging over the
+target's (BE-0452), and its device state under `device` (BE-0469). Where a run happens belongs to the
+target alone, so no scenario field reaches the device conditions. The scenario schema cannot import
+the config, so the platform-aware half lives here: `check_preconditions` validates the scenario's
+fields against the platforms it drives, and `resolve_preconditions` builds what a platform
+environment reads for one target.
 """
 
 from __future__ import annotations
@@ -14,22 +15,10 @@ from dataclasses import dataclass, field, replace
 from typing import Literal
 
 from bajutsu.common.config.effective import Effective, IosConfig
-from bajutsu.common.config.schema.platform import (
-    accepts_field,
-    allowed_fields,
-    schema_for,
-    validate_model,
-)
+from bajutsu.common.config.schema.platform import accepts_field, schema_for
 from bajutsu.common.config.schema.target_config import run_model
-from bajutsu.common.devices.runs import unpack_conditions
+from bajutsu.common.devices.runs import condition_path
 from bajutsu.common.scenario import Preconditions
-
-# `runsOn` fields a scenario may not set: `kind` and `emulate` say how a target is driven, so they
-# stay on the target (BE-0228).
-_TARGET_ONLY_RUNS_ON = frozenset({"kind", "emulate"})
-
-# `runsOn` fields a scenario writes that are device state the run applies, not conditions to match.
-_STATE_RUNS_ON = frozenset({"locale", "seedPhotos"})
 
 
 @dataclass(frozen=True)
@@ -72,14 +61,14 @@ def resolve_preconditions(
     # iOS-shaped sub-config and runs under the scenario's iOS locale, as the flat `locale` did.
     platform = eff.platform
     seed = pre.seed_photos_for(platform)
-    locale = pre.runs_on_for(platform).get("locale")
+    locale = pre.resolved_locale("", platform)
     return ResolvedPreconditions(
         erase=pre.run.erase if pre.run.erase is not None else eff.run_defaults.erase,
         reinstall=pre.app.reinstall or eff.reinstall or "clean",
         launch_env=dict(pre.app.launch.env),
         launch_args=list(pre.app.launch.args),
         deeplink=pre.app.launch.deeplink or eff.deeplink,
-        locale=locale if isinstance(locale, str) and locale else None,
+        locale=locale or None,
         seed_photos=seed if seed is not None else list(eff.seed_photos),
     )
 
@@ -88,7 +77,7 @@ def command_preconditions(eff: Effective, *, erase: bool) -> ResolvedPreconditio
     """The target's own preconditions for a command that runs no scenario (`record`, `crawl`, `repl`).
 
     The command's `--erase` decides the wipe; the target's `app.reinstall`, `app.launch.deeplink`,
-    and `runsOn.seedPhotos` still apply.
+    and `runsOn.ios.seedPhotos` still apply.
 
     Raises:
         ValueError: The target seeds photos but the command does not erase, which would seed none.
@@ -96,7 +85,7 @@ def command_preconditions(eff: Effective, *, erase: bool) -> ResolvedPreconditio
     merged = replace(resolve_preconditions(eff), erase=erase)
     if merged.seed_photos and not erase:
         raise ValueError(
-            f"target {eff.target!r} sets runsOn.seedPhotos, which seeds only a wiped device: "
+            f"target {eff.target!r} sets runsOn.ios.seedPhotos, which seeds only a wiped device: "
             "drop --no-erase, or clear the target's seedPhotos"
         )
     return merged
@@ -125,75 +114,19 @@ def _run_fields(pre: Preconditions) -> list[str]:
     return [name for name, written in candidates if written]
 
 
-def runs_on_problems(pre: Preconditions) -> list[str]:
-    """Each `runsOn` block's problems: an unknown platform, a target-only field, or a bad value.
-
-    Needs no target, so `bajutsu lint` runs it as well as `run` and `audit`: the scenario model keeps
-    the blocks as written, because the scenario schema may not import the platform registry.
-
-    Returns:
-        One message per problem, each naming the field; empty when every block is sound.
-    """
-    problems: list[str] = []
-    for platform, block in pre.runs_on.items():
-        where = f"preconditions.runsOn.{platform}"
-        try:
-            model = schema_for(platform).runs_on
-        except ValueError as exc:
-            problems.append(f"{where}: {exc}")
-            continue
-        accepted = [f for f in allowed_fields(model) if f not in _TARGET_ONLY_RUNS_ON]
-        refused = [k for k in block if k not in accepted]
-        problems.extend(
-            f"{where}.{key}: a scenario cannot set this field for platform {platform!r}; "
-            f"allowed fields: {', '.join(accepted) or '(none)'}"
-            for key in refused
-        )
-        if refused:
-            continue
-        try:
-            validate_model(model, block, platform=platform, where=where)
-        except ValueError as exc:  # a pydantic ValidationError is a ValueError too
-            problems.append(str(exc))
-    return problems
-
-
-def scenario_conditions(pre: Preconditions, platforms: Sequence[str]) -> list[str]:
-    """The device conditions *pre* declares for the driven *platforms*, as `runsOn` paths.
-
-    Every field of a driven platform's block other than `locale` and `seedPhotos` (`model`, `os`,
-    `avd`, `apiLevel`, `browser.engine`, `browser.version`) decides which device the run takes.
-    """
-    found: list[str] = []
-    for platform in dict.fromkeys(platforms):
-        for key, value in pre.runs_on_for(platform).items():
-            if key in _STATE_RUNS_ON:
-                continue
-            if isinstance(value, dict):
-                found += [f"runsOn.{platform}.{key}.{sub}" for sub in value]
-            else:
-                found.append(f"runsOn.{platform}.{key}")
-    return found
-
-
 def effective_conditions(
-    eff: Effective, pre: Preconditions | None = None, *, engine_flag: bool = False
+    eff: Effective, *, engine_flag: bool = False
 ) -> dict[str, str | list[str]]:
-    """The `runsOn` conditions one target runs a scenario under: the scenario's block over the target's.
+    """The `runsOn` conditions one target runs under: the target's own, since BE-0469.
 
-    The scenario's block for the target's platform overrides the target's conditions field by field,
-    so the scenario wins, and may widen the target's range (BE-0452). A single `browser.engine` in the
-    scenario replaces the target's engine for the scenario's runs; a `--browser` or `--browsers` flag
-    (*engine_flag*) wins over both, so the scenario's engine is dropped.
+    A `--browser` or `--browsers` flag (*engine_flag*) names the web engine itself, so the target's
+    listed engine is dropped.
 
     Args:
-        eff: The target the scenario runs against.
-        pre: The scenario's preconditions; None for a command that runs no scenario.
+        eff: The target to run.
         engine_flag: Whether a command-line flag already names the web engine.
     """
     merged = dict(eff.conditions)
-    if pre is not None:
-        merged.update(unpack_conditions(pre.runs_on_for(eff.schema_platform)))
     if engine_flag:
         merged.pop("browser.engine", None)
     return merged
@@ -204,7 +137,7 @@ def remote_condition_problems(
 ) -> list[str]:
     """Why *conditions* cannot be matched for *eff*: it has no pool to read before the run.
 
-    A physical iPhone (`runsOn.kind: device`) and a target an `appium` grid serves are never matched,
+    A physical iPhone (`runsOn.ios.kind: device`) and a target an `appium` grid serves are never matched,
     so a condition on either fails rather than going ignored (BE-0452). `locale` and `seedPhotos` are
     device state, not conditions, so they never appear here.
 
@@ -215,13 +148,13 @@ def remote_condition_problems(
         return []
     ios = eff.platform_config if isinstance(eff.platform_config, IosConfig) else None
     if ios is not None and ios.xcuitest is not None and ios.xcuitest.device_type == "device":
-        where = "a physical device (runsOn.kind: device)"
+        where = "a physical device (runsOn.ios.kind: device)"
     elif eff.device_provider is not None and eff.device_provider.kind != "local":
         where = f"a remote environment ({eff.device_provider.kind})"
     else:
         return []
     return [
-        f"runsOn.{eff.schema_platform}.{name}: target {eff.target!r} runs on {where}, which has "
+        f"{condition_path(eff.schema_platform, name)}: target {eff.target!r} runs on {where}, which has "
         "no device pool to match a condition against; remove the condition for this target"
         for name in conditions
     ]
@@ -233,8 +166,7 @@ def check_preconditions(
     """Every problem with *pre* against the *targets* a scenario drives, before any device work.
 
     A field never goes ignored (BE-0452). An `app` field or an iOS-only `run` field that no driven
-    target's platform has is a problem, as is a malformed `runsOn` block, even for a platform the run
-    does not drive. After merging, a target whose `seedPhotos` is non-empty needs an effective
+    target's platform has is a problem. After merging, a target whose `seedPhotos` is non-empty needs an effective
     `run.erase` (the flag, then the scenario, then the target), because seeding happens only on the
     erase path.
 
@@ -249,21 +181,22 @@ def check_preconditions(
     Returns:
         One message per problem, each naming the field; empty when the scenario is sound.
     """
-    problems = runs_on_problems(pre)
     platforms = list(dict.fromkeys(eff.schema_platform for eff in targets))
     driven = ", ".join(platforms)
-    for path in _app_fields(pre):
-        if not any(accepts_field(schema_for(p).app, path) for p in platforms):
-            problems.append(
-                f"preconditions.app.{'.'.join(path)} applies to no target this scenario drives "
-                f"(platform {driven}); remove it, or name a target whose platform has it"
-            )
-    for name in _run_fields(pre):
-        if not any(accepts_field(run_model(p), (name,)) for p in platforms):
-            problems.append(
-                f"preconditions.run.{name} applies to no target this scenario drives "
-                f"(platform {driven}); remove it, or name a target whose platform has it"
-            )
+    unused = [
+        f"app.{'.'.join(path)}"
+        for path in _app_fields(pre)
+        if not any(accepts_field(schema_for(p).app, path) for p in platforms)
+    ] + [
+        f"run.{name}"
+        for name in _run_fields(pre)
+        if not any(accepts_field(run_model(p), (name,)) for p in platforms)
+    ]
+    problems = [
+        f"preconditions.{field} applies to no target this scenario drives "
+        f"(platform {driven}); remove it, or name a target whose platform has it"
+        for field in unused
+    ]
     for i, eff in enumerate(targets):
         merged = resolve_preconditions(eff, pre)
         if i and merged.seed_photos:

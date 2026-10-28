@@ -60,7 +60,7 @@ scenarios:
 | `primaryTarget` | str | なし | `target` を省略したステップやトップレベルの `expect` エントリが動くターゲット。`targets` の最初の名前（最初のグループの最初のメンバー）と一致する必要があります（[下記](#targets--target複数ターゲットシナリオbe-0428)） |
 | `installs` | list[str] | `[]` | プライマリと並んで開始時にインストールして起動するデバイスグループのメンバー。2つ以上のメンバーを持つグループのそれ以外のメンバーは、後から `installApp` ステップでインストールします（[デバイスグループ](#デバイスグループ1台のデバイスで複数のアプリを動かすbe-0447)） |
 | `data` / `dataFile` | list / str | なし | データ駆動の行。インライン `data` か `dataFile`（CSV パス）で指定する。1 行 1 run に展開し `${row.col}` を置換する。両者は排他（[再利用とデータ駆動とタグ](#再利用とデータ駆動とタグ)） |
-| `preconditions` | object | `{}` | テスト前の環境準備です。ターゲットと同じグループ名 `app`、`runsOn`、`run` で書き、それぞれをターゲットの値に重ねます（[下記](#preconditions環境準備)） |
+| `preconditions` | object | `{}` | テスト前の環境準備です。ターゲットと同じグループ名の `app` と `run` をターゲットの値に重ね、デバイスの状態を `device` に書きます（[下記](#preconditions環境準備)） |
 | `setup` | list | `[]` | `steps` の前に**独立したフェーズ**として走るセットアップのステップ列。ここで失敗するとシナリオを打ち切る（[下記](#setup--cleanupセットアップとティアダウンのフェーズ)） |
 | `steps` | list | 必須 | アクションの並び（下記） |
 | `expect` | list | `[]` | 全ステップ成功後の最終アサーション（[selectors](selectors.md#アサーション評価)） |
@@ -96,11 +96,13 @@ scenarios:
 `bajutsu/common/config/preconditions.py` が行います。runner の `launch_driver` は重ね合わせた結果を読んで、
 起動手順を組み立てます（[run-loop](run-loop.md#runner実行パイプライン)）。
 
-シナリオの `preconditions` はターゲットと同じグループ名を使います。そのため、1 つのフィールドは config
-でもシナリオでも同じ綴りになります
+シナリオの `preconditions` は 3 つのグループを持ちます。`app` と `run` はターゲットと同じグループ名を
+使うので、1 つのフィールドは config でもシナリオでも同じ綴りになります
 （[BE-0452](../../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)）。
-グループは `app`、`runsOn`、`run` の 3 つです。シナリオに書いたフィールドは、ターゲットの
-[config](configuration.md) の同じフィールドを上書きします。例外は次の 3 つです。
+`device` は、シナリオが適用するデバイスの状態を宛先ごとに持ちます。宛先は `device.ios` だけです
+（[BE-0469](../../roadmaps/BE-0469-runson-destination-blocks/BE-0469-runson-destination-blocks-ja.md)）。
+シナリオに書いたフィールドは、ターゲットの [config](configuration.md) の同じフィールドを上書きします。
+例外は次の 3 つです。
 
 - `app.launch.env` はキーごとにマージします。
 - `app.launch.args` はターゲットの引数の後ろに追記します。
@@ -111,7 +113,7 @@ preconditions:
   app:
     reinstall: overwrite
     launch: { env: { FEATURE_X: "1" }, args: ["-debug"], deeplink: "showcase://cart" }
-  runsOn:
+  device:
     ios: { locale: ja_JP, seedPhotos: [photos/cat.jpg] }
   run: { erase: true, tipKitHandling: true }
 ```
@@ -122,17 +124,16 @@ preconditions:
 | `app.launch.env` | dict | `{}` | 起動時の環境変数です。ターゲットの `app.launch.env` にキーごとにマージします。iOS は `SIMCTL_CHILD_*` で、Android は intent extra で注入します。Web では Playwright のコード生成が読みます |
 | `app.launch.args` | list[str] | `[]` | 起動引数です。ターゲットの `app.launch.args` の後ろに追記します。iOS 専用です |
 | `app.launch.deeplink` | str | 未設定（ターゲットの `app.launch.deeplink`） | 起動後にアプリが開く URL です（iOS は `simctl openurl`、Android は intent） |
-| `runsOn.<platform>` | object | なし | 1 つのプラットフォームに対するシナリオ自身の `runsOn` です。iOS では `locale` と `seedPhotos` を書けます。デバイスの条件（`model`、`os`、`avd`、`apiLevel`、`browser.engine`、`browser.version`）は、ターゲットの同じフィールドをフィールドごとに上書きし、run はデバイスをこれらと照合します（[configuration](configuration.md#デバイスの条件runson)）。run が動かさないプラットフォームのブロックは効果を持ちません |
-| `runsOn.ios.locale` | str | 未設定（ターゲットの `runsOn.locale`） | 起動時の locale と言語を強制し（`-AppleLocale` / `-AppleLanguages`）、Simulator のシステム言語も固定します |
-| `runsOn.ios.seedPhotos` | list[str] | 未設定（ターゲットの `runsOn.seedPhotos`） | erase の経路で、Simulator の写真ライブラリに順に投入する画像です。パスはシナリオファイルを基準に解決します。シナリオのリストはターゲットのリストを置き換えます |
+| `device.ios.locale` | str | 未設定（ターゲットの `runsOn.ios.locale`） | 起動時の locale と言語を強制し（`-AppleLocale` / `-AppleLanguages`）、Simulator のシステム言語も固定します。ターゲットと異なる値は cold respawn を強制します |
+| `device.ios.seedPhotos` | list[str] | 未設定（ターゲットの `runsOn.ios.seedPhotos`） | erase の経路で、Simulator の写真ライブラリに順に投入する画像です。パスはシナリオファイルを基準に解決します。シナリオのリストはターゲットのリストを置き換えます |
 | `run.erase` | bool | 未設定（ターゲットの `run.erase`、次にオフ） | 各テストの前にデバイス全体を wipe します（`simctl erase`。アプリ、データ、設定を消去します）。`reinstall` が全 wipe なしでアプリを新しい状態に保つので、まっさらなデバイスが必要なテストだけ `true` にします |
 | `run.systemAlertHandling` | bool / object | 未設定（ON） | リアクティブなアラートガードです（[下記](#systemalerthandlingシステムアラートガード)） |
 | `run.tipKitHandling` | bool | 未設定（ターゲットの `run.tipKitHandling`、次にオフ） | 操作をブロックしている Apple TipKit の tip を閉じます（iOS 専用。[下記](#tipkithandling操作をブロックする-tipkit-の-tip)） |
 | `run.inheritSetup` | bool | `true` | `false` にすると、このシナリオが宣言する全ターゲットの `hooks.setup` を省きます。各ターゲットの `hooks.cleanup` は走ります（[後述](#setup--cleanupセットアップとティアダウンのフェーズ)） |
 
 シナリオは、アプリを識別したりビルドしたりするフィールド（`id`、`path`、`build`、`startWhen`、
-`idNamespaces`）を設定できません。`runsOn.kind` と `runsOn.emulate` も同じです。これらはターゲットが
-持ちます。`run.secrets` はターゲット側の和集合のままなので、シナリオからは設定できません。
+`idNamespaces`）を設定できません。これらはターゲットが持ちます。`run.secrets` はターゲット側の和集合の
+ままなので、シナリオからは設定できません。
 
 > **各フィールドは、デバイスを操作する前に、シナリオが動かすターゲットと照合します。** 動かすどの
 > ターゲットのプラットフォームにもない `app` のフィールドや、iOS 専用の `run` のフィールドは、無視せずに
@@ -141,33 +142,35 @@ preconditions:
 > `app` のフィールドだけを適用します。そのため、iOS と Web をまたぐシナリオは、iOS 側のために
 > `app.launch.args` を書けます。単一プラットフォームの複数のターゲットが `paths.scenarios` から同じ
 > シナリオファイルを読む場合、そのファイルは `targets` を宣言するか、該当するターゲットだけが読む
-> ディレクトリに置きます。`runsOn` のブロックはプラットフォームをキーにするので、run が動かさない
-> プラットフォームのブロックはエラーになりません。
+> ディレクトリに置きます。`device` のブロックは宛先をキーにするので、iOS のターゲットを動かさない
+> シナリオの `device.ios` は効果を持たず、エラーにもなりません。
 
-シナリオの `runsOn` のブロックは、シナリオが当てはまる環境も宣言します。iPad にしかない画面のシナリオは
-モデルを指定します。iOS と Android の両方のターゲットで動かすシナリオは、プラットフォームごとに条件を
-書きます。
+**シナリオはデバイスの条件を宣言しません。** run を動かす場所はターゲットが決めるので、モデルや OS の
+範囲といった条件はターゲットの [`runsOn`](configuration.md#デバイスの条件runson) に書きます。iPad に
+しかない画面のシナリオは、iPad で動くターゲットを指定します。
 
 ```yaml
-# iPad にしかない画面のシナリオ
-preconditions:
-  runsOn:
-    ios: { model: "iPad Pro 13-inch (M4)", os: ">=18" }
+# bajutsu.config.yaml
+targets:
+  app-ipad:
+    platform: ios
+    app: { id: com.example.app }
+    runsOn:
+      ios: { model: "iPad Pro 13-inch (M4)", os: ">=18" }
 ```
 
 ```yaml
-# iOS のターゲットと Android のターゲットの両方で動かすシナリオ
-preconditions:
-  runsOn:
-    ios:     { os: ">=18" }
-    android: { apiLevel: ">=34" }
+# シナリオ
+targets: [app-ipad]
 ```
 
-シナリオのブロックはターゲットの `runsOn` をフィールドごとに上書きするので、ターゲットの範囲を広げる
-こともできます。ブロックにリストや範囲を書くと、シナリオは複数の run に分かれます。片側が開いた範囲に
-合うデバイスがないときは、失敗ではなく**対象外**（not applicable）の記録が残ります（規則は
-[configuration](configuration.md#デバイスの条件runson) にあります）。ブロックに書けるのは、デバイスの
-条件と、iOS の `locale` と `seedPhotos` です。`kind` と `emulate` はターゲットに残ります。
+そのターゲットにリストや範囲を書くと、ターゲットの各シナリオは複数の run に分かれます。規則は
+[configuration](configuration.md#デバイスの条件runson) にあります。
+
+> **以前のリリースは `preconditions.runsOn` を受け付けていました。** ローダーは現在これを拒否します。
+> `preconditions.runsOn.ios.locale` や `seedPhotos` は失敗し、`preconditions.device.ios.<フィールド>` を
+> 示します。`preconditions.runsOn.ios.model` のような条件は失敗し、代わりにそれを宣言するターゲットの
+> パス `runsOn.ios.model` を示します。
 
 > `run.erase` の解決順は **CLI の `--erase` / `--no-erase` > このシナリオ自身の `run.erase` >
 > ターゲットの `run.erase` > 組み込みのオフ**です
@@ -189,11 +192,13 @@ preconditions:
 > シナリオ間でデータを保持するために存在し、権限の許可状態もその保持対象に含まれるため、`overwrite`
 > では前のシナリオが許可した権限がそのまま見え続けます。
 
-> **BE-0452 より前に保存した run も読み込めます。** シナリオのローダーは、古い平坦なキーを拒否します。
-> 対象は `erase`、`reinstall`、`launchEnv`、`launchArgs`、`deeplink`、`locale`、`seedPhotos` です。
-> トップレベルの `systemAlertHandling` と `iosTipKitHandling` も拒否します。どのメッセージも、キーの
-> 移動先を示します。run ディレクトリをオフラインで読む処理は、保存された `scenario.yaml` のほうを
-> 読み替えます。該当するのは、レポートの再描画、`trace`、`triage` です。
+> **BE-0452 や BE-0469 より前に保存した run も読み込めます。** シナリオのローダーは、古い平坦なキーを
+> 拒否します。対象は `erase`、`reinstall`、`launchEnv`、`launchArgs`、`deeplink`、`locale`、`seedPhotos`
+> です。トップレベルの `systemAlertHandling` と `iosTipKitHandling`、`preconditions.runsOn` も拒否します。
+> どのメッセージも、キーの移動先を示します。run ディレクトリをオフラインで読む処理は、保存された
+> `scenario.yaml` のほうを読み替えます。該当するのは、レポートの再描画、`trace`、`triage` です。保存された
+> `preconditions.runsOn` は、iOS の `locale` と `seedPhotos` を `device.ios` に移し、条件を捨てます。
+> 条件は、その run が使うデバイスをすでに選び終えているからです。
 
 ## tipKitHandling（操作をブロックする TipKit の tip）
 
@@ -410,7 +415,7 @@ BE-0401 と BE-0406 は下記のキーをエイリアスなしで削除しまし
 許可ではなく拒否するには、拒否側のボタンを指定します（`handleSystemAlert: { sel: { label: "Don't Allow" }, timeout: 5 }`）。
 
 - **`sel` は label 系のみです。** SpringBoard のアラートボタンは、アプリが割り当てた identifier も trait も value も持たず、見えているテキストしか持ちません。そのため `sel` は `label` / `labelMatches` / `index` を受け付け、`id` / `idMatches` / `traits` / `value` / `within` はパース時に拒否します。
-- **run が一致させるべき label は、ターゲットの [`runsOn.locale`](configuration.md#設定の階層defaults--targets) が描画するものです。** プロンプトを所有しているのは SpringBoard なので、以前は Simulator がたまたま持っていたシステム言語で描画されていました。つまり `label: "Allow"` が通るのは英語の環境だけで、日本語の環境では失敗しました。現在は、アプリを起動する前に Simulator 自身のシステム言語をその `locale` に固定するため、CI でも、同僚の Mac でも、コントリビューターの Simulator でも、`label` / `labelMatches` は同じように解決します（[BE-0320](../../roadmaps/BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md)）。
+- **run が一致させるべき label は、ターゲットの [`runsOn.ios.locale`](configuration.md#設定の階層defaults--targets) が描画するものです。** プロンプトを所有しているのは SpringBoard なので、以前は Simulator がたまたま持っていたシステム言語で描画されていました。つまり `label: "Allow"` が通るのは英語の環境だけで、日本語の環境では失敗しました。現在は、アプリを起動する前に Simulator 自身のシステム言語をその `locale` に固定するため、CI でも、同僚の Mac でも、コントリビューターの Simulator でも、`label` / `labelMatches` は同じように解決します（[BE-0320](../../roadmaps/BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md)）。
 - **`timeout` は必須です。** `wait` とまったく同じで、プロンプトを待つ条件待機には明示的な上限が要ります。ステップはプロンプトを待ち込んでから tap します。固定の sleep はありません。
 - **待っているあいだもリアクティブなガードが動きます**（[BE-0406](../../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md)）。この待機を持っているのはバックエンドではなくランナー自身です。そのため `systemAlertHandling` は、ステップがタイムアウトして失敗したあとではなく、ステップの最中に割り込みを片付けます。これが効くのは、別のプロンプトが先に画面を取ってしまった場面です。iOS のパスワード保存アラートはアプリ自身のプロセスから出るので SpringBoard の照会からは見えず、画面を覆ったまま、このステップが待っているプロンプトを iOS に出させません。ここでガードが動かなければ、ステップは `timeout` を使い切り、一度も見ていない権限プロンプトを名指しして失敗します。ガードはこのステップ自身のプロンプトには手を触れないので、シナリオが同じプロンプトに反対の `choice` を持つ `rules` を書いていても、決めるのはステップのほうです。
 - **0 件のときと複数件のときは、どちらも失敗します。** `timeout` 以内にプロンプトが現れなければステップは失敗します。label に一致するボタンを複数見つけたときは曖昧と見なし、`index` で n 番目を選んだ場合を除いてタップしません。あらゆる[セレクタ](selectors.md)が従う規則を、アラートのボタンに当てはめたものです。曖昧さは即座の失敗にはせず、期限までポーリングします。再描画で解消することがあるからです。期限の時点でも重複が残っていれば、ステップはその旨を述べて失敗します。タイムアウトは**ステップが実際に見たもの**を名指しします。何も出ていなかったのか、セレクタの名指ししないアラートだったのか、label を 2 つ持つアラートだったのかを、次のように書き分けます。
@@ -448,7 +453,7 @@ label の対応表が扱う言語は英語と日本語です。それ以外の�
 
 使う前に知っておきたい制限が 2 つあります。
 
-- **Simulator 専用です。** 言語の固定は `simctl` の操作なので、`runsOn.kind: device` の target は実機が持つシステム言語のまま動きます。この形では、画面に出ている保証のない label を解決してしまいます。実機ではボタンを `sel.label` で指定してください。
+- **Simulator 専用です。** 言語の固定は `simctl` の操作なので、`runsOn.ios.kind: device` の target は実機が持つシステム言語のまま動きます。この形では、画面に出ている保証のない label を解決してしまいます。実機ではボタンを `sel.label` で指定してください。
 - **割り込み監視も英語を前提としていません。** `rules` の 1 エントリは、監視に届く前に固定した言語向けラベルへ解決されており、その背後にはもう組み込みのフォールバック一覧がありません。どの規則も同定しないアラートは、どの `locale` でも常に辞退されます。その割り込みに遭遇したステップや `expect` は、ボタンを推測する代わりに、差し出されたボタン名を添えて失敗します。run 自身に決めさせたいプロンプトには、規則を書いてください。
 
 （実物は [`demos/showcase/scenarios/permission_system_alert.yaml`](../../demos/showcase/scenarios/permission_system_alert.yaml) と [`demos/showcase/scenarios/paste_system_alert.yaml`](../../demos/showcase/scenarios/paste_system_alert.yaml)）
@@ -847,7 +852,7 @@ assertするまで、新しいステップもランナーの変更も要りま�
 
 - **実測したのはiOS Simulatorだけです。** iOS 26.5で確かめました。実機とほかのランタイムは確かめていません。
 - **`run.erase: true`でレイアウトを固定します。** 長押しはアイコングリッドの中心に当たるので、グリッドの中心は空いた壁紙でなければなりません。eraseと再インストールのあと、SpringBoardはテスト用アプリをインストールしたページを開きます。このページは下半分が空いています。eraseは前の実行が追加したウィジェットも消すので、新しいウィジェットへのassertが一意に保たれます。
-- **`preconditions.runsOn.ios.locale`で言語を固定します。** ラベルはすべてSpringBoard自身の文言です。アイコンの`identifier`でさえローカライズ済みの名前になります（英語では`Calendar`、日本語では`カレンダー`）。
+- **`preconditions.device.ios.locale`で言語を固定します。** ラベルはすべてSpringBoard自身の文言です。アイコンの`identifier`でさえローカライズ済みの名前になります（英語では`Calendar`、日本語では`カレンダー`）。
 - **検索結果の行はツリーに現れません。** ギャラリーの検索欄に文字が入ると、SpringBoardのスナップショットは結果の一覧を空のコンテナとして返します。行は画面に表示されています。検索欄の下の決まった位置にある先頭の行を、`tapPoint`でタップします（iPhone 17 Proでは`{ x: 0.5, y: 0.29 }`）。
 - **サイズの選択には`swipe`ではなく`drag`を使います。** サイズのカルーセルは、弾くように動かしたときだけページが切り替わります。`swipe`は慣性のないスクロールなので、元のページへ戻ってしまいます。
 - **ホストアプリの初回起動でプロンプトが出ることがあります。** Calendarは位置情報と通知の許可を求めます。順序は一定でなく、2つが同時に出ることもあります。その場合、押すべきボタンが1つに決まりません。`widget.yaml`はプロンプトを残したままにし、次の実行の`erase`で消します。
@@ -861,7 +866,7 @@ assertするまで、新しいステップもランナーの変更も要りま�
 
 `{on,direction}` と `{from,to}` は、**どちらか一方だけ**でなければなりません（混在や片側の欠落は検証エラーになります）。
 
-**方向指定**形式の意味は「スクロール」であり、各バックエンドは実際にスクロールを起こすプリミティブで実現します。iOS や Android では OS の本物のドラッグで、web ではマウスドラッグがページをスクロールしないため wheel イベント（デスクトップ）かタッチドラッグ（モバイルの [`runsOn.emulate`](drivers.md#playwrightweb)）で実現します（BE-0227）。**座標**形式は、それ自体を目的とする素のポインタドラッグ（canvas やマップのパン、ドラッグハンドル）であり、どのバックエンドでも素のドラッグの最終手段です。
+**方向指定**形式の意味は「スクロール」であり、各バックエンドは実際にスクロールを起こすプリミティブで実現します。iOS や Android では OS の本物のドラッグで、web ではマウスドラッグがページをスクロールしないため wheel イベント（デスクトップ）かタッチドラッグ（モバイルの [`runsOn.browser.emulate`](drivers.md#playwrightweb)）で実現します（BE-0227）。**座標**形式は、それ自体を目的とする素のポインタドラッグ（canvas やマップのパン、ドラッグハンドル）であり、どのバックエンドでも素のドラッグの最終手段です。
 
 ### `drag`
 
@@ -1371,7 +1376,7 @@ run を止めます。ファイルが外したターゲットを選ぶことは�
 |---|---|
 | `hooks.setup` / `hooks.cleanup` のライフサイクルステップ | 各ターゲット自身のものが宣言順に畳み込まれ、そのターゲット名が刻まれます。アプリ側のティアダウンと web 側のティアダウンが、それぞれ正しいドライバに対して走ります |
 | `services.mailbox` | `email` や `totp` のステップは、自分のターゲットが設定した受信箱をポーリングします |
-| `runsOn.locale`、`app.launch.env`、`evidence.capture`、`hooks.interrupts` | どれも run ではなく、テスト対象アプリの性質です |
+| `runsOn.ios.locale`、`app.launch.env`、`evidence.capture`、`hooks.interrupts` | どれも run ではなく、テスト対象アプリの性質です |
 | `paths.baselines` / `paths.schemas` / `paths.goldens` | `visual` や `golden` のアサーションは、そのターゲットが自分でディレクトリを設定していればそちらと、していなければ run のものと比較します |
 | バックエンドの capability | 各ターゲットのステップは、デバイスを1つも確保する前に、そのターゲット自身のバックエンドに対して検査されます。片方のプラットフォームだけが対応する構文は、正しいほうを落とします |
 
@@ -1520,7 +1525,7 @@ targets:
 `run` は終了コード 2 で終わります。拒むのは次の場合です。
 
 - 1つのグループのメンバーの間で、プラットフォーム、バックエンド、デバイスの経路、実効 `locale` の
-  いずれかが異なります。デバイスの経路とは、デバイスプロバイダ（`--worker-config` で指定する `appium` 環境）と `runsOn.kind` のことです。
+  いずれかが異なります。デバイスの経路とは、デバイスプロバイダ（`--worker-config` で指定する `appium` 環境）と `runsOn.ios.kind` のことです。
 - 2つ以上のメンバーを持つグループに web ターゲットがあります。ブラウザには共有するデバイスがないためです。
 - 1つのグループで開始時に動かす2つのメンバーが、識別子を共有しています。2つ目のインストールが
   1つ目を置き換えてしまいます。
@@ -1647,7 +1652,7 @@ showcase のデモは、この 2 つの流れを iOS と Android の両方で実
 - `visual` はスクリーンショットを baseline 画像とピクセル比較します（[下記](#visualビジュアルリグレッション)）。
 - `clipboard` はデバイスのペーストボードを `simctl pbpaste` で読み戻し、`equals` / `matches`（正規表現）の **いずれか 1 つ**を検証します。`setClipboard` の読み戻し側で、「コピー」操作の検証に使います。デバイスごとの制御チャネルが必要なため、fake ドライバや並列実行では利用できず、その場合はクリーンに失敗します（[BE-0052](../../roadmaps/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md)）。
 
-> **ロケール注意**: `label`/`value` の文字列比較や、可視テキストを見るアサーションは翻訳で壊れます。これらはターゲットの固定 `runsOn.locale` を前提に書き、セレクタ自体は `id` で書いてください。
+> **ロケール注意**: `label`/`value` の文字列比較や、可視テキストを見るアサーションは翻訳で壊れます。これらはターゲットの固定 `runsOn.ios.locale` を前提に書き、セレクタ自体は `id` で書いてください。
 
 ### `request`（ネットワークアサーション）
 

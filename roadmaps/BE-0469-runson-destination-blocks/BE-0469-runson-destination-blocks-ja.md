@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0469](BE-0469-runson-destination-blocks-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **承認済み** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0469") |
+| 実装 PR | [#2235](https://github.com/bajutsu-e2e/bajutsu/pull/2235)（単位 1〜3） |
 | トピック | Driver & backend architecture |
 <!-- /BE-METADATA -->
 
@@ -212,9 +213,17 @@ run に LLM は入らず、照合の方法が変わる条件もありません�
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] ユニット 1: 実行先のブロック
-- [ ] ユニット 2: シナリオのブロック
-- [ ] ユニット 3: ドキュメント
+- [x] ユニット 1: 実行先のブロック
+- [x] ユニット 2: シナリオのブロック
+- [x] ユニット 3: ドキュメント
+
+### ログ
+
+- [#2235](https://github.com/bajutsu-e2e/bajutsu/pull/2235)（単位 1〜3）— 項目全体を 1 つの変更で入れました。
+  - 各プラットフォームの `runsOn` のモデルは、許す宛先ごとに 1 つのフィールドを持つグループになりました。共通の基底 `RunsOnGroup` の事前検証が、直下に書いたキーには移動先の宛先を、それ以外のキーにはプラットフォームが許す宛先を示します。そのため、組み合わせの規則のために別の対応表を持つ必要はありません。`defaults.platforms.<platform>.runsOn` にも同じ検査をかけます。
+  - 内部の条件のキー（`model`、`os`、`avd`、`apiLevel`、`browser.engine`、`browser.version`）は変えていません。そのため、run の座標、ラベル、flakiness のキーは変わりません。メッセージは、新しい補助関数 `condition_path` で `runsOn` のパスを表示します。
+  - シナリオの `runsOn` は `preconditions.device.ios` に置き換えました。`effective_conditions` はシナリオを重ねなくなり、`runs_on_problems`、`scenario_conditions`、`scenario_runs_on_schema` も削除しました。保存済みの run の `preconditions.runsOn` は、読み込み時に iOS のデバイス状態を `device.ios` に移し、条件を捨てます。
+  - 仕様からのずれ：iOS のターゲットを動かさないシナリオの `device.ios` は、以前の動かさないプラットフォームの `runsOn` と同じく効果を持ちません。Device Farm の拒否メッセージは、ターゲットの条件を `runsOn.ios.model` のように `runsOn` の下のパスで示します。
 
 ## 参考
 

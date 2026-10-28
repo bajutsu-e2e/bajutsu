@@ -61,7 +61,7 @@ def _merge_ai(base: AiSettings | None, over: AiSettings | None) -> AiConfig | No
     )
 
 
-# The built-in locale a target runs under when `runsOn.locale` is unset. iOS pins the Simulator's
+# The built-in locale a target runs under when `runsOn.ios.locale` is unset. iOS pins the Simulator's
 # own system language to it (BE-0320); the other platforms read it nowhere but carry it for the report.
 DEFAULT_LOCALE = "en_US"
 
@@ -69,13 +69,18 @@ DEFAULT_LOCALE = "en_US"
 def _conditions(runs_on: _Model) -> dict[str, str | list[str]]:
     """The device conditions *runs_on* declares, keyed by the field that declares each.
 
+    The keys are the fields within the destination block (`model`, `browser.version`), not their
+    `runsOn` paths: they name a run's coordinates, which BE-0469 left as they were.
+
     A single web engine is how the target is driven rather than a condition; a listed one multiplies
     runs, so it counts.
     """
     if isinstance(runs_on, IosRunsOn):
-        candidates: dict[str, str | list[str] | None] = {"model": runs_on.model, "os": runs_on.os}
+        ios = runs_on.ios
+        candidates: dict[str, str | list[str] | None] = {"model": ios.model, "os": ios.os}
     elif isinstance(runs_on, AndroidRunsOn):
-        candidates = {"avd": runs_on.avd, "apiLevel": runs_on.api_level}
+        android = runs_on.android
+        candidates = {"avd": android.avd, "apiLevel": android.api_level}
     elif isinstance(runs_on, WebRunsOn):
         engine = runs_on.browser.engine
         candidates = {
@@ -88,9 +93,9 @@ def _conditions(runs_on: _Model) -> dict[str, str | list[str]]:
 
 
 def _xcuitest(driver: _Model, runs_on: _Model) -> XcuitestConfig | None:
-    """Today's resolved runner block, built from `driver.runner` and `runsOn.kind`, or None if unset."""
+    """Today's resolved runner block, built from `driver.runner` and `runsOn.ios.kind`, or None if unset."""
     runner = driver.runner if isinstance(driver, IosDriver) else None
-    kind = runs_on.kind if isinstance(runs_on, IosRunsOn) else "simulator"
+    kind = runs_on.ios.kind if isinstance(runs_on, IosRunsOn) else "simulator"
     if runner is None or (
         runner.test_runner is None
         and runner.build is None
@@ -124,7 +129,7 @@ def _platform_config(a: TargetConfig) -> PlatformConfig:
             # A listed engine is a condition each run replaces with its own engine (BE-0452); the
             # first stands in so the resolved type stays one engine.
             browser=engine[0] if isinstance(engine, list) else engine,
-            device_mode=runs_on.emulate,
+            device_mode=runs_on.browser.emulate,
         )
     if isinstance(app, AndroidApp):
         driver = a.driver
@@ -189,8 +194,9 @@ def resolve(config: Config, target: str) -> Effective:
     start_when = app.start_when if isinstance(app, AppCommon) else None
     launch_env, launch_args, deeplink = _launch(app)
     runs_on = a.runs_on
-    locale = (runs_on.locale if isinstance(runs_on, IosRunsOn) else None) or DEFAULT_LOCALE
-    seed_photos = list(runs_on.seed_photos) if isinstance(runs_on, IosRunsOn) else []
+    ios = runs_on.ios if isinstance(runs_on, IosRunsOn) else None
+    locale = (ios.locale if ios is not None else None) or DEFAULT_LOCALE
+    seed_photos = list(ios.seed_photos) if ios is not None else []
     run = a.run
     tip_kit = run.tip_kit_handling if isinstance(run, IosRun) else None
     return Effective(

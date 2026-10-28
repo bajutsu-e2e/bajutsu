@@ -284,7 +284,7 @@ def capabilities_for_run(
       `is_webdriver_endpoint` check `environment_for` routes on, so preflight and routing can never
       disagree. The URL arrives from the `appium` provider's endpoint (BE-0452), which a target's
       `device_provider` carries before any device is acquired, so it is read from there first.
-    - **A real device via `runsOn.kind: device`** loses the simctl-backed `DeviceControl`
+    - **A real device via `runsOn.ios.kind: device`** loses the simctl-backed `DeviceControl`
       family and the simctl-privacy permission grants (simctl cannot reach a physical device), the
       same fail-fast the permission preconditions already get in the XCUITest lifecycle (Unit 1). This
       keys on config (`deviceType`), which a udid spec cannot express, so it stays an `eff` check.
@@ -329,7 +329,7 @@ def erase_precondition_supported(
     """Whether forcing an `erase` precondition is safe on this run's resolved route.
 
     Reuses the exact two routing predicates `capabilities_for_run` above narrows on (BE-0238): a
-    live WebDriver endpoint and a real iOS device (`runsOn.kind: device`) both reject any
+    live WebDriver endpoint and a real iOS device (`runsOn.ios.kind: device`) both reject any
     `erase` precondition outright (`XcuitestLiveEnvironment.start`, `XcuitestEnvironment.start` raise
     rather than honoring it) instead of the silent no-op every other route treats it as. Kept next to
     `capabilities_for_run` — the one place that already classifies a route's capabilities — rather

@@ -39,13 +39,15 @@
 スキーマが強制します。例外は **制御フローのステップ**（`if` / `forEach`）で、こちらは capture や
 extract の修飾子を持ちません。定義は `bajutsu/scenario/models/steps.py` の `Step` です。
 
-**precondition（前提条件）**：run の前に適用する、シナリオ単位の環境準備です。ターゲットと同じ
-`app`、`runsOn`、`run` のグループで書きます。シナリオが動かす各ターゲットの値に重ねます。
+**precondition（前提条件）**：run の前に適用する、シナリオ単位の環境準備です。
+シナリオが動かす各ターゲットの値に重ねます。
 フィールドは次のとおりです。
 
 - `app.reinstall` と `app.launch.env` / `.args` / `.deeplink` です。
-- `runsOn.<platform>` です。デバイスの条件を書けます。iOS では `locale` と `seedPhotos` も書けます。
+- `device.ios.locale` / `.seedPhotos` です。iOS のデバイスの状態で、ターゲットの `runsOn.ios` の値を置き換えます。
 - `run.erase` / `.systemAlertHandling` / `.tipKitHandling` / `.inheritSetup` です。
+
+precondition はデバイスの条件を宣言しません。条件はターゲットの `runsOn` が持ちます。
 
 実行時の関心事（`mocks` / `network`）とも、config 側の `defaults` / `targets` とも別物です。定義は
 `bajutsu/common/scenario/models/scenario/preconditions.py` の `Preconditions` です。
@@ -126,7 +128,7 @@ AND で結合されるフィールドの集合（`id`、`idMatches`、`label`、
 |---|---|
 | **target（ターゲット）** | `targets.<name>` の下にある、テスト対象のアプリを記述する config エントリ一つです。必須の `platform`、プラットフォームごとの識別子（iOS と Android の `app.id`、web の `app.url`）に加え、`app.path`、`runsOn`、`driver` などを持ちます。config の単位です。定義は `bajutsu/common/config/schema/target_config.py` の `TargetConfig` です。 |
 | **app（アプリ）** | テスト対象のアプリケーションそのものです。target が指し示し、device にインストールされるソフトウェアです。 |
-| **device（デバイス）** | target を駆動する具体的な実行時インスタンスです。Simulator、emulator、ブラウザコンテキストで、実行時には `udid` で指します。target の `runsOn` グループがデバイスを記述します。デバイス条件（`runsOn.model`、`runsOn.os` など）は、run の前に、利用できる各デバイスと照合します。リストや範囲を書くと、シナリオは値ごと、またはメジャーバージョンごとの run に分かれます。片側が開いた範囲に合うデバイスがないときは、失敗ではなく「対象外」（not applicable）の記録が残ります（[configuration](configuration.md#デバイスの条件runson)）。 |
+| **device（デバイス）** | target を駆動する具体的な実行時インスタンスです。Simulator、emulator、ブラウザコンテキストで、実行時には `udid` で指します。target の `runsOn` グループが、宛先ごとのブロック（`runsOn.ios`、`runsOn.android`、`runsOn.browser`）でデバイスを記述します。デバイス条件（`runsOn.ios.model`、`runsOn.ios.os` など）は、run の前に、利用できる各デバイスと照合します。リストや範囲を書くと、シナリオは値ごと、またはメジャーバージョンごとの run に分かれます。片側が開いた範囲に合うデバイスがないときは、失敗ではなく「対象外」（not applicable）の記録が残ります（[configuration](configuration.md#デバイスの条件runson)）。 |
 
 つまり、config の **target** が、ソフトウェアである **app** を指し、それを実行時インスタンスである
 **device** の上で駆動します。

@@ -1738,7 +1738,7 @@ def _device_target(runner: str = "") -> Effective:
     driver = f", driver: {{ runner: {{ {runner} }} }}" if runner else ""
     return resolve(
         load_config(
-            "targets: { demo: { platform: ios, app: { id: com.x }, runsOn: { kind: device }"
+            "targets: { demo: { platform: ios, app: { id: com.x }, runsOn: {ios: {kind: device}}"
             + driver
             + " } }"
         ),
@@ -1963,7 +1963,7 @@ def test_check_scenarios_missing_file_raises(tmp_path: Path) -> None:
 
 def test_check_scenarios_narrows_on_a_real_ios_device(tmp_path: Path) -> None:
     # BE-0238 Unit 3: doctor's capability check runs against the run-narrowed capabilities, so a real
-    # iOS device (runsOn.kind: device) reports a setLocation scenario as unsupported — the
+    # iOS device (runsOn.ios.kind: device) reports a setLocation scenario as unsupported — the
     # same simctl-backed capability the run preflight drops — instead of the stale "supported" the
     # static set gives. Guards doctor against the drift this item's motivation calls out.
     from bajutsu.cli.commands.doctor import check_scenarios
@@ -1979,7 +1979,7 @@ def test_check_scenarios_narrows_on_a_real_ios_device(tmp_path: Path) -> None:
             "  demo:\n"
             "    platform: ios\n"
             "    app: {id: com.x}\n"
-            "    runsOn: {kind: device}\n"
+            "    runsOn: {ios: {kind: device}}\n"
             "    driver:\n"
             "      runner: {testRunner: Runner.xctestrun}\n"
         ),

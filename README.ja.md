@@ -247,7 +247,7 @@ bajutsu schema                                            # エディタ連携�
 defaults:
   platforms:
     ios:
-      runsOn: { locale: en_US }
+      runsOn: { ios: { locale: en_US } }
 
 targets:
   showcase-swiftui:         # iOS アプリ — XCUITest 経由で Simulator を操作

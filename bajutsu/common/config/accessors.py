@@ -77,7 +77,7 @@ def android_package(eff: Effective) -> str:
 
 
 def xcuitest_targets_real_device(eff: Effective) -> bool:
-    """True when the target drives a real iOS device via XCUITest (`runsOn.kind: device`).
+    """True when the target drives a real iOS device via XCUITest (`runsOn.ios.kind: device`).
 
     The Simulator default — and every non-iOS target — is False. Consulted by the capability
     narrowing that drops the simctl-backed DeviceControl / permission tokens on a real device
