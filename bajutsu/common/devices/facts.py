@@ -179,9 +179,11 @@ def read_ios_device(
     `disconnected` until a run opens the tunnel, so that field cannot tell an idle device from an
     unplugged one, and driving it is what fails loudly instead.
 
-    The family is the only fact a condition compares on a real device: its model is a product
-    identifier (`iPad13,8`) that no Simulator device-type name equals, so `model` and `os` stay
-    refused there, and `model` here only names the device in messages.
+    The family is the only fact a condition compares on a real device, so `model` and `os` stay
+    refused there. `model` here only names the device in messages: it is devicectl's marketing name
+    when there is one, which can equal a Simulator device-type name, and `productType`
+    (`iPad13,8`) otherwise. The release keeps `major.minor`, as `read_ios` does, so a real device
+    and a Simulator on the same release group together whatever their patch level.
 
     Raises:
         DeviceReadError: devicectl could not be read or did not answer in time, a udid is not a
@@ -215,14 +217,20 @@ def read_ios_device(
         if not release:
             raise DeviceReadError(f"{udid}: devicectl reports no osVersionNumber")
         try:
-            Version.parse(release)
+            version = Version.parse(release)
         except ValueError as exc:
             raise DeviceReadError(
                 f"{udid}: devicectl reports OS version {release!r}, which is not one"
             ) from exc
         model = str(hardware.get("marketingName") or hardware.get("productType") or family)
         facts.append(
-            DeviceFacts(udid=udid, platform="ios", model=model, release=release, family=family)
+            DeviceFacts(
+                udid=udid,
+                platform="ios",
+                model=model,
+                release=f"{version.major}.{version.minor}",
+                family=family,
+            )
         )
     return facts
 

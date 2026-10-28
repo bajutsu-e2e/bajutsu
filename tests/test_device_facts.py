@@ -229,7 +229,7 @@ def _device(udid: str, reality: str = "physical", **hardware: str) -> dict[str, 
     return {
         "identifier": f"core-{udid}",
         "hardwareProperties": {"udid": udid, "reality": reality, **hardware},
-        "deviceProperties": {"osVersionNumber": "18.1"},
+        "deviceProperties": {"osVersionNumber": "18.1.2"},
     }
 
 
@@ -242,6 +242,7 @@ def _devicectl(*devices: dict[str, object]):  # type: ignore[no-untyped-def]
 
 
 def test_ios_device_reads_the_family_of_each_real_device_in_order() -> None:
+    # The patch level drops, as `read_ios` keeps `major.minor`, so releases group alike.
     run = _devicectl(
         _device("P1", deviceType="iPhone", marketingName="iPhone 14 Pro", productType="iPhone15,2"),
         _device("T1", deviceType="iPad", productType="iPad13,8"),
