@@ -492,10 +492,10 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   (desktop default, or a Playwright device preset for mobile emulation; BE-0228); `appTrace` stays
   iOS-only (`os_log`/simctl-based). `query()` fills `value` from each tag's own source — `href` for
   `<a>`, `src` for `<img>`, `datetime` for `<time>` — while a form control, a `<meter>`, and a
-  `<progress>` carrying a `value` attribute report their live `value` even under a `role`, and any
-  other `role`'d element — plus an indeterminate `<progress>`, one carrying no `value` attribute —
-  reports `aria-valuetext` or
-  `aria-valuenow`; an element that holds its own text but matches no other rule is read too, labeled
+  `<progress>` carrying a `value` attribute report their live `value` even under a `role`; any
+  other `role`'d element reports `aria-valuetext` or `aria-valuenow` when either is present and its
+  own `value` property otherwise, while an indeterminate `<progress>` (one carrying no `value`
+  attribute) reports only `aria-valuetext` or `aria-valuenow`; an element that holds its own text but matches no other rule is read too, labeled
   with the `staticText` trait iOS uses for a label. The same walk descends into every iframe
   (nested and cross-origin included, offset into main-page CSS pixels), except one sitting under a
   non-translation CSS transform, which is left unread so a tap cannot silently miss; a cross-origin
