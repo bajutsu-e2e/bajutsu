@@ -74,3 +74,36 @@ def test_totp_step_invalid_secret_fails_the_step_cleanly() -> None:
         _do_totp(FakeDriver([]), step, None, None, bindings)
     assert secret not in str(exc.value)
     assert "base32" in str(exc.value)
+
+
+@pytest.mark.parametrize("value", [1, 10, 30])
+def test_totp_min_remaining_accepts_the_window_range(value: int) -> None:
+    step = Step.model_validate(
+        {"totp": {"secret": _SECRET, "into": {"var": "code"}, "minRemaining": value}}
+    )
+    assert step.totp is not None and step.totp.min_remaining == value
+
+
+def test_totp_min_remaining_defaults_to_no_wait() -> None:
+    step = Step.model_validate({"totp": {"secret": _SECRET, "into": {"var": "code"}}})
+    assert step.totp is not None and step.totp.min_remaining is None
+
+
+@pytest.mark.parametrize("value", [0, -1, 31])
+def test_totp_min_remaining_outside_the_window_is_refused(value: int) -> None:
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="between 1 and 30"):
+        Step.model_validate(
+            {"totp": {"secret": _SECRET, "into": {"var": "code"}, "minRemaining": value}}
+        )
+
+
+@pytest.mark.parametrize("value", [True, "10", 10.0])
+def test_totp_min_remaining_is_strict(value: object) -> None:
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        Step.model_validate(
+            {"totp": {"secret": _SECRET, "into": {"var": "code"}, "minRemaining": value}}
+        )

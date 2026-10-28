@@ -191,6 +191,8 @@ def _step(d: dict[str, Any]) -> StepOutcome:
             "artifacts": [Artifact(**_kw(Artifact, a)) for a in d.get("artifacts") or []],
             "alerts": [AlertEvent(**_kw(AlertEvent, a)) for a in d.get("alerts") or []],
             "system_alert": _system_alert(d.get("system_alert")),
+            # JSON has no tuple, and a run before schemaVersion 16 has no field at all (BE-0474).
+            "warnings": tuple(w for w in d.get("warnings") or () if isinstance(w, str)),
             "actuations": actuations,
             # `dropped` is the loader's own casualty, on top of whatever the run itself already
             # disclosed (a driver-side truncation) in the same field — a run that also loads with a

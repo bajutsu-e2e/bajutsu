@@ -87,6 +87,7 @@ from bajutsu.common.scenario import (
     Step,
     interp,
 )
+from bajutsu.common.scenario.models.actions import TOTP_PERIOD_SECONDS
 
 from ._loop_config import _LoopConfig
 from ._shared import _ExecSteps, _logger
@@ -384,6 +385,47 @@ def _do_sleep(seconds: float, clock: Clock, cancelled: CancelSource) -> None:
         clock.sleep(min(_SLEEP_SLICE, remaining))
 
 
+def _wait_for_totp_window(
+    min_remaining: int,
+    clock: Clock,
+    cancelled: CancelSource,
+    wall: Callable[[], float] = time.time,
+) -> str | None:
+    """Wait for the next TOTP window when the current one has under `min_remaining` seconds left.
+
+    A condition wait the clock decides (BE-0474): it ends on the window boundary itself, so
+    `minRemaining: 30` terminates, and a monotonic deadline of one window plus one slice bounds it
+    whatever the wall clock does. `wall` supplies the window phase, which `clock` — monotonic — cannot.
+
+    Returns:
+        A warning naming the jump when the wall clock moved apart from the monotonic one during the
+        wait, so the code may have less time left than asked; `None` otherwise, including when no
+        wait was needed and when the host merely woke late.
+
+    Raises:
+        RunCancelled: the run was cancelled mid-wait, noticed within one slice (BE-0370).
+    """
+    start_wall = wall()
+    if TOTP_PERIOD_SECONDS - start_wall % TOTP_PERIOD_SECONDS >= min_remaining:
+        return None
+    target = (start_wall // TOTP_PERIOD_SECONDS + 1) * TOTP_PERIOD_SECONDS
+    start_mono = clock.now()
+    deadline = start_mono + (target - start_wall) + _SLEEP_SLICE
+    # Re-read the wall clock each slice: a monotonic sleep can return just before the wall clock
+    # crosses the boundary, and the code must be for the window that has begun.
+    while (now_wall := wall()) < target and (left := deadline - clock.now()) > 0:
+        if cancelled():
+            raise RunCancelled
+        clock.sleep(min(_SLEEP_SLICE, left, target - now_wall))
+    end_wall = wall()
+    drift = (end_wall - start_wall) - (clock.now() - start_mono)
+    # A late wake-up moves both clocks together, so only a gap between them names a jump.
+    if abs(drift) <= _SLEEP_SLICE:
+        return None
+    left_s = TOTP_PERIOD_SECONDS - end_wall % TOTP_PERIOD_SECONDS
+    return f"totp: wall clock jumped {drift:+.0f}s during window wait; {left_s:.0f}s left"
+
+
 def _run_step_body(
     driver: base.Driver,
     step: Step,
@@ -400,6 +442,7 @@ def _run_step_body(
     alert_guard: AlertGuardConfig | None = None,
     alerts: list[AlertEvent] | None = None,
     system_alert_taps: list[str] | None = None,
+    warnings: list[str] | None = None,
     system_alert_title: AlertTitleCheck | None = None,
     on_wait_tick: WaitTick | None = None,
     transitions: TransitionSource = _no_transitions,
@@ -425,7 +468,8 @@ def _run_step_body(
     for a ``wait`` or ``handleSystemAlert`` step, drive the alert guard while that step's own wait
     runs (BE-0269, BE-0406); other step kinds ignore them. ``system_alert_taps`` receives the label
     a ``handleSystemAlert`` step tapped, for the report (BE-0445), and ``system_alert_title`` is
-    that step's title check (``prompt_title_check``). ``on_interrupt_poll``, when given for a
+    that step's title check (``prompt_title_check``). ``warnings`` receives the non-fatal note a
+    ``totp`` step's window wait leaves when the wall clock jumped (BE-0474). ``on_interrupt_poll``, when given for a
     wait step, is passed to ``_wait`` so a scenario's ``interrupts`` handlers can clear an
     interstitial screen mid-wait (BE-0314). ``cancelled`` reaches the step kinds that poll —
     ``wait``, ``handleSystemAlert``, ``assert``, and ``email`` — so each notices a cancelled run
@@ -550,6 +594,16 @@ def _run_step_body(
             )
             ok = assertions.passed(results)
             return ok, "" if ok else _fail_reason(results), results, tree
+        if (
+            step.totp is not None
+            and step.totp.min_remaining is not None
+            and bindings is not None  # the handler writes nothing without a var scope either
+        ):
+            # Here rather than in the handler, like `sleep`: the wait needs the clock and the cancel
+            # source, which the action-handler signature carries neither of (BE-0474).
+            warning = _wait_for_totp_window(step.totp.min_remaining, clock, cancelled)
+            if warning is not None and warnings is not None:
+                warnings.append(warning)
         _do_action(
             _action_driver(driver, resolving),
             step,

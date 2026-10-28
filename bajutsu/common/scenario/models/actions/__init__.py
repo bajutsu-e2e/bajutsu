@@ -51,12 +51,13 @@ from .set_primary_target import SetPrimaryTarget
 from .sleep import MAX_SLEEP_SECONDS, Sleep
 from .swipe import Swipe
 from .tap_point import TapPoint
-from .totp import Totp
+from .totp import TOTP_PERIOD_SECONDS, Totp
 from .type_text import TypeText
 from .var_target import VarTarget
 
 __all__ = [
     "MAX_SLEEP_SECONDS",
+    "TOTP_PERIOD_SECONDS",
     "Back",
     "Background",
     "Clear",

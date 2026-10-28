@@ -51,6 +51,10 @@ class StepOutcome:
     # The button a `handleSystemAlert` step tapped and the rule that chose it (BE-0445). Evidence
     # only. None for every other action, and for a `handleSystemAlert` step that tapped nothing.
     system_alert: SystemAlertTap | None = None
+    # Non-fatal notes about how the step ran, e.g. a `totp` step whose window wait saw the wall clock
+    # jump (BE-0474). Evidence only: `ok` and `reason` are untouched, so a passing step never carries
+    # failure text. Plural so a later item can add its own note beside this one.
+    warnings: tuple[str, ...] = ()
     # Set by the step loop's reactive check when a driver positively confirmed the app under test had
     # crashed while settling this step (BE-0424). `pipeline.py` scans every phase's outcomes for it to
     # decide whether to write an `app-crash/` directory. At most one outcome per scenario carries it:
