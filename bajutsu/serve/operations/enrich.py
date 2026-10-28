@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from bajutsu.common.config import Config, load_config_file, resolve
+from bajutsu.common.config import Config, load_config_file, resolve, unknown_target
 from bajutsu.common.scenario import load_scenario_file
 from bajutsu.serve.operations._common import (
     _default_driver_factory,
@@ -68,7 +68,7 @@ def start_enrich(
     config = load_config_file(cfg)
     target_cfg = config.targets.get(target)
     if target_cfg is None:
-        return {"error": f"unknown target: {target}"}, 400
+        return {"error": unknown_target(config, target, list_targets=False)}, 400
 
     scope = state.for_org(org).scenarios.scope(target, session=session, org=org)
     scenario_text = scope.read(str(body["scenario"])) if scope else None

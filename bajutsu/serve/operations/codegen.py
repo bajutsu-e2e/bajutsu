@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from bajutsu.codegen import EMIT_TARGETS, CodegenError, generate_test
-from bajutsu.common.config import load_config_file, resolve
+from bajutsu.common.config import load_config_file, resolve, unknown_target
 from bajutsu.common.scenario import _scenarios_declaring_targets, load_scenarios
 from bajutsu.serve.operations._common import _resolve_org_or_forbid
 from bajutsu.serve.state import ServeState
@@ -49,7 +49,7 @@ def generate_codegen(
 
     config = load_config_file(cfg)
     if config.targets.get(target) is None:
-        return {"error": f"unknown target: {target}"}, 400
+        return {"error": unknown_target(config, target, list_targets=False)}, 400
 
     # Confine the scenario to the target's own scenarios dir: a serve client resolves through the
     # org-scoped store, never a raw host path (BE-0051 / BE-0015).
