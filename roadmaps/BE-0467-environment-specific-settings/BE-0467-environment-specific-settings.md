@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0467") |
+| Implementing PR | [#2249](https://github.com/bajutsu-e2e/bajutsu/pull/2249) (units 1–3) |
 | Topic | Platform support |
 | Related | [BE-0082](../BE-0082-capability-preflight-check/BE-0082-capability-preflight-check.md), [BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues.md), [BE-0238](../BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md), [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md), [BE-0457](../BE-0457-real-device-step-lint/BE-0457-real-device-step-lint.md) |
 <!-- /BE-METADATA -->
@@ -293,7 +294,7 @@ environments genuinely differ.
 
 Log:
 
-- Units 1–3. Added `bajutsu/common/capability/settings_support.py` with the per-route table, the
+- [#2249](https://github.com/bajutsu-e2e/bajutsu/pull/2249) — Units 1–3. Added `bajutsu/common/capability/settings_support.py` with the per-route table, the
   check, and the launch-time backstop; moved the `permissions` rows out of the BE-0082 step check;
   made `erase_precondition_supported` a lookup in the table. Added `run.ignoredSettings` to
   `RunPolicy`, refused under `defaults`. The run preflight now judges every target's settings before
