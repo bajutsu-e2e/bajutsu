@@ -235,7 +235,8 @@ The implementation settled the points below. The design left each open or stated
 |---|---|
 | Where substitution happens | `_interp_step` leaves the `eval` field as written, and the handler substitutes it. Re-validating a substituted step there would raise a validation error quoting the secret text. |
 | An unbound `${...}` token | The step fails and names the token. Running on the literal `${vars.x}` text would hide a typo until a later assertion. |
-| Flag arguments (`regex`, `not`, `numeric`) | They accept literal booleans only. String and index arguments accept tokens. |
+| Which arguments accept a token | Free-text and index arguments do. The fixed-choice arguments (`sort`'s `order`, `case`) and the flags (`regex`, `not`, `numeric`) take literal values only. |
+| A step failed after its write | Registration does not wait on the step's verdict. A later check on the same step (an `extract`, an interruption) can fail it after the handler wrote, and the value sits in `bindings` either way, so a result from a secret registers regardless. A step that did not complete never clears a secret mark. |
 | `split` with `regex: true` | The result holds the text between matches only. Python's `re.split` would splice capture groups into the list. |
 | `count` in the middle of `ops` | Only `from` and the arguments after the last `count` decide whether the result is secret. |
 | A short derived value | A one-character value replaced inside serialized JSON would turn `1.5` into `[REDACTED].5`. `Redactor` keeps derived values apart from configured ones and applies them to free text and a structure's string values, never to the pass over a serialized document. |

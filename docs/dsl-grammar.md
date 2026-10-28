@@ -310,7 +310,8 @@ EvalOp ::=
   | { replace:   { find: string, with: string, regex?: boolean } }               # string → string
   | { substring: { start: integer, end?: integer } }                             # string → string; both ≥ 0
   | { case:      ("lower"|"upper") }                                              # string → string
-    # A string or index argument may hold ${vars.*} / ${secrets.*}; it is checked after substitution instead of at load.
+    # A free-text or index argument may hold ${vars.*} / ${secrets.*}; it is checked after substitution instead of at load.
+    # sort's order, case, and the regex / not / numeric flags take literal values only.
 
 # ── Selector (≥1 field; provided fields are AND-ed) ────────────────────
 Selector ::= {

@@ -312,7 +312,9 @@ def test_the_handler_writes_vars_and_a_failure_writes_nothing() -> None:
 
 def _record(spec: Eval, bindings: dict[str, str], derived: DerivedSecrets) -> str:
     bindings.update(evaluate(spec, bindings))
-    return record_eval(spec, bindings, derived)
+    produced = record_eval(spec, bindings, derived, completed=True)
+    assert produced is not None
+    return produced
 
 
 def test_a_result_from_a_secret_is_registered_and_its_var_marked() -> None:
@@ -418,3 +420,25 @@ def test_masking_a_result_reaches_every_value_bearing_field_and_no_path() -> Non
     text = repr(result)
     assert text.count(code) == 1  # only the artifact path, which the report links by
     assert result.steps[0].artifacts[0].name == f"00-s/{code}/elements.json"
+
+
+def test_a_step_failed_after_its_write_still_registers_but_never_clears() -> None:
+    # A later check (an `extract`, an interruption) can fail the step after the handler wrote; the
+    # secret value sits in `bindings` either way, so it must still join the masked set.
+    derived = DerivedSecrets()
+    bindings = {"secrets.CODE": "aaaabbbbcccc", "vars.v": "aaaabbbb"}
+    secret = _spec([{"substring": {"start": 0, "end": 8}}], src="${secrets.CODE}")
+    record_eval(secret, bindings, derived, completed=False)
+    assert derived.values == ["aaaabbbb"]
+    assert derived.secret_vars == {"v"}
+    # A non-secret step that did not complete leaves the earlier mark: the variable may still hold
+    # the old secret value.
+    record_eval(_spec(["trim"], src="plain"), bindings, derived, completed=False)
+    assert derived.secret_vars == {"v"}
+
+
+def test_nothing_is_recorded_for_a_variable_that_holds_no_value() -> None:
+    derived = DerivedSecrets()
+    secret = _spec(["trim"], src="${secrets.CODE}")
+    assert record_eval(secret, {}, derived, completed=False) is None
+    assert derived.values == []

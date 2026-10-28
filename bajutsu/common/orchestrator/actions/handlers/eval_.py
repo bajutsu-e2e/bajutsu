@@ -267,23 +267,29 @@ def _derives_from_secret(spec: Eval, secret_vars: set[str]) -> bool:
     return False
 
 
-def record_eval(spec: Eval, bindings: Mapping[str, str], derived: DerivedSecrets) -> str:
-    """After a successful `eval`: update which variables are secret, and return the produced text.
+def record_eval(
+    spec: Eval, bindings: Mapping[str, str], derived: DerivedSecrets, *, completed: bool
+) -> str | None:
+    """After an `eval` step: update which variables are secret, and return the produced text.
 
     A result derived from a secret joins the values every later artifact of this scenario masks, and
-    its variables are marked secret; any other result clears the mark, since the variable now holds
-    a different value.
+    its variables are marked secret. Fail-closed: that happens whenever the variables hold a value,
+    even when a later check on the same step (an `extract`, an interruption) failed it after the
+    handler wrote, since the value is in `bindings` either way. A result from no secret clears the
+    mark only on a *completed* step, the one case the variable is known to hold that new value.
 
     Returns:
         The value the step produced, for the step outcome — a list spread over `into.vars` as the
-        JSON array of the elements it assigned.
+        JSON array of the elements it assigned — or None when a variable holds nothing.
     """
     names = spec.into.names
+    if any(f"vars.{n}" not in bindings for n in names):
+        return None
     values = [bindings[f"vars.{n}"] for n in names]
     if _derives_from_secret(spec, derived.secret_vars):
         derived.register(values)
         derived.secret_vars.update(names)
-    else:
+    elif completed:
         derived.secret_vars.difference_update(names)
     return values[0] if spec.into.var is not None else json_text(values)
 

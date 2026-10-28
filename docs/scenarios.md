@@ -1574,8 +1574,10 @@ loader also refuses these forms:
 - `into.vars` on a string result
 - a regular expression that does not compile
 
-An argument may hold a `${vars.*}` or `${secrets.*}` token. The loader cannot check such an argument.
-The run applies the same checks to it after substitution.
+A free-text or index argument may hold a `${vars.*}` or `${secrets.*}` token. The loader cannot check
+such an argument, so the run applies the same checks to it after substitution. The fixed-choice
+arguments (`sort`'s `order` and `case`) and the flags `regex`, `not`, and `numeric` take literal
+values only.
 
 The step stops at run time, with no fallback value, in these cases:
 

@@ -308,7 +308,8 @@ EvalOp ::=
   | { replace:   { find: string, with: string, regex?: boolean } }               # 文字列 → 文字列
   | { substring: { start: integer, end?: integer } }                             # 文字列 → 文字列。どちらも ≥ 0
   | { case:      ("lower"|"upper") }                                              # 文字列 → 文字列
-    # 文字列と添字の引数には ${vars.*} / ${secrets.*} を書けます。その引数はロード時ではなく置換後に検査します。
+    # 自由文と添字の引数には ${vars.*} / ${secrets.*} を書けます。その引数はロード時ではなく置換後に検査します。
+    # sort の order、case、フラグの regex / not / numeric にはリテラルだけを書けます。
 
 # ── Selector（1 条件以上・指定フィールドは AND）────────────────────────
 Selector ::= {

@@ -330,3 +330,34 @@ def test_a_substituted_argument_that_breaks_a_rule_fails_without_quoting_the_sec
     assert not result.ok
     assert "op 1 (regex): `pattern` is not a valid regular expression" in (result.failure or "")
     assert "unclosed-secret" not in (result.failure or "")
+
+
+def test_a_secret_eval_failed_by_its_own_extract_is_still_masked() -> None:
+    # The handler writes the prefix, then the step's `extract` fails it. The value is in `bindings`
+    # for `cleanup` to read, so it must join the masked set all the same.
+    sink = _RecordingSink()
+    result = run_scenario(
+        FakeDriver([el("field", "Field")]),
+        _scenario(
+            {
+                "name": "extract fails after the write",
+                "steps": [
+                    {
+                        "eval": {
+                            "from": "${secrets.API_TOKEN}",
+                            "ops": [{"substring": {"start": 0, "end": 8}}],
+                            "into": {"var": "tokenPrefix"},
+                        },
+                        "extract": {"x": {"sel": {"id": "missing"}, "prop": "label"}},
+                    }
+                ],
+            }
+        ),
+        clock=FakeClock(),
+        sink=sink,
+        bindings={"secrets.API_TOKEN": "abcdefgh-ijkl-mnop"},
+    )
+    assert not result.ok
+    assert result.derived_secrets == ["abcdefgh"]
+    assert sink.masked == [["abcdefgh"]]
+    assert result.steps[0].generated is None
