@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0472") |
-| 実装 PR | — |
+| 実装 PR | [#2240](https://github.com/bajutsu-e2e/bajutsu/pull/2240) |
 | トピック | シナリオ記述機能 |
 <!-- /BE-METADATA -->
 
@@ -277,7 +277,7 @@ REPL セッションは、`generate` の後と同様に、`eval` の後で格納
 ログ：
 
 - 提案済み。実装はまだありません。
-- すべての単位を1つの変更で実装しました。`eval` のモデルとロード時の型の追跡、上限付きの評価器、ハンドラー、派生した secret のシナリオ単位のマスク、REPL とコード生成への対応、ドキュメントを含みます。あわせて、リストの結果を複数の変数へ振り分ける `into: { vars: [...] }` を加え、上記の実装時の決定を記録しました。
+- [#2240](https://github.com/bajutsu-e2e/bajutsu/pull/2240)：すべての単位を1つの変更で実装しました。`eval` のモデルとロード時の型の追跡、上限付きの評価器、ハンドラー、派生した secret のシナリオ単位のマスク、REPL とコード生成への対応、ドキュメントを含みます。あわせて、リストの結果を複数の変数へ振り分ける `into: { vars: [...] }` を加え、上記の実装時の決定を記録しました。
 
 ## 参考
 

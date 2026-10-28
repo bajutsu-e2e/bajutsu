@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0472") |
-| Implementing PR | — |
+| Implementing PR | [#2240](https://github.com/bajutsu-e2e/bajutsu/pull/2240) |
 | Topic | Scenario authoring features |
 <!-- /BE-METADATA -->
 
@@ -319,7 +319,7 @@ The implementation settled the points below. The design left each open or stated
 Log:
 
 - Proposed; no implementation yet.
-- Implemented every unit in one change. The change covers the `eval` model and its load-time type
+- [#2240](https://github.com/bajutsu-e2e/bajutsu/pull/2240): Implemented every unit in one change. The change covers the `eval` model and its load-time type
   flow, the evaluator and its caps, and the handler. It also covers scenario-scoped masking of derived
   secrets, the REPL and codegen surfaces, and the documentation. Added `into: { vars: [...] }`, which spreads a list result over
   named variables. Recorded the decisions above.
