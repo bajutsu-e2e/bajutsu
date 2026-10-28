@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0474") |
+| 実装 PR | [#2245](https://github.com/bajutsu-e2e/bajutsu/pull/2245) |
 | トピック | シナリオ記述機能 |
 <!-- /BE-METADATA -->
 
@@ -180,7 +181,7 @@ manifest がこの欄を記録し、HTML レポートがステップの上に表
 ログ：
 
 - 提案済み。実装はまだありません。
-- PR_LINK：すべての単位を1つの変更で実装しました。`totp` ステップに strict な `minRemaining` を加え、run ループが handler の前に次のウィンドウまで待つようにしました。待機中に壁時計が飛んだときは、判定に影響しない新しいフィールド `StepOutcome.warnings` に記録します。manifest（`schemaVersion` 16）と HTML レポートもこのフィールドを扱います。ドキュメントは、作業分解が挙げたページに加えて `docs/reporting.md` も更新しました。
+- [#2245](https://github.com/bajutsu-e2e/bajutsu/pull/2245)：すべての単位を1つの変更で実装しました。`totp` ステップに strict な `minRemaining` を加え、run ループが handler の前に次のウィンドウまで待つようにしました。待機中に壁時計が飛んだときは、判定に影響しない新しいフィールド `StepOutcome.warnings` に記録します。manifest（`schemaVersion` 16）と HTML レポートもこのフィールドを扱います。ドキュメントは、作業分解が挙げたページに加えて `docs/reporting.md` も更新しました。
 
 ## 参考
 

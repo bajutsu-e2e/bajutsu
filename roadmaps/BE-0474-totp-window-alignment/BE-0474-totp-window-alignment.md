@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0474") |
+| Implementing PR | [#2245](https://github.com/bajutsu-e2e/bajutsu/pull/2245) |
 | Topic | Scenario authoring features |
 <!-- /BE-METADATA -->
 
@@ -214,7 +215,7 @@ only `secret` and are unaffected. Codegen already emits a `// TODO` for `totp`
 Log:
 
 - Proposed; no implementation yet.
-- PR_LINK: Implemented every unit in one change. The `totp` step gained a strict `minRemaining`, and
+- [#2245](https://github.com/bajutsu-e2e/bajutsu/pull/2245): Implemented every unit in one change. The `totp` step gained a strict `minRemaining`, and
   the run loop waits for the next window before the handler runs. A wall-clock jump during the wait
   lands in the new evidence-only `StepOutcome.warnings`, which the manifest (`schemaVersion` 16) and
   the HTML report carry. The documentation also covers the new field in `docs/reporting.md`, beyond
