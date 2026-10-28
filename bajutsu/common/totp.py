@@ -16,8 +16,12 @@ import struct
 
 _WHITESPACE = re.compile(r"\s+")
 
+# The RFC 6238 default window. The `totp` step's `minRemaining` wait (BE-0474) aligns to the same
+# constant, so the boundary it waits for is the one the code actually rotates on.
+TOTP_PERIOD_SECONDS = 30
 
-def totp(secret: str, *, now: float, digits: int = 6, period: int = 30) -> str:
+
+def totp(secret: str, *, now: float, digits: int = 6, period: int = TOTP_PERIOD_SECONDS) -> str:
     """The RFC 6238 TOTP for `secret` at Unix time `now`.
 
     Args:

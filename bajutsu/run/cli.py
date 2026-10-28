@@ -1392,7 +1392,7 @@ def _alert_guard_factory(
 
 
 def _resolve_network(network: bool | None, target_network: bool) -> bool:
-    """Resolve network collection: `--network/--no-network` flag > target `network` config > on (BE-0177)."""
+    """Resolve network collection: `--network/--no-network` > `evidence.collectNetwork` > on."""
     return network if network is not None else target_network
 
 
@@ -2782,8 +2782,8 @@ def run_body(
         None,
         "--network/--no-network",
         help="collect the app's network exchanges (for `request` assertions); iOS needs BajutsuKit "
-        "in the app, web (Playwright) observes natively. Default: the target's `network` config, "
-        "then on",
+        "in the app, web (Playwright) observes natively. Default: the target's "
+        "`evidence.collectNetwork`, then on",
     ),
     progress: bool = typer.Option(
         False,
@@ -3139,9 +3139,9 @@ def run_body(
             eff,
             _flag_alert_policy(alert_poll_interval),
         )
-        # Network collection resolves `--network/--no-network` over the target's `network` config,
-        # then on (BE-0177); the resolved bool baked into mocks and the plan drives collection and
-        # `request` waits.
+        # Network collection resolves `--network/--no-network` over the target's
+        # `evidence.collectNetwork`, then on (BE-0177); the resolved bool baked into mocks and the plan
+        # drives collection and `request` waits.
         network = _resolve_network(network, eff.run_defaults.network)
         _apply_mocks(scenarios, network)
         # `backends`, never the run-level `actuator` resolved above: the predicate has to ask the

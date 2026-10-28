@@ -108,7 +108,10 @@ def _run_backend(results: list[RunResult]) -> str:
 #   `runsOn` conditions formed, with each not-applicable record as its own cell. A pure aggregation
 #   of "scenarios" and "notApplicable", absent whenever no run carried coordinates, so an
 #   unconditioned run keeps the v14 shape.
-SCHEMA_VERSION = 15
+# v16 (BE-0474): a step may carry "warnings" — non-fatal notes about how it ran, e.g. a `totp` step
+#   whose window wait saw the wall clock jump. Empty on every step that has none; a step without the
+#   field belongs to a run that predates it, which a reader treats as no warnings.
+SCHEMA_VERSION = 16
 
 # How the run matrix heads the column of a run no condition formed: a scenario without conditions,
 # run in an invocation where other scenarios' conditions formed runs.

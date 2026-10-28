@@ -711,7 +711,10 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   into `${vars.*}`)
 - DSL `totp` and `email` steps (BE-0046): `totp` generates an RFC 6238 one-time password from a
   shared secret (commonly `${secrets.*}`) into `${vars.*}`, local and deterministic — no network, no
-  model; `email` polls a mailbox (config `targets.<name>.services.mailbox`, a registry-based transport —
+  model. Its optional `minRemaining` (BE-0474) makes the run loop wait, before the handler runs, for
+  the next 30-second window when the current one has fewer seconds left; the wait ends on the
+  boundary, is bounded by one window plus one cancellation slice, and records a non-fatal
+  `StepOutcome.warnings` note when the wall clock jumped. `email` polls a mailbox (config `targets.<name>.services.mailbox`, a registry-based transport —
   `http` is the shipped adapter, BE-0186) until a message matching `to` / `subject` /
   `subjectMatches` arrives after the step started, then extracts a value via a `bodyMatches` regex
   into `${vars.*}` — a condition wait bounded by `timeout`, never a fixed sleep

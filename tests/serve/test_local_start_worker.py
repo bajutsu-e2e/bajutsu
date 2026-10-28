@@ -99,7 +99,7 @@ def _fake_project(tmp_path: Path, platform: str = "ios") -> Path:
             f"    platform: {platform}\n"
             "    app: {id: com.example.demo}\n"
             f"    paths: {{scenarios: {scn}}}\n"
-            "    run:\n"
+            "    evidence:\n"
             "      secrets: [LOGIN_PASSWORD]\n"
         ),
         encoding="utf-8",
@@ -944,7 +944,7 @@ def test_an_unsafe_ai_key_env_warns_that_the_server_reads_another(
             "  demo:\n"
             "    platform: ios\n"
             "    app: {id: com.example.demo}\n"
-            "    run:\n"
+            "    evidence:\n"
             "      secrets: [LD_AUDIT_X]\n"
         ),
         encoding="utf-8",

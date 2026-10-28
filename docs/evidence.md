@@ -646,7 +646,7 @@ percentage of pixels that differed) and `engine` — the comparison engine that 
 verdict (`"exact"` or `"pixelmatch"`; [BE-0165](../roadmaps/BE-0165-visual-compare-engines/BE-0165-visual-compare-engines.md)).
 
 The engine is selected per assertion (`compare:`) with a target-level config fallback
-(`run.visualCompare`), and is recorded in the manifest so the algorithm that produced each
+(`evidence.visualCompare`), and is recorded in the manifest so the algorithm that produced each
 verdict is traceable. Implementation: `bajutsu/assertions/visual.py` `VisualEvidence`.
 
 ## Masking (redact)
@@ -748,8 +748,8 @@ remain, and an operator deciding whether to share a report should weigh them.
 > are left as-is.
 >
 > Redaction also extends to **secret input values**: the literal values behind `${secrets.X}`
-> (resolved from the environment, declared via config's `run.secrets`
-> [configuration](configuration.md#secrets-runsecrets)) are masked wherever they would appear in
+> (resolved from the environment, declared via config's `evidence.secrets`
+> [configuration](configuration.md#secrets-evidencesecrets)) are masked wherever they would appear in
 > evidence — not just the configured `labels` / `headers` / `fields`. Longest values are masked
 > first so a value that is a substring of another never leaves a partial leak.
 >

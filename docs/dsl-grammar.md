@@ -233,7 +233,7 @@ Action    ::=
   | { setLocation: { lat: number, lon: number } }
   | { push:        { payload: map(string,any) } }          # APNs payload, e.g. {aps:{alert:"…"}}
   | { http:        { method?: string, url: string, headers?: map(string,string), body?: string, status?: integer, saveBody?: string, extractBody?: list({ var: string, path: string }) } }  # method default GET; saveBody → vars.<name>; extractBody → vars.<var> per JSON path (BE-0440)
-  | { totp:        { secret: string, into: { var: string } } }  # RFC 6238 OTP → vars.<var> (secret is base32)
+  | { totp:        { secret: string, into: { var: string }, minRemaining?: integer } }  # RFC 6238 OTP → vars.<var> (secret is base32); minRemaining 1–30: wait for the next 30s window when fewer seconds are left (BE-0474)
   | { email:       { match: { to?: string, subject?: string, subjectMatches?: string }, extract: { var: string, bodyMatches: string }, timeout: number } }  # poll mailbox → vars.<var>
   | { generate:    <Generate> }                            # a random or current-datetime value computed at run time → vars.<var> (BE-0377)
   | { eval:        <Eval> }                                # transform a held value through a fixed op vocabulary → vars.* (BE-0472)
@@ -545,7 +545,7 @@ trimmed). Substitution is **type-preserving at the edges**:
   only its own namespace.
 
 Namespaces: `params.*` (components, §6.2), `row.*` (data-driven, §6.3), `secrets.*` (declared
-via config `run.secrets`, resolved from the environment by the run loop at action time, §6.4), and
+via config `evidence.secrets`, resolved from the environment by the run loop at action time, §6.4), and
 `vars.*` (runtime capture via `extract`, §6.5).
 
 ### 6.2 Components (`use` → reusable steps)
@@ -649,7 +649,7 @@ derived scenario is renamed `"<name> [row N: col=val, …]"` and **keeps the ori
   [BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)
   removed the former `preconditions.setup` prelude file.
   A scenario that must not run its targets' `hooks.setup` sets `preconditions.run.inheritSetup: false`.
-- **`secrets`** (declared in config as `run.secrets` — a list of environment-variable names): each
+- **`secrets`** (declared in config as `evidence.secrets` — a list of environment-variable names): each
   declared name `X` is resolved from `os.environ[X]` and bound to `${secrets.X}`, substituted into the
   executed step **at action time** (`cli/commands/run.py`, `orchestrator/substitution.py` `_interp_step`). The scenario keeps the
   `${secrets.X}` token, never the value, and the literal values are auto-masked in evidence

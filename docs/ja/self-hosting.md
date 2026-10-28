@@ -504,7 +504,7 @@ secret は、job のプロセスの読み込み方や動き方を変える変数
 | 名前の接頭辞 | `LD_`、`DYLD_`、`PYTHON`、`BAJUTSU_` |
 
 macOS と Linux では名前を厳密に比べ、Windows では大文字と小文字を区別せずに比べます。同じ規則は、config の
-`ai.keyEnv` と `run.secrets` の名前にも当てはまります。拒否された `ai.keyEnv` があると、サーバは
+`ai.keyEnv` と `evidence.secrets` の名前にも当てはまります。拒否された `ai.keyEnv` があると、サーバは
 `ANTHROPIC_API_KEY` を読み、警告をログに残します。
 
 worker を待つ run は、待っている理由を示します。待機が終わるのは、run が求める能力をすべて宣言する
@@ -928,7 +928,7 @@ export BAJUTSU_SECRETS_KEY=…
 
 同じストアは、シナリオが**自身**で宣言するシークレットも保持します
 （[BE-0274](../../roadmaps/BE-0274-serve-scenario-secrets/BE-0274-serve-scenario-secrets-ja.md)）。config が
-`${secrets.X}` のために `run.secrets` に並べる名前のことです。これまでは値を供給する手段が、プロセスが
+`${secrets.X}` のために `evidence.secrets` に並べる名前のことです。これまでは値を供給する手段が、プロセスが
 引き継ぐ `.env` しかありませんでした。今は管理者が設定パネルの **Scenario secrets** セクションから各値を
 設定でき、ホスト型のコントロールプレーンでは、オペレータの認証情報と同じ org ごとの暗号化された `secrets`
 テーブルに（上ですでに必須の `BAJUTSU_SECRETS_KEY` を再利用し、新しい鍵は不要で）、write-once かつマスクして
