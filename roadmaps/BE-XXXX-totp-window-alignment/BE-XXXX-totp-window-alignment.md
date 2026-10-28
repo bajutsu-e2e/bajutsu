@@ -82,7 +82,10 @@ The wait is a condition wait whose condition is "the window has started". Its du
 from the clock, not chosen by the author, and it never exceeds one window plus one
 cancellation slice. For this reason it does
 not appear in the determinism audit as a `fixed-sleep` finding. The audit keeps its current rule
-set.
+set, and it gains no informational finding for the wait either. The audit lists a pause because the
+author can replace it with a condition wait. This wait has no such replacement, because the TOTP
+window imposes it, so a finding would carry no action. The time the wait costs stays visible in two
+places: the step label in the live log, and the step's duration in the report.
 
 The wait function computes the next boundary once, `target = (floor(now / 30) + 1) * 30`. It then
 sleeps until `wall() >= target`, re-reading the wall clock after each slice. The wait ends on the
@@ -96,18 +99,22 @@ Protocol (NTP) correction therefore cannot stretch the wait past one window plus
 
 A large wall-clock jump can still leave less than `minRemaining` after the wait. A backward jump lets
 the monotonic deadline fire before the wall clock reaches `target`. A forward jump can land in the
-tail of a later window. After the wait, the function re-checks
-`remaining + _SLEEP_SLICE >= minRemaining`. The slack allows for a wake-up that lands up to one
-slice past the boundary, so `minRemaining: 30` passes the check. When the
-check fails, the step still generates the code and continues, and it records a warning with its
-outcome, for example `totp: wall clock moved during window wait; 4s left`. The report then shows the
-cause next to a sign-in that later fails on an expired code.
+tail of a later window. After the wait, the function compares how far the wall clock moved with how
+far the monotonic clock moved. When the two differ by more than one slice, the wall clock jumped.
+The step then still generates the code and continues, and it records a warning with its outcome
+that states both measurements, for example `totp: wall clock jumped 12s during window wait; 4s left`.
+The report then shows the cause next to a sign-in that later fails on an expired code.
 
-The warning travels in a new evidence-only field, `StepOutcome.warning: str | None`
-([`step_outcome.py`](../../bajutsu/common/orchestrator/types/step_outcome.py)), following the
-`generated` precedent. The field leaves `ok` and `reason` untouched, so a passing step never carries
-failure text. The manifest records the field, and the HTML report renders it on the step. A later
-item can reuse the field for other non-fatal warnings.
+A late wake-up, on a loaded host for example, moves both clocks together and records
+no warning. The code is still for the window that has just begun, and the delay costs no more than its own
+length. Under `minRemaining: 30`, a warning keyed on the remaining time alone would appear on every late
+wake-up and name a clock jump that never happened.
+
+The warning travels in a new evidence-only field, `StepOutcome.warnings: tuple[str, ...]`
+([`step_outcome.py`](../../bajutsu/common/orchestrator/types/step_outcome.py)), whose default is
+empty. The field leaves `ok` and `reason` untouched, so a passing step never carries failure text.
+The field is plural so that a later item can add its own non-fatal warning without displacing this
+one. The manifest records the field, and the HTML report renders it on the step.
 
 ### Where the wait runs
 
@@ -118,10 +125,13 @@ The `totp` wait follows the same placement:
 
 - Before the handler runs, the loop checks `step.totp.minRemaining`. When it is set, the loop calls a
   new `_wait_for_totp_window(min_remaining, clock, cancelled, wall) -> str | None`. The function
-  returns the warning text, or `None` when the re-check passes. The loop skips the wait when
+  returns the warning text, or `None` when no jump occurred. The loop skips the wait when
   `bindings` is `None`, matching the handler's own early return.
 - The function sleeps in `_SLEEP_SLICE` slices through `clock.sleep`, and checks `cancelled()` before
-  each slice. A cancelled run therefore leaves within one slice, as it does for `sleep` (BE-0370).
+  each slice. On cancellation it raises `RunCancelled`, as `_do_sleep` does, rather than returning. A cancelled run therefore leaves within one slice, as it does for `sleep` (BE-0370).
+- `_run_step_body` returns a tuple with no slot for a warning. The loop appends the returned text to a new out-parameter, `warnings: list[str] | None`, in the style of the existing
+  `alerts` and `system_alert_taps` parameters. The step runner passes the list in and copies it onto
+  `StepOutcome.warnings`. Neither the return type nor its call sites change.
 - `wall` is a `Callable[[], float]` that defaults to `time.time`. A test injects a fake, so the
   boundary arithmetic is exercised without waiting 30 real seconds. `RealClock.now()` is monotonic
   ([`real_clock.py`](../../bajutsu/common/orchestrator/types/real_clock.py)), so it cannot supply the
@@ -162,14 +172,18 @@ only `secret` and are unaffected. Codegen already emits a `// TODO` for `totp`
 1. **Model and validation.** Add `min_remaining` (alias `minRemaining`) to `Totp`, with the range
    check and a clear error message, plus the JSON schema if one is generated from the models.
 2. **Wait function.** Add `_wait_for_totp_window` next to `_do_sleep`, with the injectable wall clock.
-   Its tests cover `minRemaining: 30`, and a wall clock that steps backward or forward during the
-   wait. Both cases end the wait within the bound and produce the warning,
-   and `minRemaining: 30` ends without a warning.
+   Its tests cover `minRemaining: 30`, a late wake-up, a wall clock that jumps backward or forward
+   during the wait, and cancellation. Both jumps end the wait within the bound and produce the
+   warning. `minRemaining: 30` and the late wake-up end without a warning. Cancellation raises
+   `RunCancelled`.
 3. **Loop wiring and label.** Call the wait from `_run_step_body` before the handler, and extend
    `_step_label` in `actions/_registry.py`.
-4. **Warning on the step outcome.** Add `StepOutcome.warning`, set it from the wait function's return
-   value, record it in the manifest, and render it in the HTML report. A test checks that a passing
-   step with a warning keeps `ok` true and an empty `reason`.
+4. **Warning on the step outcome.** Add `StepOutcome.warnings` and the `warnings` out-parameter of
+   `_run_step_body`, and copy the list onto the outcome in the step runner. Record the field in the
+   manifest and bump `SCHEMA_VERSION` (15 today, in `bajutsu/common/report/manifest.py`) with a note
+   that a step without `warnings` on an older run means the run predates the field. Render the field
+   in the HTML report. A test checks that a passing step with a warning keeps `ok` true and an empty
+   `reason`.
 5. **Documentation.** Update [`docs/scenarios.md`](../../docs/scenarios.md), [`docs/dsl-grammar.md`](../../docs/dsl-grammar.md),
    and the `docs/ja/` mirrors, and add a short note to [`docs/architecture.md`](../../docs/architecture.md)
    where the `totp` step is described.
@@ -182,7 +196,7 @@ only `secret` and are unaffected. Codegen already emits a `// TODO` for `totp`
 | A separate step such as `waitForTotpWindow` | It splits one intent into two steps, and a step inserted between them makes the wait meaningless. The generation and the guarantee belong in one step. |
 | The existing `sleep` step | The pause must depend on the clock and the boundary moves each run. `sleep` has a fixed length and a 30-second cap, and the audit would report it as `fixed-sleep`. |
 | Retry the sign-in when the app rejects the code | The retry hides a real failure behind a second attempt. Many apps count failed codes toward a lockout, so the retry can break the account the run depends on. |
-| Fail the step when a clock step leaves less than `minRemaining` after the wait | A rare wall-clock correction would then fail an otherwise healthy run. The code may still be accepted, and a warning with the outcome keeps the cause visible without stopping the run. |
+| Fail the step when a clock jump leaves less than `minRemaining` after the wait | A rare wall-clock correction would then fail an otherwise healthy run. The code may still be accepted, and a warning with the outcome keeps the cause visible without stopping the run. |
 | A non-zero default for `minRemaining` | It changes the timing of every existing scenario and hides the reason for the wait from a reader of the YAML. An explicit field keeps the cause visible. |
 
 ## Progress
@@ -194,7 +208,7 @@ only `secret` and are unaffected. Codegen already emits a `// TODO` for `totp`
 - [ ] Model and validation: `minRemaining` on `Totp`
 - [ ] Wait function: `_wait_for_totp_window` with an injectable wall clock
 - [ ] Loop wiring and step label
-- [ ] Warning on the step outcome: `StepOutcome.warning`, the manifest, and the HTML report
+- [ ] Warning on the step outcome: `StepOutcome.warnings`, the manifest, and the HTML report
 - [ ] Documentation: scenarios, DSL grammar, architecture, and the Japanese mirrors
 
 ## References

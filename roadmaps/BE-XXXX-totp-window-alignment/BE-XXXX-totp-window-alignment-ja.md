@@ -76,7 +76,11 @@ if remaining < minRemaining: 次の窓が始まるまで待つ
 
 この待機は、「窓が始まった」を条件とする条件待ちです。
 長さは作者が選ぶのではなく時計から算出され、1 つの窓と 1 スライスを足した長さを超えません。
-そのため、決定性の監査には `fixed-sleep` の指摘として載せません。監査の規則は現状のままです。
+そのため、決定性の監査には `fixed-sleep` の指摘として載せません。監査の規則は現状のままで、この待機のための情報提供の指摘も足しません。
+監査が待ち時間を挙げるのは、作者がそれを条件待ちに置き換えられるからです。
+この待機には置き換え先がありません。TOTP の窓が待機を強いるためです。
+したがって、指摘を出しても取れる対処がありません。
+待機にかかった時間は、ライブログのステップのラベルと、レポートのステップの所要時間で見えます。
 
 待機関数は、最初に次の境界 `target = (floor(now / 30) + 1) * 30` を一度だけ計算します。
 そのあと、スライスを 1 つ終えるたびに壁時計を読み直し、`wall() >= target` になるまでスリープします。
@@ -91,16 +95,20 @@ if remaining < minRemaining: 次の窓が始まるまで待つ
 ただし、壁時計が大きく動くと、待機のあとでも残り時間が `minRemaining` に届かないことがあります。
 壁時計が巻き戻ると、壁時計が `target` に達する前に単調時計の期限が来ます。
 壁時計が進むと、後の窓の終わり際に入ることがあります。
-そこで待機関数は、待機のあとに `remaining + _SLEEP_SLICE >= minRemaining` を確かめ直します。境界を越えた直後の起床は最大 1 スライス遅れるため、その分を許容します。これで `minRemaining: 30` も確認を通ります。
-条件を満たさないときも、ステップはコードを生成して続行し、結果に警告を残します。
-警告はたとえば `totp: wall clock moved during window wait; 4s left` とします。
+そこで待機関数は、待機のあとに、壁時計が進んだ量と単調時計が進んだ量を比べます。
+両者の差が 1 スライスを超えていれば、壁時計が動いたと判断します。
+このときもステップはコードを生成して続行し、両方の測定値を書いた警告を結果に残します。
+警告はたとえば `totp: wall clock jumped 12s during window wait; 4s left` とします。
 後のサインインが期限切れで失敗したとき、レポートでその原因がステップの横に見えます。
 
-警告は、新しく設ける証跡専用の欄 `StepOutcome.warning: str | None`（[`step_outcome.py`](../../bajutsu/common/orchestrator/types/step_outcome.py)）で運びます。
-`generated` の前例に従う設計です。
+一方、負荷の高いホストなどで起床が遅れただけなら、2 つの時計は同じだけ進むので、警告は残しません。
+コードは始まったばかりの窓のものであり、遅れはその長さの分しか有効期間を削りません。
+残り時間だけで警告を決めると、`minRemaining: 30` では起床が遅れるたびに警告が出て、起きていない時計の変化を原因として記録してしまいます。
+
+警告は、新しく設ける証跡専用の欄 `StepOutcome.warnings: tuple[str, ...]`（[`step_outcome.py`](../../bajutsu/common/orchestrator/types/step_outcome.py)）で運びます。デフォルトは空です。
 この欄は `ok` と `reason` に触れないので、成功したステップが失敗の理由を持つことはありません。
+欄を複数形にしておけば、後の項目が致命的でない別の警告を足しても、この項目の警告を上書きしません。
 manifest がこの欄を記録し、HTML レポートがステップの上に表示します。
-後の項目で、致命的でない別の警告にもこの欄を使えます。
 
 ### 待機を実行する場所
 
@@ -109,8 +117,9 @@ manifest がこの欄を記録し、HTML レポートがステップの上に表
 `sleep` と `email` が [`_run_step_body`](../../bajutsu/common/orchestrator/loop/_functions.py) の中で処理されている（`_do_sleep` は 373 行目）のも、同じ理由です。
 `totp` の待機も、同じ置き場所に従います。
 
-- ハンドラを呼ぶ前に、ループが `step.totp.minRemaining` を調べます。値があれば、新しい `_wait_for_totp_window(min_remaining, clock, cancelled, wall) -> str | None` を呼びます。この関数は警告の文を返し、確認を通ったときは `None` を返します。`bindings` が `None` のときは、ハンドラ自身の早期 return に合わせて待機を省きます。
-- この関数は、`clock.sleep` を通して `_SLEEP_SLICE` 単位のスライスでスリープします。各スライスの前に `cancelled()` を確認します。中断された実行は、`sleep` と同じく 1 スライス以内に抜けます（BE-0370）。
+- ハンドラを呼ぶ前に、ループが `step.totp.minRemaining` を調べます。値があれば、新しい `_wait_for_totp_window(min_remaining, clock, cancelled, wall) -> str | None` を呼びます。この関数は警告の文を返し、壁時計が動かなかったときは `None` を返します。`bindings` が `None` のときは、ハンドラ自身の早期 return に合わせて待機を省きます。
+- この関数は、`clock.sleep` を通して `_SLEEP_SLICE` 単位のスライスでスリープします。各スライスの前に `cancelled()` を確認し、中断されていれば `_do_sleep` と同じく戻り値で返さずに `RunCancelled` を送出します。中断された実行は、`sleep` と同じく 1 スライス以内に抜けます（BE-0370）。
+- `_run_step_body` の戻り値のタプルには、警告を入れる場所がありません。そこでループは、返された文を新しい出力引数 `warnings: list[str] | None` に追加します。既存の `alerts` 引数や `system_alert_taps` 引数と同じ形です。ステップの実行側がこのリストを渡し、`StepOutcome.warnings` に写します。戻り値の型も、その呼び出し元も変わりません。
 - `wall` は `Callable[[], float]` で、デフォルト値は `time.time` です。テストは偽物を注入するため、実時間で 30 秒待たずに境界の計算を検証できます。`RealClock.now()` は単調時計であり（[`real_clock.py`](../../bajutsu/common/orchestrator/types/real_clock.py)）、窓の位相を与えられません。`Clock` が受け持つのはスリープだけです。
 - ハンドラは変更せず、待機のあとに `time.time()` からコードを計算します。
 
@@ -140,9 +149,9 @@ manifest がこの欄を記録し、HTML レポートがステップの上に表
 ### 作業分解
 
 1. **モデルと検証。** `Totp` に `min_remaining`（別名 `minRemaining`）を足します。範囲の検査と分かりやすいエラーメッセージを付け、モデルから JSON スキーマを生成している場合はそれも更新します。
-2. **待機関数。** `_do_sleep` の隣に `_wait_for_totp_window` を足します。壁時計は差し替えられるようにします。テストでは `minRemaining: 30` と、待機中に壁時計が巻き戻る場合と進む場合を扱います。どちらの場合も、待機が上限の内側で終わり、警告が出ることを確かめます。`minRemaining: 30` では警告が出ないことも確かめます。
+2. **待機関数。** `_do_sleep` の隣に `_wait_for_totp_window` を足します。壁時計は差し替えられるようにします。テストでは、`minRemaining: 30`、起床の遅れ、待機中に壁時計が巻き戻る場合と進む場合、中断を扱います。壁時計が動いた 2 つの場合は、待機が上限の内側で終わり、警告が出ることを確かめます。`minRemaining: 30` と起床の遅れでは警告が出ないことを確かめます。中断では `RunCancelled` が送出されることを確かめます。
 3. **ループへの接続とラベル。** `_run_step_body` からハンドラの前に待機を呼び、`actions/_registry.py` の `_step_label` を拡張します。
-4. **ステップ結果の警告。** `StepOutcome.warning` を足し、待機関数の戻り値から設定します。manifest に記録し、HTML レポートで表示します。警告のある成功したステップが、`ok` を真のまま保ち、`reason` が空であることをテストで確かめます。
+4. **ステップ結果の警告。** `StepOutcome.warnings` と、`_run_step_body` の出力引数 `warnings` を足し、ステップの実行側でリストを結果に写します。manifest に記録し、`bajutsu/common/report/manifest.py` の `SCHEMA_VERSION`（現在は 15）を上げます。古い実行のステップに `warnings` がなければ、その実行がこの欄より前のものだという注記を添えます。HTML レポートで表示します。警告のある成功したステップが、`ok` を真のまま保ち、`reason` が空であることをテストで確かめます。
 5. **ドキュメント。** [`docs/scenarios.md`](../../docs/scenarios.md)、[`docs/dsl-grammar.md`](../../docs/dsl-grammar.md)、`docs/ja/` の対応する文書を更新し、`totp` ステップを説明している [`docs/architecture.md`](../../docs/architecture.md) の箇所に短い補足を足します。
 
 ## 検討した代替案
@@ -165,7 +174,7 @@ manifest がこの欄を記録し、HTML レポートがステップの上に表
 - [ ] モデルと検証：`Totp` の `minRemaining`
 - [ ] 待機関数：壁時計を差し替えられる `_wait_for_totp_window`
 - [ ] ループへの接続とステップのラベル
-- [ ] ステップ結果の警告：`StepOutcome.warning`、manifest、HTML レポート
+- [ ] ステップ結果の警告：`StepOutcome.warnings`、manifest、HTML レポート
 - [ ] ドキュメント：scenarios、DSL 文法、architecture、およびその日本語版
 
 ## 参考
