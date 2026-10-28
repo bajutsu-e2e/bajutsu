@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0471") |
+| Implementing PR | [#2237](https://github.com/bajutsu-e2e/bajutsu/pull/2237) |
 | Topic | Configuration sourcing |
 | Related | [BE-0030](../BE-0030-parameterized-shared-steps/BE-0030-parameterized-shared-steps.md), [BE-0174](../BE-0174-scenario-ref-path-containment/BE-0174-scenario-ref-path-containment.md), [BE-0422](../BE-0422-inline-scenario-components/BE-0422-inline-scenario-components.md), [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure.md), [BE-0467](../BE-0467-environment-specific-settings/BE-0467-environment-specific-settings.md) |
 <!-- /BE-METADATA -->
@@ -195,7 +196,7 @@ the target's `ai` in the layer order above, and the result then merges with `def
 
 Log:
 
-- [#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM) — All six units. `merge_defaults` folds an
+- [#2237](https://github.com/bajutsu-e2e/bajutsu/pull/2237) — All six units. `merge_defaults` folds an
   ordered list of layers onto `defaults`. The new `schema/_templates.py` expands `extends` depth-first,
   bases first, each template once. It fails the load on an unknown name, a cycle, an unknown key, a
   platform conflict, or a file outside the suite root. It also rewrites a template file's relative
