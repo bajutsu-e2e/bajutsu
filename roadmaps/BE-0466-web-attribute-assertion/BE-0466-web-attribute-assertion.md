@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0466") |
+| Implementing PR | [#2248](https://github.com/bajutsu-e2e/bajutsu/pull/2248) |
 | Topic | Verification & coverage |
 <!-- /BE-METADATA -->
 
@@ -185,7 +186,7 @@ Because the read is on demand, an attribute enters the run's output only when an
 Log:
 
 - Proposed.
-- PR_LINK — Shipped all eight units in one change, built against today's tree with three deviations
+- [#2248](https://github.com/bajutsu-e2e/bajutsu/pull/2248) — Shipped all eight units in one change, built against today's tree with three deviations
   from the design text. The config check reads a new `PlatformSchema.element_attribute` flag (true
   for `web` and `fake`), because the config schema imports no driver and so cannot ask a backend
   for its capabilities; a test pins the flag to each platform's `CAPABILITIES`. `QUERY_JS` stays
