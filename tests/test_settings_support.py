@@ -252,3 +252,20 @@ def test_a_web_target_launch_env_feeds_codegen_and_is_never_in_effect() -> None:
     eff = _eff("web", lines=("    app: {url: 'http://x/', launch: {env: {A: '1'}}}",))
     assert eff.launch_env == {"A": "1"}
     assert settings_in_effect(eff, ResolvedPreconditions()) == []
+
+
+def test_bajutsus_own_launch_env_keys_are_not_a_setting() -> None:
+    # The run writes `BAJUTSU_MOCKS` into every scenario's launch env; a browser has no app to read
+    # it, and Playwright applies the mocks natively, so it must not fail the web route.
+    pre = ResolvedPreconditions(launch_env={"BAJUTSU_MOCKS": "[]", "BAJUTSU_TOUCH_MARKERS": "1"})
+    assert settings_in_effect(_eff("web"), pre) == []
+    mixed = ResolvedPreconditions(launch_env={"BAJUTSU_MOCKS": "[]", "A": "1"})
+    assert settings_in_effect(_eff("web"), mixed) == ["launchEnv"]
+
+
+def test_an_ignored_launch_env_keeps_bajutsus_own_keys() -> None:
+    from bajutsu.common.capability.settings_support import without_ignored
+
+    pre = ResolvedPreconditions(launch_env={"BAJUTSU_MOCKS": "[]", "A": "1"})
+    dropped, _ = without_ignored(pre, None, ["launchEnv"])
+    assert dropped.launch_env == {"BAJUTSU_MOCKS": "[]"}

@@ -928,3 +928,11 @@ def test_live_environment_has_no_device_catalog_and_no_device_control() -> None:
     env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: _FakeGrid([]))
     assert env.device_catalog() == {}
     assert env.controller(_live_eff()) is None
+
+
+def test_live_environment_still_refuses_bajutsus_own_launch_keys() -> None:
+    # `BAJUTSU_MOCKS` is not a setting, but the live route cannot pass it to the app, so the mocks a
+    # scenario relies on must not be dropped silently.
+    env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: _FakeGrid([]))
+    with pytest.raises(base.UnsupportedAction):
+        env.start(_live_eff(), ResolvedPreconditions(launch_env={"BAJUTSU_MOCKS": "[]"}))

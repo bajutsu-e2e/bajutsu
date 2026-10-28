@@ -204,12 +204,25 @@ def settings_in_effect(
         "locale": locale,
         # A web target's own `app.launch.env` feeds Playwright code generation, never a run, so only
         # an app platform's own launch values are asked of the device; a scenario's still count.
-        "launchEnv": (native and bool(eff.launch_env)) or (launch("env") and bool(pre.launch_env)),
+        "launchEnv": (native and _user_env(eff.launch_env))
+        or (launch("env") and _user_env(pre.launch_env)),
         "launchArgs": (native and bool(eff.launch_args))
         or (launch("args") and bool(pre.launch_args)),
         "deeplink": launch("deeplink") and pre.deeplink is not None,
     }
     return [key for key in SETTING_KEYS if asked.get(key)]
+
+
+# The prefix of the keys Bajutsu writes into a launch env for its own SDK protocol (`BAJUTSU_MOCKS`,
+# `BAJUTSU_TOUCH_MARKERS`, `BAJUTSU_CONTROL_CHANNEL`). The run sets them on every platform, and a
+# route that has no app to read them (the web applies mocks natively) loses nothing, so they are
+# Bajutsu's own injection, like the live route's `extra_env`, not a setting the target asked for.
+_BAJUTSU_ENV_PREFIX = "BAJUTSU_"
+
+
+def _user_env(env: Mapping[str, str]) -> bool:
+    """Whether *env* holds a key the scenario or target set, beyond Bajutsu's own protocol keys."""
+    return any(not key.startswith(_BAJUTSU_ENV_PREFIX) for key in env)
 
 
 @dataclass(frozen=True)
@@ -296,7 +309,8 @@ def without_ignored(
     """*pre* and *permissions* with every ignored setting dropped, so the environment applies none.
 
     A launch value the target itself sets stays on `Effective`; only a route that cannot apply it
-    ignores it, and that route never reads it.
+    ignores it, and that route never reads it. Bajutsu's own launch keys are not the setting, so an
+    ignored `launchEnv` keeps them for the route to apply or refuse.
     """
     skip = set(ignored)
     kept = {
@@ -310,7 +324,11 @@ def without_ignored(
             erase=pre.erase and "erase" not in skip,
             seed_photos=[] if "seedPhotos" in skip else pre.seed_photos,
             locale=None if "locale" in skip else pre.locale,
-            launch_env={} if "launchEnv" in skip else pre.launch_env,
+            launch_env=(
+                {k: v for k, v in pre.launch_env.items() if k.startswith(_BAJUTSU_ENV_PREFIX)}
+                if "launchEnv" in skip
+                else pre.launch_env
+            ),
             launch_args=[] if "launchArgs" in skip else pre.launch_args,
             deeplink=None if "deeplink" in skip else pre.deeplink,
         ),

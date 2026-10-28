@@ -305,7 +305,9 @@ Log:
   has that field, as BE-0452 keys it, so an iOS-and-web scenario's deeplink does not fail the web
   target. The real-device `locale` is `supported`, since it reaches the app as a launch argument. The
   live route keeps refusing `extra_env` outside the table, because that value is Bajutsu's own
-  injection, not a setting. A web target's own `app.launch.env` is not in effect either, since its
+  injection, not a setting. For the same reason the `BAJUTSU_*` keys the run writes into a launch
+  environment (`BAJUTSU_MOCKS` and others) are never a `launchEnv` setting; the live route still
+  refuses them at launch. A web target's own `app.launch.env` is not in effect either, since its
   schema keeps it for Playwright code generation, while a scenario's still is: the showcase `web`
   target therefore declares `launchEnv` ignored for `cross_platform_app_web.yaml`. `record`, `crawl`,
   `repl`, and `doctor` report a refused setting as a clean error. Until unit 4 renders it in the report, a launch logs each ignored setting

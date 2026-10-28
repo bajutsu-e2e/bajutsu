@@ -86,10 +86,13 @@ class XcuitestLiveEnvironment(_DeviceEnvironment):
         #
         # The route's settings table refuses every precondition this transport does not wire yet
         # (BE-0467), unless the target ignores it; an ignored one is simply never read here.
-        enforce_settings(self._actuator, eff, pre, permissions, self._endpoint)
-        if extra_env:
+        pre, _ = enforce_settings(self._actuator, eff, pre, permissions, self._endpoint)
+        # Bajutsu's own launch keys (`BAJUTSU_MOCKS` and the like) sit outside the table, yet this
+        # route cannot pass them either, so a scenario relying on them still fails loudly here.
+        if extra_env or pre.launch_env:
             raise base.UnsupportedAction(
-                "extra_env is not yet wired on the live WebDriver route (BE-0238 Slice B)"
+                "Bajutsu's own launch environment (extra_env, BAJUTSU_* keys) is not yet wired "
+                "on the live WebDriver route (BE-0238 Slice B)"
             )
         ios = require_ios(eff)
         self._client = WebDriverClient(self._transport_factory(self._endpoint))
