@@ -70,6 +70,10 @@ class RunResult:
     # so `pipeline.py` converts them through this rather than sampling its own wall/monotonic pair at
     # write time — a second pair would drift from every other timestamp on an NTP correction.
     wall_offset_s: float = 0.0
+    # Secret values an `eval` step derived during this scenario (BE-0472), for a writer that runs on
+    # the finished result, such as the app-crash artifacts. In memory only: serializing the set
+    # would write the very values it exists to hide, so `manifest.py` drops it like `wall_offset_s`.
+    derived_secrets: list[str] = field(default_factory=list)
     # System prompts the guard cleared before the scenario-level `expect` re-checked.
     expect_alerts: list[AlertEvent] = field(default_factory=list)
     # Actuations the guard performed for that same expect-phase retry — the one place a gesture happens

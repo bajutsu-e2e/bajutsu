@@ -356,7 +356,7 @@ def scenario_result_dict(r: RunResult) -> dict[str, object]:
 
 
 def _scenario_dict(r: RunResult) -> dict[str, object]:
-    """`asdict(r)`, minus `wall_offset_s` and every outcome's `app_crash_artifacts`.
+    """`asdict(r)`, minus `wall_offset_s`, `derived_secrets`, and every outcome's `app_crash_artifacts`.
 
     `wall_offset_s` is `scenario_wall_start - scenario_start` — a delta that converts *this run's*
     `time.monotonic()` instants to wall-clock ones. It exists only for `pipeline.py` to carry a
@@ -364,6 +364,9 @@ def _scenario_dict(r: RunResult) -> dict[str, object]:
     while the run is still in-process; no monotonic instant survives into the manifest for a later
     reader to convert with it, so persisting it would be noise at best. `video_anchor_s`, by
     contrast, is itself already an absolute instant (BE-0348) and stays.
+
+    `derived_secrets` (BE-0472) holds the raw values an `eval` step derived from a secret; it reaches
+    the writers so they can mask those values, and writing it out would undo exactly that.
 
     `app_crash_artifacts` (BE-0424) is dropped for a harder reason: it holds raw `bytes`, which has no
     JSON encoding, and `write_json` carries no `default=` — so the first app-crash scenario would
@@ -376,6 +379,7 @@ def _scenario_dict(r: RunResult) -> dict[str, object]:
     """
     d = asdict(r)
     d.pop("wall_offset_s", None)
+    d.pop("derived_secrets", None)
     for phase in ("steps", "before_outcomes", "after_outcomes"):
         for outcome in d.get(phase) or ():
             outcome.pop("app_crash_artifacts", None)

@@ -239,6 +239,7 @@ Action    ::=
   | { totp:        { secret: string, into: { var: string } } }  # RFC 6238 OTP → vars.<var> (secret is base32)
   | { email:       { match: { to?: string, subject?: string, subjectMatches?: string }, extract: { var: string, bodyMatches: string }, timeout: number } }  # poll mailbox → vars.<var>
   | { generate:    <Generate> }                            # a random or current-datetime value computed at run time → vars.<var> (BE-0377)
+  | { eval:        <Eval> }                                # transform a held value through a fixed op vocabulary → vars.* (BE-0472)
   | { background:       {} }                               # Home button (backgrounds via SpringBoard, no terminate)
   | { foreground:       {} }                               # bring the app to the front, no terminate; an app that is not running launches as `relaunch` would and waits until ready (iOS and Android, BE-0447); the other half of background
   | { installApp:       { from: string, keepData?: boolean } }  # install a later device-group member's build on the step's device; keepData default true (install over, data kept), false uninstalls first; launches nothing (BE-0447)
@@ -293,6 +294,23 @@ Random ::=
 Datetime ::= { format?: string, offsetSeconds?: integer, offsetMinutes?: integer, offsetHours?: integer, offsetDays?: integer, timezone?: string }
     # format: a strftime pattern; omitted = ISO 8601 to the second. The four offsets are signed and additive.
     # timezone: an IANA name (e.g. "America/Los_Angeles"); omitted = UTC. An unrenderable format or an unknown zone fails at load.
+
+Eval ::= { from: string, ops: list(<EvalOp>), into: { var: string } | { vars: list(string) } }
+    # ops: non-empty; each runs on the previous result. The loader tracks string/list from `from` (a string) to the end.
+    # into.var: a list result is stored as compact JSON array text. into.vars: needs a list result; element i → vars[i],
+    #   extra elements dropped, a shorter list fails the step. Names in vars are distinct.
+EvalOp ::=
+    "trim" | "json" | "count" | "unique" | "reverse" | "sort"                     # bare names
+  | { split:     string | { by: string, regex?: boolean } }                       # string → list; by non-empty
+  | { join:      string }                                                         # list → string
+  | { filter:    { matches: string | equals: string | contains: string | notEmpty: true, not?: boolean } }  # exactly one predicate
+  | { pick:      "first" | "last" | integer }                                     # list → string; index ≥ 0
+  | { sort:      ("asc"|"desc") | { order?: ("asc"|"desc"), numeric?: boolean } }
+  | { regex:     { pattern: string, group?: integer } }                          # string → string; group default 0
+  | { replace:   { find: string, with: string, regex?: boolean } }               # string → string
+  | { substring: { start: integer, end?: integer } }                             # string → string; both ≥ 0
+  | { case:      ("lower"|"upper") }                                              # string → string
+    # A string or index argument may hold ${vars.*} / ${secrets.*}; it is checked after substitution instead of at load.
 
 # ── Selector (≥1 field; provided fields are AND-ed) ────────────────────
 Selector ::= {

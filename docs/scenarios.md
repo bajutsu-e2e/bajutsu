@@ -969,6 +969,7 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `totp` | `totp: { secret, into: { var } }` | generate an RFC 6238 time-based one-time password (2FA) locally into `${vars.<var>}` |
 | `email` | `email: { match: { to?, subject?, subjectMatches? }, extract: { var, bodyMatches }, timeout }` | poll the configured mailbox until a matching message arrives, extract a code into `${vars.<var>}` |
 | `generate` | `generate: { random\|datetime: {...}, into: { var } }` | compute a random or current-datetime value at run time into `${vars.<var>}` ([below](#generate-a-value-computed-at-run-time)) |
+| `eval` | `eval: { from, ops: [...], into: { var } \| { vars: [...] } }` | split, join, filter, and otherwise transform a value the scenario already holds, into `${vars.*}` ([below](#eval-transform-a-value-held-in-a-variable)) |
 | `manual` | `manual: { label: "...", bypass?: "..." }` | a human takeover recorded during `record` (BE-0185); has no deterministic run-time equivalent, so it **fails loudly** at `run` time — never a silent pass |
 | `background` | `background: {}` | send the app to the background (Home button) |
 | `foreground` | `foreground: {}` | bring the step's target app to the front without terminating it; an app that is not running launches the way `relaunch` would, minus the terminate, then waits until ready. iOS and Android |
@@ -1495,6 +1496,106 @@ manifest and the report, so a later failure shows which value the run actually u
 must check a specific value captures it through `${vars.*}` and compares against that capture, not
 against a literal it could not have known in advance. Every codegen target renders `generate` as a
 labeled `// TODO`, because the step runs in the runner rather than the app.
+
+### `eval` (transform a value held in a variable)
+
+```yaml
+- tap: { id: cart.open }
+  extract:
+    items: { sel: { id: cart.summary }, prop: label }   # "Apple, banana ,Cherry"
+
+- eval:
+    from: "${vars.items}"
+    ops:
+      - split: { by: "\\s*,\\s*", regex: true }
+      - filter: { notEmpty: true }
+      - sort
+    into: { var: sortedItems }                           # ["Apple","Cherry","banana"]
+
+- eval: { from: "${vars.sortedItems}", ops: [json, { pick: first }], into: { var: firstItem } }
+
+- eval:
+    from: "Taro Yamada"
+    ops: [{ split: " " }]
+    into: { vars: [givenName, familyName] }              # givenName=Taro, familyName=Yamada
+
+- eval:
+    from: "${secrets.API_TOKEN}"
+    ops: [{ substring: { start: 0, end: 8 } }]
+    into: { var: tokenPrefix }                           # masked in every later artifact
+```
+
+`eval` transforms a value the scenario already holds and stores the result under `${vars.*}`. The
+values a target shows are often not the values a later step needs. A cart label may need to become
+sorted items. A banner reading `Order #A-1042 confirmed` may need to become `A-1042`. Without `eval`,
+the author asserts the whole string or moves the logic out of the scenario
+([BE-0472](../roadmaps/BE-0472-eval-step-value-operations/BE-0472-eval-step-value-operations.md)).
+
+The name does not mean the step runs code. `ops` draws from a fixed vocabulary. A scenario cannot add
+an operation. `from` is a string with the usual `${...}` interpolation. Joining two variables needs no
+operation: `from: "${vars.a}-${vars.b}"` builds the joined string. Each entry of `ops` runs on the result of the one
+before it. An operation without arguments is a bare name. Every other operation is a mapping with one
+key.
+
+| Operation | Form | Input → output | Behavior |
+|---|---|---|---|
+| `split` | `split: ","` or `split: { by, regex? }` | string → list | splits on a literal separator, or on a regular expression when `regex` is true; capture groups in the pattern are not kept |
+| `join` | `join: "-"` | list → string | joins the elements; an empty separator is allowed |
+| `filter` | `filter: { matches \| equals \| contains \| notEmpty, not? }` | list → list | keeps the elements that satisfy exactly one predicate; `not: true` keeps the others |
+| `pick` | `pick: first`, `last`, or an index | list → string | takes one element; an index counts from zero |
+| `count` | `count` | list → string | the number of elements, as decimal text |
+| `sort` | `sort`, `sort: desc`, or `sort: { order, numeric? }` | list → list | orders by Unicode code point, or by decimal value with `numeric: true`; `desc` equals `sort` followed by `reverse` |
+| `unique` | `unique` | list → list | drops repeats and keeps the first of each |
+| `reverse` | `reverse` | list → list | reverses the order |
+| `json` | `json` | string → list | parses a JSON array; a non-string element renders as compact JSON text |
+| `regex` | `regex: { pattern, group? }` | string → string | capture `group` (default 0) of the first match |
+| `replace` | `replace: { find, with, regex? }` | string → string | replaces every occurrence |
+| `substring` | `substring: { start, end? }` | string → string | the characters from `start` up to `end`, both counted from zero |
+| `trim` | `trim` | string → string | removes leading and trailing spaces, tabs, and line breaks |
+| `case` | `case: lower` or `upper` | string → string | changes letter case |
+
+The result goes to `into`:
+
+- **`into: { var }`** stores one value. The run stores a string as it stands. The run stores a list
+  as compact JSON array text such as `["a","b"]`. A later `eval` turns that text back into a list
+  with `json`.
+- **`into: { vars: [...] }`** spreads a list result over the named variables in order. The first
+  element goes into the first name, the second into the second, and so on. A list longer than `vars`
+  leaves its extra elements unassigned. A shorter list stops the step: a variable left unset would
+  surface later as an unrelated mismatch.
+
+The loader checks the step before the run starts. It tracks the string-or-list type from `from` to the
+end. An operation applied to the wrong kind stops the load with an error naming the operation. The
+loader also refuses these forms:
+
+- an empty `ops` or an empty `split` separator
+- a `filter` with no predicate or with two or more
+- a negative index or an unknown `sort` order
+- `into.vars` on a string result
+- a regular expression that does not compile
+
+An argument may hold a `${vars.*}` or `${secrets.*}` token. The loader cannot check such an argument.
+The run applies the same checks to it after substitution.
+
+The step stops at run time, with no fallback value, in these cases:
+
+- a `regex` finds no match, or the pattern lacks the `group`
+- an index or a `substring` bound falls outside the value
+- `json` reads text that is not a JSON array
+- `numeric` sorting meets an element that is not a number
+- a `${...}` token has no value bound
+- a value exceeds 1,048,576 characters or 10,000 elements
+
+The message names the operation's position and never quotes a value. A step that stops this way writes
+no variable. The run records the produced value in the manifest and the report, as for `generate`.
+
+A result derived from a secret is itself a secret. An input counts as secret when it holds a
+`${secrets.*}` token. A `${vars.*}` token that an earlier `eval` marked secret counts too. The run
+masks the result in that scenario's evidence from the step on, its own report row included. The run
+also marks the target variables secret. `count` is the one exception: an element count carries no character of its input.
+Evidence written before the step stays as written. The step's failure reasons and produced values
+are masked too, so the manifest, the reports, and CI annotations never show the value.
+Every codegen target renders `eval` as a labeled `// TODO`, because the step runs in the runner.
 
 ### `manual`
 

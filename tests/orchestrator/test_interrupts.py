@@ -31,6 +31,9 @@ def _interrupt(condition: dict[str, object], steps: list[dict[str, object]]) -> 
 class _RecordingSink:
     """A minimal sink that records the instant-capture kinds fired per step (BE-0314 screenChanged)."""
 
+    def add_secret_values(self, values: object) -> None:  # EvidenceSink shape
+        return None  # these doubles write no artifact, so there is nothing to mask
+
     def __init__(self) -> None:
         self.calls: list[tuple[str, list[str]]] = []
 

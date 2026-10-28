@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0472](BE-0472-eval-step-value-operations.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0472") |
 | Implementing PR | — |
 | Topic | Scenario authoring features |
@@ -87,6 +87,12 @@ Fields:
 - **`into`** is `{ var: <name> }`, the same `VarTarget` that `generate` and `totp` use
   (`bajutsu/common/scenario/models/actions/var_target.py`). Writing a name that already holds a
   value replaces it, as `extract` and `generate` do.
+- **`into: { vars: [<name>, ...] }`** is the other form. It spreads a list result over the
+  named variables in order. The first element goes into the first name, and so on. The loader accepts
+  `vars` when the pipeline ends with a list, and refuses an empty or repeated name. A list longer than
+  `vars` leaves its extra elements unassigned. A shorter list stops the step: a variable left unset
+  would surface later as an unrelated mismatch. We added this form during implementation. Without
+  it, a scenario that splits one label into three values needs three `eval` steps.
 
 ### Values and types
 
@@ -221,6 +227,24 @@ it stays out of `OBSERVES_APP` in `bajutsu/common/orchestrator/loop/app_crash_la
 lists the step kinds whose success proves the app answered, and a kind added later proves nothing by
 default. The set needs no edit.
 
+### Decisions made during implementation
+
+The implementation settled the points below. The design left each open or stated it against an older tree.
+
+| Point | Decision |
+|---|---|
+| Where substitution happens | `_interp_step` leaves the `eval` field as written, and the handler substitutes it. Re-validating a substituted step there would raise a validation error quoting the secret text. |
+| An unbound `${...}` token | The step fails and names the token. Running on the literal `${vars.x}` text would hide a typo until a later assertion. |
+| Flag arguments (`regex`, `not`, `numeric`) | They accept literal booleans only. String and index arguments accept tokens. |
+| `split` with `regex: true` | The result holds the text between matches only. Python's `re.split` would splice capture groups into the list. |
+| `count` in the middle of `ops` | Only `from` and the arguments after the last `count` decide whether the result is secret. |
+| A short derived value | A one-character value replaced inside serialized JSON would turn `1.5` into `[REDACTED].5`. `Redactor` keeps derived values apart from configured ones and applies them to free text and a structure's string values, never to the pass over a serialized document. |
+| The manifest and the reports | The runner masks derived values in the result's value-bearing text (the failure, each reason and produced value, each assertion's detail) once the scenario ends. `result.json`, the manifest, the reports, CI annotations, and webhooks all read that text, so each stays scenario-scoped. Artifact paths are left alone so the report's links still resolve. |
+| A crash retry | One `DerivedSecrets` per scenario spans every attempt. A sink leased for a retry starts out masking what an earlier attempt derived, and the crash evidence and the driver trace mask it too. |
+| A sink that cannot mask | `add_secret_values` is part of the `EvidenceSink` protocol rather than an opt-in, so a new sink that omits it fails the type check instead of writing the value in plain text. |
+| The REPL | The shell binds no `${secrets.*}`, so an `eval` naming a secret fails as an unbound token. Nothing secret reaches its output, and the shell needs no redactor. |
+| Regular-expression cost | No deadline was added. The size caps stay the only bound, as the open point below describes. |
+
 ### Out of scope
 
 - **Mapping a sub-pipeline over list elements** (an `each` operation). The fixed vocabulary stays
@@ -284,17 +308,21 @@ default. The set needs no edit.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Add the `Eval` model and the load-time checks.
-- [ ] Add the evaluator with every operation, the caps, and value-free failure messages.
-- [ ] Add the `eval` handler and the produced value in the step outcome.
-- [ ] Add scenario-scoped secret handling: `Redactor.with_values`, `derived_secrets`, and `secret_vars`.
-- [ ] Add the step-kind surfaces: runner sets, REPL, and codegen `TODO`.
-- [ ] Add scenario-level tests with the fake driver.
-- [ ] Document `eval` in `docs/scenarios.md` and `docs/dsl-grammar.md`, with both `docs/ja/` mirrors.
+- [x] Add the `Eval` model and the load-time checks.
+- [x] Add the evaluator with every operation, the caps, and value-free failure messages.
+- [x] Add the `eval` handler and the produced value in the step outcome.
+- [x] Add scenario-scoped secret handling: `Redactor.with_values`, `derived_secrets`, and `secret_vars`.
+- [x] Add the step-kind surfaces: runner sets, REPL, and codegen `TODO`.
+- [x] Add scenario-level tests with the fake driver.
+- [x] Document `eval` in `docs/scenarios.md` and `docs/dsl-grammar.md`, with both `docs/ja/` mirrors.
 
 Log:
 
 - Proposed; no implementation yet.
+- Implemented every unit in one change. The change covers the `eval` model and its load-time type
+  flow, the evaluator and its caps, and the handler. It also covers scenario-scoped masking of derived
+  secrets, the REPL and codegen surfaces, and the documentation. Added `into: { vars: [...] }`, which spreads a list result over
+  named variables. Recorded the decisions above.
 
 ## References
 

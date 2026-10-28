@@ -28,6 +28,7 @@ from bajutsu.codegen.common import (
     CleanupEmission,
     class_name,
     device_group_todo,
+    eval_todo,
     ident,
     indent_lines,
     interrupts_setup_lines,
@@ -307,6 +308,8 @@ def _device_control_todo(step: Step) -> str:
         # A human takeover (BE-0185): no generated-test equivalent — a labeled TODO, not a silent skip.
         return f"// TODO: manual step — {manual_todo(step.manual.label, step.manual.bypass)}"
     if (todo := device_group_todo(step)) is not None:
+        return todo
+    if (todo := eval_todo(step)) is not None:
         return todo
     if step.navigate is not None:
         # Web-only (BE-0464); an Android intent is a separate item, so there is nothing to generate.
