@@ -1549,6 +1549,9 @@ class _VideoSink:
     is the same ordering `run_scenario` depends on — the anchor is resolved *after* the finalize.
     """
 
+    def add_secret_values(self, values: object) -> None:  # EvidenceSink shape
+        return None  # these doubles write no artifact, so there is nothing to mask
+
     def __init__(self, true_start: float | None, measured_start: float | None = None) -> None:
         self._true_start = true_start
         self._measured_start = measured_start

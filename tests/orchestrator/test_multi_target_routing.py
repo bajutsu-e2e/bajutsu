@@ -673,6 +673,9 @@ class _VideoTargetSink:
     for — the fake this file's video tests need, since `NullSink` always answers empty and so never
     proves a target's own sink got its own interval lifecycle at all."""
 
+    def add_secret_values(self, values: object) -> None:  # EvidenceSink shape
+        return None  # these doubles write no artifact, so there is nothing to mask
+
     def __init__(self, true_start: float | None = None) -> None:
         self._true_start = true_start
         self.finished_ids: list[str] = []

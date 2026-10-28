@@ -56,7 +56,7 @@ def test_each_registered_platform_is_one_branch_keyed_by_platform() -> None:
     for platform in PLATFORM_SCHEMAS:
         branch = _branch(platform)
         assert branch["properties"]["platform"]["const"] == platform
-        assert tuple(branch["properties"]) == TARGET_KEYS
+        assert tuple(branch["properties"]) == (*TARGET_KEYS, "extends")
         assert branch["additionalProperties"] is False
 
 

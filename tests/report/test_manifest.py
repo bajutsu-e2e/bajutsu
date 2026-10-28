@@ -276,9 +276,18 @@ def test_manifest_excludes_wall_offset_s() -> None:
     r = RunResult(scenario="s1", ok=True, steps=[], wall_offset_s=123456.789)
     scenario = _scenarios(manifest_dict("run1", [r]))[0]
     assert "wall_offset_s" not in scenario
-    # Exactly this one field is missing — not a different field excluded by mistake, and not this
-    # field plus others dropped by a broader (over-eager) exclusion.
-    assert {f.name for f in fields(RunResult)} - set(scenario) == {"wall_offset_s"}
+    # Exactly these fields are missing — not a different field excluded by mistake, and not one
+    # dropped by a broader (over-eager) exclusion. `derived_secrets` holds raw secret values an
+    # `eval` step derived, kept in memory for the writers to mask (BE-0472).
+    assert {f.name for f in fields(RunResult)} - set(scenario) == {
+        "wall_offset_s",
+        "derived_secrets",
+    }
+
+
+def test_manifest_never_writes_the_derived_secret_values() -> None:
+    r = RunResult(scenario="s1", ok=True, steps=[], derived_secrets=["abcd1234"])
+    assert "abcd1234" not in json.dumps(manifest_dict("run1", [r]))
 
 
 def test_manifest_records_device_environment() -> None:

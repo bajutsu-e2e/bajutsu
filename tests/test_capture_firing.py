@@ -48,6 +48,9 @@ def _baseline_calls(*extra: str, step_id: str = "x/step0") -> list[tuple[str, li
 
 
 class RecordingSink:
+    def add_secret_values(self, values: object) -> None:  # EvidenceSink shape
+        return None  # these doubles write no artifact, so there is nothing to mask
+
     def __init__(self) -> None:
         self.calls: list[tuple[str, list[str]]] = []  # instant capture calls
         self.scenario_intervals: list[tuple[str, list[str]]] = []
@@ -390,6 +393,9 @@ def test_multiple_inline_interval_tokens_are_recorded_scenario_wide() -> None:
 
 class IntervalSink:
     """Records scenario-level interval recordings and returns artifacts for them."""
+
+    def add_secret_values(self, values: object) -> None:  # EvidenceSink shape
+        return None  # these doubles write no artifact, so there is nothing to mask
 
     def __init__(self) -> None:
         self.started: list[tuple[str, list[str]]] = []

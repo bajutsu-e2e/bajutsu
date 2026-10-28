@@ -42,6 +42,7 @@ from bajutsu.common.config.resolve import (
     load_config_file,
     parse_config_dict,
     resolve,
+    unknown_target,
 )
 from bajutsu.common.config.schema import (
     WEB_ENGINES,
@@ -98,6 +99,7 @@ __all__ = [
     "require_web",
     "resolve",
     "resolve_preconditions",
+    "unknown_target",
     "web_base_url",
     "web_engine",
     "xcuitest_pins_runner",

@@ -276,6 +276,15 @@ class ReplSession:
             assert step.generate is not None
             key = f"vars.{step.generate.into.var}"
             return [f"ran step: generate ({key} = {self._bindings[key]!r})"]
+        if kind == "eval_":
+            # Shown like `generate`'s, one entry per variable written. The shell binds no
+            # `${secrets.*}`, so an `eval` here cannot derive from a secret: one that names a secret
+            # fails as an unbound token before anything is written or printed (BE-0472).
+            assert step.eval_ is not None
+            shown = ", ".join(
+                f"vars.{n} = {self._bindings[f'vars.{n}']!r}" for n in step.eval_.into.names
+            )
+            return [f"ran step: eval ({shown})"]
         return [f"ran step: {_yaml_key(kind)}"]
 
     def _back(self, rest: str) -> list[str]:

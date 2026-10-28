@@ -167,6 +167,19 @@ def device_group_todo(step: Step) -> str | None:
     return None
 
 
+def eval_todo(step: Step) -> str | None:
+    """The `// TODO` for an `eval` step (BE-0472), else None.
+
+    `eval` transforms a `${vars.*}` value inside the bajutsu runner; no generated test has that
+    runner, so — like `generate` — it renders as a labeled comment naming the variables it would
+    have written, never a silent skip.
+    """
+    if step.eval_ is None:
+        return None
+    names = ", ".join(_collapse_line_terminators(n) for n in step.eval_.into.names)
+    return f"// TODO: eval(into: {names}) — runner-computed value; not generated"
+
+
 def permissions_setup_lines(scenario: Scenario) -> list[str]:
     """The `// TODO` lines naming each `permissions` entry (BE-0276), one per service.
 

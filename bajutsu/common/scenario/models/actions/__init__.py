@@ -20,6 +20,7 @@ from .drag import Drag
 from .email import Email
 from .email_extract import EmailExtract
 from .email_match import EmailMatch
+from .eval_step import Eval, EvalTarget
 from .foreground import Foreground
 from .generate import Generate
 from .handle_system_alert import _SYSTEM_ALERT_SEL_FIELDS as _SYSTEM_ALERT_SEL_FIELDS
@@ -69,6 +70,8 @@ __all__ = [
     "Email",
     "EmailExtract",
     "EmailMatch",
+    "Eval",
+    "EvalTarget",
     "Foreground",
     "Generate",
     "HandleSystemAlert",

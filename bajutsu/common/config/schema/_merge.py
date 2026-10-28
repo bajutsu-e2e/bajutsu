@@ -1,4 +1,4 @@
-"""Merge the team `defaults` into one target's raw block, before the target is validated (BE-0452)."""
+"""Merge the team `defaults` and a target's templates into its raw block, before it is validated."""
 
 from __future__ import annotations
 
@@ -59,21 +59,31 @@ def merge_layer(
     return out
 
 
-def merge_defaults(defaults: dict[str, Any], target: dict[str, Any]) -> dict[str, Any]:
-    """*target* with the team *defaults* merged under it.
+def merge_defaults(defaults: dict[str, Any] | None, *layers: dict[str, Any]) -> dict[str, Any]:
+    """The team *defaults* with each of *layers* laid on in turn, the last one strongest.
 
     The shared groups sit directly under `defaults`; the platform-shaped ones sit under
     `defaults.platforms.<platform>` and apply to that platform's targets alone, so one file can hold
-    defaults for several platforms. A target with no `platform` gets the shared groups only, and
-    then fails validation for the missing key.
+    defaults for several platforms. The platform is the one the layers declare, so a target may take
+    it from a template it extends (BE-0471); the expansion has already refused layers that disagree.
+    With no `platform` anywhere the result gets the shared groups only, and then fails validation for
+    the missing key.
+
+    The layers apply one at a time rather than merged into one block first: a template's `null` must
+    find the value `defaults` supplies to clear it, and a block flattened beforehand would have
+    dropped the `null`.
     """
+    defaults = defaults or {}
     shared = {k: v for k, v in defaults.items() if k not in _NOT_MERGED}
     platforms = defaults.get("platforms")
-    platform = target.get("platform")
-    by_platform: Any = (
-        platforms.get(platform)
-        if isinstance(platforms, dict) and isinstance(platform, str)
-        else None
+    platform = next(
+        (p for layer in layers if isinstance(p := layer.get("platform"), str)),
+        None,
     )
-    base = merge_layer(shared, by_platform) if isinstance(by_platform, dict) else shared
-    return merge_layer(base, target)
+    by_platform: Any = (
+        platforms.get(platform) if isinstance(platforms, dict) and platform is not None else None
+    )
+    out = merge_layer(shared, by_platform) if isinstance(by_platform, dict) else shared
+    for layer in layers:
+        out = merge_layer(out, layer)
+    return out

@@ -25,6 +25,7 @@ from bajutsu.codegen.common import (
     CleanupEmission,
     class_name,
     device_group_todo,
+    eval_todo,
     ident,
     indent_lines,
     interrupts_setup_lines,
@@ -341,6 +342,8 @@ def _emit_step(step: Step) -> list[str]:  # noqa: C901, PLR0911, PLR0912
     if step.assert_ is not None:
         return [line for a in step.assert_ for line in _emit_assertion(a)]
     if (todo := device_group_todo(step)) is not None:
+        return [todo]
+    if (todo := eval_todo(step)) is not None:
         return [todo]
     if step.relaunch is not None:
         return ["app.terminate()", "app.launch()"]
