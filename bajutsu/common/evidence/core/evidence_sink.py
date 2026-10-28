@@ -53,7 +53,9 @@ class EvidenceSink(Protocol):
         self, scenario_id: str, started: list[intervals.Interval]
     ) -> list[Artifact]: ...
 
-    # Values an `eval` step derived from a secret mid-scenario (BE-0472), masked in every artifact
-    # the sink writes from then on. Part of the protocol rather than an opt-in, so a new sink that
-    # forgets it fails the type check instead of silently writing the value in plain text.
-    def add_secret_values(self, values: Sequence[str]) -> None: ...
+    def add_secret_values(self, values: Sequence[str]) -> None:
+        """Mask *values*, derived from a secret mid-scenario, in every artifact written next (BE-0472).
+
+        Part of the protocol rather than an opt-in, so a new sink that forgets it fails the type
+        check instead of silently writing the value in plain text.
+        """
