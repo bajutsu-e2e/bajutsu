@@ -755,8 +755,9 @@ def _capture_visual_actual(
 # C901 and PLR0915 fold each nested function's count into the function enclosing it, so this score
 # measures the closures defined below (`run_phase` among them), not genuine branching here — the
 # same reasoning `pool.py`'s own `lease()` exemption gives (BE-0386). BE-0428's own-target interval
-# start/finish loop pushed the plain statement count over the line for the first time.
-def run_scenario(  # noqa: C901, PLR0915
+# start/finish loop pushed the plain statement count over the line for the first time, and BE-0466's
+# `UnsupportedAction` handler the branch count.
+def run_scenario(  # noqa: C901, PLR0912, PLR0915
     driver: base.Driver,
     scenario: Scenario,
     clock: Clock | None = None,
@@ -1104,6 +1105,12 @@ def run_scenario(  # noqa: C901, PLR0915
                 # letting it proceed on an app state bajutsu never established (BE-0365). It lands as an
                 # ordinary failure, so the verdict stays machine-checkable and the cause is in the report.
                 failure = f"control channel: {exc}"
+            except base.UnsupportedAction as exc:
+                # A construct the backend refuses outside a step body (an `expect` entry, an `if`
+                # condition, an interrupt check before an act) — normally refused by the preflight
+                # before a lease (BE-0466). Failing this scenario keeps one bypassed check from
+                # escaping `run_all` and discarding every other scenario's result.
+                failure = f"unsupported: {exc}"
             except RunCancelled:
                 # A cancelled run is a failed run, not a silent gap: the scenario the cancel interrupted
                 # (or one whose first boundary was already past it) fails with the one spelling

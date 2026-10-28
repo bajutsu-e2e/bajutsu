@@ -113,3 +113,24 @@ def test_a_backend_that_cannot_read_fails_the_step_loudly() -> None:
     result = run_scenario(driver, sc, clock=FakeClock())
     assert not result.ok
     assert result.failure is not None and "attribute is web-only" in result.failure
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"steps": [], "expect": [_state("ready")]},
+        {"steps": [{"if": {"condition": _state("ready"), "then": [{"tap": {"id": "cart"}}]}}]},
+    ],
+)
+def test_a_refusal_outside_a_step_body_fails_only_the_scenario(body: dict[str, object]) -> None:
+    class _NoAttributes(FakeDriver):
+        def read_attribute(self, sel: base.Selector, name: str) -> str | None:
+            raise base.UnsupportedAction("attribute is web-only")
+
+    result = run_scenario(
+        _NoAttributes([el("cart", "Cart", ["button"])]),
+        _scenario({"name": "a", **body}),
+        clock=FakeClock(),
+    )
+    assert not result.ok
+    assert result.failure is not None and "attribute is web-only" in result.failure
