@@ -541,7 +541,7 @@ trimmed). Substitution is **type-preserving at the edges**:
   only its own namespace.
 
 Namespaces: `params.*` (components, §6.2), `row.*` (data-driven, §6.3), `secrets.*` (declared
-via config `run.secrets`, resolved from the environment by the run loop at action time, §6.4), and
+via config `evidence.secrets`, resolved from the environment by the run loop at action time, §6.4), and
 `vars.*` (runtime capture via `extract`, §6.5).
 
 ### 6.2 Components (`use` → reusable steps)
@@ -645,7 +645,7 @@ derived scenario is renamed `"<name> [row N: col=val, …]"` and **keeps the ori
   [BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)
   removed the former `preconditions.setup` prelude file.
   A scenario that must not run its targets' `hooks.setup` sets `preconditions.run.inheritSetup: false`.
-- **`secrets`** (declared in config as `run.secrets` — a list of environment-variable names): each
+- **`secrets`** (declared in config as `evidence.secrets` — a list of environment-variable names): each
   declared name `X` is resolved from `os.environ[X]` and bound to `${secrets.X}`, substituted into the
   executed step **at action time** (`cli/commands/run.py`, `orchestrator/substitution.py` `_interp_step`). The scenario keeps the
   `${secrets.X}` token, never the value, and the literal values are auto-masked in evidence

@@ -523,7 +523,7 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 - 大きな文字列に **埋め込まれた**トークンはテキストとして差し込まれます（`"item-${row.id}"`）。
 - いま置換していない名前空間のトークンは **そのまま残る**ため、各層は自分の名前空間だけを埋めます。
 
-名前空間は次の 4 つです。`params.*`（コンポーネント、§6.2）、`row.*`（データ駆動、§6.3）、`secrets.*`（config の `run.secrets` で宣言し、run ループがアクション時に環境変数から解決する、§6.4）、`vars.*`（ランタイムキャプチャ。`extract` 経由、§6.5）。
+名前空間は次の 4 つです。`params.*`（コンポーネント、§6.2）、`row.*`（データ駆動、§6.3）、`secrets.*`（config の `evidence.secrets` で宣言し、run ループがアクション時に環境変数から解決する、§6.4）、`vars.*`（ランタイムキャプチャ。`extract` 経由、§6.5）。
 
 ### 6.2 コンポーネント（`use` → 再利用ステップ）
 
@@ -589,7 +589,7 @@ scenarios:
 ### 6.4 共有のセットアップ、secrets、タグ選択
 
 - **共有のセットアップ**：1 度だけ記述するログインやナビゲーションの手順は、コンポーネント（§6.2）にします。シナリオ自身の `setup` か、config にあるターゲットの `hooks.setup` から `use` で呼び出します。ターゲットの hooks が呼ぶコンポーネントは config のロード時に config ファイルのディレクトリを基準に解決し、スイートのルートの内側に収まっている必要があります（BE-0174）。以前の `preconditions.setup` プレリュードファイルは廃止しました（[BE-0452](../../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)）。ターゲットの `hooks.setup` を走らせたくないシナリオは、`preconditions.run.inheritSetup: false` を指定します。
-- **`secrets`**（config の `run.secrets` で宣言する、環境変数名のリスト）：宣言した各名 `X` は `os.environ[X]` から解決され `${secrets.X}` に束縛され、**アクション時**に実行ステップへ置換されます（`cli/commands/run.py`, `orchestrator/substitution.py` `_interp_step`）。シナリオは `${secrets.X}` トークンを保ち値は持たず、リテラル値は証跡で自動マスクされます（`Redactor`）。`params.*` / `row.*` と異なり、この名前空間はロード時ではなく run ループが解決します。
+- **`secrets`**（config の `evidence.secrets` で宣言する、環境変数名のリスト）：宣言した各名 `X` は `os.environ[X]` から解決され `${secrets.X}` に束縛され、**アクション時**に実行ステップへ置換されます（`cli/commands/run.py`, `orchestrator/substitution.py` `_interp_step`）。シナリオは `${secrets.X}` トークンを保ち値は持たず、リテラル値は証跡で自動マスクされます（`Redactor`）。`params.*` / `row.*` と異なり、この名前空間はロード時ではなく run ループが解決します。
 - **`tags`** と CLI の `--tag` / `--exclude` で実行対象を絞ります。`exclude` が `include` より優先されます（`select_scenarios`, `scenario/select.py`）。
 
 ### 6.5 展開順

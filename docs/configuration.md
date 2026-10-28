@@ -16,9 +16,9 @@ Related: [app-agnostic in concepts](concepts.md#6-app-agnostic-push-differences-
 scenario** (the one closer to the test wins). A template is optional. It joins the chain when a
 target names one ([below](#templates-templates-be-0471)).
 
-A target accepts eleven keys. Each key groups the settings for one purpose
+A target accepts ten keys. Each key groups the settings for one purpose
 ([BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)).
-Every target must name its `platform`. The loader fails on a key outside these eleven and lists the
+Every target must name its `platform`. The loader fails on a key outside these ten and lists the
 keys a target accepts. It never reads the flat keys of earlier releases, such as `bundleId` or
 `appPath`.
 
@@ -31,10 +31,9 @@ keys a target accepts. It never reads the flat keys of earlier releases, such as
 | `services` | The servers a run starts or stands in for | No |
 | `run` | The policy of a run | iOS adds `tipKitHandling` |
 | `hooks` | Steps that wrap every scenario | No |
-| `evidence` | What a run keeps, and what it masks | No |
+| `evidence` | What a run keeps, how it compares, and what it masks | No |
 | `paths` | Where files live | No |
 | `ai` | Which provider backs the AI paths | No |
-| `notify` | Where results are reported | No |
 
 `bajutsu config schema` prints the JavaScript Object Notation (JSON) Schema of this file
 ([cli](cli.md#config-schema)). Each target in the schema is a `oneOf` keyed by `platform`. An
@@ -45,7 +44,6 @@ defaults:                         # shared across all targets
   evidence:
     capture: [screenshot.after, elements, actionLog]
     redact:  { headers: [Authorization, Cookie], fields: [token, password] }
-  run:
     secrets: [LOGIN_PASSWORD]     # env var names usable as ${secrets.X} (values masked in evidence)
   ai:      { provider: api-key, keyEnv: ANTHROPIC_API_KEY }   # the AI paths' provider/model/endpoint/key (below)
   platforms:                      # the platform-shaped groups, per platform
@@ -101,9 +99,9 @@ The shared groups hold the same fields on every platform:
 | Group | Fields |
 |---|---|
 | `services` | `server` (bring up the app's own host for the run, below), `mockServer`, `mailbox` ([below](#mailbox-the-email-step)) |
-| `run` | `erase`, `network`, `visualCompare`, `secrets`, `systemAlertHandling` |
+| `run` | `erase`, `systemAlertHandling` |
 | `hooks` | `setup`, `cleanup`, `interrupts` |
-| `evidence` | `capture`, `redact` |
+| `evidence` | `capture`, `redact`, `collectNetwork`, `visualCompare`, `secrets` |
 | `paths` | `scenarios`, `baselines`, `schemas`, `goldens` |
 
 ### Defaults
@@ -116,14 +114,42 @@ The merge follows five rules:
 
 - A dictionary merges key by key, and the target's value wins.
 - A target clears an inherited value by writing `null`.
-- A list replaces the inherited one, except `run.secrets` and each `evidence.redact` list, which
-  union. Replacing them would let a target that adds one secret stop masking every team-wide one.
-- A target may not write `null` on those union lists, nor on `run`, `evidence`, or
-  `evidence.redact`. The load fails and names the path, so a target never wipes the team's masking.
+- A list replaces the inherited one, except `evidence.secrets` and each `evidence.redact` list,
+  which union. Replacing them would let a target that adds one secret stop masking every team-wide
+  one.
+- A target may not write `null` on those union lists, nor on `evidence` or `evidence.redact`. The load fails and names the path, so a target never wipes the team's masking.
 - `ai` merges field by field, as described [below](#ai-provider-ai-be-0047).
 
 `reservedNamespaces` and `doctor` apply to the whole team, so they sit at the top level of the file.
-`notify` stays at the top level too. A target's own `notify` overrides it.
+`notify` stays at the top level too. A target has no `notify` of its own, so the top-level list
+alone says where results go ([below](#webhook-notifications-notify-be-0099)).
+
+### Sharing a block between targets (`x-` keys)
+
+`defaults` covers a value every target, or every target of one platform, shares. Two variants of one
+app often share more than that, such as most of their `app` block. A YAML anchor covers that case.
+The loader ignores any top-level key whose name starts with `x-`, so such a key can host the anchor,
+and a target merges it with YAML's `<<` key:
+
+```yaml
+x-swiftui-app: &swiftui-app
+  launch: { env: { SHOWCASE_UITEST: "1" } }
+  idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
+
+targets:
+  showcase-swiftui-noax:
+    platform: ios
+    app:
+      <<: *swiftui-app
+      id: com.bajutsu.showcase.ios.swiftui.noax
+      idNamespaces: []                  # a key written here wins over the anchor's
+```
+
+The `<<` key merges one level deep. A nested block written in the target, such as `launch`,
+replaces the anchor's whole `launch` block rather than merging into it. Place the anchor at the
+level of the block that differs, here `app`, not at the level of the whole target. The `x-` prefix
+follows the extension-field convention of Docker Compose files. Every other unknown top-level key
+still fails to load.
 
 ### Templates (`templates:`, BE-0471)
 
@@ -170,7 +196,7 @@ it. A template that two entries both reach, such as a shared base, folds once, a
 A base thus stays weaker than every template that extends it.
 
 Each layer merges under the five rules of [Defaults](#defaults). A template can clear a value
-`defaults` supplies with `null`. `run.secrets` and the `evidence.redact` lists union across every
+`defaults` supplies with `null`. `evidence.secrets` and the `evidence.redact` lists union across every
 layer. A template's `ai` folds into the target's `ai` first. The result then merges with
 `defaults.ai` field by field.
 
@@ -372,7 +398,7 @@ platforms — rather than `effective.bundle_id` directly, which does not exist.
 | `conditions` | `runsOn` | the device conditions the target declares ([above](#device-conditions-runson)), ranges as written; `run` forms its runs from them, and `doctor` lists those runs |
 | `device_provider` | `--worker-config` | where this target's devices come from. The config no longer names it: an `appium` environment in the `worker.yaml` the command runs under hands the grid's endpoint to the targets of the grid's platform ([what a machine can run](#what-a-machine-can-run-outside-the-config-be-0450)), and every other target takes the built-in `local` provider (the `--udid` path). Bajutsu drives that endpoint end to end over a live W3C WebDriver transport ([iOS device cloud](ios-device-cloud.md#live--an-appium-endpoint-provider), [BE-0236](../roadmaps/BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md), [BE-0238](../roadmaps/BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md)) |
 | `launch_server` | `services.server` | optional `{cmd, readyUrl, readyTimeout, cwd, env}` — bring up the app's host for the run, then tear it down: probe `readyUrl` (default `app.url`), reuse it if already serving, else run `cmd` and wait until ready (a condition wait, never a fixed sleep). The web analogue of `app.build` ([BE-0059](../roadmaps/BE-0059-launch-target-server/BE-0059-launch-target-server.md)). For an **uploaded** bundle in `serve`, the host never runs `cmd` directly — `serve --upload-exec` governs it (see [self-hosting](self-hosting.md#uploaded-config-command-execution-be-0090)); a `sandbox` run needs the extra fields `dockerImage` (a Docker image reference, e.g. `node:20-slim`) **or** `dockerfile` (a bundle-relative path built with `docker build`) — exactly one — plus `port` (the in-container listen port, published to a loopback host port) ([BE-0090](../roadmaps/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md)) |
-| `run_defaults.system_alert_handling` / `.erase` / `.network` / `.ios_tip_kit_handling` | `run` | per-app defaults for run-behavior settings otherwise set per scenario or on a CLI flag ([BE-0177](../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md)). `run.systemAlertHandling` takes the scenario form (`false`, or `{ rules, visionInstruction, pollInterval }`) and defaults the alert guard; `run.erase` defaults `preconditions.run.erase`; `run.network` defaults collecting the app's network exchanges. `erase` and `network` resolve **flag > scenario > this > built-in** (erase off, network on), mirroring `--headed`/`headless`. Inside `systemAlertHandling`, the on/off bit resolves that way too (`--system-alert-handling`/`--no-system-alert-handling` > scenario > this > on), but each policy key composes by its own type ([BE-0401](../roadmaps/BE-0401-system-alert-handling-dsl-consolidation/BE-0401-system-alert-handling-dsl-consolidation.md)): the list `rules` is **concatenated** innermost layer first, so a scenario's answers are tried before this default's and neither layer deletes the other; the scalar `pollInterval` takes the innermost layer that supplies one (scenario, else `--alert-poll-interval`, else this). `visionInstruction` reaches `run` from no layer at all: [BE-0402](../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md) removed the fallback it steered, so a scenario or a target config carrying it is rejected before the run starts. A rule here answers its prompt even inside a scenario that rules on other prompts — the guard prints a notice when it does, and the scenario overrides it by writing its own rule for that prompt. `labels` was removed by [BE-0406](../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts.md): a button label named a button, never the alert it sat on, so a target config could license a tap on a screen no scenario had described. See [`systemAlertHandling` layering](scenarios.md#layering-a-key-reaches-a-run-from-three-places). `run.tipKitHandling` defaults the TipKit tip guard (iOS only, built-in **off**) and rides the same precedence via `--ios-tipkit-handling`/`--no-ios-tipkit-handling` |
+| `run_defaults.system_alert_handling` / `.erase` / `.ios_tip_kit_handling` | `run` | per-app defaults for run-behavior settings otherwise set per scenario or on a CLI flag ([BE-0177](../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md)). `run.systemAlertHandling` takes the scenario form (`false`, or `{ rules, visionInstruction, pollInterval }`) and defaults the alert guard; `run.erase` defaults `preconditions.run.erase`, and resolves **flag > scenario > this > built-in off**, mirroring `--headed`/`headless`. Inside `systemAlertHandling`, the on/off bit resolves that way too (`--system-alert-handling`/`--no-system-alert-handling` > scenario > this > on), but each policy key composes by its own type ([BE-0401](../roadmaps/BE-0401-system-alert-handling-dsl-consolidation/BE-0401-system-alert-handling-dsl-consolidation.md)): the list `rules` is **concatenated** innermost layer first, so a scenario's answers are tried before this default's and neither layer deletes the other; the scalar `pollInterval` takes the innermost layer that supplies one (scenario, else `--alert-poll-interval`, else this). `visionInstruction` reaches `run` from no layer at all: [BE-0402](../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md) removed the fallback it steered, so a scenario or a target config carrying it is rejected before the run starts. A rule here answers its prompt even inside a scenario that rules on other prompts — the guard prints a notice when it does, and the scenario overrides it by writing its own rule for that prompt. `labels` was removed by [BE-0406](../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts.md): a button label named a button, never the alert it sat on, so a target config could license a tap on a screen no scenario had described. See [`systemAlertHandling` layering](scenarios.md#layering-a-key-reaches-a-run-from-three-places). `run.tipKitHandling` defaults the TipKit tip guard (iOS only, built-in **off**) and rides the same precedence via `--ios-tipkit-handling`/`--no-ios-tipkit-handling` |
 | `run_defaults.setup` / `.cleanup` / `.interrupts` | `hooks.setup` / `hooks.cleanup` / `hooks.interrupts` | steps that wrap every scenario of the target: `setup` runs ahead of a scenario's own `setup`, `cleanup` behind its own `cleanup` (a rule takes `on: always`, `success`, or `failure`, the words a scenario's `cleanup` rule uses), and `interrupts` are checked before the scenario's. A hook step may call a component with `use: { component: <file>, with: … }`: the loader resolves it when the config loads, against the config file's directory, and refuses a reference that leaves the suite root ([BE-0174](../roadmaps/BE-0174-scenario-ref-path-containment/BE-0174-scenario-ref-path-containment.md)). `group:` and `setMocks` stay rejected there. A scenario skips every declared target's `hooks.setup` with `preconditions.run.inheritSetup: false`; the cleanup still runs |
 | `locale` | `runsOn.ios.locale` | iOS: applied at launch (`simctl` launch args), built-in `en_US`. On the XCUITest backend it also pins the **Simulator's own system language** on every cold spawn — written to the device's global preference domain, then rebooted so SpringBoard renders it — so an out-of-process permission prompt's button text is the one this `locale` predicts rather than whatever language the Simulator happened to carry; a scenario whose `preconditions.device.ios.locale` differs from the pinned one forces a cold respawn rather than reusing a warm runner ([BE-0320](../roadmaps/BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md)). A `handleSystemAlert` step under a language outside the label table (English and Japanese) answers by the button's position instead; a `systemAlertHandling.rules` entry under such a language still fails the scenario before any device work ([BE-0445](../roadmaps/BE-0445-system-alert-locale-agnostic-answer/BE-0445-system-alert-locale-agnostic-answer.md)) |
 | `launch_env` / `launch_args` | `app.launch.env` / `app.launch.args` | a scenario's `preconditions.app.launch.env` merges over the environment key by key, and its `.args` append after the arguments; `launch.args` is iOS only |
@@ -386,7 +412,9 @@ platforms — rather than `effective.bundle_id` directly, which does not exist.
 | `evidence_dirs.scenarios` | `paths.scenarios` | this target's scenarios dir — `run --target` loads every `*.yaml` here; `record` writes new ones here. Relative to the config file's own directory (like `app.path` and the sibling `paths.baselines` / `.schemas` / `.goldens`), so the config behaves the same wherever `bajutsu` runs from (BE-0242). `run --scenario` / `record --out` override it |
 | `capture` | `evidence.capture` | the default evidence ([the note in evidence](evidence.md#three-ways-to-request-evidence)) |
 | `redact` | `evidence.redact` (defaults ∪ target) | merged (below) |
-| `secrets` | `run.secrets` (defaults ∪ target) | env var names declaring `${secrets.X}`; values are masked in evidence ([evidence](evidence.md#masking-redact)) |
+| `run_defaults.network` | `evidence.collectNetwork` | whether the run collects the app's network exchanges for `request` assertions; resolves **`--network`/`--no-network` > this > built-in on** |
+| `visual_compare` | `evidence.visualCompare` | how a `visual` assertion compares when it names no `compare` of its own, `exact` or `pixelmatch`; built-in `exact` |
+| `secrets` | `evidence.secrets` (defaults ∪ target) | env var names declaring `${secrets.X}`; values are masked in evidence ([evidence](evidence.md#masking-redact)) |
 | `ai` | `ai` (defaults < target, field by field) | the AI paths' provider/model/endpoint/key ([below](#ai-provider-ai-be-0047)); `None` (omitted) = the environment alone decides |
 | `doctor_thresholds` | top-level `doctor.idCoverageOk` / `doctor.idCoverageFail` | id-coverage thresholds for doctor grading ([below](#configurable-thresholds-doctor-be-0024)); default 0.9 / 0.7 |
 
@@ -396,10 +424,10 @@ platforms — rather than `effective.bundle_id` directly, which does not exist.
 (`labels`, `headers`, `fields`, and `unmaskHeaders` each). The scenario's `redact`
 ([evidence](evidence.md#masking-redact)) layers on top.
 
-### Secrets (`run.secrets`)
+### Secrets (`evidence.secrets`)
 
-`run.secrets` (a list of **environment-variable names**, declared in `defaults.run` and/or
-`targets.<name>.run`, unioned when the loader merges them) is the declaration site for the
+`evidence.secrets` (a list of **environment-variable names**, declared in `defaults.evidence` and/or
+`targets.<name>.evidence`, unioned when the loader merges them) is the declaration site for the
 `${secrets.X}` variables a scenario can input.
 At run time `bajutsu run` resolves each declared name from the environment, interpolates its value
 into the action (`${secrets.X}`), and **masks the literal value everywhere it would appear in
@@ -698,8 +726,10 @@ notify:
   `[start]` alone fires only there, never post-verdict).
 - `targets` (unrelated to the top-level config `targets.<name>` map) narrows the notification to
   scenarios whose name is in the list; empty (the default) covers every scenario in the run.
-- `targets.<name>.notify` overrides the top-level list **wholesale** for that target (never merged);
-  omitting it inherits the top-level `notify:` unchanged.
+- A target accepts no `notify` of its own
+  ([BE-0473](../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts.md)).
+  Every target's run posts to the top-level list; a `targets.<name>.notify` fails to load and names
+  that list.
 - Delivery is best-effort: a bounded timeout, a couple of retries, and a failure only logs a warning
   — it can never flip the verdict or exit code, the same after-the-verdict discipline `--zip` and
   `--evidence-store` follow. Only `format: slack` renders today (a Block Kit message, listing up to

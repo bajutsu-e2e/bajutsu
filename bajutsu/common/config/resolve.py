@@ -219,7 +219,7 @@ def resolve(config: Config, target: str) -> Effective:
         mailbox=a.services.mailbox,
         capture=list(a.evidence.capture),
         redact=a.evidence.redact,
-        secrets=list(run.secrets),
+        secrets=list(a.evidence.secrets),
         ai=_merge_ai(config.defaults.ai, a.ai),
         evidence_dirs=EvidenceDirs(
             scenarios=a.paths.scenarios,
@@ -231,12 +231,12 @@ def resolve(config: Config, target: str) -> Effective:
             ok_coverage=config.doctor.id_coverage_ok,
             fail_coverage=config.doctor.id_coverage_fail,
         ),
-        notify=a.notify if a.notify is not None else list(config.notify),
-        visual_compare=run.visual_compare or "exact",
+        notify=list(config.notify),
+        visual_compare=a.evidence.visual_compare or "exact",
         run_defaults=RunDefaults(
             system_alert_handling=run.system_alert_handling,
             erase=run.erase if run.erase is not None else False,
-            network=run.network if run.network is not None else True,
+            network=a.evidence.collect_network,
             ios_tip_kit_handling=tip_kit if tip_kit is not None else False,
             interrupts=list(a.hooks.interrupts),
             setup=list(a.hooks.setup),
@@ -254,8 +254,10 @@ def parse_config_dict(
     model (BE-0129) and the serve UI's `ui.default_theme` (BE-0191) are `serve` concerns the
     deterministic core does not model, and a run in the hosted topology legitimately reads a config
     carrying them, so the core must ignore the keys rather than reject them under `extra="forbid"`.
-    `bajutsu.serve.orgs` / `bajutsu.serve.themes` parse those blocks separately. Every other unknown
-    key still fails loudly, preserving the typo guard.
+    `bajutsu.serve.orgs` / `bajutsu.serve.themes` parse those blocks separately. A key starting with
+    `x-` is dropped too: it only hosts a YAML anchor that targets merge with `<<` (BE-0473), and the
+    loader has already expanded every alias of it. Every other unknown key still fails loudly,
+    preserving the typo guard.
 
     Args:
         data: The parsed YAML document.
@@ -269,7 +271,11 @@ def parse_config_dict(
     # into model_validate, which raises a pydantic ValidationError (a ValueError) rather than the
     # AttributeError a `.items()` on a scalar would throw and escape the callers' handling.
     if isinstance(data, dict):
-        data = {k: v for k, v in data.items() if k not in ("orgs", "ui")}
+        data = {
+            k: v
+            for k, v in data.items()
+            if k not in ("orgs", "ui") and not (isinstance(k, str) and k.startswith("x-"))
+        }
     context: dict[str, Path] = {}
     if path is not None:
         context["config_path"] = path

@@ -2,7 +2,7 @@
 # demos/Makefile). Runs the showcase SwiftUI accessibility app (demos/showcase/ios/swiftui/) on a
 # booted Simulator via XCUITest, and pins `app.path` so `bajutsu run` installs the freshly-built app
 # automatically before each scenario. It mirrors the canonical demos/showcase/showcase.config.yaml
-# entry for showcase-swiftui, adding only the demo-specific `run.secrets` knob the `features` tour
+# entry for showcase-swiftui, adding only the demo-specific `evidence.secrets` knob the `features` tour
 # uses to show masked-secret redaction.
 defaults:
   evidence: { capture: [screenshot.after, elements, actionLog] }
@@ -26,7 +26,7 @@ targets:
         build: make -C demos/showcase runner-build
     # `${secrets.PASSWORD}` in the features tour resolves from the environment; its literal
     # value is masked in every run artifact.
-    run: { secrets: [PASSWORD] }
+    evidence: { secrets: [PASSWORD] }
     # The canonical showcase scenarios; the menu's own tour/features scenarios live under the
     # non-globbed scenarios/menu/ subdir and are passed explicitly via --scenario.
     paths: { scenarios: showcase/scenarios }

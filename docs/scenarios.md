@@ -142,7 +142,7 @@ preconditions:
 | `run.inheritSetup` | bool | `true` | `false` skips the `hooks.setup` of every target this scenario declares; their `hooks.cleanup` still runs ([below](#setup--cleanup-setup-and-teardown-phases)) |
 
 A scenario cannot set `id`, `path`, or `build`. Nor can it set `startWhen` or `idNamespaces`. The
-target owns these fields, which identify or build the app. `run.secrets` stays a target-level union,
+target owns these fields, which identify or build the app. `evidence.secrets` stays a target-level union,
 so a scenario cannot set it either.
 
 > **Each field is checked against the targets the scenario drives, before any device work.** An `app`
@@ -1853,7 +1853,7 @@ too. It resolves to that config's own target, never to the scenario's `primaryTa
 every-nesting-depth default above applies to a scenario's own steps alone.
 
 Two run-wide values stay shared. The `redact` secret set unions every declared target's own
-`run.secrets`. That union scrubs every target's evidence, since scrubbing too widely is the safer error.
+`evidence.secrets`. That union scrubs every target's evidence, since scrubbing too widely is the safer error.
 The run directory is a run-level artifact, never per target.
 
 The web engine flags still apply to a run's single web target. Those flags are `--headed`,
@@ -2297,8 +2297,8 @@ The comparison engine is selectable via `compare` (BE-0165):
 | `exact` | Pixel-perfect — any channel difference counts as a changed pixel. | Yes (backward-compatible) |
 | `pixelmatch` | Perceptual YIQ color distance with anti-aliasing detection. Tolerates sub-pixel rendering noise and one-pixel edge shifts. | No |
 
-When `compare` is omitted, the engine falls back to the target's `run.visualCompare` config
-(under `defaults.run` or `targets.<name>.run`), and then to `exact`.
+When `compare` is omitted, the engine falls back to the target's `evidence.visualCompare` config
+(under `defaults.evidence` or `targets.<name>.evidence`), and then to `exact`.
 
 `threshold` is the allowed percentage of differing pixels (default `0.0` = exact match), shared
 by all engines. `colorTolerance` (0–1, default `0.1`) sets the per-pixel perceptual color
@@ -2609,10 +2609,10 @@ uv run bajutsu run --target showcase-swiftui --tag smoke --exclude wip   # run @
 
 ### Secrets (`${secrets.X}`)
 
-Declare secret environment-variable names in config (`run: { secrets: [API_TOKEN, ...] }`). Each declared name `X` is resolved from the environment and substituted into the executed step **at action time** as `${secrets.X}`. The scenario file stores the **token**, never the value, and literal values are **auto-masked** in evidence, making secrets safe to commit and review. Unlike `${params.*}` / `${row.*}` (load-time expansion), this namespace is resolved by the run loop.
+Declare secret environment-variable names in config (`evidence: { secrets: [API_TOKEN, ...] }`). Each declared name `X` is resolved from the environment and substituted into the executed step **at action time** as `${secrets.X}`. The scenario file stores the **token**, never the value, and literal values are **auto-masked** in evidence, making secrets safe to commit and review. Unlike `${params.*}` / `${row.*}` (load-time expansion), this namespace is resolved by the run loop.
 
 ```yaml
-# config declares: run: { secrets: [API_TOKEN] }
+# config declares: evidence: { secrets: [API_TOKEN] }
 steps:
   - type: { text: "${secrets.API_TOKEN}", into: { id: auth.token } }   # real value typed; token kept in the report
 ```

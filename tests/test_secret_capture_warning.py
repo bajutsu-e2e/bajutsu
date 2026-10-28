@@ -18,7 +18,7 @@ _WITH_SECRETS = (
     "  app:\n"
     "    platform: ios\n"
     "    app: {id: com.example.app}\n"
-    "    run:\n"
+    "    evidence:\n"
     "      secrets: [LOGIN_PASSWORD, LOGIN_OTP]\n"
 )
 

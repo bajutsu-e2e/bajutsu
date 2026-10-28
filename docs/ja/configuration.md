@@ -14,7 +14,7 @@
 
 `bajutsu.config.yaml` は 3 層で構成されています。値の解決順は **既定 < テンプレート < ターゲット < シナリオ** で、テストに近い方が優先されます。テンプレートは省略でき、ターゲットが名前を挙げたときだけ間に入ります（[後述](#テンプレートtemplatesbe-0471)）。
 
-ターゲットが受け付けるキーは 11 個です。各キーは 1 つの目的の設定をまとめます（[BE-0452](../../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)）。`platform` はすべてのターゲットで必須です。ローダは 11 個以外のキーをエラーにし、ターゲットが受け付けるキーを列挙します。以前のリリースの平坦なキー（`bundleId` や `appPath` など）は読まずに拒否します。
+ターゲットが受け付けるキーは 10 個です。各キーは 1 つの目的の設定をまとめます（[BE-0452](../../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)）。`platform` はすべてのターゲットで必須です。ローダは 10 個以外のキーをエラーにし、ターゲットが受け付けるキーを列挙します。以前のリリースの平坦なキー（`bundleId` や `appPath` など）は読まずに拒否します。
 
 | キー | 目的 | 形が `platform` で変わるか |
 |---|---|---|
@@ -25,10 +25,9 @@
 | `services` | run が起動する、または代わりを務めるサーバ | 変わりません |
 | `run` | run の方針 | iOS は `tipKitHandling` が加わります |
 | `hooks` | すべてのシナリオを包むステップ | 変わりません |
-| `evidence` | run が残すものと、マスクするもの | 変わりません |
+| `evidence` | run が残すもの、その比較方法、マスクするもの | 変わりません |
 | `paths` | ファイルの置き場所 | 変わりません |
 | `ai` | AI 経路を担うプロバイダ | 変わりません |
-| `notify` | 結果の報告先 | 変わりません |
 
 `bajutsu config schema` は、このファイルの JavaScript Object Notation（JSON）Schema を出力します（[cli](cli.md#config-schema)）。スキーマの各ターゲットは、`platform` をキーにした `oneOf` です。そのため、エディタはターゲットが指定したプラットフォームのキーを補完できます。
 
@@ -37,7 +36,6 @@ defaults:                         # 全ターゲット共通の既定
   evidence:
     capture: [screenshot.after, elements, actionLog]
     redact:  { headers: [Authorization, Cookie], fields: [token, password] }
-  run:
     secrets: [LOGIN_PASSWORD]     # ${secrets.X} に使える環境変数名（実値は証跡でマスク）
   ai:      { provider: api-key, keyEnv: ANTHROPIC_API_KEY }   # AI 経路のプロバイダ / モデル / エンドポイント / キー（下記）
   platforms:                      # プラットフォームで形の変わるグループを、プラットフォームごとに置く
@@ -91,9 +89,9 @@ targets:
 | グループ | フィールド |
 |---|---|
 | `services` | `server`（run のためにアプリ自身のホストを起動します。後述）、`mockServer`、`mailbox`（[後述](#mailboxemail-ステップ)） |
-| `run` | `erase`、`network`、`visualCompare`、`secrets`、`systemAlertHandling` |
+| `run` | `erase`、`systemAlertHandling` |
 | `hooks` | `setup`、`cleanup`、`interrupts` |
-| `evidence` | `capture`、`redact` |
+| `evidence` | `capture`、`redact`、`collectNetwork`、`visualCompare`、`secrets` |
 | `paths` | `scenarios`、`baselines`、`schemas`、`goldens` |
 
 ### デフォルト値（`defaults`）
@@ -102,11 +100,31 @@ targets:
 
 - 辞書はキーごとにマージし、ターゲットの値が勝ちます。
 - ターゲットは `null` を書いて、継承した値を消せます。
-- リストは継承した値を置き換えます。ただし `run.secrets` と `evidence.redact` の各リストは和集合を取ります。置き換えにすると、シークレットを 1 つ足したターゲットが、チーム共通のシークレットをすべてマスクしなくなるためです。
-- ターゲットは、和集合を取るこれらのリストにも、`run`、`evidence`、`evidence.redact` にも `null` を書けません。読み込みはそのパスを示して失敗するので、ターゲットがチームのマスクを消すことはありません。
+- リストは継承した値を置き換えます。ただし `evidence.secrets` と `evidence.redact` の各リストは和集合を取ります。置き換えにすると、シークレットを 1 つ足したターゲットが、チーム共通のシークレットをすべてマスクしなくなるためです。
+- ターゲットは、和集合を取るこれらのリストにも、`evidence` と `evidence.redact` にも `null` を書けません。読み込みはそのパスを示して失敗するので、ターゲットがチームのマスクを消すことはありません。
 - `ai` は、[後述](#ai-プロバイダaibe-0047)のとおりフィールドごとにマージします。
 
-`reservedNamespaces` と `doctor` はターゲットごとの設定ではなくチーム共通の設定なので、ファイルのトップレベルに置きます。`notify` もトップレベルに置き、ターゲット自身の `notify` がそれを上書きします。
+`reservedNamespaces` と `doctor` はターゲットごとの設定ではなくチーム共通の設定なので、ファイルのトップレベルに置きます。`notify` もトップレベルに置きます。ターゲットは自分の `notify` を持たないので、結果の送り先はトップレベルのリストだけが決めます（[後述](#webhook-通知notifybe-0099)）。
+
+### ターゲット間でブロックを共有する（`x-` キー）
+
+`defaults` は、全ターゲット、または 1 つのプラットフォームの全ターゲットが共有する値を扱います。1 つのアプリの派生ターゲット同士は、`app` ブロックの大半のように、それ以上を共有することがよくあります。この場合は YAML のアンカーを使います。ローダは名前が `x-` で始まるトップレベルのキーを無視するので、そのキーにアンカーを置けます。ターゲットは YAML の `<<` キーでアンカーをマージします。
+
+```yaml
+x-swiftui-app: &swiftui-app
+  launch: { env: { SHOWCASE_UITEST: "1" } }
+  idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
+
+targets:
+  showcase-swiftui-noax:
+    platform: ios
+    app:
+      <<: *swiftui-app
+      id: com.bajutsu.showcase.ios.swiftui.noax
+      idNamespaces: []                  # ここに書いたキーがアンカーの値に勝つ
+```
+
+`<<` キーのマージは 1 階層だけです。ターゲットに `launch` のような入れ子のブロックを書くと、アンカーの `launch` ブロックにマージされず、丸ごと置き換わります。そのため、アンカーはターゲット全体ではなく、違いのあるブロック（この例では `app`）の階層に置きます。`x-` という接頭辞は、Docker Compose ファイルの拡張フィールドの慣例にならったものです。それ以外の未知のトップレベルキーは、これまでどおり読み込みに失敗します。
 
 ### テンプレート（`templates:`、BE-0471）
 
@@ -141,7 +159,7 @@ targets:
 
 テンプレートは、ほかのテンプレートを `extends` で取り込めます。取り込まれる側（基底）が先に重なるので、取り込む側のテンプレートが基底に勝ちます。共通の基底のように 2 つの要素から届くテンプレートは、深さ優先でたどって最初に現れた位置で 1 回だけ重なります。このため基底は、基底を取り込むどのテンプレートよりも常に弱くなります。
 
-各層は、[デフォルト値](#デフォルト値defaults)の 5 つの規則に従ってマージします。テンプレートは、`defaults` が与える値を `null` で消せます。`run.secrets` と `evidence.redact` の各リストは、すべての層をまたいで和集合を取ります。テンプレートの `ai` はまずターゲットの `ai` に重なり、その結果が `defaults.ai` とフィールドごとにマージされます。
+各層は、[デフォルト値](#デフォルト値defaults)の 5 つの規則に従ってマージします。テンプレートは、`defaults` が与える値を `null` で消せます。`evidence.secrets` と `evidence.redact` の各リストは、すべての層をまたいで和集合を取ります。テンプレートの `ai` はまずターゲットの `ai` に重なり、その結果が `defaults.ai` とフィールドごとにマージされます。
 
 `platform` はテンプレートから与えられるので、ターゲットはこのキーを省略できます。`platform` を書いた層は、ターゲット自身も含めてすべて一致している必要があります。ターゲットの `platform` で、テンプレートの `platform` は上書きできません。`platform` は `app`、`runsOn`、`driver` の形を決めるため、上書きを許すと iOS 向けの形をしたテンプレートのブロックが Web のターゲットに渡ってしまいます。2 つの層の `platform` が食い違うと、読み込みは両方の層の名前を示して失敗します。
 
@@ -281,7 +299,7 @@ targets:
 | `conditions` | `runsOn` | ターゲットが宣言するデバイスの条件です（[前述](#デバイスの条件runson)）。範囲は書いたままの文字列で持ちます。`run` はここから run を作り、`doctor` はその run を一覧にします |
 | `device_provider` | `--worker-config` | このターゲットのデバイスの取得元です。config はこれを指定しなくなりました。コマンドが従う `worker.yaml` の `appium` environment が、グリッドのエンドポイントを、グリッドのプラットフォームのターゲットに渡します（[マシンが実行できるもの](#マシンが実行できるもの設定の外be-0450)）。ほかのターゲットはビルトインの `local` provider（`--udid` の経路）を使います。このエンドポイントは live の W3C WebDriver トランスポートで端から端まで駆動します（[iOS デバイスクラウド](ios-device-cloud.md#ライブ--appium-エンドポイントのプロバイダー)、[BE-0236](../../roadmaps/BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction-ja.md)、[BE-0238](../../roadmaps/BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution-ja.md)） |
 | `launch_server` | `services.server` | 任意の `{cmd, readyUrl, readyTimeout, cwd, env}` です。run のためにアプリのホストを起動し、終わったら停止します。`readyUrl`（既定は `app.url`）をプローブし、すでに応答すれば再利用、しなければ `cmd` を起動して準備が整うまで待ちます（固定 sleep ではなく条件待ち）。`app.build` の web 版です（[BE-0059](../../roadmaps/BE-0059-launch-target-server/BE-0059-launch-target-server-ja.md)）。`serve` 上の**アップロードされた**バンドルでは、ホストが `cmd` を直接実行することはなく、`serve --upload-exec` が統制します（[セルフホスティング](self-hosting.md#アップロードされた-config-のコマンド実行be-0090)を参照）。`sandbox` での実行には、追加フィールドとして `dockerImage`（Docker イメージ参照。例 `node:20-slim`）か `dockerfile`（バンドル相対のパスで、`docker build` でビルドします）のどちらか一方、加えて `port`（コンテナ内の待ち受けポート。ループバックのホストポートへ publish します）が必要です（[BE-0090](../../roadmaps/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution-ja.md)） |
-| `run_defaults.system_alert_handling` / `.erase` / `.network` / `.ios_tip_kit_handling` | `run` | 本来シナリオ単位や CLI フラグで指定する run のテスト動作設定に、アプリ単位の既定値を与えます（[BE-0177](../../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)）。`run.systemAlertHandling` はシナリオと同じ形（`false`、または `{ rules, visionInstruction, pollInterval }`）を取りアラートガードの既定値になり、`run.erase` は `preconditions.run.erase` の、`run.network` はアプリのネットワーク収集の既定値になります。`erase` と `network` は **フラグ ＞ シナリオ ＞ これ ＞ ビルトイン既定**（erase は off、network は on）の順で解決し、`--headed`/`headless` と同じ重ね方です。`systemAlertHandling` の ON と OFF も同じ順です（`--system-alert-handling`/`--no-system-alert-handling` ＞ シナリオ ＞ これ ＞ ON）。ただし方針を持つキーは、それぞれの型で合わさります（[BE-0401](../../roadmaps/BE-0401-system-alert-handling-dsl-consolidation/BE-0401-system-alert-handling-dsl-consolidation-ja.md)）。リストである `rules` は内側の層から順に**連結**されるので、シナリオの答えをこの既定より先に試したうえで、どちらの層の宣言も消えません。スカラーである `pollInterval` は、値を持つもっとも内側の層が勝ちます（シナリオ、無ければ `--alert-poll-interval`、無ければこれ）。`visionInstruction` はどの層からも `run` に届きません。BE-0402 がこのキーの操作するフォールバックを取り除いたため、`run` は値を持つシナリオやターゲット config を実行前に拒否します。ここに書いた規則は、別のプロンプトについて規則を書いているシナリオの中でも、自分の名指すプロンプトには答えます。答えるときガードが通知を出し、シナリオ側は同じプロンプトの規則を書けば上書きできます。`labels` は [BE-0406](../../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md) で削除されました。ボタンのラベルが名指すのはボタンであってアラートではないため、ターゲット config が、どのシナリオも記述していない画面へのタップを許してしまうからです。[`systemAlertHandling` の層の重ね方](scenarios.md#層の重ね方1-つのキーは-3-か所から届く)を参照してください。`run.tipKitHandling` は TipKit の tip ガードの既定値です（iOS 専用、ビルトイン既定は**オフ**）。`--ios-tipkit-handling`/`--no-ios-tipkit-handling` で同じ優先順位に従います |
+| `run_defaults.system_alert_handling` / `.erase` / `.ios_tip_kit_handling` | `run` | 本来シナリオ単位や CLI フラグで指定する run のテスト動作設定に、アプリ単位の既定値を与えます（[BE-0177](../../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)）。`run.systemAlertHandling` はシナリオと同じ形（`false`、または `{ rules, visionInstruction, pollInterval }`）を取りアラートガードの既定値になり、`run.erase` は `preconditions.run.erase` の既定値になり、**フラグ ＞ シナリオ ＞ これ ＞ ビルトイン既定のオフ**の順で解決します。`--headed`/`headless` と同じ重ね方です。`systemAlertHandling` の ON と OFF も同じ順です（`--system-alert-handling`/`--no-system-alert-handling` ＞ シナリオ ＞ これ ＞ ON）。ただし方針を持つキーは、それぞれの型で合わさります（[BE-0401](../../roadmaps/BE-0401-system-alert-handling-dsl-consolidation/BE-0401-system-alert-handling-dsl-consolidation-ja.md)）。リストである `rules` は内側の層から順に**連結**されるので、シナリオの答えをこの既定より先に試したうえで、どちらの層の宣言も消えません。スカラーである `pollInterval` は、値を持つもっとも内側の層が勝ちます（シナリオ、無ければ `--alert-poll-interval`、無ければこれ）。`visionInstruction` はどの層からも `run` に届きません。BE-0402 がこのキーの操作するフォールバックを取り除いたため、`run` は値を持つシナリオやターゲット config を実行前に拒否します。ここに書いた規則は、別のプロンプトについて規則を書いているシナリオの中でも、自分の名指すプロンプトには答えます。答えるときガードが通知を出し、シナリオ側は同じプロンプトの規則を書けば上書きできます。`labels` は [BE-0406](../../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md) で削除されました。ボタンのラベルが名指すのはボタンであってアラートではないため、ターゲット config が、どのシナリオも記述していない画面へのタップを許してしまうからです。[`systemAlertHandling` の層の重ね方](scenarios.md#層の重ね方1-つのキーは-3-か所から届く)を参照してください。`run.tipKitHandling` は TipKit の tip ガードの既定値です（iOS 専用、ビルトイン既定は**オフ**）。`--ios-tipkit-handling`/`--no-ios-tipkit-handling` で同じ優先順位に従います |
 | `run_defaults.setup` / `.cleanup` / `.interrupts` | `hooks.setup` / `hooks.cleanup` / `hooks.interrupts` | ターゲットのすべてのシナリオを包むステップです。`setup` はシナリオ自身の `setup` より先に、`cleanup` はシナリオ自身の `cleanup` より後に動き（規則は、シナリオの `cleanup` の規則と同じ `on: always`、`success`、`failure` を取ります）、`interrupts` はシナリオのものより先に確認します。hook のステップは `use: { component: <file>, with: … }` でコンポーネントを呼べます。ローダは config を読み込むときに、config ファイルのディレクトリを基準にコンポーネントを解決し、スイートのルートの外を指す参照を拒否します（[BE-0174](../../roadmaps/BE-0174-scenario-ref-path-containment/BE-0174-scenario-ref-path-containment-ja.md)）。`group:` と `setMocks` は引き続き hook では使えません。シナリオは `preconditions.run.inheritSetup: false` で、宣言したすべてのターゲットの `hooks.setup` を飛ばせます。cleanup はその場合も動きます |
 | `locale` | `runsOn.ios.locale` | iOS: launch 時に適用されます（`simctl` の launch 引数）。ビルトイン既定は `en_US` です。XCUITest バックエンドでは、cold spawn のたびに **Simulator 自身のシステム言語**も固定します。デバイスのグローバル設定ドメインに書き込み、SpringBoard がその言語で描画するよう再起動します。そのため、プロセス外の権限プロンプトのボタンのテキストは、Simulator がたまたま持っていた言語ではなく、この `locale` が予測するものになります。`preconditions.device.ios.locale` が固定済みの値と異なるシナリオは、warm な runner を再利用せず cold respawn を強制します（[BE-0320](../../roadmaps/BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md)）。label の対応表（英語と日本語）にない言語では、`handleSystemAlert` ステップはボタンの位置で答えます。同じ言語の `systemAlertHandling.rules` の規則は、デバイスを操作する前にシナリオを失敗させます（[BE-0445](../../roadmaps/BE-0445-system-alert-locale-agnostic-answer/BE-0445-system-alert-locale-agnostic-answer-ja.md)） |
 | `launch_env` / `launch_args` | `app.launch.env` / `app.launch.args` | シナリオの `preconditions.app.launch.env` は環境変数にキーごとにマージし、`.args` は引数の後ろに追記します。`launch.args` は iOS 専用です |
@@ -295,7 +313,9 @@ targets:
 | `evidence_dirs.scenarios` | `paths.scenarios` | このターゲットのシナリオディレクトリです。`run --target` は配下の `*.yaml` を全件読み、`record` は新規をここへ書きます。config ファイル自身のディレクトリ基準の相対パス（`app.path` や兄弟の `paths.baselines` / `.schemas` / `.goldens` も同様）で、`bajutsu` をどこから実行しても config は同じ挙動になります（BE-0242）。`run --scenario` / `record --out` で上書きします |
 | `capture` | `evidence.capture` | 既定証跡です（[evidence の注記](evidence.md#証跡の指示方法3-つ)） |
 | `redact` | `evidence.redact`（defaults ∪ ターゲット） | マージします（下記） |
-| `secrets` | `run.secrets`（defaults ∪ ターゲット） | `${secrets.X}` を宣言する環境変数名です。実値は証跡でマスクします（[evidence](evidence.md#マスキングredact)） |
+| `run_defaults.network` | `evidence.collectNetwork` | run が `request` アサーションのためにアプリの通信を収集するかどうかです。**`--network`/`--no-network` ＞ これ ＞ ビルトイン既定のオン**の順で解決します |
+| `visual_compare` | `evidence.visualCompare` | `visual` アサーションが自分の `compare` を書かないときの比較方法です。`exact` か `pixelmatch` を取り、ビルトイン既定は `exact` です |
+| `secrets` | `evidence.secrets`（defaults ∪ ターゲット） | `${secrets.X}` を宣言する環境変数名です。実値は証跡でマスクします（[evidence](evidence.md#マスキングredact)） |
 | `ai` | `ai`（defaults < ターゲット、フィールドごと） | AI 経路のプロバイダ / モデル / エンドポイント / キー（[下記](#ai-プロバイダaibe-0047)）です。省略（`None`）なら環境だけで決まります |
 | `doctor_thresholds` | トップレベルの `doctor.idCoverageOk` / `doctor.idCoverageFail` | doctor のグレード判定に使う id カバレッジのしきい値（[下記](#しきい値の設定doctorbe-0024)）です。既定は 0.9 / 0.7 です |
 
@@ -303,9 +323,9 @@ targets:
 
 `defaults.evidence.redact` と `targets.<name>.evidence.redact` は、リストごとに **union** されます。`labels`、`headers`、`fields`、`unmaskHeaders` のそれぞれで和集合を取ります。さらにシナリオの `redact`（[evidence](evidence.md#マスキングredact)）が重なります。
 
-### シークレット（`run.secrets`）
+### シークレット（`evidence.secrets`）
 
-`run.secrets` は **環境変数名のリスト**で（`defaults.run` と `targets.<name>.run` の両方で宣言でき、ローダがマージするときに和集合にします）、シナリオが入力に使える `${secrets.X}` 変数の宣言元です。`bajutsu run` は実行時に、宣言された各名前を環境から解決し、その値を action に展開（`${secrets.X}`）したうえで、**証跡に現れる箇所すべてでその実値をマスク**します（[evidence](evidence.md#マスキングredact)）。シナリオ source には `${secrets.X}` トークンだけが残り、実値は残りません。
+`evidence.secrets` は **環境変数名のリスト**で（`defaults.evidence` と `targets.<name>.evidence` の両方で宣言でき、ローダがマージするときに和集合にします）、シナリオが入力に使える `${secrets.X}` 変数の宣言元です。`bajutsu run` は実行時に、宣言された各名前を環境から解決し、その値を action に展開（`${secrets.X}`）したうえで、**証跡に現れる箇所すべてでその実値をマスク**します（[evidence](evidence.md#マスキングredact)）。シナリオ source には `${secrets.X}` トークンだけが残り、実値は残りません。
 
 ### 実機用 runner の署名（設定の外、BE-0456）
 
@@ -427,8 +447,9 @@ notify:
   判定後には発火しません）。
 - `targets`（トップレベルの config の `targets.<name>` マップとは無関係です）は、リストにある名前の
   シナリオだけに通知を絞ります。空（既定）なら run 内のすべてのシナリオが対象です。
-- `targets.<name>.notify` は、そのターゲットについてトップレベルのリストを**丸ごと**上書きします
-  （マージはしません）。省略すればトップレベルの `notify:` をそのまま継承します。
+- ターゲットは自分の `notify` を持ちません（[BE-0473](../../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts-ja.md)）。
+  どのターゲットの run もトップレベルのリストに送ります。`targets.<name>.notify` は読み込みに
+  失敗し、エラーがトップレベルのリストを示します。
 - 配信はベストエフォートです。タイムアウトに上限を設け、数回リトライし、失敗しても警告をログに出す
   だけです。判定や終了コードを変えることは決してなく、`--zip` や `--evidence-store` と同じ、判定後
   専用の規律に従います。現状レンダリングされるのは `format: slack` だけです（失敗したシナリオを最大 5

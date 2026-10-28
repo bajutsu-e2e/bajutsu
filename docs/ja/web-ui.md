@@ -289,14 +289,14 @@ Anthropic API プロバイダで使われます（Bedrock は代わりに AWS �
 
 **Scenario secrets**（[BE-0274](../../roadmaps/BE-0274-serve-scenario-secrets/BE-0274-serve-scenario-secrets-ja.md)）
 は、バインド中の config が宣言するシークレット、つまりシナリオが `${secrets.X}` として参照する
-`run.secrets` の環境変数名を一覧します（[シークレット](configuration.md#シークレットrunsecrets)、
+`evidence.secrets` の環境変数名を一覧します（[シークレット](configuration.md#シークレットevidencesecrets)、
 [BE-0032](../../roadmaps/BE-0032-secret-variables/BE-0032-secret-variables-ja.md)）。宣言された名前ごと
 に **write-once** のフィールドを並べ、API キーと同じくマスク表示だけで再表示はされません。これにより、
 `serve` を起動する前に環境変数を export したり `.env` を手で編集したりしなくても、シナリオが必要とする
 認証情報を Web UI から用意できます。ここで設定した値はその宣言済みの名前の環境変数に入り、spawn される
 **Replay** / **Record** / **Crawl** が引き継ぐので、run のなかで `${secrets.X}` が解決します。バインド中の
 config がシークレットを宣言していないときも、このセクション自体は表示されたままで、機能を説明する
-案内文が代わりに現れます。`run.secrets` の内容が異なる config に切り替えると、一覧は更新されます。設定
+案内文が代わりに現れます。`evidence.secrets` の内容が異なる config に切り替えると、一覧は更新されます。設定
 できるのは config 自身が宣言している名前だけで、任意の環境変数を設定することはできません。ロールで
 保護されたデプロイでは、設定は **admin** の操作です。
 
