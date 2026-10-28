@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0468") |
+| 実装 PR | [#2244](https://github.com/bajutsu-e2e/bajutsu/pull/2244)（単位 1） |
 | トピック | Driver & backend architecture |
 <!-- /BE-METADATA -->
 
@@ -349,7 +350,7 @@ run に LLM は入りません。解決は config、引数、プールだけの�
 
 ### ログ
 
-- [#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM)（単位 1）— iOS デバイスのファミリーを読むようにしました。
+- [#2244](https://github.com/bajutsu-e2e/bajutsu/pull/2244)（単位 1）— iOS デバイスのファミリーを読むようにしました。
   - `DeviceFacts` に `family` を追加しました。`read_ios` は、名前を読むために参照しているデバイスタイプの `productFamily` からファミリーを読みます。`productFamily` のないタイプでは `DeviceReadError` を送出します。このホストの `simctl list devicetypes` では、iPhone の 45 タイプと iPad の 43 タイプすべてに `productFamily` がありました。
   - `read_ios_device` は、実機を `xcrun devicectl list devices --json-output -` から読みます。接続した iPhone 14 Pro は `deviceType: iPhone` を返しました。iPad は接続していないため、iPad の値は実機ではまだ確認していません。この読み取りを呼ぶ箇所はまだありません。単位 3 で、デバイスのプールをこの読み取りで読みます。
   - 仕様からのずれ：devicectl の一覧には Simulator も含まれます。そこで、`hardwareProperties.reality` が `physical` の項目だけを残します。udid は、devicectl 独自の `identifier` ではなく `hardwareProperties.udid` で照合します。XCUITest の destination が受け取るのは `hardwareProperties.udid` のほうだからです。また、`deviceProperties.osVersionNumber` も必須にしました。`DeviceFacts.release` はバージョンとデバイスの表示に使われるので、読めない release を保存せずに失敗させます。

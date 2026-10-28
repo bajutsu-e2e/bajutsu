@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0468") |
+| Implementing PR | [#2244](https://github.com/bajutsu-e2e/bajutsu/pull/2244) (Unit 1) |
 | Topic | Driver & backend architecture |
 <!-- /BE-METADATA -->
 
@@ -346,7 +347,7 @@ fake pool for each resolution branch, and the failure messages.
 
 ### Log
 
-- [#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM) (Unit 1) — read the family of every iOS device.
+- [#2244](https://github.com/bajutsu-e2e/bajutsu/pull/2244) (Unit 1) — read the family of every iOS device.
   - `DeviceFacts` gains `family`. `read_ios` takes it from the `productFamily` of the device type it already reads for the name, and a type with no `productFamily` raises `DeviceReadError`. On this host's `simctl list devicetypes`, all 45 iPhone types and all 43 iPad types carry one.
   - `read_ios_device` reads real devices from `xcrun devicectl list devices --json-output -`. A connected iPhone 14 Pro reported `deviceType: iPhone`; no iPad was connected, so the iPad value is not yet confirmed on hardware. Nothing calls the reader yet: unit 3 reads the pool through it.
   - Deviation from the design: the devicectl listing shows Simulators too, so the reader keeps only entries whose `hardwareProperties.reality` is `physical`, and matches the udid on `hardwareProperties.udid`, the id an XCUITest destination takes, rather than devicectl's own `identifier`. The reader also requires `deviceProperties.osVersionNumber`, because `DeviceFacts.release` feeds the version and the device's description, and the module fails rather than store an unreadable release.
