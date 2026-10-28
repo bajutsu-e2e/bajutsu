@@ -14,7 +14,14 @@ from typing import Any
 import pytest
 
 from bajutsu.common.drivers import base
-from bajutsu.common.drivers.dom import QUERY_JS, _norm_role, _str_or_none, parse_dom
+from bajutsu.common.drivers.dom import (
+    ATTRIBUTE_QUERY_JS,
+    QUERY_JS,
+    _norm_role,
+    _str_or_none,
+    parse_dom,
+    parse_dom_with_attribute,
+)
 from bajutsu.common.drivers.playwright import PlaywrightDriver, _Started
 from bajutsu.common.drivers.playwright._functions import _FRAME_QUERY_JS
 
@@ -1690,3 +1697,47 @@ def test_select_option_in_an_iframe_runs_in_that_frame() -> None:
     drv.select_option({"id": "pick"}, "b")
     assert "elementFromPoint(25.0, 25.0)" in child.evaluated[1]
     assert not any("closest('select')" in e for e in page.evaluated)
+
+
+# --- read_attribute (BE-0466) ---------------------------------------------------------------------
+
+
+def test_attribute_query_js_is_the_query_walk_plus_one_field() -> None:
+    # Derived from QUERY_JS, so the walk `resolve_unique` sees cannot drift from the query's.
+    assert ATTRIBUTE_QUERY_JS.count("attribute: el.getAttribute(attr)") == 2
+    assert (
+        ATTRIBUTE_QUERY_JS.replace(" attribute: el.getAttribute(attr),", "").replace(
+            "(attr) => {", "() => {", 1
+        )
+        == QUERY_JS
+    )
+
+
+def test_parse_dom_with_attribute_keeps_empty_apart_from_missing() -> None:
+    pairs = parse_dom_with_attribute(
+        [
+            _rec(identifier="a", attribute="/docs"),
+            _rec(identifier="b", attribute=""),
+            _rec(identifier="c", attribute=None),
+            "nope",  # type: ignore[list-item]
+        ]
+    )
+    assert [(el["identifier"], v) for el, v in pairs] == [("a", "/docs"), ("b", ""), ("c", None)]
+
+
+def test_read_attribute_resolves_through_resolve_unique() -> None:
+    drv, page = _driver(
+        [
+            _rec(identifier="docs", role="a", attribute="/docs", frame=[0, 0, 10, 10]),
+            _rec(identifier="twin", role="button", label="A", attribute="1", frame=[0, 20, 10, 10]),
+            _rec(identifier="twin", role="button", label="B", attribute="2", frame=[0, 40, 10, 10]),
+        ]
+    )
+    assert drv.read_attribute({"id": "docs"}, "href") == "/docs"
+    # The name reaches the page JSON-encoded inside the derived walk, never spliced in raw.
+    assert page.evaluated[-1] == f'() => ({ATTRIBUTE_QUERY_JS})("href")'
+    assert drv.read_attribute({"id": "twin", "index": 1}, "data-n") == "2"
+    with pytest.raises(base.AmbiguousSelector):
+        drv.read_attribute({"id": "twin"}, "data-n")
+    with pytest.raises(base.ElementNotFound):
+        drv.read_attribute({"id": "missing"}, "href")

@@ -305,3 +305,26 @@ def test_record_settles_on_an_attribute_assertions_element() -> None:
     step = settle_step([_attr(name="href", equals="/docs")])
     assert step is not None and step.wait is not None and step.wait.for_ is not None
     assert step.wait.for_.id == "docs.link"
+
+
+def test_config_rejects_an_attribute_in_a_recovery_if_condition() -> None:
+    text = (
+        _CONFIG.format(platform="android", app="{id: com.example.app}")
+        .replace(
+            "attribute: {sel: {id: banner}, name: data-state, equals: open}", "exists: {id: b}"
+        )
+        .replace(
+            "- tap: {id: banner.close}",
+            "- if: {condition: {attribute: {sel: {id: x}, name: open, absent: true}},"
+            " then: [{tap: {id: x}}]}",
+        )
+    )
+    with pytest.raises(ValidationError, match="needs a web target"):
+        load_config(text)
+
+
+def test_config_accepts_a_non_web_target_whose_interrupts_read_no_attribute() -> None:
+    text = _CONFIG.format(platform="ios", app="{id: com.example.app}").replace(
+        "attribute: {sel: {id: banner}, name: data-state, equals: open}", "exists: {id: b}"
+    )
+    assert load_config(text) is not None
