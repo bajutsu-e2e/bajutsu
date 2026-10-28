@@ -10,7 +10,7 @@
 | 状態 | **承認済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | トピック | 外部サービスとの連携 |
-| 関連 | [BE-0414](../BE-0414-ci-oidc-machine-identity/BE-0414-ci-oidc-machine-identity-ja.md), [BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications-ja.md), [BE-0224](../BE-0224-github-private-repo-config-auth/BE-0224-github-private-repo-config-auth-ja.md), [BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out-ja.md), [BE-0370](../BE-0370-graceful-run-cancel/BE-0370-graceful-run-cancel-ja.md) |
+| 関連 | [BE-0414](../BE-0414-ci-oidc-machine-identity/BE-0414-ci-oidc-machine-identity-ja.md), [BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications-ja.md), [BE-0224](../BE-0224-github-private-repo-config-auth/BE-0224-github-private-repo-config-auth-ja.md), [BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out-ja.md), [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md), [BE-0370](../BE-0370-graceful-run-cancel/BE-0370-graceful-run-cancel-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -65,17 +65,41 @@ reporter、そしてテストとドキュメントです。
 
 `POST /api/run-set` は、`target` と `scenarios` のリストを受け取り、scenario ごとに1つの job へ展開します
 ([BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out-ja.md))。
-現在この展開はクラウドバッチのプロバイダ経由でしか動かず、成果物の上書き指定
-(`binaryArtifact`、`scenariosArtifact`)も拒否します。この単位では、`cloudBatch` を宣言しない target に
-ついて、2つの制限を外します。
+現在このリクエストは `environment: devicefarm` を必須とし、成果物の上書き指定
+(`binaryArtifact`、`scenariosArtifact`)も拒否します。scenario 群に1つの check を付けたいパイプラインに
+とって、Device Farm そのものに意味はありません。パイプラインに必要なのは、scenario 群を1つのグループとして
+登録し、実行できる worker に実行してもらうことです。
 
-- 各 scenario は、worker キューに載る通常の job になります。job は `POST /api/run` と同じコード経路で
-  組み立てます。
+そこでこの単位では、`POST /api/run-set` と `POST /api/run` の違いを件数だけにします。どこで実行するかは、
+`POST /api/run` がすでに受け付けているのと同じく、リクエストごとの `environment` で選びます
+([BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md))。
+
+| `environment` | `POST /api/run` | `POST /api/run-set` |
+|---|---|---|
+| 省略 | worker キューに job を1つ | worker キューに scenario ごとの job(新規) |
+| `devicefarm` | `400` | scenario ごとの Device Farm job(変更なし) |
+| その他の値 | `appium` は grid へ、それ以外は `400` | `400`(変更なし) |
+
+`environment` を省略したセットは、次のように動きます。
+
+- 各 scenario は通常の job になり、`POST /api/run` と同じコード経路で組み立てます。各 job が要求する
+  capability は、その scenario を単独で実行する場合と同じです。capability を広告する稼働中の worker が
+  job を取るので、job は対応できるすべての worker へ同時に分散します。worker が1台なら順に実行します。
 - 上書き指定はセット内のすべての job に適用されます。パイプラインはビルドを1回アップロードするだけで、
-  すべての scenario をそのビルドに対して実行できます。
-- machine principal からも呼べるようにします。現在の `bajutsu/serve/gate.py` の machine 用許可リストは
-  `POST /api/run` を許可していますが、セットは許可していません。そこへ `POST /api/run-set` を加えます。
-  `start_run_set` は `start_run` と同じく machine の org を受け取り、セットはパイプライン自身の org で動きます。
+  すべての scenario をそのビルドに対して実行できます。上書き指定でファイルを運ぶ job は `machine:` トークンを
+  要求しないので、別のマシンの worker も取れます。
+- serve が実行環境を自分で切り替えることはありません。`environment` を省略したセットが Device Farm へ
+  フォールバックすることも、`devicefarm` のセットがキューへフォールバックすることもありません。どこで
+  実行したかはリクエストの選択どおりに保たれるので、同じ workflow の2回の実行を比べられます。
+
+Device Farm のセットは、上書き指定を引き続き拒否します
+([BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch-ja.md))。上書き指定を
+Device Farm のリクエストへ対応づける作業は、別に扱います。
+
+どちらのセットにも、もう1つ変更を加えます。machine principal から `POST /api/run-set` を呼べるように、
+`bajutsu/serve/gate.py` の machine 用許可リストへ加えます。現在の許可リストは `POST /api/run` を許可して
+いますが、セットは許可していません。`start_run_set` は `start_run` と同じく machine の org を受け取り、
+セットはパイプライン自身の org で動きます。
 
 リクエストには、省略可能なオブジェクト `githubCheck` を1つ加えます。
 
@@ -310,7 +334,7 @@ GitHub への呼び出しが失敗したときは、上限付きのバックオ�
 > (作業単位ごとに1つのチェックボックス)に対応し、ログには変更内容と時期を
 > (古い順に)PR へのリンク付きで記録します。
 
-- [ ] 単位1 — `POST /api/run-set` の worker キュー対応、machine の許可、上書き指定、全件かゼロかの `githubCheck`、`headSha` の検証
+- [ ] 単位1 — `environment` 省略時の `POST /api/run-set` の worker キュー対応、machine の許可、上書き指定、全件かゼロかの `githubCheck`、`headSha` の検証
 - [ ] 単位2 — SQL の job ストアのグループの記録、終了行ごとの枠の更新、serve による claim 付きの走査、グループの期限
 - [ ] 単位3 — 絞ったトークンを使う Checks API の reporter、結論の対応付け、要約、作成待ちの claim、`BAJUTSU_PUBLIC_URL`
 - [ ] 単位4 — テストとドキュメント
@@ -327,4 +351,4 @@ GitHub への呼び出しが失敗したときは、上限付きのバックオ�
 - GitHub REST API の installation access token の作成(`repositories` と `permissions` による絞り込み):
   <https://docs.github.com/en/rest/apps/apps#create-an-installation-access-token-for-an-app>
 - [BE-0414](../BE-0414-ci-oidc-machine-identity/BE-0414-ci-oidc-machine-identity-ja.md):この登録経路が乗る OIDC の machine セッションです。
-- [BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out-ja.md):この項目が一般化する、scenario セットの展開です。
+- [BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out-ja.md):この項目が worker キューへ広げる、scenario セットの展開です。

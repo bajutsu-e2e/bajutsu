@@ -10,7 +10,7 @@
 | Status | **Approved** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | Topic | Integration with external services |
-| Related | [BE-0414](../BE-0414-ci-oidc-machine-identity/BE-0414-ci-oidc-machine-identity.md), [BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications.md), [BE-0224](../BE-0224-github-private-repo-config-auth/BE-0224-github-private-repo-config-auth.md), [BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out.md), [BE-0370](../BE-0370-graceful-run-cancel/BE-0370-graceful-run-cancel.md) |
+| Related | [BE-0414](../BE-0414-ci-oidc-machine-identity/BE-0414-ci-oidc-machine-identity.md), [BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications.md), [BE-0224](../BE-0224-github-private-repo-config-auth/BE-0224-github-private-repo-config-auth.md), [BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out.md), [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure.md), [BE-0370](../BE-0370-graceful-run-cancel/BE-0370-graceful-run-cancel.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -64,17 +64,42 @@ group, a reporter that writes the check run, and the tests and documentation.
 
 `POST /api/run-set` already takes a `target` and a `scenarios` list and fans them out into one job
 per scenario ([BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out.md)).
-Today that fan-out runs only through a cloud-batch provider and refuses the artifact override fields
-(`binaryArtifact`, `scenariosArtifact`). This unit lifts both limits for a target that declares no
-`cloudBatch`:
+Today the request requires `environment: devicefarm`. It also refuses the artifact override fields
+(`binaryArtifact`, `scenariosArtifact`). A pipeline that wants one check over its scenarios gains
+nothing from Device Farm in particular. The pipeline needs the scenarios registered as one group.
+Any worker that can run them may run them.
 
-- Each scenario becomes an ordinary job on the worker queue, built by the same code path as
-  `POST /api/run`.
-- The override fields apply to every job in the set, so a pipeline uploads its build once and runs
-  every scenario against it.
-- A machine principal may call it. `POST /api/run-set` joins the machine allowlist in
-  `bajutsu/serve/gate.py`, which today admits `POST /api/run` but not the set. `start_run_set` also
-  takes the machine's org the way `start_run` does, so the set runs in the pipeline's own org.
+With this unit, `POST /api/run-set` differs from `POST /api/run` in count alone. The per-request
+`environment` still picks where the runs happen. `POST /api/run` already offers that choice
+([BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)):
+
+| `environment` | `POST /api/run` | `POST /api/run-set` |
+|---|---|---|
+| Absent | One job on the worker queue | One job per scenario on the worker queue (new) |
+| `devicefarm` | `400` | One Device Farm job per scenario (unchanged) |
+| Any other value | `appium` routes to the grid; others return `400` | `400` (unchanged) |
+
+With `environment` absent, the set behaves as follows:
+
+- Each scenario becomes an ordinary job. The same code path as `POST /api/run` builds the job.
+  Each job requires the capabilities a single run of that scenario requires. Any live worker that
+  advertises them leases the job. The jobs thus spread across every capable worker at once. A
+  single worker runs them one after another.
+- The override fields apply to every job in the set. A pipeline uploads its build once and runs
+  every scenario against it. A job that ships its files this way requires no `machine:` token. A
+  worker on another machine can thus take the job.
+- serve never picks a different environment on its own. A set with `environment` absent never falls
+  back to Device Farm. A `devicefarm` set never falls back to the queue. Each run happens where the
+  request chose. Two runs of the same workflow thus stay comparable.
+
+A Device Farm set keeps its current refusal of the override fields
+([BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch.md)). Mapping
+an override onto a Device Farm request is separate work.
+
+Both kinds of set take one more change. A machine principal may call `POST /api/run-set`. The
+route joins the machine allowlist in `bajutsu/serve/gate.py`. Today that list admits
+`POST /api/run` but not the set. `start_run_set` also takes the machine's org the way `start_run`
+does, so the set runs in the pipeline's own org.
 
 The request gains one optional object, `githubCheck`:
 
@@ -305,7 +330,7 @@ Two limits remain outside this item:
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — `POST /api/run-set` dispatches to the worker queue, joins the machine allowlist, accepts overrides, takes `githubCheck` all or nothing, and binds `headSha` to the token's claims
+- [ ] Unit 1 — `POST /api/run-set` dispatches to the worker queue when `environment` is absent, joins the machine allowlist, accepts overrides, takes `githubCheck` all or nothing, and binds `headSha` to the token's claims
 - [ ] Unit 2 — group record in the SQL job store, slots marked with each terminal row, a claiming sweep in serve, and the group deadline
 - [ ] Unit 3 — Checks API reporter with a narrowed token, conclusion mapping, summary, the pending-create claim, and `BAJUTSU_PUBLIC_URL`
 - [ ] Unit 4 — tests and documentation
@@ -322,4 +347,4 @@ Two limits remain outside this item:
 - GitHub REST API, create an installation access token (`repositories` and `permissions` narrowing):
   <https://docs.github.com/en/rest/apps/apps#create-an-installation-access-token-for-an-app>
 - [BE-0414](../BE-0414-ci-oidc-machine-identity/BE-0414-ci-oidc-machine-identity.md) — the OIDC machine session this dispatch rides on.
-- [BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out.md) — the scenario-set fan-out this item generalizes.
+- [BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out.md) — the scenario-set fan-out this item extends to the worker queue.
