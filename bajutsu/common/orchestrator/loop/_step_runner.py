@@ -1133,6 +1133,8 @@ class _StepRunner:
                 self._clear_entry_alert(active_driver, step)
         # The label a `handleSystemAlert` step tapped, for `outcome.system_alert` (BE-0445).
         system_alert_taps: list[str] = []
+        # Non-fatal notes the step's body left for the report, e.g. a `totp` wall-clock jump (BE-0474).
+        step_warnings: list[str] = []
         # The title its prompt must show, so the step never taps a look-alike prompt (Local Network
         # shares notifications' buttons) and the guard stays free to answer that one.
         system_alert_title = self._system_alert_title(step)
@@ -1171,6 +1173,7 @@ class _StepRunner:
                     wait_trace=trace,
                     selection=self.state.selection,
                     system_alert_taps=system_alert_taps,
+                    warnings=step_warnings,
                     system_alert_title=system_alert_title,
                     on_wait_tick=wait_tick,
                     transitions=self.cfg.transitions,
@@ -1218,6 +1221,7 @@ class _StepRunner:
                     alert_guard=self.cfg.alert_guard,
                     alerts=outcome.alerts,
                     system_alert_taps=system_alert_taps,
+                    warnings=step_warnings,
                     system_alert_title=system_alert_title,
                     on_wait_tick=wait_tick,
                     transitions=self.cfg.transitions,
@@ -1499,6 +1503,10 @@ class _StepRunner:
                 )
                 if outcome.ok:
                     outcome.generated = produced
+
+            # Evidence only, recorded whatever the verdict: `ok` and `reason` never see it, so a
+            # passing step carries no failure text (BE-0474).
+            outcome.warnings = tuple(step_warnings)
 
             # Which button a `handleSystemAlert` step tapped and why (BE-0445), so a run under a
             # language the label table does not cover still shows what its position rule landed on.

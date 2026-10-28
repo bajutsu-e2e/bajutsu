@@ -71,7 +71,7 @@ def _project(tmp_path: Path) -> Path:
             "    platform: ios\n"
             f"    app: {{id: com.example.demo}}\n"
             f"    paths: {{scenarios: {scn_dir}}}\n"
-            "    run:\n"
+            "    evidence:\n"
             "      secrets: [LOGIN_PASSWORD]\n"
         ),
         encoding="utf-8",

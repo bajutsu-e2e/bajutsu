@@ -313,7 +313,10 @@ def test_the_run_group_lists_the_shared_and_the_platform_fields() -> None:
 
     from bajutsu.common.config import load_config
 
-    with pytest.raises(ValidationError, match=r"allowed fields: erase, network.*tipKitHandling"):
+    with pytest.raises(
+        ValidationError,
+        match=r"allowed fields: erase, systemAlertHandling, ignoredSettings, tipKitHandling",
+    ):
         load_config("targets:\n  s: { platform: ios, app: { id: com.x }, run: { bogus: 1 } }\n")
     # A field of another platform's run extension is unknown on this one.
     with pytest.raises(ValidationError, match=r"run\.tipKitHandling: unknown field for platform"):

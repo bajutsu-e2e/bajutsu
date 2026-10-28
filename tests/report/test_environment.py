@@ -401,3 +401,20 @@ def test_html_scenario_chips_skip_a_target_whose_device_never_resolved() -> None
     out = html_report("run1", [r])
     assert "SIM-1"[-6:] in out
     assert "xcuitest, " not in out  # no trailing separator for the target that named nothing
+
+
+def test_html_shows_a_step_warning_and_omits_the_row_without_one() -> None:
+    # BE-0474: a `totp` window wait's wall-clock jump note sits on its step's row, beside the passing
+    # verdict it never changed.
+    note = "totp: wall clock jumped +62s during window wait; 3s left"
+    r = RunResult(
+        scenario="s1",
+        ok=True,
+        steps=[StepOutcome(index=0, action="totp", ok=True, started_at=0.0, warnings=(note,))],
+        expect_results=[],
+        artifacts=[],
+    )
+    definition = {"name": "s1", "steps": [{"totp": {"secret": "S", "into": {"var": "c"}}}]}
+    out = html_report("run1", [r], definitions=[definition])
+    assert ">warning</span> " + note in out
+    assert ">warning</span>" not in html_report("run2", [_passing()])

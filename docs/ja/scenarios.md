@@ -132,7 +132,7 @@ preconditions:
 | `run.inheritSetup` | bool | `true` | `false` にすると、このシナリオが宣言する全ターゲットの `hooks.setup` を省きます。各ターゲットの `hooks.cleanup` は走ります（[後述](#setup--cleanupセットアップとティアダウンのフェーズ)） |
 
 シナリオは、アプリを識別したりビルドしたりするフィールド（`id`、`path`、`build`、`startWhen`、
-`idNamespaces`）を設定できません。これらはターゲットが持ちます。`run.secrets` はターゲット側の和集合の
+`idNamespaces`）を設定できません。これらはターゲットが持ちます。`evidence.secrets` はターゲット側の和集合の
 ままなので、シナリオからは設定できません。
 
 > **各フィールドは、デバイスを操作する前に、シナリオが動かすターゲットと照合します。** 動かすどの
@@ -1012,6 +1012,18 @@ assertするまで、新しいステップもランナーの変更も要りま�
 
 `totp` は [RFC 6238](https://datatracker.ietf.org/doc/html/rfc6238) の時刻ベースワンタイムパスワードを、共有 `secret`（base32。YAML に直書きせず `${secrets.*}` に置く）と現在時刻からローカルで計算し、現在のコードを `${vars.<var>}` に保存します。後続の `type` / `assert` で使えます。スクリプトのエスケープハッチも LLM も使わずに 2FA サインインを自動化でき、値は secret と時刻の決定的な関数です（[BE-0046](../../roadmaps/BE-0046-otp-email-steps/BE-0046-otp-email-steps-ja.md)）。
 
+コードが有効なのは、時刻を 30 秒ごとに区切った1つのウィンドウの間だけです。ウィンドウの終わり際に `totp` を実行すると、後続の `type` と `tap` で送信する前にコードが期限切れになることがあります。この失敗を防ぐには、`minRemaining` に後続のステップが必要とする秒数を指定します。
+
+```yaml
+- totp: { secret: "${secrets.TOTP_SEED}", into: { var: code }, minRemaining: 10 }
+```
+
+現在のウィンドウの残りが `minRemaining` 秒より少ないとき、ステップは次のウィンドウが始まるまで待ってからコードを生成します（[BE-0474](../../roadmaps/BE-0474-totp-window-alignment/BE-0474-totp-window-alignment-ja.md)）。値は 1 から 30 までの整数で、省略すると待ちません。
+
+待機は、作成者が決めた長さで止まるのではなく、時計が決めるウィンドウの境界で終わります。そのため待ち時間は1ウィンドウ以内に収まり、決定性監査も `fixed-sleep` として挙げません。実行中のログはこのステップを `totp (≥10s left)` と表示し、待った時間はレポートのステップの所要時間に現れます。
+
+待機の途中で壁時計が飛んだ場合（Network Time Protocol（NTP）による補正など）も、ステップは成功として扱われます。その代わり、レポートのステップ行に警告が残り、飛んだ秒数と残り秒数を示します。後のサインインが期限切れのコードで失敗したとき、この警告が原因の手がかりになります。
+
 ### `email`（メールで届くコードをメールボックスから取得）
 
 ```yaml
@@ -1384,7 +1396,7 @@ run を止めます。ファイルが外したターゲットを選ぶことは�
 解決されます。シナリオの `primaryTarget` には解決されません。上で述べた、入れ子の深さによらない
 省略時の解決は、シナリオ自身のステップにだけ働きます。
 
-run 全体で共有されるものが2つあります。`redact` の秘密情報の集合は、宣言済みの各ターゲット自身の秘密情報（`run.secrets`）
+run 全体で共有されるものが2つあります。`redact` の秘密情報の集合は、宣言済みの各ターゲット自身の秘密情報（`evidence.secrets`）
 の和集合を取ります。その和集合が、すべてのターゲットの証跡をマスクします。広くマスクしすぎるほうが安全な
 誤りだからです。run ディレクトリは run 単位の成果物で、もともとターゲットごとではありません。
 
@@ -1828,7 +1840,7 @@ expect:
 | `exact` | ピクセル完全一致。いずれかのチャネルが異なればそのピクセルは「差分」として計上されます。 | はい（後方互換） |
 | `pixelmatch` | 知覚的 YIQ 色差 + アンチエイリアシング検出。サブピクセルレンダリングノイズや 1 ピクセルのエッジシフトを許容します。 | いいえ |
 
-`compare` を省略すると、ターゲットの `run.visualCompare` 設定（`defaults.run` または `targets.<name>.run` で指定）にフォールバックし、さらに未設定なら `exact` になります。
+`compare` を省略すると、ターゲットの `evidence.visualCompare` 設定（`defaults.evidence` または `targets.<name>.evidence` で指定）にフォールバックし、さらに未設定なら `exact` になります。
 
 `threshold` は許容する差分ピクセルの割合（既定 `0.0` = 完全一致）で、すべてのエンジン共通です。`colorTolerance`（0–1、既定 `0.1`）は `pixelmatch` のピクセル単位の知覚的色差許容値、`antialiasing`（既定 `true`）はアンチエイリアスされたピクセルを差分から除外します。`exclude` は比較前にマスクする領域のリストで、ステータスバーや時計などに使います。各要素は、スクリーンショットのピクセル座標で表す矩形（`{ x, y, w, h }`）か、マスク対象の要素を指す `{ selector: <Selector> }`（BE-0171）のどちらかです。後者は評価時に要素のフレームへ解決されます。baseline は `approve` コマンド（[cli](cli.md#approve)）か `serve` UI で作成・更新します。baseline が無いとアサーションは失敗します。`overrideStatusBar` と併用すると時計やバッテリーを固定できます。差分は `report.html` に表示されます。`pixelmatch` では、除外されなかった（非 AA）ピクセルのみが差分画像に表示されます。`approve` とレポートの差分ストリップが読むのは、シナリオ末尾の `expect` の結果だけです。ステップ自身の `assert` に含めた `visual` エントリは、最初の baseline を手動で用意してください（上記の[`assert`](#assert中間検証)を参照）。
 
@@ -2094,10 +2106,10 @@ uv run bajutsu run --target showcase-swiftui --tag smoke --exclude wip   # run @
 
 ### シークレット（`${secrets.X}`）
 
-シークレットの環境変数名を config で宣言します（`run: { secrets: [API_TOKEN, ...] }`）。宣言した各名 `X` は環境から解決され、**アクション時**に実行ステップへ `${secrets.X}` として置換されます。シナリオファイルは **トークン**を保持し、実値は持ちません。さらにリテラル値は証跡で **自動マスク**されるため、シークレットはコミットしてもレビューしても安全です。`${params.*}` / `${row.*}`（ロード時の展開）と異なり、この名前空間は run ループが解決します。
+シークレットの環境変数名を config で宣言します（`evidence: { secrets: [API_TOKEN, ...] }`）。宣言した各名 `X` は環境から解決され、**アクション時**に実行ステップへ `${secrets.X}` として置換されます。シナリオファイルは **トークン**を保持し、実値は持ちません。さらにリテラル値は証跡で **自動マスク**されるため、シークレットはコミットしてもレビューしても安全です。`${params.*}` / `${row.*}`（ロード時の展開）と異なり、この名前空間は run ループが解決します。
 
 ```yaml
-# config が宣言: run: { secrets: [API_TOKEN] }
+# config が宣言: evidence: { secrets: [API_TOKEN] }
 steps:
   - type: { text: "${secrets.API_TOKEN}", into: { id: auth.token } }   # real value typed; token kept in the report
 ```

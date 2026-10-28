@@ -102,7 +102,7 @@ _GROUP = {
     "baselines": "paths",
     "schemas": "paths",
     "goldens": "paths",
-    "secrets": "run",
+    "secrets": "evidence",
     "systemAlertHandling": "run",
 }
 

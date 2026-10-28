@@ -35,7 +35,7 @@ def test_layers_fold_from_defaults_through_templates_to_the_target() -> None:
     config = load_config(
         """
 defaults:
-  run: { network: false }
+  evidence: { collectNetwork: false }
   platforms: { ios: { app: { launch: { env: { LAYER: platform, P: "1" } } } } }
 templates:
   first: { app: { launch: { env: { LAYER: first, F: "1" } } } }
@@ -96,17 +96,17 @@ targets:
 
 def test_union_lists_keep_every_layer_and_refuse_a_null() -> None:
     text = """
-defaults: { run: { secrets: [TEAM] } }
+defaults: { evidence: { secrets: [TEAM] } }
 templates:
-  t1: { run: { secrets: [ONE] }, evidence: { redact: { fields: [password] } } }
-  t2: { run: { secrets: [TWO, ONE] } }
+  t1: { evidence: { secrets: [ONE], redact: { fields: [password] } } }
+  t2: { evidence: { secrets: [TWO, ONE] } }
 targets:
-  t: { extends: [t1, t2], platform: ios, app: { id: com.x }, run: { secrets: [OWN] } }
+  t: { extends: [t1, t2], platform: ios, app: { id: com.x }, evidence: { secrets: [OWN] } }
 """
     eff = resolve(load_config(text), "t")
     assert eff.secrets == ["TEAM", "ONE", "TWO", "OWN"]
     assert eff.redact.fields == ["password"]
-    with pytest.raises(ValidationError, match=r"run\.secrets: null cannot clear it"):
+    with pytest.raises(ValidationError, match=r"evidence\.secrets: null cannot clear it"):
         load_config(text.replace("secrets: [TWO, ONE]", "secrets: null"))
 
 
@@ -387,7 +387,7 @@ _SCHEMA = config_json_schema()
     "templates",
     [
         {"ios": {"platform": "ios", "app": {"launch": {"env": {"A": "1"}}}}},
-        {"bare": {"app": {"url": "http://x/"}, "run": {"secrets": ["S"]}}},
+        {"bare": {"app": {"url": "http://x/"}, "evidence": {"secrets": ["S"]}}},
         {"chained": {"extends": ["a", "./b.yaml"], "evidence": {"redact": {"fields": ["pw"]}}}},
         # A template's `null` clears a group `defaults` set, as a target's may.
         {"clear": {"platform": "ios", "app": None}},

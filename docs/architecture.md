@@ -490,7 +490,18 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   page-error interval evidence through the shared `driver_interval` seam, emulated `multiTouch`
   (pinch / rotate), parallel runs across N `BrowserContext` lanes, and a target-level `runsOn.browser.emulate`
   (desktop default, or a Playwright device preset for mobile emulation; BE-0228); `appTrace` stays
-  iOS-only (`os_log`/simctl-based)
+  iOS-only (`os_log`/simctl-based). `query()` fills `value` from each tag's own source — `href` for
+  `<a>`, `src` for `<img>`, `datetime` for `<time>` — while a form control, a `<meter>`, and a
+  `<progress>` carrying a `value` attribute report their live `value` even under a `role`; any
+  other `role`'d element reports `aria-valuetext` or `aria-valuenow` when either is present and its
+  own `value` property otherwise, while an indeterminate `<progress>` (one carrying no `value`
+  attribute) reports only `aria-valuetext` or `aria-valuenow`; an element that holds its own text but matches no other rule is read too, labeled
+  with the `staticText` trait iOS uses for a label. The same walk descends into every iframe
+  (nested and cross-origin included, offset into main-page CSS pixels), except one sitting under a
+  non-translation CSS transform, which is left unread so a tap cannot silently miss; a cross-origin
+  iframe's elements carry `crossOriginFrame: true` and stay selectable, but `doctor`'s score and the
+  crawl's screen model leave them out, since the app cannot instrument or explore an embedded
+  third-party page
 - The **Android adb backend** (`common/drivers/adb` + `common/backend_cli/adb`): `tap`/`long_press`/`double_tap` send
   the resolved element's identity to the resident server's `POST /act`, which re-resolves and
   injects device-side so the gesture lands on the bounds the device holds at inject time, falling
@@ -699,7 +710,10 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   into `${vars.*}`)
 - DSL `totp` and `email` steps (BE-0046): `totp` generates an RFC 6238 one-time password from a
   shared secret (commonly `${secrets.*}`) into `${vars.*}`, local and deterministic — no network, no
-  model; `email` polls a mailbox (config `targets.<name>.services.mailbox`, a registry-based transport —
+  model. Its optional `minRemaining` (BE-0474) makes the run loop wait, before the handler runs, for
+  the next 30-second window when the current one has fewer seconds left; the wait ends on the
+  boundary, is bounded by one window plus one cancellation slice, and records a non-fatal
+  `StepOutcome.warnings` note when the wall clock jumped. `email` polls a mailbox (config `targets.<name>.services.mailbox`, a registry-based transport —
   `http` is the shipped adapter, BE-0186) until a message matching `to` / `subject` /
   `subjectMatches` arrives after the step started, then extracts a value via a `bodyMatches` regex
   into `${vars.*}` — a condition wait bounded by `timeout`, never a fixed sleep

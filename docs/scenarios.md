@@ -142,7 +142,7 @@ preconditions:
 | `run.inheritSetup` | bool | `true` | `false` skips the `hooks.setup` of every target this scenario declares; their `hooks.cleanup` still runs ([below](#setup--cleanup-setup-and-teardown-phases)) |
 
 A scenario cannot set `id`, `path`, or `build`. Nor can it set `startWhen` or `idNamespaces`. The
-target owns these fields, which identify or build the app. `run.secrets` stays a target-level union,
+target owns these fields, which identify or build the app. `evidence.secrets` stays a target-level union,
 so a scenario cannot set it either.
 
 > **Each field is checked against the targets the scenario drives, before any device work.** An `app`
@@ -1440,6 +1440,24 @@ the current time — and stores the current code in `${vars.<var>}` for a later 
 This automates a 2FA sign-in without a scripting escape hatch or an LLM: the value is a deterministic
 function of the secret and the clock ([BE-0046](../roadmaps/BE-0046-otp-email-steps/BE-0046-otp-email-steps.md)).
 
+A code is valid for one 30-second window of the clock, so a `totp` step that lands in the last
+seconds of a window can hand the app a code that expires before the following `type` and `tap`
+submit it. Set `minRemaining` to the seconds those steps need:
+
+```yaml
+- totp: { secret: "${secrets.TOTP_SEED}", into: { var: code }, minRemaining: 10 }
+```
+
+When the current window has fewer than `minRemaining` seconds left, the step waits for the next
+window to start, then generates the code
+([BE-0474](../roadmaps/BE-0474-totp-window-alignment/BE-0474-totp-window-alignment.md)). The value
+is an integer from 1 to 30. Omitting it means no wait. The wait ends on the window boundary the
+clock decides, never on an author-chosen pause, so it is bounded by one window and the determinism
+audit does not list it as a `fixed-sleep`. The live log labels the step `totp (≥10s left)`, and the
+report shows the time the wait took as the step's duration. If the wall clock jumps during the wait
+(a Network Time Protocol (NTP) correction, say), the step still passes and records a warning on its report row that states
+the jump and the seconds left, so a later sign-in that fails on an expired code shows its cause.
+
 ### `email` (poll a mailbox for a received code)
 
 ```yaml
@@ -1835,7 +1853,7 @@ too. It resolves to that config's own target, never to the scenario's `primaryTa
 every-nesting-depth default above applies to a scenario's own steps alone.
 
 Two run-wide values stay shared. The `redact` secret set unions every declared target's own
-`run.secrets`. That union scrubs every target's evidence, since scrubbing too widely is the safer error.
+`evidence.secrets`. That union scrubs every target's evidence, since scrubbing too widely is the safer error.
 The run directory is a run-level artifact, never per target.
 
 The web engine flags still apply to a run's single web target. Those flags are `--headed`,
@@ -2279,8 +2297,8 @@ The comparison engine is selectable via `compare` (BE-0165):
 | `exact` | Pixel-perfect — any channel difference counts as a changed pixel. | Yes (backward-compatible) |
 | `pixelmatch` | Perceptual YIQ color distance with anti-aliasing detection. Tolerates sub-pixel rendering noise and one-pixel edge shifts. | No |
 
-When `compare` is omitted, the engine falls back to the target's `run.visualCompare` config
-(under `defaults.run` or `targets.<name>.run`), and then to `exact`.
+When `compare` is omitted, the engine falls back to the target's `evidence.visualCompare` config
+(under `defaults.evidence` or `targets.<name>.evidence`), and then to `exact`.
 
 `threshold` is the allowed percentage of differing pixels (default `0.0` = exact match), shared
 by all engines. `colorTolerance` (0–1, default `0.1`) sets the per-pixel perceptual color
@@ -2591,10 +2609,10 @@ uv run bajutsu run --target showcase-swiftui --tag smoke --exclude wip   # run @
 
 ### Secrets (`${secrets.X}`)
 
-Declare secret environment-variable names in config (`run: { secrets: [API_TOKEN, ...] }`). Each declared name `X` is resolved from the environment and substituted into the executed step **at action time** as `${secrets.X}`. The scenario file stores the **token**, never the value, and literal values are **auto-masked** in evidence, making secrets safe to commit and review. Unlike `${params.*}` / `${row.*}` (load-time expansion), this namespace is resolved by the run loop.
+Declare secret environment-variable names in config (`evidence: { secrets: [API_TOKEN, ...] }`). Each declared name `X` is resolved from the environment and substituted into the executed step **at action time** as `${secrets.X}`. The scenario file stores the **token**, never the value, and literal values are **auto-masked** in evidence, making secrets safe to commit and review. Unlike `${params.*}` / `${row.*}` (load-time expansion), this namespace is resolved by the run loop.
 
 ```yaml
-# config declares: run: { secrets: [API_TOKEN] }
+# config declares: evidence: { secrets: [API_TOKEN] }
 steps:
   - type: { text: "${secrets.API_TOKEN}", into: { id: auth.token } }   # real value typed; token kept in the report
 ```

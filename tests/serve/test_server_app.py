@@ -84,7 +84,7 @@ def test_scenario_secrets_delegate_to_operations(
             "    platform: ios\n"
             f"    app: {{id: com.example.demo}}\n"
             f"    paths: {{scenarios: {scn_dir}}}\n"
-            "    run:\n"
+            "    evidence:\n"
             "      secrets: [LOGIN_PASSWORD]\n"
         ),
         encoding="utf-8",

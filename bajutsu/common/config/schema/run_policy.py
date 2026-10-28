@@ -2,14 +2,22 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 
 from bajutsu.common.capability.settings_support import SETTING_KEYS
 from bajutsu.common.scenario import SystemAlertHandlingField
 
 from ._model import _Model
+
+# Where each field BE-0473 moved out of `run` now lives. Pydantic's generic extra-field error names
+# no replacement, and the loader reads none of the old keys, so the error is the migration path.
+MOVED_RUN_KEYS: dict[str, str] = {
+    "network": "evidence.collectNetwork",
+    "visualCompare": "evidence.visualCompare",
+    "secrets": "evidence.secrets",
+}
 
 
 class RunPolicy(_Model):
@@ -21,13 +29,6 @@ class RunPolicy(_Model):
     """
 
     erase: bool | None = None
-    network: bool | None = None
-    visual_compare: Literal["exact", "pixelmatch"] | None = Field(
-        default=None, alias="visualCompare"
-    )
-    # An input injected as `${secrets.X}`, masked in evidence because of that role; the list unions
-    # with `defaults.run.secrets`, so a target adding one never stops masking a team-wide one.
-    secrets: list[str] = Field(default_factory=list)
     system_alert_handling: SystemAlertHandlingField = Field(
         default=None, alias="systemAlertHandling"
     )
@@ -49,3 +50,12 @@ class RunPolicy(_Model):
                 f"run.ignoredSettings: {', '.join(map(repr, blank))} needs a non-blank reason"
             )
         return v
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_moved_keys(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            for old, new in MOVED_RUN_KEYS.items():
+                if old in data:
+                    raise ValueError(f"run.{old} moved to {new} (BE-0473)")
+        return data

@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0458](BE-0458-real-device-host-channels.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0458") |
 | Implementing PR | [#2143](https://github.com/bajutsu-e2e/bajutsu/pull/2143) |
 | Topic | Device-cloud execution |
@@ -286,7 +286,7 @@ network scenario on the same device.
 - [x] Docs in both languages: `docs/ios-device-cloud.md`, `docs/configuration.md`,
   `docs/devicefarm.md`, `docs/architecture.md`.
 - [x] Manual real-device proof: `firstlook` on a USB-attached iPhone, then a network scenario.
-- [ ] Device Farm diagnostic run: `bajutsu doctor --environment-only`, then `firstlook`, on a
+- [x] Device Farm diagnostic run: `bajutsu doctor --environment-only`, then `firstlook`, on a
   reserved iOS device.
 
 Log:
@@ -327,6 +327,8 @@ Log:
     first tap then landed on the Local Network prompt, and XCUITest raised no interruption. The
     guard answered the prompt in the next wait instead. Unit tests cover the interruption path. The
     device runner build compiled its change.
+- 2026-10-28 — The Device Farm diagnostic run passed on a reserved iOS device. With it, every unit
+  is done, and the item is Implemented.
 
 ## References
 

@@ -423,7 +423,7 @@ class Artifact:
 
 `visual` アサーションは `VisualEvidence` レコードを生成し、manifest とレポートに反映します。run ディレクトリからの相対パスとして、baseline コピー、実際のスクリーンショット、差分画像（差分が見つかった場合）を持ち、`diff_pct`（差分ピクセルの割合）と `engine`（判定を行った比較エンジン、`"exact"` または `"pixelmatch"`。[BE-0165](../../roadmaps/BE-0165-visual-compare-engines/BE-0165-visual-compare-engines-ja.md)）を記録します。
 
-エンジンはアサーション単位（`compare:`）で選択でき、ターゲットレベルの config（`run.visualCompare`）にフォールバックします。使用されたエンジンは manifest に記録されるため、各判定がどのアルゴリズムで行われたかを追跡できます。実装: `bajutsu/assertions/visual.py` `VisualEvidence`。
+エンジンはアサーション単位（`compare:`）で選択でき、ターゲットレベルの config（`evidence.visualCompare`）にフォールバックします。使用されたエンジンは manifest に記録されるため、各判定がどのアルゴリズムで行われたかを追跡できます。実装: `bajutsu/assertions/visual.py` `VisualEvidence`。
 
 ## マスキング（redact）
 
@@ -513,7 +513,7 @@ run ディレクトリへの書き込みは、すべて1つのシンクを通り
 
 > redact は証跡の書き出し前に **適用されます**（`evidence/redaction.py` `Redactor`）。device log と app trace は key→value パターンでスクラブし、要素ツリーは label が設定済みなら value をマスクします（または埋め込まれた secret をスクラブします）。各 network exchange は構造的にマスクします。ヘッダ値は名前で処理し、url / request / response の body はフリーテキストとして処理するので、クエリパラメータや `token` / `password` の body フィールドも捕捉します。画像（スクリーンショット / video）はマスクできず、そのまま残ります。
 >
-> redact は **secret の入力値** にも及びます。`${secrets.X}` の背後にある実値（環境から解決し、config の `run.secrets` で宣言します。[configuration](configuration.md#シークレットrunsecrets)）は、設定済みの `labels` / `headers` / `fields` だけでなく、証跡に現れる箇所すべてでマスクします。長い値から先にマスクするため、ある値が別の値の部分文字列であっても、部分的な漏れは起きません。
+> redact は **secret の入力値** にも及びます。`${secrets.X}` の背後にある実値（環境から解決し、config の `evidence.secrets` で宣言します。[configuration](configuration.md#シークレットevidencesecrets)）は、設定済みの `labels` / `headers` / `fields` だけでなく、証跡に現れる箇所すべてでマスクします。長い値から先にマスクするため、ある値が別の値の部分文字列であっても、部分的な漏れは起きません。
 >
 > 値の照合は **エンコードを考慮** します。同じ秘密値でも、証跡に現れるときは多くの場合エンコードされており、そのままのバイト列は現れません。redact は、生の値に加えて、よくあるエンコード形もマスクします。パーセントエンコード（URL のクエリやフォームフィールド。たとえば `p@ss` は `p%40ss` になります）、HTML エスケープと JSON エスケープの形、そして `Authorization: Basic <base64(user:pass)>` トークンのうちデコードした認証情報がその値を含むもの、の三種です。これは既知の値に対して固定された変換を適用する方式（値をエンコードしてから検索します）であり、証跡内のあらゆる文字列をデコードして総当たりする方式ではないので、コストと誤検出の範囲は限定的なままです。一つ制約が残ります。redact が動く前に証跡が実際に断片化している場合（ストリーミングのチャンクにまたがって分割され、redact が一つの連続した文字列として見られない値）は、照合がベストエフォートになります。組み立て済みの全文の証跡という通常のケースには影響しません。
 >

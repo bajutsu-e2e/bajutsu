@@ -259,6 +259,7 @@ def _step_run_row(
             if out.system_alert is not None
             else None
         ),
+        "warnings": list(out.warnings),
         "group": group,
         "group_id": group_id,
     }

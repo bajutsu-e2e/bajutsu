@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0474](BE-0474-totp-window-alignment.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0474") |
+| Implementing PR | [#2245](https://github.com/bajutsu-e2e/bajutsu/pull/2245) |
 | Topic | Scenario authoring features |
 <!-- /BE-METADATA -->
 
@@ -205,11 +206,20 @@ only `secret` and are unaffected. Codegen already emits a `// TODO` for `totp`
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Model and validation: `minRemaining` on `Totp`
-- [ ] Wait function: `_wait_for_totp_window` with an injectable wall clock
-- [ ] Loop wiring and step label
-- [ ] Warning on the step outcome: `StepOutcome.warnings`, the manifest, and the HTML report
-- [ ] Documentation: scenarios, DSL grammar, architecture, and the Japanese mirrors
+- [x] Model and validation: `minRemaining` on `Totp`
+- [x] Wait function: `_wait_for_totp_window` with an injectable wall clock
+- [x] Loop wiring and step label
+- [x] Warning on the step outcome: `StepOutcome.warnings`, the manifest, and the HTML report
+- [x] Documentation: scenarios, DSL grammar, architecture, and the Japanese mirrors
+
+Log:
+
+- Proposed; no implementation yet.
+- [#2245](https://github.com/bajutsu-e2e/bajutsu/pull/2245): Implemented every unit in one change. The `totp` step gained a strict `minRemaining`, and
+  the run loop waits for the next window before the handler runs. A wall-clock jump during the wait
+  lands in the new evidence-only `StepOutcome.warnings`, which the manifest (`schemaVersion` 16) and
+  the HTML report carry. The documentation also covers the new field in `docs/reporting.md`, beyond
+  the pages the work breakdown named.
 
 ## References
 
