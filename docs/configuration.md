@@ -129,8 +129,8 @@ The merge follows five rules:
 A template is a named, partial target block. A target pulls one in with `extends`. A setting that
 targets would otherwise repeat then sits in one place. `defaults` applies to every target, and
 `defaults.platforms.<platform>` to every target of one platform. A template fills the gap between
-those two layers and a single target. It covers, for example, the four targets that build one app
-in different ways.
+those two layers and a single target. It covers, for example, the targets that build one app in
+different ways.
 
 ```yaml
 templates:
@@ -151,8 +151,10 @@ targets:
 ```
 
 A template lives under its own top-level key `templates:`, never under `targets:`. `--target` and
-every server endpoint refuse a template's name. The error says the name is a template. The CLI
-also lists the targets. A server error omits the list, since one config may hold other orgs' targets.
+every server endpoint refuse a template's name. `--target` and most endpoints say the name is a
+template. Four endpoints refuse it earlier in their scenarios check: `run`, `run_set`, `record`,
+and `triage`. Their error reads `target '<name>' has no scenarios dir`. The CLI also lists the
+targets. A server error leaves the list out, because one config can hold the targets of other orgs.
 A template and a target may share a name, since `extends` looks up templates alone.
 
 The layers fold from the weakest to the strongest:
@@ -186,6 +188,9 @@ a component file:
 - A relative value inside the file resolves against the file's own directory. The value can be a
   nested `extends` entry, a path field, or a component its `hooks` call with `use`. The path fields
   are `app.path`, `runsOn.seedPhotos`, `driver.runner.testRunner`, and `paths.*`.
+- A build command (`app.build`, `driver.runner.build`) is not rewritten. It runs in the config
+  file's directory, as a target's own does. Keep a build command and the path it produces in the
+  same place. Split across files, the build writes to one directory and the path points at another.
 - The file's `extends` names other files alone, since the file has no `templates:` of its own.
 
 A config read from a document with no file may name inline templates alone.

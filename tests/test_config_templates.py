@@ -21,7 +21,8 @@ from pydantic import ValidationError
 from bajutsu.common.config import load_config, load_config_file, resolve, unknown_target
 from bajutsu.common.config.effective import Effective, IosConfig
 from bajutsu.common.config.json_schema import config_json_schema
-from bajutsu.common.config.schema._templates import REBASED_PATHS
+from bajutsu.common.config.schema._templates import REBASED_PATHS, _rebased
+from bajutsu.common.config.schema.hooks import STEP_CONTAINERS
 
 
 def _write(path: Path, text: str) -> Path:
@@ -294,6 +295,40 @@ hooks:
     assert run.cleanup[0].steps[0].tap is not None
 
 
+# Every YAML key path a step nests further steps under, spelled out here rather than read from
+# `STEP_CONTAINERS`, so a wrong key in that table fails a case instead of skipping the container.
+_NESTING = [
+    ("steps",),
+    ("if", "then"),
+    ("if", "else"),
+    ("forEach", "steps"),
+    ("web", "steps"),
+    ("app", "steps"),
+]
+
+
+def test_the_nesting_cases_cover_every_step_container() -> None:
+    assert {keys for _, keys in STEP_CONTAINERS} == set(_NESTING)
+
+
+@pytest.mark.parametrize("keys", _NESTING, ids=".".join)
+def test_a_file_template_rebases_a_use_under_every_step_container(
+    tmp_path: Path, keys: tuple[str, ...]
+) -> None:
+    step: dict[str, object] = {"use": {"component": "parts/wait.yaml"}}
+    for key in reversed(keys):
+        step = {key: [step] if key in {"steps", "then", "else"} else step}
+    hooks = {"hooks": {"setup": [step]}}
+    out = _rebased(hooks, tmp_path / "shared", tmp_path / "suite")
+    nested: object = out["hooks"]["setup"][0]
+    for key in keys:
+        assert isinstance(nested, dict)
+        nested = nested[key]
+        if isinstance(nested, list):
+            nested = nested[0]
+    assert nested == {"use": {"component": "../shared/parts/wait.yaml"}}
+
+
 def test_a_file_template_must_stay_inside_the_suite_root(tmp_path: Path) -> None:
     _write(tmp_path / "outside.yaml", "platform: ios\n")
     cfg = _write(
@@ -354,6 +389,9 @@ _SCHEMA = config_json_schema()
         {"ios": {"platform": "ios", "app": {"launch": {"env": {"A": "1"}}}}},
         {"bare": {"app": {"url": "http://x/"}, "run": {"secrets": ["S"]}}},
         {"chained": {"extends": ["a", "./b.yaml"], "evidence": {"redact": {"fields": ["pw"]}}}},
+        # A template's `null` clears a group `defaults` set, as a target's may.
+        {"clear": {"platform": "ios", "app": None}},
+        {"clear": {"driver": None}},
     ],
 )
 def test_the_schema_accepts_a_template(templates: dict[str, object]) -> None:

@@ -7,6 +7,10 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from bajutsu.common import _yaml
+from bajutsu.common.scenario.load_expanded import contained_ref, parse_yaml_named
+from bajutsu.common.scenario.models.scenario.component import is_component_file_ref
+
 from .hooks import STEP_CONTAINERS
 from .target_config import TARGET_KEYS
 
@@ -54,9 +58,6 @@ class _Expansion:
     ) -> None:
         if not isinstance(entry, str) or not entry:
             raise self.fail(f"an entry must be a template name or a file path, got {entry!r}")
-        # Imported here: the scenario loader stays off the config schema's import path at load.
-        from bajutsu.common.scenario.models.scenario.component import is_component_file_ref
-
         key: str | Path
         here: Path | None
         if is_component_file_ref(entry):
@@ -97,9 +98,6 @@ class _Expansion:
                 f"{ref!r} is a template file, which resolves against the config file's directory, "
                 "but this config was loaded without its path; name inline templates alone"
             )
-        from bajutsu.common import _yaml
-        from bajutsu.common.scenario.load_expanded import contained_ref, parse_yaml_named
-
         try:
             path = contained_ref(self.root, base, ref)
             block = parse_yaml_named(path, _yaml.safe_load)
@@ -183,9 +181,6 @@ def _rebased(block: dict[str, Any], here: Path, config_dir: Path) -> dict[str, A
 
 
 def _rebase_uses(steps: object, rebase: Callable[[object], object]) -> None:
-    # Imported here for the same reason as in `_Expansion.visit`.
-    from bajutsu.common.scenario.models.scenario.component import is_component_file_ref
-
     for step in _dicts(steps):
         use = step.get("use")
         if isinstance(use, dict):

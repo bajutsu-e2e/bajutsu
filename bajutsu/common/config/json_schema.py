@@ -123,7 +123,13 @@ def _templates_schema(
         template["title"] = f"{platform.capitalize()}Template"
         template["description"] = f"A template of platform `{platform}`, every field optional."
         template["required"] = ["platform"]
-        template["properties"].update(platforms[platform]["properties"])
+        # Nullable like the target branches' groups: a template's `null` clears what `defaults` set.
+        template["properties"].update(
+            {
+                group: {"anyOf": [partial, {"type": "null"}]}
+                for group, partial in platforms[platform]["properties"].items()
+            }
+        )
         defs[template["title"]] = template
         refs.append({"$ref": f"#/$defs/{template['title']}"})
     any_platform = copy.deepcopy(defs[branches[0].__name__])
@@ -131,7 +137,10 @@ def _templates_schema(
     any_platform.pop("required", None)
     for group in GROUPS:
         any_platform["properties"][group] = {
-            "anyOf": [platforms[p]["properties"][group] for p in PLATFORM_SCHEMAS]
+            "anyOf": [
+                *(platforms[p]["properties"][group] for p in PLATFORM_SCHEMAS),
+                {"type": "null"},
+            ]
         }
     any_platform["title"] = "PlatformlessTemplate"
     any_platform["description"] = "A template with no `platform`, which its targets supply."
