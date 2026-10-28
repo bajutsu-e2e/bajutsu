@@ -190,6 +190,11 @@ jobs:
       - name: QUERY_JS value sources (Playwright)
         run: uv run --no-sync pytest tests/test_dom_query_js_web.py -m web -n0
 
+      # `read_attribute` rides the query's own walk (BE-0466); whether `getAttribute` lands beside
+      # the right record, iframes included, is only observable in a real DOM.
+      - name: read_attribute (Playwright)
+        run: uv run --no-sync pytest tests/test_playwright_read_attribute_web.py -m web -n0
+
   # Web network smoke (BE-0282): the one job that drives the real network path — page.route
   # interception, requestfinished capture, the `mocked` provenance flag, and redaction of
   # really-captured evidence — which the demo `smoke` above opts out of with --no-network. It runs

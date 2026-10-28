@@ -93,6 +93,16 @@
            existing scenarios, which never tap it, make no request. -->
       <button data-testid="sync.button">Sync account</button>
       <output data-testid="sync.status">idle</output>
+
+      <!-- An attribute surface (BE-0466): a link whose destination only its `href` carries, and a
+           panel that reports its state in `data-state` / `aria-busy` rather than in its text. The
+           panel settles a beat after Load is tapped, so a scenario asserting on it needs the
+           condition wait, not a single read. -->
+      <a data-testid="docs.link" href="https://bajutsu-e2e.github.io/bajutsu/" rel="noopener"
+        >Documentation</a
+      >
+      <button data-testid="panel.load">Load panel</button>
+      <div data-testid="panel" data-state="idle">Panel</div>
     </section>
 
     <script>
@@ -136,6 +146,17 @@
       document.querySelector('[data-testid="counter.increment"]').addEventListener("click", () => {
         n += 1;
         counter.value = String(n);
+      });
+
+      // The panel goes busy at once and settles a beat later, as a page awaiting data would.
+      const panel = document.querySelector('[data-testid="panel"]');
+      document.querySelector('[data-testid="panel.load"]').addEventListener("click", () => {
+        panel.dataset.state = "loading";
+        panel.setAttribute("aria-busy", "true");
+        setTimeout(() => {
+          panel.dataset.state = "ready";
+          panel.removeAttribute("aria-busy");
+        }, 400);
       });
 
       // The tiny list: each item flips pending -> done once, and the summary counts flips (BE-0285).

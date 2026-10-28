@@ -138,6 +138,7 @@ def test_assertion_kinds_derived_from_model() -> None:
         "response_schema",
         "visual",
         "clipboard",
+        "attribute",
         "golden",
     )
     assert "from_" not in ASSERTION_KINDS

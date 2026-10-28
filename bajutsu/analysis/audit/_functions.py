@@ -62,6 +62,8 @@ def _assertion_selectors(a: Assertion) -> Iterator[tuple[str, base.Selector]]:
         yield "expect: value", a.value.sel.as_selector()
     if a.label is not None:
         yield "expect: label", a.label.sel.as_selector()
+    if a.attribute is not None:
+        yield "expect: attribute", a.attribute.sel.as_selector()
     if a.count is not None:
         yield "expect: count", a.count.sel.as_selector()
     if a.enabled is not None:

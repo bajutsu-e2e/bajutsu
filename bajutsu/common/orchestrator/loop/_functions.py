@@ -89,7 +89,7 @@ from bajutsu.common.scenario import (
 )
 
 from ._loop_config import _LoopConfig
-from ._shared import _ExecSteps, _logger
+from ._shared import _ExecSteps, _logger, _with_attributes
 from ._step_counter import _StepCounter
 from .app_crash_latches import AppCrashLatches
 from .step_loop_state import StepLoopState
@@ -159,7 +159,10 @@ def _poll_asserts(
     while True:
         t0 = clock.now()
         tree = driver.query()
-        results = assertions.evaluate(tree, asserts, network(), ctx=ctx)
+        # An `attribute` assertion's element is read beside each tree, never once up front: the
+        # attributes it targets (`data-state`, `aria-busy`) settle a beat after an action (BE-0466).
+        tick_ctx = _with_attributes(ctx, driver, asserts)
+        results = assertions.evaluate(tree, asserts, network(), ctx=tick_ctx)
         if assertions.passed(results) or clock.now() >= deadline:
             return results, tree
         if cancelled():
@@ -1368,7 +1371,8 @@ def _run_if(
     """Evaluate the condition (with interpolation) and run the matching branch."""
     interp_condition = _interp_asserts([if_block.condition], bindings)[0]
     elements = driver.query()
-    results = assertions.evaluate(elements, [interp_condition], network())
+    ctx = _with_attributes(EvalContext(), driver, [interp_condition])
+    results = assertions.evaluate(elements, [interp_condition], network(), ctx=ctx)
     branch = if_block.then if assertions.passed(results) else (if_block.else_ or [])
     if not branch:
         return True, ""

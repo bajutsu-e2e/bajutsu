@@ -38,7 +38,15 @@ from bajutsu.codegen.common import (
 )
 from bajutsu.common.assertions import request_label
 from bajutsu.common.drivers import base
-from bajutsu.common.scenario import Assertion, CleanupRule, Gone, Scenario, Step, WaitRequest
+from bajutsu.common.scenario import (
+    Assertion,
+    AttributeMatch,
+    CleanupRule,
+    Gone,
+    Scenario,
+    Step,
+    WaitRequest,
+)
 
 # XCUITest drives the UI on-device and has no network-interception surface, so a network `request`
 # assertion / `until: { request }` wait has no faithful translation — it stays a TODO, but a labeled
@@ -58,6 +66,22 @@ def _s(text: str) -> str:
     """A Swift double-quoted string literal."""
     escaped = text.replace("\\", "\\\\").replace('"', '\\"')
     return f'"{escaped}"'
+
+
+def _attribute_todo(m: AttributeMatch) -> str:
+    """A labeled TODO for a web-only `attribute` assertion (BE-0466), naming what it checks."""
+    if m.absent:
+        check = "absent: true"
+    else:
+        op = (
+            "equals"
+            if m.equals is not None
+            else "contains"
+            if m.contains is not None
+            else "matches"
+        )
+        check = f"{op}: {_s(m.equals or m.contains or m.matches or '')}"
+    return f"// TODO: attribute(name: {_s(m.name)}, {check}) — web-only; not generated"
 
 
 _UNSUPPORTED = 'el("UNSUPPORTED_SELECTOR")'
@@ -427,6 +451,8 @@ def _emit_assertion(a: Assertion) -> list[str]:  # noqa: C901, PLR0911
         if a.count.at_least is not None:
             return [f"XCTAssertGreaterThanOrEqual({expr}, {a.count.at_least})"]
         return [f"XCTAssertLessThanOrEqual({expr}, {a.count.at_most})"]
+    if a.attribute is not None:
+        return [_attribute_todo(a.attribute)]
     if a.clipboard is not None:
         # simctl-level (pbpaste); no XCUITest equivalent, so emit a labeled TODO like the
         # device-state steps (BE-0052), naming the value asserted.

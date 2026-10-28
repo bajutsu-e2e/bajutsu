@@ -336,6 +336,9 @@ class XcuitestLiveDriver:
     def select_option(self, sel: base.Selector, option: str) -> None:  # noqa: ARG002  # Driver shape
         raise base.UnsupportedAction("selectOption is web-only; iOS has no native <select>")
 
+    def read_attribute(self, sel: base.Selector, name: str) -> str | None:  # noqa: ARG002  # Driver shape
+        raise base.UnsupportedAction("attribute is web-only; iOS has no HTML attributes")
+
     def set_picker_value(self, sel: base.Selector, value: str) -> None:  # noqa: ARG002  # Driver shape
         # The same platform as the resident runner, so a live-route implementation through Appium's
         # XCUITest driver may well be possible — but that is its own evaluation, and BE-0356 does not

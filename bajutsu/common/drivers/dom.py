@@ -99,6 +99,16 @@ QUERY_JS = """
 }
 """
 
+# `QUERY_JS` with each record also carrying `getAttribute(attr)` (BE-0466's `read_attribute`), `null`
+# for a missing attribute. Derived rather than written out, so the walk — and with it what
+# `resolve_unique` sees — cannot drift from the query's; `QUERY_JS` itself stays the string the
+# BajutsuKit WebView bridge mirrors (`tests/test_dom_query_js_sync.py`), which reads no attribute.
+_FRAME_FIELD = "frame: [r.x, r.y, r.width, r.height],"
+assert QUERY_JS.count(_FRAME_FIELD) == 2 and QUERY_JS.startswith("\n() => {")
+ATTRIBUTE_QUERY_JS = QUERY_JS.replace("() => {", "(attr) => {", 1).replace(
+    _FRAME_FIELD, f"{_FRAME_FIELD} attribute: el.getAttribute(attr),"
+)
+
 # The trait a plain text element carries — the same name iOS reports for a static label.
 STATIC_TEXT = "staticText"
 
@@ -175,3 +185,19 @@ def _to_element(rec: dict[str, Any]) -> base.Element:
 def parse_dom(records: list[dict[str, Any]]) -> list[base.Element]:
     """Map the QUERY_JS records to normalized Elements (the browser-free, unit-tested core)."""
     return [_to_element(r) for r in records if isinstance(r, dict)]
+
+
+def parse_dom_with_attribute(
+    records: list[dict[str, Any]],
+) -> list[tuple[base.Element, str | None]]:
+    """`parse_dom`, each Element paired with the attribute QUERY_JS read for it (BE-0466).
+
+    Unlike `value`, an empty string is kept: an attribute present with no value reads as `""`, which
+    an `attribute` assertion tells apart from a missing one (`None`).
+    """
+    out: list[tuple[base.Element, str | None]] = []
+    for r in records:
+        if isinstance(r, dict):
+            v = r.get("attribute")
+            out.append((_to_element(r), None if v is None else str(v)))
+    return out

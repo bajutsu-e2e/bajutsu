@@ -505,3 +505,21 @@ def test_handle_system_alert_is_todo() -> None:
     assert "// TODO: handleSystemAlert" in code
     assert "iOS-only" in code
     assert "unsupported step" not in code
+
+
+def test_attribute_assertion_emits_to_have_attribute() -> None:
+    # BE-0466: each operator maps onto Playwright's own attribute matcher, pinned line for line.
+    code = _gen(
+        "- name: x\n  steps:\n    - assert:\n"
+        "      - attribute: { sel: { id: docs.link }, name: href, equals: /docs }\n"
+        "      - attribute: { sel: { id: hero }, name: alt, contains: 'a.b' }\n"
+        "      - attribute: { sel: { id: cart }, name: data-state, matches: '^(ready|idle)$' }\n"
+        "      - attribute: { sel: { id: submit }, name: aria-busy, absent: true }\n"
+    )
+    lines = [ln.strip() for ln in code.splitlines() if "toHaveAttribute" in ln]
+    assert lines == [
+        "await expect(page.getByTestId('docs.link')).toHaveAttribute('href', '/docs');",
+        "await expect(page.getByTestId('hero')).toHaveAttribute('alt', /a\\.b/);",
+        "await expect(page.getByTestId('cart')).toHaveAttribute('data-state', /^(ready|idle)$/);",
+        "await expect(page.getByTestId('submit')).not.toHaveAttribute('aria-busy');",
+    ]

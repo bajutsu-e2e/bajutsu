@@ -513,3 +513,15 @@ def test_navigate_is_a_labeled_web_only_todo() -> None:
     code = _gen("- name: x\n  steps:\n    - navigate: /settings\n")
     assert '// TODO: navigate(url: "/settings") — web-only; not generated' in code
     assert "unsupported step" not in code
+
+
+def test_attribute_is_a_labeled_web_only_todo() -> None:
+    # BE-0466: an HTML attribute has no XCUITest counterpart, so it is named rather than dropped.
+    code = _gen(
+        "- name: x\n  steps:\n    - assert:\n"
+        "      - attribute: { sel: { id: a }, name: href, equals: /docs }\n"
+        "      - attribute: { sel: { id: a }, name: aria-busy, absent: true }\n"
+    )
+    assert '// TODO: attribute(name: "href", equals: "/docs") — web-only; not generated' in code
+    assert '// TODO: attribute(name: "aria-busy", absent: true) — web-only; not generated' in code
+    assert "unsupported assertion" not in code

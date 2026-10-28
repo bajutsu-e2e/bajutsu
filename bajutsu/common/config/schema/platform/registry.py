@@ -38,6 +38,10 @@ class PlatformSchema:
     runs_on: type[_Model]
     driver: type[_Model]
     run: type[_Model]
+    # Whether this platform's backend reads an HTML attribute (`elementAttribute`, BE-0466), so a
+    # config can refuse an `attribute` in `hooks.interrupts` without importing a driver. A test pins
+    # it to each backend's `CAPABILITIES`.
+    element_attribute: bool = False
 
     def model(self, group: Group) -> type[_Model]:
         """The model registered for `group`."""
@@ -54,8 +58,12 @@ PLATFORM_SCHEMAS: Mapping[str, PlatformSchema] = types.MappingProxyType(
         "android": PlatformSchema(
             app=AndroidApp, runs_on=AndroidRunsOn, driver=AndroidDriver, run=AndroidRun
         ),
-        "web": PlatformSchema(app=WebApp, runs_on=WebRunsOn, driver=WebDriver, run=WebRun),
-        "fake": PlatformSchema(app=FakeApp, runs_on=FakeRunsOn, driver=FakeDriver, run=FakeRun),
+        "web": PlatformSchema(
+            app=WebApp, runs_on=WebRunsOn, driver=WebDriver, run=WebRun, element_attribute=True
+        ),
+        "fake": PlatformSchema(
+            app=FakeApp, runs_on=FakeRunsOn, driver=FakeDriver, run=FakeRun, element_attribute=True
+        ),
     }
 )
 

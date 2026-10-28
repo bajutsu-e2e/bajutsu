@@ -550,6 +550,21 @@ class DriverConformanceContract:
             with pytest.raises(base.UnsupportedAction):
                 driver.goto("about:blank")
 
+    def test_element_attribute_capability_matches_behavior(
+        self, harness: ConformanceHarness
+    ) -> None:
+        # capabilities() is a promise (BE-0466): an ELEMENT_ATTRIBUTE backend reads through the same
+        # `resolve_unique` a tap uses — a value or None for the resolved element, ElementNotFound
+        # for no match — and one without it refuses with UnsupportedAction rather than reading None.
+        driver = harness.with_screen([element(identifier="a")])
+        if base.Capability.ELEMENT_ATTRIBUTE in driver.capabilities():
+            assert driver.read_attribute({"id": "a"}, "data-bajutsu-unset") is None
+            with pytest.raises(base.ElementNotFound):
+                driver.read_attribute({"id": "missing"}, "data-bajutsu-unset")
+        else:
+            with pytest.raises(base.UnsupportedAction):
+                driver.read_attribute({"id": "a"}, "data-bajutsu-unset")
+
     def test_picker_wheel_capability_matches_behavior(self, harness: ConformanceHarness) -> None:
         # capabilities() is a promise (BE-0356): a PICKER_WHEEL backend must not raise
         # UnsupportedAction for set_picker_value; one without it must raise rather than silently

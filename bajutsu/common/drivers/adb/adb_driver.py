@@ -1592,6 +1592,11 @@ class AdbDriver(CoordinateTreeDriver):
             "selectOption is web-backend-only, for a <select>; Android has no native <select>"
         )
 
+    def read_attribute(self, sel: base.Selector, name: str) -> str | None:  # noqa: ARG002  # Driver shape
+        raise base.UnsupportedAction(
+            "attribute is web-backend-only; Android has no HTML attributes"
+        )
+
     def set_picker_value(self, sel: base.Selector, value: str) -> None:  # noqa: ARG002  # Driver shape
         raise base.UnsupportedAction(
             "setPickerValue is iOS-picker-wheel-only; Android has no equivalent control"

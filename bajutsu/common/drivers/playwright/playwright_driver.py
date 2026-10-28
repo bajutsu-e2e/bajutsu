@@ -13,13 +13,19 @@ from urllib.parse import urljoin
 from bajutsu.common.backend_cli import simctl
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.actuation import Actuation, ActuationLog, Drained
-from bajutsu.common.drivers.dom import QUERY_JS, parse_dom
+from bajutsu.common.drivers.dom import (
+    ATTRIBUTE_QUERY_JS,
+    QUERY_JS,
+    parse_dom,
+    parse_dom_with_attribute,
+)
 from bajutsu.common.evidence import intervals
 
 from ._frame_scope import _FrameScope
 from ._functions import (
     _device_context_kwargs,
     _iframe_elements,
+    _iframe_records,
     _is_browser_fault,
     _nav_reason,
     _playwright_error_types,
@@ -418,6 +424,18 @@ class PlaywrightDriver:
             (el, None) for el in parse_dom(records if isinstance(records, list) else [])
         ]
         return main + list(_iframe_elements(self._page))
+
+    @_wedge_guard
+    def read_attribute(self, sel: base.Selector, name: str) -> str | None:
+        # One walk that carries the attribute beside each record, resolved by the same
+        # `resolve_unique` a tap uses (BE-0466): no window between finding the element and reading
+        # it, and no second matching rule that could disagree with the first. `name` reaches the
+        # script `json.dumps`-encoded, as `_point_hits` encodes its strings, never spliced in raw.
+        records = self._page.evaluate(f"() => ({ATTRIBUTE_QUERY_JS})({json.dumps(name)})")
+        pairs = parse_dom_with_attribute(records if isinstance(records, list) else [])
+        pairs += [(el, value) for el, _, value in _iframe_records(self._page, name)]
+        el = base.resolve_unique([e for e, _ in pairs], sel)
+        return next(value for e, value in pairs if e is el)
 
     def _center(self, sel: base.Selector) -> base.Point:
         point, _, _ = self._center_with_element(sel)
@@ -947,6 +965,7 @@ class PlaywrightDriver:
             base.Capability.SELECT_OPTION,
             base.Capability.TEXT_SELECTION,
             base.Capability.URL_NAVIGATION,
+            base.Capability.ELEMENT_ATTRIBUTE,
         }
     )
 

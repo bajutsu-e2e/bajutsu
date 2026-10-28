@@ -142,6 +142,10 @@ class WebContextDriver:
     def select_option(self, sel: Selector, option: str) -> None:  # noqa: ARG002  # Driver shape
         raise UnsupportedAction("selectOption is not supported in web context (first slice)")
 
+    def read_attribute(self, sel: Selector, name: str) -> str | None:  # noqa: ARG002  # Driver shape
+        # The BajutsuKit bridge carries no attribute read yet; BE-0466 leaves it to a later slice.
+        raise UnsupportedAction("attribute is not supported in web context (first slice)")
+
     def set_picker_value(self, sel: Selector, value: str) -> None:  # noqa: ARG002  # Driver shape
         raise UnsupportedAction("setPickerValue is iOS-only; a DOM has no picker wheel")
 

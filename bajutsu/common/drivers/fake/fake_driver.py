@@ -68,6 +68,9 @@ class FakeDriver:
         # are told apart by `within` / `traits` / `index` — so an identifier key could not separate
         # them. Seeded after construction, like `system_alert_buttons`.
         self.picker_wheel_options: dict[int, list[str]] = {}
+        # The HTML attributes `read_attribute` returns (BE-0466), keyed by `id()` of the `Element`
+        # in `screen` for the same reason as `picker_wheel_options`. Seeded after construction.
+        self.attributes: dict[int, dict[str, str]] = {}
         # Identifiers of the two nodes `dismiss_blocking_tip` looks for in `screen`: the dismiss
         # region it taps, and the tip container it requires alongside it so an app's own popover —
         # which installs the same region — is left alone. Both are needed for a dismiss, exactly as
@@ -236,6 +239,12 @@ class FakeDriver:
         self._log_target("selectOption", base.resolve_unique(self.screen, sel))
         self._record("select_option", (sel, option))
 
+    def read_attribute(self, sel: base.Selector, name: str) -> str | None:
+        # Resolved like an action (zero / ambiguous raise), then the seeded attributes decide; an
+        # element nobody seeded simply has none. Not recorded: a read is no actuation.
+        el = base.resolve_unique(self.screen, sel)
+        return self.attributes.get(id(el), {}).get(name)
+
     def set_picker_value(self, sel: base.Selector, value: str) -> None:
         # Same resolution discipline as every other action: zero -> ElementNotFound, ambiguous ->
         # AmbiguousSelector, `index` picks the nth. Then the seeded rows decide, because an absent
@@ -397,6 +406,7 @@ class FakeDriver:
             base.Capability.MULTI_TOUCH,
             base.Capability.SELECT_OPTION,
             base.Capability.URL_NAVIGATION,
+            base.Capability.ELEMENT_ATTRIBUTE,
             base.Capability.TEXT_SELECTION,
             base.Capability.HANDLE_SYSTEM_ALERT,
             base.Capability.PICKER_WHEEL,

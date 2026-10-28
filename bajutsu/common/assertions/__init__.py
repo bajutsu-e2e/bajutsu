@@ -16,8 +16,10 @@ from __future__ import annotations
 
 from bajutsu.common.assertions._common import AssertionResult, sel_str
 from bajutsu.common.assertions.evaluate import (
+    AttributeRead,
     EvalContext,
     GoldenContext,
+    attribute_key,
     evaluate,
     evaluate_one,
     passed,
@@ -28,11 +30,13 @@ from bajutsu.common.assertions.visual import VisualContext, VisualEvidence
 
 __all__ = [
     "AssertionResult",
+    "AttributeRead",
     "EvalContext",
     "GoldenContext",
     "SchemaContext",
     "VisualContext",
     "VisualEvidence",
+    "attribute_key",
     "count_matching",
     "evaluate",
     "evaluate_one",

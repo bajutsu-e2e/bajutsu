@@ -23,6 +23,7 @@ from bajutsu.common.evidence.network import NetworkExchange
 from bajutsu.common.scenario import (
     ASSERTION_KINDS,
     Assertion,
+    AttributeMatch,
     ClipboardMatch,
     CountMatch,
     CountOp,
@@ -34,7 +35,7 @@ from bajutsu.common.scenario import (
     TextMatch,
 )
 
-from .eval_context import EvalContext
+from .eval_context import AttributeRead, EvalContext, attribute_key
 from .golden_context import GoldenContext
 
 # Assertion evaluators keyed by kind (the `Assertion` field name), each a thin adapter over the
@@ -70,7 +71,7 @@ def _eval_text(elements: list[base.Element], kind: str, a: TextMatch) -> Asserti
     return AssertionResult(ok, kind, f"{kind} {op}={expected!r}: {sel_str(a.sel)}", reason)
 
 
-def _text_op(a: TextMatch) -> tuple[str, str]:
+def _text_op(a: TextMatch | AttributeMatch) -> tuple[str, str]:
     if a.equals is not None:
         return "equals", a.equals
     if a.contains is not None:
@@ -87,6 +88,33 @@ def _text_cmp(actual: str | None, op: str, expected: str) -> bool:
     if op == "contains":
         return expected in actual
     return _compile(expected).search(actual) is not None
+
+
+def _eval_attribute(read: AttributeRead | None, a: AttributeMatch) -> AssertionResult:
+    detail_base = f"attribute {a.name}: {sel_str(a.sel)}"
+    if read is None:
+        return AssertionResult(
+            False, "attribute", detail_base, "no attribute read (backend cannot read attributes)"
+        )
+    if read.error is not None:
+        return AssertionResult(False, "attribute", detail_base, read.error)
+    actual = read.value
+    if a.absent:
+        ok = actual is None
+        reason = "" if ok else f"expected attribute {a.name!r} absent but actual={actual!r}"
+        return AssertionResult(
+            ok, "attribute", f"attribute {a.name} absent: {sel_str(a.sel)}", reason
+        )
+    op, expected = _text_op(a)
+    ok = _text_cmp(actual, op, expected)
+    if ok:
+        reason = ""
+    elif actual is None:
+        reason = f"expected {op}={expected!r} but attribute {a.name!r} is absent"
+    else:
+        reason = f"expected {op}={expected!r} but actual={actual!r}"
+    detail = f"attribute {a.name} {op}={expected!r}: {sel_str(a.sel)}"
+    return AssertionResult(ok, "attribute", detail, reason)
 
 
 def _eval_count(elements: list[base.Element], a: CountMatch) -> AssertionResult:
@@ -404,6 +432,15 @@ def _do_clipboard(
 ) -> AssertionResult:
     assert a.clipboard is not None
     return _eval_clipboard(ctx.clipboard, a.clipboard)
+
+
+@_evaluator("attribute")
+def _do_attribute(
+    a: Assertion, _el: list[base.Element], _e: list[NetworkExchange], ctx: EvalContext
+) -> AssertionResult:
+    assert a.attribute is not None
+    reads = ctx.attributes or {}
+    return _eval_attribute(reads.get(attribute_key(a.attribute)), a.attribute)
 
 
 @_evaluator("golden")

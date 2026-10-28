@@ -47,6 +47,7 @@ _TRACED_METHODS = frozenset(
         "select_all",
         "copy_selection",
         "select_option",
+        "read_attribute",
         "select_photos",
         "set_picker_value",
         "handle_system_alert",

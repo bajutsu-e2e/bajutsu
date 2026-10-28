@@ -79,6 +79,11 @@ class Driver(Protocol):
     # a `<select>` has no native counterpart on iOS / Android, so those backends raise
     # UnsupportedAction (BE-0191).
     def select_option(self, sel: Selector, option: str) -> None: ...
+    # The value of the HTML attribute `name` on the element `sel` resolves to (via `resolve_unique`,
+    # so no match / two matches raise SelectorError), or None when the element has no such
+    # attribute. Read on demand rather than carried in every snapshot (BE-0466). Web-only: a backend
+    # without ELEMENT_ATTRIBUTE raises UnsupportedAction.
+    def read_attribute(self, sel: Selector, name: str) -> str | None: ...
     # Move the picker wheel resolved by `sel` to the row whose value is `value` (BE-0356). iOS-only:
     # a wheel exposes no addressable row, so only XCUITest's `adjust(toPickerWheelValue:)` can land
     # on one deterministically; a backend without the PICKER_WHEEL capability raises
