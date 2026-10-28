@@ -105,9 +105,9 @@ def test_round_trip_through_manifest_is_lossless() -> None:
 
 def test_manifest_carries_schema_version_and_source_name() -> None:
     data = manifest_dict("r1", [_result()], source_name="smoke.yaml")
-    # bumped for the run matrix of a run's `runsOn` coordinates (v15, BE-0452), after the
-    # coordinates and not-applicable records themselves (v14)
-    assert data["schemaVersion"] == 15
+    # bumped for a step's non-fatal warnings (v16, BE-0474), after the run matrix of a run's
+    # `runsOn` coordinates (v15, BE-0452)
+    assert data["schemaVersion"] == 16
     assert data["sourceName"] == "smoke.yaml"
 
 
@@ -456,3 +456,26 @@ def test_a_damaged_target_devices_entry_is_dropped_rather_than_crashing_the_rend
     data["scenarios"][0]["target_devices"]["web"] = "not-an-object"
     [r] = results_from_manifest(data)
     assert sorted(r.target_devices) == ["app"]
+
+
+def test_step_warnings_survive_the_round_trip() -> None:
+    # A `totp` window wait's wall-clock jump note (BE-0474), shown beside a later expired-code failure.
+    original = [_result()]
+    original[0].steps[0].warnings = ("totp: wall clock jumped +12s during window wait; 4s left",)
+    data = json.loads(json.dumps(manifest_dict("r1", original)))
+    assert results_from_manifest(data) == original
+
+
+@pytest.mark.parametrize("stored", ["absent", None, [], [7, None]])
+def test_a_manifest_without_step_warnings_loads_as_empty(stored: object) -> None:
+    # v15 and earlier carry no such key; a step without it predates the field, so it has no warnings.
+    data = manifest_dict("r1", [_result()])
+    step = data["scenarios"][0]["steps"][0]  # type: ignore[index]
+    if stored == "absent":
+        del step["warnings"]
+    else:
+        step["warnings"] = stored
+
+    [restored] = results_from_manifest(data)
+
+    assert restored.steps[0].warnings == ()
