@@ -31,11 +31,13 @@ from bajutsu.cli._shared import (
     _refuse_bad_preconditions,
     _reject_url_udid,
     _resolve_browser,
+    _resolve_kind,
     _select_actuator_or_exit,
     _start_launch_server_or_exit,
     _with_headed,
     _with_worker_device,
     _without_engine_condition,
+    check_listed_browsers,
     parse_engine_flag,
     resolve_system_alert_handling_flag,
 )
@@ -379,11 +381,13 @@ def _resolve_config_and_engines(
     headed: bool | None,
     browser: str,
     browsers: str,
+    kind: str = "",
 ) -> tuple[LoadedConfig, Effective, dict[str, str] | None, list[str]]:
     """Resolve the effective config (building a Git-sourced app on demand) and the engine list.
 
-    Applies `--headed` and `--browser`, then parses `--browsers` into the cross-browser matrix axis
-    (BE-0076). Returns the loaded config itself — so a multi-target scenario resolves every other
+    Applies `--headed`, `--kind`, and `--browser`, then parses `--browsers` into the cross-browser
+    matrix axis (BE-0076). Each flag picks among the kinds or browsers the target lists (BE-0468).
+    Returns the loaded config itself — so a multi-target scenario resolves every other
     name it declares against the same materialized file (BE-0428) — the resolved config for
     *target_name*, its Git source provenance (None for a local config), and
     the requested engines exactly as `--browsers` gave them: empty when `--browsers` is absent, a
@@ -407,12 +411,16 @@ def _resolve_config_and_engines(
             raise typer.Exit(2) from None
     # --headed/--no-headed overrides the target's `driver.headless` (web only; iOS ignores it).
     eff = _with_headed(eff, headed)
-    # --browser overrides the target's `runsOn.browser.kind` (web only; flag > config > chromium).
-    eff = _resolve_browser(eff, browser)
+    # --kind narrows the target's `runsOn.ios.kind` to the kinds it names (iOS only; BE-0468).
+    eff = _resolve_kind(eff, kind)
     # --browsers is the multi-engine spelling of the same axis: a comma list fans the run out across
     # engines into a matrix. One engine collapses to the single-engine path (set as --browser would);
-    # >1 takes the matrix branch. Validated up front (unknown → 2).
+    # >1 takes the matrix branch. Validated up front (unknown → 2), and against the target's own list
+    # before --browser replaces that list.
     engines = _parse_browsers(browsers)
+    check_listed_browsers(eff, "--browsers", engines)
+    # --browser overrides the target's `runsOn.browser.kind` (web only; flag > config > chromium).
+    eff = _resolve_browser(eff, browser)
     if len(engines) == 1:
         eff = _resolve_browser(eff, engines[0])
     elif engines:
@@ -613,6 +621,22 @@ def _reject_two_grid_targets(
                 "endpoint counts as one device; split the scenario"
             )
             raise typer.Exit(2)
+
+
+def _reject_kind_across_targets(target_effs: Mapping[str, Effective], *, kind: str) -> None:
+    """Refuse `--kind` when the run declares more than one iOS target (BE-0468).
+
+    The flag narrows the command's own target, so with a second iOS target it would leave that
+    target's kinds as they are without a word; which target it means has no answer, as for the web
+    flags (`_reject_web_flags_across_targets`).
+    """
+    ios = sorted(name for name, eff in target_effs.items() if eff.platform == "ios")
+    if kind and len(ios) > 1:
+        typer.echo(
+            f"--kind applies to a run's single iOS target, but this run declares {len(ios)}: "
+            f"{', '.join(ios)} — set each target's own runsOn.ios.kind instead"
+        )
+        raise typer.Exit(2)
 
 
 def _reject_web_flags_across_targets(
@@ -2882,6 +2906,13 @@ def run_body(
         "scenario runs once per engine and the run is green only if every engine passes "
         "(all-must-pass). A single engine equals --browser",
     ),
+    kind: str = typer.Option(
+        "",
+        "--kind",
+        help="iOS: run only these of the target's runsOn.ios.kind — simulator / device, or a comma "
+        "list; one run per named kind. A kind the target does not declare exits 2 (default: every "
+        "listed kind)",
+    ),
     # --- Reporting & output ---
     zip_run: bool = typer.Option(
         False,
@@ -2972,6 +3003,7 @@ def run_body(
             headed=headed,
             browser=browser,
             browsers=browsers,
+            kind=kind,
         )
         scenarios, description, source_name, files, plan_sources = _load_scenarios(
             eff, scenario or [], primary
@@ -3091,6 +3123,7 @@ def run_body(
     # routed elsewhere uses may be declared only on that target's own config (BE-0428).
     secret_bindings, secret_values = _resolve_secrets(target_effs.values())
     _reject_web_flags_across_targets(target_effs, headed=headed, browser=browser, browsers=browsers)
+    _reject_kind_across_targets(target_effs, kind=kind)
     # Every scenario, not only the runnable ones: the matrix still carries the failed ones to the
     # pipeline, whose own guard would otherwise raise mid-run instead of this clean exit 2.
     _reject_cross_browser_matrix_with_targets(all_scenarios, engines)

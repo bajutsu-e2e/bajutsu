@@ -1500,8 +1500,9 @@ def test_browser_flag_replaces_a_listed_engine_condition() -> None:
     )
     eff = resolve(cfg, "site")
     assert "browser.kind" in eff.conditions
-    flagged = _resolve_browser(eff, "webkit")
-    assert _browser_of(flagged) == "webkit"
+    # The flag picks one of the listed browsers; one the list leaves out exits 2 (BE-0468).
+    flagged = _resolve_browser(eff, "firefox")
+    assert _browser_of(flagged) == "firefox"
     assert "browser.kind" not in flagged.conditions
 
 

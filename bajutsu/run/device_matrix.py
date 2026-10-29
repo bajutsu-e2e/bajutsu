@@ -392,6 +392,26 @@ def apply_kind(eff: Effective, kind: str) -> Effective:
     return replace(eff, conditions=conditions, platform_config=replace(cfg, xcuitest=xcuitest))
 
 
+def select_kinds(eff: Effective, kinds: Sequence[str]) -> Effective:
+    """*eff* with its listed iOS kinds narrowed to *kinds*, in the target's own order (BE-0468).
+
+    The narrowed list still counts as a condition, so a run that `--kind` selects keys the same
+    history as that kind's run of the full list. Its first kind becomes the whole target's
+    destination, the one `record` and the run's own setup read before any run takes its kind.
+    A target that lists no kind is returned unchanged.
+    """
+    listed = eff.conditions.get("kind")
+    cfg = eff.platform_config
+    if not isinstance(listed, list) or not isinstance(cfg, IosConfig):
+        return eff
+    narrowed = [k for k in listed if k in kinds]
+    conditions = {**eff.conditions, "kind": narrowed}
+    if cfg.xcuitest is None:
+        return replace(eff, conditions=conditions)
+    xcuitest = cfg.xcuitest.model_copy(update={"device_type": narrowed[0]})
+    return replace(eff, conditions=conditions, platform_config=replace(cfg, xcuitest=xcuitest))
+
+
 def without_engine_condition(eff: Effective) -> Effective:
     """*eff* with its listed `runsOn.browser.kind` no longer counted as a device condition.
 

@@ -23,6 +23,7 @@ from bajutsu.cli._shared import (
     _refuse_out_in_checkout,
     _require_ai_credential,
     _resolve_browser,
+    _resolve_kind,
     _resolve_language,
     _select_actuator_or_exit,
     _start_launch_server_or_exit,
@@ -158,6 +159,12 @@ def record(
         help=f"web backend: browser to author against — {' / '.join(BROWSER_KINDS)}; "
         "overrides the target's runsOn.browser.kind (default: chromium)",
     ),
+    kind: str = typer.Option(
+        "",
+        "--kind",
+        help="iOS: the one of the target's runsOn.ios.kind to author on — simulator / device; "
+        "a kind the target does not declare exits 2 (default: the first listed kind)",
+    ),
     language: str = typer.Option(
         "",
         "--language",
@@ -191,6 +198,8 @@ def record(
     eff, _source, checkout_root = _load_effective_with_source(config, target_name)
     # --headed/--no-headed overrides the target's `driver.headless` (web only; iOS ignores it).
     eff = _with_headed(eff, headed)
+    # --kind picks one of the target's `runsOn.ios.kind` (iOS only; BE-0468).
+    eff = _resolve_kind(eff, kind, single=True)
     # --browser overrides the target's `runsOn.browser.kind` (web only; flag > config > chromium).
     eff = _resolve_browser(eff, browser)
     # --language overrides the target's `ai.language` (flag > config > auto), BE-0188.
