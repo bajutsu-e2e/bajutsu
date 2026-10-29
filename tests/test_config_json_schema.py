@@ -98,7 +98,7 @@ targets:
   site:
     platform: web
     app: { url: "http://localhost:3000/" }
-    runsOn: { browser: { engine: [chromium, webkit] } }
+    runsOn: { browser: { kind: [chromium, webkit] } }
 """
 
 
@@ -177,9 +177,9 @@ def test_the_command_prints_the_schema() -> None:
 @pytest.mark.parametrize(
     ("platform", "destination", "fields"),
     [
-        ("ios", "ios", {"model", "os", "kind", "locale", "seedPhotos"}),
+        ("ios", "ios", {"model", "os", "kind", "family", "locale", "seedPhotos"}),
         ("android", "android", {"avd", "apiLevel"}),
-        ("web", "browser", {"engine", "version", "emulate"}),
+        ("web", "browser", {"kind", "version", "emulate"}),
     ],
 )
 def test_runs_on_is_one_block_per_destination(

@@ -25,13 +25,13 @@ from bajutsu.cli._shared import (
     _with_worker_device,
 )
 from bajutsu.common.config import (
-    WEB_ENGINES,
     Effective,
     IosConfig,
     require_ios,
     resolve_preconditions,
 )
 from bajutsu.common.devices import errors as device_errors
+from bajutsu.common.devices.browsers import BROWSER_KINDS
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.xcuitest import XcuitestChannelError
 from bajutsu.common.platform_lifecycle import (
@@ -110,8 +110,8 @@ def repl(
     browser: str = typer.Option(
         "",
         "--browser",
-        help=f"web backend: rendering engine to inspect — {' / '.join(WEB_ENGINES)}; "
-        "overrides the target's runsOn.browser.engine (default: chromium)",
+        help=f"web backend: browser to inspect — {' / '.join(BROWSER_KINDS)}; "
+        "overrides the target's runsOn.browser.kind (default: chromium)",
     ),
     attach: bool = typer.Option(
         False,

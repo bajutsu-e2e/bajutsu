@@ -28,11 +28,27 @@ def test_plan_web_target_includes_the_configured_engine_browser() -> None:
         "    platform: web\n"
         "    app: {url: 'http://x/index.html'}\n"
         "    runsOn:\n"
-        "      browser: {engine: firefox}\n"
+        "      browser: {kind: firefox}\n"
     )
     p = provision.plan(cfg)
     assert p.extras == ("web",)
     assert Tool("firefox", Playwright("firefox")) in p.tools
+
+
+@pytest.mark.parametrize(
+    ("kind", "name"), [("chrome", "Google Chrome"), ("edge", "Microsoft Edge")]
+)
+def test_plan_leaves_a_channel_browser_to_the_host(kind: str, name: str) -> None:
+    # BE-0468: Chrome and Edge are the host's own installs, which `doctor` checks by launching them.
+    cfg = load_config(
+        "targets:\n  site:\n    platform: web\n    app: {url: 'http://x/'}\n"
+        f"    runsOn: {{browser: {{kind: {kind}}}}}\n"
+    )
+    assert not [t for t in provision.plan(cfg).tools if t.exe == kind]
+    # `doctor` still names the host install when the channel is missing.
+    install = requirements.playwright_browser(kind).install
+    assert isinstance(install, requirements.Manual)
+    assert name in install.hint
 
 
 def test_plan_fake_target_installs_nothing() -> None:

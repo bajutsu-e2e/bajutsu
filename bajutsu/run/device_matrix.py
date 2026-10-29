@@ -17,8 +17,8 @@ from dataclasses import dataclass, field, replace
 from typing import Literal
 
 from bajutsu.common.backends import ensure_web_runtime
-from bajutsu.common.config import Effective, WebConfig
-from bajutsu.common.config.accessors import web_engine
+from bajutsu.common.config import Effective, IosConfig, WebConfig
+from bajutsu.common.config.accessors import web_engine, xcuitest_targets_real_device
 from bajutsu.common.config.preconditions import effective_conditions, remote_condition_problems
 from bajutsu.common.devices import facts
 from bajutsu.common.devices.errors import DeviceError
@@ -62,12 +62,14 @@ class Cell:
     """The runs that take the same devices, run as one pass.
 
     `devices` maps each target on a narrowed pool to the udids of its eligible set; a target absent
-    from it takes its own lanes. `engines` names the engine each web target is driven with.
+    from it takes its own lanes. `engines` names the browser kind each web target is driven with,
+    and `kinds` the iOS kind each target that lists its kinds runs on (BE-0468).
     """
 
     devices: dict[str, tuple[str, ...]]
     engines: dict[str, str]
     runs: list[PlannedRun] = field(default_factory=list)
+    kinds: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -109,12 +111,32 @@ def read_pool_facts(lane: TargetLanes) -> list[DeviceFacts]:
     """
     platform = lane.eff.platform
     if platform == "ios":
-        return facts.read_ios(lane.udids)
+        return read_ios_facts(lane.eff, lane.udids)
     if platform == "android":
         return facts.read_android(lane.udids)
     raise facts.DeviceReadError(
         f"target {lane.name!r}: platform {platform} has no device to match runsOn against"
     )
+
+
+def read_ios_facts(
+    eff: Effective,
+    udids: Sequence[str],
+    read_ios: Callable[[Sequence[str]], list[DeviceFacts]] | None = None,
+) -> list[DeviceFacts]:
+    """The facts of an iOS pool, read through the listing each of the target's kinds needs (BE-0468).
+
+    A Simulator target reads simctl and a physical-device target devicectl, so a udid of the other
+    kind fails the read; a target that lists both kinds reads a pool that may mix them. An injected
+    *read_ios* stands in for every listing.
+    """
+    if read_ios is not None:
+        return read_ios(udids)
+    if "kind" in eff.conditions:
+        return facts.read_ios_pool(udids)
+    if xcuitest_targets_real_device(eff):
+        return facts.read_ios_device(udids)
+    return facts.read_ios(udids)
 
 
 def participants_of(s: Scenario, primary: str) -> list[tuple[str, ...]]:
@@ -213,6 +235,7 @@ def plan(
             already failed; the other records keep their index into *scenarios*.
     """
     pool_facts: dict[str, list[DeviceFacts]] = {}
+    readers = _pool_readers(lanes)
     browsers: dict[str, DeviceFacts] = {}
     records: list[PlannedRun] = []
     cells: dict[tuple[object, ...], Cell] = {}
@@ -229,7 +252,7 @@ def plan(
                 devices = _browsers(lane, conditions[group[0]], browsers, read_browser)
             elif conditions[group[0]]:
                 if lane.pool not in pool_facts:
-                    pool_facts[lane.pool] = read_facts(lane)
+                    pool_facts[lane.pool] = read_facts(readers.get(lane.pool, lane))
                 devices = pool_facts[lane.pool]
             else:
                 devices = []
@@ -239,16 +262,52 @@ def plan(
                 conditions[group[0]],
                 devices,
                 engine=web_engine(lane.eff) if platform == "web" else None,
+                kind=driven_kind(lane.eff),
             )
             participants.append(Participant(group, lane.pool, tuple(runs)))
         for combo in combine(participants, pool_facts):
             record = PlannedRun(index, combo)
             records.append(record)
             if combo.outcome == "run":
-                devices_by_target, engines = _placement(participants, combo)
-                key = (tuple(sorted(devices_by_target.items())), tuple(sorted(engines.items())))
-                cells.setdefault(key, Cell(devices_by_target, engines)).runs.append(record)
+                devices_by_target, engines, kinds = _placement(participants, combo)
+                key = (
+                    tuple(sorted(devices_by_target.items())),
+                    tuple(sorted(engines.items())),
+                    tuple(sorted(kinds.items())),
+                )
+                cell = cells.setdefault(key, Cell(devices_by_target, engines, kinds=kinds))
+                cell.runs.append(record)
     return DeviceMatrix(cells=list(cells.values()), records=records)
+
+
+def driven_kind(eff: Effective) -> str | None:
+    """The iOS kind *eff* runs on when it lists none, or None for a listed kind or another platform."""
+    if eff.platform != "ios" or "kind" in eff.conditions:
+        return None
+    return "device" if xcuitest_targets_real_device(eff) else "simulator"
+
+
+def _pool_readers(lanes: Mapping[str, TargetLanes]) -> dict[str, TargetLanes]:
+    """The lane each iOS pool is read through, so one listing covers every target that shares it.
+
+    A pool is read once, so the listing must not depend on which target happens to read it first
+    (BE-0468): targets that need different listings read the pool through the mixed one, and each
+    target's runs then keep to its own kind.
+    """
+    by_pool: dict[str, list[TargetLanes]] = {}
+    for lane in lanes.values():
+        if lane.eff.platform == "ios":
+            by_pool.setdefault(lane.pool, []).append(lane)
+    readers: dict[str, TargetLanes] = {}
+    for pool, members in by_pool.items():
+        mixed = next((m for m in members if "kind" in m.eff.conditions), None)
+        if mixed is None and len({driven_kind(m.eff) for m in members}) > 1:
+            first = members[0]
+            # Listing both kinds is what selects the mixed read; no run forms from this lane.
+            both = {**first.eff.conditions, "kind": ["simulator", "device"]}
+            mixed = replace(first, eff=replace(first.eff, conditions=both))
+        readers[pool] = mixed or members[0]
+    return readers
 
 
 def _browsers(
@@ -257,10 +316,10 @@ def _browsers(
     cache: dict[str, DeviceFacts],
     read_browser: Callable[[str], DeviceFacts],
 ) -> list[DeviceFacts]:
-    """The launched browser of each engine a `browser.version` range compares, read once each."""
+    """The launched browser of each kind a `browser.version` range compares, read once each."""
     if "browser.version" not in conditions:
         return []
-    listed = conditions.get("browser.engine") or web_engine(lane.eff)
+    listed = conditions.get("browser.kind") or web_engine(lane.eff)
     engines = listed if isinstance(listed, list) else [listed]
     for engine in engines:
         if engine not in cache:
@@ -270,17 +329,20 @@ def _browsers(
 
 def _placement(
     participants: Sequence[Participant], combo: Combination
-) -> tuple[dict[str, tuple[str, ...]], dict[str, str]]:
-    """The devices and engines every target of a runnable combination takes."""
+) -> tuple[dict[str, tuple[str, ...]], dict[str, str], dict[str, str]]:
+    """The devices, browser kinds, and iOS kinds every target of a runnable combination takes."""
     devices: dict[str, tuple[str, ...]] = {}
     engines: dict[str, str] = {}
+    kinds: dict[str, str] = {}
     for p, run in zip(participants, combo.runs, strict=True):
         for name in p.targets:
             if p.targets[0] in combo.devices:
                 devices[name] = combo.devices[p.targets[0]]
             if run.engine is not None:
                 engines[name] = run.engine
-    return devices, engines
+            if run.kind is not None:
+                kinds[name] = run.kind
+    return devices, engines, kinds
 
 
 def not_applicable_record(s: Scenario, primary: str, combo: Combination) -> dict[str, str]:
@@ -303,7 +365,7 @@ def render_not_applicable(record: Mapping[str, str]) -> str:
 
 
 def apply_engine(eff: Effective, engine: str) -> Effective:
-    """*eff* driven with *engine*, which then stops counting as a `browser.engine` condition.
+    """*eff* driven with *engine*, which then stops counting as a `browser.kind` condition.
 
     A non-web target has no engine, so it is returned unchanged.
     """
@@ -315,13 +377,28 @@ def apply_engine(eff: Effective, engine: str) -> Effective:
     )
 
 
+def apply_kind(eff: Effective, kind: str) -> Effective:
+    """*eff* run on the iOS *kind* one run of its listed kinds took, which then stops counting as a
+    `kind` condition (BE-0468).
+
+    The kind sets the XCUITest destination and every real-device narrowing, as a single `kind` does.
+    A target that lists no kind is returned unchanged.
+    """
+    cfg = eff.platform_config
+    if "kind" not in eff.conditions or not isinstance(cfg, IosConfig) or cfg.xcuitest is None:
+        return eff
+    conditions = {k: v for k, v in eff.conditions.items() if k != "kind"}
+    xcuitest = cfg.xcuitest.model_copy(update={"device_type": kind})
+    return replace(eff, conditions=conditions, platform_config=replace(cfg, xcuitest=xcuitest))
+
+
 def without_engine_condition(eff: Effective) -> Effective:
-    """*eff* with its listed `runsOn.browser.engine` no longer counted as a device condition.
+    """*eff* with its listed `runsOn.browser.kind` no longer counted as a device condition.
 
     An engine flag names the engines itself — `--browser` one, `--browsers` the matrix that sets
     each pass's engine — so the target's own list is overridden rather than matched.
     """
-    conditions = {k: v for k, v in eff.conditions.items() if k != "browser.engine"}
+    conditions = {k: v for k, v in eff.conditions.items() if k != "browser.kind"}
     return replace(eff, conditions=conditions)
 
 
@@ -350,7 +427,7 @@ def target_pool(
     env = environment_for(actuator, udid)
     pool = [env.resolve_device(u.strip()) for u in udid.split(",") if u.strip()]
     if eff.platform == "ios":
-        return (read_ios or facts.read_ios)(pool)
+        return read_ios_facts(eff, pool, read_ios)
     return (read_android or facts.read_android)(pool)
 
 
@@ -387,10 +464,10 @@ def first_run_device(
     if eff.platform == "web":
         # The first run takes the first listed engine, which actuator selection already installed;
         # the rest are dropped so no run is formed for an engine never read.
-        listed = conditions.get("browser.engine") or web_engine(eff)
+        listed = conditions.get("browser.kind") or web_engine(eff)
         engine = listed[0] if isinstance(listed, list) else listed
-        if "browser.engine" in conditions:
-            conditions["browser.engine"] = engine
+        if "browser.kind" in conditions:
+            conditions["browser.kind"] = engine
         if "browser.version" in conditions:
             engines = [engine]
     try:
@@ -410,6 +487,8 @@ def first_run_device(
         raise ValueError(f"target '{eff.target}': {e}") from None
     if run.engine is not None:
         return apply_engine(eff, run.engine), udid
+    if run.kind is not None:
+        eff = apply_kind(eff, run.kind)
     return eff, device.udid if device is not None else udid
 
 
@@ -447,7 +526,10 @@ def list_runs(
             for label in declared_runs(eff.platform, conditions, engine=engine)
         ]
     listed: list[ListedRun] = []
-    for run in form_target_runs(eff.target, eff.platform, conditions, devices, engine=engine):
+    formed = form_target_runs(
+        eff.target, eff.platform, conditions, devices, engine=engine, kind=driven_kind(eff)
+    )
+    for run in formed:
         if run.outcome != "run":
             listed.append(ListedRun(run.label, run.outcome, reason=run.reason))
         elif eff.platform == "web":

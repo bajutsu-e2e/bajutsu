@@ -157,6 +157,17 @@ class RunsOnGroup(_Model):
         return data
 
 
+def check_choices(field: str, value: Any, allowed: tuple[str, ...]) -> Any:
+    """Reject a value, or a listed one, that *allowed* lacks, naming every allowed value.
+
+    It runs before the field's own enum type, whose union error would bury the allowed values.
+    """
+    for item in value if isinstance(value, list) else [value]:
+        if isinstance(item, str) and item not in allowed:
+            raise ValueError(f"invalid {field} {item!r}: use one of {', '.join(allowed)}")
+    return value
+
+
 def check_list(field: str, value: str | list[str] | None) -> str | list[str] | None:
     """Reject an empty or repeating list on a field whose list multiplies runs.
 

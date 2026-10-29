@@ -84,7 +84,7 @@ def test_a_device_that_cannot_be_read_exits_2(capsys: pytest.CaptureFixture[str]
 
 
 def test_a_web_engine_list_takes_the_first_engine() -> None:
-    eff = _eff("web", "{browser: {engine: [webkit, chromium]}}")
+    eff = _eff("web", "{browser: {kind: [webkit, chromium]}}")
     run_eff, udid = _first_run_or_exit(eff, "playwright", "booted")
     assert (web_engine(run_eff), udid, run_eff.conditions) == ("webkit", "booted", {})
 
@@ -193,7 +193,7 @@ def test_audit_exits_2_when_a_device_cannot_be_read(capsys: pytest.CaptureFixtur
 
 
 def test_audit_runs_each_listed_engine_with_that_engine() -> None:
-    eff = _eff("web", "{browser: {engine: [webkit, firefox]}}")
+    eff = _eff("web", "{browser: {kind: [webkit, firefox]}}")
     runs, failed = _audit_runs(_scenarios(), eff, "playwright", ["web"], "booted", fake=False)
     assert [(label, web_engine(e), udids) for _s, label, e, udids in runs] == [
         ("webkit", "webkit", ["web"]),
@@ -231,7 +231,7 @@ def test_audit_run_pools_share_a_pool_per_device_set(monkeypatch: pytest.MonkeyP
 def test_a_web_engine_list_beside_a_version_range_reads_only_the_first_engine() -> None:
     # The schema refuses this pair in one `runsOn`; built directly, the first run must still read
     # only the engine it takes rather than fail for the others.
-    eff = _eff("web", "{browser: {engine: [webkit, chromium]}}")
+    eff = _eff("web", "{browser: {kind: [webkit, chromium]}}")
     eff = replace(eff, conditions={**eff.conditions, "browser.version": ">=120"})
     read: list[str] = []
 

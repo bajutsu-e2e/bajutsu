@@ -13,6 +13,7 @@ from pathlib import Path
 from bajutsu.common.backends import resolve_actuators
 from bajutsu.common.config import Config, load_config_file, resolve, web_engine
 from bajutsu.common.config_source import DEFAULT_CONFIG
+from bajutsu.common.devices.browsers import browser_launch
 from bajutsu.common.provisioning import requirements
 from bajutsu.common.provisioning.requirements import Brew, Extra, Manual, Playwright, Tool
 
@@ -123,7 +124,9 @@ def _build(pairs: Iterable[tuple[str, str | None]], *, ai: bool) -> InstallPlan:
         if req.extra is not None:
             extras.append(req.extra)
         tools.extend(req.tools)
-        if engine is not None:
+        # Chrome and Edge are the host's own installs, which no PATH lookup finds; `doctor` checks
+        # them by launching their channel instead (BE-0468).
+        if engine is not None and browser_launch(engine)[1] is None:
             tools.append(requirements.playwright_browser(engine))
     if ai and (ai_extra := requirements.CAPABILITIES["ai"].extra) is not None:
         extras.append(ai_extra)

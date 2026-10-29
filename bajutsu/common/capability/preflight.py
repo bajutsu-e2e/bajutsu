@@ -15,6 +15,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from bajutsu.common.devices.browsers import browser_launch
 from bajutsu.common.provisioning import requirements
 
 Which = Callable[[str], str | None]
@@ -39,19 +40,28 @@ def _playwright_installed() -> bool:  # pragma: no cover - trivial env probe
     return importlib.util.find_spec("playwright") is not None
 
 
-def _browser_installed(engine: str) -> bool:  # pragma: no cover - needs the playwright runtime
-    """Whether the named Playwright engine is actually installed (the `playwright install` step).
-    Reads the computed executable path without launching a browser; missing package → not installed.
+def _browser_installed(kind: str) -> bool:  # pragma: no cover - needs the playwright runtime
+    """Whether the browser a `runsOn.browser.kind` names is actually installed.
+
+    A bundled engine reads its computed executable path without launching a browser. Chrome and
+    Edge have no path Playwright computes, so a brief headless launch on the channel answers instead
+    (BE-0468). A missing package or an unknown kind is "not installed", not a doctor crash.
     """
     try:
         from playwright.sync_api import sync_playwright
-    except ImportError:
+
+        engine, channel = browser_launch(kind)
+    except (ImportError, ValueError):
         return False
     with sync_playwright() as p:
-        launcher = getattr(p, engine, None)
-        if launcher is None:  # an unknown engine is "not installed", not a doctor crash
+        launcher = getattr(p, engine)
+        if channel is None:
+            return Path(launcher.executable_path).exists()
+        try:
+            launcher.launch(headless=True, channel=channel).close()
+        except Exception:  # any launch failure means the channel is not usable
             return False
-        return Path(launcher.executable_path).exists()
+        return True
 
 
 # Probe for a specific engine's binary, defaulting to Chromium (BE-0076). Injectable so the web

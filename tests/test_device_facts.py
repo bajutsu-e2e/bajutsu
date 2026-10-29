@@ -13,6 +13,7 @@ from bajutsu.common.devices.facts import (
     read_android,
     read_ios,
     read_ios_device,
+    read_ios_pool,
     read_web,
 )
 
@@ -249,8 +250,8 @@ def test_ios_device_reads_the_family_of_each_real_device_in_order() -> None:
     )
     facts = read_ios_device(["T1", "P1"], run)
     assert facts == [
-        DeviceFacts("T1", "ios", "iPad13,8", "18.1", family="iPad"),
-        DeviceFacts("P1", "ios", "iPhone 14 Pro", "18.1", family="iPhone"),
+        DeviceFacts("T1", "ios", "iPad13,8", "18.1", family="iPad", physical=True),
+        DeviceFacts("P1", "ios", "iPhone 14 Pro", "18.1", family="iPhone", physical=True),
     ]
 
 
@@ -315,3 +316,26 @@ def test_the_default_devicectl_reader_passes_a_timeout(monkeypatch: pytest.Monke
     monkeypatch.setattr(subprocess, "run", run)
     assert facts._timed_devicectl(["xcrun", "devicectl"]) == "{}"
     assert seen["timeout"] == facts._DEVICECTL_READ_TIMEOUT_S
+
+
+def test_ios_pool_reads_each_udid_through_the_listing_that_shows_it() -> None:
+    # BE-0468: a target that lists both kinds reads a pool mixing Simulators and real devices.
+    real = _devicectl(_device("P1", deviceType="iPhone", marketingName="iPhone 14 Pro"))
+    pool = read_ios_pool(["P1", "B"], _simctl(), real)
+    assert [(f.udid, f.family, f.physical) for f in pool] == [
+        ("P1", "iPhone", True),
+        ("B", "iPad", False),
+    ]
+
+
+def test_ios_pool_fails_on_a_udid_neither_listing_shows() -> None:
+    with pytest.raises(DeviceReadError, match="not a paired real device"):
+        read_ios_pool(["A", "ghost"], _simctl(), _devicectl())
+
+
+def test_ios_pool_fails_when_simctl_cannot_be_read() -> None:
+    def broken(_args: list[str], _env: object = None) -> str:
+        raise OSError("no xcrun")
+
+    with pytest.raises(DeviceReadError, match="could not list the Simulators"):
+        read_ios_pool(["A"], broken, _devicectl())

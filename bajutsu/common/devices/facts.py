@@ -25,6 +25,7 @@ from typing import Any
 
 from bajutsu.common.backend_cli import adb, simctl
 from bajutsu.common.devices import os as device_os
+from bajutsu.common.devices.browsers import browser_launch
 from bajutsu.common.devices.errors import DeviceError
 from bajutsu.common.devices.version import Version
 
@@ -65,7 +66,8 @@ class DeviceFacts:
     `model` is what a `model` (iOS) or `avd` (Android) condition compares exactly; `release` is what
     a version range compares. `avd` stays None for a physical Android device, which never matches an
     `avd` condition. `family` is what a `family` condition compares (BE-0468); it stays None on
-    Android and the web, which have no such condition.
+    Android and the web, which have no such condition. `physical` marks a real iOS device, which a
+    run of `kind: device` takes and a run of `kind: simulator` never does.
     """
 
     udid: str
@@ -74,6 +76,7 @@ class DeviceFacts:
     release: str
     avd: str | None = None
     family: str | None = None
+    physical: bool = False
 
     @property
     def version(self) -> Version:
@@ -230,9 +233,44 @@ def read_ios_device(
                 model=model,
                 release=f"{version.major}.{version.minor}",
                 family=family,
+                physical=True,
             )
         )
     return facts
+
+
+def read_ios_pool(
+    udids: Sequence[str],
+    run: simctl.RunFn = simctl.real_run,
+    devicectl: Callable[[list[str]], str] = _timed_devicectl,
+) -> list[DeviceFacts]:
+    """Read a pool that may mix Simulators and real devices, in *udids* order (BE-0468).
+
+    Each udid belongs to the listing that shows it: a Simulator is read through simctl, and any
+    other udid through devicectl, so a udid neither shows fails rather than going unmatched.
+
+    Raises:
+        DeviceReadError: A listing could not be read, or a udid is neither an available Simulator
+            nor a paired real device.
+    """
+    try:
+        listed = json.loads(run(simctl.list_devices_cmd(), None))
+    except (subprocess.CalledProcessError, json.JSONDecodeError, OSError, ValueError) as exc:
+        raise DeviceReadError(f"could not list the Simulators to match runsOn: {exc}") from exc
+    simulators = {
+        str(dev["udid"])
+        for entries in (listed.get("devices") or {}).values()
+        for dev in entries
+        if dev.get("udid")
+    }
+    simulated = [u for u in udids if u in simulators]
+    real = [u for u in udids if u not in simulators]
+    read = [
+        *(read_ios(simulated, run) if simulated else []),
+        *(read_ios_device(real, devicectl) if real else []),
+    ]
+    by_udid = {f.udid: f for f in read}
+    return [by_udid[u] for u in udids]
 
 
 def _prop(serial: str, name: str, run: adb.RunFn) -> str:
@@ -296,34 +334,41 @@ def read_android(serials: Sequence[str], run: adb.RunFn = _timed_adb) -> list[De
     return facts
 
 
-def playwright_version(engine: str) -> str:
-    """The version of the browser Playwright launches for *engine*, read from a brief headless launch.
+def playwright_version(kind: str) -> str:
+    """The version of the browser a `runsOn.browser.kind` launches, read from a brief headless launch.
 
     Raises:
-        DeviceReadError: The browser could not be launched to read its version.
+        DeviceReadError: The browser could not be launched to read its version; a Chrome or Edge
+            the host lacks fails here, before any run.
     """
     from playwright.sync_api import sync_playwright
 
+    engine, channel = browser_launch(kind)
     try:
         with sync_playwright() as pw:
-            browser = getattr(pw, engine).launch(headless=True)
+            launcher = getattr(pw, engine)
+            browser = (
+                launcher.launch(headless=True, channel=channel)
+                if channel is not None
+                else launcher.launch(headless=True)
+            )
             try:
                 return str(browser.version)
             finally:
                 browser.close()
     except Exception as exc:
-        raise DeviceReadError(f"could not launch {engine} to read its version: {exc}") from exc
+        raise DeviceReadError(f"could not launch {kind} to read its version: {exc}") from exc
 
 
-def read_web(engine: str, version_of: Callable[[str], str] = playwright_version) -> DeviceFacts:
-    """The facts of the browser a web lane launches for *engine*.
+def read_web(kind: str, version_of: Callable[[str], str] = playwright_version) -> DeviceFacts:
+    """The facts of the browser a web lane launches for the browser *kind*.
 
     Raises:
         DeviceReadError: The version could not be read.
     """
-    release = version_of(engine)
+    release = version_of(kind)
     try:
         Version.parse(release)
     except ValueError as exc:
-        raise DeviceReadError(f"{engine} reports version {release!r}, which is not one") from exc
-    return DeviceFacts(udid=f"web-{engine}", platform="web", model=engine, release=release)
+        raise DeviceReadError(f"{kind} reports version {release!r}, which is not one") from exc
+    return DeviceFacts(udid=f"web-{kind}", platform="web", model=kind, release=release)

@@ -119,8 +119,8 @@ def effective_conditions(
 ) -> dict[str, str | list[str]]:
     """The `runsOn` conditions one target runs under: the target's own, since BE-0469.
 
-    A `--browser` or `--browsers` flag (*engine_flag*) names the web engine itself, so the target's
-    listed engine is dropped.
+    A `--browser` or `--browsers` flag (*engine_flag*) names the browser itself, so the target's
+    listed browser kinds are dropped.
 
     Args:
         eff: The target to run.
@@ -128,7 +128,7 @@ def effective_conditions(
     """
     merged = dict(eff.conditions)
     if engine_flag:
-        merged.pop("browser.engine", None)
+        merged.pop("browser.kind", None)
     return merged
 
 
@@ -138,8 +138,9 @@ def remote_condition_problems(
     """Why *conditions* cannot be matched for *eff*: it has no pool to read before the run.
 
     A physical iPhone (`runsOn.ios.kind: device`) and a target an `appium` grid serves are never matched,
-    so a condition on either fails rather than going ignored (BE-0452). `locale` and `seedPhotos` are
-    device state, not conditions, so they never appear here.
+    so a condition on either fails rather than going ignored (BE-0452). A physical iPhone still reports
+    its family, so `family` is matched there (BE-0468). `locale` and `seedPhotos` are device state, not
+    conditions, so they never appear here.
 
     Returns:
         One message per condition, each naming the field; empty when the target can be matched.
@@ -147,10 +148,12 @@ def remote_condition_problems(
     if not conditions:
         return []
     ios = eff.platform_config if isinstance(eff.platform_config, IosConfig) else None
-    if ios is not None and ios.xcuitest is not None and ios.xcuitest.device_type == "device":
-        where = "a physical device (runsOn.ios.kind: device)"
-    elif eff.device_provider is not None and eff.device_provider.kind != "local":
+    # The remote check comes first: a grid has no pool even for the family a local device reports.
+    if eff.device_provider is not None and eff.device_provider.kind != "local":
         where = f"a remote environment ({eff.device_provider.kind})"
+    elif ios is not None and ios.xcuitest is not None and ios.xcuitest.device_type == "device":
+        where = "a physical device (runsOn.ios.kind: device)"
+        conditions = {n: v for n, v in conditions.items() if n not in ("kind", "family")}
     else:
         return []
     return [

@@ -1381,7 +1381,7 @@ def _web_eff(browser: str) -> Effective:
         "    platform: web\n"
         f"    app: {{url: 'http://x/'}}\n"
         "    runsOn:\n"
-        f"      browser: {{engine: {browser}}}\n"
+        f"      browser: {{kind: {browser}}}\n"
     )
     return resolve(cfg, "web")
 
@@ -1476,31 +1476,33 @@ def test_parse_browsers_dedupes_and_validates() -> None:
 
 
 def test_the_engine_flags_parse_as_the_target_field_does() -> None:
-    # `--browser` / `--browsers` are read by the model of `runsOn.browser.engine` (BE-0452 unit 6).
+    # `--browser` / `--browsers` are read by the model of `runsOn.browser.kind` (BE-0452 unit 6).
     import typer
 
     from bajutsu.cli._shared import parse_engine_flag
 
     assert parse_engine_flag("--browser", "webkit") == "webkit"
+    # BE-0468: the flags take the browser kinds, so an installed Chrome or Edge is nameable.
+    assert parse_engine_flag("--browser", "edge") == "edge"
     with pytest.raises(typer.Exit) as exc:
         parse_engine_flag("--browsers", "safari")
     assert exc.value.exit_code == 2
 
 
 def test_browser_flag_replaces_a_listed_engine_condition() -> None:
-    # The flag overrides `runsOn.browser.engine`, so a listed engine stops counting as a condition.
+    # The flag overrides `runsOn.browser.kind`, so a listed engine stops counting as a condition.
     cfg = load_config(
         "targets:\n"
         "  site:\n"
         "    platform: web\n"
         "    app: { url: 'http://x/' }\n"
-        "    runsOn: { browser: { engine: [chromium, firefox] } }\n"
+        "    runsOn: { browser: { kind: [chromium, firefox] } }\n"
     )
     eff = resolve(cfg, "site")
-    assert "browser.engine" in eff.conditions
+    assert "browser.kind" in eff.conditions
     flagged = _resolve_browser(eff, "webkit")
     assert _browser_of(flagged) == "webkit"
-    assert "browser.engine" not in flagged.conditions
+    assert "browser.kind" not in flagged.conditions
 
 
 def test_browsers_matrix_replaces_a_listed_engine_condition(tmp_path: Path) -> None:
@@ -1514,7 +1516,7 @@ def test_browsers_matrix_replaces_a_listed_engine_condition(tmp_path: Path) -> N
         "  site:\n"
         "    platform: web\n"
         "    app: { url: 'http://x/' }\n"
-        "    runsOn: { browser: { engine: [chromium, webkit] } }\n",
+        "    runsOn: { browser: { kind: [chromium, webkit] } }\n",
         encoding="utf-8",
     )
     _, eff, _, engines = _resolve_config_and_engines(
@@ -1527,14 +1529,14 @@ def test_browsers_matrix_replaces_a_listed_engine_condition(tmp_path: Path) -> N
         browsers="chromium,webkit",
     )
     assert engines == ["chromium", "webkit"]
-    assert "browser.engine" not in eff.conditions
+    assert "browser.kind" not in eff.conditions
 
 
 @pytest.mark.parametrize(
     ("command", "param", "field"),
     [
-        ("run", "browser", "runsOn.browser.engine"),
-        ("run", "browsers", "runsOn.browser.engine"),
+        ("run", "browser", "runsOn.browser.kind"),
+        ("run", "browsers", "runsOn.browser.kind"),
         ("run", "headed", "driver.headless"),
         ("run", "erase", "preconditions.run.erase"),
         ("run", "system_alert_handling", "preconditions.run.systemAlertHandling"),
@@ -1542,10 +1544,10 @@ def test_browsers_matrix_replaces_a_listed_engine_condition(tmp_path: Path) -> N
         ("run", "baselines", "paths.baselines"),
         ("run", "schemas", "paths.schemas"),
         ("run", "goldens", "paths.goldens"),
-        ("record", "browser", "runsOn.browser.engine"),
+        ("record", "browser", "runsOn.browser.kind"),
         ("record", "headed", "driver.headless"),
         ("record", "system_alert_handling", "run.systemAlertHandling"),
-        ("repl", "browser", "runsOn.browser.engine"),
+        ("repl", "browser", "runsOn.browser.kind"),
         ("repl", "headed", "driver.headless"),
         ("crawl", "headed", "driver.headless"),
         ("crawl", "system_alert_handling", "run.systemAlertHandling"),

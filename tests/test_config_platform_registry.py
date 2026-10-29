@@ -68,8 +68,11 @@ def test_every_registered_model_forbids_extra_keys(platform: str, group: Group) 
         ("ios", "driver", {"runner": {"testRunner": "build/Runner.xctestrun"}}),
         ("ios", "run", {"tipKitHandling": True}),
         ("web", "app", {"url": "http://127.0.0.1:8787/index.html"}),
-        ("web", "runsOn", {"browser": {"engine": "webkit", "emulate": "iPhone 13"}}),
-        ("web", "runsOn", {"browser": {"engine": ["chromium", "firefox"]}}),
+        ("web", "runsOn", {"browser": {"kind": "webkit", "emulate": "iPhone 13"}}),
+        ("web", "runsOn", {"browser": {"kind": ["chromium", "firefox"]}}),
+        ("web", "runsOn", {"browser": {"kind": ["chrome", "edge"]}}),
+        ("ios", "runsOn", {"ios": {"family": ["iphone", "ipad"], "os": ">=18"}}),
+        ("ios", "runsOn", {"ios": {"kind": ["simulator", "device"], "family": "ipad"}}),
         ("web", "runsOn", {"browser": {"version": ">=120"}}),
         ("web", "driver", {"headless": False}),
         (
@@ -97,7 +100,7 @@ def test_spec_examples_validate(platform: str, group: Group, data: Any) -> None:
 
 def test_defaults_are_what_an_omitted_block_means() -> None:
     runs_on: Any = validate_group("web", "runsOn", None, where="targets.t.runsOn")
-    assert (runs_on.browser.engine, runs_on.browser.emulate) == ("chromium", "desktop")
+    assert (runs_on.browser.kind, runs_on.browser.emulate) == ("chromium", "desktop")
     ios: Any = validate_group("ios", "runsOn", {}, where="targets.t.runsOn")
     assert (ios.ios.kind, ios.ios.model, ios.ios.os) == ("simulator", None, None)
     assert validate_group("web", "driver", {}, where="x").headless is True  # type: ignore[attr-defined]
@@ -112,7 +115,7 @@ def test_defaults_are_what_an_omitted_block_means() -> None:
             "runsOn",
             {"ios": {"avd": "Pixel_8"}},
             "runsOn.ios.avd",
-            "model, os, kind, locale, seedPhotos",
+            "model, os, kind, family, locale, seedPhotos",
         ),
         ("android", "driver", {"headless": True}, "driver.headless", "nativeZ"),
         ("web", "app", {"id": "x", "url": "u"}, "app.id", "startWhen, idNamespaces, url, launch"),
@@ -129,7 +132,7 @@ def test_defaults_are_what_an_omitted_block_means() -> None:
             "runsOn",
             {"browser": {"engin": "webkit"}},
             "runsOn.browser.engin",
-            "engine, version, emulate",
+            "kind, version, emulate",
         ),
         (
             "android",
@@ -205,13 +208,55 @@ def test_other_failures_keep_pydantics_error() -> None:
             {"android": {"avd": ["a", "a"]}},
             "runsOn.android.avd lists a value twice",
         ),
-        ("web", "runsOn", {"browser": {"engine": "safari"}}, "invalid browser 'safari'"),
-        ("web", "runsOn", {"browser": {"engine": ["webkit", "edge"]}}, "invalid browser 'edge'"),
         (
             "web",
             "runsOn",
-            {"browser": {"engine": ["chromium", "webkit"], "version": ">=120"}},
-            "cannot be combined with a list of engines",
+            {"browser": {"kind": "safari"}},
+            "invalid browser 'safari': use one of chromium, chrome",
+        ),
+        ("web", "runsOn", {"browser": {"kind": ["webkit", "opera"]}}, "invalid browser 'opera'"),
+        ("web", "runsOn", {"browser": {"kind": []}}, "runsOn.browser.kind lists no value"),
+        (
+            "web",
+            "runsOn",
+            {"browser": {"kind": ["chromium", "webkit"], "version": ">=120"}},
+            "cannot be combined with a list of browser kinds",
+        ),
+        (
+            "web",
+            "runsOn",
+            {"browser": {"engine": ["chromium", "webkit"]}},
+            "runsOn.browser.engine was replaced by runsOn.browser.kind",
+        ),
+        (
+            "ios",
+            "runsOn",
+            {"ios": {"family": "watch"}},
+            "invalid runsOn.ios.family 'watch': use one of iphone, ipad",
+        ),
+        (
+            "ios",
+            "runsOn",
+            {"ios": {"family": ["ipad", "ipad"]}},
+            "runsOn.ios.family lists a value twice",
+        ),
+        (
+            "ios",
+            "runsOn",
+            {"ios": {"kind": ["device", "device"]}},
+            "runsOn.ios.kind lists a value twice",
+        ),
+        (
+            "ios",
+            "runsOn",
+            {"ios": {"family": "ipad", "model": "iPad Air"}},
+            "runsOn.ios.family and runsOn.ios.model both name",
+        ),
+        (
+            "ios",
+            "runsOn",
+            {"ios": {"kind": ["simulator", "device"], "os": ">=18"}},
+            "runsOn.ios.os is a device condition",
         ),
         ("ios", "runsOn", {"ios": {"kind": "tablet"}}, "simulator"),
         (
@@ -283,16 +328,15 @@ def test_allowed_fields_spells_aliases() -> None:
 
 def test_the_target_validates_its_groups_with_the_registered_models() -> None:
     # Unit 4 wires the registry in: each platform-shaped group is an instance of its platform's model.
-    from bajutsu.common.config.schema import WEB_ENGINES, TargetConfig
+    from bajutsu.common.config.schema import TargetConfig
     from bajutsu.common.config.schema.platform.web import WebApp, WebRunsOn
 
     target = TargetConfig.model_validate(
-        {"platform": "web", "app": {"url": "http://x"}, "runsOn": {"browser": {"engine": "webkit"}}}
+        {"platform": "web", "app": {"url": "http://x"}, "runsOn": {"browser": {"kind": "webkit"}}}
     )
     assert isinstance(target.app, WebApp)
     assert isinstance(target.runs_on, WebRunsOn)
-    assert target.runs_on.browser.engine == "webkit"
-    assert WEB_ENGINES == ("chromium", "firefox", "webkit")
+    assert target.runs_on.browser.kind == "webkit"
 
 
 def test_an_unknown_key_in_a_target_group_lists_the_allowed_fields() -> None:
@@ -378,7 +422,7 @@ def test_a_flat_runs_on_key_names_the_destination_it_moved_to(
 @pytest.mark.parametrize(
     ("platform", "data", "allowed"),
     [
-        ("ios", {"browser": {"engine": "webkit"}}, "ios"),
+        ("ios", {"browser": {"kind": "webkit"}}, "ios"),
         ("web", {"ios": {"model": "iPhone 16"}}, "browser"),
         ("android", {"ios": {}}, "android"),
         ("fake", {"ios": {}}, r"\(none\)"),

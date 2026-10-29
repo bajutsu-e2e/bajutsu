@@ -45,7 +45,6 @@ from bajutsu.common.config.resolve import (
     unknown_target,
 )
 from bajutsu.common.config.schema import (
-    WEB_ENGINES,
     AiSettings,
     Config,
     Defaults,
@@ -64,7 +63,6 @@ from bajutsu.common.config.schema import (
 )
 
 __all__ = [
-    "WEB_ENGINES",
     "AiConfig",
     "AiSettings",
     "AndroidConfig",

@@ -2,16 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Self
+from typing import Any, Self
 
 from pydantic import Field, field_validator, model_validator
 
-from .._model import _Model
-from ._shared import AppCommon, LaunchEnv, RangeField, RunsOnGroup, check_list
+from bajutsu.common.devices.browsers import BROWSER_KINDS, BrowserKind
 
-# Playwright rendering engines a web target can drive (BE-0076). Chromium is the default, and all
-# three run headless on Linux.
-WEB_ENGINES = ("chromium", "firefox", "webkit")
+from .._model import _Model
+from ._shared import AppCommon, LaunchEnv, RangeField, RunsOnGroup, check_choices, check_list
 
 
 class WebApp(AppCommon):
@@ -23,32 +21,46 @@ class WebApp(AppCommon):
 
 
 class WebBrowser(_Model):
-    """`runsOn.browser`: which engine runs the page, its version range, and the device it emulates."""
+    """`runsOn.browser`: which browser runs the page, its version range, and the device it emulates."""
 
-    engine: str | list[str] = "chromium"
+    # A list runs once per listed browser, as the cross-browser matrix does (BE-0076, BE-0468).
+    kind: BrowserKind | list[BrowserKind] = "chromium"
     version: RangeField = None
     # A Playwright device preset name (BE-0228), resolved when the driver starts so loading never
     # imports Playwright; "desktop" is the plain desktop context.
     emulate: str = "desktop"
 
-    @field_validator("engine")
+    @model_validator(mode="before")
     @classmethod
-    def _valid_engine(cls, v: str | list[str]) -> str | list[str]:
-        # Fail a misspelled engine at load, not as an AttributeError at driver start (BE-0076).
-        for engine in [v] if isinstance(v, str) else v:
-            if engine not in WEB_ENGINES:
-                raise ValueError(f"invalid browser {engine!r}: use one of {', '.join(WEB_ENGINES)}")
-        listed = check_list("runsOn.browser.engine", v)
-        assert listed is not None
-        return listed
+    def _engine_became_kind(cls, data: Any) -> Any:
+        # The rename keeps every run, so the message says how to rewrite rather than only rejecting.
+        if isinstance(data, dict) and "engine" in data:
+            raise ValueError(
+                "runsOn.browser.engine was replaced by runsOn.browser.kind (BE-0468): rename the "
+                "field; a kind list runs once per listed browser, as an engine list did, and kind "
+                f"also takes chrome and edge ({', '.join(BROWSER_KINDS)})"
+            )
+        return data
+
+    @field_validator("kind", mode="before")
+    @classmethod
+    def _known_kind(cls, v: Any) -> Any:
+        # Fail a misspelled browser at load, not when the driver starts (BE-0076).
+        return check_choices("browser", v, BROWSER_KINDS)
+
+    @field_validator("kind")
+    @classmethod
+    def _valid_kind(cls, v: BrowserKind | list[BrowserKind]) -> BrowserKind | list[BrowserKind]:
+        check_list("runsOn.browser.kind", list(v) if isinstance(v, list) else v)
+        return v
 
     @model_validator(mode="after")
-    def _no_version_across_engines(self) -> Self:
-        # Engines number their versions differently, so one range cannot mean the same thing for each.
-        if isinstance(self.engine, list) and self.version is not None:
+    def _no_version_across_kinds(self) -> Self:
+        # Browsers number their versions differently, so one range cannot mean the same for each.
+        if isinstance(self.kind, list) and self.version is not None:
             raise ValueError(
-                "runsOn.browser.version cannot be combined with a list of engines: "
-                "each engine numbers its versions differently"
+                "runsOn.browser.version cannot be combined with a list of browser kinds: "
+                "each browser numbers its versions differently"
             )
         return self
 

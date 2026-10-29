@@ -130,7 +130,7 @@ def test_a_web_engine_list_multiplies_and_a_version_range_narrows() -> None:
         DeviceFacts("web-webkit", "web", "webkit", "18.2"),
     ]
     runs = form_target_runs(
-        "site", "web", {"browser.engine": ["chromium", "webkit"]}, [], engine="chromium"
+        "site", "web", {"browser.kind": ["chromium", "webkit"]}, [], engine="chromium"
     )
     assert _labels(runs) == [("chromium", "run"), ("webkit", "run")]
     (run,) = form_target_runs(
@@ -191,14 +191,14 @@ def test_a_failed_target_run_fails_the_combination_before_a_not_applicable_one()
 
 
 def test_a_web_participant_is_not_narrowed() -> None:
-    web = tuple(form_target_runs("site", "web", {"browser.engine": ["chromium"]}, [], engine=None))
+    web = tuple(form_target_runs("site", "web", {"browser.kind": ["chromium"]}, [], engine=None))
     ios = tuple(form_target_runs("app", "ios", {"os": "18"}, POOL))
     (combo,) = combine(
         [Participant(("app",), "ios", ios), Participant(("site",), "playwright", web)],
         {"ios": POOL},
     )
     assert combo.devices == {"app": ("se18",)}
-    assert combo.coordinates == {"app": {"os": "iOS 18"}, "site": {"browser.engine": "chromium"}}
+    assert combo.coordinates == {"app": {"os": "iOS 18"}, "site": {"browser.kind": "chromium"}}
     assert combo.label == "app: iOS 18, site: chromium"
 
 
@@ -207,7 +207,7 @@ def test_first_run_takes_the_first_value_and_the_newest_major_in_range() -> None
     assert (run.model, run.major, device and device.udid) == (IPAD, 18, "ipad18")
     with pytest.raises(LookupError, match='os ">=19"'):
         first_run("app", "ios", {"os": ">=19"}, POOL)
-    run, device = first_run("site", "web", {"browser.engine": ["webkit", "chromium"]}, [])
+    run, device = first_run("site", "web", {"browser.kind": ["webkit", "chromium"]}, [])
     assert (run.engine, device) == ("webkit", None)
     run, device = first_run("app", "ios", {}, POOL)
     assert device == POOL[0]
@@ -222,8 +222,8 @@ def test_unpack_conditions_flattens_and_drops_device_state() -> None:
         "android.apiLevel": "34"
     }
     assert unpack_conditions(
-        {"browser": {"engine": "webkit", "version": None, "emulate": "iPhone 13"}}
-    ) == {"browser.engine": "webkit"}
+        {"browser": {"kind": "webkit", "version": None, "emulate": "iPhone 13"}}
+    ) == {"browser.kind": "webkit"}
     # A flat value is not a destination block, so it names no condition.
     assert unpack_conditions({"os": ">=18"}) == {}
 
@@ -265,3 +265,139 @@ def test_the_eligible_set_falls_through_to_a_later_model_with_enough_at_one_rele
     assert [d.udid for d in eligible_set(run, pool, demand=2) or []] == ["c", "d"]
     # At demand 1 the first model in pool order still wins, at its newest release.
     assert [d.udid for d in eligible_set(run, pool) or []] == ["b"]
+
+
+# --- BE-0468: a listed kind multiplies runs, a family list picks one family per run ---
+
+
+def _fam(
+    udid: str, model: str, release: str, family: str, *, physical: bool = False
+) -> DeviceFacts:
+    return DeviceFacts(udid, "ios", model, release, family=family, physical=physical)
+
+
+MIXED = [
+    _fam("sim-se", SE, "18.2", "iPhone"),
+    _fam("sim-ipad", IPAD, "18.2", "iPad"),
+    _fam("real-ipad", "iPad Air", "18.1", "iPad", physical=True),
+]
+
+
+def test_a_family_list_takes_the_first_listed_family_whatever_the_pool_order() -> None:
+    (run,) = form_target_runs("app", "ios", {"family": ["ipad", "iphone"]}, MIXED[:2])
+    assert (run.family, run.label, run.outcome) == ("ipad", "ipad", "run")
+    assert [d.udid for d in eligible_set(run, MIXED[:2]) or []] == ["sim-ipad"]
+
+
+def test_a_family_list_falls_through_to_a_later_family_the_pool_has() -> None:
+    pool = [MIXED[0]]
+    (run,) = form_target_runs("app", "ios", {"family": ["ipad", "iphone"]}, pool)
+    assert (run.family, run.label) == ("iphone", "iphone")
+
+
+def test_a_single_family_adds_no_coordinate() -> None:
+    (run,) = form_target_runs("app", "ios", {"family": "ipad"}, MIXED[:2])
+    assert (run.family, run.coordinates) == ("ipad", ())
+
+
+def test_a_family_no_device_has_fails_naming_the_families() -> None:
+    (run,) = form_target_runs("app", "ios", {"family": ["ipad"]}, [MIXED[0]])
+    assert run.outcome == "failed"
+    assert 'runsOn.ios.family "ipad"  available: iOS 18.2' in run.reason
+
+
+def test_each_major_of_a_range_picks_its_own_family() -> None:
+    pool = [_fam("se17", SE, "17.5", "iPhone"), _fam("ipad18", IPAD, "18.2", "iPad")]
+    runs = form_target_runs("app", "ios", {"family": ["ipad", "iphone"], "os": ">=17"}, pool)
+    assert _labels(runs) == [("iphone / iOS 17", "run"), ("ipad / iOS 18", "run")]
+
+
+def test_the_winning_family_lacking_enough_devices_fails_rather_than_falling_back() -> None:
+    (run,) = form_target_runs("app", "ios", {"family": ["ipad", "iphone"]}, MIXED[:2])
+    assert eligible_set(run, MIXED[:2], demand=2) is None
+
+
+def test_a_listed_kind_runs_once_per_kind_on_that_kinds_devices() -> None:
+    runs = form_target_runs(
+        "app", "ios", {"kind": ["simulator", "device"], "family": "ipad"}, MIXED
+    )
+    assert [(r.label, r.kind, r.outcome) for r in runs] == [
+        ("simulator", "simulator", "run"),
+        ("device", "device", "run"),
+    ]
+    assert [d.udid for d in eligible_set(runs[0], MIXED) or []] == ["sim-ipad"]
+    assert [d.udid for d in eligible_set(runs[1], MIXED) or []] == ["real-ipad"]
+
+
+def test_a_listed_kind_the_pool_lacks_fails_naming_the_kind() -> None:
+    runs = form_target_runs("app", "ios", {"kind": ["simulator", "device"]}, MIXED[:2])
+    assert _labels(runs) == [("simulator", "run"), ("device", "failed")]
+    assert 'runsOn.ios.kind  "device"' in runs[1].reason
+
+
+def test_kind_and_family_coordinates_both_show() -> None:
+    runs = form_target_runs(
+        "app", "ios", {"kind": ["simulator", "device"], "family": ["iphone", "ipad"]}, MIXED
+    )
+    assert [r.coordinates for r in runs] == [
+        (("kind", "simulator"), ("family", "iphone")),
+        (("kind", "device"), ("family", "ipad")),
+    ]
+
+
+def test_first_run_takes_the_first_kind_and_the_first_family_a_device_has() -> None:
+    run, device = first_run(
+        "app", "ios", {"kind": ["device", "simulator"], "family": ["iphone", "ipad"]}, MIXED
+    )
+    assert (run.kind, run.family, device and device.udid) == ("device", "ipad", "real-ipad")
+
+
+def test_first_run_fails_when_no_listed_family_fits() -> None:
+    with pytest.raises(LookupError, match='family "ipad"'):
+        first_run("app", "ios", {"family": ["ipad"]}, [MIXED[0]])
+
+
+def test_declared_runs_list_each_kind_and_leave_the_family_to_the_pool() -> None:
+    from bajutsu.common.devices.runs import declared_runs
+
+    labels = declared_runs("ios", {"kind": ["simulator", "device"], "family": ["iphone", "ipad"]})
+    assert labels == [
+        'simulator / the first available family of "iphone, ipad"',
+        'device / the first available family of "iphone, ipad"',
+    ]
+    assert declared_runs("ios", {"family": "ipad"}) == [""]
+
+
+def test_one_kinds_family_miss_fails_that_run_alone() -> None:
+    pool = [MIXED[1], _fam("real-se", SE, "18.1", "iPhone", physical=True)]
+    runs = form_target_runs("app", "ios", {"kind": ["simulator", "device"], "family": "ipad"}, pool)
+    assert _labels(runs) == [("simulator", "run"), ("device", "failed")]
+    assert 'runsOn.ios.kind "device"  family "ipad"' in runs[1].reason
+
+
+def test_unpack_conditions_keeps_a_browser_kind_and_a_listed_ios_kind() -> None:
+    assert unpack_conditions({"browser": {"kind": ["chrome", "edge"]}}) == {
+        "browser.kind": ["chrome", "edge"]
+    }
+    assert unpack_conditions({"ios": {"kind": "device", "family": "ipad"}}) == {
+        "ios.family": "ipad"
+    }
+    # A listed kind multiplies runs, so a Device Farm job refuses it rather than dropping a run.
+    assert unpack_conditions({"ios": {"kind": ["simulator", "device"]}}) == {
+        "ios.kind": ["simulator", "device"]
+    }
+
+
+def test_a_family_miss_under_an_open_range_fails_naming_the_pool() -> None:
+    # A family names a run that must happen, so the open range cannot make it not applicable.
+    (run,) = form_target_runs("app", "ios", {"family": "ipad", "os": ">=17"}, [MIXED[0]])
+    assert run.outcome == "failed"
+    assert 'family "ipad"  available: iOS 18.2 "iPhone SE (3rd generation)"' in run.reason
+
+
+def test_a_single_family_short_of_devices_is_named_at_assignment() -> None:
+    runs = form_target_runs("app", "ios", {"family": "ipad"}, MIXED[:2])
+    two = [Participant((name,), "ios", tuple(runs)) for name in ("a", "b")]
+    (combo,) = combine(two, {"ios": MIXED[:2]})
+    assert combo.outcome == "failed"
+    assert 'fit family "ipad"' in combo.reason

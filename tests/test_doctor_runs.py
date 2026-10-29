@@ -161,7 +161,7 @@ def test_a_grid_target_has_no_pool_and_names_why() -> None:
         ("ios", {"model": "iPhone 15"}, [""]),
         ("ios", {"os": ">=17 <19"}, ["iOS 17", "iOS 18"]),
         ("android", {"apiLevel": "33 - 34"}, ["API 33", "API 34"]),
-        ("web", {"browser.engine": ["chromium", "webkit"]}, ["chromium", "webkit"]),
+        ("web", {"browser.kind": ["chromium", "webkit"]}, ["chromium", "webkit"]),
         ("web", {"browser.version": ">=120"}, [""]),
     ],
 )
@@ -173,17 +173,15 @@ def test_declared_runs(
 
 def test_a_web_run_names_the_browser_it_launches() -> None:
     web = "{ url: 'http://x/' }"
-    listed = list_runs(*_web("{ browser: { engine: [chromium, webkit] } }", web), [])
+    listed = list_runs(*_web("{ browser: { kind: [chromium, webkit] } }", web), [])
     assert [(r.label, r.outcome, r.devices) for r in listed] == [
         ("chromium", "run", ("chromium",)),
         ("webkit", "run", ("webkit",)),
     ]
     browser = DeviceFacts(udid="webkit", platform="web", model="webkit", release="18.0")
-    (ranged,) = list_runs(*_web('{ browser: { engine: webkit, version: ">=17" } }', web), [browser])
+    (ranged,) = list_runs(*_web('{ browser: { kind: webkit, version: ">=17" } }', web), [browser])
     assert ranged.devices == (browser.describe,)
-    (excluded,) = list_runs(
-        *_web('{ browser: { engine: webkit, version: ">=19" } }', web), [browser]
-    )
+    (excluded,) = list_runs(*_web('{ browser: { kind: webkit, version: ">=19" } }', web), [browser])
     assert excluded.outcome == "not-applicable"
 
 
@@ -275,7 +273,7 @@ def test_the_command_prints_the_runs_section(
 
 
 def test_a_web_version_range_reads_the_engines_it_compares() -> None:
-    eff = _eff('{ browser: { engine: webkit, version: ">=17" } }', "web", "{ url: 'http://x/' }")
+    eff = _eff('{ browser: { kind: webkit, version: ">=17" } }', "web", "{ url: 'http://x/' }")
     asked: list[list[str]] = []
 
     def read(_e: Effective, _a: str, _u: str, engines: list[str]) -> list[DeviceFacts]:
