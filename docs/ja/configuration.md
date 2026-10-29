@@ -89,7 +89,7 @@ targets:
 | グループ | フィールド |
 |---|---|
 | `services` | `server`（run のためにアプリ自身のホストを起動します。後述）、`mockServer`、`mailbox`（[後述](#mailboxemail-ステップ)） |
-| `run` | `erase`、`systemAlertHandling` |
+| `run` | `erase`、`systemAlertHandling`、`ignoredSettings`（ターゲット専用、[後述](#環境ごとの設定runignoredsettingsbe-0467)） |
 | `hooks` | `setup`、`cleanup`、`interrupts` |
 | `evidence` | `capture`、`redact`、`collectNetwork`、`visualCompare`、`secrets` |
 | `paths` | `scenarios`、`baselines`、`schemas`、`goldens` |
@@ -352,6 +352,39 @@ targets:
 ### シークレット（`evidence.secrets`）
 
 `evidence.secrets` は **環境変数名のリスト**で（`defaults.evidence` と `targets.<name>.evidence` の両方で宣言でき、ローダがマージするときに和集合にします）、シナリオが入力に使える `${secrets.X}` 変数の宣言元です。`bajutsu run` は実行時に、宣言された各名前を環境から解決し、その値を action に展開（`${secrets.X}`）したうえで、**証跡に現れる箇所すべてでその実値をマスク**します（[evidence](evidence.md#マスキングredact)）。シナリオ source には `${secrets.X}` トークンだけが残り、実値は残りません。
+
+### 環境ごとの設定（`run.ignoredSettings`、BE-0467）
+
+最初のステップより前にデバイスへ届く設定には、環境によって適用できないものもあります。iOS Simulator は `simctl erase` でデバイスを消去しますが、実機の iPhone や WebDriver のエンドポイントではこのコマンドを実行できません。ブラウザにはアプリの起動がないので、`app.launch.env` を渡す先もありません。各設定の扱いは、環境のルート（iOS Simulator、iOS 実機、ライブ WebDriver、Android、Web）ごとに 1 つある表で決まります。
+
+| サポート | 意味 | 実行時の動作 |
+|---|---|---|
+| `supported` | ルートがその設定を適用する | 適用します |
+| `satisfied` | 設定が求める状態を、ルートがすでに保証している（Web の実行は毎回新しいブラウザコンテキストで始まるので、消去済みである） | 何もしません |
+| `unsupported` | ルートがその設定を適用できない | ターゲットが無視を宣言していない限り、デバイスに触る前に失敗します |
+
+対象の設定と、それぞれの元になるフィールドは次のとおりです。
+
+- `erase`：`run.erase`
+- `install`：`app.path` のインストール（`app.reinstall` はその方式）
+- `permissions.<service>`：シナリオの `permissions` の各サービス
+- `seedPhotos`：`runsOn.ios.seedPhotos`
+- `locale`：`runsOn.ios.locale`
+- `launchEnv`、`launchArgs`、`deeplink`：`app.launch.env`、`app.launch.args`、`app.launch.deeplink`
+
+ルートが適用できない設定は、run の preflight でシナリオを失敗させます。失敗のメッセージは、その設定、ターゲット、無視するための宣言を示します。各環境は起動時にも、適用できない設定をもう一度拒否します。そのため、`record` や `crawl` のように直接リースする場合も、適用できない設定は通りません。
+
+唯一の逃げ道は、ターゲットの `run.ignoredSettings` です。設定のキーに、その設定なしで実行する理由を書きます。
+
+```yaml
+targets:
+  iphone-device:
+    run:
+      ignoredSettings:
+        erase: "A real device keeps app data; this lane accepts state from earlier runs"
+```
+
+無視を宣言した設定は適用されず、起動時にその設定と理由を示す警告がログに出ます。この宣言は config の読み込み時に検証され、未知のキーや空の理由はエラーになります。無視する設定は 1 つの環境に属するものなので、`defaults.run` には書けません。ターゲットのルートがサポートまたは保証している設定を宣言すると、run の preflight で失敗します。ルートがその設定へ対応したとき、古くなった宣言が退行を隠すのを防ぐためです。シナリオ側では設定の無視を宣言できません。シナリオは、どの環境でも同じテストの定義であり続けます。
 
 ### 実機用 runner の署名（設定の外、BE-0456）
 

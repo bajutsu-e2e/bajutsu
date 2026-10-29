@@ -29,3 +29,5 @@ class RunDefaults:
     # applies at the `run_scenario` call site. Empty when the target config declares neither.
     setup: list[Step] = field(default_factory=list)
     cleanup: list[CleanupRule] = field(default_factory=list)
+    # The target's `run.ignoredSettings` (BE-0467): setting key -> the reason it runs without it.
+    ignored_settings: dict[str, str] = field(default_factory=dict)

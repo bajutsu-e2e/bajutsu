@@ -1996,6 +1996,26 @@ def test_check_scenarios_narrows_on_a_real_ios_device(tmp_path: Path) -> None:
     assert check_scenarios(scn, capabilities_for_run("xcuitest", sim)) == []
 
 
+def test_doctor_scenario_check_reports_an_unsupported_permission_service(tmp_path: Path) -> None:
+    # BE-0467 moved `permissions` from the capability set to the settings table; doctor passes the
+    # route, so `doctor --scenario` still reports a service the Simulator cannot grant.
+    from bajutsu.cli.commands.doctor import check_scenarios
+    from bajutsu.common.backends import capabilities_for_run
+
+    scn = tmp_path / "p.yaml"
+    scn.write_text(
+        "scenarios:\n  - name: notify\n    permissions: {notifications: grant}\n"
+        "    steps: [{tap: {id: ok}}]\n"
+    )
+    sim = resolve(
+        load_config("targets:\n  demo:\n    platform: ios\n    app: {id: com.x}\n"), "demo"
+    )
+    caps = capabilities_for_run("xcuitest", sim)
+    assert check_scenarios(scn, caps) == []
+    [reason] = check_scenarios(scn, caps, route=("xcuitest", sim, "booted"))
+    assert reason.startswith("[notify]") and "permissions.notifications" in reason
+
+
 def test_claude_readiness_reachable_with_a_credential(monkeypatch: pytest.MonkeyPatch) -> None:
     # With a resolvable credential the optional Claude section reports "reachable" — a ✓, never the
     # ✗ an environment failure uses (BE-0101). No client is built; availability only reads env.

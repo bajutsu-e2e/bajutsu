@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0467](BE-0467-environment-specific-settings-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **承認済み** |
+| 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0467") |
+| 実装 PR | [#2249](https://github.com/bajutsu-e2e/bajutsu/pull/2249)（単位 1〜3） |
 | トピック | プラットフォーム対応 |
 | 関連 | [BE-0082](../BE-0082-capability-preflight-check/BE-0082-capability-preflight-check-ja.md), [BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues-ja.md), [BE-0238](../BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution-ja.md), [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md), [BE-0457](../BE-0457-real-device-step-lint/BE-0457-real-device-step-lint-ja.md) |
 <!-- /BE-METADATA -->
@@ -234,9 +235,9 @@ worker 単位の宣言は、1 つのターゲットを本当に異なる環境�
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] `settings_support.py` を追加する。設定のキー、3 つの対応状態、ルートごとの表を持ち、権限の行をステップの検査から移し、`erase_precondition_supported` を置き換える
-- [ ] `RunPolicy` に `run.ignoredSettings` と読み込み時の規則を追加する
-- [ ] 実行の preflight に設定の検査を追加し、各環境が独自の条件分岐や黙って無視する処理の代わりに、`supported` の設定を適用し、無視されていない未対応の設定で例外を投げるようにする
+- [x] `settings_support.py` を追加する。設定のキー、3 つの対応状態、ルートごとの表を持ち、権限の行をステップの検査から移し、`erase_precondition_supported` を置き換える
+- [x] `RunPolicy` に `run.ignoredSettings` と読み込み時の規則を追加する
+- [x] 実行の preflight に設定の検査を追加し、各環境が独自の条件分岐や黙って無視する処理の代わりに、`supported` の設定を適用し、無視されていない未対応の設定で例外を投げるようにする
 - [ ] `RunResult.ignored_settings` を追加し、マニフェスト、HTML、JUnit、CTRF の各レポートで描画する
 - [ ] `video`、`deviceLog`、`appTrace` にそれぞれ capability を与え、`pool.py` で捨てている証跡の skip の理由を lease に残す
 - [ ] `bajutsu lint` に `--config` と `--target` を追加し、展開後のシナリオに対してターゲットごとにステップの検査、設定の検査、`check_preconditions` を行う
@@ -244,6 +245,13 @@ worker 単位の宣言は、1 つのターゲットを本当に異なる環境�
 - [ ] ジョブの必要な集合と worker の掲げる集合に `cap:` と `setting:` のトークンを加え、両方の接頭辞を予約し、生きているどの worker も扱えないジョブはキューに残し、ジョブのルートを駆動する worker が生きていてもどれもトークンをすべては掲げていない場合だけ投入時点で失敗させる。この項目より前の worker は現状のトークンで照合し、検査なしで実行したことをジョブに記録する
 - [ ] worker がジョブを受け取ったとき、デバイスを借りる前にステップと設定の検査をもう一度行う
 - [ ] 対応表、宣言、lint のフラグ、振り分けのトークンを `docs/` と `docs/ja/` に記載する（`configuration.md`、`cli.md`、`drivers.md`、`scenarios.md`）。`DESIGN.md` と `docs/architecture.md` を更新する
+
+ログ：
+
+- [#2249](https://github.com/bajutsu-e2e/bajutsu/pull/2249) — 単位 1〜3。`bajutsu/common/capability/settings_support.py` を追加しました。ルートごとの表、検査、起動時の歯止めを持ちます。`permissions` の行を BE-0082 のステップの検査から移し、`erase_precondition_supported` を表の参照に置き換えました。`RunPolicy` に `run.ignoredSettings` を加え、`defaults` では書けないようにしました。実行の preflight は、lease の前に各ターゲットの設定を検査します。iOS Simulator、実機、ライブ WebDriver、Android、Web の起動処理は、独自の条件分岐の代わりに表を読みます。デバイスグループのメンバーも同じです。
+- 設計の記述から外れた点が 5 つあります。最初の 4 つをこの項目で、5 つ目を次の項目で述べます。1 つ目に、Android の `launchArgs` は `unsupported` としました。Android には `app.launch.args` がなく、`am start` も引数を受け取らないためです。2 つ目に、シナリオの `app.launch` の値は、そのフィールドを持つプラットフォームのターゲットでだけ有効とみなします。BE-0452 の扱いに合わせたもので、iOS と Web を組み合わせたシナリオの deeplink で Web ターゲットが失敗することはありません。3 つ目に、実機の `locale` は起動引数としてアプリへ届くので `supported` としました。4 つ目に、ライブのルートは `extra_env` の拒否を表の外に残しました。この値は設定ではなく、Bajutsu 自身が注入するものだからです。同じ理由で、実行時に Bajutsu が起動環境へ書き込む `BAJUTSU_*` のキー（`BAJUTSU_MOCKS` など）も `launchEnv` の設定とはみなしません。ライブのルートは、これらのキーを起動時に引き続き拒否します。
+- Web ターゲット自身の `app.launch.env` も有効とみなしません。スキーマ上、この値は Playwright のコード生成のためのものだからです。一方、シナリオ側の値は有効とみなすので、showcase の `web` ターゲットは `cross_platform_app_web.yaml` のために `launchEnv` の無視を宣言しました。`record`、`crawl`、`repl`、`doctor` は、拒否された設定を通常のエラーとして報告します。
+- 単位 4 でレポートに表示するまでの間、起動処理は無視した設定ごとに警告をログへ出します。`docs/configuration.md` とその日本語版に `run.ignoredSettings` を記載しました。
 
 ## 参考
 

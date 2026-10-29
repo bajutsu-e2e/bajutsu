@@ -199,7 +199,7 @@ def repl(
             # The attached app is wherever the operator left it, not on the `startWhen` screen.
             skip_readiness=attach,
         )
-    except (device_errors.DeviceError, XcuitestChannelError) as e:
+    except (device_errors.DeviceError, base.UnsupportedAction, XcuitestChannelError) as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
     if isinstance(env, XcuitestEnvironment) and env.attach_outcome == "launched":

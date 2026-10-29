@@ -99,7 +99,7 @@ The shared groups hold the same fields on every platform:
 | Group | Fields |
 |---|---|
 | `services` | `server` (bring up the app's own host for the run, below), `mockServer`, `mailbox` ([below](#mailbox-the-email-step)) |
-| `run` | `erase`, `systemAlertHandling` |
+| `run` | `erase`, `systemAlertHandling`, `ignoredSettings` (target only, [below](#environment-specific-settings-runignoredsettings-be-0467)) |
 | `hooks` | `setup`, `cleanup`, `interrupts` |
 | `evidence` | `capture`, `redact`, `collectNetwork`, `visualCompare`, `secrets` |
 | `paths` | `scenarios`, `baselines`, `schemas`, `goldens` |
@@ -474,6 +474,51 @@ At run time `bajutsu run` resolves each declared name from the environment, inte
 into the action (`${secrets.X}`), and **masks the literal value everywhere it would appear in
 evidence** ([evidence](evidence.md#masking-redact)). The scenario source keeps the `${secrets.X}`
 token, never the value.
+
+### Environment-specific settings (`run.ignoredSettings`, BE-0467)
+
+Some settings reach the device before the first step, and not every environment can apply them. The
+iOS Simulator wipes a device with `simctl erase`, which a real iPhone or a WebDriver endpoint cannot
+run; a browser has no app launch to pass `app.launch.env` to. One table per environment route (the
+iOS Simulator, an iOS real device, a live WebDriver endpoint, Android, and the web) decides how each
+setting is handled:
+
+| Support | Meaning | Run behavior |
+|---|---|---|
+| `supported` | The route applies the setting | Apply it |
+| `satisfied` | The route already guarantees what the setting asks for (a web run's fresh browser context is already erased) | Do nothing |
+| `unsupported` | The route cannot apply the setting | Fail before any device work, unless the target declares it ignored |
+
+The settings, each with the field it comes from:
+
+- `erase`: `run.erase`
+- `install`: the `app.path` install (`app.reinstall` is its mode)
+- `permissions.<service>`: each service in the scenario's `permissions`
+- `seedPhotos`: `runsOn.ios.seedPhotos`
+- `locale`: `runsOn.ios.locale`
+- `launchEnv`, `launchArgs`, `deeplink`: `app.launch.env`, `app.launch.args`, `app.launch.deeplink`
+
+A setting the route cannot apply fails the scenario in the
+run preflight, which names the setting, the target, and the declaration that would ignore it. Each
+environment refuses an unsupported setting again as it launches, so a lease driven directly, as
+`record` or `crawl` takes one, cannot apply it either.
+
+The one opt-out is the target's `run.ignoredSettings`: the setting key, and the reason the run goes
+without it.
+
+```yaml
+targets:
+  iphone-device:
+    run:
+      ignoredSettings:
+        erase: "A real device keeps app data; this lane accepts state from earlier runs"
+```
+
+An ignored setting is not applied, and the launch logs a warning naming it and its reason. The map is checked when the config loads: an unknown key or a
+blank reason fails, and `defaults.run` may not carry it, because an ignored setting belongs to one
+environment. A declaration for a setting the target's route supports or satisfies fails the run
+preflight, so a stale declaration cannot hide a regression once the route gains the setting. A
+scenario never declares a setting ignored; it stays one definition of the test for every environment.
 
 ### Device runner signing (outside the config, BE-0456)
 

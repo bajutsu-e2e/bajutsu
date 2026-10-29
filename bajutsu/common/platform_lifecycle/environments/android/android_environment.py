@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 from bajutsu.common import backends
 from bajutsu.common.backend_cli import adb
+from bajutsu.common.capability.settings_support import enforce_settings
 from bajutsu.common.config import Effective, require_android, resolve_preconditions
 from bajutsu.common.config.preconditions import ResolvedPreconditions
 from bajutsu.common.drivers import base
@@ -178,6 +179,10 @@ class AndroidEnvironment:
         record_video_dir: Path | None = None,
         permissions: Mapping[str, str] | None = None,
     ) -> base.Driver:
+        # The route's settings table decides what this launch may apply (BE-0467): a setting Android
+        # cannot apply (a launch argument, an ungranted permission service) raises unless the target
+        # ignores it, and an ignored one is dropped here.
+        pre, permissions = enforce_settings(self._actuator, eff, pre, permissions, self._serial)
         android = require_android(eff)
         self._launch_inputs = (pre, dict(extra_env or {}))
         # `app_crash_artifacts()` takes no arguments, so this is the only route the `logcat` extraction
@@ -597,7 +602,9 @@ class AndroidEnvironment:
         # The resident channel dumps whichever app is in front, so one channel serves every member:
         # each gets its own driver over it, bound to its own package (BE-0447). `start` already ran
         # the device-wide part (boot, the erase-equivalent clears of the first member), so this
-        # never clears an app it did not install itself.
+        # never clears an app it did not install itself. The member's own target decides which of its
+        # settings this route may apply, exactly as `start` does (BE-0467).
+        pre, permissions = enforce_settings(self._actuator, eff, pre, permissions, self._serial)
         android = require_android(eff)
         e = adb.Env(self._serial, run=self._run)
         try:

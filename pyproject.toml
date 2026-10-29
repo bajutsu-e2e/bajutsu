@@ -367,6 +367,7 @@ source_modules = [
     "bajutsu.common.capability.capability_preflight",
     "bajutsu.common.capability.capabilities",
     "bajutsu.common.capability.worker_capability",
+    "bajutsu.common.capability.settings_support",
     "bajutsu.common.doctor",
     "bajutsu.common.lint",
 ]

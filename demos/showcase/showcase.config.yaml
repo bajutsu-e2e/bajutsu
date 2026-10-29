@@ -360,3 +360,8 @@ targets:
     platform: web
     app:
       url: "http://127.0.0.1:8789/index.html"
+    run:
+      # cross_platform_app_web.yaml's scenario-level launch env is meant for the iOS app; a browser
+      # has no launch environment to pass it to (BE-0467).
+      ignoredSettings:
+        launchEnv: "SHOWCASE_UITEST is read by the iOS app; the browser has no launch environment"

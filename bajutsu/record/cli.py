@@ -39,6 +39,7 @@ from bajutsu.common.analytics import usage as _usage
 from bajutsu.common.config import Effective
 from bajutsu.common.devices import errors as device_errors
 from bajutsu.common.devices.browsers import BROWSER_KINDS
+from bajutsu.common.drivers import base
 from bajutsu.common.handoff import HumanHandoffUnavailable
 from bajutsu.common.platform_lifecycle import environment_for
 from bajutsu.common.runner import launch_driver
@@ -255,7 +256,7 @@ def record(
     )
     try:
         driver, _readiness = launch_driver(udid, eff, actuator, preconditions)
-    except device_errors.DeviceError as e:
+    except (device_errors.DeviceError, base.UnsupportedAction) as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
     say(f"✅ app is up — authoring toward the goal: {goal!r}")

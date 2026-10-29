@@ -14,6 +14,7 @@ from __future__ import annotations
 import base64
 import re
 from collections.abc import Mapping
+from dataclasses import replace
 from typing import Any
 
 import pytest
@@ -704,6 +705,22 @@ def test_live_environment_start_raises_on_permissions() -> None:
         env.start(_live_eff(), ResolvedPreconditions(), permissions={"photos": "allow"})
 
 
+def test_live_environment_runs_without_an_ignored_erase() -> None:
+    # BE-0467: the target accepts that the live route cannot erase, so the session opens anyway.
+    eff = _live_eff()
+    eff = replace(eff, run_defaults=replace(eff.run_defaults, ignored_settings={"erase": "x"}))
+    env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: _FakeGrid([]))
+    assert env.start(eff, ResolvedPreconditions(erase=True)) is not None
+
+
+def test_live_environment_start_raises_on_a_target_locale() -> None:
+    # A target-level value reaches the table too, not only the scenario's own.
+    eff = replace(_live_eff(), locale="ja_JP")
+    env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: _FakeGrid([]))
+    with pytest.raises(base.UnsupportedAction, match=r"runsOn\.ios\.locale"):
+        env.start(eff, ResolvedPreconditions())
+
+
 def test_live_environment_start_raises_on_extra_env() -> None:
     env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: _FakeGrid([]))
     with pytest.raises(base.UnsupportedAction):
@@ -904,3 +921,18 @@ def test_query_raises_webdriver_error_on_null_rect_coordinate() -> None:
     client.new_session({})
     with pytest.raises(WebDriverError):
         XcuitestLiveDriver(client).query()
+
+
+def test_live_environment_has_no_device_catalog_and_no_device_control() -> None:
+    # A remote grid has no simctl catalog to read and no simctl device control to hand the runner.
+    env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: _FakeGrid([]))
+    assert env.device_catalog() == {}
+    assert env.controller(_live_eff()) is None
+
+
+def test_live_environment_still_refuses_bajutsus_own_launch_keys() -> None:
+    # `BAJUTSU_MOCKS` is not a setting, but the live route cannot pass it to the app, so the mocks a
+    # scenario relies on must not be dropped silently.
+    env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: _FakeGrid([]))
+    with pytest.raises(base.UnsupportedAction):
+        env.start(_live_eff(), ResolvedPreconditions(launch_env={"BAJUTSU_MOCKS": "[]"}))
