@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0468") |
-| Implementing PR | [#2244](https://github.com/bajutsu-e2e/bajutsu/pull/2244) (Unit 1) |
+| Implementing PR | [#2244](https://github.com/bajutsu-e2e/bajutsu/pull/2244) (Unit 1), [#2250](https://github.com/bajutsu-e2e/bajutsu/pull/2250) (Units 2–3) |
 | Topic | Driver & backend architecture |
 <!-- /BE-METADATA -->
 
@@ -352,7 +352,7 @@ fake pool for each resolution branch, and the failure messages.
   - `read_ios_device` reads real devices from `xcrun devicectl list devices --json-output -`. A connected iPhone 14 Pro reported `deviceType: iPhone`; no iPad was connected, so the iPad value is not yet confirmed on hardware. Nothing calls the reader yet: unit 3 reads the pool through it.
   - Deviation from the design: the devicectl listing shows Simulators too, so the reader keeps only entries whose `hardwareProperties.reality` is `physical`, and matches the udid on `hardwareProperties.udid`, the id an XCUITest destination takes, rather than devicectl's own `identifier`. The reader also requires `deviceProperties.osVersionNumber`, because `DeviceFacts.release` feeds the version and the device's description, and the module fails rather than store an unreadable release.
   - A second deviation: the reader does not tell a reachable device from an unplugged one. A connected iPhone in use reported `connectionProperties.tunnelState: disconnected`, because the tunnel opens only when a run drives the device, so that field cannot separate the two. A device that disconnects between the lease and the run therefore fails when the run drives it, not at the pool read as *Checking on the worker* states. Unit 6 revisits this with an unplugged device at hand.
-- PR-PENDING (Units 2 and 3) — accept `family` and a `kind` list in the schema, and resolve them into runs.
+- [#2250](https://github.com/bajutsu-e2e/bajutsu/pull/2250) (Units 2 and 3) — accept `family` and a `kind` list in the schema, and resolve them into runs.
   - `runsOn.ios` gains `family`, and its `kind` takes a list. `runsOn.browser.engine` gives way to `kind`, which adds `chrome` and `edge`. The loader enforces every rule of *Rules the loader enforces*. `engine` fails with a message that names `kind` and says a `kind` list keeps every run. The JSON Schema states both `kind` fields and `family` as enums.
   - `form_target_runs` forms one run per listed kind, each on that kind's devices, and resolves the family list per run and per major version. The winner narrows `eligible_set`. `first_run` and `declared_runs` cover both fields. `DeviceFacts` gains `physical`, and `read_ios_pool` reads a pool that mixes Simulators and real devices, each udid through the listing that shows it.
   - The units land together, because a schema that accepts `family` with no resolution behind it would ignore the field without a word.

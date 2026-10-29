@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0468") |
-| 実装 PR | [#2244](https://github.com/bajutsu-e2e/bajutsu/pull/2244)（単位 1） |
+| 実装 PR | [#2244](https://github.com/bajutsu-e2e/bajutsu/pull/2244)（単位 1）、[#2250](https://github.com/bajutsu-e2e/bajutsu/pull/2250)（単位 2、3） |
 | トピック | Driver & backend architecture |
 <!-- /BE-METADATA -->
 
@@ -355,7 +355,7 @@ run に LLM は入りません。解決は config、引数、プールだけの�
   - `read_ios_device` は、実機を `xcrun devicectl list devices --json-output -` から読みます。接続した iPhone 14 Pro は `deviceType: iPhone` を返しました。iPad は接続していないため、iPad の値は実機ではまだ確認していません。この読み取りを呼ぶ箇所はまだありません。単位 3 で、デバイスのプールをこの読み取りで読みます。
   - 仕様からのずれ：devicectl の一覧には Simulator も含まれます。そこで、`hardwareProperties.reality` が `physical` の項目だけを残します。udid は、devicectl 独自の `identifier` ではなく `hardwareProperties.udid` で照合します。XCUITest の destination が受け取るのは `hardwareProperties.udid` のほうだからです。また、`deviceProperties.osVersionNumber` も必須にしました。`DeviceFacts.release` はバージョンとデバイスの表示に使われるので、読めない release を保存せずに失敗させます。
   - もう 1 つの仕様からのずれ：この読み取りでは、到達できるデバイスと抜かれたデバイスを区別しません。使用中の接続済み iPhone も `connectionProperties.tunnelState: disconnected` を返しました。トンネルは run がデバイスを操作するときに初めて開くため、このフィールドでは両者を区別できません。そのため、lease から run までのあいだに切断されたデバイスは、*worker での検査* に書いたプールの読み取りの時点ではなく、run がデバイスを操作した時点で失敗します。単位 6 で、抜いたデバイスを用意して見直します。
-- PR-PENDING（単位 2、3）— スキーマが `family` と `kind` のリストを受け付け、それらを run に解決するようにしました。
+- [#2250](https://github.com/bajutsu-e2e/bajutsu/pull/2250)（単位 2、3）— スキーマが `family` と `kind` のリストを受け付け、それらを run に解決するようにしました。
   - `runsOn.ios` に `family` を追加し、`kind` がリストを受け付けるようにしました。`runsOn.browser.engine` は `kind` に置き換え、値に `chrome` と `edge` を加えました。ローダーは *ローダーが強制する規則* のすべての規則を適用します。`engine` を書くと、`kind` を示し、`kind` のリストでも run が減らないことを伝えるメッセージで失敗します。JSON Schema は、2 つの `kind` と `family` を列挙型として出力します。
   - `form_target_runs` は、並べた種類ごとに、その種類のデバイスで run を作ります。ファミリーのリストは、run ごと、メジャーバージョンごとに解決し、勝ったファミリーで `eligible_set` を絞ります。`first_run` と `declared_runs` も両方のフィールドを扱います。`DeviceFacts` に `physical` を追加しました。`read_ios_pool` は、Simulator と実機が混在するプールを、各 udid を表示する一覧から読みます。
   - 2 つの単位をまとめたのは、解決のないまま `family` を受け付けるスキーマは、そのフィールドを黙って無視してしまうからです。
