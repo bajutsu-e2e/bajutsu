@@ -58,6 +58,7 @@ resolution, and the **preflight capability check** (below).
 | `textSelection` | select-all + clipboard copy on the focused field | ✅ | ✅ | ✅ | ✅ |
 | `selectOption` | set a native `<select>` by value (web only) | — | — | ✅ | ✅ |
 | `urlNavigation` | open a URL mid-scenario with `navigate` (web only; BE-0464) | — | — | ✅ | ✅ |
+| `elementAttribute` | read one HTML attribute of an element for the `attribute` assertion (web only; BE-0466) | — | — | ✅ | ✅ |
 | `handleSystemAlert` | tap an iOS SpringBoard permission-prompt button natively | ✅ | — | — | ✅ |
 | `pickerWheel` | set a wheel-style picker to a named row (iOS only) | ✅ | — | — | ✅ |
 | `handleTipkitTip` | dismiss a blocking Apple TipKit tip (iOS only) | ✅ | — | — | ✅ |
@@ -106,8 +107,11 @@ set) — no device, no clock — and per-scenario: only the offending scenarios 
 The check gates only the **hard** requirements the capability set cleanly decides: `pinch` /
 `rotate` need `multiTouch`, `selectOption` needs the `selectOption` token (a web-only `<select>`
 switch; iOS / Android are rejected before any device work), `navigate` needs `urlNavigation` (web
-only, and caught even inside a `web:` or `app:` block — `navigate` is the one construct this check
-follows into those blocks),
+only, and caught even inside a `web:` or `app:` block — `navigate` and `attribute` are the two
+constructs this check follows into those blocks), an `attribute` assertion needs `elementAttribute`
+(web only; BE-0466 — found anywhere: `expect`, a step's `assert`, an `if` or `interrupts` condition,
+inside a `web:` or `app:` block, and in `interrupts` recovery steps, so the iOS WebView context is
+rejected too),
 `select` / `copy` need `textSelection`
 (select-all + clipboard copy; the web context is coordinate-only for these and refuses both —
 `delete` / `clear` stay ungated, as every backend backs `delete_text`), a `visual` assertion needs
@@ -688,6 +692,14 @@ fits the same toolchain as `make check`. Implementation: `common/drivers/playwri
   `resolve_unique`/`find_all` against a `query()` snapshot and clicks the **frame center** by
   coordinate (`page.mouse.click`). It deliberately does **not** use Playwright's own
   `get_by_test_id().click()`, so selector semantics stay byte-identical to every other backend.
+- `read_attributes(reads)` (BE-0466) backs the `attribute` assertion. It takes every
+  `(sel, name)` pair of an assertion block at once. One `page.evaluate` runs the same walk as
+  `QUERY_JS`, with each record also carrying `getAttribute` for every requested name, so the whole
+  block reads from one instant. Each `sel` resolves with the same `resolve_unique` a tap uses. A pair
+  gets its value, `None` for a missing attribute, or the `SelectorError` its selector raised, which
+  is returned rather than raised so the other pairs keep their reads. Iframe,
+  covered, and off-viewport elements read like any other listed element. The other backends
+  (XCUITest, adb, and the iOS WebView context) raise `UnsupportedAction`.
 - `type_text` types via `page.keyboard` (the orchestrator taps `into` first, focusing the field);
   `screenshot` is `page.screenshot`; `wait_for` is single-shot via `find_all` (like every backend —
   the shared `base.wait_until` supplies the deadline poll).

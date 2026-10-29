@@ -63,6 +63,7 @@ from bajutsu.common.scenario.models.actions import (
 from bajutsu.common.scenario.models.assertions import _ASSERTION_KINDS as ASSERTION_KINDS
 from bajutsu.common.scenario.models.assertions import (
     Assertion,
+    AttributeMatch,
     ClipboardMatch,
     CountMatch,
     CountOp,
@@ -128,6 +129,7 @@ __all__ = [
     "STEP_ACTIONS",
     "App",
     "Assertion",
+    "AttributeMatch",
     "Background",
     "CaptureRule",
     "CleanupRule",

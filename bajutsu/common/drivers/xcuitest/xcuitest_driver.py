@@ -714,6 +714,12 @@ class XcuitestDriver:
             "selectOption is web-backend-only, for a <select>; iOS has no native <select>"
         )
 
+    def read_attributes(
+        self,
+        reads: Sequence[tuple[base.Selector, str]],  # noqa: ARG002  # Driver shape
+    ) -> list[str | None | base.SelectorError]:
+        raise base.UnsupportedAction("attribute is web-backend-only; iOS has no HTML attributes")
+
     def set_picker_value(self, sel: base.Selector, value: str) -> None:
         # Handle-based like `tap`, not coordinate-based like `swipe` / `drag` (BE-0356): the runner
         # calls `adjust(toPickerWheelValue:)` on the element XCTest already resolved, so the wheel

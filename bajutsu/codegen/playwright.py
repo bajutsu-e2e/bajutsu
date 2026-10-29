@@ -40,7 +40,13 @@ from bajutsu.codegen.common import (
 from bajutsu.common.assertions import request_label
 from bajutsu.common.drivers import base
 from bajutsu.common.scenario import Assertion, CleanupRule, Gone, RequestMatch, Scenario, Step
-from bajutsu.common.scenario.models.assertions import CountMatch, TextMatch, Wait, WaitRequest
+from bajutsu.common.scenario.models.assertions import (
+    AttributeMatch,
+    CountMatch,
+    TextMatch,
+    Wait,
+    WaitRequest,
+)
 
 # Wheel-scroll distance (px) a directional swipe emits — intrinsic to the gesture (BE-0227). The
 # delta is the physical scroll direction: an `up` swipe pushes the surface up, so the page scrolls
@@ -504,6 +510,8 @@ def _emit_assertion(a: Assertion) -> list[str]:  # noqa: C901, PLR0911
         return _emit_text_match(a.value, "toHaveValue", "toHaveValue")
     if a.label is not None:
         return _emit_text_match(a.label, "toHaveText", "toContainText")
+    if a.attribute is not None:
+        return _emit_attribute(a.attribute)
     if a.enabled is not None:
         return _expect(a.enabled.as_selector(), "toBeEnabled()")
     if a.disabled is not None:
@@ -548,6 +556,23 @@ def _emit_text_match(m: TextMatch, equals_matcher: str, contains_matcher: str) -
             return [f"await expect({loc}).toContainText({_ts(m.contains)});"]
         return [f"await expect({loc}).{equals_matcher}({_re_contains(m.contains)});"]
     return [f"await expect({loc}).{equals_matcher}({_re_raw(m.matches or '')});"]
+
+
+def _emit_attribute(m: AttributeMatch) -> list[str]:
+    sel = m.sel.as_selector()
+    loc = _locator(sel)
+    if loc is None:
+        return [_unsupported_selector_todo(sel)]
+    name = _ts(m.name)
+    if m.absent:
+        return [f"await expect({loc}).not.toHaveAttribute({name});"]
+    if m.equals is not None:
+        want = _ts(m.equals)
+    elif m.contains is not None:
+        want = _re_contains(m.contains)
+    else:
+        want = _re_raw(m.matches or "")
+    return [f"await expect({loc}).toHaveAttribute({name}, {want});"]
 
 
 def _emit_count(c: CountMatch) -> list[str]:

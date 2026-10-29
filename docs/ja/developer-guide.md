@@ -310,7 +310,7 @@ classDiagram
         +Exists exists
         +TextMatch value
         +RequestMatch request
-        +全 14 種
+        +全 15 種
     }
     class Driver {
         <<Protocol · 実行時>>
@@ -360,7 +360,7 @@ classDiagram
 
 **`Scenario`**（[`common/scenario/models/`](https://github.com/bajutsu-e2e/bajutsu/tree/main/bajutsu/common/scenario/models)）は
 作成時のモデルです。pydantic の `extra="forbid"` で組んであるので、未知のキーは黙って通らず読み込みで
-失敗します。`Step` は 39 のアクション欄のうち 1 つを、`Assertion` は 14 種のうち 1 種を持ちます。
+失敗します。`Step` は 39 のアクション欄のうち 1 つを、`Assertion` は 15 種のうち 1 種を持ちます。
 この厳しさが効くのは、シナリオがセッションをまたいで残る唯一の成果物だからです。
 
 **`Driver`**（[`common/drivers/base.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/bajutsu/common/drivers/base.py)）は
@@ -474,9 +474,9 @@ scenarios:
 | データと値 | `http`、`totp`、`generate`、`email` | 値を作るか取得します。HTTP 呼び出し、時刻ベースのワンタイムパスワード（TOTP）コード、乱数、メールボックスの検索です。 |
 | 合成と制御構文 | `use`、`web`、`manual`、`if`、`forEach` | コンポーネントを展開する、ブロックを WebView に絞る、人手の引き継ぎを記録する、分岐・繰り返しをします。 |
 
-### 4.4 14 種のアサーション
+### 4.4 15 種のアサーション
 
-`Assertion`（`common/scenario/models/assertions.py`）は必ず 14 の欄のうち 1 つを持ち、
+`Assertion`（`common/scenario/models/assertions.py`）は必ず 15 の欄のうち 1 つを持ち、
 `assertions/evaluate.py`（第 7.6 節）が評価します。例外を投げずに失敗した結果を返す全域関数です。
 
 | 分類 | 欄 | 検査すること |
@@ -485,6 +485,7 @@ scenarios:
 | ネットワーク | `request`、`event`、`requestSequence`、`responseSchema` | 観測した HTTP 通信です。単一の通信、順序つきの並び、スキーマに対する応答本文のいずれかです。 |
 | 画面の比較 | `visual`、`golden` | スクリーンショットを基準画像と、要素ツリーを記録済みのツリーと比較します。 |
 | クリップボード | `clipboard` | デバイスのクリップボードの現在のテキストです。 |
+| 要素の属性 | `attribute` | 要素の HTML 属性 1 つを、必要なときに読み取った値です（web のみ。BE-0466）。 |
 
 ### 4.5 制御構文・合成・データ
 
@@ -666,7 +667,7 @@ flowchart TB
 |---|---|---|
 | `models/scenario.py` | `Scenario`、`Component`、`ScenarioFile`、`Preconditions`、`SystemAlertHandling` | 文書の最上位と、シナリオごとの前提設定です。 |
 | `models/steps.py` | `Step`、`If`、`ForEach`、`Use`、`Web`、`Interrupt`、`CleanupRule`、`Extract` | 1 ステップと、制御構文やライフサイクルの包みです。 |
-| `models/assertions.py` | `Assertion`、`Exists`、`TextMatch`、`CountMatch`、`RequestMatch`、`VisualMatch`、`GoldenMatch` | 14 種のアサーションです。 |
+| `models/assertions.py` | `Assertion`、`Exists`、`TextMatch`、`CountMatch`、`RequestMatch`、`VisualMatch`、`GoldenMatch` | 15 種のアサーションです。 |
 | `models/actions.py` | `TypeText`、`Swipe`、`Scroll`、`HttpRequest`、`Generate`、`Email`、`Totp` ほか | アクションごとの引数モデルです。 |
 | `models/selector.py` | `Selector` | 作成時のセレクタです。`as_selector()` で実行時の形に変えます。 |
 | `load.py` · `load_expanded.py` | `load_scenario_file`、`load_scenarios` | YAML を解析し、スキーマ版数を確かめます。 |

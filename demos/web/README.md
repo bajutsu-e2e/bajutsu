@@ -14,6 +14,7 @@ toolchain as `make check`.
 | `app/help.html` | a page nothing in `index.html` links to, reachable only by its address — what `scenarios/navigate.yaml` opens |
 | `scenarios/smoke.yaml` | the deterministic smoke scenario (same step/expect schema as the iOS demos) |
 | `scenarios/navigate.yaml` | opens `help.html` with a `navigate` step and returns by a relative reference ([BE-0464](../../roadmaps/BE-0464-web-navigate-step/BE-0464-web-navigate-step.md)) |
+| `scenarios/html_attribute.yaml` | asserts the home screen's `docs.link` `href`, then taps `panel.load` and waits for the panel's `data-state` to settle from `loading` to `ready` with `aria-busy` removed ([BE-0466](../../roadmaps/BE-0466-web-attribute-assertion/BE-0466-web-attribute-assertion.md)) |
 | `scenarios/network.yaml` | the network smoke ([BE-0282](../../roadmaps/BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md)) — a mocked, captured `POST /api/sync` carrying a secret; tagged `network` so the default `e2e` (`--no-network`) skips it |
 | `network/assert_redaction.py` | checks the persisted `network.json` masks the Sync request's secret — the redaction gap the run grammar can't assert |
 | `record/goals.txt` | the natural-language goal `make -C demos/web record` authors from |
@@ -34,6 +35,12 @@ This installs the web backend (`uv sync --extra web` + `playwright install chrom
 `app/` on `127.0.0.1:8787`, runs the smoke scenario through the Playwright backend, and tears the
 server down. The run is fully deterministic — pass/fail comes only from the scenario's machine
 assertions (the counter reads `2`), never an LLM.
+
+`e2e` sets `BAJUTSU_MIN_WAIT_TIMEOUT` to `E2E_WAIT_FLOOR` (default `10` seconds), as the Android
+lane does. A step's `assert` then polls within that floor, which `scenarios/html_attribute.yaml` needs:
+the panel's `data-state` reads `loading` for about 400 ms after the tap. The poll returns as soon as
+the assertions pass, so the floor is an upper bound, not a fixed delay. Override it with
+`make -C demos/web e2e E2E_WAIT_FLOOR=<seconds>`.
 
 To poke the app by hand (or point the Web UI at it), `make -C demos/web app-serve` and open
 <http://127.0.0.1:8787/index.html>.

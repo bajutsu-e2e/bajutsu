@@ -91,7 +91,7 @@ from bajutsu.common.scenario.models.actions import Totp
 from bajutsu.common.totp import TOTP_PERIOD_SECONDS
 
 from ._loop_config import _LoopConfig
-from ._shared import _ExecSteps, _logger
+from ._shared import _ExecSteps, _logger, _with_attributes
 from ._step_counter import _StepCounter
 from .app_crash_latches import AppCrashLatches
 from .step_loop_state import StepLoopState
@@ -161,7 +161,10 @@ def _poll_asserts(
     while True:
         t0 = clock.now()
         tree = driver.query()
-        results = assertions.evaluate(tree, asserts, network(), ctx=ctx)
+        # An `attribute` assertion's element is read beside each tree, never once up front: the
+        # attributes it targets (`data-state`, `aria-busy`) settle a beat after an action (BE-0466).
+        tick_ctx = _with_attributes(ctx, driver, asserts)
+        results = assertions.evaluate(tree, asserts, network(), ctx=tick_ctx)
         if assertions.passed(results) or clock.now() >= deadline:
             return results, tree
         if cancelled():
@@ -814,8 +817,9 @@ def _capture_visual_actual(
 # C901 and PLR0915 fold each nested function's count into the function enclosing it, so this score
 # measures the closures defined below (`run_phase` among them), not genuine branching here — the
 # same reasoning `pool.py`'s own `lease()` exemption gives (BE-0386). BE-0428's own-target interval
-# start/finish loop pushed the plain statement count over the line for the first time.
-def run_scenario(  # noqa: C901, PLR0915
+# start/finish loop pushed the plain statement count over the line for the first time, and BE-0466's
+# `UnsupportedAction` handler the branch count.
+def run_scenario(  # noqa: C901, PLR0912, PLR0915
     driver: base.Driver,
     scenario: Scenario,
     clock: Clock | None = None,
@@ -1163,6 +1167,12 @@ def run_scenario(  # noqa: C901, PLR0915
                 # letting it proceed on an app state bajutsu never established (BE-0365). It lands as an
                 # ordinary failure, so the verdict stays machine-checkable and the cause is in the report.
                 failure = f"control channel: {exc}"
+            except base.UnsupportedAction as exc:
+                # A construct the backend refuses outside a step body (an `expect` entry, an `if`
+                # condition, an interrupt check before an act) — normally refused by the preflight
+                # before a lease (BE-0466). Failing this scenario keeps one bypassed check from
+                # escaping `run_all` and discarding every other scenario's result.
+                failure = f"unsupported: {exc}"
             except RunCancelled:
                 # A cancelled run is a failed run, not a silent gap: the scenario the cancel interrupted
                 # (or one whose first boundary was already past it) fails with the one spelling
@@ -1430,7 +1440,8 @@ def _run_if(
     """Evaluate the condition (with interpolation) and run the matching branch."""
     interp_condition = _interp_asserts([if_block.condition], bindings)[0]
     elements = driver.query()
-    results = assertions.evaluate(elements, [interp_condition], network())
+    ctx = _with_attributes(EvalContext(), driver, [interp_condition])
+    results = assertions.evaluate(elements, [interp_condition], network(), ctx=ctx)
     branch = if_block.then if assertions.passed(results) else (if_block.else_ or [])
     if not branch:
         return True, ""

@@ -362,10 +362,12 @@ Per-kind mechanics:
 | `disabled` | `resolve_unique` | the `notEnabled` trait is **present** |
 | `selected` | `resolve_unique` | the `selected` trait is present |
 | `request` | matches over the observed network exchanges (not the element tree) | `equals`/`atLeast`/… via `count`, else ≥ 1 ([network](network.md)) |
+| `attribute` | `resolve_unique` inside the driver's `read_attributes` (web only) | compares the attribute via `equals`/`contains`/`matches`, or checks `absent` |
 
 > Only `exists` uses `find_all` (allows multiple); the other single-element assertions use
 > `resolve_unique` (ambiguous fails). So "tried to check the value when there were two matches" also
-> fails deterministically. The table above covers eight kinds. Seven resolve against the element
-> tree. The eighth, `request`, checks the captured HTTP(S) exchanges instead. Six more kinds never
+> fails deterministically. The table above covers nine kinds. Seven resolve against the element
+> tree. `request` checks the captured HTTP(S) exchanges instead. `attribute` resolves its selector
+> with the same `resolve_unique`, inside the web driver, and reads the attribute from the live page. Six more kinds never
 > resolve a selector this way. They are `event` / `requestSequence` / `responseSchema` / `visual` /
 > `clipboard` / `golden`. See [scenarios](scenarios.md#assertion-dsl) for the full list.

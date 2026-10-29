@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from bajutsu.common.drivers.actuation import Actuation, ActuationLog, Drained
 from bajutsu.common.drivers.base import (
     Capability,
@@ -10,6 +12,7 @@ from bajutsu.common.drivers.base import (
     Frame,
     Point,
     Selector,
+    SelectorError,
     UnsupportedAction,
     find_all,
     frame_center,
@@ -141,6 +144,13 @@ class WebContextDriver:
 
     def select_option(self, sel: Selector, option: str) -> None:  # noqa: ARG002  # Driver shape
         raise UnsupportedAction("selectOption is not supported in web context (first slice)")
+
+    def read_attributes(
+        self,
+        reads: Sequence[tuple[Selector, str]],  # noqa: ARG002  # Driver shape
+    ) -> list[str | None | SelectorError]:
+        # The BajutsuKit bridge carries no attribute read yet; BE-0466 leaves it to a later slice.
+        raise UnsupportedAction("attribute is not supported in web context (first slice)")
 
     def set_picker_value(self, sel: Selector, value: str) -> None:  # noqa: ARG002  # Driver shape
         raise UnsupportedAction("setPickerValue is iOS-only; a DOM has no picker wheel")

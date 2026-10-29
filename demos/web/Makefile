@@ -9,6 +9,9 @@ RECORD := $(ROOT)/demos/web/record
 CODEGEN := $(ROOT)/demos/web/codegen
 CONFIG := $(ROOT)/demos/web/demo.config.yaml
 PORT ?= 8787
+# The wait floor `e2e` runs under (BE-0466), as the Android lane's E2E_WAIT_FLOOR does: a step's
+# `assert` block polls within it, so an attribute the page settles a beat after a tap is caught.
+E2E_WAIT_FLOOR ?= 10
 
 # Install the web backend: the Playwright python package (uv extra) + the Chromium binary it
 # drives (a separate download, not a pip dep). Idempotent.
@@ -32,7 +35,7 @@ e2e: web-deps
 	  sleep 0.1; \
 	done; \
 	if [ "$$ready" -ne 1 ]; then echo "demo server did not answer on port $(PORT) within the readiness timeout" >&2; exit 1; fi; \
-	cd $(ROOT) && uv run bajutsu run --target web --backend web --config $(CONFIG) --no-network --exclude network --workers 2
+	cd $(ROOT) && BAJUTSU_MIN_WAIT_TIMEOUT=$(E2E_WAIT_FLOOR) uv run bajutsu run --target web --backend web --config $(CONFIG) --no-network --exclude network --workers 2
 
 # Web network smoke (BE-0282): the real network path — page.route interception, requestfinished
 # capture, the `mocked` flag, and redaction of really-captured evidence — which `e2e` above opts out

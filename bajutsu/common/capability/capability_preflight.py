@@ -19,6 +19,9 @@ The map gates only the **true hard requirements** the capability set cleanly dec
 - `selectOption` needs `selectOption` (BE-0191): a web-only action that sets a native `<select>`;
   iOS / Android backends raise `UnsupportedAction`, so a scenario with this step is rejected before
   any device work on those platforms.
+- an `attribute` assertion needs `elementAttribute` (BE-0466): only the web backend reads an HTML
+  attribute, so the assertion — in `expect`, a step's `assert`, an `if` or `interrupts` condition,
+  or inside a `web:` / `app:` block — is rejected before any device work everywhere else.
 - `setPickerValue` needs `pickerWheel` (BE-0356): a picker wheel is an iOS control, and only the
   resident-runner XCUITest backend can land on a named row deterministically, so a scenario setting
   a wheel's value is rejected up front on every other backend.
@@ -172,6 +175,34 @@ def _navigate_locations(sc: Scenario) -> list[str]:
     return paths
 
 
+def _attribute_locations(sc: Scenario) -> list[str]:
+    """The paths where an `attribute` assertion appears (BE-0466).
+
+    Wider than `_assertions_with_path`, for the reason `_navigate_locations` gives: it follows `web:`
+    / `app:` blocks, whose backends (the iOS WebView context, the cross-app context) cannot read an
+    attribute either, and `interrupts`, whose conditions and recovery steps poll the leased device too.
+    """
+
+    def found(pairs: Iterator[tuple[str, Step]]) -> Iterator[str]:
+        for path, step in pairs:
+            for j, a in enumerate(step.assert_ or []):
+                if a.attribute is not None:
+                    yield f"{path} > assert[{j}]"
+            if step.if_ is not None and step.if_.condition.attribute is not None:
+                yield f"{path} > if > condition"
+            for name, block in (("web", step.web), ("app", step.app)):
+                if block is not None:
+                    yield from found(_walk_steps(block.steps, f"{path} > {name}"))
+
+    paths = [f"expect[{i}]" for i, a in enumerate(sc.expect or []) if a.attribute is not None]
+    paths.extend(found(_walk_scenario(sc)))
+    for i, entry in enumerate(sc.interrupts):
+        if entry.condition.attribute is not None:
+            paths.append(f"interrupts[{i}] > condition")
+        paths.extend(found(_walk_steps(entry.steps, f"interrupts[{i}] ")))
+    return paths
+
+
 def _text_selection_locations(sc: Scenario) -> list[str]:
     """The paths where a `select` or `copy` step appears (BE-0280).
 
@@ -238,6 +269,11 @@ _REQUIREMENTS = (
         base.Capability.URL_NAVIGATION,
         "navigate (open a URL; web only, not supported on iOS / Android)",
         _navigate_locations,
+    ),
+    _Requirement(
+        base.Capability.ELEMENT_ATTRIBUTE,
+        "attribute (read an HTML attribute; web only, not supported on iOS / Android)",
+        _attribute_locations,
     ),
     _Requirement(
         base.Capability.PICKER_WHEEL,

@@ -6,6 +6,7 @@ import contextlib
 import json
 import shutil
 import time
+from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import urljoin
@@ -13,13 +14,20 @@ from urllib.parse import urljoin
 from bajutsu.common.backend_cli import simctl
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.actuation import Actuation, ActuationLog, Drained
-from bajutsu.common.drivers.dom import QUERY_JS, parse_dom
+from bajutsu.common.drivers.base import _collapse_identical_duplicates
+from bajutsu.common.drivers.dom import (
+    ATTRIBUTE_QUERY_JS,
+    QUERY_JS,
+    parse_dom,
+    parse_dom_with_attributes,
+)
 from bajutsu.common.evidence import intervals
 
 from ._frame_scope import _FrameScope
 from ._functions import (
     _device_context_kwargs,
     _iframe_elements,
+    _iframe_records,
     _is_browser_fault,
     _nav_reason,
     _playwright_error_types,
@@ -418,6 +426,27 @@ class PlaywrightDriver:
             (el, None) for el in parse_dom(records if isinstance(records, list) else [])
         ]
         return main + list(_iframe_elements(self._page))
+
+    @_wedge_guard
+    def read_attributes(
+        self, reads: Sequence[tuple[base.Selector, str]]
+    ) -> list[str | None | base.SelectorError]:
+        # One walk carries every requested attribute beside each record, so a whole block is read
+        # from one instant, and each pair resolves by the same `resolve_unique` a tap uses (BE-0466):
+        # no window between finding an element and reading it, and no second matching rule. The
+        # names reach the script `json.dumps`-encoded, as `_point_hits` encodes its strings.
+        names = list(dict.fromkeys(name for _, name in reads))
+        records = self._page.evaluate(f"() => ({ATTRIBUTE_QUERY_JS})({json.dumps(names)})")
+        rows = parse_dom_with_attributes(records if isinstance(records, list) else [])
+        rows += [(el, values) for el, _, values in _iframe_records(self._page, names)]
+        elements = [el for el, _ in rows]
+        out: list[str | None | base.SelectorError] = []
+        for sel, name in reads:
+            try:
+                out.append(_attribute_of(rows, elements, sel, name, names.index(name)))
+            except base.SelectorError as e:
+                out.append(e)
+        return out
 
     def _center(self, sel: base.Selector) -> base.Point:
         point, _, _ = self._center_with_element(sel)
@@ -947,8 +976,33 @@ class PlaywrightDriver:
             base.Capability.SELECT_OPTION,
             base.Capability.TEXT_SELECTION,
             base.Capability.URL_NAVIGATION,
+            base.Capability.ELEMENT_ATTRIBUTE,
         }
     )
 
     def capabilities(self) -> set[str]:
         return set(self.CAPABILITIES)
+
+
+def _attribute_of(
+    rows: list[tuple[base.Element, list[str | None]]],
+    elements: list[base.Element],
+    sel: base.Selector,
+    name: str,
+    column: int,
+) -> str | None:
+    """`name`'s value on the one element `sel` resolves to among `rows` (BE-0466)."""
+    el = base.resolve_unique(elements, sel)
+    # `resolve_unique` collapses content-identical twins, which compare no attribute; twins that
+    # disagree on this one are two elements the read cannot tell apart, so they stay ambiguous.
+    values = {
+        vals[column] if column < len(vals) else None
+        for e, vals in rows
+        if len(_collapse_identical_duplicates([el, e])) == 1
+    }
+    if len(values) > 1:
+        raise base.AmbiguousSelector(
+            f"content-identical elements matched {sel!r} with different "
+            f"{name!r} values — give them a distinguishing `data-testid`"
+        )
+    return values.pop()

@@ -1652,6 +1652,7 @@ showcase のデモは、この 2 つの流れを iOS と Android の両方で実
 | `responseSchema` | 捕捉したレスポンスボディが JSON Schema に適合するか検証（`--network` が必要） | `responseSchema: { request: { urlMatches: "/api/items" }, schema: items.json }` |
 | `visual` | 画面が baseline 画像に一致する（ビジュアルリグレッション） | `visual: { baseline: home.png, threshold: 0.02 }` |
 | `clipboard` | デバイスのペーストボードが一致する（`simctl pbpaste` で読み戻す） | `clipboard: { equals: "COUPON123" }` / `clipboard: { matches: "\\d{6}" }` |
+| `attribute` | 要素の HTML 属性が一致する、または属性がない（web のみ） | `attribute: { sel: { id: docs.link }, name: href, equals: /docs }` / `attribute: { sel: { id: panel }, name: aria-busy, absent: true }` |
 
 - `exists` はセレクタを **インラインで**書きます（`{ id: ... }` を直書き）。`negate` は任意です。
 - `value` / `label` は `sel:` と、`equals` / `contains` / `matches` の **いずれか 1 つ**を指定します。
@@ -1663,6 +1664,7 @@ showcase のデモは、この 2 つの流れを iOS と Android の両方で実
 - `responseSchema` は捕捉した **レスポンスボディが JSON Schema に適合する**かを検証します（[下記](#responseschemaレスポンスの-json-schema)）。`--network` 実行フラグが必要です。
 - `visual` はスクリーンショットを baseline 画像とピクセル比較します（[下記](#visualビジュアルリグレッション)）。
 - `clipboard` はデバイスのペーストボードを `simctl pbpaste` で読み戻し、`equals` / `matches`（正規表現）の **いずれか 1 つ**を検証します。`setClipboard` の読み戻し側で、「コピー」操作の検証に使います。デバイスごとの制御チャネルが必要なため、fake ドライバや並列実行では利用できず、その場合はクリーンに失敗します（[BE-0052](../../roadmaps/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md)）。
+- `attribute` は `sel:` と `name:` に加えて、`equals` / `contains` / `matches` / `absent: true` の **いずれか 1 つ**を取ります。詳細は[後述](#attribute要素の-html-属性)と [BE-0466](../../roadmaps/BE-0466-web-attribute-assertion/BE-0466-web-attribute-assertion-ja.md) を参照してください。属性は web（Playwright）バックエンドから必要なときに読み取ります。ほかのバックエンドでは、デバイスの確保前に失敗します。
 
 > **ロケール注意**: `label`/`value` の文字列比較や、可視テキストを見るアサーションは翻訳で壊れます。これらはターゲットの固定 `runsOn.ios.locale` を前提に書き、セレクタ自体は `id` で書いてください。
 
@@ -1847,6 +1849,28 @@ expect:
 **要素スコープ比較（BE-0171）。** `visual` は既定で画面全体を比較するため、無関係な変化（バナー、行が増えたリストなど）があるたびにアサーションが失敗し、baseline が揺れます。`element: <Selector>` を指定すると、**その要素だけ**を比較します。スクリーンショットは要素のフレームにクロップされ、baseline はそのクロップ画像になるので、フレームの外側の変化は無視されます。セレクタは通常の一意解決規則で解決し、**曖昧なセレクタは最初の一致をクロップせず即座に失敗します**。何にも一致しないセレクタも失敗します。`approve` は要素スコープの baseline も画面全体の baseline と同じ手順で昇格します（baseline は単に小さい画像になるだけです）。
 
 **セレクタによるマスク（BE-0171）。** `exclude` のピクセル矩形は、レイアウトが変わったりデバイスの解像度が変わったりした瞬間にずれます。代わりに要素を指定すると（`{ selector: { label: "last updated" } }`）、そうした変化に強くなります。要素をフレームへ解決し、矩形と同じ方法でマスクするからです。何にも一致しないマスクセレクタは何もしません（画面上に隠すものが無いため）。曖昧なセレクタは、決定論の原則どおり失敗します。セレクタと矩形は一つの `exclude` リストに混在でき、どちらも要素スコープ比較と併用できます（クロップした要素の内側のマスクは、クロップの座標系へ変換されます）。
+
+### `attribute`（要素の HTML 属性）
+
+```yaml
+- assert:
+    - attribute: { sel: { id: docs.link }, name: href, equals: /docs }
+    - attribute: { sel: { id: hero.image }, name: alt, contains: Bajutsu }
+    - attribute: { sel: { id: panel }, name: data-state, matches: "^(ready|idle)$" }
+    - attribute: { sel: { id: panel }, name: aria-busy, absent: true }
+```
+
+`attribute` は、web（Playwright）バックエンドで 1 つの要素の HTML 属性を 1 つ検証します（[BE-0466](../../roadmaps/BE-0466-web-attribute-assertion/BE-0466-web-attribute-assertion-ja.md)）。リンクの `href`、画像の `alt`、状態を表す `data-*` や `aria-*` 属性のように、要素ツリーに含まれない値を確かめるために使います。
+
+- **`sel`** は `value` と同じ方法で解決します。一致する要素がなければ失敗し、2 つ以上あれば曖昧として失敗します。対象は web のクエリが列挙する要素に限られます。`data-testid`、`role`、インタラクティブなタグのいずれかを持つ要素か、`label` で指定するテキストの要素です。素の `<img>` はテキストを持たないので、検証するには `data-testid` が必要です。内容がまったく同じ要素が 2 つあり、属性の値が食い違う場合も、ほかに見分ける手がかりがないので曖昧として失敗します。
+- **`name`** は正しい HTML 属性名でなければなりません。空文字列や、空白、引用符、`>`、`/`、`=`、制御文字を含む名前は受け付けません。Bajutsu は属性名を小文字に変換しません。書いたとおりの名前が DOM の `getAttribute` に渡ります。そのため、HTML 要素では大文字と小文字を区別せずに一致します。SVG と MathML の要素では、大文字と小文字まで完全に一致する必要があります。
+- **演算子**は 4 つのうち 1 つだけを指定します。`equals`、`contains`、`matches`（正規表現）は `value` や `label` と同じ規則に従います。`absent: true` は、要素がその名前の属性を持たないときに成功します。`absent: false` はシナリオの読み込み時に拒否します。
+- **属性がないことと値が空であることは区別します。** 値が空の属性は `""` として読むので、`equals: ""` は成功し、`absent: true` は失敗します。属性がない場合、`equals`、`contains`、`matches` は失敗し、理由で属性の欠如を示します（`expected equals='x' but attribute 'href' is absent`）。値が一致しない場合は、実際の値を理由に含めます（`expected equals='/docs' but actual='/about'`）。この理由も、ほかの理由と同じくアーティファクトの秘匿化境界を通ります。
+- 期待する文字列の **`${...}` トークン**は、ほかのアサーションのフィールドと同じく展開します。
+
+`attribute` は、ステップの `assert`、`expect`、`if` の条件、`interrupts` の条件で使えます。`wait` の条件には使えません。runner は、ブロックを評価するクエリの直後に、そのつど属性を読み取ります。そのため、ステップの `assert` では条件待機の各ティックで読み取りを繰り返します。繰り返しは、属性が一致するか、レーンの待機下限（`BAJUTSU_MIN_WAIT_TIMEOUT`）が尽きるまで続きます。要素のスナップショット、golden、クロールの出力、レポートにはフィールドが増えません。レポートに載る属性は、アサーションが名前を挙げたものだけです。
+
+このアサーションには `elementAttribute` capability が必要です。この capability を宣言するのは web バックエンドだけです。ほかのバックエンドでシナリオのどこかに `attribute` があれば、capability preflight がデバイスを確保する前に拒否します。`web:` ブロックの iOS WebView コンテキストも拒否の対象です。また、web 以外のターゲットの `hooks.interrupts` に `attribute` があれば、設定の検証が設定の読み込み時に拒否します。`attribute` が読むのは属性であって、DOM のプロパティではありません。フォーム部品の現在の値は、引き続き `value` アサーションで検証します。
 
 ## ネットワークモック（決定的スタブ）
 

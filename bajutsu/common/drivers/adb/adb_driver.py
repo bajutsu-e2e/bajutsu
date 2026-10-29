@@ -7,7 +7,7 @@ import math
 import subprocess
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
@@ -1590,6 +1590,14 @@ class AdbDriver(CoordinateTreeDriver):
     def select_option(self, sel: base.Selector, option: str) -> None:  # noqa: ARG002  # Driver shape
         raise base.UnsupportedAction(
             "selectOption is web-backend-only, for a <select>; Android has no native <select>"
+        )
+
+    def read_attributes(
+        self,
+        reads: Sequence[tuple[base.Selector, str]],  # noqa: ARG002  # Driver shape
+    ) -> list[str | None | base.SelectorError]:
+        raise base.UnsupportedAction(
+            "attribute is web-backend-only; Android has no HTML attributes"
         )
 
     def set_picker_value(self, sel: base.Selector, value: str) -> None:  # noqa: ARG002  # Driver shape

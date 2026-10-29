@@ -43,7 +43,15 @@ from bajutsu.codegen.common import (
 )
 from bajutsu.common.assertions import request_label
 from bajutsu.common.drivers import base
-from bajutsu.common.scenario import Assertion, CleanupRule, Gone, Scenario, Step, WaitRequest
+from bajutsu.common.scenario import (
+    Assertion,
+    AttributeMatch,
+    CleanupRule,
+    Gone,
+    Scenario,
+    Step,
+    WaitRequest,
+)
 from bajutsu.common.scenario.models.assertions import CountMatch, TextMatch, Wait
 
 # The adb backend has no network-interception surface (common/drivers/adb.py CAPABILITIES), so a network
@@ -94,6 +102,22 @@ def _s(text: str) -> str:
         .replace("\t", "\\t")
     )
     return f'"{escaped}"'
+
+
+def _attribute_todo(m: AttributeMatch) -> str:
+    """A labeled TODO for a web-only `attribute` assertion (BE-0466), naming what it checks."""
+    if m.absent:
+        check = "absent: true"
+    else:
+        op = (
+            "equals"
+            if m.equals is not None
+            else "contains"
+            if m.contains is not None
+            else "matches"
+        )
+        check = f"{op}: {_s(m.equals or m.contains or m.matches or '')}"
+    return f"// TODO: attribute(name: {_s(m.name)}, {check}) — web-only; not generated"
 
 
 def _glob_to_regex(glob: str) -> str | None:
@@ -383,7 +407,9 @@ def _emit_state(sel: base.Selector, prop: str, want: bool) -> list[str]:
     return [f"{check}(device.findObject({by}).{prop})"]
 
 
-def _emit_assertion(a: Assertion) -> list[str]:
+# One branch per assertion kind: the count tracks the schema's size, not tangled logic, and a split
+# would leave no single place a new assertion kind clearly belongs (BE-0386).
+def _emit_assertion(a: Assertion) -> list[str]:  # noqa: C901, PLR0911
     if a.exists is not None:
         by = _by(a.exists.sel.as_selector())
         if by is None:
@@ -402,6 +428,8 @@ def _emit_assertion(a: Assertion) -> list[str]:
         return _emit_state(a.selected.as_selector(), "isSelected", True)
     if a.count is not None:
         return _emit_count(a.count)
+    if a.attribute is not None:
+        return [_attribute_todo(a.attribute)]
     if a.request is not None:
         return [f"// TODO: request assertion ({request_label(a.request)}) — {_NO_NETWORK}"]
     if a.request_sequence is not None:

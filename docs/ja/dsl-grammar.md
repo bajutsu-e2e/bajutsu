@@ -342,12 +342,15 @@ Assertion ::=
   | { responseSchema: <ResponseSchemaMatch> }   # 取得したレスポンスボディを JSON Schema で検証する（BE-0048）
   | { visual:   <VisualMatch> }
   | { clipboard: <ClipboardMatch> }   # デバイスのペーストボードの読み戻し（simctl pbpaste）
+  | { attribute: <AttributeMatch> }   # 1 つの要素の HTML 属性を必要なときに読み取る（web のみ。BE-0466）
   | { golden:   <GoldenMatch> }       # 実行中の要素ツリーを記録済みの golden ファイルと比較する（BE-0006）
 
 TextMatch  ::= { sel: <Selector> } & ( {equals:string} | {contains:string} | {matches:string} )
 CountMatch ::= { sel: <Selector> } & ( {equals:integer} | {atLeast:integer} | {atMost:integer} )
 CountOp    ::= ( {equals:integer} | {atLeast:integer} | {atMost:integer} )   # セレクタを持たない件数比較。EventMatch の多重度に使う
 ClipboardMatch ::= ( {equals:string} | {matches:string} )   # ちょうど 1 つ。matches は正規表現
+AttributeMatch ::= { sel: <Selector>, name: string }   # name は正しい HTML 属性名。小文字に変換しない
+               & ( {equals:string} | {contains:string} | {matches:string} | {absent:true} )   # ちょうど 1 つ
 GoldenMatch ::= { path: string }   # golden コンテキストのベースディレクトリに対して解決する（BE-0006）
 
 VisualMatch ::= {                  # 画面をベースライン画像とピクセル比較する
@@ -452,6 +455,7 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 | `TextMatch`（`value`/`label`） | `equals` / `contains` / `matches` の **ちょうど 1 つ** | `scenario/models/assertions.py` |
 | `CountMatch`（`count`） | `equals` / `atLeast` / `atMost` の **ちょうど 1 つ** | `scenario/models/assertions.py` |
 | `ClipboardMatch`（`clipboard`） | `equals` / `matches` の **ちょうど 1 つ** | `scenario/models/assertions.py` |
+| `AttributeMatch`（`attribute`） | `equals` / `contains` / `matches` / `absent: true` の **ちょうど 1 つ**。`absent: false` は拒否します。`name` は空でない正しい HTML 属性名です | `scenario/models/assertions/attribute_match.py` |
 | `RequestMatch` | `method`/`url`/`urlMatches`/`path`/`pathMatches`/`query`/`body`/`status`/`bodyMatches` の **1 つ以上**（`count` はマッチフィールドではない）。`query`/`body` の辞書は空にできず、引用符付きのスカラー、`$matches`/`$exists` の演算子 map、（`body` では）入れ子の map とリストだけを含む | `scenario/models/assertions.py` |
 | `EventMatch`（`event`） | `method`/`url`/`urlMatches`/`path`/`pathMatches`/`query`/`body` の **1 つ以上** | `scenario/models/assertions.py` |
 | `CountOp`（`event.count`） | `equals` / `atLeast` / `atMost` の **ちょうど 1 つ** | `scenario/models/assertions.py` |

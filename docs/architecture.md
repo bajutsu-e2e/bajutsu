@@ -294,7 +294,8 @@ The contract (`tests/driver_conformance.py`) is the "done" definition a new back
   multi-touch gestures work exactly when `MULTI_TOUCH` is declared, select-all / clipboard copy
   work exactly when `TEXT_SELECTION` is declared, and setting a native `<select>` by value works
   exactly when `SELECT_OPTION` is declared, and loading a URL works exactly when `URL_NAVIGATION` is
-  declared (else each raises `UnsupportedAction`, BE-0280, BE-0464);
+  declared, and `read_attributes` resolves each selector like a tap exactly when `ELEMENT_ATTRIBUTE`
+  is declared (else each raises `UnsupportedAction`, BE-0280, BE-0464, BE-0466);
 - text editing round-trips on the focused field (typing then deleting reduces its reported length),
   and `tap_point` — a raw coordinate tap, the alert-dismissal path — focuses the field when aimed at
   its center, the same observable effect as a semantic tap (BE-0280);
@@ -549,7 +550,7 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   candidates for cross-platform id forms (BE-0221)
 - Evaluation of the assertion kinds (`exists` / `value` / `label` / `count` / `enabled` / `disabled` /
   `selected` / `request` / `requestSequence` / `event` / `responseSchema` / `visual` / `clipboard` /
-  `golden`)
+  `golden` / `attribute`)
 - The Tier 2 run loop (act → wait → verify), verified with `FakeDriver`
 - **Multi-target scenario execution** (BE-0428): a scenario's top-level `targets: list[str]` plus a
   per-step `target: str` interleave steps across more than one declared target — an iOS target and a
@@ -848,6 +849,14 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   across it. Rides on a new `Driver.goto(url)` method gated on the `urlNavigation` capability, which
   only the Playwright backend declares, so preflight rejects the step on iOS or Android before any
   device work — including a `navigate` nested inside a `web:` block
+- DSL `attribute` assertion (BE-0466, web only): checks one HTML attribute of one element (`href`,
+  `alt`, a `data-*` or `aria-*` state) with `equals` / `contains` / `matches` or `absent: true`. The
+  runner reads it on demand through `Driver.read_attributes(reads)` right after each query the
+  block is evaluated against, one call for the whole block so its assertions are judged against one
+  instant. A step's `assert` re-reads it on every tick of the condition wait, and only an attribute
+  an assertion names reaches a report. Gated on the `elementAttribute`
+  capability, which only the Playwright backend declares, so preflight rejects it on iOS or Android
+  (the iOS WebView context included) before any device work
 - DSL device & system actions (iOS): `background`, `clearKeychain`, `clearClipboard`,
   `overrideStatusBar` / `clearStatusBar` (deterministic status bar), and the `http` action for
   test-data setup / webhooks — `saveBody` stores the whole response body, and `extractBody`

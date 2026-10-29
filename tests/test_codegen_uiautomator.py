@@ -974,3 +974,27 @@ def test_navigate_is_a_labeled_web_only_todo() -> None:
     code = _gen("- name: x\n  steps:\n    - navigate: /settings\n")
     assert '// TODO: navigate(url: "/settings") — web-only; not generated' in code
     assert "unsupported step" not in code
+
+
+def test_attribute_is_a_labeled_web_only_todo() -> None:
+    # BE-0466: an HTML attribute has no UI Automator counterpart, so it is named rather than dropped.
+    code = _gen(
+        "- name: x\n  steps:\n    - assert:\n"
+        "      - attribute: { sel: { id: a }, name: data-state, matches: '^ok$' }\n"
+    )
+    # Kotlin string escaping turns the regex's `$` into `\$`.
+    assert (
+        '// TODO: attribute(name: "data-state", matches: "^ok\\$") — web-only; not generated'
+        in code
+    )
+    assert "unsupported assertion" not in code
+
+
+def test_attribute_todo_names_each_operator() -> None:
+    code = _gen(
+        "- name: x\n  steps:\n    - assert:\n"
+        "      - attribute: { sel: { id: a }, name: alt, contains: logo }\n"
+        "      - attribute: { sel: { id: a }, name: aria-busy, absent: true }\n"
+    )
+    assert '// TODO: attribute(name: "alt", contains: "logo") — web-only; not generated' in code
+    assert '// TODO: attribute(name: "aria-busy", absent: true) — web-only; not generated' in code

@@ -11,7 +11,7 @@ from pydantic import Field, ValidationError, ValidationInfo, create_model, model
 from ._model import _Model
 from .ai_settings import AiSettings
 from .evidence import Evidence
-from .hooks import Hooks
+from .hooks import Hooks, _nested_steps
 from .paths import Paths
 from .platform.registry import schema_for, validate_group, validate_model
 from .run_policy import RunPolicy
@@ -86,6 +86,26 @@ class TargetConfig(_Model):
     paths: Paths = Field(default_factory=Paths)
     # Per-target AI provider/model/endpoint/key (BE-0047), overriding `defaults.ai` field by field.
     ai: AiSettings | None = None
+
+    @model_validator(mode="after")
+    def _attribute_needs_web(self) -> TargetConfig:
+        # The capability preflight reads the scenario alone, so a config-declared interrupt is checked
+        # here instead (BE-0466). On the merged target, not on `Hooks`, which carries no platform —
+        # and `defaults.hooks` has already merged in, so both shapes are judged under this platform.
+        if schema_for(self.platform).element_attribute:
+            return self
+        for i, entry in enumerate(self.hooks.interrupts):
+            conditions = [entry.condition]
+            for step in _nested_steps(entry.steps):
+                conditions.extend(step.assert_ or [])
+                if step.if_ is not None:
+                    conditions.append(step.if_.condition)
+            if any(a.attribute is not None for a in conditions):
+                raise ValueError(
+                    f"hooks.interrupts[{i}]: an `attribute` assertion needs a web target; "
+                    f"platform {self.platform!r} cannot read an HTML attribute (BE-0466)"
+                )
+        return self
 
     @model_validator(mode="before")
     @classmethod
