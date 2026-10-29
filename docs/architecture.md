@@ -726,10 +726,10 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   An unrenderable `format` or an unknown `timezone` is rejected when the scenario loads, so an
   accepted step always executes and always succeeds; the produced value is recorded on the step's
   manifest entry and shown in the report, and every codegen target emits a labeled `// TODO`
-- DSL `eval` step (BE-0472): a fixed vocabulary of string/list operations (`split`, `join`,
-  `filter`, `pick`, `count`, `sort`, `unique`, `reverse`, `json`, `regex`, `replace`, `substring`,
-  `trim`, `case`) runs as an ordered `ops` pipeline over a `from` value, storing the result into
-  `${vars.*}` — `into: { var }` for a single result, or `into: { vars: [...] }` to spread a list
+- DSL `eval` step (BE-0472): ops drawn from a fixed vocabulary of string/list operations (`split`,
+  `join`, `filter`, `pick`, `count`, `sort`, `unique`, `reverse`, `json`, `regex`, `replace`,
+  `substring`, `trim`, `case`) run as an ordered pipeline over a `from` value, storing the result
+  into `${vars.*}` — `into: { var }` for one variable, or `into: { vars: [...] }` to spread a list
   result over several variables in order. The loader type-checks the pipeline (string in, string or
   list at each step) before the run starts, rejecting an operation applied to the wrong type; a
   list result is stored as compact JSON array text, the same `json_text` rendering `extractBody`
