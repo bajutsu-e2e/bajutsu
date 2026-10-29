@@ -1196,8 +1196,13 @@ deterministic `run` verdict.
   intersected. A Mac serving the Simulator and an attached iPhone thus never takes an `erase` job
   on the device route, and still takes every Simulator job.
 - **A mismatch fails at submission, and an unserved route waits.** The control plane refuses a job
-  in one case. A live worker already drives the job's route, and no worker advertises every token
-  the job needs. `POST /api/run` then returns `400`. The error lists each missing token with the
+  when three conditions hold together:
+  - a live worker already drives the job's route;
+  - no live worker advertises every token the job needs;
+  - no live worker can serve the job at all. A worker from before this item matches on its other
+    tokens, so while one still serves the job, a mixed fleet accepts it.
+
+  `POST /api/run` then returns `400`. The error lists each missing token with the
   steps or settings that need it. While no live worker drives the route, the job stays queued and
   counts toward `bajutsu_unroutable_jobs`. A cold start or a worker restart is such a case.
 - **A worker re-checks a job when it claims it.** The lease hands the worker the tokens the server
@@ -1238,8 +1243,10 @@ deterministic `run` verdict.
 >
 > BE-0467 goes the other way. A worker built before it advertises no `cap:` or `setting:` token, and
 > the control plane matches such a worker on the other tokens alone, so an upgrade never strands a
-> queue. The lease records `workerRouting: unchecked` on each such job's provenance. The run's HTML
-> report lists that record under *notices*. Roll the workers to clear those notices.
+> queue. The lease records `workerRouting: unchecked` on each such job's provenance, which reaches
+> the run's `manifest.json`. A report rendered on view, as a local serve renders it, lists that record
+> under *notices*. The report baked at run time does not, since the old worker baked it before the
+> record arrived. Roll the workers to stop the record.
 
 ### Evidence upload to object storage (optional, BE-0110)
 

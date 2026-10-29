@@ -365,8 +365,9 @@ Log:
   targets go on `ios-live`, since the grid endpoint lives in the worker's file, not the target's
   config. The claim-time check compares route tokens, since the run subprocess already re-runs the
   step and settings checks before its lease. And the "unchecked worker" note is the provenance
-  entry `workerRouting: unchecked`, which the HTML report lists under a new run-level *notices*
-  section.
+  entry `workerRouting: unchecked` in the run's `manifest.json`, which a report rendered on view
+  lists under a new run-level *notices* section. The report baked at run time cannot show it, since
+  the old worker that triggers it bakes the report before serve merges the entry.
 
 ## References
 
