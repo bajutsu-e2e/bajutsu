@@ -380,7 +380,7 @@ run に LLM は入りません。解決は config、引数、プールだけの�
   - もう 1 つのずれ：serve のジョブは、種類のリストの 1 つの run ではなく、ターゲットの `run` 全体です。そのため、ジョブはターゲットが並べるすべての種類について合うデバイスを必要とし、各 run のファミリーは、lease した worker が自分のプールで解決します。
   - 単位 1 がこの単位に残した、抜かれたデバイスの検査は未解決のままです。devicectl は、ペアリング済みのデバイスを、差さっているかどうかにかかわらず一覧に出し、トンネルの状態でも両者を区別できません。そのため、worker は抜かれたデバイスのファミリーも広告し続け、そこへ振り分けられたジョブは、run がデバイスを操作する時点で失敗します。このホストでは、ローカルネットワーク上のペアリング済みの iPhone 14 Pro が `device:iphone` と読めました。iPad も抜いたケーブルも手元になく、それ以上は確かめていません。
   - ドキュメント：`docs/self-hosting.md` の capability ルーティングの節、`docs/cli.md` の worker の `--capabilities` の行、`docs/drivers.md` の worker 能力の記述、`docs/architecture.md` の `serve/` の行を、それぞれ日本語版とともに更新しました。設定のページには、これまでの単位で `runsOn` の表と例がすでに入っていました。
-  - デモ：正確な `model` や `engine` を指定するデモがなかったので、書き換える対象はありませんでした。`showcase-swiftui` のターゲットには `family: iphone` を加えました。レイアウトとビジュアルのベースラインが iPhone のものだからです。web のデモには `kind: chromium` を加えました。このホストでは、iPhone 17 Pro の Simulator で、showcase のターゲットが `family=iphone` の 1 つの run に解決しました。
+  - デモ：正確な `model` や `engine` を指定するデモがなかったので、書き換える対象はありませんでした。web のデモには `kind: chromium` を加えました。`showcase-swiftui` のターゲットに `family: iphone` を加えることも試しましたが、取りやめました。このターゲットは、デバイスグループのシナリオで `showcase-swiftui-previous` と `showcase-uikit` と 1 台のデバイスを共有するので、3 つとも同じ条件にする必要があります。また、各 run が `simctl list devicetypes` を読むことになり、負荷の高い CI のランナーではこの読み取りが 60 秒で時間切れになりました。そのため、showcase のターゲットは条件のない run のままにしています。手元では、iPhone 17 Pro の Simulator で、`family: iphone` を付けたターゲットが `family=iphone` の 1 つの run に解決しました。
 
 ## 参考
 

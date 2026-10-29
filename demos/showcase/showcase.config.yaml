@@ -116,9 +116,6 @@ targets:
       startWhen: { exists: { id: [stable.row.1, stable_row_1, saved.build] } }
       path: ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app
       build: make swiftui-build
-    # The suite's layout and its visual baselines are an iPhone's, so the target names the family
-    # rather than a device-type name an Xcode release can rename (BE-0468).
-    runsOn: { ios: { family: iphone } }
     evidence:
       # Mask the Log submit's secret in captured network evidence (BE-0282), the iOS twin of the web
       # demo's own policy. `Authorization` is masked by default (BE-0130); the `password` body field the
