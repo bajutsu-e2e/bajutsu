@@ -116,6 +116,14 @@ The other device-control operations (`push`, the clipboard steps, `clearKeychain
   source of truth. `bajutsu doctor` reads the same narrowed set, so its capability preflight stops
   flagging `setLocation` on a real-device target without a change of its own.
 
+  The advertised set is computed from config before a device is acquired, so it cannot know the
+  device's iOS version or the toolchain that built the runner. A real device below the iOS 16.4 /
+  Xcode 16.3 floor therefore advertises `deviceControl.setLocation` and fails the step at run time,
+  where the preflight skips the scenario today. That is a deliberate exception to the invariant
+  `capabilities_for_run` documents (that an advertised capability never raises `UnsupportedAction`),
+  taken because no config field carries the device's OS version at preflight time. Unit 4 covers the
+  failure and the message that names the floor.
+
 ### Lifetime of the simulated location
 
 `simctl location set` persists on the Simulator until it is cleared, while `XCUIDevice.location` is a
@@ -128,8 +136,10 @@ run. Prime directive 2 rules that out, so the host pins the location to the scen
 
 - **Reset at every lease start.** When a lease begins, cold or warm (`_resume_warm`), the environment
   calls `DELETE /location`. Every scenario starts from the device's physical position, whatever ran
-  before it. The reset treats an `unsupported` reply as a no-op, since such a runner cannot have set
-  a location either.
+  before it. On the Simulator the reset also runs `simctl location clear`
+  (`simctl.Env.clear_location`), because assigning `nil` drops merely the runner's proxy and returns
+  the device to the location `simctl` last set, including one the fallback path above wrote. An
+  `unsupported` reply from the runner is then a no-op on its own.
 - **No re-apply after a crash.** When the runner crashes mid-scenario, the run pipeline discards the
   lease and re-runs the whole scenario from the start on a fresh one (`bajutsu/common/runner/pipeline.py`).
   The lease-start reset fires, and the scenario's own `setLocation` step runs again, so the coordinate
@@ -159,9 +169,11 @@ the new capability.
 3. **Host driver.** `XcuitestDriver.set_location` and `clear_location`, with unit tests on a fake
    transport.
 4. **Controller, lifetime, and capabilities.** The composed `DeviceControl` with its Simulator
-   fallback, the reset at lease start (cold and warm), the `capabilities_for_run` narrowing, and tests
-   showing that a warm-reused runner starts the next scenario at the physical position, that an
-   `unsupported` reply falls back to `simctl` on the Simulator and fails on a real device, and that a
+   fallback, the reset at lease start (cold and warm, plus `simctl location clear` on the Simulator), the
+   `capabilities_for_run` narrowing, and tests showing that a warm-reused runner starts the next
+   scenario at the physical position even after a scenario took the `simctl` fallback, that an
+   `unsupported` reply falls back to `simctl` on the Simulator and fails on a real device with a
+   message naming the iOS 16.4 / Xcode 16.3 floor, and that a
    real-device target runs `setLocation` while still skipping `push`.
 5. **Documentation.** `docs/drivers.md` (capability table), `docs/ios-device-cloud.md`,
    `docs/devicefarm.md`, and `docs/architecture.md`, each with its `docs/ja/` mirror.

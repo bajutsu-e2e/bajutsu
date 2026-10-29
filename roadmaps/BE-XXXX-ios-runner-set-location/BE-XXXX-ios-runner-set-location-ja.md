@@ -108,6 +108,13 @@ Simulator では、既存の環境を回帰させないために `simctl` をフ
   ライブ WebDriver の分岐には手を入れません。`XcuitestLiveDriver.CAPABILITIES` が独自の正本だからです。
   `bajutsu doctor` は同じ絞り込み後の集合を読むので、修正なしで、実機ターゲットの `setLocation` をプリフライトで指摘しなくなります。
 
+  広告する capability 集合はデバイスを確保する前に設定から計算するので、デバイスの iOS のバージョンや、ランナーを
+  ビルドしたツールチェーンは分かりません。そのため iOS 16.4 と Xcode 16.3 の下限を満たさない実機でも
+  `deviceControl.setLocation` を広告し、現在はプリフライトで skip されるシナリオが実行時にステップで失敗します。
+  これは `capabilities_for_run` が定める不変条件（広告した capability が `UnsupportedAction` を出さないこと）からの
+  意図的な例外です。プリフライトの時点でデバイスの OS バージョンを表す設定項目がないため、この例外を受け入れます。
+  作業単位 4 で、この失敗と下限を示すメッセージをテストします。
+
 ### 模擬した位置情報の寿命
 
 `simctl location set` は Simulator 上で消去するまで残りますが、`XCUIDevice.location` はランナーのテストプロセスが
@@ -120,7 +127,10 @@ Simulator では、既存の環境を回帰させないために `simctl` をフ
 
 - **リース開始時のリセット。** リースが始まるたびに、cold でも warm（`_resume_warm`）でも、環境が
   `DELETE /location` を呼びます。どのシナリオも、前に何が動いたかに関係なく、デバイスの物理的な位置から始まります。
-  `unsupported` の応答は何もしない扱いにします。そのランナーは位置情報を設定することもできないためです。
+  Simulator では、リセットで `simctl location clear`（`simctl.Env.clear_location`）も実行します。`nil` の代入で
+  消えるのはランナーの代理の値だけで、デバイスは `simctl` が最後に設定した位置情報に戻るためです。前述の
+  フォールバックで書き込んだ位置情報もこれに含まれます。そのうえで、ランナーの `unsupported` の応答は何もしない
+  扱いにします。
 - **クラッシュ後の再適用は不要。** シナリオの途中でランナーがクラッシュすると、実行パイプラインはそのリースを捨て、
   新しいリースでシナリオ全体を最初から実行し直します（`bajutsu/common/runner/pipeline.py`）。リース開始時の
   リセットが働き、シナリオ自身の `setLocation` ステップがもう一度動くので、ホストが状態を覚えておかなくても座標は
@@ -146,10 +156,12 @@ Simulator では、既存の環境を回帰させないために `simctl` をフ
 2. **ランナーのルート。** `openapi.yaml` と `APIHandler.swift` の `POST` と `DELETE /location`、プロバイダのメソッド、成功、
    `unsupported`、400 を扱う `BajutsuRunnerTests`。
 3. **ホスト側のドライバ。** `XcuitestDriver.set_location` と `clear_location`、フェイクのトランスポートを使った単体テスト。
-4. **コントローラ、寿命、capability。** Simulator のフォールバック先を持つ合成した `DeviceControl`、リース開始時（cold と warm）の
-   リセット、`capabilities_for_run` の絞り込み。テストでは次の 3 点を示します。warm で再利用したランナーでも次の
-   シナリオが物理的な位置から始まること。`unsupported` の応答が Simulator では `simctl` にフォールバックし、実機では失敗すること。
-   実機ターゲットで `setLocation` が動き、`push` は skip されたままであること。
+4. **コントローラ、寿命、capability。** Simulator のフォールバック先を持つ合成した `DeviceControl`、リース開始時（cold と
+   warm、Simulator では `simctl location clear` も含む）のリセット、`capabilities_for_run` の絞り込み。テストでは次の
+   3 点を示します。`simctl` へのフォールバックを使ったシナリオのあとでも、warm で再利用したランナーで次のシナリオが
+   物理的な位置から始まること。`unsupported` の応答が Simulator では `simctl` にフォールバックし、実機では
+   iOS 16.4 と Xcode 16.3 の下限を示すメッセージで失敗すること。実機ターゲットで `setLocation` が動き、`push` は
+   skip されたままであること。
 5. **ドキュメント。** `docs/drivers.md`（capability の表）、`docs/ios-device-cloud.md`、`docs/devicefarm.md`、
    `docs/architecture.md`。それぞれに `docs/ja/` の対訳を付けます。
 6. **実機での検証。** 位置情報を設定し、表示された座標を assert するショーケースのシナリオを、iPhone 実機と
