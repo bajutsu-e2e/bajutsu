@@ -158,7 +158,9 @@ class ComponentResolver(ScopedResolve):
         return self._file_scope
 
 
-def load_expanded_scenarios(path: Path, root: Path | None = None) -> list[Scenario]:
+def load_expanded_scenarios(
+    path: Path, root: Path | None = None, *, text: str | None = None
+) -> list[Scenario]:
     """Load a scenario file and expand its components + data rows, resolving refs relative to the file.
 
     Args:
@@ -166,6 +168,8 @@ def load_expanded_scenarios(path: Path, root: Path | None = None) -> list[Scenar
         root: The suite root every component / data ref must stay within (BE-0174). Defaults to the
             scenario file's own directory, so a single-file load confines refs to that directory; a
             suite loader passes the shared scenarios dir instead.
+        text: The file's content when the caller already holds it, such as the serve editor's
+            unsaved buffer; *path* then only places its refs and names its stem.
 
     Raises:
         OSError: The scenario file or a referenced component / CSV cannot be read.
@@ -178,7 +182,13 @@ def load_expanded_scenarios(path: Path, root: Path | None = None) -> list[Scenar
     """
     base = path.parent
     root = base if root is None else root
-    scenario_file = parse_yaml_named(path, load_scenario_file)
+    if text is None:
+        scenario_file = parse_yaml_named(path, load_scenario_file)
+    else:
+        try:
+            scenario_file = load_scenario_file(text)
+        except yaml.YAMLError as e:
+            raise ValueError(f"invalid YAML in {path}: {' '.join(str(e).split())}") from e
     scenarios = scenario_file.scenarios
     expand_components(
         scenarios, ComponentResolver(scenario_file.components, root=root, base=base, source=path)

@@ -12,7 +12,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from sqlalchemy import Engine
+from sqlalchemy import Engine, update
 
 from bajutsu import serve as srv
 from bajutsu.serve import operations as ops
@@ -247,3 +247,99 @@ def test_a_device_farm_job_is_unroutable_to_a_plain_worker(
     repo.register_worker("mac", ["platform:ios"])
     assert repo.metrics_snapshot().unroutable_queued == 1
     assert repo.lacks_live_worker("batch")
+
+
+def test_a_worker_from_before_be_0467_leases_a_route_job_and_the_job_says_so(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    repo = _repo(serve_engine)
+    caps = ["platform:ios", "cap:ios-simulator:query"]
+    repo.enqueue_job("j", "o", {"provenance": {"source": "x"}}, capabilities=caps)
+    leased = repo.lease_job("legacy", ["platform:ios"])
+    assert leased is not None
+    # The stamp merges into the job's own provenance, which the run's report reads back.
+    assert leased.spec["provenance"] == {"source": "x", "workerRouting": "unchecked"}
+
+
+def test_a_route_aware_worker_leases_without_the_unchecked_stamp(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    repo = _repo(serve_engine)
+    repo.enqueue_job("j", "o", {}, capabilities=["platform:ios", "cap:ios-simulator:query"])
+    assert repo.lease_job("dev", ["platform:ios", "cap:ios-device:query"]) is None
+    leased = repo.lease_job("sim", ["platform:ios", "cap:ios-simulator:query"])
+    assert leased is not None and "provenance" not in leased.spec
+
+
+def test_live_worker_capabilities_lists_only_live_workers(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    repo = _repo(serve_engine)
+    repo.register_worker("w", ["platform:web"])
+    assert repo.live_worker_capabilities() == [["platform:web"]]
+
+
+def _run_project(tmp_path: Path, scenario: str) -> srv.ServeState:
+    scn_dir = tmp_path / "scenarios"
+    scn_dir.mkdir()
+    (scn_dir / "s.yaml").write_text(scenario, encoding="utf-8")
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "targets:\n"
+        "  phone:\n"
+        "    platform: ios\n"
+        "    app: {id: com.x}\n"
+        "    runsOn: {ios: {kind: device}}\n"
+        f"    paths: {{scenarios: {scn_dir}}}\n",
+        encoding="utf-8",
+    )
+    return srv.ServeState(
+        scenarios_dir=scn_dir, config=cfg, runs_dir=tmp_path / "runs", cwd=tmp_path
+    )
+
+
+_LOCATE = "- name: locate\n  steps:\n    - setLocation: { lat: 1, lon: 2 }\n"
+
+
+def test_start_run_refuses_a_job_no_live_worker_on_its_route_can_run(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    from bajutsu.common.capability.route_tokens import route_tokens
+
+    repo = _repo(serve_engine)
+    state = _run_project(tmp_path, _LOCATE)
+    state.executor, state.repository = DbQueueExecutor(repo), repo
+    # A live worker drives the real-device route, which cannot override the location.
+    repo.register_worker("mac", ["platform:ios", "host:darwin", *route_tokens("ios-device")])
+    payload, code = ops.start_run(state, {"scenario": "s.yaml", "target": "phone"})
+    assert code == 400
+    assert payload["missing"] == ["cap:ios-device:deviceControl.setLocation"]
+    assert "step 1: setLocation" in payload["error"]
+
+
+def test_start_run_queues_a_job_while_no_worker_drives_its_route(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    repo = _repo(serve_engine)
+    state = _run_project(tmp_path, _LOCATE)
+    state.executor, state.repository = DbQueueExecutor(repo), repo
+    _, code = ops.start_run(state, {"scenario": "s.yaml", "target": "phone"})
+    assert code == 200
+
+
+def test_a_re_lease_by_a_checking_worker_clears_the_unchecked_stamp(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    repo = _repo(serve_engine)
+    caps = ["platform:ios", "cap:ios-simulator:query"]
+    repo.enqueue_job("j", "o", {"provenance": {"source": "x"}}, capabilities=caps)
+    assert repo.lease_job("legacy", ["platform:ios"]) is not None
+    # The legacy worker dies; its lease expires and the sweep re-queues the job.
+    with repo._engine.begin() as conn:  # age the lease past its timeout
+        from bajutsu.serve.server.models import JobRecord
+
+        conn.execute(update(JobRecord).values(leased_at=datetime.now(UTC) - timedelta(hours=1)))
+    repo.reclaim_expired_leases(timedelta(seconds=120))
+    leased = repo.lease_job("sim", ["platform:ios", "cap:ios-simulator:query"])
+    assert leased is not None
+    assert leased.spec["provenance"] == {"source": "x"}

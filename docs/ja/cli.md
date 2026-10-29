@@ -965,7 +965,10 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   Author タブの YAML エディタは、保存時だけでなく**入力しながら**検証します。デバウンスした `POST /api/lint`
   が `bajutsu lint` と同じチェックを実行し、行に紐づく診断を返します。診断は該当行のガターのマーカーと、
   クリックで該当行へ移動できる問題リストに表示されます。YAML のパースエラーは正確な行と列を持ち、スキーマや
-  検証のエラーは可能な限り行を解決します。シナリオの JSON Schema（`GET /api/schema`。`bajutsu schema` が出力する
+  検証のエラーは可能な限り行を解決します。ターゲットを選択していると、リクエストにそのターゲットが入ります。
+  サーバーは、バインド済みの config に対して `bajutsu lint --config --target` が出す指摘を、それぞれの行に
+  付けて加えます（[BE-0467](../../roadmaps/BE-0467-environment-specific-settings/BE-0467-environment-specific-settings-ja.md)）。
+  ターゲットを選択していなければ、エディタの lint の結果は変わりません。シナリオの JSON Schema（`GET /api/schema`。`bajutsu schema` が出力する
   ものと同じ）は、軽量なキー補完（Ctrl/⌘+Space）と hover の説明表示にも使われます。決定的で AI を使わず、デバイスも
   モデルも起動しません。保存は保存自身の検証を保持するので、インライン検証は失敗をより早く見せるだけです。
 - アプリのビルド済みバイナリ（config `app.path`）が無い場合は、先にそのアプリの `app.build` コマンドを
@@ -1052,7 +1055,7 @@ bajutsu worker --once <spec.json> [--worker-config <worker.yaml>]
 | `--server-url` | `$BAJUTSU_SERVER_URL` または `http://localhost:8765` | コントロールプレーンの URL |
 | `--token` | "" | 認証用の operator トークン（コントロールプレーン側の `--token` / `$BAJUTSU_SERVE_TOKEN`） |
 | `--platform` | `ios` | この worker が動かせる backend のカンマ区切りリスト（`ios` / `web` / `android`）。コントロールプレーンが job を振り分ける軸です。ローカルの worker は、worker 能力ファイルが含まないドライバや、ホストで動かせないドライバのプラットフォームを指定されると、ドライバを名指しして起動時に終了します。そのため、Linux の worker は `--platform ios` で止まります（[BE-0450](../../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability-ja.md)）。device cloud の worker と `appium` の worker は指定を受け付けません |
-| `--capabilities` | "" (`$BAJUTSU_WORKER_CAPABILITIES` も可) | **非推奨**（[BE-0450](../../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability-ja.md)）。platform、ホスト、Simulator の在庫情報に加えて広告する追加の capability トークン（例: `ios18,ipad`）です。今回のリリースでは 1 回だけの通知とともに引き続き効き、次のリリースで削除します。これらのトークンは、在庫情報と worker 能力ファイルがすでに提供しています。予約済みの接頭辞 `environment:`、`host:`、`machine:`、`device:` を持つトークンを渡すと、worker は起動時に止まります |
+| `--capabilities` | "" (`$BAJUTSU_WORKER_CAPABILITIES` も可) | **非推奨**（[BE-0450](../../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability-ja.md)）。platform、ホスト、Simulator の在庫情報に加えて広告する追加の capability トークン（例: `ios18,ipad`）です。今回のリリースでは 1 回だけの通知とともに引き続き効き、次のリリースで削除します。これらのトークンは、在庫情報と worker 能力ファイルがすでに提供しています。予約済みの接頭辞 `environment:`、`host:`、`machine:`、`device:`、`cap:`、`setting:` を持つトークンを渡すと、worker は起動時に止まります |
 | `--poll-interval` | `2.0` | 空き時間にリースを試みる間隔（秒） |
 | `--heartbeat-interval` | `30.0` | run 中にリースのハートビートを送る間隔（秒）。コントロールプレーンのリースタイムアウトより短く保つことで、長時間の run を停止した worker と誤認して回収されないようにしています |
 | `--machine-id` | "" (`$BAJUTSU_WORKER_MACHINE_ID` も可) | サーバのマシンの識別子です。サーバの `.bajutsu/machine-id` に保存されています。worker はこれを `machine:<id>` として広告し、サーバのマシン上のパスでファイルを指定する job を受け取ります。対象は、ローカルで起動したサーバの `run`、`triage`、`record`、`crawl` です（[self-hosting](self-hosting.md#1台のマシンで動かすサーバ-backendbe-0449)）。そのパスを読める worker にだけ渡します。デバイスクラウドの worker は受け付けません |
@@ -1096,7 +1099,33 @@ worker は仕様の `materials`（サーバーが送るシナリオと config）
 
 ```bash
 bajutsu lint <scenario.yaml>
+bajutsu lint <scenario.yaml> --config <bajutsu.config.yaml> --target <name>
 ```
+
+`--config` を付けると、lint はシナリオが実際に動くターゲットに対するチェックも行います。`run` がデバイスを
+lease する前に行うのと同じチェックです（[BE-0467](../../roadmaps/BE-0467-environment-specific-settings/BE-0467-environment-specific-settings-ja.md)）。ターゲットは `run` と同じ方法で解決します。
+自分で `targets` を宣言したシナリオは、宣言したターゲットそれぞれに対してチェックします。宣言していない
+シナリオは、`--target` のターゲットに対してチェックします。展開後のシナリオに対し、ターゲットごとに次の
+3 つを行います。
+
+- **ステップのチェック**：そのターゲットに割り当てたステップが必要とする capability を、ターゲットのルートが
+  持っているかを調べます。run の capability preflight と同じチェックです。
+- **設定のチェック**：シナリオが有効にする設定を、ルートが適用できるかを調べます。ターゲットが
+  `run.ignoredSettings` で無視を宣言した設定は対象外です（[設定](configuration.md#環境ごとの設定runignoredsettingsbe-0467)）。
+- **前提条件のチェック**：`preconditions` の各フィールドが、シナリオの動かすプラットフォームに存在するかを
+  調べます。
+
+指摘には、ファイル、行、シナリオ、ターゲットが付きます。component が展開したステップの指摘は、その
+component を呼び出した `use:` の行に付きます。どのチェックもデバイスを必要としません。アクチュエータには、
+ターゲットの backend が挙げる実装済みのものの先頭を使います。
+
+| 終了コード | 意味 |
+|---|---|
+| 0 | 指摘なし |
+| 1 | スキーマのエラー、または指摘あり |
+| 2 | 指定どおりにチェックできない（config がない、未知のターゲット、`targets` も `--target` もないシナリオ、`--config` なしの `--target`） |
+
+`--config` を付けない場合、lint は config を読まず、これまでどおりに動きます。
 
 ## `schema`
 

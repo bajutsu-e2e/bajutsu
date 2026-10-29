@@ -20,10 +20,11 @@ from bajutsu.common.scenario import load_scenario_file
 from bajutsu.serve import oplog
 from bajutsu.serve.authz import _record_audit
 from bajutsu.serve.batch_provider import BatchRequest
-from bajutsu.serve.capabilities import environment_capability
+from bajutsu.serve.capabilities import environment_capability, route_refusal
 from bajutsu.serve.commands import _float, _int, crawl_command, record_command, run_command
 from bajutsu.serve.helpers import (
     request_backend_error,
+    scenario_route_needs,
     target_batch_info,
     target_build_info,
     target_capabilities,
@@ -489,6 +490,11 @@ def start_run(  # noqa: C901, PLR0911
     evidence_prefix = raw_prefix or ""
     if not valid_relative_key(evidence_prefix, allow_empty=True):
         return {"error": "invalid evidence_prefix"}, 400
+    capabilities, route_err = _run_capabilities(
+        state, org, session, cfg, target, backend, body, overrides, grid_capabilities
+    )
+    if route_err:
+        return route_err
     job, capped = _register_and_dispatch(
         state,
         Job(
@@ -507,9 +513,7 @@ def start_run(  # noqa: C901, PLR0911
             actor=actor,
             org=org,
             evidence_prefix=evidence_prefix,
-            capabilities=grid_capabilities
-            if grid_capabilities is not None
-            else target_capabilities(cfg, target, backend),
+            capabilities=capabilities,
             # Resolve the label once, at enqueue, and carry it on the job (BE-0404 unit 2): the run
             # keeps the partition it started under even if `serve` is rebound before it finishes, and
             # a remote worker's `_persist_run` stamps it without consulting anything.
@@ -668,6 +672,56 @@ def _run_set_refusal(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]
             "this server has no queue"
         }, 400
     return None
+
+
+def _run_capabilities(
+    state: ServeState,
+    org: str,
+    session: str | None,
+    cfg: Path,
+    target: str,
+    backend: str,
+    body: dict[str, Any],
+    overrides: ArtifactOverrides | None,
+    grid_capabilities: list[str] | None,
+) -> tuple[list[str], tuple[Any, int] | None]:
+    """The tokens a run job routes by, or the refusal when no live worker's routes can run it.
+
+    Beside its platform and host (or its grid's environment), the job requires a `cap:` token for
+    each capability its steps need and a `setting:` token for each setting it puts in effect, on the
+    route each target resolves to (BE-0467). A job no live worker can serve stays queued; it is
+    refused only when a live worker drives its route and none advertises every token it needs.
+    """
+    base_caps = (
+        grid_capabilities
+        if grid_capabilities is not None
+        else target_capabilities(cfg, target, backend)
+    )
+    scope = state.for_org(org).scenarios.scope(target, session=session, org=org)
+    needs = scenario_route_needs(
+        cfg,
+        target,
+        backend,
+        _scenario_text(state, org, session, target, body, overrides),
+        scope.directory() if scope is not None else None,
+        tags=str(body.get("tag") or ""),
+        exclude=str(body.get("exclude") or ""),
+        grid=grid_capabilities is not None,
+    )
+    capabilities = sorted({*base_caps, *needs})
+    if state.repository is not None and (
+        missing := route_refusal(capabilities, state.repository.live_worker_capabilities())
+    ):
+        lines = [f"{token} (needed by {'; '.join(needs.get(token, []))})" for token in missing]
+        return capabilities, (
+            {
+                "error": "no live worker can run this scenario on its route; missing "
+                + ", ".join(lines),
+                "missing": missing,
+            },
+            400,
+        )
+    return capabilities, None
 
 
 def _scenario_text(

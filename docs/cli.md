@@ -1210,7 +1210,10 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   runs the same `bajutsu lint` checks and returns line-anchored diagnostics, shown as a gutter marker
   on each offending line and a clickable problems list (click a finding to jump to its line). YAML
   parse errors carry the exact line and column; schema/validation errors resolve to their line
-  best-effort. The scenario JSON Schema (`GET /api/schema`, the same output `bajutsu schema` prints)
+  best-effort. With a target selected, the request carries that target. The server then adds the
+  findings of `bajutsu lint --config --target` against the bound config, each on its line
+  ([BE-0467](../roadmaps/BE-0467-environment-specific-settings/BE-0467-environment-specific-settings.md)).
+  With no target selected, the editor's lint reports nothing new. The scenario JSON Schema (`GET /api/schema`, the same output `bajutsu schema` prints)
   also drives lightweight key completion (Ctrl/⌘+Space) and hover descriptions. Deterministic and
   AI-free — no device or model runs; Save keeps its own validation guard, so the inline layer only
   surfaces failures earlier.
@@ -1357,7 +1360,7 @@ bajutsu worker --once <spec.json> [--worker-config <worker.yaml>]
 | `--server-url` | `$BAJUTSU_SERVER_URL` or `http://localhost:8765` | the control plane's URL |
 | `--token` | "" | operator token for auth (the control plane's `--token` / `$BAJUTSU_SERVE_TOKEN`) |
 | `--platform` | `ios` | comma list of backends this worker can drive (`ios` / `web` / `android`) — the axis the control plane routes jobs on. A local worker exits at startup, naming the driver, when its worker capability file omits a listed platform's driver or its host cannot run that driver, so `--platform ios` stops a Linux worker ([BE-0450](../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability.md)). A device-cloud or `appium` worker takes none |
-| `--capabilities` | "" (also `$BAJUTSU_WORKER_CAPABILITIES`) | **deprecated** ([BE-0450](../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability.md)): extra capability tokens to advertise beyond the platform, the host, and the Simulator inventory (for example `ios18,ipad`). Still honored for this release, with a one-time notice, and removed in the next; the inventory and the worker capability file now supply these tokens. A token with the reserved `environment:`, `host:`, `machine:`, or `device:` prefix stops the worker at startup |
+| `--capabilities` | "" (also `$BAJUTSU_WORKER_CAPABILITIES`) | **deprecated** ([BE-0450](../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability.md)): extra capability tokens to advertise beyond the platform, the host, and the Simulator inventory (for example `ios18,ipad`). Still honored for this release, with a one-time notice, and removed in the next; the inventory and the worker capability file now supply these tokens. A token with the reserved `environment:`, `host:`, `machine:`, `device:`, `cap:`, or `setting:` prefix stops the worker at startup |
 | `--poll-interval` | `2.0` | seconds between lease attempts while idle |
 | `--heartbeat-interval` | `30.0` | seconds between lease heartbeats during a run (kept under the control plane's lease timeout, so a long run is never mistaken for a dead worker and reclaimed) |
 | `--worker-id` | "" (auto) | worker identifier |
@@ -1413,7 +1416,33 @@ Validates a scenario file against the grammar **without running it** — the sam
 
 ```bash
 bajutsu lint <scenario.yaml>
+bajutsu lint <scenario.yaml> --config <bajutsu.config.yaml> --target <name>
 ```
+
+With `--config`, the lint also checks the scenario against the targets it would run on, the checks
+`run` makes before it leases a device ([BE-0467](../roadmaps/BE-0467-environment-specific-settings/BE-0467-environment-specific-settings.md)). It resolves the targets the way `run`
+does. The lint checks a scenario that declares its own `targets` against each of them. It checks a
+scenario that declares none against `--target`. Each target gets three checks on the expanded
+scenario:
+
+- **Step check.** Each step routed to the target needs a capability the target's route has, as in
+  the run's capability preflight.
+- **Settings check.** Each setting the scenario puts in effect must be one the route can apply,
+  unless the target declares it under `run.ignoredSettings`
+  ([configuration](configuration.md#environment-specific-settings-runignoredsettings-be-0467)).
+- **Precondition check.** Each `preconditions` field must exist on a platform the scenario drives.
+
+Each finding names the file, the line, the scenario, and the target. A step that a component
+produced reports the line of the `use:` that pulled the component in. The checks need no device:
+the actuator is the first implemented one the target's backend names.
+
+| Exit code | Meaning |
+|---|---|
+| 0 | No finding |
+| 1 | A schema error or a finding |
+| 2 | The checks cannot run as asked: a missing config, an unknown target, a scenario with no `targets` and no `--target`, or `--target` without `--config` |
+
+Without `--config`, the lint reads no config and behaves as it did before.
 
 ## `schema`
 

@@ -108,7 +108,14 @@ def worker_lease(
     leased = state.repository.lease_job(worker_id, advertised)
     if leased is None:
         return {}, 204
-    resp: dict[str, Any] = {"job_id": leased.id, "org_id": leased.org_id, "spec": leased.spec}
+    resp: dict[str, Any] = {
+        "job_id": leased.id,
+        "org_id": leased.org_id,
+        "spec": leased.spec,
+        # What the job was routed by, which the worker re-checks against its routes at claim
+        # (BE-0467), since its environment can change between registration and claim.
+        "capabilities": leased.capabilities,
+    }
     if relay_secrets:
         try:
             secret_env = lease_secret_env(state, leased.org_id or DEFAULT_ORG)

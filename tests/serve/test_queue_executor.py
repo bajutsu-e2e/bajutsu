@@ -200,8 +200,14 @@ def test_start_run_derives_the_jobs_required_capabilities(tmp_path: Path) -> Non
     )
     _, code = ops.start_run(state, {"scenario": "smoke.yaml", "target": "demo"})
     assert code == 200
-    # xcuitest runs only on macOS, so the job requires the host too (BE-0450).
-    assert dispatched[0].capabilities == ["host:darwin", "platform:ios"]
+    # xcuitest runs only on macOS, so the job requires the host too (BE-0450), and what its steps
+    # need on the Simulator route (BE-0467).
+    assert dispatched[0].capabilities == [
+        "cap:ios-simulator:elements",
+        "cap:ios-simulator:query",
+        "host:darwin",
+        "platform:ios",
+    ]
 
 
 def test_start_run_routes_an_appium_environment_to_its_grid(tmp_path: Path) -> None:
@@ -232,7 +238,12 @@ def test_start_run_routes_an_appium_environment_to_its_grid(tmp_path: Path) -> N
     body = {"scenario": "smoke.yaml", "target": "demo"}
     _, code = ops.start_run(state, {**body, "environment": "appium"})
     assert code == 200
-    assert dispatched[0].capabilities == ["environment:appium"]
+    # Its iOS target is on the live route, whose tokens only an appium worker advertises (BE-0467).
+    assert dispatched[0].capabilities == [
+        "cap:ios-live:elements",
+        "cap:ios-live:query",
+        "environment:appium",
+    ]
     for bad in ("devicefarm", "local"):
         payload, code = ops.start_run(state, {**body, "environment": bad})
         assert code == 400
