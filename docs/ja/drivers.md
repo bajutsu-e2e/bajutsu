@@ -109,6 +109,7 @@ class Driver(Protocol):
 | `maxJobConcurrency` | worker が同時に実行できる job の数で、正の整数です。省くと 1 になり、`local` の worker は 1 しか受け付けません。 |
 | `maxTargetsPerJob` | 1 つのシナリオが宣言できる target の数で、正の整数です。すべてのドライバとデバイスグループをまたいで数えるので、Simulator の target とブラウザの target は合わせて 2 です。省くと上限なしになります。 |
 | `drivers` | worker が提供するドライバを `xcuitest`、`adb`、`playwright`、`fake` から選んで並べます。リストにないドライバは使えません。 |
+| `realDevices` | `xcuitest` を提供する `local` の worker が、接続した実機の iPhone も動かすかどうかです。`true` なら、serve は実機のジョブもその worker に振り分けます。省くと `true` とみなします。そうした worker は、これまでも実機のジョブを受けていたからです。Simulator だけの Mac を実機のジョブから外すには `false` にします（[能力に基づく振り分け](self-hosting.md#能力に基づくキューの振り分けbe-0166)、BE-0467）。 |
 
 パッケージは既定のファイルを `bajutsu/common/capability/worker.yaml` に同梱しています。既定は、すべての
 ドライバを提供し target の数に上限を設けない、ローカルの worker を記述します。

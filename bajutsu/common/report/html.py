@@ -14,6 +14,7 @@ from typing import Any
 
 from jinja2 import Environment, FileSystemLoader
 
+from bajutsu.common.capability.route_tokens import report_notices
 from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.common.evidence.sink import RunArtifactWriter
 from bajutsu.common.orchestrator import RunResult
@@ -153,6 +154,7 @@ def html_report(
     source_files: list[str | None] | None = None,
     step_lines: list[list[int] | None] | None = None,
     not_applicable: Sequence[Mapping[str, str]] = (),
+    notices: Sequence[str] = (),
 ) -> str:
     """A self-contained interactive HTML report (inline CSS + JS, no external assets).
 
@@ -165,7 +167,8 @@ def html_report(
     could recover them — both are omitted wherever their entry is None. `not_applicable` holds the
     manifest's not-applicable records (BE-0452): the report counts them beside the passes and
     failures, places them in the run matrix, and lists each one's reason apart; a run with nothing
-    but them executed nothing, so it reports FAIL.
+    but them executed nothing, so it reports FAIL. `notices` are run-level notes from the
+    manifest's provenance (`report_notices`), listed apart without changing the verdict.
     """
     passed = sum(1 for r in results if r.ok)
 
@@ -223,6 +226,7 @@ def html_report(
             ],
             source_name=source_name,
             description=description,
+            notices=list(notices),
         )
     )
 
@@ -278,6 +282,7 @@ def write_html_and_junit(
             source_files,
             step_lines,
             not_applicable,
+            report_notices(provenance),
         ),
     )
 

@@ -124,9 +124,10 @@ flowchart TB
 | `common/github/` | GitHub ヘルパ：`actions`（CI、アノテーション + ジョブサマリ）、`app`（プライベートリポジトリの config source 向けの App インストールトークン）、`errors`（共有するアクセスエラー） | [ci](ci.md) |
 | `common/analytics/` | 役割で分けたトークン/コストの集計（BE-0257）：`usage`（プロセスグローバル、インメモリ、ベストエフォート）／`ledger`（帰属付きで永続化する AI 使用量/コスト台帳、BE-0196）／`stats`（serve の使用量ダッシュボード向けに台帳を集計、BE-0195） | [web-ui](web-ui.md#usage--ai-トークン利用量とコストのダッシュボード) |
 | `common/cloud/` | 決定的な `run`/CI の判定パスの外側で、バッチ送信先として利用するクラウドデバイスバックエンド（`devicefarm.py` が最初の具体的プロバイダ） | [devicefarm](devicefarm.md) |
-| `serve/` | ローカル Web UI（`serve` コマンド）: オーサリング / 実行 / レポート / 失敗した run の triage。サーバ自身は job を実行しないので、それぞれを job として `bajutsu worker` のキューに積みます（BE-0449）。`serve`/`worker`/`approve` の CLI コマンドは `cli/`（機能ごとに 1 ファイル）にあります。`capabilities.py` は、キューのジョブを、そのジョブが必要とするトークンをすべて広告するワーカーへ振り分けます。必要とするトークンは、プラットフォームと、ドライバが 1 つの OS でしか動かない場合の `host:<os>` です。ワーカーは自分のマシンの `host:<os>` を広告します（BE-0166、BE-0450） | [cli](cli.md) · [self-hosting](self-hosting.md#能力に基づくキューの振り分けbe-0166) |
+| `serve/` | ローカル Web UI（`serve` コマンド）: オーサリング / 実行 / レポート / 失敗した run の triage。サーバ自身は job を実行しないので、それぞれを job として `bajutsu worker` のキューに積みます（BE-0449）。`serve`/`worker`/`approve` の CLI コマンドは `cli/`（機能ごとに 1 ファイル）にあります。`capabilities.py` は、キューのジョブを、そのジョブが必要とするトークンをすべて広告するワーカーへ振り分けます。必要とするトークンは、プラットフォームと、ドライバが 1 つの OS でしか動かない場合の `host:<os>` です。ワーカーは自分のマシンの `host:<os>` を広告します（BE-0166、BE-0450）。さらに、ステップと設定が必要とする環境ルートごとの `cap:` / `setting:` トークンも使います（`common/capability/route_tokens.py`、BE-0467） | [cli](cli.md) · [self-hosting](self-hosting.md#能力に基づくキューの振り分けbe-0166) |
 | `mcp/` | MCP サーバ: `run`/`doctor` をツール + 実行証跡をリソースとして公開、加えてその CLI コマンド（`cli.py`） | [cli](cli.md) |
 | `common/lint.py` | シナリオ linter + JSON Schema 生成（`lint` / `schema` コマンド） | [cli](cli.md) |
+| `common/target_lint.py` | `lint --config --target`：run と同じステップ・設定・前提条件のチェックを、デバイスなしでターゲットごとに行います（BE-0467） | [cli](cli.md) |
 | `analysis/` | 実機も AI も使わない読み取り専用の助言的分析パッケージ（BE-0257）、CI を止めない: `audit`（決定性・フレーキネス監査、BE-0049）、`coverage`（シナリオの id 名前空間カバレッジ、BE-0050）、`impact`（テスト影響分析。diff から影響ステップを選ぶ、BE-0321）、`stats`（集計 run 統計ダッシュボード、BE-0102）、クロスランのフレーキネスランキング（`flakiness`、BE-0220）、`trace` タイムライン（`trace.py`、`bajutsu trace` コマンドの本体）——それぞれの Typer コマンドは `cli/`（機能ごとに 1 ファイル）にあります | [cli](cli.md) |
 | `cli/` | Typer アプリの組み立て：各機能自身の CLI（`run`/`crawl`/`record`/`repl`/`triage`/`mcp`/`codegen`/`serve`/`analysis`）と、機能を持たない `commands/`（`doctor`/`lint`/`schema`/`config`/`report`/`runner`）、`.env` ローダ（`dotenv.py`）をマウント | [cli](cli.md) |
 | `common/screenshots.py` | AI 経路が共有するスクリーンショット取得 + ピクセル座標のヘルパ（`screenshot_bytes`、`png_size`、`fraction`、BE-0246） | [recording](recording.md) |
@@ -216,7 +217,7 @@ flowchart TB
 
 上のレイヤ分けは規約にとどまりません。ゲートで**実行可能な契約**として強制します。`make lint-imports`（`make check` の一部であり、CI のステップでもあります）が [import-linter](https://import-linter.readthedocs.io/) を宣言したレイヤに対して実行するので、禁止された import は誰かが気付くまで残らず、その場でゲートを落とします。設定は `pyproject.toml` の `[tool.importlinter]` にあります。3 つのレイヤを宣言します。
 
-1. **決定性コア**：モデルにも periphery のスタックにも触れずに判定と証跡を導く経路です。`common/orchestrator/`、`common/runner/`、`common/drivers/base`、`assertions/`、`evidence/`、`report/`、`config/`、`scenario/`、`preflight.py` / `capability_preflight.py` / `capabilities.py` / `worker_capability.py`、`common/doctor/`、`common/lint.py` が含まれます。prime directive を担います。
+1. **決定性コア**：モデルにも periphery のスタックにも触れずに判定と証跡を導く経路です。`common/orchestrator/`、`common/runner/`、`common/drivers/base`、`assertions/`、`evidence/`、`report/`、`config/`、`scenario/`、`preflight.py` / `capability_preflight.py` / `capabilities.py` / `worker_capability.py`、`common/doctor/`、`common/lint.py` / `common/target_lint.py` が含まれます。prime directive を担います。
 2. **契約（contract）**：利用者が依存する安定した界面です。シナリオスキーマ（`scenario/`）と `Driver` Protocol（`common/drivers/base`）です。
 3. **periphery**：契約の利用側で、いずれもオプションの extra の背後に切り離せます。`serve/`、`mcp/`、codegen のエミッタ、AI / エージェント経路（`agents/` 以下の `protocols`、`ai_config`、`anthropic_client`、`enrich`、`alerts` など、加えて `record/`、`triage/`、`crawl/guide` など）、`github/actions.py` / `run/notify` のヘルパです（`github/` の残り、`app` と `errors` は決定的コアからも参照できるので、`config_source` は periphery を巻き込まずに利用します）。
 

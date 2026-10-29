@@ -58,14 +58,22 @@ ENVIRONMENTS: frozenset[str] = frozenset({LOCAL, APPIUM, *BATCH_PROVIDERS})
 ENVIRONMENT_ROUTING_PREFIX = "environment:"
 HOST_ROUTING_PREFIX = "host:"
 MACHINE_ROUTING_PREFIX = "machine:"
+# `cap:<route>:<capability>` and `setting:<route>:<key>` (BE-0467): what each environment route a
+# worker drives can run and apply, computed from the support table, so no hand-written pin can claim
+# a capability the route lacks.
+CAP_ROUTING_PREFIX = "cap:"
+SETTING_ROUTING_PREFIX = "setting:"
 RESERVED_ROUTING_PREFIXES: tuple[str, ...] = (
     ENVIRONMENT_ROUTING_PREFIX,
     HOST_ROUTING_PREFIX,
     MACHINE_ROUTING_PREFIX,
+    CAP_ROUTING_PREFIX,
+    SETTING_ROUTING_PREFIX,
 )
 RESERVED_ROUTING_REASON = (
-    "the environment:, host:, and machine: prefixes are reserved: a worker advertises them itself, "
-    "from its worker.yaml environment, the machine it runs on, and the server machine it shares"
+    "the environment:, host:, machine:, cap:, and setting: prefixes are reserved: a worker "
+    "advertises them itself, from its worker.yaml environment and drivers, the machine it runs on, "
+    "and the server machine it shares"
 )
 
 
@@ -111,6 +119,10 @@ class WorkerCapability(BaseModel):
         max_targets_per_job: Targets one scenario may declare, counted across every driver; None
             means unbounded.
         drivers: The drivers this worker offers; a driver the list omits is unavailable.
+        real_devices: Whether a local `xcuitest` worker also drives attached real iPhones, so it
+            advertises the real-device route beside the Simulator's (BE-0467). None, the default,
+            advertises it as well, since such a worker served real-device jobs before; `false`
+            keeps a Simulator-only Mac off them.
     """
 
     model_config = ConfigDict(populate_by_name=True, extra="forbid", frozen=True)
@@ -121,6 +133,7 @@ class WorkerCapability(BaseModel):
     max_job_concurrency: PositiveInt = Field(default=1, alias="maxJobConcurrency")
     max_targets_per_job: PositiveInt | None = Field(default=None, alias="maxTargetsPerJob")
     drivers: tuple[str, ...]
+    real_devices: bool | None = Field(default=None, alias="realDevices")
 
     @field_validator("environment")
     @classmethod

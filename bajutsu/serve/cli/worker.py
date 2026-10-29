@@ -221,6 +221,7 @@ def _advertised_capabilities(
     """
     from bajutsu.common.backends import current_host_os
     from bajutsu.common.capability.capability_preflight import filter_actuators
+    from bajutsu.common.capability.route_tokens import advertised_route_tokens, worker_routes
     from bajutsu.common.capability.worker_capability import load_worker_capability
     from bajutsu.common.deprecations import warn_worker_capabilities
 
@@ -246,8 +247,14 @@ def _advertised_capabilities(
                 param_hint="--platform",
             )
         # The grid owns the device and its host, so a job routed here requires the environment
-        # alone (BE-0452); advertising more would only let a stray local job match.
-        return [environment_capability(APPIUM)]
+        # alone (BE-0452); advertising more would only let a stray local job match. What the live
+        # route can run and apply rides along (BE-0467), and only a grid job ever names that route.
+        return sorted(
+            {
+                environment_capability(APPIUM),
+                *advertised_route_tokens(worker_routes((), appium=True)),
+            }
+        )
     if not cap.is_local:
         if platform:
             raise typer.BadParameter(
@@ -272,11 +279,17 @@ def _advertised_capabilities(
         kept, reasons = filter_actuators(PLATFORMS[p], cap, machine)
         if not kept:
             raise typer.BadParameter(f"{p}: {'; '.join(reasons)}", param_hint="--platform")
+    # Every driver the file and host allow, not --platform's alone: a scenario's other targets run
+    # on this machine too (an iOS-and-web scenario on a Mac), so their routes are this worker's.
+    drivable = _drivable(cap, machine)
     return sorted(
         worker_capabilities(
             platforms,
             override=override,
             run=simctl.real_run if "ios" in platforms else None,
+            # One token set per route the kept drivers drive (BE-0467), the real-device route too
+            # when worker.yaml says this Mac drives attached iPhones.
+            routes=worker_routes(drivable, real_devices=cap.real_devices),
         )
         | {host_token}
     )
@@ -545,6 +558,9 @@ def _serve_leases(
                 heartbeat_interval=heartbeat_interval,
                 io=io,
                 worker_config=worker_file,
+                claim_check=functools.partial(
+                    _claim_refusal, body.get("capabilities"), worker_file
+                ),
                 streamer=streamer,
                 secret_env=_lease_secret_env(body),
                 cancel=relay,
@@ -734,6 +750,9 @@ def _run_slot(
                 secret_env=_lease_secret_env(body),
                 environment=environment,
                 lost=lost,
+                claim_check=functools.partial(
+                    _claim_refusal, body.get("capabilities"), worker_file
+                ),
             )
         finally:
             shutdown.detach(lost)
@@ -1063,6 +1082,53 @@ class _CurrentJob:
             relay.kill()
 
 
+def _claim_refusal(required: Any, worker_file: Path | None) -> str | None:
+    """Why this worker must not run a job it just leased, judged on its routes now (BE-0467)."""
+    from bajutsu.common.capability.worker_capability import WorkerCapabilityError
+    from bajutsu.serve.capabilities import claim_refusal
+
+    if not isinstance(required, list):
+        return None  # a server from before BE-0467 hands over no routing set
+    try:
+        current = _route_tokens_now(worker_file)
+    except WorkerCapabilityError as e:
+        return f"this worker's worker.yaml can no longer be read, so it runs no job: {e}"
+    return claim_refusal([str(t) for t in required], current)
+
+
+def _route_tokens_now(worker_file: Path | None) -> set[str] | None:
+    """The route tokens this worker's environment offers now, re-read from its worker.yaml.
+
+    A changed file, or a driver its host can no longer start, narrows the routes. None for a
+    cloud-batch worker, which drives no route itself.
+
+    Raises:
+        WorkerCapabilityError: The worker.yaml can no longer be read.
+    """
+    from bajutsu.common.backends import current_host_os
+    from bajutsu.common.capability.route_tokens import advertised_route_tokens, worker_routes
+    from bajutsu.common.capability.worker_capability import load_worker_capability
+
+    cap = load_worker_capability(worker_file)
+    if cap.environment == APPIUM:
+        return advertised_route_tokens(worker_routes((), appium=True))
+    if not cap.is_local:
+        return None
+    return advertised_route_tokens(
+        worker_routes(_drivable(cap, current_host_os()), real_devices=cap.real_devices)
+    )
+
+
+def _drivable(cap: WorkerCapability, host: str) -> list[str]:
+    """Every actuator *cap*'s file offers that *host* can start, across every platform."""
+    from bajutsu.common.backends import PLATFORMS
+    from bajutsu.common.capability.capability_preflight import filter_actuators
+
+    return [
+        a for actuators in PLATFORMS.values() for a in filter_actuators(actuators, cap, host)[0]
+    ]
+
+
 def _worker_file_or_exit(path: Path | None) -> tuple[Path | None, WorkerCapability]:
     """Validate the worker capability file at startup; its absolute path and contents (BE-0450).
 
@@ -1379,6 +1445,7 @@ def _run_with_heartbeat(
     batch_run_arn: Any = None,
     app_url: Any = None,
     lost: threading.Event | None = None,
+    claim_check: Callable[[], str | None] | None = None,
 ) -> tuple[dict[str, Any] | None, bool, Path]:
     """Run the job on a background thread while heart-beating its lease from this one.
 
@@ -1417,6 +1484,9 @@ def _run_with_heartbeat(
     when the job names a stored one (BE-0448). The same *lost* flag that keeps a run from starting
     tells its poll to leave the run to the worker that holds the job now. A slot worker passes its
     own *lost*, which its shutdown sets to let the lease lapse; a fresh one when the caller has none.
+
+    *claim_check* re-checks the job's route tokens against this worker's environment now (BE-0467);
+    a job it refuses fails before anything is fetched or any device leased.
     """
     holder: dict[str, Any] = {"work": work}
     lost = lost if lost is not None else threading.Event()
@@ -1449,7 +1519,10 @@ def _run_with_heartbeat(
     )
 
     def _run() -> None:
-        if (reason := environment_refusal(spec, environment)) is not None:
+        reason = environment_refusal(spec, environment)
+        if reason is None and claim_check is not None:
+            reason = claim_check()
+        if reason is not None:
             holder["result"] = {"ok": False, "error": reason}
             return
         try:

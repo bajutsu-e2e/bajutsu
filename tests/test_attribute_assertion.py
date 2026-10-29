@@ -17,6 +17,7 @@ from bajutsu.common.assertions import (
     evaluate_one,
 )
 from bajutsu.common.capability import capability_preflight
+from bajutsu.common.capability.capability_preflight import steps_for_target
 from bajutsu.common.config import load_config
 from bajutsu.common.config.schema.platform.registry import PLATFORM_SCHEMAS
 from bajutsu.common.drivers import base
@@ -25,7 +26,6 @@ from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.drivers.webview.web_context_driver import WebContextDriver
 from bajutsu.common.drivers.xcuitest.xcuitest_driver import XcuitestDriver
 from bajutsu.common.drivers.xcuitest_live.xcuitest_live_driver import XcuitestLiveDriver
-from bajutsu.common.runner.pipeline import _steps_for_target
 from bajutsu.common.scenario import Assertion, Scenario
 from bajutsu.record.loop import settle_step
 
@@ -182,21 +182,21 @@ def test_a_web_only_interrupt_does_not_fail_another_target() -> None:
         [{"target": "site", "condition": _ATTR, "steps": [{"tap": {"id": "a"}}]}],
         [{"tap": {"id": "a"}}],
     )
-    assert capability_preflight.unsupported(_steps_for_target(sc, "app"), _MOBILE_CAPS) == []
-    assert capability_preflight.unsupported(_steps_for_target(sc, "site"), _WEB_CAPS) == []
-    assert capability_preflight.unsupported(_steps_for_target(sc, "site"), _MOBILE_CAPS) != []
+    assert capability_preflight.unsupported(steps_for_target(sc, "app"), _MOBILE_CAPS) == []
+    assert capability_preflight.unsupported(steps_for_target(sc, "site"), _WEB_CAPS) == []
+    assert capability_preflight.unsupported(steps_for_target(sc, "site"), _MOBILE_CAPS) != []
 
 
 def test_an_untargeted_interrupt_follows_the_primary() -> None:
     untargeted: list[dict[str, object]] = [{"condition": _ATTR, "steps": [{"tap": {"id": "a"}}]}]
     sc = _multi_target(untargeted, [{"tap": {"id": "a"}}])
-    assert capability_preflight.unsupported(_steps_for_target(sc, "app"), _MOBILE_CAPS) != []
-    assert _steps_for_target(sc, "site").interrupts == []
+    assert capability_preflight.unsupported(steps_for_target(sc, "app"), _MOBILE_CAPS) != []
+    assert steps_for_target(sc, "site").interrupts == []
     # A `setPrimaryTarget` makes "site" primary too, so the entry polls it and is judged there.
     moved = _multi_target(
         untargeted, [{"tap": {"id": "a"}}, {"setPrimaryTarget": {"target": "site"}}]
     )
-    assert capability_preflight.unsupported(_steps_for_target(moved, "site"), _MOBILE_CAPS) != []
+    assert capability_preflight.unsupported(steps_for_target(moved, "site"), _MOBILE_CAPS) != []
 
 
 _CONFIG = """\

@@ -326,19 +326,43 @@ def capabilities_for_run(
         )
 
         if is_webdriver_endpoint(udid_spec):
-            from bajutsu.common.drivers.xcuitest_live import XcuitestLiveDriver
-
-            return XcuitestLiveDriver.CAPABILITIES
+            return capabilities_for_route("ios-live")
         if xcuitest_targets_real_device(eff):
-            # Nothing installs a second build on a real iPhone, so it cannot share it either.
-            return (
-                caps
-                - base.DEVICE_CONTROL_ALL
-                - base.IOS_PERMISSION_CAPABILITIES
-                - base.SIMCTL_EVIDENCE_CAPABILITIES
-                - {base.Capability.DEVICE_GROUP}
-            )
+            return capabilities_for_route("ios-device")
     return caps
+
+
+def capabilities_for_route(route: str) -> frozenset[str]:
+    """The capability set of one environment route (BE-0467), with no target config to read.
+
+    The routes are the columns of the settings table (`settings_support.Route`). serve's dispatch
+    reads this to advertise what a worker's routes can run before any target is resolved, and
+    `capabilities_for_run` narrows a target to the same sets, so the two never disagree.
+
+    Raises:
+        ValueError: *route* is not a known route.
+    """
+    if route == "ios-simulator":
+        return capabilities_for("xcuitest")
+    if route == "ios-live":
+        from bajutsu.common.drivers.xcuitest_live import XcuitestLiveDriver
+
+        return XcuitestLiveDriver.CAPABILITIES
+    if route == "ios-device":
+        # simctl cannot reach a physical device, and nothing installs a second build on a real
+        # iPhone, so it cannot share it either.
+        return (
+            capabilities_for("xcuitest")
+            - base.DEVICE_CONTROL_ALL
+            - base.IOS_PERMISSION_CAPABILITIES
+            - base.SIMCTL_EVIDENCE_CAPABILITIES
+            - {base.Capability.DEVICE_GROUP}
+        )
+    if route == "android":
+        return capabilities_for("adb")
+    if route == "web":
+        return capabilities_for("playwright")
+    raise ValueError(f"unknown route: {route!r}")
 
 
 def erase_precondition_supported(

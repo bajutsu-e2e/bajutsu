@@ -678,7 +678,7 @@ class SqlRepository:
         from sqlalchemy import select, update
         from sqlalchemy.orm import Session
 
-        from bajutsu.serve.capabilities import can_serve
+        from bajutsu.serve.capabilities import UNCHECKED_PROVENANCE, can_serve, unchecked_lease
         from bajutsu.serve.server.models import JobRecord
 
         # Sweep dead workers' leases back into the queue before serving, so a stuck job is picked up
@@ -732,10 +732,39 @@ class SqlRepository:
                     continue
                 row = session.get(JobRecord, job_id)
                 assert row is not None  # just claimed inside this transaction
-                leased = LeasedJob(id=row.id, org_id=row.org_id, spec=dict(row.spec))
+                spec = dict(row.spec)
+                # A worker from before BE-0467 serves the job on today's tokens alone, so the job
+                # carries that on to its report. Set or cleared on every lease: a job re-queued
+                # after such a worker died, then run by a checking one, reports no stale note.
+                provenance = {
+                    k: v
+                    for k, v in (spec.get("provenance") or {}).items()
+                    if k not in UNCHECKED_PROVENANCE
+                }
+                if unchecked_lease(caps or [], advertised):
+                    provenance.update(UNCHECKED_PROVENANCE)
+                if provenance != (spec.get("provenance") or {}):
+                    spec["provenance"] = provenance or None
+                    row.spec = spec
+                leased = LeasedJob(
+                    id=row.id, org_id=row.org_id, spec=spec, capabilities=list(caps or [])
+                )
                 session.commit()
                 return leased
             return None
+
+    def live_worker_capabilities(self) -> list[list[str]]:
+        from sqlalchemy import select
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import WorkerRecord
+
+        cutoff = datetime.now(UTC) - self._lease_timeout
+        with Session(self._engine) as session:
+            live = session.scalars(
+                select(WorkerRecord.capabilities).where(WorkerRecord.last_seen >= cutoff)
+            ).all()
+        return [list(caps or []) for caps in live]
 
     def lacks_live_worker(self, job_id: str) -> bool:
         from sqlalchemy import select

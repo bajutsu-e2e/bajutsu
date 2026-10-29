@@ -253,6 +253,12 @@ class Repository(Protocol):
         worker has no registry row yet (it registers on its first lease before any heartbeat).
         """
 
+    def live_worker_capabilities(self) -> list[list[str]]:
+        """The advertised capability set of every live worker (BE-0467, the submission refusal).
+
+        Live means seen within the lease timeout, as for `lacks_live_worker`.
+        """
+
     def lacks_live_worker(self, job_id: str) -> bool:
         """Whether *job_id* is queued and no live worker can serve it (BE-0449, the no-worker notice).
 

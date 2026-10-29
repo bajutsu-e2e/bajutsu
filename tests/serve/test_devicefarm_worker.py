@@ -23,6 +23,7 @@ from typer.testing import CliRunner
 
 from bajutsu.cli import app
 from bajutsu.common.backend_cli import simctl
+from bajutsu.common.capability.route_tokens import is_route_token
 from bajutsu.common.capability.worker_capability import WorkerCapability
 from bajutsu.common.cloud.devicefarm import DeviceFarmError, Verdict
 from bajutsu.serve import batch_bootstrap
@@ -211,10 +212,10 @@ def test_a_local_worker_defaults_to_ios(monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.delenv("BAJUTSU_WORKER_CAPABILITIES", raising=False)
     # No Simulator inventory is probed, so the platform axis and the host alone are advertised.
     monkeypatch.setattr(simctl, "real_run", None)
-    assert worker_mod._advertised_capabilities("", "", _worker("local"), "darwin") == [
-        "host:darwin",
-        "platform:ios",
-    ]
+    caps = worker_mod._advertised_capabilities("", "", _worker("local"), "darwin")
+    assert [c for c in caps if not is_route_token(c)] == ["host:darwin", "platform:ios"]
+    # The Simulator route's tokens ride along (BE-0467).
+    assert "cap:ios-simulator:query" in caps
 
 
 @pytest.mark.parametrize("environment", ["local", "devicefarm"])
