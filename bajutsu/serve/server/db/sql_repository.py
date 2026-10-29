@@ -738,7 +738,9 @@ class SqlRepository:
                     # none of its settings check, so the job carries that on to its report.
                     spec["provenance"] = {**(spec.get("provenance") or {}), **UNCHECKED_PROVENANCE}
                     row.spec = spec
-                leased = LeasedJob(id=row.id, org_id=row.org_id, spec=spec)
+                leased = LeasedJob(
+                    id=row.id, org_id=row.org_id, spec=spec, capabilities=list(caps or [])
+                )
                 session.commit()
                 return leased
             return None

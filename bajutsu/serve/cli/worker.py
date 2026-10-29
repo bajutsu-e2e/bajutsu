@@ -46,6 +46,7 @@ from bajutsu.common.run_meta.object_store import content_type_for
 from bajutsu.serve import InMemoryLogBus
 from bajutsu.serve.capabilities import (
     MACHINE_ID_ENV,
+    PLATFORM_PREFIX,
     WORKER_CAPABILITIES_ENV,
     environment_capability,
     host_capability,
@@ -557,6 +558,9 @@ def _serve_leases(
                 heartbeat_interval=heartbeat_interval,
                 io=io,
                 worker_config=worker_file,
+                claim_check=functools.partial(
+                    _claim_refusal, body.get("capabilities"), caps, worker_file
+                ),
                 streamer=streamer,
                 secret_env=_lease_secret_env(body),
                 cancel=relay,
@@ -1075,6 +1079,45 @@ class _CurrentJob:
             relay.kill()
 
 
+def _claim_refusal(required: Any, caps: list[str], worker_file: Path | None) -> str | None:
+    """Why this worker must not run a job it just leased, judged on its routes now (BE-0467)."""
+    from bajutsu.serve.capabilities import claim_refusal
+
+    if not isinstance(required, list):
+        return None  # a server from before BE-0467 hands over no routing set
+    return claim_refusal([str(t) for t in required], _route_tokens_now(caps, worker_file))
+
+
+def _route_tokens_now(caps: list[str], worker_file: Path | None) -> set[str] | None:
+    """The route tokens this worker's environment offers now, re-read from its worker.yaml.
+
+    The platforms are the ones it registered with; a changed file or a driver its host can no longer
+    start narrows the routes. None for a cloud-batch worker, which drives no route itself.
+    """
+    from bajutsu.common.backends import PLATFORMS, current_host_os
+    from bajutsu.common.capability.capability_preflight import filter_actuators
+    from bajutsu.common.capability.route_tokens import advertised_route_tokens, worker_routes
+    from bajutsu.common.capability.worker_capability import (
+        WorkerCapabilityError,
+        load_worker_capability,
+    )
+
+    try:
+        cap = load_worker_capability(worker_file)
+    except WorkerCapabilityError:
+        return set()  # an unreadable file now offers nothing; the job fails with its missing tokens
+    if cap.environment == APPIUM:
+        return advertised_route_tokens(worker_routes((), appium=True))
+    if not cap.is_local:
+        return None
+    platforms = [t.removeprefix(PLATFORM_PREFIX) for t in caps if t.startswith(PLATFORM_PREFIX)]
+    host = current_host_os()
+    kept = [
+        a for p in platforms if p in PLATFORMS for a in filter_actuators(PLATFORMS[p], cap, host)[0]
+    ]
+    return advertised_route_tokens(worker_routes(kept, real_devices=cap.real_devices))
+
+
 def _worker_file_or_exit(path: Path | None) -> tuple[Path | None, WorkerCapability]:
     """Validate the worker capability file at startup; its absolute path and contents (BE-0450).
 
@@ -1391,6 +1434,7 @@ def _run_with_heartbeat(
     batch_run_arn: Any = None,
     app_url: Any = None,
     lost: threading.Event | None = None,
+    claim_check: Callable[[], str | None] | None = None,
 ) -> tuple[dict[str, Any] | None, bool, Path]:
     """Run the job on a background thread while heart-beating its lease from this one.
 
@@ -1429,6 +1473,9 @@ def _run_with_heartbeat(
     when the job names a stored one (BE-0448). The same *lost* flag that keeps a run from starting
     tells its poll to leave the run to the worker that holds the job now. A slot worker passes its
     own *lost*, which its shutdown sets to let the lease lapse; a fresh one when the caller has none.
+
+    *claim_check* re-checks the job's route tokens against this worker's environment now (BE-0467);
+    a job it refuses fails before anything is fetched or any device leased.
     """
     holder: dict[str, Any] = {"work": work}
     lost = lost if lost is not None else threading.Event()
@@ -1461,7 +1508,10 @@ def _run_with_heartbeat(
     )
 
     def _run() -> None:
-        if (reason := environment_refusal(spec, environment)) is not None:
+        reason = environment_refusal(spec, environment)
+        if reason is None and claim_check is not None:
+            reason = claim_check()
+        if reason is not None:
             holder["result"] = {"ok": False, "error": reason}
             return
         try:

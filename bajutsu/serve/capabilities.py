@@ -215,6 +215,26 @@ def unchecked_lease(required: Iterable[str], advertised: Iterable[str]) -> bool:
     return any(is_route_token(t) for t in required) and not checks_routes(advertised)
 
 
+def claim_refusal(required: Iterable[str], current: Iterable[str] | None) -> str | None:
+    """Why a worker whose routes now advertise *current* must not run a job requiring *required*.
+
+    The lease matched the job against what the worker advertised at registration; this re-checks
+    the route tokens against what its environment offers at claim, before it leases a device
+    (BE-0467). None when the worker computes no route tokens (*current* None, a cloud batch) or
+    every route token the job needs is still there.
+    """
+    if current is None:
+        return None
+    offered = set(current)
+    missing = sorted(t for t in required if is_route_token(t) and t not in offered)
+    if not missing:
+        return None
+    return (
+        "this worker's environment no longer offers what the job was routed by: missing "
+        + ", ".join(missing)
+    )
+
+
 def checks_routes(advertised: Iterable[str]) -> bool:
     """Whether a worker advertising *advertised* routes by `cap:` / `setting:` tokens (BE-0467)."""
     return any(is_route_token(t) for t in advertised)

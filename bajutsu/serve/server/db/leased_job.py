@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 
@@ -13,3 +13,5 @@ class LeasedJob:
     id: str
     org_id: str
     spec: dict[str, Any]
+    # The tokens the job was routed by, handed to the worker so it re-checks them at claim (BE-0467).
+    capabilities: list[str] = field(default_factory=list)
