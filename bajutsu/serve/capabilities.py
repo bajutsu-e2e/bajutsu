@@ -272,7 +272,7 @@ def worker_capabilities(
     *,
     override: str | None = None,
     run: _simctl.RunFn | None = None,
-    routes: Iterable[Route] = (),
+    routes: Iterable[Route] | None = None,
 ) -> set[str]:
     """Assemble the capability set a worker advertises.
 
@@ -286,10 +286,12 @@ def worker_capabilities(
             runtime and ``iphone``/``ipad`` device-class tokens (`simctl_capabilities`); omit it on a
             worker with no Simulators (e.g. the web container).
         routes: The environment routes the worker drives (`worker_routes`); each adds its
-            ``cap:`` and ``setting:`` tokens (BE-0467).
+            ``cap:`` and ``setting:`` tokens (BE-0467). None computes none, as for a worker that
+            predates them; an empty list still marks the worker route-aware.
     """
     caps = {platform_capability(p) for p in platforms if p}
-    caps |= advertised_route_tokens(routes)
+    if routes is not None:
+        caps |= advertised_route_tokens(routes)
     caps |= parse_capabilities(override)
     if run is not None:
         caps |= simctl_capabilities(run)

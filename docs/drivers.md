@@ -175,7 +175,7 @@ or environment, and any number below one.
 | `maxJobConcurrency` | How many jobs the worker may run at once, a positive integer. Omitted means one, and a `local` worker accepts one alone. |
 | `maxTargetsPerJob` | How many targets one scenario may declare, a positive integer. The count spans every driver and device group, so a Simulator target and a browser target count two. Omitted means unbounded. |
 | `drivers` | The drivers the worker offers, from `xcuitest`, `adb`, `playwright`, and `fake`. A driver the list omits is unavailable. |
-| `realDevices` | Whether a `local` worker that offers `xcuitest` also drives attached real iPhones. Omitted means `false`. With `true`, serve routes real-device jobs to the worker too ([capability routing](self-hosting.md#capability-routed-queues-be-0166), BE-0467). |
+| `realDevices` | Whether a `local` worker that offers `xcuitest` also drives attached real iPhones, so serve routes real-device jobs to it ([capability routing](self-hosting.md#capability-routed-queues-be-0166), BE-0467). Omitted counts as `true`, as such a worker served real-device jobs before. Set `false` to keep a Simulator-only Mac off them. |
 
 The package ships a default at `bajutsu/common/capability/worker.yaml`. The default describes a
 local worker that offers every driver and sets no target limit:

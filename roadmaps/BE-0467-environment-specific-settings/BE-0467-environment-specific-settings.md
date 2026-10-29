@@ -356,9 +356,11 @@ Log:
   tokens before it fetches anything or leases a device. Documented the lint flags, the editor lint,
   the dispatch tokens, and `realDevices` in `docs/cli.md`, `docs/configuration.md`,
   `docs/scenarios.md`, `docs/drivers.md`, `docs/self-hosting.md`, and `docs/architecture.md`, with
-  their Japanese mirrors, and `DESIGN.md`. Five points depart from the design text. `worker.yaml`
-  has no real-device listing, so it gains `realDevices: true`, without which a worker advertises
-  the Simulator route alone. Submission also requires that no live worker can serve the job at all,
+  their Japanese mirrors, and `DESIGN.md`. Six points depart from the design text. `worker.yaml`
+  has no real-device listing, so it gains `realDevices`. Omitted, it counts as true, so a Mac that
+  served real-device jobs before keeps them after an upgrade; `false` keeps a Simulator-only Mac
+  off them. A worker's routes come from every driver its file and host allow, not its `--platform`
+  alone, so an iOS-and-web scenario still reaches the Mac that ran it before. Submission also requires that no live worker can serve the job at all,
   so a pre-item worker that still serves it keeps a mixed fleet from refusing it. An appium job's iOS
   targets go on `ios-live`, since the grid endpoint lives in the worker's file, not the target's
   config. The claim-time check compares route tokens, since the run subprocess already re-runs the

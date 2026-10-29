@@ -12,7 +12,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from sqlalchemy import Engine
+from sqlalchemy import Engine, update
 
 from bajutsu import serve as srv
 from bajutsu.serve import operations as ops
@@ -325,3 +325,21 @@ def test_start_run_queues_a_job_while_no_worker_drives_its_route(
     state.executor, state.repository = DbQueueExecutor(repo), repo
     _, code = ops.start_run(state, {"scenario": "s.yaml", "target": "phone"})
     assert code == 200
+
+
+def test_a_re_lease_by_a_checking_worker_clears_the_unchecked_stamp(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    repo = _repo(serve_engine)
+    caps = ["platform:ios", "cap:ios-simulator:query"]
+    repo.enqueue_job("j", "o", {"provenance": {"source": "x"}}, capabilities=caps)
+    assert repo.lease_job("legacy", ["platform:ios"]) is not None
+    # The legacy worker dies; its lease expires and the sweep re-queues the job.
+    with repo._engine.begin() as conn:  # age the lease past its timeout
+        from bajutsu.serve.server.models import JobRecord
+
+        conn.execute(update(JobRecord).values(leased_at=datetime.now(UTC) - timedelta(hours=1)))
+    repo.reclaim_expired_leases(timedelta(seconds=120))
+    leased = repo.lease_job("sim", ["platform:ios", "cap:ios-simulator:query"])
+    assert leased is not None
+    assert leased.spec["provenance"] == {"source": "x"}

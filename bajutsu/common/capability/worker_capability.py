@@ -120,7 +120,9 @@ class WorkerCapability(BaseModel):
             means unbounded.
         drivers: The drivers this worker offers; a driver the list omits is unavailable.
         real_devices: Whether a local `xcuitest` worker also drives attached real iPhones, so it
-            advertises the real-device route beside the Simulator's (BE-0467).
+            advertises the real-device route beside the Simulator's (BE-0467). None, the default,
+            advertises it as well, since such a worker served real-device jobs before; `false`
+            keeps a Simulator-only Mac off them.
     """
 
     model_config = ConfigDict(populate_by_name=True, extra="forbid", frozen=True)
@@ -131,7 +133,7 @@ class WorkerCapability(BaseModel):
     max_job_concurrency: PositiveInt = Field(default=1, alias="maxJobConcurrency")
     max_targets_per_job: PositiveInt | None = Field(default=None, alias="maxTargetsPerJob")
     drivers: tuple[str, ...]
-    real_devices: bool = Field(default=False, alias="realDevices")
+    real_devices: bool | None = Field(default=None, alias="realDevices")
 
     @field_validator("environment")
     @classmethod

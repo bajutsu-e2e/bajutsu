@@ -395,7 +395,7 @@ def scenario_route_needs(
     try:
         config = _load_config_cached(config_path)
     except (OSError, ValueError):
-        return {}
+        return {}  # `target_capabilities` gives this job no routing either; dispatch reports it
     with tempfile.TemporaryDirectory() as empty:
         # An empty root keeps a file ref of a storage-backed scenario from reaching a host path.
         root = directory or Path(empty)
@@ -411,7 +411,12 @@ def scenario_route_needs(
                 exclude=[t.strip() for t in exclude.split(",") if t.strip()],
                 grid=grid,
             )
-        except (TargetRequired, KeyError, OSError, ValueError):
+        except (TargetRequired, KeyError, OSError, ValueError) as e:
+            # The run preflight judges the scenario anyway and fails it with the same cause, so the
+            # job routes on its platform and host alone rather than being refused here.
+            logging.getLogger(__name__).debug(
+                "no route tokens for %s on %s: %s", config_path, target, e
+            )
             return {}
 
 

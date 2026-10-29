@@ -10,7 +10,6 @@ import pytest
 from sqlalchemy import Engine
 
 from bajutsu import serve as srv
-from bajutsu.common.capability.route_tokens import route_tokens
 from bajutsu.serve import operations as ops
 from bajutsu.serve.capabilities import claim_refusal
 from bajutsu.serve.cli import worker as worker_mod
@@ -63,15 +62,14 @@ def test_a_worker_whose_file_dropped_the_driver_refuses_its_job(
 ) -> None:
     monkeypatch.setattr("bajutsu.common.backends.current_host_os", lambda: "darwin")
     required = ["platform:ios", _SIM_QUERY]
-    caps = ["platform:ios", *route_tokens("ios-simulator")]
-    assert worker_mod._claim_refusal(required, caps, _worker_yaml(tmp_path, "xcuitest")) is None
+    assert worker_mod._claim_refusal(required, _worker_yaml(tmp_path, "xcuitest")) is None
     # The operator removed xcuitest from worker.yaml after the worker registered.
-    reason = worker_mod._claim_refusal(required, caps, _worker_yaml(tmp_path, "playwright"))
+    reason = worker_mod._claim_refusal(required, _worker_yaml(tmp_path, "playwright"))
     assert reason is not None and _SIM_QUERY in reason
 
 
 def test_a_lease_from_a_server_before_this_item_is_not_rechecked(tmp_path: Path) -> None:
-    assert worker_mod._claim_refusal(None, [], _worker_yaml(tmp_path, "playwright")) is None
+    assert worker_mod._claim_refusal(None, _worker_yaml(tmp_path, "playwright")) is None
 
 
 def test_a_refused_claim_fails_before_anything_is_fetched(
@@ -97,3 +95,30 @@ def test_a_refused_claim_fails_before_anything_is_fetched(
     )
     assert not abandoned
     assert result == {"ok": False, "error": "missing cap:ios-simulator:query"}
+
+
+def test_an_unreadable_worker_yaml_refuses_the_job_naming_why(tmp_path: Path) -> None:
+    path = tmp_path / "worker.yaml"
+    path.write_text("version: 2\n", encoding="utf-8")
+    reason = worker_mod._claim_refusal([_SIM_QUERY], path)
+    assert reason is not None and "worker.yaml can no longer be read" in reason
+
+
+def test_an_appium_worker_rechecks_against_the_live_route(tmp_path: Path) -> None:
+    path = tmp_path / "worker.yaml"
+    path.write_text(
+        "version: 1\nenvironment: appium\nappium: {endpoint: 'https://grid.example/wd/hub'}\n"
+        "drivers: [xcuitest]\n",
+        encoding="utf-8",
+    )
+    assert worker_mod._claim_refusal(["cap:ios-live:query"], path) is None
+    assert worker_mod._claim_refusal([_SIM_QUERY], path) is not None
+
+
+def test_a_cloud_batch_worker_is_not_rechecked(tmp_path: Path) -> None:
+    path = tmp_path / "worker.yaml"
+    path.write_text(
+        "version: 1\nenvironment: devicefarm\nmaxJobConcurrency: 2\ndrivers: [xcuitest]\n",
+        encoding="utf-8",
+    )
+    assert worker_mod._claim_refusal([_SIM_QUERY], path) is None

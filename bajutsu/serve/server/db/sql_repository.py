@@ -733,10 +733,18 @@ class SqlRepository:
                 row = session.get(JobRecord, job_id)
                 assert row is not None  # just claimed inside this transaction
                 spec = dict(row.spec)
+                # A worker from before BE-0467 serves the job on today's tokens alone, so the job
+                # carries that on to its report. Set or cleared on every lease: a job re-queued
+                # after such a worker died, then run by a checking one, reports no stale note.
+                provenance = {
+                    k: v
+                    for k, v in (spec.get("provenance") or {}).items()
+                    if k not in UNCHECKED_PROVENANCE
+                }
                 if unchecked_lease(caps or [], advertised):
-                    # A worker from before BE-0467 serves the job on today's tokens alone and runs
-                    # none of its settings check, so the job carries that on to its report.
-                    spec["provenance"] = {**(spec.get("provenance") or {}), **UNCHECKED_PROVENANCE}
+                    provenance.update(UNCHECKED_PROVENANCE)
+                if provenance != (spec.get("provenance") or {}):
+                    spec["provenance"] = provenance or None
                     row.spec = spec
                 leased = LeasedJob(
                     id=row.id, org_id=row.org_id, spec=spec, capabilities=list(caps or [])

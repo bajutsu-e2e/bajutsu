@@ -177,3 +177,31 @@ def test_cli_without_config_behaves_as_before(tmp_path: Path) -> None:
     scenario = _write(tmp_path, _LOCATION)
     result = CliRunner().invoke(app, ["lint", str(scenario)])
     assert result.exit_code == 0
+
+
+def test_cli_exits_1_when_a_component_does_not_expand(tmp_path: Path) -> None:
+    config = _write(tmp_path, _CONFIG, "bajutsu.config.yaml")
+    scenario = _write(tmp_path, "- name: a\n  steps:\n    - use: { component: missing.yaml }\n")
+    result = CliRunner().invoke(
+        app, ["lint", str(scenario), "--config", str(config), "--target", "sim"]
+    )
+    assert result.exit_code == 1
+    assert "failed to expand the scenario" in result.output
+
+
+def test_an_editor_buffer_that_does_not_parse_names_its_file(tmp_path: Path) -> None:
+    from bajutsu.common.scenario import load_expanded_scenarios
+
+    with pytest.raises(ValueError, match="invalid YAML in"):
+        load_expanded_scenarios(tmp_path / "s.yaml", text="- name: [unclosed\n")
+
+
+def test_dispatch_routes_an_unreadable_scenario_as_before(tmp_path: Path) -> None:
+    from bajutsu.serve.helpers import scenario_route_needs
+
+    config = _write(tmp_path, _CONFIG, "bajutsu.config.yaml")
+    assert scenario_route_needs(config, "sim", "", None, tmp_path) == {}
+    assert scenario_route_needs(config, "nope", "", _LOCATION, tmp_path) == {}
+    assert scenario_route_needs(tmp_path / "absent.yaml", "sim", "", _LOCATION, None) == {}
+    needs = scenario_route_needs(config, "sim", "", _LOCATION, None, exclude="x")
+    assert "cap:ios-simulator:deviceControl.setLocation" in needs

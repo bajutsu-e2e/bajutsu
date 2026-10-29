@@ -1186,9 +1186,11 @@ deterministic `run` verdict.
 
   A run on an Appium grid puts its iOS targets on `ios-live`.
 - **A worker advertises one token set per route its drivers drive.** `xcuitest` drives the
-  Simulator route, `adb` drives `android`, and `playwright` drives `web`. An `xcuitest` worker whose
-  [worker capability file](drivers.md#worker-capability-check-be-0450) sets `realDevices: true`
-  adds the `ios-device` route, and an `appium` worker advertises `ios-live`. The sets are never
+  Simulator route, `adb` drives `android`, and `playwright` drives `web`. The drivers are every one
+  its [worker capability file](drivers.md#worker-capability-check-be-0450) offers and its host can
+  start, whatever its `--platform`, since a scenario's other targets run on the same machine. An
+  `xcuitest` worker adds the `ios-device` route unless its file sets `realDevices: false`, and an
+  `appium` worker advertises `ios-live`. The sets are never
   intersected. A Mac serving the Simulator and an attached iPhone thus never takes an `erase` job
   on the device route, and still takes every Simulator job.
 - **A mismatch fails at submission, and an unserved route waits.** The control plane refuses a job

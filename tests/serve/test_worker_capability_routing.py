@@ -162,9 +162,28 @@ def test_a_local_worker_serves_the_platforms_its_file_and_host_allow() -> None:
         "platform:ios",
         "platform:web",
     ]
-    # One token set per route its drivers drive (BE-0467); no real-device route unless declared.
-    assert {"cap:ios-simulator:query", "cap:web:query"} <= set(caps)
+    # One token set per route its drivers drive (BE-0467), the real-device route too unless the
+    # file says `realDevices: false`.
+    assert {"cap:ios-simulator:query", "cap:ios-device:query", "cap:web:query"} <= set(caps)
+
+
+def test_a_simulator_only_mac_declares_no_real_devices() -> None:
+    from bajutsu.common.capability.worker_capability import parse_worker_capability
+
+    cap = parse_worker_capability("version: 1\ndrivers: [xcuitest]\nrealDevices: false\n")
+    caps = worker_mod._advertised_capabilities("ios", "", cap, "darwin")
+    assert "cap:ios-simulator:query" in caps
     assert not any(c.startswith("cap:ios-device:") for c in caps)
+
+
+def test_an_ios_worker_advertises_the_routes_of_every_driver_its_host_runs() -> None:
+    # A scenario's web target runs on the Mac beside its iOS one, so `--platform ios` still
+    # advertises the web route; the job's `platform:web` requirement keeps web-only jobs away.
+    caps = worker_mod._advertised_capabilities(
+        "ios", "", _local("xcuitest", "playwright"), "darwin"
+    )
+    assert "cap:web:query" in caps
+    assert "platform:web" not in caps
 
 
 def test_a_worker_declaring_real_devices_advertises_that_route_too() -> None:

@@ -1144,9 +1144,11 @@ Linux の web ワーカーに渡って失敗しかねません。それは本物
 
   Appium のグリッドで動かす実行では、iOS のターゲットを `ios-live` に置きます。
 - **ワーカーは、ドライバが動かすルートごとにトークンの集合を広告します。** `xcuitest` は Simulator の
-  ルートを、`adb` は `android` を、`playwright` は `web` を動かします。[worker 能力ファイル](drivers.md#worker-の能力検査be-0450)
-  で `realDevices: true` を設定した `xcuitest` のワーカーは、`ios-device` のルートも加えます。`appium` の
-  ワーカーは `ios-live` を広告します。集合どうしの共通部分は取りません。そのため、Simulator と接続した
+  ルートを、`adb` は `android` を、`playwright` は `web` を動かします。対象のドライバは、`--platform` に
+  かかわらず、[worker 能力ファイル](drivers.md#worker-の能力検査be-0450)が提供し、ホストが起動できるもの
+  すべてです。シナリオのほかのターゲットも同じマシンで動くからです。`xcuitest` のワーカーは、ファイルで
+  `realDevices: false` を設定しない限り、`ios-device` のルートも加えます。`appium` のワーカーは `ios-live`
+  を広告します。集合どうしの共通部分は取りません。そのため、Simulator と接続した
   iPhone の両方を動かす Mac は、実機のルートで `erase` を使うジョブを受け取らず、Simulator のジョブは
   すべて受け取ります。
 - **不一致は投入時に失敗し、動かすワーカーのいないルートは待ちます。** コントロールプレーンがジョブを

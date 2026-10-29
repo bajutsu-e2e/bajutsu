@@ -46,7 +46,6 @@ from bajutsu.common.run_meta.object_store import content_type_for
 from bajutsu.serve import InMemoryLogBus
 from bajutsu.serve.capabilities import (
     MACHINE_ID_ENV,
-    PLATFORM_PREFIX,
     WORKER_CAPABILITIES_ENV,
     environment_capability,
     host_capability,
@@ -276,12 +275,13 @@ def _advertised_capabilities(
         )
     # The same rule as `run`'s actuator selection: a Linux machine started with the default `ios`
     # stops here with the reason, rather than idling on jobs it could never start (BE-0450).
-    drivable: list[str] = []
     for p in platforms:
         kept, reasons = filter_actuators(PLATFORMS[p], cap, machine)
         if not kept:
             raise typer.BadParameter(f"{p}: {'; '.join(reasons)}", param_hint="--platform")
-        drivable += kept
+    # Every driver the file and host allow, not --platform's alone: a scenario's other targets run
+    # on this machine too (an iOS-and-web scenario on a Mac), so their routes are this worker's.
+    drivable = _drivable(cap, machine)
     return sorted(
         worker_capabilities(
             platforms,
@@ -559,7 +559,7 @@ def _serve_leases(
                 io=io,
                 worker_config=worker_file,
                 claim_check=functools.partial(
-                    _claim_refusal, body.get("capabilities"), caps, worker_file
+                    _claim_refusal, body.get("capabilities"), worker_file
                 ),
                 streamer=streamer,
                 secret_env=_lease_secret_env(body),
@@ -750,6 +750,9 @@ def _run_slot(
                 secret_env=_lease_secret_env(body),
                 environment=environment,
                 lost=lost,
+                claim_check=functools.partial(
+                    _claim_refusal, body.get("capabilities"), worker_file
+                ),
             )
         finally:
             shutdown.detach(lost)
@@ -1079,43 +1082,50 @@ class _CurrentJob:
             relay.kill()
 
 
-def _claim_refusal(required: Any, caps: list[str], worker_file: Path | None) -> str | None:
+def _claim_refusal(required: Any, worker_file: Path | None) -> str | None:
     """Why this worker must not run a job it just leased, judged on its routes now (BE-0467)."""
+    from bajutsu.common.capability.worker_capability import WorkerCapabilityError
     from bajutsu.serve.capabilities import claim_refusal
 
     if not isinstance(required, list):
         return None  # a server from before BE-0467 hands over no routing set
-    return claim_refusal([str(t) for t in required], _route_tokens_now(caps, worker_file))
+    try:
+        current = _route_tokens_now(worker_file)
+    except WorkerCapabilityError as e:
+        return f"this worker's worker.yaml can no longer be read, so it runs no job: {e}"
+    return claim_refusal([str(t) for t in required], current)
 
 
-def _route_tokens_now(caps: list[str], worker_file: Path | None) -> set[str] | None:
+def _route_tokens_now(worker_file: Path | None) -> set[str] | None:
     """The route tokens this worker's environment offers now, re-read from its worker.yaml.
 
-    The platforms are the ones it registered with; a changed file or a driver its host can no longer
-    start narrows the routes. None for a cloud-batch worker, which drives no route itself.
-    """
-    from bajutsu.common.backends import PLATFORMS, current_host_os
-    from bajutsu.common.capability.capability_preflight import filter_actuators
-    from bajutsu.common.capability.route_tokens import advertised_route_tokens, worker_routes
-    from bajutsu.common.capability.worker_capability import (
-        WorkerCapabilityError,
-        load_worker_capability,
-    )
+    A changed file, or a driver its host can no longer start, narrows the routes. None for a cloud-batch worker, which drives no route itself.
 
-    try:
-        cap = load_worker_capability(worker_file)
-    except WorkerCapabilityError:
-        return set()  # an unreadable file now offers nothing; the job fails with its missing tokens
+    Raises:
+        WorkerCapabilityError: The worker.yaml can no longer be read.
+    """
+    from bajutsu.common.backends import current_host_os
+    from bajutsu.common.capability.route_tokens import advertised_route_tokens, worker_routes
+    from bajutsu.common.capability.worker_capability import load_worker_capability
+
+    cap = load_worker_capability(worker_file)
     if cap.environment == APPIUM:
         return advertised_route_tokens(worker_routes((), appium=True))
     if not cap.is_local:
         return None
-    platforms = [t.removeprefix(PLATFORM_PREFIX) for t in caps if t.startswith(PLATFORM_PREFIX)]
-    host = current_host_os()
-    kept = [
-        a for p in platforms if p in PLATFORMS for a in filter_actuators(PLATFORMS[p], cap, host)[0]
+    return advertised_route_tokens(
+        worker_routes(_drivable(cap, current_host_os()), real_devices=cap.real_devices)
+    )
+
+
+def _drivable(cap: WorkerCapability, host: str) -> list[str]:
+    """Every actuator *cap*'s file offers that *host* can start, across every platform."""
+    from bajutsu.common.backends import PLATFORMS
+    from bajutsu.common.capability.capability_preflight import filter_actuators
+
+    return [
+        a for actuators in PLATFORMS.values() for a in filter_actuators(actuators, cap, host)[0]
     ]
-    return advertised_route_tokens(worker_routes(kept, real_devices=cap.real_devices))
 
 
 def _worker_file_or_exit(path: Path | None) -> tuple[Path | None, WorkerCapability]:

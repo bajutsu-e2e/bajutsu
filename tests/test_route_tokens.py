@@ -102,8 +102,13 @@ def test_each_route_advertises_its_own_capabilities_and_settings() -> None:
 
 
 def test_a_worker_drives_one_route_per_driver() -> None:
-    assert worker_routes(["xcuitest", "playwright", "fake"]) == ["ios-simulator", "web"]
+    assert worker_routes(["xcuitest", "playwright", "fake"], real_devices=False) == [
+        "ios-simulator",
+        "web",
+    ]
     assert worker_routes(["xcuitest"], real_devices=True) == ["ios-simulator", "ios-device"]
+    # Unsaid, a Mac keeps serving the real-device jobs it served before this item.
+    assert worker_routes(["xcuitest"]) == ["ios-simulator", "ios-device"]
     assert worker_routes([], appium=True) == ["ios-live"]
     # The real-device route needs the driver that reaches it.
     assert worker_routes(["adb"], real_devices=True) == ["android"]
@@ -125,7 +130,7 @@ def test_cap_and_setting_are_reserved_prefixes() -> None:
 def test_worker_yaml_declares_real_devices() -> None:
     cap = parse_worker_capability("version: 1\ndrivers: [xcuitest]\nrealDevices: true\n")
     assert cap.real_devices is True
-    assert parse_worker_capability("version: 1\ndrivers: [xcuitest]\n").real_devices is False
+    assert parse_worker_capability("version: 1\ndrivers: [xcuitest]\n").real_devices is None
 
 
 # --- what a job needs --- #
@@ -222,3 +227,38 @@ def test_the_html_report_lists_run_notices_apart() -> None:
     page = html_report("r1", [], notices=[UNCHECKED_NOTICE])
     assert "notices" in page
     assert "advertises no step capabilities or settings (BE-0467)" in page
+
+
+def test_the_refusal_names_the_closest_worker_s_gap_sorted() -> None:
+    required = [
+        cap_token("ios-device", "query"),
+        cap_token("ios-device", "deviceControl.setLocation"),
+        cap_token("ios-device", "deviceControl.clipboard"),
+    ]
+    near = {cap_token("ios-device", "query"), cap_token("ios-device", "deviceControl.clipboard")}
+    far = {cap_token("ios-device", "query")}
+    assert route_refusal(required, [far, near]) == [
+        cap_token("ios-device", "deviceControl.setLocation")
+    ]
+
+
+def test_a_worker_that_drives_no_route_is_still_route_aware() -> None:
+    from bajutsu.common.capability.route_tokens import ROUTE_AWARE_TOKEN
+
+    fake_only = worker_capabilities(["ios"], routes=[])
+    assert ROUTE_AWARE_TOKEN in fake_only
+    assert checks_routes(fake_only)
+    assert not can_serve(["platform:ios", cap_token("ios-simulator", "query")], fake_only)
+
+
+def test_a_rerendered_report_shows_the_unchecked_notice(tmp_path: Path) -> None:
+    import json
+
+    from bajutsu.common.report.load import rerender_html
+
+    (tmp_path / "manifest.json").write_text(
+        json.dumps({"runId": "r1", "results": [], "provenance": {"workerRouting": "unchecked"}}),
+        encoding="utf-8",
+    )
+    (tmp_path / "scenario.yaml").write_text("[]\n", encoding="utf-8")
+    assert "advertises no step capabilities or settings (BE-0467)" in rerender_html(tmp_path)

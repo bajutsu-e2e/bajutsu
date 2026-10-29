@@ -40,6 +40,11 @@ if TYPE_CHECKING:
 
 ROUTES: tuple[Route, ...] = get_args(Route)
 
+# Advertised by every worker that computes route tokens, even one whose drivers drive no route (a
+# `fake`-only worker), so serve tells it apart from a worker built before this item, which it matches
+# on today's tokens alone. No job ever requires it.
+ROUTE_AWARE_TOKEN = f"{CAP_ROUTING_PREFIX}routing"
+
 # The provenance entry serve stamps on a job a worker from before this item ran: such a worker
 # matches on today's tokens alone and keeps no settings check, so the report says so.
 UNCHECKED_PROVENANCE_KEY = "workerRouting"
@@ -102,17 +107,18 @@ def route_tokens(route: Route) -> set[str]:
 
 
 def worker_routes(
-    actuators: Iterable[str], *, real_devices: bool = False, appium: bool = False
+    actuators: Iterable[str], *, real_devices: bool | None = None, appium: bool = False
 ) -> list[Route]:
     """The routes a worker drives, in `ROUTES` order.
 
     Args:
         actuators: The drivers the worker can run on its own host.
-        real_devices: Whether its `worker.yaml` says it drives attached real iPhones too.
+        real_devices: Whether its `worker.yaml` says it drives attached real iPhones too; None (not
+            said) counts as yes, so a worker that served real-device jobs before still does.
         appium: Whether it drives an Appium grid, which is the live WebDriver route.
     """
     routes = {_ACTUATOR_ROUTE[a] for a in actuators if a in _ACTUATOR_ROUTE}
-    if real_devices and "xcuitest" in actuators:
+    if real_devices is not False and "xcuitest" in actuators:
         routes.add("ios-device")
     if appium:
         routes.add("ios-live")
@@ -120,8 +126,9 @@ def worker_routes(
 
 
 def advertised_route_tokens(routes: Iterable[Route]) -> set[str]:
-    """The union of `route_tokens` over *routes*: one set per route, never intersected."""
-    out: set[str] = set()
+    """The union of `route_tokens` over *routes*, one set per route and never intersected, plus
+    `ROUTE_AWARE_TOKEN`."""
+    out: set[str] = {ROUTE_AWARE_TOKEN}
     for route in routes:
         out |= route_tokens(route)
     return out

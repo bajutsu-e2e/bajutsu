@@ -59,7 +59,11 @@ def _target_diagnostics(
     binding = state.binding_for(session, org)
     if binding.config is None:
         return []
-    config = load_config_file(binding.config)
+    config_path = binding.config
+    try:
+        config = load_config_file(config_path)
+    except (OSError, ValueError) as e:
+        return [_diagnostic(None, f"could not check against target '{target}': {e}")]
 
     def effective(name: str) -> Effective:
         return resolve(config, name).rebased(binding.cwd, confine=False)
