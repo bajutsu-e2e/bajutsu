@@ -160,9 +160,10 @@ def ensure_web_runtime(backends: list[str], browser: str = "chromium") -> None:
     When a `web`/`playwright` backend is requested but the Playwright package is absent
     (e.g. the venv carries only the base install), install it *additively* — `uv pip install` so it
     doesn't evict another backend's extra. Then, whether or not the package was just added, install
-    the engine this run needs (`playwright install <browser>`). `playwright install` is idempotent —
-    a present browser is a fast no-op and a missing one is fetched — so a `firefox` / `webkit` run
-    pulls its binary on first use without disturbing Chromium (BE-0076).
+    the bundled engine this run needs (`playwright install <browser>`). `playwright install` is
+    idempotent — a present browser is a fast no-op and a missing one is fetched — so a `firefox` /
+    `webkit` run pulls its binary on first use without disturbing Chromium (BE-0076). Chrome and
+    Edge are the host's own installs, launched on a channel, so they are never fetched (BE-0468).
 
     A no-op unless web is requested; mirrors how `make serve` provisions a backend's deps on demand.
     The deterministic run/CI gate drives the fake backend and never reaches this.
@@ -174,6 +175,7 @@ def ensure_web_runtime(backends: list[str], browser: str = "chromium") -> None:
     import sys
 
     pkg_missing = not _playwright_available()
+    bundled = browser_launch(browser)[1] is None
     try:
         if pkg_missing:
             sys.stderr.write(
@@ -183,15 +185,25 @@ def ensure_web_runtime(backends: list[str], browser: str = "chromium") -> None:
             sys.stderr.flush()
             subprocess.run(["uv", "pip", "install", "playwright"], check=True)
             importlib.invalidate_caches()  # so find_spec() in select_actuator sees the new package
-        # Chrome and Edge launch the host's own install through a channel (BE-0468); fetching one
-        # would install a system browser, so a missing one fails when the run reads its version.
-        if browser_launch(browser)[1] is None:
+        # Fetching Chrome or Edge would install a system browser, so a missing one fails when
+        # Playwright launches it instead.
+        if bundled:
             subprocess.run([sys.executable, "-m", "playwright", "install", browser], check=True)
     except (OSError, subprocess.CalledProcessError) as e:
+        manual = (
+            f"uv pip install playwright && uv run playwright install {browser}"
+            if bundled
+            else "uv pip install playwright"
+        )
+        host = ""
+        if not bundled:
+            # The host-install hint `doctor` gives, so the two never name different remedies.
+            from bajutsu.common.provisioning import requirements
+
+            host = f" Then {requirements.remedy(requirements.playwright_browser(browser).install)}."
         raise RuntimeError(
             "failed to auto-install the web backend (Playwright). Install it manually with "
-            f"`uv pip install playwright && uv run playwright install {browser}`, or `uv sync "
-            "--extra web`."
+            f"`{manual}`, or `uv sync --extra web`.{host}"
         ) from e
 
 

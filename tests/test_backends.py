@@ -427,6 +427,23 @@ def test_ensure_web_runtime_installs_no_channel_browser(
     assert calls == []
 
 
+def test_a_failed_install_for_a_channel_browser_asks_for_the_host_install(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # BE-0468: the remedy never tells the user to `playwright install chrome`.
+    import subprocess
+
+    def fail(cmd: list[str], **_k: object) -> None:
+        raise subprocess.CalledProcessError(1, cmd)
+
+    monkeypatch.setattr("bajutsu.common.backends._playwright_available", lambda: False)
+    monkeypatch.setattr("subprocess.run", fail)
+    with pytest.raises(RuntimeError) as exc:
+        ensure_web_runtime(["web"], "chrome")
+    assert "playwright install" not in str(exc.value)
+    assert "install Google Chrome on this host" in str(exc.value)
+
+
 def test_ensure_web_runtime_installs_when_missing(monkeypatch: pytest.MonkeyPatch) -> None:
     # Web requested + Playwright absent: install the package additively (uv pip), then the engine.
     calls: list[list[str]] = []

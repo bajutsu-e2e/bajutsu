@@ -235,6 +235,7 @@ def plan(
             already failed; the other records keep their index into *scenarios*.
     """
     pool_facts: dict[str, list[DeviceFacts]] = {}
+    readers = _pool_readers(lanes)
     browsers: dict[str, DeviceFacts] = {}
     records: list[PlannedRun] = []
     cells: dict[tuple[object, ...], Cell] = {}
@@ -251,7 +252,7 @@ def plan(
                 devices = _browsers(lane, conditions[group[0]], browsers, read_browser)
             elif conditions[group[0]]:
                 if lane.pool not in pool_facts:
-                    pool_facts[lane.pool] = read_facts(lane)
+                    pool_facts[lane.pool] = read_facts(readers.get(lane.pool, lane))
                 devices = pool_facts[lane.pool]
             else:
                 devices = []
@@ -261,6 +262,7 @@ def plan(
                 conditions[group[0]],
                 devices,
                 engine=web_engine(lane.eff) if platform == "web" else None,
+                kind=driven_kind(lane.eff),
             )
             participants.append(Participant(group, lane.pool, tuple(runs)))
         for combo in combine(participants, pool_facts):
@@ -276,6 +278,36 @@ def plan(
                 cell = cells.setdefault(key, Cell(devices_by_target, engines, kinds=kinds))
                 cell.runs.append(record)
     return DeviceMatrix(cells=list(cells.values()), records=records)
+
+
+def driven_kind(eff: Effective) -> str | None:
+    """The iOS kind *eff* runs on when it lists none, or None for a listed kind or another platform."""
+    if eff.platform != "ios" or "kind" in eff.conditions:
+        return None
+    return "device" if xcuitest_targets_real_device(eff) else "simulator"
+
+
+def _pool_readers(lanes: Mapping[str, TargetLanes]) -> dict[str, TargetLanes]:
+    """The lane each iOS pool is read through, so one listing covers every target that shares it.
+
+    A pool is read once, so the listing must not depend on which target happens to read it first
+    (BE-0468): targets that need different listings read the pool through the mixed one, and each
+    target's runs then keep to its own kind.
+    """
+    by_pool: dict[str, list[TargetLanes]] = {}
+    for lane in lanes.values():
+        if lane.eff.platform == "ios":
+            by_pool.setdefault(lane.pool, []).append(lane)
+    readers: dict[str, TargetLanes] = {}
+    for pool, members in by_pool.items():
+        mixed = next((m for m in members if "kind" in m.eff.conditions), None)
+        if mixed is None and len({driven_kind(m.eff) for m in members}) > 1:
+            first = members[0]
+            # Listing both kinds is what selects the mixed read; no run forms from this lane.
+            both = {**first.eff.conditions, "kind": ["simulator", "device"]}
+            mixed = replace(first, eff=replace(first.eff, conditions=both))
+        readers[pool] = mixed or members[0]
+    return readers
 
 
 def _browsers(
@@ -494,7 +526,10 @@ def list_runs(
             for label in declared_runs(eff.platform, conditions, engine=engine)
         ]
     listed: list[ListedRun] = []
-    for run in form_target_runs(eff.target, eff.platform, conditions, devices, engine=engine):
+    formed = form_target_runs(
+        eff.target, eff.platform, conditions, devices, engine=engine, kind=driven_kind(eff)
+    )
+    for run in formed:
         if run.outcome != "run":
             listed.append(ListedRun(run.label, run.outcome, reason=run.reason))
         elif eff.platform == "web":

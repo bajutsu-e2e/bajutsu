@@ -628,3 +628,35 @@ def test_the_first_run_of_a_kind_list_drives_its_kind() -> None:
     assert udid == "real"
     assert xcuitest_targets_real_device(run_eff)
     assert "kind" not in run_eff.conditions
+
+
+@pytest.mark.parametrize("order", [("sim", "app"), ("app", "sim")])
+def test_a_shared_pool_reads_one_listing_whatever_target_comes_first(
+    order: tuple[str, str],
+) -> None:
+    # Two targets on one pool: the listing and each target's devices never depend on scenario order.
+    cfg = load_config(
+        "targets:\n"
+        "  app:\n    platform: ios\n    app: {id: com.example.app}\n"
+        "    runsOn: {ios: {kind: [simulator, device]}}\n"
+        "  sim:\n    platform: ios\n    app: {id: com.example.app}\n"
+        "    runsOn: {ios: {family: ipad}}\n"
+    )
+    lanes = {n: TargetLanes(n, resolve(cfg, n), "xcuitest", tuple(_MIXED)) for n in ("app", "sim")}
+    read: list[bool] = []
+
+    def facts_of(lane: TargetLanes) -> list[DeviceFacts]:
+        read.append("kind" in lane.eff.conditions)
+        return list(_MIXED.values())
+
+    matrix = plan(
+        [_scenario(f"{{targets: [{name}]}}") for name in order],
+        lanes,
+        "app",
+        engine_flag=False,
+        read_facts=facts_of,
+        read_browser=lambda engine: DeviceFacts("w", "web", engine, "1"),
+    )
+    assert read == [True]  # the mixed listing, read once
+    sim_cells = [c.devices for c in matrix.cells if "sim" in c.devices]
+    assert sim_cells == [{"sim": ("sim",)}]  # the Simulator-only target never takes the real device

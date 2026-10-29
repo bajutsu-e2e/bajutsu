@@ -11,10 +11,6 @@ from bajutsu.common.devices.browsers import BROWSER_KINDS, BrowserKind
 from .._model import _Model
 from ._shared import AppCommon, LaunchEnv, RangeField, RunsOnGroup, check_choices, check_list
 
-# Playwright rendering engines a web target can drive (BE-0076). Chromium is the default, and all
-# three run headless on Linux.
-WEB_ENGINES = ("chromium", "firefox", "webkit")
-
 
 class WebApp(AppCommon):
     """`app` on the web: the page under test."""

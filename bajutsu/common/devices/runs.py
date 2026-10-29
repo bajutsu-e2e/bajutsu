@@ -130,6 +130,7 @@ def form_target_runs(
     devices: Sequence[DeviceFacts],
     *,
     engine: str | None = None,
+    kind: str | None = None,
 ) -> list[TargetRun]:
     """Every run one target's effective conditions make against the available *devices*.
 
@@ -142,6 +143,8 @@ def form_target_runs(
         devices: The available devices of the target's pool in pool order; on the web, one per
             browser kind a `browser.version` range is compared for, with the kind as its model.
         engine: The web browser kind the target is driven with when no kind is listed.
+        kind: The iOS kind the target is driven with when it lists none. A pool other targets
+            share may hold both kinds, so the target's runs keep to devices of this kind.
 
     Returns:
         The runs in order: listed values as written, then major versions ascending. An empty
@@ -150,10 +153,10 @@ def form_target_runs(
     if platform == "web":
         return _web_runs(target, conditions, devices, engine)
     if platform not in _MODEL_FIELD or not conditions:
-        return [TargetRun(target=target, platform=platform)]
-    # A listed kind runs once per kind on that kind's devices; a single kind is how the whole pool
-    # was read, so it narrows nothing (BE-0468).
-    kinds, kinds_listed = _listed(conditions.get("kind"))
+        return [TargetRun(target=target, platform=platform, kind=kind)]
+    # A listed kind runs once per kind on that kind's devices; an unlisted one keeps the target on
+    # its own kind without adding a coordinate (BE-0468).
+    kinds, kinds_listed = _listed(conditions.get("kind") or kind)
     runs: list[TargetRun] = []
     for kind in kinds:
         kind_coords = (("kind", kind),) if kinds_listed and kind is not None else ()
@@ -373,7 +376,9 @@ def eligible_set(
         demand: How many devices one combination draws from this set at once.
     """
     if not run.conditioned:
-        return list(devices) if len(devices) >= demand else None
+        # An unconditioned run still never takes a device of the other kind from a mixed pool.
+        of_kind = [d for d in devices if _matches_kind(d, run.kind)]
+        return of_kind if len(of_kind) >= demand else None
     kept = [
         d
         for d in devices

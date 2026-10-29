@@ -328,7 +328,7 @@ def test_allowed_fields_spells_aliases() -> None:
 
 def test_the_target_validates_its_groups_with_the_registered_models() -> None:
     # Unit 4 wires the registry in: each platform-shaped group is an instance of its platform's model.
-    from bajutsu.common.config.schema import WEB_ENGINES, TargetConfig
+    from bajutsu.common.config.schema import TargetConfig
     from bajutsu.common.config.schema.platform.web import WebApp, WebRunsOn
 
     target = TargetConfig.model_validate(
@@ -337,7 +337,6 @@ def test_the_target_validates_its_groups_with_the_registered_models() -> None:
     assert isinstance(target.app, WebApp)
     assert isinstance(target.runs_on, WebRunsOn)
     assert target.runs_on.browser.kind == "webkit"
-    assert WEB_ENGINES == ("chromium", "firefox", "webkit")
 
 
 def test_an_unknown_key_in_a_target_group_lists_the_allowed_fields() -> None:

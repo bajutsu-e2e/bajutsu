@@ -392,9 +392,9 @@ targets:
         family: [ipad, iphone]      # each run takes an iPad when its pool has one
 ```
 
-`record`, `crawl`, and `repl` never multiply runs. Each takes the first listed value and the first
-listed family that a fitting device has. It takes the newest major version the pool has within the
-range, too. They exit 2 when no device fits. `doctor` lists the
+`record`, `crawl`, and `repl` never multiply runs. Each takes the first listed value, the first
+listed family a fitting device has, and the newest major version the pool has within the range. Each
+exits 2 when no device fits. `doctor` lists the
 target's own runs, and each scenario's runs when `--scenario` names a file, with the devices that
 fit each one ([doctor output](#output)). Its screen probe
 scores the device of the first run. `--backend fake` matches no condition, and says so once. A
