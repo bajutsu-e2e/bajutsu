@@ -1728,6 +1728,19 @@ def test_a_scenario_that_crashes_every_attempt_still_lists_its_ignored_settings(
     ]
 
 
+def test_a_scenario_whose_every_lease_bring_up_crashes_still_lists_its_ignored_settings() -> None:
+    # Each environment drops an ignored setting before any launch work that can crash (BE-0467).
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
+        raise base.BackendCrashError("runner crashed during launch (test)")
+
+    device = _device_ignoring_erase()
+    results = run_all(device, [_erasing_scenario()], lease, actuator="xcuitest", crash_retries=1)
+    assert not results[0].ok
+    assert results[0].ignored_settings == [
+        IgnoredSetting(target=device.target, key="erase", reason="x")
+    ]
+
+
 def test_a_scenario_refused_before_any_lease_records_no_ignored_setting() -> None:
     # A declared `erase` is ignored only by a launch; a scenario the preflight refuses never launched.
     scenarios = [

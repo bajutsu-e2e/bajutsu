@@ -314,7 +314,7 @@ Log:
   as a warning. Documented `run.ignoredSettings` in `docs/configuration.md` and its Japanese mirror.
 
 - [#2254](https://github.com/bajutsu-e2e/bajutsu/pull/2254) — Unit 4. Added `IgnoredSetting` (target, key, reason) and `RunResult.ignored_settings`. The
-  run records each declared target's ignored settings once the scenario reaches a lease, judged by
+  run records each declared target's ignored settings once the scenario launches, a crashed attempt included, judged by
   the same `check_settings` the preflight ran; a scenario the preflight refuses records none, since
   no launch dropped anything. The manifest writes it per scenario, the loader reads it back, the HTML
   report lists it in the Environment panel, JUnit carries a `bajutsu.ignoredSettings` property whose

@@ -158,7 +158,7 @@ means the same thing after the run that produced it exits
   and the target declared under `run.ignoredSettings`, as `{target, key, reason}`
   ([BE-0467](../roadmaps/BE-0467-environment-specific-settings/BE-0467-environment-specific-settings.md),
   [configuration](configuration.md#environment-specific-settings-runignoredsettings-be-0467)). It
-  never changes `ok`. Empty on a scenario that ignored nothing or never reached a lease, and absent on
+  never changes `ok`. Empty on a scenario that ignored nothing or that the preflight refused before any launch, and absent on
   every run recorded before `schemaVersion` 17, which a reader treats as none ignored.
 - `network.json`'s `startedAt` (one file per scenario, not shown in the manifest above): each
   observed exchange's absolute start, on the same footing as `steps[].started_at` and derived

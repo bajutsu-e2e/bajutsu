@@ -518,8 +518,8 @@ An ignored setting is not applied. The run's reports list it with its target and
 verdict and never part of it: `ignored_settings` in each scenario of `manifest.json`, an "ignored
 settings" table in the HTML report's Environment panel, a `bajutsu.ignoredSettings` property on the
 JUnit testcase, and `ignoredSettings` in the CTRF test's `extra` ([reporting](reporting.md)). The
-launch also logs a warning naming it, which is where a lease that writes no report, such as `record`
-or `crawl`, shows it. The map is checked when the config loads: an unknown key or a
+launch also logs a warning naming it — the only trace for a lease that writes no report, such as
+`record` or `crawl`. The map is checked when the config loads: an unknown key or a
 blank reason fails, and `defaults.run` may not carry it, because an ignored setting belongs to one
 environment. A declaration for a setting the target's route supports or satisfies fails the run
 preflight, so a stale declaration cannot hide a regression once the route gains the setting. A

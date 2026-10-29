@@ -1060,10 +1060,9 @@ class _ScenarioRunner:
                 if wanted_video and recovered is None
                 else []
             ),
-            # A lease that crashed mid-run had already launched without them (BE-0467).
-            ignored_settings=(
-                self._ignored_settings(s, actuator) if crashed_lz is not None else []
-            ),
+            # Every path here follows at least one crash, and that attempt's launch had already
+            # dropped them: `enforce_settings` runs before any launch work (BE-0467).
+            ignored_settings=self._ignored_settings(s, actuator),
         )
 
     def _write_crash_artifacts(
