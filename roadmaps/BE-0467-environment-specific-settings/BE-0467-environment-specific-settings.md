@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0467") |
-| Implementing PR | [#2249](https://github.com/bajutsu-e2e/bajutsu/pull/2249) (units 1–3), [#2254](https://github.com/bajutsu-e2e/bajutsu/pull/2254) (unit 4), [#2257](https://github.com/bajutsu-e2e/bajutsu/pull/2257) (unit 5) |
+| Implementing PR | [#2249](https://github.com/bajutsu-e2e/bajutsu/pull/2249) (units 1–3), [#2254](https://github.com/bajutsu-e2e/bajutsu/pull/2254) (unit 4), [#2257](https://github.com/bajutsu-e2e/bajutsu/pull/2257) (unit 5), [#2260](https://github.com/bajutsu-e2e/bajutsu/pull/2260) (units 6–10) |
 | Topic | Platform support |
 | Related | [BE-0082](../BE-0082-capability-preflight-check/BE-0082-capability-preflight-check.md), [BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues.md), [BE-0238](../BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md), [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md), [BE-0457](../BE-0457-real-device-step-lint/BE-0457-real-device-step-lint.md) |
 <!-- /BE-METADATA -->
@@ -341,7 +341,7 @@ Log:
   records nothing. Documented the per-route table in `docs/evidence.md` and `docs/drivers.md`, with
   their Japanese mirrors.
 
-- [#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM) — Units 6–10. `bajutsu lint --config <file> --target <name>`
+- [#2260](https://github.com/bajutsu-e2e/bajutsu/pull/2260) — Units 6–10. `bajutsu lint --config <file> --target <name>`
   resolves each scenario's targets the way `run` does and runs, per target on the expanded scenario
   with lifecycle hooks folded in, the BE-0082 step check, the settings check, and
   `check_preconditions` (`bajutsu/common/target_lint.py`); `steps_for_target` moved from the pipeline
