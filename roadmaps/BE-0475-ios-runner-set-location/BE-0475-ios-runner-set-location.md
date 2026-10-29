@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-ios-runner-set-location-ja.md)
+**English** · [日本語](BE-0475-ios-runner-set-location-ja.md)
 
-# BE-XXXX — Set the location through the XCUITest runner on a real iOS device
+# BE-0475 — Set the location through the XCUITest runner on a real iOS device
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-ios-runner-set-location.md) |
+| Proposal | [BE-0475](BE-0475-ios-runner-set-location.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0475") |
 | Topic | Platform support |
 | Related | [BE-0128](../BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight.md), [BE-0212](../BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities.md), [BE-0238](../BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md), [BE-0458](../BE-0458-real-device-host-channels/BE-0458-real-device-host-channels.md), [BE-0211](../BE-0211-android-device-control/BE-0211-android-device-control.md) |
 <!-- /BE-METADATA -->

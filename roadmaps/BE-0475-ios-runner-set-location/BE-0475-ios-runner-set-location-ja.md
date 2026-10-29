@@ -1,14 +1,14 @@
-[English](BE-XXXX-ios-runner-set-location.md) · **日本語**
+[English](BE-0475-ios-runner-set-location.md) · **日本語**
 
-# BE-XXXX — iOS 実機で XCUITest ランナー経由の位置情報設定を可能にする
+# BE-0475 — iOS 実機で XCUITest ランナー経由の位置情報設定を可能にする
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-ios-runner-set-location-ja.md) |
+| 提案 | [BE-0475](BE-0475-ios-runner-set-location-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **承認済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0475") |
 | トピック | プラットフォーム対応 |
 | 関連 | [BE-0128](../BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight-ja.md), [BE-0212](../BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities-ja.md), [BE-0238](../BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution-ja.md), [BE-0458](../BE-0458-real-device-host-channels/BE-0458-real-device-host-channels-ja.md), [BE-0211](../BE-0211-android-device-control/BE-0211-android-device-control-ja.md) |
 <!-- /BE-METADATA -->
