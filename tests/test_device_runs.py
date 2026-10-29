@@ -375,12 +375,16 @@ def test_one_kinds_family_miss_fails_that_run_alone() -> None:
     assert 'runsOn.ios.kind "device"  family "ipad"' in runs[1].reason
 
 
-def test_unpack_conditions_keeps_a_browser_kind_and_drops_an_ios_kind() -> None:
+def test_unpack_conditions_keeps_a_browser_kind_and_a_listed_ios_kind() -> None:
     assert unpack_conditions({"browser": {"kind": ["chrome", "edge"]}}) == {
         "browser.kind": ["chrome", "edge"]
     }
-    assert unpack_conditions({"ios": {"kind": ["simulator", "device"], "family": "ipad"}}) == {
+    assert unpack_conditions({"ios": {"kind": "device", "family": "ipad"}}) == {
         "ios.family": "ipad"
+    }
+    # A listed kind multiplies runs, so a Device Farm job refuses it rather than dropping a run.
+    assert unpack_conditions({"ios": {"kind": ["simulator", "device"]}}) == {
+        "ios.kind": ["simulator", "device"]
     }
 
 

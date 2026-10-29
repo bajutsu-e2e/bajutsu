@@ -627,7 +627,7 @@ def unpack_conditions(
     """A raw `runsOn` group's condition fields, keyed by their path under `runsOn` (`ios.model`).
 
     Reads each destination block (BE-0469). Device state (`locale`, `seedPhotos`) and how a target is
-    driven (an iOS `kind`, `emulate`) are not conditions; an integer range (`apiLevel: 34`) becomes its
+    driven (a single iOS `kind`, `emulate`) are not conditions; an integer range (`apiLevel: 34`) becomes its
     text, as the target's model reads it.
     """
     out: dict[str, str | list[str]] = {}
@@ -635,15 +635,10 @@ def unpack_conditions(
         if not isinstance(block, Mapping):
             continue
         for key, raw in block.items():
-            # A browser's kind is a condition when listed, as `browser.engine` was; an iOS kind is
-            # how the target is driven.
-            skipped = (
-                "locale",
-                "seedPhotos",
-                "emulate",
-                *(() if destination == "browser" else ("kind",)),
-            )
-            if key in skipped or raw is None:
+            # A browser's kind counts, as `browser.engine` did; a single iOS kind is how the target
+            # is driven, and a listed one multiplies runs, so it counts (BE-0468).
+            driven = key == "kind" and destination != "browser" and not isinstance(raw, list)
+            if key in ("locale", "seedPhotos", "emulate") or driven or raw is None:
                 continue
             out[f"{destination}.{key}"] = _text(raw)
     return out

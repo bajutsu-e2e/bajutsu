@@ -601,11 +601,16 @@ def test_an_ios_pool_reads_through_the_listing_its_kinds_need(
     from bajutsu.run.device_matrix import read_ios_facts
 
     calls: list[str] = []
+
+    def reader(name: str):  # type: ignore[no-untyped-def]
+        def read(_udids: object) -> list[DeviceFacts]:
+            calls.append(name)
+            return []
+
+        return read
+
     for name in ("read_ios", "read_ios_device", "read_ios_pool"):
-        monkeypatch.setattr(
-            f"bajutsu.run.device_matrix.facts.{name}",
-            lambda udids, _n=name: calls.append(_n) or [],
-        )
+        monkeypatch.setattr(f"bajutsu.run.device_matrix.facts.{name}", reader(name))
     read_ios_facts(_eff(), ["u"])
     read_ios_facts(_eff("{ios: {kind: device}}"), ["u"])
     read_ios_facts(_eff("{ios: {kind: [simulator, device]}}"), ["u"])
