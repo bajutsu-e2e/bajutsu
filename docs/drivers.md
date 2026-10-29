@@ -54,6 +54,9 @@ resolution, and the **preflight capability check** (below).
 | `semanticTap` | tap directly by id/label (no coordinates) | ✅ | — | ✅ | ✅ |
 | `conditionWait` | native condition waiting | ✅ | — | ✅ | ✅ |
 | `network` | native network monitoring | — | — | ✅ | — |
+| `video` | whole-scenario video recording (BE-0467; Simulator only on iOS) | ✅ | ✅ | ✅ | — |
+| `deviceLog` | whole-scenario device log or browser console stream (BE-0467; Simulator only on iOS) | ✅ | ✅ | ✅ | — |
+| `appTrace` | whole-scenario app `os_log` trace (BE-0467; iOS Simulator only) | ✅ | — | — | — |
 | `multiTouch` | two-finger gestures (pinch / rotate) | ✅ | ✅ | ✅ | ✅ |
 | `textSelection` | select-all + clipboard copy on the focused field | ✅ | ✅ | ✅ | ✅ |
 | `selectOption` | set a native `<select>` by value (web only) | — | — | ✅ | ✅ |
@@ -85,14 +88,16 @@ resolution, and the **preflight capability check** (below).
 > performs `pinch` / `rotate` natively. adb advertises `query` / `elements` / `screenshot`,
 > `multiTouch` (a rooted-device `sendevent` two-finger sweep; BE-0232), plus the emulator-backed
 > device-control subset `deviceControl.setLocation` + `deviceControl.clipboard` (BE-0211) +
-> `deviceControl.foreground`, and `deviceGroup` (BE-0447); the rest of the device-control family has
+> `deviceControl.foreground`, `deviceGroup` (BE-0447), and the `video` / `deviceLog` evidence kinds
+> (`screenrecord`, `logcat`; BE-0467); the rest of the device-control family has
 > no faithful emulator equivalent and stays unadvertised. The
 > `fake` driver advertises a richer capability set (semanticTap / conditionWait / multiTouch) purely
 > to exercise those code paths in tests. The `playwright` (web) driver advertises `semanticTap` /
 > `conditionWait` (Playwright has both natively), `network` — the **first backend with native
 > network**, observing and stubbing traffic in-process with no app-side cooperation — and
 > `multiTouch`, synthesizing pinch / rotate via the Chromium DevTools protocol's
-> `Input.dispatchTouchEvent` (BE-0054).
+> `Input.dispatchTouchEvent` (BE-0054). It also advertises the `video` and `deviceLog` evidence
+> kinds (the browser context's recording and console; BE-0467).
 
 ### Preflight capability check (BE-0082)
 

@@ -251,6 +251,10 @@ def test_a_member_discloses_only_the_gaps_the_primary_did_not(
         member = anchor.join(_app_eff("com.example.auth"), joined, True)
         assert [c.kind for c in anchor.skipped_captures] == ["video"]
         assert [c.kind for c in member.skipped_captures] == ["deviceLog"]
+        # A third member asking for the same kinds repeats neither the anchor's gap nor its sibling's.
+        third = anchor.join(_app_eff("com.example.pay"), joined, True)
+        assert third.skipped_captures == []
+        third.release()
         member.release()
         anchor.release()
     finally:

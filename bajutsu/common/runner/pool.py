@@ -334,6 +334,9 @@ def device_pool(  # noqa: C901, PLR0915
         # that collects it gets it natively or from the app-side collector the pool started above,
         # which supplies it without the actuator advertising the capability.
         wanted = set(requested_intervals(scenario, eff.capture))
+        # Grows as each lease in this device group claims a gap, so a later member repeats neither
+        # the anchor's disclosure nor a sibling's.
+        disclosed = set(wanted)
         skipped_captures = [
             SkippedCapture(kind=kind, reason=reason)
             for kind, reason in skipped.items()
@@ -678,6 +681,8 @@ def device_pool(  # noqa: C901, PLR0915
                         # The device's one stall flag, which the member lease also forwards.
                         on_video_start_stall=note_video_start_stall,
                     )
+                    member_gaps = set(requested_intervals(member, member_eff.capture)) - disclosed
+                    disclosed.update(member_gaps)
                     return Lease(
                         driver=member_driver,
                         sink=member_sink,
@@ -692,12 +697,12 @@ def device_pool(  # noqa: C901, PLR0915
                         device_runtime=catalog.get(udid, {}).get("runtime", ""),
                         collector_provider=collector_provider,
                         readiness=member_readiness,
-                        # Only the kinds this member asks for beyond the primary: the rest share this
-                        # device's gap, which the primary's lease already discloses once.
+                        # Only the kinds no lease on this device has disclosed yet: the rest share
+                        # this device's gap, which an earlier lease already names once.
                         skipped_captures=[
                             SkippedCapture(kind=kind, reason=reason)
                             for kind, reason in skipped.items()
-                            if kind in set(requested_intervals(member, member_eff.capture)) - wanted
+                            if kind in member_gaps
                         ],
                         # Device-scoped, so a member reads its group's device the way the lease that
                         # holds it does: a crash retry judged on a member (the group's primary is

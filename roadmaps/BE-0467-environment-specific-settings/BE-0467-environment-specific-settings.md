@@ -330,10 +330,10 @@ Log:
   and `deviceLog`, and the live WebDriver driver records none. `capabilities_for_run` drops all three
   on a real iOS device, since simctl reaches the Simulator alone. `KIND_CAPABILITY` now covers the
   three, and `resolve_evidence_providers` judges the actuator by its route-narrowed capabilities. The
-  pool keeps the skip reasons on `Lease.skipped_captures`, which the report already renders, for the
-  kinds the scenario asked for alone; `network` is never disclosed there, since the run gets it
-  natively or from the pool's app-side collector. A device-group member's lease adds only the kinds it
-  asks for beyond the primary's, so the group discloses each gap once. Two
+  pool keeps the skip reasons for the kinds the scenario asked for on `Lease.skipped_captures`, which
+  the report already renders; `network` is never disclosed there, since the run gets it
+  natively or from the pool's app-side collector. A device-group member's lease adds only the kinds no
+  earlier lease on that device disclosed, so the group discloses each gap once. Two
   points go beyond the design text. Only `network` takes a same-platform fallback provider, because
   the pool wires a provider's collector and nothing yet hands a provider's recorder to the sink. And
   the `FileSink` never starts a kind the route cannot record, so a real-device run no longer points a

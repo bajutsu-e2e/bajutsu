@@ -48,6 +48,9 @@ class Driver(Protocol):
 | `semanticTap` | id/label で直接タップ（座標不要） | ✅ | — | ✅ | ✅ |
 | `conditionWait` | ネイティブ条件待機 | ✅ | — | ✅ | ✅ |
 | `network` | ネイティブネットワーク監視 | — | — | ✅ | — |
+| `video` | シナリオ全体の動画記録（BE-0467。iOS では Simulator のみ） | ✅ | ✅ | ✅ | — |
+| `deviceLog` | シナリオ全体のデバイスログまたはブラウザのコンソール（BE-0467。iOS では Simulator のみ） | ✅ | ✅ | ✅ | — |
+| `appTrace` | シナリオ全体のアプリの `os_log` トレース（BE-0467。iOS Simulator のみ） | ✅ | — | — | — |
 | `multiTouch` | 2 本指ジェスチャ（pinch / rotate） | ✅ | ✅ | ✅ | ✅ |
 | `textSelection` | フォーカス中フィールドの全選択とクリップボードへのコピー | ✅ | ✅ | ✅ | ✅ |
 | `selectOption` | ネイティブ `<select>` を値で設定（web のみ） | — | — | ✅ | ✅ |
@@ -67,7 +70,7 @@ class Driver(Protocol):
 
 > `deviceControl.*` トークンは、`DeviceControl` 一族を操作ごとに分割したものです（BE-0212、BE-0128 の粗い `deviceControl` から分割しました）。これにより、バックエンドは自分が忠実に実現できる操作だけを公開でき、部分的にしか実現しないバックエンドも残りを誤って公開せずに済みます。XCUITest は `simctl` を通じて一族全体を実現しますが、Android エミュレータが実現するのは `setLocation`、`clipboard`、`foreground` だけです（その `push` / キーチェーン / ステータスバー / `background` の各操作には忠実な等価物がありません）。`background` と `foreground` は、BE-0447 が分けるまで 1 つの `appLifecycle` トークンでした。デバイスグループの後から入るメンバーは `foreground` で起動するので、分ける必要がありました。
 
-> adb は**リーンな端**に位置し、**frame 中心の座標**で操作します。semantic tap を持たないため、run ループは `query()` で要素を一意に確定しその中心をタップします。一方 XCUITest は豊かな端に位置し、identifier で直接 tap し、ネイティブの条件で待機し、`pinch` / `rotate` をネイティブに実行します。adb は `query` / `elements` / `screenshot`、`multiTouch`（rooted device での `sendevent` 2 本指スイープ、BE-0232）に加えて、エミュレータが実現できるデバイス制御のサブセット `deviceControl.setLocation`、`deviceControl.clipboard`（BE-0211）、`deviceControl.foreground` と、`deviceGroup` を公開します（BE-0447）。デバイス制御一族の残りにはエミュレータでの忠実な等価物がないため、公開しません。`fake` ドライバはテストでそれらのコードパスを動かすためだけに、より広い能力集合（semanticTap / conditionWait / multiTouch）を公開します。`playwright`（web）ドライバは `semanticTap` / `conditionWait`（Playwright がネイティブに持つ）に加えて `network`（アプリ側の協力なしに通信を観測しスタブできる**初めてのネイティブネットワーク対応バックエンド**）と `multiTouch`（Chromium DevTools プロトコルの `Input.dispatchTouchEvent` で pinch / rotate を合成）を公開します（BE-0054）。
+> adb は**リーンな端**に位置し、**frame 中心の座標**で操作します。semantic tap を持たないため、run ループは `query()` で要素を一意に確定しその中心をタップします。一方 XCUITest は豊かな端に位置し、identifier で直接 tap し、ネイティブの条件で待機し、`pinch` / `rotate` をネイティブに実行します。adb は `query` / `elements` / `screenshot`、`multiTouch`（rooted device での `sendevent` 2 本指スイープ、BE-0232）に加えて、エミュレータが実現できるデバイス制御のサブセット `deviceControl.setLocation`、`deviceControl.clipboard`（BE-0211）、`deviceControl.foreground` と、`deviceGroup`（BE-0447）、証跡種別の `video` と `deviceLog`（`screenrecord` と `logcat`。BE-0467）を公開します。デバイス制御一族の残りにはエミュレータでの忠実な等価物がないため、公開しません。`fake` ドライバはテストでそれらのコードパスを動かすためだけに、より広い能力集合（semanticTap / conditionWait / multiTouch）を公開します。`playwright`（web）ドライバは `semanticTap` / `conditionWait`（Playwright がネイティブに持つ）に加えて `network`（アプリ側の協力なしに通信を観測しスタブできる**初めてのネイティブネットワーク対応バックエンド**）と `multiTouch`（Chromium DevTools プロトコルの `Input.dispatchTouchEvent` で pinch / rotate を合成）を公開します（BE-0054）。証跡種別の `video` と `deviceLog`（ブラウザコンテキストの録画とコンソール。BE-0467）も公開します。
 
 ### プリフライト能力検査（BE-0082）
 
