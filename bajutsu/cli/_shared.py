@@ -10,7 +10,7 @@ import json
 import os
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import TYPE_CHECKING, overload
+from typing import TYPE_CHECKING, get_args, overload
 
 import typer
 from pydantic import ValidationError
@@ -44,6 +44,7 @@ from bajutsu.common.config import (
     resolve,
     web_engine,
 )
+from bajutsu.common.config.schema.platform.ios import IosKind
 from bajutsu.common.config.schema.platform.web import WebBrowser
 from bajutsu.common.config_source import (
     DEFAULT_CONFIG as DEFAULT_CONFIG,  # re-exported: the single owner is config_source (BE-0251)
@@ -498,15 +499,100 @@ def _resolve_browser(eff: Effective, browser: str) -> Effective:
     declares stops counting as a condition once the flag names one engine.
 
     Raises:
-        typer.Exit: *browser* is set but not one of the known engines (exit code 2).
+        typer.Exit: *browser* is set but not one of the known engines, or not one the target lists
+            (exit code 2).
     """
     if not browser:
         return eff
     parse_engine_flag("--browser", browser)
+    check_listed_browsers(eff, "--browser", [browser])
     from bajutsu.run.device_matrix import apply_engine
 
     # `runsOn.browser` is a web-only field; a non-web target ignores the flag.
     return apply_engine(eff, browser)
+
+
+def check_listed_browsers(eff: Effective, flag: str, kinds: Sequence[str]) -> None:
+    """Refuse a browser that the target's own `runsOn.browser.kind` list leaves out (BE-0468).
+
+    A list declares the browsers the target supports, so a flag picks among them rather than past
+    them. A target that leaves `kind` unset, or names a single browser, takes any kind, as before.
+
+    Raises:
+        typer.Exit: The target lists its browsers and *kinds* names one it does not (exit code 2).
+    """
+    listed = eff.conditions.get("browser.kind")
+    if not isinstance(listed, list):
+        return
+    missing = [k for k in kinds if k not in listed]
+    if missing:
+        typer.echo(
+            f"{flag} {', '.join(missing)}: target '{eff.target}' lists runsOn.browser.kind "
+            f"{', '.join(listed)}"
+        )
+        raise typer.Exit(2)
+
+
+def parse_kind_flag(value: str, *, single: bool = False) -> list[str]:
+    """Parse `--kind` into an ordered, de-duplicated list of iOS kinds (BE-0468).
+
+    Args:
+        value: One kind, or a comma list of kinds, as written.
+        single: The command never multiplies runs (`record`, `crawl`, `repl`), so it takes one kind.
+
+    Raises:
+        typer.Exit: The value names no kind, an entry is not a known kind, or *single* and more than
+            one is named (exit code 2).
+    """
+    kinds = list(dict.fromkeys(k.strip() for k in value.split(",") if k.strip()))
+    allowed = get_args(IosKind)
+    if not kinds:
+        typer.echo(f"--kind {value!r} names no kind: use one of {', '.join(allowed)}")
+        raise typer.Exit(2)
+    for kind in kinds:
+        if kind not in allowed:
+            typer.echo(f"unknown --kind {kind!r}: use one of {', '.join(allowed)}")
+            raise typer.Exit(2)
+    if single and len(kinds) > 1:
+        typer.echo(f"--kind takes one kind here, not {', '.join(kinds)}: this command runs once")
+        raise typer.Exit(2)
+    return kinds
+
+
+def _resolve_kind(eff: Effective, kind: str, *, single: bool = False) -> Effective:
+    """Apply a `--kind` flag over the target's `runsOn.ios.kind` (BE-0468).
+
+    A target that lists its kinds runs the ones the flag names; a target with a single kind accepts
+    that kind alone, so the flag may repeat it. Either way the flag never adds a kind the target does
+    not declare.
+
+    Args:
+        eff: The target's effective configuration.
+        kind: The flag as written; empty leaves *eff* unchanged.
+        single: The command takes one kind (`parse_kind_flag`).
+
+    Raises:
+        typer.Exit: The flag is unparsable, the target is not an iOS target, or it names a kind the
+            target does not declare; the message names the target's kinds (exit code 2).
+    """
+    if not kind:
+        return eff
+    kinds = parse_kind_flag(kind, single=single)
+    if eff.platform != "ios":
+        typer.echo(f"--kind is iOS-only; target '{eff.target}' runs on {eff.platform}")
+        raise typer.Exit(2)
+    from bajutsu.run.device_matrix import driven_kind, select_kinds
+
+    listed = eff.conditions.get("kind")
+    declared = list(listed) if isinstance(listed, list) else [driven_kind(eff) or "simulator"]
+    missing = [k for k in kinds if k not in declared]
+    if missing:
+        typer.echo(
+            f"--kind {', '.join(missing)}: target '{eff.target}' runs on runsOn.ios.kind "
+            f"{', '.join(declared)}"
+        )
+        raise typer.Exit(2)
+    return select_kinds(eff, kinds)
 
 
 def _without_engine_condition(eff: Effective) -> Effective:

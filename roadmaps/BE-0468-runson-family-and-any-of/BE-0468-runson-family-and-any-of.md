@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0468") |
-| Implementing PR | [#2244](https://github.com/bajutsu-e2e/bajutsu/pull/2244) (Unit 1), [#2250](https://github.com/bajutsu-e2e/bajutsu/pull/2250) (Units 2–3) |
+| Implementing PR | [#2244](https://github.com/bajutsu-e2e/bajutsu/pull/2244) (Unit 1), [#2250](https://github.com/bajutsu-e2e/bajutsu/pull/2250) (Units 2–3), [#2253](https://github.com/bajutsu-e2e/bajutsu/pull/2253) (Unit 4) |
 | Topic | Driver & backend architecture |
 <!-- /BE-METADATA -->
 
@@ -340,7 +340,7 @@ fake pool for each resolution branch, and the failure messages.
 - [x] Unit 1: read the family
 - [x] Unit 2: schema
 - [x] Unit 3: resolution
-- [ ] Unit 4: arguments and launch
+- [x] Unit 4: arguments and launch
 - [ ] Unit 5: reporting
 - [ ] Unit 6: worker routing
 - [ ] Unit 7: docs and demos
@@ -359,6 +359,12 @@ fake pool for each resolution branch, and the failure messages.
   - Deviation from the work breakdown: the change also takes the parts of unit 4 without which a listed kind or a Chrome run would run on the wrong destination. Each cell applies its iOS kind to the run's configuration, so a device run takes the device destination. The driver and the version read pass the channel to Playwright's `launch`. `--browser` and `--browsers` accept the browser kinds, since the flags read the same model as the field. On-demand install skips Chrome and Edge, which are browsers installed on the machine itself. `--kind`, and checking a flag against the target's own list, stay in unit 4.
   - A second deviation: the condition key `browser.engine` is now `browser.kind`, so a listed browser's coordinate in the manifest and the flakiness history reads `browser.kind`. A history recorded before this change keys its browser runs apart from the runs after it.
   - A third deviation: a target on an `appium` grid or a Device Farm job is now checked before a physical device, so a `family` there fails as *Rules the loader enforces* states, rather than passing as a real device's family would.
+- [#2253](https://github.com/bajutsu-e2e/bajutsu/pull/2253) (Unit 4) — add `--kind`, and check the browser flags against the target's own list.
+  - `run`, `record`, `crawl`, and `repl` gain `--kind`. On a target that lists its kinds, the flag narrows the list to the kinds it names, in the target's order. A kind the target does not declare exits 2 and names the target's kinds. A target with a single kind accepts that kind alone, and a target on another platform refuses the flag. `run` takes a comma list; the other three commands take one kind, because they run once.
+  - The narrowed list still counts as a condition, so `--kind device` keeps the `kind=device` coordinate and keys the same flakiness history as the device run of the full list. `--browser` differs here: it replaces the target's browser field, so a browser it names carries no coordinate.
+  - `--browser` and `--browsers` refuse a browser that the target's `runsOn.browser.kind` list leaves out. A target that leaves `kind` unset, or names a single browser, still takes any kind, because a single kind says how the target is driven rather than which browsers it supports.
+  - The rest of the unit, the channel passed to Playwright's `launch` and each run's XCUITest destination, landed in #2250.
+  - Deviation from the design: `--kind` applies to the command's own `--target`. A run whose scenarios declare a second iOS target refuses the flag and exits 2, as `--browser` does with a second web target, because which target the flag means has no answer there.
 
 ## References
 

@@ -43,6 +43,9 @@ def test_run_flag_surface_is_fully_classified() -> None:
         # The server is not a worker (BE-0450): the worker appends its own `--worker-config` to the
         # leased command, so the server never sets it.
         "worker_config",
+        # --kind (BE-0468) narrows a target's iOS kinds on the command line; serve's run request has
+        # no field for it yet, so a hosted run covers every kind the target lists.
+        "kind",
     }
     pass_through = {
         "backend",
@@ -100,6 +103,8 @@ def test_record_flag_surface_is_fully_classified() -> None:
         # Only the run request reaches an appium grid through serve (BE-0452); a hosted record
         # stays local, so serve passes no worker file.
         "worker_config",
+        # --kind (BE-0468): a hosted record takes the target's first kind, as `--kind` is unset.
+        "kind",
     }
     pass_through = {"backend", "udid", "erase", "system_alert_handling", "headed", "upload_exec"}
     # serve forces --handoff to `stream` (a human at the browser answers over SSE), never a knob (BE-0179).
@@ -112,7 +117,14 @@ def test_crawl_flag_surface_is_fully_classified() -> None:
     # language (BE-0188) is env-driven for serve (BAJUTSU_AI_LANGUAGE), like effort — see record above.
     # Only the run request reaches an appium grid through serve (BE-0452); a hosted crawl stays
     # local, so serve passes no worker file.
-    not_serve_exposed = {"prune_global", "alert_vision_instruction", "language", "worker_config"}
+    # --kind (BE-0468): a hosted crawl takes the target's first kind, as `--kind` is unset.
+    not_serve_exposed = {
+        "prune_global",
+        "alert_vision_instruction",
+        "language",
+        "worker_config",
+        "kind",
+    }
     pass_through = {
         "backend",
         "udid",

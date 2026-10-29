@@ -19,6 +19,7 @@ from bajutsu.cli._shared import (
     _load_device_worker_or_exit,
     _load_effective,
     _resolve_browser,
+    _resolve_kind,
     _select_actuator_or_exit,
     _start_launch_server_or_exit,
     _with_headed,
@@ -113,6 +114,12 @@ def repl(
         help=f"web backend: browser to inspect — {' / '.join(BROWSER_KINDS)}; "
         "overrides the target's runsOn.browser.kind (default: chromium)",
     ),
+    kind: str = typer.Option(
+        "",
+        "--kind",
+        help="iOS: the one of the target's runsOn.ios.kind to inspect on — simulator / device; "
+        "a kind the target does not declare exits 2 (default: the first listed kind)",
+    ),
     attach: bool = typer.Option(
         False,
         "--attach",
@@ -135,6 +142,7 @@ def repl(
     # A headless browser leaves an operator with no screen to watch change, which matters more for
     # this shell than for `record` — see `_with_headed` / `_resolve_browser` for the precedence.
     eff = _with_headed(eff, headed)
+    eff = _resolve_kind(eff, kind, single=True)
     eff = _resolve_browser(eff, browser)
     worker = _load_device_worker_or_exit(worker_config)
     eff = _with_worker_device(eff, worker)
