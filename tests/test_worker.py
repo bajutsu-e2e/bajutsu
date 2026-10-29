@@ -55,9 +55,10 @@ def _port(server: socketserver.BaseServer) -> int:
 @pytest.fixture(autouse=True)
 def _stub_advertised_capabilities(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep the worker's startup capability derivation hermetic (BE-0166): stub it to a fixed set so
-    no test shells out to real `simctl`. The derivation itself is covered by test_capabilities.py; a
-    test that cares about flag wiring overrides this with its own recorder."""
+    no test shells out to real `simctl` or `devicectl` (BE-0468). The derivation itself is covered by
+    test_capabilities.py; a test that cares about flag wiring overrides this with its own recorder."""
     monkeypatch.setattr(worker_mod, "_advertised_capabilities", lambda *a, **k: ["platform:ios"])
+    monkeypatch.setattr(worker_mod, "devicectl_capabilities", lambda **k: set())
 
 
 class _Handler(BaseHTTPRequestHandler):

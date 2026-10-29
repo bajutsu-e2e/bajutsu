@@ -49,23 +49,26 @@ BATCH_PROVIDERS: frozenset[str] = frozenset({"devicefarm"})
 ENVIRONMENTS: frozenset[str] = frozenset({LOCAL, APPIUM, *BATCH_PROVIDERS})
 
 # The routing-token prefixes a worker fills in itself: `environment:<name>` for a provider it
-# registered (BE-0448), `host:<os>` for the operating system it runs on (BE-0450), and
-# `machine:<id>` for the server machine it shares, whose jobs name files by their paths there
-# (BE-0449). Reserved, so every hand-written token input — a worker's override — rejects them: a
-# hand-written one could pull a job onto a worker that cannot run it, or route a job nowhere. Defined
-# here, beside the environment names, so the core can check them without importing the server
-# package.
+# registered (BE-0448), `host:<os>` for the operating system it runs on (BE-0450), `machine:<id>`
+# for the server machine it shares, whose jobs name files by their paths there (BE-0449), and
+# `device:<family>` for a real device connected to it (BE-0468). Reserved, so every hand-written
+# token input — a worker's override — rejects them: a hand-written one could pull a job onto a
+# worker that cannot run it, or route a job nowhere. Defined here, beside the environment names, so
+# the core can check them without importing the server package.
 ENVIRONMENT_ROUTING_PREFIX = "environment:"
 HOST_ROUTING_PREFIX = "host:"
 MACHINE_ROUTING_PREFIX = "machine:"
+DEVICE_ROUTING_PREFIX = "device:"
 RESERVED_ROUTING_PREFIXES: tuple[str, ...] = (
     ENVIRONMENT_ROUTING_PREFIX,
     HOST_ROUTING_PREFIX,
     MACHINE_ROUTING_PREFIX,
+    DEVICE_ROUTING_PREFIX,
 )
 RESERVED_ROUTING_REASON = (
-    "the environment:, host:, and machine: prefixes are reserved: a worker advertises them itself, "
-    "from its worker.yaml environment, the machine it runs on, and the server machine it shares"
+    "the environment:, host:, machine:, and device: prefixes are reserved: a worker advertises them "
+    "itself, from its worker.yaml environment, the machine it runs on, the server machine it shares, "
+    "and the real devices connected to it"
 )
 
 

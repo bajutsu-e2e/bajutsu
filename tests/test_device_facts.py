@@ -10,6 +10,7 @@ import pytest
 from bajutsu.common.devices.facts import (
     DeviceFacts,
     DeviceReadError,
+    ios_device_families,
     read_android,
     read_ios,
     read_ios_device,
@@ -302,6 +303,27 @@ def test_ios_device_fails_when_devicectl_cannot_be_read_or_hangs() -> None:
         read_ios_device(["P1"], broken)
     with pytest.raises(DeviceReadError, match="devicectl did not answer"):
         read_ios_device(["P1"], hangs)
+
+
+def test_device_families_lists_each_paired_real_device_once() -> None:
+    # A Simulator in the listing and a device with no type advertise nothing (BE-0468).
+    run = _devicectl(
+        _device("P1", deviceType="iPhone"),
+        _device("P2", deviceType="iPhone"),
+        _device("T1", deviceType="iPad"),
+        _device("S1", reality="simulated", deviceType="iPad"),
+        _device("X1"),
+    )
+    assert ios_device_families(run) == {"iPhone", "iPad"}
+    assert ios_device_families(_devicectl(_device("S1", reality="simulated"))) == set()
+
+
+def test_device_families_fails_when_devicectl_cannot_be_read() -> None:
+    def broken(args: list[str]) -> str:
+        raise OSError("no xcrun")
+
+    with pytest.raises(DeviceReadError, match="could not list the real devices"):
+        ios_device_families(broken)
 
 
 def test_the_default_devicectl_reader_passes_a_timeout(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -142,6 +142,7 @@ def test_the_worker_loop_hands_its_file_to_every_leased_job(
     monkeypatch.setattr(worker_mod, "_post_json", fake_post)
     monkeypatch.setattr(worker_mod, "execute_job_spec", fake_execute)
     monkeypatch.setattr(worker_mod, "_advertised_capabilities", lambda *_a: ["platform:ios"])
+    monkeypatch.setattr(worker_mod, "devicectl_capabilities", lambda **_k: set())
     with pytest.raises(_Stop):
         worker_mod.worker(
             server_url="http://cp",

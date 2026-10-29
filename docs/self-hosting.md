@@ -1155,7 +1155,11 @@ deterministic `run` verdict.
   worker advertises `host:<os>` for the operating system it runs on, such as `host:darwin` on a
   Mac ([BE-0450](../roadmaps/BE-0450-worker-capability/BE-0450-worker-capability.md)). An iOS
   worker also advertises its installed Simulator inventory. That inventory gives an `iosNN` token
-  per runtime, and the `iphone` and `ipad` device classes. A worker on a local start's machine
+  per runtime, and the `iphone` and `ipad` device classes. An iOS worker also advertises
+  `device:iphone` and `device:ipad` for the families of the real devices connected to it, read
+  over `devicectl`. Real devices come and go, so the worker reads them again on its lease
+  polls, at most once every 15 seconds, and logs each change in what it reads ([BE-0468](../roadmaps/BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of.md)).
+  A worker on a local start's machine
   also advertises `machine:<id>`, the server's identity, which routes the jobs that name files on
   that machine ([the server backend on one machine](#the-server-backend-on-one-machine-be-0449)). The web-worker container bakes in `--platform web`, so it advertises
   `web` and needs no flag.
@@ -1173,8 +1177,22 @@ deterministic `run` verdict.
   worker's own check still judges each scenario before any device work. A target declares no extra
   tokens, since `requires:` and `defaults.requires` are gone
   ([BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)).
-  No job can route on an iOS runtime or a device class (`ios18`, `ipad`) until a later item derives
-  that need from the target.
+  Routing derives no `ios18` token from `runsOn.ios.os`, so no job routes on an iOS runtime.
+- **A job's required set also holds the target's `runsOn.ios.family`.** A serve job runs all kinds.
+  So one worker needs a fitting device for each kind in `runsOn.ios.kind`. A Simulator
+  run reads the inventory's `iphone` and `ipad` tokens. A real-device run reads the `device:`
+  tokens. A single family requires its token, so `kind: device` with `family: ipad` requires
+  `device:ipad`. A family priority list accepts any one family, which a subset test cannot express.
+  The job instead stores an any-of group, `anyof:device:ipad|device:iphone`, which a worker meets
+  by advertising any one member. The leasing worker still resolves the list over its own pool, so
+  routing picks the worker and the list picks the device. A target that names no family adds no
+  token. A request that sends the target to the `fake` driver adds none either, because that
+  driver drives no device
+  ([BE-0468](../roadmaps/BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of.md)).
+- **A paired device reads as connected.** `devicectl` lists every paired real device, plugged in or
+  not. Its tunnel state reads `disconnected` until a run opens the tunnel. An idle device and an
+  unplugged one look alike there. A worker keeps advertising an unplugged device's family. A job
+  routed to that worker fails when its run drives the device. The job does not stay queued.
 - **A run on an Appium grid routes by environment.** The plain run request (`POST /api/run`) takes
   an optional `environment`. Its one accepted value is `appium`; any other value returns `400`. Such
   a job requires `environment:appium` alone, since the grid owns the device. An `appium` worker sets
@@ -1187,8 +1205,8 @@ deterministic `run` verdict.
   `$BAJUTSU_WORKER_CAPABILITIES` add tokens verbatim. Both still work for this release, with a
   one-time notice, and go away in the next release. The inventory and the worker capability file
   now supply what the override was for. An override can also claim a runtime the machine lacks.
-  Neither may carry the reserved `environment:`, `host:`, or `machine:` prefix, which the worker
-  fills itself. A worker rejects such a token at startup.
+  Neither may carry the reserved `environment:`, `host:`, `machine:`, or `device:` prefix, which
+  the worker fills itself. A worker rejects such a token at startup.
 - **An unroutable job** — one whose required capabilities no live worker advertises — stays queued
   rather than being leased to an incompatible worker or dropped, and is surfaced by the
   `bajutsu_unroutable_jobs` metric (below) so the operator knows to add a worker with the missing

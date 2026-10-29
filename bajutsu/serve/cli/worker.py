@@ -21,7 +21,7 @@ import subprocess
 import tempfile
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Annotated, Any
 from urllib.error import HTTPError, URLError
@@ -47,10 +47,12 @@ from bajutsu.serve import InMemoryLogBus
 from bajutsu.serve.capabilities import (
     MACHINE_ID_ENV,
     WORKER_CAPABILITIES_ENV,
+    devicectl_capabilities,
     environment_capability,
     host_capability,
     machine_capability,
     parse_capabilities,
+    platform_capability,
     reserved_tokens,
     worker_capabilities,
 )
@@ -282,6 +284,73 @@ def _advertised_capabilities(
     )
 
 
+def _device_reader(
+    caps: Iterable[str], worker_capability: WorkerCapability
+) -> Callable[[], set[str]] | None:
+    """What reads this worker's real-device tokens before each lease, or None when it has none.
+
+    Only a local worker that advertises ``platform:ios`` connects a real device of its own; a
+    device-cloud or `appium` worker's devices belong to its provider, and a web or Android worker
+    has no `devicectl` to read (BE-0468).
+    """
+    if not worker_capability.is_local or platform_capability("ios") not in caps:
+        return None
+    return _DeviceTokens()
+
+
+# How often a worker re-reads its real devices; a device plugged in or out routes within this long.
+_DEVICE_REREAD_S = 15.0
+
+
+class _DeviceTokens:
+    """Reads the worker's real-device tokens, and logs each change in what it reads.
+
+    The tokens are asked for before every lease, so a failure that starts mid-session would
+    otherwise only show as family jobs that stop routing here. One line per change keeps a hot-plug
+    trail without repeating itself on every poll (BE-0468). devicectl is re-read at most once per
+    *interval*, so an idle worker polling every few seconds does not spawn it on each poll.
+    """
+
+    def __init__(
+        self,
+        read: Callable[..., set[str]] | None = None,
+        *,
+        interval: float = _DEVICE_REREAD_S,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self._read = read or devicectl_capabilities
+        self._interval = interval
+        self._clock = clock
+        self._last: tuple[frozenset[str], str | None] | None = None
+        self._read_at: float | None = None
+
+    def __call__(self) -> set[str]:
+        now = self._clock()
+        fresh = self._read_at is not None and now - self._read_at < self._interval
+        if self._last is not None and fresh:
+            return set(self._last[0])
+        self._read_at = now
+        errors: list[str] = []
+        tokens = self._read(on_error=errors.append)
+        state = (frozenset(tokens), errors[0] if errors else None)
+        if state != self._last:
+            if state[1] is not None:
+                _logger.warning("real-device read failed: %s; advertising no real device", state[1])
+            elif self._last is not None:
+                _logger.info("real devices now: %s", ", ".join(sorted(tokens)) or "(none)")
+        self._last = state
+        return tokens
+
+
+def _advertised(caps: list[str], devices: Callable[[], set[str]] | None) -> list[str]:
+    """The set a lease advertises: the startup set plus the real devices connected right now.
+
+    Real devices come and go, so they are read on every lease rather than once at startup; a device
+    unplugged since the last lease stops pulling family jobs onto this worker (BE-0468).
+    """
+    return sorted({*caps, *devices()}) if devices is not None else caps
+
+
 def _machine_token(
     machine_id: str, server_state_dir: Path | None, capability: WorkerCapability
 ) -> str | None:
@@ -420,15 +489,17 @@ def worker(
     wid = worker_id or f"worker-{os.getpid()}"
     work, temporary = _workspace(workdir)
     # The capability set this worker advertises on every lease (BE-0166), computed once at startup
-    # (the pool is assumed stable per worker).
+    # (the Simulator pool is assumed stable per worker); its real devices are re-read per lease.
     caps = _advertised_capabilities(platform, capabilities, capability)
     if machine := _machine_token(machine_id, server_state_dir, capability):
         caps = sorted({*caps, machine})
+    devices = _device_reader(caps, capability)
     # After the flags are checked, so a typo'd flag is reported before any AWS client is built.
     _register_environment_or_exit(capability.environment)
 
     typer.echo(f"bajutsu worker → polling {url}  (Ctrl-C to stop)")
-    typer.echo(f"  advertising capabilities: {', '.join(caps) or '(none)'}")
+    advertised = _advertised(caps, devices)
+    typer.echo(f"  advertising capabilities: {', '.join(advertised) or '(none)'}")
     typer.echo(f"  workspace: {work}")
     from bajutsu.serve.server.one_shot import cancel_on_signals
 
@@ -480,6 +551,7 @@ def worker(
                 current=current,
                 stopped=lambda: signalled() is not None,
                 environment=capability.environment,
+                devices=devices,
             )
             signum = signalled()
     finally:
@@ -503,10 +575,14 @@ def _serve_leases(
     current: _CurrentJob,
     stopped: Callable[[], bool],
     environment: str = LOCAL,
+    devices: Callable[[], set[str]] | None = None,
 ) -> None:
-    """Lease and run jobs until *stopped* answers True; the worker's poll loop."""
+    """Lease and run jobs until *stopped* answers True; the worker's poll loop.
+
+    *devices* reads the real-device tokens added to *caps* before each lease (`_device_reader`).
+    """
     while not stopped():
-        body = _lease(url, auth_token, wid, caps)
+        body = _lease(url, auth_token, wid, _advertised(caps, devices))
         if body is None:
             time.sleep(poll_interval)
             continue

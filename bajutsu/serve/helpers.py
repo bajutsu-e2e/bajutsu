@@ -20,12 +20,12 @@ import yaml
 
 from bajutsu.common.backend_cli import simctl as _simctl
 from bajutsu.common.backends import KNOWN_ACTUATORS, PLATFORMS, backend_override, resolve_actuators
-from bajutsu.common.config import Config, IosConfig, resolve, unknown_target
+from bajutsu.common.config import Config, Effective, IosConfig, resolve, unknown_target
 from bajutsu.common.devices.id import is_valid_device_id
 from bajutsu.common.report.manifest import history_summary
 from bajutsu.common.run_meta.files import is_soft_deleted
 from bajutsu.common.scenario import load_scenario_file
-from bajutsu.serve.capabilities import required_capabilities, required_host
+from bajutsu.serve.capabilities import device_requirements, required_capabilities, required_host
 from bajutsu.serve.orgs import OrgConfig, load_serve_config
 
 # Tokens a `--backend` may name: a platform (ios/android/web/fake) or a known actuator (xcuitest/…).
@@ -354,7 +354,27 @@ def target_capabilities(config_path: Path, target: str, backend: str = "") -> li
     backends = backend_override(backend, eff.backend)
     # The actuators `run` itself selects from, so the routing requirement and the worker's own check
     # judge the same drivers (BE-0450).
-    return required_capabilities(eff.platform, host=required_host(resolve_actuators(backends)))
+    required = required_capabilities(eff.platform, host=required_host(resolve_actuators(backends)))
+    # The fake driver drives no device, so a run sent to it needs none of the family's devices.
+    if backends == ["fake"]:
+        return required
+    return sorted({*required, *_family_requirements(eff)})
+
+
+def _family_requirements(eff: Effective) -> list[str]:
+    """The device-family tokens an iOS target's runs need of a worker, over every kind it lists.
+
+    A serve job runs the target's whole kind list, so one worker must hold a fitting device of each
+    kind (BE-0468).
+    """
+    from bajutsu.run.device_matrix import driven_kind
+
+    if eff.platform != "ios":
+        return []
+    listed = eff.conditions.get("kind")
+    kinds = list(listed) if isinstance(listed, list) else [driven_kind(eff) or "simulator"]
+    family = eff.conditions.get("family")
+    return device_requirements(kinds, family)
 
 
 def request_backend_error(config_path: Path, target: str, backend: str) -> str | None:

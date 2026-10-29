@@ -5,6 +5,9 @@ targets:
     platform: web
     app: { url: "http://127.0.0.1:8787/index.html" }
     paths: { scenarios: scenarios }
+    # The bundled Chromium, which `make -C demos/web e2e` installs. A list such as
+    # `[chromium, firefox]` runs each scenario once per browser; `--browser` picks one (BE-0468).
+    runsOn: { browser: { kind: chromium } }
     # Mask the Sync request's secret in captured network evidence (BE-0282). The Authorization
     # header is masked by default (BE-0130); the `password` body field is app-specific, so it is
     # named here. network.yaml exercises this; assert_redaction.py checks the persisted evidence.

@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0468](BE-0468-runson-family-and-any-of.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0468") |
 | Implementing PR | [#2244](https://github.com/bajutsu-e2e/bajutsu/pull/2244) (Unit 1), [#2250](https://github.com/bajutsu-e2e/bajutsu/pull/2250) (Units 2–3), [#2253](https://github.com/bajutsu-e2e/bajutsu/pull/2253) (Unit 4), [#2256](https://github.com/bajutsu-e2e/bajutsu/pull/2256) (Unit 5) |
 | Topic | Driver & backend architecture |
@@ -342,8 +342,8 @@ fake pool for each resolution branch, and the failure messages.
 - [x] Unit 3: resolution
 - [x] Unit 4: arguments and launch
 - [x] Unit 5: reporting
-- [ ] Unit 6: worker routing
-- [ ] Unit 7: docs and demos
+- [x] Unit 6: worker routing
+- [x] Unit 7: docs and demos
 
 ### Log
 
@@ -370,6 +370,14 @@ fake pool for each resolution branch, and the failure messages.
   - The run label, the manifest's `run_coordinates`, and the flakiness key needed no change: they read the run's coordinates, which already carry a listed kind and the winner of a family list since #2250. The unit adds tests that pin each of them, including a test that two hosts whose family list resolves to different families keep two separate histories.
   - `doctor` names the kind on every iOS run, including a Simulator-only target that names no `kind`, so a line never leaves the reader to infer which kind it lists. A declared run (no pool to read) still lists its label alone, because nothing resolved its family.
   - `docs/cli.md` and its Japanese mirror list `kind` and `family` among the `doctor` conditions, show the new line shape, and no longer say a physical device always lists its declared runs alone: since #2250 one under `kind` or `family` alone reads its pool.
+- #PRNUM (Units 6 and 7) — route a job by its target's family, and carry the change into the docs and the demos.
+  - A local iOS worker advertises `device:iphone` and `device:ipad` for the families of its paired real devices. The worker reads them with `ios_device_families`, from the same devicectl listing that `read_ios_device` reads, and reads them again on its lease polls, at most once every 15 seconds so an idle worker does not spawn devicectl on every poll. A host whose devicectl cannot be read advertises no real device rather than stopping the worker, and the worker logs the failure and each later change in what it reads, so the devices never drop out without a trace. `device:` joins the reserved routing prefixes, so a hand-written `--capabilities` token cannot claim one.
+  - A job's required set gains the tokens of the target's `runsOn.ios.family`: the `device:` token for a real-device run, and the inventory's `iphone` or `ipad` token for a Simulator run. A family priority list becomes an any-of group that `can_serve` meets with any one member. A request sent to the `fake` driver adds no family token, because that driver drives no device.
+  - Deviation from the design: the any-of group is stored as one `anyof:<token>|<token>` token in the job's existing capability list, not in a field of its own. The lease, the unroutable count, and the no-worker notice all judge that one list with `can_serve`, so they agree on the group with no schema migration.
+  - A second deviation: a serve job is a whole `run` of its target, not one run of its kind list. The job therefore requires a fitting device of every kind the target lists, and the leasing worker resolves each run's family over its own pool.
+  - The unplugged-device check that unit 1 left to this unit stays open. devicectl lists a paired device whether or not it is plugged in, and its tunnel state cannot tell the two apart. A worker thus keeps advertising an unplugged device's family, and a job routed to it fails when its run drives the device. On this host, the paired iPhone 14 Pro on the local network read as `device:iphone`; no iPad and no unplugged cable were at hand to check further.
+  - Docs: the capability-routing section of `docs/self-hosting.md`, the worker's `--capabilities` row in `docs/cli.md`, the worker-capability note in `docs/drivers.md`, and the `serve/` row of `docs/architecture.md`, each with its Japanese mirror. The configuration page already carried the `runsOn` tables and examples from the earlier units.
+  - Demos: no demo named an exact `model` or an `engine`, so there was nothing to switch. The `showcase-swiftui` target gains `family: iphone`, since its layout and visual baselines are an iPhone's, and the web demo gains `kind: chromium`. On this host an iPhone 17 Pro Simulator resolved the showcase target to one run with `family=iphone`.
 
 ## References
 
