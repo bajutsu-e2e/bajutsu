@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0468") |
-| 実装 PR | [#2244](https://github.com/bajutsu-e2e/bajutsu/pull/2244)（単位 1）、[#2250](https://github.com/bajutsu-e2e/bajutsu/pull/2250)（単位 2、3） |
+| 実装 PR | [#2244](https://github.com/bajutsu-e2e/bajutsu/pull/2244)（単位 1）、[#2250](https://github.com/bajutsu-e2e/bajutsu/pull/2250)（単位 2、3）、[#2253](https://github.com/bajutsu-e2e/bajutsu/pull/2253)（単位 4） |
 | トピック | Driver & backend architecture |
 <!-- /BE-METADATA -->
 
@@ -362,7 +362,7 @@ run に LLM は入りません。解決は config、引数、プールだけの�
   - 作業分解からのずれ：並べた種類や Chrome の run が誤った接続先で動かないよう、単位 4 の一部も取り込みました。各セルは iOS の種類を run の設定に適用するので、実機の run は実機の接続先を使います。ドライバとバージョンの読み取りは、Playwright の `launch` にチャネルを渡します。`--browser` と `--browsers` は、フィールドと同じモデルで値を読むため、ブラウザの種類を受け付けます。実行時のインストールは、ホスト自身のブラウザである Chrome と Edge を取得しません。`--kind` と、フラグをターゲット自身のリストと照合する処理は、単位 4 に残しています。
   - 2 つ目のずれ：条件のキー `browser.engine` は `browser.kind` になりました。そのため、ブラウザを並べた run の座標は、manifest とフレーキーさの履歴で `browser.kind` と表示されます。この変更より前に記録した履歴は、変更後のブラウザの run とは別のキーになります。
   - 3 つ目のずれ：検査の順序を変え、`appium` のグリッドや Device Farm のジョブのターゲットを実機より先に調べます。そこに書いた `family` は、実機のファミリーとして通るのではなく、*ローダーが強制する規則* のとおりに失敗します。
-- [#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM)（単位 4）— `--kind` を追加し、ブラウザのフラグをターゲット自身のリストと照合するようにしました。
+- [#2253](https://github.com/bajutsu-e2e/bajutsu/pull/2253)（単位 4）— `--kind` を追加し、ブラウザのフラグをターゲット自身のリストと照合するようにしました。
   - `run`、`record`、`crawl`、`repl` に `--kind` を追加しました。種類をリストで宣言したターゲットでは、フラグはリストを指定した種類に絞り、順序はターゲットのリストに従います。ターゲットが宣言していない種類を指定すると、ターゲットの種類を示して終了コード 2 で終わります。種類を 1 つだけ宣言したターゲットはその種類だけを受け付け、iOS 以外のターゲットはフラグを拒否します。`run` はカンマ区切りのリストを受け付けます。ほかの 3 つのコマンドは 1 回しか実行しないので、種類を 1 つだけ受け付けます。
   - 絞ったリストも条件として数えるので、`--kind device` の run は `kind=device` の座標を残します。そのため、この run はリスト全体を実行したときの device の run と同じフレーキーさの履歴にまとまります。`--browser` はこの点が異なり、ターゲットのブラウザのフィールドを置き換えるので、指定したブラウザは座標を持ちません。
   - `--browser` と `--browsers` は、ターゲットの `runsOn.browser.kind` のリストにないブラウザを拒否します。`kind` を書かないターゲットや、ブラウザを 1 つだけ指定したターゲットは、従来どおりすべての種類を受け付けます。単一の種類は、ターゲットが対応するブラウザの集合ではなく、ターゲットを動かすブラウザを表すからです。
