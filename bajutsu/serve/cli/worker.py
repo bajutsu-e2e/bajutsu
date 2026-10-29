@@ -23,7 +23,7 @@ import threading
 import time
 from collections.abc import Callable, Iterable
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -298,6 +298,12 @@ def _device_reader(
     return _DeviceTokens()
 
 
+class _DeviceRead(Protocol):
+    """A real-device token reader that reports a failed read through *on_error*."""
+
+    def __call__(self, *, on_error: Callable[[str], None]) -> set[str]: ...
+
+
 # How often a worker re-reads its real devices; a device plugged in or out routes within this long.
 _DEVICE_REREAD_S = 15.0
 
@@ -313,7 +319,7 @@ class _DeviceTokens:
 
     def __init__(
         self,
-        read: Callable[..., set[str]] | None = None,
+        read: _DeviceRead | None = None,
         *,
         interval: float = _DEVICE_REREAD_S,
         clock: Callable[[], float] = time.monotonic,

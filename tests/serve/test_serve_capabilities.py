@@ -137,6 +137,13 @@ def test_an_any_of_group_is_canonical_and_a_lone_member_stands_as_itself() -> No
         cap.any_of_capability([])
 
 
+@pytest.mark.parametrize("member", ["chrome|edge", "anyof:a|b"])
+def test_an_any_of_member_cannot_widen_the_group(member: str) -> None:
+    # `can_serve` splits a group on `|`, so such a member would admit tokens the job never named.
+    with pytest.raises(ValueError, match="may not contain"):
+        cap.any_of_capability([member, "firefox"])
+
+
 def test_device_requirements_route_each_kind_on_its_own_tokens() -> None:
     # No family, no requirement: the target takes any device, as before BE-0468.
     assert cap.device_requirements(["simulator", "device"], None) == []

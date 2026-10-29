@@ -1178,10 +1178,10 @@ deterministic `run` verdict.
   tokens, since `requires:` and `defaults.requires` are gone
   ([BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)).
   Routing derives no `ios18` token from `runsOn.ios.os`, so no job routes on an iOS runtime.
-- **A job's required set also holds the target's `runsOn.ios.family`.** A serve job runs all kinds.
-  So one worker needs a fitting device for each kind in `runsOn.ios.kind`. A Simulator
-  run reads the inventory's `iphone` and `ipad` tokens. A real-device run reads the `device:`
-  tokens. A single family requires its token, so `kind: device` with `family: ipad` requires
+- **A job's required set also holds the target's `runsOn.ios.family`.** A serve job runs every kind
+  the target's `runsOn.ios.kind` lists. One worker thus needs a fitting device for each. A Simulator
+  run requires the inventory's `iphone` or `ipad` token. A real-device run requires the `device:`
+  one. A single family requires its token, so `kind: device` with `family: ipad` requires
   `device:ipad`. A family priority list accepts any one family, which a subset test cannot express.
   The job instead stores an any-of group, `anyof:device:ipad|device:iphone`, which a worker meets
   by advertising any one member. The leasing worker still resolves the list over its own pool, so

@@ -120,11 +120,14 @@ def any_of_capability(tokens: Iterable[str]) -> str:
     The members are sorted, so two jobs that accept the same tokens store the same group.
 
     Raises:
-        ValueError: *tokens* is empty.
+        ValueError: *tokens* is empty, or a member carries the ``|`` separator or is itself a group,
+            either of which `can_serve` would split into members the job never named.
     """
     members = sorted(set(tokens))
     if not members:
         raise ValueError("an any-of group needs at least one token")
+    if bad := [m for m in members if _ANY_OF_SEPARATOR in m or m.startswith(ANY_OF_PREFIX)]:
+        raise ValueError(f"an any-of member may not contain '|' or nest a group: {', '.join(bad)}")
     if len(members) == 1:
         return members[0]
     return ANY_OF_PREFIX + _ANY_OF_SEPARATOR.join(members)
