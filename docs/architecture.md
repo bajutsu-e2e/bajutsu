@@ -738,7 +738,9 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   masked in every later artifact (`count`'s result is exempt, since it carries no character of the
   input); the masking is scenario-scoped, so a value derived in one scenario does not mask matching
   text in another's evidence under `--workers > 1`. `eval` has no XCUITest/Playwright/UI Automator
-  equivalent, so every codegen target emits a labeled `// TODO`
+  equivalent, so every codegen target emits a labeled `// TODO`. Despite the name it runs no code:
+  `ops` draws only from the vocabulary above, which a scenario cannot extend, so the step stays
+  local and deterministic — no model, no network
 - DSL `sleep` step (BE-0451): the one sanctioned exception to condition waits only — a fixed pause
   for a wait no condition on the screen, the tree, or the network log can observe (a server-side
   throttle, an animation that outlives `until: settled`). `seconds` (strict, `0 < seconds ≤ 30`) and
