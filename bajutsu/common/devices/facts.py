@@ -4,11 +4,15 @@ Every reader here fails loudly rather than guessing: a device whose model or ver
 would otherwise drop out of matching silently, or match a condition it does not meet. The comparison
 itself lives in `runs`; this module only reads.
 
-| Platform | Model | Release |
-|---|---|---|
-| iOS | the simctl device-type name of the udid | the runtime label's version (`18.2`) |
-| Android | the AVD name for an emulator, `ro.product.model` for a physical device | `ro.build.version.sdk` |
-| Web | the engine | Playwright's `browser.version` |
+| Platform | Model | Release | Family |
+|---|---|---|---|
+| iOS Simulator | the simctl device-type name of the udid | the runtime label's version (`18.2`) | the device type's `productFamily` |
+| iOS real device | devicectl's marketing name, shown only | devicectl's `osVersionNumber` | devicectl's `deviceType` |
+| Android | the AVD name for an emulator, `ro.product.model` for a physical device | `ro.build.version.sdk` | none |
+| Web | the engine | Playwright's `browser.version` | none |
+
+A family is kept as the device reports it (`iPhone`, `iPad`, `Apple TV`), so a family a `family`
+condition never names is still readable rather than an error (BE-0468).
 """
 
 from __future__ import annotations
@@ -17,6 +21,7 @@ import json
 import subprocess
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from typing import Any
 
 from bajutsu.common.backend_cli import adb, simctl
 from bajutsu.common.devices import os as device_os
@@ -29,6 +34,8 @@ from bajutsu.common.devices.version import Version
 _AVD_PROPS = ("ro.boot.qemu.avd_name", "ro.kernel.qemu.avd_name")
 # A property that reads "1" on an emulator image and is unset on a physical device.
 _EMULATOR_PROPS = ("ro.boot.qemu", "ro.kernel.qemu")
+# How long `devicectl list devices` may take; it answers in a second or two on a healthy host.
+_DEVICECTL_READ_TIMEOUT_S = 30.0
 # How long one adb read may take. A wedged device or emulator console otherwise hangs the run
 # before its first step; a property read answers in well under a second on a healthy device.
 _ADB_READ_TIMEOUT_S = 15.0
@@ -57,7 +64,8 @@ class DeviceFacts:
 
     `model` is what a `model` (iOS) or `avd` (Android) condition compares exactly; `release` is what
     a version range compares. `avd` stays None for a physical Android device, which never matches an
-    `avd` condition.
+    `avd` condition. `family` is what a `family` condition compares (BE-0468); it stays None on
+    Android and the web, which have no such condition.
     """
 
     udid: str
@@ -65,6 +73,7 @@ class DeviceFacts:
     model: str
     release: str
     avd: str | None = None
+    family: str | None = None
 
     @property
     def version(self) -> Version:
@@ -85,11 +94,12 @@ def read_ios(udids: Sequence[str], run: simctl.RunFn = simctl.real_run) -> list[
 
     Two simctl listings serve every udid: the devices, whose runtime key and `deviceTypeIdentifier`
     say what each udid is, and the device types, which give the identifier its exact name
-    (`iPhone SE (3rd generation)`). A device's own name is free-form, so it is never compared.
+    (`iPhone SE (3rd generation)`) and its `productFamily` (`iPhone`, `iPad`). A device's own name
+    is free-form, so it is never compared.
 
     Raises:
         DeviceReadError: simctl could not be read, a udid is not an available Simulator, or its
-            device type or runtime has no readable name or version.
+            device type or runtime has no readable name, family, or version.
     """
     try:
         devices = json.loads(run(simctl.list_devices_cmd(), None))
@@ -97,7 +107,7 @@ def read_ios(udids: Sequence[str], run: simctl.RunFn = simctl.real_run) -> list[
     except (subprocess.CalledProcessError, json.JSONDecodeError, OSError, ValueError) as exc:
         raise DeviceReadError(f"could not list the Simulators to match runsOn: {exc}") from exc
     names = {
-        str(t.get("identifier")): str(t.get("name"))
+        str(t.get("identifier")): (str(t.get("name")), str(t.get("productFamily") or ""))
         for t in types.get("devicetypes") or []
         if t.get("identifier") and t.get("name")
     }
@@ -118,12 +128,108 @@ def read_ios(udids: Sequence[str], run: simctl.RunFn = simctl.real_run) -> list[
             raise DeviceReadError(f"{udid}: cannot read an iOS version from runtime {runtime!r}")
         if type_id not in names:
             raise DeviceReadError(f"{udid}: simctl lists no device type named {type_id!r}")
+        model, family = names[type_id]
+        if not family:
+            raise DeviceReadError(f"{udid}: device type {model!r} reports no productFamily")
         facts.append(
             DeviceFacts(
                 udid=udid,
                 platform="ios",
-                model=names[type_id],
+                model=model,
                 release=f"{parsed.major}.{parsed.minor}",
+                family=family,
+            )
+        )
+    return facts
+
+
+def _timed_devicectl(args: list[str]) -> str:
+    """Run one devicectl read, raising `subprocess.TimeoutExpired` once it outlasts its timeout."""
+    return subprocess.run(
+        args, capture_output=True, text=True, check=True, timeout=_DEVICECTL_READ_TIMEOUT_S
+    ).stdout
+
+
+def _physical_devices(listing: Any) -> dict[str, tuple[dict[str, Any], dict[str, Any]]]:
+    """Each real device of a devicectl listing by its udid, with its hardware and device properties.
+
+    Raises:
+        AttributeError, TypeError: The listing is not shaped as devicectl writes it.
+    """
+    found: dict[str, tuple[dict[str, Any], dict[str, Any]]] = {}
+    for dev in (listing.get("result") or {}).get("devices") or []:
+        hardware = dev.get("hardwareProperties") or {}
+        properties = dev.get("deviceProperties") or {}
+        if not isinstance(properties, dict):
+            raise TypeError(f"deviceProperties is {type(properties).__name__}, not an object")
+        if hardware.get("reality") == "physical" and hardware.get("udid"):
+            found[str(hardware["udid"])] = (hardware, properties)
+    return found
+
+
+def read_ios_device(
+    udids: Sequence[str], run: Callable[[list[str]], str] = _timed_devicectl
+) -> list[DeviceFacts]:
+    """Read the family of each paired real iOS device, in *udids* order (BE-0468).
+
+    One `devicectl list devices` listing serves every udid. The listing shows Simulators too, so
+    only an entry whose `reality` is `physical` counts, and it is matched on
+    `hardwareProperties.udid`, the id an XCUITest destination takes, not on devicectl's own
+    `identifier`. A listed device is not checked for reachability: its `tunnelState` reads
+    `disconnected` until a run opens the tunnel, so that field cannot tell an idle device from an
+    unplugged one, and driving it is what fails loudly instead.
+
+    The family is the only fact a condition compares on a real device, so `model` and `os` stay
+    refused there. `model` here only names the device in messages: it is devicectl's marketing name
+    when there is one, which can equal a Simulator device-type name, and `productType`
+    (`iPad13,8`) otherwise. The release keeps `major.minor`, as `read_ios` does, so a real device
+    and a Simulator on the same release group together whatever their patch level.
+
+    Raises:
+        DeviceReadError: devicectl could not be read or did not answer in time, a udid is not a
+            paired real device, or it reports no device type or a version that is not one.
+    """
+    args = ["xcrun", "devicectl", "list", "devices", "--json-output", "-"]
+    try:
+        listing = json.loads(run(args))
+    except subprocess.TimeoutExpired as exc:
+        raise DeviceReadError(
+            f"devicectl did not answer within {_DEVICECTL_READ_TIMEOUT_S:g}s, "
+            "so runsOn cannot match a real device"
+        ) from exc
+    except (subprocess.CalledProcessError, json.JSONDecodeError, OSError, ValueError) as exc:
+        raise DeviceReadError(f"could not list the real devices to match runsOn: {exc}") from exc
+    try:
+        found = _physical_devices(listing)
+    except (AttributeError, TypeError) as exc:
+        raise DeviceReadError(
+            f"devicectl listed the devices in an unexpected shape: {exc}"
+        ) from exc
+    facts: list[DeviceFacts] = []
+    for udid in udids:
+        if udid not in found:
+            raise DeviceReadError(f"{udid} is not a paired real device, so runsOn cannot match it")
+        hardware, properties = found[udid]
+        family = str(hardware.get("deviceType") or "")
+        release = str(properties.get("osVersionNumber") or "")
+        if not family:
+            raise DeviceReadError(f"{udid}: devicectl reports no deviceType")
+        if not release:
+            raise DeviceReadError(f"{udid}: devicectl reports no osVersionNumber")
+        try:
+            version = Version.parse(release)
+        except ValueError as exc:
+            raise DeviceReadError(
+                f"{udid}: devicectl reports OS version {release!r}, which is not one"
+            ) from exc
+        model = str(hardware.get("marketingName") or hardware.get("productType") or family)
+        facts.append(
+            DeviceFacts(
+                udid=udid,
+                platform="ios",
+                model=model,
+                release=f"{version.major}.{version.minor}",
+                family=family,
             )
         )
     return facts
