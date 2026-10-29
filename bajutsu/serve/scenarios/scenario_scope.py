@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Protocol
 
 from .authored import Authored
@@ -13,6 +14,9 @@ class ScenarioScope(Protocol):
 
     def list(self) -> list[dict[str, Any]]:
         """Every scenario, summarized for the UI."""
+
+    def directory(self) -> Path | None:
+        """The on-disk dir a scenario's file refs resolve in, or None for a store with no files."""
 
     def runnable(self, scenario: str) -> Runnable | None:
         """Resolve *scenario* (by basename) to a `Runnable` — the trusted ``--scenario`` arg plus

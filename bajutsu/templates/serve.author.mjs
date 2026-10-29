@@ -827,7 +827,8 @@ NARROW_MQ.addEventListener('change',applyLayoutTier);
     // clean", not "couldn't validate".
     try{
       const r=await fetch('/api/lint',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({yaml:$('#au-yaml').value})});
+        // The selected target adds the checks `bajutsu lint --config --target` runs (BE-0467).
+        body:JSON.stringify({yaml:$('#au-yaml').value,target:$('#au-target').value,path:auPath})});
       if(!r.ok)throw new Error('/api/lint returned '+r.status);
       const d=await r.json();
       if(!Array.isArray(d.diagnostics))throw new Error('unexpected response');
@@ -1083,7 +1084,7 @@ NARROW_MQ.addEventListener('change',applyLayoutTier);
   // Target change reloads scenarios and re-picks the emit valid for the new backend; any open
   // codegen result is for the old target, so drop it rather than let Copy/Download export a stale file.
   // A live session is bound to the old target's driver, so close it too (BE-0262).
-  $('#au-target').addEventListener('change',()=>{if(liveActive)auLiveStop();auLoadScenarios();auSyncEmit();auCodegenReset();});
+  $('#au-target').addEventListener('change',()=>{if(liveActive)auLiveStop();auLoadScenarios();auSyncEmit();auCodegenReset();auLintSoon();});
   // YAML textarea edits enable save and re-validate (BE-0138): gutter updates instantly, lint debounced.
   $('#au-yaml').addEventListener('input',()=>{
     $('#au-save').disabled=false;auRenderGutter();auLintSoon();

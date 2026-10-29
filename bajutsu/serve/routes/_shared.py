@@ -391,7 +391,13 @@ ROUTES: tuple[Route, ...] = (
             state, ctx.body(), actor=ctx.actor(), session=ctx.session()
         ),
     ),
-    Route("POST", "/api/lint", lambda _state, ctx: ops.lint_scenario(ctx.body())),
+    Route(
+        "POST",
+        "/api/lint",
+        lambda state, ctx: ops.lint_scenario(
+            state, ctx.body(), actor=ctx.actor(), session=ctx.session()
+        ),
+    ),
     Route(
         "POST",
         "/api/scenario/apply-selector",

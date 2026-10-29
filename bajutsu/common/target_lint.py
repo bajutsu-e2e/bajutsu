@@ -70,6 +70,7 @@ def offline_actuator(eff: Effective) -> str | None:
 
 
 def lint_against_targets(
+    text: str,
     path: Path,
     effective: Callable[[str], Effective],
     target: str | None,
@@ -79,7 +80,8 @@ def lint_against_targets(
     """Every reason a scenario in *path* cannot run on the targets it would run on.
 
     Args:
-        path: The scenario file, already schema-valid.
+        text: The scenario file's content, already schema-valid.
+        path: Where the file lives (or would): its component and data refs resolve beside it.
         effective: Resolves a target name to its effective config; raises for an unknown name.
         target: The target a scenario declaring no `targets` runs on; None when none was named.
         root: The containment root for component and data refs; the file's own directory if None.
@@ -91,8 +93,8 @@ def lint_against_targets(
     """
     from bajutsu.common.runner.pipeline import with_lifecycle_phases
 
-    expanded = load_expanded_scenarios(path, root)
-    lines = _step_lines(path, root, expanded)
+    expanded = load_expanded_scenarios(path, root, text=text)
+    lines = _step_lines(text, path, root, expanded)
     findings: list[TargetFinding] = []
     for s in expanded:
         names = list(s.target_names) or ([target] if target else [])
@@ -174,7 +176,9 @@ def _line_of(reason: str, kept: list[int], step_lines: list[int] | None) -> int 
     return step_lines[kept[index]]
 
 
-def _step_lines(path: Path, root: Path | None, expanded: list[Scenario]) -> dict[str, list[int]]:
+def _step_lines(
+    text: str, path: Path, root: Path | None, expanded: list[Scenario]
+) -> dict[str, list[int]]:
     """Each scenario's authored line per *expanded* main step, keyed by its declared name.
 
     A step a component produced reports the line of the `use:` that pulled it in. Each authored step
@@ -182,7 +186,6 @@ def _step_lines(path: Path, root: Path | None, expanded: list[Scenario]) -> dict
     expanded step list, or whose single-step expansion fails, keeps no lines, since a wrong line
     would be worse than none.
     """
-    text = path.read_text(encoding="utf-8")
     raw_file = load_scenario_file(text)
     base_dir = path.parent
     resolver = ComponentResolver(

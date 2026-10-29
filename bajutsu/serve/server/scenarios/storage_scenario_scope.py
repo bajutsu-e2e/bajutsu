@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from bajutsu.serve.helpers import scenario_out_name, valid_scenario_ref
@@ -26,6 +26,10 @@ class StorageScenarioScope:
 
     def list(self) -> list[dict[str, Any]]:
         return self._storage.list(self._app, session=self._session, org=self._org)
+
+    def directory(self) -> Path | None:
+        # Scenarios live in storage, never on this host's disk, so no file ref can be followed here.
+        return None
 
     def read(self, ref: str | None) -> str | None:
         # A ref is a trust boundary (an object-store key / DB id) even with no filesystem here:

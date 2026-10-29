@@ -46,7 +46,7 @@ def lint(
             typer.echo(msg)
         raise typer.Exit(1)
     if config:
-        _lint_targets(path, config, target)
+        _lint_targets(text, path, config, target)
     elif target:
         typer.echo("--target needs --config: a target is resolved from the config that names it")
         raise typer.Exit(2)
@@ -57,7 +57,7 @@ def lint(
         typer.echo(advisory)
 
 
-def _lint_targets(path: Path, config: str, target: str) -> None:
+def _lint_targets(text: str, path: Path, config: str, target: str) -> None:
     """Print every finding of the target checks and exit 1 on any (BE-0467)."""
     from bajutsu.cli._shared import _effective_for, _load_config_with_source
     from bajutsu.common.target_lint import TargetRequired, lint_against_targets
@@ -66,7 +66,7 @@ def _lint_targets(path: Path, config: str, target: str) -> None:
     try:
         # `_effective_for` exits 2 on an unknown target, the same refusal `run` gives.
         findings = lint_against_targets(
-            path, lambda name: _effective_for(loaded, name), target or None
+            text, path, lambda name: _effective_for(loaded, name), target or None
         )
     except TargetRequired as e:
         typer.echo(str(e))

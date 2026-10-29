@@ -56,13 +56,13 @@ def _write(tmp_path: Path, text: str, name: str = "s.yaml") -> Path:
 
 
 def test_a_step_the_route_lacks_is_a_finding_on_its_line(tmp_path: Path) -> None:
-    findings = lint_against_targets(_write(tmp_path, _LOCATION), _effective, "site")
+    findings = lint_against_targets(_LOCATION, _write(tmp_path, _LOCATION), _effective, "site")
     assert [(f.target, f.line) for f in findings] == [("site", 5)]
     assert "deviceControl.setLocation" in findings[0].message
 
 
 def test_a_setting_the_route_cannot_apply_is_a_finding(tmp_path: Path) -> None:
-    findings = lint_against_targets(_write(tmp_path, _LOCATION), _effective, "phone")
+    findings = lint_against_targets(_LOCATION, _write(tmp_path, _LOCATION), _effective, "phone")
     messages = [f.message for f in findings]
     assert any("run.erase is not supported on target 'phone'" in m for m in messages)
     # A real device lacks the simctl-backed location override too.
@@ -70,17 +70,17 @@ def test_a_setting_the_route_cannot_apply_is_a_finding(tmp_path: Path) -> None:
 
 
 def test_an_ignored_setting_is_no_finding(tmp_path: Path) -> None:
-    findings = lint_against_targets(_write(tmp_path, _LOCATION), _effective, "phone-ok")
+    findings = lint_against_targets(_LOCATION, _write(tmp_path, _LOCATION), _effective, "phone-ok")
     assert all("run.erase" not in f.message for f in findings)
 
 
 def test_a_runnable_scenario_has_no_findings(tmp_path: Path) -> None:
-    assert lint_against_targets(_write(tmp_path, _LOCATION), _effective, "sim") == []
+    assert lint_against_targets(_LOCATION, _write(tmp_path, _LOCATION), _effective, "sim") == []
 
 
 def test_a_scenario_with_no_targets_needs_one_named(tmp_path: Path) -> None:
     with pytest.raises(TargetRequired, match="declares no targets"):
-        lint_against_targets(_write(tmp_path, _LOCATION), _effective, None)
+        lint_against_targets(_LOCATION, _write(tmp_path, _LOCATION), _effective, None)
 
 
 def test_declared_targets_are_each_checked_on_their_own_steps(tmp_path: Path) -> None:
@@ -95,7 +95,7 @@ def test_declared_targets_are_each_checked_on_their_own_steps(tmp_path: Path) ->
     - setLocation: { lat: 1, lon: 2 }
       target: site
 """
-    findings = lint_against_targets(_write(tmp_path, text), _effective, None)
+    findings = lint_against_targets(text, _write(tmp_path, text), _effective, None)
     # Only the step routed to the web target fails, and its line is the authored one, not its
     # place among the steps routed there.
     assert [(f.target, f.line) for f in findings] == [("site", 8)]
@@ -114,7 +114,7 @@ scenarios:
       - wait: { for: { id: b }, timeout: 1 }
       - use: { component: locate }
 """
-    findings = lint_against_targets(_write(tmp_path, text), _effective, "site")
+    findings = lint_against_targets(text, _write(tmp_path, text), _effective, "site")
     assert [f.line for f in findings] == [10]
     assert findings[0].message.startswith("step 3:")
 
@@ -127,7 +127,7 @@ def test_a_precondition_no_driven_platform_has_is_a_finding(tmp_path: Path) -> N
     - wait: { for: { id: a }, timeout: 1 }
 """
     (tmp_path / "a.png").write_bytes(b"")
-    findings = lint_against_targets(_write(tmp_path, text), _effective, "sim")
+    findings = lint_against_targets(text, _write(tmp_path, text), _effective, "sim")
     assert any("seedPhotos" in f.message for f in findings)
 
 
