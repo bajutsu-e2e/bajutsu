@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0467](BE-0467-environment-specific-settings.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0467") |
 | Implementing PR | [#2249](https://github.com/bajutsu-e2e/bajutsu/pull/2249) (units 1–3), [#2254](https://github.com/bajutsu-e2e/bajutsu/pull/2254) (unit 4), [#2257](https://github.com/bajutsu-e2e/bajutsu/pull/2257) (unit 5) |
 | Topic | Platform support |
@@ -281,14 +281,14 @@ environments genuinely differ.
 - [x] Add `RunResult.ignored_settings` and render it in the manifest, HTML, JUnit, and CTRF reports
 - [x] Give `video`, `deviceLog`, and `appTrace` a capability each, and keep the evidence skip reasons
   on the lease instead of discarding them in `pool.py`
-- [ ] Add `--config` and `--target` to `bajutsu lint`, running the step check, the settings check,
+- [x] Add `--config` and `--target` to `bajutsu lint`, running the step check, the settings check,
   and `check_preconditions` per target on the expanded scenario
-- [ ] Send the selected target with the serve editor's `/api/lint` request
-- [ ] Add the `cap:` and `setting:` tokens to the job's required set and to the worker's advertised
+- [x] Send the selected target with the serve editor's `/api/lint` request
+- [x] Add the `cap:` and `setting:` tokens to the job's required set and to the worker's advertised
   set, reserve both prefixes, keep a job no live worker can serve queued, fail it at submission only
   when a live worker drives its route but none advertises every token, and match a pre-item worker on today's tokens while recording on the job that it ran unchecked
-- [ ] Re-run the step and settings checks when a worker claims a job, before it leases a device
-- [ ] Document the table, the declaration, the lint flags, and the dispatch tokens in `docs/` and
+- [x] Re-run the step and settings checks when a worker claims a job, before it leases a device
+- [x] Document the table, the declaration, the lint flags, and the dispatch tokens in `docs/` and
   `docs/ja/` (`configuration.md`, `cli.md`, `drivers.md`, `scenarios.md`); update `DESIGN.md` and
   `docs/architecture.md`
 
@@ -340,6 +340,31 @@ Log:
   simctl recorder at the device. The fake driver declares none of the three, since its environment
   records nothing. Documented the per-route table in `docs/evidence.md` and `docs/drivers.md`, with
   their Japanese mirrors.
+
+- [#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM) — Units 6–10. `bajutsu lint --config <file> --target <name>`
+  resolves each scenario's targets the way `run` does and runs, per target on the expanded scenario
+  with lifecycle hooks folded in, the BE-0082 step check, the settings check, and
+  `check_preconditions` (`bajutsu/common/target_lint.py`); `steps_for_target` moved from the pipeline
+  to `capability_preflight` so both share it. A step finding carries its authored line, the `use:`
+  line for a step a component produced. The serve editor sends its selected target and scenario path
+  with `/api/lint`, and the server adds the same findings against the bound config; each scenario
+  scope now names the directory its file refs resolve in. `bajutsu/common/capability/route_tokens.py`
+  derives the `cap:` and `setting:` tokens: a run job requires them on each target's route, and a
+  worker advertises one set per route its drivers drive, through `capabilities_for_route` and
+  `route_settings`, which `capabilities_for_run` and `settings_support` now read too. Both prefixes
+  are reserved. The lease hands the worker the job's routing set, and the worker re-checks its route
+  tokens before it fetches anything or leases a device. Documented the lint flags, the editor lint,
+  the dispatch tokens, and `realDevices` in `docs/cli.md`, `docs/configuration.md`,
+  `docs/scenarios.md`, `docs/drivers.md`, `docs/self-hosting.md`, and `docs/architecture.md`, with
+  their Japanese mirrors, and `DESIGN.md`. Five points depart from the design text. `worker.yaml`
+  has no real-device listing, so it gains `realDevices: true`, without which a worker advertises
+  the Simulator route alone. Submission also requires that no live worker can serve the job at all,
+  so a pre-item worker that still serves it keeps a mixed fleet from refusing it. An appium job's iOS
+  targets go on `ios-live`, since the grid endpoint lives in the worker's file, not the target's
+  config. The claim-time check compares route tokens, since the run subprocess already re-runs the
+  step and settings checks before its lease. And the "unchecked worker" note is the provenance
+  entry `workerRouting: unchecked`, which the HTML report lists under a new run-level *notices*
+  section.
 
 ## References
 

@@ -547,11 +547,23 @@ runs/<runId>/
 | 操作 / 解決（tap 等） | **actuator のみ**（安定度順で最初に利用可能な backend）。利用可能な actuator が無ければ実行不能（hard error） |
 | `screenshot` / `elements` | actuator が提供（§5 の `Element` 正規化に乗る） |
 | `rawTree` | `base.RawSourceProvider` を実装する actuator のみが提供（`Element` 正規化を経る前の生ダンプ。opt-in） |
-| `video` / `deviceLog` / `appTrace` | バックエンド非依存（`simctl`）。リストと無関係に取得 |
+| `video` / `deviceLog` / `appTrace` | 種類ごとの capability を持つルートが取得します（Simulator は `simctl`、Android は adb、web は Playwright）。持たないルートでは skip し、理由をシナリオの `skipped_captures` に残します（BE-0467） |
 | `network` | **in-protocol の collector**（§3.2）から取得 → 無ければ skip（XCUITest はネイティブ監視を持たない） |
 
 - **可用性を見る**：証跡源がこの環境で取得できない場合（例: network collector が無効）はスキップして次へ進みます。最終的に collector / simctl を見て、無ければ skip します
 - **来歴を残す**：各アーティファクトが **どの provider から来たか** を `manifest` に記録します（例: `network: in-protocol collector（XCUITest はネイティブ監視なし）`）。未取得は capability フラグと共に skip 理由を明示します（§10）
+
+### 環境ごとの設定と、デバイスを使う前のチェック（BE-0467）
+
+`run.erase` や `runsOn.ios.seedPhotos` のような設定は、最初のステップより前にデバイスへ届きます。どのルートでも適用できるわけではありません（`simctl erase` は Simulator にしか届きません）。ルートは `ios-simulator`、`ios-device`、`ios-live`、`android`、`web` の 5 つです。ルートごとの対応表が、各設定を `supported`、`satisfied`、`unsupported` のいずれかに分けます（`common/capability/settings_support.py`）。`unsupported` の設定は、ターゲットが `run.ignoredSettings` に理由付きで無視を宣言しない限り、デバイスを使う前にシナリオを失敗させます。ステップは決して skip しません。
+
+同じ対応表と BE-0082 の要件表を、次の 3 か所が読みます。3 か所の判定が食い違うことはありません。
+
+- **run の preflight**：lease の前に、ターゲットごとにステップと設定を判定します。
+- **`bajutsu lint --config --target`**：デバイスなしで、展開後のシナリオを同じ規則で判定します（`common/target_lint.py`）。serve のエディタの lint も、選択中のターゲットを同じ規則で判定します。
+- **serve の配送**：ジョブは `cap:<route>:<capability>` と `setting:<route>:<key>` のトークンを要求し、ワーカーは自分が動かすルートごとにトークンを広告します（`common/capability/route_tokens.py`）。ワーカーは claim の時点でもう一度照合します。
+
+どれも大規模言語モデル（LLM）を使わない決定的な判定で、`run` の判定経路にモデルは入りません。
 
 ### 注意点（証跡特有）
 

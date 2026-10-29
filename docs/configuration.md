@@ -525,6 +525,12 @@ environment. A declaration for a setting the target's route supports or satisfie
 preflight, so a stale declaration cannot hide a regression once the route gains the setting. A
 scenario never declares a setting ignored; it stays one definition of the test for every environment.
 
+The same table answers in two more places, both before any device work. With `--config` and
+`--target`, `bajutsu lint` runs the settings check beside the step check, with no device
+([cli](cli.md#lint)). serve routes each job by the settings it puts in effect. A job thus reaches a
+worker whose route can apply them, and no other
+([self-hosting](self-hosting.md#capability-routed-queues-be-0166)).
+
 ### Device runner signing (outside the config, BE-0456)
 
 A real iOS device needs an XCUITest runner signed by the user's own Apple Developer team. The target

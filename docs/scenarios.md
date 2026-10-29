@@ -209,6 +209,13 @@ A list or a range on that target multiplies each of its scenarios into runs, as
 > A stored `preconditions.runsOn` keeps its iOS `locale` and `seedPhotos` under `device.ios` and
 > drops its conditions, which already chose the devices that run used.
 
+Not every environment can apply every precondition. A real iPhone cannot run `simctl erase`, and a
+browser has no app launch to pass `app.launch.env` to. When the target's environment cannot apply a
+precondition, the scenario fails before any device work. The target can declare the precondition
+ignored instead ([configuration](configuration.md#environment-specific-settings-runignoredsettings-be-0467)).
+`bajutsu lint --config <file> --target <name>` reports the same finding with no device
+([cli](cli.md#lint)).
+
 ## tipKitHandling (a blocking TipKit tip)
 
 Set `preconditions.run.tipKitHandling` to `true` to turn the TipKit guard on. The guard dismisses a

@@ -200,6 +200,12 @@ targets: [app-ipad]
 > `preconditions.runsOn` は、iOS の `locale` と `seedPhotos` を `device.ios` に移し、条件を捨てます。
 > 条件は、その run が使うデバイスをすでに選び終えているからです。
 
+どの環境でも、すべての前提条件を適用できるわけではありません。実機の iPhone では `simctl erase` を実行できず、
+ブラウザには `app.launch.env` を渡すアプリの起動がありません。ターゲットの環境が前提条件を適用できないとき、
+シナリオはデバイスを使う前に失敗します。ターゲットは、その前提条件の無視を宣言できます
+（[設定](configuration.md#環境ごとの設定runignoredsettingsbe-0467)）。`bajutsu lint --config <file> --target <name>` は、
+同じ指摘をデバイスなしで報告します（[cli](cli.md#lint)）。
+
 ## tipKitHandling（操作をブロックする TipKit の tip）
 
 `preconditions.run.tipKitHandling: true` は、操作をブロックしている Apple **TipKit** の tip を閉じます。

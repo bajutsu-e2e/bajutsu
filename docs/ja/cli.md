@@ -965,7 +965,10 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   Author タブの YAML エディタは、保存時だけでなく**入力しながら**検証します。デバウンスした `POST /api/lint`
   が `bajutsu lint` と同じチェックを実行し、行に紐づく診断を返します。診断は該当行のガターのマーカーと、
   クリックで該当行へ移動できる問題リストに表示されます。YAML のパースエラーは正確な行と列を持ち、スキーマや
-  検証のエラーは可能な限り行を解決します。シナリオの JSON Schema（`GET /api/schema`。`bajutsu schema` が出力する
+  検証のエラーは可能な限り行を解決します。ターゲットを選択していると、リクエストにそのターゲットが入ります。
+  サーバーは、バインド済みの config に対して `bajutsu lint --config --target` が出す指摘を、それぞれの行に
+  付けて加えます（[BE-0467](../../roadmaps/BE-0467-environment-specific-settings/BE-0467-environment-specific-settings-ja.md)）。
+  ターゲットを選択していなければ、エディタの lint の結果は変わりません。シナリオの JSON Schema（`GET /api/schema`。`bajutsu schema` が出力する
   ものと同じ）は、軽量なキー補完（Ctrl/⌘+Space）と hover の説明表示にも使われます。決定的で AI を使わず、デバイスも
   モデルも起動しません。保存は保存自身の検証を保持するので、インライン検証は失敗をより早く見せるだけです。
 - アプリのビルド済みバイナリ（config `app.path`）が無い場合は、先にそのアプリの `app.build` コマンドを
@@ -1096,7 +1099,33 @@ worker は仕様の `materials`（サーバーが送るシナリオと config）
 
 ```bash
 bajutsu lint <scenario.yaml>
+bajutsu lint <scenario.yaml> --config <bajutsu.config.yaml> --target <name>
 ```
+
+`--config` を付けると、lint はシナリオが実際に動くターゲットに対するチェックも行います。`run` がデバイスを
+lease する前に行うのと同じチェックです（[BE-0467](../../roadmaps/BE-0467-environment-specific-settings/BE-0467-environment-specific-settings-ja.md)）。ターゲットは `run` と同じ方法で解決します。
+自分で `targets` を宣言したシナリオは、宣言したターゲットそれぞれに対してチェックします。宣言していない
+シナリオは、`--target` のターゲットに対してチェックします。展開後のシナリオに対し、ターゲットごとに次の
+3 つを行います。
+
+- **ステップのチェック**：そのターゲットに割り当てたステップが必要とする capability を、ターゲットのルートが
+  持っているかを調べます。run の capability preflight と同じチェックです。
+- **設定のチェック**：シナリオが有効にする設定を、ルートが適用できるかを調べます。ターゲットが
+  `run.ignoredSettings` で無視を宣言した設定は対象外です（[設定](configuration.md#環境ごとの設定runignoredsettingsbe-0467)）。
+- **前提条件のチェック**：`preconditions` の各フィールドが、シナリオの動かすプラットフォームに存在するかを
+  調べます。
+
+指摘には、ファイル、行、シナリオ、ターゲットが付きます。component が展開したステップの指摘は、その
+component を呼び出した `use:` の行に付きます。どのチェックもデバイスを必要としません。アクチュエータには、
+ターゲットの backend が挙げる実装済みのものの先頭を使います。
+
+| 終了コード | 意味 |
+|---|---|
+| 0 | 指摘なし |
+| 1 | スキーマのエラー、または指摘あり |
+| 2 | 指定どおりにチェックできない（config がない、未知のターゲット、`targets` も `--target` もないシナリオ、`--config` なしの `--target`） |
+
+`--config` を付けない場合、lint は config を読まず、これまでどおりに動きます。
 
 ## `schema`
 

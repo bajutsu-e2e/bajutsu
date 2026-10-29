@@ -1175,6 +1175,31 @@ deterministic `run` verdict.
   ([BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)).
   No job can route on an iOS runtime or a device class (`ios18`, `ipad`) until a later item derives
   that need from the target.
+- **A run job also requires what its steps and settings need on its route
+  ([BE-0467](../roadmaps/BE-0467-environment-specific-settings/BE-0467-environment-specific-settings.md)).** Each target resolves to an environment route: `ios-simulator`,
+  `ios-device`, `ios-live` (a WebDriver endpoint), `android`, or `web`. A platform alone is not
+  enough, since the three iOS routes support different settings. The job requires two kinds of
+  token:
+  - `cap:<route>:<capability>` for each capability the steps routed to that target need;
+  - `setting:<route>:<key>` for each setting it puts in effect that the target does not declare
+    under `run.ignoredSettings`.
+
+  A run on an Appium grid puts its iOS targets on `ios-live`.
+- **A worker advertises one token set per route its drivers drive.** `xcuitest` drives the
+  Simulator route, `adb` drives `android`, and `playwright` drives `web`. An `xcuitest` worker whose
+  [worker capability file](drivers.md#worker-capability-check-be-0450) sets `realDevices: true`
+  adds the `ios-device` route, and an `appium` worker advertises `ios-live`. The sets are never
+  intersected. A Mac serving the Simulator and an attached iPhone thus never takes an `erase` job
+  on the device route, and still takes every Simulator job.
+- **A mismatch fails at submission, and an unserved route waits.** The control plane refuses a job
+  in one case. A live worker already drives the job's route, and no worker advertises every token
+  the job needs. `POST /api/run` then returns `400`. The error lists each missing token with the
+  steps or settings that need it. While no live worker drives the route, the job stays queued and
+  counts toward `bajutsu_unroutable_jobs`. A cold start or a worker restart is such a case.
+- **A worker re-checks a job when it claims it.** The lease hands the worker the tokens the server
+  routed the job by. Before the worker fetches anything or leases a device, it recomputes its route tokens
+  from its `worker.yaml` and the drivers its host can start. A job needing a token the worker no
+  longer offers fails with that token's name.
 - **A run on an Appium grid routes by environment.** The plain run request (`POST /api/run`) takes
   an optional `environment`. Its one accepted value is `appium`; any other value returns `400`. Such
   a job requires `environment:appium` alone, since the grid owns the device. An `appium` worker sets
@@ -1187,8 +1212,8 @@ deterministic `run` verdict.
   `$BAJUTSU_WORKER_CAPABILITIES` add tokens verbatim. Both still work for this release, with a
   one-time notice, and go away in the next release. The inventory and the worker capability file
   now supply what the override was for. An override can also claim a runtime the machine lacks.
-  Neither may carry the reserved `environment:`, `host:`, or `machine:` prefix, which the worker
-  fills itself. A worker rejects such a token at startup.
+  Neither may carry the reserved `environment:`, `host:`, `machine:`, `cap:`, or `setting:` prefix,
+  which the worker fills itself. A worker rejects such a token at startup.
 - **An unroutable job** — one whose required capabilities no live worker advertises — stays queued
   rather than being leased to an incompatible worker or dropped, and is surfaced by the
   `bajutsu_unroutable_jobs` metric (below) so the operator knows to add a worker with the missing
@@ -1206,6 +1231,11 @@ deterministic `run` verdict.
 > together), not after. The same order holds for BE-0449: the control plane now queues a `run` as
 > `python -m bajutsu.run.internal`, which a worker built before that change cannot map onto its own
 > interpreter, so such a worker fails every `run` it leases.
+>
+> BE-0467 goes the other way. A worker built before it advertises no `cap:` or `setting:` token, and
+> the control plane matches such a worker on the other tokens alone, so an upgrade never strands a
+> queue. The lease records `workerRouting: unchecked` on each such job's provenance. The run's HTML
+> report lists that record under *notices*. Roll the workers to clear those notices.
 
 ### Evidence upload to object storage (optional, BE-0110)
 

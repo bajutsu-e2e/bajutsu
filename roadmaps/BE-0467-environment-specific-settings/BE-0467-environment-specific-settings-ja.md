@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0467](BE-0467-environment-specific-settings-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0467") |
 | 実装 PR | [#2249](https://github.com/bajutsu-e2e/bajutsu/pull/2249)（単位 1〜3）、[#2254](https://github.com/bajutsu-e2e/bajutsu/pull/2254)（単位 4）、[#2257](https://github.com/bajutsu-e2e/bajutsu/pull/2257)（単位 5） |
 | トピック | プラットフォーム対応 |
@@ -240,11 +240,11 @@ worker 単位の宣言は、1 つのターゲットを本当に異なる環境�
 - [x] 実行の preflight に設定の検査を追加し、各環境が独自の条件分岐や黙って無視する処理の代わりに、`supported` の設定を適用し、無視されていない未対応の設定で例外を投げるようにする
 - [x] `RunResult.ignored_settings` を追加し、マニフェスト、HTML、JUnit、CTRF の各レポートで描画する
 - [x] `video`、`deviceLog`、`appTrace` にそれぞれ capability を与え、`pool.py` で捨てている証跡の skip の理由を lease に残す
-- [ ] `bajutsu lint` に `--config` と `--target` を追加し、展開後のシナリオに対してターゲットごとにステップの検査、設定の検査、`check_preconditions` を行う
-- [ ] serve のエディタの `/api/lint` リクエストで、選択中のターゲットを送る
-- [ ] ジョブの必要な集合と worker の掲げる集合に `cap:` と `setting:` のトークンを加え、両方の接頭辞を予約し、生きているどの worker も扱えないジョブはキューに残し、ジョブのルートを駆動する worker が生きていてもどれもトークンをすべては掲げていない場合だけ投入時点で失敗させる。この項目より前の worker は現状のトークンで照合し、検査なしで実行したことをジョブに記録する
-- [ ] worker がジョブを受け取ったとき、デバイスを借りる前にステップと設定の検査をもう一度行う
-- [ ] 対応表、宣言、lint のフラグ、振り分けのトークンを `docs/` と `docs/ja/` に記載する（`configuration.md`、`cli.md`、`drivers.md`、`scenarios.md`）。`DESIGN.md` と `docs/architecture.md` を更新する
+- [x] `bajutsu lint` に `--config` と `--target` を追加し、展開後のシナリオに対してターゲットごとにステップの検査、設定の検査、`check_preconditions` を行う
+- [x] serve のエディタの `/api/lint` リクエストで、選択中のターゲットを送る
+- [x] ジョブの必要な集合と worker の掲げる集合に `cap:` と `setting:` のトークンを加え、両方の接頭辞を予約し、生きているどの worker も扱えないジョブはキューに残し、ジョブのルートを駆動する worker が生きていてもどれもトークンをすべては掲げていない場合だけ投入時点で失敗させる。この項目より前の worker は現状のトークンで照合し、検査なしで実行したことをジョブに記録する
+- [x] worker がジョブを受け取ったとき、デバイスを借りる前にステップと設定の検査をもう一度行う
+- [x] 対応表、宣言、lint のフラグ、振り分けのトークンを `docs/` と `docs/ja/` に記載する（`configuration.md`、`cli.md`、`drivers.md`、`scenarios.md`）。`DESIGN.md` と `docs/architecture.md` を更新する
 
 ログ：
 
@@ -256,6 +256,9 @@ worker 単位の宣言は、1 つのターゲットを本当に異なる環境�
 - [#2254](https://github.com/bajutsu-e2e/bajutsu/pull/2254) — 単位 4。`IgnoredSetting`（ターゲット、キー、理由）と `RunResult.ignored_settings` を追加しました。シナリオが起動すると、クラッシュした試行も含めて、宣言した各ターゲットの無視した設定を記録します。判定には preflight と同じ `check_settings` を使います。preflight で拒否したシナリオは起動していないので、何も記録しません。manifest はシナリオごとにこの一覧を書き、読み込み側はそれを読み戻します。HTML レポートは Environment パネルに一覧を出します。JUnit は値が JSON 配列の `bajutsu.ignoredSettings` プロパティに、CTRF はテストの `extra` の `ignoredSettings` に入れます。設計の記述と異なる点が 1 つあります。manifest のキーは `ignoredSettings` ではなく `ignored_settings` にしました。`skipped_captures` を含め、シナリオごとの manifest のフィールドはすべて `asdict` による snake_case の名前で、読み込み側もその名前で読むためです。起動時の警告は、`record` や `crawl` のようにレポートを書かない lease のために残しました。レポートのフィールドを `docs/reporting.md` と `docs/configuration.md`、およびその日本語版に記載しました。
 
 - [#2257](https://github.com/bajutsu-e2e/bajutsu/pull/2257) — 単位 5。`video`、`deviceLog`、`appTrace` の capability を追加し、ドライバごとに宣言しました。XCUITest バックエンドは simctl で 3 種すべてを記録し、adb と Playwright は `video` と `deviceLog` を記録します。ライブ WebDriver のドライバはどれも記録しません。simctl が届くのは Simulator だけなので、iOS 実機では `capabilities_for_run` が 3 種を外します。`KIND_CAPABILITY` に 3 種を加え、`resolve_evidence_providers` はルートで絞り込んだ capability で actuator を判定するようにしました。プールは skip の理由を `Lease.skipped_captures` に残し、既存のレポート描画に渡します。残すのはシナリオが要求した種別だけです。`network` は actuator のネイティブ機能か、プールが起動するアプリ側のコレクタが供給するので、skip として残しません。デバイスグループのメンバーの lease には、同じデバイスの先行する lease がまだ開示していない種別だけを加えます。これで、グループ全体で 1 つの gap を 1 回だけ開示します。設計の記述を超えた点が 2 つあります。1 つ目に、同一プラットフォームの代替 provider を使えるのは `network` だけにしました。プールが配線できるのは provider のコレクタだけで、provider の記録処理を sink に渡す仕組みはまだないためです。2 つ目に、ルートが記録できない種別は `FileSink` が開始しないようにしました。これで、実機の run が simctl の記録処理を実機に向けることはなくなりました。fake ドライバの環境は何も記録しないので、fake ドライバは 3 種のどれも宣言しません。ルートごとの表を `docs/evidence.md` と `docs/drivers.md`、およびその日本語版に記載しました。
+
+- [#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM) — 単位 6〜10。`bajutsu lint --config <file> --target <name>` は、各シナリオのターゲットを `run` と同じ方法で解決します。そのうえで、lifecycle hooks を畳み込んだ展開後のシナリオに対し、ターゲットごとに BE-0082 のステップの検査、設定の検査、`check_preconditions` を行います（`bajutsu/common/target_lint.py`）。両者で共有できるよう、`steps_for_target` をパイプラインから `capability_preflight` へ移しました。ステップの指摘には書いた行が付き、component が展開したステップでは `use:` の行が付きます。serve のエディタは、選択中のターゲットとシナリオのパスを `/api/lint` に送り、サーバーはバインド済みの config に対して同じ指摘を加えます。各シナリオの scope は、ファイル参照を解決するディレクトリを返すようになりました。`bajutsu/common/capability/route_tokens.py` が `cap:` と `setting:` のトークンを導きます。run のジョブは各ターゲットのルート上でそれらを要求し、worker はドライバが動かすルートごとに集合を掲げます。どちらも `capabilities_for_route` と `route_settings` を読み、`capabilities_for_run` と `settings_support` も同じ関数を読むようになりました。両方の接頭辞を予約しました。lease はジョブの振り分けに使ったトークンを worker に渡し、worker は何かを取得したりデバイスを借りたりする前に、ルートのトークンをもう一度照合します。lint のフラグ、エディタの lint、振り分けのトークン、`realDevices` を、`docs/cli.md`、`docs/configuration.md`、`docs/scenarios.md`、`docs/drivers.md`、`docs/self-hosting.md`、`docs/architecture.md` とその日本語版、および `DESIGN.md` に記載しました。
+- 設計の記述と異なる点が 5 つあります。1 つ目に、`worker.yaml` には実機を列挙する欄がないので、`realDevices: true` を加えました。これがない worker は Simulator のルートだけを掲げます。2 つ目に、投入時の失敗には、生きているどの worker もジョブを扱えないことも条件に加えました。この項目より前の worker がまだジョブを扱える混在構成で、ジョブを拒否しないためです。3 つ目に、appium のジョブでは iOS のターゲットを `ios-live` に置きます。グリッドのエンドポイントはターゲットの config ではなく、worker のファイルにあるからです。4 つ目に、受け取り時の検査はルートのトークンを照合する形にしました。run のサブプロセスが、lease の前にステップと設定の検査をすでにやり直しているためです。5 つ目に、「検査なしの worker」の記録は provenance の `workerRouting: unchecked` にしました。HTML レポートは、run 単位の新しい *notices* 欄にこの記録を載せます。
 
 ## 参考
 
