@@ -36,9 +36,9 @@ runner = CliRunner()
 SE = "iPhone SE (3rd generation)"
 IPAD = "iPad Pro 13-inch (M4)"
 POOL = {
-    "se17": DeviceFacts("se17", "ios", SE, "17.5"),
-    "se18": DeviceFacts("se18", "ios", SE, "18.2"),
-    "ipad17": DeviceFacts("ipad17", "ios", IPAD, "17.5"),
+    "se17": DeviceFacts("se17", "ios", SE, "17.5", family="iPhone"),
+    "se18": DeviceFacts("se18", "ios", SE, "18.2", family="iPhone"),
+    "ipad17": DeviceFacts("ipad17", "ios", IPAD, "17.5", family="iPad"),
 }
 
 
@@ -593,6 +593,28 @@ def test_each_kind_of_a_run_reaches_its_pool(
     assert kinds == [(["sim"], False), (["real"], True)]
     coordinates = [s["run_coordinates"] for s in _manifest(tmp_path)["scenarios"]]
     assert coordinates == [{"app": {"kind": "simulator"}}, {"app": {"kind": "device"}}]
+
+
+@pytest.mark.parametrize(
+    ("family", "label", "udids"),
+    [
+        ("[ipad, iphone]", "ipad", ["ipad17"]),
+        ("[iphone, ipad]", "iphone", ["se18"]),  # the newest release of the first model
+        ("ipad", "", ["ipad17"]),
+    ],
+)
+def test_a_family_list_names_its_winner_in_the_label_and_the_manifest(
+    tmp_path: Path, harness: dict[str, Any], family: str, label: str, udids: list[str]
+) -> None:
+    # BE-0468: the winner of two or more listed families is a coordinate; a single family is not.
+    result = invoke(
+        runner, app, _args(tmp_path, f"{{ios: {{family: {family}}}}}", "- name: s\n  steps: []\n")
+    )
+    assert result.exit_code == 0, result.output
+    assert [u for u, _run in harness["pools"]] == [udids]
+    (scenario,) = _manifest(tmp_path)["scenarios"]
+    assert scenario["coordinates"] == label
+    assert scenario.get("run_coordinates", {}) == ({"app": {"family": label}} if label else {})
 
 
 def test_an_ios_pool_reads_through_the_listing_its_kinds_need(

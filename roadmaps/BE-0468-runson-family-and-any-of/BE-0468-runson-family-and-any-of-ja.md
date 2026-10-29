@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0468") |
-| 実装 PR | [#2244](https://github.com/bajutsu-e2e/bajutsu/pull/2244)（単位 1）、[#2250](https://github.com/bajutsu-e2e/bajutsu/pull/2250)（単位 2、3）、[#2253](https://github.com/bajutsu-e2e/bajutsu/pull/2253)（単位 4） |
+| 実装 PR | [#2244](https://github.com/bajutsu-e2e/bajutsu/pull/2244)（単位 1）、[#2250](https://github.com/bajutsu-e2e/bajutsu/pull/2250)（単位 2、3）、[#2253](https://github.com/bajutsu-e2e/bajutsu/pull/2253)（単位 4）、[#2256](https://github.com/bajutsu-e2e/bajutsu/pull/2256)（単位 5） |
 | トピック | Driver & backend architecture |
 <!-- /BE-METADATA -->
 
@@ -344,7 +344,7 @@ run に LLM は入りません。解決は config、引数、プールだけの�
 - [x] ユニット 2: スキーマ
 - [x] ユニット 3: 解決
 - [x] ユニット 4: 引数と起動
-- [ ] ユニット 5: レポート
+- [x] ユニット 5: レポート
 - [ ] ユニット 6: worker のルーティング
 - [ ] ユニット 7: ドキュメントとデモ
 
@@ -368,6 +368,11 @@ run に LLM は入りません。解決は config、引数、プールだけの�
   - `--browser` と `--browsers` は、ターゲットの `runsOn.browser.kind` のリストにないブラウザを拒否します。`kind` を書かないターゲットや、ブラウザを 1 つだけ指定したターゲットは、従来どおりすべての種類を受け付けます。単一の種類は、ターゲットが対応するブラウザの集合ではなく、ターゲットを動かすブラウザを表すからです。
   - この単位の残り（Playwright の `launch` へのチャネルの受け渡しと、run ごとの XCUITest の接続先）は #2250 で入っています。
   - 設計からのずれ：`--kind` は、コマンドの `--target` が指すターゲットだけに適用します。シナリオが 2 つ目の iOS ターゲットを宣言する run では、フラグがどちらのターゲットを指すのか決まりません。そのため、`--browser` が 2 つ目の web ターゲットに対してするのと同じく、フラグを拒否して終了コード 2 で終わります。
+- [#2256](https://github.com/bajutsu-e2e/bajutsu/pull/2256)（単位 5）— `doctor` に各 run の種類とファミリーを表示し、ラベル、manifest、フレーキーさのキーをテストで固定しました。
+  - `doctor` は、iOS の各 run のラベルの横に、run が使う種類とファミリーのうちラベルに含まれないものを表示します。単一の `kind` や `family` は座標にならないので、`family: ipad` の run は `one run [kind: simulator, family: ipad]` と表示します。並べた種類とファミリーのリストは座標になるので、ラベルだけに表示します。ファミリーのリストに合うデバイスがない run も、種類と理由を表示します。
+  - run のラベル、manifest の `run_coordinates`、フレーキーさのキーは変更していません。どれも run の座標を読み、#2250 から座標には、並べた種類と、ファミリーのリストから選ばれたファミリーが入っているからです。この単位では、それぞれを固定するテストを追加しました。ファミリーのリストの解決結果が異なる 2 台のホストが、別々の履歴になることも確認しています。
+  - `doctor` は、`kind` を書かない Simulator だけのターゲットも含め、iOS のすべての run で種類を表示します。どの種類の run かを読み手に推測させないためです。宣言された run（読めるプールがない場合）はラベルだけを表示します。ファミリーを解決していないからです。
+  - `docs/cli.md` と日本語版では、`doctor` の条件に `kind` と `family` を加え、新しい行の形を示しました。また、実機では常に宣言された run だけを表示するという記述を改めました。#2250 から、`kind` と `family` だけを条件に持つ実機はプールを読むからです。
 
 ## 参考
 

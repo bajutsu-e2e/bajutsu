@@ -519,13 +519,18 @@ ListedOutcome = Literal["run", "failed", "not-applicable", "declared"]
 class ListedRun:
     """One run as `doctor` lists it: its coordinates, its outcome, and the devices that fit it.
 
-    `declared` marks a run listed from the conditions alone, because no pool could be read.
+    `declared` marks a run listed from the conditions alone, because no pool could be read. `kind`
+    and `family` carry the iOS kind and the family the run took when its label leaves them out (a
+    single value adds no coordinate); None when the label carries it, no family condition applies,
+    or the platform is not iOS (BE-0468).
     """
 
     label: str
     outcome: ListedOutcome
     devices: tuple[str, ...] = ()
     reason: str = ""
+    kind: str | None = None
+    family: str | None = None
 
 
 def list_runs(
@@ -550,15 +555,26 @@ def list_runs(
         eff.target, eff.platform, conditions, devices, engine=engine, kind=driven_kind(eff)
     )
     for run in formed:
-        if run.outcome != "run":
-            listed.append(ListedRun(run.label, run.outcome, reason=run.reason))
-        elif eff.platform == "web":
+        if eff.platform == "web":
             launched = [d.describe for d in devices if d.model == run.engine]
-            listed.append(ListedRun(run.label, "run", tuple(launched) or (str(run.engine),)))
+            if run.outcome != "run":
+                listed.append(ListedRun(run.label, run.outcome, reason=run.reason))
+            else:
+                listed.append(ListedRun(run.label, "run", tuple(launched) or (str(run.engine),)))
+            continue
+        coords = dict(run.coordinates)
+        named = ListedRun(
+            run.label,
+            run.outcome,
+            kind=None if "kind" in coords else run.kind,
+            family=None if "family" in coords else run.family,
+        )
+        if run.outcome != "run":
+            listed.append(replace(named, reason=run.reason))
         elif (fit := eligible_set(run, devices)) is None:
             listed.append(
-                ListedRun(run.label, "failed", reason="no available device fits this run")
+                replace(named, outcome="failed", reason="no available device fits this run")
             )
         else:
-            listed.append(ListedRun(run.label, "run", tuple(d.describe for d in fit)))
+            listed.append(replace(named, devices=tuple(d.describe for d in fit)))
     return listed

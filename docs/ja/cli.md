@@ -203,8 +203,8 @@ bajutsu doctor --target <name> [--udid booted] [--backend ...] [--config ...] [-
 - `--scenario <file.yaml>` は端末不要の **capability プリフライト**（BE-0024）を実行します。画面プローブの前に、選択したバックエンドが実行できない構文をシナリオが使っていないかを検査し、非対応があれば**終了 1** とします。
 - `--worker-config` は [`run`](#run) と同じ worker 能力ファイルを受け付けます。`appium` のファイルを
   渡すと、グリッドの platform のターゲットに対する画面プローブはグリッドで動きます。
-- 端末の条件があるとき、`runs:` セクションに条件が作る実行を列挙します。条件とは、iOS の `model` と
-  `os`、Android の `avd` と `apiLevel`、web の `browser.*` です。条件はターゲットの `runsOn` に
+- 端末の条件があるとき、`runs:` セクションに条件が作る実行を列挙します。条件とは、iOS の `kind`、`family`、
+  `model`、`os`、Android の `avd` と `apiLevel`、web の `browser.*` です。条件はターゲットの `runsOn` に
   書きます。`--scenario` があればそのファイルの各シナリオについて、なければターゲット自身について、
   条件が作る実行を列挙します。`doctor` は `run` と同じ方法で `--udid` の
   プールを読み、同じ実行を作ります。そのため各行には、その実行に合う端末が並びます。
@@ -212,15 +212,19 @@ bajutsu doctor --target <name> [--udid booted] [--backend ...] [--config ...] [-
   ```
   runs:
     checkout:
-      ✓ iPhone SE (3rd generation) / iOS 17: iOS 17.5 "iPhone SE (3rd generation)" (5A3F...)
-      ✘ iPad Pro 13-inch (M4) / iOS 17: fails: no available device fits this run
-      – one run: not applicable: runsOn.ios.os  ">=19"  available: ...
+      ✓ iPhone SE (3rd generation) / iOS 17 [kind: simulator]: iOS 17.5 "iPhone SE (3rd generation)" (5A3F...)
+      ✘ iPad Pro 13-inch (M4) / iOS 17 [kind: simulator]: fails: no available device fits this run
+      – one run [kind: simulator]: not applicable: runsOn.ios.os  ">=19"  available: ...
   ```
 
   `✓` は実行と、その実行が使える端末を示します。`✘` は端末がないため失敗する実行を、`–` は対象外
-  （not applicable）の記録を示します。このセクションは情報の表示だけで、終了コードを変えません。
+  （not applicable）の記録を示します。iOS の行は、実行が使う kind と family のうちラベルに含まれない
+  ものを角括弧で示します。単一の `kind` や `family` は座標にならないので、`family: ipad` の実行は
+  `one run [kind: simulator, family: ipad]` と表示します。列挙した `kind` と `family` のリストは
+  座標になるので、`device / ipad` のようにラベルに入ります（BE-0468）。このセクションは情報の表示だけで、
+  終了コードを変えません。
   読めるプールがないターゲットでは、宣言された実行だけを `•` 付きで列挙します。該当するのは、`appium`
-  グリッドのターゲット、実機、端末を読めないプールです。このとき片側が開いた範囲は
+  グリッドのターゲット、`kind` と `family` 以外の条件を持つ実機、端末を読めないプールです。このとき片側が開いた範囲は
   「one run per available major version」（利用できるメジャーバージョンごとに1回）と表示します。
   `--backend fake` は条件を評価しないため、`runs:` セクションを表示しません。
 - それ以外は actuator で `query()` し、`score(elements, app.idNamespaces)` を表示します。端末の条件が

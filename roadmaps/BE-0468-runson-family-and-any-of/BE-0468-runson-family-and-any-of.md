@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0468") |
-| Implementing PR | [#2244](https://github.com/bajutsu-e2e/bajutsu/pull/2244) (Unit 1), [#2250](https://github.com/bajutsu-e2e/bajutsu/pull/2250) (Units 2–3), [#2253](https://github.com/bajutsu-e2e/bajutsu/pull/2253) (Unit 4) |
+| Implementing PR | [#2244](https://github.com/bajutsu-e2e/bajutsu/pull/2244) (Unit 1), [#2250](https://github.com/bajutsu-e2e/bajutsu/pull/2250) (Units 2–3), [#2253](https://github.com/bajutsu-e2e/bajutsu/pull/2253) (Unit 4), [#2256](https://github.com/bajutsu-e2e/bajutsu/pull/2256) (Unit 5) |
 | Topic | Driver & backend architecture |
 <!-- /BE-METADATA -->
 
@@ -341,7 +341,7 @@ fake pool for each resolution branch, and the failure messages.
 - [x] Unit 2: schema
 - [x] Unit 3: resolution
 - [x] Unit 4: arguments and launch
-- [ ] Unit 5: reporting
+- [x] Unit 5: reporting
 - [ ] Unit 6: worker routing
 - [ ] Unit 7: docs and demos
 
@@ -365,6 +365,11 @@ fake pool for each resolution branch, and the failure messages.
   - `--browser` and `--browsers` refuse a browser that the target's `runsOn.browser.kind` list leaves out. A target that leaves `kind` unset, or names a single browser, still takes any kind, because a single kind says how the target is driven rather than which browsers it supports.
   - The rest of the unit, the channel passed to Playwright's `launch` and each run's XCUITest destination, landed in #2250.
   - Deviation from the design: `--kind` applies to the command's own `--target`. A run whose scenarios declare a second iOS target refuses the flag and exits 2, as `--browser` does with a second web target, because which target the flag means has no answer there.
+- [#2256](https://github.com/bajutsu-e2e/bajutsu/pull/2256) (Unit 5) — name each run's kind and family in `doctor`, and pin the label, manifest, and flakiness key.
+  - `doctor` names, beside each iOS run's label, the kind and the family the run took when the label leaves them out. A single `kind` or `family` adds no coordinate, so `family: ipad` lists as `one run [kind: simulator, family: ipad]`. A listed kind and a family list are coordinates, so the label carries them alone. A run whose family list finds no device still names its kind and the reason.
+  - The run label, the manifest's `run_coordinates`, and the flakiness key needed no change: they read the run's coordinates, which already carry a listed kind and the winner of a family list since #2250. The unit adds tests that pin each of them, including a test that two hosts whose family list resolves to different families keep two separate histories.
+  - `doctor` names the kind on every iOS run, including a Simulator-only target that names no `kind`, so a line never leaves the reader to infer which kind it lists. A declared run (no pool to read) still lists its label alone, because nothing resolved its family.
+  - `docs/cli.md` and its Japanese mirror list `kind` and `family` among the `doctor` conditions, show the new line shape, and no longer say a physical device always lists its declared runs alone: since #2250 one under `kind` or `family` alone reads its pool.
 
 ## References
 

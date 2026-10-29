@@ -228,8 +228,8 @@ bajutsu doctor --target <name> [--udid booted] [--backend ...] [--config ...] [-
   1** if any are unsupported.
 - `--worker-config` takes the same worker capability file as [`run`](#run). An `appium` file sends
   the screen probe of a target on the grid's platform to the grid.
-- A device condition adds a `runs:` section. The conditions are `model` and `os` on iOS, `avd` and
-  `apiLevel` on Android, and `browser.*` on the web.
+- A device condition adds a `runs:` section. The conditions are `kind`, `family`, `model`, and `os`
+  on iOS, `avd` and `apiLevel` on Android, and `browser.*` on the web.
   The conditions come from the target's `runsOn`. The section lists the runs they form, for each
   scenario of the `--scenario` file, or for the target itself without `--scenario`.
   `doctor` reads the `--udid` pool the way `run` does and forms the same runs. Each line names the
@@ -238,15 +238,20 @@ bajutsu doctor --target <name> [--udid booted] [--backend ...] [--config ...] [-
   ```
   runs:
     checkout:
-      ✓ iPhone SE (3rd generation) / iOS 17: iOS 17.5 "iPhone SE (3rd generation)" (5A3F...)
-      ✘ iPad Pro 13-inch (M4) / iOS 17: fails: no available device fits this run
-      – one run: not applicable: runsOn.ios.os  ">=19"  available: ...
+      ✓ iPhone SE (3rd generation) / iOS 17 [kind: simulator]: iOS 17.5 "iPhone SE (3rd generation)" (5A3F...)
+      ✘ iPad Pro 13-inch (M4) / iOS 17 [kind: simulator]: fails: no available device fits this run
+      – one run [kind: simulator]: not applicable: runsOn.ios.os  ">=19"  available: ...
   ```
 
   `✓` marks a run with its eligible devices. `✘` marks a run that fails for want of a device. `–`
-  marks a not-applicable record. The section is informational and never changes the exit code.
+  marks a not-applicable record. An iOS line names, in brackets, the kind and the family the run
+  took when its label leaves them out: a single `kind` or `family` adds no coordinate, so
+  `family: ipad` reads `one run [kind: simulator, family: ipad]`. A listed `kind` and a `family`
+  list are coordinates, so the label carries them, as in `device / ipad` (BE-0468). The section is
+  informational and never changes the exit code.
   A target with no pool to read lists the declared runs alone, marked `•`. This covers a grid
-  target, a physical device, and a pool whose devices cannot be read. An open range then reads as
+  target, a physical device under a condition other than `kind` and `family`, and a pool whose
+  devices cannot be read. An open range then reads as
   "one run per available major version". `--backend fake` evaluates no condition and prints no
   section.
 - Otherwise, `query()`s via the actuator and renders `score(elements, app.idNamespaces)`. Under a
