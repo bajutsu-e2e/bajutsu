@@ -608,6 +608,22 @@ class Artifact:
 When an evidence kind cannot be supplied by any backend in the list, a `SkippedCapture(kind,
 reason)` is recorded per scenario and disclosed in the manifest — the gap is never silently empty.
 
+Each interval kind is a capability of its own (`video`, `deviceLog`, `appTrace`), judged against the
+route the scenario runs on
+([BE-0467](../roadmaps/BE-0467-environment-specific-settings/BE-0467-environment-specific-settings.md)):
+
+| Route | `video` | `deviceLog` | `appTrace` |
+|---|---|---|---|
+| iOS Simulator | Recorded | Recorded | Recorded |
+| iOS real device (`runsOn.ios.kind: device`) | Skipped | Skipped | Skipped |
+| Live WebDriver endpoint | Skipped | Skipped | Skipped |
+| Android | Recorded | Recorded | Skipped |
+| Web | Recorded | Recorded | Skipped |
+
+A gap is recorded only for a kind the scenario asked for, and the sink never starts a recorder for
+it: simctl reaches the Simulator alone, so it is not pointed at a real device. Evidence never decides
+a verdict, so a skipped kind leaves the result unchanged.
+
 ## Which screen an artifact shows (`depicts`)
 
 A step's screenshot and its element tree are shown together, and a viewer draws a hovered element's

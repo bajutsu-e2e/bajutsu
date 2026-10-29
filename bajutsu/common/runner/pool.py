@@ -15,6 +15,7 @@ from pathlib import Path
 
 from bajutsu.common.backend_cli import simctl
 from bajutsu.common.backends import (
+    capabilities_for_run,
     default_available,
     resolve_evidence_providers,
     select_actuator,
@@ -28,7 +29,7 @@ from bajutsu.common.evidence import FileSink
 from bajutsu.common.evidence.network import Collector, NetworkCollector, _no_transitions
 from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.common.evidence.sink import RunArtifactWriter
-from bajutsu.common.orchestrator import DeviceControl, RelaunchFn
+from bajutsu.common.orchestrator import DeviceControl, RelaunchFn, SkippedCapture
 from bajutsu.common.orchestrator.evidence_rules import requested_intervals
 
 # `device_control` / `device_relauncher` live with the platform lifecycle now; re-exported so
@@ -125,7 +126,8 @@ def device_pool(  # noqa: C901, PLR0915
     env_run: simctl.RunFn = simctl.real_run,
     make_driver: Callable[..., base.Driver] = _make_driver,
     evidence_providers: Callable[
-        [list[str], str, Callable[[str], bool]], tuple[dict[str, str], dict[str, str]]
+        [list[str], str, Callable[[str], bool], frozenset[str]],
+        tuple[dict[str, str], dict[str, str]],
     ] = resolve_evidence_providers,
 ) -> tuple[LeaseFn, Callable[[], None]]:
     """A pool of N≥1 devices for (parallel) runs.
@@ -322,8 +324,21 @@ def device_pool(  # noqa: C901, PLR0915
         # (BE-0020), resolved per scenario now that the actuator is. Today `network` is covered by web
         # (native) and both iOS actuators (the app-side `BAJUTSU_COLLECTOR`), so this resolves to
         # nothing in production; it activates when a platform gains a network-native actuator.
-        providers, _skipped = evidence_providers(backends, actuator, available)
+        # Judged against the route's own capabilities, so a real iOS device names the simctl
+        # evidence it cannot record (BE-0467).
+        providers, skipped = evidence_providers(
+            backends, actuator, available, capabilities_for_run(actuator, eff, udid)
+        )
         network_provider = providers.get("network") if network else None
+        # Only a kind this scenario asked for is a gap worth disclosing. `network` never is: a run
+        # that collects it gets it natively or from the app-side collector the pool started above,
+        # which supplies it without the actuator advertising the capability.
+        wanted = set(requested_intervals(scenario, eff.capture))
+        skipped_captures = [
+            SkippedCapture(kind=kind, reason=reason)
+            for kind, reason in skipped.items()
+            if kind in wanted
+        ]
         # The collector to stop on release (the web page hook, or a BE-0020 fallback) — not the
         # pre-started HTTP receivers, which are reused and stopped in shutdown(). Released on a setup
         # failure too, so one launch failure neither leaks a socket nor starves later leases.
@@ -489,6 +504,7 @@ def device_pool(  # noqa: C901, PLR0915
                 log_subsystem=log_subsystem,
                 redact=eff.redact,
                 secrets=secret_values,
+                unavailable=frozenset(skipped),
                 # A web or Android lane supplies its own interval evidence (Playwright console / page
                 # errors; adb logcat — Android's video now takes the prestart/adopt path below); the
                 # iOS backend has no such method, so this is None there and the simctl path is used.
@@ -651,6 +667,8 @@ def device_pool(  # noqa: C901, PLR0915
                         log_subsystem=log_subsystem,
                         redact=member_eff.redact,
                         secrets=secret_values,
+                        # The member shares the primary's device and driver, so the same route gaps.
+                        unavailable=frozenset(skipped),
                         driver_interval=getattr(member_driver, "driver_interval", None),
                         video_extension=getattr(member_driver, "video_extension", "mp4"),
                         readiness=member_readiness,
@@ -674,6 +692,13 @@ def device_pool(  # noqa: C901, PLR0915
                         device_runtime=catalog.get(udid, {}).get("runtime", ""),
                         collector_provider=collector_provider,
                         readiness=member_readiness,
+                        # Only the kinds this member asks for beyond the primary: the rest share this
+                        # device's gap, which the primary's lease already discloses once.
+                        skipped_captures=[
+                            SkippedCapture(kind=kind, reason=reason)
+                            for kind, reason in skipped.items()
+                            if kind in set(requested_intervals(member, member_eff.capture)) - wanted
+                        ],
                         # Device-scoped, so a member reads its group's device the way the lease that
                         # holds it does: a crash retry judged on a member (the group's primary is
                         # one whenever another member starts with it) must still escalate to a
@@ -702,6 +727,8 @@ def device_pool(  # noqa: C901, PLR0915
                 device_name=meta.get("name", ""),
                 device_runtime=meta.get("runtime", ""),
                 collector_provider=collector_provider,
+                # A member lease repeats none of these: it shares this device (`join` above).
+                skipped_captures=skipped_captures,
                 webview_bridge=webview_bridge,
                 # Both are read by the crash retry after this lease has already been released: the
                 # request lands on the environment the pool keeps warm for this device, so the *next*

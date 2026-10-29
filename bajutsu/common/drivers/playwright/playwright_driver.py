@@ -977,6 +977,9 @@ class PlaywrightDriver:
             base.Capability.TEXT_SELECTION,
             base.Capability.URL_NAVIGATION,
             base.Capability.ELEMENT_ATTRIBUTE,
+            # The context's recording and the browser console (`driver_interval`); no appTrace.
+            base.Capability.VIDEO,
+            base.Capability.DEVICE_LOG,
         }
     )
 

@@ -279,7 +279,7 @@ environments genuinely differ.
   settings and raise for an unsupported one that is not ignored, in place of its own conditions and
   silent ignores
 - [x] Add `RunResult.ignored_settings` and render it in the manifest, HTML, JUnit, and CTRF reports
-- [ ] Give `video`, `deviceLog`, and `appTrace` a capability each, and keep the evidence skip reasons
+- [x] Give `video`, `deviceLog`, and `appTrace` a capability each, and keep the evidence skip reasons
   on the lease instead of discarding them in `pool.py`
 - [ ] Add `--config` and `--target` to `bajutsu lint`, running the step check, the settings check,
   and `check_preconditions` per target on the expanded scenario
@@ -324,6 +324,22 @@ Log:
   `asdict` name the loader reads back. The launch-time warning stays for a lease with no report, such
   as `record` or `crawl`. Documented the report fields in `docs/reporting.md` and
   `docs/configuration.md`, with their Japanese mirrors.
+
+- PRLINK — Unit 5. Added the `video`, `deviceLog`, and `appTrace` capabilities and declared them per
+  driver: the XCUITest backend records all three through simctl, adb and Playwright record `video`
+  and `deviceLog`, and the live WebDriver driver records none. `capabilities_for_run` drops all three
+  on a real iOS device, since simctl reaches the Simulator alone. `KIND_CAPABILITY` now covers the
+  three, and `resolve_evidence_providers` judges the actuator by its route-narrowed capabilities. The
+  pool keeps the skip reasons on `Lease.skipped_captures`, which the report already renders, for the
+  kinds the scenario asked for alone; `network` is never disclosed there, since the run gets it
+  natively or from the pool's app-side collector. A device-group member's lease adds only the kinds it
+  asks for beyond the primary's, so the group discloses each gap once. Two
+  points go beyond the design text. Only `network` takes a same-platform fallback provider, because
+  the pool wires a provider's collector and nothing yet hands a provider's recorder to the sink. And
+  the `FileSink` never starts a kind the route cannot record, so a real-device run no longer points a
+  simctl recorder at the device. The fake driver declares none of the three, since its environment
+  records nothing. Documented the per-route table in `docs/evidence.md` and `docs/drivers.md`, with
+  their Japanese mirrors.
 
 ## References
 

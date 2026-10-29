@@ -230,6 +230,33 @@ def test_the_pool_joins_a_member_on_the_same_device(monkeypatch: pytest.MonkeyPa
         shutdown()
 
 
+def test_a_member_discloses_only_the_gaps_the_primary_did_not(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The fake records no interval evidence. The primary asks for video and discloses that gap; the
+    # member asks for video too and for a deviceLog the primary did not, so it discloses only the
+    # deviceLog — one entry per gap for the whole group (BE-0467).
+    monkeypatch.setattr(
+        "bajutsu.common.backends.make_driver",
+        lambda actuator, udid: FakeDriver([_el("home", "H"), _el("ok", "OK")]),
+    )
+    lease, shutdown = device_pool(
+        ["UDID-A"], ["fake"], _eff(), Path("runs"), available=lambda b: True
+    )
+    primary = _scenario({"steps": [{"tap": {"id": "ok"}, "capture": ["video"]}]})
+    joined = _scenario({"steps": [{"tap": {"id": "ok"}, "capture": ["video", "deviceLog"]}]})
+    try:
+        anchor = lease(_app_eff("com.example.app"), primary)
+        assert anchor.join is not None
+        member = anchor.join(_app_eff("com.example.auth"), joined, True)
+        assert [c.kind for c in anchor.skipped_captures] == ["video"]
+        assert [c.kind for c in member.skipped_captures] == ["deviceLog"]
+        member.release()
+        anchor.release()
+    finally:
+        shutdown()
+
+
 def test_a_member_whose_app_never_gets_ready_is_stopped(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "bajutsu.common.backends.make_driver",

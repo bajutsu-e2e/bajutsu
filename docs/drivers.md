@@ -843,8 +843,11 @@ a same-platform backend whose `capabilities()` advertises a kind the actuator la
 `Capability.NETWORK`) is resolved as the provider for that kind, accessed only through the narrow
 `EvidenceProvider` Protocol (no tap/type/swipe — a type-level guarantee). When no backend can fill a
 gap, the kind is skipped with a recorded reason (`SkippedCapture`) — graceful degradation, never a
-run failure. See [evidence — provider](evidence.md#artifact-provenance-provider) for provenance
-details.
+run failure. Only `network` can be filled this way. The interval kinds (`video`, `deviceLog`,
+`appTrace`, each a capability of its own since
+[BE-0467](../roadmaps/BE-0467-environment-specific-settings/BE-0467-environment-specific-settings.md))
+are judged against the actuator's route alone, and skip where it cannot record them. See
+[evidence — provider](evidence.md#artifact-provenance-provider) for provenance details.
 
 ## Environment management (simctl)
 

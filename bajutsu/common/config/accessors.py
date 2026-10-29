@@ -80,9 +80,9 @@ def xcuitest_targets_real_device(eff: Effective) -> bool:
     """True when the target drives a real iOS device via XCUITest (`runsOn.ios.kind: device`).
 
     The Simulator default — and every non-iOS target — is False. Consulted by the capability
-    narrowing that drops the simctl-backed DeviceControl / permission tokens on a real device
-    (BE-0238): simctl reaches only the Simulator, so those capabilities do not apply on a physical
-    device.
+    narrowing that drops the simctl-backed DeviceControl / permission / interval-evidence tokens on
+    a real device (BE-0238, BE-0467): simctl reaches only the Simulator, so those capabilities do
+    not apply on a physical device.
     """
     cfg = eff.platform_config
     return (

@@ -390,6 +390,18 @@ class Artifact:
 
 証跡の種別をリスト内のどのバックエンドも供給できない場合は、シナリオごとに `SkippedCapture(kind, reason)` を記録し、manifest で開示します。gap を黙って空にすることはありません。
 
+区間証跡の種別（`video`、`deviceLog`、`appTrace`）は、それぞれ独立した能力として扱います。どの種別を記録できるかは、シナリオを実行するルートで判定します（[BE-0467](../../roadmaps/BE-0467-environment-specific-settings/BE-0467-environment-specific-settings-ja.md)）。
+
+| ルート | `video` | `deviceLog` | `appTrace` |
+|---|---|---|---|
+| iOS Simulator | 記録する | 記録する | 記録する |
+| iOS 実機（`runsOn.ios.kind: device`） | skip | skip | skip |
+| ライブ WebDriver エンドポイント | skip | skip | skip |
+| Android | 記録する | 記録する | skip |
+| Web | 記録する | 記録する | skip |
+
+gap を記録するのは、シナリオが要求した種別に限ります。gap になった種別については、sink が記録処理を開始しません。simctl が届くのは Simulator だけなので、実機に対して simctl を起動することはありません。証跡は判定に関与しないため、種別を skip しても結果は変わりません。
+
 ## アーティファクトが写した画面（`depicts`）
 
 ステップのスクリーンショットと要素ツリーは並べて表示し、ビューアはカーソルを合わせた要素の枠を画像の

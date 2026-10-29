@@ -1802,6 +1802,9 @@ class AdbDriver(CoordinateTreeDriver):
                 # (BE-0447).
                 base.Capability.DC_FOREGROUND,
                 base.Capability.DEVICE_GROUP,
+                # `screenrecord` and `logcat` (`driver_interval`); no os_log, so no appTrace.
+                base.Capability.VIDEO,
+                base.Capability.DEVICE_LOG,
             }
         )
         | base.ANDROID_PERMISSION_CAPABILITIES
