@@ -154,6 +154,12 @@ means the same thing after the run that produced it exits
   ([BE-0474](../roadmaps/BE-0474-totp-window-alignment/BE-0474-totp-window-alignment.md)). A warning
   never changes `ok` or `reason`. Empty on a step that has none, and absent on every run recorded
   before `schemaVersion` 16, which a reader treats as no warnings.
+- `ignored_settings`: each setting the scenario put in effect that a target's route could not apply
+  and the target declared under `run.ignoredSettings`, as `{target, key, reason}`
+  ([BE-0467](../roadmaps/BE-0467-environment-specific-settings/BE-0467-environment-specific-settings.md),
+  [configuration](configuration.md#environment-specific-settings-runignoredsettings-be-0467)). It
+  never changes `ok`. Empty on a scenario that ignored nothing or never reached a lease, and absent on
+  every run recorded before `schemaVersion` 17, which a reader treats as none ignored.
 - `network.json`'s `startedAt` (one file per scenario, not shown in the manifest above): each
   observed exchange's absolute start, on the same footing as `steps[].started_at` and derived
   through the same scenario anchor, so a viewer subtracts `video_anchor_s` from both — see
@@ -166,7 +172,7 @@ means the same thing after the run that produced it exits
   `configSource` (`{ host, owner, repo, ref, sha }`, the exact commit a branch-based run executed).
   It groups accumulated runs by identity, so a verdict that flips while the fingerprint is
   unchanged is **true flakiness** rather than an edited scenario. Pure metadata — it never enters
-  `ok`. (`schemaVersion` is `3` or higher once this block can appear — it is `16` today.)
+  `ok`. (`schemaVersion` is `3` or higher once this block can appear — it is `17` today.)
 - `target` (top, optional): the target the run ran, so "the Android target passes while the iOS
   target fails" is computable from stored data ([BE-0404](../roadmaps/BE-0404-collapse-project-layer/BE-0404-collapse-project-layer.md)).
   One run resolves one target, so it sits beside `backend` rather than on each scenario. `serve`
@@ -194,7 +200,11 @@ means the same thing after the run that produced it exits
 For CI integration. **one scenario = one `<testcase>`.** A failing scenario gets a `<failure>`, whose
 `text` lists each step / expect's ok/FAIL and reason. On a `--browsers` matrix run the engine is
 keyed into the case (`classname="bajutsu.<engine>"`), so CI sees `chromium.login` and `webkit.login`
-as distinct cases (BE-0076); a single-engine run keeps `classname="bajutsu"`.
+as distinct cases (BE-0076); a single-engine run keeps `classname="bajutsu"`. A scenario that ran
+without a setting its target declared under `run.ignoredSettings` carries a `<properties>` block
+with one `bajutsu.ignoredSettings` property, whose value is a JSON array of `{target, key, reason}`
+([BE-0467](../roadmaps/BE-0467-environment-specific-settings/BE-0467-environment-specific-settings.md));
+the verdict does not change.
 
 ```xml
 <testsuite name="bajutsu" tests="2" failures="1">
@@ -260,7 +270,8 @@ The document is `{ reportFormat: "CTRF", specVersion, generatedBy, timestamp, re
 - On a `--browsers` matrix run each engine × scenario cell is one CTRF test — the engine in the test
   `name` and the `browser` field (mirroring JUnit's `classname`) — and the engine × scenario grid is
   carried under `results.extra.matrix`. Bajutsu's other surplus (`sid`, `expect` results, alerts,
-  `skipped_captures`) lives under the per-test `extra`.
+  `skipped_captures`, and the settings the run went without as `ignoredSettings`) lives under the
+  per-test `extra`.
 - Since CTRF is projected from the already-redacted manifest, it inherits the same secret scrubbing
   ([BE-0047](../roadmaps/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md)); no raw secret reaches it.
 

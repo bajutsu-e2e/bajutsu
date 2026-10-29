@@ -172,6 +172,10 @@ def _test_extra(r: RunResult) -> dict[str, object]:
         extra["skippedCaptures"] = [
             {"kind": c.kind, "reason": c.reason} for c in r.skipped_captures
         ]
+    if r.ignored_settings:
+        extra["ignoredSettings"] = [
+            {"target": g.target, "key": g.key, "reason": g.reason} for g in r.ignored_settings
+        ]
     return extra
 
 

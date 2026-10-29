@@ -9,6 +9,7 @@ from bajutsu.common.drivers.actuation import Actuation
 from bajutsu.common.evidence import Artifact
 
 from .alert_event import AlertEvent
+from .ignored_setting import IgnoredSetting
 from .skipped_capture import SkippedCapture
 from .step_outcome import StepOutcome
 from .target_device_info import TargetDeviceInfo
@@ -85,6 +86,9 @@ class RunResult:
     dropped_expect_actuations: int = 0
     # Evidence kinds the run couldn't supply (no eligible backend) — disclosed, not silent (BE-0020).
     skipped_captures: list[SkippedCapture] = field(default_factory=list)
+    # Settings a target's route could not apply and the target declared ignored (BE-0467), so the
+    # report says what the run went without; the verdict never reads it.
+    ignored_settings: list[IgnoredSetting] = field(default_factory=list)
     # The lifecycle phases' own step outcomes (BE-0392), each numbered from zero and kept beside
     # `steps` rather than folded into it — the separation `expect_results` already gets, and what
     # lets a report show setup and teardown as their own blocks instead of merging them into the

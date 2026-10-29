@@ -113,7 +113,8 @@
 
 {%- macro env_panel(p) -%}
 {%- if p.sim %}<div class="envsec"><span class="deflbl">target</span>{% for g in p.sim %}{% if g.name %}<span class="tgtlbl">{{ g.name }}</span>{% endif %}<table class="pretbl"><tbody>{% for k, v in g.rows %}<tr><td class="pk">{{ k }}</td><td>{{ v }}</td></tr>{% endfor %}</tbody></table>{% endfor %}</div>
-{%- elif not p.skips %}<div class="muted">no environment details captured</div>{% endif -%}
+{%- elif not p.skips and not p.ignored %}<div class="muted">no environment details captured</div>{% endif -%}
+{%- if p.ignored %}<div class="envsec ignset"><span class="deflbl">ignored settings</span><table class="pretbl"><tbody>{% for g in p.ignored %}<tr><td class="pk">{{ g.target }}</td><td class="pk">{{ g.key }}</td><td class="muted">{{ g.reason }}</td></tr>{% endfor %}</tbody></table></div>{% endif -%}
 {%- if p.skips %}<div class="envsec skipcap"><span class="deflbl">skipped evidence</span><table class="pretbl"><tbody>{% for s in p.skips %}<tr><td class="pk">{{ s.kind }}</td><td class="muted">{{ s.reason }}</td></tr>{% endfor %}</tbody></table></div>{% endif -%}
 {%- endmacro -%}
 

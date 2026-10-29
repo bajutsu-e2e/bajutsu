@@ -278,7 +278,7 @@ environments genuinely differ.
 - [x] Add the settings check to the run preflight, and make each environment apply the `supported`
   settings and raise for an unsupported one that is not ignored, in place of its own conditions and
   silent ignores
-- [ ] Add `RunResult.ignored_settings` and render it in the manifest, HTML, JUnit, and CTRF reports
+- [x] Add `RunResult.ignored_settings` and render it in the manifest, HTML, JUnit, and CTRF reports
 - [ ] Give `video`, `deviceLog`, and `appTrace` a capability each, and keep the evidence skip reasons
   on the lease instead of discarding them in `pool.py`
 - [ ] Add `--config` and `--target` to `bajutsu lint`, running the step check, the settings check,
@@ -312,6 +312,18 @@ Log:
   target therefore declares `launchEnv` ignored for `cross_platform_app_web.yaml`. `record`, `crawl`,
   `repl`, and `doctor` report a refused setting as a clean error. Until unit 4 renders it in the report, a launch logs each ignored setting
   as a warning. Documented `run.ignoredSettings` in `docs/configuration.md` and its Japanese mirror.
+
+- PR TBD — Unit 4. Added `IgnoredSetting` (target, key, reason) and `RunResult.ignored_settings`. The
+  run records each declared target's ignored settings once the scenario reaches a lease, judged by
+  the same `check_settings` the preflight ran; a scenario the preflight refuses records none, since
+  no launch dropped anything. The manifest writes it per scenario, the loader reads it back, the HTML
+  report lists it in the Environment panel, JUnit carries a `bajutsu.ignoredSettings` property whose
+  value is a JSON array, and CTRF puts it in the test's `extra` as `ignoredSettings`. One point
+  departs from the design text: the manifest key is `ignored_settings`, not `ignoredSettings`,
+  because every per-scenario manifest field, `skipped_captures` included, is the snake_case
+  `asdict` name the loader reads back. The launch-time warning stays for a lease with no report, such
+  as `record` or `crawl`. Documented the report fields in `docs/reporting.md` and
+  `docs/configuration.md`, with their Japanese mirrors.
 
 ## References
 

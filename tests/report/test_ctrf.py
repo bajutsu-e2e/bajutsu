@@ -18,6 +18,7 @@ from bajutsu.common.assertions import AssertionResult
 from bajutsu.common.evidence import Artifact
 from bajutsu.common.orchestrator import (
     AlertEvent,
+    IgnoredSetting,
     RunResult,
     SkippedCapture,
     StepOutcome,
@@ -282,6 +283,7 @@ def test_test_extra_carries_bajutsu_surplus() -> None:
         sid="00-s",
         expect_alerts=[AlertEvent(label="Not Now")],
         skipped_captures=[SkippedCapture(kind="network", reason="no eligible backend")],
+        ignored_settings=[IgnoredSetting(target="device", key="erase", reason="keeps app data")],
     )
     extra = ctrf_json("20260704-101500", [r])["results"]["tests"][0]["extra"]  # type: ignore[index]
     assert extra["backend"] == "xcuitest"
@@ -289,6 +291,9 @@ def test_test_extra_carries_bajutsu_surplus() -> None:
     assert extra["expect"] == [{"ok": True, "kind": "exists", "detail": "home.title", "reason": ""}]
     assert extra["expectAlerts"] == [{"label": "Not Now", "kind": "alert"}]
     assert extra["skippedCaptures"] == [{"kind": "network", "reason": "no eligible backend"}]
+    assert extra["ignoredSettings"] == [
+        {"target": "device", "key": "erase", "reason": "keeps app data"}
+    ]
 
 
 def test_device_field_partial_and_absent() -> None:

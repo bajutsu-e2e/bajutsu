@@ -238,7 +238,7 @@ worker 単位の宣言は、1 つのターゲットを本当に異なる環境�
 - [x] `settings_support.py` を追加する。設定のキー、3 つの対応状態、ルートごとの表を持ち、権限の行をステップの検査から移し、`erase_precondition_supported` を置き換える
 - [x] `RunPolicy` に `run.ignoredSettings` と読み込み時の規則を追加する
 - [x] 実行の preflight に設定の検査を追加し、各環境が独自の条件分岐や黙って無視する処理の代わりに、`supported` の設定を適用し、無視されていない未対応の設定で例外を投げるようにする
-- [ ] `RunResult.ignored_settings` を追加し、マニフェスト、HTML、JUnit、CTRF の各レポートで描画する
+- [x] `RunResult.ignored_settings` を追加し、マニフェスト、HTML、JUnit、CTRF の各レポートで描画する
 - [ ] `video`、`deviceLog`、`appTrace` にそれぞれ capability を与え、`pool.py` で捨てている証跡の skip の理由を lease に残す
 - [ ] `bajutsu lint` に `--config` と `--target` を追加し、展開後のシナリオに対してターゲットごとにステップの検査、設定の検査、`check_preconditions` を行う
 - [ ] serve のエディタの `/api/lint` リクエストで、選択中のターゲットを送る
@@ -252,6 +252,8 @@ worker 単位の宣言は、1 つのターゲットを本当に異なる環境�
 - 設計の記述から外れた点が 5 つあります。最初の 4 つをこの項目で、5 つ目を次の項目で述べます。1 つ目に、Android の `launchArgs` は `unsupported` としました。Android には `app.launch.args` がなく、`am start` も引数を受け取らないためです。2 つ目に、シナリオの `app.launch` の値は、そのフィールドを持つプラットフォームのターゲットでだけ有効とみなします。BE-0452 の扱いに合わせたもので、iOS と Web を組み合わせたシナリオの deeplink で Web ターゲットが失敗することはありません。3 つ目に、実機の `locale` は起動引数としてアプリへ届くので `supported` としました。4 つ目に、ライブのルートは `extra_env` の拒否を表の外に残しました。この値は設定ではなく、Bajutsu 自身が注入するものだからです。同じ理由で、実行時に Bajutsu が起動環境へ書き込む `BAJUTSU_*` のキー（`BAJUTSU_MOCKS` など）も `launchEnv` の設定とはみなしません。ライブのルートは、これらのキーを起動時に引き続き拒否します。
 - Web ターゲット自身の `app.launch.env` も有効とみなしません。スキーマ上、この値は Playwright のコード生成のためのものだからです。一方、シナリオ側の値は有効とみなすので、showcase の `web` ターゲットは `cross_platform_app_web.yaml` のために `launchEnv` の無視を宣言しました。`record`、`crawl`、`repl`、`doctor` は、拒否された設定を通常のエラーとして報告します。
 - 単位 4 でレポートに表示するまでの間、起動処理は無視した設定ごとに警告をログへ出します。`docs/configuration.md` とその日本語版に `run.ignoredSettings` を記載しました。
+
+- PR 未定 — 単位 4。`IgnoredSetting`（ターゲット、キー、理由）と `RunResult.ignored_settings` を追加しました。シナリオが lease に到達すると、宣言した各ターゲットの無視した設定を記録します。判定には preflight と同じ `check_settings` を使います。preflight で拒否したシナリオは起動していないので、何も記録しません。manifest はシナリオごとにこの一覧を書き、読み込み側はそれを読み戻します。HTML レポートは Environment パネルに一覧を出します。JUnit は値が JSON 配列の `bajutsu.ignoredSettings` プロパティに、CTRF はテストの `extra` の `ignoredSettings` に入れます。設計の記述と異なる点が 1 つあります。manifest のキーは `ignoredSettings` ではなく `ignored_settings` にしました。`skipped_captures` を含め、シナリオごとの manifest のフィールドはすべて `asdict` による snake_case の名前で、読み込み側もその名前で読むためです。起動時の警告は、`record` や `crawl` のようにレポートを書かない lease のために残しました。レポートのフィールドを `docs/reporting.md` と `docs/configuration.md`、およびその日本語版に記載しました。
 
 ## 参考
 

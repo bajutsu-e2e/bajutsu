@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import subprocess
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict
@@ -111,7 +112,10 @@ def _run_backend(results: list[RunResult]) -> str:
 # v16 (BE-0474): a step may carry "warnings" — non-fatal notes about how it ran, e.g. a `totp` step
 #   whose window wait saw the wall clock jump. Empty on every step that has none; a step without the
 #   field belongs to a run that predates it, which a reader treats as no warnings.
-SCHEMA_VERSION = 16
+# v17 (BE-0467): a scenario carries "ignored_settings" — each setting a target's route could not
+#   apply and the target declared under `run.ignoredSettings`, with its reason. Absent on an older
+#   run, which a reader treats as none ignored.
+SCHEMA_VERSION = 17
 
 # How the run matrix heads the column of a run no condition formed: a scenario without conditions,
 # run in an invocation where other scenarios' conditions formed runs.
@@ -464,6 +468,16 @@ def junit_xml(results: list[RunResult], not_applicable: Sequence[Mapping[str, st
         case = ET.SubElement(
             suite, "testcase", name=_junit_name(r.scenario, r.coordinates), classname=classname
         )
+        if r.ignored_settings:
+            # JUnit has no field for a setting the run went without, so it rides a property CI
+            # tooling can read without the manifest (BE-0467); the verdict never reads it.
+            props = ET.SubElement(case, "properties")
+            ET.SubElement(
+                props,
+                "property",
+                name="bajutsu.ignoredSettings",
+                value=json.dumps([asdict(g) for g in r.ignored_settings]),
+            )
         if not r.ok:
             failure = ET.SubElement(case, "failure", message=r.failure or "failed")
             failure.text = _details(r)

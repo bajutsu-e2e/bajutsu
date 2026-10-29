@@ -358,8 +358,8 @@ def enforce_settings(
     if check.unsupported:
         raise base.UnsupportedAction("; ".join(check.unsupported_problems()))
     for key, reason in check.ignored.items():
-        # The report does not list an ignored setting yet (BE-0467 unit 4), so the log is the one
-        # place a reader can see that the run went without it.
+        # A run's report lists each ignored setting too, but a lease driven directly (`record`,
+        # `crawl`, `repl`) writes no report, so the log is where its reader sees what was dropped.
         _logger.warning(
             "target %r runs without %s (run.ignoredSettings): %s",
             check.target,
