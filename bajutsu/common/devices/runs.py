@@ -627,8 +627,8 @@ def unpack_conditions(
     """A raw `runsOn` group's condition fields, keyed by their path under `runsOn` (`ios.model`).
 
     Reads each destination block (BE-0469). Device state (`locale`, `seedPhotos`) and how a target is
-    driven (a single iOS `kind`, `emulate`) are not conditions; an integer range (`apiLevel: 34`) becomes its
-    text, as the target's model reads it.
+    driven (a single iOS `kind`, `emulate`) are not conditions; an integer range (`apiLevel: 34`)
+    becomes its text, as the target's model reads it.
     """
     out: dict[str, str | list[str]] = {}
     for destination, block in value.items():
