@@ -726,6 +726,21 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   An unrenderable `format` or an unknown `timezone` is rejected when the scenario loads, so an
   accepted step always executes and always succeeds; the produced value is recorded on the step's
   manifest entry and shown in the report, and every codegen target emits a labeled `// TODO`
+- DSL `eval` step (BE-0472): ops drawn from a fixed vocabulary of string/list operations (`split`,
+  `join`, `filter`, `pick`, `count`, `sort`, `unique`, `reverse`, `json`, `regex`, `replace`,
+  `substring`, `trim`, `case`) run as an ordered pipeline over a `from` value, storing the result
+  into `${vars.*}` — `into: { var }` for one variable, or `into: { vars: [...] }` to spread a list
+  result over several variables in order. The loader type-checks the pipeline (string in, string or
+  list at each step) before the run starts, rejecting an operation applied to the wrong type; a
+  list result is stored as compact JSON array text, the same `json_text` rendering `extractBody`
+  uses. When any input traces back to `${secrets.*}` or a variable an earlier step marked secret,
+  the result is registered as a new secret value before the step is recorded, so a derived value is
+  masked in every later artifact (`count`'s result is exempt, since it carries no character of the
+  input); the masking is scenario-scoped, so a value derived in one scenario does not mask matching
+  text in another's evidence under `--workers > 1`. `eval` has no XCUITest/Playwright/UI Automator
+  equivalent, so every codegen target emits a labeled `// TODO`. Despite the name it runs no code:
+  `ops` draws only from the vocabulary above, which a scenario cannot extend, so the step stays
+  local and deterministic — no model, no network
 - DSL `sleep` step (BE-0451): the one sanctioned exception to condition waits only — a fixed pause
   for a wait no condition on the screen, the tree, or the network log can observe (a server-side
   throttle, an animation that outlives `until: settled`). `seconds` (strict, `0 < seconds ≤ 30`) and
