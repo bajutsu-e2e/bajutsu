@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0467") |
-| Implementing PR | [#2249](https://github.com/bajutsu-e2e/bajutsu/pull/2249) (units 1–3), [#2254](https://github.com/bajutsu-e2e/bajutsu/pull/2254) (unit 4) |
+| Implementing PR | [#2249](https://github.com/bajutsu-e2e/bajutsu/pull/2249) (units 1–3), [#2254](https://github.com/bajutsu-e2e/bajutsu/pull/2254) (unit 4), [#2257](https://github.com/bajutsu-e2e/bajutsu/pull/2257) (unit 5) |
 | Topic | Platform support |
 | Related | [BE-0082](../BE-0082-capability-preflight-check/BE-0082-capability-preflight-check.md), [BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues.md), [BE-0238](../BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md), [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md), [BE-0457](../BE-0457-real-device-step-lint/BE-0457-real-device-step-lint.md) |
 <!-- /BE-METADATA -->
@@ -279,7 +279,7 @@ environments genuinely differ.
   settings and raise for an unsupported one that is not ignored, in place of its own conditions and
   silent ignores
 - [x] Add `RunResult.ignored_settings` and render it in the manifest, HTML, JUnit, and CTRF reports
-- [ ] Give `video`, `deviceLog`, and `appTrace` a capability each, and keep the evidence skip reasons
+- [x] Give `video`, `deviceLog`, and `appTrace` a capability each, and keep the evidence skip reasons
   on the lease instead of discarding them in `pool.py`
 - [ ] Add `--config` and `--target` to `bajutsu lint`, running the step check, the settings check,
   and `check_preconditions` per target on the expanded scenario
@@ -324,6 +324,22 @@ Log:
   `asdict` name the loader reads back. The launch-time warning stays for a lease with no report, such
   as `record` or `crawl`. Documented the report fields in `docs/reporting.md` and
   `docs/configuration.md`, with their Japanese mirrors.
+
+- [#2257](https://github.com/bajutsu-e2e/bajutsu/pull/2257) — Unit 5. Added the `video`, `deviceLog`, and `appTrace` capabilities and declared them per
+  driver: the XCUITest backend records all three through simctl, adb and Playwright record `video`
+  and `deviceLog`, and the live WebDriver driver records none. `capabilities_for_run` drops all three
+  on a real iOS device, since simctl reaches the Simulator alone. `KIND_CAPABILITY` now covers the
+  three, and `resolve_evidence_providers` judges the actuator by its route-narrowed capabilities. The
+  pool keeps the skip reasons for the kinds the scenario asked for on `Lease.skipped_captures`, which
+  the report already renders; `network` is never disclosed there, since the run gets it
+  natively or from the pool's app-side collector. A device-group member's lease adds only the kinds no
+  earlier lease on that device disclosed, so the group discloses each gap once. Two
+  points go beyond the design text. Only `network` takes a same-platform fallback provider, because
+  the pool wires a provider's collector and nothing yet hands a provider's recorder to the sink. And
+  the `FileSink` never starts a kind the route cannot record, so a real-device run no longer points a
+  simctl recorder at the device. The fake driver declares none of the three, since its environment
+  records nothing. Documented the per-route table in `docs/evidence.md` and `docs/drivers.md`, with
+  their Japanese mirrors.
 
 ## References
 

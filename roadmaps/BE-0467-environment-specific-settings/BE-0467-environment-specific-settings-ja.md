@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0467") |
-| 実装 PR | [#2249](https://github.com/bajutsu-e2e/bajutsu/pull/2249)（単位 1〜3）、[#2254](https://github.com/bajutsu-e2e/bajutsu/pull/2254)（単位 4） |
+| 実装 PR | [#2249](https://github.com/bajutsu-e2e/bajutsu/pull/2249)（単位 1〜3）、[#2254](https://github.com/bajutsu-e2e/bajutsu/pull/2254)（単位 4）、[#2257](https://github.com/bajutsu-e2e/bajutsu/pull/2257)（単位 5） |
 | トピック | プラットフォーム対応 |
 | 関連 | [BE-0082](../BE-0082-capability-preflight-check/BE-0082-capability-preflight-check-ja.md), [BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues-ja.md), [BE-0238](../BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution-ja.md), [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md), [BE-0457](../BE-0457-real-device-step-lint/BE-0457-real-device-step-lint-ja.md) |
 <!-- /BE-METADATA -->
@@ -239,7 +239,7 @@ worker 単位の宣言は、1 つのターゲットを本当に異なる環境�
 - [x] `RunPolicy` に `run.ignoredSettings` と読み込み時の規則を追加する
 - [x] 実行の preflight に設定の検査を追加し、各環境が独自の条件分岐や黙って無視する処理の代わりに、`supported` の設定を適用し、無視されていない未対応の設定で例外を投げるようにする
 - [x] `RunResult.ignored_settings` を追加し、マニフェスト、HTML、JUnit、CTRF の各レポートで描画する
-- [ ] `video`、`deviceLog`、`appTrace` にそれぞれ capability を与え、`pool.py` で捨てている証跡の skip の理由を lease に残す
+- [x] `video`、`deviceLog`、`appTrace` にそれぞれ capability を与え、`pool.py` で捨てている証跡の skip の理由を lease に残す
 - [ ] `bajutsu lint` に `--config` と `--target` を追加し、展開後のシナリオに対してターゲットごとにステップの検査、設定の検査、`check_preconditions` を行う
 - [ ] serve のエディタの `/api/lint` リクエストで、選択中のターゲットを送る
 - [ ] ジョブの必要な集合と worker の掲げる集合に `cap:` と `setting:` のトークンを加え、両方の接頭辞を予約し、生きているどの worker も扱えないジョブはキューに残し、ジョブのルートを駆動する worker が生きていてもどれもトークンをすべては掲げていない場合だけ投入時点で失敗させる。この項目より前の worker は現状のトークンで照合し、検査なしで実行したことをジョブに記録する
@@ -254,6 +254,8 @@ worker 単位の宣言は、1 つのターゲットを本当に異なる環境�
 - 単位 4 でレポートに表示するまでの間、起動処理は無視した設定ごとに警告をログへ出します。`docs/configuration.md` とその日本語版に `run.ignoredSettings` を記載しました。
 
 - [#2254](https://github.com/bajutsu-e2e/bajutsu/pull/2254) — 単位 4。`IgnoredSetting`（ターゲット、キー、理由）と `RunResult.ignored_settings` を追加しました。シナリオが起動すると、クラッシュした試行も含めて、宣言した各ターゲットの無視した設定を記録します。判定には preflight と同じ `check_settings` を使います。preflight で拒否したシナリオは起動していないので、何も記録しません。manifest はシナリオごとにこの一覧を書き、読み込み側はそれを読み戻します。HTML レポートは Environment パネルに一覧を出します。JUnit は値が JSON 配列の `bajutsu.ignoredSettings` プロパティに、CTRF はテストの `extra` の `ignoredSettings` に入れます。設計の記述と異なる点が 1 つあります。manifest のキーは `ignoredSettings` ではなく `ignored_settings` にしました。`skipped_captures` を含め、シナリオごとの manifest のフィールドはすべて `asdict` による snake_case の名前で、読み込み側もその名前で読むためです。起動時の警告は、`record` や `crawl` のようにレポートを書かない lease のために残しました。レポートのフィールドを `docs/reporting.md` と `docs/configuration.md`、およびその日本語版に記載しました。
+
+- [#2257](https://github.com/bajutsu-e2e/bajutsu/pull/2257) — 単位 5。`video`、`deviceLog`、`appTrace` の capability を追加し、ドライバごとに宣言しました。XCUITest バックエンドは simctl で 3 種すべてを記録し、adb と Playwright は `video` と `deviceLog` を記録します。ライブ WebDriver のドライバはどれも記録しません。simctl が届くのは Simulator だけなので、iOS 実機では `capabilities_for_run` が 3 種を外します。`KIND_CAPABILITY` に 3 種を加え、`resolve_evidence_providers` はルートで絞り込んだ capability で actuator を判定するようにしました。プールは skip の理由を `Lease.skipped_captures` に残し、既存のレポート描画に渡します。残すのはシナリオが要求した種別だけです。`network` は actuator のネイティブ機能か、プールが起動するアプリ側のコレクタが供給するので、skip として残しません。デバイスグループのメンバーの lease には、同じデバイスの先行する lease がまだ開示していない種別だけを加えます。これで、グループ全体で 1 つの gap を 1 回だけ開示します。設計の記述を超えた点が 2 つあります。1 つ目に、同一プラットフォームの代替 provider を使えるのは `network` だけにしました。プールが配線できるのは provider のコレクタだけで、provider の記録処理を sink に渡す仕組みはまだないためです。2 つ目に、ルートが記録できない種別は `FileSink` が開始しないようにしました。これで、実機の run が simctl の記録処理を実機に向けることはなくなりました。fake ドライバの環境は何も記録しないので、fake ドライバは 3 種のどれも宣言しません。ルートごとの表を `docs/evidence.md` と `docs/drivers.md`、およびその日本語版に記載しました。
 
 ## 参考
 

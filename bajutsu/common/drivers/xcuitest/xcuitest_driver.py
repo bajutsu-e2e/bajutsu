@@ -110,6 +110,7 @@ class XcuitestDriver:
         )
         | base.DEVICE_CONTROL_ALL
         | base.IOS_PERMISSION_CAPABILITIES
+        | base.SIMCTL_EVIDENCE_CAPABILITIES
     )
 
     def __init__(

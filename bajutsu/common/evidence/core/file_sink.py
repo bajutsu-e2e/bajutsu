@@ -47,8 +47,12 @@ class FileSink:
         provenance: Mapping[str, object] | None = None,
         on_video_start_stall: Callable[[], None] | None = None,
         video_extension: str = "mp4",
+        unavailable: frozenset[str] = frozenset(),
     ) -> None:
         self.udid = udid
+        # Interval kinds this lane's route cannot record (BE-0467), already disclosed as a
+        # `SkippedCapture`; never started, so a simctl recorder is not pointed at a real device.
+        self.unavailable = unavailable
         # The container the recording driver actually writes (`mp4` for simctl/adb, `webm` for
         # Playwright) — the caller derives it from the driver so the reserved filename matches the
         # real bytes (see `_interval_filename`).
@@ -145,6 +149,8 @@ class FileSink:
         started: list[intervals.Interval] = []
         for token in kinds:
             kind = token.partition(".")[0]
+            if kind in self.unavailable:
+                continue
             # An external recorder (simctl, screenrecord, Playwright) writes the file itself, so the
             # sink reserves the path; `finish_scenario_intervals` below closes the loop (BE-0331).
             target = self._writer.reserve(

@@ -14,6 +14,12 @@ class Capability:
     SEMANTIC_TAP = "semanticTap"  # tap directly by id/label (no coordinates; most stable)
     CONDITION_WAIT = "conditionWait"  # native condition waiting
     NETWORK = "network"  # native network monitoring
+    # The whole-scenario interval evidence kinds, one token each (BE-0467). Evidence never decides a
+    # verdict, so a route lacking one records a `SkippedCapture` instead of failing; the token is what
+    # lets `resolve_evidence_providers` name that gap before the sink tries a recorder that cannot run.
+    VIDEO = "video"
+    DEVICE_LOG = "deviceLog"
+    APP_TRACE = "appTrace"
     SCREENSHOT = "screenshot"
     ELEMENTS = "elements"
     MULTI_TOUCH = (

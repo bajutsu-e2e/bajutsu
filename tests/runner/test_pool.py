@@ -2153,13 +2153,101 @@ def test_device_pool_uses_a_resolved_network_fallback(monkeypatch: pytest.Monkey
         available=lambda b: True,
         env_run=lambda *a, **k: "",
         make_driver=lambda actuator, udid: FakeDriver(exchanges=[ex]),
-        evidence_providers=lambda backends, actuator, available: ({"network": "fake"}, {}),
+        evidence_providers=lambda backends, actuator, available, caps: ({"network": "fake"}, {}),
     )
     lz = None
     try:
         lz = lease(_eff(), _scn("a"))
         assert lz.collector_provider == "fake (fallback)"
         assert lz.collector is not None and lz.collector.snapshot() == [ex]
+    finally:
+        if lz is not None:
+            lz.release()
+        shutdown()
+
+
+def test_device_pool_keeps_the_requested_evidence_gaps_on_the_lease(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The fake records no interval evidence, so a scenario asking for video gets that gap on its
+    # lease, disclosed to the report — and only that one: deviceLog was never asked for, and network
+    # comes from the app-side collector the pool started (BE-0467).
+    monkeypatch.setattr(
+        "bajutsu.common.backends.make_driver",
+        lambda actuator, udid: FakeDriver([_el("home", "H"), _el("ok", "OK")]),
+    )
+    lease, shutdown = device_pool(
+        ["UDID-A"],
+        ["fake"],
+        _eff(),
+        tmp_path,
+        network=True,
+        available=lambda b: True,
+        env_run=lambda *a, **k: "",
+    )
+    scenario = Scenario.model_validate(
+        {"name": "a", "steps": [{"tap": {"id": "ok"}, "capture": ["video"]}]}
+    )
+    lz = None
+    try:
+        lz = lease(_eff(), scenario)
+        assert [c.kind for c in lz.skipped_captures] == ["video"]
+        assert "fake" in lz.skipped_captures[0].reason
+        # The sink never starts a recorder for the gap, so no simctl process meets the fake udid.
+        assert lz.sink.start_scenario_intervals("a", ["video"]) == []
+    finally:
+        if lz is not None:
+            lz.release()
+        shutdown()
+
+
+def test_device_pool_discloses_no_gap_for_an_unrequested_kind(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "bajutsu.common.backends.make_driver",
+        lambda actuator, udid: FakeDriver([_el("home", "H"), _el("ok", "OK")]),
+    )
+    lease, shutdown = device_pool(
+        ["UDID-A"],
+        ["fake"],
+        _eff(),
+        Path("runs"),
+        available=lambda b: True,
+        env_run=lambda *a, **k: "",
+    )
+    lz = None
+    try:
+        lz = lease(_eff(), _scn("a"))
+        assert lz.skipped_captures == []
+    finally:
+        if lz is not None:
+            lz.release()
+        shutdown()
+
+
+def test_device_pool_drops_a_network_gap_the_collector_covers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "bajutsu.common.backends.make_driver",
+        lambda actuator, udid: FakeDriver([_el("home", "H"), _el("ok", "OK")]),
+    )
+    lease, shutdown = device_pool(
+        ["UDID-A"],
+        ["fake"],
+        _eff(),
+        Path("runs"),
+        network=True,
+        available=lambda b: True,
+        env_run=lambda *a, **k: "",
+        evidence_providers=lambda backends, actuator, available, caps: ({}, {"network": "none"}),
+    )
+    lz = None
+    try:
+        lz = lease(_eff(), _scn("a"))
+        # The resolver names a network gap, but UDID-A's app-side collector supplies the traffic.
+        assert lz.skipped_captures == []
     finally:
         if lz is not None:
             lz.release()
@@ -2223,7 +2311,7 @@ def test_device_pool_releases_resources_when_launch_fails(monkeypatch: pytest.Mo
         available=lambda b: True,
         env_run=lambda *a, **k: "",
         make_driver=lambda actuator, udid: _Provider(),
-        evidence_providers=lambda backends, actuator, available: ({"network": "fake"}, {}),
+        evidence_providers=lambda backends, actuator, available, caps: ({"network": "fake"}, {}),
     )
     lz = None
     try:

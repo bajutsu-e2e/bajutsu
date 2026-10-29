@@ -301,7 +301,8 @@ def capabilities_for_run(
       disagree. The URL arrives from the `appium` provider's endpoint (BE-0452), which a target's
       `device_provider` carries before any device is acquired, so it is read from there first.
     - **A real device via `runsOn.ios.kind: device`** loses the simctl-backed `DeviceControl`
-      family and the simctl-privacy permission grants (simctl cannot reach a physical device), the
+      family, the simctl-privacy permission grants, and the simctl interval evidence kinds (simctl
+      cannot reach a physical device), the
       same fail-fast the permission preconditions already get in the XCUITest lifecycle (Unit 1). This
       keys on config (`deviceType`), which a udid spec cannot express, so it stays an `eff` check.
 
@@ -334,6 +335,7 @@ def capabilities_for_run(
                 caps
                 - base.DEVICE_CONTROL_ALL
                 - base.IOS_PERMISSION_CAPABILITIES
+                - base.SIMCTL_EVIDENCE_CAPABILITIES
                 - {base.Capability.DEVICE_GROUP}
             )
     return caps
@@ -592,9 +594,18 @@ def make_driver(
     raise ValueError(f"unknown backend: {actuator!r}")
 
 
-# Evidence *kind* -> the capability that supplies it natively (BE-0020). Today only network; a
-# kind whose capability the actuator lacks is filled read-only by a same-platform provider below.
-KIND_CAPABILITY: dict[str, str] = {"network": base.Capability.NETWORK}
+# Evidence *kind* -> the capability that supplies it natively (BE-0020). The interval kinds joined
+# in BE-0467, so a route that cannot record one names the gap instead of the sink silently trying.
+KIND_CAPABILITY: dict[str, str] = {
+    "network": base.Capability.NETWORK,
+    "video": base.Capability.VIDEO,
+    "deviceLog": base.Capability.DEVICE_LOG,
+    "appTrace": base.Capability.APP_TRACE,
+}
+
+# The kinds a same-platform read-only provider can fill: the pool wires a provider's collector into
+# the lease, and nothing yet hands a provider's recorder to the sink, so the rest only skip.
+_FALLBACK_KINDS = frozenset({"network"})
 
 
 def _platform_of(actuator: str, platforms: dict[str, tuple[str, ...]]) -> str | None:
@@ -640,23 +651,30 @@ def resolve_evidence_providers(
     backends: list[str],
     actuator: str,
     available: Callable[[str], bool] = default_available,
+    actuator_caps: frozenset[str] | None = None,
     caps: Callable[[str], frozenset[str]] = capabilities_for,
     platforms: dict[str, tuple[str, ...]] = PLATFORMS,
 ) -> tuple[dict[str, str], dict[str, str]]:
     """Resolve one read-only provider per evidence gap (BE-0020).
 
-    For each kind the actuator lacks natively (its `caps` miss the kind's capability), pick the
-    first eligible same-platform provider that advertises it. Returns ``(providers, skipped)``:
-    ``providers`` maps a gap kind to its provider actuator; ``skipped`` maps a gap kind with no
-    provider to a recorded reason (graceful degradation, never a run failure).
+    For each kind the actuator lacks natively (its capabilities miss the kind's capability), pick
+    the first eligible same-platform provider that advertises it, for a kind a provider can fill.
+    `actuator_caps` is the actuator's set on this run's route, as `capabilities_for_run` narrows it
+    (a real iOS device records no simctl evidence, BE-0467); it defaults to the static
+    `caps(actuator)`. Returns ``(providers, skipped)``: ``providers`` maps a gap kind to its
+    provider actuator; ``skipped`` maps a gap kind with no provider to a recorded reason (graceful
+    degradation, never a run failure).
     """
-    actuator_caps = caps(actuator)
+    native = caps(actuator) if actuator_caps is None else actuator_caps
     providers = evidence_backends(backends, actuator, available, platforms)
     chosen: dict[str, str] = {}
     skipped: dict[str, str] = {}
     for kind, capability in KIND_CAPABILITY.items():
-        if capability in actuator_caps:
+        if capability in native:
             continue  # the actuator supplies it natively — no fallback needed
+        if kind not in _FALLBACK_KINDS:
+            skipped[kind] = f"the {actuator} backend cannot record {kind} on this route"
+            continue
         provider = next((b for b in providers if capability in caps(b)), None)
         if provider is not None:
             chosen[kind] = provider

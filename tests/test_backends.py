@@ -32,9 +32,11 @@ _PLATFORMS = {"multi": ("lean", "rich"), "web": ("playwright",), "fake": ("fake"
 
 
 def _caps(actuator: str) -> frozenset[str]:
-    # `lean`/`fake` have no native network; `rich`/`playwright` do.
+    # `lean`/`fake` have no native network; `rich`/`playwright` do. Every one records the interval
+    # kinds, so these tests isolate the network fallback (the interval gaps have their own below).
     network = frozenset({base.Capability.NETWORK})
-    return network if actuator in ("rich", "playwright") else frozenset()
+    recorded = base.SIMCTL_EVIDENCE_CAPABILITIES
+    return recorded | network if actuator in ("rich", "playwright") else recorded
 
 
 # --- BE-0020: read-only evidence fallback resolution (pure layer) ---
@@ -105,6 +107,29 @@ def test_resolve_skips_an_unavailable_provider() -> None:
         ["multi"], "lean", available=lambda b: b != "rich", caps=_caps, platforms=_PLATFORMS
     )
     assert chosen == {} and "network" in skipped
+
+
+def test_resolve_skips_an_interval_kind_rather_than_borrowing_a_provider() -> None:
+    # `rich` records video, but nothing hands a provider's recorder to the sink, so a lean actuator's
+    # missing video is disclosed as a gap instead of resolved to a provider that would record nothing.
+    def caps(actuator: str) -> frozenset[str]:
+        return _caps(actuator) - ({base.Capability.VIDEO} if actuator == "lean" else set())
+
+    chosen, skipped = resolve_evidence_providers(
+        ["multi"], "lean", available=lambda b: True, caps=caps, platforms=_PLATFORMS
+    )
+    assert chosen == {"network": "rich"}
+    assert skipped == {"video": "the lean backend cannot record video on this route"}
+
+
+def test_resolve_judges_the_actuator_by_its_route_capabilities() -> None:
+    # The route-narrowed set (a real iOS device has no simctl evidence) overrides the static one.
+    route = _caps("playwright") - base.SIMCTL_EVIDENCE_CAPABILITIES
+    chosen, skipped = resolve_evidence_providers(
+        ["web"], "playwright", lambda b: True, route, caps=_caps, platforms=_PLATFORMS
+    )
+    assert chosen == {}
+    assert set(skipped) == {"video", "deviceLog", "appTrace"}
 
 
 def test_network_seeded_fake_is_a_readonly_evidence_provider() -> None:
@@ -523,6 +548,8 @@ def test_capabilities_for_run_drops_simctl_backed_caps_on_a_real_ios_device() ->
     caps = capabilities_for_run("xcuitest", eff)
     assert base.DEVICE_CONTROL_ALL.isdisjoint(caps)
     assert base.IOS_PERMISSION_CAPABILITIES.isdisjoint(caps)
+    # simctl records no video, device log, or app trace off a real device either (BE-0467).
+    assert base.SIMCTL_EVIDENCE_CAPABILITIES.isdisjoint(caps)
     # The on-device capabilities (driven by the XCTest runner, not simctl) survive the narrowing.
     for cap in (
         base.Capability.QUERY,

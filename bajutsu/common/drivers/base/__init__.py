@@ -40,6 +40,7 @@ from ._shared import (
     MAX_REDIRECT_CANDIDATES,
     OS_BACK_BUTTON,
     PERMISSION_SERVICES,
+    SIMCTL_EVIDENCE_CAPABILITIES,
     Frame,
     Point,
 )
@@ -91,6 +92,7 @@ __all__ = [
     "MAX_REDIRECT_CANDIDATES",
     "OS_BACK_BUTTON",
     "PERMISSION_SERVICES",
+    "SIMCTL_EVIDENCE_CAPABILITIES",
     "AlertPacing",
     "AlertResolvingTarget",
     "AmbiguousSelector",
