@@ -52,6 +52,14 @@ def test_parse_kind_flag_dedupes_in_order() -> None:
     assert parse_kind_flag(" device , simulator,device,") == ["device", "simulator"]
 
 
+@pytest.mark.parametrize("value", [",", " ", ",,"])
+def test_parse_kind_flag_rejects_a_value_naming_no_kind(
+    value: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert _exit_code(lambda: parse_kind_flag(value)) == 2
+    assert "names no kind" in capsys.readouterr().out
+
+
 def test_parse_kind_flag_rejects_an_unknown_kind(capsys: pytest.CaptureFixture[str]) -> None:
     assert _exit_code(lambda: parse_kind_flag("simulator,emulator")) == 2
     assert "unknown --kind 'emulator': use one of simulator, device" in capsys.readouterr().out
@@ -189,18 +197,14 @@ def test_commands_refuse_a_kind_the_target_does_not_declare(
     assert message in r.output
 
 
-def test_run_refuses_kind_across_two_ios_targets(tmp_path: Path) -> None:
+def test_run_refuses_kind_across_two_ios_targets(capsys: pytest.CaptureFixture[str]) -> None:
     # The flag narrows the command's own target, so a second iOS target would keep its kinds unsaid.
-    cfg = _config(tmp_path)
-    cfg.write_text(
-        cfg.read_text(encoding="utf-8") + "  other: { platform: ios, app: { id: com.y } }\n",
-        encoding="utf-8",
+    from bajutsu.run.cli import _reject_kind_across_targets
+
+    effs = {"both": _ios(_BOTH), "other": _ios(), "site": _web("chromium")}
+    _reject_kind_across_targets(effs, kind="")
+    _reject_kind_across_targets({"both": effs["both"], "site": effs["site"]}, kind="device")
+    assert _exit_code(lambda: _reject_kind_across_targets(effs, kind="device")) == 2
+    assert "--kind applies to a run's single iOS target, but this run declares 2: both, other" in (
+        capsys.readouterr().out
     )
-    scenario = tmp_path / "pair.yaml"
-    scenario.write_text(
-        "scenarios:\n  - name: pair\n    targets: [both, other]\n    steps: []\n", encoding="utf-8"
-    )
-    argv = ["run", "--target", "both", "--kind", "device", "--scenario", str(scenario)]
-    r = invoke(runner, app, [*argv, "--config", str(cfg)])
-    assert r.exit_code == 2, r.output
-    assert "--kind applies to a run's single iOS target, but this run declares 2" in r.output

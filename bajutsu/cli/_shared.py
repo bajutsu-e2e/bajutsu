@@ -43,7 +43,6 @@ from bajutsu.common.config import (
     load_config_file,
     resolve,
     web_engine,
-    xcuitest_targets_real_device,
 )
 from bajutsu.common.config.schema.platform.ios import IosKind
 from bajutsu.common.config.schema.platform.web import WebBrowser
@@ -542,10 +541,14 @@ def parse_kind_flag(value: str, *, single: bool = False) -> list[str]:
         single: The command never multiplies runs (`record`, `crawl`, `repl`), so it takes one kind.
 
     Raises:
-        typer.Exit: An entry is not a known kind, or *single* and more than one is named (exit 2).
+        typer.Exit: The value names no kind, an entry is not a known kind, or *single* and more than
+            one is named (exit code 2).
     """
     kinds = list(dict.fromkeys(k.strip() for k in value.split(",") if k.strip()))
     allowed = get_args(IosKind)
+    if not kinds:
+        typer.echo(f"--kind {value!r} names no kind: use one of {', '.join(allowed)}")
+        raise typer.Exit(2)
     for kind in kinds:
         if kind not in allowed:
             typer.echo(f"unknown --kind {kind!r}: use one of {', '.join(allowed)}")
@@ -578,11 +581,10 @@ def _resolve_kind(eff: Effective, kind: str, *, single: bool = False) -> Effecti
     if eff.platform != "ios":
         typer.echo(f"--kind is iOS-only; target '{eff.target}' runs on {eff.platform}")
         raise typer.Exit(2)
+    from bajutsu.run.device_matrix import driven_kind, select_kinds
+
     listed = eff.conditions.get("kind")
-    if isinstance(listed, list):
-        declared = list(listed)
-    else:
-        declared = ["device" if xcuitest_targets_real_device(eff) else "simulator"]
+    declared = list(listed) if isinstance(listed, list) else [driven_kind(eff) or "simulator"]
     missing = [k for k in kinds if k not in declared]
     if missing:
         typer.echo(
@@ -590,8 +592,6 @@ def _resolve_kind(eff: Effective, kind: str, *, single: bool = False) -> Effecti
             f"{', '.join(declared)}"
         )
         raise typer.Exit(2)
-    from bajutsu.run.device_matrix import select_kinds
-
     return select_kinds(eff, kinds)
 
 
