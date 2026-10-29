@@ -301,7 +301,8 @@ def _device_reader(
 class _DeviceRead(Protocol):
     """A real-device token reader that reports a failed read through *on_error*."""
 
-    def __call__(self, *, on_error: Callable[[str], None]) -> set[str]: ...
+    def __call__(self, *, on_error: Callable[[str], None]) -> set[str]:
+        """The tokens read now; a failed read reports through *on_error* and returns none."""
 
 
 # How often a worker re-reads its real devices; a device plugged in or out routes within this long.
