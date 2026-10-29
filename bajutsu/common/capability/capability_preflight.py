@@ -374,6 +374,22 @@ def unsupported(scenario: Scenario, capabilities: Set[str]) -> list[str]:
     return reasons
 
 
+def requirements(scenario: Scenario) -> dict[str, list[str]]:
+    """Every capability `scenario` needs, mapped to the constructs that need it (BE-0467).
+
+    The positive form of `unsupported`: the same baseline and requirement table, read as "what a
+    backend must advertise" rather than "what this backend lacks", so serve's dispatch routes a job by
+    exactly the set the run preflight will judge. A baseline capability maps to "running".
+    """
+    needs: dict[str, list[str]] = {cap: ["running"] for cap in _BASELINE}
+    for req in _REQUIREMENTS:
+        if locations := req.locations(scenario):
+            needs.setdefault(req.capability, []).extend(
+                f"{path}: {req.label}" for path in locations
+            )
+    return needs
+
+
 # --- The worker capability check (BE-0450) -------------------------------------------------------
 #
 # `unsupported()` answers "can this driver perform this step?"; the functions below answer "can this

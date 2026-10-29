@@ -221,6 +221,7 @@ def _advertised_capabilities(
     """
     from bajutsu.common.backends import current_host_os
     from bajutsu.common.capability.capability_preflight import filter_actuators
+    from bajutsu.common.capability.route_tokens import advertised_route_tokens, worker_routes
     from bajutsu.common.capability.worker_capability import load_worker_capability
     from bajutsu.common.deprecations import warn_worker_capabilities
 
@@ -246,8 +247,14 @@ def _advertised_capabilities(
                 param_hint="--platform",
             )
         # The grid owns the device and its host, so a job routed here requires the environment
-        # alone (BE-0452); advertising more would only let a stray local job match.
-        return [environment_capability(APPIUM)]
+        # alone (BE-0452); advertising more would only let a stray local job match. What the live
+        # route can run and apply rides along (BE-0467), and only a grid job ever names that route.
+        return sorted(
+            {
+                environment_capability(APPIUM),
+                *advertised_route_tokens(worker_routes((), appium=True)),
+            }
+        )
     if not cap.is_local:
         if platform:
             raise typer.BadParameter(
@@ -268,15 +275,20 @@ def _advertised_capabilities(
         )
     # The same rule as `run`'s actuator selection: a Linux machine started with the default `ios`
     # stops here with the reason, rather than idling on jobs it could never start (BE-0450).
+    drivable: list[str] = []
     for p in platforms:
         kept, reasons = filter_actuators(PLATFORMS[p], cap, machine)
         if not kept:
             raise typer.BadParameter(f"{p}: {'; '.join(reasons)}", param_hint="--platform")
+        drivable += kept
     return sorted(
         worker_capabilities(
             platforms,
             override=override,
             run=simctl.real_run if "ios" in platforms else None,
+            # One token set per route the kept drivers drive (BE-0467), the real-device route too
+            # when worker.yaml says this Mac drives attached iPhones.
+            routes=worker_routes(drivable, real_devices=cap.real_devices),
         )
         | {host_token}
     )

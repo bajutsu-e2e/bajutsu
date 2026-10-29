@@ -357,6 +357,64 @@ def target_capabilities(config_path: Path, target: str, backend: str = "") -> li
     return required_capabilities(eff.platform, host=required_host(resolve_actuators(backends)))
 
 
+def scenario_route_needs(
+    config_path: Path,
+    target: str,
+    backend: str,
+    text: str | None,
+    directory: Path | None,
+    *,
+    tags: str = "",
+    exclude: str = "",
+    grid: bool = False,
+) -> dict[str, list[str]]:
+    """The `cap:` / `setting:` tokens a run of scenario *text* needs, each with why (BE-0467).
+
+    Read from the scenario and the target config the way the run preflight reads them, so the job
+    reaches only a worker whose routes can run every step and apply every setting it needs.
+
+    Empty when there is no text to read (an override's scenarios travel unopened) or it does not
+    load, so such a job routes on its platform and host as before; the run preflight still judges it.
+
+    Args:
+        config_path: The bound config.
+        target: The run's `--target`.
+        backend: The run's checked `--backend`.
+        text: The scenario file's text, or None when the server cannot read it.
+        directory: The dir its file refs resolve in; None resolves none (server storage).
+        tags: The run's `--tag` selection, comma separated.
+        exclude: The run's `--exclude` selection, comma separated.
+        grid: Whether the run goes to an Appium grid, which puts its iOS targets on the live route.
+    """
+    if text is None:
+        return {}
+    import tempfile
+
+    from bajutsu.common.target_lint import TargetRequired, required_route_tokens
+
+    try:
+        config = _load_config_cached(config_path)
+    except (OSError, ValueError):
+        return {}
+    with tempfile.TemporaryDirectory() as empty:
+        # An empty root keeps a file ref of a storage-backed scenario from reaching a host path.
+        root = directory or Path(empty)
+        try:
+            return required_route_tokens(
+                text,
+                root / "scenario.yaml",
+                lambda name: resolve(config, name),
+                target,
+                root=root,
+                backend=backend,
+                tags=[t.strip() for t in tags.split(",") if t.strip()],
+                exclude=[t.strip() for t in exclude.split(",") if t.strip()],
+                grid=grid,
+            )
+        except (TargetRequired, KeyError, OSError, ValueError):
+            return {}
+
+
 def request_backend_error(config_path: Path, target: str, backend: str) -> str | None:
     """Why a request's *backend* cannot drive *target*, or None (BE-0452).
 

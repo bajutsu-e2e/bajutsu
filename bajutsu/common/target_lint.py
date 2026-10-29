@@ -14,7 +14,7 @@ backend names, the one `run` selects when every actuator is available.
 from __future__ import annotations
 
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -64,9 +64,15 @@ class TargetFinding:
     line: int | None = None
 
 
-def offline_actuator(eff: Effective) -> str | None:
-    """The actuator a run of *eff* selects when every one is available, or None for none yet."""
-    return next((a for a in resolve_actuators(eff.backend) if a in IMPLEMENTED), None)
+def offline_actuator(eff: Effective, backends: Sequence[str] | None = None) -> str | None:
+    """The actuator a run of *eff* selects when every one is available, or None for none yet.
+
+    Args:
+        eff: The target's effective config.
+        backends: The backend list in force (a checked `--backend`); the target's own if None.
+    """
+    tokens = list(eff.backend if backends is None else backends)
+    return next((a for a in resolve_actuators(tokens) if a in IMPLEMENTED), None)
 
 
 def lint_against_targets(
@@ -91,11 +97,102 @@ def lint_against_targets(
         OSError: A referenced component or CSV cannot be read.
         ValueError: A component or data ref does not expand.
     """
-    from bajutsu.common.runner.pipeline import with_lifecycle_phases
-
     expanded = load_expanded_scenarios(path, root, text=text)
     lines = _step_lines(text, path, root, expanded)
     findings: list[TargetFinding] = []
+    for plan in _plans(expanded, effective, target):
+        s = plan.scenario
+        findings += [
+            TargetFinding(scenario=s.name, target=", ".join(plan.effs), message=problem)
+            for problem in check_preconditions(s.preconditions, list(plan.effs.values()))
+        ]
+        step_lines = lines.get(declared_name(s.name))
+        for name, eff in plan.effs.items():
+            findings += _target_findings(
+                plan.folded,
+                name,
+                eff,
+                routed=plan.declared,
+                grouped=name in plan.grouped,
+                step_lines=step_lines,
+            )
+    return findings
+
+
+def required_route_tokens(
+    text: str,
+    path: Path,
+    effective: Callable[[str], Effective],
+    target: str,
+    *,
+    root: Path | None = None,
+    backend: str = "",
+    tags: Sequence[str] = (),
+    exclude: Sequence[str] = (),
+    grid: bool = False,
+) -> dict[str, list[str]]:
+    """The `cap:` and `setting:` tokens a job running *path* needs, each with what needs it (BE-0467).
+
+    serve routes the job by these, so it reaches only a worker whose routes can run every step and
+    apply every setting it puts in effect — the same two checks the run preflight makes.
+
+    Args:
+        text: The scenario file's content.
+        path: Where the file lives (or would): its component and data refs resolve beside it.
+        effective: Resolves a target name to its effective config.
+        target: The job's `--target`, which a scenario declaring no `targets` runs on.
+        root: The containment root for component and data refs; the file's own directory if None.
+        backend: The job's checked `--backend`; a fake backend has no route and needs no token.
+        tags: The job's `--tag` selection; empty runs every scenario.
+        exclude: The job's `--exclude` selection.
+        grid: Whether the job runs on an Appium grid, which puts its iOS targets on the live route.
+
+    Raises:
+        OSError: A referenced component or CSV cannot be read.
+        ValueError: The file does not load or expand.
+    """
+    from bajutsu.common.backends import backend_override
+    from bajutsu.common.capability.route_tokens import target_route_needs
+    from bajutsu.common.scenario import select_scenarios
+
+    expanded = load_expanded_scenarios(path, root, text=text)
+    if tags or exclude:
+        expanded = select_scenarios(expanded, list(tags), list(exclude))
+    needs: dict[str, list[str]] = {}
+    for plan in _plans(expanded, effective, target):
+        for name, eff in plan.effs.items():
+            actuator = offline_actuator(eff, backend_override(backend, eff.backend))
+            for token, why in target_route_needs(
+                plan.folded,
+                name,
+                actuator,
+                eff,
+                routed=plan.declared,
+                grouped=name in plan.grouped,
+                grid=grid,
+            ).items():
+                needs.setdefault(token, []).extend(f"{plan.scenario.name}: {w}" for w in why)
+    return needs
+
+
+@dataclass(frozen=True)
+class _Plan:
+    """One expanded scenario with the targets it runs on, as the run resolves them."""
+
+    scenario: Scenario
+    folded: Scenario  # with the targets' lifecycle hooks folded in
+    effs: dict[str, Effective]
+    declared: bool
+    grouped: frozenset[str]
+
+
+def _plans(
+    expanded: list[Scenario], effective: Callable[[str], Effective], target: str | None
+) -> list[_Plan]:
+    """Each scenario paired with its declared targets, or *target* for one declaring none."""
+    from bajutsu.common.runner.pipeline import with_lifecycle_phases
+
+    plans: list[_Plan] = []
     for s in expanded:
         names = list(s.target_names) or ([target] if target else [])
         if not names:
@@ -105,17 +202,9 @@ def lint_against_targets(
         effs = {name: effective(name) for name in names}
         declared = bool(s.target_names)
         folded = with_lifecycle_phases(effs[names[0]], [s], effs if declared else None)[0]
-        findings += [
-            TargetFinding(scenario=s.name, target=", ".join(names), message=problem)
-            for problem in check_preconditions(s.preconditions, list(effs.values()))
-        ]
-        grouped = {n for g in s.device_groups if len(g) >= 2 for n in g}
-        step_lines = lines.get(declared_name(s.name))
-        for name, eff in effs.items():
-            findings += _target_findings(
-                folded, name, eff, routed=declared, grouped=name in grouped, step_lines=step_lines
-            )
-    return findings
+        grouped = frozenset(n for g in s.device_groups if len(g) >= 2 for n in g)
+        plans.append(_Plan(s, folded, effs, declared, grouped))
+    return plans
 
 
 def _target_findings(

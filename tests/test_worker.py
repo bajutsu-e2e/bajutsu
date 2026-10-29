@@ -327,7 +327,9 @@ def test_advertised_capabilities_splits_platforms_and_falls_back_to_env(
     # override from the env. worker_capabilities is patched so the test never shells out to simctl.
     seen: dict[str, Any] = {}
 
-    def record(platforms: Any, *, override: Any = None, run: Any = None) -> set[str]:
+    def record(
+        platforms: Any, *, override: Any = None, run: Any = None, routes: Any = ()
+    ) -> set[str]:
         seen["platforms"] = list(platforms)
         seen["override"] = override
         return {"platform:ios", "platform:web"}

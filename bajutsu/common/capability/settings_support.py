@@ -160,9 +160,18 @@ def settings_support(
     route = route_for(actuator, eff, udid_spec)
     if route is None or actuator is None:
         return dict.fromkeys(SETTING_KEYS, _S)
-    from bajutsu.common.backends import capabilities_for_run
+    return route_settings(route)
 
-    caps = capabilities_for_run(actuator, eff, udid_spec)
+
+def route_settings(route: Route) -> dict[str, SettingSupport]:
+    """How *route* handles each setting key, with no target config to read (BE-0467).
+
+    serve's dispatch reads this to advertise the settings a worker's routes can apply before any
+    target is resolved; `settings_support` answers a resolved target through it.
+    """
+    from bajutsu.common.backends import capabilities_for_route
+
+    caps = capabilities_for_route(route)
     permissions: dict[str, SettingSupport] = {
         f"{_PERMISSION_PREFIX}{service}": (
             _S if base.permission_capability(service) in caps else _U

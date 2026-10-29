@@ -19,6 +19,14 @@ import re
 from collections.abc import Callable, Iterable
 
 from bajutsu.common.backend_cli import simctl as _simctl
+from bajutsu.common.capability.route_tokens import (
+    UNCHECKED_PROVENANCE_KEY,
+    UNCHECKED_PROVENANCE_VALUE,
+    advertised_route_tokens,
+    is_route_token,
+    token_route,
+)
+from bajutsu.common.capability.settings_support import Route
 from bajutsu.common.capability.worker_capability import (
     ENVIRONMENT_ROUTING_PREFIX,
     HOST_ROUTING_PREFIX,
@@ -143,8 +151,8 @@ def required_host(
 
 
 def reserved_tokens(tokens: Iterable[str]) -> list[str]:
-    """The tokens among *tokens* that carry a reserved ``environment:``, ``host:``, or ``machine:``
-    prefix, sorted."""
+    """The tokens among *tokens* that carry a reserved routing prefix (``environment:``, ``host:``,
+    ``machine:``, ``cap:``, ``setting:``), sorted."""
     return reserved_routing_tokens(tokens)
 
 
@@ -189,7 +197,54 @@ def can_serve(required: Iterable[str], advertised: Iterable[str]) -> bool:
     environments = {t for t in offered if t.startswith(ENVIRONMENT_PREFIX)}
     if environments and not environments & needed:
         return False
+    if not checks_routes(offered):
+        # A worker from before BE-0467 advertises no `cap:` / `setting:` token, so it is matched on
+        # the other tokens alone: an upgrade never strands a queue. The lease records on the job that
+        # such a worker ran it (`UNCHECKED_PROVENANCE`).
+        needed = {t for t in needed if not is_route_token(t)}
     return needed <= offered
+
+
+# What a lease stamps on the job's provenance when a worker from before BE-0467 takes a job that needs
+# route tokens: the run's report then shows that its settings went unchecked (`report_notices`).
+UNCHECKED_PROVENANCE: dict[str, str] = {UNCHECKED_PROVENANCE_KEY: UNCHECKED_PROVENANCE_VALUE}
+
+
+def unchecked_lease(required: Iterable[str], advertised: Iterable[str]) -> bool:
+    """Whether a worker advertising *advertised* serves *required* without its route tokens."""
+    return any(is_route_token(t) for t in required) and not checks_routes(advertised)
+
+
+def checks_routes(advertised: Iterable[str]) -> bool:
+    """Whether a worker advertising *advertised* routes by `cap:` / `setting:` tokens (BE-0467)."""
+    return any(is_route_token(t) for t in advertised)
+
+
+def route_refusal(required: Iterable[str], live: Iterable[Iterable[str]]) -> list[str] | None:
+    """The route tokens no live worker driving the job's routes advertises, or None to queue it.
+
+    A job whose routes no live worker drives stays queued, so a submission during a cold start or a
+    worker restart is never refused. Refusal needs a live worker that does drive one of those routes
+    and lacks a route token the job needs, with no live worker able to serve the job at all — a
+    worker from before BE-0467 still serves it on today's tokens.
+
+    Returns:
+        The missing tokens of the closest such worker, sorted; None when the job should queue.
+    """
+    needed = set(required)
+    routes = {token_route(t) for t in needed if is_route_token(t)}
+    workers = [set(adv) for adv in live]
+    if not routes or any(can_serve(needed, adv) for adv in workers):
+        return None
+    drivers = [adv for adv in workers if any(token_route(t) in routes for t in adv)]
+    gaps: list[set[str]] = [{t for t in needed if is_route_token(t)} - adv for adv in drivers]
+    if not gaps or not all(gaps):
+        return None
+    closest = gaps[0]
+    for gap in gaps[1:]:
+        if len(gap) < len(closest):
+            closest = gap
+    return sorted(closest)
 
 
 def worker_capabilities(
@@ -197,6 +252,7 @@ def worker_capabilities(
     *,
     override: str | None = None,
     run: _simctl.RunFn | None = None,
+    routes: Iterable[Route] = (),
 ) -> set[str]:
     """Assemble the capability set a worker advertises.
 
@@ -209,8 +265,11 @@ def worker_capabilities(
         run: A `simctl` runner. When given, the installed Simulator inventory contributes ``iosNN``
             runtime and ``iphone``/``ipad`` device-class tokens (`simctl_capabilities`); omit it on a
             worker with no Simulators (e.g. the web container).
+        routes: The environment routes the worker drives (`worker_routes`); each adds its
+            ``cap:`` and ``setting:`` tokens (BE-0467).
     """
     caps = {platform_capability(p) for p in platforms if p}
+    caps |= advertised_route_tokens(routes)
     caps |= parse_capabilities(override)
     if run is not None:
         caps |= simctl_capabilities(run)

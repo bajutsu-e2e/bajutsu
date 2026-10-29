@@ -21,6 +21,7 @@ from typing import Any, cast
 import yaml
 
 from bajutsu.common.assertions import AssertionResult, VisualEvidence
+from bajutsu.common.capability.route_tokens import report_notices
 from bajutsu.common.drivers.actuation import Actuation
 from bajutsu.common.drivers.base import Frame, Point
 from bajutsu.common.evidence import Artifact
@@ -372,6 +373,7 @@ def rerender_html(run_dir: Path) -> str:
         m.source_name,
         m.description,
         not_applicable=m.not_applicable,
+        notices=report_notices(m.provenance),
     )
 
 
