@@ -180,7 +180,17 @@ def _environment_panel(r: RunResult) -> dict[str, Any]:
         rows = _device_rows(r.backend, r.device_name, r.device_runtime, r.device)
         sim = [{"name": "", "rows": rows}] if rows else []
     skips = [{"kind": sc.kind, "reason": sc.reason} for sc in r.skipped_captures]
-    return {"kind": "env", "key": "env", "label": "Environment", "sim": sim, "skips": skips}
+    ignored = [
+        {"target": ig.target, "key": ig.key, "reason": ig.reason} for ig in r.ignored_settings
+    ]
+    return {
+        "kind": "env",
+        "key": "env",
+        "label": "Environment",
+        "sim": sim,
+        "skips": skips,
+        "ignored": ignored,
+    }
 
 
 def _network_item(d: dict[str, Any], video_anchor_s: float) -> dict[str, Any]:

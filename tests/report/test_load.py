@@ -17,6 +17,7 @@ from bajutsu.common.drivers.actuation import Actuation
 from bajutsu.common.evidence import Artifact
 from bajutsu.common.orchestrator import (
     AlertEvent,
+    IgnoredSetting,
     RunResult,
     SkippedCapture,
     StepOutcome,
@@ -93,6 +94,7 @@ def _result() -> RunResult:
             Actuation(gesture="systemAlert", via="handle", unit="point", target="alert.dismiss")
         ],
         skipped_captures=[SkippedCapture("video", "no eligible backend")],
+        ignored_settings=[IgnoredSetting("device", "erase", "keeps app data")],
     )
 
 
@@ -105,9 +107,9 @@ def test_round_trip_through_manifest_is_lossless() -> None:
 
 def test_manifest_carries_schema_version_and_source_name() -> None:
     data = manifest_dict("r1", [_result()], source_name="smoke.yaml")
-    # bumped for a step's non-fatal warnings (v16, BE-0474), after the run matrix of a run's
-    # `runsOn` coordinates (v15, BE-0452)
-    assert data["schemaVersion"] == 16
+    # bumped for a scenario's ignored settings (v17, BE-0467), after a step's non-fatal warnings
+    # (v16, BE-0474)
+    assert data["schemaVersion"] == 17
     assert data["sourceName"] == "smoke.yaml"
 
 

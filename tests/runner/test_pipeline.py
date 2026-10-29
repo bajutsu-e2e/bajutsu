@@ -19,7 +19,12 @@ from bajutsu.common.drivers import base, tracing
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.evidence import NullSink
 from bajutsu.common.evidence.network import NetworkExchange, ScreenTransition
-from bajutsu.common.orchestrator import RunResult, sanitize_source_stem, scenario_slug
+from bajutsu.common.orchestrator import (
+    IgnoredSetting,
+    RunResult,
+    sanitize_source_stem,
+    scenario_slug,
+)
 from bajutsu.common.orchestrator.types._functions import _MAX_SLUG_CHARS
 from bajutsu.common.report.format import video_seconds
 from bajutsu.common.runner import Lease, run_all, run_and_report, run_matrix_and_report
@@ -1675,6 +1680,81 @@ def test_a_declared_setting_passes_the_preflight() -> None:
     results = run_all(device, scenarios, lease, actuator="xcuitest")
     assert leased == ["e"]
     assert "unsupported on backend" not in (results[0].failure or "")
+    # The report names what the run went without (BE-0467 unit 4); the verdict does not read it.
+    assert results[0].ignored_settings == [
+        IgnoredSetting(target=device.target, key="erase", reason="keeps app data")
+    ]
+
+
+def _device_ignoring_erase() -> Effective:
+    device = _ios_eff(xcuitest=XcuitestConfig(testRunner="Runner.xctestrun", deviceType="device"))
+    return replace(
+        device, run_defaults=replace(device.run_defaults, ignored_settings={"erase": "x"})
+    )
+
+
+def _erasing_scenario() -> Scenario:
+    return Scenario.model_validate(
+        {"name": "e", "preconditions": {"run": {"erase": True}}, "steps": [{"tap": {"id": "ok"}}]}
+    )
+
+
+def test_a_per_scenario_actuator_judges_the_ignored_settings() -> None:
+    # BE-0240's resolver picks the scenario's actuator, and that route decides what was ignored.
+    device = _device_ignoring_erase()
+    results = run_all(device, [_erasing_scenario()], _lease, resolve_actuator=lambda s: "xcuitest")
+    assert results[0].ignored_settings == [
+        IgnoredSetting(target=device.target, key="erase", reason="x")
+    ]
+
+
+def test_a_scenario_that_crashes_every_attempt_still_lists_its_ignored_settings() -> None:
+    # Each attempt launched without the declared setting, so the failed result must say so.
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
+        return Lease(
+            driver=_crashing_driver(),
+            sink=NullSink(),
+            relaunch=None,
+            control=None,
+            collector=None,
+            release=lambda: None,
+        )
+
+    device = _device_ignoring_erase()
+    results = run_all(device, [_erasing_scenario()], lease, actuator="xcuitest", crash_retries=1)
+    assert not results[0].ok
+    assert results[0].ignored_settings == [
+        IgnoredSetting(target=device.target, key="erase", reason="x")
+    ]
+
+
+def test_a_scenario_whose_every_lease_bring_up_crashes_still_lists_its_ignored_settings() -> None:
+    # Each environment drops an ignored setting before any launch work that can crash (BE-0467).
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
+        raise base.BackendCrashError("runner crashed during launch (test)")
+
+    device = _device_ignoring_erase()
+    results = run_all(device, [_erasing_scenario()], lease, actuator="xcuitest", crash_retries=1)
+    assert not results[0].ok
+    assert results[0].ignored_settings == [
+        IgnoredSetting(target=device.target, key="erase", reason="x")
+    ]
+
+
+def test_a_scenario_refused_before_any_lease_records_no_ignored_setting() -> None:
+    # A declared `erase` is ignored only by a launch; a scenario the preflight refuses never launched.
+    scenarios = [
+        Scenario.model_validate(
+            {
+                "name": "e",
+                "preconditions": {"run": {"erase": True}},
+                "steps": [{"selectOption": {"sel": {"id": "m"}, "option": "x"}}],
+            }
+        )
+    ]
+    results = run_all(_device_ignoring_erase(), scenarios, _lease, actuator="xcuitest")
+    assert not results[0].ok
+    assert results[0].ignored_settings == []
 
 
 def _routed_pair() -> dict[str, TargetPool]:
@@ -1734,6 +1814,8 @@ def test_a_scenario_launch_env_fails_a_web_target_unless_it_is_ignored() -> None
     pair = {**_routed_pair(), "site": TargetPool(site, _lease, "playwright")}
     passed = run_all(_eff(), [scenario], _lease, targets=pair)[0]
     assert "unsupported on backend" not in (passed.failure or "")
+    # Recorded against the target that declared it, not the primary.
+    assert passed.ignored_settings == [IgnoredSetting(target="site", key="launchEnv", reason="x")]
 
 
 def test_a_stale_declaration_fails_every_scenario_on_its_target() -> None:

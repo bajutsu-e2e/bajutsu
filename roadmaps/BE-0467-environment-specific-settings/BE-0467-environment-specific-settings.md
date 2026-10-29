@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0467") |
-| Implementing PR | [#2249](https://github.com/bajutsu-e2e/bajutsu/pull/2249) (units 1–3) |
+| Implementing PR | [#2249](https://github.com/bajutsu-e2e/bajutsu/pull/2249) (units 1–3), [#2254](https://github.com/bajutsu-e2e/bajutsu/pull/2254) (unit 4) |
 | Topic | Platform support |
 | Related | [BE-0082](../BE-0082-capability-preflight-check/BE-0082-capability-preflight-check.md), [BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues.md), [BE-0238](../BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md), [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md), [BE-0457](../BE-0457-real-device-step-lint/BE-0457-real-device-step-lint.md) |
 <!-- /BE-METADATA -->
@@ -278,7 +278,7 @@ environments genuinely differ.
 - [x] Add the settings check to the run preflight, and make each environment apply the `supported`
   settings and raise for an unsupported one that is not ignored, in place of its own conditions and
   silent ignores
-- [ ] Add `RunResult.ignored_settings` and render it in the manifest, HTML, JUnit, and CTRF reports
+- [x] Add `RunResult.ignored_settings` and render it in the manifest, HTML, JUnit, and CTRF reports
 - [ ] Give `video`, `deviceLog`, and `appTrace` a capability each, and keep the evidence skip reasons
   on the lease instead of discarding them in `pool.py`
 - [ ] Add `--config` and `--target` to `bajutsu lint`, running the step check, the settings check,
@@ -312,6 +312,18 @@ Log:
   target therefore declares `launchEnv` ignored for `cross_platform_app_web.yaml`. `record`, `crawl`,
   `repl`, and `doctor` report a refused setting as a clean error. Until unit 4 renders it in the report, a launch logs each ignored setting
   as a warning. Documented `run.ignoredSettings` in `docs/configuration.md` and its Japanese mirror.
+
+- [#2254](https://github.com/bajutsu-e2e/bajutsu/pull/2254) — Unit 4. Added `IgnoredSetting` (target, key, reason) and `RunResult.ignored_settings`. The
+  run records each declared target's ignored settings once the scenario launches, a crashed attempt included, judged by
+  the same `check_settings` the preflight ran; a scenario the preflight refuses records none, since
+  no launch dropped anything. The manifest writes it per scenario, the loader reads it back, the HTML
+  report lists it in the Environment panel, JUnit carries a `bajutsu.ignoredSettings` property whose
+  value is a JSON array, and CTRF puts it in the test's `extra` as `ignoredSettings`. One point
+  departs from the design text: the manifest key is `ignored_settings`, not `ignoredSettings`,
+  because every per-scenario manifest field, `skipped_captures` included, is the snake_case
+  `asdict` name the loader reads back. The launch-time warning stays for a lease with no report, such
+  as `record` or `crawl`. Documented the report fields in `docs/reporting.md` and
+  `docs/configuration.md`, with their Japanese mirrors.
 
 ## References
 

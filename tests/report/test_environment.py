@@ -7,6 +7,7 @@ from _report import _passing, _scenarios
 from bajutsu.common.drivers.actuation import Actuation
 from bajutsu.common.orchestrator import (
     AlertEvent,
+    IgnoredSetting,
     RunResult,
     SkippedCapture,
     StepOutcome,
@@ -312,6 +313,23 @@ def test_html_environment_no_sim_with_skips_omits_muted_message() -> None:
     out = html_report("run1", [r])
     assert "no environment details captured" not in out
     assert "skipped evidence" in out
+
+
+def test_html_environment_lists_ignored_settings() -> None:
+    # BE-0467: a setting the target ran without sits beside the environment, with its reason.
+    r = _passing()
+    r.ignored_settings = [IgnoredSetting(target="device", key="erase", reason="keeps app data")]
+    out = html_report("run1", [r])
+    assert "ignored settings" in out
+    assert "keeps app data" in out
+    assert "ignored settings" not in html_report("run1", [_passing()])
+
+
+def test_html_environment_no_sim_with_ignored_settings_omits_muted_message() -> None:
+    r = _passing()
+    r.device = r.device_name = r.device_runtime = r.backend = ""
+    r.ignored_settings = [IgnoredSetting(target="site", key="launchEnv", reason="x")]
+    assert "no environment details captured" not in html_report("run1", [r])
 
 
 def test_html_shows_backend() -> None:

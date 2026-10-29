@@ -26,6 +26,7 @@ from bajutsu.common.drivers.base import Frame, Point
 from bajutsu.common.evidence import Artifact
 from bajutsu.common.orchestrator import (
     AlertEvent,
+    IgnoredSetting,
     RunResult,
     SkippedCapture,
     StepOutcome,
@@ -230,6 +231,9 @@ def _result(d: dict[str, Any]) -> RunResult:
             ),
             "skipped_captures": [
                 SkippedCapture(**_kw(SkippedCapture, c)) for c in d.get("skipped_captures") or []
+            ],
+            "ignored_settings": [
+                IgnoredSetting(**_kw(IgnoredSetting, c)) for c in d.get("ignored_settings") or []
             ],
             "target_devices": _target_devices(d.get("target_devices")),
         }

@@ -36,6 +36,7 @@ from .clock import Clock
 from .derived_secrets import DerivedSecrets, mask_derived_text
 from .device_control import DeviceControl
 from .drained_interruption_events import DrainedInterruptionEvents
+from .ignored_setting import IgnoredSetting
 from .mailbox_reader import MailboxReader
 from .real_clock import RealClock
 from .resolved_alert_rule import ResolvedAlertRule
@@ -63,6 +64,7 @@ __all__ = [
     "DerivedSecrets",
     "DeviceControl",
     "DrainedInterruptionEvents",
+    "IgnoredSetting",
     "MailboxReader",
     "NetworkSource",
     "ProgressFn",

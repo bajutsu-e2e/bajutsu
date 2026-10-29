@@ -57,6 +57,7 @@ from bajutsu.common.orchestrator import (
 from bajutsu.common.orchestrator.evidence_rules import requested_intervals
 from bajutsu.common.orchestrator.types import (
     DerivedSecrets,
+    IgnoredSetting,
     StepGate,
     StepOutcome,
     _no_network,
@@ -368,6 +369,29 @@ class _ScenarioRunner:
             if problems := _settings_problems(pool.actuator, pool.eff, s, pool.udid_spec):
                 return f"unsupported on backend '{pool.actuator}' (target '{name}'): {problems}"
         return None
+
+    def _ignored_settings(self, s: Scenario, actuator: str | None) -> list[IgnoredSetting]:
+        """Every setting *s* puts in effect that a target's route cannot apply and it ignores (BE-0467).
+
+        Judged by the same `check_settings` the preflight ran, so the report names exactly what each
+        launch dropped. Each declared target is judged on its own route; a single-target run on the
+        run's own *actuator* and config.
+        """
+        judged: list[tuple[str, str | None, Effective, str]] = []
+        for name in self._routed(s):
+            pool = self.targets[name]
+            judged.append((name, pool.actuator, pool.eff, pool.udid_spec))
+        if not judged:
+            judged.append((self.eff.target, actuator, self.eff, self.udid_spec))
+        ignored: list[IgnoredSetting] = []
+        for name, target_actuator, eff, udid_spec in judged:
+            pre = resolve_preconditions(eff, s.preconditions)
+            check = check_settings(target_actuator, eff, pre, s.permissions, udid_spec)
+            ignored += [
+                IgnoredSetting(target=name, key=key, reason=reason)
+                for key, reason in check.ignored.items()
+            ]
+        return ignored
 
     def _lease_targets(self, s: Scenario, launch_scenario: Scenario) -> dict[str, Lease]:
         """One live lease per target *s* declares, brought up before its first step runs.
@@ -855,7 +879,7 @@ class _ScenarioRunner:
                         # work, not recovery. A mid-step crash below re-arms the clock.
                         self.run_crash_budget.add_recovery_time(self._now() - recovery_started)
                         recovery_started = None
-                    return self._run_on_lease(lz, others, handler, i, s, sid, derived)
+                    return self._run_on_lease(lz, others, handler, i, s, sid, derived, actuator)
                 except BackendCrashError as crash:
                     # Nothing is released here: `_lease_set` already rolls back its own partial
                     # bring-up, and `_run_on_lease` owns the whole set's release in its `finally`
@@ -1036,6 +1060,9 @@ class _ScenarioRunner:
                 if wanted_video and recovered is None
                 else []
             ),
+            # Every path here follows at least one crash, and that attempt's launch had already
+            # dropped them: `enforce_settings` runs before any launch work (BE-0467).
+            ignored_settings=self._ignored_settings(s, actuator),
         )
 
     def _write_crash_artifacts(
@@ -1356,6 +1383,7 @@ class _ScenarioRunner:
         s: Scenario,
         sid: str,
         derived: DerivedSecrets,
+        actuator: str | None,
     ) -> RunResult:
         """Run one scenario on an already-leased device and return its result.
 
@@ -1538,6 +1566,9 @@ class _ScenarioRunner:
             _record_target_evidence(
                 result, {primary_target: lz, **others}, writer, sid, multi=multi
             )
+            # Only a scenario that reached a lease went without them; one the preflight refused
+            # ignored nothing.
+            result.ignored_settings = self._ignored_settings(s, actuator)
             # Still holding the lease this scenario ran on, before the `finally` below releases it —
             # and genuinely after `run_scenario`, so the tombstone layer's `adb root` can no longer
             # break a channel a later step needs. A plain post-return check, not a new `except`
