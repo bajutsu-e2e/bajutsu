@@ -7,9 +7,9 @@
 |---|---|
 | 提案 | [BE-0468](BE-0468-runson-family-and-any-of-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0468") |
-| 実装 PR | [#2244](https://github.com/bajutsu-e2e/bajutsu/pull/2244)（単位 1）、[#2250](https://github.com/bajutsu-e2e/bajutsu/pull/2250)（単位 2、3）、[#2253](https://github.com/bajutsu-e2e/bajutsu/pull/2253)（単位 4）、[#2256](https://github.com/bajutsu-e2e/bajutsu/pull/2256)（単位 5） |
+| 実装 PR | [#2244](https://github.com/bajutsu-e2e/bajutsu/pull/2244)（単位 1）、[#2250](https://github.com/bajutsu-e2e/bajutsu/pull/2250)（単位 2、3）、[#2253](https://github.com/bajutsu-e2e/bajutsu/pull/2253)（単位 4）、[#2256](https://github.com/bajutsu-e2e/bajutsu/pull/2256)（単位 5）、[#2259](https://github.com/bajutsu-e2e/bajutsu/pull/2259)（単位 6、7） |
 | トピック | Driver & backend architecture |
 <!-- /BE-METADATA -->
 
@@ -345,8 +345,8 @@ run に LLM は入りません。解決は config、引数、プールだけの�
 - [x] ユニット 3: 解決
 - [x] ユニット 4: 引数と起動
 - [x] ユニット 5: レポート
-- [ ] ユニット 6: worker のルーティング
-- [ ] ユニット 7: ドキュメントとデモ
+- [x] ユニット 6: worker のルーティング
+- [x] ユニット 7: ドキュメントとデモ
 
 ### ログ
 
@@ -373,6 +373,14 @@ run に LLM は入りません。解決は config、引数、プールだけの�
   - run のラベル、manifest の `run_coordinates`、フレーキーさのキーは変更していません。どれも run の座標を読み、#2250 から座標には、並べた種類と、ファミリーのリストから選ばれたファミリーが入っているからです。この単位では、それぞれを固定するテストを追加しました。ファミリーのリストの解決結果が異なる 2 台のホストが、別々の履歴になることも確認しています。
   - `doctor` は、`kind` を書かない Simulator だけのターゲットも含め、iOS のすべての run で種類を表示します。どの種類の run かを読み手に推測させないためです。宣言された run（読めるプールがない場合）はラベルだけを表示します。ファミリーを解決していないからです。
   - `docs/cli.md` と日本語版では、`doctor` の条件に `kind` と `family` を加え、新しい行の形を示しました。また、実機では常に宣言された run だけを表示するという記述を改めました。#2250 から、`kind` と `family` だけを条件に持つ実機はプールを読むからです。
+- [#2259](https://github.com/bajutsu-e2e/bajutsu/pull/2259)（単位 6、7）— ターゲットのファミリーでジョブを振り分け、変更をドキュメントとデモに反映しました。
+  - ローカルの iOS worker は、ペアリング済みの実機のファミリーについて `device:iphone` と `device:ipad` を広告します。ファミリーは `ios_device_families` で読みます。`read_ios_device` と同じ devicectl の一覧を読み、lease を試みる際に読み直します。読み直しは 15 秒に 1 回までにとどめ、待機中の worker がポーリングのたびに devicectl を起動しないようにしました。devicectl を読めないホストは、worker を止めずに実機を広告しません。worker はその失敗と、以後に読めた内容の変化をログに残すので、実機が痕跡なく消えることはありません。`device:` は予約済みのルーティング接頭辞に加わり、手書きの `--capabilities` のトークンでは使えません。
+  - ジョブの必要集合には、ターゲットの `runsOn.ios.family` のトークンが加わります。実機の run には `device:` のトークン、Simulator の run には在庫の `iphone` か `ipad` のトークンです。ファミリーの優先順位リストは any-of のグループになり、`can_serve` はその要素のどれか 1 つで条件を満たします。`fake` ドライバに送るリクエストはファミリーのトークンを加えません。このドライバはデバイスを操作しないからです。
+  - 設計からのずれ：any-of のグループは、専用のフィールドではなく、ジョブの既存の capability のリストに `anyof:<token>|<token>` という 1 つのトークンとして保存します。lease、振り分け先のないジョブの数え上げ、worker 不在の通知は、どれもこの 1 つのリストを `can_serve` で判定します。そのため、スキーマのマイグレーションなしで、3 つの判定がグループについて一致します。
+  - もう 1 つのずれ：serve のジョブは、種類のリストの 1 つの run ではなく、ターゲットの `run` 全体です。そのため、ジョブはターゲットが並べるすべての種類について合うデバイスを必要とし、各 run のファミリーは、lease した worker が自分のプールで解決します。
+  - 単位 1 がこの単位に残した、抜かれたデバイスの検査は未解決のままです。devicectl は、ペアリング済みのデバイスを、差さっているかどうかにかかわらず一覧に出し、トンネルの状態でも両者を区別できません。そのため、worker は抜かれたデバイスのファミリーも広告し続け、そこへ振り分けられたジョブは、run がデバイスを操作する時点で失敗します。このホストでは、ローカルネットワーク上のペアリング済みの iPhone 14 Pro が `device:iphone` と読めました。iPad も抜いたケーブルも手元になく、それ以上は確かめていません。
+  - ドキュメント：`docs/self-hosting.md` の capability ルーティングの節、`docs/cli.md` の worker の `--capabilities` の行、`docs/drivers.md` の worker 能力の記述、`docs/architecture.md` の `serve/` の行を、それぞれ日本語版とともに更新しました。設定のページには、これまでの単位で `runsOn` の表と例がすでに入っていました。
+  - デモ：正確な `model` や `engine` を指定するデモがなかったので、書き換える対象はありませんでした。web のデモには `kind: chromium` を加えました。`showcase-swiftui` のターゲットに `family: iphone` を加えることも試しましたが、取りやめました。このターゲットは、デバイスグループのシナリオで `showcase-swiftui-previous` と `showcase-uikit` と 1 台のデバイスを共有するので、3 つとも同じ条件にする必要があります。また、各 run が `simctl list devicetypes` を読むことになり、負荷の高い CI のランナーではこの読み取りが 60 秒で時間切れになりました。そのため、showcase のターゲットは条件のない run のままにしています。手元では、iPhone 17 Pro の Simulator で、`family: iphone` を付けたターゲットが `family=iphone` の 1 つの run に解決しました。
 
 ## 参考
 

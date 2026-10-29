@@ -170,6 +170,51 @@ def _physical_devices(listing: Any) -> dict[str, tuple[dict[str, Any], dict[str,
     return found
 
 
+def _list_physical(
+    run: Callable[[list[str]], str],
+) -> dict[str, tuple[dict[str, Any], dict[str, Any]]]:
+    """Every paired real device that one `devicectl list devices` listing shows, by its udid.
+
+    Raises:
+        DeviceReadError: devicectl could not be read, did not answer in time, or wrote a listing
+            of an unexpected shape.
+    """
+    args = ["xcrun", "devicectl", "list", "devices", "--json-output", "-"]
+    try:
+        listing = json.loads(run(args))
+    except subprocess.TimeoutExpired as exc:
+        raise DeviceReadError(
+            f"devicectl did not answer within {_DEVICECTL_READ_TIMEOUT_S:g}s, "
+            "so runsOn cannot match a real device"
+        ) from exc
+    except (subprocess.CalledProcessError, json.JSONDecodeError, OSError, ValueError) as exc:
+        raise DeviceReadError(f"could not list the real devices to match runsOn: {exc}") from exc
+    try:
+        return _physical_devices(listing)
+    except (AttributeError, TypeError) as exc:
+        raise DeviceReadError(
+            f"devicectl listed the devices in an unexpected shape: {exc}"
+        ) from exc
+
+
+def ios_device_families(run: Callable[[list[str]], str] = _timed_devicectl) -> set[str]:
+    """The family of every paired real iOS device, as devicectl reports it (BE-0468).
+
+    A server worker advertises these as its `device:` routing tokens. It reads the same listing as
+    `read_ios_device`, so a device the worker advertises is one its run can read. A device that
+    reports no `deviceType` contributes nothing, since no family can route to it.
+
+    Raises:
+        DeviceReadError: devicectl could not be read, did not answer in time, or wrote a listing
+            of an unexpected shape.
+    """
+    return {
+        str(family)
+        for hardware, _ in _list_physical(run).values()
+        if (family := hardware.get("deviceType"))
+    }
+
+
 def read_ios_device(
     udids: Sequence[str], run: Callable[[list[str]], str] = _timed_devicectl
 ) -> list[DeviceFacts]:
@@ -192,22 +237,7 @@ def read_ios_device(
         DeviceReadError: devicectl could not be read or did not answer in time, a udid is not a
             paired real device, or it reports no device type or a version that is not one.
     """
-    args = ["xcrun", "devicectl", "list", "devices", "--json-output", "-"]
-    try:
-        listing = json.loads(run(args))
-    except subprocess.TimeoutExpired as exc:
-        raise DeviceReadError(
-            f"devicectl did not answer within {_DEVICECTL_READ_TIMEOUT_S:g}s, "
-            "so runsOn cannot match a real device"
-        ) from exc
-    except (subprocess.CalledProcessError, json.JSONDecodeError, OSError, ValueError) as exc:
-        raise DeviceReadError(f"could not list the real devices to match runsOn: {exc}") from exc
-    try:
-        found = _physical_devices(listing)
-    except (AttributeError, TypeError) as exc:
-        raise DeviceReadError(
-            f"devicectl listed the devices in an unexpected shape: {exc}"
-        ) from exc
+    found = _list_physical(run)
     facts: list[DeviceFacts] = []
     for udid in udids:
         if udid not in found:

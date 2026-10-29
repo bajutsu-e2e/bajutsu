@@ -1177,8 +1177,9 @@ class SqlRepository:
             # What the *live* pool can serve: a worker seen within the lease timeout is alive (the
             # same freshness window the reclaim path uses; the heartbeat refreshes `last_seen` so a
             # worker busy on a long run still counts). A queued job is unroutable when no single live
-            # worker advertises all of its required capabilities — the same `can_serve` subset test
-            # the lease filter uses, so "unroutable" means exactly "no worker would lease it".
+            # worker advertises all of its required capabilities — the same `can_serve` test (a subset
+            # test, with an `anyof:` group met by any one member) the lease filter uses, so
+            # "unroutable" means exactly "no worker would lease it".
             live = [
                 list(w.capabilities or [])
                 for w in session.scalars(

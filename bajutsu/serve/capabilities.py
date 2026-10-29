@@ -4,19 +4,21 @@ A heterogeneous Mac pool can't run every job on every worker: a job needing iOS 
 on an iOS-17-only worker, and a `web` job must never land on an idb (Mac) worker. Routing is
 expressed as sets of string capability *tokens* — a job carries the set it **requires**, a worker
 advertises the set it can **serve**, and a worker may lease a job only when the job's required set
-is a subset of the worker's advertised set. This is purely about *which* idle worker picks a job
-up; it never touches the deterministic `run` verdict (prime directive 1).
+is a subset of the worker's advertised set (an ``anyof:`` group is met by any one member). This is
+purely about *which* idle worker picks a job up; it never touches the deterministic `run` verdict
+(prime directive 1).
 
 The module is intentionally pure — no SQLAlchemy, no network — so it is imported freely on the
-dispatch (control-plane) and worker paths alike, and unit-tested with no Simulator. The one seam
-that reads a real Simulator inventory, `simctl_capabilities`, takes an injected `RunFn`, so the
-gate drives it with captured `simctl` JSON.
+dispatch (control-plane) and worker paths alike, and unit-tested with no Simulator. The two seams
+that read a real inventory, `simctl_capabilities` for Simulators and `devicectl_capabilities` for
+real devices, take an injected reader, so the gate drives them with captured JSON.
 """
 
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
+from typing import get_args
 
 from bajutsu.common.backend_cli import simctl as _simctl
 from bajutsu.common.capability.route_tokens import (
@@ -28,11 +30,14 @@ from bajutsu.common.capability.route_tokens import (
 )
 from bajutsu.common.capability.settings_support import Route
 from bajutsu.common.capability.worker_capability import (
+    DEVICE_ROUTING_PREFIX,
     ENVIRONMENT_ROUTING_PREFIX,
     HOST_ROUTING_PREFIX,
     MACHINE_ROUTING_PREFIX,
     reserved_routing_tokens,
 )
+from bajutsu.common.config.schema.platform.ios import IosFamily
+from bajutsu.common.devices.facts import DeviceReadError, ios_device_families
 
 # The backend axis (idb vs web vs android): `platform:ios` is served by a Mac idb worker,
 # `platform:web` by the Linux Playwright worker container (BE-0173). Kept a distinct prefix so a
@@ -55,6 +60,19 @@ HOST_PREFIX = HOST_ROUTING_PREFIX
 # `machine:<id>`, the server's own identity, and only a worker on that machine advertises it. A job
 # that ships its files (materials, a bundle, overrides) carries no machine token and routes anywhere.
 MACHINE_PREFIX = MACHINE_ROUTING_PREFIX
+
+# The real-device axis (BE-0468): a worker advertises `device:iphone` / `device:ipad` for each family
+# among the real devices connected to it, and a real-device run whose target names a `family`
+# requires it. Reserved, so a hand-written token cannot claim a device the worker lacks.
+DEVICE_PREFIX = DEVICE_ROUTING_PREFIX
+
+# An any-of group (BE-0468): one stored token that a worker satisfies by advertising any one of its
+# members, written `anyof:<token>|<token>`. A `family` priority list needs it, since any one family
+# suffices and a subset test cannot say so. It lives in the job's one capability list rather than a
+# column of its own, so the lease, the unroutable count, and the no-worker notice — which all judge
+# that list with `can_serve` — agree on it with no schema change.
+ANY_OF_PREFIX = "anyof:"
+_ANY_OF_SEPARATOR = "|"
 
 # What a machine identity may look like: one token, so it never splits in a comma/space list and
 # never carries a prefix of its own.
@@ -97,6 +115,56 @@ def machine_capability(machine_id: str) -> str:
             f"invalid machine id {machine_id!r}: expected 1-128 letters, digits, '.', '_' or '-'"
         )
     return f"{MACHINE_PREFIX}{machine_id}"
+
+
+def device_capability(family: str) -> str:
+    """The real-device-axis token for a device family, e.g. ``device:ipad``."""
+    return f"{DEVICE_PREFIX}{family}"
+
+
+def any_of_capability(tokens: Iterable[str]) -> str:
+    """The token a worker satisfies by advertising any one of *tokens*; a lone token stands as itself.
+
+    The members are sorted, so two jobs that accept the same tokens store the same group.
+
+    Raises:
+        ValueError: *tokens* is empty, or a member carries the ``|`` separator or is itself a group,
+            either of which `can_serve` would split into members the job never named.
+    """
+    members = sorted(set(tokens))
+    if not members:
+        raise ValueError("an any-of group needs at least one token")
+    if bad := [m for m in members if _ANY_OF_SEPARATOR in m or m.startswith(ANY_OF_PREFIX)]:
+        raise ValueError(f"an any-of member may not contain '|' or nest a group: {', '.join(bad)}")
+    if len(members) == 1:
+        return members[0]
+    return ANY_OF_PREFIX + _ANY_OF_SEPARATOR.join(members)
+
+
+def device_requirements(kinds: Sequence[str], family: str | Sequence[str] | None) -> list[str]:
+    """The tokens a target's iOS runs require of a worker for their `family` (BE-0468).
+
+    A serve job runs every listed kind of its target, so it requires one entry per kind: a real-device
+    run the ``device:`` token of its family, and a Simulator run the inventory's ``iphone`` /
+    ``ipad`` token. A family priority list becomes an any-of group, because any one family suffices;
+    which family the run takes is still decided on the leasing worker, over its own pool.
+
+    Args:
+        kinds: The iOS kinds the job runs on, in order.
+        family: The target's `runsOn.ios.family`: one family, a priority list, or None.
+
+    Returns:
+        The sorted tokens; empty when the target names no family.
+    """
+    families = [family] if isinstance(family, str) else list(family or [])
+    if not families:
+        return []
+    return sorted(
+        {
+            any_of_capability(device_capability(f) if kind == "device" else f for f in families)
+            for kind in kinds
+        }
+    )
 
 
 def routed_capabilities(
@@ -152,7 +220,7 @@ def required_host(
 
 def reserved_tokens(tokens: Iterable[str]) -> list[str]:
     """The tokens among *tokens* that carry a reserved routing prefix (``environment:``, ``host:``,
-    ``machine:``, ``cap:``, ``setting:``), sorted."""
+    ``machine:``, ``device:``, ``cap:``, ``setting:``), sorted."""
     return reserved_routing_tokens(tokens)
 
 
@@ -191,7 +259,8 @@ def can_serve(required: Iterable[str], advertised: Iterable[str]) -> bool:
     One rule narrows it (BE-0448): a worker advertising an ``environment:*`` token serves only jobs
     that require that token, since the empty set would otherwise hand it every local job. A job
     tied to the server's machine needs no rule of its own: it requires ``machine:<id>``, which only a
-    worker on that machine advertises (`routed_capabilities`).
+    worker on that machine advertises (`routed_capabilities`). An ``anyof:`` group in *required* is
+    met by any one of its members (`any_of_capability`, BE-0468).
     """
     needed, offered = set(required), set(advertised)
     environments = {t for t in offered if t.startswith(ENVIRONMENT_PREFIX)}
@@ -202,7 +271,13 @@ def can_serve(required: Iterable[str], advertised: Iterable[str]) -> bool:
         # the other tokens alone: an upgrade never strands a queue. The lease records on the job that
         # such a worker ran it (`UNCHECKED_PROVENANCE`).
         needed = {t for t in needed if not is_route_token(t)}
-    return needed <= offered
+    groups = {t for t in needed if t.startswith(ANY_OF_PREFIX)}
+    if any(
+        not offered & set(group.removeprefix(ANY_OF_PREFIX).split(_ANY_OF_SEPARATOR))
+        for group in groups
+    ):
+        return False
+    return needed - groups <= offered
 
 
 # What a lease stamps on the job's provenance when a worker from before BE-0467 takes a job that needs
@@ -296,6 +371,32 @@ def worker_capabilities(
     if run is not None:
         caps |= simctl_capabilities(run)
     return caps
+
+
+def devicectl_capabilities(
+    read: Callable[[], set[str]] = ios_device_families,
+    on_error: Callable[[str], None] | None = None,
+) -> set[str]:
+    """The ``device:`` tokens of the real devices connected to this worker (best-effort, BE-0468).
+
+    Each family a `family` condition can name contributes ``device:<family>``; another family (an
+    Apple TV) adds nothing. A host whose devicectl cannot be read advertises no real device rather
+    than stopping the worker, as `simctl_capabilities` does for the Simulator inventory: a job that
+    needs a device then waits for a worker that has one.
+
+    Args:
+        read: The real-device family reader; `ios_device_families` over devicectl when omitted.
+        on_error: Receives the read's failure message, so the worker can say why it advertises
+            no real device instead of dropping them without a trace.
+    """
+    try:
+        families = read()
+    except DeviceReadError as exc:
+        if on_error is not None:
+            on_error(str(exc))
+        return set()
+    known = set(get_args(IosFamily))
+    return {device_capability(f.lower()) for f in families if f.lower() in known}
 
 
 def simctl_capabilities(run: _simctl.RunFn) -> set[str]:

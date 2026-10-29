@@ -243,7 +243,9 @@ An `appium` worker advertises `environment:appium` alone. A serve run request re
 `environment: appium`.
 
 The file declares no routing token itself. The runtime and device-class tokens (`ios18`, `ipad`)
-come from the Simulator inventory. A declaration could promise a runtime the machine lacks.
+come from the Simulator inventory. The real-device tokens (`device:ipad`) come from `devicectl`
+([BE-0468](../roadmaps/BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of.md)). A
+declaration could promise a runtime or a device the machine lacks.
 
 Two hand-written inputs now log a deprecation notice. Each still works for this release:
 

@@ -173,7 +173,8 @@ OS を表す `host:<os>` を広告します。target のドライバがすべて
 worker は、`environment:<name>` を広告します。`platform:*` のトークンは広告しません。`appium` の worker は
 `environment:appium` だけを広告し、サーバの run リクエストは `environment: appium` でこの worker に届きます。worker 能力ファイル自体は
 ルーティング用のトークンを宣言しません。ランタイムやデバイス種別のトークン（`ios18`、`ipad`）は Simulator の
-在庫から得ます。宣言では、マシンにないランタイムまで約束できてしまうからです。
+在庫から得ます。実機のトークン（`device:ipad`）は `devicectl` から得ます（[BE-0468](../../roadmaps/BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of-ja.md)）。
+宣言では、マシンにないランタイムや実機まで約束できてしまうからです。
 
 worker の `--capabilities` フラグと `$BAJUTSU_WORKER_CAPABILITIES` は非推奨です。
 どちらも今回のリリースでは、1 回だけの通知とともに引き続き効きます。target の `requires` リストは

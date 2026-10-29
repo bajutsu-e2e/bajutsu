@@ -9,6 +9,8 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 
+import pytest
+
 from bajutsu.common.backend_cli import simctl
 from bajutsu.serve import capabilities as cap
 
@@ -111,3 +113,62 @@ def test_reserved_tokens_names_the_environment_and_host_prefixes_alone() -> None
         "environment:x",
         "host:linux",
     ]
+
+
+def test_reserved_tokens_names_the_device_prefix() -> None:
+    # A hand-written `device:` token could claim a real device the worker lacks (BE-0468).
+    assert cap.reserved_tokens(["ipad", "device:ipad"]) == ["device:ipad"]
+
+
+def test_an_any_of_group_is_met_by_any_one_member() -> None:
+    group = cap.any_of_capability(["device:ipad", "device:iphone"])
+    assert group == "anyof:device:ipad|device:iphone"
+    assert cap.can_serve([group, "platform:ios"], ["platform:ios", "device:iphone"])
+    assert cap.can_serve([group], ["device:ipad", "device:iphone"])
+    assert not cap.can_serve([group], ["device:watch", "ipad"])
+    # The plain tokens beside a group still all have to be advertised.
+    assert not cap.can_serve([group, "platform:ios"], ["device:ipad"])
+
+
+def test_an_any_of_group_is_canonical_and_a_lone_member_stands_as_itself() -> None:
+    assert cap.any_of_capability(["b", "a", "b"]) == cap.any_of_capability(["a", "b"])
+    assert cap.any_of_capability(["device:ipad"]) == "device:ipad"
+    with pytest.raises(ValueError, match="at least one"):
+        cap.any_of_capability([])
+
+
+@pytest.mark.parametrize("member", ["chrome|edge", "anyof:a|b"])
+def test_an_any_of_member_cannot_widen_the_group(member: str) -> None:
+    # `can_serve` splits a group on `|`, so such a member would admit tokens the job never named.
+    with pytest.raises(ValueError, match="may not contain"):
+        cap.any_of_capability([member, "firefox"])
+
+
+def test_device_requirements_route_each_kind_on_its_own_tokens() -> None:
+    # No family, no requirement: the target takes any device, as before BE-0468.
+    assert cap.device_requirements(["simulator", "device"], None) == []
+    # One family requires that family's token, on the axis of each kind the job runs.
+    assert cap.device_requirements(["device"], "ipad") == ["device:ipad"]
+    assert cap.device_requirements(["simulator"], "ipad") == ["ipad"]
+    assert cap.device_requirements(["simulator", "device"], ["ipad"]) == ["device:ipad", "ipad"]
+    # A priority list accepts any one family, so it becomes a group per kind.
+    assert cap.device_requirements(["simulator", "device"], ["iphone", "ipad"]) == [
+        "anyof:device:ipad|device:iphone",
+        "anyof:ipad|iphone",
+    ]
+
+
+def test_devicectl_capabilities_advertises_each_known_family() -> None:
+    assert cap.devicectl_capabilities(lambda: {"iPhone", "iPad", "Apple TV"}) == {
+        "device:iphone",
+        "device:ipad",
+    }
+
+
+def test_devicectl_capabilities_is_empty_when_devicectl_cannot_be_read() -> None:
+    from bajutsu.common.devices.facts import DeviceReadError
+
+    def broken() -> set[str]:
+        raise DeviceReadError("no xcrun")
+
+    assert cap.devicectl_capabilities(broken) == set()

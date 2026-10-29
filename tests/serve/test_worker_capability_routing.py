@@ -10,6 +10,7 @@ prefix. Everything here is pure or in-memory SQLite: no Simulator, no network.
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
@@ -221,7 +222,9 @@ def test_no_override_means_no_notice(caplog: pytest.LogCaptureFixture) -> None:
     assert caplog.text == ""
 
 
-@pytest.mark.parametrize("token", ["environment:devicefarm", "host:darwin", "machine:abc"])
+@pytest.mark.parametrize(
+    "token", ["environment:devicefarm", "host:darwin", "machine:abc", "device:ipad"]
+)
 def test_the_override_refuses_the_reserved_prefixes(
     token: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -314,3 +317,167 @@ def test_a_device_cloud_worker_takes_no_machine_id(monkeypatch: pytest.MonkeyPat
     )
     with pytest.raises(typer.BadParameter, match="takes no machine id"):
         _caps_for(machine_id="m1", capability=cloud)
+
+
+def test_a_family_routes_each_listed_kind_on_its_own_tokens(tmp_path: Path) -> None:
+    # A serve job runs every listed kind, so it requires a fitting device of each (BE-0468).
+    cfg = _config(
+        tmp_path,
+        (
+            "targets:\n"
+            "  both:\n"
+            "    platform: ios\n"
+            "    app: {id: com.example.app}\n"
+            "    runsOn: {ios: {kind: [simulator, device], family: [iphone, ipad]}}\n"
+            "  tablet:\n"
+            "    platform: ios\n"
+            "    app: {id: com.example.app}\n"
+            "    runsOn: {ios: {kind: device, family: ipad}}\n"
+            "    driver: {runner: {testRunner: runner.xctestrun}}\n"
+            "  sim:\n"
+            "    platform: ios\n"
+            "    app: {id: com.example.app}\n"
+            "    runsOn: {ios: {family: ipad}}\n"
+        ),
+    )
+    assert target_capabilities(cfg, "both") == [
+        "anyof:device:ipad|device:iphone",
+        "anyof:ipad|iphone",
+        "host:darwin",
+        "platform:ios",
+    ]
+    assert target_capabilities(cfg, "tablet") == ["device:ipad", "host:darwin", "platform:ios"]
+    assert target_capabilities(cfg, "sim") == ["host:darwin", "ipad", "platform:ios"]
+    # The fake driver drives no device, so no family token is required of the worker.
+    assert target_capabilities(cfg, "both", "fake") == ["platform:ios"]
+
+
+def test_a_device_family_job_leases_only_to_a_worker_with_that_device(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    cfg = _config(
+        tmp_path,
+        (
+            "targets:\n"
+            "  app:\n"
+            "    platform: ios\n"
+            "    app: {id: com.example.app}\n"
+            "    runsOn: {ios: {kind: device, family: [ipad, iphone]}}\n"
+            "    driver: {runner: {testRunner: runner.xctestrun}}\n"
+        ),
+    )
+    required = target_capabilities(cfg, "app")
+    bare = ["host:darwin", "platform:ios", "ipad"]
+    phone = [*bare, "device:iphone"]
+
+    repo = _repo(serve_engine)
+    repo.enqueue_job("device-job", "o", {}, capabilities=required)
+    repo.register_worker("bare", bare)
+    assert repo.metrics_snapshot().unroutable_queued == 1
+    assert repo.lacks_live_worker("device-job")
+    assert repo.lease_job("bare", bare) is None
+
+    repo.register_worker("phone", phone)
+    assert repo.metrics_snapshot().unroutable_queued == 0
+    leased = repo.lease_job("phone", phone)
+    assert leased is not None and leased.id == "device-job"
+
+
+def test_only_a_local_ios_worker_reads_its_real_devices() -> None:
+    # A device cloud's phones belong to its provider, and a web worker has no devicectl (BE-0468).
+    ios, web = ["host:darwin", "platform:ios"], ["host:linux", "platform:web"]
+    assert isinstance(worker_mod._device_reader(ios, _local()), worker_mod._DeviceTokens)
+    assert isinstance(
+        worker_mod._device_reader([*ios, "platform:web"], _local()), worker_mod._DeviceTokens
+    )
+    assert worker_mod._device_reader(web, _local()) is None
+    cloud = WorkerCapability(version=1, environment="devicefarm", drivers=("xcuitest", "adb"))
+    assert worker_mod._device_reader(ios, cloud) is None
+
+
+def test_the_worker_rereads_its_real_devices_before_each_lease(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # An iPad plugged in after the first poll routes iPad jobs on the next one, and one unplugged
+    # stops routing them (BE-0468).
+    connected = iter([set(), {"device:ipad"}, set()])
+    leased: list[list[str]] = []
+
+    def lease(url: str, token: str | None, wid: str, caps: list[str]) -> None:
+        leased.append(caps)
+
+    monkeypatch.setattr(worker_mod, "_lease", lease)
+    monkeypatch.setattr(time, "sleep", lambda _s: None)
+    worker_mod._serve_leases(
+        url="http://cp",
+        auth_token=None,
+        wid="w",
+        caps=["host:darwin", "platform:ios"],
+        work=tmp_path,
+        poll_interval=1.0,
+        heartbeat_interval=1.0,
+        worker_file=None,
+        current=worker_mod._CurrentJob(pgid_file=tmp_path / "pgid"),
+        stopped=lambda: len(leased) == 3,
+        devices=lambda: next(connected),
+    )
+
+    assert leased == [
+        ["host:darwin", "platform:ios"],
+        ["device:ipad", "host:darwin", "platform:ios"],
+        ["host:darwin", "platform:ios"],
+    ]
+
+
+def test_the_worker_logs_each_change_in_its_real_devices(caplog: pytest.LogCaptureFixture) -> None:
+    # A devicectl that breaks mid-session says so once, rather than silently dropping the devices.
+    reads = iter([{"device:ipad"}, None, None, {"device:ipad"}, {"device:ipad"}])
+
+    def read(on_error: Callable[[str], None]) -> set[str]:
+        tokens = next(reads)
+        if tokens is None:
+            on_error("devicectl did not answer")
+            return set()
+        return tokens
+
+    tokens = worker_mod._DeviceTokens(read, interval=0)
+    with caplog.at_level(logging.INFO, logger="bajutsu.worker"):
+        assert [tokens() for _ in range(5)] == [
+            {"device:ipad"},
+            set(),
+            set(),
+            *[{"device:ipad"}] * 2,
+        ]
+
+    assert [r.getMessage() for r in caplog.records] == [
+        "real-device read failed: devicectl did not answer; advertising no real device",
+        "real devices now: device:ipad",
+    ]
+
+
+def test_devicectl_capabilities_reports_why_it_reads_no_device() -> None:
+    from bajutsu.common.devices.facts import DeviceReadError
+
+    def broken() -> set[str]:
+        raise DeviceReadError("no xcrun")
+
+    seen: list[str] = []
+    assert cap.devicectl_capabilities(broken, on_error=seen.append) == set()
+    assert seen == ["no xcrun"]
+
+
+def test_the_worker_rereads_devicectl_at_most_once_per_interval() -> None:
+    calls: list[float] = []
+    now = [0.0]
+
+    def read(on_error: Callable[[str], None]) -> set[str]:
+        calls.append(now[0])
+        return {"device:ipad"} if len(calls) > 1 else set()
+
+    tokens = worker_mod._DeviceTokens(read, interval=15, clock=lambda: now[0])
+    assert tokens() == set()
+    now[0] = 14.0
+    assert tokens() == set()  # within the interval: the last read stands
+    now[0] = 15.0
+    assert tokens() == {"device:ipad"}
+    assert calls == [0.0, 15.0]
