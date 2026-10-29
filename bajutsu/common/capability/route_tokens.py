@@ -90,7 +90,9 @@ def token_route(token: str) -> str | None:
     """The route a `cap:` or `setting:` token names, or None for any other token."""
     if not is_route_token(token):
         return None
-    return token.split(":", 2)[1]
+    route = token.split(":", 2)[1]
+    # `ROUTE_AWARE_TOKEN` carries the prefix but names no route.
+    return route if route in ROUTES else None
 
 
 def route_tokens(route: Route) -> set[str]:

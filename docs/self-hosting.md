@@ -1190,7 +1190,9 @@ deterministic `run` verdict.
   its [worker capability file](drivers.md#worker-capability-check-be-0450) offers and its host can
   start, whatever its `--platform`, since a scenario's other targets run on the same machine. An
   `xcuitest` worker adds the `ios-device` route unless its file sets `realDevices: false`, and an
-  `appium` worker advertises `ios-live`. The sets are never
+  `appium` worker advertises `ios-live`. The route set is as accurate as the file, so list the drivers
+  the machine has installed, and no others. Every such worker also advertises `cap:routing`, which marks it
+  as computing route tokens; no job requires that token. The sets are never
   intersected. A Mac serving the Simulator and an attached iPhone thus never takes an `erase` job
   on the device route, and still takes every Simulator job.
 - **A mismatch fails at submission, and an unserved route waits.** The control plane refuses a job

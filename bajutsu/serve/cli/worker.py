@@ -1099,7 +1099,8 @@ def _claim_refusal(required: Any, worker_file: Path | None) -> str | None:
 def _route_tokens_now(worker_file: Path | None) -> set[str] | None:
     """The route tokens this worker's environment offers now, re-read from its worker.yaml.
 
-    A changed file, or a driver its host can no longer start, narrows the routes. None for a cloud-batch worker, which drives no route itself.
+    A changed file, or a driver its host can no longer start, narrows the routes. None for a
+    cloud-batch worker, which drives no route itself.
 
     Raises:
         WorkerCapabilityError: The worker.yaml can no longer be read.

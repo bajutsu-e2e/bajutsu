@@ -59,9 +59,8 @@ def _target_diagnostics(
     binding = state.binding_for(session, org)
     if binding.config is None:
         return []
-    config_path = binding.config
     try:
-        config = load_config_file(config_path)
+        config = load_config_file(binding.config)
     except (OSError, ValueError) as e:
         return [_diagnostic(None, f"could not check against target '{target}': {e}")]
 
