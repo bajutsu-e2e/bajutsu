@@ -370,6 +370,7 @@ source_modules = [
     "bajutsu.common.capability.settings_support",
     "bajutsu.common.doctor",
     "bajutsu.common.lint",
+    "bajutsu.common.target_lint",
 ]
 forbidden_modules = [
     "bajutsu.serve",

@@ -312,6 +312,52 @@ _REQUIREMENTS = (
 )
 
 
+def steps_for_target(s: Scenario, target: str) -> Scenario:
+    """*s* narrowed to the steps and `expect` entries routed to *target* (BE-0428).
+
+    Only what the capability preflight reads is narrowed — a nested `if` / `forEach` body keeps
+    whatever it holds, since a nested step carries its own `target` and the preflight walks into it
+    anyway; a top-level step naming another target is what has to go, so one backend is never asked
+    to justify a construct it will never be handed.
+
+    `None` too: a scenario declaring exactly one target may omit the name on every step and
+    `expect` entry, and those still ran against that target — filtering them out would hand the
+    preflight an empty scenario and skip BE-0082 for the whole single-declared-target shape.
+
+    A step or `expect` entry omitting `target` under a declared `primaryTarget` belongs to the
+    primary alone (BE-0436), so it reads its resolved target rather than falling into `None` and
+    being judged against every declared backend.
+
+    `interrupts` is narrowed to the entries *target*'s runner can poll (BE-0466), since the preflight
+    now reads their conditions and recovery steps.
+    """
+    routed = {target, None}
+    # An `interrupts` entry omitting `target` follows the primary in force (BE-0447), so it reaches
+    # *target* when *target* is the initial primary or any `setPrimaryTarget` destination; an entry
+    # naming another target never does, and a web-only condition there must not fail this one.
+    primaries = {s.primary_target or (s.target_names[0] if s.target_names else None)}
+    primaries.update(st.set_primary_target.target for st in s.steps if st.set_primary_target)
+    return s.model_copy(
+        update={
+            "setup": [st for st in s.setup if st.resolved_target in routed],
+            "steps": [st for st in s.steps if st.resolved_target in routed],
+            "cleanup": [
+                rule.model_copy(
+                    update={"steps": [st for st in rule.steps if st.resolved_target in routed]}
+                )
+                for rule in s.cleanup
+            ],
+            # The primary in force after the last step, which a `setPrimaryTarget` may have moved.
+            "expect": [a for a in s.expect if (a.target or s.final_primary) in routed],
+            "interrupts": [
+                e
+                for e in s.interrupts
+                if e.target == target or (e.target is None and target in primaries)
+            ],
+        }
+    )
+
+
 def unsupported(scenario: Scenario, capabilities: Set[str]) -> list[str]:
     """The reasons `scenario` can't run on a backend with `capabilities`.
 
