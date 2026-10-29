@@ -297,7 +297,7 @@ def _engines(eff: Effective, subjects: list[tuple[str, dict[str, str | list[str]
     for _name, conditions in subjects:
         if "browser.version" not in conditions:
             continue
-        listed = conditions.get("browser.engine") or web_engine(eff)
+        listed = conditions.get("browser.kind") or web_engine(eff)
         engines.update(dict.fromkeys(listed if isinstance(listed, list) else [listed]))
     return list(engines)
 

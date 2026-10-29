@@ -341,8 +341,8 @@ run に LLM は入りません。解決は config、引数、プールだけの�
 > ともに記録します。
 
 - [x] ユニット 1: ファミリーの読み取り
-- [ ] ユニット 2: スキーマ
-- [ ] ユニット 3: 解決
+- [x] ユニット 2: スキーマ
+- [x] ユニット 3: 解決
 - [ ] ユニット 4: 引数と起動
 - [ ] ユニット 5: レポート
 - [ ] ユニット 6: worker のルーティング
@@ -355,6 +355,13 @@ run に LLM は入りません。解決は config、引数、プールだけの�
   - `read_ios_device` は、実機を `xcrun devicectl list devices --json-output -` から読みます。接続した iPhone 14 Pro は `deviceType: iPhone` を返しました。iPad は接続していないため、iPad の値は実機ではまだ確認していません。この読み取りを呼ぶ箇所はまだありません。単位 3 で、デバイスのプールをこの読み取りで読みます。
   - 仕様からのずれ：devicectl の一覧には Simulator も含まれます。そこで、`hardwareProperties.reality` が `physical` の項目だけを残します。udid は、devicectl 独自の `identifier` ではなく `hardwareProperties.udid` で照合します。XCUITest の destination が受け取るのは `hardwareProperties.udid` のほうだからです。また、`deviceProperties.osVersionNumber` も必須にしました。`DeviceFacts.release` はバージョンとデバイスの表示に使われるので、読めない release を保存せずに失敗させます。
   - もう 1 つの仕様からのずれ：この読み取りでは、到達できるデバイスと抜かれたデバイスを区別しません。使用中の接続済み iPhone も `connectionProperties.tunnelState: disconnected` を返しました。トンネルは run がデバイスを操作するときに初めて開くため、このフィールドでは両者を区別できません。そのため、lease から run までのあいだに切断されたデバイスは、*worker での検査* に書いたプールの読み取りの時点ではなく、run がデバイスを操作した時点で失敗します。単位 6 で、抜いたデバイスを用意して見直します。
+- PR-PENDING（単位 2、3）— スキーマが `family` と `kind` のリストを受け付け、それらを run に解決するようにしました。
+  - `runsOn.ios` に `family` を追加し、`kind` がリストを受け付けるようにしました。`runsOn.browser.engine` は `kind` に置き換え、値に `chrome` と `edge` を加えました。ローダーは *ローダーが強制する規則* のすべての規則を適用します。`engine` を書くと、`kind` を示し、`kind` のリストでも run が減らないことを伝えるメッセージで失敗します。JSON Schema は、2 つの `kind` と `family` を列挙型として出力します。
+  - `form_target_runs` は、並べた種類ごとに、その種類のデバイスで run を作ります。ファミリーのリストは、run ごと、メジャーバージョンごとに解決し、勝ったファミリーで `eligible_set` を絞ります。`first_run` と `declared_runs` も両方のフィールドを扱います。`DeviceFacts` に `physical` を追加しました。`read_ios_pool` は、Simulator と実機が混在するプールを、各 udid を表示する一覧から読みます。
+  - 2 つの単位をまとめたのは、解決のないまま `family` を受け付けるスキーマは、そのフィールドを黙って無視してしまうからです。
+  - 作業分解からのずれ：並べた種類や Chrome の run が誤った接続先で動かないよう、単位 4 の一部も取り込みました。各セルは iOS の種類を run の設定に適用するので、実機の run は実機の接続先を使います。ドライバとバージョンの読み取りは、Playwright の `launch` にチャネルを渡します。`--browser` と `--browsers` は、フィールドと同じモデルで値を読むため、ブラウザの種類を受け付けます。実行時のインストールは、ホスト自身のブラウザである Chrome と Edge を取得しません。`--kind` と、フラグをターゲット自身のリストと照合する処理は、単位 4 に残しています。
+  - 2 つ目のずれ：条件のキー `browser.engine` は `browser.kind` になりました。そのため、ブラウザを並べた run の座標は、manifest とフレーキーさの履歴で `browser.kind` と表示されます。この変更より前に記録した履歴は、変更後のブラウザの run とは別のキーになります。
+  - 3 つ目のずれ：検査の順序を変え、`appium` のグリッドや Device Farm のジョブのターゲットを実機より先に調べます。そこに書いた `family` は、実機のファミリーとして通るのではなく、*ローダーが強制する規則* のとおりに失敗します。
 
 ## 参考
 

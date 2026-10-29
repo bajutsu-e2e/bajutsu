@@ -36,8 +36,9 @@ from bajutsu.common.agents.claude import MODEL as _RECORD_MODEL
 from bajutsu.common.agents.factory import make_agent
 from bajutsu.common.ai import announce_ai
 from bajutsu.common.analytics import usage as _usage
-from bajutsu.common.config import WEB_ENGINES, Effective
+from bajutsu.common.config import Effective
 from bajutsu.common.devices import errors as device_errors
+from bajutsu.common.devices.browsers import BROWSER_KINDS
 from bajutsu.common.handoff import HumanHandoffUnavailable
 from bajutsu.common.platform_lifecycle import environment_for
 from bajutsu.common.runner import launch_driver
@@ -153,8 +154,8 @@ def record(
     browser: str = typer.Option(
         "",
         "--browser",
-        help=f"web backend: rendering engine to author against — {' / '.join(WEB_ENGINES)}; "
-        "overrides the target's runsOn.browser.engine (default: chromium)",
+        help=f"web backend: browser to author against — {' / '.join(BROWSER_KINDS)}; "
+        "overrides the target's runsOn.browser.kind (default: chromium)",
     ),
     language: str = typer.Option(
         "",
@@ -189,7 +190,7 @@ def record(
     eff, _source, checkout_root = _load_effective_with_source(config, target_name)
     # --headed/--no-headed overrides the target's `driver.headless` (web only; iOS ignores it).
     eff = _with_headed(eff, headed)
-    # --browser overrides the target's `runsOn.browser.engine` (web only; flag > config > chromium).
+    # --browser overrides the target's `runsOn.browser.kind` (web only; flag > config > chromium).
     eff = _resolve_browser(eff, browser)
     # --language overrides the target's `ai.language` (flag > config > auto), BE-0188.
     eff = _resolve_language(eff, language)

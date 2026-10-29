@@ -1,8 +1,9 @@
 """Form a scenario's runs from its `runsOn` conditions, and assign each run its devices (BE-0452).
 
 A *run* is one cell of the matrix: a scenario on one set of coordinates. Two kinds of condition
-multiply runs: a list (`model`, `avd`, `browser.engine`) makes one run per listed value, and a range
-on `os` or `apiLevel` makes one run per major version. A list or a range bounded on both sides names
+multiply runs: a list (`kind`, `model`, `avd`, `browser.kind`) makes one run per listed value, and a
+range on `os` or `apiLevel` makes one run per major version. A `family` list multiplies nothing: it
+is a priority list, and each run takes the first listed family its devices have (BE-0468). A list or a range bounded on both sides names
 runs that must happen, so a run no device fits fails; a range open on a side says where a scenario
 applies, so a pool without a device in it records the run as not applicable.
 
@@ -15,7 +16,7 @@ from __future__ import annotations
 
 import itertools
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Literal
 
 from bajutsu.common.devices.version import Version, VersionSpec
@@ -52,8 +53,12 @@ class TargetRun:
     # The version range a device's release must fall in, and the major version of this run.
     spec: VersionSpec | None = None
     major: int | None = None
-    # The web engine of this run; None on iOS and Android.
+    # The web browser kind of this run; None on iOS and Android.
     engine: str | None = None
+    # The iOS kind this run takes when the target lists its kinds, and the device family it takes;
+    # None when the run fixes neither (BE-0468).
+    kind: str | None = None
+    family: str | None = None
     coordinates: tuple[tuple[str, str], ...] = ()
     outcome: Outcome = "run"
     reason: str = ""
@@ -68,7 +73,15 @@ class TargetRun:
     @property
     def key(self) -> tuple[object, ...]:
         """Two target runs with equal keys draw on the same eligible set."""
-        return (self.platform, self.model, str(self.spec), self.major, self.engine)
+        return (
+            self.platform,
+            self.model,
+            str(self.spec),
+            self.major,
+            self.engine,
+            self.kind,
+            self.family,
+        )
 
 
 def _available(devices: Sequence[DeviceFacts]) -> str:
@@ -80,6 +93,22 @@ def _matches_model(device: DeviceFacts, model: str | None) -> bool:
         return True
     # A physical Android device has no AVD, so it never matches an `avd` condition.
     return device.avd == model if device.platform == "android" else device.model == model
+
+
+def _matches_kind(device: DeviceFacts, kind: str | None) -> bool:
+    return kind is None or device.physical == (kind == "device")
+
+
+def _matches_family(device: DeviceFacts, family: str | None) -> bool:
+    # simctl and devicectl report `iPhone` / `iPad`; the config names them in lowercase.
+    return family is None or (device.family or "").lower() == family
+
+
+def _families(conditions: Mapping[str, str | list[str]]) -> list[str]:
+    raw = conditions.get("family")
+    if raw is None:
+        return []
+    return list(raw) if isinstance(raw, list) else [raw]
 
 
 def _in_run(device: DeviceFacts, spec: VersionSpec | None, major: int | None) -> bool:
@@ -108,10 +137,11 @@ def form_target_runs(
         target: The target's name.
         platform: The target's platform (`ios`, `android`, or `web`).
         conditions: The effective `runsOn` conditions, keyed by field (`model`, `os`, `avd`,
-            `apiLevel`, `browser.engine`, `browser.version`); ranges are their text as written.
+            `apiLevel`, `kind`, `family`, `browser.kind`, `browser.version`); ranges are their text
+            as written.
         devices: The available devices of the target's pool in pool order; on the web, one per
-            engine a `browser.version` range is compared for, with the engine as its model.
-        engine: The web engine the target is driven with when no engine is listed.
+            browser kind a `browser.version` range is compared for, with the kind as its model.
+        engine: The web browser kind the target is driven with when no kind is listed.
 
     Returns:
         The runs in order: listed values as written, then major versions ascending. An empty
@@ -121,14 +151,51 @@ def form_target_runs(
         return _web_runs(target, conditions, devices, engine)
     if platform not in _MODEL_FIELD or not conditions:
         return [TargetRun(target=target, platform=platform)]
+    # A listed kind runs once per kind on that kind's devices; a single kind is how the whole pool
+    # was read, so it narrows nothing (BE-0468).
+    kinds, kinds_listed = _listed(conditions.get("kind"))
+    runs: list[TargetRun] = []
+    for kind in kinds:
+        kind_coords = (("kind", kind),) if kinds_listed and kind is not None else ()
+        of_kind = [d for d in devices if _matches_kind(d, kind)]
+        if kinds_listed and not of_kind:
+            # A listed kind names a run that must happen, so a pool without it fails, never skips.
+            runs.append(
+                TargetRun(
+                    target=target,
+                    platform=platform,
+                    kind=kind,
+                    coordinates=kind_coords,
+                    outcome="failed",
+                    reason=f'runsOn.{platform}.kind  "{kind}"  available: {_available(devices)}',
+                    conditioned=True,
+                )
+            )
+            continue
+        runs += _kind_runs(target, platform, conditions, of_kind, kind, kind_coords)
+    return runs
+
+
+def _kind_runs(
+    target: str,
+    platform: str,
+    conditions: Mapping[str, str | list[str]],
+    devices: Sequence[DeviceFacts],
+    kind: str | None,
+    kind_coords: tuple[tuple[str, str], ...],
+) -> list[TargetRun]:
+    """The runs of one kind: one per listed model and major version, each with its family resolved."""
     model_field, version_field = _MODEL_FIELD[platform], _VERSION_FIELD[platform]
     models, listed = _listed(conditions.get(model_field))
     raw_spec = conditions.get(version_field)
     spec = VersionSpec.parse(raw_spec) if isinstance(raw_spec, str) else None
+    families = _families(conditions)
     runs: list[TargetRun] = []
     for model in models:
-        coords = ((model_field, model),) if listed and model is not None else ()
-        base = TargetRun(target=target, platform=platform, model=model, spec=spec, conditioned=True)
+        coords = (*kind_coords, *(((model_field, model),) if listed and model is not None else ()))
+        base = TargetRun(
+            target=target, platform=platform, model=model, spec=spec, kind=kind, conditioned=True
+        )
         candidates = [d for d in devices if _matches_model(d, model)]
         if model is not None and not candidates:
             # A missing model is never "not applicable": only the version part of a run can be.
@@ -141,11 +208,58 @@ def form_target_runs(
                 )
             )
             continue
-        if spec is None:
-            runs.append(_with(base, coords))
-            continue
-        runs += _version_runs(base, coords, spec, candidates, version_field)
+        seen = candidates
+        if families:
+            # Only a listed family's devices can win, so an open range forms no run from another's.
+            candidates = [d for d in candidates if any(_matches_family(d, f) for f in families)]
+            if not candidates:
+                # A family names a run that must happen, so even an open range fails rather than
+                # going not applicable.
+                runs.append(_with(base, coords, "failed", _family_miss(base, families, seen)))
+                continue
+        formed = (
+            [_with(base, coords)]
+            if spec is None
+            else _version_runs(base, coords, spec, candidates, version_field)
+        )
+        runs += [
+            _with_family(run, families, candidates, seen, len(coords)) if families else run
+            for run in formed
+        ]
     return runs
+
+
+def _family_miss(run: TargetRun, families: Sequence[str], seen: Sequence[DeviceFacts]) -> str:
+    kind = f'kind "{run.kind}"  ' if run.kind is not None else ""
+    return (
+        f'runsOn.{run.platform}.{kind}family "{", ".join(families)}"  available: {_available(seen)}'
+    )
+
+
+def _with_family(
+    run: TargetRun,
+    families: Sequence[str],
+    candidates: Sequence[DeviceFacts],
+    seen: Sequence[DeviceFacts],
+    at: int,
+) -> TargetRun:
+    """*run* on the first of *families* that a device of the run has, or failed when none has one.
+
+    The order of *families* alone decides the winner, never the pool order, so one pool always
+    resolves the same way. Two or more listed families add the winner as a coordinate at *at*, after
+    the run's kind and model, so runs that took different families never share a history. A failure
+    names *seen*, the run's devices before the families narrowed them.
+    """
+    if run.outcome != "run":
+        return run
+    in_run = [d for d in candidates if _in_run(d, run.spec, run.major)]
+    winner = next((f for f in families if any(_matches_family(d, f) for d in in_run)), None)
+    if winner is None:
+        return replace(run, outcome="failed", reason=_family_miss(run, families, seen))
+    coords = run.coordinates
+    if len(families) > 1:
+        coords = (*coords[:at], ("family", winner), *coords[at:])
+    return replace(run, family=winner, coordinates=coords)
 
 
 def _with(
@@ -162,6 +276,8 @@ def _with(
         spec=base.spec,
         major=major,
         engine=base.engine,
+        kind=base.kind,
+        family=base.family,
         coordinates=coords,
         outcome=outcome,
         reason=reason,
@@ -204,20 +320,20 @@ def _web_runs(
     browsers: Sequence[DeviceFacts],
     engine: str | None,
 ) -> list[TargetRun]:
-    """One run per listed engine; a version range narrows each one instead of multiplying it."""
-    engines, listed = _listed(conditions.get("browser.engine") or engine)
+    """One run per listed browser kind; a version range narrows each one instead of multiplying it."""
+    engines, listed = _listed(conditions.get("browser.kind") or engine)
     raw_spec = conditions.get("browser.version")
     spec = VersionSpec.parse(raw_spec) if isinstance(raw_spec, str) else None
     runs: list[TargetRun] = []
     for name in engines:
-        coords = (("browser.engine", name),) if listed and name is not None else ()
+        coords = (("browser.kind", name),) if listed and name is not None else ()
         run = TargetRun(target=target, platform="web", spec=spec, engine=name, coordinates=coords)
         if spec is None:
             runs.append(run)
             continue
         launched = next((b for b in browsers if b.model == name), None)
         if launched is None:
-            raise ValueError(f"no browser version was read for engine {name!r}")
+            raise ValueError(f"no browser version was read for browser kind {name!r}")
         if spec.contains(launched.version):
             runs.append(run)
             continue
@@ -258,7 +374,14 @@ def eligible_set(
     """
     if not run.conditioned:
         return list(devices) if len(devices) >= demand else None
-    kept = [d for d in devices if _matches_model(d, run.model) and _in_run(d, run.spec, run.major)]
+    kept = [
+        d
+        for d in devices
+        if _matches_kind(d, run.kind)
+        and _matches_family(d, run.family)
+        and _matches_model(d, run.model)
+        and _in_run(d, run.spec, run.major)
+    ]
     by_model: dict[str, list[DeviceFacts]] = {}
     for d in kept:
         by_model.setdefault(d.model, []).append(d)
@@ -366,7 +489,8 @@ def _assign(
         free = [d for d in pools[pool] if d.udid not in claimed.get(pool, set())]
         chosen = eligible_set(run, free, len(members))
         if chosen is None:
-            what = run.label or "any device"
+            # A single family adds no coordinate, so the message names it in its place.
+            what = run.label or (f'family "{run.family}"' if run.family else "any device")
             return Combination(
                 runs,
                 "failed",
@@ -389,8 +513,9 @@ def first_run(
 ) -> tuple[TargetRun, DeviceFacts | None]:
     """The run `record`, `crawl`, and `repl` take, and the device it runs on.
 
-    These commands never multiply runs: they take the first listed value and the newest major
-    version the pool has within the range. A web run has no device to pick, so its device is None.
+    These commands never multiply runs: they take the first listed value, the first listed family a
+    fitting device has, and the newest major version the pool has within the range. A web run has
+    no device to pick, so its device is None.
 
     Raises:
         LookupError: No available device fits, named with the condition and the devices seen.
@@ -403,13 +528,24 @@ def first_run(
     if platform not in _MODEL_FIELD or not conditions:
         return TargetRun(target=target, platform=platform), (devices[0] if devices else None)
     model_field, version_field = _MODEL_FIELD[platform], _VERSION_FIELD[platform]
+    kinds, kinds_listed = _listed(conditions.get("kind"))
+    kind = kinds[0] if kinds_listed else None
     models, _ = _listed(conditions.get(model_field))
     model = models[0]
     raw_spec = conditions.get(version_field)
     spec = VersionSpec.parse(raw_spec) if isinstance(raw_spec, str) else None
-    fitting = [d for d in devices if _matches_model(d, model) and _in_run(d, spec, None)]
-    if not fitting:
-        named = [f'{model_field} "{model}"'] if model is not None else []
+    families = _families(conditions)
+    fitting = [
+        d
+        for d in devices
+        if _matches_kind(d, kind) and _matches_model(d, model) and _in_run(d, spec, None)
+    ]
+    family = next((f for f in families if any(_matches_family(d, f) for d in fitting)), None)
+    fitting = [d for d in fitting if _matches_family(d, family)]
+    if not fitting or (families and family is None):
+        named = [f'kind "{kind}"'] if kind is not None else []
+        named += [f'{model_field} "{model}"'] if model is not None else []
+        named += [f'family "{", ".join(families)}"'] if families else []
         named += [f'{version_field} "{spec}"'] if spec is not None else []
         raise LookupError(
             f"runsOn.{platform} {', '.join(named)}: no available device fits; available: "
@@ -417,7 +553,14 @@ def first_run(
         )
     major = max(d.version.major for d in fitting) if spec is not None else None
     run = TargetRun(
-        target=target, platform=platform, model=model, spec=spec, major=major, conditioned=True
+        target=target,
+        platform=platform,
+        model=model,
+        spec=spec,
+        major=major,
+        kind=kind,
+        family=family,
+        conditioned=True,
     )
     chosen = eligible_set(run, devices)
     assert chosen  # `fitting` holds a device of this major, so the set is never empty
@@ -426,6 +569,8 @@ def first_run(
 
 # How a declared listing names the runs an open range forms, which depend on the pool.
 PER_AVAILABLE_MAJOR = "one run per available major version"
+# How it names a run whose family a priority list leaves to the pool (BE-0468).
+FIRST_AVAILABLE_FAMILY = "the first available family"
 
 
 def declared_runs(
@@ -436,20 +581,26 @@ def declared_runs(
     A list names one run per value and a bounded range one per major version it covers, so those
     are listed as the runs they form. An open range's runs depend on the major versions the pool
     has, so it is listed as one run per available major version. A run with no coordinates (no
-    condition, or a single value alone) is listed as an empty label.
+    condition, or a single value alone) is listed as an empty label. A family list's winner depends
+    on the pool too, so it is listed as the first available family of the list.
     """
     if platform == "web":
-        engines, listed = _listed(conditions.get("browser.engine") or engine)
+        engines, listed = _listed(conditions.get("browser.kind") or engine)
         return [name if listed and name is not None else "" for name in engines]
     if platform not in _MODEL_FIELD or not conditions:
         return [""]
+    kinds, kinds_listed = _listed(conditions.get("kind"))
     models, listed = _listed(conditions.get(_MODEL_FIELD[platform]))
+    families = _families(conditions)
+    family = [f'{FIRST_AVAILABLE_FAMILY} of "{", ".join(families)}"'] if len(families) > 1 else []
     version_field = _VERSION_FIELD[platform]
     raw_spec = conditions.get(version_field)
     spec = VersionSpec.parse(raw_spec) if isinstance(raw_spec, str) else None
     labels: list[str] = []
-    for model in models:
-        prefix = [model] if listed and model is not None else []
+    for kind, model in itertools.product(kinds, models):
+        prefix = [kind] if kinds_listed and kind is not None else []
+        prefix += [model] if listed and model is not None else []
+        prefix += family
         if spec is None:
             labels.append(" / ".join(prefix))
             continue
@@ -476,7 +627,7 @@ def unpack_conditions(
     """A raw `runsOn` group's condition fields, keyed by their path under `runsOn` (`ios.model`).
 
     Reads each destination block (BE-0469). Device state (`locale`, `seedPhotos`) and how a target is
-    driven (`kind`, `emulate`) are not conditions; an integer range (`apiLevel: 34`) becomes its
+    driven (an iOS `kind`, `emulate`) are not conditions; an integer range (`apiLevel: 34`) becomes its
     text, as the target's model reads it.
     """
     out: dict[str, str | list[str]] = {}
@@ -484,7 +635,15 @@ def unpack_conditions(
         if not isinstance(block, Mapping):
             continue
         for key, raw in block.items():
-            if key in ("locale", "seedPhotos", "kind", "emulate") or raw is None:
+            # A browser's kind is a condition when listed, as `browser.engine` was; an iOS kind is
+            # how the target is driven.
+            skipped = (
+                "locale",
+                "seedPhotos",
+                "emulate",
+                *(() if destination == "browser" else ("kind",)),
+            )
+            if key in skipped or raw is None:
                 continue
             out[f"{destination}.{key}"] = _text(raw)
     return out

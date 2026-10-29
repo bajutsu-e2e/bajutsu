@@ -73,7 +73,7 @@ targets:
     app: { url: "http://127.0.0.1:8787/index.html" }
     runsOn:
       browser:
-        engine: chromium                       # chromium / firefox / webkit; --browser overrides per run
+        kind: chromium                         # chromium / chrome / edge / firefox / webkit; --browser overrides per run
         emulate: iPhone 13                     # omitted = a desktop context; else a Playwright device preset
     driver: { headless: true }                 # false = a visible (headed) browser; --headed overrides per run
     services:
@@ -87,7 +87,7 @@ so a key another platform takes fails as unknown on this one, with the accepted 
 | Group | iOS | Android | Web |
 |---|---|---|---|
 | `app` | `id`, `path`, `build`, `reinstall`, `launch.env`, `launch.args`, `launch.deeplink`, `startWhen`, `idNamespaces` | `id`, `path`, `build`, `reinstall`, `launch.env`, `launch.deeplink`, `grantPermissions`, `startWhen`, `idNamespaces` | `url`, `launch.env`, `startWhen`, `idNamespaces` |
-| `runsOn` | `ios.model`, `ios.os`, `ios.kind`, `ios.locale`, `ios.seedPhotos` | `android.avd`, `android.apiLevel` | `browser.engine`, `browser.version`, `browser.emulate` |
+| `runsOn` | `ios.model`, `ios.os`, `ios.kind`, `ios.family`, `ios.locale`, `ios.seedPhotos` | `android.avd`, `android.apiLevel` | `browser.kind`, `browser.version`, `browser.emulate` |
 | `driver` | `runner.testRunner`, `runner.build`, `runner.hostAddress` | `nativeZ` | `headless` |
 | `run`, extra fields | `tipKitHandling` | — | — |
 
@@ -238,9 +238,9 @@ Each field thus names what it limits, so `runsOn.ios.os` reads as an iOS version
 
 | Platform | Destination block | Fields |
 |---|---|---|
-| iOS | `runsOn.ios` | `model`, `os`, `kind`, `locale`, `seedPhotos` |
+| iOS | `runsOn.ios` | `model`, `os`, `kind`, `family`, `locale`, `seedPhotos` |
 | Android | `runsOn.android` | `avd`, `apiLevel` |
-| Web | `runsOn.browser` | `engine`, `version`, `emulate` |
+| Web | `runsOn.browser` | `kind`, `version`, `emulate` |
 | fake | none | none |
 
 `platform` and `runsOn` are separate settings. `platform` names the kind of app under test, which
@@ -268,7 +268,7 @@ targets:
     platform: web
     app: { url: https://example.com }
     runsOn:
-      browser: { engine: firefox, emulate: "iPhone 15" }
+      browser: { kind: firefox, emulate: "iPhone 15" }
 ```
 
 Earlier releases wrote these fields flat under `runsOn`. The loader reads no flat spelling. A flat
@@ -280,13 +280,18 @@ key fails the load and names the path it moved to:
 | `runsOn.avd`, `apiLevel` | `runsOn.android.<same field>` |
 | `runsOn.emulate` | `runsOn.browser.emulate` |
 
+`runsOn.browser.engine` gave way to `runsOn.browser.kind`
+([BE-0468](../roadmaps/BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of.md)). An
+`engine` key fails the load and names `kind`. Renaming the field keeps every run: a `kind` list runs
+once per listed browser, as an `engine` list did.
+
 Some `runsOn` fields are device conditions:
 
 | Platform | Conditions |
 |---|---|
-| iOS | `ios.model`, `ios.os` |
+| iOS | `ios.model`, `ios.os`, `ios.family`, and a list on `ios.kind` |
 | Android | `android.avd`, `android.apiLevel` |
-| Web | `browser.version`, and a list on `browser.engine` |
+| Web | `browser.version`, and a list on `browser.kind` |
 
 A list on `model` or `avd` counts as a condition too. A version range uses npm's
 [node-semver range grammar](https://github.com/npm/node-semver#ranges), such as `">=17 <19"`.
@@ -300,6 +305,7 @@ What it reads depends on the platform:
 |---|---|---|
 | iOS `model` | the simctl device-type name of the udid | exact |
 | iOS `os` | the Simulator's runtime version | version range |
+| iOS `family` | the `productFamily` of a Simulator's device type, or the `deviceType` that `devicectl` reports for a real device | `iphone` or `ipad`; the first listed family the run's devices have |
 | Android `avd` | the emulator's Android Virtual Device (AVD) name, from `ro.boot.qemu.avd_name`, then `ro.kernel.qemu.avd_name`, then `adb emu avd name` | exact; a physical device never matches |
 | Android `apiLevel` | `ro.build.version.sdk` | version range on an integer |
 | Web `browser.version` | the version of the browser Playwright launches | version range |
@@ -311,10 +317,11 @@ A run is one scenario on one set of coordinates. Two kinds of condition multiply
 
 | Field | Runs | When no available device fits |
 |---|---|---|
-| a list on `model`, `avd`, or `browser.engine` | one per listed value | the run fails, naming the value |
+| a list on `kind`, `model`, `avd`, or `browser.kind` | one per listed value | the run fails, naming the value |
 | a range bounded on both sides, such as `">=17 <19"`, `"18"`, or `"33 - 35"` | one per major version the range covers | the run fails, naming the major version |
 | a range open on a side, such as `">=18"` | one per major version the available devices have in the range | one record is **not applicable** |
 | a single `model` or `avd` | no extra run | the run fails |
+| `family`, a single value or a list | no extra run | the run fails, naming the families |
 
 On Android each API level counts as one major version. A `browser.version` range never multiplies
 runs: it narrows the launched browser instead. A not-applicable record carries no verdict of its
@@ -353,17 +360,51 @@ conditions. When the run fixes no model, the set then keeps the first model in p
 enough devices at one release. Within that model, it keeps the newest release that has enough. Every member shares one
 model and one release, so `--workers` spreads runs over identical devices.
 
-`record`, `crawl`, and `repl` never multiply runs. They take the first listed value and the newest
-major version the pool has within the range. They exit 2 when no device fits. `doctor` lists the
+A target can name a device family instead of a model. Apple renames device types with each Xcode
+release. An exact `model` then stops matching on a host whose Xcode lacks that type. `family` takes
+`iphone`, `ipad`, or a priority list of both, and a list never multiplies runs. Each run takes the
+first listed family that its devices have. The order in the list alone decides the winner. The same
+pool thus always resolves the same way. The eligible set then narrows to the winning family. A
+winner with too few devices fails the run, which never falls back to the next family. A list of two
+or more families adds the winner to the run's coordinates (`family=ipad`). The run label, the
+manifest, and the flakiness history then keep the runs on each family apart. `family` and `model`
+both name the device a run takes, so declaring both fails the load.
+
+A list on `kind` runs each scenario once per listed kind. `kind: [simulator, device]` runs it on a
+Simulator and on a real device. Each run adds its kind to the coordinates (`kind=device`). The run
+then drives the XCUITest destination of that kind. The pool must hold both kinds. Bajutsu reads each
+udid of `--udid` through the listing that shows it:
+
+- `simctl` for a Simulator
+- `devicectl` for a real device
+
+A udid that neither listing shows fails the read. A listed kind that the pool lacks fails its run.
+The message names the kind, so no run goes missing without a word.
+
+```yaml
+targets:
+  app:
+    platform: ios
+    app: { id: com.example.app }
+    runsOn:
+      ios:
+        kind: [simulator, device]   # one run on each
+        family: [ipad, iphone]      # each run takes an iPad when its pool has one
+```
+
+`record`, `crawl`, and `repl` never multiply runs. Each takes the first listed value and the first
+listed family that a fitting device has. It takes the newest major version the pool has within the
+range, too. They exit 2 when no device fits. `doctor` lists the
 target's own runs, and each scenario's runs when `--scenario` names a file, with the devices that
 fit each one ([doctor output](#output)). Its screen probe
 scores the device of the first run. `--backend fake` matches no condition, and says so once. A
-target that runs on a physical iPhone (`runsOn.ios.kind: device`) may not declare
-`model` or `os`. A target an `appium` grid serves has no pool to read, and neither does a Device
-Farm job. A condition there fails before any device work and names the field.
+target whose `runsOn.ios.kind` includes `device` may not declare `model` or `os`. Bajutsu does not
+compare a real device's model or release. A real device does report its family, so
+`family` stays allowed there. A target an `appium` grid serves has no pool to read, and neither does
+a Device Farm job. A condition there fails before any device work and names the field.
 
-Three `runsOn.ios` fields are device state rather than conditions. `kind` (`simulator` or `device`)
-selects the XCUITest destination. `locale` pins the language a run applies. iOS keeps the built-in
+Three `runsOn.ios` fields are device state rather than conditions. A single `kind` (`simulator` or
+`device`) selects the XCUITest destination. `locale` pins the language a run applies. iOS keeps the built-in
 `en_US` when `locale` is unset. `seedPhotos` lists the images seeded into the photo library. A
 scenario may replace `locale` and `seedPhotos` under `preconditions.device.ios`. The web block's
 `emulate` likewise selects a device mode rather than matching a device.
@@ -393,7 +434,7 @@ platforms — rather than `effective.bundle_id` directly, which does not exist.
 | `platform_config.grant_permissions` (`AndroidConfig`) | `app.grantPermissions` | Android only: runtime permissions granted before launch (`pm grant`), so a permission prompt never blocks a scenario |
 | `platform_config.native_z` (`AndroidConfig`) | `driver.nativeZ` | Android only: `nativeZ: true` asks the device for each opted-in view's own `View.getZ()`, which `elements.json` reports as the diagnostic `nativeZ` field ([BE-0355](../roadmaps/BE-0355-native-z-position/BE-0355-native-z-position.md)). Off by default, because the node walk that answers it runs on every screen read — 20-100 ms — and reports nothing at all unless the app under test links `BajutsuAndroid` and opts views in. A target that turns it on also gives up the round trip a confirmed gesture's own reply would otherwise have saved: that reply cannot carry a `nativeZ` reading, so such a target asks the device not to build the tree at all rather than take one whose positions would all read absent ([BE-0407](../roadmaps/BE-0407-step-latency-driver-internal-tuning/BE-0407-step-latency-driver-internal-tuning.md) units 18-19). iOS needs no such flag: its responder answers only for an app that linked BajutsuKit |
 | `platform_config.headless` (`WebConfig`) | `driver.headless` | web only: `true` (default) runs headless; `false` shows a visible (headed) browser, in slow-motion. `bajutsu run --headed / --no-headed` and the Web UI's "show browser" toggle override per run |
-| `platform_config.browser` (`WebConfig`) | `runsOn.browser.engine` | web only: the Playwright rendering engine to drive — `chromium` (default), `firefox`, or `webkit`. All three run headless on Linux. `bajutsu run/record --browser <engine>` overrides per run (flag > config > default), and `bajutsu run --browsers <list>` runs the cross-browser matrix (below); a missing engine binary is installed on demand. An unknown value is rejected at config load ([BE-0076](../roadmaps/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md)) |
+| `platform_config.browser` (`WebConfig`) | `runsOn.browser.kind` | web only: the browser to drive — `chromium` (default), `chrome`, `edge`, `firefox`, or `webkit`. `chrome` and `edge` launch the Google Chrome or Microsoft Edge installed on the host, through Playwright's `chromium` engine on a channel; `webkit` stands in for Safari, which Playwright cannot drive. `bajutsu run/record --browser <kind>` overrides per run (flag > config > default), and `bajutsu run --browsers <list>` runs the cross-browser matrix (below). A missing Playwright engine is installed on demand; a missing Chrome or Edge fails the run, because installing one would change the host's own browser. An unknown value is rejected at config load ([BE-0468](../roadmaps/BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of.md)) ([BE-0076](../roadmaps/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md)) |
 | `platform_config.device_mode` (`WebConfig`) | `runsOn.browser.emulate` | web only: the device mode a browser context is created with — omitted for a desktop context, or a Playwright device preset name (e.g. `iPhone 13`) that emulates its viewport / touch / device scale / user agent, driving the web target as that mobile device. It is desktop-browser emulation (Chrome DevTools' device toolbar), not a real device ([drivers → Playwright](drivers.md#playwright-web)). Resolved **lazily** against `playwright.devices` in the driver, so config load never imports Playwright; an unknown preset fails loudly at driver start, not at config load ([BE-0228](../roadmaps/BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation.md)) |
 | `conditions` | `runsOn` | the device conditions the target declares ([above](#device-conditions-runson)), ranges as written; `run` forms its runs from them, and `doctor` lists those runs |
 | `device_provider` | `--worker-config` | where this target's devices come from. The config no longer names it: an `appium` environment in the `worker.yaml` the command runs under hands the grid's endpoint to the targets of the grid's platform ([what a machine can run](#what-a-machine-can-run-outside-the-config-be-0450)), and every other target takes the built-in `local` provider (the `--udid` path). Bajutsu drives that endpoint end to end over a live W3C WebDriver transport ([iOS device cloud](ios-device-cloud.md#live--an-appium-endpoint-provider), [BE-0236](../roadmaps/BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md), [BE-0238](../roadmaps/BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md)) |

@@ -9,6 +9,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, cast
 
 from bajutsu.common.backend_cli import simctl
+from bajutsu.common.devices.browsers import browser_launch
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.dom import QUERY_JS, parse_dom
 
@@ -62,15 +63,17 @@ def _device_context_kwargs(pw: Any, device_mode: str) -> dict[str, Any]:
 
 
 def _start_browser(
-    engine: str, device_mode: str = "desktop"
+    kind: str, device_mode: str = "desktop"
 ) -> Starter:  # pragma: no cover - needs a browser
-    """A `Starter` that launches the named Playwright engine (chromium / firefox / webkit, BE-0076).
+    """A `Starter` that launches the browser a `runsOn.browser.kind` names (BE-0076, BE-0468).
 
     Each engine is reached the same way — `getattr(pw, engine)` — so firefox / webkit launch through
-    the identical path that was hard-wired to Chromium. A fresh context is the `erase` equivalent (no
-    cookies / storage carried over). `device_mode` emulates a phone (BE-0228); desktop is unchanged.
-    Playwright is imported lazily so the default path stays free.
+    the identical path that was hard-wired to Chromium, and Chrome / Edge are chromium on a channel.
+    A fresh context is the `erase` equivalent (no cookies / storage carried over). `device_mode`
+    emulates a phone (BE-0228); desktop is unchanged. Playwright is imported lazily so the default
+    path stays free.
     """
+    engine, channel = browser_launch(kind)
 
     def start(headless: bool) -> _Started:
         from playwright.sync_api import sync_playwright
@@ -78,7 +81,9 @@ def _start_browser(
         pw = sync_playwright().start()
         # A headed run adds a small slow-motion so a human can actually follow each action; headless
         # (the default / CI) stays at full speed.
-        browser = getattr(pw, engine).launch(headless=headless, slow_mo=0 if headless else 250)
+        browser = getattr(pw, engine).launch(
+            headless=headless, slow_mo=0 if headless else 250, **_channel(channel)
+        )
         # reduced_motion="reduce" is the determinism lever (BE-0191 unit 5): CSS transitions the app
         # under test may run (e.g. the serve UI's own themable motion, dogfooded in demos/serve-ui/)
         # collapse to instant, so condition-wait assertions never race an animation and an element is
@@ -94,6 +99,11 @@ def _start_browser(
         return _Started(pw, browser, context, cast(_Page, page))
 
     return start
+
+
+def _channel(channel: str | None) -> dict[str, str]:
+    """The `launch` keyword for an installed browser's channel; none for a bundled engine."""
+    return {"channel": channel} if channel is not None else {}
 
 
 def _playwright_error_types() -> tuple[type[BaseException], ...]:

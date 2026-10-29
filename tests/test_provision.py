@@ -28,11 +28,25 @@ def test_plan_web_target_includes_the_configured_engine_browser() -> None:
         "    platform: web\n"
         "    app: {url: 'http://x/index.html'}\n"
         "    runsOn:\n"
-        "      browser: {engine: firefox}\n"
+        "      browser: {kind: firefox}\n"
     )
     p = provision.plan(cfg)
     assert p.extras == ("web",)
     assert Tool("firefox", Playwright("firefox")) in p.tools
+
+
+@pytest.mark.parametrize(
+    ("kind", "name"), [("chrome", "Google Chrome"), ("edge", "Microsoft Edge")]
+)
+def test_plan_leaves_a_channel_browser_to_the_host(kind: str, name: str) -> None:
+    # BE-0468: installing Chrome or Edge would change a system browser, so provision never runs it.
+    cfg = load_config(
+        "targets:\n  site:\n    platform: web\n    app: {url: 'http://x/'}\n"
+        f"    runsOn: {{browser: {{kind: {kind}}}}}\n"
+    )
+    (tool,) = [t for t in provision.plan(cfg).tools if t.exe == kind]
+    assert isinstance(tool.install, requirements.Manual)
+    assert name in tool.install.hint
 
 
 def test_plan_fake_target_installs_nothing() -> None:

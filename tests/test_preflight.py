@@ -92,6 +92,16 @@ def test_web_missing_browser_fails_with_hint() -> None:
     assert not browser.ok and "playwright install firefox" in browser.detail
 
 
+def test_a_missing_channel_browser_asks_for_the_host_install() -> None:
+    # BE-0468: Edge is the host's own browser, so the hint never renders a `playwright install`.
+    checks = preflight.runnability(
+        "playwright", web_engine="edge", web_pkg=lambda: True, web_browser=lambda _e: False
+    )
+    browser = next(c for c in checks if c.name == "edge browser")
+    assert "install Microsoft Edge on this host" in browser.detail
+    assert "playwright install" not in browser.detail
+
+
 # --- iOS (xcuitest) — the sole iOS backend since BE-0290 ---
 
 

@@ -20,6 +20,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from bajutsu.common.devices.browsers import browser_launch
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
 
@@ -154,7 +155,7 @@ def select_actuator(
 
 
 def ensure_web_runtime(backends: list[str], browser: str = "chromium") -> None:
-    """Provision the web backend (and the requested engine) on demand.
+    """Provision the web backend (and the requested browser kind's bundled engine) on demand.
 
     When a `web`/`playwright` backend is requested but the Playwright package is absent
     (e.g. the venv carries only the base install), install it *additively* — `uv pip install` so it
@@ -182,7 +183,10 @@ def ensure_web_runtime(backends: list[str], browser: str = "chromium") -> None:
             sys.stderr.flush()
             subprocess.run(["uv", "pip", "install", "playwright"], check=True)
             importlib.invalidate_caches()  # so find_spec() in select_actuator sees the new package
-        subprocess.run([sys.executable, "-m", "playwright", "install", browser], check=True)
+        # Chrome and Edge launch the host's own install through a channel (BE-0468); fetching one
+        # would install a system browser, so a missing one fails when the run reads its version.
+        if browser_launch(browser)[1] is None:
+            subprocess.run([sys.executable, "-m", "playwright", "install", browser], check=True)
     except (OSError, subprocess.CalledProcessError) as e:
         raise RuntimeError(
             "failed to auto-install the web backend (Playwright). Install it manually with "

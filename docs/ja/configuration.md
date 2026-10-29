@@ -65,7 +65,7 @@ targets:
     app: { url: "http://127.0.0.1:8787/index.html" }
     runsOn:
       browser:
-        engine: chromium                       # chromium / firefox / webkit。--browser が実行ごとに上書き
+        kind: chromium                         # chromium / chrome / edge / firefox / webkit。--browser が実行ごとに上書き
         emulate: iPhone 13                     # 省略するとデスクトップのコンテキスト。それ以外は Playwright のデバイスプリセット
     driver: { headless: true }                 # false でブラウザを画面に表示。--headed が実行ごとに上書き
     services:
@@ -78,7 +78,7 @@ targets:
 | グループ | iOS | Android | Web |
 |---|---|---|---|
 | `app` | `id`、`path`、`build`、`reinstall`、`launch.env`、`launch.args`、`launch.deeplink`、`startWhen`、`idNamespaces` | `id`、`path`、`build`、`reinstall`、`launch.env`、`launch.deeplink`、`grantPermissions`、`startWhen`、`idNamespaces` | `url`、`launch.env`、`startWhen`、`idNamespaces` |
-| `runsOn` | `ios.model`、`ios.os`、`ios.kind`、`ios.locale`、`ios.seedPhotos` | `android.avd`、`android.apiLevel` | `browser.engine`、`browser.version`、`browser.emulate` |
+| `runsOn` | `ios.model`、`ios.os`、`ios.kind`、`ios.family`、`ios.locale`、`ios.seedPhotos` | `android.avd`、`android.apiLevel` | `browser.kind`、`browser.version`、`browser.emulate` |
 | `driver` | `runner.testRunner`、`runner.build`、`runner.hostAddress` | `nativeZ` | `headless` |
 | `run` に加わるフィールド | `tipKitHandling` | — | — |
 
@@ -181,9 +181,9 @@ targets:
 
 | プラットフォーム | 宛先のブロック | フィールド |
 |---|---|---|
-| iOS | `runsOn.ios` | `model`、`os`、`kind`、`locale`、`seedPhotos` |
+| iOS | `runsOn.ios` | `model`、`os`、`kind`、`family`、`locale`、`seedPhotos` |
 | Android | `runsOn.android` | `avd`、`apiLevel` |
-| Web | `runsOn.browser` | `engine`、`version`、`emulate` |
+| Web | `runsOn.browser` | `kind`、`version`、`emulate` |
 | fake | なし | なし |
 
 `platform` と `runsOn` は別のことを表します。`platform` はテスト対象のアプリの種類を表し、`app` と `driver` の形を決めます。`runsOn` は、そのアプリを動かす場所を制限します。そこでローダは、2 つの名前が一致するかではなく、組み合わせが上の表で許されているかを検査します。たとえば `runsOn.browser` を書いた `platform: ios` のターゲットは失敗し、iOS が許す宛先を示します。`fake` のターゲットには宛先がないので、`runsOn` の下にキーを書くと失敗します。チームの既定値も、同じブロックを `defaults.platforms.<platform>.runsOn` の下に書きます。
@@ -206,7 +206,7 @@ targets:
     platform: web
     app: { url: https://example.com }
     runsOn:
-      browser: { engine: firefox, emulate: "iPhone 15" }
+      browser: { kind: firefox, emulate: "iPhone 15" }
 ```
 
 以前のリリースでは、これらのフィールドを `runsOn` の直下に書いていました。ローダは直下の書き方を読みません。直下に書いたキーは読み込みに失敗し、移動先のパスを示します。
@@ -217,13 +217,15 @@ targets:
 | `runsOn.avd`、`apiLevel` | `runsOn.android.<同じフィールド>` |
 | `runsOn.emulate` | `runsOn.browser.emulate` |
 
+`runsOn.browser.engine` は `runsOn.browser.kind` に置き換わりました（[BE-0468](../../roadmaps/BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of-ja.md)）。`engine` を書くと読み込みが失敗し、メッセージが `kind` を示します。フィールド名を書き換えても run は減りません。`kind` のリストは、`engine` のリストと同じく、並べたブラウザごとに 1 回ずつ実行します。
+
 `runsOn` のいくつかのフィールドは、デバイスの条件です。
 
 | プラットフォーム | 条件 |
 |---|---|
-| iOS | `ios.model`、`ios.os` |
+| iOS | `ios.model`、`ios.os`、`ios.family` と、`ios.kind` に書いたリスト |
 | Android | `android.avd`、`android.apiLevel` |
-| Web | `browser.version` と、`browser.engine` に書いたリスト |
+| Web | `browser.version` と、`browser.kind` に書いたリスト |
 
 `model` と `avd` に書いたリストも条件になります。バージョンの範囲は npm の [node-semver の範囲の文法](https://github.com/npm/node-semver#ranges)で書きます（`">=17 <19"` など）。形が誤った範囲は、ローダが拒否します。YAML は `18.10` を `18.1` として読むので、小数のバージョンは引用符で囲みます。
 
@@ -233,6 +235,7 @@ Bajutsu は、run の前に利用できる各デバイスを読み、これら�
 |---|---|---|
 | iOS の `model` | udid の simctl のデバイスタイプ名 | 完全一致 |
 | iOS の `os` | Simulator のランタイムのバージョン | バージョンの範囲 |
+| iOS の `family` | Simulator ならデバイスタイプの `productFamily`、実機なら `devicectl` が返す `deviceType` | `iphone` か `ipad`。run のデバイスが持つ、並べた順で最初のファミリーを選びます |
 | Android の `avd` | エミュレータの Android Virtual Device（AVD）名。`ro.boot.qemu.avd_name`、`ro.kernel.qemu.avd_name`、`adb emu avd name` の順に読みます | 完全一致。物理デバイスは一致しません |
 | Android の `apiLevel` | `ro.build.version.sdk` | 整数に対するバージョンの範囲 |
 | Web の `browser.version` | Playwright が起動するブラウザのバージョン | バージョンの範囲 |
@@ -243,10 +246,11 @@ run は、1 つのシナリオを 1 組の座標で実行する単位です。ru
 
 | フィールド | run の数 | 合うデバイスがないとき |
 |---|---|---|
-| `model`、`avd`、`browser.engine` に書いたリスト | 値ごとに 1 つ | その run は値を示して失敗します |
+| `kind`、`model`、`avd`、`browser.kind` に書いたリスト | 値ごとに 1 つ | その run は値を示して失敗します |
 | 両側が閉じた範囲（`">=17 <19"`、`"18"`、`"33 - 35"` など） | 範囲が含むメジャーバージョンごとに 1 つ | その run はメジャーバージョンを示して失敗します |
 | 片側が開いた範囲（`">=18"` など） | 範囲内で利用できるデバイスが持つメジャーバージョンごとに 1 つ | **対象外**（not applicable）の記録を 1 件残します |
 | 単一の `model` や `avd` | run は増えません | その run は失敗します |
+| `family`（単一の値でもリストでも） | run は増えません | その run はファミリーを示して失敗します |
 
 Android では API レベル 1 つを 1 つのメジャーバージョンと数えます。`browser.version` の範囲は run を増やさず、起動したブラウザを絞り込みます。対象外の記録は、それ自体では判定を持ちません。どの出力も、対象外の記録を成功や失敗とは別に並べます（[reporting](reporting.md)）。
 
@@ -274,9 +278,31 @@ targets:
 
 各 run は、自分の適格な集合からデバイスを取ります。適格な集合には、run の条件を満たすデバイスが残ります。run がモデルを固定しないときは、1 つのリリースで必要な台数がそろう最初のモデルをプールの順に選びます。そのモデルの中では、台数がそろういちばん新しいリリースを選びます。集合のデバイスはどれも同じモデルとリリースを持つので、`--workers` は同一のデバイスに run を振り分けます。
 
-`record`、`crawl`、`repl` は run を増やしません。最初に並べた値と、範囲内でプールが持つ、いちばん新しいメジャーバージョンを使い、合うデバイスがなければ終了コード 2 で終わります。`doctor` はターゲット自身の run を一覧にし、`--scenario` でファイルを指定したときは各シナリオの run を一覧にします。どちらも、それぞれに合うデバイスを添えます（[doctor の出力](#出力)）。画面のプローブは、最初の run のデバイスを採点します。`--backend fake` はどの条件も照合せず、そのことを 1 回だけ知らせます。物理の iPhone で動くターゲット（`runsOn.ios.kind: device`）は、`model` と `os` を宣言できません。`appium` のグリッドが受け持つターゲットや Device Farm のジョブには、読み取るプールがありません。そこに書いた条件は、デバイスを操作する前に失敗し、フィールドを示します。
+ターゲットは、モデルの代わりにデバイスのファミリーを指定できます。Apple は Xcode のリリースごとにデバイスタイプの名前を変えます。そのため、`model` に書いた正確な名前は、そのデバイスタイプを持たない Xcode のホストで一致しなくなります。`family` には `iphone`、`ipad`、または両方を並べた優先順位のリストを書きます。リストを書いても run は増えません。各 run は、自分のデバイスが持つファミリーのうち、並べた順で最初のものを選びます。勝つファミリーを決めるのはリストの順序だけなので、同じプールはいつも同じ結果になります。適格な集合は、勝ったファミリーのデバイスに絞られます。勝ったファミリーの台数が run に足りないときは、次のファミリーに移らず、その run は失敗します。
 
-`runsOn.ios` の 3 つのフィールドは、条件ではなくデバイスの状態です。`kind`（`simulator` か `device`）は XCUITest の接続先を選びます。`locale` は run が適用する言語を固定します。`locale` が未指定なら、iOS はビルトインの `en_US` を使います。`seedPhotos` は写真ライブラリに投入する画像を並べます。シナリオは `preconditions.device.ios` の下で `locale` と `seedPhotos` を置き換えられます。web のブロックの `emulate` も、デバイスを照合するのではなく、デバイスモードを選びます。
+2 つ以上のファミリーを並べると、勝ったファミリーが run の座標に加わります（`family=ipad`）。run のラベル、manifest、フレーキーさの履歴は、これによってファミリーごとの run を区別します。`family` と `model` はどちらも run が取るデバイスを指すので、両方を宣言すると読み込みが失敗します。
+
+`kind` にリストを書くと、各シナリオを並べた種類ごとに 1 回ずつ実行します。`kind: [simulator, device]` は、Simulator と実機でそれぞれ 1 回実行します。各 run は自分の種類を座標に加え（`kind=device`）、その種類の XCUITest の接続先を使います。このとき、プールは両方の種類のデバイスを含む必要があります。Bajutsu は、`--udid` の各 udid を、その udid を表示する一覧から読みます。
+
+- Simulator は `simctl` から読みます
+- 実機は `devicectl` から読みます
+
+どちらの一覧にも表示されない udid は、読み取りを失敗させます。並べた種類のデバイスがプールにないとき、その run は種類を示して失敗します。run が黙って飛ばされることはありません。
+
+```yaml
+targets:
+  app:
+    platform: ios
+    app: { id: com.example.app }
+    runsOn:
+      ios:
+        kind: [simulator, device]   # それぞれで 1 回ずつ実行
+        family: [ipad, iphone]      # 各 run は、プールに iPad があれば iPad を取る
+```
+
+`record`、`crawl`、`repl` は run を増やしません。最初に並べた値と、合うデバイスが持つ最初のファミリーを使います。メジャーバージョンは、範囲内でプールが持ついちばん新しいものを使います。合うデバイスがなければ終了コード 2 で終わります。`doctor` はターゲット自身の run を一覧にし、`--scenario` でファイルを指定したときは各シナリオの run を一覧にします。どちらも、それぞれに合うデバイスを添えます（[doctor の出力](#出力)）。画面のプローブは、最初の run のデバイスを採点します。`--backend fake` はどの条件も照合せず、そのことを 1 回だけ知らせます。`runsOn.ios.kind` に `device` を含むターゲットは、`model` と `os` を宣言できません。Bajutsu は実機のモデルとリリースを照合しないからです。実機もファミリーは返すので、`family` は宣言できます。`appium` のグリッドが受け持つターゲットや Device Farm のジョブには、読み取るプールがありません。そこに書いた条件は、デバイスを操作する前に失敗し、フィールドを示します。
+
+`runsOn.ios` の 3 つのフィールドは、条件ではなくデバイスの状態です。単一の `kind`（`simulator` か `device`）は XCUITest の接続先を選びます。`locale` は run が適用する言語を固定します。`locale` が未指定なら、iOS はビルトインの `en_US` を使います。`seedPhotos` は写真ライブラリに投入する画像を並べます。シナリオは `preconditions.device.ios` の下で `locale` と `seedPhotos` を置き換えられます。web のブロックの `emulate` も、デバイスを照合するのではなく、デバイスモードを選びます。
 
 ### 解決（`resolve` → `Effective`）
 
@@ -294,7 +320,7 @@ targets:
 | `platform_config.grant_permissions`（`AndroidConfig`） | `app.grantPermissions` | Android のみ: 起動前に付与する実行時の権限です（`pm grant`）。権限のプロンプトがシナリオを止めないようにします |
 | `platform_config.native_z`（`AndroidConfig`） | `driver.nativeZ` | Android のみ: `nativeZ: true` は、opt-in した各ビュー自身の `View.getZ()` を端末に要求します。`elements.json` は診断用フィールド `nativeZ` として報告します（[BE-0355](../../roadmaps/BE-0355-native-z-position/BE-0355-native-z-position-ja.md)）。指定しなければ off です。値を返すノード走査は画面の読み取りごとに走り、20 ミリ秒から 100 ミリ秒かかるうえ、テスト対象のアプリが `BajutsuAndroid` をリンクしてビューを opt-in していなければ何も報告しないためです。on にしたターゲットは、確認が取れたジェスチャの応答が省いてくれるはずだった往復も手放します。その応答は `nativeZ` の値を運べないため、位置がすべて未計測になるツリーを受け取る代わりに、そもそも作らないよう端末へ要求します（[BE-0407](../../roadmaps/BE-0407-step-latency-driver-internal-tuning/BE-0407-step-latency-driver-internal-tuning-ja.md) の作業単位 18〜19）。iOS に対応するフラグはありません。レスポンダは BajutsuKit をリンクしたアプリにだけ応答するためです |
 | `platform_config.headless`（`WebConfig`） | `driver.headless` | web のみ: `true`（既定）はヘッドレス、`false` はブラウザを画面に表示し低速再生します。`bajutsu run --headed / --no-headed` と Web UI の「show browser」トグルが実行ごとに上書きします |
-| `platform_config.browser`（`WebConfig`） | `runsOn.browser.engine` | web のみ: 駆動する Playwright の描画エンジンです。`chromium`（既定）、`firefox`、`webkit` から選びます。いずれも Linux 上でヘッドレス実行できます。`bajutsu run/record --browser <engine>` が実行ごとに上書きし（フラグ > config > 既定）、`bajutsu run --browsers <list>` はクロスブラウザマトリクスを実行します（後述）。エンジンのブラウザバイナリが無ければ実行時に取得します。未知の値は config 読み込み時に拒否されます（[BE-0076](../../roadmaps/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md)） |
+| `platform_config.browser`（`WebConfig`） | `runsOn.browser.kind` | web のみ: 駆動するブラウザです。`chromium`（既定）、`chrome`、`edge`、`firefox`、`webkit` から選びます。`chrome` と `edge` は、ホストにインストールされた Google Chrome と Microsoft Edge を、Playwright の `chromium` エンジンのチャネルとして起動します。`webkit` は、Playwright が駆動できない Safari の代わりです。`bajutsu run/record --browser <kind>` が実行ごとに上書きし（フラグ > config > 既定）、`bajutsu run --browsers <list>` はクロスブラウザマトリクスを実行します（後述）。Playwright のエンジンが無ければ実行時に取得します。Chrome や Edge が無いときは、その run が失敗します。取得するとホスト自身のブラウザが変わってしまうからです。未知の値は config 読み込み時に拒否されます（[BE-0468](../../roadmaps/BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of-ja.md)） |
 | `platform_config.device_mode`（`WebConfig`） | `runsOn.browser.emulate` | web のみ: ブラウザコンテキストを生成するときのデバイスモードです。省略するとデスクトップのコンテキストになり、Playwright のデバイスプリセット名（例 `iPhone 13`）を指定すると、viewport / `device_scale_factor` / `is_mobile` / `has_touch` / `user_agent` をエミュレートし、web ターゲットをそのモバイル端末として駆動します。これはデスクトップ級ブラウザでのエミュレーション（Chrome DevTools のデバイスツールバー）であり、実機ではありません（[drivers → Playwright](drivers.md#playwrightweb)）。ドライバーの中で `playwright.devices` に対して**遅延**して解決するため、config 読み込みが Playwright を import することはありません。不明なプリセットは config 読み込み時ではなくドライバー起動時に明示的なエラーで失敗します（[BE-0228](../../roadmaps/BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation-ja.md)） |
 | `conditions` | `runsOn` | ターゲットが宣言するデバイスの条件です（[前述](#デバイスの条件runson)）。範囲は書いたままの文字列で持ちます。`run` はここから run を作り、`doctor` はその run を一覧にします |
 | `device_provider` | `--worker-config` | このターゲットのデバイスの取得元です。config はこれを指定しなくなりました。コマンドが従う `worker.yaml` の `appium` environment が、グリッドのエンドポイントを、グリッドのプラットフォームのターゲットに渡します（[マシンが実行できるもの](#マシンが実行できるもの設定の外be-0450)）。ほかのターゲットはビルトインの `local` provider（`--udid` の経路）を使います。このエンドポイントは live の W3C WebDriver トランスポートで端から端まで駆動します（[iOS デバイスクラウド](ios-device-cloud.md#ライブ--appium-エンドポイントのプロバイダー)、[BE-0236](../../roadmaps/BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction-ja.md)、[BE-0238](../../roadmaps/BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution-ja.md)） |

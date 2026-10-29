@@ -82,9 +82,9 @@ def test_conditions_resolve_onto_the_effective_config() -> None:
     # One engine is how a web target is driven, not a condition; a listed one multiplies runs.
     web = _eff(
         "targets:\n  t: { platform: web, app: { url: 'http://x/' }, "
-        "runsOn: { browser: { engine: [chromium, webkit] } } }\n"
+        "runsOn: { browser: { kind: [chromium, webkit] } } }\n"
     )
-    assert web.conditions == {"browser.engine": ["chromium", "webkit"]}
+    assert web.conditions == {"browser.kind": ["chromium", "webkit"]}
     assert _eff(_IOS).conditions == {}
 
 
@@ -105,7 +105,7 @@ def test_the_fake_driver_skips_conditions_with_one_notice(caplog: pytest.LogCapt
 def test_a_kind_device_target_cannot_declare_a_condition() -> None:
     from pydantic import ValidationError
 
-    with pytest.raises(ValidationError, match="kind: device cannot declare"):
+    with pytest.raises(ValidationError, match="kind includes device cannot declare"):
         load_config(
             "targets:\n  t: { platform: ios, app: { id: com.x }, runsOn: {ios: {kind: device, os: '18'}} }\n"
         )
@@ -730,3 +730,52 @@ def test_the_grid_mix_check_skips_what_it_cannot_read(tmp_path: Path) -> None:
     assert _grid_mix_refusal(cfg, "demo", "- name: [broken") is None
     overrides = ArtifactOverrides("demo", binary=None, scenarios="a" * 64)
     assert _scenario_text(state, "", None, "demo", {"scenario": "s.yaml"}, overrides) is None
+
+
+# --- BE-0468: a listed kind and a family resolve onto conditions, and each run applies its kind ---
+
+
+def test_a_listed_kind_and_a_family_are_conditions_and_a_single_kind_is_not() -> None:
+    from bajutsu.common.config.accessors import xcuitest_targets_real_device
+
+    both = _eff(
+        "targets:\n  t: { platform: ios, app: { id: com.x }, "
+        "runsOn: {ios: {kind: [simulator, device], family: [iphone, ipad]}} }\n"
+    )
+    assert both.conditions == {"kind": ["simulator", "device"], "family": ["iphone", "ipad"]}
+    # The first listed kind stands in until a run applies its own.
+    assert not xcuitest_targets_real_device(both)
+    single = _eff(
+        "targets:\n  t: { platform: ios, app: { id: com.x }, "
+        "runsOn: {ios: {kind: device, family: ipad}} }\n"
+    )
+    assert single.conditions == {"family": "ipad"}
+    assert xcuitest_targets_real_device(single)
+
+
+def test_each_run_applies_its_kind_and_drops_the_kind_condition() -> None:
+    from bajutsu.common.config.accessors import xcuitest_targets_real_device
+    from bajutsu.run.device_matrix import apply_kind
+
+    eff = _eff(
+        "targets:\n  t: { platform: ios, app: { id: com.x }, "
+        "runsOn: {ios: {kind: [simulator, device], family: ipad}} }\n"
+    )
+    on_device = apply_kind(eff, "device")
+    assert xcuitest_targets_real_device(on_device)
+    assert on_device.conditions == {"family": "ipad"}
+    assert not xcuitest_targets_real_device(apply_kind(eff, "simulator"))
+    # A target that lists no kind keeps its own.
+    assert apply_kind(_eff(_IOS), "device") == _eff(_IOS)
+
+
+def test_a_family_is_matched_on_a_real_device_but_not_on_a_remote_one() -> None:
+    from bajutsu.common.config.preconditions import remote_condition_problems
+
+    device = _eff(
+        "targets:\n  t: { platform: ios, app: { id: com.x }, runsOn: {ios: {kind: device, family: ipad}} }\n"
+    )
+    assert remote_condition_problems(device, device.conditions) == []
+    remote = replace(device, device_provider=DeviceProvider(kind="appium", endpoint="http://grid/"))
+    (problem,) = remote_condition_problems(remote, remote.conditions)
+    assert "runsOn.ios.family" in problem

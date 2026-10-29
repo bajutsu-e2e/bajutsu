@@ -27,6 +27,7 @@ from bajutsu.run.device_matrix import (
     TargetLanes,
     condition_problems,
     plan,
+    read_pool_facts,
     render_not_applicable,
 )
 
@@ -365,7 +366,7 @@ def test_a_web_engine_list_runs_each_engine_as_its_own_cell(
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
         "targets:\n  site:\n    platform: web\n    app: {url: 'http://localhost:1/'}\n"
-        "    runsOn: {browser: {engine: [webkit, firefox]}}\n",
+        "    runsOn: {browser: {kind: [webkit, firefox]}}\n",
         encoding="utf-8",
     )
     worker = tmp_path / "worker.yaml"
@@ -497,9 +498,9 @@ def test_two_web_pools_differing_only_by_engine_both_shut_down(
     cfg.write_text(
         "targets:\n"
         "  site:\n    platform: web\n    app: {url: 'http://localhost:1/'}\n"
-        "    runsOn: {browser: {engine: [chromium]}}\n"
+        "    runsOn: {browser: {kind: [chromium]}}\n"
         "  admin:\n    platform: web\n    app: {url: 'http://localhost:2/'}\n"
-        "    runsOn: {browser: {engine: [webkit]}}\n",
+        "    runsOn: {browser: {kind: [webkit]}}\n",
         encoding="utf-8",
     )
     worker = tmp_path / "worker.yaml"
@@ -527,3 +528,98 @@ def test_two_web_pools_differing_only_by_engine_both_shut_down(
     )
     assert result.exit_code == 0, result.output
     assert sorted(opened) == sorted(closed) == ["chromium", "webkit"]
+
+
+# --- BE-0468: a listed iOS kind forms a cell per kind, and each cell drives its own kind ---
+
+_MIXED = {
+    "sim": DeviceFacts("sim", "ios", "iPad Pro 13-inch (M4)", "18.2", family="iPad"),
+    "real": DeviceFacts("real", "ios", "iPad Air", "18.1", family="iPad", physical=True),
+}
+
+
+def test_plan_puts_each_listed_kind_in_its_own_cell() -> None:
+    eff = _eff("{ios: {kind: [simulator, device], family: ipad}}")
+    lanes = {"app": TargetLanes("app", eff, "xcuitest", tuple(_MIXED))}
+    matrix = plan(
+        [_scenario("{}")],
+        lanes,
+        "app",
+        engine_flag=False,
+        read_facts=lambda lane: [_MIXED[u] for u in lane.udids],
+        read_browser=lambda engine: DeviceFacts("w", "web", engine, "1"),
+    )
+    assert [(c.devices, c.kinds) for c in matrix.cells] == [
+        ({"app": ("sim",)}, {"app": "simulator"}),
+        ({"app": ("real",)}, {"app": "device"}),
+    ]
+    assert [r.combination.label for r in matrix.records] == ["simulator", "device"]
+
+
+def test_a_two_kind_target_reads_a_mixed_pool(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[tuple[str, ...]] = []
+
+    def pool(udids: list[str]) -> list[DeviceFacts]:
+        seen.append(tuple(udids))
+        return [_MIXED[u] for u in udids]
+
+    monkeypatch.setattr("bajutsu.run.device_matrix.facts.read_ios_pool", pool)
+    eff = _eff("{ios: {kind: [simulator, device]}}")
+    assert read_pool_facts(TargetLanes("app", eff, "xcuitest", ("sim", "real"))) == list(
+        _MIXED.values()
+    )
+    assert seen == [("sim", "real")]
+
+
+def test_each_kind_of_a_run_reaches_its_pool(
+    tmp_path: Path, harness: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from bajutsu.common.config.accessors import xcuitest_targets_real_device
+
+    monkeypatch.setattr(
+        "bajutsu.run.device_matrix.facts.read_ios_pool", lambda udids: [_MIXED[u] for u in udids]
+    )
+    kinds: list[tuple[list[str], bool]] = []
+
+    def pool(udids: list[str], _backends: object, eff: Any, run_dir: Path, **_k: object):  # type: ignore[no-untyped-def]
+        kinds.append((list(udids), xcuitest_targets_real_device(eff)))
+        return object(), lambda: None
+
+    monkeypatch.setattr("bajutsu.run.cli.device_pool", pool)
+    args = _args(tmp_path, "{ios: {kind: [simulator, device]}}", "- name: s\n  steps: []\n")
+    args[args.index("--udid") + 1] = "sim,real"
+    result = invoke(runner, app, args)
+    assert result.exit_code == 0, result.output
+    assert kinds == [(["sim"], False), (["real"], True)]
+    coordinates = [s["run_coordinates"] for s in _manifest(tmp_path)["scenarios"]]
+    assert coordinates == [{"app": {"kind": "simulator"}}, {"app": {"kind": "device"}}]
+
+
+def test_an_ios_pool_reads_through_the_listing_its_kinds_need(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from bajutsu.run.device_matrix import read_ios_facts
+
+    calls: list[str] = []
+    for name in ("read_ios", "read_ios_device", "read_ios_pool"):
+        monkeypatch.setattr(
+            f"bajutsu.run.device_matrix.facts.{name}",
+            lambda udids, _n=name: calls.append(_n) or [],
+        )
+    read_ios_facts(_eff(), ["u"])
+    read_ios_facts(_eff("{ios: {kind: device}}"), ["u"])
+    read_ios_facts(_eff("{ios: {kind: [simulator, device]}}"), ["u"])
+    assert calls == ["read_ios", "read_ios_device", "read_ios_pool"]
+
+
+def test_the_first_run_of_a_kind_list_drives_its_kind() -> None:
+    from bajutsu.common.config.accessors import xcuitest_targets_real_device
+    from bajutsu.run.device_matrix import first_run_device
+
+    eff = _eff("{ios: {kind: [device, simulator]}}")
+    run_eff, udid = first_run_device(
+        eff, "xcuitest", "sim,real", read_ios=lambda udids: [_MIXED[u] for u in udids]
+    )
+    assert udid == "real"
+    assert xcuitest_targets_real_device(run_eff)
+    assert "kind" not in run_eff.conditions

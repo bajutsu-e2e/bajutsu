@@ -32,7 +32,7 @@ from bajutsu.common.config.schema import (
 )
 from bajutsu.common.config.schema.platform._shared import AppCommon
 from bajutsu.common.config.schema.platform.android import AndroidApp, AndroidDriver, AndroidRunsOn
-from bajutsu.common.config.schema.platform.ios import IosApp, IosDriver, IosRun, IosRunsOn
+from bajutsu.common.config.schema.platform.ios import IosApp, IosDriver, IosKind, IosRun, IosRunsOn
 from bajutsu.common.config.schema.platform.web import WebApp, WebDriver, WebRunsOn
 
 
@@ -72,19 +72,24 @@ def _conditions(runs_on: _Model) -> dict[str, str | list[str]]:
     The keys are the fields within the destination block (`model`, `browser.version`), not their
     `runsOn` paths: they name a run's coordinates, which BE-0469 left as they were.
 
-    A single web engine is how the target is driven rather than a condition; a listed one multiplies
-    runs, so it counts.
+    A single browser or iOS kind is how the target is driven rather than a condition; a listed one
+    multiplies runs, so it counts (BE-0468).
     """
     if isinstance(runs_on, IosRunsOn):
         ios = runs_on.ios
-        candidates: dict[str, str | list[str] | None] = {"model": ios.model, "os": ios.os}
+        candidates: dict[str, str | list[str] | None] = {
+            "kind": list(ios.kind) if isinstance(ios.kind, list) else None,
+            "model": ios.model,
+            "os": ios.os,
+            "family": list(ios.family) if isinstance(ios.family, list) else ios.family,
+        }
     elif isinstance(runs_on, AndroidRunsOn):
         android = runs_on.android
         candidates = {"avd": android.avd, "apiLevel": android.api_level}
     elif isinstance(runs_on, WebRunsOn):
-        engine = runs_on.browser.engine
+        kind = runs_on.browser.kind
         candidates = {
-            "browser.engine": engine if isinstance(engine, list) else None,
+            "browser.kind": list(kind) if isinstance(kind, list) else None,
             "browser.version": runs_on.browser.version,
         }
     else:
@@ -93,14 +98,18 @@ def _conditions(runs_on: _Model) -> dict[str, str | list[str]]:
 
 
 def _xcuitest(driver: _Model, runs_on: _Model) -> XcuitestConfig | None:
-    """Today's resolved runner block, built from `driver.runner` and `runsOn.ios.kind`, or None if unset."""
+    """Today's resolved runner block, built from `driver.runner` and `runsOn.ios.kind`, or None if unset.
+
+    A listed kind resolves to its first; each run of the list replaces it with its own (BE-0468).
+    """
     runner = driver.runner if isinstance(driver, IosDriver) else None
-    kind = runs_on.ios.kind if isinstance(runs_on, IosRunsOn) else "simulator"
+    kinds: list[IosKind] = runs_on.ios.kinds if isinstance(runs_on, IosRunsOn) else ["simulator"]
+    kind = kinds[0]
     if runner is None or (
         runner.test_runner is None
         and runner.build is None
         and runner.host_address is None
-        and kind == "simulator"
+        and "device" not in kinds
     ):
         return None
     return XcuitestConfig(
@@ -122,13 +131,13 @@ def _platform_config(a: TargetConfig) -> PlatformConfig:
         assert isinstance(runs_on, WebRunsOn)
         driver = a.driver
         assert isinstance(driver, WebDriver)
-        engine = runs_on.browser.engine
+        kind = runs_on.browser.kind
         return WebConfig(
             base_url=app.url,
             headless=driver.headless,
-            # A listed engine is a condition each run replaces with its own engine (BE-0452); the
-            # first stands in so the resolved type stays one engine.
-            browser=engine[0] if isinstance(engine, list) else engine,
+            # A listed browser kind is a condition each run replaces with its own (BE-0452); the
+            # first stands in so the resolved type stays one browser.
+            browser=kind[0] if isinstance(kind, list) else kind,
             device_mode=runs_on.browser.emulate,
         )
     if isinstance(app, AndroidApp):

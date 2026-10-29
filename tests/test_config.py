@@ -485,7 +485,7 @@ def test_web_app_browser_config_resolves() -> None:
         "    platform: web\n"
         "    app: {url: 'http://127.0.0.1:8787/'}\n"
         "    runsOn:\n"
-        "      browser: {engine: firefox}\n"
+        "      browser: {kind: firefox}\n"
     )
     assert _web(resolve(cfg, "web")).browser == "firefox"
 
@@ -500,7 +500,7 @@ def test_web_app_unknown_browser_rejected_at_load() -> None:
             "    platform: web\n"
             "    app: {url: 'http://x/'}\n"
             "    runsOn:\n"
-            "      browser: {engine: safari}\n"
+            "      browser: {kind: safari}\n"
         )
 
 
@@ -881,7 +881,7 @@ def test_web_target_yields_web_sub_config() -> None:
         "    platform: web\n"
         "    app: {url: 'https://app.test'}\n"
         "    runsOn:\n"
-        "      browser: {engine: firefox}\n"
+        "      browser: {kind: firefox}\n"
         "    driver: {headless: false}\n"
     )
     eff = resolve(cfg, "s")
@@ -1514,7 +1514,7 @@ def test_destination_blocks_resolve_to_the_target_conditions_and_state() -> None
         "  w:\n"
         "    platform: web\n"
         "    app: {url: 'http://x/'}\n"
-        "    runsOn: {browser: {engine: webkit, version: '>=17', emulate: iPhone 13}}\n"
+        "    runsOn: {browser: {kind: webkit, version: '>=17', emulate: iPhone 13}}\n"
     )
     ios = resolve(cfg, "i")
     assert ios.conditions == {"model": "iPhone 16", "os": ">=18"}

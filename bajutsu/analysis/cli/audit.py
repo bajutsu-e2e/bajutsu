@@ -55,6 +55,7 @@ from bajutsu.common.scenario import Scenario, _scenarios_declaring_targets, load
 from bajutsu.run.device_matrix import (
     TargetLanes,
     any_conditions,
+    apply_kind,
     condition_problems,
     installed_browser,
     not_applicable_record,
@@ -388,6 +389,8 @@ def _audit_runs(
             cell = placement[id(record)]
             engine = cell.engines.get(eff.target)
             run_eff = _resolve_browser(eff, engine) if engine else eff
+            if kind := cell.kinds.get(eff.target):
+                run_eff = apply_kind(run_eff, kind)
             runs.append((s, combo.label, run_eff, list(cell.devices.get(eff.target, udids))))
     return runs, failed
 

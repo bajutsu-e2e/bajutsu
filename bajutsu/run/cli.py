@@ -57,7 +57,6 @@ from bajutsu.common.cancellation import (
 from bajutsu.common.capability import capability_preflight
 from bajutsu.common.capability.worker_capability import WorkerCapability
 from bajutsu.common.config import (
-    WEB_ENGINES,
     AndroidConfig,
     Effective,
     IosConfig,
@@ -65,6 +64,7 @@ from bajutsu.common.config import (
 from bajutsu.common.deprecations import warn_once
 from bajutsu.common.devices import errors as device_errors
 from bajutsu.common.devices import facts as device_facts
+from bajutsu.common.devices.browsers import BROWSER_KINDS
 from bajutsu.common.drivers import base
 from bajutsu.common.github import actions as github_actions
 from bajutsu.common.orchestrator import (
@@ -123,6 +123,7 @@ from bajutsu.run.device_matrix import (
     DeviceMatrix,
     TargetLanes,
     any_conditions,
+    apply_kind,
     condition_problems,
     installed_browser,
     not_applicable_record,
@@ -135,7 +136,7 @@ from bajutsu.run.step_gate import PromptStepGate
 
 
 def _parse_browsers(browsers: str) -> list[str]:
-    """Parse `--browsers` into an ordered, de-duplicated list of `runsOn.browser.engine` values.
+    """Parse `--browsers` into an ordered, de-duplicated list of `runsOn.browser.kind` values.
 
     The cross-browser matrix axis (BE-0076): a comma list (`chromium,firefox,webkit`) trimmed of
     blanks and de-duped while keeping order. Empty means no matrix (the run uses the single-engine
@@ -406,7 +407,7 @@ def _resolve_config_and_engines(
             raise typer.Exit(2) from None
     # --headed/--no-headed overrides the target's `driver.headless` (web only; iOS ignores it).
     eff = _with_headed(eff, headed)
-    # --browser overrides the target's `runsOn.browser.engine` (web only; flag > config > chromium).
+    # --browser overrides the target's `runsOn.browser.kind` (web only; flag > config > chromium).
     eff = _resolve_browser(eff, browser)
     # --browsers is the multi-engine spelling of the same axis: a comma list fans the run out across
     # engines into a matrix. One engine collapses to the single-engine path (set as --browser would);
@@ -2530,8 +2531,12 @@ def _run_cell(
                 typer.echo(str(e))
                 raise typer.Exit(2) from None
             eff = _resolve_browser(eff, engine)
+        kind = cell.kinds.get(name, "")
+        if kind:
+            eff = apply_kind(eff, kind)
         effs[name] = eff
-        keys[name] = (setup.actuator, cell.devices.get(name, tuple(setup.udids)), engine)
+        # A target carries a browser kind or an iOS kind, never both, so one slot tells pools apart.
+        keys[name] = (setup.actuator, cell.devices.get(name, tuple(setup.udids)), engine or kind)
     run_dir = plan.runs_dir / plan.run_id / prefix
     pools: dict[tuple[str, tuple[str, ...], str], tuple[LeaseFn, Callable[[], None]]] = {}
     try:
@@ -2866,14 +2871,14 @@ def run_body(
     browser: str = typer.Option(
         "",
         "--browser",
-        help=f"web backend: rendering engine to drive — {' / '.join(WEB_ENGINES)}; "
-        "overrides the target's runsOn.browser.engine (default: chromium)",
+        help=f"web backend: browser to drive — {' / '.join(BROWSER_KINDS)}; "
+        "overrides the target's runsOn.browser.kind (default: chromium)",
     ),
     browsers: str = typer.Option(
         "",
         "--browsers",
         help=f"web backend: run the cross-browser matrix — a comma list of engines "
-        f"({','.join(WEB_ENGINES)}) that overrides the target's runsOn.browser.engine; each "
+        f"({','.join(BROWSER_KINDS)}) that overrides the target's runsOn.browser.kind; each "
         "scenario runs once per engine and the run is green only if every engine passes "
         "(all-must-pass). A single engine equals --browser",
     ),

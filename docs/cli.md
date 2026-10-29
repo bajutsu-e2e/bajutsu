@@ -113,8 +113,8 @@ uses it as always. Each self-declaring file has it checked for membership instea
 | `--schemas` | config's `paths.schemas`, then `schemas/` beside the scenario | override the target's `paths.schemas`: the directory of JSON Schema files for `responseSchema` assertions; `schema: items.json` resolves inside it (needs the `schema` extra) |
 | `--goldens` | config's `paths.goldens`, then `goldens/` beside the scenario | override the target's `paths.goldens`: the directory of golden JSON files for `golden` assertions; `golden: response.json` resolves inside it |
 | `--headed / --no-headed` | target `driver.headless` (headless) | web backend: show the run in a visible, slow-motion Chromium window instead of headless, so you can watch each step (the window opens on the machine running the command). Omit to use the target's `driver.headless` config; iOS ignores it |
-| `--browser` | target `runsOn.browser.engine` (chromium) | web backend: the Playwright rendering engine to drive for this run — `chromium` / `firefox` / `webkit`; omit to use the target's `runsOn.browser.engine` config. The flag replaces that field, so a listed engine the target declares stops counting as a device condition ([configuration](configuration.md), [BE-0076](../roadmaps/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md)) |
-| `--browsers` | "" | web backend: run the **cross-browser matrix** — a comma list of engines (e.g. `chromium,firefox,webkit`); each scenario runs once per engine and the run is green only if every engine passes ([configuration](configuration.md#cross-browser-matrix---browsers-be-0076)). A single engine is exactly `--browser` |
+| `--browser` | target `runsOn.browser.kind` (chromium) | web backend: the browser to drive for this run — `chromium` / `chrome` / `edge` / `firefox` / `webkit`; omit to use the target's `runsOn.browser.kind` config. The flag replaces that field, so a browser list the target declares stops counting as a device condition ([configuration](configuration.md), [BE-0076](../roadmaps/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md), [BE-0468](../roadmaps/BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of.md)) |
+| `--browsers` | "" | web backend: run the **cross-browser matrix** — a comma list of browser kinds (e.g. `chromium,firefox,webkit`); each scenario runs once per browser and the run is green only if every browser passes ([configuration](configuration.md#cross-browser-matrix---browsers-be-0076)). A single engine is exactly `--browser` |
 | `--progress / --no-progress` | off | stream per-scenario / per-step progress lines to stderr (the `serve` UI consumes these) |
 | `--score / --no-score` | off | print the app's entry-screen convention score (doctor's Ready/Partial/Blocked grade) to stderr, computed from this run's own first launch — so CI reads the tell without a separate `doctor` step that cold-spawns a second runner. Diagnostic only; never affects pass/fail |
 | `--trace-driver` | off | write `<sid>/driver_trace.json` per scenario, recording every Python↔driver call — the driver method invoked, its host-device round trips, and (on Android) which of those fell back to a subprocess — with a start time and an elapsed duration, attributed to the step it happened during ([BE-0415](../roadmaps/BE-0415-driver-call-trace-per-scenario/BE-0415-driver-call-trace-per-scenario.md)). Diagnostic only; never affects pass/fail |
@@ -142,8 +142,8 @@ uses it as always. Each self-declaring file has it checked for membership instea
   scenario that did not pass. `run` acquires no device for that scenario and runs the rest. When no scenario
   can run, `run` exits 2 and lists each reason.
 - **Device conditions form runs (BE-0452).** A target may declare a device condition:
-  `runsOn.ios.model`, `runsOn.ios.os`, `runsOn.android.avd`, `runsOn.android.apiLevel`, `runsOn.browser.version`, or a list
-  on `model`, `avd`, or `browser.engine`. A scenario declares no condition of its own (BE-0469).
+  `runsOn.ios.model`, `runsOn.ios.os`, `runsOn.ios.family`, `runsOn.android.avd`, `runsOn.android.apiLevel`,
+  `runsOn.browser.version`, or a list on `kind`, `model`, `avd`, or `browser.kind`. A scenario declares no condition of its own (BE-0469).
   `run` reads every device of the `--udid` pool, makes one run
   per listed value and per major version of a range, and runs each on its own eligible devices
   ([configuration](configuration.md#device-conditions-runson)). Each run's evidence lands under
@@ -660,7 +660,7 @@ bajutsu record --target <name> --goal "<natural-language goal>" [--out <file.yam
 | `--max-steps` | `30` | cap the number of authoring turns (and therefore worst-case token spend) ([BE-0194](../roadmaps/BE-0194-record-turn-payload-diet/BE-0194-record-turn-payload-diet.md)) |
 | `--screenshot / --no-screenshot` | `--screenshot` | send a screenshot each turn; `--no-screenshot` records elements-only (cheaper), for an app fully instrumented with ids ([BE-0194](../roadmaps/BE-0194-record-turn-payload-diet/BE-0194-record-turn-payload-diet.md)) |
 | `--headed / --no-headed` | target `driver.headless` | web backend: author against a visible (headed, slow-motion) browser instead of headless; omit to use the target's `driver.headless` config |
-| `--browser` | target `runsOn.browser.engine` (chromium) | web backend: the Playwright rendering engine to author against — `chromium` / `firefox` / `webkit`; omit to use the target's `runsOn.browser.engine` config |
+| `--browser` | target `runsOn.browser.kind` (chromium) | web backend: the browser to author against — `chromium` / `chrome` / `edge` / `firefox` / `webkit`; omit to use the target's `runsOn.browser.kind` config |
 | `--alert-vision-instruction` | "" | free text the vision guard reads instead of dismissing the prompt |
 | `--language` | config `ai.language` (`auto`) | AI output language for the authored prose (`from:` provenance, reasoning) — `ja` / `en` / `auto`; overrides `ai.language`, `auto` follows the goal ([BE-0188](../roadmaps/BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language.md)) |
 | `--config` | `bajutsu.config.yaml` | config |
@@ -867,7 +867,7 @@ bajutsu repl --target <name> [options]
 | `--backend` | the target's `platform` | a check against the target's platform (see [Common](#common)) |
 | `--erase / --no-erase` | erase, except on the live route | erase before launch (the app must be installed); the target's `run.erase` does not apply here; the live route to an `appium` grid rejects erase outright, so the default there is off, and an explicit `--erase` on that route exits with a CLI error instead |
 | `--headed / --no-headed` | target `driver.headless` | web backend: inspect a visible (headed, slow-motion) browser instead of headless; omit to use the target's `driver.headless` config |
-| `--browser` | target `runsOn.browser.engine` (chromium) | web backend: the Playwright rendering engine to inspect — `chromium` / `firefox` / `webkit`; omit to use the target's `runsOn.browser.engine` config |
+| `--browser` | target `runsOn.browser.kind` (chromium) | web backend: the browser to inspect — `chromium` / `chrome` / `edge` / `firefox` / `webkit`; omit to use the target's `runsOn.browser.kind` config |
 | `--attach` | off | local iOS Simulator (`xcuitest`) alone: connect to the app already running on the booted Simulator and leave it as it is — no erase, install, or relaunch (see *Attaching to a running app*, below) |
 | `--config` | `bajutsu.config.yaml` | config |
 | `--worker-config` | the shipped default | the worker capability file, as in [`run`](#run); an `appium` file opens the shell on the grid (the live route) for a target of the grid's platform |

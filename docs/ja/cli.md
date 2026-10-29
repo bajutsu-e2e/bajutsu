@@ -96,8 +96,8 @@ web backend が動く Windows では、`run` は BE-0449 以前と同じく run 
 | `--schemas` | config の `paths.schemas`、次にシナリオ隣の `schemas/` | ターゲットの `paths.schemas` を上書きします。`responseSchema` アサーション用の JSON Schema ファイルのディレクトリ。`schema: items.json` はこの中で解決されます（`schema` extra が必要です） |
 | `--goldens` | config の `paths.goldens`、次にシナリオ隣の `goldens/` | ターゲットの `paths.goldens` を上書きします。`golden` アサーション用の golden JSON ファイルのディレクトリ。`golden: response.json` はこの中で解決されます |
 | `--headed / --no-headed` | ターゲットの `driver.headless`（既定はヘッドレス） | web backend: ヘッドレスの代わりにブラウザを画面に表示し（低速再生）、実行の各ステップを確認できます（コマンドを実行しているマシン上でウィンドウが開きます）。省略時はターゲットの `driver.headless` 設定に従います。iOS は無視します |
-| `--browser` | ターゲットの `runsOn.browser.engine`（既定 chromium） | web backend: この run で使う Playwright のレンダリングエンジン。`chromium` / `firefox` / `webkit` から選びます。省略時はターゲットの `runsOn.browser.engine` config に従います。フラグはこのフィールドを置き換えるので、ターゲットがリストで宣言したエンジンはデバイス条件として数えなくなります（[configuration](configuration.md)、[BE-0076](../../roadmaps/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md)） |
-| `--browsers` | "" | web backend: **クロスブラウザマトリクス**を実行します。エンジンのカンマ区切りリスト（例 `chromium,firefox,webkit`）を指定すると、各シナリオがエンジンごとに1回ずつ走り、全エンジンが合格して初めて run 全体が緑になります（[configuration](configuration.md#クロスブラウザマトリクス--browsersbe-0076)）。エンジンを1つだけ指定するのは `--browser` と同じです |
+| `--browser` | ターゲットの `runsOn.browser.kind`（既定 chromium） | web backend: この run で使うブラウザ。`chromium` / `chrome` / `edge` / `firefox` / `webkit` から選びます。省略時はターゲットの `runsOn.browser.kind` config に従います。フラグはこのフィールドを置き換えるので、ターゲットがリストで宣言したブラウザはデバイス条件として数えなくなります（[configuration](configuration.md)、[BE-0076](../../roadmaps/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md)、[BE-0468](../../roadmaps/BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of-ja.md)） |
+| `--browsers` | "" | web backend: **クロスブラウザマトリクス**を実行します。ブラウザの種類のカンマ区切りリスト（例 `chromium,firefox,webkit`）を指定すると、各シナリオがブラウザごとに1回ずつ走り、全ブラウザが合格して初めて run 全体が緑になります（[configuration](configuration.md#クロスブラウザマトリクス--browsersbe-0076)）。エンジンを1つだけ指定するのは `--browser` と同じです |
 | `--progress / --no-progress` | off | シナリオ / ステップごとの進捗を stderr に流します（`serve` UI が消費します） |
 | `--score / --no-score` | off | アプリの入口画面の規約スコア（doctor の Ready/Partial/Blocked グレード）を、この run 自身の最初の起動から算出して stderr に出力します。2 つめの XCUITest ランナーをコールド起動する別立ての `doctor` を挟まずに、CI がこの目印を読み取れます。診断専用で、pass/fail には一切影響しません |
 | `--trace-driver` | off | シナリオごとに `<sid>/driver_trace.json` を書き出します。呼び出されたドライバーのメソッド、ホストとデバイス間の各ラウンドトリップ、Android ではそのうちどれがサブプロセスにフォールバックしたかといった、Python とドライバー間のすべての呼び出しを、開始時刻と所要時間つきで、発生したステップに紐づけて記録します（[BE-0415](../../roadmaps/BE-0415-driver-call-trace-per-scenario/BE-0415-driver-call-trace-per-scenario-ja.md)）。診断専用で、pass/fail には一切影響しません |
@@ -124,8 +124,8 @@ web backend が動く Windows では、`run` は BE-0449 以前と同じく run 
   run の結果とレポートに記録されます。そのシナリオのためにデバイスは確保せず、残りのシナリオは実行します。
   実行できるシナリオが 1 つもなければ、`run` は理由を列挙して終了コード 2 で終了します。
 - **デバイス条件から run を作ります（BE-0452）。** ターゲットはデバイス条件を宣言できます。
-  `runsOn.ios.model`、`runsOn.ios.os`、`runsOn.android.avd`、`runsOn.android.apiLevel`、`runsOn.browser.version`、および
-  `model`、`avd`、`browser.engine` に書いたリストがデバイス条件です。シナリオは自分では条件を
+  `runsOn.ios.model`、`runsOn.ios.os`、`runsOn.ios.family`、`runsOn.android.avd`、`runsOn.android.apiLevel`、
+  `runsOn.browser.version`、および `kind`、`model`、`avd`、`browser.kind` に書いたリストがデバイス条件です。シナリオは自分では条件を
   宣言しません（BE-0469）。`run` は `--udid` のプールの
   すべてのデバイスを読みます。並べた値ごと、範囲のメジャーバージョンごとに run を 1 つ作り、
   それぞれを自分の適格なデバイスで実行します（[configuration](configuration.md#デバイスの条件runson)）。
@@ -460,7 +460,7 @@ bajutsu record --target <name> --goal "<自然言語ゴール>" [--out <file.yam
 | `--max-steps` | `30` | オーサリングのターン数（＝トークン消費の上限）に上限を設けます（[BE-0194](../../roadmaps/BE-0194-record-turn-payload-diet/BE-0194-record-turn-payload-diet-ja.md)） |
 | `--screenshot / --no-screenshot` | `--screenshot` | 毎ターン、スクリーンショットを送ります。`--no-screenshot` は要素情報だけを記録し（コストが安い）、id を十分に備えたアプリ向けです（[BE-0194](../../roadmaps/BE-0194-record-turn-payload-diet/BE-0194-record-turn-payload-diet-ja.md)） |
 | `--headed / --no-headed` | ターゲットの `driver.headless` | web backend: ヘッドレスではなく目に見える（低速再生の）ブラウザでオーサリングします。省略時はターゲットの `driver.headless` 設定に従います |
-| `--browser` | ターゲットの `runsOn.browser.engine`（既定 chromium） | web backend: オーサリングに使う Playwright のレンダリングエンジン。`chromium` / `firefox` / `webkit` から選びます。省略時はターゲットの `runsOn.browser.engine` config に従います |
+| `--browser` | ターゲットの `runsOn.browser.kind`（既定 chromium） | web backend: オーサリングに使うブラウザ。`chromium` / `chrome` / `edge` / `firefox` / `webkit` から選びます。省略時はターゲットの `runsOn.browser.kind` config に従います |
 | `--alert-vision-instruction` | "" | プロンプトを片付ける代わりに視覚ガードが読む自由記述 |
 | `--language` | config の `ai.language`（`auto`） | 著すプローズ（`from:` 由来、推論）の AI 出力言語。`ja` / `en` / `auto` から選び `ai.language` を上書きします。`auto` はゴールに追従します（[BE-0188](../../roadmaps/BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language-ja.md)） |
 | `--config` | `bajutsu.config.yaml` | config |
@@ -641,7 +641,7 @@ bajutsu repl --target <name> [options]
 | `--backend` | ターゲットの `platform` | ターゲットの platform に対する検査（[共通](#共通)を参照） |
 | `--erase / --no-erase` | live 経路以外は erase | 起動前に erase（アプリはインストール済みである必要）。ターゲットの `run.erase` はここでは効きません。`appium` グリッドへの live 経路は erase を受け付けないため、その経路の既定は off になり、そこで明示的に `--erase` を指定すると CLI エラーで終了します |
 | `--headed / --no-headed` | ターゲットの `driver.headless` | web backend: ヘッドレスではなく目に見える（低速再生の）ブラウザを調べます。省略時はターゲットの `driver.headless` 設定に従います |
-| `--browser` | ターゲットの `runsOn.browser.engine`（既定 chromium） | web backend: 調べる対象の Playwright レンダリングエンジン。`chromium` / `firefox` / `webkit` から選びます。省略時はターゲットの `runsOn.browser.engine` config に従います |
+| `--browser` | ターゲットの `runsOn.browser.kind`（既定 chromium） | web backend: 調べる対象のブラウザ。`chromium` / `chrome` / `edge` / `firefox` / `webkit` から選びます。省略時はターゲットの `runsOn.browser.kind` config に従います |
 | `--attach` | off | ローカルの iOS Simulator（`xcuitest`）専用です。起動済みの Simulator で動いているアプリに、そのままの状態で接続します。erase、インストール、再起動はしません（後述の「起動中のアプリへの接続」を参照） |
 | `--config` | `bajutsu.config.yaml` | config |
 | `--worker-config` | 同梱のデフォルト | [`run`](#run) と同じ worker 能力ファイル。`appium` のファイルを渡すと、グリッドの platform のターゲットに対してグリッド上（live 経路）でシェルを開きます |

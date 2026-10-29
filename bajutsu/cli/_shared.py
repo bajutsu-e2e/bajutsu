@@ -32,7 +32,6 @@ from bajutsu.common.capability.worker_capability import (
     load_worker_capability,
 )
 from bajutsu.common.config import (
-    WEB_ENGINES,
     AiConfig,
     Config,
     Effective,
@@ -56,6 +55,7 @@ from bajutsu.common.config_source import (
     source_provenance,
 )
 from bajutsu.common.deprecations import warn_once
+from bajutsu.common.devices.browsers import BROWSER_KINDS
 from bajutsu.common.devices.runs import condition_path
 from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.common.github import GitHubAccessError
@@ -397,23 +397,22 @@ def _note_fake_conditions(eff: Effective, backends: list[str]) -> bool:
 
 
 def parse_engine_flag(flag: str, value: str) -> str:
-    """Parse one engine named on the command line as a value of `runsOn.browser.engine` (BE-0452).
+    """Parse one browser named on the command line as a value of `runsOn.browser.kind` (BE-0468).
 
     The flag is read by the model that reads the target's own field, so the command line and the
-    config accept the same engines. An unknown engine is a clean exit 2, before it reaches
-    Playwright's `getattr(pw, engine)`.
+    config accept the same browsers. An unknown one is a clean exit 2, before it reaches Playwright.
 
     Args:
-        flag: The flag that named the engine, for the message (`--browser`, `--browsers`).
-        value: The engine as written.
+        flag: The flag that named the browser, for the message (`--browser`, `--browsers`).
+        value: The browser kind as written.
 
     Raises:
-        typer.Exit: *value* is not one of the known engines (exit code 2).
+        typer.Exit: *value* is not one of the known browser kinds (exit code 2).
     """
     try:
-        WebBrowser(engine=value)
+        WebBrowser.model_validate({"kind": value})
     except ValidationError:
-        typer.echo(f"unknown {flag} {value!r}: use one of {', '.join(WEB_ENGINES)}")
+        typer.echo(f"unknown {flag} {value!r}: use one of {', '.join(BROWSER_KINDS)}")
         raise typer.Exit(2) from None
     return value
 
@@ -492,7 +491,7 @@ def _command_preconditions_or_exit(eff: Effective, *, erase: bool) -> ResolvedPr
 
 
 def _resolve_browser(eff: Effective, browser: str) -> Effective:
-    """Apply a `--browser` flag over the target's `runsOn.browser.engine` (web backend, BE-0076).
+    """Apply a `--browser` flag over the target's `runsOn.browser.kind` (web backend, BE-0076).
 
     Precedence mirrors `--headed`: an explicit flag wins, else the target's config (already on
     `eff`), else the chromium default. The flag replaces the field, so a listed engine the target
@@ -511,7 +510,7 @@ def _resolve_browser(eff: Effective, browser: str) -> Effective:
 
 
 def _without_engine_condition(eff: Effective) -> Effective:
-    """*eff* with its listed `runsOn.browser.engine` no longer counted as a device condition.
+    """*eff* with its listed `runsOn.browser.kind` no longer counted as a device condition.
 
     `--browsers` strips it here and `--browser` through `apply_engine`; both share one rule.
     """
