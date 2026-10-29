@@ -58,10 +58,10 @@ def test_lists_each_run_with_the_devices_that_fit_it() -> None:
     assert lines == [
         "runs:",
         "  target 'app':",
-        f'    ✓ {_SE} / iOS 17: iOS 17.5 "{_SE}" (se17)',
-        f'    ✓ {_SE} / iOS 18: iOS 18.2 "{_SE}" (se18)',
-        f"    ✘ {_IPAD} / iOS 17: fails: no available device fits this run",
-        f'    ✓ {_IPAD} / iOS 18: iOS 18.2 "{_IPAD}" (ipad18)',
+        f'    ✓ {_SE} / iOS 17 [kind: simulator]: iOS 17.5 "{_SE}" (se17)',
+        f'    ✓ {_SE} / iOS 18 [kind: simulator]: iOS 18.2 "{_SE}" (se18)',
+        f"    ✘ {_IPAD} / iOS 17 [kind: simulator]: fails: no available device fits this run",
+        f'    ✓ {_IPAD} / iOS 18 [kind: simulator]: iOS 18.2 "{_IPAD}" (ipad18)',
     ]
 
 
@@ -69,14 +69,55 @@ def test_a_missing_model_fails_and_an_open_range_is_not_applicable() -> None:
     missing = runs_summary(
         _eff('{ ios: { model: ["iPhone 99"] } }'), "xcuitest", "u", "", _reader(_POOL)
     )
-    assert missing[2].startswith('    ✘ iPhone 99: fails: runsOn.ios.model  "iPhone 99"')
+    assert missing[2].startswith(
+        '    ✘ iPhone 99 [kind: simulator]: fails: runsOn.ios.model  "iPhone 99"'
+    )
     later = runs_summary(_eff('{ ios: { os: ">=19" } }'), "xcuitest", "u", "", _reader(_POOL))
-    assert later[2].startswith('    – one run: not applicable: runsOn.ios.os  ">=19"')
+    assert later[2].startswith(
+        '    – one run [kind: simulator]: not applicable: runsOn.ios.os  ">=19"'
+    )
 
 
 def test_an_open_range_runs_once_per_major_the_pool_has() -> None:
     lines = runs_summary(_eff('{ ios: { os: ">=17" } }'), "xcuitest", "u", "", _reader(_POOL))
-    assert [line.split(":")[0] for line in lines[2:]] == ["    ✓ iOS 17", "    ✓ iOS 18"]
+    assert [line.split(" [")[0] for line in lines[2:]] == ["    ✓ iOS 17", "    ✓ iOS 18"]
+
+
+_FAMILIES = [
+    DeviceFacts(udid="se", platform="ios", model=_SE, release="18.2", family="iPhone"),
+    DeviceFacts(udid="ipad", platform="ios", model=_IPAD, release="18.2", family="iPad"),
+    DeviceFacts(
+        udid="air", platform="ios", model="iPad Air", release="18.1", family="iPad", physical=True
+    ),
+]
+
+
+def test_each_run_names_its_kind_and_the_family_it_took() -> None:
+    # BE-0468: a single kind or family adds no coordinate, so the line names it beside the label.
+    single = runs_summary(
+        _eff("{ ios: { family: ipad } }"), "xcuitest", "u", "", _reader(_FAMILIES)
+    )
+    assert single[2] == f'    ✓ one run [kind: simulator, family: ipad]: iOS 18.2 "{_IPAD}" (ipad)'
+    listed = runs_summary(
+        _eff("{ ios: { kind: [simulator, device], family: [iphone, ipad] } }"),
+        "xcuitest",
+        "u",
+        "",
+        _reader(_FAMILIES),
+    )
+    # A listed kind and a family list are coordinates already, so the label carries both alone.
+    assert listed[2:] == [
+        f'    ✓ simulator / iphone: iOS 18.2 "{_SE}" (se)',
+        '    ✓ device / ipad: iOS 18.1 "iPad Air" (air)',
+    ]
+
+
+def test_a_family_miss_names_the_kind_and_the_families() -> None:
+    lines = runs_summary(
+        _eff("{ ios: { kind: device, family: iphone } }"), "xcuitest", "u", "", _reader(_FAMILIES)
+    )
+    assert lines[2].startswith("    ✘ one run [kind: device]: fails: runsOn.ios.")
+    assert "iphone" in lines[2]
 
 
 def test_each_scenario_of_the_file_lists_the_targets_runs(tmp_path: Path) -> None:
@@ -92,9 +133,9 @@ def test_each_scenario_of_the_file_lists_the_targets_runs(tmp_path: Path) -> Non
     assert lines == [
         "runs:",
         "  login:",
-        f'    ✓ iOS 18: iOS 18.2 "{_IPAD}" (ipad18)',
+        f'    ✓ iOS 18 [kind: simulator]: iOS 18.2 "{_IPAD}" (ipad18)',
         "  split:",
-        f'    ✓ iOS 18: iOS 18.2 "{_IPAD}" (ipad18)',
+        f'    ✓ iOS 18 [kind: simulator]: iOS 18.2 "{_IPAD}" (ipad18)',
     ]
 
 

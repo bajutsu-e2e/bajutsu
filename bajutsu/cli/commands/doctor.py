@@ -333,6 +333,11 @@ def _engines(eff: Effective, subjects: list[tuple[str, dict[str, str | list[str]
 
 def _listed_line(run: ListedRun) -> str:
     label = run.label or "one run"
+    named = [
+        f"{name}: {value}" for name, value in (("kind", run.kind), ("family", run.family)) if value
+    ]
+    if named:
+        label += f" [{', '.join(named)}]"
     if run.outcome == "run":
         return f"    {_RUN_MARKS['run']} {label}: {', '.join(run.devices) or 'any device'}"
     if run.outcome == "declared":
@@ -351,10 +356,12 @@ def runs_summary(
     """Each scenario's runs under its `runsOn` conditions and the devices that fit each (BE-0452).
 
     Informational and never gating: it forms the runs `run` would form against the same pool, so a
-    misspelled model or a pool missing an OS version shows before a run. With no pool to read (a
-    target an `appium` grid or a physical device serves, or a pool whose devices cannot be read), it
-    lists the declared runs alone. Empty when no condition applies, and under the fake actuator,
-    which evaluates none.
+    misspelled model or a pool missing an OS version shows before a run. Each iOS run also names its
+    kind, and the family it took under a `family` condition, when its label leaves them out
+    (BE-0468). With no pool to read (a target an `appium` grid serves, a physical device under a
+    condition other than `kind` or `family`, or a pool whose devices cannot be read), it lists the
+    declared runs alone. Empty when no condition applies, and under the fake actuator, which
+    evaluates none.
 
     Args:
         eff: The target's effective configuration.

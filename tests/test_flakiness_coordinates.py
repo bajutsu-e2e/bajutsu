@@ -77,6 +77,22 @@ def test_one_scenario_on_two_models_is_two_deterministic_histories() -> None:
     assert "[app: model=iPad Pro 13-inch (M4)]" in render(report)
 
 
+def test_hosts_whose_family_list_resolves_apart_keep_apart_histories() -> None:
+    # BE-0468: `family: [iphone, ipad]` takes an iPad on a host without an iPhone, so the winner
+    # keys the history and an iPad-only layout failure does not read as flakiness.
+    iphone = {"app": {"kind": "simulator", "family": "iphone"}}
+    ipad = {"app": {"kind": "simulator", "family": "ipad"}}
+    manifests = [
+        _manifest(f"20261029-00000{i}-a", ok=coords is iphone, coordinates=coords)
+        for i, coords in enumerate([iphone, ipad, iphone, ipad])
+    ]
+    report = rank_flakiness(records_from_manifests(manifests))
+    assert sorted((s.coordinates, s.classification) for s in report.scenarios) == [
+        ("app: family=ipad, kind=simulator", "deterministic"),
+        ("app: family=iphone, kind=simulator", "deterministic"),
+    ]
+
+
 def test_two_targets_are_two_histories() -> None:
     def record(run_id: str, target: str, ok: bool) -> RunRecord:
         return RunRecord(

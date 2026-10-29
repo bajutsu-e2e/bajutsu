@@ -491,7 +491,10 @@ def test_doctor_probes_the_first_run_of_a_condition(
     argv = ["doctor", "--target", "t", "--config", str(cfg), "--udid", "u17,u18"]
     result = CliRunner().invoke(app, argv)
     assert "not yet supported" not in result.output
-    assert "runs:\n  target 't':\n    ✓ iOS 18: iOS 18.2 \"iPhone 15\" (u18)" in result.output
+    assert (
+        "runs:\n  target 't':\n    ✓ iOS 18 [kind: simulator]: iOS 18.2 \"iPhone 15\" (u18)"
+        in result.output
+    )
     assert probed == ["u18"]
 
 
