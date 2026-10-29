@@ -32,6 +32,7 @@ from bajutsu.common.backends import (
     select_actuator_for_scenario,
 )
 from bajutsu.common.capability import capability_preflight, preflight
+from bajutsu.common.capability.settings_support import check_settings
 from bajutsu.common.config import (
     Effective,
     android_package,
@@ -40,7 +41,11 @@ from bajutsu.common.config import (
     web_base_url,
     web_engine,
 )
-from bajutsu.common.config.preconditions import effective_conditions, remote_condition_problems
+from bajutsu.common.config.preconditions import (
+    effective_conditions,
+    remote_condition_problems,
+    resolve_preconditions,
+)
 from bajutsu.common.devices import errors as device_errors
 from bajutsu.common.devices.facts import DeviceFacts
 from bajutsu.common.doctor import DoctorProbeError, probe_screen, render, score
@@ -63,13 +68,25 @@ from bajutsu.run.device_matrix import FAKE_ACTUATOR, ListedRun, list_runs, targe
 _RUN_MARKS = {"run": "✓", "failed": "✘", "not-applicable": "–", "declared": "•"}
 
 
-def check_scenarios(scenario_path: Path, capabilities: frozenset[str]) -> list[str]:
+def check_scenarios(
+    scenario_path: Path,
+    capabilities: frozenset[str],
+    *,
+    route: tuple[str, Effective, str] | None = None,
+) -> list[str]:
     """Check every scenario in *scenario_path* against a backend capability set.
 
     Returns one reason per unsupported construct, prefixed with the scenario name. Pure: no device
     needed. The caller passes the *run-narrowed* set (`capabilities_for_run`), so `doctor` reports the
     same verdict `run` would — a real iOS device drops the simctl-backed capabilities rather than
     reporting a `setLocation` scenario as supported (BE-0238).
+
+    Args:
+        scenario_path: The scenario file to check.
+        capabilities: The run-narrowed capability set.
+        route: The actuator, target, and udid spec the run would use. When given, each scenario's
+            settings are also judged by the route's settings table (BE-0467), the check that took
+            `permissions` over from the capability set, so `doctor` keeps reporting them.
 
     Note:
         This is a best-effort pre-check on the raw scenario tree. ``use`` components and
@@ -88,6 +105,16 @@ def check_scenarios(scenario_path: Path, capabilities: frozenset[str]) -> list[s
         reasons.extend(
             f"[{sc.name}] {r}" for r in capability_preflight.unsupported(sc, capabilities)
         )
+        if route is not None:
+            actuator, eff, udid_spec = route
+            check = check_settings(
+                actuator,
+                eff,
+                resolve_preconditions(eff, sc.preconditions),
+                sc.permissions,
+                udid_spec,
+            )
+            reasons.extend(f"[{sc.name}] {r}" for r in check.problems())
     return reasons
 
 
@@ -233,7 +260,9 @@ def _capability_preflight(scenario: str, actuator: str, eff: Effective, udid: st
     """
     if not scenario:
         return False
-    cap_reasons = check_scenarios(Path(scenario), capabilities_for_run(actuator, eff, udid))
+    cap_reasons = check_scenarios(
+        Path(scenario), capabilities_for_run(actuator, eff, udid), route=(actuator, eff, udid)
+    )
     if not cap_reasons:
         return False
     typer.echo("capability preflight:")
@@ -470,7 +499,7 @@ def doctor(
     eff, udid = _first_run_or_exit(eff, actuator, udid)
     try:
         elements = _current_screen(actuator, udid, eff)
-    except device_errors.DeviceError as e:
+    except (device_errors.DeviceError, base.UnsupportedAction) as e:
         typer.echo(f"could not read the screen to score: {e}")
         raise typer.Exit(1) from None
     result = score(

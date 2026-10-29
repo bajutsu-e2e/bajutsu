@@ -5,10 +5,11 @@ from __future__ import annotations
 import json
 import subprocess
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
-from _runner import _eff, _el, _failing_lease, _fake_driver, _ios_eff, _lease
+from _runner import _eff, _el, _failing_lease, _fake_driver, _ios_eff, _lease, _web_eff
 from conftest import AlertingDriver, guard_rule
 
 from bajutsu.common.backend_cli import simctl
@@ -22,6 +23,7 @@ from bajutsu.common.orchestrator import RunResult, sanitize_source_stem, scenari
 from bajutsu.common.orchestrator.types._functions import _MAX_SLUG_CHARS
 from bajutsu.common.report.format import video_seconds
 from bajutsu.common.runner import Lease, run_all, run_and_report, run_matrix_and_report
+from bajutsu.common.runner.types import TargetPool
 from bajutsu.common.scenario import Scenario
 
 
@@ -936,6 +938,37 @@ def test_run_all_skips_forced_erase_on_a_real_device() -> None:
     assert erase_seen == [None, None]  # never forced on a real device
 
 
+def test_run_all_skips_forced_erase_when_a_routed_target_is_a_real_device() -> None:
+    # BE-0467: the forced erase reaches every routed target, and a real-device secondary refuses it
+    # through the settings table, so the retry must not force it at all.
+    state = {"n": 0}
+    erase_seen: list[bool | None] = []
+
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
+        state["n"] += 1
+        erase_seen.append(scenario.preconditions.run.erase)
+        if state["n"] == 1:
+            raise base.BackendCrashError("runner crashed during the readiness gate (test)")
+        return _lease(eff, scenario)
+
+    sim = _ios_eff(xcuitest=XcuitestConfig(testRunner="Runner.xctestrun", deviceType="simulator"))
+    dev = _ios_eff(xcuitest=XcuitestConfig(testRunner="Runner.xctestrun", deviceType="device"))
+    targets = {"sim": TargetPool(sim, lease, "xcuitest"), "dev": TargetPool(dev, lease, "xcuitest")}
+    scenario = Scenario.model_validate(
+        {
+            "name": "pair",
+            "targets": ["sim", "dev"],
+            "steps": [
+                {"target": "sim", "tap": {"id": "ok"}},
+                {"target": "dev", "tap": {"id": "ok"}},
+            ],
+        }
+    )
+    results = run_all(sim, [scenario], lease, actuator="xcuitest", targets=targets)
+    assert results[0].ok, results[0].failure
+    assert True not in erase_seen
+
+
 def test_run_all_skips_forced_erase_on_the_live_webdriver_route() -> None:
     # The live WebDriver endpoint (an http(s):// udid spec) also raises loudly on any `erase`
     # precondition (`XcuitestLiveEnvironment.start`) — same reasoning as the real-device case above.
@@ -1602,6 +1635,118 @@ def test_simulator_still_leases_a_device_control_scenario_on_xcuitest() -> None:
     results = run_all(sim, scenarios, recording_lease, actuator="xcuitest")
     assert leased == ["loc"]
     assert "deviceControl.setLocation" not in (results[0].failure or "")
+
+
+def test_a_setting_the_route_cannot_apply_fails_before_any_lease() -> None:
+    # BE-0467: a real device cannot erase, so the settings check fails the scenario up front.
+    scenarios = [
+        Scenario.model_validate(
+            {"name": "e", "preconditions": {"run": {"erase": True}}, "steps": []}
+        )
+    ]
+
+    def lease_must_not_run(eff: Effective, s: Scenario) -> Lease:
+        raise AssertionError("lease must not be called when the settings check rejects")
+
+    device = _ios_eff(xcuitest=XcuitestConfig(testRunner="Runner.xctestrun", deviceType="device"))
+    results = run_all(device, scenarios, lease_must_not_run, actuator="xcuitest")
+    assert not results[0].ok
+    assert "run.erase" in (results[0].failure or "")
+    assert "ignoredSettings" in (results[0].failure or "")
+
+
+def test_a_declared_setting_passes_the_preflight() -> None:
+    scenarios = [
+        Scenario.model_validate(
+            {"name": "e", "preconditions": {"run": {"erase": True}}, "steps": []}
+        )
+    ]
+    leased: list[str] = []
+
+    def lease(eff: Effective, s: Scenario) -> Lease:
+        leased.append(s.name)
+        return _lease(eff, s)
+
+    device = _ios_eff(xcuitest=XcuitestConfig(testRunner="Runner.xctestrun", deviceType="device"))
+    device = replace(
+        device,
+        run_defaults=replace(device.run_defaults, ignored_settings={"erase": "keeps app data"}),
+    )
+    results = run_all(device, scenarios, lease, actuator="xcuitest")
+    assert leased == ["e"]
+    assert "unsupported on backend" not in (results[0].failure or "")
+
+
+def _routed_pair() -> dict[str, TargetPool]:
+    return {
+        "app": TargetPool(_eff(), _lease, "fake"),
+        "site": TargetPool(_web_eff(), _lease, "playwright"),
+    }
+
+
+def _two_targets(**extra: object) -> Scenario:
+    return Scenario.model_validate(
+        {
+            "name": "pair",
+            "targets": ["app", "site"],
+            "steps": [{"target": "site", "tap": {"id": "ok"}}],
+            **extra,
+        }
+    )
+
+
+def test_a_routed_target_that_cannot_apply_a_setting_fails_before_any_lease() -> None:
+    # BE-0467: each declared target is judged against its own route; a browser grants no permission.
+    def lease_must_not_run(eff: Effective, s: Scenario) -> Lease:
+        raise AssertionError("lease must not be called when the settings check rejects")
+
+    results = run_all(
+        _eff(),
+        [_two_targets(permissions={"camera": "grant"})],
+        lease_must_not_run,
+        targets=_routed_pair(),
+    )
+    assert not results[0].ok
+    assert "(target 'site')" in (results[0].failure or "")
+    assert "permissions.camera" in (results[0].failure or "")
+
+
+def test_a_scenario_deeplink_is_not_in_effect_on_a_web_target() -> None:
+    # The web `app` has no `launch.deeplink`, so the scenario's deeplink is meant for the iOS target.
+    results = run_all(
+        _eff(),
+        [_two_targets(preconditions={"app": {"launch": {"deeplink": "app://x"}}})],
+        _lease,
+        targets=_routed_pair(),
+    )
+    assert "unsupported on backend" not in (results[0].failure or "")
+
+
+def test_a_scenario_launch_env_fails_a_web_target_unless_it_is_ignored() -> None:
+    # A web `app` has `launch.env`, yet the browser never reads it, so the run must not pass silently.
+    scenario = _two_targets(preconditions={"app": {"launch": {"env": {"A": "1"}}}})
+    failed = run_all(_eff(), [scenario], _lease, targets=_routed_pair())[0]
+    assert "(target 'site')" in (failed.failure or "")
+    site = _web_eff()
+    site = replace(
+        site, run_defaults=replace(site.run_defaults, ignored_settings={"launchEnv": "x"})
+    )
+    pair = {**_routed_pair(), "site": TargetPool(site, _lease, "playwright")}
+    passed = run_all(_eff(), [scenario], _lease, targets=pair)[0]
+    assert "unsupported on backend" not in (passed.failure or "")
+
+
+def test_a_stale_declaration_fails_every_scenario_on_its_target() -> None:
+    # The Simulator erases, so declaring `erase` ignored there hides nothing and must be removed.
+    scenarios = [Scenario.model_validate({"name": "plain", "steps": []})]
+
+    def lease_must_not_run(eff: Effective, s: Scenario) -> Lease:
+        raise AssertionError("lease must not be called when the declaration is stale")
+
+    sim = _ios_eff(xcuitest=XcuitestConfig(testRunner="Runner.xctestrun", deviceType="simulator"))
+    sim = replace(sim, run_defaults=replace(sim.run_defaults, ignored_settings={"erase": "x"}))
+    results = run_all(sim, scenarios, lease_must_not_run, actuator="xcuitest")
+    assert "remove the declaration" in (results[0].failure or "")
 
 
 def test_resolve_actuator_preflights_per_scenario_and_fails_fast() -> None:

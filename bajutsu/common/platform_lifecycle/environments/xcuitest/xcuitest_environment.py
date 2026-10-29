@@ -18,6 +18,7 @@ from typing import IO, TYPE_CHECKING, Literal, cast
 
 from bajutsu.common import backends, stall_diagnostics
 from bajutsu.common.backend_cli import simctl
+from bajutsu.common.capability.settings_support import enforce_settings
 from bajutsu.common.config import Effective, require_ios
 from bajutsu.common.config.preconditions import ResolvedPreconditions
 from bajutsu.common.devices import os as device_os
@@ -294,6 +295,9 @@ class XcuitestEnvironment(_DeviceEnvironment):
         record_video_dir: Path | None = None,
         permissions: Mapping[str, str] | None = None,
     ) -> base.Driver:
+        # The route's settings table decides what this launch may apply (BE-0467): an unsupported
+        # setting the target does not ignore raises, and an ignored one is dropped before any branch.
+        pre, permissions = enforce_settings(self._actuator, eff, pre, permissions, self._udid)
         stale = self._group
         try:
             driver = self._start(
@@ -350,26 +354,9 @@ class XcuitestEnvironment(_DeviceEnvironment):
             return self._start_attached(eff, pre, device_type, extra_env, permissions)
 
         if device_type == "device":
-            # A real device is not managed through simctl: it is already powered on, its build is
-            # installed out of band, and `simctl privacy` cannot reach it. The simctl-only
-            # preconditions it cannot honour fail loudly here (real-device install / permissions
-            # are BE-0238 Unit 2/3) rather than silently no-op'ing — determinism first.
-            if pre.erase:
-                raise simctl.DeviceError(
-                    "erase is a simctl operation and does not apply to a real device "
-                    "(runsOn.ios.kind: device)"
-                )
-            if ios.app_path:
-                raise simctl.DeviceError(
-                    "installing app.path through simctl does not apply to a real device "
-                    "(runsOn.ios.kind: device); install the app and its device-build test "
-                    "runner out of band"
-                )
-            if permissions:
-                raise simctl.DeviceError(
-                    "permission grants use simctl and do not apply to a real device "
-                    "(runsOn.ios.kind: device)"
-                )
+            # A real device is not managed through simctl: it is already powered on and its build is
+            # installed out of band. `enforce_settings` in `start` already refused the erase, the
+            # install, and the permission grants this route cannot apply, unless the target ignores them.
             return self._spawn_cold(eff, pre, device_type, extra_env, permissions)
 
         # A pending escalation (BE-0354) is served before anything else touches the device: the run
@@ -1552,6 +1539,9 @@ class XcuitestEnvironment(_DeviceEnvironment):
         ios = require_ios(eff)
         if self._lease_driver is None or self._is_real_device or self._bundle_id is None:
             raise base.UnsupportedAction("device groups need a Simulator this environment started")
+        # A member launches its own app under its own target's declarations, so it reads the table
+        # exactly as `start` does (BE-0467).
+        pre, permissions = enforce_settings(self._actuator, eff, pre, permissions, self._udid)
         e = simctl.Env(self._udid, run=self._run)
         try:
             if install:

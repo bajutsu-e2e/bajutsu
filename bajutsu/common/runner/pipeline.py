@@ -29,6 +29,7 @@ from bajutsu.common.backends import (
 )
 from bajutsu.common.cancellation import CANCELLED_FAILURE, CancelSource, not_cancelled
 from bajutsu.common.capability import capability_preflight
+from bajutsu.common.capability.settings_support import check_settings
 from bajutsu.common.config import Effective, resolve_preconditions, web_engine
 from bajutsu.common.devices import errors as device_errors
 from bajutsu.common.drivers import base, tracing
@@ -364,6 +365,8 @@ class _ScenarioRunner:
                 )
             if reasons := capability_preflight.unsupported(_steps_for_target(s, name), caps):
                 return f"unsupported on backend '{pool.actuator}' (target '{name}'): {'; '.join(reasons)}"
+            if problems := _settings_problems(pool.actuator, pool.eff, s, pool.udid_spec):
+                return f"unsupported on backend '{pool.actuator}' (target '{name}'): {problems}"
         return None
 
     def _lease_targets(self, s: Scenario, launch_scenario: Scenario) -> dict[str, Lease]:
@@ -377,8 +380,9 @@ class _ScenarioRunner:
         anything already held is released if the acquisition fails rather than held indefinitely.
 
         The same `launch_scenario` — the crash-retry loop's possibly erase-forced copy — goes to
-        every target, since `preconditions` and `permissions` are scenario-level and each backend
-        already interprets only the parts that apply to it.
+        every target, since `preconditions` and `permissions` are scenario-level. Each target's share
+        is judged by its own route's settings table (BE-0467): a value its route cannot apply fails
+        the preflight unless that target declares it under `run.ignoredSettings`.
 
         A device group takes one lease, for its last starting member, which prepares the device once;
         the group's other starting members then join it in reverse declared order, so the group's
@@ -571,7 +575,12 @@ class _ScenarioRunner:
                     scenario=s.name, ok=False, steps=[], backend="", sid=sid, failure=str(exc)
                 )
             caps = capabilities_for_run(actuator, self.eff, self.udid_spec)
-        if caps is not None and (reasons := capability_preflight.unsupported(s, caps)):
+        reasons = capability_preflight.unsupported(s, caps) if caps is not None else []
+        # The settings check (BE-0467) needs only the route, so it runs even where no capability set
+        # was resolved; the routed path above already ran it per target.
+        if not routed and (problems := _settings_problems(actuator, self.eff, s, self.udid_spec)):
+            reasons.append(problems)
+        if reasons:
             if self.progress is not None:
                 self.progress(
                     f"✘ scenario {i + 1}/{self.total}: {s.name} (unsupported on {actuator})"
@@ -746,6 +755,12 @@ class _ScenarioRunner:
                     and self.force_erase_on_retry
                     and resolve_preconditions(self.eff, s.preconditions).reinstall != "overwrite"
                     and erase_precondition_supported(actuator, self.eff, self.udid_spec)
+                    # The forced erase reaches every routed target too, so each one's route must
+                    # erase; a real-device secondary would otherwise refuse it and end the run.
+                    and all(
+                        erase_precondition_supported(p.actuator, p.eff, p.udid_spec)
+                        for p in (self.targets[n] for n in self._routed(s))
+                    )
                 ):
                     pre = s.preconditions
                     retry_scenario = s.model_copy(
@@ -1571,6 +1586,18 @@ def _golden_with_screen(gc: GoldenContext, driver: base.Driver) -> GoldenContext
         _logger.debug("screen-bounds probe for golden framing failed: %s", exc, exc_info=True)
         return gc
     return GoldenContext(goldens_dir=gc.goldens_dir, screen=(0.0, 0.0, sw, sh))
+
+
+def _settings_problems(actuator: str | None, eff: Effective, s: Scenario, udid_spec: str) -> str:
+    """Why *eff*'s route cannot apply the settings *s* puts in effect, or "" (BE-0467).
+
+    Judged before any device work, beside BE-0082's step check: a setting the route cannot apply
+    fails the scenario unless the target declares it under `run.ignoredSettings`.
+    """
+    check = check_settings(
+        actuator, eff, resolve_preconditions(eff, s.preconditions), s.permissions, udid_spec
+    )
+    return "; ".join(check.problems())
 
 
 def _steps_for_target(s: Scenario, target: str) -> Scenario:

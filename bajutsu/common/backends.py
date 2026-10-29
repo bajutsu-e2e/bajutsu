@@ -328,25 +328,17 @@ def erase_precondition_supported(
 ) -> bool:
     """Whether forcing an `erase` precondition is safe on this run's resolved route.
 
-    Reuses the exact two routing predicates `capabilities_for_run` above narrows on (BE-0238): a
-    live WebDriver endpoint and a real iOS device (`runsOn.ios.kind: device`) both reject any
-    `erase` precondition outright (`XcuitestLiveEnvironment.start`, `XcuitestEnvironment.start` raise
-    rather than honoring it) instead of the silent no-op every other route treats it as. Kept next to
-    `capabilities_for_run` — the one place that already classifies a route's capabilities — rather
-    than in a second file, so a future XCUITest-adjacent route (a device farm, a new transport) is
-    reviewed here alongside its capability narrowing instead of risking a caller elsewhere assuming
-    `erase` is always safe.
+    A lookup in the BE-0467 settings table, which classifies each route the way `capabilities_for_run`
+    narrows it: a live WebDriver endpoint and a real iOS device (`runsOn.ios.kind: device`) cannot
+    erase, and a web run's fresh browser context already satisfies it.
 
     `bajutsu/common/runner/pipeline.py`'s crash-triggered retry is the one caller today: forcing `erase`
     where this returns `False` would raise past its `except BackendCrashError` and abort the whole
     run instead of retrying the one scenario.
     """
-    if actuator != "xcuitest":
-        return True
-    from bajutsu.common.config import xcuitest_targets_real_device
-    from bajutsu.common.platform_lifecycle.environments.xcuitest_live import is_webdriver_endpoint
+    from bajutsu.common.capability.settings_support import settings_support
 
-    return not (is_webdriver_endpoint(udid_spec) or xcuitest_targets_real_device(eff))
+    return settings_support(actuator, eff, udid_spec)["erase"] != "unsupported"
 
 
 def device_replacement_supported(

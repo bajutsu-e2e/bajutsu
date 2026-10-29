@@ -8,6 +8,7 @@ from typing import cast
 
 from bajutsu.common import backends
 from bajutsu.common.backend_cli import simctl
+from bajutsu.common.capability.settings_support import enforce_settings
 from bajutsu.common.config import Effective, require_web
 from bajutsu.common.config.preconditions import ResolvedPreconditions
 from bajutsu.common.drivers import base
@@ -40,18 +41,17 @@ class WebEnvironment:
     def start(
         self,
         eff: Effective,
-        pre: ResolvedPreconditions,  # noqa: ARG002  # Environment shape
+        pre: ResolvedPreconditions,
         *,
         extra_env: Mapping[str, str] | None = None,  # noqa: ARG002
         record_video_dir: Path | None = None,
         permissions: Mapping[str, str] | None = None,
     ) -> base.Driver:
-        # No OS permission model to pre-set (a browser has no TCC/pm equivalent). Preflight normally
-        # rejects a scenario naming one before this is ever reached, but preflight is skippable (a
-        # lease driven directly, `capabilities=None` in runner/pipeline.py) — so this is the runtime
-        # backstop, the same shape gestures.py's `_require_multi_touch` is for an unsupported gesture.
-        if permissions:
-            raise base.UnsupportedAction("permissions is not supported on the web backend")
+        # A browser has no OS permission model to pre-set and no app launch to pass values to, so the
+        # route's settings table refuses them (BE-0467). Preflight normally rejects them before this is
+        # reached, but preflight is skippable (a lease driven directly, `capabilities=None` in
+        # runner/pipeline.py), so this is the runtime backstop. An ignored setting is never read here.
+        enforce_settings(self._actuator, eff, pre, permissions)
         web = require_web(eff)
         if not web.base_url:
             raise simctl.DeviceError("web backend requires baseUrl (set targets.<name>.app.url)")

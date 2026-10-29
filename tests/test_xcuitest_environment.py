@@ -32,6 +32,7 @@ from bajutsu.common.config import (
     resolve,
 )
 from bajutsu.common.devices.os import DeviceOS
+from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.drivers.xcuitest import XcuitestChannelError
 from bajutsu.common.platform_lifecycle.environments.xcuitest import (
@@ -144,19 +145,19 @@ def test_start_on_a_real_device_refuses_simctl_install() -> None:
     # A real device installs its build out of band; asking the simctl installer to place `appPath`
     # must fail loudly (BE-0238 Unit 2/3), never silently skip (determinism first).
     env = XcuitestEnvironment("xcuitest", _DEVICE_UDID)
-    with pytest.raises(simctl.DeviceError, match="real device"):
+    with pytest.raises(base.UnsupportedAction, match="route ios-device"):
         env.start(_device_eff(app_path="build/App.app"), ResolvedPreconditions())
 
 
 def test_start_on_a_real_device_refuses_permission_grants() -> None:
     env = XcuitestEnvironment("xcuitest", _DEVICE_UDID)
-    with pytest.raises(simctl.DeviceError, match="real device"):
+    with pytest.raises(base.UnsupportedAction, match="route ios-device"):
         env.start(_device_eff(), ResolvedPreconditions(), permissions={"camera": "yes"})
 
 
 def test_start_on_a_real_device_refuses_erase() -> None:
     env = XcuitestEnvironment("xcuitest", _DEVICE_UDID)
-    with pytest.raises(simctl.DeviceError, match="real device"):
+    with pytest.raises(base.UnsupportedAction, match="route ios-device"):
         env.start(_device_eff(), ResolvedPreconditions(erase=True))
 
 
@@ -441,15 +442,14 @@ def test_a_failed_real_device_start_closes_the_nativez_bridge(
     ("app_path", "pre"),
     [("build/App.app", ResolvedPreconditions()), (None, ResolvedPreconditions(erase=True))],
 )
-def test_a_refused_real_device_start_closes_the_nativez_bridge(
+def test_a_refused_real_device_start_never_opens_the_nativez_bridge(
     app_path: str | None, pre: ResolvedPreconditions
 ) -> None:
-    # A simctl-only precondition is refused after the bridge opened; no teardown follows.
+    # The settings table refuses a simctl-only precondition before `_start` opens the bridge (BE-0467).
     env = XcuitestEnvironment("xcuitest", _DEVICE_UDID, env_run=lambda *_a, **_k: "")
-    with pytest.raises(simctl.DeviceError, match="real device"):
+    with pytest.raises(base.UnsupportedAction, match="route ios-device"):
         env.start(_device_eff(app_path=app_path), pre, extra_env=_ZORDER_ENV)
-    assert [b.device_port for b in _FakeForwarder.instances] == [47001]
-    assert all(bridge.closed for bridge in _FakeForwarder.instances)
+    assert _FakeForwarder.instances == []
     assert env._zorder_forwarder is None
 
 

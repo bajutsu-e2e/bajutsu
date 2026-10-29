@@ -69,6 +69,18 @@ class Defaults(_Model):
         return data
 
     @model_validator(mode="after")
+    def _no_ignored_settings(self) -> Self:
+        # An ignored setting belongs to one environment, so it is declared on that target alone
+        # (BE-0467); a team-wide default would hide a gap on every route at once.
+        written = self.run is not None and bool(self.run.ignored_settings)
+        if written or any("ignoredSettings" in g.run for g in self.platforms.values()):
+            raise ValueError(
+                "defaults may not set run.ignoredSettings; declare it on the target whose "
+                "environment cannot apply the setting (targets.<name>.run.ignoredSettings)"
+            )
+        return self
+
+    @model_validator(mode="after")
     def _known_platform_fields(self) -> Self:
         for platform, groups in self.platforms.items():
             schema = schema_for(platform)

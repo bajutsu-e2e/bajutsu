@@ -22,6 +22,7 @@ import contextlib
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
+from bajutsu.common.capability.settings_support import enforce_settings
 from bajutsu.common.config import Effective, require_ios
 from bajutsu.common.config.preconditions import ResolvedPreconditions
 from bajutsu.common.drivers import base
@@ -83,43 +84,15 @@ class XcuitestLiveEnvironment(_DeviceEnvironment):
         # so there is no simctl bring-up here — the endpoint never reaches the udid machinery. The
         # bundle id tells Appium which installed app to drive.
         #
-        # Simctl-backed and not-yet-wired preconditions fail loudly rather than silently no-op'ing
-        # (determinism first — the scenario author must know the option had no effect).
-        if pre.erase:
+        # The route's settings table refuses every precondition this transport does not wire yet
+        # (BE-0467), unless the target ignores it; an ignored one is simply never read here.
+        pre, _ = enforce_settings(self._actuator, eff, pre, permissions, self._endpoint)
+        # Bajutsu's own launch keys (`BAJUTSU_MOCKS` and the like) sit outside the table, yet this
+        # route cannot pass them either, so a scenario relying on them still fails loudly here.
+        if extra_env or pre.launch_env:
             raise base.UnsupportedAction(
-                "erase is a simctl operation and does not apply to the live WebDriver route"
-            )
-        if permissions:
-            raise base.UnsupportedAction(
-                "permission grants use simctl and do not apply to the live WebDriver route"
-            )
-        if extra_env:
-            raise base.UnsupportedAction(
-                "extra_env is not yet wired on the live WebDriver route (BE-0238 Slice B)"
-            )
-        if pre.deeplink:
-            raise base.UnsupportedAction(
-                "deeplink is not yet wired on the live WebDriver route (BE-0238 Slice B)"
-            )
-        if pre.launch_args:
-            raise base.UnsupportedAction(
-                "launch_args is not yet wired on the live WebDriver route (BE-0238 Slice B)"
-            )
-        if pre.launch_env:
-            raise base.UnsupportedAction(
-                "launch_env is not yet wired on the live WebDriver route (BE-0238 Slice B)"
-            )
-        if pre.locale:
-            raise base.UnsupportedAction(
-                "locale is not yet wired on the live WebDriver route (BE-0238 Slice B)"
-            )
-        if eff.launch_args:
-            raise base.UnsupportedAction(
-                "launchArgs is not yet wired on the live WebDriver route (BE-0238 Slice B)"
-            )
-        if eff.launch_env:
-            raise base.UnsupportedAction(
-                "launchEnv is not yet wired on the live WebDriver route (BE-0238 Slice B)"
+                "Bajutsu's own launch environment (extra_env, BAJUTSU_* keys) is not yet wired "
+                "on the live WebDriver route (BE-0238 Slice B)"
             )
         ios = require_ios(eff)
         self._client = WebDriverClient(self._transport_factory(self._endpoint))
