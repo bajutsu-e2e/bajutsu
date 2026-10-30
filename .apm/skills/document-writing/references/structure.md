@@ -26,9 +26,7 @@ drafting, check that a reader never has to guess any of these four points:
 
 Readability is not the same as brevity, nor as writing for beginners. A document with long code, or
 one that assumes prior knowledge, still reads well when it leaves none of the four to guess. Do not
-cut a prerequisite or a way to confirm success to make a document shorter. The rule against spelling
-out steps a reader can fill in alone covers intermediate reasoning; an operation, an input, and a
-success condition are never treated as something the reader can fill in.
+cut a prerequisite or a way to confirm success to make a document shorter.
 
 ## Titles and openings
 
