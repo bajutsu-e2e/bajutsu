@@ -9,7 +9,9 @@ Source: https://nakamura001.hatenablog.com/entry/2026/10/09/Codexの作成する
 These rules govern the layout of a whole document and the writing of a procedure, in both
 languages. They matter most in a document a reader works through while acting or learning: a how-to,
 a setup guide, or an explanation of a feature. A roadmap item, whose prose argues a case, still
-follows the rules on titles and openings, on heading order, and on how terms relate.
+follows the rules on titles and openings and on how terms relate. Its H2 headings are fixed in set
+and order by [`roadmaps/README.md`](../../../../roadmaps/README.md) and checked by `make
+lint-roadmap`, so the heading-order rules below do not reach them.
 
 ## Leave the reader nothing to guess
 
