@@ -106,6 +106,12 @@ def test_a_scenario_cannot_set_a_field_that_identifies_the_app() -> None:
         _pre("{ subject: { id: com.example.other } }")
 
 
+def test_a_non_mapping_run_group_fails_as_a_type_error() -> None:
+    # The moved-key check runs before validation, so a scalar must fall through to the type error.
+    with pytest.raises(ValueError, match="dictionary"):
+        _pre("{ run: 5 }")
+
+
 def test_a_non_mapping_preconditions_fails_as_a_type_error() -> None:
     with pytest.raises(ValueError, match="dictionary"):
         Preconditions.model_validate("erase")
