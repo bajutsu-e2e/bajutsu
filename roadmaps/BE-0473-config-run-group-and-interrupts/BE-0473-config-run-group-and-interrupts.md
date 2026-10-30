@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0473") |
-| Implementing PR | [#2242](https://github.com/bajutsu-e2e/bajutsu/pull/2242) (units 3, 5, 6), [#2263](https://github.com/bajutsu-e2e/bajutsu/pull/2263) (unit 2) |
+| Implementing PR | [#2242](https://github.com/bajutsu-e2e/bajutsu/pull/2242) (units 3, 5, 6), [#2263](https://github.com/bajutsu-e2e/bajutsu/pull/2263) (unit 2), [#2268](https://github.com/bajutsu-e2e/bajutsu/pull/2268) (unit 1) |
 | Topic | Driver & backend architecture |
 | Related | [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure.md), [BE-0314](../BE-0314-scenario-interrupt-handlers/BE-0314-scenario-interrupt-handlers.md), [BE-0406](../BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts.md), [BE-0401](../BE-0401-system-alert-handling-dsl-consolidation/BE-0401-system-alert-handling-dsl-consolidation.md), [BE-0177](../BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md), [BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications.md), [BE-0221](../BE-0221-android-scenario-portability-guarantee/BE-0221-android-scenario-portability-guarantee.md) |
 <!-- /BE-METADATA -->
@@ -400,7 +400,7 @@ Log:
   erase now fails rather than running unwiped. And a stored plan shows the reinstall the scenario
   wrote, not the one its target supplied. `run.ignoredSettings` (BE-0467), which the
   *Where each old key goes* table predates, still sits under `run` and needs a home in unit 4.
-- [#PR](https://github.com/bajutsu-e2e/bajutsu/pull/PR): Landed unit 1. `hooks.interrupts` and a scenario's own `interrupts`
+- [#2268](https://github.com/bajutsu-e2e/bajutsu/pull/2268): Landed unit 1. `hooks.interrupts` and a scenario's own `interrupts`
   take a `systemAlert` entry (`choice: grant`, `deny`, or `leave`, with `pollInterval` and, on an
   in-tree prompt, `frozenScreenTimeout`) and a `tipKit` entry beside the screen form, and an entry
   mixing two forms fails naming both. `run.systemAlertHandling`, `run.tipKitHandling`, and their
