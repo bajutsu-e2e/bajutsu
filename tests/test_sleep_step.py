@@ -19,7 +19,7 @@ from bajutsu.common.orchestrator import run_scenario
 from bajutsu.common.orchestrator.actions._registry import _step_label
 from bajutsu.common.orchestrator.loop._functions import _do_sleep
 from bajutsu.common.report.rows import _action_data, _step_detail
-from bajutsu.common.scenario import STEP_ACTIONS, Scenario, Step, load_scenarios
+from bajutsu.common.scenario import STEP_ACTIONS, Scenario, Step, load_scenarios, screen_interrupts
 from bajutsu.common.scenario.models.actions import MAX_SLEEP_SECONDS, Sleep
 from bajutsu.record.loop import execute
 from bajutsu.triage import heuristic as triage
@@ -116,7 +116,9 @@ def _queries(step: dict[str, object], *, guarded: bool) -> int:
     )
     driver = CountingDriver([el("x", "X")])
     # `runner.pipeline` passes the scenario's interrupts explicitly; `run_scenario` does not read them.
-    result = run_scenario(driver, scenario, clock=FakeClock(), interrupts=scenario.interrupts)
+    result = run_scenario(
+        driver, scenario, clock=FakeClock(), interrupts=screen_interrupts(scenario.interrupts)
+    )
     assert result.ok, result.failure
     return driver.queries
 

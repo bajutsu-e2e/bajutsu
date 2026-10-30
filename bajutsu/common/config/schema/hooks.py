@@ -8,7 +8,13 @@ from typing import Any, Self
 
 from pydantic import Field, ValidationInfo, model_validator
 
-from bajutsu.common.scenario import CleanupRule, Interrupt, Step
+from bajutsu.common.scenario import (
+    CleanupRule,
+    InterruptEntry,
+    Step,
+    check_interrupt_layer,
+    screen_interrupts,
+)
 
 from ._model import _Model
 
@@ -41,7 +47,8 @@ class Hooks(_Model):
 
     `setup` runs ahead of a scenario's own setup and `cleanup` behind its own, so a scenario releases
     what it created before the app-wide teardown closes around it; `interrupts` are checked before
-    the scenario's. The names match the scenario's own `setup` and `cleanup`, so one pair of words
+    the scenario's, and its `systemAlert` and `tipKit` entries (BE-0473) are the answers a scenario's
+    own entry for the same prompt overrides. The names match the scenario's own `setup` and `cleanup`, so one pair of words
     names the phases at both levels.
 
     A step may call a component with `use:`, resolved when the config loads against the config
@@ -51,13 +58,17 @@ class Hooks(_Model):
 
     setup: list[Step] = Field(default_factory=list)
     cleanup: list[CleanupRule] = Field(default_factory=list)
-    interrupts: list[Interrupt] = Field(default_factory=list)
+    interrupts: list[InterruptEntry] = Field(default_factory=list)
 
     def _all_steps(self) -> list[Step]:
         return [
             *_nested_steps(self.setup),
             *(s for rule in self.cleanup for s in _nested_steps(rule.steps)),
-            *(s for entry in self.interrupts for s in _nested_steps(entry.steps)),
+            *(
+                s
+                for entry in screen_interrupts(self.interrupts)
+                for s in _nested_steps(entry.steps)
+            ),
         ]
 
     @model_validator(mode="after")
@@ -86,7 +97,7 @@ class Hooks(_Model):
             self.setup = expand_steps(self.setup, resolver)
             for rule in self.cleanup:
                 rule.steps = expand_steps(rule.steps, resolver)
-            for entry in self.interrupts:
+            for entry in screen_interrupts(self.interrupts):
                 entry.steps = expand_steps(entry.steps, resolver)
         except OSError as e:
             raise ValueError(f"hooks: cannot read a component: {e}") from e
@@ -106,13 +117,18 @@ class Hooks(_Model):
             )
 
     @model_validator(mode="after")
+    def _one_answer_per_prompt(self) -> Self:
+        check_interrupt_layer(self.interrupts, "hooks.interrupts")
+        return self
+
+    @model_validator(mode="after")
     def _no_target_in_interrupts(self) -> Self:
         # An entry here already belongs to the target this block configures, so a `target` on it
         # could only repeat that name or contradict it (BE-0438). Its recovery steps are checked
         # too, nested ones included: a target config never passes through the scenario-side
         # `_check_target_requirements`, so an unchecked `steps[0].target: ios` under a web target
         # would load cleanly and then dispatch to the ios runner.
-        for entry in self.interrupts:
+        for entry in screen_interrupts(self.interrupts):
             if entry.target is not None:
                 raise ValueError(
                     "hooks.interrupts entries cannot set `target`: the entry already belongs to "

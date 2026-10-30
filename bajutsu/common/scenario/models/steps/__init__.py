@@ -5,6 +5,13 @@ control-flow steps (`if`/`forEach`) whose nested step lists make this the one mo
 forward reference to `Step` is needed.
 """
 
+from ._functions import (
+    InterruptEntry,
+    check_interrupt_layer,
+    screen_interrupts,
+    system_alert_interrupts,
+    tip_kit_interrupt,
+)
 from ._shared import _MODIFIERS as _MODIFIERS
 from .app import App
 from .cleanup_rule import CleanupRule
@@ -16,6 +23,8 @@ from .interrupt import Interrupt
 from .step import _STEP_ACTIONS as _STEP_ACTIONS
 from .step import _UNSAFE_STEP_NAME_CHARS as _UNSAFE_STEP_NAME_CHARS
 from .step import Step
+from .system_alert_interrupt import SystemAlertInterrupt
+from .tip_kit_interrupt import TipKitInterrupt
 from .use import Use
 from .web import Web
 
@@ -27,9 +36,16 @@ __all__ = [
     "Group",
     "If",
     "Interrupt",
+    "InterruptEntry",
     "Step",
+    "SystemAlertInterrupt",
+    "TipKitInterrupt",
     "Use",
     "Web",
+    "check_interrupt_layer",
+    "screen_interrupts",
+    "system_alert_interrupts",
+    "tip_kit_interrupt",
 ]
 
 

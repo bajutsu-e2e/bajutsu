@@ -33,9 +33,9 @@
 # UIKit screen for this launch env, exactly the reasons `permission_system_alert.yaml` and
 # `paste_system_alert.yaml` carry the same tag (demos/showcase/Makefile) — CI's `actuation` job
 # names this file by path with no exclusion, so the tag does not keep it off CI.
-# `systemAlertHandling: false` here turns off only the reactive alert guard; both the banner branch
-# of the interruption monitor (Unit 4) and the proactive sweep (Unit 8) run regardless of that
-# switch, by design (docs/scenarios.md), so this fixture cannot pin down which of the two actually
+# `choice: leave` here keeps only the reactive alert guard off the notification prompt; both the
+# banner branch of the interruption monitor (Unit 4) and the proactive sweep (Unit 8) run regardless
+# of it, by design (docs/scenarios.md), so this fixture cannot pin down which of the two actually
 # clears the banner before the tap — a step boundary (the `wait` below) sits between the banner's
 # appearance and the tap, and the proactive sweep runs at every step boundary. What this scenario
 # demonstrates is the outcome BE-0416 exists to guarantee either way: a real foreground banner
@@ -53,8 +53,8 @@
     subject:
       launch:
         env: { SHOWCASE_UITEST: "1", SHOWCASE_NOTIFICATION_BANNER: "1" }
-    run:
-      systemAlertHandling: false
+  interrupts:
+    - { systemAlert: notifications, choice: leave }
   steps:
     - wait: { for: { id: notif.permission.value }, timeout: 10 }
     - handleSystemAlert: { prompt: notifications, choice: grant, timeout: 10 }

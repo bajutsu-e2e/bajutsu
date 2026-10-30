@@ -21,7 +21,13 @@ from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.evidence import Artifact, intervals
 from bajutsu.common.orchestrator import AlertGuardConfig, run_scenario
 from bajutsu.common.orchestrator.waits import WaitTrace
-from bajutsu.common.scenario import Interrupt, Scenario, dump_scenarios, load_scenarios
+from bajutsu.common.scenario import (
+    Interrupt,
+    Scenario,
+    dump_scenarios,
+    load_scenarios,
+    screen_interrupts,
+)
 
 
 def _interrupt(condition: dict[str, object], steps: list[dict[str, object]]) -> Interrupt:
@@ -88,8 +94,8 @@ def test_scenario_interrupts_parse() -> None:
         """
     )[0]
     assert len(s.interrupts) == 1
-    assert s.interrupts[0].condition.exists is not None
-    assert s.interrupts[0].steps[0].tap is not None
+    assert screen_interrupts(s.interrupts)[0].condition.exists is not None
+    assert screen_interrupts(s.interrupts)[0].steps[0].tap is not None
 
 
 def test_empty_interrupts_prunes_from_dump() -> None:
@@ -113,7 +119,7 @@ def test_config_interrupts_resolve() -> None:
     )
     eff = resolve(cfg, "myapp")
     assert len(eff.run_defaults.interrupts) == 1
-    assert eff.run_defaults.interrupts[0].condition.exists is not None
+    assert screen_interrupts(eff.run_defaults.interrupts)[0].condition.exists is not None
 
 
 def test_config_interrupts_resolve_a_component(tmp_path: Path) -> None:
@@ -136,7 +142,7 @@ def test_config_interrupts_resolve_a_component(tmp_path: Path) -> None:
         "        - use: {component: skip-onboarding.yaml}\n",
         encoding="utf-8",
     )
-    (entry,) = resolve(load_config_file(cfg), "myapp").run_defaults.interrupts
+    (entry,) = screen_interrupts(resolve(load_config_file(cfg), "myapp").run_defaults.interrupts)
     assert [st.tap.id for st in entry.steps if st.tap is not None] == ["onboarding.skip"]
 
 
@@ -552,8 +558,26 @@ def test_config_interrupts_run_before_scenario_interrupts() -> None:
         driver,
         scenario,
         clock=FakeClock(),
-        interrupts=[*config_interrupts, *scenario.interrupts],
+        interrupts=[*config_interrupts, *screen_interrupts(scenario.interrupts)],
     )
     assert result.ok, result.failure
     first_two = _tap_ids(driver)[:2]
     assert first_two == ["cfg.btn", "scn.btn"]  # config handler acts before the scenario's
+
+
+def test_only_screen_entries_reach_the_runners_poll() -> None:
+    # BE-0473: a `systemAlert` or `tipKit` entry polls no tree; it reaches the alert guard and the
+    # TipKit gate instead, so the runner's opportunistic check sees the screen entries alone.
+    from bajutsu.common.runner.pipeline import _scenario_interrupts_for
+
+    (s,) = load_scenarios(
+        "- name: s\n"
+        "  interrupts:\n"
+        "    - { systemAlert: notifications, choice: grant }\n"
+        "    - condition: { exists: { id: [promo] } }\n"
+        "      steps: [{ tap: { id: [close] } }]\n"
+        "    - tipKit: dismiss\n"
+        "  steps: [{ tap: { id: [a] } }]\n"
+    )
+    (entry,) = _scenario_interrupts_for(s, "", "")
+    assert entry.condition.exists is not None

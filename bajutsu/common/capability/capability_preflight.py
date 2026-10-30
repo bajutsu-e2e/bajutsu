@@ -65,7 +65,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from bajutsu.common.drivers import base
-from bajutsu.common.scenario import Assertion, Scenario, Step
+from bajutsu.common.scenario import Assertion, Interrupt, Scenario, Step
 
 if TYPE_CHECKING:
     from bajutsu.common.capability.worker_capability import WorkerCapability
@@ -171,7 +171,8 @@ def _navigate_locations(sc: Scenario) -> list[str]:
     # `_walk_scenario` stops at setup / steps / cleanup; an interrupt's recovery steps run on the
     # leased device too, so a `navigate` there has to be caught before the lease as well.
     for i, entry in enumerate(sc.interrupts):
-        paths.extend(found(_walk_steps(entry.steps, f"interrupts[{i}] ")))
+        if isinstance(entry, Interrupt):
+            paths.extend(found(_walk_steps(entry.steps, f"interrupts[{i}] ")))
     return paths
 
 
@@ -197,6 +198,8 @@ def _attribute_locations(sc: Scenario) -> list[str]:
     paths = [f"expect[{i}]" for i, a in enumerate(sc.expect or []) if a.attribute is not None]
     paths.extend(found(_walk_scenario(sc)))
     for i, entry in enumerate(sc.interrupts):
+        if not isinstance(entry, Interrupt):
+            continue
         if entry.condition.attribute is not None:
             paths.append(f"interrupts[{i}] > condition")
         paths.extend(found(_walk_steps(entry.steps, f"interrupts[{i}] ")))
@@ -352,7 +355,10 @@ def steps_for_target(s: Scenario, target: str) -> Scenario:
             "interrupts": [
                 e
                 for e in s.interrupts
-                if e.target == target or (e.target is None and target in primaries)
+                # A `systemAlert` or `tipKit` entry polls no tree, so it stays on every target.
+                if not isinstance(e, Interrupt)
+                or e.target == target
+                or (e.target is None and target in primaries)
             ],
         }
     )

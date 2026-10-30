@@ -7,7 +7,13 @@ from collections.abc import Callable
 import pytest
 
 from bajutsu.common.orchestrator.actions._registry import _RUNTIME_ACTIONS
-from bajutsu.common.scenario import Component, expand_components, load_component, load_scenarios
+from bajutsu.common.scenario import (
+    Component,
+    expand_components,
+    load_component,
+    load_scenarios,
+    screen_interrupts,
+)
 from bajutsu.common.scenario.serialize import redact_totp_secrets
 
 
@@ -122,7 +128,7 @@ def test_group_expands_in_before_and_after_and_interrupts() -> None:
     scenario = scns[0]
     assert scenario.setup[0].report_group == "setup"
     assert scenario.cleanup[0].steps[0].report_group == "teardown"
-    assert scenario.interrupts[0].steps[0].report_group == "dismiss"
+    assert screen_interrupts(scenario.interrupts)[0].steps[0].report_group == "dismiss"
 
 
 def test_a_group_id_stays_unique_across_separate_expand_components_calls() -> None:

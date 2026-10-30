@@ -86,6 +86,7 @@ from bajutsu.common.scenario import (
     Selector,
     Step,
     interp,
+    tip_kit_interrupt,
 )
 from bajutsu.common.scenario.models.actions import Totp
 from bajutsu.common.totp import TOTP_PERIOD_SECONDS
@@ -1249,6 +1250,13 @@ def run_scenario(  # noqa: C901, PLR0912, PLR0915
     )
 
 
+def _tip_kit_on(scenario: Scenario) -> bool:
+    # `run` has already left the resolved answer, flag and target included, as the scenario's one
+    # `tipKit` entry (BE-0473).
+    entry = tip_kit_interrupt(scenario.interrupts)
+    return entry is not None and entry.tip_kit == "dismiss"
+
+
 def _dismiss_blocking_tip(driver: base.Driver, scenario: Scenario) -> bool:
     """Clear a TipKit tip blocking the screen, when this scenario opted in; True if one was cleared.
 
@@ -1256,7 +1264,7 @@ def _dismiss_blocking_tip(driver: base.Driver, scenario: Scenario) -> bool:
     query for it, and a scenario that did not ask keeps today's behavior exactly. The driver decides
     what identifies a tip, so no backend-specific selector reaches this layer.
     """
-    if not scenario.preconditions.run.tip_kit_handling:
+    if not _tip_kit_on(scenario):
         return False
     if base.Capability.HANDLE_TIPKIT_TIP not in driver.capabilities():
         return False
@@ -1277,7 +1285,7 @@ def _tip_poll_hook(
     succeed. The poll's tree is passed down so the overwhelmingly common "no tip" answer needs no
     query of its own; only an actual tip costs the driver a fresh snapshot to mint a handle from.
     """
-    if not scenario.preconditions.run.tip_kit_handling:
+    if not _tip_kit_on(scenario):
         return interrupt_poll
     if base.Capability.HANDLE_TIPKIT_TIP not in driver.capabilities():
         return interrupt_poll
@@ -1416,7 +1424,7 @@ def _sweep_notification_banner(
 
     No scenario/CLI toggle (BE-0416 Unit 8): a scenario cannot observe a banner, so none can be
     broken by clearing it — the same "no known use for a toggle" the interruption path's own
-    design already established (Unit 4). The interval reuses whatever `systemAlertHandling`
+    design already established (Unit 4). The interval reuses whatever the `systemAlert` entries
     resolved for this scenario when the guard is configured, so the two SpringBoard polls (this
     one and `_AlertGuardGate`'s own) share one cadence; a scenario with the guard off still gets
     BE-0315's plain default, since nothing here is the guard's to turn off.

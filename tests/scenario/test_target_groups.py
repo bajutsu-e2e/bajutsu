@@ -16,7 +16,13 @@ from pydantic import ValidationError
 
 from bajutsu.common.config import load_config, resolve
 from bajutsu.common.runner.pipeline import with_lifecycle_phases
-from bajutsu.common.scenario import Component, Scenario, expand_components, load_scenarios
+from bajutsu.common.scenario import (
+    Component,
+    Scenario,
+    expand_components,
+    load_scenarios,
+    screen_interrupts,
+)
 from bajutsu.common.scenario.models import Step
 
 
@@ -277,8 +283,9 @@ def test_before_and_after_and_interrupts_are_expanded_the_same_way() -> None:
     assert s.setup[0].tap is not None and s.setup[0].tap.id == "b"
     assert s.cleanup[0].steps[0].target == "app"
     assert s.cleanup[0].steps[0].tap is not None and s.cleanup[0].steps[0].tap.id == "a"
-    assert s.interrupts[0].steps[0].target == "app"
-    assert s.interrupts[0].steps[0].tap is not None and s.interrupts[0].steps[0].tap.id == "i"
+    recovery = screen_interrupts(s.interrupts)[0].steps[0]
+    assert recovery.target == "app"
+    assert recovery.tap is not None and recovery.tap.id == "i"
 
 
 def test_if_as_a_direct_child_inherits_the_groups_target() -> None:

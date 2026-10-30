@@ -12,7 +12,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from bajutsu.common.scenario import Scenario
+from bajutsu.common.scenario import Scenario, screen_interrupts
 
 
 def _step(**overrides: object) -> dict[str, object]:
@@ -331,13 +331,13 @@ def test_interrupts_entry_may_omit_target_under_two_targets() -> None:
     # BE-0438: unlike a step's, an entry's `target` stays optional at any count — an omitted one
     # watches the primary — and so does a recovery step's, which runs on the entry's own target.
     s = _two_targets_with({"steps": [_step()]})
-    assert s.interrupts[0].target is None
-    assert s.interrupts[0].steps[0].target is None
+    assert screen_interrupts(s.interrupts)[0].target is None
+    assert screen_interrupts(s.interrupts)[0].steps[0].target is None
 
 
 def test_interrupts_entry_may_name_a_declared_target() -> None:
     s = _two_targets_with({"target": "web", "steps": [_step()]})
-    assert s.interrupts[0].target == "web"
+    assert screen_interrupts(s.interrupts)[0].target == "web"
 
 
 def test_interrupts_entry_naming_an_undeclared_target_rejected() -> None:
@@ -347,7 +347,7 @@ def test_interrupts_entry_naming_an_undeclared_target_rejected() -> None:
 
 def test_interrupts_recovery_step_may_name_another_declared_target() -> None:
     s = _two_targets_with({"target": "web", "steps": [_step(target="app")]})
-    assert s.interrupts[0].steps[0].target == "app"
+    assert screen_interrupts(s.interrupts)[0].steps[0].target == "app"
 
 
 def test_interrupts_recovery_step_naming_an_undeclared_target_rejected() -> None:
@@ -361,7 +361,7 @@ def test_interrupts_recovery_optional_mode_propagates_through_if() -> None:
     s = _two_targets_with(
         {"steps": [{"if": {"condition": {"exists": {"id": "a"}}, "then": [_step()]}}]}
     )
-    assert s.interrupts[0].steps[0].if_ is not None
+    assert screen_interrupts(s.interrupts)[0].steps[0].if_ is not None
 
 
 def test_interrupts_recovery_step_inside_web_still_rejects_a_target() -> None:
@@ -374,7 +374,7 @@ def test_interrupts_recovery_step_inside_web_still_rejects_a_target() -> None:
 def test_interrupts_recovery_use_loads_under_two_targets() -> None:
     # BE-0446: a recovery `use:` may omit `target`, like any recovery step.
     s = _two_targets_with({"steps": [{"use": {"component": "c.yaml", "with": {}}}]})
-    assert s.interrupts[0].steps[0].use is not None
+    assert screen_interrupts(s.interrupts)[0].steps[0].use is not None
 
 
 def test_interrupts_entry_target_rejected_with_no_declared_targets() -> None:

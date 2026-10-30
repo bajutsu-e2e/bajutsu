@@ -7,7 +7,6 @@ from typing import Any
 from pydantic import Field, field_validator, model_validator
 
 from bajutsu.common.capability.settings_support import SETTING_KEYS
-from bajutsu.common.scenario import SystemAlertHandlingField
 
 from ._model import _Model
 
@@ -19,20 +18,20 @@ MOVED_RUN_KEYS: dict[str, str] = {
     "network": "evidence.collectNetwork",
     "visualCompare": "evidence.visualCompare",
     "secrets": "evidence.secrets",
+    "systemAlertHandling": "hooks.interrupts, one `systemAlert` entry per rule "
+    "(`- systemAlert: notifications` with `choice: grant`); `false` becomes `choice: leave` on each "
+    "prompt to leave, or --no-system-alert-handling",
+    "tipKitHandling": "hooks.interrupts (`- tipKit: dismiss`) on each iOS target",
 }
 
 
 class RunPolicy(_Model):
-    """`run`: the policy of a run, the fields every platform shares.
+    """`run`: what is left of the run policy until BE-0473 unit 4 removes the group.
 
-    A platform adds its own fields through the registry (iOS's `tipKitHandling`); the target
-    validates the two together, so an unknown key lists both sets. Each value sits between the
-    scenario's own value and the built-in default (BE-0177): None falls through to the built-in.
+    A platform may add its own fields through the registry; the target validates the two together,
+    so an unknown key lists both sets.
     """
 
-    system_alert_handling: SystemAlertHandlingField = Field(
-        default=None, alias="systemAlertHandling"
-    )
     # Environment-specific settings this target's route cannot apply and runs without, each with the
     # reason the report shows (BE-0467). Target-only: `Defaults` refuses it, since an ignored setting
     # belongs to one environment.

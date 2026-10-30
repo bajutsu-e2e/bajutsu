@@ -16,9 +16,8 @@ from typing import Literal
 
 from bajutsu.common.config.effective import Effective, IosConfig
 from bajutsu.common.config.schema.platform import accepts_field, schema_for
-from bajutsu.common.config.schema.target_config import run_model
 from bajutsu.common.devices.runs import condition_path
-from bajutsu.common.scenario import Preconditions
+from bajutsu.common.scenario import Preconditions, tip_kit_interrupt
 
 
 @dataclass(frozen=True)
@@ -122,16 +121,6 @@ def _subject_fields(pre: Preconditions) -> list[tuple[str, ...]]:
     return [path for path, written in candidates if written]
 
 
-def _run_fields(pre: Preconditions) -> list[str]:
-    """The `run` fields *pre* sets that a target's `run` also has, spelled as YAML writes them."""
-    run = pre.run
-    candidates = [
-        ("systemAlertHandling", run.system_alert_handling is not None),
-        ("tipKitHandling", run.tip_kit_handling is not None),
-    ]
-    return [name for name, written in candidates if written]
-
-
 def effective_conditions(
     eff: Effective, *, engine_flag: bool = False
 ) -> dict[str, str | list[str]]:
@@ -182,12 +171,16 @@ def remote_condition_problems(
 
 
 def check_preconditions(
-    pre: Preconditions, targets: Sequence[Effective], *, erase_flag: bool | None = None
+    pre: Preconditions,
+    targets: Sequence[Effective],
+    *,
+    erase_flag: bool | None = None,
+    interrupts: Sequence[object] = (),
 ) -> list[str]:
     """Every problem with *pre* against the *targets* a scenario drives, before any device work.
 
-    A field never goes ignored (BE-0452). A `subject` field or an iOS-only `run` field that no driven
-    target's platform has is a problem. After merging, a target whose `seedPhotos` is non-empty needs an effective
+    A field never goes ignored (BE-0452). A `subject` field that no driven target's platform has is a
+    problem, and so is a `tipKit` entry in the scenario's *interrupts* when no driven target is iOS. After merging, a target whose `seedPhotos` is non-empty needs an effective
     `subject.reinstall: erase` (the scenario's, else the target's, then moved by the flag), because
     seeding happens only on the erase path.
 
@@ -198,6 +191,7 @@ def check_preconditions(
         pre: The scenario's preconditions, as written (before a command fills in run defaults).
         targets: Every target the scenario drives, the primary first.
         erase_flag: The `--erase` / `--no-erase` flag, or None when absent.
+        interrupts: The scenario's own `interrupts` entries.
 
     Returns:
         One message per problem, each naming the field; empty when the scenario is sound.
@@ -208,16 +202,18 @@ def check_preconditions(
         f"subject.{'.'.join(path)}"
         for path in _subject_fields(pre)
         if not any(accepts_field(schema_for(p).subject, path) for p in platforms)
-    ] + [
-        f"run.{name}"
-        for name in _run_fields(pre)
-        if not any(accepts_field(run_model(p), (name,)) for p in platforms)
     ]
     problems = [
         f"preconditions.{field} applies to no target this scenario drives "
         f"(platform {driven}); remove it, or name a target whose platform has it"
         for field in unused
     ]
+    # TipKit is Apple's framework, so the entry has no meaning on any other platform.
+    if tip_kit_interrupt(interrupts) is not None and "ios" not in platforms:
+        problems.append(
+            f"interrupts: a tipKit entry applies to no target this scenario drives (platform "
+            f"{driven}); remove it, or name an iOS target"
+        )
     for i, eff in enumerate(targets):
         merged = resolve_preconditions(eff, pre)
         if i and merged.seed_photos:

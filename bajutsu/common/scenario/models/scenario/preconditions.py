@@ -8,24 +8,11 @@ a run happens belongs to the target alone (BE-0469): a scenario names a target t
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Annotated, Any, Literal
+from typing import Any, Literal
 
-from pydantic import BeforeValidator, Field, model_validator
+from pydantic import Field, model_validator
 
 from bajutsu.common.scenario.models._base import _Model
-
-from ._functions import _coerce_system_alert_handling
-from .system_alert_handling import SystemAlertHandling
-
-# The on-disk type of a `systemAlertHandling` field, shared by the scenario and the target config so
-# the two layers accept exactly the same forms. The boolean carries on and off (BE-0401): `false`
-# disables the guard, a mapping is on and holds the policy, and `None` (the key absent) inherits the
-# layer above. `{ enabled: false, rules: [...] }` — a policy the runtime discarded without a word —
-# is not representable.
-SystemAlertHandlingField = Annotated[
-    Literal[False] | SystemAlertHandling | None,
-    BeforeValidator(_coerce_system_alert_handling),
-]
 
 # Where each flat key of the pre-BE-0452 `preconditions` went; the loader reads none of them, and a
 # stored run's plan is rewritten by `load_stored_scenario_file` instead.
@@ -102,22 +89,11 @@ class PreconditionsApp(_Model):
 
 
 class PreconditionsRun(_Model):
-    """`preconditions.run`: the scenario's own run policy (BE-0452).
+    """`preconditions.run`: the scenario's own run policy (BE-0452), until BE-0473 unit 4 removes it.
 
-    Each value sits between a command-line flag and the target's `run`: a flag wins over the
-    scenario, and the scenario over the target. `secrets` stays a target-level union, so it is not
-    accepted here.
+    `secrets` stays a target-level union, so it is not accepted here.
     """
 
-    # The alert guard runs on by default; unset means "on, tap the prompt's default button" (see
-    # SystemAlertHandling). The scenario's rules are checked before the target's.
-    system_alert_handling: SystemAlertHandlingField = Field(
-        default=None, alias="systemAlertHandling"
-    )
-    # Dismiss a blocking TipKit tip when one is in the way; iOS only, so a scenario that drives no
-    # iOS target cannot set it. Off unless asked for: a tip is sometimes the very thing a scenario
-    # asserts on.
-    tip_kit_handling: bool | None = Field(default=None, alias="tipKitHandling")
     # False skips the `hooks.setup` of every target the scenario declares (the target it runs
     # against, when it declares none). The targets' cleanup still runs, since cleanup runs on every
     # path out of a scenario.
@@ -127,10 +103,23 @@ class PreconditionsRun(_Model):
     @classmethod
     def _reject_moved_keys(cls, data: Any) -> Any:
         # The loader reads no old key (BE-0473), so the error is the migration path.
-        if isinstance(data, dict) and "erase" in data:
+        if not isinstance(data, dict):
+            return data
+        if "erase" in data:
             raise ValueError(
                 "preconditions.run.erase moved to preconditions.subject.reinstall (BE-0473): "
                 "write `erase` for true, and `clean` or `overwrite` for false"
+            )
+        if "systemAlertHandling" in data:
+            raise ValueError(
+                "preconditions.run.systemAlertHandling moved to the scenario's own interrupts "
+                "(BE-0473): one `systemAlert` entry per rule (`- systemAlert: notifications` with "
+                "`choice: grant`); `false` becomes `choice: leave` on each prompt to leave"
+            )
+        if "tipKitHandling" in data:
+            raise ValueError(
+                "preconditions.run.tipKitHandling moved to the scenario's own interrupts "
+                "(BE-0473): `- tipKit: dismiss` for true, `- tipKit: leave` for false"
             )
         return data
 

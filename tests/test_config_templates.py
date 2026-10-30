@@ -23,6 +23,7 @@ from bajutsu.common.config.effective import Effective, IosConfig
 from bajutsu.common.config.json_schema import config_json_schema
 from bajutsu.common.config.schema._templates import REBASED_PATHS, _rebased
 from bajutsu.common.config.schema.hooks import STEP_CONTAINERS
+from bajutsu.common.scenario import screen_interrupts
 
 
 def _write(path: Path, text: str) -> Path:
@@ -445,7 +446,7 @@ def test_every_showcase_target_still_resolves_its_shared_settings() -> None:
             continue
         assert eff.launch_env == {"SHOWCASE_UITEST": "1"}, name
         if eff.schema_platform == "android":
-            guards = [i.steps[0].tap for i in eff.run_defaults.interrupts]
+            guards = [i.steps[0].tap for i in screen_interrupts(eff.run_defaults.interrupts)]
             assert [g.id if g else None for g in guards] == [["aerr_close"]], name
             continue
         runner = eff.platform_config.xcuitest  # type: ignore[union-attr]

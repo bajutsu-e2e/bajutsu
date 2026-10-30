@@ -2051,35 +2051,28 @@ def test_run_all_hands_the_target_s_launch_env_to_run_scenario(
 
 
 def test_run_all_alert_guard_for_selects_per_scenario() -> None:
-    # The factory picks each scenario's guard from its systemAlertHandling: the guarded scenario
-    # recovers from a blocked tap and passes; the one that disabled it fails.
+    # The factory picks each scenario's guard: the guarded scenario recovers from a blocked tap and
+    # passes; the one handed no guard fails.
     from bajutsu.common.orchestrator import AlertGuardConfig
 
     scenarios = [
         Scenario.model_validate(
             {
                 "name": "guarded",
-                "preconditions": {"run": {"systemAlertHandling": True}},
                 "steps": [{"tap": {"id": "later"}}],
             }
         ),
         Scenario.model_validate(
             {
                 "name": "bare",
-                "preconditions": {"run": {"systemAlertHandling": False}},
                 "steps": [{"tap": {"id": "later"}}],
             }
         ),
     ]
 
     def alert_guard_for(s: Scenario) -> AlertGuardConfig | None:
-        # `false` is the whole off form since BE-0401; a mapping (or an absent key) means on.
         # One surface only: the scenario-start push refuses a rule claiming both (BE-0461).
-        return (
-            None
-            if s.preconditions.run.system_alert_handling is False
-            else AlertGuardConfig(rules=[guard_rule(in_tree=False)])
-        )
+        return None if s.name == "bare" else AlertGuardConfig(rules=[guard_rule(in_tree=False)])
 
     # Answering the prompt reveals the tap's target, so the guarded scenario recovers and passes.
     def lease(eff: Effective, scenario: Scenario) -> Lease:

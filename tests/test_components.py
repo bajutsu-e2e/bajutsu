@@ -11,6 +11,7 @@ from bajutsu.common.scenario import (
     expand_components,
     load_component,
     load_scenarios,
+    screen_interrupts,
 )
 
 LOGIN = load_component(
@@ -186,7 +187,7 @@ def test_use_expands_inside_an_interrupt_handler() -> None:
 """
     )
     expand_components(scns, _resolver({"login.yaml": LOGIN}))
-    steps = scns[0].interrupts[0].steps
+    steps = screen_interrupts(scns[0].interrupts)[0].steps
     assert len(steps) == 4  # 3 component steps + the handler's own tap
     assert steps[0].type is not None and steps[0].type.text == "alice"
     assert steps[1].type is not None and steps[1].type.text == "hunter2"

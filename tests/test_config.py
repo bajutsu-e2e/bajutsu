@@ -18,7 +18,7 @@ from bajutsu.common.config import (
     resolve,
     xcuitest_targets_real_device,
 )
-from bajutsu.common.scenario import SystemAlertHandling
+from bajutsu.common.scenario import Interrupt, SystemAlertInterrupt, TipKitInterrupt
 
 
 def _ios(eff: Effective) -> IosConfig:
@@ -1406,36 +1406,17 @@ def test_scalar_root_containing_orgs_raises_validationerror_not_attributeerror()
         load_config("orgs\n")
 
 
-# --- BE-0177: per-target run-behavior defaults (systemAlertHandling / erase / network) ---
+# --- BE-0177: per-target run-behavior defaults (interrupts / erase / network) ---
 
 
 def test_run_behavior_defaults_when_unset() -> None:
-    # An unset target resolves to the built-in defaults: guard on (system_alert_handling None → on
-    # with the built-in dismissive labels), no reinstall mode (the built-in clean), network on.
+    # An unset target resolves to the built-in defaults: no interrupts entry (the guard answers no
+    # prompt, and TipKit stays off, since a tip is sometimes what a scenario asserts on), no reinstall
+    # mode (the built-in clean), network on.
     eff = resolve(load_config("targets:\n  s:\n    platform: ios\n    subject: {id: com.x}\n"), "s")
-    assert eff.run_defaults.system_alert_handling is None
+    assert eff.run_defaults.interrupts == []
     assert eff.reinstall is None
     assert eff.run_defaults.network is True
-
-
-def test_target_ios_tip_kit_handling_resolves_and_defaults_off() -> None:
-    # Off unless a target asks: a tip is sometimes the very thing a scenario asserts on, so the
-    # built-in default must not dismiss it.
-    plain = resolve(
-        load_config("targets:\n  s:\n    platform: ios\n    subject: {id: com.x}\n"), "s"
-    )
-    assert plain.run_defaults.ios_tip_kit_handling is False
-    opted_in = resolve(
-        load_config(
-            "targets:\n"
-            "  s:\n"
-            "    platform: ios\n"
-            "    subject: {id: com.x}\n"
-            "    run: {tipKitHandling: true}\n"
-        ),
-        "s",
-    )
-    assert opted_in.run_defaults.ios_tip_kit_handling is True
 
 
 def test_target_reinstall_and_network_resolve() -> None:
@@ -1478,49 +1459,93 @@ def test_collect_network_defaults_on_and_inherits_from_defaults() -> None:
     assert resolve(cfg, "s").run_defaults.network is False
 
 
-def test_target_system_alert_handling_bool_carries_off() -> None:
-    # BE-0401: the bare boolean is the only spelling of off, on a target as on a scenario.
+def test_target_interrupts_carry_every_form_to_the_run_defaults() -> None:
+    # BE-0473: one list shows every handler a target applies on its own.
     eff = resolve(
         load_config(
             "targets:\n"
             "  s:\n"
             "    platform: ios\n"
             "    subject: {id: com.x}\n"
-            "    run: {systemAlertHandling: false}\n"
+            "    hooks:\n"
+            "      interrupts:\n"
+            "        - condition: {exists: {id: [aerr_wait]}}\n"
+            "          steps: [{tap: {id: [aerr_close]}}]\n"
+            "        - {systemAlert: notifications, choice: grant}\n"
+            "        - {systemAlert: savePassword, choice: deny, frozenScreenTimeout: 20}\n"
+            "        - tipKit: dismiss\n"
         ),
         "s",
     )
-    assert eff.run_defaults.system_alert_handling is False
+    screen, notif, save, tip = eff.run_defaults.interrupts
+    assert isinstance(screen, Interrupt)
+    assert isinstance(notif, SystemAlertInterrupt) and notif.choice == "grant"
+    assert isinstance(save, SystemAlertInterrupt) and save.frozen_screen_timeout == 20
+    assert isinstance(tip, TipKitInterrupt) and tip.tip_kit == "dismiss"
 
 
-def test_target_system_alert_handling_object_form() -> None:
-    cfg = load_config(
-        "targets:\n"
-        "  s:\n"
-        "    platform: ios\n"
-        "    subject: {id: com.x}\n"
-        "    run:\n"
-        "      systemAlertHandling:\n"
-        "        rules:\n"
-        "        - {prompt: notifications, choice: grant}\n"
-        "        visionInstruction: tap Allow\n"
-    )
-    eff = resolve(cfg, "s")
-    policy = eff.run_defaults.system_alert_handling
-    assert isinstance(policy, SystemAlertHandling)  # a mapping is always on
-    assert [(r.prompt, r.choice) for r in policy.rules] == [("notifications", "grant")]
-    assert policy.vision_instruction == "tap Allow"
+@pytest.mark.parametrize(
+    ("run", "new_home"),
+    [
+        ("{systemAlertHandling: false}", "choice: leave"),
+        ("{systemAlertHandling: {rules: [{prompt: notifications, choice: grant}]}}", "systemAlert"),
+        ("{tipKitHandling: true}", "tipKit: dismiss"),
+    ],
+)
+def test_a_target_run_handler_fails_naming_its_interrupts_entry(run: str, new_home: str) -> None:
+    # The loader reads no old key (BE-0473), so the error is the migration path.
+    with pytest.raises(ValidationError, match=r"hooks\.interrupts") as exc:
+        load_config(
+            f"targets:\n  s:\n    platform: ios\n    subject: {{id: com.x}}\n    run: {run}\n"
+        )
+    assert new_home in str(exc.value)
+
+
+def test_a_defaults_platform_run_handler_fails_naming_its_interrupts_entry() -> None:
+    with pytest.raises(ValidationError, match=r"tipKitHandling moved to hooks.interrupts"):
+        load_config(
+            "defaults:\n  platforms:\n    ios:\n      run: {tipKitHandling: true}\n"
+            "targets:\n  s:\n    platform: ios\n    subject: {id: com.x}\n"
+        )
+
+
+def test_a_tip_kit_entry_fails_on_a_non_ios_target() -> None:
+    # TipKit is Apple's framework, and a field never goes ignored (BE-0452).
+    with pytest.raises(ValidationError, match="tipKit entry applies to iOS alone"):
+        load_config(
+            "targets:\n  a:\n    platform: android\n    subject: {id: com.x}\n"
+            "    hooks: {interrupts: [{tipKit: dismiss}]}\n"
+        )
+
+
+def test_target_interrupts_answer_a_prompt_once() -> None:
+    with pytest.raises(ValidationError, match="names systemAlert paste more than once"):
+        load_config(
+            "targets:\n  s:\n    platform: ios\n    subject: {id: com.x}\n"
+            "    hooks:\n      interrupts:\n"
+            "        - {systemAlert: paste, choice: grant}\n"
+            "        - {systemAlert: paste, choice: deny}\n"
+        )
+
+
+def test_a_target_system_alert_entry_takes_no_target() -> None:
+    # Only a screen entry carries `target` in a scenario; a target-level entry of any form has
+    # nowhere for one to point, and a `target` beside `systemAlert` reads as a mixed entry.
+    with pytest.raises(ValidationError, match="mixes"):
+        load_config(
+            "targets:\n  s:\n    platform: ios\n    subject: {id: com.x}\n"
+            "    hooks: {interrupts: [{systemAlert: paste, choice: grant, target: s}]}\n"
+        )
 
 
 @pytest.mark.parametrize("old", ["alertHandling", "dismissAlerts"])
-def test_target_renamed_alert_keys_fail_naming_the_canonical_key(old: str) -> None:
+def test_target_renamed_alert_keys_fail_as_unknown_run_fields(old: str) -> None:
     # BE-0401 deleted both aliases rather than carrying them a third time; under `run` (BE-0452)
-    # each fails as an unknown key whose message lists `systemAlertHandling`.
-    with pytest.raises(ValidationError) as exc:
+    # each fails as an unknown key.
+    with pytest.raises(ValidationError, match=old):
         load_config(
             f"targets:\n  s:\n    platform: ios\n    subject: {{id: com.x}}\n    run: {{{old}: false}}\n"
         )
-    assert "systemAlertHandling" in str(exc.value)
 
 
 def test_destination_blocks_resolve_to_the_target_conditions_and_state() -> None:

@@ -206,8 +206,8 @@ def push_interruption_policy(
     `governs` is true for any scenario whose guard is on, independent of whether any rule survived
     the drop above: a real declaration filtered down to nothing this surface can act on is not the
     same as no declaration at all, and only the latter should still leave a declined alert
-    unreported. An absent guard (`systemAlertHandling: false`) pushes an empty, non-governing policy
-    rather than skipping the call, so a scenario that switched the guard off does not inherit the
+    unreported. An absent guard (`--no-system-alert-handling`) pushes an empty, non-governing policy
+    rather than skipping the call, so a run that switched the guard off does not inherit the
     previous scenario's policy from the resident runner. A backend that does not implement
     `InterruptionPolicyTarget` is simply never asked.
 

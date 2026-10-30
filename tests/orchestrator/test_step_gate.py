@@ -23,6 +23,7 @@ from bajutsu.common.orchestrator import run_scenario
 from bajutsu.common.orchestrator.types import RunResult, StepPause
 from bajutsu.common.report.manifest import scenario_result_dict
 from bajutsu.common.runner import run_all
+from bajutsu.common.scenario import screen_interrupts
 from bajutsu.repl.session import ACTUATING_VERBS, ReplSession
 from bajutsu.run.cli import _build_step_gate
 from bajutsu.run.step_gate import PromptStepGate
@@ -245,7 +246,7 @@ def test_interrupt_recovery_steps_never_prompt() -> None:
         driver,
         scenario,
         clock=FakeClock(),
-        interrupts=list(scenario.interrupts),
+        interrupts=screen_interrupts(scenario.interrupts),
         step_gate=_gate(term, pause_first=True),
     )
     assert term.prompts == 1

@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, get_args
 
 from bajutsu.common import _yaml
 from bajutsu.common.scenario.models import Component, Scenario, ScenarioFile
 from bajutsu.common.scenario.models.scenario import SCHEMA_VERSION
+from bajutsu.common.scenario.system_alerts import SystemAlertPrompt, alert_surfaces
 
 
 def _as_schema_int(value: object) -> int | None:
@@ -130,6 +131,49 @@ def _upgrade_erase(pre: dict[str, Any]) -> None:
         subject["reinstall"] = "erase"
 
 
+# The prompts an entry's `frozenScreenTimeout` may sit on, the ones answered in the app's own tree.
+_IN_TREE_PROMPTS = frozenset(p for p in get_args(SystemAlertPrompt) if alert_surfaces(p)["in_tree"])
+
+
+def _upgrade_alert_handlers(raw: dict[str, Any], pre: dict[str, Any]) -> None:
+    """Turn a stored `run.systemAlertHandling` / `run.tipKitHandling` into `interrupts` entries.
+
+    BE-0473 moved both into the scenario's own `interrupts`. A rule becomes a `systemAlert` entry
+    carrying the policy's tuning values the entry form still accepts; `false` and a bare `true` name
+    no prompt, so they leave no entry, and `visionInstruction` has had no reader in `run` since
+    BE-0402.
+    """
+    run = pre.get("run")
+    if not isinstance(run, dict):
+        return
+    entries: list[dict[str, Any]] = []
+    policy = run.pop("systemAlertHandling", None)
+    if isinstance(policy, dict):
+        poll = policy.get("pollInterval")
+        frozen = policy.get("frozenScreenTimeout")
+        for rule in policy.get("rules") or []:
+            if not isinstance(rule, dict):
+                continue
+            entry: dict[str, Any] = {
+                "systemAlert": rule.get("prompt"),
+                "choice": rule.get("choice"),
+            }
+            if poll is not None:
+                entry["pollInterval"] = poll
+            prompt = rule.get("prompt")
+            if frozen is not None and prompt in _IN_TREE_PROMPTS:
+                entry["frozenScreenTimeout"] = frozen
+            entries.append(entry)
+    tip_kit = run.pop("tipKitHandling", None)
+    if tip_kit is not None:
+        entries.append({"tipKit": "dismiss" if tip_kit else "leave"})
+    if not run:
+        del pre["run"]
+    if entries:
+        interrupts = raw.get("interrupts")
+        raw["interrupts"] = [*(interrupts if isinstance(interrupts, list) else []), *entries]
+
+
 def _upgrade_preconditions(raw: dict[str, Any]) -> None:
     """Regroup one stored scenario's `preconditions` and top-level run policy (BE-0452/0469/0470)."""
     pre = raw.get("preconditions")
@@ -149,6 +193,7 @@ def _upgrade_preconditions(raw: dict[str, Any]) -> None:
         if old in raw:
             _place(pre, ("run", new), raw.pop(old))
     _upgrade_erase(pre)
+    _upgrade_alert_handlers(raw, pre)
     # BE-0469 removed the scenario's `runsOn`: its iOS device state moved to `device.ios`, and its
     # conditions are dropped, since they already chose the devices this stored run ran on.
     runs_on = pre.pop("runsOn", None)
@@ -168,6 +213,7 @@ def _upgrade_scenario(raw: Any) -> None:
     / `cleanup`, the outcome word `error` in a cleanup rule's `on` and a `capturePolicy` trigger's
     `result` becomes `failure`, and the flat `preconditions` keys and the top-level
     `systemAlertHandling` / `iosTipKitHandling` move into the `subject`, `device`, and `run` groups.
+    The `run` group's alert and TipKit handling then become `interrupts` entries (BE-0473).
     The `app` group becomes `subject` (BE-0470). A `preconditions.runsOn` keeps its device state
     under `device.ios` and drops its conditions (BE-0469).
     """

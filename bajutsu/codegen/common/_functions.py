@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 import re
 
-from bajutsu.common.scenario import Scenario, Step
+from bajutsu.common.scenario import Interrupt, Scenario, Step
 from bajutsu.common.scenario.models.actions import bypass_hint
 
 from .code_generator import CodeGenerator
@@ -210,6 +210,7 @@ def interrupts_setup_lines(scenario: Scenario) -> list[str]:
         f"{_collapse_line_terminators(str(entry.condition.model_dump(by_alias=True, exclude_none=True, exclude_defaults=True)))}"
         " — bajutsu checks this opportunistically at run time; not generated"
         for i, entry in enumerate(scenario.interrupts)
+        if isinstance(entry, Interrupt)
     ]
 
 

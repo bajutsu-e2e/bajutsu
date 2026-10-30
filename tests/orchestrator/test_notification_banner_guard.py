@@ -38,7 +38,7 @@ def _swipes(driver: FakeDriver) -> list[tuple[base.Point, base.Point]]:
 
 
 def test_a_showing_banner_is_swiped_away_before_the_steps_own_shot() -> None:
-    # No `systemAlertHandling` at all — proving the "no known use for a toggle" design: an ordinary
+    # No `systemAlert` entry at all — proving the "no known use for a toggle" design: an ordinary
     # scenario with no opt-in still gets the banner cleared.
     driver = FakeDriver(
         [

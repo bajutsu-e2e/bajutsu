@@ -1300,7 +1300,7 @@ def test_ios_actuation_job_still_declares_the_paste_consent_scenario() -> None:
 
 def test_ios_actuation_job_still_declares_the_reactive_alert_scenarios() -> None:
     # The same coverage pin for the reactive guard: `system_alert_handling.yaml` is the only place a
-    # `systemAlertHandling.rules` entry for `tracking` or `paste`, or a `deny` choice, meets a real
+    # `systemAlert` entry for `tracking` or `paste`, or a `deny` choice, meets a real
     # Simulator, and the non-gating `actuation` job shows no red X if it is dropped.
     text = lane_workflow_text("ios")
     assert text is not None

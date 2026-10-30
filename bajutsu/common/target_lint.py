@@ -104,7 +104,9 @@ def lint_against_targets(
         s = plan.scenario
         findings += [
             TargetFinding(scenario=s.name, target=", ".join(plan.effs), message=problem)
-            for problem in check_preconditions(s.preconditions, list(plan.effs.values()))
+            for problem in check_preconditions(
+                s.preconditions, list(plan.effs.values()), interrupts=s.interrupts
+            )
         ]
         step_lines = lines.get(declared_name(s.name))
         for name, eff in plan.effs.items():

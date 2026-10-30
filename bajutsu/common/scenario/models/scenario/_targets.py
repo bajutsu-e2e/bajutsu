@@ -17,6 +17,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Literal
 
+from bajutsu.common.scenario.models.steps._functions import screen_interrupts
+
 if TYPE_CHECKING:
     from bajutsu.common.scenario.models.assertions import Assertion
     from bajutsu.common.scenario.models.steps import Step
@@ -117,7 +119,7 @@ def _expand_target_groups(scenario: Scenario) -> None:
     scenario.setup = _expand_steps(scenario.setup, group_target=None, inside_web=False)
     for rule in scenario.cleanup:
         rule.steps = _expand_steps(rule.steps, group_target=None, inside_web=False)
-    for entry in scenario.interrupts:
+    for entry in screen_interrupts(scenario.interrupts):
         entry.steps = _expand_steps(entry.steps, group_target=None, inside_web=False)
 
 
@@ -535,7 +537,7 @@ def _check_target_requirements(scenario: Scenario) -> None:  # noqa: C901
     walk_steps(scenario.setup, mode="required")
     for rule in scenario.cleanup:
         walk_steps(rule.steps, mode="required")
-    for entry in scenario.interrupts:
+    for entry in screen_interrupts(scenario.interrupts):
         _check_target(entry.target, known=known, context="interrupts entry", required=False)
         walk_steps(entry.steps, mode="optional", entry_target=entry.target)
         _reject_assertion_target(entry.condition, context="interrupts entry: condition")
