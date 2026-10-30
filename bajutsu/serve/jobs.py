@@ -952,16 +952,39 @@ def _run_inherited(state: ServeState, job: Job) -> None:
             os.close(alive_w)
 
 
+# How long one slice of `_wait_in_slices` blocks before the main thread runs Python again.
+_INHERITED_WAIT_SLICE_SECONDS = 0.2
+
+
+def _wait_in_slices(proc: Any) -> None:
+    """Wait for *proc* to exit without ever blocking the main thread for longer than one slice.
+
+    The inherited-stdio path runs on the main thread of a one-shot caller (`worker --once`, the
+    public `bajutsu run`) whose own signal handlers relay a Ctrl-C or SIGTERM to the child
+    (`one_shot.cancel_on_signals`). Python runs a handler only on the main thread, and only once
+    that thread executes bytecode again, while the kernel may deliver a process-directed signal to
+    any thread — one of the relay's helpers, say. An untimed `wait` sleeps in `waitpid`, which such
+    a signal does not interrupt, so the cancel would never be relayed and the caller would wait on
+    a child nobody asked to stop.
+    """
+    while True:
+        try:
+            proc.wait(timeout=_INHERITED_WAIT_SLICE_SECONDS)
+        except subprocess.TimeoutExpired:
+            continue
+        return
+
+
 def _wait_inherited(job: Job, proc: Any, runs: Path | None, before: frozenset[str]) -> None:
     """Wait for an inherited-stdio child and record how it ended (see `_run_inherited`)."""
     if not _register_proc(job, proc, graceful=job.graceful_cancel):
-        proc.wait()
+        _wait_in_slices(proc)
         with job.lock:
             job.exit_code, job.status, job.proc = proc.returncode or 1, "done", None
             job.proc_graceful = False
         return
     pgid = _pgid_of(proc)
-    proc.wait()
+    _wait_in_slices(proc)
     run_id = _new_run_id_in(runs, before)
     with job.lock:
         swept = job.cancelled and job.proc_graceful
