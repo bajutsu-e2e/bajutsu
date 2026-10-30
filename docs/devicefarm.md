@@ -304,8 +304,18 @@ filter. It needs no device-pool ARN.
 
 An iOS target fans out like an Android one, with these differences:
 
-- The target sets `platform: ios` and `runsOn.kind: device`. Its `subject.path` names the `.ipa`, signed
-  for Device Farm's devices (see [iOS re-signing](#ios-re-signing-and-real-device-capabilities)).
+- The target sets `platform: ios` and `runsOn.ios.kind: device`. Its `subject.path` names the
+  `.ipa`, signed for Device Farm's devices (see
+  [iOS re-signing](#ios-re-signing-and-real-device-capabilities)).
+- The target declares `install` under `run.ignoredSettings`. A run on a real iOS device cannot
+  install `subject.path`, so the run refuses the setting unless the target declares it. On Device
+  Farm, the device already holds the build, and the declaration records that fact:
+
+  ```yaml
+  run:
+    ignoredSettings:
+      install: "Device Farm installs the .ipa before the test spec starts"
+  ```
 - Its `driver.runner.testRunner` names the device-build `.xctestrun`. To build the runner, run
   `make -C demos/showcase runner-build-device`. Copy the build's whole `Products` directory into the
   config's directory. The runner needs a signature from any development certificate, and its profile

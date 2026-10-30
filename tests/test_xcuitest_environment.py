@@ -102,13 +102,17 @@ def _fake_usbmux(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(xcuitest_env_impl, "UsbmuxForwarder", _FakeForwarder)
 
 
-def _device_eff(*, app_path: str | None = None, test_runner: str | None = None) -> Effective:
+def _device_eff(
+    *, app_path: str | None = None, test_runner: str | None = None, ignored: str | None = None
+) -> Effective:
     lines = ["targets:", "  s:", "    platform: ios", "    subject:", "      id: com.x"]
     if app_path is not None:
         lines.append(f"      path: {app_path}")
     lines += ["    runsOn: {ios: {kind: device}}"]
     if test_runner is not None:
         lines += ["    driver:", f"      runner: {{testRunner: {test_runner}}}"]
+    if ignored is not None:
+        lines += ["    run:", f"      ignoredSettings: {{{ignored}: preinstalled}}"]
     return resolve(load_config("\n".join(lines) + "\n"), "s")
 
 
@@ -151,16 +155,17 @@ def test_start_on_a_real_device_refuses_simctl_install() -> None:
         env.start(_device_eff(app_path="build/App.app"), ResolvedPreconditions())
 
 
-def test_start_on_a_preinstalled_real_device_launches_despite_an_app_path(
+def test_start_on_a_real_device_that_declares_install_launches_the_build_in_place(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    # A provider that reports the build already installed (Device Farm installs the uploaded app,
-    # BE-0465) leaves `app.path` naming the build it installed, not a request to install it here.
+    # A device that already holds the build (Device Farm installs the uploaded app, BE-0465) runs a
+    # target declaring `install` under `run.ignoredSettings` (BE-0467): `subject.path` names that build.
     runner, captured = _fake_device_runner(monkeypatch, tmp_path)
     env = XcuitestEnvironment(
         "xcuitest", _DEVICE_UDID, provision=ProvisionProfile(boot_ready=True, app_preinstalled=True)
     )
-    env.start(_device_eff(app_path="App.ipa", test_runner=str(runner)), ResolvedPreconditions())
+    eff = _device_eff(app_path="App.ipa", test_runner=str(runner), ignored="install")
+    env.start(eff, ResolvedPreconditions())
     assert f"platform=iOS,id={_DEVICE_UDID}" in captured["argv"]
 
 
@@ -170,9 +175,9 @@ def test_the_factory_hands_the_provision_profile_to_the_ios_environment(
     runner, captured = _fake_device_runner(monkeypatch, tmp_path)
     profile = ProvisionProfile(boot_ready=True, app_preinstalled=True)
     env = environment_for("xcuitest", _DEVICE_UDID, provision=profile)
-    eff = _device_eff(app_path="App.ipa", test_runner=str(runner))
-    # The profile covers the install alone; a simctl-only erase still fails loudly.
-    with pytest.raises(simctl.DeviceError, match="real device"):
+    eff = _device_eff(app_path="App.ipa", test_runner=str(runner), ignored="install")
+    # The declaration covers the install alone; an undeclared erase still fails loudly.
+    with pytest.raises(base.UnsupportedAction, match=r"run\.erase"):
         env.start(eff, ResolvedPreconditions(erase=True))
     env.start(eff, ResolvedPreconditions())
     assert f"platform=iOS,id={_DEVICE_UDID}" in captured["argv"]

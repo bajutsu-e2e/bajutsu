@@ -51,7 +51,7 @@ BUNDLE_ARCNAME = "bundle"
 _SOURCE_ENTRIES = ("pyproject.toml", "DESIGN.md", "LICENSE", "NOTICE", "tests", "bajutsu")
 # The worker file every run in a package takes (BE-0465). Device Farm installs the app upload before
 # the test spec starts, so a `devicefarm-host` environment has the run launch that build instead of
-# installing `app.path`, on either platform. Its one driver is the backend the test spec runs.
+# installing `subject.path`, on either platform. Its one driver is the backend the test spec runs.
 _HOST_WORKER_ARCNAME = f"{DEVICEFARM_HOST}.worker.yaml"
 _HOST_DRIVER: dict[Platform, str] = {"android": "adb", "ios": "xcuitest"}
 # The layout `_package_entries` assumes when a caller names none: no runner build, so APPIUM_PYTHON.

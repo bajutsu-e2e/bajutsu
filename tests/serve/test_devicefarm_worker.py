@@ -162,8 +162,8 @@ def _ios_bundle(root: Path, *, runner: str | None = "products/Runner.xctestrun")
     (root / "scenarios" / "one.yaml").write_text(_SCENARIO, encoding="utf-8")
     driver = f"    driver: {{ runner: {{ testRunner: {runner} }} }}\n" if runner else ""
     (root / "bajutsu.config.yaml").write_text(
-        "targets:\n  demo:\n    platform: ios\n    app: { id: com.example, path: app.ipa }\n"
-        f"    runsOn: {{ kind: device }}\n{driver}",
+        "targets:\n  demo:\n    platform: ios\n    subject: { id: com.example, path: app.ipa }\n"
+        f"    runsOn: {{ ios: {{ kind: device }} }}\n{driver}",
         encoding="utf-8",
     )
     (root / "app.ipa").write_bytes(b"IPA")
@@ -335,7 +335,7 @@ def test_every_run_takes_the_device_farm_installed_app(
     tmp_path: Path, platform: Platform, driver: str, worker_file: str
 ) -> None:
     # Device Farm installs the app upload before the test spec runs, so the run launches that build
-    # through a `devicefarm-host` worker file rather than installing `app.path` (BE-0465).
+    # through a `devicefarm-host` worker file rather than installing `subject.path` (BE-0465).
     source = _source_tree(tmp_path / "src")
     if platform == "ios":
         bundle, request = _ios_bundle(tmp_path / "bundle"), _ios_request()

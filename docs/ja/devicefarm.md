@@ -154,7 +154,14 @@ DEVICEFARM_PROJECT_ARN=arn:aws:devicefarm:us-west-2:123456789012:project:abc \
 
 iOS のターゲットも Android と同じように fan-out できます。違いは次のとおりです。
 
-- ターゲットには `platform: ios` と `runsOn.kind: device` を設定します。`subject.path` は、Device Farm のデバイス向けに署名した `.ipa` を指します（[iOS: 再署名と実機のケーパビリティ](#ios-再署名と実機のケーパビリティ)を参照してください）。
+- ターゲットには `platform: ios` と `runsOn.ios.kind: device` を設定します。`subject.path` は、Device Farm のデバイス向けに署名した `.ipa` を指します（[iOS: 再署名と実機のケーパビリティ](#ios-再署名と実機のケーパビリティ)を参照してください）。
+- ターゲットの `run.ignoredSettings` に `install` を宣言します。iOS の実機では `subject.path` をインストールできないので、宣言がなければ実行がこの設定を拒否します。Device Farm では端末にビルドがすでに入っており、宣言はそのことを記録します。
+
+  ```yaml
+  run:
+    ignoredSettings:
+      install: "Device Farm installs the .ipa before the test spec starts"
+  ```
 - `driver.runner.testRunner` は、実機向けにビルドした `.xctestrun` を指します。ランナーは `make -C demos/showcase runner-build-device` でビルドし、ビルドの `Products` ディレクトリを丸ごと設定ファイルのディレクトリへコピーします。ランナーはどの開発用証明書で署名しても構いません。プロファイルに Device Farm のデバイスが入っている必要もありません。
 - 設定ファイルのディレクトリは、サイズの上限なしで丸ごと送られます。中身は、設定ファイル、シナリオ、`.ipa`、ランナーのビルド成果物だけにします。設定ファイルの隣に `DerivedData/` や `.xcarchive` などのビルド出力があると、それも送られます。
 - Device Farm ワーカーの `drivers` には `xcuitest` を含めます。

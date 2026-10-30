@@ -148,7 +148,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
     ) -> None:
         super().__init__(actuator, udid, env_run)
         # A device provider's readiness report (BE-0236). On a real device, a provider that installed
-        # the build itself (Device Farm, BE-0465) makes `app.path` the build already in place rather
+        # the build itself (Device Farm, BE-0465) makes `subject.path` the build already in place rather
         # than a simctl install the device cannot take.
         self._provision = provision or ProvisionProfile()
         # This *fresh* environment was built by the pool for a mid-run respawn — the pool already

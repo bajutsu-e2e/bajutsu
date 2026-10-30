@@ -13,7 +13,7 @@ class _DevicefarmHostProvider:
 
     Device Farm reserves the device and installs the run's uploaded app before the test spec starts,
     on Android and iOS alike, so the profile reports it booted with its build in place: the run
-    launches that build rather than installing `app.path` itself. The requested udid (`booted`, or the
+    launches that build rather than installing `subject.path` itself. The requested udid (`booted`, or the
     reserved iPhone's id) passes through, and the reservation is Device Farm's, so there is nothing to
     release.
     """

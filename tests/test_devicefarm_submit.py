@@ -209,7 +209,7 @@ def test_test_spec_passes_a_worker_config_to_every_run(platform: Platform) -> No
 
 
 def test_test_spec_names_no_worker_config_unless_given() -> None:
-    # The headless submitter's configs name no `app.path`, so its runs keep the default worker file.
+    # The headless submitter's configs name no `subject.path`, so its runs keep the default worker file.
     spec = render_test_spec(["s.yaml"], target="t", config="c.yaml")
     assert "--worker-config" not in spec
 

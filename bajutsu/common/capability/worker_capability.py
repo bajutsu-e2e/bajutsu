@@ -48,7 +48,7 @@ BATCH_PROVIDERS: frozenset[str] = frozenset({"devicefarm"})
 
 # The run a Device Farm package carries, on the Device Farm host (BE-0465). Device Farm reserved the
 # device and installed the uploaded app before the run starts, so every target takes a device that is
-# booted with its app in place, whatever `app.path` says.
+# booted with its app in place, whatever `subject.path` says.
 DEVICEFARM_HOST = "devicefarm-host"
 
 ENVIRONMENTS: frozenset[str] = frozenset({LOCAL, APPIUM, DEVICEFARM_HOST, *BATCH_PROVIDERS})

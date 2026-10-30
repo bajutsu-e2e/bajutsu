@@ -252,7 +252,7 @@ def render_test_spec(
             passed as a string would splice one `pre_test` command per character.
         worker_config: A `worker.yaml` path inside the unpacked test package, passed to every run as
             `--worker-config`. The serve fan-out names a `devicefarm-host` file there, so the run
-            launches the app Device Farm installed instead of installing `app.path` (BE-0465). None
+            launches the app Device Farm installed instead of installing `subject.path` (BE-0465). None
             keeps the run's default worker file.
         xctest_runner: For an XCTEST_UI run, the `.xctestrun` path inside `XCTEST_PACKAGE_DIR` that
             the config's `driver.runner.testRunner` names. The spec installs Bajutsu from that
