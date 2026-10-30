@@ -48,10 +48,10 @@ class Effective:
     capture: list[str]
     redact: Redact
     secrets: list[str] = field(default_factory=list)
-    # The target's `app.reinstall` (BE-0452): how the app is reinstalled when the scenario sets no
+    # The target's `subject.reinstall` (BE-0452): how the app is reinstalled when the scenario sets no
     # mode of its own. None leaves the built-in `clean`.
     reinstall: Literal["clean", "overwrite"] | None = None
-    # The target's `app.launch.deeplink` (BE-0452), opened after launch unless the scenario sets one.
+    # The target's `subject.launch.deeplink` (BE-0452), opened after launch unless the scenario sets one.
     deeplink: str | None = None
     # The target's `runsOn.ios.seedPhotos` (BE-0452), rebased against the config file; a scenario's own
     # list replaces it.
@@ -73,7 +73,7 @@ class Effective:
     evidence_dirs: EvidenceDirs = field(default_factory=EvidenceDirs)
     # How to bring up baseUrl's host for the run (start/probe/teardown). None = assume it's running.
     launch_server: LaunchServer | None = None
-    # The selector under `app.startWhen.exists` (BE-0452): the run waits for it before the first
+    # The selector under `subject.startWhen.exists` (BE-0452): the run waits for it before the first
     # step and after a relaunch, by polling. None keeps the default readiness chain.
     start_when: base.Selector | None = None
     # The device conditions the target's `runsOn` declares, keyed by field (`model`, `os`, `avd`,
@@ -194,11 +194,11 @@ class Effective:
             android = self.platform_config
             return replace(
                 common,
-                platform_config=replace(android, app_path=at("app.path", android.app_path)),
+                platform_config=replace(android, app_path=at("subject.path", android.app_path)),
             )
         if not isinstance(self.platform_config, IosConfig):
             return common  # only the iOS / Android sub-configs carry rebasable path fields
-        # Seeded photos resolve against the file that declares them, as `app.path` does (BE-0452).
+        # Seeded photos resolve against the file that declares them, as `subject.path` does (BE-0452).
         common = replace(
             common,
             seed_photos=[at("runsOn.ios.seedPhotos", photo) or photo for photo in self.seed_photos],
@@ -213,6 +213,6 @@ class Effective:
         return replace(
             common,
             platform_config=replace(
-                ios, app_path=at("app.path", ios.app_path), xcuitest=rebased_xcuitest
+                ios, app_path=at("subject.path", ios.app_path), xcuitest=rebased_xcuitest
             ),
         )

@@ -3,7 +3,7 @@
 # assertions are ordinary UI checks — the point is the captured evidence, not new behaviour.
 - name: capture video, device log, and app trace around a log interaction
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:

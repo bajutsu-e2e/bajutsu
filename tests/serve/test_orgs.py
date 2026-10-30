@@ -18,13 +18,13 @@ CONFIG_YAML = (
     "targets:\n"
     "  demo:\n"
     "    platform: ios\n"
-    "    app: {id: com.example.demo}\n"
+    "    subject: {id: com.example.demo}\n"
     "  checkout:\n"
     "    platform: ios\n"
-    "    app: {id: com.example.checkout}\n"
+    "    subject: {id: com.example.checkout}\n"
     "  other:\n"
     "    platform: ios\n"
-    "    app: {id: com.example.other}\n"
+    "    subject: {id: com.example.other}\n"
     "orgs:\n"
     "  acme:\n"
     "    members: [alice, bob]\n"
@@ -61,7 +61,7 @@ def test_targets_for_org_excludes_undeclared_target_names() -> None:
         "targets:\n"
         "  demo:\n"
         "    platform: ios\n"
-        "    app: {id: com.example.demo}\n"
+        "    subject: {id: com.example.demo}\n"
         "orgs:\n"
         "  acme:\n"
         "    members: [alice]\n"
@@ -74,7 +74,7 @@ IDENTITY_YAML = (
     "targets:\n"
     "  demo:\n"
     "    platform: ios\n"
-    "    app: {id: com.example.demo}\n"
+    "    subject: {id: com.example.demo}\n"
     "orgs:\n"
     "  acme:\n"
     "    members: [alice]\n"
@@ -116,7 +116,7 @@ def test_identity_matches_org_gates_sign_in() -> None:
 
 def test_identity_matches_org_rejects_everyone_without_an_orgs_block() -> None:
     # No `orgs:` block → an empty mapping → nobody matches, so an OAuth deployment must declare one.
-    _, orgs = load_serve_config("targets:\n  demo:\n    platform: ios\n    app: {id: com.x}\n")
+    _, orgs = load_serve_config("targets:\n  demo:\n    platform: ios\n    subject: {id: com.x}\n")
     assert identity_matches_org(orgs, "alice", ["any-gh"], []) is False
 
 
@@ -128,7 +128,7 @@ def test_identity_matches_org_handles_an_org_literally_named_default() -> None:
         "targets:\n"
         "  demo:\n"
         "    platform: ios\n"
-        "    app: {id: com.x}\n"
+        "    subject: {id: com.x}\n"
         "orgs:\n"
         "  default:\n"
         "    members: [alice]\n"
@@ -144,7 +144,7 @@ def test_editor_teams_parse_from_the_editor_teams_alias() -> None:
         "targets:\n"
         "  demo:\n"
         "    platform: ios\n"
-        "    app: {id: com.x}\n"
+        "    subject: {id: com.x}\n"
         "orgs:\n"
         "  acme:\n"
         "    githubOrgs: [acme-gh]\n"
@@ -156,7 +156,7 @@ def test_editor_teams_parse_from_the_editor_teams_alias() -> None:
         "targets:\n"
         "  demo:\n"
         "    platform: ios\n"
-        "    app: {id: com.x}\n"
+        "    subject: {id: com.x}\n"
         "orgs:\n"
         "  acme:\n"
         "    githubOrgs: [acme-gh]\n"
@@ -173,7 +173,7 @@ def test_the_retired_singular_editor_team_key_folds_into_editor_teams() -> None:
         "targets:\n"
         "  demo:\n"
         "    platform: ios\n"
-        "    app: {id: com.x}\n"
+        "    subject: {id: com.x}\n"
         "orgs:\n"
         "  acme: {editorTeam: acme-gh/scenario-maintainers}\n"
     )
@@ -183,7 +183,7 @@ def test_the_retired_singular_editor_team_key_folds_into_editor_teams() -> None:
         "targets:\n"
         "  demo:\n"
         "    platform: ios\n"
-        "    app: {id: com.x}\n"
+        "    subject: {id: com.x}\n"
         "orgs:\n"
         "  acme:\n"
         "    editorTeams: [acme-gh/new]\n"
@@ -196,7 +196,7 @@ def test_the_retired_singular_editor_team_key_folds_into_editor_teams() -> None:
         "targets:\n"
         "  demo:\n"
         "    platform: ios\n"
-        "    app: {id: com.x}\n"
+        "    subject: {id: com.x}\n"
         "orgs:\n"
         "  acme: {editorTeam: ''}\n"
     )
@@ -208,7 +208,7 @@ TEAM_YAML = (
     "targets:\n"
     "  demo:\n"
     "    platform: ios\n"
-    "    app: {id: com.example.demo}\n"
+    "    subject: {id: com.example.demo}\n"
     "orgs:\n"
     "  acme:\n"
     "    githubOrgs: [acme-gh]\n"
@@ -261,7 +261,7 @@ def test_team_matching_stops_at_ascii_case() -> None:
         "targets:\n"
         "  demo:\n"
         "    platform: ios\n"
-        "    app: {id: com.x}\n"
+        "    subject: {id: com.x}\n"
         "orgs:\n"
         "  acme:\n"
         "    githubTeams: [acme-gh/gruß]\n"
@@ -300,7 +300,7 @@ def test_malformed_orgs_block_fails_loudly() -> None:
     # An `orgs:` that isn't a mapping (org name -> config) is a config error, not silently ignored.
     with pytest.raises(ValueError, match="orgs: must be a mapping"):
         load_serve_config(
-            "targets:\n  demo:\n    platform: ios\n    app: {id: com.x}\norgs: [not-a-mapping]\n"
+            "targets:\n  demo:\n    platform: ios\n    subject: {id: com.x}\norgs: [not-a-mapping]\n"
         )
 
 
@@ -308,13 +308,15 @@ def test_present_but_falsy_orgs_block_fails_loudly() -> None:
     # A present-but-non-mapping scalar (e.g. `orgs: ""`) must not silently collapse to single-tenant;
     # only a missing/null block or an empty mapping is treated as "no orgs".
     with pytest.raises(ValueError, match="orgs: must be a mapping"):
-        load_serve_config("targets:\n  demo:\n    platform: ios\n    app: {id: com.x}\norgs: ''\n")
+        load_serve_config(
+            "targets:\n  demo:\n    platform: ios\n    subject: {id: com.x}\norgs: ''\n"
+        )
 
 
 def test_empty_orgs_mapping_is_single_tenant() -> None:
     # An empty mapping (`orgs: {}`) is a legitimate "no orgs", not an error.
     cfg, orgs = load_serve_config(
-        "targets:\n  demo:\n    platform: ios\n    app: {id: com.x}\norgs: {}\n"
+        "targets:\n  demo:\n    platform: ios\n    subject: {id: com.x}\norgs: {}\n"
     )
     assert orgs == {}
     assert targets_for_org(orgs, cfg.targets, "default") == ["demo"]
@@ -322,7 +324,7 @@ def test_empty_orgs_mapping_is_single_tenant() -> None:
 
 def test_no_orgs_block_is_single_tenant() -> None:
     cfg, orgs = load_serve_config(
-        "targets:\n  demo:\n    platform: ios\n    app: {id: com.example.demo}\n"
+        "targets:\n  demo:\n    platform: ios\n    subject: {id: com.example.demo}\n"
     )
     assert orgs == {}
     assert org_for_identity(orgs, "alice", [], []) == "default"

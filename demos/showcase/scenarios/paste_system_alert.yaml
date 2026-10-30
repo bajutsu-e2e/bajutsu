@@ -35,7 +35,7 @@
 - name: grant the paste-consent prompt with handleSystemAlert
   tags: [systemalert]
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
     run:
@@ -62,7 +62,7 @@
 - name: deny the paste-consent prompt with handleSystemAlert
   tags: [systemalert]
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
     run:
@@ -88,7 +88,7 @@
 - name: grant the paste-consent prompt on a Japanese Simulator
   tags: [systemalert]
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
     device:
@@ -110,7 +110,7 @@
 - name: deny the paste-consent prompt on a Japanese Simulator
   tags: [systemalert]
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
     device:

@@ -288,7 +288,7 @@ def _run_project(tmp_path: Path, scenario: str) -> srv.ServeState:
         "targets:\n"
         "  phone:\n"
         "    platform: ios\n"
-        "    app: {id: com.x}\n"
+        "    subject: {id: com.x}\n"
         "    runsOn: {ios: {kind: device}}\n"
         f"    paths: {{scenarios: {scn_dir}}}\n",
         encoding="utf-8",

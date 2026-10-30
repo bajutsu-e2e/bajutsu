@@ -29,11 +29,11 @@ _CONFIG = (
     "targets:\n"
     "  demo:\n"
     "    platform: ios\n"
-    "    app: {id: com.example.demo, path: ./build/Demo.app}\n"
+    "    subject: {id: com.example.demo, path: ./build/Demo.app}\n"
     "    paths: {scenarios: ./scenarios}\n"
     "  web:\n"
     "    platform: web\n"
-    "    app: {url: 'http://localhost'}\n"
+    "    subject: {url: 'http://localhost'}\n"
     "    paths: {scenarios: ./web-scenarios}\n"
 )
 _SCENARIO = "- name: a\n  steps: []\n"
@@ -236,7 +236,7 @@ def test_a_binary_override_on_a_target_with_no_app_path_is_refused(tmp_path: Pat
     sha = _store(store, "binary", b"bin")
     resp, code = _run(state, target="web", binaryArtifact=sha)
     assert code == 400
-    assert "app.path" in resp["error"]
+    assert "subject.path" in resp["error"]
 
 
 def test_a_binary_override_on_an_android_target_is_accepted(tmp_path: Path) -> None:
@@ -352,11 +352,11 @@ _MIXED_CONFIG = (
     "targets:\n"
     "  ios:\n"
     "    platform: ios\n"
-    "    app: {id: com.example.demo, path: ./build/Demo.app}\n"
+    "    subject: {id: com.example.demo, path: ./build/Demo.app}\n"
     "    paths: {scenarios: ./scenarios}\n"
     "  android:\n"
     "    platform: android\n"
-    "    app: {id: com.example.demo, path: ./build/demo.apk}\n"
+    "    subject: {id: com.example.demo, path: ./build/demo.apk}\n"
     "    paths: {scenarios: ./scenarios}\n"
 )
 

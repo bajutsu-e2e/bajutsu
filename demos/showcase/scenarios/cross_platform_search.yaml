@@ -14,7 +14,7 @@
   tags: [multi-target]
   targets: [showcase-swiftui, showcase-compose]
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:

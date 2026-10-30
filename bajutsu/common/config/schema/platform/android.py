@@ -1,4 +1,4 @@
-"""The Android target's `app`, `runsOn`, `driver`, and `run` extension (BE-0452)."""
+"""The Android target's `subject`, `runsOn`, `driver`, and `run` extension (BE-0452)."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from ._shared import AppCommon, RangeField, Reinstall, RunsOnGroup, check_list
 
 
 class AndroidLaunch(_Model):
-    """`app.launch` on Android: intent extras, and a URL the app opens once it has launched."""
+    """`subject.launch` on Android: intent extras, and a URL the app opens once it has launched."""
 
     # Android reads the launch environment as intent extras.
     env: dict[str, str] = Field(default_factory=dict)
@@ -17,7 +17,7 @@ class AndroidLaunch(_Model):
 
 
 class AndroidApp(AppCommon):
-    """`app` on Android: the package under test, how to build and install it, and how to launch it."""
+    """`subject` on Android: the package under test, how to build and install it, and how to launch it."""
 
     id: str = Field(min_length=1)
     path: str | None = None

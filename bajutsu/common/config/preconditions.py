@@ -1,6 +1,6 @@
 """A scenario's preconditions merged over one target's config, and the checks run before device work.
 
-A scenario writes its preconditions in the target's group names (`app`, `run`), each merging over the
+A scenario writes its preconditions in the target's group names (`subject`, `run`), each merging over the
 target's (BE-0452), and its device state under `device` (BE-0469). Where a run happens belongs to the
 target alone, so no scenario field reaches the device conditions. The scenario schema cannot import
 the config, so the platform-aware half lives here: `check_preconditions` validates the scenario's
@@ -64,10 +64,10 @@ def resolve_preconditions(
     locale = pre.resolved_locale("", platform)
     return ResolvedPreconditions(
         erase=pre.run.erase if pre.run.erase is not None else eff.run_defaults.erase,
-        reinstall=pre.app.reinstall or eff.reinstall or "clean",
-        launch_env=dict(pre.app.launch.env),
-        launch_args=list(pre.app.launch.args),
-        deeplink=pre.app.launch.deeplink or eff.deeplink,
+        reinstall=pre.subject.reinstall or eff.reinstall or "clean",
+        launch_env=dict(pre.subject.launch.env),
+        launch_args=list(pre.subject.launch.args),
+        deeplink=pre.subject.launch.deeplink or eff.deeplink,
         locale=locale or None,
         seed_photos=seed if seed is not None else list(eff.seed_photos),
     )
@@ -76,7 +76,7 @@ def resolve_preconditions(
 def command_preconditions(eff: Effective, *, erase: bool) -> ResolvedPreconditions:
     """The target's own preconditions for a command that runs no scenario (`record`, `crawl`, `repl`).
 
-    The command's `--erase` decides the wipe; the target's `app.reinstall`, `app.launch.deeplink`,
+    The command's `--erase` decides the wipe; the target's `subject.reinstall`, `subject.launch.deeplink`,
     and `runsOn.ios.seedPhotos` still apply.
 
     Raises:
@@ -91,11 +91,11 @@ def command_preconditions(eff: Effective, *, erase: bool) -> ResolvedPreconditio
     return merged
 
 
-def _app_fields(pre: Preconditions) -> list[tuple[str, ...]]:
-    """The `app` fields *pre* sets, as paths under `preconditions.app`."""
-    launch = pre.app.launch
+def _subject_fields(pre: Preconditions) -> list[tuple[str, ...]]:
+    """The `subject` fields *pre* sets, as paths under `preconditions.subject`."""
+    launch = pre.subject.launch
     candidates: list[tuple[tuple[str, ...], bool]] = [
-        (("reinstall",), pre.app.reinstall is not None),
+        (("reinstall",), pre.subject.reinstall is not None),
         (("launch", "env"), bool(launch.env)),
         (("launch", "args"), bool(launch.args)),
         (("launch", "deeplink"), launch.deeplink is not None),
@@ -168,7 +168,7 @@ def check_preconditions(
 ) -> list[str]:
     """Every problem with *pre* against the *targets* a scenario drives, before any device work.
 
-    A field never goes ignored (BE-0452). An `app` field or an iOS-only `run` field that no driven
+    A field never goes ignored (BE-0452). A `subject` field or an iOS-only `run` field that no driven
     target's platform has is a problem. After merging, a target whose `seedPhotos` is non-empty needs an effective
     `run.erase` (the flag, then the scenario, then the target), because seeding happens only on the
     erase path.
@@ -187,9 +187,9 @@ def check_preconditions(
     platforms = list(dict.fromkeys(eff.schema_platform for eff in targets))
     driven = ", ".join(platforms)
     unused = [
-        f"app.{'.'.join(path)}"
-        for path in _app_fields(pre)
-        if not any(accepts_field(schema_for(p).app, path) for p in platforms)
+        f"subject.{'.'.join(path)}"
+        for path in _subject_fields(pre)
+        if not any(accepts_field(schema_for(p).subject, path) for p in platforms)
     ] + [
         f"run.{name}"
         for name in _run_fields(pre)

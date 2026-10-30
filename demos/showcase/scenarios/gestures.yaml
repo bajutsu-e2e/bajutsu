@@ -14,7 +14,7 @@
 # screen. `swipe`'s directional form has a real XCUITest translation, so it stays here.
 - name: long-press and double-tap targets mirror their result
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:

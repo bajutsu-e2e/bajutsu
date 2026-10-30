@@ -325,7 +325,7 @@ def _storage_state(
             "targets:\n"
             "  demo:\n"
             "    platform: android\n"
-            f"    app: {{id: com.example.demo, path: {app_path}}}\n"
+            f"    subject: {{id: com.example.demo, path: {app_path}}}\n"
             f"    paths: {{scenarios: scenarios}}\n"
         ),
         encoding="utf-8",

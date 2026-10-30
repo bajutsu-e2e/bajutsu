@@ -1432,7 +1432,7 @@ def _apply_mocks(scenarios: list[Scenario], network: bool) -> None:
         return
     for s in scenarios:
         if s.mocks:
-            s.preconditions.app.launch.env.setdefault("BAJUTSU_MOCKS", dump_mocks(s.mocks))
+            s.preconditions.subject.launch.env.setdefault("BAJUTSU_MOCKS", dump_mocks(s.mocks))
 
 
 def _walk_visual_steps(steps: list[Step]) -> Iterator[Step]:
@@ -1520,7 +1520,7 @@ def _apply_touch_markers(
     scenario's own, the same merge `_hides_touch_markers` performs and the same order the launch
     itself merges them in — so a target that pins the marker key for every scenario is decided for
     here exactly as the app that launches sees it, not as if every scenario had pinned nothing.
-    `target_launch_env` is the target's own `app.launch.env` (`Effective.launch_env`); a caller that
+    `target_launch_env` is the target's own `subject.launch.env` (`Effective.launch_env`); a caller that
     omits it sees only each scenario's own launch env, as before.
 
     Every internal decision here is keyed by scenario object identity, never by `.name`: nothing
@@ -1551,7 +1551,7 @@ def _apply_touch_markers(
     def _env(s: Scenario) -> Mapping[str, str]:
         # Same merge and order the launch itself performs, so a target-level pin reads here
         # exactly as the app that launches sees it, not as a scenario that pinned nothing.
-        return {**target_env, **s.preconditions.app.launch.env}
+        return {**target_env, **s.preconditions.subject.launch.env}
 
     visual_scenarios = _visual_asserting_scenarios(scenarios)
     # A scenario (or its target) that pinned the marker value to "0" draws no markers at all, so it
@@ -1701,9 +1701,9 @@ def _write_touch_marker_env(scenarios: list[Scenario], skip: set[int], *, armed:
     for s in scenarios:
         if id(s) in skip:
             continue
-        s.preconditions.app.launch.env.setdefault("BAJUTSU_TOUCH_MARKERS", "1")
+        s.preconditions.subject.launch.env.setdefault("BAJUTSU_TOUCH_MARKERS", "1")
         if id(s) in armed:
-            s.preconditions.app.launch.env.setdefault("BAJUTSU_CONTROL_CHANNEL", "1")
+            s.preconditions.subject.launch.env.setdefault("BAJUTSU_CONTROL_CHANNEL", "1")
 
 
 # One `setMocks` step, the `web:` / `app:` block it sits in (if any), and the target it runs on.
@@ -1800,7 +1800,7 @@ def _arm_mock_swaps(
         if problem := _mock_swap_problem(s, swaps):
             misplaced.append(f"{s.name} ({problem})")
             continue
-        pinned = {**target_env, **s.preconditions.app.launch.env}.get(
+        pinned = {**target_env, **s.preconditions.subject.launch.env}.get(
             "BAJUTSU_CONTROL_CHANNEL", "1"
         )
         if pinned != "1":
@@ -1808,12 +1808,12 @@ def _arm_mock_swaps(
         elif not channel_available(s):
             refused.append(s.name)
         else:
-            s.preconditions.app.launch.env.setdefault("BAJUTSU_CONTROL_CHANNEL", "1")
+            s.preconditions.subject.launch.env.setdefault("BAJUTSU_CONTROL_CHANNEL", "1")
             # The key is also half of the pair `_hides_touch_markers` reads, so a scenario that
             # pinned BAJUTSU_TOUCH_MARKERS itself and compares a screenshot now has its markers
             # hidden for that capture. The channel is armed anyway, so hiding them is correct;
             # it is announced because the author asked for neither.
-            merged = {**target_env, **s.preconditions.app.launch.env}
+            merged = {**target_env, **s.preconditions.subject.launch.env}
             if id(s) in visual and merged.get("BAJUTSU_TOUCH_MARKERS") == "1":
                 marker_pair.append(s.name)
     if marker_pair:

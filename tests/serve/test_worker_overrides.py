@@ -23,7 +23,7 @@ _CONFIG = (
     "targets:\n"
     "  demo:\n"
     "    platform: ios\n"
-    "    app: {id: com.example.demo, path: ./build/Demo.app}\n"
+    "    subject: {id: com.example.demo, path: ./build/Demo.app}\n"
     "    paths: {scenarios: ./scenarios}\n"
 )
 _SCENARIO = b"- name: a\n  steps: []\n"

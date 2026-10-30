@@ -7,7 +7,7 @@
 # unchanged on every target (BE-0221).
 - name: open a horse and favorite it
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:

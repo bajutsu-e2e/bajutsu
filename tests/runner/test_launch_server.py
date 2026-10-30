@@ -17,7 +17,7 @@ from bajutsu.common.runner import launch_server as ls
 
 def _eff(extra: str = "") -> config.Effective:
     """A resolved web Effective, optionally with a `services.server` block."""
-    body = "platform: web, app: { url: 'http://127.0.0.1:8/' }"
+    body = "platform: web, subject: { url: 'http://127.0.0.1:8/' }"
     if extra:
         body += ", " + extra
     return config.resolve(config.load_config(f"targets: {{ web: {{ {body} }} }}"), "web")
@@ -102,7 +102,7 @@ def test_missing_ready_url_raises() -> None:
             "targets:\n"
             "  x:\n"
             "    platform: ios\n"
-            "    app: {id: com.x}\n"
+            "    subject: {id: com.x}\n"
             "    services:\n"
             "      server: {cmd: srv}\n"
         ),

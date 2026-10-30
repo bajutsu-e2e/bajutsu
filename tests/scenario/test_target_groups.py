@@ -481,7 +481,7 @@ _GROUPED_HOOK_CONFIG = (
     "targets:\n"
     "  app:\n"
     "    platform: ios\n"
-    "    app: {id: com.example.app}\n"
+    "    subject: {id: com.example.app}\n"
     "    hooks:\n"
     "      setup:\n"
     "      - target: app\n"
@@ -496,7 +496,7 @@ _GROUPED_HOOK_CONFIG = (
     "          - tap: {id: a3}\n"
     "  web:\n"
     "    platform: web\n"
-    "    app: {url: 'http://localhost:1/'}\n"
+    "    subject: {url: 'http://localhost:1/'}\n"
 )
 
 

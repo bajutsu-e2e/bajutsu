@@ -97,7 +97,7 @@ smoke テスト [`demos/showcase/scenarios/smoke.yaml`](../../../demos/showcase/
 ```yaml
 - name: stable catalog smoke
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }     # アニメ無効 -> 条件待ちをタイトに
   steps:

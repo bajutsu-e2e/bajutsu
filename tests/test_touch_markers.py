@@ -66,7 +66,7 @@ def test_the_golden_pair_stays_paired() -> None:
     onto a different golden, would leave the visualization asserting nothing while still passing.
     """
     scenarios = load_scenarios(GOLDEN_XCUITEST.read_text(encoding="utf-8"))
-    settings = [s.preconditions.app.launch.env.get(ACTIVATION_KEY) for s in scenarios]
+    settings = [s.preconditions.subject.launch.env.get(ACTIVATION_KEY) for s in scenarios]
     assert settings.count("1") == 1, "exactly one scenario runs with the visualization on"
     # The off twin must pin "0" rather than leave the key unset: the iOS lanes pass
     # `--touch-markers`, which fills the key in on any scenario that does not carry one, and an
@@ -81,5 +81,5 @@ def test_the_golden_pair_stays_paired() -> None:
 def test_the_marker_scenario_actually_touches() -> None:
     """A scenario that touches nothing draws no marker, so it would prove nothing."""
     scenarios = load_scenarios(GOLDEN_XCUITEST.read_text(encoding="utf-8"))
-    marked = next(s for s in scenarios if ACTIVATION_KEY in s.preconditions.app.launch.env)
+    marked = next(s for s in scenarios if ACTIVATION_KEY in s.preconditions.subject.launch.env)
     assert any(step.tap is not None for step in marked.steps), "the scenario must perform a tap"

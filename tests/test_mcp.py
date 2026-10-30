@@ -27,7 +27,7 @@ def _run(coro: Any) -> Any:
 def test_create_server_returns_fastmcp(tmp_path: Path) -> None:
     config = tmp_path / "bajutsu.config.yaml"
     config.write_text(
-        ("targets:\n  demo:\n    platform: ios\n    app: {id: com.demo}\n"), encoding="utf-8"
+        ("targets:\n  demo:\n    platform: ios\n    subject: {id: com.demo}\n"), encoding="utf-8"
     )
     from bajutsu.mcp import create_server
 
@@ -45,7 +45,7 @@ def test_doctor_tool_returns_score(tmp_path: Path, monkeypatch: pytest.MonkeyPat
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            "    app:\n"
+            "    subject:\n"
             "      id: com.demo\n"
             "      idNamespaces: [home]\n"
         ),
@@ -80,7 +80,7 @@ def test_doctor_tool_reports_probe_config_error(
     # crash — the tool returns its message instead of raising through the MCP transport.
     config = tmp_path / "bajutsu.config.yaml"
     config.write_text(
-        ("targets:\n  demo:\n    platform: ios\n    app: {id: com.demo}\n"), encoding="utf-8"
+        ("targets:\n  demo:\n    platform: ios\n    subject: {id: com.demo}\n"), encoding="utf-8"
     )
     from fastmcp import FastMCP
 
@@ -91,7 +91,7 @@ def test_doctor_tool_reports_probe_config_error(
     register_tools(mcp, config)
 
     def boom(actuator: str, udid: str, eff: object) -> list[object]:
-        raise DoctorProbeError("web target needs baseUrl (set targets.<name>.app.url)")
+        raise DoctorProbeError("web target needs baseUrl (set targets.<name>.subject.url)")
 
     monkeypatch.setattr("bajutsu.mcp.tools.probe_screen", boom)
     monkeypatch.setattr(
@@ -99,7 +99,7 @@ def test_doctor_tool_reports_probe_config_error(
     )
 
     result = _run(mcp.call_tool("bajutsu_doctor", {"target": "demo"}))
-    assert "app.url" in result.content[0].text
+    assert "subject.url" in result.content[0].text
 
 
 def test_doctor_tool_reports_device_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -108,7 +108,7 @@ def test_doctor_tool_reports_device_error(tmp_path: Path, monkeypatch: pytest.Mo
     # rather than an unhandled exception.
     config = tmp_path / "bajutsu.config.yaml"
     config.write_text(
-        ("targets:\n  demo:\n    platform: ios\n    app: {id: com.demo}\n"), encoding="utf-8"
+        ("targets:\n  demo:\n    platform: ios\n    subject: {id: com.demo}\n"), encoding="utf-8"
     )
     from fastmcp import FastMCP
 
@@ -160,7 +160,7 @@ def test_parse_verdict_empty_stdout_yields_empty_path() -> None:
 def test_run_tool_returns_pass(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     config = tmp_path / "bajutsu.config.yaml"
     config.write_text(
-        ("targets:\n  demo:\n    platform: ios\n    app: {id: com.demo}\n"), encoding="utf-8"
+        ("targets:\n  demo:\n    platform: ios\n    subject: {id: com.demo}\n"), encoding="utf-8"
     )
     runs_dir = tmp_path / "runs"
     runs_dir.mkdir()
@@ -195,7 +195,7 @@ def test_run_tool_returns_pass(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
 def test_run_tool_returns_fail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     config = tmp_path / "bajutsu.config.yaml"
     config.write_text(
-        ("targets:\n  demo:\n    platform: ios\n    app: {id: com.demo}\n"), encoding="utf-8"
+        ("targets:\n  demo:\n    platform: ios\n    subject: {id: com.demo}\n"), encoding="utf-8"
     )
     runs_dir = tmp_path / "runs"
     runs_dir.mkdir()
@@ -234,7 +234,7 @@ def test_run_tool_no_manifest_keeps_stderr_off_the_verdict_line(
     # on its own line, so the `PASS|FAIL  <manifest>` first-line shape is never faked.
     config = tmp_path / "bajutsu.config.yaml"
     config.write_text(
-        ("targets:\n  demo:\n    platform: ios\n    app: {id: com.demo}\n"), encoding="utf-8"
+        ("targets:\n  demo:\n    platform: ios\n    subject: {id: com.demo}\n"), encoding="utf-8"
     )
     (tmp_path / "runs").mkdir()
 

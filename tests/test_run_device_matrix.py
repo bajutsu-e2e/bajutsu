@@ -81,7 +81,7 @@ def harness(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
 def _args(tmp_path: Path, runs_on: str, scenarios: str, *extra: str) -> list[str]:
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "targets:\n  app:\n    platform: ios\n    app: {id: com.example.app}\n"
+        "targets:\n  app:\n    platform: ios\n    subject: {id: com.example.app}\n"
         f"    runsOn: {runs_on}\n",
         encoding="utf-8",
     )
@@ -155,7 +155,7 @@ def test_a_target_range_no_device_falls_in_is_not_applicable_beside_a_pass(
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
         cfg.read_text(encoding="utf-8")
-        + "  later:\n    platform: ios\n    app: {id: com.example.app}\n"
+        + "  later:\n    platform: ios\n    subject: {id: com.example.app}\n"
         "    runsOn: {ios: {os: '>=19'}}\n",
         encoding="utf-8",
     )
@@ -212,7 +212,7 @@ def test_fake_backend_evaluates_no_condition(
 def test_browsers_beside_a_version_range_exits_2(tmp_path: Path) -> None:
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "targets:\n  site:\n    platform: web\n    app: {url: 'http://localhost:1/'}\n"
+        "targets:\n  site:\n    platform: web\n    subject: {url: 'http://localhost:1/'}\n"
         "    runsOn: {browser: {version: '>=120'}}\n",
         encoding="utf-8",
     )
@@ -244,7 +244,7 @@ def test_browsers_beside_a_version_range_exits_2(tmp_path: Path) -> None:
 
 def _eff(runs_on: str = "{}") -> Any:
     cfg = load_config(
-        "targets:\n  app:\n    platform: ios\n    app: {id: com.example.app}\n"
+        "targets:\n  app:\n    platform: ios\n    subject: {id: com.example.app}\n"
         f"    runsOn: {runs_on}\n"
     )
     return resolve(cfg, "app")
@@ -307,9 +307,9 @@ def test_render_not_applicable_names_the_target_and_scenario() -> None:
 
 def test_plan_reads_each_compared_browser_once_and_narrows_by_its_version() -> None:
     cfg = load_config(
-        "targets:\n  site:\n    platform: web\n    app: {url: 'http://localhost:1/'}\n"
+        "targets:\n  site:\n    platform: web\n    subject: {url: 'http://localhost:1/'}\n"
         "    runsOn: {browser: {version: '>=120'}}\n"
-        "  old:\n    platform: web\n    app: {url: 'http://localhost:1/'}\n"
+        "  old:\n    platform: web\n    subject: {url: 'http://localhost:1/'}\n"
         "    runsOn: {browser: {version: '<100'}}\n"
     )
     lanes = {
@@ -342,7 +342,7 @@ def test_read_pool_facts_refuses_a_platform_with_no_device() -> None:
     from bajutsu.common.devices.facts import DeviceReadError
     from bajutsu.run.device_matrix import read_pool_facts
 
-    cfg = load_config("targets:\n  site:\n    platform: web\n    app: {url: 'http://x/'}\n")
+    cfg = load_config("targets:\n  site:\n    platform: web\n    subject: {url: 'http://x/'}\n")
     with pytest.raises(DeviceReadError, match="has no device"):
         read_pool_facts(TargetLanes("site", resolve(cfg, "site"), "playwright", ()))
 
@@ -365,7 +365,7 @@ def test_a_web_engine_list_runs_each_engine_as_its_own_cell(
     monkeypatch.setattr("bajutsu.run.cli.device_pool", pool)
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "targets:\n  site:\n    platform: web\n    app: {url: 'http://localhost:1/'}\n"
+        "targets:\n  site:\n    platform: web\n    subject: {url: 'http://localhost:1/'}\n"
         "    runsOn: {browser: {kind: [webkit, firefox]}}\n",
         encoding="utf-8",
     )
@@ -497,9 +497,9 @@ def test_two_web_pools_differing_only_by_engine_both_shut_down(
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
         "targets:\n"
-        "  site:\n    platform: web\n    app: {url: 'http://localhost:1/'}\n"
+        "  site:\n    platform: web\n    subject: {url: 'http://localhost:1/'}\n"
         "    runsOn: {browser: {kind: [chromium]}}\n"
-        "  admin:\n    platform: web\n    app: {url: 'http://localhost:2/'}\n"
+        "  admin:\n    platform: web\n    subject: {url: 'http://localhost:2/'}\n"
         "    runsOn: {browser: {kind: [webkit]}}\n",
         encoding="utf-8",
     )
@@ -659,9 +659,9 @@ def test_a_shared_pool_reads_one_listing_whatever_target_comes_first(
     # Two targets on one pool: the listing and each target's devices never depend on scenario order.
     cfg = load_config(
         "targets:\n"
-        "  app:\n    platform: ios\n    app: {id: com.example.app}\n"
+        "  app:\n    platform: ios\n    subject: {id: com.example.app}\n"
         "    runsOn: {ios: {kind: [simulator, device]}}\n"
-        "  sim:\n    platform: ios\n    app: {id: com.example.app}\n"
+        "  sim:\n    platform: ios\n    subject: {id: com.example.app}\n"
         "    runsOn: {ios: {family: ipad}}\n"
     )
     lanes = {n: TargetLanes(n, resolve(cfg, n), "xcuitest", tuple(_MIXED)) for n in ("app", "sim")}

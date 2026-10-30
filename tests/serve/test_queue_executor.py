@@ -177,7 +177,7 @@ def test_start_run_derives_the_jobs_required_capabilities(tmp_path: Path) -> Non
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            f"    app: {{id: com.example.demo}}\n"
+            f"    subject: {{id: com.example.demo}}\n"
             f"    paths: {{scenarios: {scn_dir}}}\n"
         ),
         encoding="utf-8",
@@ -218,7 +218,7 @@ def test_start_run_routes_an_appium_environment_to_its_grid(tmp_path: Path) -> N
     (scn_dir / "smoke.yaml").write_text(SCENARIO, encoding="utf-8")
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        f"targets:\n  demo: {{ platform: ios, app: {{ id: com.x }}, paths: {{ scenarios: {scn_dir} }} }}\n",
+        f"targets:\n  demo: {{ platform: ios, subject: {{ id: com.x }}, paths: {{ scenarios: {scn_dir} }} }}\n",
         encoding="utf-8",
     )
     (tmp_path / "runs").mkdir()
@@ -452,7 +452,7 @@ def test_execute_job_spec_materializes_files_into_the_workspace(tmp_path: Path) 
         "build": None,
         "materials": {
             "scenarios/smoke.yaml": "- name: a\n  steps: []\n",
-            "bajutsu.config.yaml": ("targets:\n  demo:\n    platform: ios\n    app: {id: x}\n"),
+            "bajutsu.config.yaml": ("targets:\n  demo:\n    platform: ios\n    subject: {id: x}\n"),
             "../escape.yaml": "nope",  # must not be written outside the workspace
             "": "root",  # resolves to the workspace root — must be ignored, not write_text a dir
             "scenarios/..": "root2",  # also the workspace root via traversal — ignored

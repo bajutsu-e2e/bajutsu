@@ -6,7 +6,7 @@
 # bottom, so walk down with swipes anchored on controls that stay visible. Run over XCUITest.
 - name: segmented control mirrors the selected choice
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:

@@ -15,7 +15,7 @@
 - name: the in-app browser renders its page and takes a click
   tags: [browser]
   preconditions:
-    app:
+    subject:
       launch:
         env:
           SHOWCASE_UITEST: "1"

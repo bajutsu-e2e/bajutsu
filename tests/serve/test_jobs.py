@@ -397,10 +397,10 @@ def test_target_build_info_reads_config(tmp_path: Path) -> None:
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            "    app: {id: com.example.demo, path: build/Demo.app, build: make demo}\n"
+            "    subject: {id: com.example.demo, path: build/Demo.app, build: make demo}\n"
             "  bare:\n"
             "    platform: ios\n"
-            "    app: {id: com.example.bare}\n"
+            "    subject: {id: com.example.bare}\n"
         ),
         encoding="utf-8",
     )
@@ -419,7 +419,7 @@ def test_unknown_target_error_names_a_template_and_lists_no_targets(tmp_path: Pa
             "targets:\n"
             "  demo:\n"
             "    extends: tpl\n"
-            "    app: {id: com.example.demo}\n"
+            "    subject: {id: com.example.demo}\n"
         ),
         encoding="utf-8",
     )
@@ -439,11 +439,11 @@ def test_target_scenarios_dir_reads_config(tmp_path: Path) -> None:
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            "    app: {id: com.example.demo}\n"
+            "    subject: {id: com.example.demo}\n"
             "    paths: {scenarios: scn/dir}\n"
             "  bare:\n"
             "    platform: ios\n"
-            "    app: {id: com.example.bare}\n"
+            "    subject: {id: com.example.bare}\n"
         ),
         encoding="utf-8",
     )

@@ -553,7 +553,7 @@ def test_a_scenario_keeping_its_app_data_is_never_moved_to_a_blank_device() -> N
         Scenario.model_validate(
             {
                 "name": "a",
-                "preconditions": {"app": {"reinstall": "overwrite"}},
+                "preconditions": {"subject": {"reinstall": "overwrite"}},
                 "steps": [{"tap": {"id": "ok"}}],
             }
         )
@@ -637,7 +637,7 @@ def test_run_all_still_propagates_a_device_error_from_a_bare_lease() -> None:
     # above once *it* also fails) is unrelated to this item's forced-erase retry, so it keeps its
     # pre-existing behavior: it is not swallowed, it propagates out of run_all.
     def lease(eff: Effective, scenario: Scenario) -> Lease:
-        raise simctl.DeviceError("app.path not found (test)")
+        raise simctl.DeviceError("subject.path not found (test)")
 
     scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
     with pytest.raises(simctl.DeviceError):
@@ -825,7 +825,7 @@ def test_run_all_skips_forced_erase_when_scenario_declares_reinstall_overwrite()
         Scenario.model_validate(
             {
                 "name": "a",
-                "preconditions": {"app": {"reinstall": "overwrite"}},
+                "preconditions": {"subject": {"reinstall": "overwrite"}},
                 "steps": [{"tap": {"id": "ok"}}],
             }
         )
@@ -1792,10 +1792,10 @@ def test_a_routed_target_that_cannot_apply_a_setting_fails_before_any_lease() ->
 
 
 def test_a_scenario_deeplink_is_not_in_effect_on_a_web_target() -> None:
-    # The web `app` has no `launch.deeplink`, so the scenario's deeplink is meant for the iOS target.
+    # The web `subject` has no `launch.deeplink`, so the scenario's deeplink is meant for the iOS target.
     results = run_all(
         _eff(),
-        [_two_targets(preconditions={"app": {"launch": {"deeplink": "app://x"}}})],
+        [_two_targets(preconditions={"subject": {"launch": {"deeplink": "app://x"}}})],
         _lease,
         targets=_routed_pair(),
     )
@@ -1803,8 +1803,8 @@ def test_a_scenario_deeplink_is_not_in_effect_on_a_web_target() -> None:
 
 
 def test_a_scenario_launch_env_fails_a_web_target_unless_it_is_ignored() -> None:
-    # A web `app` has `launch.env`, yet the browser never reads it, so the run must not pass silently.
-    scenario = _two_targets(preconditions={"app": {"launch": {"env": {"A": "1"}}}})
+    # A web `subject` has `launch.env`, yet the browser never reads it, so the run must not pass silently.
+    scenario = _two_targets(preconditions={"subject": {"launch": {"env": {"A": "1"}}}})
     failed = run_all(_eff(), [scenario], _lease, targets=_routed_pair())[0]
     assert "(target 'site')" in (failed.failure or "")
     site = _web_eff()

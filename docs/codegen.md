@@ -23,9 +23,9 @@ bajutsu codegen <scenario.yaml> --target <name> [--emit xcuitest | playwright | 
 
 `--emit` is `xcuitest` (default), `playwright`, or `uiautomator`. `-o -` (default) writes to stdout;
 a file path writes to the file. `--emit playwright` requires the app to be a web target
-(`platform: web` with `targets.<name>.app.url` set) and `--emit uiautomator` an Android target
-(`platform: android` with `targets.<name>.app.id` set); without the matching target the command
-exits with code 2. Config's `app.launch.env` is carried into the generated test ([cli](cli.md#codegen)) — `app.launchEnvironment` for
+(`platform: web` with `targets.<name>.subject.url` set) and `--emit uiautomator` an Android target
+(`platform: android` with `targets.<name>.subject.id` set); without the matching target the command
+exits with code 2. Config's `subject.launch.env` is carried into the generated test ([cli](cli.md#codegen)) — `app.launchEnvironment` for
 XCUITest, seeded `localStorage` for Playwright, and forwarded as intent extras for UI Automator.
 
 The generated test carries no device condition
@@ -66,7 +66,7 @@ final class ComponentsUITests: XCTestCase {
 - The helpers `el(id)` / `byLabel(label)` / `matchingId(glob)` bridge the three single-field
   selector forms (id / label / idMatches) to an XCUIElement.
 - Each method sets `launchEnvironment` then `app.launch()` at the top. The env is the merge of
-  **config's `app.launch.env` < the scenario's `preconditions.app.launch.env`** (the test side wins).
+  **config's `subject.launch.env` < the scenario's `preconditions.subject.launch.env`** (the test side wins).
 
 ### Selector mapping (XCUITest)
 
@@ -188,8 +188,8 @@ test.describe('Components', () => {
 });
 ```
 
-- Each test navigates to `BASE_URL` (the app's `app.url`, the web `launch` equivalent of
-  `page.goto`). Config's `app.launch.env` < the scenario's `preconditions.app.launch.env` is seeded via
+- Each test navigates to `BASE_URL` (the app's `subject.url`, the web `launch` equivalent of
+  `page.goto`). Config's `subject.launch.env` < the scenario's `preconditions.subject.launch.env` is seeded via
   `page.addInitScript(() => localStorage.setItem(...))`; an app expecting another channel (query
   params / cookies) gets a `// TODO`.
 - All *waiting* uses Playwright's native auto-wait. The only fixed timing emitted is `longPress`'s
@@ -464,8 +464,8 @@ class ComponentsUITest {
   package and the attempt budget instead. `findObject` alone would instead throw a bare
   `NullPointerException` that names neither. A read-only assertion still calls `device.findObject` /
   `device.findObjects` directly, unwaited. That matches the driver's own assertions.
-- Each method builds an `extras` map (config's `app.launch.env` < the scenario's
-  `preconditions.app.launch.env`) and calls `launch(extras)`, which forwards the env as intent extras —
+- Each method builds an `extras` map (config's `subject.launch.env` < the scenario's
+  `preconditions.subject.launch.env`) and calls `launch(extras)`, which forwards the env as intent extras —
   the reverse of the adb backend's `am start --es`.
 - `launch` waits for the app's first window, then for that window to settle
   (`device.waitForIdle`). The window wait proves some window from the package exists. It does
@@ -485,7 +485,7 @@ class ComponentsUITest {
   a sequence of such restarts could starve a launch a single long wait would have completed. Only a
   window absent for the whole timeout counts as stuck rather than slow. After `LAUNCH_ATTEMPTS`
   attempts `launch` fails, naming the windows it did see. The intent is rebuilt per attempt, which
-  also keeps the launch environment (`app.launch.env`) arriving through `onCreate`; resuming the existing task instead would route
+  also keeps the launch environment (`subject.launch.env`) arriving through `onCreate`; resuming the existing task instead would route
   the extras to `onNewIntent`.
 - **A `wait` spends its budget across several reads, dropping the accessibility cache between
   them.** `hasObject`, `findObject`, and every `Until` condition built on them resolve through the

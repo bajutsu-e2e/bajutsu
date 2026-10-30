@@ -3,7 +3,7 @@
 #
 # It mirrors the `showcase-swiftui` target from ../showcase.config.yaml with one deliberate
 # difference, which is per-environment and so lives in config (the app-agnostic principle), not in
-# the tool: **no `app.path` / `app.build` and no `driver.runner`.** The reserved device already
+# the tool: **no `subject.path` / `subject.build` and no `driver.runner`.** The reserved device already
 # carries the build, and the live route speaks W3C WebDriver rather than the XCUITest runner channel,
 # so no local `.app` or `.xctestrun` is assembled.
 #
@@ -25,7 +25,7 @@
 targets:
   showcase-swiftui-live:
     platform: ios
-    app:
+    subject:
       id: com.bajutsu.showcase.ios.swiftui
       launch: { env: { SHOWCASE_UITEST: "1" } }
       idNamespaces: [stable, horse, search, log, notice, perm, sys, net]

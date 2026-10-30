@@ -38,7 +38,7 @@ _ANDROID_POOL = [
 
 
 def _eff(runs_on: str, platform: str = "ios", app_id: str = "{ id: com.x }") -> Effective:
-    text = f"targets:\n  app: {{ platform: {platform}, app: {app_id}, runsOn: {runs_on} }}\n"
+    text = f"targets:\n  app: {{ platform: {platform}, subject: {app_id}, runsOn: {runs_on} }}\n"
     return resolve(load_config(text), "app")
 
 
@@ -264,7 +264,7 @@ def test_the_mcp_doctor_tool_scores_the_first_run(
     monkeypatch.setattr("bajutsu.mcp.tools.select_actuator", lambda _b: "xcuitest")
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        'targets:\n  t: { platform: ios, app: { id: com.x }, runsOn: {ios: {os: ">=17"}} }\n',
+        'targets:\n  t: { platform: ios, subject: { id: com.x }, runsOn: {ios: {os: ">=17"}} }\n',
         encoding="utf-8",
     )
     mcp = FastMCP("test")
@@ -300,7 +300,7 @@ def test_the_command_prints_the_runs_section(
     monkeypatch.setattr("bajutsu.cli.commands.doctor.target_pool", lambda *_a, **_k: android)
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        'targets:\n  t: { platform: android, app: { id: com.x }, runsOn: {android: {apiLevel: ">=34"}} }\n',
+        'targets:\n  t: { platform: android, subject: { id: com.x }, runsOn: {android: {apiLevel: ">=34"}} }\n',
         encoding="utf-8",
     )
     argv = ["doctor", "--target", "t", "--config", str(cfg), "--environment-only"]

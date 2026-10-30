@@ -37,11 +37,11 @@ def project(tmp_path: Path) -> tuple[Path, Path, Path]:
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            f"    app: {{id: com.example.demo}}\n"
+            f"    subject: {{id: com.example.demo}}\n"
             f"    paths: {{scenarios: {scn_dir}}}\n"
             "  other:\n"
             "    platform: ios\n"
-            f"    app: {{id: com.example.other}}\n"
+            f"    subject: {{id: com.example.other}}\n"
         ),
         encoding="utf-8",
     )

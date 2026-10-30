@@ -103,7 +103,7 @@ orchestrator、証跡、config、レポート）は [`bajutsu/common/`](bajutsu/
   `appTrace` の区間証跡、ネットワーク観測 + `mocks`、**ビジュアルリグレッション**（baseline +
   `approve`）、golden 要素ツリー比較、`capturePolicy` トリガールール、シークレットの **redaction**
 - **レポート**（`manifest.json` + JUnit XML + CTRF JSON + 自己完結のインタラクティブ HTML）
-- **config 解決**（チーム既定 × アプリ別。iOS と Android は `app.id`、web は `app.url`）と
+- **config 解決**（チーム既定 × アプリ別。iOS と Android は `subject.id`、web は `subject.url`）と
   **backend 選択**（ターゲットの `platform`）。`bajutsu config schema` がプラットフォームごとの JSON Schema を出力します
 - **デバイスの条件**（`runsOn`）。モデルのリストや OS の範囲を書くと、シナリオはモデルごと、メジャー
   バージョンごとの run に分かれ、各 run は読み取ったデバイスと照合します。片側が開いた範囲に合う
@@ -241,7 +241,7 @@ bajutsu schema                                            # エディタ連携�
 アプリ別・プラットフォーム別の設定は、`--config` で渡す config ファイルに置きます。デモにはすぐ動く
 ものが同梱されています（例: [`demos/showcase/showcase.config.yaml`](demos/showcase/showcase.config.yaml)、
 [`demos/web/demo.config.yaml`](demos/web/demo.config.yaml)）。各ターゲットは `platform` を名指しし、
-それが actuator を決めます。iOS アプリは `app.id` で、web アプリは `app.url` で特定します。
+それが actuator を決めます。iOS アプリは `subject.id` で、web アプリは `subject.url` で特定します。
 
 ```yaml
 defaults:
@@ -252,7 +252,7 @@ defaults:
 targets:
   showcase-swiftui:         # iOS アプリ — XCUITest 経由で Simulator を操作
     platform: ios
-    app:
+    subject:
       id: com.bajutsu.showcase.ios.swiftui
       launch: { env: { SHOWCASE_UITEST: "1" } }
       idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
@@ -260,7 +260,7 @@ targets:
 
   web:                      # web アプリ — Playwright 経由でブラウザを操作
     platform: web
-    app: { url: "http://127.0.0.1:8787/index.html" }
+    subject: { url: "http://127.0.0.1:8787/index.html" }
     paths: { scenarios: demos/web/scenarios }
 ```
 

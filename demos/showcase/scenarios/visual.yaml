@@ -34,7 +34,7 @@ scenarios:
   - name: Stable catalog matches its visual baseline
     tags: [visual]
     preconditions:
-      app:
+      subject:
         launch:
           env: { SHOWCASE_UITEST: "1" }
     steps:
@@ -45,7 +45,7 @@ scenarios:
   - name: Search matches its visual baseline
     tags: [visual]
     preconditions:
-      app:
+      subject:
         launch:
           env: { SHOWCASE_UITEST: "1" }
     steps:
@@ -57,7 +57,7 @@ scenarios:
   - name: Log matches its visual baseline
     tags: [visual]
     preconditions:
-      app:
+      subject:
         launch:
           env: { SHOWCASE_UITEST: "1" }
     steps:
@@ -69,7 +69,7 @@ scenarios:
   - name: Notices matches its visual baseline
     tags: [visual]
     preconditions:
-      app:
+      subject:
         launch:
           env: { SHOWCASE_UITEST: "1" }
     steps:
@@ -81,7 +81,7 @@ scenarios:
   - name: Permissions matches its visual baseline
     tags: [visual]
     preconditions:
-      app:
+      subject:
         launch:
           env: { SHOWCASE_UITEST: "1" }
     steps:
@@ -93,7 +93,7 @@ scenarios:
   - name: Horse Detail matches its visual baseline
     tags: [visual]
     preconditions:
-      app:
+      subject:
         launch:
           env: { SHOWCASE_UITEST: "1" }
     steps:
@@ -106,7 +106,7 @@ scenarios:
   - name: Notice Detail matches its visual baseline
     tags: [visual]
     preconditions:
-      app:
+      subject:
         launch:
           env: { SHOWCASE_UITEST: "1" }
     steps:
@@ -120,7 +120,7 @@ scenarios:
   - name: Filter sheet matches its visual baseline
     tags: [visual]
     preconditions:
-      app:
+      subject:
         launch:
           env: { SHOWCASE_UITEST: "1" }
     steps:
@@ -134,7 +134,7 @@ scenarios:
   - name: Gallery cover matches its visual baseline
     tags: [visual]
     preconditions:
-      app:
+      subject:
         launch:
           env: { SHOWCASE_UITEST: "1" }
     steps:
@@ -148,7 +148,7 @@ scenarios:
   - name: Delete dialog matches its visual baseline
     tags: [visual]
     preconditions:
-      app:
+      subject:
         launch:
           env: { SHOWCASE_UITEST: "1" }
     steps:
@@ -169,7 +169,7 @@ scenarios:
   - name: First catalog row matches its element-scoped baseline
     tags: [visual]
     preconditions:
-      app:
+      subject:
         launch:
           env: { SHOWCASE_UITEST: "1" }
     steps:
@@ -182,7 +182,7 @@ scenarios:
   - name: Catalog matches its baseline with the first row masked by selector
     tags: [visual]
     preconditions:
-      app:
+      subject:
         launch:
           env: { SHOWCASE_UITEST: "1" }
     steps:

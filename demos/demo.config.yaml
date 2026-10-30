@@ -1,6 +1,6 @@
 # Self-contained config for the top-level demo menu (the `tour` and `features` targets in
 # demos/Makefile). Runs the showcase SwiftUI accessibility app (demos/showcase/ios/swiftui/) on a
-# booted Simulator via XCUITest, and pins `app.path` so `bajutsu run` installs the freshly-built app
+# booted Simulator via XCUITest, and pins `subject.path` so `bajutsu run` installs the freshly-built app
 # automatically before each scenario. It mirrors the canonical demos/showcase/showcase.config.yaml
 # entry for showcase-swiftui, adding only the demo-specific `evidence.secrets` knob the `features` tour
 # uses to show masked-secret redaction.
@@ -9,7 +9,7 @@ defaults:
 targets:
   showcase-swiftui:
     platform: ios   # the XCUITest actuator (see docs/drivers.md)
-    app:
+    subject:
       id: com.bajutsu.showcase.ios.swiftui
       # Built by `make -C demos/showcase swiftui-build`; path is relative to this config's
       # directory (demos/), not the run's cwd (BE-0242).
@@ -20,7 +20,7 @@ targets:
       idNamespaces: [stable, horse, search, log, notice, perm, net]
     driver:
       # The XCUITest runner (`make -C demos/showcase runner-build`); path relative to this config's
-      # directory (demos/), like app.path above.
+      # directory (demos/), like subject.path above.
       runner:
         testRunner: ../BajutsuKit/Runner/build/dd/Build/Products/BajutsuRunner.xctestrun
         build: make -C demos/showcase runner-build

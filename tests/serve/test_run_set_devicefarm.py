@@ -135,7 +135,7 @@ def _android_batch_project(tmp_path: Path, *, scenarios: list[str]) -> tuple[Pat
             "targets:\n"
             "  demo:\n"
             "    platform: android\n"
-            f"    app: {{id: com.example.demo, path: {apk}}}\n"
+            f"    subject: {{id: com.example.demo, path: {apk}}}\n"
             f"    paths: {{scenarios: {scn_dir}}}\n"
         ),
         encoding="utf-8",
@@ -171,7 +171,7 @@ def test_relative_app_path_travels_as_a_logical_reference(tmp_path: Path) -> Non
             "targets:\n"
             "  demo:\n"
             "    platform: android\n"
-            f"    app: {{id: com.example.demo, path: app.apk}}\n"
+            f"    subject: {{id: com.example.demo, path: app.apk}}\n"
             f"    paths: {{scenarios: {scn_dir}}}\n"
         ),  # relative to the config's own directory (tmp_path)
         encoding="utf-8",
@@ -211,7 +211,7 @@ def test_request_paths_are_relative_to_the_config_directory(tmp_path: Path) -> N
             "targets:\n"
             "  demo:\n"
             "    platform: android\n"
-            f"    app: {{id: com.example.demo, path: app.apk}}\n"
+            f"    subject: {{id: com.example.demo, path: app.apk}}\n"
             f"    paths: {{scenarios: {scn_dir}}}\n"
         ),
         encoding="utf-8",
@@ -251,7 +251,7 @@ def test_a_scenario_outside_the_config_directory_is_refused(tmp_path: Path) -> N
             "targets:\n"
             "  demo:\n"
             "    platform: android\n"
-            f"    app: {{id: com.example.demo, path: app.apk}}\n"
+            f"    subject: {{id: com.example.demo, path: app.apk}}\n"
             f"    paths: {{scenarios: {scn_dir}}}\n"
         ),
         encoding="utf-8",

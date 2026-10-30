@@ -22,7 +22,7 @@ from bajutsu.serve.operations import config as config_ops
 from bajutsu.serve.state import ConfigBinding
 from bajutsu.serve.uploads import Upload
 
-_CONFIG = "targets:\n  demo:\n    platform: ios\n    app: {id: com.example.demo}\n"
+_CONFIG = "targets:\n  demo:\n    platform: ios\n    subject: {id: com.example.demo}\n"
 
 
 def _state(tmp_path: Path, **kw: object) -> srv.ServeState:
@@ -117,7 +117,7 @@ def test_targets_read_the_owner_off_the_binding(tmp_path: Path) -> None:
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            "    app: {id: com.example.demo}\n"
+            "    subject: {id: com.example.demo}\n"
             "orgs:\n"
             "  other:\n"
             "    targets: [demo]\n"
@@ -261,7 +261,7 @@ def test_target_ownership_follows_the_asking_sessions_binding(tmp_path: Path) ->
     # session holds — not an ambient one a colleague may have just replaced.
     owned = tmp_path / "owned.yaml"
     owned.write_text(
-        ("targets:\n  demo:\n    platform: ios\n    app: {id: com.example.demo}\n"),
+        ("targets:\n  demo:\n    platform: ios\n    subject: {id: com.example.demo}\n"),
         encoding="utf-8",
     )
     state = srv.ServeState(runs_dir=tmp_path / "runs", config=owned, cwd=tmp_path)
@@ -307,7 +307,7 @@ def test_the_cross_org_guard_follows_the_asking_sessions_binding(tmp_path: Path)
             "targets:\n"
             "  web:\n"
             "    platform: ios\n"
-            "    app: {id: com.example.web}\n"
+            "    subject: {id: com.example.web}\n"
             "orgs:\n"
             "  other:\n"
             "    targets: [web]\n"
@@ -316,7 +316,7 @@ def test_the_cross_org_guard_follows_the_asking_sessions_binding(tmp_path: Path)
     )
     mine = tmp_path / "mine.yaml"
     mine.write_text(
-        ("targets:\n  web:\n    platform: ios\n    app: {id: com.example.web}\n"),
+        ("targets:\n  web:\n    platform: ios\n    subject: {id: com.example.web}\n"),
         encoding="utf-8",
     )
 
@@ -854,7 +854,7 @@ def test_the_run_picker_scopes_by_the_asking_sessions_suite(tmp_path: Path) -> N
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            f"    app: {{id: com.x}}\n"
+            f"    subject: {{id: com.x}}\n"
             f"    paths: {{scenarios: {mine}}}\n"
         ),
         encoding="utf-8",
@@ -887,7 +887,7 @@ def test_the_usage_ledger_is_read_where_the_session_writes_it(tmp_path: Path) ->
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            "    app: {id: com.x}\n"
+            "    subject: {id: com.x}\n"
             "    ai: {usageLedger: runs/usage.jsonl}\n"
         ),
         encoding="utf-8",

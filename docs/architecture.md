@@ -101,7 +101,7 @@ The `bajutsu/` package (Python 3.13+, pydantic v2 / typer / anthropic / pyyaml /
 | `common/scenario/interp.py` | `${ns.key}` interpolation primitive (`params.` / `row.` / `secrets.` / `vars.`) | [scenarios](scenarios.md) |
 | `common/mailbox.py` | Pure, network-free matching/extraction logic for the `email` step (BE-0046): normalize a mailbox provider's messages, match on `to`/`subject`/`subjectMatches`, select only a message that arrived after the step started, and extract a value by regex into `${vars.*}` | [scenarios](scenarios.md) |
 | `common/totp.py` | RFC 6238 time-based one-time password (TOTP) for the `totp` step (BE-0046): a pure, deterministic function of the shared secret and the time, so a code is derivable with no network and no device | [scenarios](scenarios.md) |
-| `common/config/` | Team defaults × per-target resolution (`Effective`) (package: `schema` / `effective` / `resolve` / `accessors` / `preconditions` / `json_schema`). `schema` holds one model per target group (`services`, `run_policy`, `hooks`, `evidence`, `paths`), the `_merge` step that folds `defaults` into each target before validation, the `_templates` step that expands a target's `extends` into the ordered layers `_merge` folds onto `defaults` ([BE-0471](../roadmaps/BE-0471-target-templates/BE-0471-target-templates.md)), and the `platform/` registry that supplies each platform's `app` / `runsOn` / `driver` / `run` models, with `runsOn` holding one block per destination the platform allows ([BE-0469](../roadmaps/BE-0469-runson-destination-blocks/BE-0469-runson-destination-blocks.md)); `load_config(text, path=, root=)` / `load_config_file(path, root=)` take the config's own path and the suite root so a `use:` component under `hooks` resolves at load; `preconditions` merges a scenario's `preconditions` (`app`, `run`, and the `device` state) over each target it drives, and `json_schema` builds the config's JSON Schema from the models and the registry for `bajutsu config schema` ([BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)) | [configuration](configuration.md) |
+| `common/config/` | Team defaults × per-target resolution (`Effective`) (package: `schema` / `effective` / `resolve` / `accessors` / `preconditions` / `json_schema`). `schema` holds one model per target group (`services`, `run_policy`, `hooks`, `evidence`, `paths`), the `_merge` step that folds `defaults` into each target before validation, the `_templates` step that expands a target's `extends` into the ordered layers `_merge` folds onto `defaults` ([BE-0471](../roadmaps/BE-0471-target-templates/BE-0471-target-templates.md)), and the `platform/` registry that supplies each platform's `subject` / `runsOn` / `driver` / `run` models, with `runsOn` holding one block per destination the platform allows ([BE-0469](../roadmaps/BE-0469-runson-destination-blocks/BE-0469-runson-destination-blocks.md)); `load_config(text, path=, root=)` / `load_config_file(path, root=)` take the config's own path and the suite root so a `use:` component under `hooks` resolves at load; `preconditions` merges a scenario's `preconditions` (`subject`, `run`, and the `device` state) over each target it drives, and `json_schema` builds the config's JSON Schema from the models and the registry for `bajutsu config schema` ([BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)) | [configuration](configuration.md) |
 | `common/config_source/` | Acquire a config (and its scenario tree) from a Git source at an immutable commit SHA into a content-addressed cache (BE-0063) — where a config comes from, distinct from `common/config/`'s schema and resolution | [configuration](configuration.md) |
 | `common/backends.py` | Backend availability check · actuator selection (platform-aware registry: `ios` / `android` / `web` / `fake`) · driver construction | [drivers](drivers.md#backend-selection-and-the-actuator) |
 | `common/devices/` | Device-identity helpers shared across backends (package): `os.py` (the parsed device OS — platform/major/minor — read from the `device_runtime` label, BE-0358), `id.py` (the device-id validator every backend's `--udid`/config path shares, guarding against argv option injection), `errors.py` (the platform-neutral `DeviceError` base `simctl`/`adb` subclass, BE-0260, plus the `DeviceTimeout` beneath it that every backend raises when a device operation exceeded its deadline rather than failing, BE-0374), `version.py` (`VersionSpec`, npm's range grammar for `runsOn` version ranges), `facts.py` (reads what `runsOn` conditions compare from each available device: the Simulator's device-type name, family, and runtime, a real iOS device's family over `devicectl`, and a pool that mixes the two (BE-0468), an Android device's API level and Android Virtual Device (AVD) name, a browser's version), `runs.py` (forms a scenario's runs from lists and ranges — one per listed `kind` too — resolves each run's `family` priority list, combines the runs across targets, and picks each run's eligible devices; BE-0452, BE-0468), and `browsers.py` (the browser kinds `runsOn.browser.kind` names, and the Playwright engine and channel each launches as; BE-0468) | [drivers](drivers.md) |
@@ -333,7 +333,7 @@ relaunch or deeplink, because `simctl openurl` raises iOS's "Open in app?" dialo
 per screen crashes the resident XCUITest runner after a handful of `app.launch()` cycles. The adb
 harness instead re-launches the app's `singleTask` activity with a new `SHOWCASE_CONFORMANCE` intent
 extra, delivered via `onNewIntent` — `adb push` cannot reach the app sandbox, and the intent reuses
-the convention that delivers `app.launch.env` as intent extras (BE-0007); it is scoped to the Compose toolkit, the one that
+the convention that delivers `subject.launch.env` as intent extras (BE-0007); it is scoped to the Compose toolkit, the one that
 can render a spec-driven arbitrary-id screen (`testTag` takes any runtime string, while a Views
 `resource-id` must be a compile-time `R` entry). The suite carries an `ondevice` pytest marker
 (deselected by the gate's default) so it never runs in `make check`, and runs serially on a single
@@ -670,7 +670,7 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   recording never confirmed it started writing escalates from its *first* crash, since that symptom
   identifies the degradation class the erase does not clear. The replacement attempt drops the forced
   erase (a device about to be created has nothing to erase), and the rung is scoped to an unpinned
-  run with an `app.path` to install, so `--udid` keeps the erase-level retry on the device the
+  run with a `subject.path` to install, so `--udid` keeps the erase-level retry on the device the
   operator named. Because a replacement resets strictly more than an erase does, it also honors the
   two opt-outs the erase rung honors: `reinstall: overwrite` and `bajutsu run --no-erase`
 - **Per-scenario iOS crash-report capture** (BE-0421): a scenario that fails on an exhausted
@@ -1108,8 +1108,8 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   every `NavigationStack` push, sheet presentation, and tab switch is `UIHostingController`-backed),
   independent of the network-exchange store it shares a process with. The
   post-launch readiness gate (`await_ready`) consults it as a new rung above the BE-0218
-  namespace/count heuristics (an explicit `app.startWhen` still outranks it, so a base-screen transition
-  never preempts the modal `app.startWhen` waits for), and the `settled` wait consults it as a
+  namespace/count heuristics (an explicit `subject.startWhen` still outranks it, so a base-screen transition
+  never preempts the modal `subject.startWhen` waits for), and the `settled` wait consults it as a
   quiescence-window debounce, in place of tree-diff polling; a target that doesn't link the observer
   (or hasn't yet transitioned) gets the unchanged tree-diff behavior on both. Fast-gate tested with a fake signal source; on-device confirmation
   across UIKit and SwiftUI is this item's own gate, tracked in
@@ -1181,7 +1181,7 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   ([BE-0431](../roadmaps/BE-0431-job-scoped-artifact-override/BE-0431-job-scoped-artifact-override.md)):
   on a hosted deployment, `POST /api/run` accepts `binaryArtifact` and `scenariosArtifact`, each the
   sha256 of an already-stored artifact (BE-0268). A named leg resolves against that artifact alone —
-  the binary placed at the job's own target `app.path`, a `scenarios` zip replacing that target's
+  the binary placed at the job's own target `subject.path`, a `scenarios` zip replacing that target's
   scenarios directory — while an unnamed leg keeps resolving through the org's active config binding
   untouched, so two concurrent CI dispatches against one deployment no longer contend for the
   deployment's fallback binding or write the org's remembered configuration. The worker keys the

@@ -40,7 +40,7 @@ def test_test_per_scenario_uses_sanitized_name_and_launch() -> None:
 
 def test_launch_env_merges_config_and_scenario_as_intent_extras() -> None:
     code = _gen(
-        "- name: x\n  preconditions:\n    app: { launch: { env: { SHOWCASE_TAB: log } } }\n"
+        "- name: x\n  preconditions:\n    subject: { launch: { env: { SHOWCASE_TAB: log } } }\n"
         "  steps:\n    - tap: { id: a }\n",
         env={"SHOWCASE_UITEST": "1"},
     )
@@ -814,7 +814,9 @@ def test_uiautomator_is_a_registered_emit_target() -> None:
 
 def test_generate_test_on_android_target_returns_kt_file() -> None:
     eff = resolve(
-        load_config("targets:\n  droid:\n    platform: android\n    app: {id: com.example.app}\n"),
+        load_config(
+            "targets:\n  droid:\n    platform: android\n    subject: {id: com.example.app}\n"
+        ),
         "droid",
     )
     code, filename = generate_test(
@@ -827,7 +829,7 @@ def test_generate_test_on_android_target_returns_kt_file() -> None:
 def test_generate_test_uiautomator_on_non_android_target_fails() -> None:
     eff = resolve(
         load_config(
-            "targets:\n  web:\n    platform: web\n    app: {url: 'http://localhost:3000'}\n"
+            "targets:\n  web:\n    platform: web\n    subject: {url: 'http://localhost:3000'}\n"
         ),
         "web",
     )
@@ -845,12 +847,12 @@ def _cli_setup(tmp_path: Path) -> tuple[Path, Path]:
             "targets:\n"
             "  droid:\n"
             "    platform: android\n"
-            "    app:\n"
+            "    subject:\n"
             "      id: com.example.app\n"
             "      idNamespaces: [home]\n"
             "  web:\n"
             "    platform: web\n"
-            "    app:\n"
+            "    subject:\n"
             "      url: http://localhost:3000\n"
             "      idNamespaces: [home]\n"
         ),
@@ -891,7 +893,7 @@ def test_cli_emit_uiautomator_without_app_id_exits(tmp_path: Path) -> None:
         app, ["codegen", str(scn), "--target", "web", "--emit", "uiautomator", "--config", str(cfg)]
     )
     assert r.exit_code == 2
-    assert "targets.web.app.id (an Android target)" in r.output
+    assert "targets.web.subject.id (an Android target)" in r.output
 
 
 def test_manual_step_is_a_labeled_todo() -> None:

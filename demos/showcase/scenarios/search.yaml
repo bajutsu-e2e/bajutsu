@@ -4,7 +4,7 @@
 # so one scenario runs unchanged on every target (BE-0221).
 - name: filter narrows the catalog
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:
@@ -20,7 +20,7 @@
 
 - name: no match shows the empty state
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:

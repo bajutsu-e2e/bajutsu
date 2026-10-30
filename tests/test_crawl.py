@@ -1520,7 +1520,7 @@ def _crawl_config(tmp_path: Path) -> Path:
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            "    app:\n"
+            "    subject:\n"
             "      id: com.example.demo\n"
             "      idNamespaces: [home]\n"
         ),
@@ -1565,7 +1565,7 @@ def test_cli_crawl_refuses_under_provider_none(
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            "    app:\n"
+            "    subject:\n"
             "      id: com.example.demo\n"
             "      idNamespaces: [home]\n"
         ),

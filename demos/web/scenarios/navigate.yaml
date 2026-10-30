@@ -1,5 +1,5 @@
 # navigate real-backend coverage (BE-0464): open a page no control links to, by URL, then come back
-# by a reference relative to baseUrl. Both forms resolve against `app.url` exactly as a browser
+# by a reference relative to baseUrl. Both forms resolve against `subject.url` exactly as a browser
 # resolves a link, so the scenario names no host and runs unchanged against any served copy.
 description: >-
   Web navigate — open a page reachable only by its address, assert its content, then return to the

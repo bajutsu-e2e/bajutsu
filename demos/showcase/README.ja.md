@@ -57,7 +57,7 @@ make -C demos/showcase uikit-noax-build   # UIKit no-a11y プロダクトのみ
 ```
 
 各ビルドは `…/build/dd/Build/Products/Debug-iphonesimulator/<Scheme>.app` に出力され、これは
-`showcase.config.yaml` の `app.path` が期待する場所そのものです。生成される `*.xcodeproj` と `build/` は
+`showcase.config.yaml` の `subject.path` が期待する場所そのものです。生成される `*.xcodeproj` と `build/` は
 gitignore 済みです。
 
 ## 実行（起動済み Simulator 上）
@@ -138,7 +138,7 @@ id より脆いので、スクロール回数は toolkit ごとにオンデバ�
 
 deeplink scheme はプロダクトごとに分けています（2 つのインストール済みアプリが衝突しないようにするため）：`showcaseswiftui`、
 `showcaseuikit`、および `…noax` 変種です。`bajutsu` は URL をリテラルに開くので、共有シナリオは deeplink では
-なく `app.launch.env` ＋ タップ（scheme 非依存）を使います。deeplink はタブを選択するだけで、詳細画面を push する
+なく `subject.launch.env` ＋ タップ（scheme 非依存）を使います。deeplink はタブを選択するだけで、詳細画面を push する
 ことはありません（BE-0079）。deeplink を直接行使するには次のようにします:
 
 ```bash

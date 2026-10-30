@@ -389,15 +389,15 @@ def _target_state(tmp_path: Path) -> ServeState:
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            f"    app: {{id: com.example.demo}}\n"
+            f"    subject: {{id: com.example.demo}}\n"
             f"    paths: {{scenarios: {tmp_path / 'demo'}}}\n"
             "  other:\n"
             "    platform: ios\n"
-            f"    app: {{id: com.example.other}}\n"
+            f"    subject: {{id: com.example.other}}\n"
             f"    paths: {{scenarios: {tmp_path / 'other'}}}\n"
             "  bare:\n"
             "    platform: ios\n"
-            f"    app: {{id: com.example.bare}}\n"
+            f"    subject: {{id: com.example.bare}}\n"
         ),
         encoding="utf-8",
     )

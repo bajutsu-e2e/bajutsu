@@ -739,7 +739,7 @@ class _ScenarioRunner:
         # does — a blank device carries no app data at all. Reading them only where `forced_erase` is
         # computed would leave the stall signal free to swap the device out from under a scenario
         # whose merged `reinstall` is `overwrite` to keep its data — its own, or its target's
-        # `app.reinstall` default (BE-0452) — or from under an operator who asked for `--no-erase`,
+        # `subject.reinstall` default (BE-0452) — or from under an operator who asked for `--no-erase`,
         # which is the opposite of what either opt-out means. A `forced_erase` attempt already
         # implies both, so folding them in loses nothing on that path.
         can_replace = (
@@ -1507,7 +1507,7 @@ class _ScenarioRunner:
                 # the one direction that runs *into* the app, so it has no snapshot to hand over.
                 # A collector that carries no channel is caught at the command, not skipped here.
                 channel=lz.collector,
-                # The target's own `app.launch.env`, merged underneath the scenario's own the same way
+                # The target's own `subject.launch.env`, merged underneath the scenario's own the same way
                 # the launch itself merges them, so a target-level touch-marker pin is seen here
                 # exactly as the app that launched sees it, not read as if the scenario pinned
                 # nothing (BE-0365 unit 3).

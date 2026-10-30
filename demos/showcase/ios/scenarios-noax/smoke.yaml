@@ -13,7 +13,7 @@
 # asserting "No matches" is absent.
 - name: stable catalog smoke
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:

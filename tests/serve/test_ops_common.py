@@ -34,7 +34,7 @@ class _ClosingDriver(FakeDriver):
 
 def _eff() -> Effective:
     return resolve(
-        load_config("targets:\n  demo:\n    platform: ios\n    app: {id: com.example.demo}\n"),
+        load_config("targets:\n  demo:\n    platform: ios\n    subject: {id: com.example.demo}\n"),
         "demo",
     )
 

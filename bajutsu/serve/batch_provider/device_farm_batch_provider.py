@@ -50,9 +50,9 @@ def _check_launch_env_collisions(
     scenario_path: Path,
     injected: dict[str, str],
 ) -> None:
-    """Raise loudly if any scenario `preconditions.app.launch.env` key collides with an injected key.
+    """Raise loudly if a scenario's `preconditions.subject.launch.env` key collides with an injected one.
 
-    On-device merge order is ``{**target_env, **preconditions.app.launch.env}`` so a scenario key
+    On-device merge order is ``{**target_env, **preconditions.subject.launch.env}`` so a scenario key
     silently wins over the injected value — catching this at submit time makes the conflict visible
     before the run starts (BE-0435 Thread-8 decision).
     """
@@ -66,8 +66,8 @@ def _check_launch_env_collisions(
         preconditions = scenario.get("preconditions") or {}
         if not isinstance(preconditions, dict):
             continue
-        app = preconditions.get("app") or {}
-        launch = app.get("launch") if isinstance(app, dict) else None
+        subject = preconditions.get("subject") or {}
+        launch = subject.get("launch") if isinstance(subject, dict) else None
         launch_env = (launch.get("env") if isinstance(launch, dict) else None) or {}
         for key in launch_env:
             if key in injected:
@@ -222,8 +222,8 @@ class DeviceFarmBatchProvider:
                         yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
                     )
 
-                    # Collision guard: scenario preconditions.app.launch.env wins on-device, so a key
-                    # collision means the injected value is silently overridden — fail loudly here.
+                    # Collision guard: scenario preconditions.subject.launch.env wins on-device, so a
+                    # key collision means the injected value is silently overridden — fail loudly here.
                     _check_launch_env_collisions(
                         scenario_path=work_dir / request.scenario,
                         injected=ctx.launch_env,
@@ -231,9 +231,9 @@ class DeviceFarmBatchProvider:
 
                     targets = config_data.setdefault("targets", {})
                     target = targets.setdefault(request.target, {})
-                    launch = target.setdefault("app", {}).setdefault("launch", {})
+                    launch = target.setdefault("subject", {}).setdefault("launch", {})
                     # ctx.launch_env wins over pre-existing config values on collision; it lands in
-                    # the target's `app.launch.env` (BE-0452).
+                    # the target's `subject.launch.env` (BE-0452, BE-0470).
                     launch["env"] = {**launch.get("env", {}), **ctx.launch_env}
                     extra_texts[config_arc] = yaml.dump(config_data, allow_unicode=True)
                     exclude_arcnames.add(config_arc)

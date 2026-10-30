@@ -6,7 +6,7 @@
 - name: override the device location and round-trip the clipboard
   tags: [system]
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:

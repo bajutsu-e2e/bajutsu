@@ -50,7 +50,7 @@ SPEC §2.1 を参照してください。
 
 ## 起動時の環境変数フックとディープリンク
 
-`app.launch.env`（SPEC §3）は、launcher Activity の **intent extras** として届きます（BE-0007 の起動
+`subject.launch.env`（SPEC §3）は、launcher Activity の **intent extras** として届きます（BE-0007 の起動
 シーケンスが `am start` で渡します）。起動時に一度だけ読み込む変数は `SHOWCASE_UITEST`、
 `SHOWCASE_TAB`、`SHOWCASE_API_URL`、`SHOWCASE_HTTP_BASE`、`SHOWCASE_GESTURES` です。`SHOWCASE_GESTURES`
 （BE-0232）は、5 つのタブの UI 全体を、平坦でスクロールのないピンチ / 回転の画面（`log.pinch` /
@@ -82,7 +82,7 @@ make -C demos/showcase/android views-noax-build   # Views の no-a11y プロダ�
 ```
 
 各 APK は `<module>/build/outputs/apk/<flavor>/debug/` に生成されます。
-[`../showcase.config.yaml`](../showcase.config.yaml) の android ターゲットの `app.path` は、この
+[`../showcase.config.yaml`](../showcase.config.yaml) の android ターゲットの `subject.path` は、この
 場所をそのまま指しています。これらのターゲットに対する `run` / `doctor` には BE-0007 の adb
 バックエンドが必要で、実装されるまでは `--backend android` はレジストリの「not implemented yet」
 エラーで失敗します。

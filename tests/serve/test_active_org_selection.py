@@ -31,7 +31,7 @@ _ORGS_YAML = (
     "targets:\n"
     "  demo:\n"
     "    platform: ios\n"
-    "    app: {id: com.example.demo}\n"
+    "    subject: {id: com.example.demo}\n"
     "orgs:\n"
     "  acme:\n"
     "    members: [alice]\n"

@@ -1,6 +1,6 @@
 """Per-platform models for a target's platform-shaped groups, and the registry that holds them (BE-0452).
 
-`TargetConfig` validates each target's `app`, `runsOn`, and `driver`, and the platform's fields of
+`TargetConfig` validates each target's `subject`, `runsOn`, and `driver`, and the platform's fields of
 `run`, through these models after merging `defaults` into the target.
 """
 

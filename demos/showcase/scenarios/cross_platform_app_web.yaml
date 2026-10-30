@@ -27,7 +27,7 @@ scenarios:
     tags: [multi-target]
     targets: [showcase-swiftui, web]
     preconditions:
-      app:
+      subject:
         launch:
           env: { SHOWCASE_UITEST: "1" }
     steps:

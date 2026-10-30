@@ -1,6 +1,6 @@
 """The platform schema registry: each platform's models for the groups whose shape it decides (BE-0452).
 
-A target's `app`, `runsOn`, `driver`, and the extra fields of `run` differ by platform. The core
+A target's `subject`, `runsOn`, `driver`, and the extra fields of `run` differ by platform. The core
 looks the platform up here instead of naming platforms in its own schema, so adding one (Flutter, for
 example) means registering one more entry. The models are plain Pydantic, so loading a config never
 imports Playwright or simctl.
@@ -22,8 +22,8 @@ from .fake import FakeApp, FakeDriver, FakeRun, FakeRunsOn
 from .ios import IosApp, IosDriver, IosRun, IosRunsOn
 from .web import WebApp, WebDriver, WebRun, WebRunsOn
 
-Group = Literal["app", "runsOn", "driver", "run"]
-GROUPS: tuple[Group, ...] = ("app", "runsOn", "driver", "run")
+Group = Literal["subject", "runsOn", "driver", "run"]
+GROUPS: tuple[Group, ...] = ("subject", "runsOn", "driver", "run")
 
 
 @dataclass(frozen=True)
@@ -34,7 +34,7 @@ class PlatformSchema:
     `tipKitHandling`; the shared fields are validated by the target, not here.
     """
 
-    app: type[_Model]
+    subject: type[_Model]
     runs_on: type[_Model]
     driver: type[_Model]
     run: type[_Model]
@@ -45,24 +45,31 @@ class PlatformSchema:
 
     def model(self, group: Group) -> type[_Model]:
         """The model registered for `group`."""
-        return {"app": self.app, "runsOn": self.runs_on, "driver": self.driver, "run": self.run}[
-            group
-        ]
+        return {
+            "subject": self.subject,
+            "runsOn": self.runs_on,
+            "driver": self.driver,
+            "run": self.run,
+        }[group]
 
 
 # Keyed by the platform token; a test pins these keys to `backends.PLATFORMS`, so a platform cannot
 # gain an actuator without registering its schema, nor a schema without an actuator.
 PLATFORM_SCHEMAS: Mapping[str, PlatformSchema] = types.MappingProxyType(
     {
-        "ios": PlatformSchema(app=IosApp, runs_on=IosRunsOn, driver=IosDriver, run=IosRun),
+        "ios": PlatformSchema(subject=IosApp, runs_on=IosRunsOn, driver=IosDriver, run=IosRun),
         "android": PlatformSchema(
-            app=AndroidApp, runs_on=AndroidRunsOn, driver=AndroidDriver, run=AndroidRun
+            subject=AndroidApp, runs_on=AndroidRunsOn, driver=AndroidDriver, run=AndroidRun
         ),
         "web": PlatformSchema(
-            app=WebApp, runs_on=WebRunsOn, driver=WebDriver, run=WebRun, element_attribute=True
+            subject=WebApp, runs_on=WebRunsOn, driver=WebDriver, run=WebRun, element_attribute=True
         ),
         "fake": PlatformSchema(
-            app=FakeApp, runs_on=FakeRunsOn, driver=FakeDriver, run=FakeRun, element_attribute=True
+            subject=FakeApp,
+            runs_on=FakeRunsOn,
+            driver=FakeDriver,
+            run=FakeRun,
+            element_attribute=True,
         ),
     }
 )
@@ -102,7 +109,7 @@ def _nested_model(annotation: Any) -> type[BaseModel] | None:
 def accepts_field(model: type[BaseModel], path: tuple[str, ...]) -> bool:
     """Whether *model* accepts the nested field at *path*, each part spelled as a config writes it.
 
-    Lets a check ask whether a platform has a field (`("launch", "args")` on an `app` model) without
+    Lets a check ask whether a platform has a field (`("launch", "args")` on a `subject` model) without
     naming platforms itself.
     """
     current: type[BaseModel] | None = model

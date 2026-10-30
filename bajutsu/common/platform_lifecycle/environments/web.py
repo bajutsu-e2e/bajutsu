@@ -54,7 +54,9 @@ class WebEnvironment:
         enforce_settings(self._actuator, eff, pre, permissions)
         web = require_web(eff)
         if not web.base_url:
-            raise simctl.DeviceError("web backend requires baseUrl (set targets.<name>.app.url)")
+            raise simctl.DeviceError(
+                "web backend requires baseUrl (set targets.<name>.subject.url)"
+            )
         driver = backends.make_driver(
             self._actuator,
             "",

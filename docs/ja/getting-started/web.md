@@ -24,7 +24,7 @@ Simulator（`XCUITest` backend）で完結しますが、これには Xcode 入�
 ここでの用語は[用語集](../glossary.md)に従います。**backend** はターゲットが `platform:` で宣言する
 プラットフォーム（ここでは `web`）です。backend は **actuator**（タップや入力を実際に行う Playwright
 エンジン）に解決されます。**target** はテスト対象アプリを記述する `targets.<name>` の設定エントリ一つで、web の場合は
-iOS アプリの `app.id` ではなく `app.url` で識別されます。
+iOS アプリの `subject.id` ではなく `subject.url` で識別されます。
 
 ## 必要なもの
 
@@ -98,7 +98,7 @@ uv run bajutsu run --scenario demos/web/scenarios/smoke.yaml --target web --back
 フラグの意味は次のとおりです。
 
 - `--target web` は [`demos/web/demo.config.yaml`](../../../demos/web/demo.config.yaml) の `targets.web`
-  （その `platform: web`、`app.url`、シナリオディレクトリ）を選びます。ツール自体はアプリ非依存で、target ごとの差分は
+  （その `platform: web`、`subject.url`、シナリオディレクトリ）を選びます。ツール自体はアプリ非依存で、target ごとの差分は
   すべて config に置かれます（[configuration](../configuration.md)）。
 - `--backend web` は backend を確かめます。actuator（Chromium を操作する Playwright エンジン）は
   ターゲットの `platform: web` がすでに選んでおり、食い違う値を渡すと終了コード 2 で終わります。
@@ -137,5 +137,5 @@ make -C demos/web record GOAL="Get started, then increment the counter three tim
 
 ## 自分の web アプリをオンボーディングする
 
-新しい `targets.<name>` エントリ（`platform: web`）の `app.url` を自分のアプリの URL に向け、要素に安定した `data-testid` id を
+新しい `targets.<name>` エントリ（`platform: web`）の `subject.url` を自分のアプリの URL に向け、要素に安定した `data-testid` id を
 付けます。[configuration](../configuration.md#新しいターゲットのオンボーディング) を参照してください。

@@ -23,14 +23,14 @@ _FULL_CONFIG = (
     b"targets:\n"
     b"  demo:\n"
     b"    platform: ios\n"
-    b"    app: {id: com.example.demo, path: ./build/Demo.app}\n"
+    b"    subject: {id: com.example.demo, path: ./build/Demo.app}\n"
     b"    paths: {scenarios: ./scenarios}\n"
 )
 _SCENARIOS_ONLY_CONFIG = (
     b"targets:\n"
     b"  demo:\n"
     b"    platform: ios\n"
-    b"    app: {id: com.example.demo}\n"
+    b"    subject: {id: com.example.demo}\n"
     b"    paths: {scenarios: ./scenarios}\n"
 )
 

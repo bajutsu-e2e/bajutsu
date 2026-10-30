@@ -21,7 +21,7 @@ from sqlalchemy import Engine
 from bajutsu import serve as srv
 from bajutsu.serve import operations as ops
 
-_CONFIG = "targets:\n  docs:\n    platform: web\n    app: {url: 'https://example.test/'}\n"
+_CONFIG = "targets:\n  docs:\n    platform: web\n    subject: {url: 'https://example.test/'}\n"
 
 
 def _bundle(tmp_path: Path) -> tuple[Path, str]:
@@ -130,7 +130,7 @@ def test_a_second_bind_replaces_the_first_locator(
     with zipfile.ZipFile(buf, "w") as zf:
         zf.writestr(
             "bajutsu.config.yaml",
-            _CONFIG + "  extra: { platform: web, app: { url: 'https://x.test/' } }\n",
+            _CONFIG + "  extra: { platform: web, subject: { url: 'https://x.test/' } }\n",
         )
     blob = buf.getvalue()
     second = tmp_path / "second.zip"
@@ -158,10 +158,10 @@ def test_the_comparison_ranks_only_the_targets_the_org_owns(
             "targets:\n"
             "  acme-web:\n"
             "    platform: web\n"
-            "    app: {url: 'https://a.test/'}\n"
+            "    subject: {url: 'https://a.test/'}\n"
             "  globex-web:\n"
             "    platform: web\n"
-            "    app: {url: 'https://g.test/'}\n"
+            "    subject: {url: 'https://g.test/'}\n"
             "orgs:\n"
             "  acme:\n"
             "    targets: [acme-web]\n"

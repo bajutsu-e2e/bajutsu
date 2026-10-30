@@ -25,7 +25,9 @@ _GRID = "https://grid.example/wd/hub"
 
 def _eff(platform: str, *, lines: tuple[str, ...] = ()) -> Effective:
     app = {"ios": "{id: com.x}", "android": "{id: com.x}", "web": "{url: 'http://x/'}"}[platform]
-    text = "\n".join(["targets:", "  t:", f"    platform: {platform}", f"    app: {app}", *lines])
+    text = "\n".join(
+        ["targets:", "  t:", f"    platform: {platform}", f"    subject: {app}", *lines]
+    )
     return resolve(load_config(text + "\n"), "t")
 
 
@@ -110,7 +112,7 @@ def test_settings_in_effect_lists_what_the_run_asks_for() -> None:
         "ios",
         lines=(
             "    runsOn: {ios: {locale: ja_JP}}",
-            "    app: {id: com.x, path: build/App.app, launch: {args: [-x]}}",
+            "    subject: {id: com.x, path: build/App.app, launch: {args: [-x]}}",
         ),
     )
     pre = ResolvedPreconditions(erase=True, launch_env={"A": "1"}, deeplink="app://x")
@@ -168,7 +170,7 @@ def test_an_unsupported_setting_not_in_effect_is_no_problem() -> None:
 
 
 def test_enforce_raises_for_an_unsupported_setting() -> None:
-    with pytest.raises(base.UnsupportedAction, match=r"app\.launch\.env"):
+    with pytest.raises(base.UnsupportedAction, match=r"subject\.launch\.env"):
         enforce_settings("playwright", _eff("web"), ResolvedPreconditions(launch_env={"A": "1"}))
 
 
@@ -187,7 +189,7 @@ def test_enforce_drops_every_ignored_setting() -> None:
 
 def test_the_web_environment_refuses_a_launch_env_it_would_have_ignored() -> None:
     env = WebEnvironment("playwright")
-    with pytest.raises(base.UnsupportedAction, match=r"app\.launch\.env"):
+    with pytest.raises(base.UnsupportedAction, match=r"subject\.launch\.env"):
         env.start(_eff("web"), ResolvedPreconditions(launch_env={"A": "1"}))
 
 
@@ -216,7 +218,7 @@ def test_a_bad_declaration_fails_at_load(declared: str, match: str) -> None:
     ],
 )
 def test_defaults_may_not_declare_an_ignored_setting(defaults: str) -> None:
-    text = f"defaults:\n{defaults}\ntargets:\n  t:\n    platform: ios\n    app: {{id: com.x}}\n"
+    text = f"defaults:\n{defaults}\ntargets:\n  t:\n    platform: ios\n    subject: {{id: com.x}}\n"
     with pytest.raises(ValueError, match=r"defaults may not set run\.ignoredSettings"):
         load_config(text)
 
@@ -248,8 +250,8 @@ def test_a_backend_with_no_route_neither_honours_nor_stales_a_declaration() -> N
 
 
 def test_a_web_target_launch_env_feeds_codegen_and_is_never_in_effect() -> None:
-    # The web schema keeps `app.launch.env` for Playwright code generation; no run reads it.
-    eff = _eff("web", lines=("    app: {url: 'http://x/', launch: {env: {A: '1'}}}",))
+    # The web schema keeps `subject.launch.env` for Playwright code generation; no run reads it.
+    eff = _eff("web", lines=("    subject: {url: 'http://x/', launch: {env: {A: '1'}}}",))
     assert eff.launch_env == {"A": "1"}
     assert settings_in_effect(eff, ResolvedPreconditions()) == []
 

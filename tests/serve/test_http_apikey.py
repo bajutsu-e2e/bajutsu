@@ -188,7 +188,7 @@ def test_http_api_key_honours_key_env_from_config(
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            "    app: {id: com.example.demo}\n"
+            "    subject: {id: com.example.demo}\n"
         ),
         encoding="utf-8",
     )
@@ -231,7 +231,7 @@ def test_http_api_key_rejects_unsafe_key_env(
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            "    app: {id: com.example.demo}\n"
+            "    subject: {id: com.example.demo}\n"
         ),
         encoding="utf-8",
     )

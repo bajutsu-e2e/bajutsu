@@ -158,7 +158,7 @@ def test_http_open_local_config_from_subdir_binds_config_dir(tmp_path: Path) -> 
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            "    app: {id: com.example.demo}\n"
+            "    subject: {id: com.example.demo}\n"
             "    paths: {scenarios: scn}\n"
         ),  # relative to the config
         encoding="utf-8",
@@ -205,7 +205,7 @@ def test_http_open_config_from_git_binds_checkout(
             "targets:\n"
             "  fromgit:\n"
             "    platform: ios\n"
-            "    app: {id: com.example.fromgit}\n"
+            "    subject: {id: com.example.fromgit}\n"
             "    paths: {scenarios: e2e}\n"
         ),
         encoding="utf-8",
@@ -315,7 +315,7 @@ def test_http_git_config_with_escaping_path_is_refused(
             "targets:\n"
             "  evil:\n"
             "    platform: ios\n"
-            "    app: {id: com.example.evil}\n"
+            "    subject: {id: com.example.evil}\n"
             "    paths: {scenarios: ../../../etc}\n"
         ),
         encoding="utf-8",
@@ -342,7 +342,7 @@ def test_http_config_rejects_absolute_traversal_outside_root(tmp_path: Path) -> 
     root.mkdir()
     secret = tmp_path / "secret.yaml"  # outside root, but inside tmp_path
     secret.write_text(
-        ("targets:\n  evil:\n    platform: ios\n    app: {id: x}\n"), encoding="utf-8"
+        ("targets:\n  evil:\n    platform: ios\n    subject: {id: x}\n"), encoding="utf-8"
     )
     _, _, runs = project(tmp_path)
     server, port = _serve(srv.ServeState(runs_dir=runs, root=root, cwd=tmp_path))
@@ -372,7 +372,7 @@ def test_http_local_config_with_escaping_path_is_refused(tmp_path: Path) -> None
             "targets:\n"
             "  evil:\n"
             "    platform: ios\n"
-            "    app: {id: com.example.evil}\n"
+            "    subject: {id: com.example.evil}\n"
             "    paths: {scenarios: ../../secret}\n"
         ),
         encoding="utf-8",
@@ -407,7 +407,7 @@ def test_http_local_config_sibling_within_root_is_accepted(tmp_path: Path) -> No
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            "    app: {id: com.example.demo}\n"
+            "    subject: {id: com.example.demo}\n"
             "    paths: {scenarios: ../scenarios}\n"
         ),
         encoding="utf-8",
@@ -465,7 +465,7 @@ def test_http_hosted_refuses_path_bind_but_git_still_binds(
     checkout.mkdir()
     git_cfg = checkout / "bajutsu.config.yaml"
     git_cfg.write_text(
-        ("targets:\n  fromgit:\n    platform: ios\n    app: {id: com.example.fromgit}\n"),
+        ("targets:\n  fromgit:\n    platform: ios\n    subject: {id: com.example.fromgit}\n"),
         encoding="utf-8",
     )
     monkeypatch.setattr(

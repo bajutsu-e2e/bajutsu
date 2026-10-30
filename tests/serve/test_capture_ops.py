@@ -116,11 +116,11 @@ def _ios_state(tmp_path: Path) -> ServeState:
             "targets:\n"
             "  ios:\n"
             "    platform: ios\n"
-            f"    app: {{id: com.example.ios}}\n"
+            f"    subject: {{id: com.example.ios}}\n"
             f"    paths: {{scenarios: {scn_dir}}}\n"
             "  xcuitest_only:\n"
             "    platform: ios\n"
-            f"    app: {{id: com.example.x}}\n"
+            f"    subject: {{id: com.example.x}}\n"
             f"    paths: {{scenarios: {scn_dir}}}\n"
         ),
         encoding="utf-8",
@@ -201,7 +201,7 @@ def test_start_capture_rebases_app_path_against_state_cwd(tmp_path: Path) -> Non
     # `state.binding.cwd` (an uploaded bundle's root, a Git checkout root, or a local config's own directory,
     # BE-0063/BE-0073/BE-0242) before handing the Effective to the driver factory — otherwise an
     # uploaded config's `appPath` resolves against wherever `bajutsu serve` happens to be running from
-    # instead of the bundle, and iOS bring-up fails with "app.path not found".
+    # instead of the bundle, and iOS bring-up fails with "subject.path not found".
     bundle = tmp_path / "bundle"
     scn_dir = bundle / "scenarios"
     scn_dir.mkdir(parents=True)
@@ -213,7 +213,7 @@ def test_start_capture_rebases_app_path_against_state_cwd(tmp_path: Path) -> Non
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            f"    app: {{id: com.example.demo, path: app/MyApp.app}}\n"
+            f"    subject: {{id: com.example.demo, path: app/MyApp.app}}\n"
             f"    paths: {{scenarios: {scn_dir}}}\n"
         ),
         encoding="utf-8",

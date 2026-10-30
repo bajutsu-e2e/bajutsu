@@ -6,7 +6,7 @@
 # (`--backend ios`).
 - name: open and dismiss the detented sheet
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:
@@ -24,7 +24,7 @@
 
 - name: open and dismiss the full-screen cover
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:
@@ -39,7 +39,7 @@
 
 - name: action sheet records its choice
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:
@@ -64,7 +64,7 @@
 # this -noax twin addresses them by label.
 - name: native alert can be tapped
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:
@@ -89,7 +89,7 @@
 
 - name: native alert cancel leaves a distinct result
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:
@@ -111,7 +111,7 @@
 # assertion keys on the unambiguous "Easy" (only the mirror ever says "Easy") flipping away.
 - name: stepper and toggle mirror state
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:

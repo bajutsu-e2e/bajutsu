@@ -43,7 +43,7 @@ def _android_batch_project(tmp_path: Path, *, scenarios: list[str]) -> tuple[Pat
             "targets:\n"
             "  demo:\n"
             "    platform: android\n"
-            f"    app: {{id: com.example.demo, path: {apk}}}\n"
+            f"    subject: {{id: com.example.demo, path: {apk}}}\n"
             f"    paths: {{scenarios: {scn_dir}}}\n"
         ),
         encoding="utf-8",
@@ -165,7 +165,7 @@ def test_fan_out_rejects_a_web_target(tmp_path: Path) -> None:
             "targets:\n"
             "  demo:\n"
             "    platform: web\n"
-            f"    app: {{url: 'http://localhost:8080'}}\n"
+            f"    subject: {{url: 'http://localhost:8080'}}\n"
             f"    paths: {{scenarios: {scn_dir}}}\n"
         ),
         encoding="utf-8",
@@ -193,7 +193,7 @@ def test_fan_out_rejects_an_unknown_scenario_before_dispatching_any(tmp_path: Pa
 
 
 def test_fan_out_rejects_a_target_with_no_app_to_install(tmp_path: Path) -> None:
-    # A cloud-batch run installs an app on the reserved device; a target with no app.path is refused
+    # A cloud-batch run installs an app on the reserved device; a target with no subject.path is refused
     # loudly rather than submitting a run that can't install anything.
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
@@ -206,7 +206,7 @@ def test_fan_out_rejects_a_target_with_no_app_to_install(tmp_path: Path) -> None
             "targets:\n"
             "  demo:\n"
             "    platform: android\n"
-            f"    app: {{id: com.example.demo}}\n"
+            f"    subject: {{id: com.example.demo}}\n"
             f"    paths: {{scenarios: {scn_dir}}}\n"
         ),
         encoding="utf-8",
@@ -216,7 +216,7 @@ def test_fan_out_rejects_a_target_with_no_app_to_install(tmp_path: Path) -> None
     payload, status = start_run_set(state, _DF)
 
     assert status == 400
-    assert "app.path" in payload["error"]
+    assert "subject.path" in payload["error"]
     assert executor.jobs == []
 
 
@@ -315,7 +315,7 @@ def test_fan_out_ships_scenarios_that_travel_as_materials(tmp_path: Path) -> Non
     from bajutsu.serve.scenarios import Runnable
 
     scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml"])
-    # A worker without the project receives the binary by signed URL, so the app.path names a file
+    # A worker without the project receives the binary by signed URL, so the subject.path names a file
     # inside the config's directory and the server has an object store to deliver it through.
     cfg.write_text(
         cfg.read_text(encoding="utf-8").replace(str(tmp_path / "app.apk"), "app.apk"),

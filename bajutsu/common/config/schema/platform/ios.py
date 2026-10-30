@@ -1,4 +1,4 @@
-"""The iOS target's `app`, `runsOn`, `driver`, and `run` extension (BE-0452)."""
+"""The iOS target's `subject`, `runsOn`, `driver`, and `run` extension (BE-0452)."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from ._shared import AppCommon, RangeField, Reinstall, RunsOnGroup, check_choice
 
 
 class IosLaunch(_Model):
-    """`app.launch` on iOS: the environment and arguments the app is launched with."""
+    """`subject.launch` on iOS: the environment and arguments the app is launched with."""
 
     env: dict[str, str] = Field(default_factory=dict)
     args: list[str] = Field(default_factory=list)
@@ -20,7 +20,7 @@ class IosLaunch(_Model):
 
 
 class IosApp(AppCommon):
-    """`app` on iOS: the bundle under test, how to build and install it, and how to launch it."""
+    """`subject` on iOS: the bundle under test, how to build and install it, and how to launch it."""
 
     id: str = Field(min_length=1)
     path: str | None = None

@@ -15,7 +15,7 @@
 - name: native alert can be tapped
   tags: [alert]
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:
@@ -40,7 +40,7 @@
 - name: native alert cancel leaves a distinct result
   tags: [alert]
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:

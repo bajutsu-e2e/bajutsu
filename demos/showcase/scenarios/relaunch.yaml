@@ -6,7 +6,7 @@
 # unchanged on every target (BE-0221).
 - name: relaunch resets in-app state
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:

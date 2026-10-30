@@ -136,7 +136,7 @@ _APP_WIDE_CONFIG = (
     "targets:\n"
     "  app:\n"
     "    platform: ios\n"
-    "    app: {id: com.example.app}\n"
+    "    subject: {id: com.example.app}\n"
     "    hooks:\n"
     "      setup:\n"
     "      - tap: {id: a}\n"
