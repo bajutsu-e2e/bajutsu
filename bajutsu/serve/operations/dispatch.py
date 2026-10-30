@@ -127,7 +127,7 @@ def _bool_flag(body: dict[str, Any], key: str) -> bool | None:
 def _system_alert_handling_flag(
     body: dict[str, Any],
 ) -> tuple[bool | None, tuple[Any, int] | None]:
-    """The `systemAlertHandling` request flag.
+    """The `systemAlertHandling` request flag, which renders `--system-alert-handling`.
 
     The `alertHandling` (originally BE-0317) and `dismissAlerts` aliases this once also accepted were
     deleted with the schema aliases they mirrored (BE-0401). A request still naming one is rejected

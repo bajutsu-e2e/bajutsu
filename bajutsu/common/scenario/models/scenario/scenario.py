@@ -158,13 +158,13 @@ class Scenario(_Model):
     @classmethod
     def _reject_renamed_alert_keys(cls, data: Any) -> Any:
         # `systemAlertHandling` renamed `alertHandling`, which had itself renamed `dismissAlerts`
-        # (BE-0317 / BE-0327). Both aliases were deleted rather than carried a third time (BE-0401),
-        # so name the canonical key here instead of leaving Pydantic's generic extra-field error.
-        for old in ("alertHandling", "dismissAlerts"):
-            reject_renamed_key(data, surface="scenario", old=old, new="interrupts")
-        # The handlers moved under `preconditions.run` (BE-0452), then into `interrupts` (BE-0473);
-        # no old key is read.
+        # (BE-0317 / BE-0327); the handlers then moved under `preconditions.run` (BE-0452) and into
+        # `interrupts` (BE-0473). No old key is read, so each names the entry that replaces it rather
+        # than leaving Pydantic's generic extra-field error. None is a rename: each took a boolean or
+        # a policy mapping, which `interrupts` does not.
         for old, new in (
+            ("alertHandling", "interrupts (a `systemAlert` entry per prompt)"),
+            ("dismissAlerts", "interrupts (a `systemAlert` entry per prompt)"),
             ("systemAlertHandling", "interrupts (a `systemAlert` entry per prompt)"),
             ("iosTipKitHandling", "interrupts (`- tipKit: dismiss`)"),
         ):

@@ -358,6 +358,39 @@ def test_each_scenario_is_checked_against_the_targets_it_declares() -> None:
     _refuse_bad_preconditions(checks, erase=None)
 
 
+def test_a_tip_kit_entry_on_a_web_only_scenario_is_refused_before_device_work(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # `run` and `audit` hand each scenario's own entries to the check, so a TipKit entry no driven
+    # target can honor fails loudly rather than doing nothing at run time (BE-0452, BE-0473).
+    cfg = load_config(_CONFIG.replace(", seedPhotos: [photos/red.png]", ""))
+    loaded = LoadedConfig(config=cfg, path=Path("c.yaml"), source=None, root=None)
+    (web,) = load_scenarios("- name: web\n  interrupts: [{ tipKit: dismiss }]\n  steps: []\n")
+    checks = _precondition_checks(loaded, [web], "site", resolve(cfg, "site"))
+    with pytest.raises(typer.Exit):
+        _refuse_bad_preconditions(checks, erase=None)
+    assert "tipKit entry applies to no target" in capsys.readouterr().out
+
+
+def test_a_stored_plan_keeps_its_screen_entries_beside_the_converted_ones() -> None:
+    text = (
+        "- name: s\n"
+        "  interrupts: [{ condition: { exists: { id: [promo] } }, steps: [{ tap: { id: [x] } }] }]\n"
+        "  preconditions:\n"
+        "    run:\n"
+        "      systemAlertHandling: { rules: [{ prompt: paste, choice: grant }] }\n"
+        "      inheritSetup: false\n"
+        "  steps: []\n"
+    )
+    upgraded = _yaml.safe_load(_upgraded_scenario_text(text))[0]
+    assert upgraded["interrupts"] == [
+        {"condition": {"exists": {"id": ["promo"]}}, "steps": [{"tap": {"id": ["x"]}}]},
+        {"systemAlert": "paste", "choice": "grant"},
+    ]
+    assert upgraded["preconditions"] == {"run": {"inheritSetup": False}}
+    load_stored_scenario_file(text)
+
+
 _WEB_CONFIG = """
 targets:
   site:

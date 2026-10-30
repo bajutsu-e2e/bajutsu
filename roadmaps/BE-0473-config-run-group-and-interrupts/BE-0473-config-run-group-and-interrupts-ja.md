@@ -363,7 +363,7 @@ iOS の `tipKitHandling` だけだったからです。解決後の `Effective` 
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 単位 1：割り込みエントリ
+- [x] 単位 1：割り込みエントリ
 - [x] 単位 2：reinstall の段階
 - [x] 単位 3：evidence のフィールド
 - [ ] 単位 4：`run` の削除
@@ -395,6 +395,20 @@ iOS の `tipKitHandling` だけだったからです。解決後の `Effective` 
   動くのではなく失敗します。また、保存された実行プランには、ターゲットが与えた reinstall ではなく
   シナリオが書いた reinstall が残ります。また、*旧キーの移行先* の表より後に加わった `run.ignoredSettings`（BE-0467）は
   まだ `run` の下にあり、単位 4 で移動先を決める必要があります。
+- [#PR](https://github.com/bajutsu-e2e/bajutsu/pull/PR)：単位 1 を実装しました。`hooks.interrupts` とシナリオ自身の
+  `interrupts` は、画面形式に加えて `systemAlert` エントリと `tipKit` エントリを受け付けます。
+  `systemAlert` エントリは `choice` に `grant`、`deny`、`leave` のいずれかを取り、`pollInterval` と、
+  アプリ内のツリーで答えるプロンプトでは `frozenScreenTimeout` も書けます。2 つの形式のキーを混ぜた
+  エントリは、両方の形式を示すエラーになります。`run.systemAlertHandling`、`run.tipKitHandling`、
+  それぞれの `preconditions.run` 側の書き方は、読み込み時に新しいエントリを示すエラーになります。
+  読み手がいなくなった `SystemAlertHandling` と `SystemAlertRule` も同じ変更で削除しました。保存済みの
+  実行プランにある旧キーはエントリとして読み込みます。旧キーを書いているデモのシナリオとドキュメントも
+  直しました。*target、シナリオ、コマンドラインの重ね方* からは 3 点ずれています。1 つ目に、ガードが
+  持てる凍結画面のタイムアウトは 1 つなので、答えるエントリのうち最も長い値を採ります。長い許容時間は、
+  より短い値を求めたエントリも満たすからです。2 つ目に、`defaults.platforms` には `hooks` がないので、
+  共有する `tipKit` エントリは iOS の各ターゲットに書きます。iOS 以外のプラットフォームでは、無視せずに
+  エラーにします。3 つ目に、ガード全体を止めるのは `--no-system-alert-handling` だけになったので、
+  `record` と `crawl` はターゲットの設定を読まず、ガードを既定で有効にします。
 
 ## 参考
 

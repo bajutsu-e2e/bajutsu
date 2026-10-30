@@ -895,3 +895,40 @@ def test_resolve_evidence_dirs_defaults_and_golden_context(tmp_path: Path) -> No
     (scn.parent / "goldens").mkdir()
     _, _, gc2 = _resolve_evidence_dirs("", "", "", _eff(), scn)
     assert gc2 is not None  # goldens dir exists → golden assertions can resolve within it
+
+
+def test_scenario_walks_read_only_the_screen_entries_recovery_steps() -> None:
+    # BE-0473: the walks over every phase reach `interrupts` too, and a `systemAlert` or `tipKit`
+    # entry carries no steps to walk, so a mixed list must yield the screen entry's alone.
+    from bajutsu.run.cli import _install_steps, _scenario_mock_swaps, _visual_asserting_scenarios
+
+    (s,) = load_scenarios(
+        "- name: s\n"
+        "  interrupts:\n"
+        "    - { systemAlert: notifications, choice: grant }\n"
+        "    - tipKit: dismiss\n"
+        "    - condition: { exists: { id: [promo] } }\n"
+        "      steps:\n"
+        "        - assert: [{ visual: { baseline: promo.png } }]\n"
+        "  steps: [{ tap: { id: [a] } }]\n"
+    )
+    assert list(_install_steps(s)) == []
+    assert _visual_asserting_scenarios([s]) == {id(s)}
+    assert _scenario_mock_swaps(s) == []
+
+
+def test_a_zero_frozen_screen_timeout_turns_the_stop_off_over_a_longer_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # 0 is the longest tolerance of all, so it outranks a positive value rather than losing the max.
+    from bajutsu.common.scenario.system_alerts import _functions as alert_tables
+
+    monkeypatch.setitem(
+        alert_tables._SURFACES, "tracking", {"step": True, "native": True, "in_tree": True}
+    )
+    s = _tap_scenario(
+        "a",
+        {"systemAlert": "savePassword", "choice": "deny", "frozenScreenTimeout": 20},
+        {"systemAlert": "tracking", "choice": "deny", "frozenScreenTimeout": 0},
+    )
+    assert _guard(s).frozen_screen_timeout == 0.0

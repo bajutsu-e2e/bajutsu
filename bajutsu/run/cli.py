@@ -1333,9 +1333,12 @@ def _alert_guard_factory(
         # language raises here, before this scenario's device work (caught by the runner as a
         # scenario failure).
         locale = s.preconditions.resolved_locale(eff.locale, eff.platform)
-        frozen_screen_timeout = max(
-            (e.frozen_screen_timeout for e in answered if e.frozen_screen_timeout is not None),
-            default=DEFAULT_FROZEN_SCREEN_TIMEOUT,
+        timeouts = [
+            e.frozen_screen_timeout for e in answered if e.frozen_screen_timeout is not None
+        ]
+        # 0 turns the stop off, the longest tolerance of all, so it outranks any positive value.
+        frozen_screen_timeout = (
+            0.0 if 0 in timeouts else max(timeouts, default=DEFAULT_FROZEN_SCREEN_TIMEOUT)
         )
         return AlertGuardConfig(
             rules=_resolve_rules(answered, locale),

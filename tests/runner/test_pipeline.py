@@ -2963,3 +2963,30 @@ def test_a_lease_time_crash_keeps_the_earlier_attempts_crash_evidence(tmp_path: 
     directory = run_dir / "00-a" / "crash-diagnostics"
     assert (directory / "runner.log").exists()
     assert str(directory) in (results[0].failure or "")
+
+
+@pytest.mark.parametrize("declares_targets", [False, True])
+def test_run_all_carries_system_alert_and_tip_kit_entries_past_the_screen_poll(
+    declares_targets: bool,
+) -> None:
+    # BE-0473: the target's and the scenario's `systemAlert` / `tipKit` entries reach the guard, never
+    # the runner's screen poll, which reads `condition` and `steps`. Mixed lists must run as the
+    # screen entries alone would, on the single-target path and the self-declaring one alike.
+    from bajutsu.common.scenario import InterruptEntry
+
+    screen = {"condition": {"exists": {"id": "never"}}, "steps": [{"tap": {"id": "ok"}}]}
+    target_entries = [
+        Scenario.model_validate({"name": "t", "steps": [], "interrupts": [e]}).interrupts[0]
+        for e in (screen, {"systemAlert": "tracking", "choice": "deny"}, {"tipKit": "dismiss"})
+    ]
+    entries: list[InterruptEntry] = list(target_entries)
+    eff = replace(_eff(), run_defaults=replace(_eff().run_defaults, interrupts=entries))
+    body: dict[str, object] = {
+        "name": "mixed",
+        "interrupts": [{"systemAlert": "notifications", "choice": "grant"}, screen],
+        "steps": [{"tap": {"id": "ok"}}],
+    }
+    if declares_targets:
+        body["targets"] = ["demo"]
+    (result,) = run_all(eff, [Scenario.model_validate(body)], _lease)
+    assert result.ok, result

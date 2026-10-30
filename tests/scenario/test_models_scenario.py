@@ -96,6 +96,7 @@ def test_a_screen_entry_without_a_condition_fails_on_the_condition() -> None:
         {"tipKit": "on"},
         {"systemAlert": "notifications", "choice": "grant", "pollInterval": 0},
         {"systemAlert": "savePassword", "choice": "deny", "frozenScreenTimeout": -1},
+        {"systemAlert": "savePassword", "choice": "leave", "frozenScreenTimeout": 5},
     ],
 )
 def test_a_malformed_entry_fails_at_load(entry: dict[str, object]) -> None:

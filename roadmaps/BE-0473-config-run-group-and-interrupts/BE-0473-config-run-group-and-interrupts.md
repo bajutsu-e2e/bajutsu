@@ -369,7 +369,7 @@ resolved `Effective` keeps `run_defaults` as an internal grouping, filled from t
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1: interrupt entries
+- [x] Unit 1: interrupt entries
 - [x] Unit 2: reinstall ladder
 - [x] Unit 3: evidence fields
 - [ ] Unit 4: remove `run`
@@ -400,6 +400,19 @@ Log:
   erase now fails rather than running unwiped. And a stored plan shows the reinstall the scenario
   wrote, not the one its target supplied. `run.ignoredSettings` (BE-0467), which the
   *Where each old key goes* table predates, still sits under `run` and needs a home in unit 4.
+- [#PR](https://github.com/bajutsu-e2e/bajutsu/pull/PR): Landed unit 1. `hooks.interrupts` and a scenario's own `interrupts`
+  take a `systemAlert` entry (`choice: grant`, `deny`, or `leave`, with `pollInterval` and, on an
+  in-tree prompt, `frozenScreenTimeout`) and a `tipKit` entry beside the screen form, and an entry
+  mixing two forms fails naming both. `run.systemAlertHandling`, `run.tipKitHandling`, and their
+  `preconditions.run` spellings fail at load naming the new entry. `SystemAlertHandling` and
+  `SystemAlertRule`, which no reader was left with, went in the same change. A stored run plan's old
+  keys load as entries. The demo scenarios and the documents that name the old keys moved too. Three
+  deviations from *Layering between target, scenario, and command line*. The guard holds one
+  frozen-screen timeout, so it takes the longest among the answered entries: a longer tolerance
+  satisfies every entry that asked for a shorter one. `defaults.platforms` has no `hooks`, so a
+  shared `tipKit` entry is written on each iOS target, and the entry fails on any other platform
+  rather than going ignored. And since only `--no-system-alert-handling` now turns the whole guard
+  off, `record` and `crawl` default it on instead of reading a target's switch.
 
 ## References
 

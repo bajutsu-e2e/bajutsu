@@ -53,8 +53,13 @@ class SystemAlertInterrupt(_Model):
 
     @model_validator(mode="after")
     def _frozen_timeout_needs_in_tree_prompt(self) -> Self:
-        # The frozen-screen stop arms only for a prompt the app's own tree carries, so the value on
-        # any other prompt would load and then never apply.
+        # The frozen-screen stop arms only for a prompt the app's own tree carries and the guard
+        # answers, so the value on any other prompt, or on one left, would load and never apply.
+        if self.frozen_screen_timeout is not None and self.choice == "leave":
+            raise ValueError(
+                f"frozenScreenTimeout has no effect on a prompt the guard leaves "
+                f"({self.system_alert}, choice: leave); remove it"
+            )
         if (
             self.frozen_screen_timeout is not None
             and not alert_surfaces(self.system_alert)["in_tree"]

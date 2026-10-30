@@ -136,13 +136,17 @@ def test_config_interrupts_resolve_a_component(tmp_path: Path) -> None:
         "    subject: {url: 'http://x'}\n"
         "    hooks:\n"
         "      interrupts:\n"
+        "      - {systemAlert: notifications, choice: grant}\n"
         "      - condition:\n"
         "          exists: {id: onboarding.title}\n"
         "        steps:\n"
         "        - use: {component: skip-onboarding.yaml}\n",
         encoding="utf-8",
     )
-    (entry,) = screen_interrupts(resolve(load_config_file(cfg), "myapp").run_defaults.interrupts)
+    # The `systemAlert` entry beside it has no steps to expand, and must not stop the expansion.
+    entries = resolve(load_config_file(cfg), "myapp").run_defaults.interrupts
+    assert len(entries) == 2
+    (entry,) = screen_interrupts(entries)
     assert [st.tap.id for st in entry.steps if st.tap is not None] == ["onboarding.skip"]
 
 
