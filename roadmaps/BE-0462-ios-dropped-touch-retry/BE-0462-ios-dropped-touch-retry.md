@@ -314,13 +314,26 @@ Log:
     `backboardd` lines that arrived behind a later-stamped runner line, and every drop line with its
     category. It also attributes each drop line to the innermost window open at its timestamp, and
     prints every line inside each dropped window. A drop line no window covers is listed apart.
-  - The design's `TouchEvents` category for `backboardd` does not appear in the CI guest logs. Its
-    lines there fall under `EventDelivery`, `HID`, and others. The recorder therefore takes
-    `backboardd` whole, and the report counts the drop lines' categories, so Unit 3 can pick its
-    predicate from data.
+  - The recorder takes `backboardd` whole rather than only the design's `TouchEvents` category, and
+    the report counts the drop lines' categories. Unit 3 can then pick its predicate from data. The
+    CI guest `log show` extracts held no `TouchEvents` lines at all, which is what prompted this.
   - A local smoke run on a fresh iOS 27 Simulator recorded 410 `backboardd` events. During an app
     launch their arrival lag was 0.013 s at p50 and 1.4 s at p95. That run synthesized no touch, so
     it says nothing yet about the markers or about drops.
+  - The first CI recording came from this PR's own `actuation (xcuitest)` job, run
+    [41047132384](https://github.com/bajutsu-e2e/bajutsu/actions/runs/41047132384). That host was
+    degraded: a video stall, a failed cold runner spawn, and a Simulator reboot. One run settles
+    nothing, but four facts are worth carrying to the next ones:
+    - It recorded 62 synthesis windows and one drop. The drop was the first touch of a runner
+      session, with `unknown digitizer` and `skipping event` inside its window. Every drop line was
+      in category `TouchEvents`, so the design's category holds.
+    - `already have a main display digitizer` and `cancel -- digitizer did disappear` appeared in
+      all 62 windows, delivered touches included. Neither line marks a drop.
+    - Three `backboardd` lines arrived behind a later-stamped runner line, by up to 28 ms. None was
+      a drop line, but the count is not zero, which is the case Unit 1 says must send the design
+      back before Unit 3.
+    - The end marker's arrival lag reached 2.3 s at p99. `backboardd` lines lagged 35 s at p95, on
+      a host that was evidently starved.
 
 ## References
 
