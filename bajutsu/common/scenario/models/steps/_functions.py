@@ -18,7 +18,7 @@ _FORM_KEYS: dict[str, frozenset[str]] = {
     "tipKit": frozenset({"tipKit"}),
 }
 _FORM_NAMES = {
-    "screen": "a screen (`condition`)",
+    "screen": "a screen entry",
     "systemAlert": "`systemAlert`",
     "tipKit": "`tipKit`",
 }
@@ -32,7 +32,12 @@ def _one_form(data: Any) -> Any:
     if isinstance(data, dict):
         forms = _forms_of(data)
         if len(forms) > 1:
-            named = " and ".join(_FORM_NAMES[f] for f in forms)
+            # Name the keys too: `target` beside `systemAlert` puts an entry in the screen bucket
+            # with no `condition` written, so the form alone would send the author looking for one.
+            named = " and ".join(
+                f"{_FORM_NAMES[f]} ({', '.join(sorted(_FORM_KEYS[f] & data.keys()))})"
+                for f in forms
+            )
             raise ValueError(f"an interrupts entry takes one form, but this one mixes {named}")
     return data
 

@@ -84,11 +84,10 @@ def resolve_system_alert_handling_flag(
 def resolve_system_alert_handling_flag(
     system_alert_handling: bool | None, *, default: bool | None = None
 ) -> bool | None:
-    """Resolve the `--system-alert-handling` flag against each command's own unset behavior.
+    """Resolve the `--system-alert-handling` flag against the command's unset behavior.
 
-    `run` leaves it None (the guard runs, answering the prompts its `systemAlert` entries name), while
-    `record` and `crawl` pass on as the default: a target leaves a prompt by name and no longer turns
-    the guard off whole (BE-0473).
+    Every command passes `default=True` since BE-0473: a target no longer turns the guard off whole,
+    so `run`, `record`, and `crawl` all leave the guard on when the flag is absent.
     Shared by all three so the flag behaves identically on each. The `--alert-handling` /
     `--dismiss-alerts` aliases this once merged were deleted with no replacement (BE-0401).
     """

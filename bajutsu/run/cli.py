@@ -1091,8 +1091,9 @@ def _filter_scenarios(
     (`_with_erase_flag`), since each target a scenario drives merges its own `subject.reinstall`.
     The TipKit entry resolves by the same precedence (BE-0473): the flag, then the scenario's own
     `tipKit` entry, then the target's (*target_tip_kit*). The outcome is left on the scenario as its
-    one `tipKit` entry, added only when it ends `dismiss`, so a scenario that drives no iOS target
-    never gains the iOS-only entry.
+    one `tipKit` entry, added only when it ends `dismiss`. The flag reaches every scenario, so one
+    driving no iOS target can still gain the iOS-only entry here, after *check* has already run;
+    no driver of another platform reads it.
     """
     include = [t.strip() for t in tag.split(",") if t.strip()]
     excluded = [t.strip() for t in exclude.split(",") if t.strip()]

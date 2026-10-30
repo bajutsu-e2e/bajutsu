@@ -72,9 +72,14 @@ def test_interrupt_entries_round_trip_through_a_dump() -> None:
 
 
 def test_an_entry_mixing_two_forms_fails_naming_both() -> None:
-    with pytest.raises(ValidationError, match="mixes `systemAlert` and `tipKit`"):
+    with pytest.raises(
+        ValidationError,
+        match=r"mixes `systemAlert` \(choice, systemAlert\) and `tipKit` \(tipKit\)",
+    ):
         _scenario(interrupts=[{"systemAlert": "paste", "choice": "grant", "tipKit": "dismiss"}])
-    with pytest.raises(ValidationError, match=r"mixes a screen \(`condition`\) and `systemAlert`"):
+    with pytest.raises(
+        ValidationError, match=r"mixes a screen entry \(condition\) and `systemAlert`"
+    ):
         _scenario(
             interrupts=[
                 {"condition": {"exists": {"id": ["x"]}}, "systemAlert": "paste", "choice": "grant"}

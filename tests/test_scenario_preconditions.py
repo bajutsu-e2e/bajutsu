@@ -258,8 +258,8 @@ def test_seed_photos_on_a_non_primary_target_are_refused() -> None:
     other = replace(effs["phone"], target="phone-2", seed_photos=[])
     pre = _pre("{ subject: { reinstall: erase } }")
     # The primary seeds; a second target with photos of its own would seed nothing.
-    assert check_preconditions(pre, [effs["phone"], other]) == []
-    (problem,) = check_preconditions(pre, [other, effs["phone"]])
+    assert check_preconditions(pre, [effs["phone"], other], interrupts=()) == []
+    (problem,) = check_preconditions(pre, [other, effs["phone"]], interrupts=())
     assert "seedPhotos on target 'phone' applies to the primary target alone" in problem
 
 
@@ -283,7 +283,7 @@ def test_lint_reports_a_scenario_runs_on_and_a_malformed_device_block() -> None:
 
 def test_an_app_field_no_driven_platform_has_fails() -> None:
     (problem,) = check_preconditions(
-        _pre("{ subject: { launch: { args: [-x] } } }"), [_effs()["site"]]
+        _pre("{ subject: { launch: { args: [-x] } } }"), [_effs()["site"]], interrupts=()
     )
     assert problem.startswith("preconditions.subject.launch.args applies to no target")
     assert "(platform web)" in problem
@@ -292,14 +292,14 @@ def test_an_app_field_no_driven_platform_has_fails() -> None:
 def test_an_app_field_one_driven_platform_has_passes() -> None:
     effs = _effs()
     args = _pre("{ subject: { launch: { args: [-x] } } }")
-    assert check_preconditions(args, [effs["phone"], effs["site"]]) == []
+    assert check_preconditions(args, [effs["phone"], effs["site"]], interrupts=()) == []
     reinstall = _pre("{ subject: { reinstall: overwrite } }")
-    assert check_preconditions(reinstall, [effs["droid"], effs["site"]]) == []
+    assert check_preconditions(reinstall, [effs["droid"], effs["site"]], interrupts=()) == []
 
 
 def test_the_fake_platform_has_no_launch_fields() -> None:
     (problem,) = check_preconditions(
-        _pre("{ subject: { launch: { env: { A: '1' } } } }"), [_effs()["fake"]]
+        _pre("{ subject: { launch: { env: { A: '1' } } } }"), [_effs()["fake"]], interrupts=()
     )
     assert "preconditions.subject.launch.env" in problem
 
@@ -312,8 +312,15 @@ def test_a_tip_kit_entry_fails_without_an_ios_target() -> None:
     assert problem.startswith("interrupts: a tipKit entry applies to no target")
     assert check_preconditions(pre, [effs["phone"]], interrupts=tip) == []
     # A web target has no `reinstall`, yet its fresh browser context satisfies `erase` (BE-0473).
-    assert check_preconditions(_pre("{ subject: { reinstall: erase } }"), [effs["site"]]) == []
-    (problem,) = check_preconditions(_pre("{ subject: { reinstall: clean } }"), [effs["site"]])
+    assert (
+        check_preconditions(
+            _pre("{ subject: { reinstall: erase } }"), [effs["site"]], interrupts=()
+        )
+        == []
+    )
+    (problem,) = check_preconditions(
+        _pre("{ subject: { reinstall: clean } }"), [effs["site"]], interrupts=()
+    )
     assert problem.startswith("preconditions.subject.reinstall applies to no target")
 
 

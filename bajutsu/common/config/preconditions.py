@@ -17,7 +17,7 @@ from typing import Literal
 from bajutsu.common.config.effective import Effective, IosConfig
 from bajutsu.common.config.schema.platform import accepts_field, schema_for
 from bajutsu.common.devices.runs import condition_path
-from bajutsu.common.scenario import Preconditions, tip_kit_interrupt
+from bajutsu.common.scenario import InterruptEntry, Preconditions, tip_kit_interrupt
 
 
 @dataclass(frozen=True)
@@ -175,7 +175,7 @@ def check_preconditions(
     targets: Sequence[Effective],
     *,
     erase_flag: bool | None = None,
-    interrupts: Sequence[object] = (),
+    interrupts: Sequence[InterruptEntry],
 ) -> list[str]:
     """Every problem with *pre* against the *targets* a scenario drives, before any device work.
 

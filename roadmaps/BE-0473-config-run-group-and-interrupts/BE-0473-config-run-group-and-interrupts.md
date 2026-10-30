@@ -410,8 +410,8 @@ Log:
   deviations from *Layering between target, scenario, and command line*. The guard holds one
   frozen-screen timeout, so it takes the longest among the answered entries: a longer tolerance
   satisfies every entry that asked for a shorter one. `defaults.platforms` has no `hooks`, so a
-  shared `tipKit` entry is written on each iOS target, and the entry fails on any other platform
-  rather than going ignored. And since only `--no-system-alert-handling` now turns the whole guard
+  shared `tipKit` entry goes once under `defaults.hooks.interrupts` when every target is iOS, and
+  otherwise on each iOS target; the entry fails on any other platform rather than going ignored. And since only `--no-system-alert-handling` now turns the whole guard
   off, `record` and `crawl` default it on instead of reading a target's switch.
 
 ## References

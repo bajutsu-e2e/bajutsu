@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 import re
 
-from bajutsu.common.scenario import Interrupt, Scenario, Step
+from bajutsu.common.scenario import Interrupt, Scenario, Step, SystemAlertInterrupt
 from bajutsu.common.scenario.models.actions import bypass_hint
 
 from .code_generator import CodeGenerator
@@ -197,21 +197,31 @@ def permissions_setup_lines(scenario: Scenario) -> list[str]:
 
 
 def interrupts_setup_lines(scenario: Scenario) -> list[str]:
-    """The `// TODO` lines naming each `interrupts` handler (BE-0314), one per entry.
+    """The `// TODO` lines naming each `interrupts` handler (BE-0314, BE-0473), one per entry.
 
     No native XCUITest / Espresso / Playwright construct maps onto "check this condition
     opportunistically throughout the whole test," so — like `permissions_setup_lines` — this renders
-    a labeled `// TODO` naming the field and each entry's condition rather than a silent skip. Only a
-    scenario's own `interrupts` are visible to codegen (the walk sees the scenario, not the resolved
-    config), matching how `permissions_setup_lines` emits only `scenario.permissions`.
+    a labeled `// TODO` naming the field and each entry rather than a silent skip: a screen entry by
+    its condition, a `systemAlert` entry by its prompt and choice, a `tipKit` entry by its value.
+    Only a scenario's own `interrupts` are visible to codegen (the walk sees the scenario, not the
+    resolved config), matching how `permissions_setup_lines` emits only `scenario.permissions`.
     """
-    return [
-        f"// TODO: interrupts[{i}] "
-        f"{_collapse_line_terminators(str(entry.condition.model_dump(by_alias=True, exclude_none=True, exclude_defaults=True)))}"
-        " — bajutsu checks this opportunistically at run time; not generated"
-        for i, entry in enumerate(scenario.interrupts)
-        if isinstance(entry, Interrupt)
-    ]
+    lines: list[str] = []
+    for i, entry in enumerate(scenario.interrupts):
+        if isinstance(entry, Interrupt):
+            dumped = entry.condition.model_dump(
+                by_alias=True, exclude_none=True, exclude_defaults=True
+            )
+            what = _collapse_line_terminators(str(dumped))
+        elif isinstance(entry, SystemAlertInterrupt):
+            what = f"systemAlert: {entry.system_alert} → choice: {entry.choice}"
+        else:
+            what = f"tipKit: {entry.tip_kit}"
+        lines.append(
+            f"// TODO: interrupts[{i}] {what} — bajutsu checks this opportunistically at run time; "
+            "not generated"
+        )
+    return lines
 
 
 def indent_lines(lines: list[str], levels: int = 1) -> list[str]:

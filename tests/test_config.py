@@ -1531,7 +1531,7 @@ def test_target_interrupts_answer_a_prompt_once() -> None:
 def test_a_target_system_alert_entry_takes_no_target() -> None:
     # Only a screen entry carries `target` in a scenario; a target-level entry of any form has
     # nowhere for one to point, and a `target` beside `systemAlert` reads as a mixed entry.
-    with pytest.raises(ValidationError, match="mixes"):
+    with pytest.raises(ValidationError, match=r"a screen entry \(target\) and `systemAlert`"):
         load_config(
             "targets:\n  s:\n    platform: ios\n    subject: {id: com.x}\n"
             "    hooks: {interrupts: [{systemAlert: paste, choice: grant, target: s}]}\n"
@@ -1573,3 +1573,14 @@ def test_destination_blocks_resolve_to_the_target_conditions_and_state() -> None
     web = resolve(cfg, "w")
     assert web.conditions == {"browser.version": ">=17"}  # one engine is the default, not a list
     assert _web(web).device_mode == "iPhone 13"
+
+
+def test_a_tip_kit_entry_shares_through_defaults_hooks_on_an_all_ios_config() -> None:
+    # `defaults.platforms` has no `hooks`, but `defaults.hooks` merges into every target, so an
+    # all-iOS file states the entry once.
+    cfg = load_config(
+        "defaults: {hooks: {interrupts: [{tipKit: dismiss}]}}\n"
+        "targets:\n  a: {platform: ios, subject: {id: com.a}}\n  b: {platform: ios, subject: {id: com.b}}\n"
+    )
+    for name in ("a", "b"):
+        assert resolve(cfg, name).run_defaults.interrupts == [TipKitInterrupt(tipKit="dismiss")]

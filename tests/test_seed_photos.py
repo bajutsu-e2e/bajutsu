@@ -83,42 +83,47 @@ _SEED = "device: { ios: { seedPhotos: [/fixtures/red.png] } }"
 
 
 def test_seed_photos_without_erase_is_a_problem() -> None:
-    problems = check_preconditions(_pre(f"{{ {_SEED} }}"), [_eff()])
+    problems = check_preconditions(_pre(f"{{ {_SEED} }}"), [_eff()], interrupts=())
     assert len(problems) == 1
     assert "seedPhotos on target 'app' needs a wiped device" in problems[0]
 
 
 def test_seed_photos_with_the_scenario_erase_is_accepted() -> None:
     assert (
-        check_preconditions(_pre(f"{{ {_SEED}, subject: {{ reinstall: erase }} }}"), [_eff()]) == []
+        check_preconditions(
+            _pre(f"{{ {_SEED}, subject: {{ reinstall: erase }} }}"), [_eff()], interrupts=()
+        )
+        == []
     )
 
 
 def test_a_target_erase_satisfies_the_scenario_seed_photos() -> None:
     text = "targets:\n  app:\n    platform: ios\n    subject: { id: com.example.app, reinstall: erase }\n"
     eff = resolve(load_config(text), "app")
-    assert check_preconditions(_pre(f"{{ {_SEED} }}"), [eff]) == []
+    assert check_preconditions(_pre(f"{{ {_SEED} }}"), [eff], interrupts=()) == []
 
 
 def test_the_erase_flag_wins_over_the_scenario() -> None:
     pre = _pre(f"{{ {_SEED}, subject: {{ reinstall: erase }} }}")
-    assert check_preconditions(pre, [_eff()], erase_flag=False)
-    assert check_preconditions(_pre(f"{{ {_SEED} }}"), [_eff()], erase_flag=True) == []
+    assert check_preconditions(pre, [_eff()], erase_flag=False, interrupts=())
+    assert (
+        check_preconditions(_pre(f"{{ {_SEED} }}"), [_eff()], erase_flag=True, interrupts=()) == []
+    )
 
 
 def test_target_seed_photos_merge_under_the_scenario() -> None:
     eff = _eff("    runsOn: {ios: {seedPhotos: [/fixtures/green.png]}}\n")
     # The target's own list reaches a scenario that writes none, and needs the same erase.
     assert resolve_preconditions(eff, _pre("{}")).seed_photos == ["/fixtures/green.png"]
-    assert check_preconditions(_pre("{}"), [eff])
+    assert check_preconditions(_pre("{}"), [eff], interrupts=())
     # A scenario's list replaces the target's, so an empty one seeds nothing and needs no erase.
     empty = _pre("{ device: { ios: { seedPhotos: [] } } }")
     assert resolve_preconditions(eff, empty).seed_photos == []
-    assert check_preconditions(empty, [eff]) == []
+    assert check_preconditions(empty, [eff], interrupts=()) == []
 
 
 def test_no_seed_photos_needs_no_erase() -> None:
-    assert check_preconditions(Preconditions(), [_eff()]) == []
+    assert check_preconditions(Preconditions(), [_eff()], interrupts=()) == []
 
 
 def test_parse_seed_photos_in_yaml() -> None:

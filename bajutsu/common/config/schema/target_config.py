@@ -115,7 +115,8 @@ class TargetConfig(_Model):
     @model_validator(mode="after")
     def _tip_kit_needs_ios(self) -> TargetConfig:
         # TipKit is Apple's framework, and a field never goes ignored (BE-0452). `defaults.platforms`
-        # has no `hooks`, so a shared entry is written on each iOS target (an `x-` anchor shares it).
+        # has no `hooks`, so a shared entry goes once under `defaults.hooks.interrupts` when every
+        # target is iOS, and otherwise on each iOS target (an `x-` anchor shares it).
         if self.platform != "ios" and tip_kit_interrupt(self.hooks.interrupts) is not None:
             raise ValueError(
                 f"hooks.interrupts: a tipKit entry applies to iOS alone, not platform "
