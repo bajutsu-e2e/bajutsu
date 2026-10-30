@@ -41,7 +41,10 @@ target the scenario drives. Its fields:
   `subject.launch.env` / `.args` / `.deeplink`
 - `device.ios.locale` / `.seedPhotos`: the iOS device state, replacing the target's `runsOn.ios`
   values
-- `run.systemAlertHandling` / `.tipKitHandling` / `.inheritSetup`
+- `run.inheritSetup`: whether every declared target's `hooks.setup` runs first
+
+The OS prompts and TipKit tips a scenario answers are `systemAlert` and `tipKit` entries in its
+own `interrupts`, not preconditions.
 
 A precondition declares no device condition; the target's `runsOn` holds those.
 

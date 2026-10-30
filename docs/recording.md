@@ -349,15 +349,15 @@ class SystemAlertGuard:
 
 ### Usage in run / record
 
-- `run`: the guard is **on by default** per scenario — the CLI builds each enabled scenario an
+- `run`: the guard is **on by default** for every scenario — the CLI builds each scenario an
   `AlertGuardConfig` ([BE-0315](../roadmaps/BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md)),
   passed as `on_blocked`. On a backend that declares `HANDLE_SYSTEM_ALERT` (XCUITest), the guard
   prefers a deterministic native path: it reads the same SpringBoard query
   [`handleSystemAlert`](scenarios.md#handlesystemalert-the-deterministic-system-alert-step) (BE-0316)
-  uses, taps the button a scenario's rule names through `resolve_unique`, and needs no model
+  uses, taps the button a `systemAlert` entry names through `resolve_unique`, and needs no model
   call. Where nothing deterministic can act — a backend without the capability (adb, Playwright), an
-  alert no rule identifies, or a surface the query cannot enumerate that no rule identifies either
-  (the ones a rule does identify, the in-tree path taps) — the guard does
+  alert no entry identifies, or a surface the query cannot enumerate that no entry identifies either
+  (the ones an entry does identify, the in-tree path taps) — the guard does
   nothing ([BE-0402](../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md)),
   and what it saw rides the failure instead: a guarded `wait` always carries the note, and a blocked
   step outside a wait carries it only where the native query enumerated the alert — with no native
@@ -366,16 +366,21 @@ class SystemAlertGuard:
   ([run-loop](run-loop.md#run_scenario-running-one-scenario)). For a `wait` step
   (`for`/`gone`/`settled`/`screenChanged`), the native path is additionally polled on its own
   interval (default 1s, decoupled from the wait's own condition poll), so a blocked wait can recover
-  before its own timeout elapses instead of only at the end-of-step retry (BE-0269). A scenario sets
-  `systemAlertHandling: false` to opt out, or `{ rules: [{ prompt: notifications, choice: grant }] }`
-  to name a prompt the guard answers by its own choice — `rules` is the guard's whole declaration
-  ([BE-0406](../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts.md));
-  `{ visionInstruction: … }` reaches no path under `run` and is refused before any scenario starts.
-  `--system-alert-handling`/`--no-system-alert-handling` overrides every scenario, and
-  `--alert-poll-interval` supplies that one key for a single run. `rules` has no flag of its own.
+  before its own timeout elapses instead of only at the end-of-step retry (BE-0269). A scenario
+  names a prompt the guard answers, and the choice to make on it, with a `systemAlert` entry in its
+  `interrupts` (`- { systemAlert: notifications, choice: grant }`); the target's `hooks.interrupts`
+  takes the same entry for every scenario. These entries are the guard's whole declaration
+  ([BE-0406](../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts.md),
+  [BE-0473](../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts.md)).
+  A scenario turns off one inherited answer with `choice: leave` on that prompt. Only
+  `--no-system-alert-handling` turns the guard off, for every scenario of the run, and
+  `--alert-poll-interval` supplies the poll interval for a single run. A prompt and its choice have no
+  flag of their own.
 - `record --system-alert-handling`: on by default (authoring has no scenario yet). Clears prompts
   that interrupt authoring so the agent always sees a clean screen. **A dismissal is an environment
-  operation, not a recorded step** (replay handles it via each scenario's `systemAlertHandling`).
+  operation, not a recorded step** (replay handles it via the `systemAlert` entries of each
+  scenario's `interrupts`). The free text the vision guard reads comes from
+  `--alert-vision-instruction` alone; no config key carries it.
 
 > The vision guard needs `ANTHROPIC_API_KEY` ([.env in cli](cli.md#environment-variables-env));
 > without one it is **best-effort** and simply no-ops, never failing a run. That applies to

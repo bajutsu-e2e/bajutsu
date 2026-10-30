@@ -222,7 +222,7 @@ A `NavigationStack` (SwiftUI) / `UINavigationController` (UIKit). **The one scre
 intentionally raises OS-level alerts** (§7) — promoted to a top-level tab so the alert-guard
 flow is reached directly — plus a System section with a pasteboard round-trip.
 
-- `perm.requestNotif` — button → `UNUserNotificationCenter.requestAuthorization`. Raises the **SpringBoard notification prompt** (out-of-process; an in-app accessibility query cannot see it — cleared by the run's vision alert guard, or tapped "Allow" via `systemAlertHandling`).
+- `perm.requestNotif` — button → `UNUserNotificationCenter.requestAuthorization`. Raises the **SpringBoard notification prompt** (out-of-process; an in-app accessibility query cannot see it — tapped "Allow" by the run's alert guard through a `{ systemAlert: notifications, choice: grant }` interrupts entry).
 - `perm.notif.value` — `notDetermined`/`authorized`/`denied`
 - `perm.notif.authorized` — element shown only once granted (gives the run a positive condition to wait for)
 - `perm.requestLocation` — button → `CLLocationManager.requestWhenInUseAuthorization`. Raises the **system location prompt** (also SpringBoard).
@@ -373,7 +373,7 @@ Uses the standard in-app collector integration (iOS: BajutsuKit; Android: Bajuts
   startup — only on explicit taps inside the **Permissions** tab (§5.4).
 - **The deliberate alerts** live only on the **Permissions** tab: the notification prompt and the
   location prompt. Both are SpringBoard (out-of-process) — invisible to any in-app accessibility query —
-  so they are the canonical fixture for the run's **vision alert guard** / `systemAlertHandling`
+  so they are the canonical fixture for the run's **alert guard** and its `systemAlert` interrupts entries
   ([`permission.yaml`](scenarios/permission.yaml) is this fixture's scenario). Reading a pasteboard
   seeded by another process raises a third on that same tab — the paste-consent prompt, answered
   natively by [`paste_system_alert.yaml`](scenarios/paste_system_alert.yaml)'s `handleSystemAlert`

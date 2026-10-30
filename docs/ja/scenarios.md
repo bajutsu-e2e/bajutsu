@@ -70,7 +70,7 @@ scenarios:
 | `mocks` | list | `[]` | 決定的なネットワークスタブ。一致する送信リクエストには、ネットワークへ行かず定型レスポンスを返す（[ネットワークモック](#ネットワークモック決定的スタブ)） |
 | `redact` | object | なし | 証跡を書き出す前に適用するマスク（[evidence](evidence.md#マスキングredact)） |
 | `permissions` | dict | `{}` | 宣言的な OS 権限の状態（`{ <service>: grant \| revoke }`）。**アプリの起動前**に適用する（[下記](#permissions起動前の権限状態)） |
-| `interrupts` | list | `[]` | **予測できない時点**で現れる差し込み画面のハンドラ。各エントリは `{ condition, steps }` で、画面が現れた場所を問わず随時判定する（[下記](#interrupts予測できない差し込み画面への対処)） |
+| `interrupts` | list | `[]` | **予測できない時点**で現れるもののハンドラ。エントリは 3 つの形のどれかをとる。画面の `{ condition, steps }` は、画面が現れた場所を問わず随時判定する（[下記](#interrupts予測できない差し込み画面への対処)）。システムアラートの `{ systemAlert, choice }`（[下記](#systemalert-エントリシステムアラートガード)）と、TipKit の tip の `{ tipKit }`（[下記](#tipkit-エントリ操作をブロックする-tipkit-の-tip)）もある |
 
 ```yaml
 - name: filter narrows the catalog
@@ -102,11 +102,15 @@ scenarios:
 `device` は、シナリオが適用するデバイスの状態を宛先ごとに持ちます。宛先は `device.ios` だけです
 （[BE-0469](../../roadmaps/BE-0469-runson-destination-blocks/BE-0469-runson-destination-blocks-ja.md)）。
 シナリオに書いたフィールドは、ターゲットの [config](configuration.md) の同じフィールドを上書きします。
-例外は次の 3 つです。
+例外は次の 2 つです。
 
 - `subject.launch.env` はキーごとにマージします。
 - `subject.launch.args` はターゲットの引数の後ろに追記します。
-- `run.systemAlertHandling` の規則は連結し、シナリオの規則を先に照合します。
+
+システムアラートガードと TipKit ガードは前提条件ではありません。シナリオはどちらも、自身の
+[`interrupts`](#interrupts予測できない差し込み画面への対処) のエントリとして宣言します。このエントリは、
+ターゲットの `hooks.interrupts` に重ねて適用されます。削除した `preconditions.run.systemAlertHandling` と
+`preconditions.run.tipKitHandling` は、読み込み時に失敗します。エラーは新しい置き場所を示します（[BE-0473](../../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts-ja.md)）。
 
 ```yaml
 preconditions:
@@ -115,7 +119,6 @@ preconditions:
     launch: { env: { FEATURE_X: "1" }, args: ["-debug"], deeplink: "showcase://cart" }
   device:
     ios: { locale: ja_JP, seedPhotos: [photos/cat.jpg] }
-  run: { tipKitHandling: true }
 ```
 
 | キー | 型 | 既定 | 説明 |
@@ -126,8 +129,6 @@ preconditions:
 | `subject.launch.deeplink` | str | 未設定（ターゲットの `subject.launch.deeplink`） | 起動後にアプリが開く URL です（iOS は `simctl openurl`、Android は intent） |
 | `device.ios.locale` | str | 未設定（ターゲットの `runsOn.ios.locale`） | 起動時の locale と言語を強制し（`-AppleLocale` / `-AppleLanguages`）、Simulator のシステム言語も固定します。ターゲットと異なる値は cold respawn を強制します |
 | `device.ios.seedPhotos` | list[str] | 未設定（ターゲットの `runsOn.ios.seedPhotos`） | erase の経路で、Simulator の写真ライブラリに順に投入する画像です。パスはシナリオファイルを基準に解決します。シナリオのリストはターゲットのリストを置き換えます |
-| `run.systemAlertHandling` | bool / object | 未設定（ON） | リアクティブなアラートガードです（[下記](#systemalerthandlingシステムアラートガード)） |
-| `run.tipKitHandling` | bool | 未設定（ターゲットの `run.tipKitHandling`、次にオフ） | 操作をブロックしている Apple TipKit の tip を閉じます（iOS 専用。[下記](#tipkithandling操作をブロックする-tipkit-の-tip)） |
 | `run.inheritSetup` | bool | `true` | `false` にすると、このシナリオが宣言する全ターゲットの `hooks.setup` を省きます。各ターゲットの `hooks.cleanup` は走ります（[後述](#setup--cleanupセットアップとティアダウンのフェーズ)） |
 
 シナリオは、アプリを識別したりビルドしたりするフィールド（`id`、`path`、`build`、`startWhen`、
@@ -135,9 +136,9 @@ preconditions:
 ままなので、シナリオからは設定できません。
 
 > **各フィールドは、デバイスを操作する前に、シナリオが動かすターゲットと照合します。** 動かすどの
-> ターゲットのプラットフォームにもない `subject` のフィールドや、iOS 専用の `run` のフィールドは、無視せずに
-> フィールド名を示して run を失敗させます。Web だけのシナリオの `subject.launch.args` や、Android
-> ターゲットだけに対する `run.tipKitHandling` が該当します。各ターゲットは自分のプラットフォームが持つ
+> ターゲットのプラットフォームにもない `subject` のフィールドは、無視せずにフィールド名を示して run を
+> 失敗させます。Web だけのシナリオの `subject.launch.args` が該当します。iOS のターゲットを 1 つも
+> 動かさないシナリオが `interrupts` に `tipKit` エントリを書いた場合も、同じように失敗します。各ターゲットは自分のプラットフォームが持つ
 > `subject` のフィールドだけを適用します。そのため、iOS と Web をまたぐシナリオは、iOS 側のために
 > `subject.launch.args` を書けます。単一プラットフォームの複数のターゲットが `paths.scenarios` から同じ
 > シナリオファイルを読む場合、そのファイルは `targets` を宣言するか、該当するターゲットだけが読む
@@ -204,6 +205,8 @@ targets: [app-ipad]
 > `preconditions.runsOn` は、iOS の `locale` と `seedPhotos` を `device.ios` に移し、条件を捨てます。
 > 条件は、その run が使うデバイスをすでに選び終えているからです。保存された `preconditions.erase` や
 > `preconditions.run.erase: true` は `subject.reinstall: erase` になり、保存された `false` は捨てます。
+> 保存された `preconditions.run.systemAlertHandling` は、規則 1 つにつき 1 つの `systemAlert` エントリとして
+> シナリオの `interrupts` に入ります。保存された `run.tipKitHandling` は `tipKit` エントリになります。
 
 どの環境でも、すべての前提条件を適用できるわけではありません。実機の iPhone では `simctl erase` を実行できず、
 ブラウザには `subject.launch.env` を渡すアプリの起動がありません。ターゲットの環境が前提条件を適用できないとき、
@@ -211,21 +214,38 @@ targets: [app-ipad]
 （[設定](configuration.md#環境ごとの設定runignoredsettingsbe-0467)）。`bajutsu lint --config <file> --target <name>` は、
 同じ指摘をデバイスなしで報告します（[cli](cli.md#lint)）。
 
-## tipKitHandling（操作をブロックする TipKit の tip）
+## tipKit エントリ（操作をブロックする TipKit の tip）
 
-`preconditions.run.tipKitHandling: true` は、操作をブロックしている Apple **TipKit** の tip を閉じます。
+シナリオの `interrupts` に書く `tipKit` エントリは、TipKit ガードを有効または無効にします。ガードは、
+操作をブロックしている Apple **TipKit** の tip を閉じます。
+
+```yaml
+interrupts:
+  - tipKit: dismiss
+```
+
+エントリがとる値は次の 2 つです。
+
+- `dismiss` はガードを有効にします。
+- `leave` はガードを無効にし、ターゲットの `hooks.interrupts` にある `tipKit` エントリを打ち消します。
+  tip 自体がシナリオの検証対象になる場合があり、ガードはその tip を閉じてしまうからです。
+
+シナリオとターゲットのどちらも `tipKit` エントリを書かなければ、ガードは**オフ**です。CLI の
+`--ios-tipkit-handling` / `--no-ios-tipkit-handling` は、両方の層より優先します。1 つの層に書ける
+`tipKit` エントリは 1 つだけで、2 つ目は読み込み時に失敗します。ガードは iOS 専用です。iOS の
+ターゲットを動かさないシナリオに `tipKit` エントリがあると、デバイスを操作する前に失敗します。
+
 tip はフレームワークが所有する popover です。このガードがあれば、同じ回避策をシナリオごとに手で書かずに
 済みます。ガードは tip を、閉じるための scrim（`PopoverDismissRegion`）とその tip 自身のコンテナ
 （`TipView`）の両方で判定します。ごく普通の `confirmationDialog` も同一の scrim を設置するので、
-そちらには手を触れないようにする必要があるからです。同じ理由で、tip 向けの `interrupts` エントリを
+そちらには手を触れないようにする必要があるからです。同じ理由で、tip 向けに画面の形の `interrupts` エントリを
 手で書く場合は `TipView` を手がかりにします。`TipView` は TipKit 自身のコンテナです。SwiftUI と
-UIKit のどちらの表示でも、存在を計測で確認済みです。このフィールドは iOS 専用で、既定は**オフ**です。
-tip 自体がシナリオの検証対象になる場合があるからです。CLI の `--ios-tipkit-handling` /
-`--no-ios-tipkit-handling` が優先します。
+UIKit のどちらの表示でも、存在を計測で確認済みです。
+（[`demos/showcase/scenarios/tipkit.yaml`](../../demos/showcase/scenarios/tipkit.yaml) 実物）
 
-## systemAlertHandling（システムアラートガード）
+## systemAlert エントリ（システムアラートガード）
 
-iOS バックエンドは **SpringBoard レベルのプロンプト**（通知や App Tracking Transparency のリクエスト、"Allow Paste" など）を見ることも tap することもできません。これらのプロンプトはアプリを覆って要素ツリーを潰し、ステップを静かにブロックします。**アラートガード**がこれをリアクティブに片付けます。iOS の XCUITest バックエンドでは**決定論的なネイティブ経路**をとります（BE-0315）。BE-0316 の SpringBoard 照会を再利用してアラートが提示するボタンを把握し、規則が名指しするボタンを押します。スクリーンショットもモデルへの往復も使わないため、頻出するプロンプトを 0.1 秒を大きく下回る時間で片付け、`ANTHROPIC_API_KEY` が**なくても**動作します。決定論的な経路がどれも対処できない場合（capability を持たないバックエンド、どの規則も同定しないアラート、SpringBoard の照会が列挙できず、しかもどの規則も同定しない画面。規則が同定するものは、後述のツリー内の経路が片付けます）、**ガードは何もしません**（[BE-0402](../../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback-ja.md)）。ブロックされたステップまたは `wait` は、ガードを設定していないときとまったく同じように自身のタイムアウトまで進み、そのタイムアウトが**ガードの見たものを名指しします**。`wait timeout: for {'id': 'submit'} (10.0s) — an unhandled system alert is blocking the screen (buttons: Allow, Don't Allow)` の形、何も列挙できなかった場合は `… — the screen appears blocked, possibly by a system alert or another overlay outside the app's view` という曖昧な形です。BE-0402 より前は、この場合にスクリーンショットを読む AI 視覚ガードへフォールバックしていました。`run` はもうそれをしないため、**どのフラグを付けてもモデルに到達しません**。（`record` と `crawl` はオーサリング向けにそのガードを保持します。[詳細](recording.md#システムアラートの自動対処)）`wait` ステップ（`for`/`gone`/`settled`/`screenChanged`）では、ガードは **wait の途中でも**働きます。XCUITest では wait 自身のツリー読み取りのたびに、ツリーを返す前に規則が名指しするプロンプトへ答えます。SpringBoard の確認は `pollInterval`（既定は 1 秒）につき 1 回までです（[BE-0461](../../roadmaps/BE-0461-request-boundary-alert-resolution/BE-0461-request-boundary-alert-resolution-ja.md)）。そのため wait 自体のタイムアウトを待たず、ステップが失敗する前に回復できます（BE-0269）。
+iOS バックエンドは **SpringBoard レベルのプロンプト**（通知や App Tracking Transparency のリクエスト、"Allow Paste" など）を見ることも tap することもできません。これらのプロンプトはアプリを覆って要素ツリーを潰し、ステップを静かにブロックします。**アラートガード**がこれをリアクティブに片付けます。iOS の XCUITest バックエンドでは**決定論的なネイティブ経路**をとります（BE-0315）。BE-0316 の SpringBoard 照会を再利用してアラートが提示するボタンを把握し、`systemAlert` エントリが名指しするボタンを押します。スクリーンショットもモデルへの往復も使わないため、頻出するプロンプトを 0.1 秒を大きく下回る時間で片付け、`ANTHROPIC_API_KEY` が**なくても**動作します。決定論的な経路がどれも対処できない場合（capability を持たないバックエンド、どのエントリも同定しないアラート、SpringBoard の照会が列挙できず、しかもどのエントリも同定しない画面。エントリが同定するものは、後述のツリー内の経路が片付けます）、**ガードは何もしません**（[BE-0402](../../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback-ja.md)）。ブロックされたステップまたは `wait` は、ガードを設定していないときとまったく同じように自身のタイムアウトまで進み、そのタイムアウトが**ガードの見たものを名指しします**。`wait timeout: for {'id': 'submit'} (10.0s) — an unhandled system alert is blocking the screen (buttons: Allow, Don't Allow)` の形、何も列挙できなかった場合は `… — the screen appears blocked, possibly by a system alert or another overlay outside the app's view` という曖昧な形です。BE-0402 より前は、この場合にスクリーンショットを読む AI 視覚ガードへフォールバックしていました。`run` はもうそれをしないため、**どのフラグを付けてもモデルに到達しません**。（`record` と `crawl` はオーサリング向けにそのガードを保持します。[詳細](recording.md#システムアラートの自動対処)）`wait` ステップ（`for`/`gone`/`settled`/`screenChanged`）では、ガードは **wait の途中でも**働きます。XCUITest では wait 自身のツリー読み取りのたびに、ツリーを返す前にエントリが名指しするプロンプトへ答えます。SpringBoard の確認は `pollInterval`（既定は 1 秒）につき 1 回までです（[BE-0461](../../roadmaps/BE-0461-request-boundary-alert-resolution/BE-0461-request-boundary-alert-resolution-ja.md)）。そのため wait 自体のタイムアウトを待たず、ステップが失敗する前に回復できます（BE-0269）。
 
 XCUITest バックエンドでは、画面が止まったときに `for` と `screenChanged` の wait を早めに打ち切ります。止まった画面とは、読み取り自身の SpringBoard 確認がアラートなしと答えているのに、アプリケーション自身を除くどの要素も、ラベルと識別子のどちらも 10 秒間持たない状態です。iOS 26.5 の Simulator で、この状態を計測しました。iOS が Save Password アラートを提示する瞬間に通知の許諾リクエストが重なると、このアラートが提示の途中で止まることがあります。止まったアラートは描画されず、どのプロセスのアクセシビリティツリーにも現れませんが、アプリの上でモーダルのまま残ります。ガードが届く手段ではこのアラートを閉じられないため、wait は自身のタイムアウトまで待たずに、次の理由で失敗します。
 
@@ -233,48 +253,43 @@ XCUITest バックエンドでは、画面が止まったときに `for` と `sc
 wait stopped: for {'id': 'Close'} after 10.4s — no element below the application has carried a label or identifier for 10s while no system alert is up — …
 ```
 
-この打ち切りは、`rules` に `savePassword` のようなアプリ内のプロンプトを宣言したシナリオに限ります。それ以外のシナリオでは、長く空のツリーがアプリ自身のラベルのない読み込み画面である可能性があるため、wait は従来どおり自身のタイムアウトまで待ちます。ラベルのない読み込み画面が 10 秒を超えうるアプリでは、`frozenScreenTimeout` で上限を延ばせます。`0` を指定すると打ち切りは無効になります。`gone` と `settled` の wait は、止まったツリーで条件を満たしてしまうため、この打ち切りの対象外です。`handleSystemAlert` ステップも対象外です。このステップは SpringBoard を待っており、プロンプトがあとから出る可能性があるためです。
+この打ち切りが有効になるのは、`savePassword` のようにアプリ自身のツリーに出るプロンプトへ答える `systemAlert` エントリがあるときに限ります。それ以外では、長く空のツリーがアプリ自身のラベルのない読み込み画面である可能性があるため、wait は従来どおり自身のタイムアウトまで待ちます。ラベルのない読み込み画面が 10 秒を超えうるアプリでは、そのエントリの `frozenScreenTimeout` で上限を延ばせます。`0` を指定すると打ち切りは無効になります。`gone` と `settled` の wait は、止まったツリーで条件を満たしてしまうため、この打ち切りの対象外です。`handleSystemAlert` ステップも対象外です。このステップは SpringBoard を待っており、プロンプトがあとから出る可能性があるためです。
 
-これは **既定で ON** です。XCUITest ではステップがすでに行う読み取りに相乗りし、成功するステップは再試行を受けません。そのため、成功するシナリオが払うのは `pollInterval` あたり最大 1 回の SpringBoard 確認だけです。`ANTHROPIC_API_KEY` は**不要**で、参照もしません。シナリオごとに動作を変えるには `preconditions.run.systemAlertHandling` を使います。この値はターゲットの `run.systemAlertHandling` を上書きします。CLI の `--system-alert-handling` / `--no-system-alert-handling` は、その両方を上書きします。
+これは **既定で ON** です。XCUITest ではステップがすでに行う読み取りに相乗りし、成功するステップは再試行を受けません。そのため、成功するシナリオが払うのは `pollInterval` あたり最大 1 回の SpringBoard 確認だけです。`ANTHROPIC_API_KEY` は**不要**で、参照もしません。シナリオはガード全体を無効にできません。1 つのプロンプトを `choice: leave` で名指しして、そのプロンプトだけを放置します。ガード全体を無効にできるのは `--no-system-alert-handling` フラグだけで、その run のすべてのシナリオに効きます。
 
-**`rules` がガードの宣言のすべてです**（[BE-0406](../../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md)）。シナリオは、現れると見込むプロンプトと、それぞれに返す選択を書きます。どの応答経路も、その宣言だけを見て一致を判定します。BE-0401 が導入した順序付きの `labels` は BE-0406 で削除しました。ボタンのラベルが名指しするのはボタンであって、そのボタンが載っているアラートではありません。「Cancel」も「Close」もアプリの通常の語彙ですから、ラベルはシナリオが記述していない画面へのタップまで許してしまっていたのです。`visionInstruction` は vision フォールバックを方向づけていましたが、いまはどのコマンドにも届きません。**`run` はこれを拒否し**（後述）、`record` と `crawl` は自由記述を自身の `--alert-vision-instruction` フラグからだけ読み、シナリオからは読みません。ON と OFF は真偽値が担うので、マッピングを書けば常に ON です。
+**`systemAlert` エントリがガードの宣言のすべてです**（[BE-0406](../../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md)、[BE-0473](../../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts-ja.md)）。シナリオは、現れると見込むプロンプトと、それぞれに返す選択を書きます。どの応答経路も、その宣言だけを見て一致を判定します。どのエントリも名指ししないプロンプトのアラートには、ガードは手を触れません。BE-0401 が導入した順序付きの `labels` は BE-0406 で削除しました。ボタンのラベルが名指しするのはボタンであって、そのボタンが載っているアラートではありません。「Cancel」も「Close」もアプリの通常の語彙ですから、ラベルはシナリオが記述していない画面へのタップまで許してしまっていたのです。シナリオには、自由記述で答えを書くキーがありません。`run` はモデルに到達しないからです（[BE-0402](../../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback-ja.md)）。`record` と `crawl` は、自由記述の答えを自身の `--alert-vision-instruction` フラグからだけ読みます。
 
-次の形は、どれも `preconditions.run` の下に書きます。
+エントリは `systemAlert` と `choice` を持ち、省略できる調整値を 2 つ持てます。
 
-| 形 | 意味 |
-|---|---|
-| （省略） | ON。ただしガードは自分からはどのプロンプトにも答えず、出会ったアラートをブロックされたステップの失敗理由に書き出す |
-| `systemAlertHandling: false` | このシナリオでは無効 |
-| `systemAlertHandling: { rules: [{ prompt: notifications, choice: grant }] }` | ON。**名指しした対応済みプロンプト**に、他のプロンプトとどのラベルを共有していても、その規則自身の選択で答える |
-| `systemAlertHandling: { visionInstruction: "tap Allow" }` | **どのコマンドにも届きません。** `run` は黙って無視せず、**どのシナリオも実行する前に失敗します**（[BE-0402](../../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback-ja.md)）。`record` と `crawl` はシナリオのこのキーを読みません。スキーマが残しているのは、書いてしまったファイルにこのメッセージを返すためだけです |
-| `systemAlertHandling: { pollInterval: 2 }` | ON。SpringBoard の確認を、既定の 1 秒ではなく最大 2 秒に 1 回にする |
-| `systemAlertHandling: { frozenScreenTimeout: 30 }` | ON。ガード対象の wait が止まった画面で打ち切るまでの時間を、デフォルトの 10 秒ではなく 30 秒にする（`0` で打ち切りを無効にする） |
+| キー | 値 | 意味 |
+|---|---|---|
+| `systemAlert` | `notifications`、`tracking`、`paste`、`savePassword`、`localNetwork` | エントリが答える**名指しした対応済みプロンプト**です。他のプロンプトとどのラベルを共有していても区別します。1 つの層に書けるのは 1 つのプロンプトにつき 1 エントリだけで、2 つ目は読み込み時に失敗します |
+| `choice` | `grant`、`deny`、`leave` | ガードが押すボタンを、ラベルではなく意味で指定します。`leave` は何にも答えません。ターゲットがそのプロンプトに与える答えを、このシナリオでは無効にします |
+| `pollInterval` | 秒（0 より大きい値） | wait の保留中に SpringBoard を確認する間隔の下限です。デフォルトは 1 秒です（[層の重ね方](#層の重ね方1-つのキーは-3-か所から届く)） |
+| `frozenScreenTimeout` | 秒（0 以上） | ガード対象の wait が止まった画面で打ち切るまでの時間です。デフォルトは 10 秒で、`0` で打ち切りを無効にします。書けるのは、アプリ自身のツリーで答えるプロンプトのエントリだけです。いまは `savePassword` が該当します |
+
+これらのキーに、別の形のキー（`condition` や `tipKit` など）を混ぜたエントリは読み込み時に失敗し、エラーは両方の形を示します。
 
 ```yaml
 - name: grant notification permission
-  preconditions:
-    run:
-      systemAlertHandling:
-        rules:
-          - prompt: notifications
-            choice: grant       # accept the prompt instead of leaving it alone
+  interrupts:
+    - systemAlert: notifications
+      choice: grant       # accept the prompt instead of leaving it alone
   steps:
     - tap:  { id: sys.requestNotif }
     - wait: { for: { id: sys.notif.authorized }, timeout: 4 }   # the guard taps Allow, then this passes
 ```
 
-許可は規則で書いてください。`visionInstruction` はシナリオからどのコマンドにも届かないため、`run` の下では実行できない答えを名指しすることになります。プロンプトをそのまま残してファイルが許可と書いた相手を**拒否**するのではなく、`run` はどのシナリオも実行する前に呼び出し全体を拒否します。BE-0401 が単一の `instruction` キーを分割してこの反転を可視化し、BE-0402 が反転に到達する最後の道筋を取り除きました。
-
-ツリー内のタップで届くプロンプトに規則を書くと、iOS ではもう 1 つ、ツリー内の経路も有効になります。相手は SpringBoard のアラートではありません。いま対応しているのは `savePassword` の 1 つだけです。iOS はこの「パスワードを保存」アラートを**アプリ自身の**プロセスに出すので、そのボタンはラベルを持ち識別子を持たない形で要素ツリーに現れ、SpringBoard の照会には決して映りません。つまりツリー内のタップだけが、これを片付けられます。
+ツリー内のタップで届くプロンプトにエントリを書くと、iOS ではもう 1 つ、ツリー内の経路も有効になります。相手は SpringBoard のアラートではありません。いま対応しているのは `savePassword` の 1 つだけです。iOS はこの「パスワードを保存」アラートを**アプリ自身の**プロセスに出すので、そのボタンはラベルを持ち識別子を持たない形で要素ツリーに現れ、SpringBoard の照会には決して映りません。つまりツリー内のタップだけが、これを片付けられます。
 
 runner はこのタップを読み取りの中で行い、しかも同じ読み取りでの新たな SpringBoard 確認が空だったときに限ります。XCUITest は要素への操作を合成する前に、割り込んでいるプロセス外のアラートを解決してしまい、アプリのツリーからはそのアラートが見えないからです。したがって 2 つのプロンプトが同時に出ているときは、まず SpringBoard のアラートに答え、そのあとでアプリ側のアラートをツリーから片付けます。
 
-割り込んできたアラートがどのボタンを受け取るかも、利用者の方針が決めます。XCUITest は割り込まれた操作より先にそのアラートを解決し、放っておけばアラート自身の**デフォルト**ボタンで答えます。`rules` が拒否したはずの権限を許可し、しかも実行結果には何も残りません。そこで runner は、`rules` が名指ししたボタンを押す割り込み監視を入れます。判定の作法はネイティブ経路と同じで、押した結果は通常のアラートイベントとして報告されます。この監視が決して出会えない規則は、送らずに落とします。`savePassword` は別プロセスの操作に割り込むことがないからです。どの規則も同定しないアラートは、従来どおり XCUITest 自身の既定ハンドラに委ねられ、この tap 自体は変えられません。変わるのは沈黙のほうです。その割り込みに遭遇したステップや `expect` は、あなたに代わって何かが答えたかのように続けるのではなく、アラートが差し出したボタン名を添えて失敗します。
+割り込んできたアラートがどのボタンを受け取るかも、利用者の方針が決めます。XCUITest は割り込まれた操作より先にそのアラートを解決し、放っておけばアラート自身の**デフォルト**ボタンで答えます。エントリが拒否したはずの権限を許可し、しかも実行結果には何も残りません。そこで runner は、エントリが名指ししたボタンを押す割り込み監視を入れます。判定の作法はネイティブ経路と同じで、押した結果は通常のアラートイベントとして報告されます。この監視が決して出会えないエントリは、送らずに落とします。`savePassword` は別プロセスの操作に割り込むことがないからです。どのエントリも同定しないアラートは、従来どおり XCUITest 自身の既定ハンドラに委ねられ、この tap 自体は変えられません。変わるのは沈黙のほうです。その割り込みに遭遇したステップや `expect` は、あなたに代わって何かが答えたかのように続けるのではなく、アラートが差し出したボタン名を添えて失敗します。
 （[`demos/showcase/scenarios/save_password_browser.yaml`](../../demos/showcase/scenarios/save_password_browser.yaml) 実物）
 
-規則が名指しするのはプロンプトです。ガードは、そのプロンプトを画面上で同定できたときにだけ押します。同定に使うラベルがすべて、それぞれちょうど 1 つずつ揃っている必要があります。どの規則も同定しなかったアラートには手を触れず、ブロックされたステップ自身の失敗理由に書き出します。当て推量のボタンを押すことはありません。
+エントリが名指しするのはプロンプトです。ガードは、そのプロンプトを画面上で同定できたときにだけ押します。同定に使うラベルがすべて、それぞれちょうど 1 つずつ揃っている必要があります。どのエントリも同定しなかったアラートには手を触れず、ブロックされたステップ自身の失敗理由に書き出します。当て推量のボタンを押すことはありません。
 
-CLI の `--system-alert-handling` / `--no-system-alert-handling` フラグは**全シナリオを上書き**します。無指定ならシナリオごとの既定が使われます。その run にだけキーを与えるフラグは `--alert-poll-interval` の 1 つだけです。入る位置はシナリオとターゲット config の中間です（後述の[層の重ね方](#層の重ね方1-つのキーは-3-か所から届く)を参照）。
+CLI の `--no-system-alert-handling` フラグは**全シナリオでガードを無効に**し、`--system-alert-handling` は有効に戻します。その run にだけポーリング間隔を与えるフラグは `--alert-poll-interval` です。入る位置はシナリオとターゲット config の中間です（後述の[層の重ね方](#層の重ね方1-つのキーは-3-か所から届く)を参照）。
 （[`demos/showcase/scenarios/permission.yaml`](../../demos/showcase/scenarios/permission.yaml) 実物）
 
 ### プロンプトに答える代わりに出さないようにする
@@ -294,13 +309,13 @@ targets:
 
 - **通知**は、`xcrun simctl privacy` が許可できるプライバシーサービスではありません（[BE-0276](../../roadmaps/BE-0276-scenario-permission-state/BE-0276-scenario-permission-state-ja.md)）。
 - **App Tracking Transparency（ATT）**も、`simctl privacy` のサービスにはありません。このコマンド自身のサービス一覧に載っていないことを確認しています。
-- **パスワードの保存**は、Simulator の「パスワードを自動入力」の設定に左右されます。実行前にこの設定を切る、サポートされた方法は見つかりませんでした。そのためシナリオは `savePassword` の規則で答えます（[BE-0461](../../roadmaps/BE-0461-request-boundary-alert-resolution/BE-0461-request-boundary-alert-resolution-ja.md)）。
+- **パスワードの保存**は、Simulator の「パスワードを自動入力」の設定に左右されます。実行前にこの設定を切る、サポートされた方法は見つかりませんでした。そのためシナリオは `savePassword` のエントリで答えます（[BE-0461](../../roadmaps/BE-0461-request-boundary-alert-resolution/BE-0461-request-boundary-alert-resolution-ja.md)）。
 
 ### 通知バナーはタップせずスワイプで消す
 
-フォアグラウンドの**通知バナー**は、システムアラートと同じようにステップへ割り込みます。答えるのも同じ割り込み監視です。ただし `rules` が答えることはありません（[BE-0416](../../roadmaps/BE-0416-ios-notification-banner-swipe-dismiss/BE-0416-ios-notification-banner-swipe-dismiss.md)）。
+フォアグラウンドの**通知バナー**は、システムアラートと同じようにステップへ割り込みます。答えるのも同じ割り込み監視です。ただし `systemAlert` エントリが答えることはありません（[BE-0416](../../roadmaps/BE-0416-ios-notification-banner-swipe-dismiss/BE-0416-ios-notification-banner-swipe-dismiss.md)）。
 
-バナーはアラートではありません。規則が名指しできるボタンを 1 つも持ちません。タップできる領域は 1 つだけで、そこに載っているのは通知本文です。その領域を押すと通知元のアプリが開き、実行中のシナリオから離れてしまいます。
+バナーはアラートではありません。エントリが名指しできるボタンを 1 つも持ちません。タップできる領域は 1 つだけで、そこに載っているのは通知本文です。その領域を押すと通知元のアプリが開き、実行中のシナリオから離れてしまいます。
 
 そこで runner は、バナー自身の実測フレームを起点に上方向へスワイプします。runner がそのフレームを読むのは、バナーが静止してからです。滑り込んでいる途中のバナーはフレームが画面より上にあり、そこを起点にしたスワイプは下向きに動いてしまうからです。そのうえで、割り込みを引き受けたと宣言する前に、バナーが消えたことを確認します。バナーが消えれば、ステップの操作はシナリオが名指しした要素に着弾します。
 
@@ -310,34 +325,31 @@ targets:
 
 10 秒待ってもまだ表示されているバナーは、この記録を残しません。runner 自身の出力にログを書き、バナーを XCUITest に返します。一時的な形式のバナーは、たいていこの待機のうちに消えます。一方、常駐する形式のバナーは自動では消えないため、XCUITest への引き渡しに至ることがあります。iOS 26.5 では、返すことで runner が止まる場合もあります。
 
-バナーについて宣言できることは何もありません。この経路は `systemAlertHandling` の有無にかかわらず動きます。BE-0416 より前は、ガードが有効な実行でバナーがアラート経路に入っていました。どの規則にも一致せず、ステップは失敗しました。その理由には、期待したボタンとして通知本文が並びました。
+バナーについて宣言できることは何もありません。この経路は、アラートガードが有効かどうかにかかわらず動きます。BE-0416 より前は、ガードが有効な実行でバナーがアラート経路に入っていました。どのエントリにも一致せず、ステップは失敗しました。その理由には、期待したボタンとして通知本文が並びました。
 
 この割り込み監視が答えるのは、何かに割り込んでいるバナーだけです。ただの問い合わせでは監視は起動しないため、何もタップしていない画面に居座るバナーは消えません。放置すると、`after.png` と、そこから作るビジュアルリグレッションの比較画像がそのまま壊れます。
 
-この隙間を塞ぐのが、もう 1 つの能動的な掃除です。runner はバナーがないかを確認し、あればスクリーンショットを撮る直前にスワイプで消します。確認するのは 3 か所です。1 ステップにつき 1 回のそのスクリーンショット、`visual` アサーションが読む `expect` フェーズの撮影、そしてステップ自身の `assert` が持つ `visual` エントリ自身の撮影です（後述）。1 ステップにつき 1 回の照会は `systemAlertHandling` 自身が解決したポーリング間隔でレート制限しているため、通るシナリオが払うコストはステップごとではなく間隔ごとに 1 回です。`expect` フェーズとステップレベルの撮影は、それぞれステップよりずっと少ない頻度でしか動かないため、無条件に照会します。上記の割り込み経路と同じく、この 3 か所とも、シナリオや CLI 側のトグルは持たず、iOS の XCUITest バックエンドだけで動きます。
+この隙間を塞ぐのが、もう 1 つの能動的な掃除です。runner はバナーがないかを確認し、あればスクリーンショットを撮る直前にスワイプで消します。確認するのは 3 か所です。1 ステップにつき 1 回のそのスクリーンショット、`visual` アサーションが読む `expect` フェーズの撮影、そしてステップ自身の `assert` が持つ `visual` エントリ自身の撮影です（後述）。1 ステップにつき 1 回の照会はアラートガード自身が解決したポーリング間隔でレート制限しているため、通るシナリオが払うコストはステップごとではなく間隔ごとに 1 回です。`expect` フェーズとステップレベルの撮影は、それぞれステップよりずっと少ない頻度でしか動かないため、無条件に照会します。上記の割り込み経路と同じく、この 3 か所とも、シナリオや CLI 側のトグルは持たず、iOS の XCUITest バックエンドだけで動きます。
 
-### 複数のプロンプトに違う答えを返す: `rules`
+### 複数のプロンプトに違う答えを返す
 
-1 つのオンボーディングの流れが複数のプロンプトに出会い、それぞれに違う答えを返したい場面はよくあります。1 つの規則は、対応済みのプロンプト 1 つと選択 1 つを組にします。語彙は `handleSystemAlert` 自身の `prompt` / `choice` をそのまま再利用します。こうして、ファイルには「押されても構わない語」ではなく「現れると見込むプロンプト」が書かれます。
+1 つのオンボーディングの流れが複数のプロンプトに出会い、それぞれに違う答えを返したい場面はよくあります。1 つの `systemAlert` エントリは、対応済みのプロンプト 1 つと選択 1 つを組にします。語彙は `handleSystemAlert` 自身の `prompt` / `choice` をそのまま再利用します。こうして、ファイルには「押されても構わない語」ではなく「現れると見込むプロンプト」が書かれます。
 
 ```yaml
 - name: onboarding — accept notifications, refuse tracking
-  preconditions:
-    run:
-      systemAlertHandling:
-        rules:
-          - prompt: notifications
-            choice: grant
-          - prompt: tracking
-            choice: deny
+  interrupts:
+    - systemAlert: notifications
+      choice: grant
+    - systemAlert: tracking
+      choice: deny
   steps:
     - tap:  { id: onboarding.start }
     - wait: { for: { id: home.title }, timeout: 10 }
 ```
 
-ガードは、規則の順序ではなく、その規則のプロンプトから画面上のどのアラートかを同定します。そのプロンプトを同定するラベルが、実行時のロケールで解決した形でアラート上に揃っていなければなりません。同じプロンプトを指定する規則が2つあると解析時に失敗します。文脈や iOS のバージョンで見え方が変わるプロンプトは、その見え方の数だけ照合用の形を持ちます。ですから 1 つの規則のままで、そのプロンプトのどの見え方にも答えます。
+ガードは、エントリの順序ではなく、そのエントリのプロンプトから画面上のどのアラートかを同定します。そのプロンプトを同定するラベルが、実行時のロケールで解決した形でアラート上に揃っていなければなりません。同じプロンプトを指定するエントリが 1 つの層に 2 つあると、解析時に失敗します。文脈や iOS のバージョンで見え方が変わるプロンプトは、その見え方の数だけ照合用の形を持ちます。ですから 1 つのエントリのままで、そのプロンプトのどの見え方にも答えます。
 
-どの規則も同定しなかったアラート、つまりラベル表の外にあるものや、どちらの応答経路も持たないバックエンド上のあらゆるアラートには手を触れず、ブロックされたステップ自身の失敗理由に書き出します。この沈黙こそが狙いです。ガードが答えるのは、シナリオが記述した画面だけになります。
+どのエントリも同定しなかったアラート、つまりラベル表の外にあるものや、どちらの応答経路も持たないバックエンド上のあらゆるアラートには手を触れず、ブロックされたステップ自身の失敗理由に書き出します。この沈黙こそが狙いです。ガードが答えるのは、シナリオが記述した画面だけになります。
 
 **すべてのプロンプトがすべての経路に届くわけではありません。** ラベル表は、プロンプトごとに、3 つの面のうちどれで宣言し応答できるかを記録しています。
 
@@ -351,17 +363,14 @@ targets:
 
 `savePassword` 以外は SpringBoard が持ち主なので、ステップとネイティブ照会の両方が届き、ツリーには現れません。`savePassword` はちょうど裏返しです。iOS がアプリ自身のプロセスに出すため `springboard.alerts` は決して列挙できず、ツリー内のタップだけが片付けられます。したがって `savePassword` を名指しした `handleSystemAlert` ステップは解析時に拒否されます。このステップは SpringBoard の照会しか読まないので、空のボタン一覧を締め切りまでポーリングするしかないからです（[BE-0406](../../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md)）。
 
-`localNetwork` は、iOS のローカルネットワークの許可を求めるプロンプトです。実機では、アプリが初めてホストへ報告するときに、Bajutsu 自身のネットワークの collector がこのプロンプトを出させます（[iOS を実機とデバイスクラウドで動かす](ios-device-cloud.md)を参照してください）。ボタンは通知のプロンプトと同じなので、ボタンだけでは 2 つを区別できません。そこでガードはアラートのタイトルも読みます。タイトルは、アプリ名を `%@` に置き換えた Apple の雛形にそろえます。`localNetwork` のルールはこの雛形を識別に使い、`notifications` のルールはこの雛形を除外します。したがって、`notifications` のルールがローカルネットワークのプロンプトに答えることはなく、逆も同じです。ネットワークのやり取りを記録する実機のターゲットは、ほかのプロンプトと同じように宣言します。
+`localNetwork` は、iOS のローカルネットワークの許可を求めるプロンプトです。実機では、アプリが初めてホストへ報告するときに、Bajutsu 自身のネットワークの collector がこのプロンプトを出させます（[iOS を実機とデバイスクラウドで動かす](ios-device-cloud.md)を参照してください）。ボタンは通知のプロンプトと同じなので、ボタンだけでは 2 つを区別できません。そこでガードはアラートのタイトルも読みます。タイトルは、アプリ名を `%@` に置き換えた Apple の雛形にそろえます。`localNetwork` のエントリはこの雛形を識別に使い、`notifications` のエントリはこの雛形を除外します。したがって、`notifications` のエントリがローカルネットワークのプロンプトに答えることはなく、逆も同じです。ネットワークのやり取りを記録する実機のターゲットは、ほかのプロンプトと同じように宣言します。
 
 ```yaml
-preconditions:
-  run:
-    systemAlertHandling:
-      rules:
-        - { prompt: localNetwork, choice: grant }
+interrupts:
+  - { systemAlert: localNetwork, choice: grant }
 ```
 
-アプリはこのプロンプトを起動中に、つまりシナリオの最初の手順より前に出します。ガードが最初に確認するのは本来、保留中の待機の中なので、最初の `tap` がプロンプトに当たることがあります。そこでガードは、最初の手順の前に SpringBoard の照会を 1 回だけ読み、すでに出ている宣言済みのプロンプトに答えます。この確認はネイティブの経路だけを使います。アプリ自身のボタンはタップせず、宣言されていないアラートにも手を出しません。最初の手順が `handleSystemAlert` のときは、その手順のプロンプトを手順自身に残します。手順はルールとは逆の選択をすることもあるからです。手順は `prompt` でプロンプトを名指しするので、見た目の似たプロンプトはタイトルで区別できます。そのため、`notifications` の手順より前に出たローカルネットワークのプロンプトには、これまでどおりルールが答えます。`sel` で書いた手順はプロンプトを名指ししないので、この確認を省きます。
+アプリはこのプロンプトを起動中に、つまりシナリオの最初の手順より前に出します。ガードが最初に確認するのは本来、保留中の待機の中なので、最初の `tap` がプロンプトに当たることがあります。そこでガードは、最初の手順の前に SpringBoard の照会を 1 回だけ読み、すでに出ている宣言済みのプロンプトに答えます。この確認はネイティブの経路だけを使います。アプリ自身のボタンはタップせず、宣言されていないアラートにも手を出しません。最初の手順が `handleSystemAlert` のときは、その手順のプロンプトを手順自身に残します。手順はエントリとは逆の選択をすることもあるからです。手順は `prompt` でプロンプトを名指しするので、見た目の似たプロンプトはタイトルで区別できます。そのため、`notifications` の手順より前に出たローカルネットワークのプロンプトには、これまでどおりエントリが答えます。`sel` で書いた手順はプロンプトを名指ししないので、この確認を省きます。
 
 `handleSystemAlert` の手順も、同じようにタイトルを確かめます。`notifications` を名指しした手順は、ボタンが同じでも、ローカルネットワークのプロンプトを押しません。
 
@@ -373,47 +382,49 @@ preconditions:
 | アプリ自身の入力欄、iOS 18.6 | Save Password / Not Now | パスワードを保存 / 今はしない |
 | アプリ自身の入力欄、iOS 26.5 | Save / Not Now | 保存 / 今はしない |
 
-それでも 1 つの規則で 3 通りすべてを覆えます。`choice: grant` は動く許可側のボタンに追随し、`choice: deny` は拒否側のボタンを押します。拒否側はどの見え方でも「今はしない」です。対応している言語は、他のプロンプトと同じく英語と日本語です。
+それでも 1 つのエントリで 3 通りすべてを覆えます。`choice: grant` は動く許可側のボタンに追随し、`choice: deny` は拒否側のボタンを押します。拒否側はどの見え方でも「今はしない」です。対応している言語は、他のプロンプトと同じく英語と日本語です。
 
 ### 層の重ね方：1 つのキーは 3 か所から届く
 
-1 つの設定は、シナリオ、コマンドライン、ターゲット config（[BE-0177](../../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)）の 3 か所から run に届きます。キーがリストとスカラーのどちらかによって、2 つの規則がすべてを覆います。
+1 つの設定は、シナリオ、コマンドライン、ターゲット config（[BE-0177](../../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)）の 3 か所から run に届きます。シナリオは自身の `interrupts` に `systemAlert` エントリを書き、ターゲットは `hooks.interrupts` に書きます（BE-0473）。値ごとに、層の合わせ方が決まっています。
 
-| キー | 型 | 層の合わせ方 |
-|---|---|---|
-| `rules` | リスト | 内側の層から順に連結：シナリオ、次にターゲット |
-| `pollInterval` | スカラー | 値を持つもっとも内側の層が勝つ：シナリオ、無ければコマンドライン、無ければターゲット |
-| `frozenScreenTimeout` | スカラー | 値を持つもっとも内側の層が勝つ：シナリオ、無ければターゲット |
-| ON / OFF | スカラー | `--system-alert-handling` / `--no-system-alert-handling`、無ければシナリオ、無ければターゲット、無ければ ON |
+| 値 | 層の合わせ方 |
+|---|---|
+| プロンプトへの答え（`choice`） | プロンプトごとに決まる。同じプロンプトについては、シナリオのエントリがターゲットのエントリを置き換える（`choice: leave` も同じ）。片方の層だけが名指しするプロンプトには、その層のエントリが残る。ガードはシナリオのエントリを先に照合する |
+| `pollInterval` | 値を持つ最初の層が勝つ：シナリオ、無ければ `--alert-poll-interval`、無ければターゲット、無ければ組み込みの 1 秒。1 つの層の中では、長い間隔を求めたエントリの要求も満たす最小の値が勝つ |
+| `frozenScreenTimeout` | この値を省いたシナリオのエントリは、同じプロンプトに対するターゲットのエントリから値を引き継ぐ（値が表すのはアプリの性質のため）。ガードが持つ打ち切り時間は 1 つで、答えるエントリの中で最長の値、無ければ組み込みの 10 秒になる |
+| ON / OFF | `--no-system-alert-handling` は全シナリオでガードを無効にし、指定がなければガードは有効。シナリオは `choice: leave` でプロンプトを 1 つずつ放置する |
 
-リストを連結にするのは、両方の層のエントリが残るからです。シナリオの答えを先に試し、シナリオが答えなかったものにはターゲットの答えが届きます。スカラーは値を 1 つしか持てないので、もっとも内側の層が勝ちます。どの層の宣言も他の層に消されません。BE-0401 が確立しようとした性質はここにあります。`rules` が 2 層しか使えないのは、プロンプトと選択の組をフラグの値 1 つで読みやすく運べないからです。
+どの層の宣言も他の層に消されません。BE-0401 が確立しようとした性質はここにあります。プロンプトと選択の組をフラグの値 1 つで読みやすく運べないので、プロンプトへの答えにはコマンドラインの層がありません。
 
-**宣言が来た層ではなく、限定の度合いが衝突を決めます**。ターゲット config の tracking プロンプト向けの規則は、シナリオが notifications にしか規則を書いていなくても tracking に答えます。どの規則も、名指しした 1 つのプロンプトにだけ届くからです。両方の宣言が有効なままです。ターゲットの規則を上書きするには、シナリオ側に同じプロンプトの規則を書きます。上書きが及ぶ範囲は、名指しした 1 つのプロンプトだけです。自前の規則を持つシナリオにターゲットの規則が実際に答えるとき、ガードは構築時にその旨を通知します。通知は、影響を受けたシナリオとプロンプトの組ごとに 1 回だけ出ます。
+**宣言が来た層ではなく、限定の度合いが衝突を決めます**。ターゲット config の tracking プロンプト向けのエントリは、シナリオのエントリが notifications しか名指ししていなくても tracking に答えます。どのエントリも、名指しした 1 つのプロンプトにだけ届くからです。両方の宣言が有効なままです。ターゲットのエントリを上書きするには、シナリオ側に同じプロンプトのエントリを書きます。何にも答えさせないときは、そこに `choice: leave` を書きます。上書きが及ぶ範囲は、名指しした 1 つのプロンプトだけです。そのため、ターゲットがあとから加えたプロンプトはそのシナリオにも適用されます。自前のエントリを持つシナリオにターゲットのエントリが実際に答えるとき、ガードは構築時にその旨を通知します。通知は、影響を受けたシナリオとプロンプトの組ごとに 1 回だけ出ます。
 
 ### 旧来のキーからの移行
 
-BE-0401 と BE-0406 は下記のキーをエイリアスなしで削除しました。書いた内容と違う挙動に解釈されるのではなく、置き換え先を名指しするエラーで読み込みに失敗します。
+BE-0401、BE-0406、BE-0473 は下記のキーをエイリアスなしで削除しました。書いた内容と違う挙動に解釈されるのではなく、置き換え先を名指しするエラーで読み込みに失敗します。
 
 | 削除されたもの | 代わりに書くもの |
 |---|---|
-| `labels: ["Allow"]` | `rules: [{ prompt: notifications, choice: grant }]` — ラベルはどのプロンプトも名指ししていなかったので、現れると見込むプロンプトを書く（BE-0406） |
-| `instruction: ["Allow"]` | 同じ規則の形。BE-0401 がこのキーを `labels` に改名し、BE-0406 がその `labels` を削除した |
-| `instruction: "tap Allow"` | 同じ規則の形。BE-0401 の改名先は `visionInstruction` だが、BE-0402 でどのコマンドにも届かなくなった |
-| `enabled: false` | `systemAlertHandling: false` |
-| `enabled: true` | マッピング（または `systemAlertHandling: true`）。マッピングは常に ON |
-| `alertHandling:` / `dismissAlerts:` | `preconditions.run.systemAlertHandling:` |
-| シナリオのトップレベルの `systemAlertHandling:` / `iosTipKitHandling:` | `preconditions.run.systemAlertHandling:` / `preconditions.run.tipKitHandling:`（BE-0452） |
-| `--alert-labels "Allow,OK"` / `--alert-instruction "Allow,OK"` | シナリオまたはターゲット config の `rules` エントリ。プロンプトと選択の組をフラグの値 1 つで読みやすく運べないため、フラグは無い。serve の HTTP API に `alertLabels` を載せた `run` リクエストは、`preconditions.run.systemAlertHandling.rules` を名指しする 400 で拒否される |
+| `labels: ["Allow"]` | `interrupts` の `- { systemAlert: notifications, choice: grant }`。ラベルはどのプロンプトも名指ししていなかったので、現れると見込むプロンプトを書く（BE-0406） |
+| `instruction: ["Allow"]` | 同じエントリの形。BE-0401 がこのキーを `labels` に改名し、BE-0406 がその `labels` を削除した |
+| `instruction: "tap Allow"` | 同じエントリの形。BE-0401 の改名先は `visionInstruction` だが、BE-0402 でどのコマンドにも届かなくなり、BE-0473 で削除した |
+| `enabled: false` | 放置するプロンプトごとに `choice: leave`。ガード全体には `--no-system-alert-handling` |
+| `enabled: true` | 不要。`--no-system-alert-handling` で無効にしない限り、ガードは有効 |
+| `alertHandling:` / `dismissAlerts:` | `interrupts` の `systemAlert` エントリ |
+| シナリオのトップレベルの `systemAlertHandling:` / `iosTipKitHandling:` | シナリオ自身の `interrupts` の `systemAlert` エントリ / `tipKit` エントリ |
+| `preconditions.run.systemAlertHandling: { rules: [...] }` | シナリオ自身の `interrupts` に、規則 1 つにつき 1 つの `systemAlert` エントリ。`pollInterval` と `frozenScreenTimeout` はエントリに書く（BE-0473） |
+| `preconditions.run.systemAlertHandling: false` | 放置するプロンプトごとに `choice: leave`（BE-0473） |
+| `preconditions.run.systemAlertHandling: { visionInstruction: … }` | シナリオには何も書かない。`record` / `crawl` は `--alert-vision-instruction` を使う（BE-0473） |
+| `preconditions.run.tipKitHandling: true` / `false` | シナリオ自身の `interrupts` に `- tipKit: dismiss` / `- tipKit: leave`（BE-0473） |
+| `--alert-labels "Allow,OK"` / `--alert-instruction "Allow,OK"` | シナリオまたはターゲット config の `systemAlert` エントリ。プロンプトと選択の組をフラグの値 1 つで読みやすく運べないため、フラグは無い。serve の HTTP API に `alertLabels` を載せた `run` リクエストは、シナリオの `systemAlert` エントリを名指しする 400 で拒否される |
 | `--alert-instruction "tap Allow"` | `--alert-vision-instruction "tap Allow"`（`record` / `crawl` 専用。`run` は BE-0402 で廃止） |
 | `--alert-handling` / `--dismiss-alerts` | `--system-alert-handling` |
-
-空の `visionInstruction` もエラーになります。以前は黙って正規化され、既定の無害な方針へ落ちていました。打ち間違いがファイルの記述と正反対の答えを返していたわけです。
 
 このリアクティブなガードと、下記のプロアクティブな `handleSystemAlert` ステップは、SpringBoard が持つプロンプトについては**同じ**ネイティブ機構（BE-0316 の照会と tap）を共有します。違うのは*いつ*発火するかです。ガードはプロンプトが現れた場所で自動的に、ステップは作者が置いた 1 か所で発火します。
 
 ## handleSystemAlert（決定的なシステムアラートステップ）
 
-上記の `systemAlertHandling` は**リアクティブなガード**です。プロンプトが現れた場所で自動的に発火します。`handleSystemAlert` はそのプロアクティブな対の一方です。プロンプトが現れると見込んだ地点に作者が明示的に置く**決定的なステップ**で、プロンプトのボタンをネイティブなアクセシビリティ照会で tap します。**スクリーンショットもモデル呼び出しもありません**（[BE-0316](../../roadmaps/BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step-ja.md)）。リクエストと許可の流れ自体をテストしたいときに使います。OS の権限リクエストを発火させ、続いて現れるプロンプトを決定的に許可または拒否します。
+上記の `systemAlert` エントリが動かすのは**リアクティブなガード**です。プロンプトが現れた場所で自動的に発火します。`handleSystemAlert` はそのプロアクティブな対の一方です。プロンプトが現れると見込んだ地点に作者が明示的に置く**決定的なステップ**で、プロンプトのボタンをネイティブなアクセシビリティ照会で tap します。**スクリーンショットもモデル呼び出しもありません**（[BE-0316](../../roadmaps/BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step-ja.md)）。リクエストと許可の流れ自体をテストしたいときに使います。OS の権限リクエストを発火させ、続いて現れるプロンプトを決定的に許可または拒否します。
 
 ```yaml
 - name: grant the notification prompt mid-flow
@@ -428,7 +439,7 @@ BE-0401 と BE-0406 は下記のキーをエイリアスなしで削除しまし
 - **`sel` は label 系のみです。** SpringBoard のアラートボタンは、アプリが割り当てた identifier も trait も value も持たず、見えているテキストしか持ちません。そのため `sel` は `label` / `labelMatches` / `index` を受け付け、`id` / `idMatches` / `traits` / `value` / `within` はパース時に拒否します。
 - **run が一致させるべき label は、ターゲットの [`runsOn.ios.locale`](configuration.md#設定の階層defaults--targets) が描画するものです。** プロンプトを所有しているのは SpringBoard なので、以前は Simulator がたまたま持っていたシステム言語で描画されていました。つまり `label: "Allow"` が通るのは英語の環境だけで、日本語の環境では失敗しました。現在は、アプリを起動する前に Simulator 自身のシステム言語をその `locale` に固定するため、CI でも、同僚の Mac でも、コントリビューターの Simulator でも、`label` / `labelMatches` は同じように解決します（[BE-0320](../../roadmaps/BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md)）。
 - **`timeout` は必須です。** `wait` とまったく同じで、プロンプトを待つ条件待機には明示的な上限が要ります。ステップはプロンプトを待ち込んでから tap します。固定の sleep はありません。
-- **待っているあいだもリアクティブなガードが動きます**（[BE-0406](../../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md)）。この待機を持っているのはバックエンドではなくランナー自身です。そのため `systemAlertHandling` は、ステップがタイムアウトして失敗したあとではなく、ステップの最中に割り込みを片付けます。これが効くのは、別のプロンプトが先に画面を取ってしまった場面です。iOS のパスワード保存アラートはアプリ自身のプロセスから出るので SpringBoard の照会からは見えず、画面を覆ったまま、このステップが待っているプロンプトを iOS に出させません。ここでガードが動かなければ、ステップは `timeout` を使い切り、一度も見ていない権限プロンプトを名指しして失敗します。ガードはこのステップ自身のプロンプトには手を触れないので、シナリオが同じプロンプトに反対の `choice` を持つ `rules` を書いていても、決めるのはステップのほうです。
+- **待っているあいだもリアクティブなガードが動きます**（[BE-0406](../../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md)）。この待機を持っているのはバックエンドではなくランナー自身です。そのためアラートガードは、ステップがタイムアウトして失敗したあとではなく、ステップの最中に割り込みを片付けます。これが効くのは、別のプロンプトが先に画面を取ってしまった場面です。iOS のパスワード保存アラートはアプリ自身のプロセスから出るので SpringBoard の照会からは見えず、画面を覆ったまま、このステップが待っているプロンプトを iOS に出させません。ここでガードが動かなければ、ステップは `timeout` を使い切り、一度も見ていない権限プロンプトを名指しして失敗します。ガードはこのステップ自身のプロンプトには手を触れないので、シナリオが同じプロンプトに反対の `choice` を持つ `systemAlert` エントリを書いていても、決めるのはステップのほうです。
 - **0 件のときと複数件のときは、どちらも失敗します。** `timeout` 以内にプロンプトが現れなければステップは失敗します。label に一致するボタンを複数見つけたときは曖昧と見なし、`index` で n 番目を選んだ場合を除いてタップしません。あらゆる[セレクタ](selectors.md)が従う規則を、アラートのボタンに当てはめたものです。曖昧さは即座の失敗にはせず、期限までポーリングします。再描画で解消することがあるからです。期限の時点でも重複が残っていれば、ステップはその旨を述べて失敗します。タイムアウトは**ステップが実際に見たもの**を名指しします。何も出ていなかったのか、セレクタの名指ししないアラートだったのか、label を 2 つ持つアラートだったのかを、次のように書き分けます。
 
   ```text
@@ -446,7 +457,7 @@ BE-0401 と BE-0406 は下記のキーをエイリアスなしで削除しまし
 |---|---|---|---|
 | `permissions` | そもそも避けられる OS 権限プロンプト | 起動前、アプリが動き出す前 | 決定的なデバイス操作 |
 | `handleSystemAlert` | **既知の**、途中で tap するつもりのプロンプト | 作者が置いた明示的なステップ | 決定的（ネイティブなアクセシビリティ tap） |
-| `systemAlertHandling` | **想定外**のプロンプト。プロセス外のものと、プロセス内のパスワード保存シート | ステップや wait がブロックされたときに反応 | XCUITest ではネイティブの SpringBoard 照会（モデルなし、BE-0316 を再利用）と、その照会に映らないシートへのツリー内タップ。どの規則も同定しないプロンプトは失敗理由に書き出す |
+| `interrupts` の `systemAlert` エントリ | **想定外**のプロンプト。プロセス外のものと、プロセス内のパスワード保存シート | ステップや wait がブロックされたときに反応 | XCUITest ではネイティブの SpringBoard 照会（モデルなし、BE-0316 を再利用）と、その照会に映らないシートへのツリー内タップ。どのエントリも同定しないプロンプトは失敗理由に書き出す |
 
 ### テキストではなく意図で指定する
 
@@ -456,22 +467,22 @@ BE-0401 と BE-0406 は下記のキーをエイリアスなしで削除しまし
 - handleSystemAlert: { prompt: notifications, choice: grant, timeout: 5 }
 ```
 
-`prompt` は `notifications`、`tracking`、`paste`、`localNetwork` のいずれかで、`choice` は `grant` か `deny` です。ガード自身の `rules` は、このステップが取れないプロンプト `savePassword` も取ります。ステップのほうは解析時にこれを拒否します（上記の[面の一覧](#複数のプロンプトに違う答えを返す-rules)を参照）。ボタンを意味で指定するため、同じファイルが `en_US` でも `ja_JP` でもプロンプトを許可します。どちらの言語のテキストも作者が書き写す必要はありません。これは英語だけを使う場合にも役立ちます。英語の拒否ボタンのアポストロフィは、手で打った label が持つ ASCII 文字ではなく、活字体のアポストロフィ（`Don’t Allow`、`Don’t Allow Paste`）だからです。
+`prompt` は `notifications`、`tracking`、`paste`、`localNetwork` のいずれかで、`choice` は `grant` か `deny` です。ボタンを押さないステップには意味がないので、`leave` を書いたステップは解析時に失敗します。`systemAlert` エントリは、このステップが取れないプロンプト `savePassword` も取ります。ステップのほうは解析時にこれを拒否します（上記の[面の一覧](#複数のプロンプトに違う答えを返す)を参照）。ボタンを意味で指定するため、同じファイルが `en_US` でも `ja_JP` でもプロンプトを許可します。どちらの言語のテキストも作者が書き写す必要はありません。これは英語だけを使う場合にも役立ちます。英語の拒否ボタンのアポストロフィは、手で打った label が持つ ASCII 文字ではなく、活字体のアポストロフィ（`Don’t Allow`、`Don’t Allow Paste`）だからです。
 
 label の対応表が扱う言語は英語と日本語です。それ以外の言語では、ステップはボタンの位置で答えます（[BE-0445](../../roadmaps/BE-0445-system-alert-locale-agnostic-answer/BE-0445-system-alert-locale-agnostic-answer-ja.md)）。3 つのプロンプトのどれでも、SpringBoard は拒否側のボタンを 1 番目に、許可側のボタンを 2 番目に並べます。この並びは、英語と日本語では iOS 18.6 と 26.5 で、アラビア語では 26.5 で、各ボタンを実際に押してアプリに残る許可状態を読み取って確かめたものです。ここでいう並びは SpringBoard が報告する順序で、画面上の左右ではありません。アラビア語では通知プロンプトの拒否側のボタンが右側に描かれますが、報告される順序ではやはり 1 番目です。したがって `choice: grant` は 2 つのうち 2 番目のボタンを、`choice: deny` は 1 番目のボタンを押します。ボタンの数が 2 つでないアラートには、この規則は何も指しません。その場合ステップはタイムアウトまで待ち、見えたボタンを挙げて失敗します。規則を測っていないアラートで、位置だけを頼りに押すわけにはいかないからです。この規則が指すのはボタンで、プロンプトではありません。SpringBoard のタイトルとメッセージも言語ごとに訳されるので、言語が変わっても 2 ボタンのプロンプト同士を見分けられる手がかりはありません。ステップが待っているあいだに出た 2 ボタンの SpringBoard アラートは、どれも位置で答えられます。ステップは、プロンプトを出す操作の直後に置いてください。locale を持たない呼び出し（`record` の再生）も同じ規則で答えます。ステップのレポート行には、押したボタンと、それを選んだ規則（`sel`、`label table: <locale>`、`position: button 2 of 2` のいずれか）が出ます。ほかのアラートは、これまでどおり `sel` でボタンを指定します。
 
-位置の規則を使うのはこのステップだけです。`systemAlertHandling.rules` の規則は、宣言したどのプロンプトが画面に出ているかを先に見分ける必要があり、位置からはそれを見分けられません。そのため対応表にない言語では、ガードの規則はこれまでどおり、デバイスを操作する前に扱える言語を名指ししてシナリオを失敗させます。
+位置の規則を使うのはこのステップだけです。`systemAlert` エントリは、宣言したどのプロンプトが画面に出ているかを先に見分ける必要があり、位置からはそれを見分けられません。そのため対応表にない言語では、ガードのエントリはこれまでどおり、デバイスを操作する前に扱える言語を名指ししてシナリオを失敗させます。
 
 使う前に知っておきたい制限が 2 つあります。
 
 - **Simulator 専用です。** 言語の固定は `simctl` の操作なので、`runsOn.ios.kind: device` の target は実機が持つシステム言語のまま動きます。この形では、画面に出ている保証のない label を解決してしまいます。実機ではボタンを `sel.label` で指定してください。
-- **割り込み監視も英語を前提としていません。** `rules` の 1 エントリは、監視に届く前に固定した言語向けラベルへ解決されており、その背後にはもう組み込みのフォールバック一覧がありません。どの規則も同定しないアラートは、どの `locale` でも常に辞退されます。その割り込みに遭遇したステップや `expect` は、ボタンを推測する代わりに、差し出されたボタン名を添えて失敗します。run 自身に決めさせたいプロンプトには、規則を書いてください。
+- **割り込み監視も英語を前提としていません。** `systemAlert` エントリは、監視に届く前に固定した言語向けラベルへ解決されており、その背後にはもう組み込みのフォールバック一覧がありません。どのエントリも同定しないアラートは、どの `locale` でも常に辞退されます。その割り込みに遭遇したステップや `expect` は、ボタンを推測する代わりに、差し出されたボタン名を添えて失敗します。run 自身に決めさせたいプロンプトには、エントリを書いてください。
 
 （実物は [`demos/showcase/scenarios/permission_system_alert.yaml`](../../demos/showcase/scenarios/permission_system_alert.yaml) と [`demos/showcase/scenarios/paste_system_alert.yaml`](../../demos/showcase/scenarios/paste_system_alert.yaml)）
 
 ## permissions（起動前の権限状態）
 
-`systemAlertHandling` は権限プロンプトが**現れた後**にしか反応せず、できるのは tap だけです。権限を**取り消す**ことも、アプリが既知の状態から起動することを保証することもできません。権限があらかじめわかっている場合、`permissions` を使えば**アプリのプロセスが起動する前**にその状態を設定できるため、プロンプトはそもそも現れません。モデルを一切呼ばない、決定的でマシンチェック可能なデバイス操作です（[BE-0276](../../roadmaps/BE-0276-scenario-permission-state/BE-0276-scenario-permission-state-ja.md)）。
+アラートガードの `systemAlert` エントリは権限プロンプトが**現れた後**にしか反応せず、できるのは tap だけです。権限を**取り消す**ことも、アプリが既知の状態から起動することを保証することもできません。権限があらかじめわかっている場合、`permissions` を使えば**アプリのプロセスが起動する前**にその状態を設定できるため、プロンプトはそもそも現れません。モデルを一切呼ばない、決定的でマシンチェック可能なデバイス操作です（[BE-0276](../../roadmaps/BE-0276-scenario-permission-state/BE-0276-scenario-permission-state-ja.md)）。
 
 ```yaml
 - name: profile — camera already granted
@@ -488,7 +499,7 @@ label の対応表が扱う言語は英語と日本語です。それ以外の�
 - **iOS** は `simctl privacy <udid> <grant|revoke> <tcc-service> <bundle>` を実行します。SpringBoard の権限プロンプトが参照するのと同じ TCC（Transparency, Consent, and Control）データベースです。
 - **Android** は `pm grant` / `pm revoke` を実行し、config レベルの `subject.grantPermissions` リスト（[drivers](drivers.md)）を支える仕組みを再利用します。シナリオの `permissions` は、この config レベルの既定の上に重なり、config が許可した権限を取り消すこともできます。
 
-**iOS には `notifications` に対応する TCC サービスがありません**（iOS の通知許可は TCC の管轄外です）。そのため、iOS をターゲットにしたシナリオが `notifications` を指定すると、デバイスを一切操作する前の **preflight** が対応していない権限として個別に名指しして失敗します。そのプロンプト自体への対処は、引き続き `systemAlertHandling` が担います。Android の `POST_NOTIFICATIONS` は実行時権限です（API 33 以降）。そのため Android は語彙のすべてに対応します。選んだバックエンドが対応しないサービスの組み合わせも、同じように preflight が個別に名指しして失敗させます。
+**iOS には `notifications` に対応する TCC サービスがありません**（iOS の通知許可は TCC の管轄外です）。そのため、iOS をターゲットにしたシナリオが `notifications` を指定すると、デバイスを一切操作する前の **preflight** が対応していない権限として個別に名指しして失敗します。そのプロンプト自体への対処は、引き続き `systemAlert` エントリが担います。Android の `POST_NOTIFICATIONS` は実行時権限です（API 33 以降）。そのため Android は語彙のすべてに対応します。選んだバックエンドが対応しないサービスの組み合わせも、同じように preflight が個別に名指しして失敗させます。
 
 `permissions` に対応する XCUITest / Espresso 側のコードはないため、`codegen` はコードを生成する代わりに、サービスごとにラベル付きの `// TODO` を出力します。フィールド自体は、生成したテストの起動処理より前に bajutsu 自身が適用します。
 
@@ -496,7 +507,7 @@ label の対応表が扱う言語は英語と日本語です。それ以外の�
 
 `if` ステップ（[下記](#条件分岐-if)）は、ステップ列の**1 か所**で条件を判定します。分岐したい画面の直前にどのステップが来るかがわかっているときは、これが適切な道具です。画面の出現がどの単一ステップにも結び付かないときは、`if` は向きません。オンボーディングの重ね表示、チュートリアル、アクセシビリティツリーに見える権限プロンプトを考えます。いずれも、アカウントの状態やネットワークの間合い、A/B の振り分け次第で、想定より数ステップ早く、あるいは遅く現れます。まったく現れないこともあります。`if` を 1 つ置いても、その置いた位置にちょうど画面が現れたときしか捕まえられません。それ以外のタイミングはすり抜け、想定していない画面に対して残りのシナリオが失敗します。
 
-このタイミングの読めない画面を扱うのが `interrupts` です。各エントリは `condition`（`if` が使うのと同じアサーション DSL）と、画面を片付ける `steps` を指定します。ランナーは各エントリを**随時**判定し、画面がステップ列のどこに現れても評価して、条件が一致すればエントリの `steps` を実行します。この判定が追加コストなしで済むのは、そのステップのために読んだばかりのツリーに乗れる場合だけです。`wait` のポーリングの各回と、持ち越したツリーがないときに `screenChanged` ポリシー付きステップが読む `before` が、これにあたります。残りの `wait` 以外のステップは、判定のために `driver.query()` を 1 回余分に呼びます。前のステップから持ち越したツリー（BE-0234）を `before` に使う `screenChanged` ポリシー付きステップも同じです。ガードはそれを古い可能性があるものとして読み直すため、同じ 1 回を払います。ハンドラの実行後は、中断されたステップが元の位置から再開します。`wait` は元のタイムアウトに向けてポーリングを続け、操作ステップは自分の操作を試みます。そのため、`if` を置く 1 か所を作者があらかじめ言い当てる必要はありません。
+このタイミングの読めない画面を扱うのが `interrupts` です。**画面**のエントリは `condition`（`if` が使うのと同じアサーション DSL）と、画面を片付ける `steps` を指定します。ランナーは各エントリを**随時**判定し、画面がステップ列のどこに現れても評価して、条件が一致すればエントリの `steps` を実行します。この判定が追加コストなしで済むのは、そのステップのために読んだばかりのツリーに乗れる場合だけです。`wait` のポーリングの各回と、持ち越したツリーがないときに `screenChanged` ポリシー付きステップが読む `before` が、これにあたります。残りの `wait` 以外のステップは、判定のために `driver.query()` を 1 回余分に呼びます。前のステップから持ち越したツリー（BE-0234）を `before` に使う `screenChanged` ポリシー付きステップも同じです。ガードはそれを古い可能性があるものとして読み直すため、同じ 1 回を払います。ハンドラの実行後は、中断されたステップが元の位置から再開します。`wait` は元のタイムアウトに向けてポーリングを続け、操作ステップは自分の操作を試みます。そのため、`if` を置く 1 か所を作者があらかじめ言い当てる必要はありません。
 
 ```yaml
 # config.yaml — アプリ全体の既定。このアプリのオンボーディング画面を全シナリオで扱う
@@ -523,7 +534,9 @@ targets:
     - wait: { for: { id: home.title }, timeout: 10 }   # 途中で差し込み画面が出ても片付けてから、この wait が通る
 ```
 
-**config** レベル（`targets.<name>.hooks.interrupts`）に置いた `interrupts` リストはアプリ全体の既定です。シナリオ独自の `interrupts` はその後ろに**連結**され、config のエントリを先に判定します。`systemAlertHandling` が従うのと同じ、config が先でシナリオが後という重ね方です。エントリの `steps` は、`if` の分岐とまったく同じように、囲んでいるシナリオの `vars.*` バインディングを共有します。シナリオ側のハンドラの `steps` では、ほかのステップと同じように[コンポーネント](#再利用とデータ駆動とタグ)を `use` で呼び出せます。展開は run の前に済みます。config レベルのエントリでも `use` を使えます。`targets.<name>.hooks.interrupts` の下に置いた `use` は、config の読み込み時に config ファイルのディレクトリを基準に解決します（[再利用](#再利用とデータ駆動とタグ)）。ハンドラ自身の `steps` が `condition` を解消しないとき（セレクタの誤りや、同じ内容で再描画され続ける画面）は、エントリはステップごとに小さな上限回数までしか発火しません。そのあとはステップが本来の結末（成功、失敗、タイムアウト）へ戻ります。設定を誤ったエントリは、実行をハングさせずに、ステップをきれいに失敗させます。
+同じリストは、ほかに 2 つの形のエントリを持てます。エントリの形は、そのエントリが書くキーで決まります。`systemAlert` エントリは OS のプロンプトに答えます（[上記](#systemalert-エントリシステムアラートガード)）。`tipKit` エントリは Apple の TipKit の tip を閉じます（[上記](#tipkit-エントリ操作をブロックする-tipkit-の-tip)）。この 2 つの形の層の重ね方は、それぞれの節で説明しています。この節の残りは、画面の形を扱います。
+
+**config** レベル（`targets.<name>.hooks.interrupts`）に置いた `interrupts` リストはアプリ全体の既定です。シナリオ独自の画面のエントリはその後ろに**連結**され、config のエントリを先に判定します。エントリの `steps` は、`if` の分岐とまったく同じように、囲んでいるシナリオの `vars.*` バインディングを共有します。シナリオ側のハンドラの `steps` では、ほかのステップと同じように[コンポーネント](#再利用とデータ駆動とタグ)を `use` で呼び出せます。展開は run の前に済みます。config レベルのエントリでも `use` を使えます。`targets.<name>.hooks.interrupts` の下に置いた `use` は、config の読み込み時に config ファイルのディレクトリを基準に解決します（[再利用](#再利用とデータ駆動とタグ)）。ハンドラ自身の `steps` が `condition` を解消しないとき（セレクタの誤りや、同じ内容で再描画され続ける画面）は、エントリはステップごとに小さな上限回数までしか発火しません。そのあとはステップが本来の結末（成功、失敗、タイムアウト）へ戻ります。設定を誤ったエントリは、実行をハングさせずに、ステップをきれいに失敗させます。
 
 シナリオが2つ以上の[ターゲット](#targets--target複数ターゲットシナリオbe-0428)を宣言すると、`interrupts` の各エントリはそのうち1つを監視します。
 エントリは自身の `target` フィールドで監視先を指定します。`target` を省略したエントリは、プライマリターゲットを監視します。
@@ -555,14 +568,14 @@ config レベルのエントリには `target` を書きません。
 エントリはそれを宣言した `targets.<name>` ブロックにすでに属しているため、`target` を書いてもその名前の繰り返しか矛盾にしかならないからです。
 config の読み込みは、そうしたエントリと、その `steps` にあるステップのどちらに書かれた `target` も拒否します。
 
-判定に使うのは決定的なアサーション DSL であり、モデル呼び出しではありません。そのため `interrupts` は `run` の判定に AI を持ち込みません。BE-0402 以降は `systemAlertHandling` も同じです。両者の違いは届く先です。アラートガードは、アクセシビリティツリーに**見えない**プロセス外のシステムプロンプトを SpringBoard の照会で扱います。一方 `interrupts` は、ツリーに**見える**画面を、マシンチェック可能な条件で扱います。どちらを選ぶかの目安を次に示します。
+判定に使うのは決定的なアサーション DSL であり、モデル呼び出しではありません。そのため `interrupts` は `run` の判定に AI を持ち込みません。BE-0402 以降は `systemAlert` エントリも同じです。両者の違いは届く先です。アラートガードは、アクセシビリティツリーに**見えない**プロセス外のシステムプロンプトを SpringBoard の照会で扱います。一方 `interrupts` は、ツリーに**見える**画面を、マシンチェック可能な条件で扱います。どちらを選ぶかの目安を次に示します。
 
 | フィールド | 対象 | タイミング | 仕組み |
 |---|---|---|---|
 | `if` | ステップ列の**わかっている**位置に出る画面 | 台本どおりの 1 回の判定 | 決定的（アサーション DSL） |
 | `interrupts` | **予測できない**位置に出る、ツリーに見える画面 | 全体を通して随時判定 | 決定的（アサーション DSL） |
 | `handleSystemAlert` | 途中で tap するつもりの**既知の**プロセス外プロンプト | 作者が置いた明示的なステップ | 決定的（ネイティブなアクセシビリティ tap） |
-| `systemAlertHandling` | **想定外**のプロンプト。プロセス外のものと、プロセス内のパスワード保存シート | ステップや wait がブロックされたときに反応 | XCUITest ではネイティブの SpringBoard 照会（モデルなし、BE-0316 を再利用）と、その照会に映らないシートへのツリー内タップ。どの規則も同定しないプロンプトは失敗理由に書き出す |
+| `interrupts` の `systemAlert` エントリ | **想定外**のプロンプト。プロセス外のものと、プロセス内のパスワード保存シート | ステップや wait がブロックされたときに反応 | XCUITest ではネイティブの SpringBoard 照会（モデルなし、BE-0316 を再利用）と、その照会に映らないシートへのツリー内タップ。どのエントリも同定しないプロンプトは失敗理由に書き出す |
 | `permissions` | そもそも避けられる OS 権限プロンプト | 起動前、アプリが動き出す前 | 決定的なデバイス操作 |
 
 「この条件をテスト全体を通して随時判定する」に対応するネイティブな XCUITest / Espresso / Playwright の構文はありません。そのため `codegen` はコードを生成する代わりに、フィールドと設定された各条件を名指ししたラベル付きの `// TODO` を出力します。`bajutsu run` が忠実に実行する経路です。

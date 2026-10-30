@@ -24,7 +24,7 @@
 
 ## `run`
 
-シナリオを **決定的に実行**します。合否は機械判定のみで、[BE-0402](../../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback-ja.md) 以降は**どのフラグを付けてもモデルに到達しません**。**アラートガード**（シナリオごとに既定 ON）は、ステップをブロックした OS プロンプトをネイティブの SpringBoard 経路（iOS XCUITest、モデル不使用）で片付けます。その経路が名指しできないプロンプトには手を触れず、ブロックされたステップ自身の失敗理由に書き出します。詳しくは [`systemAlertHandling`](scenarios.md#systemalerthandlingシステムアラートガード) を参照してください。
+シナリオを **決定的に実行**します。合否は機械判定のみで、[BE-0402](../../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback-ja.md) 以降は**どのフラグを付けてもモデルに到達しません**。**アラートガード**（`--no-system-alert-handling` で OFF にしない限り ON）は、ステップをブロックした OS プロンプトをネイティブの SpringBoard 経路（iOS XCUITest、モデル不使用）で片付けます。その経路が名指しできないプロンプトには手を触れず、ブロックされたステップ自身の失敗理由に書き出します。詳しくは [`interrupts`](scenarios.md#systemalert-エントリシステムアラートガード) の `systemAlert` エントリを参照してください。
 
 ```bash
 bajutsu run --target <name> [--scenario <file.yaml>] [options]
@@ -85,9 +85,9 @@ web backend が動く Windows では、`run` は BE-0449 以前と同じく run 
 | `--exclude` | "" | カンマ区切り。これらの tag のいずれかを持つシナリオをスキップ |
 | `--udid` | `booted` | 対象 Simulator（カンマ区切り = `--workers` 用のデバイスプール）。URL は終了コード 2 |
 | `--erase / --no-erase` | シナリオ › config › `clean` | すべてのシナリオについて、実効の `subject.reinstall` を段階（`overwrite` < `clean` < `erase`）に沿って動かします。`--erase` は値を `erase`（シム全体を wipe）にし、`--no-erase` は `erase` を `clean` に下げ、`overwrite` と `clean` はそのままにします。どちらも省略すると、各シナリオの `preconditions.subject.reinstall`、次にターゲットの `subject.reinstall`、次に `clean` の順で解決します（[BE-0473](../../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts-ja.md)）。そのため、`erase` を指定したターゲットは `--no-erase` でアプリをアンインストールします。アプリのデータを残したいシナリオは `preconditions.subject.reinstall: overwrite` と書きます |
-| `--system-alert-handling / --no-system-alert-handling` | シナリオ › config › ON | すべてのシナリオについて `run.systemAlertHandling` を上書きし、各シナリオの `preconditions.run.systemAlertHandling` に優先します。iOS バックエンドから見えないシステムアラートを消すリアクティブなガードで、XCUITest 上ではネイティブに処理します（モデル不使用、BE-0315）。決定的な経路がどれも片付けられないアラートには何もしません。ガード対象の `wait` は見たものを自身のタイムアウトで必ず名指しし、wait の外のステップは、ネイティブ照会がアラートを列挙できたときだけ名指しします。ネイティブ照会を持たないバックエンドでは名指しする材料がないため、そのステップは従来どおり失敗します（BE-0402）。省略時は各シナリオの値、次にターゲットの `run.systemAlertHandling` config、次に ON の順で解決します。AI 認証情報は一切不要です（[recording](recording.md#システムアラートの自動対処)） |
-| `--ios-tipkit-handling / --no-ios-tipkit-handling` | シナリオ › config › OFF | すべてのシナリオについて `run.tipKitHandling` を上書きし、各シナリオの `preconditions.run.tipKitHandling` に優先します。操作をブロックしている Apple **TipKit** の tip を閉じます。フレームワークが所有する popover であり、同じ回避策をシナリオごとに手で書かずに済ませるためのガードです。ガードは tip を、閉じるための scrim（`PopoverDismissRegion`）とその tip 自身のコンテナ（`TipView`）の両方で判定します。`confirmationDialog` が同一の scrim を設置するため、そちらには手を触れないようにする必要があるからです。同じ理由で、tip 向けの `interrupts` エントリ（またはターゲットの `hooks.interrupts` エントリ）を手で書く場合は `TipView` を手がかりにします。iOS 専用（他のバックエンドでは何もしません）で、求められない限り **OFF** です。tip 自体がアサーションの対象になる場合があるからです。省略時は各シナリオの値、次にターゲットの `run.tipKitHandling` config、次に OFF の順で解決します。認証情報は不要です（[scenarios](scenarios.md)） |
-| `--alert-poll-interval` | 未設定 | ネイティブのシステムアラート presence 照会の間隔（秒）。シナリオ自身の `pollInterval` の下位、ターゲットの上位に位置します。ガードのもう 1 つのキーである `rules` にフラグはありません。1 エントリはプロンプトと選択の組であり、フラグの値 1 つでは読みやすく運べないため、宣言はシナリオファイルとターゲット config に置いたままにしています（[BE-0406](../../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md)） |
+| `--system-alert-handling / --no-system-alert-handling` | ON | シナリオの `interrupts` とターゲットの `hooks.interrupts` にある `systemAlert` エントリが名指す OS プロンプトに答える、リアクティブなガードを動かします。iOS バックエンドから見えないシステムアラートに、XCUITest 上ではネイティブに答えます（モデル不使用、BE-0315）。`--no-system-alert-handling` はすべてのシナリオでガードを OFF にします。シナリオやターゲット config からガードを OFF にする手段はもうありません。1 つのプロンプトへの答えを止めるには、`choice: leave` の `systemAlert` エントリを書きます（[BE-0473](../../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts-ja.md)）。決定的な経路がどれも片付けられないアラートには何もしません。ガード対象の `wait` は見たものを自身のタイムアウトで必ず名指しし、wait の外のステップは、ネイティブ照会がアラートを列挙できたときだけ名指しします。ネイティブ照会を持たないバックエンドでは名指しする材料がないため、そのステップは従来どおり失敗します（BE-0402）。AI 認証情報は一切不要です（[recording](recording.md#システムアラートの自動対処)） |
+| `--ios-tipkit-handling / --no-ios-tipkit-handling` | シナリオのエントリ › ターゲットのエントリ › OFF | すべてのシナリオについて `tipKit` の interrupts エントリを加える、または取り除きます。シナリオ自身の `tipKit` エントリにも、ターゲットの `hooks.interrupts` のエントリにも優先します。操作をブロックしている Apple **TipKit** の tip を閉じます。フレームワークが所有する popover であり、同じ回避策をシナリオごとに手で書かずに済ませるためのガードです。ガードは tip を、閉じるための scrim（`PopoverDismissRegion`）とその tip 自身のコンテナ（`TipView`）の両方で判定します。`confirmationDialog` が同一の scrim を設置するため、そちらには手を触れないようにする必要があるからです。同じ理由で、tip 向けの画面の `interrupts` エントリ（またはターゲットの `hooks.interrupts` エントリ）を手で書く場合は `TipView` を手がかりにします。iOS 専用（他のバックエンドでは何もしません）で、求められない限り **OFF** です。tip 自体がアサーションの対象になる場合があるからです。省略時はシナリオの `tipKit` エントリ（`dismiss` または `leave`）、次にターゲットのエントリ、次に OFF の順で解決します。認証情報は不要です（[scenarios](scenarios.md#tipkit-エントリ操作をブロックする-tipkit-の-tip)） |
+| `--alert-poll-interval` | 未設定 | ネイティブのシステムアラート presence 照会の間隔（秒）。シナリオ自身の `systemAlert` エントリの `pollInterval` の下位、ターゲットのエントリの上位に位置します。プロンプトと選択にはフラグがありません。1 エントリはプロンプトと選択の組であり、フラグの値 1 つでは読みやすく運べないため、宣言はシナリオファイルとターゲット config に置いたままにしています（[BE-0406](../../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md)） |
 | `--log-predicate` | "" | `deviceLog` ストリームを絞る NSPredicate（例 subsystem） |
 | `--log-subsystem` | "" | `appTrace` 用の os_log subsystem（既定はアプリの `subject.id`） |
 | `--network / --no-network` | config › ON | `request` アサーション用にアプリの通信を収集。省略時はターゲットの `evidence.collectNetwork` config、次に ON の順で解決（[BE-0177](../../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)）。iOS はアプリに BajutsuKit が必要。web は Playwright でネイティブに観測し、シナリオの `mocks` をその場でスタブします |
@@ -141,8 +141,8 @@ web backend が動く Windows では、`run` は BE-0449 以前と同じく run 
   条件が複数の run を作るときの `--step` も終了コード 2 で終わります。
 - **シナリオの preconditions は、デバイスを操作する前に検査します（BE-0452）。** `run` と `audit` は、
   各シナリオを、そのシナリオが動かすターゲットと照合します。動かすどのターゲットのプラットフォームにも
-  ない `subject` のフィールドや、iOS 専用の `run` のフィールドは、フィールド名を示して終了コード 2 で
-  終わります。実効の `subject.reinstall: erase` を伴わない `seedPhotos` も同じです（[scenarios](scenarios.md#preconditions環境準備)）。
+  ない `subject` のフィールドや、シナリオの `interrupts` にある iOS 専用の `tipKit` エントリは、
+  フィールド名を示して終了コード 2 で終わります。実効の `subject.reinstall: erase` を伴わない `seedPhotos` も同じです（[scenarios](scenarios.md#preconditions環境準備)）。
 - `AI usage:` 行は出力しません。`run` はどのフラグを付けてもトークンを消費しないため（BE-0402）、
   使用量台帳を導入せず、報告もしません。`record`、`crawl`、`triage --ai` は従来どおり出力します。
 
@@ -461,7 +461,7 @@ bajutsu record --target <name> --goal "<自然言語ゴール>" [--out <file.yam
 | `--udid` | `booted` | 対象 Simulator |
 | `--backend` | ターゲットの `platform` | ターゲットの platform に対する検査（[共通](#共通)を参照） |
 | `--erase / --no-erase` | `--erase` | 起動前に erase（アプリはインストール済みである必要）。`--erase` は実効の `subject.reinstall` を `erase` に引き上げ、`--no-erase` は `erase` を `clean` に下げます。そのため、ここではターゲットの `subject.reinstall: erase` で wipe するかどうかは決まりません |
-| `--system-alert-handling` | ターゲットの `run.systemAlertHandling`（on） | オーサリング中のプロンプトを片付ける（要 API キー）。省略時はターゲットの `run.systemAlertHandling` に従い、ターゲットが `false` と書かない限り on です |
+| `--system-alert-handling / --no-system-alert-handling` | on | オーサリング中のプロンプトを片付ける（要 API キー）。`--no-system-alert-handling` で OFF にします |
 | `--max-steps` | `30` | オーサリングのターン数（＝トークン消費の上限）に上限を設けます（[BE-0194](../../roadmaps/BE-0194-record-turn-payload-diet/BE-0194-record-turn-payload-diet-ja.md)） |
 | `--screenshot / --no-screenshot` | `--screenshot` | 毎ターン、スクリーンショットを送ります。`--no-screenshot` は要素情報だけを記録し（コストが安い）、id を十分に備えたアプリ向けです（[BE-0194](../../roadmaps/BE-0194-record-turn-payload-diet/BE-0194-record-turn-payload-diet-ja.md)） |
 | `--headed / --no-headed` | ターゲットの `driver.headless` | web backend: ヘッドレスではなく目に見える（低速再生の）ブラウザでオーサリングします。省略時はターゲットの `driver.headless` 設定に従います |
@@ -501,7 +501,7 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
 | `--workers` | `1` | 同時に動かすワーカー数。1 つの画面マップを共有する。iOS は同数のシミュレータ（[BE-0064](../../roadmaps/BE-0064-parallel-crawl/BE-0064-parallel-crawl-ja.md)、`--udid` のデバイス数で上限）、web は同数のブラウザプロセス（[BE-0077](../../roadmaps/BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl-ja.md)）。`1` はシングルワーカーのクロール |
 | `--backend` | ターゲットの `platform` | ターゲットの platform に対する検査（[共通](#共通)を参照） |
 | `--erase / --no-erase` | `--erase` | 起動前に erase（アプリはインストール済みである必要）。`--erase` は実効の `subject.reinstall` を `erase` に引き上げ、`--no-erase` は `erase` を `clean` に下げます。そのため、ここではターゲットの `subject.reinstall: erase` で wipe するかどうかは決まりません |
-| `--system-alert-handling / --no-system-alert-handling` | ターゲットの `run.systemAlertHandling`（on） | 省略時はターゲットの `run.systemAlertHandling` に従い、ターゲットが `false` と書かない限り on です。クロール中に予期せぬ OS プロンプトを片付ける（クラッシュ誤判定を防ぐ。設定した AI プロバイダを使用し、`ANTHROPIC_API_KEY`、Bedrock なら AWS 認証情報） |
+| `--system-alert-handling / --no-system-alert-handling` | on | クロール中に予期せぬ OS プロンプトを片付ける（クラッシュ誤判定を防ぐ。設定した AI プロバイダを使用し、`ANTHROPIC_API_KEY`、Bedrock なら AWS 認証情報）。`--no-system-alert-handling` で OFF にします |
 | `--alert-vision-instruction` | "" | プロンプトを片付ける代わりに視覚ガードが読む自由記述 |
 | `--headed / --no-headed` | ターゲットの `driver.headless` | web backend: ヘッドレスではなく目に見える（低速再生の）ブラウザでクロールする。省略時はターゲットの `driver.headless` 設定に従う |
 | `--kind` | ターゲットの `runsOn.ios.kind` の最初の種類 | iOS: クロールに使う種類を1つ指定します（`simulator` または `device`）。ターゲットが宣言していない種類を指定すると終了コード 2 で終わります。このコマンドは1回しか実行しないので、カンマ区切りのリストを指定しても終了コード 2 で終わります（[BE-0468](../../roadmaps/BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of-ja.md)） |

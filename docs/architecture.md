@@ -927,15 +927,16 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   SpringBoard alert stays the step's. An alert the step judges not its own goes to
   `POST /systemAlert/resolve`, which answers while that alert still offers the buttons the step
   read, and not otherwise, so the two never answer the same prompt
-- DSL `systemAlertHandling` (BE-0315), the reactive counterpart: an alert guard. It answers the
-  prompts the scenario's own `rules` name, with no model call. Since BE-0461 the XCUITest backend
+- DSL `systemAlert` interrupts entries (BE-0315; `run.systemAlertHandling` until BE-0473), the
+  reactive counterpart: an alert guard. It answers the prompts that the `systemAlert` entries of the
+  scenario's `interrupts` and the target's `hooks.interrupts` name, with no model call. Since BE-0461 the XCUITest backend
   answers them inside the requests that read the screen, not from a watcher in Python. Under a
   governing guard, a wait's polls and an action's target reads send
   `GET /elements?resolveAlerts=true`. The runner then works in three steps:
-  1. It presses the SpringBoard alert a native rule names. It checks SpringBoard at most once per
+  1. It presses the SpringBoard alert a native entry names. It checks SpringBoard at most once per
      `pollInterval` (default 1s, decoupled from the wait's own poll cadence).
   2. It takes the snapshot.
-  3. It taps the in-app prompt an in-tree rule names, once a fresh check finds no SpringBoard alert.
+  3. It taps the in-app prompt an in-tree entry names, once a fresh check finds no SpringBoard alert.
 
   The reply carries the tree and a record of each answer. The records reach the report through the
   drain that consumes them, so the report counts each answer once. Every path that presses shares
@@ -947,28 +948,31 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
 
   Since BE-0402 the guard is deterministic throughout. Where nothing can act, it does nothing, and
   what it saw rides the step's own reason as a note. The note takes one of three forms:
-  - a SpringBoard alert no rule identifies, by its buttons:
+  - a SpringBoard alert no entry identifies, by its buttons:
     `… — an unhandled system alert is blocking the screen (buttons: Allow, Don't Allow)`;
-  - a press that did not clear its prompt, by the button the rule chose;
+  - a press that did not clear its prompt, by the button the entry chose;
   - a collapsed tree no record explains, in a hedged form.
 
    Before BE-0402 that last case fell back to an AI-vision guard
-  reading a screenshot, and `visionInstruction` steered that fallback alone, so `run` now rejects
-  it before any scenario starts rather than ignoring it — the silent inversion BE-0401 split the old
-  single `instruction` key to expose. BE-0406 then made `rules` the guard's whole declaration and
-  removed `labels`: a button label named a button, never the alert it sat on, so it licensed a tap
-  on a screen no scenario had described. `rules` composes across two layers (scenario, then target)
-  by concatenation, innermost-first, and each of the two scalars, `pollInterval` and
-  `frozenScreenTimeout`, takes the innermost layer that supplies one; no flag carries a prompt
+  reading a screenshot. The schema no longer has the `visionInstruction` key that steered that
+  fallback (BE-0473); `record` and `crawl` take the same free text from `--alert-vision-instruction`.
+  BE-0406 made the declared prompts the guard's whole declaration and removed `labels`: a button
+  label named a button, never the alert it sat on, so it licensed a tap on a screen no scenario had
+  described. The entries compose across two layers per prompt: a scenario's entry replaces the
+  target's `choice` for the same prompt and inherits an omitted `frozenScreenTimeout`, and the
+  scenario's entries match first. `choice: leave` answers nothing, so a scenario turns off one
+  inherited answer by naming its prompt. `pollInterval` resolves by layer — the scenario's, then
+  `--alert-poll-interval`, then the target's, then 1s — taking the smallest within a layer, and the
+  guard's frozen-screen timeout is the longest among the answered entries; no flag carries a prompt
   paired with a choice legibly, so the command line supplies `pollInterval` alone. On the XCUITest
   backend, `frozenScreenTimeout` (default 10s, `0` disables it) also bounds a second stop: a `for`
   or `screenChanged` wait gives up early when a resolving read's own SpringBoard check finds no
   alert, yet no element below the application has carried a label or an identifier for that long.
-  A scenario opts in by declaring an in-tree prompt such as `savePassword` in `rules`, and a
+  A scenario opts in by declaring an in-tree prompt such as `savePassword` in a `systemAlert` entry, and a
   `gone`/`settled` wait never stops this way, since a frozen tree already satisfies it. A prompt's
   entry records which of the three answer surfaces it reaches: the `handleSystemAlert` step, the
   runner's SpringBoard check, and its in-tree pass. `savePassword`, which iOS raises inside the
-  application's own process, is thus declarable as a rule and answered by the in-tree pass
+  application's own process, is thus declarable as an entry and answered by the in-tree pass
   alone, and the step rejects it at parse time rather than polling an empty button list to its
   deadline.
 
@@ -999,7 +1003,7 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   travel with the guard's pacing, so the runner can answer such a prompt inside the request that
   reads the screen (BE-0461). A `handleSystemAlert` step's own prompt/choice
   form is not necessarily among those rules — the step exists precisely for a prompt an author
-  chooses not to declare in `systemAlertHandling` — so while that one step waits the orchestrator
+  chooses not to declare in a `systemAlert` entry — so while that one step waits the orchestrator
   pushes one more rule for the step's own target alongside the scenario's, and restores the
   scenario's own policy once the step returns, fails, or the wait raises. Without it, an earlier
   action's own interruption could meet that same prompt first, find no matching rule, and fail a
@@ -1018,8 +1022,8 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   button's. The branch sits ahead of the `governs` check because neither alert outcome fits a
   banner: a governing policy recorded it as an undeclared interruption and failed an otherwise
   passing step, while an ungoverned one left XCUITest to wait the banner out, measured at ~9s per
-  interrupted interaction against ~0.6s undisturbed. `systemAlertHandling` itself is on by default,
-  and `false` disables it per scenario — the banner branch above runs either way.
+  interrupted interaction against ~0.6s undisturbed. The guard itself is on unless
+  `--no-system-alert-handling` turns it off for the whole run — the banner branch above runs either way.
 - A banner reaches that monitor only on an *interaction* — a plain query never invokes it, so a
   banner sitting on screen with nothing tapping through it is never cleared there (BE-0416 Units
   2/3/8). A second, proactive path covers that gap: `Driver.notification_banner_frame()`
@@ -1038,7 +1042,7 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   differ by one round trip, landing the swipe on whatever the app now shows at that point instead.
   The swipe is re-confirmed gone by a bounded poll immediately after, the same discipline the
   interruption monitor's own
-  confirm-before-claiming applies. The query is rate-limited to `systemAlertHandling`'s
+  confirm-before-claiming applies. The query is rate-limited to the alert guard's
   own resolved `pollInterval` (BE-0315's default when the guard is off), so a passing scenario pays
   it once per interval rather than once per step.
   The `expect`-phase visual capture gets the same unconditional check immediately before it,
@@ -1047,7 +1051,7 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   above runs only after the step body finishes, too late for a capture taken inside it. No scenario
   or CLI toggle: a scenario cannot observe a banner, so none can be broken by clearing it — the same
   "no known use for a toggle" the interruption path above already established
-- DSL `preconditions.run.tipKitHandling` (BE-0389; a top-level `iosTipKitHandling` until BE-0452), an opt-in guard for a blocking Apple TipKit tip: TipKit's
+- DSL `tipKit` interrupts entry (BE-0389; a top-level `iosTipKitHandling` until BE-0452, then `run.tipKitHandling` until BE-0473), an opt-in guard for a blocking Apple TipKit tip: TipKit's
   presentation marks the content it covers accessibility-hidden rather than merely occluding it, so a
   blocked tap can fail as `ElementNotFound`, not only `ElementNotTappable`. The XCUITest backend alone
   declares `Capability.HANDLE_TIPKIT_TIP` and implements `Driver.dismiss_blocking_tip()` by resolving
@@ -1057,10 +1061,10 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   in the same accessibility tree every wait poll and tap resolution already fetches. The step loop
   retries a step once when the dismiss actually found and cleared a tip, beside the alert guard's own
   end-of-step branch, and the dismiss also composes onto BE-0314's `on_interrupt_poll` hook so a tip
-  does not hold a wait to its full timeout either. Defaults off (unlike `systemAlertHandling`) because a
-  scenario sometimes asserts on the tip itself; `--ios-tipkit-handling`/`--no-ios-tipkit-handling`
-  follows the same flag > scenario > target > default precedence as `systemAlertHandling`'s own
-  on/off bit (BE-0177); `systemAlertHandling`'s policy keys compose by type instead (BE-0401)
+  does not hold a wait to its full timeout either. Defaults off (unlike the alert guard) because a
+  scenario sometimes asserts on the tip itself. The setting resolves flag
+  (`--ios-tipkit-handling`/`--no-ios-tipkit-handling`) > the scenario's `tipKit` entry (`dismiss` or
+  `leave`) > the target's > off. A `tipKit` entry on a non-iOS target fails at load
 
 #### DSL cross-app control
 

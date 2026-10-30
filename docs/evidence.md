@@ -242,8 +242,8 @@ app's os_log subsystem, paired into timed intervals by `parse_app_trace`.)
 > copy of it rather than a fresh capture. Four cases skip the copy and always shoot fresh, because
 > an asynchronous interstitial could have arrived between the two steps: an interrupt's recovery
 > step, a `handleSystemAlert` step, any step in a scenario declaring `interrupts`, and any step
-> running under `systemAlertHandling`. That last case is on by default, so a stock `run` shoots
-> fresh on every step — the copy reaches a step only where a scenario or the target config turns
+> running under the system-alert guard. That last case is on by default, so a stock `run` shoots
+> fresh on every step — the copy reaches a step only where `run --no-system-alert-handling` turns
 > the guard off.
 > `elements.json` has a single filename, so the post-action write is
 > the tree a run keeps: it describes the screen the action produced, which is the screen `after.png`

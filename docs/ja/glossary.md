@@ -45,7 +45,10 @@ extract の修飾子を持ちません。定義は `bajutsu/scenario/models/step
 
 - `subject.reinstall`（`overwrite`、`clean`、デバイス全体を wipe する `erase` のいずれか）と `subject.launch.env` / `.args` / `.deeplink` です。
 - `device.ios.locale` / `.seedPhotos` です。iOS のデバイスの状態で、ターゲットの `runsOn.ios` の値を置き換えます。
-- `run.systemAlertHandling` / `.tipKitHandling` / `.inheritSetup` です。
+- `run.inheritSetup` です。宣言したすべてのターゲットの `hooks.setup` を先に動かすかどうかを決めます。
+
+シナリオが答える OS のプロンプトと TipKit の tip は、precondition ではなく、シナリオ自身の
+`interrupts` に書く `systemAlert` と `tipKit` のエントリです。
 
 precondition はデバイスの条件を宣言しません。条件はターゲットの `runsOn` が持ちます。
 
