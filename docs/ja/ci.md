@@ -207,6 +207,20 @@ Protocol（HTTP）チャネルで駆動します。Android の失敗はもう少
   常駐していたかには答えますが、それが平常と違うのかには答えられません。最初の収集では、この問いを
   計測ではなく起動環境の引数から判断せざるをえませんでした。これと描画プローブはジョブごとに一度だけ
   書くので、ジョブが2度目の `start` を呼んでも、実行前の値が実行中の値で上書きされることはありません。
+- **合成したタッチごとに、実行中のログから**：これも `start` で開始し、成功したジョブでも残します。
+  [`scripts/synthesis_stream_record.py`](../../scripts/synthesis_stream_record.py) がゲストの
+  `log stream` を購読します。対象は、runner が `bajutsu.runner` に書くマーカーと、`backboardd` および
+  `testmanagerd` の行です。各イベントはホストに届いた時刻を付けて
+  `runs/diagnostics/synthesis-stream.ndjson` へ書き、`collect` で記録を止めます。デバイスの再起動などで
+  ジョブの途中にストリームが終わったときは、購読をやり直します。購読の開始と終了には `meta` レコードを
+  書くので、空の記録や途中で切れた記録は、何も起きなかった実行とは区別され、集計で警告として現れます。ジョブの後に
+  `log show` で取り出したログには到着時刻がありません。そのため、マーカーがホストに届くまでの時間も、
+  `backboardd` の行が自分より後の時刻の runner の行より遅れて届くことがあるかもわかりません。この 2 つは、
+  [BE-0462](../../roadmaps/BE-0462-ios-dropped-touch-retry/BE-0462-ios-dropped-touch-retry-ja.md) の
+  タッチ取りこぼし監視が必要とする値です。成果物をダウンロードして
+  [`scripts/synthesis_stream_report.py`](../../scripts/synthesis_stream_report.py) にかけると、
+  到着遅延のパーセンタイル、到着順の逆転、そして各取りこぼし行とそれを含むタッチの区間の対応が得られます。
+  記録は観測するだけで、何も判定しません。
 
 unified log の抽出を2つに分けているのには理由があります。自然な想定はむしろ逆なので、ここに
 書いておきます。スクリーンショットを担うゲストプロセス、すなわち `SpringBoard`、`backboardd`、

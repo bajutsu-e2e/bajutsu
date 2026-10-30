@@ -297,6 +297,30 @@ Log:
   - A re-press of an answered showing adds its id to that showing's entry. That holds while the
     entry is still undrained. A re-press after the drain has no entry left to extend. Unit 3 decides
     whether that gap matters for an "unconfirmed" answer.
+- [#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM) — Unit 1, instrument only. Every iOS
+  CI job now records what Unit 1 measures. The numbers themselves wait for enough runs, so the box
+  stays open.
+  - The `collect-ios-diagnostics` action's `start` phase runs
+    [`scripts/synthesis_stream_record.py`](../../scripts/synthesis_stream_record.py). It streams the
+    guest log for the runner's markers and for `backboardd` and `testmanagerd`, and stamps each event
+    with its arrival on the host. `collect` stops it. The file stays on green jobs too, because the
+    arrival lag comes from every touch, not only from failing ones.
+  - The recorder restarts a stream that ends mid-job, as a lane that reboots the device ends it.
+    Every session starts and ends with a `meta` record. The report turns an empty recording, a
+    restart, or an unreadable line into a warning, so a broken recording never reads as a run
+    without drops. A window with no end marker takes no drop lines, and they are listed apart.
+  - [`scripts/synthesis_stream_report.py`](../../scripts/synthesis_stream_report.py) reads any number
+    of those recordings. It reports the arrival lag per marker kind and for `backboardd`, the
+    `backboardd` lines that arrived behind a later-stamped runner line, and every drop line with its
+    category. It also attributes each drop line to the innermost window open at its timestamp, and
+    prints every line inside each dropped window. A drop line no window covers is listed apart.
+  - The design's `TouchEvents` category for `backboardd` does not appear in the CI guest logs. Its
+    lines there fall under `EventDelivery`, `HID`, and others. The recorder therefore takes
+    `backboardd` whole, and the report counts the drop lines' categories, so Unit 3 can pick its
+    predicate from data.
+  - A local smoke run on a fresh iOS 27 Simulator recorded 410 `backboardd` events. During an app
+    launch their arrival lag was 0.013 s at p50 and 1.4 s at p95. That run synthesized no touch, so
+    it says nothing yet about the markers or about drops.
 
 ## References
 

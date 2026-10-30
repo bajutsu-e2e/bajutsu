@@ -86,6 +86,11 @@ def _reap_sampler(dest: Path) -> None:
     # here — there is nothing to reap.
     with contextlib.suppress(OSError, ValueError):
         os.kill(int(pidfile.read_text().strip()), signal.SIGKILL)
+    # The BE-0462 synthesis-stream recorder is detached the same way and restarts its stream until
+    # told to stop. SIGTERM, not SIGKILL: the recorder's own cleanup is what stops its child.
+    recorder = dest / "synthesis-stream.pid"
+    with contextlib.suppress(OSError, ValueError):
+        os.kill(int(recorder.read_text().strip()), signal.SIGTERM)
 
 
 def _run(
@@ -111,6 +116,7 @@ def _spawn(
             **os.environ,
             "PATH": f"{bin_dir}:{os.environ['PATH']}",
             "UDID": "STUB-UDID",
+            "GITHUB_ACTION_PATH": str(_ACTION.parent),
             "DEST": "runs/diagnostics",
             "RUNNER_TEMP": str(tmp_path),
             "FAILED": env.get("FAILED", "false"),
@@ -218,3 +224,44 @@ def test_a_missing_collector_warns_rather_than_passing_silently(tmp_path: Path) 
     done = _run("collect", tmp_path, hangs=False, FAILED="false")
     assert done.returncode == 0, done.stderr
     assert "::warning::" in done.stdout
+
+
+def test_the_start_phase_launches_the_synthesis_stream_recorder_once(tmp_path: Path) -> None:
+    # BE-0462 Unit 1: the recorder is an observer like the sampler, so it starts without failing the
+    # step, and the second `start` that `bundled-runner` makes must not launch a second one.
+    bin_dir = tmp_path / "bin"
+    _stub_xcrun(bin_dir, hangs=True)
+    dest = tmp_path / "runs" / "diagnostics"
+    dest.mkdir(parents=True, exist_ok=True)
+    try:
+        first = _spawn("start", tmp_path, bin_dir, {})
+        second = _spawn("start", tmp_path, bin_dir, {})
+    finally:
+        _reap_sampler(dest)
+    assert first.returncode == 0, first.stderr
+    assert "synthesis stream recording" in first.stdout, first.stdout + first.stderr
+    assert "synthesis stream already recording" in second.stdout, second.stdout
+
+
+def test_the_collect_phase_stops_the_recorder_and_counts_its_events(tmp_path: Path) -> None:
+    bin_dir = tmp_path / "bin"
+    _stub_xcrun(bin_dir, hangs=True)
+    dest = tmp_path / "runs" / "diagnostics"
+    dest.mkdir(parents=True, exist_ok=True)
+    try:
+        _spawn("start", tmp_path, bin_dir, {})
+        pid = int((dest / "synthesis-stream.pid").read_text().strip())
+        done = _spawn("collect", tmp_path, bin_dir, {})
+    finally:
+        _reap_sampler(dest)
+    assert done.returncode == 0, done.stderr
+    assert not (dest / "synthesis-stream.pid").exists()
+    # Read from `ps` rather than `kill -0`: the recorder was detached, so on a Linux gate whose init
+    # does not reap promptly it can linger as a zombie, which `kill -0` still reports as alive.
+    state = subprocess.run(
+        ["ps", "-p", str(pid), "-o", "stat="], capture_output=True, text=True, check=False
+    ).stdout.strip()
+    assert state in ("", "Z") or state.startswith("Z"), state
+    # The stubbed device writes nothing, and an empty recording must say so rather than pass quietly.
+    assert "synthesis stream: 0 event(s) recorded" in done.stdout, done.stdout
+    assert "recorded no events" in done.stdout, done.stdout
