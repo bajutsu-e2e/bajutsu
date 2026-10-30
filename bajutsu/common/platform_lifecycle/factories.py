@@ -49,7 +49,7 @@ def environment_for(
         # that structurally cannot carry a URL (BE-0238). The URL scheme is the routing signal.
         if is_webdriver_endpoint(udid):
             return XcuitestLiveEnvironment(actuator, udid)
-        return XcuitestEnvironment(actuator, udid, env_run, provision=provision, respawn=respawn)
+        return XcuitestEnvironment(actuator, udid, env_run, respawn=respawn)
     # Every implemented actuator is handled above; an unknown one reaching here is a caller bug
     # (selection should have rejected it). Fail loudly rather than silently mis-routing.
     raise ValueError(f"no environment for actuator: {actuator!r}")

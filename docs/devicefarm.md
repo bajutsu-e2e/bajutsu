@@ -288,7 +288,7 @@ filter. It needs no device-pool ARN.
 > job off the scenario store carries no binary. For such a job, the server stores the file that
 > `subject.path` names in its object store during the fan-out. The lease then carries a signed download link for that file. The
 > worker downloads the binary to the same `subject.path` inside the job's directory. It then checks the
-> file's digest against the one the job names. Such an `subject.path` must name a file inside the config's directory, and the server
+> file's digest against the one the job names. Such a `subject.path` must name a file inside the config's directory, and the server
 > needs an object store. Otherwise `POST /api/run-set` returns a 400 error.
 
 > **The run on the device.** Device Farm installs the app upload on the reserved device before the
@@ -404,7 +404,7 @@ cannot honor it at all:
 - a config or scenario outside the config's directory, which the worker packages;
 - for a config on the server's disk, a server with no object store to deliver the archive through;
 - for a config on the server's disk, a path the archive cannot carry. A config path that leaves the
-  directory is one, such as an absolute `paths.scenarios`. An `subject.path` or scenario under a
+  directory is one, such as an absolute `paths.scenarios`. A `subject.path` or scenario under a
   left-out directory such as `tmp/` is another. The refusal spares an upload that would fail on
   the device cloud.
 

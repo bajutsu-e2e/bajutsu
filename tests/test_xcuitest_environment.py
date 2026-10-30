@@ -35,7 +35,6 @@ from bajutsu.common.devices.os import DeviceOS
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.drivers.xcuitest import XcuitestChannelError
-from bajutsu.common.platform_lifecycle import ProvisionProfile
 from bajutsu.common.platform_lifecycle.environments.xcuitest import (
     _MAX_WARM_REUSES,
     _MAX_WARM_REUSES_ENV,
@@ -161,20 +160,17 @@ def test_start_on_a_real_device_that_declares_install_launches_the_build_in_plac
     # A device that already holds the build (Device Farm installs the uploaded app, BE-0465) runs a
     # target declaring `install` under `run.ignoredSettings` (BE-0467): `subject.path` names that build.
     runner, captured = _fake_device_runner(monkeypatch, tmp_path)
-    env = XcuitestEnvironment(
-        "xcuitest", _DEVICE_UDID, provision=ProvisionProfile(boot_ready=True, app_preinstalled=True)
-    )
+    env = XcuitestEnvironment("xcuitest", _DEVICE_UDID)
     eff = _device_eff(app_path="App.ipa", test_runner=str(runner), ignored="install")
     env.start(eff, ResolvedPreconditions())
     assert f"platform=iOS,id={_DEVICE_UDID}" in captured["argv"]
 
 
-def test_the_factory_hands_the_provision_profile_to_the_ios_environment(
+def test_the_factory_builds_an_ios_environment_that_honours_ignored_settings(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     runner, captured = _fake_device_runner(monkeypatch, tmp_path)
-    profile = ProvisionProfile(boot_ready=True, app_preinstalled=True)
-    env = environment_for("xcuitest", _DEVICE_UDID, provision=profile)
+    env = environment_for("xcuitest", _DEVICE_UDID)
     eff = _device_eff(app_path="App.ipa", test_runner=str(runner), ignored="install")
     # The declaration covers the install alone; an undeclared erase still fails loudly.
     with pytest.raises(base.UnsupportedAction, match=r"run\.erase"):

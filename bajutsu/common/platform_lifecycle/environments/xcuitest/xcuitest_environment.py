@@ -30,7 +30,7 @@ from bajutsu.common.platform_lifecycle import readiness
 from bajutsu.common.platform_lifecycle.device_control import device_control
 from bajutsu.common.platform_lifecycle.environments._bundled_runner import _products_digest
 from bajutsu.common.platform_lifecycle.environments.ios import _DeviceEnvironment
-from bajutsu.common.platform_lifecycle.protocols import CollectorHost, ProvisionProfile
+from bajutsu.common.platform_lifecycle.protocols import CollectorHost
 from bajutsu.common.scenario import Relaunch, Scenario
 from bajutsu.crawl import Reset
 
@@ -143,14 +143,9 @@ class XcuitestEnvironment(_DeviceEnvironment):
         udid: str,
         env_run: simctl.RunFn = simctl.real_run,
         *,
-        provision: ProvisionProfile | None = None,
         respawn: bool = False,
     ) -> None:
         super().__init__(actuator, udid, env_run)
-        # A device provider's readiness report (BE-0236). On a real device, a provider that installed
-        # the build itself (Device Farm, BE-0465) makes `subject.path` the build already in place rather
-        # than a simctl install the device cannot take.
-        self._provision = provision or ProvisionProfile()
         # This *fresh* environment was built by the pool for a mid-run respawn — the pool already
         # cold-spawned this device once this run and had to build a new environment for it (the
         # failed-resume eviction path, `cached is None`). A cold start here gets the tighter respawn
