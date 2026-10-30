@@ -265,3 +265,10 @@ def test_the_collect_phase_stops_the_recorder_and_counts_its_events(tmp_path: Pa
     # The stubbed device writes nothing, and an empty recording must say so rather than pass quietly.
     assert "synthesis stream: 0 event(s) recorded" in done.stdout, done.stdout
     assert "recorded no events" in done.stdout, done.stdout
+
+
+def test_the_recorder_pid_match_reads_the_full_command_line() -> None:
+    # BSD `ps` may cut `command` to the terminal width, well before the script name in the long
+    # runner path; the Linux gate's procps never truncates, so pin the flag against the script.
+    for phase in ("start", "collect"):
+        assert "ps -ww -p" in _script(phase), phase

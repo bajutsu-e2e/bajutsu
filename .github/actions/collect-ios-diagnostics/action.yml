@@ -169,8 +169,9 @@ runs:
         if [ -z "$udid" ]; then
           echo "::warning::bajutsu diagnostics: no device id resolved; the synthesis stream is NOT recorded"
         # Matched on the command line, not `kill -0` alone: a stale pid file can name a pid the OS
-        # has since reused, which would skip recording while claiming it runs.
-        elif [ -f "$streampid" ] && ps -p "$(cat "$streampid")" -o command= 2>/dev/null | grep -q synthesis_stream_record; then
+        # has since reused, which would skip recording while claiming it runs. `-ww` because BSD `ps`
+        # may cut the command line to the terminal width, before the script name ever appears.
+        elif [ -f "$streampid" ] && ps -ww -p "$(cat "$streampid")" -o command= 2>/dev/null | grep -q synthesis_stream_record; then
           echo "synthesis stream already recording (pid $(cat "$streampid"))"
         else
           nohup python3 "$recorder" --udid "$udid" --out "$DEST/synthesis-stream.ndjson" \
@@ -255,13 +256,16 @@ runs:
           rpid="$(cat "$streampid")"
           # The same command-line match as `start`: a recorder that gave up mid-job may have had its
           # pid reused, and a bare `kill` would then signal an unrelated host process.
-          if ps -p "$rpid" -o command= 2>/dev/null | grep -q synthesis_stream_record; then
+          if ps -ww -p "$rpid" -o command= 2>/dev/null | grep -q synthesis_stream_record; then
             kill "$rpid" 2>/dev/null
             waited=0
             while kill -0 "$rpid" 2>/dev/null && [ "$waited" -lt 10 ]; do
               sleep 1
               waited=$((waited + 1))
             done
+            if kill -0 "$rpid" 2>/dev/null; then
+              echo "::warning::bajutsu diagnostics: the synthesis-stream recorder did not exit within ${waited}s; the event count below and the artifact upload can race its last write"
+            fi
           else
             echo "::warning::bajutsu diagnostics: the synthesis-stream recorder had already exited ($(tail -c 200 "$DEST/synthesis-stream.err" 2>/dev/null))"
           fi
