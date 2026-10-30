@@ -30,8 +30,8 @@ GROUPS: tuple[Group, ...] = ("subject", "runsOn", "driver", "run")
 class PlatformSchema:
     """The models one platform registers, one per platform-shaped group.
 
-    `run` holds only the platform's additions to the shared run policy, such as iOS's
-    `tipKitHandling`; the shared fields are validated by the target, not here.
+    `run` holds only the platform's additions to the shared run policy (none since BE-0473 moved
+    iOS's `tipKitHandling` into `hooks.interrupts`); the shared fields are validated by the target.
     """
 
     subject: type[_Model]

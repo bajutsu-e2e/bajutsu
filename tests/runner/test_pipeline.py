@@ -2051,35 +2051,28 @@ def test_run_all_hands_the_target_s_launch_env_to_run_scenario(
 
 
 def test_run_all_alert_guard_for_selects_per_scenario() -> None:
-    # The factory picks each scenario's guard from its systemAlertHandling: the guarded scenario
-    # recovers from a blocked tap and passes; the one that disabled it fails.
+    # The factory picks each scenario's guard: the guarded scenario recovers from a blocked tap and
+    # passes; the one handed no guard fails.
     from bajutsu.common.orchestrator import AlertGuardConfig
 
     scenarios = [
         Scenario.model_validate(
             {
                 "name": "guarded",
-                "preconditions": {"run": {"systemAlertHandling": True}},
                 "steps": [{"tap": {"id": "later"}}],
             }
         ),
         Scenario.model_validate(
             {
                 "name": "bare",
-                "preconditions": {"run": {"systemAlertHandling": False}},
                 "steps": [{"tap": {"id": "later"}}],
             }
         ),
     ]
 
     def alert_guard_for(s: Scenario) -> AlertGuardConfig | None:
-        # `false` is the whole off form since BE-0401; a mapping (or an absent key) means on.
         # One surface only: the scenario-start push refuses a rule claiming both (BE-0461).
-        return (
-            None
-            if s.preconditions.run.system_alert_handling is False
-            else AlertGuardConfig(rules=[guard_rule(in_tree=False)])
-        )
+        return None if s.name == "bare" else AlertGuardConfig(rules=[guard_rule(in_tree=False)])
 
     # Answering the prompt reveals the tap's target, so the guarded scenario recovers and passes.
     def lease(eff: Effective, scenario: Scenario) -> Lease:
@@ -2970,3 +2963,30 @@ def test_a_lease_time_crash_keeps_the_earlier_attempts_crash_evidence(tmp_path: 
     directory = run_dir / "00-a" / "crash-diagnostics"
     assert (directory / "runner.log").exists()
     assert str(directory) in (results[0].failure or "")
+
+
+@pytest.mark.parametrize("declares_targets", [False, True])
+def test_run_all_carries_system_alert_and_tip_kit_entries_past_the_screen_poll(
+    declares_targets: bool,
+) -> None:
+    # BE-0473: the target's and the scenario's `systemAlert` / `tipKit` entries reach the guard, never
+    # the runner's screen poll, which reads `condition` and `steps`. Mixed lists must run as the
+    # screen entries alone would, on the single-target path and the self-declaring one alike.
+    from bajutsu.common.scenario import InterruptEntry
+
+    screen = {"condition": {"exists": {"id": "never"}}, "steps": [{"tap": {"id": "ok"}}]}
+    target_entries = [
+        Scenario.model_validate({"name": "t", "steps": [], "interrupts": [e]}).interrupts[0]
+        for e in (screen, {"systemAlert": "tracking", "choice": "deny"}, {"tipKit": "dismiss"})
+    ]
+    entries: list[InterruptEntry] = list(target_entries)
+    eff = replace(_eff(), run_defaults=replace(_eff().run_defaults, interrupts=entries))
+    body: dict[str, object] = {
+        "name": "mixed",
+        "interrupts": [{"systemAlert": "notifications", "choice": "grant"}, screen],
+        "steps": [{"tap": {"id": "ok"}}],
+    }
+    if declares_targets:
+        body["targets"] = ["demo"]
+    (result,) = run_all(eff, [Scenario.model_validate(body)], _lease)
+    assert result.ok, result

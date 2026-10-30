@@ -51,7 +51,7 @@ def test_tip_is_dismissed_mid_wait_and_the_wait_resumes_to_its_target() -> None:
         _scenario(
             {
                 "name": "a",
-                "preconditions": {"run": {"tipKitHandling": True}},
+                "interrupts": [{"tipKit": "dismiss"}],
                 "steps": [{"wait": {"for": {"id": "home.title"}, "timeout": 10}}],
             }
         ),
@@ -71,7 +71,7 @@ def test_a_step_blocked_by_a_tip_is_retried_once_after_the_dismiss() -> None:
         _scenario(
             {
                 "name": "b",
-                "preconditions": {"run": {"tipKitHandling": True}},
+                "interrupts": [{"tipKit": "dismiss"}],
                 "steps": [{"tap": {"id": "stable.refresh"}}],
             }
         ),
@@ -115,7 +115,7 @@ def test_an_app_popover_showing_the_same_region_is_left_alone() -> None:
         _scenario(
             {
                 "name": "i",
-                "preconditions": {"run": {"tipKitHandling": True}},
+                "interrupts": [{"tipKit": "dismiss"}],
                 "steps": [
                     {"wait": {"until": "settled", "timeout": 5}},
                     {"tap": {"id": "log.dialog.delete"}},
@@ -151,7 +151,7 @@ def test_a_tip_and_a_system_alert_are_both_recovered_in_one_step() -> None:
         _scenario(
             {
                 "name": "e",
-                "preconditions": {"run": {"tipKitHandling": True}},
+                "interrupts": [{"tipKit": "dismiss"}],
                 "steps": [{"tap": {"id": "stable.refresh"}}],
             }
         ),
@@ -182,7 +182,7 @@ def test_two_dismiss_regions_fail_the_step_rather_than_aborting_the_run() -> Non
         _scenario(
             {
                 "name": "f",
-                "preconditions": {"run": {"tipKitHandling": True}},
+                "interrupts": [{"tipKit": "dismiss"}],
                 "steps": [{"tap": {"id": "stable.refresh"}}],
             }
         ),
@@ -213,7 +213,7 @@ def test_a_refused_dismiss_tap_fails_the_step_rather_than_aborting_the_run() -> 
         _scenario(
             {
                 "name": "g",
-                "preconditions": {"run": {"tipKitHandling": True}},
+                "interrupts": [{"tipKit": "dismiss"}],
                 "steps": [{"tap": {"id": "stable.refresh"}}],
             }
         ),
@@ -243,7 +243,7 @@ def test_a_step_failing_with_no_tip_present_is_not_retried() -> None:
         _scenario(
             {
                 "name": "d",
-                "preconditions": {"run": {"tipKitHandling": True}},
+                "interrupts": [{"tipKit": "dismiss"}],
                 "steps": [{"tap": {"id": "does.not.exist"}}],
             }
         ),
@@ -272,7 +272,7 @@ def test_a_scrim_that_never_closes_is_tapped_a_bounded_number_of_times() -> None
         _scenario(
             {
                 "name": "h",
-                "preconditions": {"run": {"tipKitHandling": True}},
+                "interrupts": [{"tipKit": "dismiss"}],
                 "steps": [{"wait": {"for": {"id": "never.appears"}, "timeout": 10}}],
             }
         ),
@@ -304,7 +304,7 @@ def test_a_tip_that_closes_itself_mid_dismiss_is_not_an_error() -> None:
         _scenario(
             {
                 "name": "i",
-                "preconditions": {"run": {"tipKitHandling": True}},
+                "interrupts": [{"tipKit": "dismiss"}],
                 "steps": [{"wait": {"for": {"id": "home.title"}, "timeout": 10}}],
             }
         ),

@@ -475,8 +475,7 @@ def crawl(
     system_alert_handling: bool | None = typer.Option(
         None,
         "--system-alert-handling/--no-system-alert-handling",
-        help="handle unexpected OS prompts while crawling; overrides the target's "
-        "run.systemAlertHandling (default: on; uses the same API key)",
+        help="handle unexpected OS prompts while crawling (default: on; uses the same API key)",
     ),
     alert_vision_instruction: str = typer.Option(
         "",
@@ -607,10 +606,10 @@ def crawl(
     environment = environment_for(actuator, "")
     udids = _plan_lanes(environment, udid, workers, seed_path)
 
-    # A crawl carries no scenario to hold its own setting, so the flag sits over the target's
-    # `run.systemAlertHandling`, which is on unless the target writes `false` (BE-0452).
+    # A crawl carries no scenario to hold its own entries, and a target leaves prompts by name rather
+    # than turning the guard off whole (BE-0473), so only the flag can turn it off here.
     system_alert_handling_enabled = resolve_system_alert_handling_flag(
-        system_alert_handling, default=eff.run_defaults.system_alert_handling is not False
+        system_alert_handling, default=True
     )
 
     # Refused here, before any lane starts, rather than inside a lane's own launch.

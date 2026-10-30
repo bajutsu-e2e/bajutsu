@@ -137,6 +137,4 @@ class IosDriver(_Model):
 
 
 class IosRun(_Model):
-    """The iOS fields of `run`, added to the run policy every platform shares."""
-
-    tip_kit_handling: bool | None = Field(default=None, alias="tipKitHandling")
+    """The iOS fields of `run`: none since `tipKitHandling` became a `tipKit` interrupt (BE-0473)."""

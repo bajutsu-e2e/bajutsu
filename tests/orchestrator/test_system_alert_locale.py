@@ -51,7 +51,7 @@ def test_the_prompt_form_taps_the_label_the_locale_renders() -> None:
 
 def test_the_step_reserves_its_own_prompt_on_the_interruption_policy_while_it_waits() -> None:
     # A `handleSystemAlert` step's own prompt need not be in the scenario's own
-    # `systemAlertHandling.rules` — the whole reason the step form exists. Without a reservation,
+    # `systemAlert` entries — the whole reason the step form exists. Without a reservation,
     # the runner's interruption monitor would not recognize this alert if it happened to meet it
     # first (through some earlier, unrelated action), and would decline and fail a step for it that
     # this one was a few lines away from answering correctly (BE-0406 Unit 2b review finding).

@@ -150,7 +150,7 @@ def test_push_interruption_policy_carries_a_reachable_rule_s_exclusion_set() -> 
 
 
 def test_push_interruption_policy_clears_it_when_the_scenario_disables_the_guard() -> None:
-    # `systemAlertHandling: false` must not inherit the previous scenario's policy from the resident
+    # A run under `--no-system-alert-handling` must not inherit the previous scenario's policy from the resident
     # runner, so the push happens with an empty, non-governing policy rather than being skipped. Not
     # governing is what keeps this the one case that still leaves a declined alert unreported —
     # declaring nothing is the author's own choice, not an omission this mechanism exists to catch.

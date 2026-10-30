@@ -93,7 +93,7 @@ orchestrator、証跡、config、レポート）は [`bajutsu/common/`](bajutsu/
   WebView コンテンツ向けの `web`、デバイス制御、`http` / `totp` / `email` / `generate` /
   `manual` など）、待機、ステップ内の `assert`、再利用可能なコンポーネント（`use`）、制御フロー
   （`if` / `forEach`）、変数（`extract` → `${vars.*}`）、パラメータ化（`data` / `dataFile`）、
-  `preconditions`、`permissions`、`interrupts`、`systemAlertHandling`、ネットワーク `mocks`、
+  `preconditions`、`permissions`、`interrupts`（アプリ内の画面、OS のプロンプト、TipKit の tip）、ネットワーク `mocks`、
   `network` フィルタ、`capturePolicy` 証跡ルール、`redact`。厳格検証・YAML ラウンドトリップ・
   生成された JSON Schema 付きです
 - **アサーション評価**（exists / value / label / count / enabled / disabled / selected /

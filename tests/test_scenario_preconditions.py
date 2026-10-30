@@ -36,7 +36,7 @@ from bajutsu.common.config import (
 )
 from bajutsu.common.lint import lint_diagnostics, lint_text
 from bajutsu.common.report.rows import _preconditions_rows
-from bajutsu.common.scenario import Preconditions, Scenario, load_scenarios
+from bajutsu.common.scenario import Preconditions, Scenario, TipKitInterrupt, load_scenarios
 from bajutsu.common.scenario.load import _upgraded_scenario_text, load_stored_scenario_file
 from bajutsu.common.scenario.serialize import scenario_dict
 
@@ -92,18 +92,24 @@ def test_a_flat_key_fails_naming_its_new_home(old: str, new: str) -> None:
 @pytest.mark.parametrize(
     ("old", "new"),
     [
-        ("systemAlertHandling: false", "preconditions.run.systemAlertHandling"),
-        ("iosTipKitHandling: true", "preconditions.run.tipKitHandling"),
+        ("systemAlertHandling: false", "interrupts (a `systemAlert` entry per prompt)"),
+        ("iosTipKitHandling: true", "interrupts (`- tipKit: dismiss`)"),
     ],
 )
 def test_a_top_level_run_field_fails_naming_its_new_home(old: str, new: str) -> None:
-    with pytest.raises(ValueError, match=f"moved to '{new}'"):
+    with pytest.raises(ValueError, match=re.escape(f"moved to '{new}'")):
         load_scenarios(f"- name: s\n  {old}\n  steps: []\n")
 
 
 def test_a_scenario_cannot_set_a_field_that_identifies_the_app() -> None:
     with pytest.raises(ValueError, match="id"):
         _pre("{ subject: { id: com.example.other } }")
+
+
+def test_a_non_mapping_run_group_fails_as_a_type_error() -> None:
+    # The moved-key check runs before validation, so a scalar must fall through to the type error.
+    with pytest.raises(ValueError, match="dictionary"):
+        _pre("{ run: 5 }")
 
 
 def test_a_non_mapping_preconditions_fails_as_a_type_error() -> None:
@@ -126,16 +132,13 @@ def test_the_groups_round_trip_through_a_dump() -> None:
         "  preconditions:\n"
         "    subject: { reinstall: overwrite, launch: { env: { A: '1' }, deeplink: 'app://x' } }\n"
         "    device: { ios: { locale: ja_JP } }\n"
-        "    run: { tipKitHandling: true, systemAlertHandling: false }\n"
+        "    run: { inheritSetup: false }\n"
         "  steps: []\n"
     )
     (scenario,) = load_scenarios(text)
     dumped = scenario_dict(scenario)
     assert Scenario.model_validate(dumped) == scenario
-    assert dumped["preconditions"]["run"] == {
-        "systemAlertHandling": False,
-        "tipKitHandling": True,
-    }
+    assert dumped["preconditions"]["run"] == {"inheritSetup": False}
 
 
 # --- the merge over a target ---
@@ -255,8 +258,8 @@ def test_seed_photos_on_a_non_primary_target_are_refused() -> None:
     other = replace(effs["phone"], target="phone-2", seed_photos=[])
     pre = _pre("{ subject: { reinstall: erase } }")
     # The primary seeds; a second target with photos of its own would seed nothing.
-    assert check_preconditions(pre, [effs["phone"], other]) == []
-    (problem,) = check_preconditions(pre, [other, effs["phone"]])
+    assert check_preconditions(pre, [effs["phone"], other], interrupts=()) == []
+    (problem,) = check_preconditions(pre, [other, effs["phone"]], interrupts=())
     assert "seedPhotos on target 'phone' applies to the primary target alone" in problem
 
 
@@ -280,7 +283,7 @@ def test_lint_reports_a_scenario_runs_on_and_a_malformed_device_block() -> None:
 
 def test_an_app_field_no_driven_platform_has_fails() -> None:
     (problem,) = check_preconditions(
-        _pre("{ subject: { launch: { args: [-x] } } }"), [_effs()["site"]]
+        _pre("{ subject: { launch: { args: [-x] } } }"), [_effs()["site"]], interrupts=()
     )
     assert problem.startswith("preconditions.subject.launch.args applies to no target")
     assert "(platform web)" in problem
@@ -289,27 +292,35 @@ def test_an_app_field_no_driven_platform_has_fails() -> None:
 def test_an_app_field_one_driven_platform_has_passes() -> None:
     effs = _effs()
     args = _pre("{ subject: { launch: { args: [-x] } } }")
-    assert check_preconditions(args, [effs["phone"], effs["site"]]) == []
+    assert check_preconditions(args, [effs["phone"], effs["site"]], interrupts=()) == []
     reinstall = _pre("{ subject: { reinstall: overwrite } }")
-    assert check_preconditions(reinstall, [effs["droid"], effs["site"]]) == []
+    assert check_preconditions(reinstall, [effs["droid"], effs["site"]], interrupts=()) == []
 
 
 def test_the_fake_platform_has_no_launch_fields() -> None:
     (problem,) = check_preconditions(
-        _pre("{ subject: { launch: { env: { A: '1' } } } }"), [_effs()["fake"]]
+        _pre("{ subject: { launch: { env: { A: '1' } } } }"), [_effs()["fake"]], interrupts=()
     )
     assert "preconditions.subject.launch.env" in problem
 
 
-def test_an_ios_only_run_field_fails_without_an_ios_target() -> None:
+def test_a_tip_kit_entry_fails_without_an_ios_target() -> None:
     effs = _effs()
-    pre = _pre("{ run: { tipKitHandling: true } }")
-    (problem,) = check_preconditions(pre, [effs["droid"]])
-    assert problem.startswith("preconditions.run.tipKitHandling applies to no target")
-    assert check_preconditions(pre, [effs["phone"]]) == []
+    pre = _pre("{}")
+    tip = [TipKitInterrupt(tipKit="dismiss")]
+    (problem,) = check_preconditions(pre, [effs["droid"]], interrupts=tip)
+    assert problem.startswith("interrupts: a tipKit entry applies to no target")
+    assert check_preconditions(pre, [effs["phone"]], interrupts=tip) == []
     # A web target has no `reinstall`, yet its fresh browser context satisfies `erase` (BE-0473).
-    assert check_preconditions(_pre("{ subject: { reinstall: erase } }"), [effs["site"]]) == []
-    (problem,) = check_preconditions(_pre("{ subject: { reinstall: clean } }"), [effs["site"]])
+    assert (
+        check_preconditions(
+            _pre("{ subject: { reinstall: erase } }"), [effs["site"]], interrupts=()
+        )
+        == []
+    )
+    (problem,) = check_preconditions(
+        _pre("{ subject: { reinstall: clean } }"), [effs["site"]], interrupts=()
+    )
     assert problem.startswith("preconditions.subject.reinstall applies to no target")
 
 
@@ -360,6 +371,39 @@ def test_each_scenario_is_checked_against_the_targets_it_declares() -> None:
     _refuse_bad_preconditions(checks, erase=None)
 
 
+def test_a_tip_kit_entry_on_a_web_only_scenario_is_refused_before_device_work(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # `run` and `audit` hand each scenario's own entries to the check, so a TipKit entry no driven
+    # target can honor fails loudly rather than doing nothing at run time (BE-0452, BE-0473).
+    cfg = load_config(_CONFIG.replace(", seedPhotos: [photos/red.png]", ""))
+    loaded = LoadedConfig(config=cfg, path=Path("c.yaml"), source=None, root=None)
+    (web,) = load_scenarios("- name: web\n  interrupts: [{ tipKit: dismiss }]\n  steps: []\n")
+    checks = _precondition_checks(loaded, [web], "site", resolve(cfg, "site"))
+    with pytest.raises(typer.Exit):
+        _refuse_bad_preconditions(checks, erase=None)
+    assert "tipKit entry applies to no target" in capsys.readouterr().out
+
+
+def test_a_stored_plan_keeps_its_screen_entries_beside_the_converted_ones() -> None:
+    text = (
+        "- name: s\n"
+        "  interrupts: [{ condition: { exists: { id: [promo] } }, steps: [{ tap: { id: [x] } }] }]\n"
+        "  preconditions:\n"
+        "    run:\n"
+        "      systemAlertHandling: { rules: [{ prompt: paste, choice: grant }] }\n"
+        "      inheritSetup: false\n"
+        "  steps: []\n"
+    )
+    upgraded = _yaml.safe_load(_upgraded_scenario_text(text))[0]
+    assert upgraded["interrupts"] == [
+        {"condition": {"exists": {"id": ["promo"]}}, "steps": [{"tap": {"id": ["x"]}}]},
+        {"systemAlert": "paste", "choice": "grant"},
+    ]
+    assert upgraded["preconditions"] == {"run": {"inheritSetup": False}}
+    load_stored_scenario_file(text)
+
+
 _WEB_CONFIG = """
 targets:
   site:
@@ -408,7 +452,8 @@ _PRE_REGROUP_PLAN = (
 def test_a_plan_stored_before_the_regrouping_still_loads() -> None:
     (scenario,) = load_stored_scenario_file(_PRE_REGROUP_PLAN).scenarios
     pre = scenario.preconditions
-    assert (pre.run.system_alert_handling, pre.run.tip_kit_handling) == (False, True)
+    # `false` names no prompt, so it leaves no entry; the TipKit opt-in becomes its entry (BE-0473).
+    assert scenario.interrupts == [TipKitInterrupt(tipKit="dismiss")]
     # A stored erase wiped the device whatever `reinstall` said, so it lands on the top rung.
     assert pre.subject.reinstall == "erase"
     assert (pre.subject.launch.env, pre.subject.launch.args, pre.subject.launch.deeplink) == (
@@ -451,13 +496,45 @@ def test_a_plan_stored_with_a_scenario_runs_on_keeps_its_device_state() -> None:
             "{ run: { erase: false }, subject: { reinstall: overwrite } }",
             {"subject": {"reinstall": "overwrite"}},
         ),
-        ("{ run: { erase: false, tipKitHandling: true } }", {"run": {"tipKitHandling": True}}),
+        ("{ run: { erase: false, inheritSetup: false } }", {"run": {"inheritSetup": False}}),
     ],
 )
 def test_a_plan_stored_with_run_erase_folds_it_into_reinstall(stored: str, want: object) -> None:
     # A stored plan carries the concrete bool the run resolved (BE-0473).
     text = f"- name: s\n  preconditions: {stored}\n  steps: []\n"
     assert _yaml.safe_load(_upgraded_scenario_text(text))[0]["preconditions"] == want
+    load_stored_scenario_file(text)
+
+
+@pytest.mark.parametrize(
+    ("run", "entries"),
+    [
+        (
+            "{ systemAlertHandling: { rules: [{ prompt: savePassword, choice: deny }, "
+            "{ prompt: paste, choice: grant }], pollInterval: 2, frozenScreenTimeout: 20 } }",
+            [
+                {
+                    "systemAlert": "savePassword",
+                    "choice": "deny",
+                    "pollInterval": 2,
+                    "frozenScreenTimeout": 20,
+                },
+                {"systemAlert": "paste", "choice": "grant", "pollInterval": 2},
+            ],
+        ),
+        ("{ systemAlertHandling: false, tipKitHandling: false }", [{"tipKit": "leave"}]),
+        ("{ systemAlertHandling: { visionInstruction: tap Allow } }", None),
+    ],
+)
+def test_a_plan_stored_with_run_handlers_turns_them_into_interrupts(
+    run: str, entries: object
+) -> None:
+    # BE-0473 moved both handlers into `interrupts`. A rule keeps the tuning the entry form accepts,
+    # with `frozenScreenTimeout` only on the in-tree prompt; a form naming no prompt leaves no entry.
+    text = f"- name: s\n  preconditions: {{ run: {run} }}\n  steps: []\n"
+    upgraded = _yaml.safe_load(_upgraded_scenario_text(text))[0]
+    assert upgraded.get("interrupts") == entries
+    assert not upgraded.get("preconditions")
     load_stored_scenario_file(text)
 
 

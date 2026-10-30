@@ -93,9 +93,6 @@ from bajutsu.common.scenario.models.scenario import (
     Preconditions,
     Scenario,
     ScenarioFile,
-    SystemAlertHandling,
-    SystemAlertHandlingField,
-    SystemAlertRule,
 )
 from bajutsu.common.scenario.models.scenario import (
     _check_http_extract_vars as _check_http_extract_vars,
@@ -119,9 +116,16 @@ from bajutsu.common.scenario.models.steps import (
     Group,
     If,
     Interrupt,
+    InterruptEntry,
     Step,
+    SystemAlertInterrupt,
+    TipKitInterrupt,
     Use,
     Web,
+    check_interrupt_layer,
+    screen_interrupts,
+    system_alert_interrupts,
+    tip_kit_interrupt,
 )
 
 __all__ = [
@@ -162,6 +166,7 @@ __all__ = [
     "If",
     "InstallApp",
     "Interrupt",
+    "InterruptEntry",
     "LongPress",
     "Manual",
     "Mock",
@@ -194,11 +199,10 @@ __all__ = [
     "Sleep",
     "Step",
     "Swipe",
-    "SystemAlertHandling",
-    "SystemAlertHandlingField",
-    "SystemAlertRule",
+    "SystemAlertInterrupt",
     "TapPoint",
     "TextMatch",
+    "TipKitInterrupt",
     "Totp",
     "Trigger",
     "TypeText",
@@ -208,4 +212,8 @@ __all__ = [
     "Wait",
     "WaitRequest",
     "Web",
+    "check_interrupt_layer",
+    "screen_interrupts",
+    "system_alert_interrupts",
+    "tip_kit_interrupt",
 ]

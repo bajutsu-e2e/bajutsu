@@ -315,6 +315,19 @@ def test_interrupts_field_emits_a_labeled_todo_per_entry() -> None:
     assert "checks this opportunistically at run time" in code
 
 
+def test_system_alert_and_tip_kit_entries_emit_a_labeled_todo_too() -> None:
+    # BE-0473: a generated test meets the SpringBoard prompt or the tip with nothing to answer it, so
+    # the source names each entry rather than skipping it silently.
+    code = _gen(
+        "- name: x\n  interrupts:\n"
+        "    - { systemAlert: notifications, choice: grant }\n"
+        "    - tipKit: dismiss\n"
+        "  steps:\n    - tap: { id: a }\n"
+    )
+    assert "// TODO: interrupts[0] systemAlert: notifications → choice: grant" in code
+    assert "// TODO: interrupts[1] tipKit: dismiss" in code
+
+
 def test_request_assertion_emits_labeled_todo() -> None:
     # XCUITest has no network interception, so a `request` assertion stays a TODO — but a labeled one
     # naming the endpoint and why, like the device-control steps, not a bare "unsupported" (BE-0026).

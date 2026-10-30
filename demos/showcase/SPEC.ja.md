@@ -219,7 +219,7 @@ Log から到達するモーダル（5 つの提示様式）：
 画面**（§7）です。alert-guard のフローへ直接到達できるよう、トップレベルのタブに昇格しました。加えて、
 ペーストボードの往復を行う System セクションを持ちます。
 
-- `perm.requestNotif` — ボタン → `UNUserNotificationCenter.requestAuthorization`。**SpringBoard の通知プロンプト**を上げる（プロセス外で、アプリ内のアクセシビリティ照会には見えず、run の vision alert guard が消すか、`systemAlertHandling` で「Allow」を叩く）。
+- `perm.requestNotif` — ボタン → `UNUserNotificationCenter.requestAuthorization`。**SpringBoard の通知プロンプト**を上げる（プロセス外で、アプリ内のアクセシビリティ照会には見えず、run の alert guard が `{ systemAlert: notifications, choice: grant }` の interrupts エントリに従って「Allow」を叩く）。
 - `perm.notif.value` — `notDetermined`/`authorized`/`denied`
 - `perm.notif.authorized` — 許可後にのみ表示される要素（run が待てる肯定条件を与える）
 - `perm.requestLocation` — ボタン → `CLLocationManager.requestWhenInUseAuthorization`。**システムの位置情報プロンプト**を上げる（同じく SpringBoard）。
@@ -364,8 +364,8 @@ associated domain の仕掛けも要ります。無ければ iOS は何も申し
 - **起動時プロンプトなし。** 起動時に通知/位置情報の許可を要求せず、**Permissions** タブ（§5.4）の明示
   タップでのみ要求する。
 - **意図的なアラート**は **Permissions** タブにのみ存在：通知プロンプトと位置情報プロンプト。どちらも
-  SpringBoard（プロセス外）で、アプリ内のどのアクセシビリティ照会にも見えないので、run の **vision alert guard**
-  / `systemAlertHandling` の典型フィクスチャになります（このフィクスチャのシナリオは
+  SpringBoard（プロセス外）で、アプリ内のどのアクセシビリティ照会にも見えないので、run の **alert guard**
+  と、その `systemAlert` interrupts エントリの典型フィクスチャになります（このフィクスチャのシナリオは
   [`permission.yaml`](scenarios/permission.yaml)）。別プロセスが仕込んだペーストボードを読むと、同じタブに
   3 つ目のプロンプトが上がります。ペースト同意のプロンプトで、
   [`paste_system_alert.yaml`](scenarios/paste_system_alert.yaml) の `handleSystemAlert` がネイティブに

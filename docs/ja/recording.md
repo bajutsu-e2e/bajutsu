@@ -328,15 +328,15 @@ class SystemAlertGuard:
 
 ### run / record での使い方
 
-- `run`: ガードはシナリオごとに**既定 ON** です。CLI は有効な各シナリオに `AlertGuardConfig`
+- `run`: ガードはすべてのシナリオで**既定 ON** です。CLI は各シナリオに `AlertGuardConfig`
   （[BE-0315](../../roadmaps/BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling-ja.md)）
   を構築し `on_blocked` として渡します。`HANDLE_SYSTEM_ALERT` を宣言するバックエンド（XCUITest）では、
   決定的なネイティブ経路を優先します。[`handleSystemAlert`](scenarios.md#handlesystemalert決定的なシステムアラートステップ)
-  （BE-0316）と同じ SpringBoard 照会を読み、シナリオの規則が名指ししたボタンを `resolve_unique` 経由でラベルで
+  （BE-0316）と同じ SpringBoard 照会を読み、`systemAlert` エントリが名指ししたボタンを `resolve_unique` 経由でラベルで
   タップし、モデル呼び出しは不要です。決定的な経路がどれも対処できない場合、ガードは何もしません
   （[BE-0402](../../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback-ja.md)）。
-  能力を持たないバックエンド（adb、Playwright）、どの規則も同定しないアラート、照会が列挙できず、しかも
-  どの規則も同定しない画面がこれにあたります（規則が同定するものは、ツリー内のタップが
+  能力を持たないバックエンド（adb、Playwright）、どのエントリも同定しないアラート、照会が列挙できず、しかも
+  どのエントリも同定しない画面がこれにあたります（エントリが同定するものは、ツリー内のタップが
   片付けます）。見たものは失敗に乗ります。ガード対象の `wait` は必ず注記を
   運び、wait の外のステップは、ネイティブ照会がアラートを列挙できたときだけ運びます。ネイティブ照会が
   なければ名指しする材料がないため、そのステップは従来どおり失敗します。
@@ -344,16 +344,19 @@ class SystemAlertGuard:
   （[run-loop](run-loop.md#run_scenario1-シナリオの実行)）。`wait` ステップ
   （`for`/`gone`/`settled`/`screenChanged`）では、ネイティブ経路はさらに独自の間隔（既定 1 秒。wait 自体の
   条件ポーリングとは切り離しています）でポーリングされるため、wait 自体のタイムアウトを待たず、末尾の
-  再試行より前に回復できます（BE-0269）。シナリオ側では `systemAlertHandling: false` で無効化、
-  `{ rules: [{ prompt: notifications, choice: grant }] }` でガードが答えるプロンプトとその選択を
-  指定できます。`rules` がガードの宣言のすべてです
-  （[BE-0406](../../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md)）。
-  `{ visionInstruction: … }` は `run` ではどの経路にも届かないため、どのシナリオも実行する前に拒否されます。
-  `--system-alert-handling`/`--no-system-alert-handling` は全シナリオを上書きし、
-  `--alert-poll-interval` はそのキーをその 1 回の run に与えます。`rules` に専用のフラグはありません。
+  再試行より前に回復できます（BE-0269）。ガードが答えるプロンプトとその選択は、シナリオの `interrupts` の
+  `systemAlert` エントリで指定します（`- { systemAlert: notifications, choice: grant }`）。
+  ターゲットの `hooks.interrupts` に同じエントリを書けば、すべてのシナリオに効きます。これらのエントリが
+  ガードの宣言のすべてです
+  （[BE-0406](../../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md)、[BE-0473](../../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts-ja.md)）。
+  シナリオは、そのプロンプトに `choice: leave` を書いて、引き継いだ答えを 1 つ止められます。ガードを
+  無効にできるのは `--no-system-alert-handling` だけで、run のすべてのシナリオに効きます。
+  `--alert-poll-interval` はポーリング間隔をその 1 回の run に与えます。プロンプトと選択に専用の
+  フラグはありません。
 - `record --system-alert-handling`: 既定で ON です（オーサリング時はまだシナリオが無いため）。割り込むプロンプトを片付け、
   エージェントに常にクリーンな画面を見せます。**dismissal は環境操作であって記録ステップではありません**
-  （リプレイ側は各シナリオの `systemAlertHandling` で対処します）。
+  （リプレイ側は各シナリオの `interrupts` にある `systemAlert` エントリで対処します）。視覚ガードが読む
+  自由記述は `--alert-vision-instruction` からだけ受け取り、config のキーにはありません。
 
 > 視覚ガードは `ANTHROPIC_API_KEY` が必要です（[cli の .env](cli.md#環境変数env)）。無くても
 > **ベストエフォート**で単に no-op し、run を失敗させません。これが当てはまるのはネイティブ経路を持たない

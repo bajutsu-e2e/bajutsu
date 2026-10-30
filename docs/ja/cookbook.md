@@ -88,26 +88,25 @@ uv run bajutsu run --scenario <path-to-file> --target showcase-swiftui --backend
 ## システムの権限ダイアログを許可する
 
 実行時の権限プロンプト（通知、位置情報など）は、アプリ自身の UI ではなく**プロセス外のシステム
-アラート**です。iOS バックエンドはこれを直接タップできません。`systemAlertHandling` は、そのタップだけを
-リアクティブなアラートガードに任せます。ガードは決定論的なネイティブ経路で、スクリーンショットも
+アラート**です。iOS バックエンドはこれを直接タップできません。シナリオの `interrupts` に書く
+`systemAlert` エントリは、そのタップだけをリアクティブなアラートガードに任せます。ガードは決定論的なネイティブ経路で、スクリーンショットも
 モデルへの往復も使わずにプロンプトを見張り、「Allow」をタップします。その前後のアサーションはすべて
-機械チェックのままです。書くのは、想定するプロンプトと、そこで下す選択です。ガードの宣言は `rules` が
-すべてです（[BE-0406](../../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md)）。
+機械チェックのままです。書くのは、想定するプロンプトと、そこで下す選択です。ガードの宣言は `systemAlert`
+エントリがすべてです（[BE-0406](../../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md)、
+[BE-0473](../../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts-ja.md)）。
 実行時にプロンプトと固定したロケールからボタンを解決するので、このファイルは日本語のシミュレータでも
-正しいままです。`visionInstruction` が操作していたのは vision フォールバックで、シナリオからはどの
-コマンドにも届かなくなりました。そのため `run` は、操作できない設定のまま実行するのではなく、この設定
-自体を拒否します
-（[BE-0402](../../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback-ja.md)）。
+正しいままです。どのシナリオでも同じプロンプトを出すアプリなら、このエントリをターゲットの
+`hooks.interrupts` に一度だけ書く方法もあります。
 
 ```yaml
 - name: grant notification permission
   tags: [permission, system]
   preconditions:
-    run:
-      systemAlertHandling: { rules: [{ prompt: notifications, choice: grant }] }
     subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
+  interrupts:
+    - { systemAlert: notifications, choice: grant }
   steps:
     - tap: { label: "Permissions", traits: [button] }
     - wait: { for: { id: perm.requestNotif }, timeout: 10 }
@@ -119,7 +118,7 @@ uv run bajutsu run --scenario <path-to-file> --target showcase-swiftui --backend
     - value: { sel: { id: perm.notif.value }, equals: "authorized" }
 ```
 
-`systemAlertHandling` はアラートの**ハンドラ**であって、アサーションではありません。合否の判定には
+`systemAlert` エントリはアラートの**ハンドラ**であって、アサーションではありません。合否の判定には
 一切関与せず、iOS バックエンドからは見えないアラートでステップが止まってしまうのを防ぐだけです。Android では
 同じシナリオがプロンプトなしで走ります（target の config が権限を事前付与しているため）。その場合
 ガードは何もしないまま待機するだけです。1 つのシナリオが 2 つのプラットフォームで分岐なく動きます。

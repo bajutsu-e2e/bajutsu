@@ -234,7 +234,7 @@ targets:
       id: com.bajutsu.showcase.android.compose
       # Granted up front (`pm grant`) at lease time, so the notification prompt never blocks the run
       # (BE-0210); the shared permission.yaml relies on this on Android to stay deterministic — no dialog
-      # appears, so its `systemAlertHandling` guard no-ops (on iOS, which can't pre-grant, that guard grants).
+      # appears, so its `systemAlert` entry no-ops (on iOS, which can't pre-grant, that guard grants).
       grantPermissions: [android.permission.POST_NOTIFICATIONS]
       # `saved`: the SHOWCASE_SAVED_NOTE screen (SPEC §5.6), as on showcase-swiftui.
       idNamespaces: [stable, horse, search, log, notice, perm, sys, net, saved]

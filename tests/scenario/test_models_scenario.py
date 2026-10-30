@@ -6,8 +6,10 @@ import pytest
 from pydantic import ValidationError
 
 from bajutsu.common.scenario import (
+    Interrupt,
     Scenario,
-    SystemAlertHandling,
+    SystemAlertInterrupt,
+    TipKitInterrupt,
     dump_scenarios,
     load_scenarios,
 )
@@ -37,330 +39,133 @@ def test_preconditions_reinstall_validated() -> None:
         )
 
 
-def test_system_alert_handling_default_unset() -> None:
-    # On by default, but kept None when unset so a dumped scenario stays clean.
-    s = Scenario.model_validate({"name": "x", "steps": [{"tap": {"id": "a"}}]})
-    assert s.preconditions.run.system_alert_handling is None
-    assert "systemAlertHandling" not in dump_scenarios([s])
+def _scenario(**fields: object) -> Scenario:
+    return Scenario.model_validate({"name": "x", "steps": [{"tap": {"id": "a"}}], **fields})
 
 
-def test_system_alert_handling_bool_and_object_forms() -> None:
-    # BE-0401: the boolean carries on and off, so a mapping always means on.
-    off = Scenario.model_validate(
-        {
-            "name": "x",
-            "preconditions": {"run": {"systemAlertHandling": False}},
-            "steps": [{"tap": {"id": "a"}}],
-        }
+def test_interrupts_take_three_forms_decided_by_their_keys() -> None:
+    # BE-0473: an entry's form comes from the key it writes, never from a value's type.
+    s = _scenario(
+        interrupts=[
+            {"condition": {"exists": {"id": ["x"]}}, "steps": [{"tap": {"id": "y"}}]},
+            {"systemAlert": "notifications", "choice": "grant"},
+            {"tipKit": "dismiss"},
+        ]
     )
-    assert off.preconditions.run.system_alert_handling is False
+    screen, alert, tip = s.interrupts
+    assert isinstance(screen, Interrupt)
+    assert isinstance(alert, SystemAlertInterrupt)
+    assert (alert.system_alert, alert.choice) == ("notifications", "grant")
+    assert isinstance(tip, TipKitInterrupt)
+    assert tip.tip_kit == "dismiss"
 
-    on = Scenario.model_validate(
-        {
-            "name": "x",
-            "preconditions": {"run": {"systemAlertHandling": True}},
-            "steps": [{"tap": {"id": "a"}}],
-        }
+
+def test_interrupt_entries_round_trip_through_a_dump() -> None:
+    s = _scenario(
+        interrupts=[
+            {"systemAlert": "savePassword", "choice": "deny", "frozenScreenTimeout": 20},
+            {"systemAlert": "paste", "choice": "leave", "pollInterval": 2.5},
+            {"tipKit": "leave"},
+        ]
     )
-    assert (
-        on.preconditions.run.system_alert_handling == SystemAlertHandling()
-    )  # `true` is the empty policy
+    assert load_scenarios(dump_scenarios([s]))[0].interrupts == s.interrupts
 
-    instr = Scenario.model_validate(
-        {
-            "name": "x",
-            "preconditions": {"run": {"systemAlertHandling": {"visionInstruction": "tap Allow"}}},
-            "steps": [{"tap": {"id": "a"}}],
-        }
-    )
-    assert isinstance(instr.preconditions.run.system_alert_handling, SystemAlertHandling)
-    assert instr.preconditions.run.system_alert_handling.vision_instruction == "tap Allow"
 
-    rt = load_scenarios(dump_scenarios([instr]))[0]
-    assert isinstance(rt.preconditions.run.system_alert_handling, SystemAlertHandling)
-    assert rt.preconditions.run.system_alert_handling.vision_instruction == "tap Allow"
-
-    with pytest.raises(ValidationError):  # extra="forbid" rejects unknown keys
-        Scenario.model_validate(
-            {
-                "name": "x",
-                "preconditions": {"run": {"systemAlertHandling": {"bogus": 1}}},
-                "steps": [{"tap": {"id": "a"}}],
-            }
+def test_an_entry_mixing_two_forms_fails_naming_both() -> None:
+    with pytest.raises(
+        ValidationError,
+        match=r"mixes `systemAlert` \(choice, systemAlert\) and `tipKit` \(tipKit\)",
+    ):
+        _scenario(interrupts=[{"systemAlert": "paste", "choice": "grant", "tipKit": "dismiss"}])
+    with pytest.raises(
+        ValidationError, match=r"mixes a screen entry \(condition\) and `systemAlert`"
+    ):
+        _scenario(
+            interrupts=[
+                {"condition": {"exists": {"id": ["x"]}}, "systemAlert": "paste", "choice": "grant"}
+            ]
         )
 
 
-def test_system_alert_handling_off_round_trips_as_the_bare_boolean() -> None:
-    # `false` is now a value of the field itself, not a `{ enabled: false }` mapping, so a dumped
-    # scenario must still say `false` — a dump that dropped it would silently re-enable the guard.
-    off = Scenario.model_validate(
-        {
-            "name": "x",
-            "preconditions": {"run": {"systemAlertHandling": False}},
-            "steps": [{"tap": {"id": "a"}}],
-        }
-    )
-    dumped = dump_scenarios([off])
-    assert "systemAlertHandling: false" in dumped
-    assert load_scenarios(dumped)[0].preconditions.run.system_alert_handling is False
+def test_a_screen_entry_without_a_condition_fails_on_the_condition() -> None:
+    with pytest.raises(ValidationError, match="condition"):
+        _scenario(interrupts=[{"steps": [{"tap": {"id": "y"}}]}])
 
 
 @pytest.mark.parametrize(
-    ("policy", "replacement"),
+    "entry",
     [
-        ({"instruction": ["Allow"]}, "rules"),
-        ({"instruction": "tap Allow"}, "visionInstruction"),
-        ({"enabled": False}, "systemAlertHandling: false"),
-        ({"labels": ["Allow"]}, "rules"),
+        {"systemAlert": "bogus", "choice": "grant"},
+        {"systemAlert": "notifications", "choice": "bogus"},
+        {"systemAlert": "notifications"},
+        {"tipKit": "on"},
+        {"systemAlert": "notifications", "choice": "grant", "pollInterval": 0},
+        {"systemAlert": "savePassword", "choice": "deny", "frozenScreenTimeout": -1},
+        {"systemAlert": "savePassword", "choice": "leave", "frozenScreenTimeout": 5},
     ],
 )
-def test_system_alert_handling_removed_keys_name_their_replacement(
-    policy: dict[str, object], replacement: str
-) -> None:
-    # BE-0401 removed `instruction` and `enabled` and BE-0406 removed `labels`, each with no alias,
-    # so the load error is the whole migration path an author gets — `extra="forbid"`'s generic
-    # message would name no replacement.
-    with pytest.raises(ValidationError) as exc:
-        Scenario.model_validate(
-            {
-                "name": "x",
-                "preconditions": {"run": {"systemAlertHandling": policy}},
-                "steps": [{"tap": {"id": "a"}}],
-            }
-        )
-    assert replacement in str(exc.value)
-
-
-def test_system_alert_handling_rejects_a_non_mapping_value() -> None:
-    # The removed-key check runs `mode="before"`, so it also sees a value that is neither the
-    # boolean nor a mapping — `systemAlertHandling: on-please`, say. It must fall through to
-    # Pydantic's own union error rather than raising on the membership test.
+def test_a_malformed_entry_fails_at_load(entry: dict[str, object]) -> None:
     with pytest.raises(ValidationError):
-        Scenario.model_validate(
-            {
-                "name": "x",
-                "preconditions": {"run": {"systemAlertHandling": "on-please"}},
-                "steps": [{"tap": {"id": "a"}}],
-            }
+        _scenario(interrupts=[entry])
+
+
+def test_frozen_screen_timeout_sits_only_on_an_in_tree_prompt() -> None:
+    # The frozen-screen stop arms only for a prompt the app's own tree carries, so the value on a
+    # SpringBoard prompt would load and never apply. 0 is allowed: it turns the stop off.
+    for value in (20, 0):
+        (entry,) = _scenario(
+            interrupts=[
+                {"systemAlert": "savePassword", "choice": "deny", "frozenScreenTimeout": value}
+            ]
+        ).interrupts
+        assert isinstance(entry, SystemAlertInterrupt)
+        assert entry.frozen_screen_timeout == value
+    with pytest.raises(ValidationError, match="answered in the app's own tree"):
+        _scenario(
+            interrupts=[
+                {"systemAlert": "notifications", "choice": "deny", "frozenScreenTimeout": 5}
+            ]
         )
+
+
+def test_one_layer_answers_a_prompt_once() -> None:
+    # Taking the first of two entries for one prompt would hide an authoring mistake, the same
+    # reason an ambiguous selector fails.
+    with pytest.raises(ValidationError, match="names systemAlert notifications more than once"):
+        _scenario(
+            interrupts=[
+                {"systemAlert": "notifications", "choice": "grant"},
+                {"systemAlert": "notifications", "choice": "leave"},
+            ]
+        )
+    with pytest.raises(ValidationError, match="more than one tipKit entry"):
+        _scenario(interrupts=[{"tipKit": "dismiss"}, {"tipKit": "leave"}])
+
+
+@pytest.mark.parametrize(
+    ("run", "new_home"),
+    [
+        ({"systemAlertHandling": False}, "choice: leave"),
+        ({"systemAlertHandling": {"rules": []}}, "systemAlert"),
+        ({"tipKitHandling": True}, "tipKit: dismiss"),
+    ],
+)
+def test_a_moved_run_field_fails_naming_its_interrupts_entry(
+    run: dict[str, object], new_home: str
+) -> None:
+    # BE-0473: the loader reads no old key, so the error is the migration path.
+    with pytest.raises(ValidationError, match="BE-0473") as exc:
+        _scenario(preconditions={"run": run})
+    assert new_home in str(exc.value)
 
 
 @pytest.mark.parametrize("old", ["alertHandling", "dismissAlerts"])
 def test_renamed_alert_keys_fail_naming_the_canonical_key(old: str) -> None:
     # BE-0317 / BE-0327 renamed the field twice and kept both spellings as aliases; BE-0401 deleted
-    # them, so each now fails to load pointing at `systemAlertHandling`.
+    # them, and BE-0473 moved the declaration into `interrupts`, which each now names.
     with pytest.raises(ValidationError) as exc:
-        Scenario.model_validate(
-            {
-                "name": "x",
-                old: {"rules": [{"prompt": "notifications", "choice": "grant"}]},
-                "steps": [{"tap": {"id": "a"}}],
-            }
-        )
-    assert "systemAlertHandling" in str(exc.value)
-
-
-def test_system_alert_handling_rules_round_trip() -> None:
-    # BE-0406: `rules` is the guard's whole declaration, so it is what a dump has to carry back.
-    s = Scenario.model_validate(
-        {
-            "name": "x",
-            "preconditions": {
-                "run": {
-                    "systemAlertHandling": {"rules": [{"prompt": "savePassword", "choice": "deny"}]}
-                }
-            },
-            "steps": [{"tap": {"id": "a"}}],
-        }
-    )
-    assert isinstance(s.preconditions.run.system_alert_handling, SystemAlertHandling)
-    rt = load_scenarios(dump_scenarios([s]))[0]
-    assert isinstance(rt.preconditions.run.system_alert_handling, SystemAlertHandling)
-    assert [(r.prompt, r.choice) for r in rt.preconditions.run.system_alert_handling.rules] == [
-        ("savePassword", "deny")
-    ]
-
-
-@pytest.mark.parametrize("policy", [{"visionInstruction": "  "}])
-def test_system_alert_handling_rejects_empty_values(policy: dict[str, object]) -> None:
-    # BE-0401: this used to normalize away silently and fall through to the default dismissive
-    # policy — answering the opposite of what the author wrote. Fail instead, the same reason an
-    # ambiguous selector fails rather than tapping its first match.
-    with pytest.raises(ValidationError):
-        Scenario.model_validate(
-            {
-                "name": "x",
-                "preconditions": {"run": {"systemAlertHandling": policy}},
-                "steps": [{"tap": {"id": "a"}}],
-            }
-        )
-
-
-def test_system_alert_handling_poll_interval() -> None:
-    # BE-0315: the native poll interval is a per-scenario knob; a non-positive value is rejected.
-    s = Scenario.model_validate(
-        {
-            "name": "x",
-            "preconditions": {"run": {"systemAlertHandling": {"pollInterval": 2.5}}},
-            "steps": [{"tap": {"id": "a"}}],
-        }
-    )
-    assert isinstance(s.preconditions.run.system_alert_handling, SystemAlertHandling)
-    assert s.preconditions.run.system_alert_handling.poll_interval == 2.5
-    with pytest.raises(ValidationError):
-        Scenario.model_validate(
-            {
-                "name": "x",
-                "preconditions": {"run": {"systemAlertHandling": {"pollInterval": 0}}},
-                "steps": [{"tap": {"id": "a"}}],
-            }
-        )
-
-
-def test_system_alert_handling_frozen_screen_timeout() -> None:
-    # 0 is allowed (it turns the frozen-screen stop off); a negative value is rejected.
-    for value in (20, 0):
-        s = Scenario.model_validate(
-            {
-                "name": "x",
-                "preconditions": {"run": {"systemAlertHandling": {"frozenScreenTimeout": value}}},
-                "steps": [{"tap": {"id": "a"}}],
-            }
-        )
-        assert isinstance(s.preconditions.run.system_alert_handling, SystemAlertHandling)
-        assert s.preconditions.run.system_alert_handling.frozen_screen_timeout == value
-    with pytest.raises(ValidationError, match="frozenScreenTimeout"):
-        Scenario.model_validate(
-            {
-                "name": "x",
-                "preconditions": {"run": {"systemAlertHandling": {"frozenScreenTimeout": -1}}},
-                "steps": [{"tap": {"id": "a"}}],
-            }
-        )
-
-
-def test_system_alert_handling_rules_default_empty_and_pruned() -> None:
-    s = Scenario.model_validate({"name": "x", "steps": [{"tap": {"id": "a"}}]})
-    assert s.preconditions.run.system_alert_handling is None  # unset entirely, same as today
-
-    on = Scenario.model_validate(
-        {
-            "name": "x",
-            "preconditions": {"run": {"systemAlertHandling": True}},
-            "steps": [{"tap": {"id": "a"}}],
-        }
-    )
-    assert isinstance(on.preconditions.run.system_alert_handling, SystemAlertHandling)
-    assert on.preconditions.run.system_alert_handling.rules == []
-    assert "rules" not in dump_scenarios([on])  # empty list prunes, like `interrupts`
-
-
-def test_system_alert_handling_rules_parse_and_round_trip() -> None:
-    s = Scenario.model_validate(
-        {
-            "name": "x",
-            "preconditions": {
-                "run": {
-                    "systemAlertHandling": {
-                        "rules": [
-                            {"prompt": "notifications", "choice": "grant"},
-                            {"prompt": "tracking", "choice": "deny"},
-                        ]
-                    }
-                }
-            },
-            "steps": [{"tap": {"id": "a"}}],
-        }
-    )
-    assert isinstance(s.preconditions.run.system_alert_handling, SystemAlertHandling)
-    assert [(r.prompt, r.choice) for r in s.preconditions.run.system_alert_handling.rules] == [
-        ("notifications", "grant"),
-        ("tracking", "deny"),
-    ]
-    rt = load_scenarios(dump_scenarios([s]))[0]
-    assert isinstance(rt.preconditions.run.system_alert_handling, SystemAlertHandling)
-    assert [(r.prompt, r.choice) for r in rt.preconditions.run.system_alert_handling.rules] == [
-        ("notifications", "grant"),
-        ("tracking", "deny"),
-    ]
-
-
-def test_system_alert_handling_rules_carry_prompts_of_different_reach() -> None:
-    # BE-0406: a prompt no answer path shares with another is still an ordinary entry here. The
-    # schema records what the author declared; which path can act on each is resolved later, from
-    # `alert_surfaces`, so a scenario can rule on a SpringBoard prompt and an in-app one at once.
-    s = Scenario.model_validate(
-        {
-            "name": "x",
-            "preconditions": {
-                "run": {
-                    "systemAlertHandling": {
-                        "rules": [
-                            {"prompt": "notifications", "choice": "grant"},
-                            {"prompt": "savePassword", "choice": "deny"},
-                        ],
-                    }
-                }
-            },
-            "steps": [{"tap": {"id": "a"}}],
-        }
-    )
-    assert isinstance(s.preconditions.run.system_alert_handling, SystemAlertHandling)
-    assert [(r.prompt, r.choice) for r in s.preconditions.run.system_alert_handling.rules] == [
-        ("notifications", "grant"),
-        ("savePassword", "deny"),
-    ]
-
-
-def test_system_alert_handling_rules_rejects_duplicate_prompt() -> None:
-    # Silently taking the first of two rules naming the same prompt would hide an authoring
-    # mistake, so it fails at parse time instead — the same reason an ambiguous selector fails.
-    with pytest.raises(ValidationError):
-        Scenario.model_validate(
-            {
-                "name": "x",
-                "preconditions": {
-                    "run": {
-                        "systemAlertHandling": {
-                            "rules": [
-                                {"prompt": "notifications", "choice": "grant"},
-                                {"prompt": "notifications", "choice": "deny"},
-                            ]
-                        }
-                    }
-                },
-                "steps": [{"tap": {"id": "a"}}],
-            }
-        )
-
-
-def test_system_alert_handling_rules_rejects_unknown_prompt_or_choice() -> None:
-    with pytest.raises(ValidationError):
-        Scenario.model_validate(
-            {
-                "name": "x",
-                "preconditions": {
-                    "run": {
-                        "systemAlertHandling": {"rules": [{"prompt": "bogus", "choice": "grant"}]}
-                    }
-                },
-                "steps": [{"tap": {"id": "a"}}],
-            }
-        )
-    with pytest.raises(ValidationError):
-        Scenario.model_validate(
-            {
-                "name": "x",
-                "preconditions": {
-                    "run": {
-                        "systemAlertHandling": {
-                            "rules": [{"prompt": "notifications", "choice": "bogus"}]
-                        }
-                    }
-                },
-                "steps": [{"tap": {"id": "a"}}],
-            }
-        )
+        _scenario(**{old: {"rules": [{"prompt": "notifications", "choice": "grant"}]}})
+    assert "interrupts" in str(exc.value)
 
 
 def test_permissions_default_unset() -> None:

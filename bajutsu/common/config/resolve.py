@@ -32,7 +32,7 @@ from bajutsu.common.config.schema import (
 )
 from bajutsu.common.config.schema.platform._shared import AppCommon
 from bajutsu.common.config.schema.platform.android import AndroidApp, AndroidDriver, AndroidRunsOn
-from bajutsu.common.config.schema.platform.ios import IosApp, IosDriver, IosKind, IosRun, IosRunsOn
+from bajutsu.common.config.schema.platform.ios import IosApp, IosDriver, IosKind, IosRunsOn
 from bajutsu.common.config.schema.platform.web import WebApp, WebDriver, WebRunsOn
 
 
@@ -206,8 +206,6 @@ def resolve(config: Config, target: str) -> Effective:
     ios = runs_on.ios if isinstance(runs_on, IosRunsOn) else None
     locale = (ios.locale if ios is not None else None) or DEFAULT_LOCALE
     seed_photos = list(ios.seed_photos) if ios is not None else []
-    run = a.run
-    tip_kit = run.tip_kit_handling if isinstance(run, IosRun) else None
     return Effective(
         target=target,
         platform_config=_platform_config(a),
@@ -243,13 +241,11 @@ def resolve(config: Config, target: str) -> Effective:
         notify=list(config.notify),
         visual_compare=a.evidence.visual_compare or "exact",
         run_defaults=RunDefaults(
-            system_alert_handling=run.system_alert_handling,
             network=a.evidence.collect_network,
-            ios_tip_kit_handling=tip_kit if tip_kit is not None else False,
             interrupts=list(a.hooks.interrupts),
             setup=list(a.hooks.setup),
             cleanup=list(a.hooks.cleanup),
-            ignored_settings=dict(run.ignored_settings),
+            ignored_settings=dict(a.run.ignored_settings),
         ),
     )
 

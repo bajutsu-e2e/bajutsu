@@ -344,3 +344,21 @@ def test_the_fake_driver_returns_a_selector_failure_per_pair() -> None:
     found, missing = driver.read_attributes([({"id": "docs.link"}, "href"), ({"id": "x"}, "href")])
     assert found == "/docs"
     assert isinstance(missing, base.ElementNotFound)
+
+
+def test_a_system_alert_entry_survives_the_narrowing_for_every_target() -> None:
+    # BE-0473: a `systemAlert` or `tipKit` entry polls no tree, so it stays on every target's narrowed
+    # scenario, while the walks over conditions and recovery steps skip it rather than raise.
+    sc = _multi_target(
+        [
+            {"target": "site", "condition": _ATTR, "steps": [{"tap": {"id": "a"}}]},
+            {"systemAlert": "paste", "choice": "grant"},
+            {"tipKit": "dismiss"},
+        ],
+        [{"tap": {"id": "a"}}],
+    )
+    app = steps_for_target(sc, "app")
+    assert [type(e).__name__ for e in app.interrupts] == ["SystemAlertInterrupt", "TipKitInterrupt"]
+    assert len(steps_for_target(sc, "site").interrupts) == 3
+    assert capability_preflight.unsupported(app, _MOBILE_CAPS) == []
+    assert capability_preflight.unsupported(steps_for_target(sc, "site"), _WEB_CAPS) == []

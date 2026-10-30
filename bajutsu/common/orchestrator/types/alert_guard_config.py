@@ -10,12 +10,12 @@ from bajutsu.common.drivers import base
 from .resolved_alert_rule import ResolvedAlertRule
 
 # The guard's default SpringBoard-check cadence (seconds), overridable per scenario / target / flag
-# via `systemAlertHandling.pollInterval` (BE-0315, riding the BE-0177 precedence). A backend that
+# via a `systemAlert` entry's `pollInterval` (BE-0315, riding the BE-0177 precedence). A backend that
 # answers alerts inside its own reads checks SpringBoard at most this often (BE-0461).
 DEFAULT_ALERT_POLL_INTERVAL = 1.0
 
 # How long a guarded wait tolerates a frozen screen before it stops, overridable the same way via
-# `systemAlertHandling.frozenScreenTimeout`; 0 turns the stop off. Well past the sub-second collapse a
+# a `systemAlert` entry's `frozenScreenTimeout`; 0 turns the stop off. Well past the sub-second collapse a
 # sheet's own dismiss animation causes (measured: under a second on iOS 26.5), and short enough to
 # leave a typical wait's budget unspent.
 DEFAULT_FROZEN_SCREEN_TIMEOUT = 10.0

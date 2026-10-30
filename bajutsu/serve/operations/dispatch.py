@@ -127,7 +127,7 @@ def _bool_flag(body: dict[str, Any], key: str) -> bool | None:
 def _system_alert_handling_flag(
     body: dict[str, Any],
 ) -> tuple[bool | None, tuple[Any, int] | None]:
-    """The `systemAlertHandling` request flag.
+    """The `systemAlertHandling` request flag, which renders `--system-alert-handling`.
 
     The `alertHandling` (originally BE-0317) and `dismissAlerts` aliases this once also accepted were
     deleted with the schema aliases they mirrored (BE-0401). A request still naming one is rejected
@@ -174,7 +174,7 @@ def _reject_run_vision_instruction(body: dict[str, Any]) -> tuple[Any, int] | No
         return None
     return {
         "error": "'alertVisionInstruction' is not supported by run (BE-0402); "
-        "write the scenario's own preconditions.run.systemAlertHandling.rules instead"
+        "write a systemAlert entry in the scenario's own interrupts instead"
     }, 400
 
 
@@ -190,7 +190,7 @@ def _reject_run_alert_labels(body: dict[str, Any]) -> tuple[Any, int] | None:
         return None
     return {
         "error": "'alertLabels' is not supported by run (BE-0406); name the prompts you expect "
-        "with the scenario's own preconditions.run.systemAlertHandling.rules instead"
+        "as systemAlert entries in the scenario's own interrupts instead"
     }, 400
 
 

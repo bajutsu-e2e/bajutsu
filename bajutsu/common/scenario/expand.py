@@ -19,6 +19,7 @@ from bajutsu.common.scenario.models import (
     _check_http_extract_vars,
     _check_target_requirements,
     _expand_target_groups,
+    screen_interrupts,
 )
 
 # A `group` invocation's id must stay unique across every expansion call for one scenario, not
@@ -317,7 +318,7 @@ def expand_components(
         scenario.setup = expand(scenario.setup, [], resolve)
         for rule in scenario.cleanup:
             rule.steps = expand(rule.steps, [], resolve)
-        for entry in scenario.interrupts:
+        for entry in screen_interrupts(scenario.interrupts):
             entry.steps = expand(entry.steps, [], resolve)
         # The assignments above are plain attribute writes, which Pydantic never re-runs a
         # `model_validator` against — so a component's own steps would otherwise splice in a

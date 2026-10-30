@@ -131,16 +131,41 @@ Scenario ::= {
   mocks?:          list(<Mock>),            # default []
   redact?:         <Redact>,
   permissions?:    <Permissions>,           # pre-launch OS permission state; default {}
-  interrupts?:     list(<Interrupt>),       # default []  — handlers for interstitials that surface at an unpredictable point (BE-0314), appended after the target's `hooks.interrupts`
+  interrupts?:     list(<InterruptEntry>),  # default []  — handlers for what surfaces at an unpredictable point (BE-0314, BE-0473), layered over the target's `hooks.interrupts`
 }
 
 Component ::= { params?: list(string), steps: list(<Step>) }
 
-# A handler the runner checks opportunistically wherever in the step sequence the matching screen
-# surfaces, running `steps` to clear it (BE-0314). Free on a `wait`'s poll tick; every other
-# non-`wait` step pays one extra read. `target` names the declared target the entry watches; omitted,
-# it watches the primary target (BE-0438).
+# A handler for something that surfaces at an unpredictable point. The key an entry writes decides
+# its form (BE-0473); an entry that mixes keys from two forms fails at load and names both.
+InterruptEntry ::= <Interrupt> | <SystemAlertInterrupt> | <TipKitInterrupt>
+
+# An in-app interstitial: the runner checks it opportunistically wherever in the step sequence the
+# matching screen surfaces, running `steps` to clear it (BE-0314). Free on a `wait`'s poll tick;
+# every other non-`wait` step pays one extra read. `target` names the declared target the entry
+# watches; omitted, it watches the primary target (BE-0438). The target's entries come first.
 Interrupt ::= { condition: <Assertion>, steps: list(<Step>), target?: string }
+
+# An OS prompt the reactive system-alert guard answers by name: a native SpringBoard query + tap on
+# XCUITest (no model, BE-0315), plus an in-tree tap for a prompt that query cannot see. An alert no
+# entry identifies is reported on the blocked step's own failure, never guessed at (BE-0402,
+# BE-0406). The guard is on unless `run --no-system-alert-handling` turns it off for the run.
+# One entry per prompt per layer. A scenario's entry replaces the target's `choice` for the same
+# prompt and inherits an omitted `frozenScreenTimeout`; other prompts from both layers apply.
+SystemAlertInterrupt ::= {
+  systemAlert: notifications|tracking|paste|savePassword|localNetwork,
+  choice: grant|deny|leave,                 # leave = answer nothing (turns off an inherited answer)
+  pollInterval?: number,                    # native poll cadence, seconds; resolves scenario layer
+                                            # → --alert-poll-interval → target layer → 1, smallest within a layer
+  frozenScreenTimeout?: number,             # frozen-screen stop, seconds (0 = off); savePassword only;
+                                            # the guard takes the longest among answered entries, else 10
+}
+                # savePassword is guard-only: iOS raises it in-process, so the in-tree dismissal
+                # alone answers it and the handleSystemAlert step below rejects it (BE-0406)
+
+# Apple's TipKit popover, closed by its dismiss scrim (BE-0389); iOS only — fails at load on any
+# other target. Resolves `--ios-tipkit-handling` flag → scenario entry → target entry → off.
+TipKitInterrupt ::= { tipKit: dismiss|leave }
 
 # One teardown rule (BE-0392): the outcome it answers, and the steps to run for that outcome. The
 # outcome is the scenario's own machine-checked verdict, never a model call.
@@ -148,9 +173,8 @@ CleanupRule ::= { on: "always" | "success" | "failure", steps: list(<Step>) }
 
 # ── Preconditions ──────────────────────────────────────────────────────
 # `subject` and `run` take the target's own group names (BE-0452, BE-0470). Each field overrides the same field of every target the
-# scenario drives; `subject.launch.env` merges key by key, `subject.launch.args` appends, and the rules of
-# `run.systemAlertHandling` concatenate (the scenario's first). A field no driven target's platform
-# has fails the run before any device work. A scenario declares no device condition: `runsOn` belongs
+# scenario drives; `subject.launch.env` merges key by key and `subject.launch.args` appends. A field
+# no driven target's platform has fails the run before any device work. A scenario declares no device condition: `runsOn` belongs
 # to the target alone (BE-0469).
 Preconditions ::= {
   app?:    {
@@ -163,29 +187,14 @@ Preconditions ::= {
   },
   device?: { ios?: <IosDevice> },           # keyed by destination; a block for an undriven platform has no effect
   run?:    {
-    systemAlertHandling?: <SystemAlertHandling>,  # alert guard; on when unset
-    tipKitHandling?:      boolean,          # dismiss a blocking TipKit tip; off when unset; iOS only
     inheritSetup?:        boolean,          # default true — false skips every declared target's `hooks.setup`; their cleanup still runs
-  },
+  },                                        # `systemAlertHandling` / `tipKitHandling` here fail at load, naming the scenario's `interrupts` (BE-0473)
 }
 
 # The iOS device state a scenario applies; each field replaces the target's `runsOn.ios` value of the
 # same name. `seedPhotos` paths resolve against the scenario file, and a merged, non-empty list needs
 # an effective `subject.reinstall: erase`.
 IosDevice ::= { locale?: string, seedPhotos?: list(string) }
-
-# ── SystemAlertHandling (reactive system-alert guard; on by default) ───
-# Native SpringBoard query + tap on XCUITest (no model, reusing BE-0316; BE-0315), plus an in-tree
-# tap for a prompt that query cannot see. An alert no rule identifies is reported on the blocked
-# step's own failure, never guessed at (BE-0402, BE-0406).
-SystemAlertHandling ::= boolean                                   # true = on with no rules, false = off
-               | { rules?: [<SystemAlertRule>],             # the guard's whole declaration (BE-0406)
-                   visionInstruction?: string,              # free text; reaches no command — `run` rejects it
-                   pollInterval?: number,                    # native poll cadence, seconds (default 1)
-                   frozenScreenTimeout?: number }            # frozen-screen stop, seconds (default 10, 0 = off)
-SystemAlertRule ::= { prompt: notifications|tracking|paste|savePassword|localNetwork, choice: grant|deny }  # unique prompt per list
-                # savePassword is guard-only: iOS raises it in-process, so the in-tree dismissal
-                # alone answers it and the handleSystemAlert step below rejects it (BE-0406)
 
 Permissions ::= map(PermissionService, PermissionAction)    # applied before the app launches
 PermissionService ::= "location" | "camera" | "microphone" | "contacts"
@@ -481,6 +490,10 @@ error). This table is the **authoritative list of "exactly one / at least one / 
 | `Step.target` on a `use:` / `group:` step | **optional** at any `len(target_names)`, even with no `primaryTarget`, and never resolved itself; one that is set must name a declared target. Expansion stamps it onto every step the call produces that omits one, and refuses a produced step naming a different target (BE-0446) | `scenario/models/scenario/_targets.py`, `scenario/expand.py` |
 | `Interrupt.target`, and `Step.target` in an `interrupts` entry's `steps` | **optional** at any `len(target_names)`, regardless of `primaryTarget`: an omitted entry `target` watches the primary target, and an omitted recovery-step `target` runs on the entry's own target (or an enclosing `if`/`forEach` step's when that step names one); a value that is set follows the `Step.target` rule above for naming a declared target (BE-0438) | `scenario/models/scenario/_targets.py` |
 | `Interrupt.target`, and `Step.target` in its `steps`, under `targets.<name>.hooks.interrupts` | **rejected** — the entry already belongs to the target that config block configures (BE-0438) | `config/schema/target_config.py` |
+| `InterruptEntry` | **exactly one** form, decided by key: `condition` (screen), `systemAlert`, or `tipKit`; an entry mixing keys from two forms is an error naming both (BE-0473) | `scenario/models/steps/_functions.py` |
+| `interrupts` (one layer: a scenario's list, or one target's `hooks.interrupts`) | **at most one** `systemAlert` entry per prompt, and **at most one** `tipKit` entry (BE-0473) | `scenario/models/steps/_functions.py` |
+| `SystemAlertInterrupt` | `pollInterval` **> 0**; `frozenScreenTimeout` **≥ 0** and set only on a prompt answered in the app's own tree (`savePassword`) | `scenario/models/steps/system_alert_interrupt.py` |
+| `TipKitInterrupt` under `targets.<name>.hooks.interrupts` | **iOS targets only** (BE-0473) | `config/schema/target_config.py` |
 | every mapping | **no unknown keys** (`extra="forbid"`) | `scenario/models/_base.py` |
 
 `exists` is special: its selector is written **inline** (`exists: { id: home.title }`), and an
@@ -498,14 +511,14 @@ Omitted optional keys take these values (so a minimal scenario is just `name` + 
 | `Scenario.tags` / `expect` / `capturePolicy` / `mocks` / `interrupts` / `setup` / `cleanup` | `[]` |
 | `Scenario.preconditions` | `{}` (every field falls through to the target, then the built-in default) |
 | `Scenario.permissions` | `{}` (no pre-launch permission state applied) |
-| `Preconditions.run.systemAlertHandling` | unset (alert guard on, with no rules — so it answers no prompt of its own) |
-| `Preconditions.run.tipKitHandling` | unset (the target's `run.tipKitHandling`, else off — a tip is sometimes the assertion; iOS only) |
 | `Preconditions.run.inheritSetup` | `true` (every declared target's `hooks.setup` runs ahead of the scenario's `setup`) |
 | `Preconditions.subject.reinstall` | unset — the target's `subject.reinstall`, else `clean`; `--erase` raises it to `erase`, `--no-erase` lowers an `erase` to `clean` (BE-0473) |
 | `Preconditions.subject.launch.args` | `[]` |
 | `Preconditions.subject.launch.env` | `{}` |
-| `SystemAlertHandling.rules` | `[]` (no prompt is declared, so the guard answers none; an alert it meets is named on the blocked step's failure) |
-| `SystemAlertHandling.visionInstruction` | unset — and no other value is usable: `run` refuses one (BE-0402) and `record` / `crawl` read the free text only from their own `--alert-vision-instruction` flag |
+| `systemAlert` entries (scenario and target) | none — the alert guard stays on but answers no prompt; an alert it meets is named on the blocked step's failure |
+| `SystemAlertInterrupt.pollInterval` | unset — the scenario layer's value, else `--alert-poll-interval`, else the target layer's, else `1` |
+| `SystemAlertInterrupt.frozenScreenTimeout` | unset — the target's entry for the same prompt; the guard as a whole takes the longest among answered entries, else `10` |
+| `tipKit` entry (scenario and target) | none — off (a tip is sometimes the assertion; iOS only) |
 | `TypeText.submit` | `false` |
 | `Exists.negate` | `false` |
 | `MockResponse.status` | `200` |
@@ -675,7 +688,7 @@ load_scenarios        # parse + validate against this grammar
   a sequence of scenarios or a `{description, scenarios}` mapping, and any rule in
   [§4](#4-cardinality--mutual-exclusion-constraints) failing is a load error (`scenario/load.py`).
 - `dump_scenarios(scenarios) -> str` serializes back to YAML, dropping only fields the author never
-  set and emitting alias keys (`idMatches`, `tipKitHandling`, …). The output **reloads cleanly** — this
+  set and emitting alias keys (`idMatches`, `frozenScreenTimeout`, …). The output **reloads cleanly** — this
   is the round-trip `record` relies on (`scenario/serialize.py`).
 
 For the semantics behind the shapes — how a selector resolves to 0/1/2+ elements, how each assertion compares, how waits time out — see [selectors](selectors.md) and [run-loop](run-loop.md). To start writing scenarios by example, see [scenarios](scenarios.md).

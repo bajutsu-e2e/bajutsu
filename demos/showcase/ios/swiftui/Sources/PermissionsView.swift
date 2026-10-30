@@ -136,7 +136,7 @@ struct PermissionsView: View {
     }
 
     // Raises the SpringBoard notification prompt — out-of-process, so an in-app accessibility query
-    // cannot see it; the run's vision alert guard / systemAlertHandling clears it.
+    // cannot see it; the run's system-alert guard clears it (a `systemAlert` interrupts entry).
     private func requestNotifications() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge]) { granted, _ in
             Task { @MainActor in

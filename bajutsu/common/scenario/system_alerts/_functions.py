@@ -229,7 +229,7 @@ def _shapes(prompt: SystemAlertPrompt, locale: str) -> list[_Shape]:
     if shapes is None:
         # Built from the exported helper, so the message and the documented surface cannot drift.
         # Worded for the step, which reaches here only for a prompt with no position rule (BE-0445);
-        # the guard's caller (`run/cli.py`) re-scopes it to `systemAlertHandling.rules`.
+        # the guard's caller (`run/cli.py`) re-scopes it to the `systemAlert` entry.
         covered = ", ".join(covered_languages(prompt))
         raise UncoveredSystemAlertLocale(
             f"handleSystemAlert prompt: {prompt} has no known button labels for language "

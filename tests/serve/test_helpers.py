@@ -384,8 +384,8 @@ def test_run_command_builder() -> None:
     assert "--no-erase" not in erased
     assert "--system-alert-handling" in erased
     assert "--no-erase" in srv.run_command("s.yaml", "demo", erase=False)  # explicit override
-    # system_alert_handling defaults to None: no flag, so each scenario's systemAlertHandling (on)
-    # decides.
+    # system_alert_handling defaults to None: no flag, so the guard runs on, answering each
+    # scenario's `systemAlert` entries.
     assert "--system-alert-handling" not in cmd and "--no-system-alert-handling" not in cmd
     # False forces the guard off for the run (mirrors --no-erase).
     assert "--no-system-alert-handling" in srv.run_command(

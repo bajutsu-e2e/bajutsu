@@ -96,6 +96,7 @@ from bajutsu.common.scenario import (
     _scenarios_declaring_targets,
     dump_scenario_file,
     redact_totp_secrets,
+    screen_interrupts,
 )
 
 # Re-exported from `recovery` (BE-0334): the crash-retry count/budget bookkeeping now lives there so
@@ -701,7 +702,7 @@ class _ScenarioRunner:
                 self.alert_guard_for(s) if self.alert_guard_for is not None else self.alert_guard
             )
         except UncoveredSystemAlertLocale as exc:
-            # A `systemAlertHandling.rules` entry names a prompt this scenario's locale has no known
+            # A `systemAlert` interrupts entry names a prompt this scenario's locale has no known
             # labels for — the same fail-loudly-before-any-device-work choice `handleSystemAlert`'s
             # own `prompt`/`choice` resolution makes, surfaced here as a clean per-scenario failure
             # rather than an uncaught exception that would abort the whole run.
@@ -1319,7 +1320,7 @@ class _ScenarioRunner:
 
         return TargetRoster(
             primary=primary_target,
-            entries=list(s.interrupts),
+            entries=screen_interrupts(s.interrupts),
             status=dict.fromkeys(later, MemberStatus.NOT_INSTALLED),
             activate=activate if later else None,
             install=install if later else None,
@@ -1372,7 +1373,7 @@ class _ScenarioRunner:
             # The target config's own entries only: the scenario's own are resolved per step by the
             # run's `TargetRoster`, since an entry omitting `target` follows the current primary,
             # which a `setPrimaryTarget` step can move mid-run (BE-0447).
-            interrupts=list(pool.eff.run_defaults.interrupts),
+            interrupts=screen_interrupts(pool.eff.run_defaults.interrupts),
             locale=s.preconditions.resolved_locale(pool.eff.locale, pool.eff.platform),
             capture=list(pool.eff.capture),
             channel=collector,
@@ -1505,16 +1506,17 @@ class _ScenarioRunner:
                     else _no_transitions
                 ),
                 # Config-level interrupts first, then the scenario's own (BE-0314): an app-wide
-                # interstitial handler composes with a per-scenario addition, the config-then-scenario
-                # order the systemAlertHandling default already follows. The scenario's own are
-                # narrowed to the entries the primary watches (BE-0438).
+                # interstitial handler composes with a per-scenario addition. Only the screen entries:
+                # a `systemAlert` or `tipKit` entry reaches the alert guard and the TipKit gate
+                # instead (BE-0473). The scenario's own are narrowed to the entries the primary
+                # watches (BE-0438).
                 interrupts=(
                     # A self-declaring scenario's own entries reach the step loop through its
                     # roster instead, resolved against the primary in force at each step (BE-0447).
-                    list(self.eff.run_defaults.interrupts)
+                    screen_interrupts(self.eff.run_defaults.interrupts)
                     if primary_target
                     else [
-                        *self.eff.run_defaults.interrupts,
+                        *screen_interrupts(self.eff.run_defaults.interrupts),
                         *_scenario_interrupts_for(s, primary_target, primary_target),
                     ]
                 ),
@@ -1659,16 +1661,17 @@ def _settings_problems(actuator: str | None, eff: Effective, s: Scenario, udid_s
 
 
 def _scenario_interrupts_for(s: Scenario, name: str, primary_target: str) -> list[Interrupt]:
-    """*s*'s own `interrupts` entries the runner for target *name* watches (BE-0438).
+    """*s*'s own screen `interrupts` entries the runner for target *name* watches (BE-0438).
 
     An entry omitting `target` watches the primary. An empty *primary_target* is the single-target
     path, where `_routed` came back empty: validation already holds every entry there to omitting
     `target` or naming the one target that exists, so nothing is filtered — comparing against ""
     would instead drop an entry naming that target and silence it.
     """
+    entries = screen_interrupts(s.interrupts)
     if not primary_target:
-        return list(s.interrupts)
-    return [e for e in s.interrupts if (e.target or primary_target) == name]
+        return entries
+    return [e for e in entries if (e.target or primary_target) == name]
 
 
 def _device_leases(s: Scenario, held: Mapping[str, Lease]) -> list[tuple[str, Lease]]:
@@ -1952,7 +1955,7 @@ def run_all(
         clock: Injectable time source for condition waits, so tests need no real sleeps. None uses
             the real clock.
         alert_guard: A single alert-guard handler, used by tests.
-        alert_guard_for: Picks each scenario's alert-guard handler (honoring its `systemAlertHandling`);
+        alert_guard_for: Picks each scenario's alert-guard handler (from its `systemAlert` entries);
             takes precedence over `alert_guard`.
         run_dir: Where per-scenario artifacts (network.json, visual diffs) are written. None skips
             writing them.

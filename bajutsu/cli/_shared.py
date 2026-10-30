@@ -84,10 +84,10 @@ def resolve_system_alert_handling_flag(
 def resolve_system_alert_handling_flag(
     system_alert_handling: bool | None, *, default: bool | None = None
 ) -> bool | None:
-    """Resolve the `--system-alert-handling` flag against each command's own unset behavior.
+    """Resolve the `--system-alert-handling` flag against the command's unset behavior.
 
-    `run` leaves it None (each scenario's own value applies), while `record` and `crawl` pass the
-    target's `run.systemAlertHandling` as the default, on unless the target turns it off (BE-0452).
+    Every command passes `default=True` since BE-0473: a target no longer turns the guard off whole,
+    so `run`, `record`, and `crawl` all leave the guard on when the flag is absent.
     Shared by all three so the flag behaves identically on each. The `--alert-handling` /
     `--dismiss-alerts` aliases this once merged were deleted with no replacement (BE-0401).
     """
@@ -452,7 +452,7 @@ def _refuse_bad_preconditions(
 ) -> None:
     """Refuse every scenario whose preconditions its driven targets cannot honor (BE-0452).
 
-    Runs before any device work, on the scenarios as written: a `subject` or iOS-only `run` field no
+    Runs before any device work, on the scenarios as written: a `subject` field or a `tipKit` entry no
     driven platform has, and a merged `seedPhotos` without an effective erase
     (`check_preconditions`).
 
@@ -467,7 +467,9 @@ def _refuse_bad_preconditions(
     for s, targets in checks:
         problems += [
             f"{s.name}: {problem}"
-            for problem in check_preconditions(s.preconditions, targets, erase_flag=erase)
+            for problem in check_preconditions(
+                s.preconditions, targets, erase_flag=erase, interrupts=s.interrupts
+            )
         ]
     if problems:
         for problem in problems:

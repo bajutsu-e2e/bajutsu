@@ -25,7 +25,7 @@
 | `runsOn` | ターゲットを動かす場所。宛先ごとのブロックに、デバイスの条件とデバイスの状態を持ちます | 変わります |
 | `driver` | Bajutsu がターゲットを駆動する方法 | 変わります |
 | `services` | run が起動する、または代わりを務めるサーバ | 変わりません |
-| `run` | run の方針 | iOS は `tipKitHandling` が加わります |
+| `run` | run の方針 | 変わりません |
 | `hooks` | すべてのシナリオを包むステップ | 変わりません |
 | `evidence` | run が残すもの、その比較方法、マスクするもの | 変わりません |
 | `paths` | ファイルの置き場所 | 変わりません |
@@ -57,9 +57,10 @@ targets:
       idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
     driver:
       runner: { testRunner: ../../BajutsuKit/Runner/build/dd/Build/Products/BajutsuRunner.xctestrun }
-    run:
-      systemAlertHandling: { rules: [{ prompt: notifications, choice: grant }] }   # --system-alert-handling が実行ごとに上書き
-      tipKitHandling: true                     # iOS 専用: TipKit の tip ガード（ビルトイン既定はオフ）
+    hooks:
+      interrupts:
+        - { systemAlert: notifications, choice: grant }   # OS の通知プロンプトに答える。--no-system-alert-handling で実行ごとにガードを OFF
+        - tipKit: dismiss                      # iOS 専用: 操作をブロックする TipKit の tip を閉じる（エントリが無ければ OFF）
     paths: { scenarios: scenarios }            # このターゲットのシナリオディレクトリ（run が読み、record が書く）
 
   web:                            # web ターゲット（Playwright backend）は URL で指定する
@@ -75,14 +76,13 @@ targets:
     paths: { scenarios: demos/web/scenarios }
 ```
 
-4 つのグループは、形がプラットフォームで変わります。各プラットフォームがこれらのグループのモデルを登録するので、別のプラットフォームが受け付けるキーは未知のキーとしてエラーになり、エラーは受け付けるフィールドを列挙します。
+3 つのグループは、形がプラットフォームで変わります。各プラットフォームがこれらのグループのモデルを登録するので、別のプラットフォームが受け付けるキーは未知のキーとしてエラーになり、エラーは受け付けるフィールドを列挙します。
 
 | グループ | iOS | Android | Web |
 |---|---|---|---|
 | `subject` | `id`、`path`、`build`、`reinstall`、`launch.env`、`launch.args`、`launch.deeplink`、`startWhen`、`idNamespaces` | `id`、`path`、`build`、`reinstall`、`launch.env`、`launch.deeplink`、`grantPermissions`、`startWhen`、`idNamespaces` | `url`、`launch.env`、`startWhen`、`idNamespaces` |
 | `runsOn` | `ios.model`、`ios.os`、`ios.kind`、`ios.family`、`ios.locale`、`ios.seedPhotos` | `android.avd`、`android.apiLevel` | `browser.kind`、`browser.version`、`browser.emulate` |
 | `driver` | `runner.testRunner`、`runner.build`、`runner.hostAddress` | `nativeZ` | `headless` |
-| `run` に加わるフィールド | `tipKitHandling` | — | — |
 
 テスト専用の `fake` プラットフォームは、任意の `subject.id`、`subject.startWhen`、`subject.idNamespaces` だけを受け付け、`runsOn` と `driver` にはフィールドを持ちません。`fake` のターゲットは iOS の形の sub-config に解決します。
 
@@ -91,7 +91,7 @@ targets:
 | グループ | フィールド |
 |---|---|
 | `services` | `server`（run のためにアプリ自身のホストを起動します。後述）、`mockServer`、`mailbox`（[後述](#mailboxemail-ステップ)） |
-| `run` | `systemAlertHandling`、`ignoredSettings`（ターゲット専用、[後述](#環境ごとの設定runignoredsettingsbe-0467)） |
+| `run` | `ignoredSettings`（ターゲット専用、[後述](#環境ごとの設定runignoredsettingsbe-0467)） |
 | `hooks` | `setup`、`cleanup`、`interrupts` |
 | `evidence` | `capture`、`redact`、`collectNetwork`、`visualCompare`、`secrets` |
 | `paths` | `scenarios`、`baselines`、`schemas`、`goldens` |
@@ -327,9 +327,8 @@ targets:
 | `conditions` | `runsOn` | ターゲットが宣言するデバイスの条件です（[前述](#デバイスの条件runson)）。範囲は書いたままの文字列で持ちます。`run` はここから run を作り、`doctor` はその run を一覧にします |
 | `device_provider` | `--worker-config` | このターゲットのデバイスの取得元です。config はこれを指定しなくなりました。コマンドが従う `worker.yaml` の `appium` environment が、グリッドのエンドポイントを、グリッドのプラットフォームのターゲットに渡します（[マシンが実行できるもの](#マシンが実行できるもの設定の外be-0450)）。ほかのターゲットはビルトインの `local` provider（`--udid` の経路）を使います。このエンドポイントは live の W3C WebDriver トランスポートで端から端まで駆動します（[iOS デバイスクラウド](ios-device-cloud.md#ライブ--appium-エンドポイントのプロバイダー)、[BE-0236](../../roadmaps/BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction-ja.md)、[BE-0238](../../roadmaps/BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution-ja.md)） |
 | `launch_server` | `services.server` | 任意の `{cmd, readyUrl, readyTimeout, cwd, env}` です。run のためにアプリのホストを起動し、終わったら停止します。`readyUrl`（既定は `subject.url`）をプローブし、すでに応答すれば再利用、しなければ `cmd` を起動して準備が整うまで待ちます（固定 sleep ではなく条件待ち）。`subject.build` の web 版です（[BE-0059](../../roadmaps/BE-0059-launch-target-server/BE-0059-launch-target-server-ja.md)）。`serve` 上の**アップロードされた**バンドルでは、ホストが `cmd` を直接実行することはなく、`serve --upload-exec` が統制します（[セルフホスティング](self-hosting.md#アップロードされた-config-のコマンド実行be-0090)を参照）。`sandbox` での実行には、追加フィールドとして `dockerImage`（Docker イメージ参照。例 `node:20-slim`）か `dockerfile`（バンドル相対のパスで、`docker build` でビルドします）のどちらか一方、加えて `port`（コンテナ内の待ち受けポート。ループバックのホストポートへ publish します）が必要です（[BE-0090](../../roadmaps/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution-ja.md)） |
-| `run_defaults.system_alert_handling` / `.ios_tip_kit_handling` | `run` | 本来シナリオ単位や CLI フラグで指定する run のテスト動作設定に、アプリ単位の既定値を与えます（[BE-0177](../../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)）。`run.systemAlertHandling` はシナリオと同じ形（`false`、または `{ rules, visionInstruction, pollInterval }`）を取り、アラートガードの既定値になります。ON と OFF は**フラグ ＞ シナリオ ＞ これ ＞ ビルトイン既定の ON** の順で解決します（`--system-alert-handling`/`--no-system-alert-handling`）。`--headed`/`headless` と同じ重ね方です。ただし方針を持つキーは、それぞれの型で合わさります（[BE-0401](../../roadmaps/BE-0401-system-alert-handling-dsl-consolidation/BE-0401-system-alert-handling-dsl-consolidation-ja.md)）。リストである `rules` は内側の層から順に**連結**されるので、シナリオの答えをこの既定より先に試したうえで、どちらの層の宣言も消えません。スカラーである `pollInterval` は、値を持つもっとも内側の層が勝ちます（シナリオ、無ければ `--alert-poll-interval`、無ければこれ）。`visionInstruction` はどの層からも `run` に届きません。BE-0402 がこのキーの操作するフォールバックを取り除いたため、`run` は値を持つシナリオやターゲット config を実行前に拒否します。ここに書いた規則は、別のプロンプトについて規則を書いているシナリオの中でも、自分の名指すプロンプトには答えます。答えるときガードが通知を出し、シナリオ側は同じプロンプトの規則を書けば上書きできます。`labels` は [BE-0406](../../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md) で削除されました。ボタンのラベルが名指すのはボタンであってアラートではないため、ターゲット config が、どのシナリオも記述していない画面へのタップを許してしまうからです。[`systemAlertHandling` の層の重ね方](scenarios.md#層の重ね方1-つのキーは-3-か所から届く)を参照してください。`run.tipKitHandling` は TipKit の tip ガードの既定値です（iOS 専用、ビルトイン既定は**オフ**）。`--ios-tipkit-handling`/`--no-ios-tipkit-handling` で同じ優先順位に従います |
-| `run_defaults.setup` / `.cleanup` / `.interrupts` | `hooks.setup` / `hooks.cleanup` / `hooks.interrupts` | ターゲットのすべてのシナリオを包むステップです。`setup` はシナリオ自身の `setup` より先に、`cleanup` はシナリオ自身の `cleanup` より後に動き（規則は、シナリオの `cleanup` の規則と同じ `on: always`、`success`、`failure` を取ります）、`interrupts` はシナリオのものより先に確認します。hook のステップは `use: { component: <file>, with: … }` でコンポーネントを呼べます。ローダは config を読み込むときに、config ファイルのディレクトリを基準にコンポーネントを解決し、スイートのルートの外を指す参照を拒否します（[BE-0174](../../roadmaps/BE-0174-scenario-ref-path-containment/BE-0174-scenario-ref-path-containment-ja.md)）。`group:` と `setMocks` は引き続き hook では使えません。シナリオは `preconditions.run.inheritSetup: false` で、宣言したすべてのターゲットの `hooks.setup` を飛ばせます。cleanup はその場合も動きます |
-| `locale` | `runsOn.ios.locale` | iOS: launch 時に適用されます（`simctl` の launch 引数）。ビルトイン既定は `en_US` です。XCUITest バックエンドでは、cold spawn のたびに **Simulator 自身のシステム言語**も固定します。デバイスのグローバル設定ドメインに書き込み、SpringBoard がその言語で描画するよう再起動します。そのため、プロセス外の権限プロンプトのボタンのテキストは、Simulator がたまたま持っていた言語ではなく、この `locale` が予測するものになります。`preconditions.device.ios.locale` が固定済みの値と異なるシナリオは、warm な runner を再利用せず cold respawn を強制します（[BE-0320](../../roadmaps/BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md)）。label の対応表（英語と日本語）にない言語では、`handleSystemAlert` ステップはボタンの位置で答えます。同じ言語の `systemAlertHandling.rules` の規則は、デバイスを操作する前にシナリオを失敗させます（[BE-0445](../../roadmaps/BE-0445-system-alert-locale-agnostic-answer/BE-0445-system-alert-locale-agnostic-answer-ja.md)） |
+| `run_defaults.setup` / `.cleanup` / `.interrupts` | `hooks.setup` / `hooks.cleanup` / `hooks.interrupts` | ターゲットのすべてのシナリオを包むステップです。`setup` はシナリオ自身の `setup` より先に、`cleanup` はシナリオ自身の `cleanup` より後に動き（規則は、シナリオの `cleanup` の規則と同じ `on: always`、`success`、`failure` を取ります）、`interrupts` はシナリオのものより先に確認します。hook のステップは `use: { component: <file>, with: … }` でコンポーネントを呼べます。ローダは config を読み込むときに、config ファイルのディレクトリを基準にコンポーネントを解決し、スイートのルートの外を指す参照を拒否します（[BE-0174](../../roadmaps/BE-0174-scenario-ref-path-containment/BE-0174-scenario-ref-path-containment-ja.md)）。`group:` と `setMocks` は引き続き hook では使えません。`interrupts` のエントリは、書いたキーで決まる 3 つの形のどれかを取ります。1 つ目は**画面**のエントリ（`condition` と `steps`。アプリ内の差し込み画面）です。2 つ目は**システムアラート**のエントリ（`systemAlert: <プロンプト>` と `choice: grant`、`deny`、`leave` のいずれか）で、OS のプロンプトに名前で答えます。プロンプト名は `notifications`、`tracking`、`paste`、`savePassword`、`localNetwork` のいずれかです。このエントリには `pollInterval` を書けます。アプリ自身のツリーで答えるプロンプト（`savePassword`）のエントリには `frozenScreenTimeout` も書けます。3 つ目は **TipKit** のエントリ（`tipKit: dismiss` または `leave`。iOS 専用）で、操作をブロックする Apple の TipKit の tip を閉じます。`leave` は何にも答えないので、シナリオは引き継いだ答えを 1 つ止めるときに書きます。2 つの形のキーを混ぜたエントリは読み込み時に失敗し、エラーは両方の形を挙げます。1 つの層で同じプロンプトに 2 つのエントリを書いた場合も失敗します。iOS 以外のターゲットに書いた TipKit のエントリは読み込み時に失敗します。`defaults.platforms` には `hooks` が無いので、すべてのターゲットが iOS なら `defaults.hooks.interrupts` に 1 度だけ書きます。そうでなければ iOS のターゲットごとに書きます（[`x-` の YAML アンカー](#ターゲット間でブロックを共有するx-キー)で共有できます）。シナリオ自身の `interrupts` も同じ 3 つの形を取り、ここに書いたエントリの上に重なります。画面のエントリはこの層を先にして連結します。シナリオの `systemAlert` エントリは、同じプロンプトについてこの層の `choice` を置き換え、省略した `frozenScreenTimeout` はこの層から引き継ぎます。シナリオの `tipKit` エントリはこの層のものに優先します（[層の重ね方](scenarios.md#interrupts予測できない差し込み画面への対処)）。これらのエントリは、削除した `run.systemAlertHandling` と `run.tipKitHandling`（`defaults.run` と `defaults.platforms.ios.run` の下のものも含みます）に代わるものです。旧キーは読み込み時に `hooks.interrupts` を挙げて失敗します。ターゲットからアラートガードを OFF にすることもできなくなりました。ガードを OFF にするのは、run 全体に効く `bajutsu run --no-system-alert-handling` だけです（[BE-0473](../../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts-ja.md)）。シナリオは `preconditions.run.inheritSetup: false` で、宣言したすべてのターゲットの `hooks.setup` を飛ばせます。cleanup はその場合も動きます |
+| `locale` | `runsOn.ios.locale` | iOS: launch 時に適用されます（`simctl` の launch 引数）。ビルトイン既定は `en_US` です。XCUITest バックエンドでは、cold spawn のたびに **Simulator 自身のシステム言語**も固定します。デバイスのグローバル設定ドメインに書き込み、SpringBoard がその言語で描画するよう再起動します。そのため、プロセス外の権限プロンプトのボタンのテキストは、Simulator がたまたま持っていた言語ではなく、この `locale` が予測するものになります。`preconditions.device.ios.locale` が固定済みの値と異なるシナリオは、warm な runner を再利用せず cold respawn を強制します（[BE-0320](../../roadmaps/BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md)）。label の対応表（英語と日本語）にない言語では、`handleSystemAlert` ステップはボタンの位置で答えます。同じ言語の `interrupts` の `systemAlert` エントリは、デバイスを操作する前にシナリオを失敗させます（[BE-0445](../../roadmaps/BE-0445-system-alert-locale-agnostic-answer/BE-0445-system-alert-locale-agnostic-answer-ja.md)） |
 | `launch_env` / `launch_args` | `subject.launch.env` / `subject.launch.args` | シナリオの `preconditions.subject.launch.env` は環境変数にキーごとにマージし、`.args` は引数の後ろに追記します。`launch.args` は iOS 専用です |
 | `reinstall` | `subject.reinstall` | iOS と Android: 各シナリオの前にどこまで状態を戻すかを、弱いものから順の 1 本の段階で決めます。`overwrite` はアプリの上に install してデータを残します。`clean` は uninstall してから install します。`erase` はデバイス全体を wipe してから install します（デバイス全体の wipe がない Android では `clean` と同じです）。install には `subject.path` が必要です。シナリオの `preconditions.subject.reinstall` が優先し、どちらも未設定なら組み込みの `clean` を使います（[BE-0452](../../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)）。`bajutsu run --erase` はすべてのシナリオを `erase` に引き上げ、`--no-erase` は `erase` を `clean` に下げます。`erase` は廃止した `run.erase: true` の後継です。`run.erase` を書くと、このキーを示してロード時に失敗します。`subject` グループを持たない `defaults` では `defaults.platforms.<platform>.subject.reinstall: erase` と書きます（[BE-0473](../../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts-ja.md)） |
 | `deeplink` | `subject.launch.deeplink` | iOS と Android: 起動後にアプリが開く URL です。シナリオの `preconditions.subject.launch.deeplink` がこれを置き換えます |

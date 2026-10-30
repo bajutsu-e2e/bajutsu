@@ -14,7 +14,7 @@ from conftest import json_list
 
 from bajutsu.common import _yaml
 from bajutsu.common.config import AndroidConfig, Config, IosConfig, load_config, resolve
-from bajutsu.common.scenario import load_scenarios
+from bajutsu.common.scenario import load_scenarios, screen_interrupts
 
 ROOT = Path(__file__).resolve().parent.parent
 SCENARIO_DIR = ROOT / "demos" / "showcase" / "scenarios"
@@ -93,11 +93,11 @@ def test_showcase_config_resolves() -> None:
     # config as a config-level default the run prepends to each scenario's own list.
     bundled = resolve(cfg, "showcase-swiftui-bundled")
     assert len(bundled.run_defaults.interrupts) == 1
-    assert bundled.run_defaults.interrupts[0].condition.exists is not None
+    assert screen_interrupts(bundled.run_defaults.interrupts)[0].condition.exists is not None
 
 
 def _assert_anr_interrupt(cfg: Config, name: str, where: str = "showcase.config.yaml") -> None:
-    interrupts = resolve(cfg, name).run_defaults.interrupts
+    interrupts = screen_interrupts(resolve(cfg, name).run_defaults.interrupts)
     anr = [
         e
         for e in interrupts

@@ -21,8 +21,8 @@ from bajutsu.common.scenario import Scenario
 RelaunchFactory = Callable[[Effective, Scenario, base.Driver], RelaunchFn]
 
 # Selects the alert-guard config for one scenario (None = no guard for it). The CLI sets this so
-# each scenario's `systemAlertHandling` (default on, optional button policy / poll interval) decides
-# whether — and how — the guard runs; the orchestrator stays oblivious to the per-scenario choice.
+# each scenario's `systemAlert` interrupts entries, over its target's, decide how the guard answers
+# (BE-0473); the orchestrator stays oblivious to the per-scenario choice.
 AlertGuardFor = Callable[[Scenario], AlertGuardConfig | None]
 
 

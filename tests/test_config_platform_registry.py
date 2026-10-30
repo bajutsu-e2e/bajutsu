@@ -66,7 +66,6 @@ def test_every_registered_model_forbids_extra_keys(platform: str, group: Group) 
         ),
         ("ios", "runsOn", {"ios": {"model": "iPhone 16", "os": ">=17 <19"}}),
         ("ios", "driver", {"runner": {"testRunner": "build/Runner.xctestrun"}}),
-        ("ios", "run", {"tipKitHandling": True}),
         ("web", "subject", {"url": "http://127.0.0.1:8787/index.html"}),
         ("web", "runsOn", {"browser": {"kind": "webkit", "emulate": "iPhone 13"}}),
         ("web", "runsOn", {"browser": {"kind": ["chromium", "firefox"]}}),
@@ -147,8 +146,8 @@ def test_defaults_are_what_an_omitted_block_means() -> None:
             "subject.launch.args",
             "env, deeplink",
         ),
-        # the iOS run extension, and a platform with none
-        ("android", "run", {"tipKitHandling": True}, "run.tipKitHandling", "(none)"),
+        # a platform with no run extension
+        ("android", "run", {"bogus": True}, "run.bogus", "(none)"),
     ],
 )
 def test_unknown_key_error_lists_the_allowed_fields(
@@ -377,22 +376,14 @@ def test_an_unknown_key_in_a_target_group_lists_the_allowed_fields() -> None:
         )
 
 
-def test_the_run_group_lists_the_shared_and_the_platform_fields() -> None:
+def test_the_run_group_lists_the_shared_fields() -> None:
     from pydantic import ValidationError
 
     from bajutsu.common.config import load_config
 
-    with pytest.raises(
-        ValidationError,
-        match=r"allowed fields: systemAlertHandling, ignoredSettings, tipKitHandling",
-    ):
+    # iOS's `tipKitHandling` became a `tipKit` interrupts entry (BE-0473), leaving no platform field.
+    with pytest.raises(ValidationError, match=r"allowed fields: ignoredSettings\b"):
         load_config("targets:\n  s: { platform: ios, subject: { id: com.x }, run: { bogus: 1 } }\n")
-    # A field of another platform's run extension is unknown on this one.
-    with pytest.raises(ValidationError, match=r"run\.tipKitHandling: unknown field for platform"):
-        load_config(
-            "targets:\n  s: { platform: web, subject: { url: 'http://x/' }, "
-            "run: { tipKitHandling: true } }\n"
-        )
 
 
 @pytest.mark.parametrize(

@@ -771,7 +771,7 @@ def test_preconditions_are_checked_against_the_re_inferred_primary(
     cfg, files = _per_platform_files(
         tmp_path,
         {
-            "ios": "{ subject: { launch: { args: [-x] } }, run: { tipKitHandling: true } }",
+            "ios": "{ subject: { launch: { args: [-x] } }, run: { inheritSetup: false } }",
             "droid": "{ subject: { launch: { env: { A: '1' } }, reinstall: erase } }",
         },
     )

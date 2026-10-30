@@ -8,6 +8,8 @@ from typing import Any, cast
 
 from pydantic import Field, ValidationError, ValidationInfo, create_model, model_validator
 
+from bajutsu.common.scenario import Interrupt, tip_kit_interrupt
+
 from ._model import _Model
 from .ai_settings import AiSettings
 from .evidence import Evidence
@@ -96,6 +98,8 @@ class TargetConfig(_Model):
         if schema_for(self.platform).element_attribute:
             return self
         for i, entry in enumerate(self.hooks.interrupts):
+            if not isinstance(entry, Interrupt):
+                continue
             conditions = [entry.condition]
             for step in _nested_steps(entry.steps):
                 conditions.extend(step.assert_ or [])
@@ -106,6 +110,18 @@ class TargetConfig(_Model):
                     f"hooks.interrupts[{i}]: an `attribute` assertion needs a web target; "
                     f"platform {self.platform!r} cannot read an HTML attribute (BE-0466)"
                 )
+        return self
+
+    @model_validator(mode="after")
+    def _tip_kit_needs_ios(self) -> TargetConfig:
+        # TipKit is Apple's framework, and a field never goes ignored (BE-0452). `defaults.platforms`
+        # has no `hooks`, so a shared entry goes once under `defaults.hooks.interrupts` when every
+        # target is iOS, and otherwise on each iOS target (an `x-` anchor shares it).
+        if self.platform != "ios" and tip_kit_interrupt(self.hooks.interrupts) is not None:
+            raise ValueError(
+                f"hooks.interrupts: a tipKit entry applies to iOS alone, not platform "
+                f"{self.platform!r}"
+            )
         return self
 
     @model_validator(mode="before")

@@ -506,9 +506,9 @@ class _StepRunner:
     ) -> tuple[bool, list[AlertEvent], list[UndeclaredInterruption]]:
         """Push the interruption monitor the button a waiting `handleSystemAlert` step will tap.
 
-        Without this, the monitor knows only `systemAlertHandling.rules` \u2014 so a scenario that
+        Without this, the monitor knows only the `systemAlert` entries \u2014 so a scenario that
         answers a SpringBoard prompt through a `handleSystemAlert` step alone, never declaring it
-        as a rule too, can still meet it here first: an *earlier* action's own interruption reaches
+        as an entry too, can still meet it here first: an *earlier* action's own interruption reaches
         the monitor before this step's poll ever runs, finds no rule for a prompt only this step
         declares, and fails as undeclared \u2014 even though this very step is a few lines away from
         answering it correctly (BE-0406 Unit 2b review finding). Reserving it for the step's own

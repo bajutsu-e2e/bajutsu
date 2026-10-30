@@ -1,18 +1,18 @@
-# The reactive `systemAlertHandling.rules` guard (BE-0315 / BE-0406), on every SpringBoard prompt the
+# The reactive system-alert guard and its `systemAlert` interrupts entries (BE-0315 / BE-0406 / BE-0473), on every SpringBoard prompt the
 # label table covers. Each scenario raises one prompt and then only waits: no `handleSystemAlert`
-# step, so the declared rule is the one thing that can answer the prompt. The guard's native poll sees
-# the prompt during the `wait` and taps the button the rule's `choice` names, by an accessibility
+# step, so the declared entry is the one thing that can answer the prompt. The guard's native poll sees
+# the prompt during the `wait` and taps the button the entry's `choice` names, by an accessibility
 # query on SpringBoard: no screenshot, no vision model, no Claude API key (prime directive 1).
 #
 # permission.yaml already grants the notification prompt this way on the gating `run` job. This file
 # covers the rest of the matrix, which no other scenario reaches: denying notifications, and both
 # choices on the tracking and paste prompts. The paste prompt is the one paste_system_alert.yaml
-# answers only through the proactive step, with the guard switched off.
+# answers only through the proactive step, with the guard leaving the prompt.
 #
-# Every prompt is covered under both choices because a deny is what proves the rule did the work. A
+# Every prompt is covered under both choices because a deny is what proves the entry did the work. A
 # prompt left unanswered falls back to XCUITest's own default handler at the next interaction, and
 # that handler taps the prompt's default button. A grant alone could pass on that fallback. A deny
-# waits for a state only the rule's own button can produce, so it fails when the rule is ignored.
+# waits for a state only the entry's own button can produce, so it fails when the entry is ignored.
 #
 # The tracking pair is repeatable on one device only because each scenario starts from a clean
 # install, whose `simctl privacy reset all` returns ATT to "not determined" as well, though the help
@@ -29,14 +29,14 @@
 # iOS (XCUITest) only, and kept off every other lane the way paste_system_alert.yaml is: Android's
 # `smoke (adb)` job runs a fixed list that never names this file, and the `systemalert` tag keeps it
 # out of the local bulk run-swiftui / run-uikit runs, which do not reset per-scenario device state.
-- name: deny the notification prompt through systemAlertHandling rules
+- name: deny the notification prompt through a systemAlert entry
   tags: [systemalert]
   preconditions:
     subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
-    run:
-      systemAlertHandling: { rules: [{ prompt: notifications, choice: deny }] }
+  interrupts:
+    - { systemAlert: notifications, choice: deny }
   steps:
     - tap: { label: "Permissions", traits: [button] }
     - wait: { for: { id: perm.requestNotif }, timeout: 10 }
@@ -47,14 +47,14 @@
   expect:
     - value: { sel: { id: perm.notif.value }, equals: "denied" }
 
-- name: grant the tracking prompt through systemAlertHandling rules
+- name: grant the tracking prompt through a systemAlert entry
   tags: [systemalert]
   preconditions:
     subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
-    run:
-      systemAlertHandling: { rules: [{ prompt: tracking, choice: grant }] }
+  interrupts:
+    - { systemAlert: tracking, choice: grant }
   steps:
     - tap: { label: "Permissions", traits: [button] }
     # The tab transition is asynchronous, so wait for the tab's first control before scrolling.
@@ -68,14 +68,14 @@
   expect:
     - value: { sel: { id: perm.tracking.value }, equals: "authorized" }
 
-- name: deny the tracking prompt through systemAlertHandling rules
+- name: deny the tracking prompt through a systemAlert entry
   tags: [systemalert]
   preconditions:
     subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
-    run:
-      systemAlertHandling: { rules: [{ prompt: tracking, choice: deny }] }
+  interrupts:
+    - { systemAlert: tracking, choice: deny }
   steps:
     - tap: { label: "Permissions", traits: [button] }
     - wait: { for: { id: perm.requestNotif }, timeout: 10 }
@@ -87,14 +87,14 @@
   expect:
     - value: { sel: { id: perm.tracking.value }, equals: "denied" }
 
-- name: grant the paste-consent prompt through systemAlertHandling rules
+- name: grant the paste-consent prompt through a systemAlert entry
   tags: [systemalert]
   preconditions:
     subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
-    run:
-      systemAlertHandling: { rules: [{ prompt: paste, choice: grant }] }
+  interrupts:
+    - { systemAlert: paste, choice: grant }
   steps:
     # Written from outside the app, so the app's own read raises the cross-process consent prompt.
     - setClipboard: { text: "bajutsu-cross-clip" }
@@ -106,14 +106,14 @@
   expect:
     - value: { sel: { id: [sys.paste.value, sys_paste_value] }, equals: "bajutsu-cross-clip" }
 
-- name: deny the paste-consent prompt through systemAlertHandling rules
+- name: deny the paste-consent prompt through a systemAlert entry
   tags: [systemalert]
   preconditions:
     subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
-    run:
-      systemAlertHandling: { rules: [{ prompt: paste, choice: deny }] }
+  interrupts:
+    - { systemAlert: paste, choice: deny }
   steps:
     - setClipboard: { text: "bajutsu-cross-clip" }
     - tap: { label: "Permissions", traits: [button] }

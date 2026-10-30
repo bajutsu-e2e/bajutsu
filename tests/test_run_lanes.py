@@ -10,22 +10,27 @@ import typer
 
 from bajutsu.cli._shared import _with_erase_flag
 from bajutsu.common.config import Effective, load_config, resolve
-from bajutsu.common.orchestrator import DEFAULT_ALERT_POLL_INTERVAL, DEFAULT_FROZEN_SCREEN_TIMEOUT
+from bajutsu.common.orchestrator import (
+    DEFAULT_ALERT_POLL_INTERVAL,
+    DEFAULT_FROZEN_SCREEN_TIMEOUT,
+    AlertGuardConfig,
+)
 from bajutsu.common.orchestrator.types import ResolvedAlertRule
 from bajutsu.common.scenario import (
     Scenario,
-    SystemAlertHandling,
-    SystemAlertRule,
+    SystemAlertInterrupt,
+    TipKitInterrupt,
     load_scenarios,
+    tip_kit_interrupt,
 )
 from bajutsu.common.scenario.system_alerts import UncoveredSystemAlertLocale, covered_languages
 from bajutsu.run.cli import (
     _alert_guard_factory,
-    _apply_system_alert_handling,
     _expand_file,
     _filter_scenarios,
-    _flag_alert_policy,
+    _flag_poll_interval,
     _load_scenarios,
+    _merge_alert_entries,
     _resolve_dir,
     _resolve_evidence_dirs,
     _resolve_lanes,
@@ -465,61 +470,90 @@ def test_no_erase_lowers_every_targets_own_erase(target: str, flag: bool | None,
     assert _with_erase_flag(eff, flag).reinstall == want
 
 
-# `iosTipKitHandling` rides the BE-0177 precedence (flag, scenario, target), so it gets three
-# cases. `--no-ios-tipkit-handling` is what the item's on-device verification uses to prove the guard
-# is load-bearing, so a silent regression in this override would invalidate that evidence while the
+# The TipKit entry rides the BE-0177 precedence (flag, scenario, target), so it gets three cases.
+# `--no-ios-tipkit-handling` is what the item's on-device verification uses to prove the guard is
+# load-bearing, so a silent regression in this override would invalidate that evidence while the
 # gate stayed green.
+
+_DISMISS = TipKitInterrupt(tipKit="dismiss")
+
+
+def _tip_kit(s: Scenario) -> str | None:
+    entry = tip_kit_interrupt(s.interrupts)
+    return entry.tip_kit if entry is not None else None
 
 
 def test_filter_scenarios_ios_tipkit_inherits_target_default() -> None:
     scenarios = load_scenarios(_one_scenario("a"))
-    assert scenarios[0].preconditions.run.tip_kit_handling is None
-    _filter_scenarios(scenarios, "", "", None, None, True)
-    assert scenarios[0].preconditions.run.tip_kit_handling is True
+    _filter_scenarios(scenarios, "", "", None, None, _DISMISS)
+    assert _tip_kit(scenarios[0]) == "dismiss"
+    plain = load_scenarios(_one_scenario("b"))
+    _filter_scenarios(plain, "", "", None, None, None)
+    assert _tip_kit(plain[0]) is None  # absent from both means off, and no entry is added
 
 
 def test_filter_scenarios_ios_tipkit_scenario_beats_target() -> None:
-    scenarios = load_scenarios(
-        _one_scenario("a") + "  preconditions:\n    run: { tipKitHandling: false }\n"
-    )
-    _filter_scenarios(scenarios, "", "", None, None, True)
-    assert scenarios[0].preconditions.run.tip_kit_handling is False
+    scenarios = load_scenarios(_one_scenario("a") + "  interrupts: [{ tipKit: leave }]\n")
+    _filter_scenarios(scenarios, "", "", None, None, _DISMISS)
+    assert _tip_kit(scenarios[0]) == "leave"
 
 
 def test_filter_scenarios_ios_tipkit_flag_beats_scenario_and_target() -> None:
-    scenarios = load_scenarios(
-        _one_scenario("a") + "  preconditions:\n    run: { tipKitHandling: true }\n"
+    scenarios = load_scenarios(_one_scenario("a") + "  interrupts: [{ tipKit: dismiss }]\n")
+    _filter_scenarios(scenarios, "", "", None, False, _DISMISS)
+    assert _tip_kit(scenarios[0]) is None
+    left = load_scenarios(_one_scenario("b") + "  interrupts: [{ tipKit: leave }]\n")
+    _filter_scenarios(left, "", "", None, True, None)
+    assert left[0].interrupts == [_DISMISS]  # replaced, never doubled
+
+
+# --- _alert_guard_factory: build the guard factory, or None when the flag turns the guard off
+
+
+def _target(*entries: str) -> Effective:
+    # A minimal iOS target whose `hooks.interrupts` holds *entries*, each a YAML flow mapping.
+    body = "".join(f"        - {e}\n" for e in entries)
+    hooks = f"    hooks:\n      interrupts:\n{body}" if entries else ""
+    return resolve(
+        load_config(f"targets:\n  x:\n    platform: ios\n    subject: {{id: com.x}}\n{hooks}"),
+        "x",
     )
-    _filter_scenarios(scenarios, "", "", None, False, True)
-    assert scenarios[0].preconditions.run.tip_kit_handling is False
 
 
-# --- _alert_guard_factory: build the guard factory, or None when no scenario wants one
+def _alert(prompt: str, choice: str, **tuning: float) -> SystemAlertInterrupt:
+    return SystemAlertInterrupt.model_validate({"systemAlert": prompt, "choice": choice, **tuning})
 
 
-def test_alert_guard_factory_none_when_all_disabled() -> None:
-    scenarios = load_scenarios(
-        "- name: a\n  preconditions: { run: { systemAlertHandling: false } }\n"
-        + "  steps:\n    - tap: { id: home.title }\n"
+def _tap_scenario(name: str, *entries: dict[str, object]) -> Scenario:
+    return Scenario.model_validate(
+        {"name": name, "steps": [{"tap": {"id": "x"}}], "interrupts": list(entries)}
     )
-    assert _alert_guard_factory(scenarios, _eff(), None) is None
 
 
-def test_alert_guard_factory_none_when_target_disables() -> None:
-    # BE-0177: a scenario with no systemAlertHandling inherits the target config's
-    # `systemAlertHandling: false`, so the factory builds no guard at all (the enabled bit resolves
-    # scenario > target > built-in on).
-    scenarios = load_scenarios(_one_scenario("a"))
-    assert _alert_guard_factory(scenarios, _eff(systemAlertHandling="false"), None) is None
+def _guard(
+    s: Scenario, eff: Effective | None = None, flag: float | None = None
+) -> AlertGuardConfig:
+    factory = _alert_guard_factory(eff or _target(), flag)
+    assert factory is not None
+    guard = factory(s)
+    assert guard is not None
+    return guard
 
 
-def test_alert_guard_factory_scenario_reenables_over_target() -> None:
-    # BE-0177: a scenario's explicit `systemAlertHandling: true` wins over the target's `false`, so a
-    # guard is still built (it no-ops here only because the test env has no AI credential).
-    scenarios = load_scenarios(
-        "- name: a\n  preconditions: { run: { systemAlertHandling: true } }\n  steps:\n    - tap: { id: home.title }\n"
-    )
-    assert _alert_guard_factory(scenarios, _eff(systemAlertHandling="false"), None) is not None
+def test_alert_guard_factory_none_only_under_the_flag() -> None:
+    # A target leaves prompts by name rather than turning the guard off whole (BE-0473), so the
+    # only switch that removes the guard is `--no-system-alert-handling`.
+    eff = _target("{systemAlert: notifications, choice: leave}")
+    assert _alert_guard_factory(eff, None, enabled=False) is None
+    assert _alert_guard_factory(eff, None) is not None
+
+
+def test_alert_guard_factory_with_no_entry_answers_no_prompt() -> None:
+    # An alert no entry names is left alone rather than answered by a guessed button (BE-0406).
+    guard = _guard(_tap_scenario("a"))
+    assert guard.rules == []
+    assert guard.poll_interval == DEFAULT_ALERT_POLL_INTERVAL
+    assert guard.frozen_screen_timeout == DEFAULT_FROZEN_SCREEN_TIMEOUT
 
 
 # --- _resolve_network: --network/--no-network flag > target `network` config > built-in on (BE-0177)
@@ -556,10 +590,8 @@ def test_alert_guard_factory_needs_no_credential_and_reaches_no_model(
     eff = _eff(ai=f"{{ usageLedger: {ledger_path} }}")
     usage_ledger.configure_from_ai_config(eff.ai)
     try:
-        scenarios = [
-            _tap_scenario("a", {"rules": [{"prompt": "notifications", "choice": "grant"}]})
-        ]
-        factory = _alert_guard_factory(scenarios, eff, None)
+        scenarios = [_tap_scenario("a", {"systemAlert": "notifications", "choice": "grant"})]
+        factory = _alert_guard_factory(eff, None)
         assert factory is not None
         guard = factory(scenarios[0])
         assert isinstance(guard, AlertGuardConfig)
@@ -596,143 +628,11 @@ def test_alert_guard_factory_needs_no_credential_and_reaches_no_model(
         usage_ledger.reset()
 
 
-def test_alert_guard_factory_rejects_a_scenario_vision_instruction(
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    # BE-0402: the key steers only the fallback `run` no longer has. Silently ignoring it would turn
-    # a scenario written to *grant* a permission into one that denies it, so the run is refused
-    # outright, with the one working form named — `rules` since BE-0406 removed `labels`.
-    s = _tap_scenario("a", {"visionInstruction": "tap Allow"})
-    with pytest.raises(typer.Exit) as excinfo:
-        _alert_guard_factory([s], _eff(), None)
-    assert excinfo.value.exit_code == 2
-    out = capsys.readouterr().out
-    assert "scenario 'a'" in out and "rules" in out
-    assert "`labels`" not in out
-
-
-def test_alert_guard_factory_rejects_a_target_vision_instruction(
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    # The same refusal from the layer an author may not have written themselves, named as such.
-    eff = _eff(systemAlertHandling='{ visionInstruction: "tap Allow" }')
-    with pytest.raises(typer.Exit) as excinfo:
-        _alert_guard_factory([_tap_scenario("a")], eff, None)
-    assert excinfo.value.exit_code == 2
-    assert "target config" in capsys.readouterr().out
-
-
-def test_alert_guard_factory_rejects_before_any_scenario_gets_a_guard() -> None:
-    # The check is eager over the whole suite, not per scenario inside the returned closure: the
-    # closure runs in a worker mid-run, so a check there would fail scenario 3 with 1 and 2 already
-    # executed. A suite whose *last* scenario carries the key is refused whole, before any of it runs.
-    scenarios = [
-        _tap_scenario("a"),
-        _tap_scenario("b"),
-        _tap_scenario("c", {"visionInstruction": "tap Allow"}),
-    ]
-    with pytest.raises(typer.Exit):
-        _alert_guard_factory(scenarios, _eff(), None)
-
-
-def _tap_scenario(name: str, dismiss: dict[str, object] | None = None) -> Scenario:
-    body: dict[str, object] = {"name": name, "steps": [{"tap": {"id": "x"}}]}
-    if dismiss is not None:
-        body["preconditions"] = {"run": {"systemAlertHandling": dismiss}}
-    return Scenario.model_validate(body)
-
-
-def test_alert_guard_factory_hands_back_no_guard_for_a_scenario_that_switched_it_off() -> None:
-    # The factory is per-scenario because a run's scenarios can disagree: one `systemAlertHandling:
-    # false` among others must get no guard at all, rather than the whole run losing one or that
-    # scenario silently inheriting its neighbours'.
-    on = _tap_scenario("a", {"rules": [{"prompt": "notifications", "choice": "grant"}]})
-    off = Scenario.model_validate(
-        {
-            "name": "b",
-            "preconditions": {"run": {"systemAlertHandling": False}},
-            "steps": [{"tap": {"id": "x"}}],
-        }
-    )
-    factory = _alert_guard_factory([on, off], _eff(), None)
-    assert factory is not None
-    assert factory(on) is not None
-    assert factory(off) is None
-
-
-def test_alert_guard_factory_poll_interval_precedence() -> None:
-    # scenario > target > built-in default (BE-0177 / BE-0315).
-    eff = _eff(systemAlertHandling="{ pollInterval: 3 }")
-    s_override = _tap_scenario("a", {"pollInterval": 5})
-    assert _alert_guard_factory([s_override], eff, None)(s_override).poll_interval == 5.0  # type: ignore[misc,union-attr]
-    s_plain = _tap_scenario("b")
-    assert _alert_guard_factory([s_plain], eff, None)(s_plain).poll_interval == 3.0  # type: ignore[misc,union-attr]
-    assert (
-        _alert_guard_factory([s_plain], _eff(), None)(s_plain).poll_interval  # type: ignore[misc,union-attr]
-        == DEFAULT_ALERT_POLL_INTERVAL
-    )
-
-
-def test_alert_guard_factory_frozen_screen_timeout_precedence() -> None:
-    # The same innermost-wins walk as `pollInterval`: scenario > target > built-in default.
-    eff = _eff(systemAlertHandling="{ frozenScreenTimeout: 30 }")
-    s_override = _tap_scenario("a", {"frozenScreenTimeout": 0})
-    guard = _alert_guard_factory([s_override], eff, None)(s_override)  # type: ignore[misc]
-    assert guard is not None and guard.frozen_screen_timeout == 0.0
-    s_plain = _tap_scenario("b")
-    guard = _alert_guard_factory([s_plain], eff, None)(s_plain)  # type: ignore[misc]
-    assert guard is not None and guard.frozen_screen_timeout == 30.0
-    guard = _alert_guard_factory([s_plain], _eff(), None)(s_plain)  # type: ignore[misc]
-    assert guard is not None and guard.frozen_screen_timeout == DEFAULT_FROZEN_SCREEN_TIMEOUT
-
-
-def test_apply_system_alert_handling_off_replaces_the_whole_field() -> None:
-    # BE-0401: off *is* `False` now the boolean carries on and off, and an off guard reads no
-    # policy — so `--no-system-alert-handling` needs to keep nothing.
-    s = _tap_scenario(
-        "a", {"rules": [{"prompt": "notifications", "choice": "grant"}], "pollInterval": 2}
-    )
-    _apply_system_alert_handling([s], False)
-    assert s.preconditions.run.system_alert_handling is False
-
-
-def test_apply_system_alert_handling_on_preserves_the_policy_and_re_enables() -> None:
-    s = _tap_scenario(
-        "a", {"rules": [{"prompt": "notifications", "choice": "grant"}], "pollInterval": 2}
-    )
-    _apply_system_alert_handling([s], True)
-    assert isinstance(s.preconditions.run.system_alert_handling, SystemAlertHandling)
-    assert [(r.prompt, r.choice) for r in s.preconditions.run.system_alert_handling.rules] == [
-        ("notifications", "grant")
-    ]
-    assert s.preconditions.run.system_alert_handling.poll_interval == 2.0
-
-    # A scenario that had switched itself off comes back on with the empty policy.
-    off = Scenario.model_validate(
-        {
-            "name": "b",
-            "preconditions": {"run": {"systemAlertHandling": False}},
-            "steps": [{"tap": {"id": "x"}}],
-        }
-    )
-    _apply_system_alert_handling([off], True)
-    assert off.preconditions.run.system_alert_handling == SystemAlertHandling()
-
-
-def test_apply_system_alert_handling_unset_flag_is_a_no_op() -> None:
-    s = _tap_scenario("a", {"rules": [{"prompt": "notifications", "choice": "grant"}]})
-    _apply_system_alert_handling([s], None)
-    assert isinstance(s.preconditions.run.system_alert_handling, SystemAlertHandling)
-    assert [(r.prompt, r.choice) for r in s.preconditions.run.system_alert_handling.rules] == [
-        ("notifications", "grant")
-    ]
-
-
-# --- _resolve_rules: a scenario's `rules` resolved to identifying/tap labels for its locale
+# --- _resolve_rules: `systemAlert` entries resolved to identifying/tap labels for its locale
 
 
 def test_resolve_rules_resolves_labels_for_locale() -> None:
-    rules = [SystemAlertRule(prompt="notifications", choice="grant")]
+    rules = [_alert("notifications", "grant")]
     resolved = _resolve_rules(rules, "en")
     assert len(resolved) == 1
     assert resolved[0].identifying_labels == {"Allow", "Don’t Allow"}
@@ -740,20 +640,20 @@ def test_resolve_rules_resolves_labels_for_locale() -> None:
 
 
 def test_resolve_rules_resolves_the_deny_choice() -> None:
-    rules = [SystemAlertRule(prompt="tracking", choice="deny")]
+    rules = [_alert("tracking", "deny")]
     resolved = _resolve_rules(rules, "en")
     assert resolved[0].tap_label == "Ask App Not to Track"
 
 
 def test_resolve_rules_raises_on_an_uncovered_locale() -> None:
-    rules = [SystemAlertRule(prompt="notifications", choice="grant")]
+    rules = [_alert("notifications", "grant")]
     with pytest.raises(UncoveredSystemAlertLocale) as exc:
         _resolve_rules(rules, "fr")
-    # The message must name the surface that actually failed — the guard's `rules` — and offer the
-    # two remedies that remain for it, not `handleSystemAlert`'s `sel.label`, which the scenario
+    # The message must name the surface that actually failed — the `systemAlert` entry — and offer
+    # the two remedies that remain for it, not `handleSystemAlert`'s `sel.label`, which the scenario
     # need not use. BE-0406 removed `labels`, so it must not be offered as one of them either.
     message = str(exc.value)
-    assert "systemAlertHandling.rules" in message
+    assert "interrupts systemAlert: notifications" in message
     assert "system_alerts.py" in message
     assert "`labels`" not in message
     assert "sel.label" not in message
@@ -766,11 +666,16 @@ def test_resolve_rules_empty_list_stays_empty() -> None:
     assert _resolve_rules([], "en") == []
 
 
+def test_resolve_rules_skips_a_left_prompt() -> None:
+    # `choice: leave` answers nothing, so it resolves to no rule rather than to a button.
+    assert _resolve_rules([_alert("notifications", "leave")], "en") == []
+
+
 def test_resolve_rules_emits_one_rule_per_shape_of_a_multi_shape_prompt() -> None:
     # BE-0406: `savePassword` renders three ways — a web form, and the app's own fields before and
     # after iOS 26.5 moved the accepting button's text. One scenario rule has to cover all three, so
     # the resolution fans out rather than picking whichever shape came first.
-    resolved = _resolve_rules([SystemAlertRule(prompt="savePassword", choice="deny")], "en")
+    resolved = _resolve_rules([_alert("savePassword", "deny")], "en")
     assert [sorted(r.identifying_labels) for r in resolved] == [
         ["Never for This Website", "Not Now", "Save Password"],
         ["Not Now", "Save Password"],
@@ -778,19 +683,16 @@ def test_resolve_rules_emits_one_rule_per_shape_of_a_multi_shape_prompt() -> Non
     ]
     # The refusing button is "Not Now" on every one of them; only the accepting button moves.
     assert {r.tap_label for r in resolved} == {"Not Now"}
-    assert (
-        _resolve_rules([SystemAlertRule(prompt="savePassword", choice="grant")], "en")[-1].tap_label
-        == "Save"
-    )
+    assert _resolve_rules([_alert("savePassword", "grant")], "en")[-1].tap_label == "Save"
 
 
 def test_resolve_rules_carries_the_prompts_surfaces_onto_each_rule() -> None:
     # The surface record is what later decides which paths may act: `savePassword` is raised into
     # the app's own process, so only the in-tree dismissal reaches it and the interruption monitor
     # never sees it; `notifications` is the mirror image.
-    save = _resolve_rules([SystemAlertRule(prompt="savePassword", choice="deny")], "en")
+    save = _resolve_rules([_alert("savePassword", "deny")], "en")
     assert all(r.in_tree and not r.native for r in save)
-    notif = _resolve_rules([SystemAlertRule(prompt="notifications", choice="grant")], "en")
+    notif = _resolve_rules([_alert("notifications", "grant")], "en")
     assert all(r.native and not r.in_tree for r in notif)
 
 
@@ -798,7 +700,7 @@ def test_resolve_rules_excludes_the_credit_card_sheet_from_the_in_app_save_shape
     # iOS 26.5's in-app save sheet is "Save" and "Not Now", the same pair the credit-card update
     # sheet offers. Only "Never for This Card" tells them apart, so the shape carries it as an
     # exclusion — without which a `savePassword` rule would answer a card sheet nobody declared.
-    resolved = _resolve_rules([SystemAlertRule(prompt="savePassword", choice="deny")], "en")
+    resolved = _resolve_rules([_alert("savePassword", "deny")], "en")
     in_app_26 = resolved[-1]
     assert in_app_26.excluded_labels == {"Never for This Card"}
     assert _match_tap_label([in_app_26], ["Save", "Not Now"]) == "Not Now"
@@ -807,75 +709,118 @@ def test_resolve_rules_excludes_the_credit_card_sheet_from_the_in_app_save_shape
     assert all(not r.excluded_labels for r in resolved[:-1])
 
 
-# --- _alert_guard_factory: rules resolve and layer scenario-over-target
+# --- _alert_guard_factory: entries resolve and layer scenario-over-target per prompt
 
 
-def test_alert_guard_factory_resolves_scenario_rules() -> None:
+def test_alert_guard_factory_resolves_scenario_entries() -> None:
     s = _tap_scenario(
         "a",
-        {
-            "rules": [
-                {"prompt": "notifications", "choice": "grant"},
-                {"prompt": "tracking", "choice": "deny"},
-            ]
-        },
+        {"systemAlert": "notifications", "choice": "grant"},
+        {"systemAlert": "tracking", "choice": "deny"},
     )
-    guard = _alert_guard_factory([s], _eff(), None)(s)  # type: ignore[misc]
-    assert guard is not None
-    assert [r.tap_label for r in guard.rules] == ["Allow", "Ask App Not to Track"]
+    assert [r.tap_label for r in _guard(s).rules] == ["Allow", "Ask App Not to Track"]
 
 
-def test_alert_guard_factory_scenario_rule_shadows_target_rule_for_the_same_prompt() -> None:
-    eff = _eff(systemAlertHandling="{ rules: [{ prompt: notifications, choice: deny }] }")
-    s = _tap_scenario("a", {"rules": [{"prompt": "notifications", "choice": "grant"}]})
-    guard = _alert_guard_factory([s], eff, None)(s)  # type: ignore[misc]
-    assert guard is not None
-    # The scenario's rule for `notifications` comes first, so it wins the first-match.
-    assert [r.tap_label for r in guard.rules] == ["Allow", "Don’t Allow"]
-    # Through `native_rules`, not `guard.rules`: that's the list `probe_native` actually matches
-    # over (BE-0418 review finding) -- `native_rules` happens to equal `guard.rules` here only
-    # because every declared rule for this prompt is native, so asserting through the property the
-    # code reads is what keeps this pinned to BE-0177's precedence rather than to that coincidence.
+def test_alert_guard_factory_scenario_entry_replaces_the_target_choice_for_its_prompt() -> None:
+    eff = _target("{systemAlert: notifications, choice: deny}")
+    s = _tap_scenario("a", {"systemAlert": "notifications", "choice": "grant"})
+    guard = _guard(s, eff)
+    # Replaced, not shadowed: the target's deny is gone, so no later rule could answer instead.
+    assert [r.tap_label for r in guard.rules] == ["Allow"]
     assert _match_tap_label(guard.native_rules, ["Allow", "Don’t Allow"]) == "Allow"
 
 
-def test_alert_guard_factory_target_rule_applies_when_scenario_has_none() -> None:
-    eff = _eff(systemAlertHandling="{ rules: [{ prompt: tracking, choice: deny }] }")
-    s = _tap_scenario("a")
-    guard = _alert_guard_factory([s], eff, None)(s)  # type: ignore[misc]
-    assert guard is not None
-    assert [r.tap_label for r in guard.rules] == ["Ask App Not to Track"]
+def test_alert_guard_factory_scenario_leave_turns_off_the_target_answer() -> None:
+    # `choice: leave` is how a scenario turns off one inherited answer; a prompt the target adds
+    # later still applies, since the scenario named only the one it leaves.
+    eff = _target(
+        "{systemAlert: notifications, choice: grant}", "{systemAlert: tracking, choice: deny}"
+    )
+    s = _tap_scenario("a", {"systemAlert": "notifications", "choice": "leave"})
+    assert [r.tap_label for r in _guard(s, eff).rules] == ["Ask App Not to Track"]
 
 
-def test_alert_guard_factory_target_rule_answers_a_prompt_the_scenario_did_not_rule_on() -> None:
-    # BE-0401 reversed BE-0382's all-or-nothing suppression: specificity, not the layer a
-    # declaration came from, settles the conflict. A scenario ruling on `notifications` says nothing
-    # about `tracking`, so the target's rule for it stays in effect — both layers concatenate,
-    # innermost first.
-    eff = _eff(systemAlertHandling="{ rules: [{ prompt: tracking, choice: deny }] }")
-    s = _tap_scenario("a", {"rules": [{"prompt": "notifications", "choice": "grant"}]})
-    guard = _alert_guard_factory([s], eff, None)(s)  # type: ignore[misc]
-    assert guard is not None
-    assert [r.tap_label for r in guard.rules] == ["Allow", "Ask App Not to Track"]
+def test_alert_guard_factory_target_entry_applies_when_scenario_has_none() -> None:
+    eff = _target("{systemAlert: tracking, choice: deny}")
+    assert [r.tap_label for r in _guard(_tap_scenario("a"), eff).rules] == ["Ask App Not to Track"]
 
 
-def test_alert_guard_factory_notices_a_target_rule_reaching_a_self_answering_scenario(
+def test_alert_guard_factory_target_entry_answers_a_prompt_the_scenario_did_not_name() -> None:
+    # BE-0401 reversed BE-0382's all-or-nothing suppression: a scenario answering `notifications`
+    # says nothing about `tracking`, so the target's entry for it stays in effect, after the
+    # scenario's own.
+    eff = _target("{systemAlert: tracking, choice: deny}")
+    s = _tap_scenario("a", {"systemAlert": "notifications", "choice": "grant"})
+    assert [r.tap_label for r in _guard(s, eff).rules] == ["Allow", "Ask App Not to Track"]
+
+
+def test_alert_guard_factory_poll_interval_resolves_by_layer() -> None:
+    # scenario > flag > target > built-in (BE-0177 / BE-0315): the first layer that sets one wins,
+    # so a scenario can still widen the interval above the target's.
+    eff = _target("{systemAlert: tracking, choice: deny, pollInterval: 3}")
+    widened = _tap_scenario("a", {"systemAlert": "paste", "choice": "grant", "pollInterval": 5})
+    assert _guard(widened, eff, 4).poll_interval == 5.0
+    plain = _tap_scenario("b")
+    assert _guard(plain, eff, 4).poll_interval == 4.0
+    assert _guard(plain, eff).poll_interval == 3.0
+    assert _guard(plain).poll_interval == DEFAULT_ALERT_POLL_INTERVAL
+
+
+def test_alert_guard_factory_poll_interval_takes_the_smallest_within_a_layer() -> None:
+    # A shorter interval satisfies every entry that asked for a longer one.
+    s = _tap_scenario(
+        "a",
+        {"systemAlert": "notifications", "choice": "grant", "pollInterval": 2},
+        {"systemAlert": "paste", "choice": "leave", "pollInterval": 0.5},
+        {"systemAlert": "tracking", "choice": "deny"},
+    )
+    eff = _target("{systemAlert: tracking, choice: deny, pollInterval: 0.1}")
+    assert _guard(s, eff).poll_interval == 0.5  # the scenario's layer, not the target's smaller one
+
+
+def test_alert_guard_factory_scenario_entry_inherits_an_omitted_frozen_screen_timeout() -> None:
+    # The value describes the app, so a scenario entry for the same prompt keeps the target's.
+    eff = _target("{systemAlert: savePassword, choice: grant, frozenScreenTimeout: 30}")
+    inherits = _tap_scenario("a", {"systemAlert": "savePassword", "choice": "deny"})
+    guard = _guard(inherits, eff)
+    assert guard.frozen_screen_timeout == 30.0
+    assert {r.tap_label for r in guard.rules} == {"Not Now"}  # the scenario's choice, though
+    own = _tap_scenario(
+        "b", {"systemAlert": "savePassword", "choice": "deny", "frozenScreenTimeout": 0}
+    )
+    assert _guard(own, eff).frozen_screen_timeout == 0.0
+    left = _tap_scenario("c", {"systemAlert": "savePassword", "choice": "leave"})
+    assert _guard(left, eff).frozen_screen_timeout == DEFAULT_FROZEN_SCREEN_TIMEOUT
+
+
+def test_merge_alert_entries_puts_the_scenarios_first() -> None:
+    merged = _merge_alert_entries(
+        [_alert("paste", "deny")],
+        [_alert("notifications", "grant"), _alert("paste", "grant")],
+    )
+    assert [(e.system_alert, e.choice) for e in merged] == [
+        ("paste", "deny"),
+        ("notifications", "grant"),
+    ]
+
+
+def test_alert_guard_factory_notices_a_target_entry_reaching_a_self_answering_scenario(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     # The composition above is correct but was *silent* under BE-0382 — a project-wide edit changing
-    # a scenario that names no prompt. The notice removes the silence, and is keyed on the scenario
+    # a scenario that answers for itself. The notice removes the silence, and is keyed on the scenario
     # as well as the prompt, so a run of many scenarios warns once *per affected scenario* rather
     # than once for the first and silence for the rest.
     import logging
 
     from bajutsu.common import deprecations
 
-    eff = _eff(systemAlertHandling="{ rules: [{ prompt: tracking, choice: deny }] }")
-    own: dict[str, object] = {"rules": [{"prompt": "notifications", "choice": "grant"}]}
+    eff = _target("{systemAlert: tracking, choice: deny}")
+    own: dict[str, object] = {"systemAlert": "notifications", "choice": "grant"}
     scenarios = [_tap_scenario("a", own), _tap_scenario("b", own)]
     for s in scenarios:
-        deprecations._emitted.discard(f"systemAlertHandling.targetRule.{s.name}.tracking")
-    factory = _alert_guard_factory(scenarios, eff, None)
+        deprecations._emitted.discard(f"systemAlert.targetEntry.{s.name}.tracking")
+    factory = _alert_guard_factory(eff, None)
     assert factory is not None
     with caplog.at_level(logging.WARNING, logger="bajutsu.common.deprecations"):
         for s in scenarios:
@@ -884,28 +829,28 @@ def test_alert_guard_factory_notices_a_target_rule_reaching_a_self_answering_sce
     assert len(noticed) == 2
     assert "'a'" in noticed[0] and "'b'" in noticed[1]
 
-    # ...and once per scenario and prompt, not once per guard construction: building the same
-    # scenario's guard again adds nothing.
+    # ...and once per scenario and prompt, not once per guard construction.
     caplog.clear()
     with caplog.at_level(logging.WARNING, logger="bajutsu.common.deprecations"):
         factory(scenarios[0])
     assert not [r for r in caplog.records if "tracking" in r.message]
 
 
-def test_alert_guard_factory_does_not_notice_a_target_rule_the_scenario_shadows(
-    caplog: pytest.LogCaptureFixture,
+@pytest.mark.parametrize("choice", ["grant", "leave"])
+def test_alert_guard_factory_does_not_notice_a_target_entry_the_scenario_names(
+    choice: str, caplog: pytest.LogCaptureFixture
 ) -> None:
-    # The scenario's own rule for that prompt wins the first-match, so the target's rule never
-    # answers for it — nothing to notice.
+    # The scenario's own entry for that prompt, `leave` included, replaces the target's, so the
+    # target's never answers for it — nothing to notice.
     import logging
 
     from bajutsu.common import deprecations
 
-    eff = _eff(systemAlertHandling="{ rules: [{ prompt: tracking, choice: deny }] }")
-    s = _tap_scenario("a", {"rules": [{"prompt": "tracking", "choice": "grant"}]})
-    deprecations._emitted.discard("systemAlertHandling.targetRule.a.tracking")
+    eff = _target("{systemAlert: tracking, choice: deny}")
+    s = _tap_scenario("a", {"systemAlert": "tracking", "choice": choice})
+    deprecations._emitted.discard("systemAlert.targetEntry.a.tracking")
     with caplog.at_level(logging.WARNING, logger="bajutsu.common.deprecations"):
-        _alert_guard_factory([s], eff, None)(s)  # type: ignore[misc]
+        _guard(s, eff)
     assert not [r for r in caplog.records if "tracking" in r.message]
 
 
@@ -913,54 +858,27 @@ def test_alert_guard_factory_does_not_notice_when_only_the_target_declares_anyth
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     # The notice is for a scenario that answers for itself. A scenario declaring nothing, under a
-    # target that rules on the prompt, is not that case — reading the composed rule list instead of
-    # the scenario's own would warn here wrongly.
+    # target that answers the prompt, is not that case.
     import logging
 
     from bajutsu.common import deprecations
 
-    eff = _eff(systemAlertHandling="{ rules: [{ prompt: tracking, choice: deny }] }")
+    eff = _target("{systemAlert: tracking, choice: deny}")
     s = _tap_scenario("a")
-    deprecations._emitted.discard("systemAlertHandling.targetRule.a.tracking")
+    deprecations._emitted.discard("systemAlert.targetEntry.a.tracking")
     with caplog.at_level(logging.WARNING, logger="bajutsu.common.deprecations"):
-        guard = _alert_guard_factory([s], eff, None)(s)  # type: ignore[misc]
-    assert guard is not None and [r.tap_label for r in guard.rules] == ["Ask App Not to Track"]
+        guard = _guard(s, eff)
+    assert [r.tap_label for r in guard.rules] == ["Ask App Not to Track"]
     assert not [r for r in caplog.records if "tracking" in r.message]
 
 
-def test_alert_guard_factory_scalars_take_the_innermost_layer_that_supplies_one() -> None:
-    # A scalar holds one value, so composition is not available and the innermost layer wins.
-    # `pollInterval` is the only scalar left to `run` — BE-0402 took `visionInstruction` away.
-    eff = _eff(systemAlertHandling="{ pollInterval: 3 }")
-    flag = _flag_alert_policy(4)
-    s_scenario = _tap_scenario("a", {"pollInterval": 5})
-    guard = _alert_guard_factory([s_scenario], eff, flag)(s_scenario)  # type: ignore[misc]
-    assert guard is not None and guard.poll_interval == 5.0
-
-    s_plain = _tap_scenario("b")
-    guard = _alert_guard_factory([s_plain], eff, flag)(s_plain)  # type: ignore[misc]
-    assert guard is not None and guard.poll_interval == 4.0  # the flag layer, below the scenario
-
-    guard = _alert_guard_factory([s_plain], eff, None)(s_plain)  # type: ignore[misc]
-    assert guard is not None and guard.poll_interval == 3.0  # then the target config
-
-
-def test_flag_alert_policy_builds_the_command_line_layer() -> None:
-    # One key, not three: `run` retired `--alert-vision-instruction` with the fallback it steered
-    # (BE-0402) and `--alert-labels` with `labels` itself (BE-0406), so `pollInterval` is all a flag
-    # can carry — `rules` pairs a prompt with a choice, which one flag value cannot say legibly.
-    assert _flag_alert_policy(None) is None
-    policy = _flag_alert_policy(2)
-    assert policy == SystemAlertHandling(pollInterval=2)
-    assert policy.rules == []
-    assert policy.vision_instruction is None
-
-
-def test_flag_alert_policy_rejects_a_non_positive_interval_as_a_cli_error() -> None:
-    # Validated through the same model the file layers use, so a value the guard could never poll on
-    # is reported as a CLI error rather than a validation traceback out of the run.
+def test_flag_poll_interval_checks_the_value() -> None:
+    # Only the poll interval has a flag: an entry pairs a prompt with a choice, which one flag value
+    # cannot say legibly. A value the guard could never poll on is a CLI error, not a traceback.
+    assert _flag_poll_interval(None) is None
+    assert _flag_poll_interval(2) == 2
     with pytest.raises(typer.Exit) as exc:
-        _flag_alert_policy(0)
+        _flag_poll_interval(0)
     assert exc.value.exit_code == 2
 
 
@@ -977,3 +895,40 @@ def test_resolve_evidence_dirs_defaults_and_golden_context(tmp_path: Path) -> No
     (scn.parent / "goldens").mkdir()
     _, _, gc2 = _resolve_evidence_dirs("", "", "", _eff(), scn)
     assert gc2 is not None  # goldens dir exists → golden assertions can resolve within it
+
+
+def test_scenario_walks_read_only_the_screen_entries_recovery_steps() -> None:
+    # BE-0473: the walks over every phase reach `interrupts` too, and a `systemAlert` or `tipKit`
+    # entry carries no steps to walk, so a mixed list must yield the screen entry's alone.
+    from bajutsu.run.cli import _install_steps, _scenario_mock_swaps, _visual_asserting_scenarios
+
+    (s,) = load_scenarios(
+        "- name: s\n"
+        "  interrupts:\n"
+        "    - { systemAlert: notifications, choice: grant }\n"
+        "    - tipKit: dismiss\n"
+        "    - condition: { exists: { id: [promo] } }\n"
+        "      steps:\n"
+        "        - assert: [{ visual: { baseline: promo.png } }]\n"
+        "  steps: [{ tap: { id: [a] } }]\n"
+    )
+    assert list(_install_steps(s)) == []
+    assert _visual_asserting_scenarios([s]) == {id(s)}
+    assert _scenario_mock_swaps(s) == []
+
+
+def test_a_zero_frozen_screen_timeout_turns_the_stop_off_over_a_longer_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # 0 is the longest tolerance of all, so it outranks a positive value rather than losing the max.
+    from bajutsu.common.scenario.system_alerts import _functions as alert_tables
+
+    monkeypatch.setitem(
+        alert_tables._SURFACES, "tracking", {"step": True, "native": True, "in_tree": True}
+    )
+    s = _tap_scenario(
+        "a",
+        {"systemAlert": "savePassword", "choice": "deny", "frozenScreenTimeout": 20},
+        {"systemAlert": "tracking", "choice": "deny", "frozenScreenTimeout": 0},
+    )
+    assert _guard(s).frozen_screen_timeout == 0.0
