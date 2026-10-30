@@ -53,7 +53,7 @@ def test_in_root_seed_photos_still_loads(tmp_path: Path) -> None:
     _write(root / "fixtures" / "red.png", "not a real png, path resolution only")
     scenario = _write(
         root / "scenarios" / "s.yaml",
-        "- name: s\n  preconditions: { run: { erase: true }, device: { ios: { seedPhotos: [../fixtures/red.png] } } }\n"
+        "- name: s\n  preconditions: { app: { reinstall: erase }, device: { ios: { seedPhotos: [../fixtures/red.png] } } }\n"
         "  steps:\n    - tap: { id: a }\n",
     )
     out = load_expanded_scenarios(scenario, root=root)
@@ -65,7 +65,7 @@ def test_parent_chain_seed_photos_rejected(tmp_path: Path) -> None:
     _write(tmp_path / "secret.png", "TOPSECRET")
     scenario = _write(
         tmp_path / "suite" / "s.yaml",
-        "- name: s\n  preconditions: { run: { erase: true }, device: { ios: { seedPhotos: [../secret.png] } } }\n"
+        "- name: s\n  preconditions: { app: { reinstall: erase }, device: { ios: { seedPhotos: [../secret.png] } } }\n"
         "  steps:\n    - tap: { id: a }\n",
     )
     with pytest.raises(ValueError, match="outside the suite root") as ei:
@@ -196,7 +196,7 @@ def test_run_expand_file_resolves_seed_photos(tmp_path: Path) -> None:
     _write(root / "fixtures" / "red.png", "not a real png, path resolution only")
     scenario = _write(
         root / "scenarios" / "s.yaml",
-        "- name: s\n  preconditions: { run: { erase: true }, device: { ios: { seedPhotos: [../fixtures/red.png] } } }\n"
+        "- name: s\n  preconditions: { app: { reinstall: erase }, device: { ios: { seedPhotos: [../fixtures/red.png] } } }\n"
         "  steps:\n    - tap: { id: a }\n",
     )
     scenarios, _desc, _plan_sources = _expand_file(scenario, root=root)

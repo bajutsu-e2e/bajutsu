@@ -30,7 +30,7 @@ SystemAlertHandlingField = Annotated[
 # Where each flat key of the pre-BE-0452 `preconditions` went; the loader reads none of them, and a
 # stored run's plan is rewritten by `load_stored_scenario_file` instead.
 FLAT_PRECONDITION_KEYS: dict[str, str] = {
-    "erase": "preconditions.run.erase",
+    "erase": "preconditions.app.reinstall: erase",
     "reinstall": "preconditions.app.reinstall",
     "launchEnv": "preconditions.app.launch.env",
     "launchArgs": "preconditions.app.launch.args",
@@ -93,10 +93,11 @@ class PreconditionsApp(_Model):
     `startWhen`, `idNamespaces`); the target owns those, so they fail as unknown here.
     """
 
-    # How the app is (re)installed before the run, when the target gives an `app.path`: `clean`
-    # uninstalls first, `overwrite` installs over the existing app and keeps its data container.
-    # Unset inherits the target's `app.reinstall`, then the built-in `clean` (BE-0452).
-    reinstall: Literal["clean", "overwrite"] | None = None
+    # How much state the run wipes before launch, weakest first (BE-0473): `overwrite` installs over
+    # the existing app and keeps its data container, `clean` uninstalls first, `erase` wipes the whole
+    # device (on Android, the same as `clean`). Unset inherits the target's `app.reinstall`, then the
+    # built-in `clean` (BE-0452).
+    reinstall: Literal["overwrite", "clean", "erase"] | None = None
     launch: PreconditionsLaunch = Field(default_factory=PreconditionsLaunch)
 
 
@@ -108,10 +109,6 @@ class PreconditionsRun(_Model):
     accepted here.
     """
 
-    # Wipe the whole device before the test — apps, data, settings. None (unset) inherits the
-    # target's `run.erase` and then the built-in off (BE-0177); `run` resolves it to a concrete bool
-    # before dispatch, so `None` behaves as off downstream.
-    erase: bool | None = None
     # The alert guard runs on by default; unset means "on, tap the prompt's default button" (see
     # SystemAlertHandling). The scenario's rules are checked before the target's.
     system_alert_handling: SystemAlertHandlingField = Field(
@@ -126,6 +123,17 @@ class PreconditionsRun(_Model):
     # path out of a scenario.
     inherit_setup: bool = Field(default=True, alias="inheritSetup")
 
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_moved_keys(cls, data: Any) -> Any:
+        # The loader reads no old key (BE-0473), so the error is the migration path.
+        if isinstance(data, dict) and "erase" in data:
+            raise ValueError(
+                "preconditions.run.erase moved to preconditions.app.reinstall (BE-0473): "
+                "write `erase` for true, and `clean` or `overwrite` for false"
+            )
+        return data
+
 
 class PreconditionsIosDevice(_Model):
     """`preconditions.device.ios`: the iOS device state a scenario applies over its target's (BE-0469).
@@ -139,7 +147,7 @@ class PreconditionsIosDevice(_Model):
     locale: str | None = Field(default=None, min_length=1)
     # Images seeded into the photo library on the erase path, in order. Paths resolve against the
     # scenario file when it loads; None keeps the target's list, and the merged list needs an
-    # effective `run.erase`.
+    # effective `app.reinstall: erase`.
     seed_photos: list[str] | None = Field(default=None, alias="seedPhotos")
 
 

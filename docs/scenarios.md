@@ -121,22 +121,21 @@ fields combine with the target's instead:
 ```yaml
 preconditions:
   app:
-    reinstall: overwrite
+    reinstall: erase
     launch: { env: { FEATURE_X: "1" }, args: ["-debug"], deeplink: "showcase://cart" }
   device:
     ios: { locale: ja_JP, seedPhotos: [photos/cat.jpg] }
-  run: { erase: true, tipKitHandling: true }
+  run: { tipKitHandling: true }
 ```
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `app.reinstall` | `clean` \| `overwrite` | unset (the target's `app.reinstall`, then `clean`) | How the app is reinstalled before each run when the target config sets `app.path`: `clean` uninstalls and then installs (fresh app and data); `overwrite` installs over the existing app (keeps its data). iOS and Android |
+| `app.reinstall` | `overwrite` \| `clean` \| `erase` | unset (the target's `app.reinstall`, then `clean`) | How much state is reset before each run, weakest first: `overwrite` installs over the existing app (keeps its data); `clean` uninstalls and then installs (fresh app and data); `erase` wipes the whole device (`simctl erase`: apps, data, settings), then installs. The install needs the target config's `app.path`. Android has no device-wide wipe, so `erase` there acts as `clean`. iOS and Android; a web target accepts `erase` alone, which its fresh browser context already satisfies ([BE-0473](../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts.md)) |
 | `app.launch.env` | dict | `{}` | Launch environment, merged onto the target's `app.launch.env` key by key. iOS injects it through `SIMCTL_CHILD_*`, Android as intent extras; on the web the Playwright code generator reads it |
 | `app.launch.args` | list[str] | `[]` | Launch arguments, appended after the target's `app.launch.args`. iOS only |
 | `app.launch.deeplink` | str | unset (the target's `app.launch.deeplink`) | A URL the app opens after launch (`simctl openurl` on iOS, an intent on Android) |
 | `device.ios.locale` | str | unset (the target's `runsOn.ios.locale`) | Force the locale and language at launch (`-AppleLocale` / `-AppleLanguages`), and pin the Simulator's system language. A value that differs from the target's forces a cold respawn |
 | `device.ios.seedPhotos` | list[str] | unset (the target's `runsOn.ios.seedPhotos`) | Images seeded into the Simulator's photo library on the erase path, in order; paths resolve against the scenario file, and a scenario's list replaces the target's |
-| `run.erase` | bool | unset (the target's `run.erase`, then off) | Wipe the whole device (`simctl erase`: apps, data, settings) before the test. `reinstall` keeps the app fresh without a full wipe, so set `true` only when a test needs a pristine device |
 | `run.systemAlertHandling` | bool / object | unset (on) | The reactive alert guard ([below](#systemalerthandling-the-system-alert-guard)) |
 | `run.tipKitHandling` | bool | unset (the target's `run.tipKitHandling`, then off) | Dismiss a blocking Apple TipKit tip (iOS only; [below](#tipkithandling-a-blocking-tipkit-tip)) |
 | `run.inheritSetup` | bool | `true` | `false` skips the `hooks.setup` of every target this scenario declares; their `hooks.cleanup` still runs ([below](#setup--cleanup-setup-and-teardown-phases)) |
@@ -182,16 +181,21 @@ A list or a range on that target multiplies each of its scenarios into runs, as
 > `preconditions.device.ios.<field>`. A condition such as `preconditions.runsOn.ios.model` fails and
 > names the target path that declares it instead, `runsOn.ios.model`.
 
-> **`run.erase` resolution order** is **CLI `--erase` / `--no-erase` > this scenario's own
-> `run.erase` > the target's `run.erase` > built-in off**. An unset scenario value (the common case)
-> inherits whatever the target config sets. `_filter_scenarios` (`run/cli.py`) resolves the order
-> before the run starts. See
-> [BE-0177](../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md) and
+> **`app.reinstall` resolution order** is **this scenario's own `app.reinstall` > the target's
+> `app.reinstall` > built-in `clean`**, and the CLI flag then moves the result: `--erase` makes it
+> `erase`, and `--no-erase` lowers an `erase` to `clean` while leaving `overwrite` and `clean` alone.
+> An unset scenario value (the common case) inherits whatever the target config sets.
+> `_filter_scenarios` (`run/cli.py`) applies the flag before the run starts. A target that states
+> `erase` therefore uninstalls under `--no-erase`; a scenario that must keep the app's data writes
+> `overwrite`. The removed `preconditions.run.erase` fails at load and names
+> `preconditions.app.reinstall: erase`. See
+> [BE-0473](../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts.md) and
 > [configuration](configuration.md#config-layering-defaults--targets).
 
 > **Seeding needs a wiped device.** After merging, a non-empty `seedPhotos` requires the effective
-> `run.erase` (the flag, then the scenario, then the target) to be true, because the photo library
-> is seeded only on the erase path. A target-level `run.erase: true` satisfies the rule. In a
+> `app.reinstall` (the scenario's, else the target's, then moved by the flag) to be `erase`, because
+> the photo library is seeded only on the erase path. A target-level `app.reinstall: erase` satisfies
+> the rule. In a
 > scenario that drives several targets, the primary alone seeds photos. A non-primary target with
 > a merged `seedPhotos` fails the run. `record`, `crawl`, and `repl` refuse `--no-erase` on a
 > target that seeds photos. Both refusals exit 2 before any device work.
@@ -201,13 +205,15 @@ A list or a range on that target multiplies each of its scenarios into runs, as
 > scenario's data across runs, and permission grants are part of that same preserved state, so a
 > scenario relying on an earlier one's grant under `overwrite` keeps seeing it.
 
-> **A run stored before BE-0452 or BE-0469 still loads.** The scenario loader rejects the old flat
+> **A run stored before BE-0452, BE-0469, or BE-0473 still loads.** The scenario loader rejects the old flat
 > keys: `erase`, `reinstall`, `launchEnv`, `launchArgs`, `deeplink`, `locale`, and `seedPhotos`. It
 > rejects `preconditions.runsOn`, and the top-level `systemAlertHandling` and `iosTipKitHandling`.
 > Each message names the key's new home. The offline readers of a run directory translate the old
 > keys in its stored `scenario.yaml` instead. They are the report re-render, `trace`, and `triage`.
 > A stored `preconditions.runsOn` keeps its iOS `locale` and `seedPhotos` under `device.ios` and
-> drops its conditions, which already chose the devices that run used.
+> drops its conditions, which already chose the devices that run used. A stored
+> `preconditions.erase` or `preconditions.run.erase: true` becomes `app.reinstall: erase`, and a
+> stored `false` is dropped.
 
 Not every environment can apply every precondition. A real iPhone cannot run `simctl erase`, and a
 browser has no app launch to pass `app.launch.env` to. When the target's environment cannot apply a
@@ -1191,7 +1197,7 @@ every gap below.
 The constraints come from driving an operating-system screen the scenario does not own:
 
 - **Measured on the iOS Simulator, iOS 26.5.** We checked no real device and no other runtime.
-- **Pin the layout with `run.erase: true`.** The long press lands on the icon grid's centre, which must
+- **Pin the layout with `preconditions.app.reinstall: erase`.** The long press lands on the icon grid's centre, which must
   be empty wallpaper. After an erase and reinstall, SpringBoard opens on the page that holds the
   test apps, and that page leaves its lower half free. Erasing also removes the widgets an earlier
   run added, so the assertion on the new widget stays unambiguous.
@@ -2620,7 +2626,7 @@ A `group:` step that omits `target` leaves each child to resolve as a hand-writt
 
 ### Data-driven scenarios (`data` / `dataFile`)
 
-A scenario with `data` (inline rows) or `dataFile` (a CSV path — the two are **mutually exclusive**) is expanded into **one scenario per row**, substituting `${row.<column>}` (`expand_data`, `scenario/expand.py`). Each derived scenario is renamed `"<name> [row N: col=val, …]"` and keeps the original preconditions, so every row reinstalls the app fresh and inherits the template's `run.erase` / `app.reinstall`.
+A scenario with `data` (inline rows) or `dataFile` (a CSV path — the two are **mutually exclusive**) is expanded into **one scenario per row**, substituting `${row.<column>}` (`expand_data`, `scenario/expand.py`). Each derived scenario is renamed `"<name> [row N: col=val, …]"` and keeps the original preconditions, so every row reinstalls the app fresh and inherits the template's `app.reinstall`.
 
 ```yaml
 - name: search returns a result

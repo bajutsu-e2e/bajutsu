@@ -27,6 +27,7 @@ from bajutsu.cli._shared import (
 from bajutsu.common import _yaml
 from bajutsu.common.config import (
     Effective,
+    ResolvedPreconditions,
     check_preconditions,
     command_preconditions,
     load_config,
@@ -45,10 +46,9 @@ targets:
     platform: ios
     app:
       id: com.example.phone
-      reinstall: overwrite
+      reinstall: erase
       launch: { env: { A: "1" }, args: ["-target"], deeplink: "app://home" }
     runsOn: {ios: {locale: ja_JP, seedPhotos: [photos/red.png]}}
-    run: { erase: true }
   droid:
     platform: android
     app: { id: com.example.droid, launch: { deeplink: "app://droid" } }
@@ -75,7 +75,7 @@ def _pre(text: str) -> Preconditions:
 @pytest.mark.parametrize(
     ("old", "new"),
     [
-        ("erase: true", "preconditions.run.erase"),
+        ("erase: true", "preconditions.app.reinstall: erase"),
         ("reinstall: clean", "preconditions.app.reinstall"),
         ("launchEnv: { A: '1' }", "preconditions.app.launch.env"),
         ("launchArgs: [-x]", "preconditions.app.launch.args"),
@@ -126,14 +126,13 @@ def test_the_groups_round_trip_through_a_dump() -> None:
         "  preconditions:\n"
         "    app: { reinstall: overwrite, launch: { env: { A: '1' }, deeplink: 'app://x' } }\n"
         "    device: { ios: { locale: ja_JP } }\n"
-        "    run: { erase: true, tipKitHandling: true, systemAlertHandling: false }\n"
+        "    run: { tipKitHandling: true, systemAlertHandling: false }\n"
         "  steps: []\n"
     )
     (scenario,) = load_scenarios(text)
     dumped = scenario_dict(scenario)
     assert Scenario.model_validate(dumped) == scenario
     assert dumped["preconditions"]["run"] == {
-        "erase": True,
         "systemAlertHandling": False,
         "tipKitHandling": True,
     }
@@ -146,7 +145,7 @@ def test_the_new_target_fields_resolve_onto_effective() -> None:
     effs = _effs()
     phone = effs["phone"]
     assert (phone.reinstall, phone.deeplink, phone.seed_photos) == (
-        "overwrite",
+        "erase",
         "app://home",
         ["photos/red.png"],
     )
@@ -163,7 +162,7 @@ def test_seed_photos_rebase_against_the_config_file(tmp_path: Path) -> None:
 
 def test_the_target_fills_what_the_scenario_leaves_unset() -> None:
     merged = resolve_preconditions(_effs()["phone"], Preconditions())
-    assert merged.reinstall == "overwrite"
+    assert merged.reinstall == "erase"
     assert merged.deeplink == "app://home"
     assert merged.erase is True
     assert merged.seed_photos == ["photos/red.png"]
@@ -173,7 +172,7 @@ def test_the_target_fills_what_the_scenario_leaves_unset() -> None:
 def test_the_scenario_wins_over_the_target() -> None:
     pre = _pre(
         "{ app: { reinstall: clean, launch: { env: { B: '2' }, args: [-s], deeplink: 'app://s' } },"
-        " device: { ios: { locale: en_GB, seedPhotos: [] } }, run: { erase: false } }"
+        " device: { ios: { locale: en_GB, seedPhotos: [] } } }"
     )
     merged = resolve_preconditions(_effs()["phone"], pre)
     assert merged.reinstall == "clean"
@@ -203,6 +202,34 @@ def test_a_command_with_no_scenario_takes_the_target_and_its_own_erase() -> None
         ["photos/red.png"],
     )
     assert command_preconditions(_effs()["droid"], erase=False).erase is False
+    # No flag keeps the target's own rung.
+    assert command_preconditions(_effs()["phone"], erase=None).reinstall == "erase"
+
+
+@pytest.mark.parametrize(
+    ("merged", "flag", "want"),
+    [
+        ("overwrite", True, "erase"),
+        ("clean", True, "erase"),
+        ("erase", False, "clean"),
+        ("overwrite", False, "overwrite"),  # `--no-erase` never lowers below what was asked
+        ("clean", False, "clean"),
+        ("erase", None, "erase"),
+        ("overwrite", None, "overwrite"),
+    ],
+)
+def test_the_erase_flag_moves_the_reinstall_ladder(
+    merged: str, flag: bool | None, want: str
+) -> None:
+    pre = ResolvedPreconditions(reinstall=merged)  # type: ignore[arg-type]
+    assert pre.with_erase(flag).reinstall == want
+
+
+def test_a_run_erase_in_preconditions_names_its_new_home() -> None:
+    with pytest.raises(
+        ValueError, match=r"preconditions\.run\.erase moved to preconditions\.app\.reinstall"
+    ):
+        _pre("{ run: { erase: true } }")
 
 
 def test_a_command_refuses_no_erase_on_a_target_that_seeds_photos(
@@ -226,7 +253,7 @@ def test_a_fake_target_runs_under_the_scenario_ios_locale() -> None:
 def test_seed_photos_on_a_non_primary_target_are_refused() -> None:
     effs = _effs()
     other = replace(effs["phone"], target="phone-2", seed_photos=[])
-    pre = _pre("{ run: { erase: true } }")
+    pre = _pre("{ app: { reinstall: erase } }")
     # The primary seeds; a second target with photos of its own would seed nothing.
     assert check_preconditions(pre, [effs["phone"], other]) == []
     (problem,) = check_preconditions(pre, [other, effs["phone"]])
@@ -259,8 +286,10 @@ def test_an_app_field_no_driven_platform_has_fails() -> None:
 
 def test_an_app_field_one_driven_platform_has_passes() -> None:
     effs = _effs()
-    pre = _pre("{ app: { launch: { args: [-x] }, reinstall: overwrite } }")
-    assert check_preconditions(pre, [effs["phone"], effs["site"]]) == []
+    args = _pre("{ app: { launch: { args: [-x] } } }")
+    assert check_preconditions(args, [effs["phone"], effs["site"]]) == []
+    reinstall = _pre("{ app: { reinstall: overwrite } }")
+    assert check_preconditions(reinstall, [effs["droid"], effs["site"]]) == []
 
 
 def test_the_fake_platform_has_no_launch_fields() -> None:
@@ -276,8 +305,10 @@ def test_an_ios_only_run_field_fails_without_an_ios_target() -> None:
     (problem,) = check_preconditions(pre, [effs["droid"]])
     assert problem.startswith("preconditions.run.tipKitHandling applies to no target")
     assert check_preconditions(pre, [effs["phone"]]) == []
-    # The shared run fields apply everywhere.
-    assert check_preconditions(_pre("{ run: { erase: true } }"), [effs["site"]]) == []
+    # A web target has no `reinstall`, yet its fresh browser context satisfies `erase` (BE-0473).
+    assert check_preconditions(_pre("{ app: { reinstall: erase } }"), [effs["site"]]) == []
+    (problem,) = check_preconditions(_pre("{ app: { reinstall: clean } }"), [effs["site"]])
+    assert problem.startswith("preconditions.app.reinstall applies to no target")
 
 
 @pytest.mark.parametrize(
@@ -375,12 +406,9 @@ _PRE_REGROUP_PLAN = (
 def test_a_plan_stored_before_the_regrouping_still_loads() -> None:
     (scenario,) = load_stored_scenario_file(_PRE_REGROUP_PLAN).scenarios
     pre = scenario.preconditions
-    assert (pre.run.erase, pre.run.system_alert_handling, pre.run.tip_kit_handling) == (
-        True,
-        False,
-        True,
-    )
-    assert pre.app.reinstall == "overwrite"
+    assert (pre.run.system_alert_handling, pre.run.tip_kit_handling) == (False, True)
+    # A stored erase wiped the device whatever `reinstall` said, so it lands on the top rung.
+    assert pre.app.reinstall == "erase"
     assert (pre.app.launch.env, pre.app.launch.args, pre.app.launch.deeplink) == (
         {"A": "1"},
         ["-x"],
@@ -410,8 +438,29 @@ def test_a_plan_stored_with_a_scenario_runs_on_keeps_its_device_state() -> None:
     assert not _yaml.safe_load(_upgraded_scenario_text(conditions_only))[0].get("preconditions")
 
 
+@pytest.mark.parametrize(
+    ("stored", "want"),
+    [
+        (
+            "{ run: { erase: true }, app: { reinstall: overwrite } }",
+            {"app": {"reinstall": "erase"}},
+        ),
+        (
+            "{ run: { erase: false }, app: { reinstall: overwrite } }",
+            {"app": {"reinstall": "overwrite"}},
+        ),
+        ("{ run: { erase: false, tipKitHandling: true } }", {"run": {"tipKitHandling": True}}),
+    ],
+)
+def test_a_plan_stored_with_run_erase_folds_it_into_reinstall(stored: str, want: object) -> None:
+    # A stored plan carries the concrete bool the run resolved (BE-0473).
+    text = f"- name: s\n  preconditions: {stored}\n  steps: []\n"
+    assert _yaml.safe_load(_upgraded_scenario_text(text))[0]["preconditions"] == want
+    load_stored_scenario_file(text)
+
+
 def test_the_upgrade_leaves_a_regrouped_plan_alone() -> None:
-    text = "- name: s\n  preconditions: { run: { erase: true } }\n  steps: []\n"
+    text = "- name: s\n  preconditions: { app: { reinstall: erase } }\n  steps: []\n"
     assert _yaml.safe_load(_upgraded_scenario_text(text)) == _yaml.safe_load(text)
 
 
@@ -419,8 +468,7 @@ def test_the_report_rows_read_the_groups() -> None:
     (scenario,) = load_stored_scenario_file(_PRE_REGROUP_PLAN).scenarios
     rows = _preconditions_rows(scenario_dict(scenario))
     assert rows == [
-        ("erase", "true"),
-        ("reinstall", "overwrite"),
+        ("reinstall", "erase"),
         ("deeplink", "app://x"),
         ("locale", "ja_JP"),
         ("A", "1"),

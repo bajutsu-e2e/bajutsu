@@ -370,7 +370,7 @@ resolved `Effective` keeps `run_defaults` as an internal grouping, filled from t
 > (oldest first), linking the PRs.
 
 - [ ] Unit 1: interrupt entries
-- [ ] Unit 2: reinstall ladder
+- [x] Unit 2: reinstall ladder
 - [x] Unit 3: evidence fields
 - [ ] Unit 4: remove `run`
 - [x] Unit 5: notification scope
@@ -387,6 +387,19 @@ Log:
   later units move. One deviation from *Notification scope*: an endpoint's `targets:` filter matches
   scenario names, not config target names, so no config-level replacement exists for a target's own
   `notify`. The maintainer chose to remove it as written regardless.
+- PR_LINK: Landed unit 2. `app.reinstall` and `preconditions.app.reinstall` take `overwrite`,
+  `clean`, or `erase`, and `run.erase` and `preconditions.run.erase` fail at load naming
+  `app.reinstall: erase`. `--erase` and `--no-erase` move the value along the ladder, the iOS and
+  Android lifecycles read the one value, and `seedPhotos` requires an effective `erase`. A stored run
+  plan's `erase: true` loads as `reinstall: erase`. The demo scenarios and the documents that name
+  `run.erase` moved in the same change. Two deviations from *Erase as the strongest reinstall*:
+  `defaults` has no `app`, so a shared erase is written under `defaults.platforms.<platform>.app`;
+  and the run no longer stamps the primary target's erase onto each scenario, so each target a
+  scenario drives merges its own `app.reinstall`, and `--no-erase` lowers each target's own `erase`.
+  Two consequences follow. An iOS device-group member that erases on a Simulator its lead did not
+  erase now fails rather than running unwiped. And a stored plan shows the reinstall the scenario
+  wrote, not the one its target supplied. `run.ignoredSettings` (BE-0467), which the
+  *Where each old key goes* table predates, still sits under `run` and needs a home in unit 4.
 
 ## References
 

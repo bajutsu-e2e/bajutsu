@@ -3,7 +3,7 @@
 Unlike `privacy` / `push`, `simctl addmedia` is device-scoped and adds a library entry on every
 call rather than being idempotent, so `Env.add_media` issues one call per path in order — nothing
 documents the relative order a single call handed several paths would assign them. The run checks
-that a merged, non-empty `seedPhotos` comes with an effective `run.erase` (`check_preconditions`),
+that a merged, non-empty `seedPhotos` comes with an effective `app.reinstall: erase` (`check_preconditions`),
 so a scenario can never silently seed nothing and fall back to whatever the Simulator's ambient
 library contains.
 """
@@ -91,16 +91,19 @@ def test_seed_photos_without_erase_is_a_problem() -> None:
 
 
 def test_seed_photos_with_the_scenario_erase_is_accepted() -> None:
-    assert check_preconditions(_pre(f"{{ {_SEED}, run: {{ erase: true }} }}"), [_eff()]) == []
+    assert check_preconditions(_pre(f"{{ {_SEED}, app: {{ reinstall: erase }} }}"), [_eff()]) == []
 
 
 def test_a_target_erase_satisfies_the_scenario_seed_photos() -> None:
-    eff = _eff("    run: { erase: true }\n")
+    text = (
+        "targets:\n  app:\n    platform: ios\n    app: { id: com.example.app, reinstall: erase }\n"
+    )
+    eff = resolve(load_config(text), "app")
     assert check_preconditions(_pre(f"{{ {_SEED} }}"), [eff]) == []
 
 
 def test_the_erase_flag_wins_over_the_scenario() -> None:
-    pre = _pre(f"{{ {_SEED}, run: {{ erase: true }} }}")
+    pre = _pre(f"{{ {_SEED}, app: {{ reinstall: erase }} }}")
     assert check_preconditions(pre, [_eff()], erase_flag=False)
     assert check_preconditions(_pre(f"{{ {_SEED} }}"), [_eff()], erase_flag=True) == []
 
@@ -124,7 +127,7 @@ def test_parse_seed_photos_in_yaml() -> None:
     scenario = load_scenarios(
         "- name: t\n"
         "  preconditions:\n"
-        "    run: { erase: true }\n"
+        "    app: { reinstall: erase }\n"
         "    device: { ios: { seedPhotos: [fixtures/red.png, fixtures/green.png] } }\n"
         "  steps:\n    - tap: { id: a }\n"
     )[0]

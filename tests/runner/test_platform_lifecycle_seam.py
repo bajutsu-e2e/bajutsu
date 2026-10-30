@@ -230,7 +230,7 @@ def test_ios_environment_surfaces_a_failing_step_as_device_error() -> None:
 
     with pytest.raises(simctl.DeviceError):
         XcuitestEnvironment("xcuitest", "UDID", env_run=fake_run).start(
-            _eff(), ResolvedPreconditions(erase=True)
+            _eff(), ResolvedPreconditions(reinstall="erase")
         )
 
 

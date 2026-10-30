@@ -208,12 +208,12 @@ class AndroidEnvironment:
                 # drop a component the old build had, and `install -r` cannot express either — but on
                 # the keep-data path removing the package first would throw away exactly what that
                 # path exists to preserve, so there `install -r` is left to fail loudly instead.
-                if pre.erase or pre.reinstall == "clean":
+                if pre.reinstall != "overwrite":
                     e.uninstall(android.package)
                 e.install(android.app_path)
             # `pm clear` is the clean-state reset (fresh app data); skip it only on an explicit
-            # `overwrite` reinstall with no erase, matching iOS's "keep data" overwrite path.
-            if pre.erase or pre.reinstall == "clean":
+            # `overwrite` reinstall, matching iOS's "keep data" overwrite path.
+            if pre.reinstall != "overwrite":
                 e.clear(android.package)
             e.force_stop(android.package)  # clean start so readiness reflects the new launch
             # Grant runtime permissions after `pm clear` (which resets grants) but before launch, so
@@ -635,7 +635,7 @@ class AndroidEnvironment:
     ) -> None:
         # Android has no device-wide wipe: `erase` is each app's own uninstall and `pm clear`, as in
         # `start`. Clearing this member's package never touches another member's data.
-        fresh = pre.erase or pre.reinstall == "clean"
+        fresh = pre.reinstall != "overwrite"
         if app_path and not self._provision.app_preinstalled:
             if not Path(app_path).exists():
                 raise adb.DeviceError(f"app.path not found: {app_path} (build the app first)")

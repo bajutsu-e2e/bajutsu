@@ -244,7 +244,6 @@ def resolve(config: Config, target: str) -> Effective:
         visual_compare=a.evidence.visual_compare or "exact",
         run_defaults=RunDefaults(
             system_alert_handling=run.system_alert_handling,
-            erase=run.erase if run.erase is not None else False,
             network=a.evidence.collect_network,
             ios_tip_kit_handling=tip_kit if tip_kit is not None else False,
             interrupts=list(a.hooks.interrupts),

@@ -640,6 +640,18 @@ def _with_headed(eff: Effective, headed: bool | None) -> Effective:
     return replace(eff, platform_config=replace(eff.platform_config, headless=not headed))
 
 
+def _with_erase_flag(eff: Effective, erase: bool | None) -> Effective:
+    """Apply `--no-erase` over the target's `app.reinstall`: an `erase` drops to `clean` (BE-0473).
+
+    Each target a scenario drives merges its own `app.reinstall`, so the flag reaches every target
+    here rather than through the scenario. `--erase` needs no counterpart: it raises the scenario's
+    own value, which wins over every target's.
+    """
+    if erase is False and eff.reinstall == "erase":
+        return replace(eff, reinstall="clean")
+    return eff
+
+
 def _log_subsystem_default(eff: Effective) -> str:
     """The default iOS log subsystem — the iOS bundle id, or empty for a non-iOS target (BE-0126).
 

@@ -19,7 +19,7 @@ from typer.testing import CliRunner
 from bajutsu.cli import app
 from bajutsu.cli._shared import LoadedConfig, _load_device_worker_or_exit, _worker_backends
 from bajutsu.common.capability.worker_capability import WorkerCapability
-from bajutsu.common.config import load_config, resolve
+from bajutsu.common.config import load_config, resolve, resolve_preconditions
 from bajutsu.common.scenario import Scenario
 from bajutsu.run.cli import (
     _acquire_targets,
@@ -266,6 +266,7 @@ def test_a_primary_only_failed_scenarios_use_is_not_acquired(
     # primary to the runnable file's target rather than reserving a device for `site`.
     acquired: list[str] = []
     reached: list[Scenario] = []
+    executed_on: list[Any] = []
 
     def fake_acquire(eff: Any, udid: str) -> Any:
         from bajutsu.common.platform_lifecycle import ProvisionProfile
@@ -274,7 +275,8 @@ def test_a_primary_only_failed_scenarios_use_is_not_acquired(
         acquired.append(eff.target)
         return DeviceLease(udid_spec=udid, provision=ProvisionProfile(), release=lambda: None)
 
-    def reached_execution(_eff: Any, scenarios: list[Scenario], *_a: object, **kw: Any) -> object:
+    def reached_execution(eff: Any, scenarios: list[Scenario], *_a: object, **kw: Any) -> object:
+        executed_on.append(eff)
         reached.extend(scenarios)
         raise typer.Exit(7)
 
@@ -282,12 +284,12 @@ def test_a_primary_only_failed_scenarios_use_is_not_acquired(
     monkeypatch.setattr("bajutsu.run.cli.device_pool", lambda *a, **k: (object(), lambda: None))
     monkeypatch.setattr("bajutsu.run.cli.run_and_report", reached_execution)
     args = _write(tmp_path, "version: 1\nmaxTargetsPerJob: 1\ndrivers: [fake, playwright]\n")
-    # Only the new primary erases by default, so a scenario still carrying the failed primary's
-    # run defaults would reach execution with erase off.
+    # Only the new primary erases by default, so a run still resolving against the failed primary
+    # would reach execution with erase off.
     (tmp_path / "bajutsu.config.yaml").write_text(
         _CONFIG.replace(
             "    app: {id: com.example.app}\n",
-            "    app: {id: com.example.app}\n    run: {erase: true}\n",
+            "    app: {id: com.example.app, reinstall: erase}\n",
         ),
         encoding="utf-8",
     )
@@ -298,7 +300,8 @@ def test_a_primary_only_failed_scenarios_use_is_not_acquired(
     result = invoke(runner, app, args)
     assert result.exit_code == 7, result.output
     assert acquired == ["app"]
-    assert [sc.preconditions.run.erase for sc in reached if sc.name == "one"] == [True]
+    (one,) = [sc for sc in reached if sc.name == "one"]
+    assert resolve_preconditions(executed_on[0], one.preconditions).erase
 
 
 def test_the_browser_matrix_still_refuses_a_failed_multi_target_scenario(tmp_path: Path) -> None:

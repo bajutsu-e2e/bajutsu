@@ -7,8 +7,6 @@
   preconditions:
     app:
       reinstall: clean
-    run:
-      erase: false
   steps:
   - tapPoint:
       x: 0.5

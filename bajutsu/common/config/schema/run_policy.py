@@ -14,6 +14,8 @@ from ._model import _Model
 # Where each field BE-0473 moved out of `run` now lives. Pydantic's generic extra-field error names
 # no replacement, and the loader reads none of the old keys, so the error is the migration path.
 MOVED_RUN_KEYS: dict[str, str] = {
+    # `defaults` has no `app`, so a shared erase goes under its platform block.
+    "erase": "app.reinstall: erase (in defaults, platforms.<platform>.app.reinstall)",
     "network": "evidence.collectNetwork",
     "visualCompare": "evidence.visualCompare",
     "secrets": "evidence.secrets",
@@ -28,7 +30,6 @@ class RunPolicy(_Model):
     scenario's own value and the built-in default (BE-0177): None falls through to the built-in.
     """
 
-    erase: bool | None = None
     system_alert_handling: SystemAlertHandlingField = Field(
         default=None, alias="systemAlertHandling"
     )

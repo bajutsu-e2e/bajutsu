@@ -699,11 +699,9 @@ def _mapping(value: Any) -> dict[str, Any]:
 def _preconditions_rows(definition: dict[str, Any] | None) -> list[tuple[str, str]]:
     # The grouped shape BE-0452 and BE-0469 introduced; a stored plan from before is upgraded on load.
     pre = _mapping((definition or {}).get("preconditions"))
-    app, run = _mapping(pre.get("app")), _mapping(pre.get("run"))
+    app = _mapping(pre.get("app"))
     launch = _mapping(app.get("launch"))
     rows: list[tuple[str, str]] = []
-    if "erase" in run:
-        rows.append(("erase", "true" if run["erase"] else "false"))
     if app.get("reinstall"):
         rows.append(("reinstall", str(app["reinstall"])))
     if launch.get("deeplink"):

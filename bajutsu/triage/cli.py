@@ -338,7 +338,7 @@ def _rerun_command(
     """The `bajutsu run` invocation that re-checks a patched scenario.
 
     Kept `--no-erase` to reuse the current device state: the flag overrides the scenario's
-    `preconditions.run.erase` and the target's `run.erase`, so a patched scenario that erases still
+    `preconditions.app.reinstall: erase` and the target's, so a patched scenario that erases still
     reruns on the device as the failure left it. Built as a list so it is easy to assert in
     tests. The `--worker-config` is forwarded like `--udid`, so a rerun reaches the same `appium`
     grid the failed run did (BE-0452).

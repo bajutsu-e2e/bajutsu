@@ -15,9 +15,6 @@ from bajutsu.common.scenario import (
 
 def test_preconditions_default() -> None:
     s = Scenario.model_validate({"name": "x", "steps": [{"tap": {"id": "a"}}]})
-    assert (
-        s.preconditions.run.erase is None
-    )  # unset: inherit target config, then built-in off (BE-0177)
     assert s.preconditions.app.reinstall is None  # unset: the target, then the built-in clean
 
 
@@ -25,12 +22,12 @@ def test_preconditions_reinstall_validated() -> None:
     s = Scenario.model_validate(
         {
             "name": "x",
-            "preconditions": {"run": {"erase": True}, "app": {"reinstall": "overwrite"}},
+            "preconditions": {"app": {"reinstall": "erase"}},
             "steps": [{"tap": {"id": "a"}}],
         }
     )
-    assert s.preconditions.run.erase is True and s.preconditions.app.reinstall == "overwrite"
-    with pytest.raises(ValidationError):  # only clean | overwrite are accepted
+    assert s.preconditions.app.reinstall == "erase"
+    with pytest.raises(ValidationError):  # only overwrite | clean | erase are accepted
         Scenario.model_validate(
             {
                 "name": "x",

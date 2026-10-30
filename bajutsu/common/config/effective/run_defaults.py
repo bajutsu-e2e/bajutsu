@@ -13,12 +13,11 @@ class RunDefaults:
 
     The layer the run consults when neither a CLI flag nor the scenario sets the value.
     `system_alert_handling` takes the on-disk shapes a scenario's own field does (`False`, a
-    policy, or None = built-in on with the default dismissive labels); `erase` / `network` are
-    the concrete built-in defaults when unset.
+    policy, or None = built-in on with the default dismissive labels); `network` is the concrete
+    built-in default when unset.
     """
 
     system_alert_handling: SystemAlertHandlingField = None
-    erase: bool = False
     network: bool = True
     ios_tip_kit_handling: bool = False
     # App-wide interstitial-screen handlers (BE-0314), prepended to a scenario's own `interrupts`.

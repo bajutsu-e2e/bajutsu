@@ -631,14 +631,15 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   scenario on a freshly respawned one, bounded by a retry count (`crash_retries`, default 1) and an
   optional wall-clock ceiling on total respawn time (`crash_recovery_budget`, unset by default) so a
   scenario that keeps crashing — or a runner that never comes back — still fails loudly rather than
-  being retried into a silent pass or a hung job. A retry forces the same `erase` precondition a
-  scenario already gets by declaring `erase: true` — a Simulator restart (`simctl shutdown → erase →
+  being retried into a silent pass or a hung job. A retry forces `preconditions.app.reinstall: erase`,
+  the same device reset a scenario already gets by declaring that value — a Simulator restart (`simctl shutdown → erase →
   boot`) on the XCUITest backend, an app-level clean state on adb — instead of a bare in-place
-  respawn onto the very device that just crashed it. Skipped when the scenario declares `reinstall:
-  overwrite` to keep its app's data across the lease (a plain `erase: false` is not enough to skip
-  it: the CLI resolves every scenario's `erase` to a concrete bool, most commonly `false`, before the
-  pipeline ever sees it, so a guard on that value would disable the forced retry on the very path it
-  was written for), and on the two XCUITest routes that reject any `erase` precondition outright (a
+  respawn onto the very device that just crashed it. Skipped when the merged reinstall is `overwrite`,
+  which keeps the app's data across the lease (a merged `clean`, the built-in default, does not skip
+  it: `clean` keeps no data either, so a guard on that value would disable the forced retry on the
+  very path it was written for), when the run has `--no-erase`
+  ([BE-0473](../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts.md)),
+  and on the two XCUITest routes that reject any `erase` precondition outright (a
   real device, `runsOn.ios.kind: device`; the live WebDriver endpoint) — forcing it there would
   abort the run instead of retrying the one scenario. If the forced-erase lease itself fails with a
   device-level fault (`simctl.DeviceError`/`adb.DeviceError`, a sibling type to
@@ -897,7 +898,8 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   tap on the same cell is measured to fail (`element vanished`/`ElementNotTappable`) against this
   recycled collection view. A `seedPhotos` precondition (`Preconditions.seed_photos`) seeds the
   Simulator's photo library with fixture images via `simctl addmedia` so the grid's content is
-  reproducible — requiring `erase: true` on the same preconditions, checked at load time, since a
+  reproducible — requiring an effective `app.reinstall: erase` (the scenario's, else the target's, then
+  moved by `--erase` / `--no-erase`), checked at load time, since a
   reused library would otherwise seed nothing silently. Gated on the `SELECT_PHOTOS` capability,
   which only the XCUITest backend declares; Android and web reject at preflight
 

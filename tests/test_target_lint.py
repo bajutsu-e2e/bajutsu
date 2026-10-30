@@ -38,7 +38,7 @@ targets:
 
 _LOCATION = """\
 - name: locate
-  preconditions: {run: {erase: true}}
+  preconditions: {app: {reinstall: erase}}
   steps:
     - wait: { for: { id: a }, timeout: 1 }
     - setLocation: { lat: 1, lon: 2 }
@@ -64,14 +64,14 @@ def test_a_step_the_route_lacks_is_a_finding_on_its_line(tmp_path: Path) -> None
 def test_a_setting_the_route_cannot_apply_is_a_finding(tmp_path: Path) -> None:
     findings = lint_against_targets(_LOCATION, _write(tmp_path, _LOCATION), _effective, "phone")
     messages = [f.message for f in findings]
-    assert any("run.erase is not supported on target 'phone'" in m for m in messages)
+    assert any("app.reinstall: erase is not supported on target 'phone'" in m for m in messages)
     # A real device lacks the simctl-backed location override too.
     assert any("deviceControl.setLocation" in m for m in messages)
 
 
 def test_an_ignored_setting_is_no_finding(tmp_path: Path) -> None:
     findings = lint_against_targets(_LOCATION, _write(tmp_path, _LOCATION), _effective, "phone-ok")
-    assert all("run.erase" not in f.message for f in findings)
+    assert all("app.reinstall: erase" not in f.message for f in findings)
 
 
 def test_a_runnable_scenario_has_no_findings(tmp_path: Path) -> None:

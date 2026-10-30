@@ -249,14 +249,13 @@ def test_a_required_field_may_come_from_platform_defaults() -> None:
 def test_a_target_clears_an_inherited_value_with_null() -> None:
     cfg = load_config(
         "defaults:\n"
-        "  run: {erase: true}\n"
+        "  platforms: {ios: {app: {reinstall: erase}}}\n"
         "targets:\n"
         "  x:\n"
         "    platform: ios\n"
-        "    app: {id: com.x}\n"
-        "    run: {erase: null}\n"
+        "    app: {id: com.x, reinstall: null}\n"
     )
-    assert resolve(cfg, "x").run_defaults.erase is False  # back to the built-in
+    assert resolve(cfg, "x").reinstall is None  # back to the built-in
 
 
 def test_lists_replace_except_the_two_unions() -> None:
@@ -1388,10 +1387,10 @@ def test_scalar_root_containing_orgs_raises_validationerror_not_attributeerror()
 
 def test_run_behavior_defaults_when_unset() -> None:
     # An unset target resolves to the built-in defaults: guard on (system_alert_handling None → on
-    # with the built-in dismissive labels), erase off, network on.
+    # with the built-in dismissive labels), no reinstall mode (the built-in clean), network on.
     eff = resolve(load_config("targets:\n  s:\n    platform: ios\n    app: {id: com.x}\n"), "s")
     assert eff.run_defaults.system_alert_handling is None
-    assert eff.run_defaults.erase is False
+    assert eff.reinstall is None
     assert eff.run_defaults.network is True
 
 
@@ -1413,17 +1412,16 @@ def test_target_ios_tip_kit_handling_resolves_and_defaults_off() -> None:
     assert opted_in.run_defaults.ios_tip_kit_handling is True
 
 
-def test_target_erase_and_network_resolve() -> None:
+def test_target_reinstall_and_network_resolve() -> None:
     cfg = load_config(
         "targets:\n"
         "  s:\n"
         "    platform: ios\n"
-        "    app: {id: com.x}\n"
-        "    run: {erase: true}\n"
+        "    app: {id: com.x, reinstall: erase}\n"
         "    evidence: {collectNetwork: false}\n"
     )
     eff = resolve(cfg, "s")
-    assert eff.run_defaults.erase is True
+    assert eff.reinstall == "erase"
     assert eff.run_defaults.network is False
 
 
@@ -1433,9 +1431,10 @@ def test_target_erase_and_network_resolve() -> None:
         ("network: false", "evidence.collectNetwork"),
         ("visualCompare: exact", "evidence.visualCompare"),
         ("secrets: [A]", "evidence.secrets"),
+        ("erase: true", "app.reinstall: erase"),
     ],
 )
-def test_a_run_key_moved_to_evidence_names_its_new_location(old: str, new: str) -> None:
+def test_a_moved_run_key_names_its_new_location(old: str, new: str) -> None:
     # BE-0473 reads none of the old keys, so the error is the whole migration path an author gets.
     target = f"targets:\n  s:\n    platform: ios\n    app: {{id: com.x}}\n    run: {{{old}}}\n"
     with pytest.raises(ValidationError, match=rf"run\.\w+ moved to {re.escape(new)}"):

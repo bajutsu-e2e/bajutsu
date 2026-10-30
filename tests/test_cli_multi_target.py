@@ -772,7 +772,7 @@ def test_preconditions_are_checked_against_the_re_inferred_primary(
         tmp_path,
         {
             "ios": "{ app: { launch: { args: [-x] } }, run: { tipKitHandling: true } }",
-            "droid": "{ app: { launch: { env: { A: '1' } } }, run: { erase: true } }",
+            "droid": "{ app: { launch: { env: { A: '1' } }, reinstall: erase } }",
         },
     )
     argv = ["run", *(a for f in files for a in ("--scenario", f)), "--tag", "android"]

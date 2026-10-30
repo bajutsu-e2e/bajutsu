@@ -364,7 +364,7 @@ iOS の `tipKitHandling` だけだったからです。解決後の `Effective` 
 > ともに記録します。
 
 - [ ] 単位 1：割り込みエントリ
-- [ ] 単位 2：reinstall の段階
+- [x] 単位 2：reinstall の段階
 - [x] 単位 3：evidence のフィールド
 - [ ] 単位 4：`run` の削除
 - [x] 単位 5：通知の範囲
@@ -381,6 +381,20 @@ iOS の `tipKitHandling` だけだったからです。解決後の `Effective` 
   *通知の範囲* からは 1 点ずれています。エンドポイントの `targets:` は config のターゲット名ではなく
   シナリオ名で絞り込むので、ターゲット自身の `notify` を config で置き換える手段はありません。
   それでも、メンテナの判断で設計どおり削除しました。
+- PR_LINK：単位 2 を実装しました。`app.reinstall` と `preconditions.app.reinstall` は `overwrite`、
+  `clean`、`erase` のいずれかを取り、`run.erase` と `preconditions.run.erase` は読み込み時に
+  `app.reinstall: erase` を示すエラーになります。`--erase` と `--no-erase` はこの値を段階に沿って
+  動かし、iOS と Android のライフサイクルはこの 1 つの値だけを読みます。`seedPhotos` には実効の
+  `erase` が必要です。保存済みの実行プランにある `erase: true` は `reinstall: erase` として読み込みます。
+  `run.erase` を書いているデモのシナリオとドキュメントも同じ変更で直しました。*もっとも強い reinstall
+  としての erase* からは 2 点ずれています。1 つ目に、`defaults` には `app` がないので、共有する erase は
+  `defaults.platforms.<platform>.app` に書きます。2 つ目に、実行時にプライマリターゲットの erase を
+  各シナリオへ書き込むのをやめたので、シナリオが動かすターゲットはそれぞれ自身の `app.reinstall` を
+  マージし、`--no-erase` も各ターゲット自身の `erase` を下げます。この結果が 2 つあります。iOS の
+  デバイスグループで、リードが消去しなかった Simulator 上でメンバーが erase を求めると、消去せずに
+  動くのではなく失敗します。また、保存された実行プランには、ターゲットが与えた reinstall ではなく
+  シナリオが書いた reinstall が残ります。また、*旧キーの移行先* の表より後に加わった `run.ignoredSettings`（BE-0467）は
+  まだ `run` の下にあり、単位 4 で移動先を決める必要があります。
 
 ## 参考
 

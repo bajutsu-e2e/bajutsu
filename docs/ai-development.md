@@ -1236,9 +1236,9 @@ either side, and it inflates the file with reasoning a reader can look up.
 Example — trimmed to its result, with the derivation left in the item:
 
 ```python
-# A retry forces the device recovery `erase: true` would give. Skipped on a merged `reinstall:
+# A retry forces the device recovery `reinstall: erase` would give. Skipped on a merged `reinstall:
 # overwrite`, from the scenario or its target (the app data must survive), and on the operator's
-# `--no-erase`; a CLI-resolved `erase: false` is NOT the same signal (BE-0353).
+# `--no-erase`; a merged `clean` is NOT the same signal (BE-0353).
 ```
 
 not:

@@ -113,7 +113,7 @@ def test_settings_in_effect_lists_what_the_run_asks_for() -> None:
             "    app: {id: com.x, path: build/App.app, launch: {args: [-x]}}",
         ),
     )
-    pre = ResolvedPreconditions(erase=True, launch_env={"A": "1"}, deeplink="app://x")
+    pre = ResolvedPreconditions(reinstall="erase", launch_env={"A": "1"}, deeplink="app://x")
     assert settings_in_effect(eff, pre, {"camera": "grant"}) == [
         "erase",
         "install",
@@ -134,15 +134,15 @@ def test_a_default_locale_is_not_in_effect() -> None:
 
 
 def test_an_unsupported_setting_is_a_problem_naming_its_declaration() -> None:
-    check = check_settings("xcuitest", _device(), ResolvedPreconditions(erase=True))
+    check = check_settings("xcuitest", _device(), ResolvedPreconditions(reinstall="erase"))
     assert check.unsupported == ["erase"]
     [problem] = check.problems()
-    assert "run.erase" in problem and "targets.t.run.ignoredSettings" in problem
+    assert "app.reinstall: erase" in problem and "targets.t.run.ignoredSettings" in problem
 
 
 def test_a_declared_setting_is_ignored_with_its_reason() -> None:
     eff = _ignoring(_device(), erase="this lane keeps app data")
-    check = check_settings("xcuitest", eff, ResolvedPreconditions(erase=True))
+    check = check_settings("xcuitest", eff, ResolvedPreconditions(reinstall="erase"))
     assert check.problems() == []
     assert check.ignored == {"erase": "this lane keeps app data"}
 
@@ -177,7 +177,7 @@ def test_enforce_drops_every_ignored_setting() -> None:
     pre, permissions = enforce_settings(
         "xcuitest",
         eff,
-        ResolvedPreconditions(erase=True, launch_env={"A": "1"}),
+        ResolvedPreconditions(reinstall="erase", launch_env={"A": "1"}),
         {"camera": "grant"},
     )
     assert not pre.erase
@@ -243,7 +243,7 @@ def test_without_ignored_clears_each_field(
 def test_a_backend_with_no_route_neither_honours_nor_stales_a_declaration() -> None:
     # `--backend fake` runs any target; its real route's declarations do not apply there.
     eff = _ignoring(_device(), erase="keeps app data")
-    check = check_settings("fake", eff, ResolvedPreconditions(erase=True))
+    check = check_settings("fake", eff, ResolvedPreconditions(reinstall="erase"))
     assert check.problems() == [] and check.ignored == {}
 
 

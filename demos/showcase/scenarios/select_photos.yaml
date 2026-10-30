@@ -3,6 +3,7 @@
   tags: [swiftui]
   preconditions:
     app:
+      reinstall: erase
       launch:
         env: { SHOWCASE_UITEST: "1" }
     device:
@@ -10,8 +11,6 @@
         seedPhotos:
           - fixtures/photos/fixture-red.png
           - fixtures/photos/fixture-green.png
-    run:
-      erase: true
   steps:
     - tap: { label: "Permissions", traits: [button] }
     - wait: { for: { id: perm.openPhotoPicker }, timeout: 10 }

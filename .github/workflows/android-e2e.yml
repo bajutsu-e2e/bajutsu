@@ -218,7 +218,7 @@ jobs:
     # falling back to one retry and an unbounded per-scenario budget. These two numbers were sized
     # against a *bare* in-place respawn and, unlike ios-e2e.yml's own knobs (re-derived in 2115b10),
     # were not re-measured once a crash-triggered retry (attempt > 1) started forcing the same `erase`
-    # precondition `erase: true` already gets. The reason they still hold on this lane: `pre.erase` on
+    # precondition `reinstall: erase` already gets. The reason they still hold on this lane: `pre.erase` on
     # adb (`bajutsu/platform_lifecycle/environments/android.py`) is an app-level clean state —
     # `uninstall` + `install` + `pm clear` on an emulator that stays booted throughout — not the
     # `simctl shutdown → erase → boot` device restart iOS pays, so the erase-carrying attempt costs low

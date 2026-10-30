@@ -696,7 +696,7 @@ def test_live_environment_start_raises_on_erase() -> None:
     # silently no-op'ing (determinism first — the scenario author must know erase had no effect).
     env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: _FakeGrid([]))
     with pytest.raises(base.UnsupportedAction):
-        env.start(_live_eff(), ResolvedPreconditions(erase=True))
+        env.start(_live_eff(), ResolvedPreconditions(reinstall="erase"))
 
 
 def test_live_environment_start_raises_on_permissions() -> None:
@@ -710,7 +710,7 @@ def test_live_environment_runs_without_an_ignored_erase() -> None:
     eff = _live_eff()
     eff = replace(eff, run_defaults=replace(eff.run_defaults, ignored_settings={"erase": "x"}))
     env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: _FakeGrid([]))
-    assert env.start(eff, ResolvedPreconditions(erase=True)) is not None
+    assert env.start(eff, ResolvedPreconditions(reinstall="erase")) is not None
 
 
 def test_live_environment_start_raises_on_a_target_locale() -> None:

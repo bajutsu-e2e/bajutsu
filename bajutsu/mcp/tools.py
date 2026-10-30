@@ -138,7 +138,7 @@ def register_tools(
         a path to a *.yaml file; if omitted, all scenarios in the target's
         `paths.scenarios` directory are run. `erase=True` erases the device
         before every scenario, overriding each scenario's
-        `preconditions.run.erase` and the target's `run.erase`; False leaves
+        `preconditions.app.reinstall` and the target's; False leaves
         those in force.
         """
         # The internal run module, not the public wrapper: the tool's timeout kills what it spawned,

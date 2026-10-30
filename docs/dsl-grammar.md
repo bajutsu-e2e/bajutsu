@@ -154,7 +154,7 @@ CleanupRule ::= { on: "always" | "success" | "failure", steps: list(<Step>) }
 # to the target alone (BE-0469).
 Preconditions ::= {
   app?:    {
-    reinstall?: ("clean" | "overwrite"),    # unset: the target's `app.reinstall`, else "clean"; iOS and Android
+    reinstall?: ("overwrite" | "clean" | "erase"),  # weakest first; unset: the target's `app.reinstall`, else "clean"; iOS and Android, plus "erase" on web (BE-0473)
     launch?: {
       env?:      map(string,string),        # default {} — merged over the target's `app.launch.env`
       args?:     list(string),              # default [] — appended after the target's; iOS only
@@ -163,7 +163,6 @@ Preconditions ::= {
   },
   device?: { ios?: <IosDevice> },           # keyed by destination; a block for an undriven platform has no effect
   run?:    {
-    erase?:               boolean,          # unset inherits the target's `run.erase`, else off (BE-0177)
     systemAlertHandling?: <SystemAlertHandling>,  # alert guard; on when unset
     tipKitHandling?:      boolean,          # dismiss a blocking TipKit tip; off when unset; iOS only
     inheritSetup?:        boolean,          # default true — false skips every declared target's `hooks.setup`; their cleanup still runs
@@ -172,7 +171,7 @@ Preconditions ::= {
 
 # The iOS device state a scenario applies; each field replaces the target's `runsOn.ios` value of the
 # same name. `seedPhotos` paths resolve against the scenario file, and a merged, non-empty list needs
-# an effective `run.erase`.
+# an effective `app.reinstall: erase`.
 IosDevice ::= { locale?: string, seedPhotos?: list(string) }
 
 # ── SystemAlertHandling (reactive system-alert guard; on by default) ───
@@ -499,11 +498,10 @@ Omitted optional keys take these values (so a minimal scenario is just `name` + 
 | `Scenario.tags` / `expect` / `capturePolicy` / `mocks` / `interrupts` / `setup` / `cleanup` | `[]` |
 | `Scenario.preconditions` | `{}` (every field falls through to the target, then the built-in default) |
 | `Scenario.permissions` | `{}` (no pre-launch permission state applied) |
-| `Preconditions.run.erase` | unset — inherits the target's `run.erase`, else off (BE-0177) |
 | `Preconditions.run.systemAlertHandling` | unset (alert guard on, with no rules — so it answers no prompt of its own) |
 | `Preconditions.run.tipKitHandling` | unset (the target's `run.tipKitHandling`, else off — a tip is sometimes the assertion; iOS only) |
 | `Preconditions.run.inheritSetup` | `true` (every declared target's `hooks.setup` runs ahead of the scenario's `setup`) |
-| `Preconditions.app.reinstall` | unset — the target's `app.reinstall`, else `clean` |
+| `Preconditions.app.reinstall` | unset — the target's `app.reinstall`, else `clean`; `--erase` raises it to `erase`, `--no-erase` lowers an `erase` to `clean` (BE-0473) |
 | `Preconditions.app.launch.args` | `[]` |
 | `Preconditions.app.launch.env` | `{}` |
 | `SystemAlertHandling.rules` | `[]` (no prompt is declared, so the guard answers none; an alert it meets is named on the blocked step's failure) |
@@ -627,7 +625,7 @@ those bodies. A `group` step's own `target` follows the `use` rule above.
 A scenario with `data` (inline rows) or `dataFile` (a CSV path; mutually exclusive) is expanded into
 **one scenario per row**, substituting `${row.<column>}` (`expand_data`, `scenario/expand.py`). Each
 derived scenario is renamed `"<name> [row N: col=val, …]"` and **keeps the original preconditions**
-(so every row reinstalls the app fresh and inherits the template's `run.erase` / `app.reinstall`).
+(so every row reinstalls the app fresh and inherits the template's `app.reinstall`).
 
 ```yaml
 - name: search returns a result

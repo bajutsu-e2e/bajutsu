@@ -158,7 +158,7 @@ def test_start_on_a_real_device_refuses_permission_grants() -> None:
 def test_start_on_a_real_device_refuses_erase() -> None:
     env = XcuitestEnvironment("xcuitest", _DEVICE_UDID)
     with pytest.raises(base.UnsupportedAction, match="route ios-device"):
-        env.start(_device_eff(), ResolvedPreconditions(erase=True))
+        env.start(_device_eff(), ResolvedPreconditions(reinstall="erase"))
 
 
 def test_start_on_a_real_device_targets_the_device_and_skips_simctl(
@@ -440,7 +440,7 @@ def test_a_failed_real_device_start_closes_the_nativez_bridge(
 
 @pytest.mark.parametrize(
     ("app_path", "pre"),
-    [("build/App.app", ResolvedPreconditions()), (None, ResolvedPreconditions(erase=True))],
+    [("build/App.app", ResolvedPreconditions()), (None, ResolvedPreconditions(reinstall="erase"))],
 )
 def test_a_refused_real_device_start_never_opens_the_nativez_bridge(
     app_path: str | None, pre: ResolvedPreconditions
@@ -886,7 +886,7 @@ def test_an_erasing_cold_spawn_re_pins_the_wiped_domain(
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     eff = _sim_eff_locale(test_runner=str(_write_runner(tmp_path)), locale="ja_JP")
 
-    env.start(eff, ResolvedPreconditions(erase=True))
+    env.start(eff, ResolvedPreconditions(reinstall="erase"))
 
     assert domain["v"] == "ja_JP"  # re-pinned after the wipe, not left to the boot default
     verbs = _verbs(simctl_calls)
@@ -945,7 +945,7 @@ def test_an_erasing_cold_prep_waits_for_the_boot_that_follows_the_erase(
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     env.start(
         _sim_eff_locale(test_runner=str(_write_runner(tmp_path)), locale="en_US"),
-        ResolvedPreconditions(erase=True),
+        ResolvedPreconditions(reinstall="erase"),
     )
 
     verbs = _verbs(simctl_calls)
@@ -955,14 +955,16 @@ def test_an_erasing_cold_prep_waits_for_the_boot_that_follows_the_erase(
 def test_cold_erase_prep_seeds_the_photo_library_one_call_per_path_in_order(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    # `seedPhotos` requires `erase: true` (`ResolvedPreconditions`'s own validator), and `_prepare_simulator`
+    # `seedPhotos` requires `reinstall: erase` (`check_preconditions`), and `_prepare_simulator`
     # reuses that same wipe — one `simctl addmedia` per path, in the order given, never batched
     # (roadmap item: nothing documents the relative order a batched call would assign several paths).
     _, simctl_calls, run = _fake_toolchain(monkeypatch, system_locale={"v": "en_US"})
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     env.start(
         _sim_eff_locale(test_runner=str(_write_runner(tmp_path)), locale="en_US"),
-        ResolvedPreconditions(erase=True, seed_photos=["/fixtures/red.png", "/fixtures/green.png"]),
+        ResolvedPreconditions(
+            reinstall="erase", seed_photos=["/fixtures/red.png", "/fixtures/green.png"]
+        ),
     )
 
     addmedia_calls = [c for c in simctl_calls if c[2:3] == ["addmedia"]]
@@ -980,7 +982,7 @@ def test_a_cold_prep_with_no_seed_photos_never_calls_addmedia(
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     env.start(
         _sim_eff_locale(test_runner=str(_write_runner(tmp_path)), locale="en_US"),
-        ResolvedPreconditions(erase=True),
+        ResolvedPreconditions(reinstall="erase"),
     )
     assert "addmedia" not in _verbs(simctl_calls)
 
@@ -1054,7 +1056,7 @@ def test_start_respawns_the_runner_when_the_scenario_erases(
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     eff = _sim_eff(test_runner=str(_write_runner(tmp_path)))
     env.start(eff, ResolvedPreconditions())
-    env.start(eff, ResolvedPreconditions(erase=True))
+    env.start(eff, ResolvedPreconditions(reinstall="erase"))
     assert len(popen_argvs) == 2  # the erase forced a fresh runner
     assert any(c[:3] == ["xcrun", "simctl", "erase"] for c in simctl_calls)  # the device was erased
 
@@ -1251,7 +1253,7 @@ def test_erase_forced_cold_spawn_keeps_the_full_ceiling(
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     env.start(eff, ResolvedPreconditions())  # first cold spawn: full ceiling
     env.start(
-        eff, ResolvedPreconditions(erase=True)
+        eff, ResolvedPreconditions(reinstall="erase")
     )  # erase reboots the Simulator: a genuine cold start
     assert seen == [300.0, 300.0]  # the erase spawn keeps the full ceiling, not the respawn one
 
@@ -3152,7 +3154,7 @@ def test_a_replacement_bring_up_drops_the_erase_it_was_asked_to_carry(
     env.start(eff, ResolvedPreconditions())
     env.request_device_replacement()
     del calls[:]
-    env.start(eff, ResolvedPreconditions(erase=True))
+    env.start(eff, ResolvedPreconditions(reinstall="erase"))
     assert env._udid == "UDID-NEW"
     seq = _verb_seq(calls)
     # The one shutdown is the degraded device's quarantine, before the create; nothing erases the
@@ -3724,7 +3726,7 @@ def _assert_read_only(simctl_calls: list[list[str]]) -> None:
 
 
 # A scenario locale the cold path pins through `spawn … defaults write`; the attach start must not.
-_RICH_PRE = ResolvedPreconditions(erase=False, locale="ja_JP")
+_RICH_PRE = ResolvedPreconditions(locale="ja_JP")
 
 
 def _attach_env(run: simctl.RunFn, udid: str = "UDID") -> XcuitestEnvironment:
@@ -3773,9 +3775,7 @@ def test_attach_fails_before_spawning_when_the_app_is_not_installed(
     popen_argvs, _, _, run = _attach_toolchain(monkeypatch, running=False, installed=False)
     env = _attach_env(run)
     with pytest.raises(simctl.DeviceError, match=r"com\.x is not installed"):
-        env.start(
-            _sim_eff(test_runner=str(_write_runner(tmp_path))), ResolvedPreconditions(erase=False)
-        )
+        env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), ResolvedPreconditions())
     assert popen_argvs == []
 
 
@@ -3792,9 +3792,7 @@ def test_attach_propagates_a_wedged_install_probe(
 
     env = _attach_env(_wedged)
     with pytest.raises(simctl.DeviceTimeout):
-        env.start(
-            _sim_eff(test_runner=str(_write_runner(tmp_path))), ResolvedPreconditions(erase=False)
-        )
+        env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), ResolvedPreconditions())
 
 
 def test_attach_turns_a_failed_probe_into_a_device_error(
@@ -3810,9 +3808,7 @@ def test_attach_turns_a_failed_probe_into_a_device_error(
 
     env = _attach_env(_failing)
     with pytest.raises(simctl.DeviceError):
-        env.start(
-            _sim_eff(test_runner=str(_write_runner(tmp_path))), ResolvedPreconditions(erase=False)
-        )
+        env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), ResolvedPreconditions())
     assert popen_argvs == []
 
 
@@ -3830,7 +3826,7 @@ def test_attach_reports_an_unreadable_boot_state_as_such(
 
     with pytest.raises(simctl.DeviceError, match=f"could not read whether Simulator {udid} is"):
         _attach_env(_unreadable, udid).start(
-            _sim_eff(test_runner=str(_write_runner(tmp_path))), ResolvedPreconditions(erase=False)
+            _sim_eff(test_runner=str(_write_runner(tmp_path))), ResolvedPreconditions()
         )
     assert popen_argvs == []
 
@@ -3845,9 +3841,7 @@ def test_attach_never_boots_a_device(
     popen_argvs, _, simctl_calls, run = _attach_toolchain(monkeypatch, booted=False)
     env = _attach_env(run, udid)
     with pytest.raises(simctl.DeviceError, match=message):
-        env.start(
-            _sim_eff(test_runner=str(_write_runner(tmp_path))), ResolvedPreconditions(erase=False)
-        )
+        env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), ResolvedPreconditions())
     assert popen_argvs == []
     assert "boot" not in _verbs(simctl_calls)
 
@@ -3855,8 +3849,8 @@ def test_attach_never_boots_a_device(
 @pytest.mark.parametrize(
     ("pre", "permissions", "message"),
     [
-        (ResolvedPreconditions(erase=False, deeplink="app://x"), None, "never opens a deeplink"),
-        (ResolvedPreconditions(erase=False), {"camera": "grant"}, "never changes the permissions"),
+        (ResolvedPreconditions(deeplink="app://x"), None, "never opens a deeplink"),
+        (ResolvedPreconditions(), {"camera": "grant"}, "never changes the permissions"),
     ],
 )
 def test_attach_refuses_inputs_it_cannot_apply(
@@ -3883,10 +3877,12 @@ def test_attach_refuses_erase_and_a_real_device(
     _, _, _, run = _attach_toolchain(monkeypatch)
     runner = str(_write_runner(tmp_path))
     with pytest.raises(simctl.DeviceError, match="never erases"):
-        _attach_env(run).start(_sim_eff(test_runner=runner), ResolvedPreconditions(erase=True))
+        _attach_env(run).start(
+            _sim_eff(test_runner=runner), ResolvedPreconditions(reinstall="erase")
+        )
     with pytest.raises(simctl.DeviceError, match="only supported on the local iOS Simulator"):
         _attach_env(run, _DEVICE_UDID).start(
-            _device_eff(test_runner=runner), ResolvedPreconditions(erase=False)
+            _device_eff(test_runner=runner), ResolvedPreconditions()
         )
 
 
@@ -3911,9 +3907,7 @@ def test_a_failed_attach_spawn_fails_once_and_keeps_the_app(
     monkeypatch.setattr(backends, "make_driver", lambda *_a, **_k: _NeverReady())
     env = _attach_env(run)
     with pytest.raises(XcuitestChannelError, match="did not come up"):
-        env.start(
-            _sim_eff(test_runner=str(_write_runner(tmp_path))), ResolvedPreconditions(erase=False)
-        )
+        env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), ResolvedPreconditions())
     assert len(popen_argvs) == 1
     _assert_read_only(simctl_calls)
 
@@ -3927,7 +3921,7 @@ def test_an_attach_session_exits_by_stopping_only_the_runner(
     _, _, simctl_calls, run = _attach_toolchain(monkeypatch, running=running)
     env = _attach_env(run)
     eff = _sim_eff(test_runner=str(_write_runner(tmp_path, host_bundle_id="com.x.runner")))
-    driver = env.start(eff, ResolvedPreconditions(erase=False))
+    driver = env.start(eff, ResolvedPreconditions())
     proc = env._runner_proc
     assert proc is not None
 

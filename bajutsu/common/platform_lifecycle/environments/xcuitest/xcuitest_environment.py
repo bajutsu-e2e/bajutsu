@@ -205,6 +205,9 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # (`_terminate_app_under_test`). None until the first spawn, and on a real device, where
         # simctl does not apply.
         self._bundle_id: str | None = None
+        # Whether this lease's own `start` asked to wipe the Simulator, which a device-group member
+        # shares (BE-0473): a member that asks for `erase` the lead did not ask for cannot have it.
+        self._lead_erases = False
         # The installed app bundle this environment prepped, for the `CFBundleExecutable` read that
         # builds the `.ips` sweep's own match pattern — `app_crash_artifacts()` takes no arguments, so
         # it has no `eff` in scope to reach `ios.app_path` through (BE-0424). None on a target that
@@ -349,6 +352,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # before the rung and has no simctl to mint a device through anyway.
         replace_device = self._replacement_requested
         self._replacement_requested = False
+        self._lead_erases = pre.erase
 
         if self._attach:
             return self._start_attached(eff, pre, device_type, extra_env, permissions)
@@ -390,7 +394,11 @@ class XcuitestEnvironment(_DeviceEnvironment):
             # never reached this instance (a lease whose environment the pool had already evicted)
             # would then leave the retry with neither remedy.
             return self._spawn_cold(
-                eff, dataclasses.replace(pre, erase=False), device_type, extra_env, permissions
+                eff,
+                dataclasses.replace(pre, reinstall="clean"),
+                device_type,
+                extra_env,
+                permissions,
             )
 
         # Simulator: reuse a healthy warm runner across leases (BE-0291). `erase` shuts the Simulator
@@ -1122,12 +1130,12 @@ class XcuitestEnvironment(_DeviceEnvironment):
                     resolved = simctl.device_type_of(self._udid, self._run)
                     self._device_type_id, self._device_runtime_id = resolved or (None, None)
                 self._pin_system_locale(e, pre.resolved_locale(eff.locale))
-                # A merged `seedPhotos` requires an effective `run.erase` (`check_preconditions`), so
+                # A merged `seedPhotos` requires an effective `reinstall: erase` (`check_preconditions`), so
                 # this reuses the same wipe that already guarantees a known-empty library — never runs on
                 # a warm resume (`cold` is False there) or seeds twice into the same device lease.
                 if pre.erase and pre.seed_photos:
                     e.add_media(pre.seed_photos)
-            clean_reinstall = pre.reinstall == "clean" and not pre.erase
+            clean_reinstall = pre.reinstall == "clean"
             if ios.app_path:
                 app_path = Path(ios.app_path)
                 if not app_path.exists():
@@ -1542,6 +1550,14 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # A member launches its own app under its own target's declarations, so it reads the table
         # exactly as `start` does (BE-0467).
         pre, permissions = enforce_settings(self._actuator, eff, pre, permissions, self._udid)
+        if pre.erase and not self._lead_erases:
+            # Each target merges its own `app.reinstall`, so two targets on one Simulator can
+            # disagree; wiping it now would destroy the lead's app, and skipping it would ignore
+            # what the member declared.
+            raise simctl.DeviceError(
+                f"target {eff.target!r} sets app.reinstall: erase, but it shares this Simulator "
+                "with a target that does not erase it; give both targets the same reinstall"
+            )
         e = simctl.Env(self._udid, run=self._run)
         try:
             if install:
@@ -1582,15 +1598,18 @@ class XcuitestEnvironment(_DeviceEnvironment):
     def _install_member_build(
         self, e: simctl.Env, bundle_id: str, app_path: str | None, pre: ResolvedPreconditions
     ) -> None:
-        # The member's own reinstall mode; `erase` is device-wide and `start` already ran it.
+        # The member's own reinstall mode. `erase` wipes the whole device, which `start` already did
+        # (`start_member` refuses a member that erases on a lead that does not), so here it resets
+        # the member's app as `clean` does.
         if not app_path:
             return
         if not Path(app_path).exists():
             raise simctl.DeviceError(f"app.path not found: {app_path} (build the app first)")
-        if pre.reinstall == "clean":
+        fresh = pre.reinstall != "overwrite"
+        if fresh:
             e.uninstall(bundle_id)
         e.install(app_path)
-        if pre.reinstall == "clean":
+        if fresh:
             e.reset_permissions(bundle_id)
 
     def install_member(self, eff: Effective, *, keep_data: bool) -> None:

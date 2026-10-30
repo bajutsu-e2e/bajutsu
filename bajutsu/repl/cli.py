@@ -98,7 +98,8 @@ def repl(
     erase: bool | None = typer.Option(
         None,
         "--erase/--no-erase",
-        help="erase the device before launching (app must be installed); the target's run.erase "
+        help="erase the device before launching (app must be installed); the target's "
+        "app.reinstall: erase "
         "does not apply here (default: erase locally, no-erase on the live route to an `appium` "
         "grid, which does not support it)",
     ),
@@ -184,7 +185,7 @@ def repl(
 
     # Attaching keeps the device as the operator left it, so it neither erases nor seeds photos.
     preconditions = (
-        replace(resolve_preconditions(eff), erase=False, seed_photos=[])
+        replace(resolve_preconditions(eff).with_erase(False), seed_photos=[])
         if attach
         else _command_preconditions_or_exit(eff, erase=erase)
     )

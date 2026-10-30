@@ -217,10 +217,9 @@ UI 操作は **最も安定する選択手段から順に試し、成立した�
       launch:
         env: { SHOWCASE_UITEST: "1" }         # 状態注入（launch args / env）
         deeplink: "showcaseswiftui://log"    # 起動後に開く（任意）
+      reinstall: erase                       # 各テスト前にデバイスごとクリーン化（§2、BE-0473）
     device:
       ios: { locale: "ja_JP" }               # 省略時は config の固定 locale
-    run:
-      erase: true                            # 各テスト前にクリーン化（§2）
   setup:
     - use: { component: _setup.yaml }        # 再利用する前段（任意・§7.1）
   steps:
@@ -248,7 +247,7 @@ UI 操作は **最も安定する選択手段から順に試し、成立した�
 | `sleep` | `sleep: { seconds, reason }` | どの条件でも観測できない遅延のための固定の待機。上限 30 秒、理由は必須で、決定性の監査が列挙します |
 | `assert` | `assert: [ <Assertion>... ]` | ステップ途中の中間検証（DSL は §6.4 と同一） |
 
-> 起動環境、`deeplink`、`erase` は基本 `preconditions`（`app.launch`、`run.erase`）で宣言しますが、シナリオ途中で再起動や再注入をしたい場合はステップとしても書けます（`relaunch: { env: {...} }`）。
+> 起動環境、`deeplink`、`erase` は基本 `preconditions`（`app.launch`、`app.reinstall: erase`）で宣言しますが、シナリオ途中で再起動や再注入をしたい場合はステップとしても書けます（`relaunch: { env: {...} }`）。
 
 ### 6.3 待機（条件待機のみ）
 
@@ -555,7 +554,7 @@ runs/<runId>/
 
 ### 環境ごとの設定と、デバイスを使う前のチェック（BE-0467）
 
-`run.erase` や `runsOn.ios.seedPhotos` のような設定は、最初のステップより前にデバイスへ届きます。どのルートでも適用できるわけではありません（`simctl erase` は Simulator にしか届きません）。ルートは `ios-simulator`、`ios-device`、`ios-live`、`android`、`web` の 5 つです。ルートごとの対応表が、各設定を `supported`、`satisfied`、`unsupported` のいずれかに分けます（`common/capability/settings_support.py`）。`unsupported` の設定は、ターゲットが `run.ignoredSettings` に理由付きで無視を宣言しない限り、デバイスを使う前にシナリオを失敗させます。ステップは決して skip しません。
+`app.reinstall: erase` や `runsOn.ios.seedPhotos` のような設定は、最初のステップより前にデバイスへ届きます。どのルートでも適用できるわけではありません（`simctl erase` は Simulator にしか届きません）。ルートは `ios-simulator`、`ios-device`、`ios-live`、`android`、`web` の 5 つです。ルートごとの対応表が、各設定を `supported`、`satisfied`、`unsupported` のいずれかに分けます（`common/capability/settings_support.py`）。`unsupported` の設定は、ターゲットが `run.ignoredSettings` に理由付きで無視を宣言しない限り、デバイスを使う前にシナリオを失敗させます。ステップは決して skip しません。
 
 同じ対応表と BE-0082 の要件表を、次の 3 か所が読みます。3 か所の判定が食い違うことはありません。
 

@@ -6,14 +6,13 @@
   tags: [swiftui]
   preconditions:
     app:
+      reinstall: erase
       launch:
         env: { SHOWCASE_UITEST: "1" }
     device:
       ios:
         seedPhotos:
           - fixtures/photos/fixture-red.png
-    run:
-      erase: true
   steps:
     - tap: { label: "Permissions", traits: [button] }
     - scroll: { to: { id: perm.openPhotoPickerSingle }, direction: down }

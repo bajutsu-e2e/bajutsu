@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 import typer
 
+from bajutsu.cli._shared import _with_erase_flag
 from bajutsu.common.config import Effective, load_config, resolve
 from bajutsu.common.orchestrator import DEFAULT_ALERT_POLL_INTERVAL, DEFAULT_FROZEN_SCREEN_TIMEOUT
 from bajutsu.common.orchestrator.types import ResolvedAlertRule
@@ -405,46 +406,66 @@ def test_filter_scenarios_selects_by_tag() -> None:
     scenarios = load_scenarios(
         _one_scenario("a", tags="[smoke]") + _one_scenario("b", tags="[slow]")
     )
-    got = _filter_scenarios(scenarios, "smoke", "", None, False)
+    got = _filter_scenarios(scenarios, "smoke", "", None)
     assert [s.name for s in got] == ["a"]
 
 
 def test_filter_scenarios_no_match_exits_2() -> None:
     scenarios = load_scenarios(_one_scenario("a", tags="[smoke]"))
     with pytest.raises(typer.Exit) as exc:
-        _filter_scenarios(scenarios, "nightly", "", None, False)
+        _filter_scenarios(scenarios, "nightly", "", None)
     assert exc.value.exit_code == 2
 
 
 def test_filter_scenarios_erase_override() -> None:
     scenarios = load_scenarios(_one_scenario("a"))
-    _filter_scenarios(scenarios, "", "", True, False)  # --erase forces every scenario on
-    assert scenarios[0].preconditions.run.erase is True
+    _filter_scenarios(scenarios, "", "", True)  # --erase raises every scenario to the top rung
+    assert scenarios[0].preconditions.app.reinstall == "erase"
 
 
-def test_filter_scenarios_erase_inherits_target_default() -> None:
-    # BE-0177: an unset scenario (erase None) inherits the target config default when no flag is given.
+def test_filter_scenarios_without_a_flag_leaves_each_scenario_as_written() -> None:
+    # Each target the scenario drives merges its own `app.reinstall` (BE-0473), so none is stamped.
     scenarios = load_scenarios(_one_scenario("a"))
-    assert scenarios[0].preconditions.run.erase is None
-    _filter_scenarios(scenarios, "", "", None, True)
-    assert scenarios[0].preconditions.run.erase is True
+    _filter_scenarios(scenarios, "", "", None)
+    assert scenarios[0].preconditions.app.reinstall is None
 
 
-def test_filter_scenarios_erase_scenario_beats_target() -> None:
-    # BE-0177: a scenario's explicit erase wins over the target default; the flag is unset here.
-    scenarios = load_scenarios(_one_scenario("a") + "  preconditions:\n    run: { erase: false }\n")
-    _filter_scenarios(scenarios, "", "", None, True)
-    assert scenarios[0].preconditions.run.erase is False
+@pytest.mark.parametrize(
+    ("written", "want"),
+    [
+        ("  preconditions:\n    app: { reinstall: erase }\n", "clean"),
+        ("  preconditions:\n    app: { reinstall: overwrite }\n", "overwrite"),
+        ("", None),  # a target's own erase is lowered on its `Effective` instead
+    ],
+)
+def test_filter_scenarios_no_erase_lowers_only_the_scenarios_erase(
+    written: str, want: str | None
+) -> None:
+    scenarios = load_scenarios(_one_scenario("a") + written)
+    _filter_scenarios(scenarios, "", "", False)
+    assert scenarios[0].preconditions.app.reinstall == want
 
 
-def test_filter_scenarios_erase_flag_beats_scenario_and_target() -> None:
-    # BE-0177: `--no-erase` overrides even a scenario that explicitly set erase: true.
-    scenarios = load_scenarios(_one_scenario("a") + "  preconditions:\n    run: { erase: true }\n")
-    _filter_scenarios(scenarios, "", "", False, True)
-    assert scenarios[0].preconditions.run.erase is False
+@pytest.mark.parametrize(
+    ("target", "flag", "want"),
+    [
+        ("erase", False, "clean"),
+        ("overwrite", False, "overwrite"),
+        ("erase", None, "erase"),
+        ("clean", True, "clean"),  # `--erase` raises the scenario's value, which wins anyway
+    ],
+)
+def test_no_erase_lowers_every_targets_own_erase(target: str, flag: bool | None, want: str) -> None:
+    eff = resolve(
+        load_config(
+            f"targets:\n  t:\n    platform: ios\n    app: {{id: com.x, reinstall: {target}}}\n"
+        ),
+        "t",
+    )
+    assert _with_erase_flag(eff, flag).reinstall == want
 
 
-# `iosTipKitHandling` rides the same BE-0177 precedence as `erase` above, so it gets the same three
+# `iosTipKitHandling` rides the BE-0177 precedence (flag, scenario, target), so it gets three
 # cases. `--no-ios-tipkit-handling` is what the item's on-device verification uses to prove the guard
 # is load-bearing, so a silent regression in this override would invalidate that evidence while the
 # gate stayed green.
@@ -453,7 +474,7 @@ def test_filter_scenarios_erase_flag_beats_scenario_and_target() -> None:
 def test_filter_scenarios_ios_tipkit_inherits_target_default() -> None:
     scenarios = load_scenarios(_one_scenario("a"))
     assert scenarios[0].preconditions.run.tip_kit_handling is None
-    _filter_scenarios(scenarios, "", "", None, False, None, True)
+    _filter_scenarios(scenarios, "", "", None, None, True)
     assert scenarios[0].preconditions.run.tip_kit_handling is True
 
 
@@ -461,7 +482,7 @@ def test_filter_scenarios_ios_tipkit_scenario_beats_target() -> None:
     scenarios = load_scenarios(
         _one_scenario("a") + "  preconditions:\n    run: { tipKitHandling: false }\n"
     )
-    _filter_scenarios(scenarios, "", "", None, False, None, True)
+    _filter_scenarios(scenarios, "", "", None, None, True)
     assert scenarios[0].preconditions.run.tip_kit_handling is False
 
 
@@ -469,7 +490,7 @@ def test_filter_scenarios_ios_tipkit_flag_beats_scenario_and_target() -> None:
     scenarios = load_scenarios(
         _one_scenario("a") + "  preconditions:\n    run: { tipKitHandling: true }\n"
     )
-    _filter_scenarios(scenarios, "", "", None, False, False, True)
+    _filter_scenarios(scenarios, "", "", None, False, True)
     assert scenarios[0].preconditions.run.tip_kit_handling is False
 
 

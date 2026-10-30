@@ -359,7 +359,7 @@ def test_the_run_group_lists_the_shared_and_the_platform_fields() -> None:
 
     with pytest.raises(
         ValidationError,
-        match=r"allowed fields: erase, systemAlertHandling, ignoredSettings, tipKitHandling",
+        match=r"allowed fields: systemAlertHandling, ignoredSettings, tipKitHandling",
     ):
         load_config("targets:\n  s: { platform: ios, app: { id: com.x }, run: { bogus: 1 } }\n")
     # A field of another platform's run extension is unknown on this one.
