@@ -173,8 +173,8 @@ def test_the_factory_builds_an_ios_environment_that_honours_ignored_settings(
     env = environment_for("xcuitest", _DEVICE_UDID)
     eff = _device_eff(app_path="App.ipa", test_runner=str(runner), ignored="install")
     # The declaration covers the install alone; an undeclared erase still fails loudly.
-    with pytest.raises(base.UnsupportedAction, match=r"run\.erase"):
-        env.start(eff, ResolvedPreconditions(erase=True))
+    with pytest.raises(base.UnsupportedAction, match=r"subject\.reinstall: erase"):
+        env.start(eff, ResolvedPreconditions(reinstall="erase"))
     env.start(eff, ResolvedPreconditions())
     assert f"platform=iOS,id={_DEVICE_UDID}" in captured["argv"]
 
