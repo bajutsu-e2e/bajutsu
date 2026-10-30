@@ -10,5 +10,5 @@
 targets:
   docs:
     platform: web
-    app: { url: "https://bajutsu-e2e.github.io/bajutsu/" }
+    subject: { url: "https://bajutsu-e2e.github.io/bajutsu/" }
     paths: { scenarios: scenarios }

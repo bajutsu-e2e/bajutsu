@@ -177,7 +177,7 @@ def test_launch_driver_errors_on_missing_app_path(
             ResolvedPreconditions(),
             env_run=_recording_run([]),
         )
-    assert "app.path not found" in str(excinfo.value)
+    assert "subject.path not found" in str(excinfo.value)
 
 
 def test_launch_driver_tears_down_when_await_ready_raises(

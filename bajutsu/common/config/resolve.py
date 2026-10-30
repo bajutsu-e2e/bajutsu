@@ -125,7 +125,7 @@ def _platform_config(a: TargetConfig) -> PlatformConfig:
 
     A `fake` target resolves to the iOS-shaped sub-config, as it did before BE-0452.
     """
-    app = a.app
+    app = a.subject
     if isinstance(app, WebApp):
         runs_on = a.runs_on
         assert isinstance(runs_on, WebRunsOn)
@@ -199,7 +199,7 @@ def resolve(config: Config, target: str) -> Effective:
     if target not in config.targets:
         raise KeyError(unknown_target(config, target))
     a = config.targets[target]
-    app = a.app
+    app = a.subject
     start_when = app.start_when if isinstance(app, AppCommon) else None
     launch_env, launch_args, deeplink = _launch(app)
     runs_on = a.runs_on

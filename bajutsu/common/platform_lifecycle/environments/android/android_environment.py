@@ -202,7 +202,7 @@ class AndroidEnvironment:
             if android.app_path and not self._provision.app_preinstalled:
                 if not Path(android.app_path).exists():
                     raise adb.DeviceError(
-                        f"app.path not found: {android.app_path} (build the app first)"
+                        f"subject.path not found: {android.app_path} (build the app first)"
                     )
                 # Only where the data is going anyway. A clean reinstall may cross a signing key or
                 # drop a component the old build had, and `install -r` cannot express either — but on
@@ -638,7 +638,7 @@ class AndroidEnvironment:
         fresh = pre.reinstall != "overwrite"
         if app_path and not self._provision.app_preinstalled:
             if not Path(app_path).exists():
-                raise adb.DeviceError(f"app.path not found: {app_path} (build the app first)")
+                raise adb.DeviceError(f"subject.path not found: {app_path} (build the app first)")
             if fresh:
                 e.uninstall(package)
             e.install(app_path)
@@ -657,7 +657,9 @@ class AndroidEnvironment:
         # process stops first, so the step's outcome does not depend on whether the install kills it.
         android = require_android(eff)
         if not android.app_path or not Path(android.app_path).exists():
-            raise adb.DeviceError(f"app.path not found: {android.app_path} (build the app first)")
+            raise adb.DeviceError(
+                f"subject.path not found: {android.app_path} (build the app first)"
+            )
         e = adb.Env(self._serial, run=self._run)
         try:
             e.force_stop(android.package)

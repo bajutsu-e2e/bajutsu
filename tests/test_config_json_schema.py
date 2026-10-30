@@ -60,6 +60,14 @@ def test_each_registered_platform_is_one_branch_keyed_by_platform() -> None:
         assert branch["additionalProperties"] is False
 
 
+def test_every_platform_names_the_group_subject() -> None:
+    # BE-0470: one name for the thing under test, whatever the platform.
+    for platform in PLATFORM_SCHEMAS:
+        props = _branch(platform)["properties"]
+        assert "subject" in props
+        assert "app" not in props
+
+
 @pytest.mark.parametrize("platform", list(PLATFORM_SCHEMAS))
 def test_each_group_lists_exactly_the_fields_its_model_accepts(platform: str) -> None:
     schema = PLATFORM_SCHEMAS[platform]
@@ -75,28 +83,28 @@ def test_defaults_name_every_platform_with_every_field_optional() -> None:
     platforms = defaults["properties"]["platforms"]["properties"]
     assert set(platforms) == set(PLATFORM_SCHEMAS)
     assert set(platforms["ios"]["properties"]) == set(GROUPS)
-    assert "required" not in platforms["ios"]["properties"]["app"]
-    assert "id" in platforms["ios"]["properties"]["app"]["properties"]
+    assert "required" not in platforms["ios"]["properties"]["subject"]
+    assert "id" in platforms["ios"]["properties"]["subject"]["properties"]
 
 
 _EXAMPLE = """
 defaults:
   platforms:
     ios:
-      app: { reinstall: erase, launch: { env: { UITEST: "1" } } }
+      subject: { reinstall: erase, launch: { env: { UITEST: "1" } } }
       runsOn: {ios: {os: ">=17"}}
 targets:
   phone:
     platform: ios
-    app: { id: com.example.app }
+    subject: { id: com.example.app }
     runsOn: {ios: {model: ["iPhone 16", "iPad Pro 13-inch (M4)"]}}
   emulator:
     platform: android
-    app: { id: com.example.app }
+    subject: { id: com.example.app }
     runsOn: {android: {avd: Pixel_8, apiLevel: 34}}
   site:
     platform: web
-    app: { url: "http://localhost:3000/" }
+    subject: { url: "http://localhost:3000/" }
     runsOn: { browser: { kind: [chromium, webkit] } }
 """
 
@@ -136,7 +144,7 @@ def test_every_shipped_config_is_checked() -> None:
 def test_exists_is_stated_in_its_inline_form() -> None:
     hook = {"exists": {"id": ["aerr_wait"], "negate": True}}
     text = (
-        "targets:\n  t:\n    platform: ios\n    app:\n      id: com.x\n"
+        "targets:\n  t:\n    platform: ios\n    subject:\n      id: com.x\n"
         "      startWhen: { exists: { id: home.title } }\n"
         f"    hooks: {{ interrupts: [{{ condition: {json.dumps(hook)}, steps: [] }}] }}\n"
     )
@@ -151,13 +159,13 @@ def test_exists_is_stated_in_its_inline_form() -> None:
     "target",
     [
         # A key another platform takes: the loader names it unknown, the schema rejects it.
-        "{ platform: ios, app: { id: com.x }, runsOn: {ios: {avd: Pixel_8}} }",
+        "{ platform: ios, subject: { id: com.x }, runsOn: {ios: {avd: Pixel_8}} }",
         # A destination the platform does not run on, and a flat key from before BE-0469.
-        "{ platform: ios, app: { id: com.x }, runsOn: {android: {avd: Pixel_8}} }",
-        "{ platform: ios, app: { id: com.x }, runsOn: {model: iPhone 16} }",
-        "{ platform: web, app: { url: 'http://x/' }, runsOn: {emulate: iPhone 13} }",
-        "{ platform: web, app: { url: 'http://x/' }, driver: { nativeZ: true } }",
-        "{ platform: flutter, app: { id: com.x } }",
+        "{ platform: ios, subject: { id: com.x }, runsOn: {android: {avd: Pixel_8}} }",
+        "{ platform: ios, subject: { id: com.x }, runsOn: {model: iPhone 16} }",
+        "{ platform: web, subject: { url: 'http://x/' }, runsOn: {emulate: iPhone 13} }",
+        "{ platform: web, subject: { url: 'http://x/' }, driver: { nativeZ: true } }",
+        "{ platform: flutter, subject: { id: com.x } }",
     ],
 )
 def test_a_key_from_another_platform_fails_in_both(target: str) -> None:

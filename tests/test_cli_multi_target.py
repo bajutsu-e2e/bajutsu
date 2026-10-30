@@ -45,10 +45,10 @@ _CONFIG = (
     "targets:\n"
     "  app:\n"
     "    platform: ios\n"
-    "    app: {id: com.example.app}\n"
+    "    subject: {id: com.example.app}\n"
     "  site:\n"
     "    platform: web\n"
-    "    app: {url: 'http://localhost:1/'}\n"
+    "    subject: {url: 'http://localhost:1/'}\n"
 )
 
 
@@ -245,10 +245,10 @@ def test_the_web_flags_are_refused_across_two_web_targets(
         "targets:\n"
         "  a:\n"
         "    platform: web\n"
-        "    app: {url: 'http://localhost:1/'}\n"
+        "    subject: {url: 'http://localhost:1/'}\n"
         "  b:\n"
         "    platform: web\n"
-        "    app: {url: 'http://localhost:2/'}\n"
+        "    subject: {url: 'http://localhost:2/'}\n"
     )
     effs = {"a": resolve(cfg, "a"), "b": resolve(cfg, "b")}
     with pytest.raises(typer.Exit) as exc:
@@ -267,10 +267,10 @@ def test_two_web_targets_without_the_flags_are_fine() -> None:
         "targets:\n"
         "  a:\n"
         "    platform: web\n"
-        "    app: {url: 'http://localhost:1/'}\n"
+        "    subject: {url: 'http://localhost:1/'}\n"
         "  b:\n"
         "    platform: web\n"
-        "    app: {url: 'http://localhost:2/'}\n"
+        "    subject: {url: 'http://localhost:2/'}\n"
     )
     effs = {"a": resolve(cfg, "a"), "b": resolve(cfg, "b")}
     _reject_web_flags_across_targets(effs, headed=None, browser="", browsers="")
@@ -680,10 +680,10 @@ def test_a_real_iphone_group_is_refused_before_acquisition(
 
 _PER_PLATFORM_CONFIG = (
     "targets:\n"
-    "  ios-main: {platform: ios, app: {id: com.example.main}}\n"
-    "  ios-companion: {platform: ios, app: {id: com.example.companion}}\n"
-    "  droid-main: {platform: android, app: {id: com.example.main}}\n"
-    "  droid-companion: {platform: android, app: {id: com.example.companion}}\n"
+    "  ios-main: {platform: ios, subject: {id: com.example.main}}\n"
+    "  ios-companion: {platform: ios, subject: {id: com.example.companion}}\n"
+    "  droid-main: {platform: android, subject: {id: com.example.main}}\n"
+    "  droid-companion: {platform: android, subject: {id: com.example.companion}}\n"
 )
 
 
@@ -771,8 +771,8 @@ def test_preconditions_are_checked_against_the_re_inferred_primary(
     cfg, files = _per_platform_files(
         tmp_path,
         {
-            "ios": "{ app: { launch: { args: [-x] } }, run: { tipKitHandling: true } }",
-            "droid": "{ app: { launch: { env: { A: '1' } }, reinstall: erase } }",
+            "ios": "{ subject: { launch: { args: [-x] } }, run: { tipKitHandling: true } }",
+            "droid": "{ subject: { launch: { env: { A: '1' } }, reinstall: erase } }",
         },
     )
     argv = ["run", *(a for f in files for a in ("--scenario", f)), "--tag", "android"]

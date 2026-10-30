@@ -18,7 +18,7 @@
 #   bajutsu run --scenario text_editing.yaml --target showcase-swiftui ...
 - name: select and copy the field text, then clear and delete it
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:

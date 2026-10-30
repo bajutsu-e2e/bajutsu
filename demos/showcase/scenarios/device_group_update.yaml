@@ -17,7 +17,7 @@
   targets: [[showcase-swiftui-previous, showcase-swiftui]]
   primaryTarget: showcase-swiftui-previous
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1", SHOWCASE_SAVED_NOTE: "1" }
   steps:
@@ -42,7 +42,7 @@
   targets: [[showcase-compose-previous, showcase-compose]]
   primaryTarget: showcase-compose-previous
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1", SHOWCASE_SAVED_NOTE: "1" }
   steps:

@@ -4,7 +4,7 @@
 # visible "ID: 3" mirror (unique; the horse name "Horse 3" also renders as the row and the nav title).
 - name: push horse detail and pop back
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:

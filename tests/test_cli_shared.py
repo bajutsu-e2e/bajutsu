@@ -15,7 +15,9 @@ from bajutsu.cli._shared import (
 from bajutsu.common.config import Effective, load_config, resolve
 
 
-def _eff(spec: str = ("targets:\n  x:\n    platform: ios\n    app: {id: com.x}\n")) -> Effective:
+def _eff(
+    spec: str = ("targets:\n  x:\n    platform: ios\n    subject: {id: com.x}\n"),
+) -> Effective:
     return resolve(load_config(spec), "x")
 
 
@@ -57,7 +59,7 @@ def test_build_alert_guard_no_op_under_provider_none(
     # names the setting rather than an env var to export.
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
     eff = _eff(
-        "targets:\n  x:\n    platform: ios\n    app: {id: com.x}\n    ai: {provider: none}\n"
+        "targets:\n  x:\n    platform: ios\n    subject: {id: com.x}\n    ai: {provider: none}\n"
     )
     assert _build_alert_locator(eff, _ai_redactor(eff)) is None
     assert _build_alert_guard(eff, _ai_redactor(eff), "") is None
@@ -89,7 +91,7 @@ def test_credential_gap_message_for_provider_none_names_the_setting() -> None:
     from bajutsu.common.ai.disabled import DISABLED
 
     eff = _eff(
-        "targets:\n  x:\n    platform: ios\n    app: {id: com.x}\n    ai: {provider: none}\n"
+        "targets:\n  x:\n    platform: ios\n    subject: {id: com.x}\n    ai: {provider: none}\n"
     )
     msg = _credential_gap_message(DISABLED, eff)
     assert "ai.provider: none" in msg and "ANTHROPIC_API_KEY" not in msg

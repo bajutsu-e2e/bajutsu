@@ -48,7 +48,7 @@ def test_every_registered_model_forbids_extra_keys(platform: str, group: Group) 
     [
         (
             "ios",
-            "app",
+            "subject",
             {
                 "id": "com.bajutsu.showcase.ios.swiftui",
                 "path": "build/Showcase.app",
@@ -67,7 +67,7 @@ def test_every_registered_model_forbids_extra_keys(platform: str, group: Group) 
         ("ios", "runsOn", {"ios": {"model": "iPhone 16", "os": ">=17 <19"}}),
         ("ios", "driver", {"runner": {"testRunner": "build/Runner.xctestrun"}}),
         ("ios", "run", {"tipKitHandling": True}),
-        ("web", "app", {"url": "http://127.0.0.1:8787/index.html"}),
+        ("web", "subject", {"url": "http://127.0.0.1:8787/index.html"}),
         ("web", "runsOn", {"browser": {"kind": "webkit", "emulate": "iPhone 13"}}),
         ("web", "runsOn", {"browser": {"kind": ["chromium", "firefox"]}}),
         ("web", "runsOn", {"browser": {"kind": ["chrome", "edge"]}}),
@@ -77,7 +77,7 @@ def test_every_registered_model_forbids_extra_keys(platform: str, group: Group) 
         ("web", "driver", {"headless": False}),
         (
             "android",
-            "app",
+            "subject",
             {"id": "com.example.showcase", "grantPermissions": ["android.permission.CAMERA"]},
         ),
         ("android", "runsOn", {"android": {"avd": "Pixel_8", "apiLevel": ">=33"}}),
@@ -87,9 +87,9 @@ def test_every_registered_model_forbids_extra_keys(platform: str, group: Group) 
             {"android": {"avd": ["Pixel_8", "Pixel_Tablet"], "apiLevel": "33 - 35"}},
         ),
         ("android", "driver", {"nativeZ": True}),
-        ("fake", "app", {}),
-        ("fake", "app", {"id": "anything"}),
-        ("fake", "app", {"idNamespaces": ["home"]}),
+        ("fake", "subject", {}),
+        ("fake", "subject", {"id": "anything"}),
+        ("fake", "subject", {"idNamespaces": ["home"]}),
         ("fake", "runsOn", {}),
         ("fake", "driver", None),
     ],
@@ -118,7 +118,13 @@ def test_defaults_are_what_an_omitted_block_means() -> None:
             "model, os, kind, family, locale, seedPhotos",
         ),
         ("android", "driver", {"headless": True}, "driver.headless", "nativeZ"),
-        ("web", "app", {"id": "x", "url": "u"}, "app.id", "startWhen, idNamespaces, url, launch"),
+        (
+            "web",
+            "subject",
+            {"id": "x", "url": "u"},
+            "subject.id",
+            "startWhen, idNamespaces, url, launch",
+        ),
         # a nested unknown key lists the nested block's fields
         (
             "ios",
@@ -136,9 +142,9 @@ def test_defaults_are_what_an_omitted_block_means() -> None:
         ),
         (
             "android",
-            "app",
+            "subject",
             {"id": "p", "launch": {"args": ["-x"]}},
-            "app.launch.args",
+            "subject.launch.args",
             "env, deeplink",
         ),
         # the iOS run extension, and a platform with none
@@ -170,14 +176,19 @@ def test_every_unknown_key_is_reported() -> None:
 @pytest.mark.parametrize(
     ("platform", "group", "data", "where"),
     [
-        ("ios", "app", {"id": "b", "reinstall": "overwrite"}, "app.reinstall"),
+        ("ios", "subject", {"id": "b", "reinstall": "overwrite"}, "subject.reinstall"),
         (
             "ios",
-            "app",
+            "subject",
             {"id": "b", "launch": {"deeplink": "showcase://cart"}},
-            "app.launch.deeplink",
+            "subject.launch.deeplink",
         ),
-        ("android", "app", {"id": "p", "launch": {"deeplink": "x://y"}}, "app.launch.deeplink"),
+        (
+            "android",
+            "subject",
+            {"id": "p", "launch": {"deeplink": "x://y"}},
+            "subject.launch.deeplink",
+        ),
         ("ios", "runsOn", {"ios": {"seedPhotos": ["photos/cat.jpg"]}}, "runsOn.ios.seedPhotos"),
     ],
 )
@@ -188,15 +199,20 @@ def test_unit_seven_fields_load(platform: str, group: Group, data: Any, where: s
 
 def test_other_failures_keep_pydantics_error() -> None:
     with pytest.raises(ValidationError, match="id"):
-        validate_group("ios", "app", {"path": "x.app"}, where="targets.t.app")
+        validate_group("ios", "subject", {"path": "x.app"}, where="targets.t.subject")
 
 
 @pytest.mark.parametrize(
     ("platform", "group", "data", "message"),
     [
-        ("ios", "app", {"id": ""}, "at least 1 character"),
-        ("web", "app", {"url": ""}, "at least 1 character"),
-        ("android", "app", {"package": "p"}, r"targets\.t\.app\.id: Field required\n.*package"),
+        ("ios", "subject", {"id": ""}, "at least 1 character"),
+        ("web", "subject", {"url": ""}, "at least 1 character"),
+        (
+            "android",
+            "subject",
+            {"package": "p"},
+            r"targets\.t\.subject\.id: Field required\n.*package",
+        ),
         ("ios", "runsOn", {"ios": {"os": ">=17.0.0-beta"}}, "prerelease tags are not used"),
         ("ios", "runsOn", {"ios": {"os": "latest"}}, "invalid version range"),
         ("android", "runsOn", {"android": {"apiLevel": "thirty"}}, "invalid version range"),
@@ -285,12 +301,17 @@ def test_other_failures_keep_pydantics_error() -> None:
         ),
         (
             "ios",
-            "app",
+            "subject",
             {"id": "b", "startWhen": {"exists": {"id": "x", "negate": True}}},
             "cannot set negate",
         ),
-        ("ios", "app", {"id": "b", "startWhen": {"value": {"id": "x", "equals": "y"}}}, "value"),
-        ("ios", "app", {"id": "b", "startWhen": {"exists": {"id": []}}}, "id"),
+        (
+            "ios",
+            "subject",
+            {"id": "b", "startWhen": {"value": {"id": "x", "equals": "y"}}},
+            "value",
+        ),
+        ("ios", "subject", {"id": "b", "startWhen": {"exists": {"id": []}}}, "id"),
     ],
 )
 def test_invalid_values_fail_at_load(platform: str, group: Group, data: Any, message: str) -> None:
@@ -310,11 +331,11 @@ def test_unknown_platform_lists_the_registered_ones() -> None:
     with pytest.raises(
         ValueError, match="invalid platform 'flutter': use one of ios, android, web, fake"
     ):
-        validate_group("flutter", "app", {}, where="targets.t.app")
+        validate_group("flutter", "subject", {}, where="targets.t.subject")
 
 
 def test_allowed_fields_spells_aliases() -> None:
-    assert allowed_fields(schema_for("android").app) == (
+    assert allowed_fields(schema_for("android").subject) == (
         "startWhen",
         "idNamespaces",
         "id",
@@ -332,9 +353,13 @@ def test_the_target_validates_its_groups_with_the_registered_models() -> None:
     from bajutsu.common.config.schema.platform.web import WebApp, WebRunsOn
 
     target = TargetConfig.model_validate(
-        {"platform": "web", "app": {"url": "http://x"}, "runsOn": {"browser": {"kind": "webkit"}}}
+        {
+            "platform": "web",
+            "subject": {"url": "http://x"},
+            "runsOn": {"browser": {"kind": "webkit"}},
+        }
     )
-    assert isinstance(target.app, WebApp)
+    assert isinstance(target.subject, WebApp)
     assert isinstance(target.runs_on, WebRunsOn)
     assert target.runs_on.browser.kind == "webkit"
 
@@ -348,7 +373,7 @@ def test_an_unknown_key_in_a_target_group_lists_the_allowed_fields() -> None:
         ValidationError, match=r"runsOn\.browser is not a destination this platform runs on"
     ):
         load_config(
-            "targets:\n  s: { platform: ios, app: { id: com.x }, runsOn: { browser: webkit } }\n"
+            "targets:\n  s: { platform: ios, subject: { id: com.x }, runsOn: { browser: webkit } }\n"
         )
 
 
@@ -361,11 +386,11 @@ def test_the_run_group_lists_the_shared_and_the_platform_fields() -> None:
         ValidationError,
         match=r"allowed fields: systemAlertHandling, ignoredSettings, tipKitHandling",
     ):
-        load_config("targets:\n  s: { platform: ios, app: { id: com.x }, run: { bogus: 1 } }\n")
+        load_config("targets:\n  s: { platform: ios, subject: { id: com.x }, run: { bogus: 1 } }\n")
     # A field of another platform's run extension is unknown on this one.
     with pytest.raises(ValidationError, match=r"run\.tipKitHandling: unknown field for platform"):
         load_config(
-            "targets:\n  s: { platform: web, app: { url: 'http://x/' }, "
+            "targets:\n  s: { platform: web, subject: { url: 'http://x/' }, "
             "run: { tipKitHandling: true } }\n"
         )
 

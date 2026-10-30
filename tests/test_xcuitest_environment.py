@@ -101,7 +101,7 @@ def _fake_usbmux(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _device_eff(*, app_path: str | None = None, test_runner: str | None = None) -> Effective:
-    lines = ["targets:", "  s:", "    platform: ios", "    app:", "      id: com.x"]
+    lines = ["targets:", "  s:", "    platform: ios", "    subject:", "      id: com.x"]
     if app_path is not None:
         lines.append(f"      path: {app_path}")
     lines += ["    runsOn: {ios: {kind: device}}"]
@@ -536,7 +536,7 @@ def test_appium_lease_endpoint_routes_to_the_live_environment() -> None:
     from bajutsu.common.runner import device_provider as dp
 
     cfg = load_config(
-        "targets:\n  s:\n    platform: ios\n    app: {id: com.x}\n    runsOn: {ios: {kind: device}}\n"
+        "targets:\n  s:\n    platform: ios\n    subject: {id: com.x}\n    runsOn: {ios: {kind: device}}\n"
     )
     # The grid comes from an `appium` environment of the worker config (BE-0452), not the target.
     eff = replace(
@@ -560,7 +560,7 @@ def test_appium_lease_endpoint_routes_to_the_live_environment() -> None:
 
 
 def _sim_eff(*, test_runner: str, app_path: str | None = None) -> Effective:
-    lines = ["targets:", "  s:", "    platform: ios", "    app:", "      id: com.x"]
+    lines = ["targets:", "  s:", "    platform: ios", "    subject:", "      id: com.x"]
     if app_path is not None:
         lines.append(f"      path: {app_path}")
     lines += ["    driver:", f"      runner: {{testRunner: {test_runner}}}"]
@@ -762,7 +762,7 @@ def _sim_eff_locale(*, test_runner: str, locale: str) -> Effective:
         "targets:\n"
         "  s:\n"
         "    platform: ios\n"
-        f"    app: {{id: com.x}}\n"
+        f"    subject: {{id: com.x}}\n"
         "    driver:\n"
         f"      runner: {{testRunner: {test_runner}}}\n"
     )
@@ -1666,7 +1666,7 @@ def test_warm_resume_reapplies_the_per_scenario_reset(
         "targets:\n"
         "  s:\n"
         "    platform: ios\n"
-        f"    app: {{id: com.x, path: {app}}}\n"
+        f"    subject: {{id: com.x, path: {app}}}\n"
         "    driver:\n"
         f"      runner: {{testRunner: {_write_runner(tmp_path)}}}\n"
     )
@@ -1702,7 +1702,7 @@ def test_clean_reinstall_resets_permissions_even_when_the_scenario_names_none(
         "targets:\n"
         "  s:\n"
         "    platform: ios\n"
-        f"    app: {{id: com.x, path: {app}}}\n"
+        f"    subject: {{id: com.x, path: {app}}}\n"
         "    driver:\n"
         f"      runner: {{testRunner: {_write_runner(tmp_path)}}}\n"
     )
@@ -1764,7 +1764,7 @@ def test_overwrite_reinstall_does_not_reset_permissions(
         "targets:\n"
         "  s:\n"
         "    platform: ios\n"
-        f"    app: {{id: com.x, path: {app}}}\n"
+        f"    subject: {{id: com.x, path: {app}}}\n"
         "    driver:\n"
         f"      runner: {{testRunner: {_write_runner(tmp_path)}}}\n"
     )
@@ -1793,7 +1793,7 @@ def test_warm_resume_skips_reinstall_under_overwrite_when_the_bundle_is_unchange
         "targets:\n"
         "  s:\n"
         "    platform: ios\n"
-        f"    app: {{id: com.x, path: {app}}}\n"
+        f"    subject: {{id: com.x, path: {app}}}\n"
         "    driver:\n"
         f"      runner: {{testRunner: {_write_runner(tmp_path)}}}\n"
     )
@@ -1819,7 +1819,7 @@ def test_warm_resume_reinstalls_under_overwrite_when_the_bundle_changed(
         "targets:\n"
         "  s:\n"
         "    platform: ios\n"
-        f"    app: {{id: com.x, path: {app}}}\n"
+        f"    subject: {{id: com.x, path: {app}}}\n"
         "    driver:\n"
         f"      runner: {{testRunner: {_write_runner(tmp_path)}}}\n"
     )
@@ -2979,7 +2979,7 @@ def test_a_vanished_device_with_no_app_path_fails_loudly() -> None:
     # onto a device with no app to launch. Fail before paying the create/boot/re-prep proving that.
     calls, run = _ladder_run([])  # the leased device is gone from the listing
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
-    with pytest.raises(simctl.DeviceError, match=r"configures no app\.path"):
+    with pytest.raises(simctl.DeviceError, match=r"configures no subject\.path"):
         env._recover_between_attempts(
             _AttemptFailure("run-ended", "ended"),
             _eff_for_ladder(),  # no appPath
@@ -3195,7 +3195,7 @@ def test_a_real_device_start_clears_a_replacement_request_without_serving_it(
         "targets:\n"
         "  s:\n"
         "    platform: ios\n"
-        f"    app: {{id: com.x}}\n"
+        f"    subject: {{id: com.x}}\n"
         f"    runsOn: {{ios: {{kind: device}}}}\n"
         "    driver:\n"
         f"      runner: {{testRunner: {_write_runner(tmp_path)}}}\n"

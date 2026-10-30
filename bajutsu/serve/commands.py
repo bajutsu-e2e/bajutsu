@@ -66,7 +66,7 @@ def run_command(
     be a comma list and ``workers > 1`` runs those devices as a parallel pool (capped to the pool size by
     the CLI).  ``erase`` / ``system_alert_handling`` / ``headed`` / ``network`` are overrides:
     True/False force the flag on/off, None omits it so the CLI's own default applies — for
-    ``erase`` / ``system_alert_handling`` that means each scenario's preconditions.app.reinstall /
+    ``erase`` / ``system_alert_handling`` that means each scenario's preconditions.subject.reinstall /
     run.systemAlertHandling over the target's, for ``headed`` the target's
     ``driver.headless``, and for ``network`` the
     ``--network`` default (on).

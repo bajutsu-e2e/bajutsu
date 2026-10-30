@@ -60,7 +60,7 @@ scenarios:
 | `primaryTarget` | str | なし | `target` を省略したステップやトップレベルの `expect` エントリが動くターゲット。`targets` の最初の名前（最初のグループの最初のメンバー）と一致する必要があります（[下記](#targets--target複数ターゲットシナリオbe-0428)） |
 | `installs` | list[str] | `[]` | プライマリと並んで開始時にインストールして起動するデバイスグループのメンバー。2つ以上のメンバーを持つグループのそれ以外のメンバーは、後から `installApp` ステップでインストールします（[デバイスグループ](#デバイスグループ1台のデバイスで複数のアプリを動かすbe-0447)） |
 | `data` / `dataFile` | list / str | なし | データ駆動の行。インライン `data` か `dataFile`（CSV パス）で指定する。1 行 1 run に展開し `${row.col}` を置換する。両者は排他（[再利用とデータ駆動とタグ](#再利用とデータ駆動とタグ)） |
-| `preconditions` | object | `{}` | テスト前の環境準備です。ターゲットと同じグループ名の `app` と `run` をターゲットの値に重ね、デバイスの状態を `device` に書きます（[下記](#preconditions環境準備)） |
+| `preconditions` | object | `{}` | テスト前の環境準備です。ターゲットと同じグループ名の `subject` と `run` をターゲットの値に重ね、デバイスの状態を `device` に書きます（[下記](#preconditions環境準備)） |
 | `setup` | list | `[]` | `steps` の前に**独立したフェーズ**として走るセットアップのステップ列。ここで失敗するとシナリオを打ち切る（[下記](#setup--cleanupセットアップとティアダウンのフェーズ)） |
 | `steps` | list | 必須 | アクションの並び（下記） |
 | `expect` | list | `[]` | 全ステップ成功後の最終アサーション（[selectors](selectors.md#アサーション評価)） |
@@ -75,7 +75,7 @@ scenarios:
 ```yaml
 - name: filter narrows the catalog
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:
@@ -96,7 +96,7 @@ scenarios:
 `bajutsu/common/config/preconditions.py` が行います。runner の `launch_driver` は重ね合わせた結果を読んで、
 起動手順を組み立てます（[run-loop](run-loop.md#runner実行パイプライン)）。
 
-シナリオの `preconditions` は 3 つのグループを持ちます。`app` と `run` はターゲットと同じグループ名を
+シナリオの `preconditions` は 3 つのグループを持ちます。`subject` と `run` はターゲットと同じグループ名を
 使うので、1 つのフィールドは config でもシナリオでも同じ綴りになります
 （[BE-0452](../../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)）。
 `device` は、シナリオが適用するデバイスの状態を宛先ごとに持ちます。宛先は `device.ios` だけです
@@ -104,13 +104,13 @@ scenarios:
 シナリオに書いたフィールドは、ターゲットの [config](configuration.md) の同じフィールドを上書きします。
 例外は次の 3 つです。
 
-- `app.launch.env` はキーごとにマージします。
-- `app.launch.args` はターゲットの引数の後ろに追記します。
+- `subject.launch.env` はキーごとにマージします。
+- `subject.launch.args` はターゲットの引数の後ろに追記します。
 - `run.systemAlertHandling` の規則は連結し、シナリオの規則を先に照合します。
 
 ```yaml
 preconditions:
-  app:
+  subject:
     reinstall: erase
     launch: { env: { FEATURE_X: "1" }, args: ["-debug"], deeplink: "showcase://cart" }
   device:
@@ -120,10 +120,10 @@ preconditions:
 
 | キー | 型 | 既定 | 説明 |
 |---|---|---|---|
-| `app.reinstall` | `overwrite` \| `clean` \| `erase` | 未設定（ターゲットの `app.reinstall`、次に `clean`） | 各 run の前にどこまで状態を戻すかを、弱い順に決めます。`overwrite` は既存アプリに上書き install します（データを保持します）。`clean` は uninstall してから install します（アプリとデータを fresh にします）。`erase` はデバイス全体を wipe してから install します（`simctl erase`。アプリ、データ、設定を消去します）。install にはターゲットの config の `app.path` が必要です。デバイス全体の wipe がない Android では、`erase` は `clean` と同じに動きます。iOS と Android で使えます。web のターゲットが受け付けるのは `erase` だけで、新しいブラウザコンテキストがすでにこの値を満たします（[BE-0473](../../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts-ja.md)） |
-| `app.launch.env` | dict | `{}` | 起動時の環境変数です。ターゲットの `app.launch.env` にキーごとにマージします。iOS は `SIMCTL_CHILD_*` で、Android は intent extra で注入します。Web では Playwright のコード生成が読みます |
-| `app.launch.args` | list[str] | `[]` | 起動引数です。ターゲットの `app.launch.args` の後ろに追記します。iOS 専用です |
-| `app.launch.deeplink` | str | 未設定（ターゲットの `app.launch.deeplink`） | 起動後にアプリが開く URL です（iOS は `simctl openurl`、Android は intent） |
+| `subject.reinstall` | `overwrite` \| `clean` \| `erase` | 未設定（ターゲットの `subject.reinstall`、次に `clean`） | 各 run の前にどこまで状態を戻すかを、弱い順に決めます。`overwrite` は既存アプリに上書き install します（データを保持します）。`clean` は uninstall してから install します（アプリとデータを fresh にします）。`erase` はデバイス全体を wipe してから install します（`simctl erase`。アプリ、データ、設定を消去します）。install にはターゲットの config の `subject.path` が必要です。デバイス全体の wipe がない Android では、`erase` は `clean` と同じに動きます。iOS と Android で使えます。web のターゲットが受け付けるのは `erase` だけで、新しいブラウザコンテキストがすでにこの値を満たします（[BE-0473](../../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts-ja.md)） |
+| `subject.launch.env` | dict | `{}` | 起動時の環境変数です。ターゲットの `subject.launch.env` にキーごとにマージします。iOS は `SIMCTL_CHILD_*` で、Android は intent extra で注入します。Web では Playwright のコード生成が読みます |
+| `subject.launch.args` | list[str] | `[]` | 起動引数です。ターゲットの `subject.launch.args` の後ろに追記します。iOS 専用です |
+| `subject.launch.deeplink` | str | 未設定（ターゲットの `subject.launch.deeplink`） | 起動後にアプリが開く URL です（iOS は `simctl openurl`、Android は intent） |
 | `device.ios.locale` | str | 未設定（ターゲットの `runsOn.ios.locale`） | 起動時の locale と言語を強制し（`-AppleLocale` / `-AppleLanguages`）、Simulator のシステム言語も固定します。ターゲットと異なる値は cold respawn を強制します |
 | `device.ios.seedPhotos` | list[str] | 未設定（ターゲットの `runsOn.ios.seedPhotos`） | erase の経路で、Simulator の写真ライブラリに順に投入する画像です。パスはシナリオファイルを基準に解決します。シナリオのリストはターゲットのリストを置き換えます |
 | `run.systemAlertHandling` | bool / object | 未設定（ON） | リアクティブなアラートガードです（[下記](#systemalerthandlingシステムアラートガード)） |
@@ -135,11 +135,11 @@ preconditions:
 ままなので、シナリオからは設定できません。
 
 > **各フィールドは、デバイスを操作する前に、シナリオが動かすターゲットと照合します。** 動かすどの
-> ターゲットのプラットフォームにもない `app` のフィールドや、iOS 専用の `run` のフィールドは、無視せずに
-> フィールド名を示して run を失敗させます。Web だけのシナリオの `app.launch.args` や、Android
+> ターゲットのプラットフォームにもない `subject` のフィールドや、iOS 専用の `run` のフィールドは、無視せずに
+> フィールド名を示して run を失敗させます。Web だけのシナリオの `subject.launch.args` や、Android
 > ターゲットだけに対する `run.tipKitHandling` が該当します。各ターゲットは自分のプラットフォームが持つ
-> `app` のフィールドだけを適用します。そのため、iOS と Web をまたぐシナリオは、iOS 側のために
-> `app.launch.args` を書けます。単一プラットフォームの複数のターゲットが `paths.scenarios` から同じ
+> `subject` のフィールドだけを適用します。そのため、iOS と Web をまたぐシナリオは、iOS 側のために
+> `subject.launch.args` を書けます。単一プラットフォームの複数のターゲットが `paths.scenarios` から同じ
 > シナリオファイルを読む場合、そのファイルは `targets` を宣言するか、該当するターゲットだけが読む
 > ディレクトリに置きます。`device` のブロックは宛先をキーにするので、iOS のターゲットを動かさない
 > シナリオの `device.ios` は効果を持たず、エラーにもなりません。
@@ -153,7 +153,7 @@ preconditions:
 targets:
   app-ipad:
     platform: ios
-    app: { id: com.example.app }
+    subject: { id: com.example.app }
     runsOn:
       ios: { model: "iPad Pro 13-inch (M4)", os: ">=18" }
 ```
@@ -171,7 +171,7 @@ targets: [app-ipad]
 > 示します。`preconditions.runsOn.ios.model` のような条件は失敗し、代わりにそれを宣言するターゲットの
 > パス `runsOn.ios.model` を示します。
 
-> `app.reinstall` の解決順は **このシナリオ自身の `app.reinstall` > ターゲットの `app.reinstall` >
+> `subject.reinstall` の解決順は **このシナリオ自身の `subject.reinstall` > ターゲットの `subject.reinstall` >
 > 組み込みの `clean`** で、その結果を CLI のフラグが動かします
 > （[BE-0473](../../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts-ja.md)、
 > [configuration](configuration.md#設定の階層defaults--targets)）。`--erase` は値を `erase` にし、
@@ -180,12 +180,12 @@ targets: [app-ipad]
 > `_filter_scenarios`（`run/cli.py`）が run の開始前にフラグを反映します。そのため、`erase` を指定した
 > ターゲットは `--no-erase` でアプリをアンインストールします。アプリのデータを残したいシナリオは
 > `overwrite` と書きます。廃止した `preconditions.run.erase` はロード時に失敗し、
-> `preconditions.app.reinstall: erase` を示します。
+> `preconditions.subject.reinstall: erase` を示します。
 
 > **写真の投入には wipe したデバイスが必要です。** 重ね合わせたあとの `seedPhotos` が空でなければ、
-> 実効の `app.reinstall`（シナリオの値、なければターゲットの値に、フラグを反映したもの）が `erase` である
+> 実効の `subject.reinstall`（シナリオの値、なければターゲットの値に、フラグを反映したもの）が `erase` である
 > 必要があります。写真ライブラリへの投入は erase の経路でだけ行うからです。ターゲットの
-> `app.reinstall: erase` でも条件を満たします。
+> `subject.reinstall: erase` でも条件を満たします。
 > 複数のターゲットを動かすシナリオでは、写真を投入するのはプライマリだけです。重ね合わせたあとの
 > `seedPhotos` を持つプライマリ以外のターゲットは、run を失敗させます。`record`、`crawl`、`repl` は、
 > 写真を投入するターゲットに対する `--no-erase` を拒否します。どちらの拒否も、デバイスを操作する前に
@@ -203,10 +203,10 @@ targets: [app-ipad]
 > `scenario.yaml` のほうを読み替えます。該当するのは、レポートの再描画、`trace`、`triage` です。保存された
 > `preconditions.runsOn` は、iOS の `locale` と `seedPhotos` を `device.ios` に移し、条件を捨てます。
 > 条件は、その run が使うデバイスをすでに選び終えているからです。保存された `preconditions.erase` や
-> `preconditions.run.erase: true` は `app.reinstall: erase` になり、保存された `false` は捨てます。
+> `preconditions.run.erase: true` は `subject.reinstall: erase` になり、保存された `false` は捨てます。
 
 どの環境でも、すべての前提条件を適用できるわけではありません。実機の iPhone では `simctl erase` を実行できず、
-ブラウザには `app.launch.env` を渡すアプリの起動がありません。ターゲットの環境が前提条件を適用できないとき、
+ブラウザには `subject.launch.env` を渡すアプリの起動がありません。ターゲットの環境が前提条件を適用できないとき、
 シナリオはデバイスを使う前に失敗します。ターゲットは、その前提条件の無視を宣言できます
 （[設定](configuration.md#環境ごとの設定runignoredsettingsbe-0467)）。`bajutsu lint --config <file> --target <name>` は、
 同じ指摘をデバイスなしで報告します（[cli](cli.md#lint)）。
@@ -279,13 +279,13 @@ CLI の `--system-alert-handling` / `--no-system-alert-handling` フラグは**�
 
 ### プロンプトに答える代わりに出さないようにする
 
-アプリが出さないプロンプトには、答える必要がありません。テスト中にアプリが自分のプロンプトを省くための方法として、ターゲットの config（`targets.<name>`）の起動引数または環境変数（`app.launch.args` と `app.launch.env`）を用意しています。アプリは起動時にそれを読みます。
+アプリが出さないプロンプトには、答える必要がありません。テスト中にアプリが自分のプロンプトを省くための方法として、ターゲットの config（`targets.<name>`）の起動引数または環境変数（`subject.launch.args` と `subject.launch.env`）を用意しています。アプリは起動時にそれを読みます。
 
 ```yaml
 targets:
   my-app:
     platform: ios
-    app:
+    subject:
       id: com.example.myapp
       launch: { env: { UITEST_SKIP_ONBOARDING_PROMPTS: "1" } }   # the app checks this and asks nothing
 ```
@@ -486,7 +486,7 @@ label の対応表が扱う言語は英語と日本語です。それ以外の�
 各エントリは `<service>: grant | revoke` の形を取ります。`<service>` はバックエンドに依存しない小さな語彙で、`location`、`camera`、`microphone`、`contacts`、`photos`、`calendar`、`notifications` のいずれかです。各バックエンドは、この語彙をそれぞれのネイティブな仕組みにマップします。
 
 - **iOS** は `simctl privacy <udid> <grant|revoke> <tcc-service> <bundle>` を実行します。SpringBoard の権限プロンプトが参照するのと同じ TCC（Transparency, Consent, and Control）データベースです。
-- **Android** は `pm grant` / `pm revoke` を実行し、config レベルの `app.grantPermissions` リスト（[drivers](drivers.md)）を支える仕組みを再利用します。シナリオの `permissions` は、この config レベルの既定の上に重なり、config が許可した権限を取り消すこともできます。
+- **Android** は `pm grant` / `pm revoke` を実行し、config レベルの `subject.grantPermissions` リスト（[drivers](drivers.md)）を支える仕組みを再利用します。シナリオの `permissions` は、この config レベルの既定の上に重なり、config が許可した権限を取り消すこともできます。
 
 **iOS には `notifications` に対応する TCC サービスがありません**（iOS の通知許可は TCC の管轄外です）。そのため、iOS をターゲットにしたシナリオが `notifications` を指定すると、デバイスを一切操作する前の **preflight** が対応していない権限として個別に名指しして失敗します。そのプロンプト自体への対処は、引き続き `systemAlertHandling` が担います。Android の `POST_NOTIFICATIONS` は実行時権限です（API 33 以降）。そのため Android は語彙のすべてに対応します。選んだバックエンドが対応しないサービスの組み合わせも、同じように preflight が個別に名指しして失敗させます。
 
@@ -503,7 +503,7 @@ label の対応表が扱う言語は英語と日本語です。それ以外の�
 targets:
   myapp:
     platform: ios
-    app: { id: com.example.myapp }
+    subject: { id: com.example.myapp }
     hooks:
       interrupts:
         - condition: { exists: { id: onboarding.skip } }
@@ -862,7 +862,7 @@ assertするまで、新しいステップもランナーの変更も要りま�
 シナリオが所有しないOSの画面を扱うので、次の制約があります。
 
 - **実測したのはiOS Simulatorだけです。** iOS 26.5で確かめました。実機とほかのランタイムは確かめていません。
-- **`preconditions.app.reinstall: erase`でレイアウトを固定します。** 長押しはアイコングリッドの中心に当たるので、グリッドの中心は空いた壁紙でなければなりません。eraseと再インストールのあと、SpringBoardはテスト用アプリをインストールしたページを開きます。このページは下半分が空いています。eraseは前の実行が追加したウィジェットも消すので、新しいウィジェットへのassertが一意に保たれます。
+- **`preconditions.subject.reinstall: erase`でレイアウトを固定します。** 長押しはアイコングリッドの中心に当たるので、グリッドの中心は空いた壁紙でなければなりません。eraseと再インストールのあと、SpringBoardはテスト用アプリをインストールしたページを開きます。このページは下半分が空いています。eraseは前の実行が追加したウィジェットも消すので、新しいウィジェットへのassertが一意に保たれます。
 - **`preconditions.device.ios.locale`で言語を固定します。** ラベルはすべてSpringBoard自身の文言です。アイコンの`identifier`でさえローカライズ済みの名前になります（英語では`Calendar`、日本語では`カレンダー`）。
 - **検索結果の行はツリーに現れません。** ギャラリーの検索欄に文字が入ると、SpringBoardのスナップショットは結果の一覧を空のコンテナとして返します。行は画面に表示されています。検索欄の下の決まった位置にある先頭の行を、`tapPoint`でタップします（iPhone 17 Proでは`{ x: 0.5, y: 0.29 }`）。
 - **サイズの選択には`swipe`ではなく`drag`を使います。** サイズのカルーセルは、弾くように動かしたときだけページが切り替わります。`swipe`は慣性のないスクロールなので、元のページへ戻ってしまいます。
@@ -1214,7 +1214,7 @@ iOS では、これらのステップは `setLocation` / `push` と同じく `si
 - iOS でデバイスグループに入っていない場合、動いているアプリはまったく待たずに復帰します。必要なら直後に具体的な要素を待ってください。
 - `installApp` の直後のように動いていないアプリは、`relaunch` と同じように起動します。`foreground` はその後、アプリの準備が整うまで条件待ちをします。
 - Android と、デバイスグループ内の iOS では、動いているアプリにも条件待ちをします。アプリが前面に来なければ、ステップは `AppNotInFront` で失敗します。
-  この待ちは、ターゲットの `app.startWhen` ではなく、そのアプリ自身の画面が出るのを待ちます。`app.startWhen` は
+  この待ちは、ターゲットの `subject.startWhen` ではなく、そのアプリ自身の画面が出るのを待ちます。`subject.startWhen` は
   起動直後の画面を指しますが、再開したアプリは離れたときの画面に戻るからです。
 
 `setClipboard` はペースト操作のためペーストボードに値を投入します（[BE-0052](../../roadmaps/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md)）。
@@ -1399,7 +1399,7 @@ run を止めます。ファイルが外したターゲットを選ぶことは�
 |---|---|
 | `hooks.setup` / `hooks.cleanup` のライフサイクルステップ | 各ターゲット自身のものが宣言順に畳み込まれ、そのターゲット名が刻まれます。アプリ側のティアダウンと web 側のティアダウンが、それぞれ正しいドライバに対して走ります |
 | `services.mailbox` | `email` や `totp` のステップは、自分のターゲットが設定した受信箱をポーリングします |
-| `runsOn.ios.locale`、`app.launch.env`、`evidence.capture`、`hooks.interrupts` | どれも run ではなく、テスト対象アプリの性質です |
+| `runsOn.ios.locale`、`subject.launch.env`、`evidence.capture`、`hooks.interrupts` | どれも run ではなく、テスト対象アプリの性質です |
 | `paths.baselines` / `paths.schemas` / `paths.goldens` | `visual` や `golden` のアサーションは、そのターゲットが自分でディレクトリを設定していればそちらと、していなければ run のものと比較します |
 | バックエンドの capability | 各ターゲットのステップは、デバイスを1つも確保する前に、そのターゲット自身のバックエンドに対して検査されます。片方のプラットフォームだけが対応する構文は、正しいほうを落とします |
 
@@ -1429,17 +1429,17 @@ run へ広げるのは、別の作業です。
 エントリのことで、そのメンバーは1台のデバイスを共有します。
 
 config は変わりません。1つのアプリの2つのビルドは、2つのターゲットになります。2つのターゲットは
-`app.id`（バンドル識別子。Android ではパッケージ）を共有し、それぞれ自分の `app.path` を持ちます。コンパニオン
+`subject.id`（バンドル識別子。Android ではパッケージ）を共有し、それぞれ自分の `subject.path` を持ちます。コンパニオン
 アプリは、独立した1つのターゲットです。
 
 ```yaml
 targets:
   showcase-previous:                      # シナリオの開始時に動かす旧ビルド
     platform: ios
-    app: { id: com.example.showcase, path: build/Showcase-1.app }
+    subject: { id: com.example.showcase, path: build/Showcase-1.app }
   showcase:                               # 現行ビルド
     platform: ios
-    app: { id: com.example.showcase, path: build/Showcase-2.app }
+    subject: { id: com.example.showcase, path: build/Showcase-2.app }
 ```
 
 `targets` に書いた素の名前は、メンバーが1つだけのグループとして扱われます。配列を書かないシナリオは、
@@ -1457,7 +1457,7 @@ targets:
 
 | メンバー | 開始時の扱い |
 |---|---|
-| プライマリ（最初のグループの最初のメンバー） | `app.path` をインストールして起動します。`installs` への記載は任意です |
+| プライマリ（最初のグループの最初のメンバー） | `subject.path` をインストールして起動します。`installs` への記載は任意です |
 | メンバーが1つのグループ（素の名前） | 複数ターゲットシナリオと同じく、インストールして起動します |
 | `installs` に書いたメンバー | インストールして起動します |
 | 2つ以上のメンバーを持つグループの、それ以外のメンバー | **後から入るメンバー**です。`installApp` ステップと `foreground` ステップが立ち上げるまで、インストールも起動もしません |
@@ -1552,7 +1552,7 @@ targets:
 - 2つ以上のメンバーを持つグループに web ターゲットがあります。ブラウザには共有するデバイスがないためです。
 - 1つのグループで開始時に動かす2つのメンバーが、識別子を共有しています。2つ目のインストールが
   1つ目を置き換えてしまいます。
-- `installApp.from` のターゲットに `app.path` がないか、その `app.path` が存在しません。Git から
+- `installApp.from` のターゲットに `subject.path` がないか、その `subject.path` が存在しません。Git から
   取得する config では、プライマリと同じく必要なときにバイナリをビルドします。
 - `setPrimaryTarget` が、先行する `installApp` で退いたメンバーを指しています。
 
@@ -2098,7 +2098,7 @@ report内で複数の折りたたみに分かれることがあります。そ�
 
 ### データ駆動シナリオ（`data` / `dataFile`）
 
-`data`（インライン行）か `dataFile`（CSV パス。両者は **排他**）を持つシナリオは、`${row.<column>}` を置換して **1 行 1 シナリオ**に展開されます（`expand_data`, `scenario/expand.py`）。派生シナリオは `"<name> [row N: col=val, …]"` に改名され、元の preconditions を保ちます。そのため各行ともアプリを fresh に再インストールし、テンプレートの `app.reinstall` を継承します。
+`data`（インライン行）か `dataFile`（CSV パス。両者は **排他**）を持つシナリオは、`${row.<column>}` を置換して **1 行 1 シナリオ**に展開されます（`expand_data`, `scenario/expand.py`）。派生シナリオは `"<name> [row N: col=val, …]"` に改名され、元の preconditions を保ちます。そのため各行ともアプリを fresh に再インストールし、テンプレートの `subject.reinstall` を継承します。
 
 ```yaml
 - name: search returns a result

@@ -203,7 +203,7 @@ _CONFIG = """\
 targets:
   myapp:
     platform: {platform}
-    app: {app}
+    subject: {app}
     hooks:
       interrupts:
       - condition:

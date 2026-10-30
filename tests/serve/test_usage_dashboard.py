@@ -129,7 +129,7 @@ def test_usage_dashboard_empty_when_persistence_disabled(tmp_path: Path) -> None
 
 
 # The minimum a target needs to validate — the platform axis is irrelevant to the ledger.
-_WEB_TARGET = "    platform: web\n    app: { url: http://localhost:9 }\n"
+_WEB_TARGET = "    platform: web\n    subject: { url: http://localhost:9 }\n"
 
 
 def _targets_config(*, defaults_ledger: str | None = None, **per_target: str) -> str:

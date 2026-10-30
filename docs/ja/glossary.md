@@ -43,7 +43,7 @@ extract の修飾子を持ちません。定義は `bajutsu/scenario/models/step
 シナリオが動かす各ターゲットの値に重ねます。
 フィールドは次のとおりです。
 
-- `app.reinstall`（`overwrite`、`clean`、デバイス全体を wipe する `erase` のいずれか）と `app.launch.env` / `.args` / `.deeplink` です。
+- `subject.reinstall`（`overwrite`、`clean`、デバイス全体を wipe する `erase` のいずれか）と `subject.launch.env` / `.args` / `.deeplink` です。
 - `device.ios.locale` / `.seedPhotos` です。iOS のデバイスの状態で、ターゲットの `runsOn.ios` の値を置き換えます。
 - `run.systemAlertHandling` / `.tipKitHandling` / `.inheritSetup` です。
 
@@ -126,12 +126,21 @@ AND で結合されるフィールドの集合（`id`、`idMatches`、`label`、
 
 | 語 | 意味 |
 |---|---|
-| **target（ターゲット）** | `targets.<name>` の下にある、テスト対象のアプリを記述する config エントリ一つです。必須の `platform`、プラットフォームごとの識別子（iOS と Android の `app.id`、web の `app.url`）に加え、`app.path`、`runsOn`、`driver` などを持ちます。config の単位です。定義は `bajutsu/common/config/schema/target_config.py` の `TargetConfig` です。 |
+| **target（ターゲット）** | `targets.<name>` の下にある、テスト対象のアプリを記述する config エントリ一つです。必須の `platform`、プラットフォームごとの識別子（iOS と Android の `subject.id`、web の `subject.url`）に加え、`subject.path`、`runsOn`、`driver` などを持ちます。config の単位です。定義は `bajutsu/common/config/schema/target_config.py` の `TargetConfig` です。 |
 | **app（アプリ）** | テスト対象のアプリケーションそのものです。target が指し示し、device にインストールされるソフトウェアです。 |
 | **device（デバイス）** | target を駆動する具体的な実行時インスタンスです。Simulator、emulator、ブラウザコンテキストで、実行時には `udid` で指します。target の `runsOn` グループが、宛先ごとのブロック（`runsOn.ios`、`runsOn.android`、`runsOn.browser`）でデバイスを記述します。デバイス条件（`runsOn.ios.model`、`runsOn.ios.os` など）は、run の前に、利用できる各デバイスと照合します。リストや範囲を書くと、シナリオは値ごと、またはメジャーバージョンごとの run に分かれます。片側が開いた範囲に合うデバイスがないときは、失敗ではなく「対象外」（not applicable）の記録が残ります（[configuration](configuration.md#デバイスの条件runson)）。 |
 
 つまり、config の **target** が、ソフトウェアである **app** を指し、それを実行時インスタンスである
 **device** の上で駆動します。
+
+### subject
+
+target は、テスト対象を **subject** グループに書きます。iOS と Android ではアプリの `id`、`path`、
+`launch` を、web ではサイトの `url` を持ちます。シナリオは、同じフィールドを `preconditions.subject` の下で
+上書きします。このグループは `app` という名前でしたが、web のターゲットがテストするのはアプリではなくサイトなので、
+[BE-0470](../../roadmaps/BE-0470-subject-group-rename/BE-0470-subject-group-rename-ja.md) で
+`subject` に改めました。シナリオの `email.match.subject` は別の語で、受信したメールの件名（Subject
+ヘッダ）を照合します。2 つが同じパスに現れることはありません。
 
 ## label
 

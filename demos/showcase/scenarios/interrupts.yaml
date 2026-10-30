@@ -19,7 +19,7 @@
       steps:
         - tap: { id: [notice.promo.dismiss, notice_promo_dismiss] }
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:

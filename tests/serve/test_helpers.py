@@ -33,7 +33,7 @@ def test_load_config_cached_reuses_an_unchanged_file(tmp_path: Path) -> None:
 
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        ("targets:\n  demo:\n    platform: ios\n    app: {id: com.example.demo}\n"),
+        ("targets:\n  demo:\n    platform: ios\n    subject: {id: com.example.demo}\n"),
         encoding="utf-8",
     )
     first = helpers._load_config_cached(cfg)
@@ -48,7 +48,7 @@ def test_load_config_cached_reparses_when_the_file_changes(tmp_path: Path) -> No
 
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        ("targets:\n  demo:\n    platform: ios\n    app: {id: com.example.demo}\n"),
+        ("targets:\n  demo:\n    platform: ios\n    subject: {id: com.example.demo}\n"),
         encoding="utf-8",
     )
     assert list(helpers._load_config_cached(cfg).targets) == ["demo"]
@@ -58,10 +58,10 @@ def test_load_config_cached_reparses_when_the_file_changes(tmp_path: Path) -> No
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            "    app: {id: com.example.demo}\n"
+            "    subject: {id: com.example.demo}\n"
             "  other:\n"
             "    platform: ios\n"
-            "    app: {id: com.example.other}\n"
+            "    subject: {id: com.example.other}\n"
         ),
         encoding="utf-8",
     )
@@ -100,7 +100,7 @@ def test_load_config_cached_keys_on_the_resolved_path(tmp_path: Path) -> None:
 
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        ("targets:\n  demo:\n    platform: ios\n    app: {id: com.example.demo}\n"),
+        ("targets:\n  demo:\n    platform: ios\n    subject: {id: com.example.demo}\n"),
         encoding="utf-8",
     )
     # A relative path and the absolute path to the same file share one cache entry (same object).
@@ -118,7 +118,7 @@ def test_list_targets_reflects_an_edited_config(tmp_path: Path) -> None:
 
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        ("targets:\n  demo:\n    platform: ios\n    app: {id: com.example.demo}\n"),
+        ("targets:\n  demo:\n    platform: ios\n    subject: {id: com.example.demo}\n"),
         encoding="utf-8",
     )
     assert srv.list_targets(cfg) == ["demo"]
@@ -127,10 +127,10 @@ def test_list_targets_reflects_an_edited_config(tmp_path: Path) -> None:
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            "    app: {id: com.example.demo}\n"
+            "    subject: {id: com.example.demo}\n"
             "  other:\n"
             "    platform: ios\n"
-            "    app: {id: com.example.other}\n"
+            "    subject: {id: com.example.other}\n"
         ),
         encoding="utf-8",
     )

@@ -127,7 +127,7 @@ def test_start_triage_ai_refuses_under_provider_none(tmp_path: Path, monkeypatch
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            f"    app: {{id: com.example.demo}}\n"
+            f"    subject: {{id: com.example.demo}}\n"
             f"    paths: {{scenarios: {scn_dir}}}\n"
         ),
         encoding="utf-8",

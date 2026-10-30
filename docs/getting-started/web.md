@@ -24,7 +24,7 @@ gate ([`demos/web`](../../demos/web/README.md)).
 The vocabulary here follows the [glossary](../glossary.md). A **backend** is the platform a target
 declares with `platform:` (here `web`). It resolves to an **actuator**, the Playwright engine that
 performs the taps and types. A **target** is one `targets.<name>` config entry describing the app
-under test. A web target names its app by `app.url`, where an iOS target names it by `app.id`.
+under test. A web target names its app by `subject.url`, where an iOS target names it by `subject.id`.
 
 ## What you'll need
 
@@ -99,7 +99,7 @@ uv run bajutsu run --scenario demos/web/scenarios/smoke.yaml --target web --back
 What the flags mean:
 
 - `--target web` selects `targets.web` from [`demos/web/demo.config.yaml`](../../demos/web/demo.config.yaml)
-  (its `platform: web`, `app.url`, and scenarios dir). The tool itself is app-agnostic; all per-target differences
+  (its `platform: web`, `subject.url`, and scenarios dir). The tool itself is app-agnostic; all per-target differences
   live in config ([configuration](../configuration.md)).
 - `--backend web` checks the backend. The target's `platform: web` already picks the actuator, the
   Playwright engine driving Chromium. A value that disagrees with it exits 2. No Xcode, no
@@ -138,5 +138,5 @@ With no key and no browser, the offline twin reproduces the same record loop det
 
 ## Onboard your own web app
 
-Add a `targets.<name>` entry with `platform: web` and your app's URL as `app.url`. Then give the
+Add a `targets.<name>` entry with `platform: web` and your app's URL as `subject.url`. Then give the
 app's elements stable `data-testid` ids — see [configuration](../configuration.md#onboarding-a-new-target).

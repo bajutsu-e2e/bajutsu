@@ -20,7 +20,7 @@
   primaryTarget: showcase-swiftui
   installs: [showcase-uikit]
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:
@@ -57,7 +57,7 @@
   primaryTarget: showcase-compose
   installs: [showcase-views]
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:

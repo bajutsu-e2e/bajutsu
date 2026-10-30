@@ -28,7 +28,7 @@ first and `triage` diagnosing the second.
 ```yaml
 - name: favorite a horse
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:
@@ -52,7 +52,7 @@ just as important to cover as the happy path.
 ```yaml
 - name: filter narrows the catalog
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:
@@ -67,7 +67,7 @@ just as important to cover as the happy path.
 
 - name: no match shows the empty state
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:
@@ -104,7 +104,7 @@ from a scenario, so `run` refuses it outright rather than running with a policy 
   preconditions:
     run:
       systemAlertHandling: { rules: [{ prompt: notifications, choice: grant }] }
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:
@@ -132,7 +132,7 @@ flaky network, and `request` assertions confirm the mocked call happened.
 ```yaml
 - name: log submit answered by a mock, toast appears and clears
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   mocks:
@@ -173,7 +173,7 @@ found exactly the horse it searched for.
     - { q: "Horse 3", n: "3" }
     - { q: "Horse 5", n: "5" }
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:
@@ -208,7 +208,7 @@ Then call it from any scenario with `use` / `with`:
 ```yaml
 - name: search finds a horse by name
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:

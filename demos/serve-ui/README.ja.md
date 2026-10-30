@@ -12,7 +12,7 @@ Linux 上で動きます。Web UI の決定的なリグレッション網であ�
 
 | パス | 役割 |
 |---|---|
-| `dogfood.config.yaml` | `targets.webui`（`platform: web` ＋ `app.url`（起動中の serve）＋ `services.server`、`app.id` なし） |
+| `dogfood.config.yaml` | `targets.webui`（`platform: web` ＋ `subject.url`（起動中の serve）＋ `services.server`、`subject.id` なし） |
 | `scenarios/shell-navigation.yaml` | 上部タブ（Record / Replay / Crawl / Author / Stats / Coverage）が表示中のビューを入れ替える |
 | `scenarios/theme.yaml` | テーマ切替が OS 設定に追従し、クリックで切り替わる |
 | `scenarios/crawl-form.yaml` | Crawl フォームが bind したターゲットと既定の探索予算を持つ |

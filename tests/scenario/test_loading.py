@@ -22,7 +22,7 @@ _TOTP_SEED = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
 SCENARIO_YAML = """
 - name: open settings and reindex
   preconditions:
-    app:
+    subject:
       reinstall: erase
       launch: { env: { SAMPLE_SCREEN: "settings" }, deeplink: "bajutsusample://settings" }
     device:
@@ -146,8 +146,8 @@ def test_load_scenario_example() -> None:
     assert len(scenarios) == 1
     s = scenarios[0]
     assert s.name == "open settings and reindex"
-    assert s.preconditions.app.reinstall == "erase"
-    assert s.preconditions.app.launch.env == {"SAMPLE_SCREEN": "settings"}
+    assert s.preconditions.subject.reinstall == "erase"
+    assert s.preconditions.subject.launch.env == {"SAMPLE_SCREEN": "settings"}
     assert len(s.steps) == 2
     assert s.steps[1].capture == ["screenshot.after", "deviceLog"]
     assert s.expect[0].exists is not None
@@ -186,7 +186,7 @@ def test_dump_round_trip() -> None:
     text = """
 - name: round trip
   preconditions:
-    app: { launch: { env: { K: "1" } } }
+    subject: { launch: { env: { K: "1" } } }
   steps:
     - tap: { id: home.go }
     - type: { text: "hi", into: { id: home.field } }

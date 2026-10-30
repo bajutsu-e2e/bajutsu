@@ -20,7 +20,7 @@ XCUITest バックエンドは、既定ではシミュレータを対象にし�
 targets:
   my-app:
     platform: ios
-    app: { id: com.example.myapp }
+    subject: { id: com.example.myapp }
     runsOn:
       ios:
         kind: device   # "simulator"（既定）または "device"
@@ -28,7 +28,7 @@ targets:
 
 `runsOn.ios.kind: device` にすると、バックエンドは `xcodebuild` の `-destination` を、名前を指定したシミュレータから `platform=iOS` へ一般化します。これにより、同じ `xcodebuild test-without-building` の駆動層が実機に対して走ります。この destination が解決するデバイスは、実行時の udid から決まります。ローカル接続のデバイスの udid か、デバイスクラウドが実行に渡す udid です。
 
-実機ではさらに、`simctl` が行うシミュレータの起動準備を省きます。この省略により、シミュレータの経路が当然としている 3 つの前提が落ちます。デバイスの消去、ローカルの `app.path` からのアプリのインストール、そして権限の事前付与です。実機でこれらのいずれかを必要とするシナリオは、黙って何もしないのではなく、はっきりと失敗します。後述の Device Farm ルートでは、代わりにクラウドがアプリをインストールします。この同じキーはローカル接続の iPhone や iPad も駆動するので、実機対応の作業は、クラウドが関わる前から単体で役立ちます。
+実機ではさらに、`simctl` が行うシミュレータの起動準備を省きます。この省略により、シミュレータの経路が当然としている 3 つの前提が落ちます。デバイスの消去、ローカルの `subject.path` からのアプリのインストール、そして権限の事前付与です。実機でこれらのいずれかを必要とするシナリオは、黙って何もしないのではなく、はっきりと失敗します。後述の Device Farm ルートでは、代わりにクラウドがアプリをインストールします。この同じキーはローカル接続の iPhone や iPad も駆動するので、実機対応の作業は、クラウドが関わる前から単体で役立ちます。
 
 ## 実機のチャネルへの到達
 
@@ -200,7 +200,7 @@ WebDriver トランスポートが駆動できないものは、実機の経路�
 
 そのためライブルートでは、preflight（[BE-0082](../../roadmaps/BE-0082-capability-preflight-check/BE-0082-capability-preflight-check-ja.md)）はトランスポートが実際に駆動するものだけを宣言し、縮退したケーパビリティのいずれかを必要とするシナリオは、デバイス操作を始める前に明確な理由とともに**スキップ**します。実行の途中で `UnsupportedAction` として遅れて失敗することはありません。
 
-動く例の設定は [`demos/showcase/live/showcase.live.config.yaml`](../../demos/showcase/live/showcase.live.config.yaml) にあります。ローカルの `showcase-swiftui` ターゲットを写し取りつつ、ローカルの `app.path` と `driver.runner.testRunner` は持ちません。予約されたデバイスはすでにビルドを抱えており、ライブルートはランナーチャネルではなく WebDriver で話すからです。グリッドは、隣の [`demos/showcase/live/worker.yaml`](../../demos/showcase/live/worker.yaml) で指定します。このファイルの `endpoint` を自分のグリッドに向けてから、共有の showcase スイートをそれに対して実行します。
+動く例の設定は [`demos/showcase/live/showcase.live.config.yaml`](../../demos/showcase/live/showcase.live.config.yaml) にあります。ローカルの `showcase-swiftui` ターゲットを写し取りつつ、ローカルの `subject.path` と `driver.runner.testRunner` は持ちません。予約されたデバイスはすでにビルドを抱えており、ライブルートはランナーチャネルではなく WebDriver で話すからです。グリッドは、隣の [`demos/showcase/live/worker.yaml`](../../demos/showcase/live/worker.yaml) で指定します。このファイルの `endpoint` を自分のグリッドに向けてから、共有の showcase スイートをそれに対して実行します。
 
 ```bash
 bajutsu run --target showcase-swiftui-live --config demos/showcase/live/showcase.live.config.yaml \

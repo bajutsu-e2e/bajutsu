@@ -3,7 +3,7 @@
 # In-app modals are visible to the backend (unlike the OS alerts in permission.yaml).
 - name: open and dismiss the detented sheet
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:
@@ -22,7 +22,7 @@
 
 - name: open and dismiss the full-screen cover
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:
@@ -38,7 +38,7 @@
 
 - name: action sheet records its choice
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:
@@ -62,7 +62,7 @@
 # Form controls: the stepper and toggle mirror their state to a11y values.
 - name: stepper and toggle mirror state
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:

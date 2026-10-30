@@ -84,12 +84,12 @@ web backend が動く Windows では、`run` は BE-0449 以前と同じく run 
 | `--tag` | "" | カンマ区切り。これらの tag のいずれかを持つシナリオのみ実行 |
 | `--exclude` | "" | カンマ区切り。これらの tag のいずれかを持つシナリオをスキップ |
 | `--udid` | `booted` | 対象 Simulator（カンマ区切り = `--workers` 用のデバイスプール）。URL は終了コード 2 |
-| `--erase / --no-erase` | シナリオ › config › `clean` | すべてのシナリオについて、実効の `app.reinstall` を段階（`overwrite` < `clean` < `erase`）に沿って動かします。`--erase` は値を `erase`（シム全体を wipe）にし、`--no-erase` は `erase` を `clean` に下げ、`overwrite` と `clean` はそのままにします。どちらも省略すると、各シナリオの `preconditions.app.reinstall`、次にターゲットの `app.reinstall`、次に `clean` の順で解決します（[BE-0473](../../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts-ja.md)）。そのため、`erase` を指定したターゲットは `--no-erase` でアプリをアンインストールします。アプリのデータを残したいシナリオは `preconditions.app.reinstall: overwrite` と書きます |
+| `--erase / --no-erase` | シナリオ › config › `clean` | すべてのシナリオについて、実効の `subject.reinstall` を段階（`overwrite` < `clean` < `erase`）に沿って動かします。`--erase` は値を `erase`（シム全体を wipe）にし、`--no-erase` は `erase` を `clean` に下げ、`overwrite` と `clean` はそのままにします。どちらも省略すると、各シナリオの `preconditions.subject.reinstall`、次にターゲットの `subject.reinstall`、次に `clean` の順で解決します（[BE-0473](../../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts-ja.md)）。そのため、`erase` を指定したターゲットは `--no-erase` でアプリをアンインストールします。アプリのデータを残したいシナリオは `preconditions.subject.reinstall: overwrite` と書きます |
 | `--system-alert-handling / --no-system-alert-handling` | シナリオ › config › ON | すべてのシナリオについて `run.systemAlertHandling` を上書きし、各シナリオの `preconditions.run.systemAlertHandling` に優先します。iOS バックエンドから見えないシステムアラートを消すリアクティブなガードで、XCUITest 上ではネイティブに処理します（モデル不使用、BE-0315）。決定的な経路がどれも片付けられないアラートには何もしません。ガード対象の `wait` は見たものを自身のタイムアウトで必ず名指しし、wait の外のステップは、ネイティブ照会がアラートを列挙できたときだけ名指しします。ネイティブ照会を持たないバックエンドでは名指しする材料がないため、そのステップは従来どおり失敗します（BE-0402）。省略時は各シナリオの値、次にターゲットの `run.systemAlertHandling` config、次に ON の順で解決します。AI 認証情報は一切不要です（[recording](recording.md#システムアラートの自動対処)） |
 | `--ios-tipkit-handling / --no-ios-tipkit-handling` | シナリオ › config › OFF | すべてのシナリオについて `run.tipKitHandling` を上書きし、各シナリオの `preconditions.run.tipKitHandling` に優先します。操作をブロックしている Apple **TipKit** の tip を閉じます。フレームワークが所有する popover であり、同じ回避策をシナリオごとに手で書かずに済ませるためのガードです。ガードは tip を、閉じるための scrim（`PopoverDismissRegion`）とその tip 自身のコンテナ（`TipView`）の両方で判定します。`confirmationDialog` が同一の scrim を設置するため、そちらには手を触れないようにする必要があるからです。同じ理由で、tip 向けの `interrupts` エントリ（またはターゲットの `hooks.interrupts` エントリ）を手で書く場合は `TipView` を手がかりにします。iOS 専用（他のバックエンドでは何もしません）で、求められない限り **OFF** です。tip 自体がアサーションの対象になる場合があるからです。省略時は各シナリオの値、次にターゲットの `run.tipKitHandling` config、次に OFF の順で解決します。認証情報は不要です（[scenarios](scenarios.md)） |
 | `--alert-poll-interval` | 未設定 | ネイティブのシステムアラート presence 照会の間隔（秒）。シナリオ自身の `pollInterval` の下位、ターゲットの上位に位置します。ガードのもう 1 つのキーである `rules` にフラグはありません。1 エントリはプロンプトと選択の組であり、フラグの値 1 つでは読みやすく運べないため、宣言はシナリオファイルとターゲット config に置いたままにしています（[BE-0406](../../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md)） |
 | `--log-predicate` | "" | `deviceLog` ストリームを絞る NSPredicate（例 subsystem） |
-| `--log-subsystem` | "" | `appTrace` 用の os_log subsystem（既定はアプリの `app.id`） |
+| `--log-subsystem` | "" | `appTrace` 用の os_log subsystem（既定はアプリの `subject.id`） |
 | `--network / --no-network` | config › ON | `request` アサーション用にアプリの通信を収集。省略時はターゲットの `evidence.collectNetwork` config、次に ON の順で解決（[BE-0177](../../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)）。iOS はアプリに BajutsuKit が必要。web は Playwright でネイティブに観測し、シナリオの `mocks` をその場でスタブします |
 | `--workers` | 1 | デバイスプール上で並列実行します。複数のターゲットを宣言するシナリオは、ターゲットごとに1台のデバイスをそのシナリオの全長にわたって保持します。そのため `run` は、ワーカーが互いのデバイスを奪い合わない範囲までこの値を抑えます。iOS では `--udid u1,u2,…` が必要で、そのプール数で上限になります。web では `--workers N` だけで N 本の並列ブラウザコンテキストレーンになります（`--udid` 不要、[BE-0054](../../roadmaps/BE-0054-web-backend-completion/BE-0054-web-backend-completion-ja.md)）。各レーンが自前のネットワークコレクタ、インターバル録画、（iOS では）デバイス制御を持つので、network / 動画 / `setLocation` / `push` はシングルデバイス実行と同じく機能します |
 | `--baselines` | config の `paths.baselines`、次にシナリオ隣の `baselines/` | ターゲットの `paths.baselines` を上書きします。`visual` アサーション用のベースライン画像ディレクトリ。`baseline: home.png` はこの中で解決されます |
@@ -141,8 +141,8 @@ web backend が動く Windows では、`run` は BE-0449 以前と同じく run 
   条件が複数の run を作るときの `--step` も終了コード 2 で終わります。
 - **シナリオの preconditions は、デバイスを操作する前に検査します（BE-0452）。** `run` と `audit` は、
   各シナリオを、そのシナリオが動かすターゲットと照合します。動かすどのターゲットのプラットフォームにも
-  ない `app` のフィールドや、iOS 専用の `run` のフィールドは、フィールド名を示して終了コード 2 で
-  終わります。実効の `app.reinstall: erase` を伴わない `seedPhotos` も同じです（[scenarios](scenarios.md#preconditions環境準備)）。
+  ない `subject` のフィールドや、iOS 専用の `run` のフィールドは、フィールド名を示して終了コード 2 で
+  終わります。実効の `subject.reinstall: erase` を伴わない `seedPhotos` も同じです（[scenarios](scenarios.md#preconditions環境準備)）。
 - `AI usage:` 行は出力しません。`run` はどのフラグを付けてもトークンを消費しないため（BE-0402）、
   使用量台帳を導入せず、報告もしません。`record`、`crawl`、`triage --ai` は従来どおり出力します。
 
@@ -227,7 +227,7 @@ bajutsu doctor --target <name> [--udid booted] [--backend ...] [--config ...] [-
   グリッドのターゲット、`kind` と `family` 以外の条件を持つ実機、端末を読めないプールです。このとき片側が開いた範囲は
   「one run per available major version」（利用できるメジャーバージョンごとに1回）と表示します。
   `--backend fake` は条件を評価しないため、`runs:` セクションを表示しません。
-- それ以外は actuator で `query()` し、`score(elements, app.idNamespaces)` を表示します。端末の条件が
+- それ以外は actuator で `query()` し、`score(elements, subject.idNamespaces)` を表示します。端末の条件が
   あるときは、ターゲットの最初の実行の端末（[`record`](#record) が使う端末）をスコアの対象にします。
   **grade が Blocked で 1、それ以外 0**。
 
@@ -256,7 +256,7 @@ bajutsu audit --history <runs-dir>                         # 過去の run か�
 
 ## `coverage`
 
-スイートの **静的な e2e カバレッジマップ**です。`doctor` の規約充足度スコアの、read-only な従兄弟にあたります（AI 非依存。[BE-0050](../../roadmaps/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map-ja.md)）。`doctor` が1画面の*提供する* id を採点するのに対し、こちらはスイート全体が*行使する* id を採点します。アプリの設定済み `paths.scenarios` ディレクトリの `*.yaml` をすべて読み込み（components / data を展開）、参照している安定した id を namespace ごとにまとめ、アプリが宣言した `app.idNamespaces`（[configuration](configuration.md#doctor規約充足度スコア)）に対して、実行せずに突き合わせます。
+スイートの **静的な e2e カバレッジマップ**です。`doctor` の規約充足度スコアの、read-only な従兄弟にあたります（AI 非依存。[BE-0050](../../roadmaps/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map-ja.md)）。`doctor` が1画面の*提供する* id を採点するのに対し、こちらはスイート全体が*行使する* id を採点します。アプリの設定済み `paths.scenarios` ディレクトリの `*.yaml` をすべて読み込み（components / data を展開）、参照している安定した id を namespace ごとにまとめ、アプリが宣言した `subject.idNamespaces`（[configuration](configuration.md#doctor規約充足度スコア)）に対して、実行せずに突き合わせます。
 
 ```bash
 bajutsu coverage --target <name> [--config ...] [--runs <dir>] [--crawl <screenmap>] [--json] [--html <path>]
@@ -460,7 +460,7 @@ bajutsu record --target <name> --goal "<自然言語ゴール>" [--out <file.yam
 | `--name` | （ゴールから） | 自動命名するファイル名（`--out` 指定時は無視） |
 | `--udid` | `booted` | 対象 Simulator |
 | `--backend` | ターゲットの `platform` | ターゲットの platform に対する検査（[共通](#共通)を参照） |
-| `--erase / --no-erase` | `--erase` | 起動前に erase（アプリはインストール済みである必要）。`--erase` は実効の `app.reinstall` を `erase` に引き上げ、`--no-erase` は `erase` を `clean` に下げます。そのため、ここではターゲットの `app.reinstall: erase` で wipe するかどうかは決まりません |
+| `--erase / --no-erase` | `--erase` | 起動前に erase（アプリはインストール済みである必要）。`--erase` は実効の `subject.reinstall` を `erase` に引き上げ、`--no-erase` は `erase` を `clean` に下げます。そのため、ここではターゲットの `subject.reinstall: erase` で wipe するかどうかは決まりません |
 | `--system-alert-handling` | ターゲットの `run.systemAlertHandling`（on） | オーサリング中のプロンプトを片付ける（要 API キー）。省略時はターゲットの `run.systemAlertHandling` に従い、ターゲットが `false` と書かない限り on です |
 | `--max-steps` | `30` | オーサリングのターン数（＝トークン消費の上限）に上限を設けます（[BE-0194](../../roadmaps/BE-0194-record-turn-payload-diet/BE-0194-record-turn-payload-diet-ja.md)） |
 | `--screenshot / --no-screenshot` | `--screenshot` | 毎ターン、スクリーンショットを送ります。`--no-screenshot` は要素情報だけを記録し（コストが安い）、id を十分に備えたアプリ向けです（[BE-0194](../../roadmaps/BE-0194-record-turn-payload-diet/BE-0194-record-turn-payload-diet-ja.md)） |
@@ -500,7 +500,7 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
 | `--udid` | `booted` | 対象 Simulator。カンマ区切り（`A,B,C`）で並列プールも指定できる（`--workers` 参照） |
 | `--workers` | `1` | 同時に動かすワーカー数。1 つの画面マップを共有する。iOS は同数のシミュレータ（[BE-0064](../../roadmaps/BE-0064-parallel-crawl/BE-0064-parallel-crawl-ja.md)、`--udid` のデバイス数で上限）、web は同数のブラウザプロセス（[BE-0077](../../roadmaps/BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl-ja.md)）。`1` はシングルワーカーのクロール |
 | `--backend` | ターゲットの `platform` | ターゲットの platform に対する検査（[共通](#共通)を参照） |
-| `--erase / --no-erase` | `--erase` | 起動前に erase（アプリはインストール済みである必要）。`--erase` は実効の `app.reinstall` を `erase` に引き上げ、`--no-erase` は `erase` を `clean` に下げます。そのため、ここではターゲットの `app.reinstall: erase` で wipe するかどうかは決まりません |
+| `--erase / --no-erase` | `--erase` | 起動前に erase（アプリはインストール済みである必要）。`--erase` は実効の `subject.reinstall` を `erase` に引き上げ、`--no-erase` は `erase` を `clean` に下げます。そのため、ここではターゲットの `subject.reinstall: erase` で wipe するかどうかは決まりません |
 | `--system-alert-handling / --no-system-alert-handling` | ターゲットの `run.systemAlertHandling`（on） | 省略時はターゲットの `run.systemAlertHandling` に従い、ターゲットが `false` と書かない限り on です。クロール中に予期せぬ OS プロンプトを片付ける（クラッシュ誤判定を防ぐ。設定した AI プロバイダを使用し、`ANTHROPIC_API_KEY`、Bedrock なら AWS 認証情報） |
 | `--alert-vision-instruction` | "" | プロンプトを片付ける代わりに視覚ガードが読む自由記述 |
 | `--headed / --no-headed` | ターゲットの `driver.headless` | web backend: ヘッドレスではなく目に見える（低速再生の）ブラウザでクロールする。省略時はターゲットの `driver.headless` 設定に従う |
@@ -611,12 +611,12 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
 
 クロールは Simulator に対するのと同じように web アプリにも走ります。探索エンジンはプラットフォーム非依存
 なので、`bajutsu crawl --target <web-app> --backend web` は同じ `screenmap.json`、スクリーンショット、クラッシュ
-一覧を出力します。web アプリは `app.id` ではなく `app.url` で指定し、ブラウザは Mac もエミュレータも要らない
+一覧を出力します。web アプリは `subject.id` ではなく `subject.url` で指定し、ブラウザは Mac もエミュレータも要らない
 ので、web クロールは Linux の `make check` / CI ゲート内で走ります。iOS と違う点は次の 3 つで、いずれも決定的
 です（[BE-0066](../../roadmaps/BE-0066-web-crawl/BE-0066-web-crawl-ja.md)）。
 
 - **クリーンな起点 = 再ナビゲート。** 再起動するアプリプロセスはありません。クリーンな状態に戻すのは、新しい
-  ブラウザコンテキストに対する `page.goto(app.url)`（`erase` 相当で、ほぼ無償）です。`run` が使うのと同じ
+  ブラウザコンテキストに対する `page.goto(subject.url)`（`erase` 相当で、ほぼ無償）です。`run` が使うのと同じ
   ライフサイクルの接合点です。
 - **クラッシュ検出。** iOS の信号（アクセシビリティツリーの崩壊）は web には存在しないため、ブラウザ自身の
   決定的な信号を使います。未捕捉の JS 例外（`pageerror`）、メインフレームの 4xx/5xx ナビゲーション、空の
@@ -646,7 +646,7 @@ bajutsu repl --target <name> [options]
 | `--target` | （必須） | 対象アプリ |
 | `--udid` | `booted` | 対象 Simulator。URL は終了コード 2（Appium グリッドは `--worker-config` で指定します） |
 | `--backend` | ターゲットの `platform` | ターゲットの platform に対する検査（[共通](#共通)を参照） |
-| `--erase / --no-erase` | live 経路以外は erase | 起動前に erase（アプリはインストール済みである必要）。`--erase` は実効の `app.reinstall` を `erase` に引き上げ、`--no-erase` は `erase` を `clean` に下げます。そのため、ここではターゲットの `app.reinstall: erase` で wipe するかどうかは決まりません。`appium` グリッドへの live 経路は erase を受け付けないため、その経路の既定は off になり、そこで明示的に `--erase` を指定すると CLI エラーで終了します |
+| `--erase / --no-erase` | live 経路以外は erase | 起動前に erase（アプリはインストール済みである必要）。`--erase` は実効の `subject.reinstall` を `erase` に引き上げ、`--no-erase` は `erase` を `clean` に下げます。そのため、ここではターゲットの `subject.reinstall: erase` で wipe するかどうかは決まりません。`appium` グリッドへの live 経路は erase を受け付けないため、その経路の既定は off になり、そこで明示的に `--erase` を指定すると CLI エラーで終了します |
 | `--headed / --no-headed` | ターゲットの `driver.headless` | web backend: ヘッドレスではなく目に見える（低速再生の）ブラウザを調べます。省略時はターゲットの `driver.headless` 設定に従います |
 | `--browser` | ターゲットの `runsOn.browser.kind`（既定 chromium） | web backend: 調べる対象のブラウザ。`chromium` / `chrome` / `edge` / `firefox` / `webkit` から選びます。省略時はターゲットの `runsOn.browser.kind` config に従います。ブラウザをリストで宣言したターゲットでは、リストにないブラウザを指定すると終了コード 2 で終わります |
 | `--kind` | ターゲットの `runsOn.ios.kind` の最初の種類 | iOS: 調べるときに使う種類を1つ指定します（`simulator` または `device`）。ターゲットが宣言していない種類を指定すると終了コード 2 で終わります。このコマンドは1回しか実行しないので、カンマ区切りのリストを指定しても終了コード 2 で終わります（[BE-0468](../../roadmaps/BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of-ja.md)） |
@@ -764,7 +764,7 @@ attach での開始は、デバイス全体に及ぶ操作を何もしません�
 
 - **デバイスの準備をしません。** デバイスの erase やブート、アプリのインストールをせず、ロケールの固定、
   権限の付与、deeplink も飛ばします。`--erase` は強制的に off になり、`--attach --erase` は終了コード 2 で終わります。
-- **readiness を待ちません。** アプリは操作者が残した画面にあるので、ターゲットの `app.startWhen` の画面を
+- **readiness を待ちません。** アプリは操作者が残した画面にあるので、ターゲットの `subject.startWhen` の画面を
   待ちません。
 - **再試行しません。** ランナーは 1 回だけ起動し、リカバリの手順も使いません。再試行や修復の経路は、
   どれもアプリを終了させるか Simulator を再起動させるためです。ランナーが立ち上がらなければ、ログの末尾を
@@ -799,10 +799,10 @@ bajutsu codegen <scenario.yaml> --target <name> [--emit xcuitest | playwright | 
 | `--emit` | `xcuitest` | 出力形式。`xcuitest`、`playwright`、または `uiautomator`（他は終了コード 2） |
 | `-o, --out` | `-` | 出力ファイル。`-` で標準出力 |
 
-- config の `app.launch.env` が生成テストに入ります。XCUITest では `app.launchEnvironment`、Playwright では
+- config の `subject.launch.env` が生成テストに入ります。XCUITest では `app.launchEnvironment`、Playwright では
   `localStorage` のシードに反映されます。
-- `--emit playwright` は対象が web ターゲット（`platform: web` で `app.url` を持つ）であることを要求します。`--emit
-  uiautomator` は対象が Android ターゲット（`platform: android` で `app.id` を持つ）であることを要求します。どちらも
+- `--emit playwright` は対象が web ターゲット（`platform: web` で `subject.url` を持つ）であることを要求します。`--emit
+  uiautomator` は対象が Android ターゲット（`platform: android` で `subject.id` を持つ）であることを要求します。どちらも
   満たさない場合は終了コード 2 で終わります。
 - ファイル出力時は `wrote <N> scenario(s) -> <out>`。
 
@@ -866,7 +866,7 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
 - **Git リポジトリから（[BE-0063](../../roadmaps/BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）。**
   `--config` は Git ソース（`github:owner/repo@ref:path`）も受け付け、「Open config」ダイアログにも同じ spec を入れる
   **From a Git repository** 欄があります。serve はその ref のリポジトリ部分木をキャッシュへ実体化し、その config を bind し、
-  チェックアウトのルートから serve します。これにより config の相対パス（`paths.scenarios` / `app.path` / `app.build`）は取得したツリーを
+  チェックアウトのルートから serve します。これにより config の相対パス（`paths.scenarios` / `subject.path` / `subject.build`）は取得したツリーを
   基準に解決されます。これはセルフホストの狙い（[BE-0016](../../roadmaps/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)
   Tier A）そのもので、ファイルを手で同期する代わりにチームのテストリポジトリを serve に向け、ブランチの切り替えを再デプロイではなく
   UI 上で行えます。ファイルブラウザは `--root` 配下に限定されたままです。チェックアウトは管理された content-addressed キャッシュで、
@@ -911,17 +911,17 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
 - **バンドルのアップロード（[BE-0073](../../roadmaps/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md)）。**
   「Open config」ダイアログには 3 つめのソース **Upload a bundle** があり、ホストのファイルシステムに触れない
   ブラウザ利用者が、ホスト型の `serve` に**自分のスイートを持ち込め**ます。レイアウトが動くローカル checkout
-  そのものの `.zip`、つまり `bajutsu.config.yaml`、その `paths.scenarios` ツリー、config の `app.path` が指すビルド済み
+  そのものの `.zip`、つまり `bajutsu.config.yaml`、その `paths.scenarios` ツリー、config の `subject.path` が指すビルド済み
   アプリバイナリ（`.app` ディレクトリ、zip 化した `.app`、`.ipa`）を投下します。`serve` はそれを封じ込めた
   サンドボックス（`runs/` の兄弟で、`--root` ではない）へ展開し、ファイルブラウザや Git ソースとまったく同じく
   **アクティブな config としてバインド**します。以後 **Replay / Record / Crawl** タブはその展開先から動きます
-  （config の相対パス `app.path` / `paths.scenarios` / `paths.baselines` はバンドルを基準に解決されます）。run は
+  （config の相対パス `subject.path` / `paths.scenarios` / `paths.baselines` はバンドルを基準に解決されます）。run は
   サンドボックスではなく `serve` 自身のストアに着地するので（`--runs-dir`）、**History** に残ります。アップロードの
   ファイル名と zip の **sha256** は各 run の `manifest.json`（`provenance`）に記録するので、「この run は何を実行
   したか」を後から辿れます。バインドできるバンドルは同時に一つだけで、別の config（どのソースでも）を開くと
   サンドボックスは削除されます。バンドルは**秘匿情報を運びません**。`${secrets.*}` は通常の run と同じく `serve`
   ホストの環境から解決し（[BE-0032](../../roadmaps/BE-0032-secret-variables/BE-0032-secret-variables-ja.md)）、
-  アップロードされた config の `app.build` コマンドはホスト上で**決して実行しません**（バンドルはビルド済みバイナリを
+  アップロードされた config の `subject.build` コマンドはホスト上で**決して実行しません**（バンドルはビルド済みバイナリを
   同梱します。DESIGN §1）。展開は zip-slip（絶対パス、`..`、symlink エントリは拒否）と zip-bomb（エントリ数、
   展開後の総サイズ、エントリごとの圧縮率の上限）に対して堅牢で、各ターゲットのパス項目はバインド時にバンドル内へ
   封じ込められ、config のバインドは他のリクエストと同じトークン認証の裏にある admin ロールの操作です。任意の
@@ -933,14 +933,14 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   4 つめのソース **Compose from artifacts** は、バンドルを 3 つの**独立してアップロードできる content-addressed**
   な部品、**Config**、**Scenarios**（scenario ツリーの `.zip`、または単一の `.yaml`。内容で判別し、単一
   ファイルは config の `paths.scenarios` ディレクトリへ拡張子を `.yaml` に正規化して配置します）、**Binary**（zip 化
-  した `.app`、`.ipa`、または Android の `.apk`。config の `app.path` の拡張子で展開するか raw で書き出すかを
+  した `.app`、`.ipa`、または Android の `.apk`。config の `subject.path` の拡張子で展開するか raw で書き出すかを
   決めます）に分割します。
   各部品はバイト列の sha256 で保存します（`POST /api/artifacts/{config,scenarios,binary}`）。部品を内容で
   アドレス指定するので、変わっていない部品はまるごと省けます。ブラウザはファイルをハッシュし、アップロード前に
   `GET /api/artifacts/exists` で在庫を問い合わせるため、同じバイナリが 2 度も回線を通ることはありません。
   **Compose & load**（`POST /api/compose`）は、選んだ `(config, scenarios, binary)` の**三つ組**を、結合バンドルが
   生むのと同じ封じ込めたツリーに組み立てます。**レイアウトの唯一の権威は config** で、自身の相対パス `paths.scenarios` /
-  `app.path` によって各部品の置き場所を指定します。組み立てたツリーはアクティブな config としてバインドするので、
+  `subject.path` によって各部品の置き場所を指定します。組み立てたツリーはアクティブな config としてバインドするので、
   バンドルのときと同じく **Replay / Record / Crawl** タブがそこから動きます。config が必要とする部品を渡していない
   三つ組は、run に入る前に**拒否**します（中途半端なツリーで走ることはありません）。1 本の脚だけ差し替えて合成し
   直せば、共有する部品を**再アップロードせず**に新しい**組み合わせ**（同じ scenario に対するバイナリ A と B、あるいは
@@ -971,9 +971,9 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   ターゲットを選択していなければ、エディタの lint の結果は変わりません。シナリオの JSON Schema（`GET /api/schema`。`bajutsu schema` が出力する
   ものと同じ）は、軽量なキー補完（Ctrl/⌘+Space）と hover の説明表示にも使われます。決定的で AI を使わず、デバイスも
   モデルも起動しません。保存は保存自身の検証を保持するので、インライン検証は失敗をより早く見せるだけです。
-- アプリのビルド済みバイナリ（config `app.path`）が無い場合は、先にそのアプリの `app.build` コマンドを
-  実行します（出力は job ログにストリーム）。ビルド失敗時は run を開始せず中止します。`targets.<name>.app.build`
-  に `app.path` を生成するシェルコマンド（例: `make -C demos/showcase swiftui-build`）を設定すると、
+- アプリのビルド済みバイナリ（config `subject.path`）が無い場合は、先にそのアプリの `subject.build` コマンドを
+  実行します（出力は job ログにストリーム）。ビルド失敗時は run を開始せず中止します。`targets.<name>.subject.build`
+  に `subject.path` を生成するシェルコマンド（例: `make -C demos/showcase swiftui-build`）を設定すると、
   手動ビルド無しに UI からオンデマンドでビルドできます。
 - 操作 UI の下の **History** リストに過去の run（新しい順、pass/fail ドット、シナリオ要約）が並び、
   クリックでそのレポートを再表示します。`GET /api/runs` が裏側です。
@@ -993,7 +993,7 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
 
 - **`/api/run` での job 単位のアーティファクト差し替え（BE-0431）。** ホスト型デプロイの `POST /api/run` は、
   `binaryArtifact` と `scenariosArtifact` も受け付けます。どちらも、org に保存済みのアーティファクトの sha256 です。
-  その job だけが、指定したバイナリを target の `app.path` に置き、指定した scenarios の zip で実行します。
+  その job だけが、指定したバイナリを target の `subject.path` に置き、指定した scenarios の zip で実行します。
   org のアクティブな config は、バインドされたまま変わりません。run の `manifest.json` は、差し替えた sha256 を
   `provenance` の下に記録します。job のキューを持たないサーバは、どちらのフィールドも拒否します。
   詳しくは [self-hosting](self-hosting.md#ci-の-run-に-job-単位でアーティファクトを差し替えるbe-0431) を参照してください。
@@ -1005,7 +1005,7 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
 - **`--evidence-store <uri>`（または `$BAJUTSU_EVIDENCE_STORE`）。各 run の証跡をアップロードします（[BE-0110](../../roadmaps/BE-0110-evidence-store-uri/BE-0110-evidence-store-uri-ja.md)）。** `s3://bucket/prefix` または `gs://bucket/prefix` を指定すると、完了した run のツリーがそこへアップロードされます。キーは `<prefix><evidence_prefix><runId>/…` の形になるので、パスによってクラウドのライフサイクルポリシーが切り替わります。スタンドアロンの `run --evidence-store`（Runner 自身の認証情報で直接アップロードする）と違い、**`serve` は認証情報を保持し、Worker には渡しません**。コントロールプレーンがファイルごとに presigned PUT URL を発行し、Worker はクラウド SDK も認証情報も持たずに平文 HTTP でアップロードします。呼び出し元は `POST /api/run` のボディに `evidence_prefix`（安全な相対セグメントとして検証されます）を渡して run ごとのパスを選びます。サーバが自分のバケットとベースプレフィックスを前置するので、run ID が必ずキーに含まれ、run 同士が衝突しません。アップロードは判定の後に走るため、失敗しても警告のみです。**サーバ側**に `s3` または `gcs` extra が必要です（Worker には不要）。トポロジは [self-hosting](self-hosting.md) を参照してください。
 - **すべての job を worker が実行します（BE-0449）。** `serve` は `bajutsu worker` に渡す job のキューを持ち、すべての job をキューに積みます。対象は、ビルド段階を含む各 run、Device Farm への展開、triage、record、crawl です。`serve` のプロセスは、どの job も実行しません。キューの job は worker を待ちます。その job を実行できる稼働中の worker がないあいだ、job には使える worker がないという通知が付きます。`make serve` はサーバの横で worker を起動します。`bajutsu serve` を直接起動したときは、横で `bajutsu worker` を起動する必要があります。lease は、その job の org に保存されたシークレットを worker に渡します。1台のマシンで `BAJUTSU_SERVER_STORE` を設定しなければ、サーバに環境変数は要りません。キューは runs ディレクトリの隣の `.bajutsu/queue.db`（SQLite）に置きます。キーも同じ場所に `0600` の権限で生成します。1つは署名付き URL 用で、もう1つは保存するシークレット用です（`BAJUTSU_SECRETS_KEY` を設定したときは生成しません）。アーティファクトのストアは default org の run を runs のツリーから直接、サーバが署名した URL で読み、それ以外のオブジェクトは `.bajutsu/objects/` に置きます。起動時には、すでに `runs/` の下にある run を履歴に登録します。その後の run は、admin が `POST /api/runs/rescan` を呼ぶと登録されます。`BAJUTSU_DATABASE_URL`、`BAJUTSU_SECRETS_KEY`、`BAJUTSU_SERVER_STORE`、`BAJUTSU_HOSTED` を設定すると、これらの既定値を上書きします。バケットのないサーバは、`--asgi` と同じく FastAPI のトランスポートを使います。また、`--port 0` ではなく固定のポートが必要です。バケットを指定したサーバは、`BAJUTSU_DATABASE_URL` も設定する必要があります。設定しなければ、キューを持たないので起動を拒否します。詳しくは [self-hosting の「1台のマシンで動かすサーバ backend」](self-hosting.md#1台のマシンで動かすサーバ-backendbe-0449)を参照してください。
 - **`--backend`（非推奨）。** 以前このフラグは、2つの backend を選んでいました。`local` backend は `serve` のプロセス内で job を実行し、`server` backend は job をキューに積みました。今はどちらの値でも同じサーバが起動します。`serve` は `local` と `server` を受け付けて警告を表示し、値を無視します。未知の値を渡すと、これまでどおり終了コード 2 で終わります。次のリリースでフラグを取り除くので、コマンドラインから外してください。
-- **ホスティング向けフラグ（応用）。** `--emit-launchagent` は `serve` を単一 Mac 上でトークン認証付きの LaunchAgent として動かす launchd plist を出力します。`--upload-exec`（または環境変数 `BAJUTSU_UPLOAD_EXEC`）は、アップロードされたバンドルの `services.server` コマンドを実行してよいかを決めます（`deny` / `reuse` / `sandbox`、既定は `sandbox`）。`--allow-remote-build`（または環境変数 `BAJUTSU_ALLOW_REMOTE_BUILD`）は、UI で bind した **Git** ソースの config の `app.build` コマンドをホスト上で実行することを許可します（既定はオフ）。いずれも [self-hosting](self-hosting.md) で扱います。
+- **ホスティング向けフラグ（応用）。** `--emit-launchagent` は `serve` を単一 Mac 上でトークン認証付きの LaunchAgent として動かす launchd plist を出力します。`--upload-exec`（または環境変数 `BAJUTSU_UPLOAD_EXEC`）は、アップロードされたバンドルの `services.server` コマンドを実行してよいかを決めます（`deny` / `reuse` / `sandbox`、既定は `sandbox`）。`--allow-remote-build`（または環境変数 `BAJUTSU_ALLOW_REMOTE_BUILD`）は、UI で bind した **Git** ソースの config の `subject.build` コマンドをホスト上で実行することを許可します（既定はオフ）。いずれも [self-hosting](self-hosting.md) で扱います。
 
 ## `mcp`
 
@@ -1035,7 +1035,7 @@ bajutsu mcp [--config bajutsu.config.yaml] [--runs runs] [--transport stdio] [--
 ローカルの `bajutsu serve` も run をすべてキューに積むので、worker が要ります（BE-0449）。`make serve` は worker を1つ起動します。lease の応答は、worker にさらに2つのフィールドを渡します。
 
 - `secret_env` は、lease した job の org に保存されたシークレットを持ちます。AI のキーと、ユーザーが UI で設定した `${secrets.X}` の値がこれにあたります。サーバはこれらを lease の時点で読み、キューには保存しません。worker はこれらを run の環境変数に重ね、引数には載せません。共有トークンで取った lease はこれらを受け取ります。トークンのないループバックでの起動でも、lease は受け取ります。ブラウザのログインは受け取りません。
-- 仕様の `cwd` は、自前のファイルを送らない job のために、bind した config のディレクトリを示します。ローカル起動での run はこの種の job で、config、シナリオ、runs、ベースラインをパスで指定します。worker は、そのディレクトリで job をビルドして実行します。これで config の相対的な `app.path` と `app.build` が、サーバのプロセスの中と同じように解決します。別のマシンの worker はそのディレクトリを持たないので、サーバのマシンの worker が必要だと伝えて job を失敗にします。
+- 仕様の `cwd` は、自前のファイルを送らない job のために、bind した config のディレクトリを示します。ローカル起動での run はこの種の job で、config、シナリオ、runs、ベースラインをパスで指定します。worker は、そのディレクトリで job をビルドして実行します。これで config の相対的な `subject.path` と `subject.build` が、サーバのプロセスの中と同じように解決します。別のマシンの worker はそのディレクトリを持たないので、サーバのマシンの worker が必要だと伝えて job を失敗にします。
 
 SIGINT や SIGTERM を受けた worker は、サーバからのキャンセルと同じように止まります。lease した job をキャンセルし（run なら穏やかに止めます）、キャンセルした結果を送ってから、128 にシグナル番号を足した終了コードで終わります。キューはその job をキャンセル済みとして記録し、再び実行しません。2 回目の SIGINT は、`--once` と同じく job のプロセスグループをすぐに終わらせます。
 
@@ -1145,13 +1145,13 @@ bajutsu config schema > bajutsu.config.schema.json
 
 このコマンドは、config のモデルと platform のレジストリからスキーマを生成します。各ターゲットは、
 登録された platform ごとに1つの分岐を持つ `oneOf` で、`platform` がその判別子（discriminator）です。
-そのためスキーマを読むエディタは、書かれた platform の `app`、`runsOn`、`driver`、`run` のキーを補完できます。
+そのためスキーマを読むエディタは、書かれた platform の `subject`、`runsOn`、`driver`、`run` のキーを補完できます。
 `defaults.platforms` も同じ platform をキーに持ち、すべてのフィールドを省略可能にしています。デフォルトが
 書かなかった部分は、各ターゲットが補うためです。
 
 スキーマは、`defaults` を重ねる前の、書かれたままのターゲットを検査します。そのため、デフォルトが
 補いうるグループはスキーマ上で省略可能です。`{ platform: ios }` のようなターゲットはスキーマを通りますが、
-`app.id` を補うデフォルトがなければ、読み込みの段階で拒否されます。
+`subject.id` を補うデフォルトがなければ、読み込みの段階で拒否されます。
 
 ## `runner`
 

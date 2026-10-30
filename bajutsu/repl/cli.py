@@ -99,7 +99,7 @@ def repl(
         None,
         "--erase/--no-erase",
         help="erase the device before launching (app must be installed); the target's "
-        "app.reinstall: erase "
+        "subject.reinstall: erase "
         "does not apply here (default: erase locally, no-erase on the live route to an `appium` "
         "grid, which does not support it)",
     ),

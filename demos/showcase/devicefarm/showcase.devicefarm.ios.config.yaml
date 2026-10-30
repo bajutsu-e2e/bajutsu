@@ -7,7 +7,7 @@
 #     `xcodebuild -destination` from a named Simulator to `platform=iOS`, so the same driving layer
 #     runs against the reserved physical device. It also skips the Simulator bring-up (erase, local
 #     install, up-front permission grants) that only `simctl` can perform.
-#   * **No `app.path` / `app.build`.** Device Farm installs the uploaded `.ipa` on the reserved device
+#   * **No `subject.path` / `subject.build`.** Device Farm installs the uploaded `.ipa` on the reserved device
 #     itself, so the run must not try to assemble or install a local `.app`; it drives the
 #     already-installed build (a None `app_path` is the runner's "run against the installed app" path).
 #
@@ -37,7 +37,7 @@
 targets:
   showcase-swiftui:
     platform: ios
-    app:
+    subject:
       id: com.bajutsu.showcase.ios.swiftui
       launch: { env: { SHOWCASE_UITEST: "1" } }
       idNamespaces: [stable, horse, search, log, notice, perm, sys, net]

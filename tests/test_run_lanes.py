@@ -118,7 +118,7 @@ def _eff(**target: str) -> Effective:
         else:
             top += f"    {k}: {v}\n"
     fields = top + "".join(f"    {g}:\n{body}" for g, body in groups.items())
-    cfg = load_config(f"targets:\n  x:\n    platform: ios\n    app: {{id: com.x}}\n{fields}")
+    cfg = load_config(f"targets:\n  x:\n    platform: ios\n    subject: {{id: com.x}}\n{fields}")
     return resolve(cfg, "x")
 
 
@@ -420,21 +420,21 @@ def test_filter_scenarios_no_match_exits_2() -> None:
 def test_filter_scenarios_erase_override() -> None:
     scenarios = load_scenarios(_one_scenario("a"))
     _filter_scenarios(scenarios, "", "", True)  # --erase raises every scenario to the top rung
-    assert scenarios[0].preconditions.app.reinstall == "erase"
+    assert scenarios[0].preconditions.subject.reinstall == "erase"
 
 
 def test_filter_scenarios_without_a_flag_leaves_each_scenario_as_written() -> None:
-    # Each target the scenario drives merges its own `app.reinstall` (BE-0473), so none is stamped.
+    # Each target the scenario drives merges its own `subject.reinstall` (BE-0473), so none is stamped.
     scenarios = load_scenarios(_one_scenario("a"))
     _filter_scenarios(scenarios, "", "", None)
-    assert scenarios[0].preconditions.app.reinstall is None
+    assert scenarios[0].preconditions.subject.reinstall is None
 
 
 @pytest.mark.parametrize(
     ("written", "want"),
     [
-        ("  preconditions:\n    app: { reinstall: erase }\n", "clean"),
-        ("  preconditions:\n    app: { reinstall: overwrite }\n", "overwrite"),
+        ("  preconditions:\n    subject: { reinstall: erase }\n", "clean"),
+        ("  preconditions:\n    subject: { reinstall: overwrite }\n", "overwrite"),
         ("", None),  # a target's own erase is lowered on its `Effective` instead
     ],
 )
@@ -443,7 +443,7 @@ def test_filter_scenarios_no_erase_lowers_only_the_scenarios_erase(
 ) -> None:
     scenarios = load_scenarios(_one_scenario("a") + written)
     _filter_scenarios(scenarios, "", "", False)
-    assert scenarios[0].preconditions.app.reinstall == want
+    assert scenarios[0].preconditions.subject.reinstall == want
 
 
 @pytest.mark.parametrize(
@@ -458,7 +458,7 @@ def test_filter_scenarios_no_erase_lowers_only_the_scenarios_erase(
 def test_no_erase_lowers_every_targets_own_erase(target: str, flag: bool | None, want: str) -> None:
     eff = resolve(
         load_config(
-            f"targets:\n  t:\n    platform: ios\n    app: {{id: com.x, reinstall: {target}}}\n"
+            f"targets:\n  t:\n    platform: ios\n    subject: {{id: com.x, reinstall: {target}}}\n"
         ),
         "t",
     )

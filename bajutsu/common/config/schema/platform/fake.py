@@ -1,7 +1,7 @@
 """The test-only `fake` platform's minimal models (BE-0452).
 
 A `fake` target declares no condition to check: its `runsOn` and `driver` take no fields, and its
-`app` takes an optional `id` and the readiness and identifier contract every platform shares.
+`subject` takes an optional `id` and the readiness and identifier contract every platform shares.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from ._shared import AppCommon, RunsOnGroup
 
 
 class FakeApp(AppCommon):
-    """`app` on the fake platform: an optional identifier, `startWhen`, and `idNamespaces`.
+    """`subject` on the fake platform: an optional identifier, `startWhen`, and `idNamespaces`.
 
     The fake driver reads the identifier contract as any driver does (readiness, `doctor`'s
     scoring), so the shared fields stay; nothing that builds, installs, or launches an app does.

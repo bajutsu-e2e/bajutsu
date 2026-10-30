@@ -36,9 +36,9 @@ def _state(tmp_path: Path, *, id_namespaces: list[str] | None = None) -> ServeSt
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            f"    app: {{id: com.example.demo{ns}}}\n"
+            f"    subject: {{id: com.example.demo{ns}}}\n"
             f"    paths: {{scenarios: {scn_dir}}}\n"
-            "  bare: {platform: ios, app: {id: com.example.bare}}\n"
+            "  bare: {platform: ios, subject: {id: com.example.bare}}\n"
         ),
         encoding="utf-8",
     )

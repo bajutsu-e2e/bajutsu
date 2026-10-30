@@ -30,7 +30,7 @@ uv run bajutsu run --scenario <path-to-file> --target showcase-swiftui --backend
 ```yaml
 - name: favorite a horse
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:
@@ -53,7 +53,7 @@ uv run bajutsu run --scenario <path-to-file> --target showcase-swiftui --backend
 ```yaml
 - name: filter narrows the catalog
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:
@@ -68,7 +68,7 @@ uv run bajutsu run --scenario <path-to-file> --target showcase-swiftui --backend
 
 - name: no match shows the empty state
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:
@@ -105,7 +105,7 @@ uv run bajutsu run --scenario <path-to-file> --target showcase-swiftui --backend
   preconditions:
     run:
       systemAlertHandling: { rules: [{ prompt: notifications, choice: grant }] }
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:
@@ -135,7 +135,7 @@ uv run bajutsu run --scenario <path-to-file> --target showcase-swiftui --backend
 ```yaml
 - name: log submit answered by a mock, toast appears and clears
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   mocks:
@@ -178,7 +178,7 @@ uv run bajutsu run --scenario <path-to-file> --target showcase-swiftui --backend
     - { q: "Horse 3", n: "3" }
     - { q: "Horse 5", n: "5" }
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:
@@ -214,7 +214,7 @@ steps:
 ```yaml
 - name: search finds a horse by name
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:

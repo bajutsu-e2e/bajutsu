@@ -15,23 +15,23 @@ from bajutsu.common.scenario import (
 
 def test_preconditions_default() -> None:
     s = Scenario.model_validate({"name": "x", "steps": [{"tap": {"id": "a"}}]})
-    assert s.preconditions.app.reinstall is None  # unset: the target, then the built-in clean
+    assert s.preconditions.subject.reinstall is None  # unset: the target, then the built-in clean
 
 
 def test_preconditions_reinstall_validated() -> None:
     s = Scenario.model_validate(
         {
             "name": "x",
-            "preconditions": {"app": {"reinstall": "erase"}},
+            "preconditions": {"subject": {"reinstall": "erase"}},
             "steps": [{"tap": {"id": "a"}}],
         }
     )
-    assert s.preconditions.app.reinstall == "erase"
+    assert s.preconditions.subject.reinstall == "erase"
     with pytest.raises(ValidationError):  # only overwrite | clean | erase are accepted
         Scenario.model_validate(
             {
                 "name": "x",
-                "preconditions": {"app": {"reinstall": "bogus"}},
+                "preconditions": {"subject": {"reinstall": "bogus"}},
                 "steps": [{"tap": {"id": "a"}}],
             }
         )

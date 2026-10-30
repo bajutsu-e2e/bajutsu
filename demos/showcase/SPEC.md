@@ -302,7 +302,7 @@ control ever shown, so it exercises that method's no-op path instead. Both back 
 one iOS-only DSL action gated on `Capability.SELECT_PHOTOS` (iOS XCUITest only).
 [`select_photos.yaml`](scenarios/select_photos.yaml) and
 [`select_photo_single.yaml`](scenarios/select_photo_single.yaml) each seed the photo library with
-`preconditions.device.ios.seedPhotos` (an effective `app.reinstall: erase` required alongside it) before opening their picker.
+`preconditions.device.ios.seedPhotos` (an effective `subject.reinstall: erase` required alongside it) before opening their picker.
 - `perm.openPhotoPicker` — button that presents the unlimited-selection picker
 - `perm.openPhotoPickerSingle` — button that presents the picker with `selectionLimit = 1`
 - `perm.photos.value` — the picked count, mirrored back once the picker dismisses (0 until then)

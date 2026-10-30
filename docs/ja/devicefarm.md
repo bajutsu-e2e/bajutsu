@@ -59,7 +59,7 @@ uv run python scripts/devicefarm_submit.py \
   --package-only
 ```
 
-実行には `showcase.devicefarm.config.yaml` を使います。これは `showcase-compose` ターゲットの Device Farm 版で、**`app.path` を持ちません**。Device Farm はアップロードした APK を予約デバイスへ自分でインストールするため、adb バックエンドはローカルの APK を `adb install` するのではなく、インストール済みのアプリを起動します（`app_path` が None のときの、既存の「インストール済みアプリに対して実行する」経路です）。これは環境ごとの違いなので、ツールではなく設定に置きます。
+実行には `showcase.devicefarm.config.yaml` を使います。これは `showcase-compose` ターゲットの Device Farm 版で、**`subject.path` を持ちません**。Device Farm はアップロードした APK を予約デバイスへ自分でインストールするため、adb バックエンドはローカルの APK を `adb install` するのではなく、インストール済みのアプリを起動します（`app_path` が None のときの、既存の「インストール済みアプリに対して実行する」経路です）。これは環境ごとの違いなので、ツールではなく設定に置きます。
 
 `--package SRC=ARCNAME` はそれぞれ、ファイルまたはディレクトリを `ARCNAME` の位置でテストパッケージに追加します（arcname に `.` を指定すると、ディレクトリをパッケージのルートに展開します）。渡すシナリオや設定のパスは、パッケージの**内側**でのパスです。`--package .=.` で Bajutsu をパッケージすると、`pyproject.toml` と `tests/` ディレクトリがルートに置かれ、サブミッターは空の `requirements.txt` をルートに合成します。これにより、実際のインストールはテスト仕様が行いつつ、アップロードは Device Farm の APPIUM_PYTHON_TEST_PACKAGE 検証を満たします。`--package-only` を外して `--project-arn` と `--device-pool-arn` を加えれば（環境に AWS の認証情報を設定したうえで）、実行を投入し、完了までポーリングし、成果物をダウンロードして、Bajutsu の判定を表示します。プロセスの終了コードが `0` になるのは、すべてのシナリオが合格したときだけです。
 
@@ -86,7 +86,7 @@ uv run python scripts/devicefarm_submit.py \
   --package-only
 ```
 
-`showcase.devicefarm.ios.config.yaml` は `runsOn.ios.kind: device`（XCUITest バックエンドがシミュレーターではなく実機を操作します）を設定し、`app.path` を持ちません（Device Farm がアップロードした `.ipa` を予約デバイスへ自分でインストールします）。`--package BajutsuKit/Runner/build/dd-device/Build/Products=.` は、デバイス署名済みの `.xctestrun` とテストバンドルをパッケージのルートに配置します。これは設定の `driver.runner.testRunner: BajutsuRunner.xctestrun` が参照する場所です。再署名と simctl に関する注意事項は[上記](#ios-再署名と実機のケーパビリティ)をご参照ください。
+`showcase.devicefarm.ios.config.yaml` は `runsOn.ios.kind: device`（XCUITest バックエンドがシミュレーターではなく実機を操作します）を設定し、`subject.path` を持ちません（Device Farm がアップロードした `.ipa` を予約デバイスへ自分でインストールします）。`--package BajutsuKit/Runner/build/dd-device/Build/Products=.` は、デバイス署名済みの `.xctestrun` とテストバンドルをパッケージのルートに配置します。これは設定の `driver.runner.testRunner: BajutsuRunner.xctestrun` が参照する場所です。再署名と simctl に関する注意事項は[上記](#ios-再署名と実機のケーパビリティ)をご参照ください。
 
 Device Farm のジョブでは、`runsOn.ios.model` や `runsOn.ios.os` のようなデバイスの条件を使えません（[configuration](configuration.md#デバイスの条件runson)）。Bajutsu は run の前に読み取れるデバイスに対して条件を照合しますが、Device Farm が予約するデバイスには、事前に読み取るものがありません。そのため provider は、ターゲットが条件を宣言しているジョブや、`runsOn` のフィールドを宛先のブロックに入れずに直下に書いたままのジョブを、アップロードの前に拒否し、該当するフィールドを示します。`runsOn.ios.locale` と `runsOn.ios.seedPhotos` は条件ではなくデバイスの状態なので、引き続き使えます。
 
@@ -98,13 +98,13 @@ Device Farm のジョブでは、`runsOn.ios.model` や `runsOn.ios.os` のよ�
 
 上記のサブミッターとワークフローはヘッドレスの経路で、1 回の実行が一式をまとめてパッケージ化し、そのシナリオを 1 台の予約デバイス上で順番に実行します。`bajutsu serve`（BE-0336）は、運用者がすでに実行のディスパッチと履歴の確認に使っている画面に、2 つ目の経路を加えます。そしてその形を変えます。1 回に直列化した実行ではなく、serve は**シナリオごとに 1 つの Device Farm 実行へと一式を展開（fan-out）**します。これによりシナリオは並列に走ります。同時に走る数の上限を決めるのは 1 台のデバイスではなく、Device Farm ワーカーのジョブ予算です。
 
-ターゲットはバッチプロバイダーを指定しません。どこで実行するかはターゲットの性質ではなく実行ごとの選択なので、fan-out のリクエストがプロバイダーを `environment` として指定します（[BE-0452](../../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)）。ターゲットに要るのは、Device Farm が予約デバイスへインストールするバイナリを指す `app.path` だけです。
+ターゲットはバッチプロバイダーを指定しません。どこで実行するかはターゲットの性質ではなく実行ごとの選択なので、fan-out のリクエストがプロバイダーを `environment` として指定します（[BE-0452](../../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)）。ターゲットに要るのは、Device Farm が予約デバイスへインストールするバイナリを指す `subject.path` だけです。
 
 ```yaml
 targets:
   showcase-compose:
     platform: android
-    app:
+    subject:
       id: com.example.showcase
       path: app-debug.apk         # Device Farm が予約デバイスへインストールする APK
     paths:
@@ -138,9 +138,9 @@ DEVICEFARM_PROJECT_ARN=arn:aws:devicefarm:us-west-2:123456789012:project:abc \
 
 ヘッドレスのサブミッターと異なり、ワーカーはデバイス選択フィルターで実行あたり 1 台のデバイスを予約します。そのため、デバイスプールの ARN は不要です。
 
-> **設定ファイルとシナリオの配置。** ワーカーはジョブごとに別々のパッケージを組み立てます。パッケージには、ソースのチェックアウトの 3 つの部分と、`bundle/` の下に置いたジョブのバンドルディレクトリが入ります。バンドルディレクトリは、次のいずれかです。設定ファイル自身のディレクトリ、アップロードされたバンドル、シナリオストアがジョブに同梱した設定ファイルとシナリオです。リクエストは、設定ファイルとシナリオをこのディレクトリからの相対パスで指定します。設定ファイルのディレクトリの外にあるシナリオでは、`POST /api/run-set` が 400 エラーを返します。ターゲットの `app.path` は書かれたとおりに渡されます。相対パスであれば、ワーカーが同じディレクトリを基準に解決します。バイナリが見つからなければ、ワーカーは何もアップロードせずにジョブを失敗させます。
+> **設定ファイルとシナリオの配置。** ワーカーはジョブごとに別々のパッケージを組み立てます。パッケージには、ソースのチェックアウトの 3 つの部分と、`bundle/` の下に置いたジョブのバンドルディレクトリが入ります。バンドルディレクトリは、次のいずれかです。設定ファイル自身のディレクトリ、アップロードされたバンドル、シナリオストアがジョブに同梱した設定ファイルとシナリオです。リクエストは、設定ファイルとシナリオをこのディレクトリからの相対パスで指定します。設定ファイルのディレクトリの外にあるシナリオでは、`POST /api/run-set` が 400 エラーを返します。ターゲットの `subject.path` は書かれたとおりに渡されます。相対パスであれば、ワーカーが同じディレクトリを基準に解決します。バイナリが見つからなければ、ワーカーは何もアップロードせずにジョブを失敗させます。
 >
-> **アプリケーションの配送。** 設定ファイルとシナリオを同梱したジョブにも、バイナリは必要です。アップロードされたバンドルがバイナリを含まないとき、サーバは fan-out の時点で `app.path` が指すファイルをオブジェクトストアに保存します。リースは、そのファイルの署名付きダウンロードリンクを運びます。ワーカーは、ジョブのディレクトリ内の同じ `app.path` にバイナリをダウンロードします。そのうえで、ファイルのダイジェストがジョブの指定と一致するかを確かめます。この場合の `app.path` は設定ファイルのディレクトリ内のファイルを指す必要があり、サーバにはオブジェクトストアが要ります。条件を満たさなければ、`POST /api/run-set` は 400 エラーを返します。
+> **アプリケーションの配送。** 設定ファイルとシナリオを同梱したジョブにも、バイナリは必要です。アップロードされたバンドルがバイナリを含まないとき、サーバは fan-out の時点で `subject.path` が指すファイルをオブジェクトストアに保存します。リースは、そのファイルの署名付きダウンロードリンクを運びます。ワーカーは、ジョブのディレクトリ内の同じ `subject.path` にバイナリをダウンロードします。そのうえで、ファイルのダイジェストがジョブの指定と一致するかを確かめます。この場合の `subject.path` は設定ファイルのディレクトリ内のファイルを指す必要があり、サーバにはオブジェクトストアが要ります。条件を満たさなければ、`POST /api/run-set` は 400 エラーを返します。
 
 ### ジョブ予算
 
@@ -166,7 +166,7 @@ DEVICEFARM_PROJECT_ARN=arn:aws:devicefarm:us-west-2:123456789012:project:abc \
 
 - `environment` がない、またはバッチプロバイダーを指さないリクエスト。`appium` も拒否します。グリッドには通常の実行リクエストで到達します（[セルフホスティング](self-hosting.md)）
 - web ターゲット（予約すべきデバイスがありません）
-- `app.path` を持たないターゲット
+- `subject.path` を持たないターゲット
 - 設定ファイルのディレクトリの外にある設定やシナリオ（ワーカーがパッケージにするディレクトリの外です）
 
 ### 再起動とリースの喪失
@@ -195,12 +195,12 @@ DEVICEFARM_PROJECT_ARN=arn:aws:devicefarm:us-west-2:123456789012:project:abc \
 
 `BatchLifecycleHook` はそのギャップを埋めます。フックは、環境が `devicefarm` のワーカーの中で、`DeviceFarmBatchProvider.submit` の前後に実行されます。サーバはフックを実行しません。
 
-- **`before_submit(ctx)`** — パッケージのビルド前に呼ばれます。`ctx.launch_env` にキーと値を追加することで、パッケージされる config の `targets.<target>.app.launch.env` にマージされ、アプリが launch 環境変数として受け取ります。
+- **`before_submit(ctx)`** — パッケージのビルド前に呼ばれます。`ctx.launch_env` にキーと値を追加することで、パッケージされる config の `targets.<target>.subject.launch.env` にマージされ、アプリが launch 環境変数として受け取ります。
 - **`after_run(ctx, verdict)`** — 判定収集後（または判定前に失敗した場合は `verdict=None`）に `finally` の中で逆順に呼ばれます。あるフックの `after_run` が例外を送出しても、残りのフックは実行されます。判定（verdict）を収集できた場合、`submit` はティアダウンの失敗をすべてログに出力し、1つも送出しません。クレデンシャルの解放に失敗しても、完了した実行が破棄されることはありません。判定が得られる前に失敗した場合は、失敗したフックのうち最後に登録されたものの例外が伝播し、残りを `submit` がログに出力します。
 
 `BatchContext` には実行の `request`、`work_dir`、`job_id`（再起動をまたいで安定した per-job 識別子）、および変更可能な `launch_env` 辞書が含まれます。
 
-worker によるディスパッチ（BE-0448）以降、`work_dir` はジョブのバンドルディレクトリであり、リクエストのパスはこのディレクトリからの相対パスです。`request.config` と `request.scenario` は常に相対パスです。`request.app_path` はターゲットの `app.path` を書かれたとおりに運びます。バイナリを読むフックは、相対パスを自分の作業ディレクトリではなく `ctx.work_dir` を基準に解決します。ソースのチェックアウトからパッケージを組み立てる worker では、バンドルはパッケージ内の `bundle/` の下に置かれます。そのため、Device Farm のホスト上で設定ファイルからの相対パスを指す `pre_test_commands` のコマンドには、`bundle/` の接頭辞が必要です。
+worker によるディスパッチ（BE-0448）以降、`work_dir` はジョブのバンドルディレクトリであり、リクエストのパスはこのディレクトリからの相対パスです。`request.config` と `request.scenario` は常に相対パスです。`request.app_path` はターゲットの `subject.path` を書かれたとおりに運びます。バイナリを読むフックは、相対パスを自分の作業ディレクトリではなく `ctx.work_dir` を基準に解決します。ソースのチェックアウトからパッケージを組み立てる worker では、バンドルはパッケージ内の `bundle/` の下に置かれます。そのため、Device Farm のホスト上で設定ファイルからの相対パスを指す `pre_test_commands` のコマンドには、`bundle/` の接頭辞が必要です。
 
 ### フックの配線
 
@@ -234,7 +234,7 @@ def make_proxy_hook() -> ProxyHook:
 
 ### キー衝突ガード
 
-デバイス上のマージ順序は `{**target_env, **preconditions.app.launch.env}` です——シナリオの `preconditions.app.launch.env` が target レベルの値より優先されます。フックが注入したキーとシナリオの preconditions が衝突する場合、注入された値が暗黙的に上書きされます。これを早期に表面化させるため、`submit` はシナリオファイルを確認し、衝突があれば**投入時点でシナリオ名・キー・ファイル名を明示してエラー**を発生させます。アップロードは開始されません。
+デバイス上のマージ順序は `{**target_env, **preconditions.subject.launch.env}` です——シナリオの `preconditions.subject.launch.env` が target レベルの値より優先されます。フックが注入したキーとシナリオの preconditions が衝突する場合、注入された値が暗黙的に上書きされます。これを早期に表面化させるため、`submit` はシナリオファイルを確認し、衝突があれば**投入時点でシナリオ名・キー・ファイル名を明示してエラー**を発生させます。アップロードは開始されません。
 
 ### checkpoint 再開時の動作
 

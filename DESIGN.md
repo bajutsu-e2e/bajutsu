@@ -212,8 +212,8 @@ UI 操作は **最も安定する選択手段から順に試し、成立した�
 
 ```yaml
 - name: ログタブでフィルタを開いて適用する
-  preconditions:                             # ターゲットと同じ app / run のグループ（BE-0452）と device（BE-0469）
-    app:
+  preconditions:                             # ターゲットと同じ subject / run のグループ（BE-0452、BE-0470）と device（BE-0469）
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }         # 状態注入（launch args / env）
         deeplink: "showcaseswiftui://log"    # 起動後に開く（任意）
@@ -230,7 +230,7 @@ UI 操作は **最も安定する選択手段から順に試し、成立した�
     - exists: { id: log.sheet.title, negate: true }
 ```
 
-`capturePolicy`（繰り返し発火する証跡ルール）と `redact` はシナリオ単位またはファイル単位で指定します（§9 A）。識別子、既定の起動環境変数（config の `app.launch.env`）、mock は **アプリ固有** で、§7（規約）と §8（`targets.<name>` config）が供給します。シナリオはアプリの名前空間で識別子を書き、ツール本体は不変です（§7.1）。
+`capturePolicy`（繰り返し発火する証跡ルール）と `redact` はシナリオ単位またはファイル単位で指定します（§9 A）。識別子、既定の起動環境変数（config の `subject.launch.env`）、mock は **アプリ固有** で、§7（規約）と §8（`targets.<name>` config）が供給します。シナリオはアプリの名前空間で識別子を書き、ツール本体は不変です（§7.1）。
 
 ### 6.2 ステップ文法（アクション）
 
@@ -247,7 +247,7 @@ UI 操作は **最も安定する選択手段から順に試し、成立した�
 | `sleep` | `sleep: { seconds, reason }` | どの条件でも観測できない遅延のための固定の待機。上限 30 秒、理由は必須で、決定性の監査が列挙します |
 | `assert` | `assert: [ <Assertion>... ]` | ステップ途中の中間検証（DSL は §6.4 と同一） |
 
-> 起動環境、`deeplink`、`erase` は基本 `preconditions`（`app.launch`、`app.reinstall: erase`）で宣言しますが、シナリオ途中で再起動や再注入をしたい場合はステップとしても書けます（`relaunch: { env: {...} }`）。
+> 起動環境、`deeplink`、`erase` は基本 `preconditions`（`subject.launch`、`subject.reinstall: erase`）で宣言しますが、シナリオ途中で再起動や再注入をしたい場合はステップとしても書けます（`relaunch: { env: {...} }`）。
 
 ### 6.3 待機（条件待機のみ）
 
@@ -311,7 +311,7 @@ UI 操作は **最も安定する選択手段から順に試し、成立した�
 汎用化の単位は「アプリ」です。新しいアプリを対象にするとき変えるのは **ツールではなくアプリ側の準備 + config 1 エントリ** です。
 
 1. **§7 規約を適用**：主要要素に `accessibilityIdentifier`（アプリ固有の名前空間で。例 `settings.*`）、状態を label / traits / value に露出、launch hook、anim off、ネットワークの mock 化
-2. **config に `targets.<name>` を追加**（§8）：`platform` / `app.id` / 既定の `app.launch.env` / `services.mockServer` / `evidence.redact`
+2. **config に `targets.<name>` を追加**（§8）：`platform` / `subject.id` / 既定の `subject.launch.env` / `services.mockServer` / `evidence.redact`
 3. **再利用セットアップを用意**（任意）：複数シナリオ共通の前段（ログインなど）をコンポーネントへ切り出し、シナリオの `setup` か `hooks.setup` から `use:` で呼ぶ（§6.1）
 4. **`bajutsu doctor --target <name>` で検証**：実行可能ゲートと §7 充足度スコアを出す（測り方は §7.2）
 5. **シナリオを `scenarios/<name>/` に配置**：識別子はそのアプリの名前空間で書く
@@ -328,7 +328,7 @@ UI 操作は **最も安定する選択手段から順に試し、成立した�
 |---|---|
 | backend | iOS は `xcodebuild`（Xcode）の存在。XCUITest backend が駆動 |
 | simctl / device | `xcrun simctl` 可用、`udid` が boot 可能 |
-| app | `app.id` がインストール済み・起動可能 |
+| app | `subject.id` がインストール済み・起動可能 |
 | config | `targets.<name>` が pydantic スキーマ妥当 |
 
 **(2) §7 充足度スコア（`query()` 解析、決定的）**：操作可能要素（traits ∈ button / link / textField / searchField 等）を母数に測ります。
@@ -348,7 +348,7 @@ UI 操作は **最も安定する選択手段から順に試し、成立した�
 
 **出力**：人間向けサマリ + `--json`（CI ゲート用）です。不足要素は **実体を列挙**して「どこに id を足すか」を直に示します（§10「切り詰めた箇所を明示」と整合します）。
 
-> **測定範囲の正直さ**：`doctor` が採点するのは、起動直後に表示される画面 1 枚（web ターゲットでは `app.url` を開いた直後のページ）だけです。宣言済み deeplink で直接開ける画面や、`record` 実行が残した他画面の `elements` ダンプ（§9）を読み込んで測定範囲を広げる仕組みは、現時点では実装していません。
+> **測定範囲の正直さ**：`doctor` が採点するのは、起動直後に表示される画面 1 枚（web ターゲットでは `subject.url` を開いた直後のページ）だけです。宣言済み deeplink で直接開ける画面や、`record` 実行が残した他画面の `elements` ダンプ（§9）を読み込んで測定範囲を広げる仕組みは、現時点では実装していません。
 
 ### 7.3 識別子の命名規約と名前空間（`idNamespaces`）
 
@@ -373,7 +373,7 @@ result.row.<recordId>       # 動的行: 末尾は「データ由来の安定キ
 
 - **共有フローは予約名前空間に固定**：ログイン等の **再利用シナリオ / 共有コンポーネント**（§6.1 `use:`）が複数アプリで動くには、その範囲の id が全アプリで **同一** である必要があります。`auth.*`（認証）や `nav.*`（共通ナビ）等を **予約名前空間**（§8 トップレベルの `reservedNamespaces`）として全アプリ共通の意味で使います
 - **アプリ固有空間は自由**：それ以外（`settings.*` 等）はアプリローカルです。意味が衝突してもかまいません
-- **doctor が契約を検査**：各アプリの `app.idNamespaces` が予約名前空間を含むこと（共有フローを使う場合）と、規約外接頭辞が無いことを確認します
+- **doctor が契約を検査**：各アプリの `subject.idNamespaces` が予約名前空間を含むこと（共有フローを使う場合）と、規約外接頭辞が無いことを確認します
 
 > **要点**：名前空間は「衝突回避」より「**区画化と再利用**」の道具です。アプリ内では区画化（grep / ルール / 相関）、アプリ間では共有フローの **id 契約** として働きます。
 
@@ -406,7 +406,7 @@ bajutsu codegen <scenario.yaml> --target <name> --emit xcuitest -o UITests/   # 
 target が受け付けるキーは次の 10 個で、未知のキーは読み込み時に失敗します。
 
 - `platform`（必須。`ios` / `android` / `web` / `fake`）
-- `app` / `runsOn` / `driver`（形がプラットフォームで変わるグループ）
+- `subject` / `runsOn` / `driver`（形がプラットフォームで変わるグループ）
 - `services` / `run` / `hooks` / `evidence` / `paths` / `ai`
 
 `defaults` は、プラットフォームに依らないグループ（`services` / `run` / `hooks` / `evidence` / `paths` / `ai`）を直接持ちます。形がプラットフォームで変わるグループは `defaults.platforms.<platform>` の下に置きます。辞書はキーごとにマージし（target が優先）、target の `null` は継承した値を消します。リストは置き換えますが、`evidence.secrets` と `evidence.redact` だけは和集合を取ります。グループ分けの理由は [BE-0452](roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md) にあります。結果の通知先（`notify`）はトップレベルのリストだけが決め、target ごとには持ちません（[BE-0473](roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts-ja.md)）。名前が `x-` で始まるトップレベルのキーは読み込み時に無視するので、target 同士で共有する YAML アンカーの置き場所に使えます。
@@ -427,7 +427,7 @@ defaults:                       # 全アプリ共通の既定
 targets:
   showcase-swiftui:             # ← --target showcase-swiftui で選択
     platform: ios               # actuator を決める（§5 / §9）。ios は XCUITest、android は adb、web は Playwright
-    app:
+    subject:
       id: com.bajutsu.showcase.ios.swiftui
       launch: { env: { SHOWCASE_UITEST: "1" } }        # このアプリ既定のフック（§7）
       idNamespaces: [stable, horse, search, log]       # 識別子の名前空間（§7 命名規約）
@@ -554,7 +554,7 @@ runs/<runId>/
 
 ### 環境ごとの設定と、デバイスを使う前のチェック（BE-0467）
 
-`app.reinstall: erase` や `runsOn.ios.seedPhotos` のような設定は、最初のステップより前にデバイスへ届きます。どのルートでも適用できるわけではありません（`simctl erase` は Simulator にしか届きません）。ルートは `ios-simulator`、`ios-device`、`ios-live`、`android`、`web` の 5 つです。ルートごとの対応表が、各設定を `supported`、`satisfied`、`unsupported` のいずれかに分けます（`common/capability/settings_support.py`）。`unsupported` の設定は、ターゲットが `run.ignoredSettings` に理由付きで無視を宣言しない限り、デバイスを使う前にシナリオを失敗させます。ステップは決して skip しません。
+`subject.reinstall: erase` や `runsOn.ios.seedPhotos` のような設定は、最初のステップより前にデバイスへ届きます。どのルートでも適用できるわけではありません（`simctl erase` は Simulator にしか届きません）。ルートは `ios-simulator`、`ios-device`、`ios-live`、`android`、`web` の 5 つです。ルートごとの対応表が、各設定を `supported`、`satisfied`、`unsupported` のいずれかに分けます（`common/capability/settings_support.py`）。`unsupported` の設定は、ターゲットが `run.ignoredSettings` に理由付きで無視を宣言しない限り、デバイスを使う前にシナリオを失敗させます。ステップは決して skip しません。
 
 同じ対応表と BE-0082 の要件表を、次の 3 か所が読みます。3 か所の判定が食い違うことはありません。
 

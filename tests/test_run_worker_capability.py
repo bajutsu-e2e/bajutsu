@@ -32,10 +32,10 @@ _CONFIG = (
     "targets:\n"
     "  app:\n"
     "    platform: ios\n"
-    "    app: {id: com.example.app}\n"
+    "    subject: {id: com.example.app}\n"
     "  site:\n"
     "    platform: web\n"
-    "    app: {url: 'http://localhost:1/'}\n"
+    "    subject: {url: 'http://localhost:1/'}\n"
 )
 
 
@@ -288,8 +288,8 @@ def test_a_primary_only_failed_scenarios_use_is_not_acquired(
     # would reach execution with erase off.
     (tmp_path / "bajutsu.config.yaml").write_text(
         _CONFIG.replace(
-            "    app: {id: com.example.app}\n",
-            "    app: {id: com.example.app, reinstall: erase}\n",
+            "    subject: {id: com.example.app}\n",
+            "    subject: {id: com.example.app, reinstall: erase}\n",
         ),
         encoding="utf-8",
     )
@@ -311,10 +311,10 @@ def test_the_browser_matrix_still_refuses_a_failed_multi_target_scenario(tmp_pat
             "targets:\n"
             "  app:\n"
             "    platform: fake\n"
-            "    app: {id: com.example.app}\n"
+            "    subject: {id: com.example.app}\n"
             "  site:\n"
             "    platform: web\n"
-            "    app: {url: 'http://localhost:1/'}\n"
+            "    subject: {url: 'http://localhost:1/'}\n"
         ),
         encoding="utf-8",
     )

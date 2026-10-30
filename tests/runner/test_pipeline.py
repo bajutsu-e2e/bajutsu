@@ -372,7 +372,7 @@ def test_run_all_honors_the_crash_retries_environment_override(
 
 def test_run_all_forces_erase_on_a_crash_triggered_retry() -> None:
     # A crash-triggered retry now forces the same `erase` precondition a scenario already gets by
-    # declaring `app.reinstall: erase`, instead of a bare in-place respawn onto the very device that just
+    # declaring `subject.reinstall: erase`, instead of a bare in-place respawn onto the very device that just
     # crashed it — the first (crashing) attempt sees the scenario's own precondition unmodified, the
     # second (retried) attempt sees `erase` forced on.
     state = {"n": 0}
@@ -380,7 +380,7 @@ def test_run_all_forces_erase_on_a_crash_triggered_retry() -> None:
 
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         state["n"] += 1
-        erase_seen.append(scenario.preconditions.app.reinstall)
+        erase_seen.append(scenario.preconditions.subject.reinstall)
         if state["n"] == 1:
             raise base.BackendCrashError("runner crashed during the readiness gate (test)")
         return Lease(
@@ -410,7 +410,7 @@ def test_run_all_forces_erase_on_a_crash_triggered_retry_against_an_xcuitest_sim
 
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         state["n"] += 1
-        erase_seen.append(scenario.preconditions.app.reinstall)
+        erase_seen.append(scenario.preconditions.subject.reinstall)
         if state["n"] == 1:
             raise base.BackendCrashError("runner crashed during the readiness gate (test)")
         return Lease(
@@ -440,14 +440,14 @@ def test_run_all_degrades_to_a_bare_respawn_when_the_forced_erase_lease_itself_f
 
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         state["n"] += 1
-        erase_seen.append(scenario.preconditions.app.reinstall)
+        erase_seen.append(scenario.preconditions.subject.reinstall)
         if state["n"] == 1:
             raise base.BackendCrashError("runner crashed during the readiness gate (test)")
         if state["n"] == 2:
-            assert scenario.preconditions.app.reinstall == "erase"  # the forced-erase attempt
+            assert scenario.preconditions.subject.reinstall == "erase"  # the forced-erase attempt
             raise simctl.DeviceError("simctl erase failed (test)")
         assert (
-            scenario.preconditions.app.reinstall is None
+            scenario.preconditions.subject.reinstall is None
         )  # degraded to a bare respawn, erase not forced
         return Lease(
             driver=_fake_driver(),
@@ -493,7 +493,7 @@ def _escalating_lease(
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         state["n"] += 1
         n = state["n"]
-        erase_seen.append(scenario.preconditions.app.reinstall)
+        erase_seen.append(scenario.preconditions.subject.reinstall)
         return Lease(
             driver=_crashing_driver() if n <= crashes else _fake_driver(),
             sink=NullSink(),
@@ -553,7 +553,7 @@ def test_a_scenario_keeping_its_app_data_is_never_moved_to_a_blank_device() -> N
         Scenario.model_validate(
             {
                 "name": "a",
-                "preconditions": {"app": {"reinstall": "overwrite"}},
+                "preconditions": {"subject": {"reinstall": "overwrite"}},
                 "steps": [{"tap": {"id": "ok"}}],
             }
         )
@@ -600,7 +600,7 @@ def test_a_lease_time_crash_keeps_the_erase_rung() -> None:
 
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         state["n"] += 1
-        erase_seen.append(scenario.preconditions.app.reinstall)
+        erase_seen.append(scenario.preconditions.subject.reinstall)
         if state["n"] < 3:
             raise base.BackendCrashError("runner crashed during the readiness gate (test)")
         return _lease(eff, scenario)
@@ -640,7 +640,7 @@ def test_run_all_still_propagates_a_device_error_from_a_bare_lease() -> None:
     # above once *it* also fails) is unrelated to this item's forced-erase retry, so it keeps its
     # pre-existing behavior: it is not swallowed, it propagates out of run_all.
     def lease(eff: Effective, scenario: Scenario) -> Lease:
-        raise simctl.DeviceError("app.path not found (test)")
+        raise simctl.DeviceError("subject.path not found (test)")
 
     scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
     with pytest.raises(simctl.DeviceError):
@@ -684,7 +684,7 @@ def test_a_timed_out_forced_erase_prep_fails_the_scenario_instead_of_degrading()
 
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         state["n"] += 1
-        erase_seen.append(scenario.preconditions.app.reinstall)
+        erase_seen.append(scenario.preconditions.subject.reinstall)
         if state["n"] == 1:
             raise crash
         raise simctl.DeviceTimeout(
@@ -715,7 +715,7 @@ def test_an_ordinary_device_fault_still_degrades_after_the_timeout_split() -> No
 
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         state["n"] += 1
-        erase_seen.append(scenario.preconditions.app.reinstall)
+        erase_seen.append(scenario.preconditions.subject.reinstall)
         if state["n"] == 1:
             raise base.BackendCrashError("runner crashed during the readiness gate (test)")
         if state["n"] == 2:
@@ -741,7 +741,7 @@ def test_a_timed_out_replacement_device_lease_fails_the_scenario_too() -> None:
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         state["n"] += 1
         n = state["n"]
-        erase_seen.append(scenario.preconditions.app.reinstall)
+        erase_seen.append(scenario.preconditions.subject.reinstall)
         if n == 3:  # the attempt after the escalation was requested
             raise simctl.DeviceTimeout("device operation timed out after 120s: xcrun simctl clone")
         if n > 3:  # scenario "b" must never be leased at all
@@ -812,7 +812,7 @@ def test_run_all_skips_forced_erase_when_scenario_declares_reinstall_overwrite()
 
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         state["n"] += 1
-        erase_seen.append(scenario.preconditions.app.reinstall)
+        erase_seen.append(scenario.preconditions.subject.reinstall)
         if state["n"] == 1:
             raise base.BackendCrashError("runner crashed during the readiness gate (test)")
         return Lease(
@@ -828,7 +828,7 @@ def test_run_all_skips_forced_erase_when_scenario_declares_reinstall_overwrite()
         Scenario.model_validate(
             {
                 "name": "a",
-                "preconditions": {"app": {"reinstall": "overwrite"}},
+                "preconditions": {"subject": {"reinstall": "overwrite"}},
                 "steps": [{"tap": {"id": "ok"}}],
             }
         )
@@ -846,7 +846,7 @@ def test_run_all_forces_erase_even_when_the_scenario_reinstalls_clean() -> None:
 
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         state["n"] += 1
-        erase_seen.append(scenario.preconditions.app.reinstall)
+        erase_seen.append(scenario.preconditions.subject.reinstall)
         if state["n"] == 1:
             raise base.BackendCrashError("runner crashed during the readiness gate (test)")
         return Lease(
@@ -862,7 +862,7 @@ def test_run_all_forces_erase_even_when_the_scenario_reinstalls_clean() -> None:
         Scenario.model_validate(
             {
                 "name": "a",
-                "preconditions": {"app": {"reinstall": "clean"}},
+                "preconditions": {"subject": {"reinstall": "clean"}},
                 "steps": [{"tap": {"id": "ok"}}],
             }
         )
@@ -886,7 +886,7 @@ def test_run_all_honors_an_explicit_no_erase_override_on_a_crash_triggered_retry
 
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         state["n"] += 1
-        erase_seen.append(scenario.preconditions.app.reinstall)
+        erase_seen.append(scenario.preconditions.subject.reinstall)
         if state["n"] == 1:
             raise base.BackendCrashError("runner crashed during the readiness gate (test)")
         return Lease(
@@ -902,7 +902,7 @@ def test_run_all_honors_an_explicit_no_erase_override_on_a_crash_triggered_retry
         Scenario.model_validate(
             {
                 "name": "a",
-                "preconditions": {"app": {"reinstall": "clean"}},
+                "preconditions": {"subject": {"reinstall": "clean"}},
                 "steps": [{"tap": {"id": "ok"}}],
             }
         )
@@ -922,7 +922,7 @@ def test_run_all_skips_forced_erase_on_a_real_device() -> None:
 
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         state["n"] += 1
-        erase_seen.append(scenario.preconditions.app.reinstall)
+        erase_seen.append(scenario.preconditions.subject.reinstall)
         if state["n"] == 1:
             raise base.BackendCrashError("runner crashed during the readiness gate (test)")
         return Lease(
@@ -949,7 +949,7 @@ def test_run_all_skips_forced_erase_when_a_routed_target_is_a_real_device() -> N
 
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         state["n"] += 1
-        erase_seen.append(scenario.preconditions.app.reinstall)
+        erase_seen.append(scenario.preconditions.subject.reinstall)
         if state["n"] == 1:
             raise base.BackendCrashError("runner crashed during the readiness gate (test)")
         return _lease(eff, scenario)
@@ -980,7 +980,7 @@ def test_run_all_skips_forced_erase_on_the_live_webdriver_route() -> None:
 
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         state["n"] += 1
-        erase_seen.append(scenario.preconditions.app.reinstall)
+        erase_seen.append(scenario.preconditions.subject.reinstall)
         if state["n"] == 1:
             raise base.BackendCrashError("runner crashed during the readiness gate (test)")
         return Lease(
@@ -1644,7 +1644,7 @@ def test_a_setting_the_route_cannot_apply_fails_before_any_lease() -> None:
     # BE-0467: a real device cannot erase, so the settings check fails the scenario up front.
     scenarios = [
         Scenario.model_validate(
-            {"name": "e", "preconditions": {"app": {"reinstall": "erase"}}, "steps": []}
+            {"name": "e", "preconditions": {"subject": {"reinstall": "erase"}}, "steps": []}
         )
     ]
 
@@ -1654,14 +1654,14 @@ def test_a_setting_the_route_cannot_apply_fails_before_any_lease() -> None:
     device = _ios_eff(xcuitest=XcuitestConfig(testRunner="Runner.xctestrun", deviceType="device"))
     results = run_all(device, scenarios, lease_must_not_run, actuator="xcuitest")
     assert not results[0].ok
-    assert "app.reinstall: erase" in (results[0].failure or "")
+    assert "subject.reinstall: erase" in (results[0].failure or "")
     assert "ignoredSettings" in (results[0].failure or "")
 
 
 def test_a_declared_setting_passes_the_preflight() -> None:
     scenarios = [
         Scenario.model_validate(
-            {"name": "e", "preconditions": {"app": {"reinstall": "erase"}}, "steps": []}
+            {"name": "e", "preconditions": {"subject": {"reinstall": "erase"}}, "steps": []}
         )
     ]
     leased: list[str] = []
@@ -1695,7 +1695,7 @@ def _erasing_scenario() -> Scenario:
     return Scenario.model_validate(
         {
             "name": "e",
-            "preconditions": {"app": {"reinstall": "erase"}},
+            "preconditions": {"subject": {"reinstall": "erase"}},
             "steps": [{"tap": {"id": "ok"}}],
         }
     )
@@ -1749,7 +1749,7 @@ def test_a_scenario_refused_before_any_lease_records_no_ignored_setting() -> Non
         Scenario.model_validate(
             {
                 "name": "e",
-                "preconditions": {"app": {"reinstall": "erase"}},
+                "preconditions": {"subject": {"reinstall": "erase"}},
                 "steps": [{"selectOption": {"sel": {"id": "m"}, "option": "x"}}],
             }
         )
@@ -1794,10 +1794,10 @@ def test_a_routed_target_that_cannot_apply_a_setting_fails_before_any_lease() ->
 
 
 def test_a_scenario_deeplink_is_not_in_effect_on_a_web_target() -> None:
-    # The web `app` has no `launch.deeplink`, so the scenario's deeplink is meant for the iOS target.
+    # The web `subject` has no `launch.deeplink`, so the scenario's deeplink is meant for the iOS target.
     results = run_all(
         _eff(),
-        [_two_targets(preconditions={"app": {"launch": {"deeplink": "app://x"}}})],
+        [_two_targets(preconditions={"subject": {"launch": {"deeplink": "app://x"}}})],
         _lease,
         targets=_routed_pair(),
     )
@@ -1805,8 +1805,8 @@ def test_a_scenario_deeplink_is_not_in_effect_on_a_web_target() -> None:
 
 
 def test_a_scenario_launch_env_fails_a_web_target_unless_it_is_ignored() -> None:
-    # A web `app` has `launch.env`, yet the browser never reads it, so the run must not pass silently.
-    scenario = _two_targets(preconditions={"app": {"launch": {"env": {"A": "1"}}}})
+    # A web `subject` has `launch.env`, yet the browser never reads it, so the run must not pass silently.
+    scenario = _two_targets(preconditions={"subject": {"launch": {"env": {"A": "1"}}}})
     failed = run_all(_eff(), [scenario], _lease, targets=_routed_pair())[0]
     assert "(target 'site')" in (failed.failure or "")
     site = _web_eff()

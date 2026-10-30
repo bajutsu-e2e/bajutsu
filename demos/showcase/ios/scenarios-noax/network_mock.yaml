@@ -5,7 +5,7 @@
 # the status mirror reads "Status: done". Run over XCUITest (`--backend ios`).
 - name: log submit answered by a mock, toast appears and clears
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   mocks:

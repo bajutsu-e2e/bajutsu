@@ -782,7 +782,7 @@ def _hides_touch_markers(
     the marker key itself on a run that armed no channel for it, say — is left alone rather than
     failed for a capture it never asked bajutsu to correct.
 
-    `target_launch_env` is the target's own `app.launch.env`, which the launch merges *underneath* the
+    `target_launch_env` is the target's own `subject.launch.env`, which the launch merges *underneath* the
     scenario's (`environments/xcuitest.py`'s `_launch_params`); this predicate merges the same two
     layers, in the same order, before reading either key — so a target pinning
     `BAJUTSU_TOUCH_MARKERS` for every scenario is seen here exactly as the app that actually launched
@@ -790,7 +790,7 @@ def _hides_touch_markers(
     that passes `None` (a test constructing a scenario directly) sees the unchanged
     scenario-launch-env-only behavior.
     """
-    env = {**(target_launch_env or {}), **scenario.preconditions.app.launch.env}
+    env = {**(target_launch_env or {}), **scenario.preconditions.subject.launch.env}
     return env.get("BAJUTSU_TOUCH_MARKERS") == "1" and env.get("BAJUTSU_CONTROL_CHANNEL") == "1"
 
 
@@ -888,7 +888,7 @@ def run_scenario(  # noqa: C901, PLR0912, PLR0915
     step's own `assert` — which a scenario or target pinning the pair reaches whether or not
     `run --touch-markers` was passed — so a `None` channel there fails the scenario loudly rather
     than skipping the suspension.
-    `target_launch_env` is the target's own `app.launch.env` (`Effective.launch_env`); a caller that omits
+    `target_launch_env` is the target's own `subject.launch.env` (`Effective.launch_env`); a caller that omits
     it (a test constructing a scenario directly) sees only the scenario's own launch env, as before.
 
     `cancelled` (BE-0370) makes a cancelled run land as an ordinary failed scenario: it is read at

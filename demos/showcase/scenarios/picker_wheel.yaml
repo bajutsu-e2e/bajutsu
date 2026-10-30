@@ -37,7 +37,7 @@
 - name: setPickerValue moves a single-component wheel to an exact value
   tags: [swiftui]
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1", SHOWCASE_PICKERS: "1" }
   steps:
@@ -55,7 +55,7 @@
 - name: setPickerValue addresses each component of a multi-component wheel
   tags: [swiftui]
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1", SHOWCASE_PICKERS: "1" }
   steps:

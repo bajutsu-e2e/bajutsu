@@ -30,7 +30,7 @@ _ORGS_YAML = (
     "targets:\n"
     "  demo:\n"
     "    platform: ios\n"
-    "    app: {id: com.example.demo}\n"
+    "    subject: {id: com.example.demo}\n"
     "orgs:\n"
     "  acme:\n"
     "    members: [alice]\n"
@@ -190,7 +190,7 @@ def test_oauth_callback_rejects_a_user_in_no_org(tmp_path: Path) -> None:
 def test_oauth_callback_rejects_when_no_orgs_block_is_configured(tmp_path: Path) -> None:
     # BE-0313: with no `orgs:` block, the org roster is empty, so every login is rejected — an OAuth
     # deployment must declare one.
-    body = "targets:\n  demo:\n    platform: ios\n    app: {id: com.example.demo}\n"
+    body = "targets:\n  demo:\n    platform: ios\n    subject: {id: com.example.demo}\n"
     state = _state(
         tmp_path, oauth=FakeOAuthClient(login="alice"), config=_config_file(tmp_path, body)
     )
@@ -301,7 +301,7 @@ _TEAM_ORGS_YAML = (
     "targets:\n"
     "  demo:\n"
     "    platform: ios\n"
-    "    app: {id: com.example.demo}\n"
+    "    subject: {id: com.example.demo}\n"
     "orgs:\n"
     "  qa:\n"
     "    githubTeams: [acme-gh/qa]\n"
@@ -404,7 +404,7 @@ def test_oauth_callback_admin_team_bypass_warning_names_a_missing_orgs_block(
     # This is the item's own headline scenario (Motivation): no `orgs:` block declared at all.
     # mallory has real GitHub orgs, so an operator must not be told "GitHub returned no orgs" --
     # that would send them chasing GitHub when the fix is declaring an `orgs:` block.
-    body = "targets:\n  demo:\n    platform: ios\n    app: {id: com.example.demo}\n"
+    body = "targets:\n  demo:\n    platform: ios\n    subject: {id: com.example.demo}\n"
     state = _state(
         tmp_path,
         oauth=FakeOAuthClient(login="mallory", orgs=["acme-gh"], teams=["ops-gh/root"]),
@@ -422,7 +422,7 @@ def test_oauth_callback_denial_names_a_missing_orgs_block(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
     # The complement of the test above, for the outright-rejected login rather than the bypass.
-    body = "targets:\n  demo:\n    platform: ios\n    app: {id: com.example.demo}\n"
+    body = "targets:\n  demo:\n    platform: ios\n    subject: {id: com.example.demo}\n"
     state = _state(
         tmp_path,
         oauth=FakeOAuthClient(login="mallory", orgs=["acme-gh"], teams=["some-other/team"]),
@@ -599,7 +599,7 @@ def test_oauth_callback_admin_team_bypasses_the_org_gate_with_no_orgs_block(
 ) -> None:
     # No `orgs:` block at all — every login would normally be rejected (BE-0313) — but the admin
     # Team bypass still admits an admin so they can fix the config.
-    body = "targets:\n  demo:\n    platform: ios\n    app: {id: com.example.demo}\n"
+    body = "targets:\n  demo:\n    platform: ios\n    subject: {id: com.example.demo}\n"
     state = _state(
         tmp_path,
         oauth=FakeOAuthClient(login="mallory", teams=["ops-gh/root"]),
@@ -630,7 +630,7 @@ def test_oauth_callback_admin_team_bypass_resolves_to_admin_role_with_no_orgs_bl
 ) -> None:
     # The other case the Progress checklist claims: no `orgs:` block at all, with a database wired
     # (so `role_for` actually runs) — the resolved role must still be admin.
-    body = "targets:\n  demo:\n    platform: ios\n    app: {id: com.example.demo}\n"
+    body = "targets:\n  demo:\n    platform: ios\n    subject: {id: com.example.demo}\n"
     state, _ = _db_state(
         serve_engine,
         tmp_path,

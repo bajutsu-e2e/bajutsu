@@ -11,7 +11,7 @@ reservedNamespaces: []
 targets:
   showcase-swiftui:
     platform: ios
-    app:
+    subject:
       id: com.bajutsu.showcase.ios.swiftui
       launch: { env: { SHOWCASE_UITEST: "1" } }
       idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
@@ -23,7 +23,7 @@ targets:
 
   showcase-uikit:
     platform: ios
-    app:
+    subject:
       id: com.bajutsu.showcase.ios.uikit
       launch: { env: { SHOWCASE_UITEST: "1" } }
       idNamespaces: [stable, horse, search, log, notice, perm, sys, net]

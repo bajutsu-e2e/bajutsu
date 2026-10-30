@@ -228,16 +228,16 @@ to the report.
 Builds the environment with `simctl` per the `preconditions`:
 
 ```
-erase (if pre.app.reinstall is erase: shutdown → erase) → boot → bootstatus -b (wait out the boot)
+erase (if pre.subject.reinstall is erase: shutdown → erase) → boot → bootstatus -b (wait out the boot)
   → terminate(bundle) (for a clean launch state)
-  → launch(bundle, [app.launch.args, *locale_args(locale)], {**app.launch.env, **preconditions.app.launch.env})
+  → launch(bundle, [subject.launch.args, *locale_args(locale)], {**subject.launch.env, **preconditions.subject.launch.env})
   → openurl(deeplink) (if any) → make_driver(actuator, udid)
   → await_ready (poll until query() returns 2+ elements, up to 10s)
 ```
 
-> `await_ready` polls for the strongest readiness signal available, in order: an explicit `app.startWhen`
+> `await_ready` polls for the strongest readiness signal available, in order: an explicit `subject.startWhen`
 > condition, then an app-reported screen-transition event ([BE-0310](../roadmaps/BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness.md), opt-in via `BajutsuKit`), then any
-> element whose id belongs to a declared `app.idNamespaces`, falling back to "the app has rendered a UI
+> element whose id belongs to a declared `subject.idNamespaces`, falling back to "the app has rendered a UI
 > (more than the root element)" — up to 10s ([configuration](configuration.md) documents each rung in
 > full). Whichever rung fires, the gate then waits for the screen to **stop moving**: it returns once
 > two consecutive queries report the same element identifiers, labels, and frames. Every rung answers
@@ -351,7 +351,7 @@ driver. An invocation whose targets declare no condition keeps the path above un
 > already under way, so that recovery's own bound (`BAJUTSU_XCUITEST_RECOVERY_TIMEOUT`, plus its
 > unbounded device re-prep) is what limits it instead.
 >
-> The retry also forces `preconditions.app.reinstall: erase`, the same device reset a scenario
+> The retry also forces `preconditions.subject.reinstall: erase`, the same device reset a scenario
 > already gets by declaring that value — a Simulator restart on XCUITest, an app-level clean state on
 > adb — instead of a bare in-place respawn onto the very device that just crashed it. Three cases skip
 > the forced erase. The first is a merged reinstall of `overwrite`, from the scenario or else its
@@ -401,7 +401,7 @@ driver. An invocation whose targets declare no condition keeps the path above un
 > drops the forced erase, since a device about to be created has nothing to erase. The rung is scoped
 > to an unpinned run (`--udid` names a device the operator meant, and a replacement would silently
 > move the run off it — and an unpinned run is a pool of one device served by one worker, so the
-> escalated retry necessarily leases back the device that asked for the swap) with an `app.path` (a
+> escalated retry necessarily leases back the device that asked for the swap) with a `subject.path` (a
 > blank device has nothing to install), and it honors both
 > opt-outs the erase rung honors — `reinstall: overwrite` and `bajutsu run --no-erase` — because a
 > replacement resets strictly more than an erase does. Every other route ignores the request and

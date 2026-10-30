@@ -828,16 +828,16 @@ class XcuitestEnvironment(_DeviceEnvironment):
         Raises:
             DeviceError: if no replacement can be created — chiefly a host that lost its iOS runtimes
                 along with the device, where there is nothing left to run on — or if the target
-                configures no `app.path`, since a blank replacement would have no app to install.
+                configures no `subject.path`, since a blank replacement would have no app to install.
         """
         old = self._udid
-        # A replacement is a blank device, so without an `app.path` to install onto it the retry has
+        # A replacement is a blank device, so without a `subject.path` to install onto it the retry has
         # nothing to launch: say so here rather than spending the create, the boot and a full cold
         # ceiling proving it.
         if require_ios(eff).app_path is None:
             raise simctl.DeviceError(
-                f"Simulator {old} {why} and this target configures no app.path, so a replacement "
-                "device would have no app to launch; set app.path so the recovery can install it, "
+                f"Simulator {old} {why} and this target configures no subject.path, so a replacement "
+                "device would have no app to launch; set subject.path so the recovery can install it, "
                 "or bring a fresh Simulator up with the app installed and re-run"
             )
         if self._device_type_id is None or self._device_runtime_id is None:
@@ -1140,7 +1140,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
                 app_path = Path(ios.app_path)
                 if not app_path.exists():
                     raise simctl.DeviceError(
-                        f"app.path not found: {ios.app_path} (build the app first)"
+                        f"subject.path not found: {ios.app_path} (build the app first)"
                     )
                 if clean_reinstall:
                     e.uninstall(ios.bundle_id)
@@ -1551,13 +1551,13 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # exactly as `start` does (BE-0467).
         pre, permissions = enforce_settings(self._actuator, eff, pre, permissions, self._udid)
         if install and pre.erase and not self._lead_erases:
-            # Each target merges its own `app.reinstall`, so two targets on one Simulator can
+            # Each target merges its own `subject.reinstall`, so two targets on one Simulator can
             # disagree; wiping it now would destroy the lead's app, and skipping it would ignore
             # what the member declared. The run preflight refuses this before any lease
             # (`_group_erase_problem`); this is the backstop for any other caller. A later member
             # (`install=False`) was installed by the scenario itself, so it asks for no wipe here.
             raise simctl.DeviceError(
-                f"target {eff.target!r} sets app.reinstall: erase, but it shares this Simulator "
+                f"target {eff.target!r} sets subject.reinstall: erase, but it shares this Simulator "
                 "with a target that does not erase it; give both targets the same reinstall"
             )
         e = simctl.Env(self._udid, run=self._run)
@@ -1606,7 +1606,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
         if not app_path:
             return
         if not Path(app_path).exists():
-            raise simctl.DeviceError(f"app.path not found: {app_path} (build the app first)")
+            raise simctl.DeviceError(f"subject.path not found: {app_path} (build the app first)")
         fresh = pre.reinstall != "overwrite"
         if fresh:
             e.uninstall(bundle_id)
@@ -1623,7 +1623,9 @@ class XcuitestEnvironment(_DeviceEnvironment):
         """
         ios = require_ios(eff)
         if not ios.app_path or not Path(ios.app_path).exists():
-            raise simctl.DeviceError(f"app.path not found: {ios.app_path} (build the app first)")
+            raise simctl.DeviceError(
+                f"subject.path not found: {ios.app_path} (build the app first)"
+            )
         e = simctl.Env(self._udid, run=self._run)
         try:
             e.terminate(ios.bundle_id)

@@ -1,6 +1,6 @@
-"""A scenario's preconditions: the target's `app` and `run` groups overridden, and the device state.
+"""A scenario's preconditions: the target's `subject` and `run` overridden, and the device state.
 
-`app` and `run` take the target's names (BE-0452), so a field has one spelling at both levels. Where
+`subject` and `run` take the target's names (BE-0452, BE-0470), so a field has one spelling at both levels. Where
 a run happens belongs to the target alone (BE-0469): a scenario names a target that declares the
 `runsOn` it needs, and sets only the device state it applies under `device`.
 """
@@ -30,11 +30,11 @@ SystemAlertHandlingField = Annotated[
 # Where each flat key of the pre-BE-0452 `preconditions` went; the loader reads none of them, and a
 # stored run's plan is rewritten by `load_stored_scenario_file` instead.
 FLAT_PRECONDITION_KEYS: dict[str, str] = {
-    "erase": "preconditions.app.reinstall: erase",
-    "reinstall": "preconditions.app.reinstall",
-    "launchEnv": "preconditions.app.launch.env",
-    "launchArgs": "preconditions.app.launch.args",
-    "deeplink": "preconditions.app.launch.deeplink",
+    "erase": "preconditions.subject.reinstall: erase",
+    "reinstall": "preconditions.subject.reinstall",
+    "launchEnv": "preconditions.subject.launch.env",
+    "launchArgs": "preconditions.subject.launch.args",
+    "deeplink": "preconditions.subject.launch.deeplink",
     "locale": "preconditions.device.ios.locale",
     "seedPhotos": "preconditions.device.ios.seedPhotos",
 }
@@ -75,7 +75,7 @@ def _runs_on_moves(runs_on: Any) -> list[str]:
 
 
 class PreconditionsLaunch(_Model):
-    """`preconditions.app.launch`: what the scenario adds to the target's launch.
+    """`preconditions.subject.launch`: what the scenario adds to the target's launch.
 
     `env` merges over the target's key by key, `args` append after the target's, and `deeplink`
     replaces the target's.
@@ -87,7 +87,7 @@ class PreconditionsLaunch(_Model):
 
 
 class PreconditionsApp(_Model):
-    """`preconditions.app`: the scenario's override of the target's `app` launch and install fields.
+    """`preconditions.subject`: the scenario's override of the target's launch and install fields.
 
     A scenario cannot set a field that identifies or builds the app (`id`, `path`, `build`,
     `startWhen`, `idNamespaces`); the target owns those, so they fail as unknown here.
@@ -95,7 +95,7 @@ class PreconditionsApp(_Model):
 
     # How much state the run wipes before launch, weakest first (BE-0473): `overwrite` installs over
     # the existing app and keeps its data container, `clean` uninstalls first, `erase` wipes the whole
-    # device (on Android, the same as `clean`). Unset inherits the target's `app.reinstall`, then the
+    # device (on Android, the same as `clean`). Unset inherits the target's `subject.reinstall`, then the
     # built-in `clean` (BE-0452).
     reinstall: Literal["overwrite", "clean", "erase"] | None = None
     launch: PreconditionsLaunch = Field(default_factory=PreconditionsLaunch)
@@ -129,7 +129,7 @@ class PreconditionsRun(_Model):
         # The loader reads no old key (BE-0473), so the error is the migration path.
         if isinstance(data, dict) and "erase" in data:
             raise ValueError(
-                "preconditions.run.erase moved to preconditions.app.reinstall (BE-0473): "
+                "preconditions.run.erase moved to preconditions.subject.reinstall (BE-0473): "
                 "write `erase` for true, and `clean` or `overwrite` for false"
             )
         return data
@@ -147,7 +147,7 @@ class PreconditionsIosDevice(_Model):
     locale: str | None = Field(default=None, min_length=1)
     # Images seeded into the photo library on the erase path, in order. Paths resolve against the
     # scenario file when it loads; None keeps the target's list, and the merged list needs an
-    # effective `app.reinstall: erase`.
+    # effective `subject.reinstall: erase`.
     seed_photos: list[str] | None = Field(default=None, alias="seedPhotos")
 
 
@@ -161,9 +161,9 @@ class PreconditionsDevice(_Model):
 
 
 class Preconditions(_Model):
-    """Per-test environment setup: the target's `app` and `run` overridden, and the device state."""
+    """Per-test environment setup: the target's `subject` and `run` overridden, and the device state."""
 
-    app: PreconditionsApp = Field(default_factory=PreconditionsApp)
+    subject: PreconditionsApp = Field(default_factory=PreconditionsApp)
     device: PreconditionsDevice = Field(default_factory=PreconditionsDevice)
     run: PreconditionsRun = Field(default_factory=PreconditionsRun)
 
@@ -176,6 +176,10 @@ class Preconditions(_Model):
             for old, new in FLAT_PRECONDITION_KEYS.items():
                 if old in data:
                     raise ValueError(f"scenario field 'preconditions.{old}' moved to '{new}'")
+            if "app" in data:
+                raise ValueError(
+                    "scenario field 'preconditions.app' moved to 'preconditions.subject' (BE-0470)"
+                )
             if "runsOn" in data:
                 raise ValueError("; ".join(_runs_on_moves(data["runsOn"])))
         return data

@@ -242,7 +242,7 @@ def test_merged_steps_show_rich_definition() -> None:
         "name": "s1",
         "preconditions": {
             "run": {"erase": False},
-            "app": {"launch": {"env": {"SAMPLE_SEED": "5"}}},
+            "subject": {"launch": {"env": {"SAMPLE_SEED": "5"}}},
         },
         "steps": [
             {"tap": {"id": "counter.increment"}},

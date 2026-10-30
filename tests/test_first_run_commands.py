@@ -42,7 +42,7 @@ def _identity_env(monkeypatch: pytest.MonkeyPatch) -> None:
 def _eff(platform: str, runs_on: str) -> Any:
     app = "{id: com.example.app}" if platform != "web" else "{url: 'http://localhost:1/'}"
     cfg = load_config(
-        f"targets:\n  t:\n    platform: {platform}\n    app: {app}\n    runsOn: {runs_on}\n"
+        f"targets:\n  t:\n    platform: {platform}\n    subject: {app}\n    runsOn: {runs_on}\n"
     )
     return resolve(cfg, "t")
 

@@ -20,7 +20,7 @@ from .services import Services
 # The ten keys a target accepts, in the order the documentation lists them.
 TARGET_KEYS: tuple[str, ...] = (
     "platform",
-    "app",
+    "subject",
     "runsOn",
     "driver",
     "services",
@@ -34,6 +34,7 @@ TARGET_KEYS: tuple[str, ...] = (
 # A key a target no longer accepts, and where its value goes now. The loader reads none of them, so
 # the error is the whole migration path an author gets.
 MOVED_TARGET_KEYS: dict[str, str] = {
+    "app": "`subject`, the thing under test; the fields inside keep their names (BE-0470)",
     "notify": "the top-level `notify` list, which alone says where results go; an endpoint's "
     "`targets:` narrows it to scenario names (BE-0473)",
 }
@@ -52,7 +53,7 @@ def run_model(platform: str) -> type[RunPolicy]:
 
 
 def _validated(where: str, validate: Callable[[], _Model]) -> _Model:
-    # A group's own failure (a missing `app.id`, say) reads as `app.id: Field required` rather than
+    # A group's own failure (a missing `subject.id`, say) reads as `subject.id: Field required` rather than
     # as a nested Pydantic report, so the target's location prefix stays the only one shown.
     try:
         return validate()
@@ -68,14 +69,14 @@ class TargetConfig(_Model):
     """One app's config under `targets.<name>`, after `defaults` has been merged into it.
 
     `platform` decides the actuator and selects the models that validate the four platform-shaped
-    groups (`app`, `runsOn`, `driver`, and the platform's fields of `run`) from the registry, so the
+    groups (`subject`, `runsOn`, `driver`, and the platform's fields of `run`) from the registry, so the
     core names no platform here. Every model forbids extra keys, so a key another platform takes
     fails as unknown, with the accepted fields listed.
     """
 
     platform: str
     # Validated by the registered model for `platform`; the concrete type is that model.
-    app: _Model
+    subject: _Model
     runs_on: _Model = Field(alias="runsOn")
     driver: _Model
     services: Services = Field(default_factory=Services)
@@ -128,7 +129,7 @@ class TargetConfig(_Model):
             )
         schema_for(platform)  # an unknown platform fails here, listing the registered ones
         out = dict(data)
-        for group in ("app", "runsOn", "driver"):
+        for group in ("subject", "runsOn", "driver"):
             out[group] = _validated(
                 group, partial(validate_group, platform, group, data.get(group), where=group)
             )

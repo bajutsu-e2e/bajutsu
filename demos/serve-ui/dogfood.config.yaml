@@ -1,11 +1,11 @@
 # Config for dogfooding the bajutsu `serve` Web UI itself. The "app under test" is the serve
-# SPA — identified by `app.url`, driven by the Playwright (web) backend. Like demos/web this needs no
+# SPA — identified by `subject.url`, driven by the Playwright (web) backend. Like demos/web this needs no
 # Mac and no Simulator. `services.server` below brings the inner serve up for the run, so
 # `bajutsu run --target webui` is self-contained — `make -C demos/serve-ui e2e` just runs.
 targets:
   webui:
     platform: web
-    app:
+    subject:
       url: "http://127.0.0.1:8799/"
       # The data-testid namespaces the WebUI exposes (the web equivalent of accessibility ids).
       idNamespaces: [nav, view, record, replay, crawl, author, stats, coverage, settings, config, upload]

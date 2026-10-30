@@ -31,7 +31,7 @@ def _target_model(platform: str) -> type[_Model]:
     """
     schema = PLATFORM_SCHEMAS[platform]
     groups: dict[str, type[_Model]] = {
-        "app": schema.app,
+        "subject": schema.subject,
         "runs_on": schema.runs_on,
         "driver": schema.driver,
         "run": run_model(platform),

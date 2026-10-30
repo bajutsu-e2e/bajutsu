@@ -162,7 +162,7 @@ Git-sourced config is operator-trusted and unaffected:
   scratch, a non-root user, CPU/memory/pid caps, and only its one port published to a **loopback**
   host port — and torn down after the run. Docker must be installed on the `serve` host.
 - **`reuse`** — never run the uploaded command; only probe an operator-provisioned server already
-  answering at `app.url`. If nothing answers, the run fails loud rather than starting anything.
+  answering at `subject.url`. If nothing answers, the run fails loud rather than starting anything.
 - **`deny`** — refuse the uploaded command outright; like `reuse`, an externally-answering server is
   accepted, otherwise the run fails loud.
 
@@ -174,10 +174,10 @@ decision (denied / reused / sandboxed, and the image when sandboxed) is recorded
 ## Remote-config command execution (BE-0121)
 
 A config bound at startup with `--config` (a local path or a `github:` spec you typed yourself) is
-**operator-trusted**: `serve` runs its `app.build` command normally. A Git config bound **later,
+**operator-trusted**: `serve` runs its `subject.build` command normally. A Git config bound **later,
 through the UI's "from Git" picker** (`POST /api/config` with a `git` spec), is a different trust
 level — a cross-origin request could have bound it — so it is treated like an uploaded bundle: its
-`app.build` command is **never run on the host by default**. Pass `--allow-remote-build` (or set
+`subject.build` command is **never run on the host by default**. Pass `--allow-remote-build` (or set
 `BAJUTSU_ALLOW_REMOTE_BUILD=1`) to opt in when you deliberately drive runs off a UI-bound Git config
 whose build you trust. Without the opt-in the run proceeds with the build suppressed, exactly as an
 uploaded bundle's build is suppressed — no silent host-side command execution from a config that
@@ -311,13 +311,13 @@ below, covers that case.
 |---|---|---|
 | **Config** | File browser + Git + upload; own filesystem, paths unconfined | Git + upload only; file browser disabled, 403 (BE-0108) |
 | **Scenario and run artifacts** | `scenarios/` and `runs/` on disk, with the queue and the run history in `.bajutsu/queue.db`; soft-delete leaves a `.deleted` marker in the run tree | Object store (S3/GCS) + Postgres; soft-delete sets `deleted_at` (BE-0239) |
-| **App binary** | `app.path` on disk; build only when missing — never for an uploaded bundle, which ships its binary prebuilt | An uploaded bundle's binary ships to the worker via presigned URLs, no build runs (BE-0413); a Git-sourced config still has the worker build from the checkout, remote build gated (BE-0121) |
+| **App binary** | `subject.path` on disk; build only when missing — never for an uploaded bundle, which ships its binary prebuilt | An uploaded bundle's binary ships to the worker via presigned URLs, no build runs (BE-0413); a Git-sourced config still has the worker build from the checkout, remote build gated (BE-0121) |
 | **Authoring against a live screen** | Capture mode and Edit's live picker both hold a driver open in the `serve` process | Neither is offered: both controls are disabled, each carrying the reason (#1721) |
 
 - **Config.** Both sides bind from up to three sources, but the file browser disappears the moment
   `hosted` is true (just above). Path confinement follows the *source*, not the tier: a local-file
   config resolves against its own directory and is unconfined (it may point at a sibling), while a Git-
-  or upload-sourced config is untrusted and its `paths.scenarios` / `paths.baselines` / `app.path` are confined to
+  or upload-sourced config is untrusted and its `paths.scenarios` / `paths.baselines` / `subject.path` are confined to
   the checkout or bundle root regardless of which tier bound it
   ([configuration.md → Config from a Git repository](configuration.md#config-from-a-git-repository-be-0063)).
   Hosted mode never offers the local-file source, so every hosted config ends up confined — a side
@@ -340,16 +340,16 @@ below, covers that case.
   server backend both keep Capture, since the devices are on the machine (BE-0449). The Record tab keeps
   working: `POST /api/record` dispatches a job the way a run does, so a recording made through the
   AI path still runs hosted.
-- **App binary.** An uploaded bundle already carries a prebuilt binary, so its `app.build` never runs
+- **App binary.** An uploaded bundle already carries a prebuilt binary, so its `subject.build` never runs
   regardless of tier (`_governed_build`, DESIGN §1 "Bajutsu does not build the app"). Hosted, the
   worker still needs the bytes: the job lease response's `bundle_urls` field carries one presigned
   GET URL per stored object the bundle is made of, and the worker fetches them over plain HTTP and
   reassembles its own workspace before the run starts (BE-0413) — no shared filesystem, and no
-  build. A Git-sourced (or, locally, file-browser-sourced) config instead resolves `app.path` from
-  the bound config and, if it's missing, runs the config's `app.build` command; hosted, a Mac worker
+  build. A Git-sourced (or, locally, file-browser-sourced) config instead resolves `subject.path` from
+  the bound config and, if it's missing, runs the config's `subject.build` command; hosted, a Mac worker
   builds from the same checkout materials the control plane resolved for the job, exchanging bytes
   over presigned URLs rather than a shared filesystem (BE-0160, above). The remote-build gate is
-  orthogonal to the tier: any config bound later through the UI's "from Git" picker has its `app.build`
+  orthogonal to the tier: any config bound later through the UI's "from Git" picker has its `subject.build`
   suppressed by default, whether the UI sits on a laptop's Tier A or Tier B's control plane — only a
   config supplied at startup is operator-trusted (see *Remote-config command execution*, above). The
   web (Playwright) backend has no binary concept on either side; the browser engine installs on demand
@@ -565,7 +565,7 @@ caller's org must already hold that artifact.
 
 | Field | What the job gets |
 |---|---|
-| `binaryArtifact` | a `binary` artifact, placed at the requested target's `app.path` alone |
+| `binaryArtifact` | a `binary` artifact, placed at the requested target's `subject.path` alone |
 | `scenariosArtifact` | a `scenarios` artifact (a zip), replacing that target's scenarios directory |
 
 A leg the request leaves out keeps resolving through the org's binding. Nothing writes the binding
@@ -592,7 +592,7 @@ The control plane checks the request before any job exists:
   override cannot overwrite the bound binary or baselines.
 - `serve` refuses a single YAML Ain't Markup Language (YAML) file. A digest carries no file name
   to match `scenario` against.
-- `binaryArtifact` on a target with no `app.path`, such as a web target, returns `400`.
+- `binaryArtifact` on a target with no `subject.path`, such as a web target, returns `400`.
 - A single-process `serve` refuses both fields. It runs the job in the operator's own project
   directory, which no override may overwrite.
 - `POST /api/run-set` refuses both fields. Its cloud-batch fan-out runs on a Device Farm worker,
@@ -1003,7 +1003,7 @@ composed `(config, scenarios, binary)` triple. It keeps that tree on its own dis
 worker's reach. The lease carries one signed read URL per stored object the bundle holds.
 
 The worker rebuilds the tree under `.bundles/<org>/<id>/` in its working directory. It runs the job from
-the tree's root. The config's relative `app.path`, `paths.scenarios`, and `paths.baselines` then resolve as
+the tree's root. The config's relative `subject.path`, `paths.scenarios`, and `paths.baselines` then resolve as
 written. The bundle's content digest keys that tree, so a second run off it downloads nothing. The
 digest also keeps two builds apart. Two bundles whose binaries share a path but differ in bytes
 never share a workspace.

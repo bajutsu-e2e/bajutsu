@@ -5,7 +5,7 @@
 # needs no accessibility. Run over XCUITest (`--backend ios`).
 - name: refresh issues an observed catalog request
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:

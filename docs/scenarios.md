@@ -69,7 +69,7 @@ misinterpret rather than merely reject; a purely additive optional field needs n
 | `primaryTarget` | str | none | The target a step or top-level `expect` entry runs against when it omits `target`; must be the first name in `targets`, the first member of the first group ([below](#targets--target-multi-target-scenarios-be-0428)) |
 | `installs` | list[str] | `[]` | The device-group members that install and launch at the start beside the primary; every other member of a group of two or more installs later through an `installApp` step ([device groups](#device-groups-several-apps-on-one-device-be-0447)) |
 | `data` / `dataFile` | list / str | none | Data-driven rows — inline `data`, or `dataFile` (a CSV path). Expands into one run per row, substituting `${row.col}`. Mutually exclusive ([reuse, data, and tags](#reuse-data-and-tags)) |
-| `preconditions` | object | `{}` | Per-test environment setup: the target's `app` and `run` groups merged over the target's, and the device state under `device` ([below](#preconditions-environment-setup)) |
+| `preconditions` | object | `{}` | Per-test environment setup: the target's `subject` and `run` groups merged over the target's, and the device state under `device` ([below](#preconditions-environment-setup)) |
 | `setup` | list | `[]` | Setup steps run as their **own phase** ahead of `steps`; a failure there aborts the scenario ([below](#setup--cleanup-setup-and-teardown-phases)) |
 | `steps` | list | required | The ordered actions (below) |
 | `expect` | list | `[]` | Final assertions after all steps pass ([selectors](selectors.md#assertion-evaluation)) |
@@ -84,7 +84,7 @@ misinterpret rather than merely reject; a purely additive optional field needs n
 ```yaml
 - name: filter narrows the catalog
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:
@@ -105,7 +105,7 @@ Implementation: `Preconditions` in `scenario/models/scenario/preconditions.py`. 
 `bajutsu/common/config/preconditions.py` merges it over each target. The runner's `launch_driver`
 reads the merged result to build the launch sequence ([run-loop](run-loop.md#runner-the-run-pipeline)).
 
-A scenario's `preconditions` holds three groups. `app` and `run` use the target's own group names.
+A scenario's `preconditions` holds three groups. `subject` and `run` use the target's own group names.
 A field thus has one spelling in the config and in the scenario
 ([BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)).
 `device` holds the device state the scenario applies, keyed by destination. Today `device.ios` is
@@ -114,13 +114,13 @@ the one block
 A scenario field overrides the same field of the target ([configuration](configuration.md)). Three
 fields combine with the target's instead:
 
-- `app.launch.env` merges key by key.
-- `app.launch.args` appends after the target's arguments.
+- `subject.launch.env` merges key by key.
+- `subject.launch.args` appends after the target's arguments.
 - The rules of `run.systemAlertHandling` concatenate, and the scenario's come first.
 
 ```yaml
 preconditions:
-  app:
+  subject:
     reinstall: erase
     launch: { env: { FEATURE_X: "1" }, args: ["-debug"], deeplink: "showcase://cart" }
   device:
@@ -130,10 +130,10 @@ preconditions:
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `app.reinstall` | `overwrite` \| `clean` \| `erase` | unset (the target's `app.reinstall`, then `clean`) | How much state is reset before each run, weakest first: `overwrite` installs over the existing app (keeps its data); `clean` uninstalls and then installs (fresh app and data); `erase` wipes the whole device (`simctl erase`: apps, data, settings), then installs. The install needs the target config's `app.path`. Android has no device-wide wipe, so `erase` there acts as `clean`. iOS and Android; a web target accepts `erase` alone, which its fresh browser context already satisfies ([BE-0473](../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts.md)) |
-| `app.launch.env` | dict | `{}` | Launch environment, merged onto the target's `app.launch.env` key by key. iOS injects it through `SIMCTL_CHILD_*`, Android as intent extras; on the web the Playwright code generator reads it |
-| `app.launch.args` | list[str] | `[]` | Launch arguments, appended after the target's `app.launch.args`. iOS only |
-| `app.launch.deeplink` | str | unset (the target's `app.launch.deeplink`) | A URL the app opens after launch (`simctl openurl` on iOS, an intent on Android) |
+| `subject.reinstall` | `overwrite` \| `clean` \| `erase` | unset (the target's `subject.reinstall`, then `clean`) | How much state is reset before each run, weakest first: `overwrite` installs over the existing app (keeps its data); `clean` uninstalls and then installs (fresh app and data); `erase` wipes the whole device (`simctl erase`: apps, data, settings), then installs. The install needs the target config's `subject.path`. Android has no device-wide wipe, so `erase` there acts as `clean`. iOS and Android; a web target accepts `erase` alone, which its fresh browser context already satisfies ([BE-0473](../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts.md)) |
+| `subject.launch.env` | dict | `{}` | Launch environment, merged onto the target's `subject.launch.env` key by key. iOS injects it through `SIMCTL_CHILD_*`, Android as intent extras; on the web the Playwright code generator reads it |
+| `subject.launch.args` | list[str] | `[]` | Launch arguments, appended after the target's `subject.launch.args`. iOS only |
+| `subject.launch.deeplink` | str | unset (the target's `subject.launch.deeplink`) | A URL the app opens after launch (`simctl openurl` on iOS, an intent on Android) |
 | `device.ios.locale` | str | unset (the target's `runsOn.ios.locale`) | Force the locale and language at launch (`-AppleLocale` / `-AppleLanguages`), and pin the Simulator's system language. A value that differs from the target's forces a cold respawn |
 | `device.ios.seedPhotos` | list[str] | unset (the target's `runsOn.ios.seedPhotos`) | Images seeded into the Simulator's photo library on the erase path, in order; paths resolve against the scenario file, and a scenario's list replaces the target's |
 | `run.systemAlertHandling` | bool / object | unset (on) | The reactive alert guard ([below](#systemalerthandling-the-system-alert-guard)) |
@@ -144,11 +144,11 @@ A scenario cannot set `id`, `path`, or `build`. Nor can it set `startWhen` or `i
 target owns these fields, which identify or build the app. `evidence.secrets` stays a target-level union,
 so a scenario cannot set it either.
 
-> **Each field is checked against the targets the scenario drives, before any device work.** An `app`
+> **Each field is checked against the targets the scenario drives, before any device work.** A `subject`
 > field or an iOS-only `run` field that no driven target's platform has fails the run and names the
-> field, rather than being ignored: `app.launch.args` in a web-only scenario, or `run.tipKitHandling`
-> against an Android target alone. Each target applies the `app` fields its own platform has, so an
-> iOS-and-web scenario can still set `app.launch.args` for its iOS side. A scenario file that
+> field, rather than being ignored: `subject.launch.args` in a web-only scenario, or `run.tipKitHandling`
+> against an Android target alone. Each target applies the `subject` fields its own platform has, so an
+> iOS-and-web scenario can still set `subject.launch.args` for its iOS side. A scenario file that
 > several single-platform targets pick up through `paths.scenarios` therefore names its `targets`, or
 > sits in a directory only the matching targets read. The `device` block is keyed by destination.
 > A `device.ios` block in a scenario that drives no iOS target has no effect and is not an error.
@@ -163,7 +163,7 @@ names a target that runs on an iPad:
 targets:
   app-ipad:
     platform: ios
-    app: { id: com.example.app }
+    subject: { id: com.example.app }
     runsOn:
       ios: { model: "iPad Pro 13-inch (M4)", os: ">=18" }
 ```
@@ -181,20 +181,20 @@ A list or a range on that target multiplies each of its scenarios into runs, as
 > `preconditions.device.ios.<field>`. A condition such as `preconditions.runsOn.ios.model` fails and
 > names the target path that declares it instead, `runsOn.ios.model`.
 
-> **`app.reinstall` resolution order** is **this scenario's own `app.reinstall` > the target's
-> `app.reinstall` > built-in `clean`**, and the CLI flag then moves the result: `--erase` makes it
+> **`subject.reinstall` resolution order** is **this scenario's own `subject.reinstall` > the target's
+> `subject.reinstall` > built-in `clean`**, and the CLI flag then moves the result: `--erase` makes it
 > `erase`, and `--no-erase` lowers an `erase` to `clean` while leaving `overwrite` and `clean` alone.
 > An unset scenario value (the common case) inherits whatever the target config sets.
 > `_filter_scenarios` (`run/cli.py`) applies the flag before the run starts. A target that states
 > `erase` therefore uninstalls under `--no-erase`; a scenario that must keep the app's data writes
 > `overwrite`. The removed `preconditions.run.erase` fails at load and names
-> `preconditions.app.reinstall: erase`. See
+> `preconditions.subject.reinstall: erase`. See
 > [BE-0473](../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts.md) and
 > [configuration](configuration.md#config-layering-defaults--targets).
 
 > **Seeding needs a wiped device.** After merging, a non-empty `seedPhotos` requires the effective
-> `app.reinstall` (the scenario's, else the target's, then moved by the flag) to be `erase`, because
-> the photo library is seeded only on the erase path. A target-level `app.reinstall: erase` satisfies
+> `subject.reinstall` (the scenario's, else the target's, then moved by the flag) to be `erase`, because
+> the photo library is seeded only on the erase path. A target-level `subject.reinstall: erase` satisfies
 > the rule. In a
 > scenario that drives several targets, the primary alone seeds photos. A non-primary target with
 > a merged `seedPhotos` fails the run. `record`, `crawl`, and `repl` refuse `--no-erase` on a
@@ -212,11 +212,11 @@ A list or a range on that target multiplies each of its scenarios into runs, as
 > keys in its stored `scenario.yaml` instead. They are the report re-render, `trace`, and `triage`.
 > A stored `preconditions.runsOn` keeps its iOS `locale` and `seedPhotos` under `device.ios` and
 > drops its conditions, which already chose the devices that run used. A stored
-> `preconditions.erase` or `preconditions.run.erase: true` becomes `app.reinstall: erase`, and a
+> `preconditions.erase` or `preconditions.run.erase: true` becomes `subject.reinstall: erase`, and a
 > stored `false` is dropped.
 
 Not every environment can apply every precondition. A real iPhone cannot run `simctl erase`, and a
-browser has no app launch to pass `app.launch.env` to. When the target's environment cannot apply a
+browser has no app launch to pass `subject.launch.env` to. When the target's environment cannot apply a
 precondition, the scenario fails before any device work. The target can declare the precondition
 ignored instead ([configuration](configuration.md#environment-specific-settings-runignoredsettings-be-0467)).
 `bajutsu lint --config <file> --target <name>` reports the same finding with no device
@@ -323,13 +323,13 @@ single run, between the scenario and the target config (see [layering](#layering
 
 A prompt the app never raises needs no answer. The supported way for an app to skip its own prompts
 under test is a launch argument or environment variable in the target's config, `targets.<name>`
-(`app.launch.args` and `app.launch.env`), which the app reads at start-up:
+(`subject.launch.args` and `subject.launch.env`), which the app reads at start-up:
 
 ```yaml
 targets:
   my-app:
     platform: ios
-    app:
+    subject:
       id: com.example.myapp
       launch: { env: { UITEST_SKIP_ONBOARDING_PROMPTS: "1" } }   # the app checks this and asks nothing
 ```
@@ -694,7 +694,7 @@ Each backend maps a service to its own native mechanism:
 - **iOS** drives `simctl privacy <udid> <grant|revoke> <tcc-service> <bundle>` — the same TCC
   (Transparency, Consent, and Control) database SpringBoard's permission prompts read.
 - **Android** drives `pm grant` / `pm revoke`, reusing the plumbing behind the config-level
-  `app.grantPermissions` list ([drivers](drivers.md)); a scenario's `permissions` layers on top of that
+  `subject.grantPermissions` list ([drivers](drivers.md)); a scenario's `permissions` layers on top of that
   config-level default and can revoke what it grants.
 
 **iOS has no TCC service for `notifications`** (iOS notification authorization is not part of
@@ -734,7 +734,7 @@ author no longer has to predict the one spot to place an `if`.
 targets:
   myapp:
     platform: ios
-    app: { id: com.example.myapp }
+    subject: { id: com.example.myapp }
     hooks:
       interrupts:
         - condition: { exists: { id: onboarding.skip } }
@@ -1197,7 +1197,7 @@ every gap below.
 The constraints come from driving an operating-system screen the scenario does not own:
 
 - **Measured on the iOS Simulator, iOS 26.5.** We checked no real device and no other runtime.
-- **Pin the layout with `preconditions.app.reinstall: erase`.** The long press lands on the icon grid's centre, which must
+- **Pin the layout with `preconditions.subject.reinstall: erase`.** The long press lands on the icon grid's centre, which must
   be empty wallpaper. After an erase and reinstall, SpringBoard opens on the page that holds the
   test apps, and that page leaves its lower half free. Erasing also removes the widgets an earlier
   run added, so the assertion on the new widget stays unambiguous.
@@ -1682,7 +1682,7 @@ freeze the clock and signal bars for a stable image.
 - An app that is not running, as after an `installApp`, launches the way `relaunch` would launch it.
   `foreground` then waits on a condition until the app is ready.
 - On Android, and on iOS inside a device group, a running app gets the same condition wait. When the app never reaches the front, the step fails with `AppNotInFront`.
-  The wait looks for the app's own screen, not the target's `app.startWhen`: `app.startWhen` names the
+  The wait looks for the app's own screen, not the target's `subject.startWhen`: `subject.startWhen` names the
   screen a launch lands on, and a resumed app comes back on whatever screen it left.
 
 `setClipboard` seeds the pasteboard for a paste flow ([BE-0052](../roadmaps/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)).
@@ -1857,7 +1857,7 @@ Each declared target keeps its own config, not the primary target's. Resolution 
 |---|---|
 | `hooks.setup` / `hooks.cleanup` lifecycle steps | Each target's own hooks fold in, in declared order, stamped with that target's name — so an app-side teardown and a web-side one each run against the right driver |
 | `services.mailbox` | An `email` or `totp` step polls the inbox its own target configured |
-| `runsOn.ios.locale`, `app.launch.env`, `evidence.capture`, `hooks.interrupts` | Each is a property of the app under test, not of the run |
+| `runsOn.ios.locale`, `subject.launch.env`, `evidence.capture`, `hooks.interrupts` | Each is a property of the app under test, not of the run |
 | `paths.baselines` / `paths.schemas` / `paths.goldens` | A `visual` or `golden` assertion compares against its own target's directory when that target configures one, else the run's |
 | Backend capabilities | Each target's steps are checked against its own backend before any device is leased, so a construct only one platform supports fails the right one |
 
@@ -1887,18 +1887,18 @@ device instead:
 A **device group** expresses both. A device group is an entry of `targets` that holds two or more
 names. Its members share one device.
 
-The config does not change. Two builds of one app become two targets. They share an `app.id` (a
-bundle identifier or an Android package), and each has its own `app.path`. A companion app is a
+The config does not change. Two builds of one app become two targets. They share a `subject.id` (a
+bundle identifier or an Android package), and each has its own `subject.path`. A companion app is a
 target of its own:
 
 ```yaml
 targets:
   showcase-previous:                      # the old build the scenario starts on
     platform: ios
-    app: { id: com.example.showcase, path: build/Showcase-1.app }
+    subject: { id: com.example.showcase, path: build/Showcase-1.app }
   showcase:                               # the current build
     platform: ios
-    app: { id: com.example.showcase, path: build/Showcase-2.app }
+    subject: { id: com.example.showcase, path: build/Showcase-2.app }
 ```
 
 A bare name in `targets` stays a group of one. A scenario that writes no array runs as before. The
@@ -1916,7 +1916,7 @@ the primary:
 
 | Member | At the start |
 |---|---|
-| The primary (the first member of the first group) | Installs its `app.path` and launches. Listing it in `installs` is optional |
+| The primary (the first member of the first group) | Installs its `subject.path` and launches. Listing it in `installs` is optional |
 | A group of one (a bare name) | Installs and launches, as in any multi-target scenario |
 | A member listed in `installs` | Installs and launches |
 | Any other member of a group of two or more | A **later member**: nothing installs or launches until an `installApp` step and a `foreground` step bring it up |
@@ -2007,7 +2007,7 @@ adds a second app beside the first and retires nothing.
   the device provider (an `appium` environment named by `--worker-config`) and `runsOn.ios.kind`.
 - A web target sits in a group of two or more, since a browser has no device to share.
 - Two starting members of one group share an identifier. The second install would replace the first.
-- An `installApp.from` target has no `app.path`, or its `app.path` does not exist. A Git-sourced config
+- An `installApp.from` target has no `subject.path`, or its `subject.path` does not exist. A Git-sourced config
   builds the binary on demand, as it does for the primary.
 - A `setPrimaryTarget` names a member that an earlier `installApp` retired.
 
@@ -2626,7 +2626,7 @@ A `group:` step that omits `target` leaves each child to resolve as a hand-writt
 
 ### Data-driven scenarios (`data` / `dataFile`)
 
-A scenario with `data` (inline rows) or `dataFile` (a CSV path — the two are **mutually exclusive**) is expanded into **one scenario per row**, substituting `${row.<column>}` (`expand_data`, `scenario/expand.py`). Each derived scenario is renamed `"<name> [row N: col=val, …]"` and keeps the original preconditions, so every row reinstalls the app fresh and inherits the template's `app.reinstall`.
+A scenario with `data` (inline rows) or `dataFile` (a CSV path — the two are **mutually exclusive**) is expanded into **one scenario per row**, substituting `${row.<column>}` (`expand_data`, `scenario/expand.py`). Each derived scenario is renamed `"<name> [row N: col=val, …]"` and keeps the original preconditions, so every row reinstalls the app fresh and inherits the template's `subject.reinstall`.
 
 ```yaml
 - name: search returns a result

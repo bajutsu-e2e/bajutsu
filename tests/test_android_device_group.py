@@ -153,7 +153,7 @@ def test_a_downgrade_that_keeps_data_is_named(tmp_path: Path) -> None:
 
 
 def test_install_app_refuses_a_missing_build(tmp_path: Path) -> None:
-    with pytest.raises(adb.DeviceError, match=r"app\.path not found"):
+    with pytest.raises(adb.DeviceError, match=r"subject\.path not found"):
         _env(_Adb()).install_member(_eff(_PRIMARY, str(tmp_path / "gone.apk")), keep_data=True)
 
 

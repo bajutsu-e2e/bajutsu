@@ -196,7 +196,7 @@ def test_preflight_refuses_a_group_on_a_backend_that_cannot_share_a_device() -> 
 def test_preflight_refuses_a_member_that_erases_on_an_anchor_that_does_not(
     erasing: str, refused: bool
 ) -> None:
-    # Each target merges its own `app.reinstall` (BE-0473); `auth`, the last starting member, is the
+    # Each target merges its own `subject.reinstall` (BE-0473); `auth`, the last starting member, is the
     # anchor that prepares the shared Simulator, so only its erase reaches the device.
     device = _Device()
     s = _scenario(
@@ -213,7 +213,7 @@ def test_preflight_refuses_a_member_that_erases_on_an_anchor_that_does_not(
     results = run_all(_eff(), [s], device.pool("unused"), targets=targets)
     if refused:
         assert not results[0].ok
-        assert "target 'app' sets app.reinstall: erase" in (results[0].failure or "")
+        assert "target 'app' sets subject.reinstall: erase" in (results[0].failure or "")
         assert device.log == []  # refused before any device was leased
     else:
         assert results[0].ok, results[0].failure

@@ -599,7 +599,7 @@ def test_doctor_scenario_flag_rejects_directory(
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            "    app:\n"
+            "    subject:\n"
             "      id: com.example.demo\n"
             "      idNamespaces: [home]\n"
         ),

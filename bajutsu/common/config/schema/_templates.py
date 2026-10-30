@@ -12,7 +12,7 @@ from bajutsu.common.scenario.load_expanded import contained_ref, parse_yaml_name
 from bajutsu.common.scenario.models.scenario.component import is_component_file_ref
 
 from .hooks import STEP_CONTAINERS
-from .target_config import TARGET_KEYS
+from .target_config import MOVED_TARGET_KEYS, TARGET_KEYS
 
 # A template takes any target key, none required, plus the `extends` that chains it to others.
 TEMPLATE_KEYS: tuple[str, ...] = (*TARGET_KEYS, "extends")
@@ -21,7 +21,7 @@ TEMPLATE_KEYS: tuple[str, ...] = (*TARGET_KEYS, "extends")
 # file's so everything after the merge sees one base. Kept in step with `Effective.rebased`, which
 # a test checks; `services.*` paths do not resolve against the config file today, so they stay.
 REBASED_PATHS: tuple[tuple[str, ...], ...] = (
-    ("app", "path"),
+    ("subject", "path"),
     ("runsOn", "ios", "seedPhotos"),
     ("driver", "runner", "testRunner"),
     ("paths", "scenarios"),
@@ -111,6 +111,8 @@ class _Expansion:
 
 
 def _key_problem(block: dict[str, Any]) -> str | None:
+    if moved := next((k for k in block if k in MOVED_TARGET_KEYS), None):
+        return f"{moved} moved to {MOVED_TARGET_KEYS[moved]}"
     unknown = [k for k in block if k not in TEMPLATE_KEYS]
     if not unknown:
         return None
@@ -249,7 +251,7 @@ def expand_extends(
     own = {k: v for k, v in raw.items() if k != "extends"}
     if isinstance(own.get("platform"), str):
         walk.platforms.append((f"target {target!r}", own["platform"]))
-    # The target's own key does not override: `platform` selects the shape of `app`, `runsOn`, and
+    # The target's own key does not override: `platform` selects the shape of `subject`, `runsOn`, and
     # `driver`, so a template's iOS-shaped blocks must never reach a web target.
     for label, platform in walk.platforms[1:]:
         first_label, first = walk.platforms[0]

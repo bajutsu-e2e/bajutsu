@@ -19,7 +19,7 @@ def test_config_checks_ios_requires_bundle_id() -> None:
 
     missing = preflight.config_checks("xcuitest", target="demo", bundle_id="", base_url=None)
     assert not preflight.passed(missing)
-    assert "set targets.demo.app.id" in missing[0].detail
+    assert "set targets.demo.subject.id" in missing[0].detail
 
 
 def test_config_checks_web_requires_base_url() -> None:
@@ -30,7 +30,7 @@ def test_config_checks_web_requires_base_url() -> None:
 
     missing = preflight.config_checks("playwright", target="site", bundle_id="", base_url=None)
     assert not preflight.passed(missing)
-    assert "set targets.site.app.url" in missing[0].detail
+    assert "set targets.site.subject.url" in missing[0].detail
 
 
 def test_config_checks_fake_needs_nothing() -> None:
@@ -144,7 +144,7 @@ def test_config_checks_adb_requires_package() -> None:
     assert preflight.passed(ok)
     missing = preflight.config_checks("adb", target="app", bundle_id="", base_url=None, package="")
     assert not preflight.passed(missing)
-    assert "targets.app.app.id" in missing[0].detail
+    assert "targets.app.subject.id" in missing[0].detail
 
 
 def test_adb_needs_platform_tools_and_a_device() -> None:

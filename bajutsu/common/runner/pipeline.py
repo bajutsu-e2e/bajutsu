@@ -272,7 +272,7 @@ class _ScenarioRunner:
     run_crash_budget: RunCrashRecoveryBudget = field(
         default_factory=lambda: RunCrashRecoveryBudget(None)
     )
-    # Whether a crash-triggered retry (attempt > 1) may force `preconditions.app.reinstall: erase`.
+    # Whether a crash-triggered retry (attempt > 1) may force `preconditions.subject.reinstall: erase`.
     # True (the default) matches every existing caller. `bajutsu run`'s `--no-erase` is the one signal
     # this forced retry must still honor, and no scenario's own value carries it: `_filter_scenarios`
     # moves only a scenario that erases, so a scenario that never erased looks the same with the flag
@@ -370,7 +370,7 @@ class _ScenarioRunner:
     def _group_erase_problem(self, s: Scenario) -> str | None:
         """A Simulator group member that erases while the member preparing the device does not.
 
-        Each target merges its own `app.reinstall` (BE-0473), so two targets on one Simulator can
+        Each target merges its own `subject.reinstall` (BE-0473), so two targets on one Simulator can
         disagree. The device is wiped once, by the group's last starting member (`_lease_targets`),
         so a member asking for `erase` on an anchor that does not erase is refused here, before any
         lease. Android has no device-wide wipe, so its members never conflict.
@@ -390,7 +390,7 @@ class _ScenarioRunner:
                 continue
             if conflict := next((n for n in group if n in self.targets and erases(n)), None):
                 return (
-                    f"target '{conflict}' sets app.reinstall: erase, but it shares a Simulator with "
+                    f"target '{conflict}' sets subject.reinstall: erase, but it shares a Simulator with "
                     f"'{anchor}', which prepares the device without erasing it; give every target "
                     "in the device group the same reinstall"
                 )
@@ -764,7 +764,7 @@ class _ScenarioRunner:
         # does — a blank device carries no app data at all. Reading them only where `forced_erase` is
         # computed would leave the stall signal free to swap the device out from under a scenario
         # whose merged `reinstall` is `overwrite` to keep its data — its own, or its target's
-        # `app.reinstall` default (BE-0452) — or from under an operator who asked for `--no-erase`,
+        # `subject.reinstall` default (BE-0452) — or from under an operator who asked for `--no-erase`,
         # which is the opposite of what either opt-out means. A `forced_erase` attempt already
         # implies both, so folding them in loses nothing on that path.
         can_replace = (
@@ -815,7 +815,9 @@ class _ScenarioRunner:
                     retry_scenario = s.model_copy(
                         update={
                             "preconditions": pre.model_copy(
-                                update={"app": pre.app.model_copy(update={"reinstall": "erase"})}
+                                update={
+                                    "subject": pre.subject.model_copy(update={"reinstall": "erase"})
+                                }
                             )
                         }
                     )
@@ -1531,7 +1533,7 @@ class _ScenarioRunner:
                 # the one direction that runs *into* the app, so it has no snapshot to hand over.
                 # A collector that carries no channel is caught at the command, not skipped here.
                 channel=lz.collector,
-                # The target's own `app.launch.env`, merged underneath the scenario's own the same way
+                # The target's own `subject.launch.env`, merged underneath the scenario's own the same way
                 # the launch itself merges them, so a target-level touch-marker pin is seen here
                 # exactly as the app that launched sees it, not read as if the scenario pinned
                 # nothing (BE-0365 unit 3).
@@ -2006,11 +2008,11 @@ def run_all(
             run is never blocked, the same never-block-the-first-respawn rule
             `crash_recovery_budget` already follows per scenario.
         force_erase_on_retry: Whether a crash-triggered retry (attempt > 1) may force
-            `preconditions.app.reinstall: erase`, the same recovery a scenario already gets by
+            `preconditions.subject.reinstall: erase`, the same recovery a scenario already gets by
             declaring it (see `_ScenarioRunner.run_one`). True (the default) preserves every
             existing caller's behavior. `bajutsu run --no-erase` passes False here, carrying the
             operator's explicit opt-out past `_filter_scenarios` — a scenario that never erased
-            reads the same with `--no-erase` or without it, so its `preconditions.app.reinstall`
+            reads the same with `--no-erase` or without it, so its `preconditions.subject.reinstall`
             alone cannot distinguish "the operator asked to keep the device" from "nobody said
             anything" by the time a retry decides whether to force it.
         cancelled: Reports whether this run has been asked to stop (BE-0370). A scenario the request

@@ -17,7 +17,7 @@ def _eff(scenarios: str) -> Effective:
         "targets:\n"
         "  x:\n"
         "    platform: ios\n"
-        f"    app: {{id: com.x}}\n"
+        f"    subject: {{id: com.x}}\n"
         f"    paths: {{scenarios: {scenarios}}}\n"
     )
     return resolve(cfg, "x")
@@ -26,7 +26,7 @@ def _eff(scenarios: str) -> Effective:
 def test_record_no_out_and_no_scenarios_dir_exits_2() -> None:
     # With neither --out nor a configured scenarios dir there is nowhere to auto-name: a usage
     # error (exit 2), not a guess.
-    eff = resolve(load_config("targets:\n  x:\n    platform: ios\n    app: {id: com.x}\n"), "x")
+    eff = resolve(load_config("targets:\n  x:\n    platform: ios\n    subject: {id: com.x}\n"), "x")
     with pytest.raises(typer.Exit) as exc:
         _record_out_path(eff, "", "name", "goal", "x", checkout_root=None)
     assert exc.value.exit_code == 2
@@ -90,7 +90,7 @@ def _eff_with_secrets(*names: str) -> Effective:
     decl = "".join(f"        - {n}\n" for n in names)
     return resolve(
         load_config(
-            f"targets:\n  x:\n    platform: ios\n    app: {{id: com.x}}\n    evidence:\n      secrets:\n{decl}"
+            f"targets:\n  x:\n    platform: ios\n    subject: {{id: com.x}}\n    evidence:\n      secrets:\n{decl}"
         ),
         "x",
     )

@@ -2,7 +2,7 @@
 - name: selectPhotos picks images from the photo picker grid
   tags: [swiftui]
   preconditions:
-    app:
+    subject:
       reinstall: erase
       launch:
         env: { SHOWCASE_UITEST: "1" }

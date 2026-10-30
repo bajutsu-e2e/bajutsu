@@ -30,12 +30,12 @@ def _eff(target: str) -> Effective:
 
 
 def _ios(runs_on: str = "") -> Effective:
-    return _eff("platform: ios, app: { id: com.x }" + (f", {runs_on}" if runs_on else ""))
+    return _eff("platform: ios, subject: { id: com.x }" + (f", {runs_on}" if runs_on else ""))
 
 
 def _web(kind: str) -> Effective:
     return _eff(
-        f"platform: web, app: {{ url: 'http://x/' }}, runsOn: {{browser: {{kind: {kind}}}}}"
+        f"platform: web, subject: {{ url: 'http://x/' }}, runsOn: {{browser: {{kind: {kind}}}}}"
     )
 
 
@@ -160,8 +160,8 @@ def _config(tmp_path: Path) -> Path:
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
         "targets:\n"
-        f"  both: {{ platform: ios, app: {{ id: com.x }}, {_BOTH} }}\n"
-        "  site: { platform: web, app: { url: 'http://x/' }, "
+        f"  both: {{ platform: ios, subject: {{ id: com.x }}, {_BOTH} }}\n"
+        "  site: { platform: web, subject: { url: 'http://x/' }, "
         "runsOn: {browser: {kind: [chrome, edge]}} }\n",
         encoding="utf-8",
     )

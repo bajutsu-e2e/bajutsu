@@ -15,7 +15,7 @@ from ._model import _Model
 # no replacement, and the loader reads none of the old keys, so the error is the migration path.
 MOVED_RUN_KEYS: dict[str, str] = {
     # `defaults` has no `app`, so a shared erase goes under its platform block.
-    "erase": "app.reinstall: erase (in defaults, platforms.<platform>.app.reinstall)",
+    "erase": "subject.reinstall: erase (in defaults, platforms.<platform>.subject.reinstall)",
     "network": "evidence.collectNetwork",
     "visualCompare": "evidence.visualCompare",
     "secrets": "evidence.secrets",

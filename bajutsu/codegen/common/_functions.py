@@ -240,7 +240,7 @@ def _reject_runtime_only(step: Step) -> None:
 def _scenario_lines(
     scenario: Scenario, app_launch_env: dict[str, str], gen: CodeGenerator
 ) -> list[str]:
-    env = {**app_launch_env, **scenario.preconditions.app.launch.env}
+    env = {**app_launch_env, **scenario.preconditions.subject.launch.env}
     for rule in scenario.cleanup:
         for hook_step in rule.steps:
             _reject_runtime_only(hook_step)

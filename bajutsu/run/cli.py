@@ -1084,10 +1084,10 @@ def _filter_scenarios(
 
     Selection runs over the combined set; an empty result is a usage error (exit 2). *check* then
     sees the selected scenarios as written, before any run default is filled in, so a field the
-    scenario never wrote cannot trip it (BE-0452). The flag moves `preconditions.app.reinstall` along
+    scenario never wrote cannot trip it (BE-0452). The flag moves `preconditions.subject.reinstall` along
     its ladder (BE-0473): `--erase` makes it `erase`, and `--no-erase` lowers the scenario's own
     `erase` to `clean`. A target's own `erase` is lowered on its `Effective` instead
-    (`_with_erase_flag`), since each target a scenario drives merges its own `app.reinstall`.
+    (`_with_erase_flag`), since each target a scenario drives merges its own `subject.reinstall`.
     `preconditions.run.tipKitHandling` resolves by the same precedence, but is set only when it ends
     on or the flag names it, so a scenario that drives no iOS target never gains the iOS-only field.
     """
@@ -1101,11 +1101,11 @@ def _filter_scenarios(
     if check is not None:
         check(scenarios)
     for s in scenarios:
-        app = s.preconditions.app
+        subject = s.preconditions.subject
         if erase:
-            app.reinstall = "erase"
-        elif erase is False and app.reinstall == "erase":
-            app.reinstall = "clean"
+            subject.reinstall = "erase"
+        elif erase is False and subject.reinstall == "erase":
+            subject.reinstall = "clean"
         if ios_tipkit_handling is not None:
             s.preconditions.run.tip_kit_handling = ios_tipkit_handling
         elif s.preconditions.run.tip_kit_handling is None and target_ios_tipkit_handling:
@@ -1433,7 +1433,7 @@ def _apply_mocks(scenarios: list[Scenario], network: bool) -> None:
         return
     for s in scenarios:
         if s.mocks:
-            s.preconditions.app.launch.env.setdefault("BAJUTSU_MOCKS", dump_mocks(s.mocks))
+            s.preconditions.subject.launch.env.setdefault("BAJUTSU_MOCKS", dump_mocks(s.mocks))
 
 
 def _walk_visual_steps(steps: list[Step]) -> Iterator[Step]:
@@ -1521,7 +1521,7 @@ def _apply_touch_markers(
     scenario's own, the same merge `_hides_touch_markers` performs and the same order the launch
     itself merges them in — so a target that pins the marker key for every scenario is decided for
     here exactly as the app that launches sees it, not as if every scenario had pinned nothing.
-    `target_launch_env` is the target's own `app.launch.env` (`Effective.launch_env`); a caller that
+    `target_launch_env` is the target's own `subject.launch.env` (`Effective.launch_env`); a caller that
     omits it sees only each scenario's own launch env, as before.
 
     Every internal decision here is keyed by scenario object identity, never by `.name`: nothing
@@ -1552,7 +1552,7 @@ def _apply_touch_markers(
     def _env(s: Scenario) -> Mapping[str, str]:
         # Same merge and order the launch itself performs, so a target-level pin reads here
         # exactly as the app that launches sees it, not as a scenario that pinned nothing.
-        return {**target_env, **s.preconditions.app.launch.env}
+        return {**target_env, **s.preconditions.subject.launch.env}
 
     visual_scenarios = _visual_asserting_scenarios(scenarios)
     # A scenario (or its target) that pinned the marker value to "0" draws no markers at all, so it
@@ -1702,9 +1702,9 @@ def _write_touch_marker_env(scenarios: list[Scenario], skip: set[int], *, armed:
     for s in scenarios:
         if id(s) in skip:
             continue
-        s.preconditions.app.launch.env.setdefault("BAJUTSU_TOUCH_MARKERS", "1")
+        s.preconditions.subject.launch.env.setdefault("BAJUTSU_TOUCH_MARKERS", "1")
         if id(s) in armed:
-            s.preconditions.app.launch.env.setdefault("BAJUTSU_CONTROL_CHANNEL", "1")
+            s.preconditions.subject.launch.env.setdefault("BAJUTSU_CONTROL_CHANNEL", "1")
 
 
 # One `setMocks` step, the `web:` / `app:` block it sits in (if any), and the target it runs on.
@@ -1801,7 +1801,7 @@ def _arm_mock_swaps(
         if problem := _mock_swap_problem(s, swaps):
             misplaced.append(f"{s.name} ({problem})")
             continue
-        pinned = {**target_env, **s.preconditions.app.launch.env}.get(
+        pinned = {**target_env, **s.preconditions.subject.launch.env}.get(
             "BAJUTSU_CONTROL_CHANNEL", "1"
         )
         if pinned != "1":
@@ -1809,12 +1809,12 @@ def _arm_mock_swaps(
         elif not channel_available(s):
             refused.append(s.name)
         else:
-            s.preconditions.app.launch.env.setdefault("BAJUTSU_CONTROL_CHANNEL", "1")
+            s.preconditions.subject.launch.env.setdefault("BAJUTSU_CONTROL_CHANNEL", "1")
             # The key is also half of the pair `_hides_touch_markers` reads, so a scenario that
             # pinned BAJUTSU_TOUCH_MARKERS itself and compares a screenshot now has its markers
             # hidden for that capture. The channel is armed anyway, so hiding them is correct;
             # it is announced because the author asked for neither.
-            merged = {**target_env, **s.preconditions.app.launch.env}
+            merged = {**target_env, **s.preconditions.subject.launch.env}
             if id(s) in visual and merged.get("BAJUTSU_TOUCH_MARKERS") == "1":
                 marker_pair.append(s.name)
     if marker_pair:
@@ -2166,7 +2166,7 @@ class _RunPlan:
     # Scenarios the worker capability check failed before any device work (BE-0450), keyed by their
     # index in `scenarios`: reported with the prefixed reason and never leased.
     worker_failures: Mapping[int, str]
-    # Whether a backend-crash-triggered retry may force `preconditions.app.reinstall: erase`
+    # Whether a backend-crash-triggered retry may force `preconditions.subject.reinstall: erase`
     # (`bajutsu/common/runner/pipeline.py`'s forced-erase retry). `erase is not False` — True for the default
     # (unset) and explicit `--erase`, False only for an explicit `--no-erase` — captured here, since
     # `_filter_scenarios` moves only a scenario that erases, so no scenario's value says whether the
@@ -2780,7 +2780,7 @@ def run_body(
     erase: bool | None = typer.Option(
         None,
         "--erase/--no-erase",
-        help="--erase makes every scenario's app.reinstall `erase`; --no-erase lowers an `erase` to "
+        help="--erase makes every scenario's subject.reinstall `erase`; --no-erase lowers an `erase` to "
         "`clean` and leaves `overwrite` alone (default: the scenario's, then the target's, then "
         "`clean`)",
     ),

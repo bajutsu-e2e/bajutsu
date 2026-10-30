@@ -222,7 +222,7 @@ def test_a_clean_member_reinstalls_and_resets_its_permissions(
 def test_an_erasing_member_needs_a_lead_that_erased(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, lead_erases: bool
 ) -> None:
-    # Each target merges its own `app.reinstall` (BE-0473), so the lead and a member can disagree.
+    # Each target merges its own `subject.reinstall` (BE-0473), so the lead and a member can disagree.
     app = tmp_path / "Auth.app"
     app.mkdir()
     run = _Simctl()
@@ -274,7 +274,7 @@ def test_install_app_refuses_a_missing_build(tmp_path: Path) -> None:
     from bajutsu.common.backend_cli import simctl
 
     env = XcuitestEnvironment("xcuitest", _UDID, _Simctl())
-    with pytest.raises(simctl.DeviceError, match=r"app\.path not found"):
+    with pytest.raises(simctl.DeviceError, match=r"subject\.path not found"):
         env.install_member(_eff(_APP, str(tmp_path / "Gone.app")), keep_data=True)
 
 
@@ -454,7 +454,7 @@ def test_a_member_with_a_missing_build_is_refused(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     env = _started(_Simctl(), _Runner(), monkeypatch)
-    with pytest.raises(simctl.DeviceError, match=r"app\.path not found"):
+    with pytest.raises(simctl.DeviceError, match=r"subject\.path not found"):
         env.start_member(_eff(_AUTH, str(tmp_path / "Gone.app")), ResolvedPreconditions())
 
 

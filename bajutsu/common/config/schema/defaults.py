@@ -31,14 +31,24 @@ class PlatformDefaults(_Model):
     """`defaults.platforms.<platform>`: the platform-shaped groups for that platform's targets.
 
     Kept as written: each target validates the merged result with its platform's models, which is
-    where a required field such as `app.id` may come from here. Only the top-level keys of each group
+    where a required field such as `subject.id` may come from here. Only the top-level keys of each group
     are checked now, so a misspelled one fails even when no target of the platform exists.
     """
 
-    app: dict[str, Any] = Field(default_factory=dict)
+    subject: dict[str, Any] = Field(default_factory=dict)
     runs_on: dict[str, Any] = Field(default_factory=dict, alias="runsOn")
     driver: dict[str, Any] = Field(default_factory=dict)
     run: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _moved_app(cls, data: Any) -> Any:
+        # Named here rather than left to the generic extra-field error, as a target's `app` is.
+        if isinstance(data, dict) and "app" in data:
+            raise ValueError(
+                "`app` moved to `subject`; the fields inside keep their names (BE-0470)"
+            )
+        return data
 
 
 class Defaults(_Model):
@@ -86,7 +96,7 @@ class Defaults(_Model):
             schema = schema_for(platform)
             for group in GROUPS:
                 written = {
-                    "app": groups.app,
+                    "subject": groups.subject,
                     "runsOn": groups.runs_on,
                     "driver": groups.driver,
                     "run": groups.run,

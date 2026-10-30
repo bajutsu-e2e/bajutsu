@@ -74,11 +74,11 @@ def _ios_state(tmp_path: Path) -> ServeState:
             "targets:\n"
             "  ios:\n"
             "    platform: ios\n"
-            f"    app: {{id: com.example.ios}}\n"
+            f"    subject: {{id: com.example.ios}}\n"
             f"    paths: {{scenarios: {scn_dir}}}\n"
             "  xcuitest_only:\n"
             "    platform: ios\n"
-            f"    app: {{id: com.example.x}}\n"
+            f"    subject: {{id: com.example.x}}\n"
             f"    paths: {{scenarios: {scn_dir}}}\n"
         ),
         encoding="utf-8",
@@ -131,7 +131,7 @@ def test_start_enrich_rebases_app_path_against_state_cwd(tmp_path: Path) -> None
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            f"    app: {{id: com.example.demo, path: app/MyApp.app}}\n"
+            f"    subject: {{id: com.example.demo, path: app/MyApp.app}}\n"
             f"    paths: {{scenarios: {scn_dir}}}\n"
         ),
         encoding="utf-8",
@@ -274,7 +274,7 @@ def test_start_enrich_refuses_under_provider_none(
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            f"    app: {{id: com.example.demo}}\n"
+            f"    subject: {{id: com.example.demo}}\n"
             f"    paths: {{scenarios: {scn_dir}}}\n"
         ),
         encoding="utf-8",

@@ -5,7 +5,7 @@
 # into view first, anchored on controls that stay visible. Run over XCUITest (`--backend ios`).
 - name: long-press and double-tap targets mirror their result
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:

@@ -322,7 +322,7 @@ def _audit_project(tmp_path: Path) -> tuple[Path, Path]:
     scn.write_text("- name: x\n  steps:\n    - tap: { id: home.start }\n", encoding="utf-8")
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        ("targets:\n  demo:\n    platform: ios\n    app: {id: com.example.demo}\n"),
+        ("targets:\n  demo:\n    platform: ios\n    subject: {id: com.example.demo}\n"),
         encoding="utf-8",
     )
     return scn, cfg
@@ -357,7 +357,7 @@ def test_repeat_cli_rejects_a_multi_target_scenario(tmp_path: Path) -> None:
     )
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        ("targets:\n  demo:\n    platform: ios\n    app: {id: com.example.demo}\n"),
+        ("targets:\n  demo:\n    platform: ios\n    subject: {id: com.example.demo}\n"),
         encoding="utf-8",
     )
     result = runner.invoke(
@@ -389,10 +389,10 @@ def test_repeat_cli_rejects_a_target_mismatched_single_declared_target(tmp_path:
             "targets:\n"
             "  ios:\n"
             "    platform: ios\n"
-            "    app: {id: com.example.ios}\n"
+            "    subject: {id: com.example.ios}\n"
             "  web:\n"
             "    platform: web\n"
-            "    app: {url: 'http://x/'}\n"
+            "    subject: {url: 'http://x/'}\n"
         ),
         encoding="utf-8",
     )
@@ -424,7 +424,7 @@ def test_repeat_cli_allows_a_matching_single_declared_target(
     )
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        ("targets:\n  demo:\n    platform: ios\n    app: {id: com.example.demo}\n"),
+        ("targets:\n  demo:\n    platform: ios\n    subject: {id: com.example.demo}\n"),
         encoding="utf-8",
     )
     result = runner.invoke(
@@ -447,7 +447,7 @@ def test_repeat_cli_rejects_a_bad_target_config_hook(tmp_path: Path) -> None:
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            "    app: {id: com.example.demo}\n"
+            "    subject: {id: com.example.demo}\n"
             "    hooks:\n"
             "      setup:\n"
             "      - target: web\n"

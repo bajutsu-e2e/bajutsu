@@ -21,7 +21,7 @@ def test_secrets_union_defaults_and_app() -> None:
         "targets:\n"
         "  demo:\n"
         "    platform: ios\n"
-        "    app: {id: com.demo}\n"
+        "    subject: {id: com.demo}\n"
         "    evidence:\n"
         "      secrets: [appToken]\n"
     )

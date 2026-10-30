@@ -91,13 +91,13 @@ def test_a_target_requires_the_host_of_the_drivers_run_selects_from(tmp_path: Pa
             "targets:\n"
             "  app:\n"
             "    platform: ios\n"
-            "    app: {id: com.example.app}\n"
+            "    subject: {id: com.example.app}\n"
             "  faked:\n"
             "    platform: fake\n"
-            "    app: {id: com.example.app}\n"
+            "    subject: {id: com.example.app}\n"
             "  site:\n"
             "    platform: web\n"
-            "    app: {url: 'https://example.com'}\n"
+            "    subject: {url: 'https://example.com'}\n"
         ),
     )
     assert target_capabilities(cfg, "app") == ["host:darwin", "platform:ios"]
@@ -119,7 +119,7 @@ def test_an_xcuitest_job_routes_only_to_a_darwin_worker(
     # The lease, the unroutable count, and the no-worker notice all read `can_serve`, so the job's
     # derived host requirement holds in each alike.
     cfg = _config(
-        tmp_path, ("targets:\n  app:\n    platform: ios\n    app: {id: com.example.app}\n")
+        tmp_path, ("targets:\n  app:\n    platform: ios\n    subject: {id: com.example.app}\n")
     )
     required = target_capabilities(cfg, "app")
     # A Linux worker that still claims `platform:ios` through the deprecated override.
@@ -327,16 +327,16 @@ def test_a_family_routes_each_listed_kind_on_its_own_tokens(tmp_path: Path) -> N
             "targets:\n"
             "  both:\n"
             "    platform: ios\n"
-            "    app: {id: com.example.app}\n"
+            "    subject: {id: com.example.app}\n"
             "    runsOn: {ios: {kind: [simulator, device], family: [iphone, ipad]}}\n"
             "  tablet:\n"
             "    platform: ios\n"
-            "    app: {id: com.example.app}\n"
+            "    subject: {id: com.example.app}\n"
             "    runsOn: {ios: {kind: device, family: ipad}}\n"
             "    driver: {runner: {testRunner: runner.xctestrun}}\n"
             "  sim:\n"
             "    platform: ios\n"
-            "    app: {id: com.example.app}\n"
+            "    subject: {id: com.example.app}\n"
             "    runsOn: {ios: {family: ipad}}\n"
         ),
     )
@@ -361,7 +361,7 @@ def test_a_device_family_job_leases_only_to_a_worker_with_that_device(
             "targets:\n"
             "  app:\n"
             "    platform: ios\n"
-            "    app: {id: com.example.app}\n"
+            "    subject: {id: com.example.app}\n"
             "    runsOn: {ios: {kind: device, family: [ipad, iphone]}}\n"
             "    driver: {runner: {testRunner: runner.xctestrun}}\n"
         ),

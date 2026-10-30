@@ -146,7 +146,7 @@ wrapper:
 build-all: compose-build compose-noax-build views-build views-noax-build
 
 # Each build lands at <module>/build/outputs/apk/<flavor>/debug/<module>-<flavor>-debug.apk,
-# exactly where showcase.config.yaml's android targets point their app.path.
+# exactly where showcase.config.yaml's android targets point their subject.path.
 compose-build:
 	cd $(HERE) && $(GRADLEW) :compose:assembleA11yDebug
 compose-noax-build:
@@ -160,7 +160,7 @@ views-noax-build:
 	cd $(HERE) && $(GRADLEW) :views:assembleNoaxDebug
 
 # On-device e2e for both a11y twins over the adb backend (BE-0007 / BE-0221). Builds each APK —
-# bajutsu's launch installs it from the config's app.path — then runs each passing scenario with a
+# bajutsu's launch installs it from the config's subject.path — then runs each passing scenario with a
 # clean state (the default erase = `pm clear`): Compose over the full set, Views over the id-form-
 # verified subset. Not part of `make check`: it needs a booted AVD, so it is driven by
 # .github/workflows/android-e2e.yml (Linux + KVM), the Android twin of the iOS and web e2e lanes.

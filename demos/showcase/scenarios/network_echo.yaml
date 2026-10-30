@@ -13,7 +13,7 @@
 - name: log submit body reaches an echo server intact
   tags: [network, swiftui]
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1", SHOWCASE_HTTP_BASE: "https://postman-echo.com" }
   steps:

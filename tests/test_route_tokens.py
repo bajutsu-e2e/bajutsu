@@ -32,27 +32,27 @@ _CONFIG = """\
 targets:
   sim:
     platform: ios
-    app: {id: com.x}
+    subject: {id: com.x}
   phone:
     platform: ios
-    app: {id: com.x}
+    subject: {id: com.x}
     runsOn: {ios: {kind: device}}
   phone-ok:
     platform: ios
-    app: {id: com.x}
+    subject: {id: com.x}
     runsOn: {ios: {kind: device}}
     run:
       ignoredSettings:
         erase: "this lane accepts state from earlier runs"
   site:
     platform: web
-    app: {url: "http://x/"}
+    subject: {url: "http://x/"}
 """
 
 _LOCATE = """\
 - name: locate
   tags: [geo]
-  preconditions: {app: {reinstall: erase}}
+  preconditions: {subject: {reinstall: erase}}
   steps:
     - wait: { for: { id: a }, timeout: 1 }
     - setLocation: { lat: 1, lon: 2 }

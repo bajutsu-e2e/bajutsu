@@ -370,7 +370,7 @@ def test_step_level_assert_visual_hides_the_touch_markers_and_restores_them(
             {
                 "name": "step visual markers",
                 "preconditions": {
-                    "app": {
+                    "subject": {
                         "launch": {
                             "env": {"BAJUTSU_TOUCH_MARKERS": "1", "BAJUTSU_CONTROL_CHANNEL": "1"}
                         }
@@ -468,7 +468,7 @@ def _visual_scenario(launch_env: dict[str, str]) -> Scenario:
     return _scenario(
         {
             "name": "visual one",
-            "preconditions": {"app": {"launch": {"env": launch_env}}},
+            "preconditions": {"subject": {"launch": {"env": launch_env}}},
             "steps": [],
             "expect": [{"visual": {"baseline": "home.png"}}],
         }
@@ -615,7 +615,7 @@ def test_a_visual_capture_hides_the_markers_on_the_post_alert_dismiss_retry_too(
             {
                 "name": "visual after alert",
                 "preconditions": {
-                    "app": {
+                    "subject": {
                         "launch": {
                             "env": {"BAJUTSU_TOUCH_MARKERS": "1", "BAJUTSU_CONTROL_CHANNEL": "1"}
                         }

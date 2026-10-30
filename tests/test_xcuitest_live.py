@@ -614,7 +614,7 @@ def test_environment_for_keeps_a_udid_on_the_simulator_path() -> None:
 def _live_eff() -> Any:
     return resolve(
         load_config(
-            "targets:\n  s:\n    platform: ios\n    app: {id: com.x}\n    runsOn: {ios: {kind: device}}\n"
+            "targets:\n  s:\n    platform: ios\n    subject: {id: com.x}\n    runsOn: {ios: {kind: device}}\n"
         ),
         "s",
     )
@@ -635,7 +635,7 @@ def _live_eff_with(**kwargs: str) -> Any:
             "targets:\n"
             "  s:\n"
             "    platform: ios\n"
-            f"    app: {{id: com.x}}\n"
+            f"    subject: {{id: com.x}}\n"
             f"    runsOn: {{ios: {{kind: device}}}}\n"
             f"{extra}    deviceProvider: {{kind: appium, endpoint: 'http://grid.local:4723'}}\n"
         ),
@@ -832,7 +832,7 @@ def test_live_environment_start_raises_on_eff_launch_args() -> None:
             "targets:\n"
             "  s:\n"
             "    platform: ios\n"
-            "    app:\n"
+            "    subject:\n"
             "      id: com.x\n"
             "      launch:\n"
             "        args: [--test-mode]\n"
@@ -851,7 +851,7 @@ def test_live_environment_start_raises_on_eff_launch_env() -> None:
             "targets:\n"
             "  s:\n"
             "    platform: ios\n"
-            "    app:\n"
+            "    subject:\n"
             "      id: com.x\n"
             "      launch:\n"
             "        env: {MODE: test}\n"

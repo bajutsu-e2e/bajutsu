@@ -367,7 +367,7 @@ def test_http_provider_settings_still_reads_available_under_a_config_kill_switch
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            f"    app: {{id: com.example.demo}}\n"
+            f"    subject: {{id: com.example.demo}}\n"
             f"    paths: {{scenarios: {scn_dir}}}\n"
         ),
         encoding="utf-8",

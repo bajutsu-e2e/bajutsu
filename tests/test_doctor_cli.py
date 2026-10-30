@@ -90,7 +90,7 @@ def test_a_target_carrying_the_wrong_field_for_its_backend_exits_2(
     _forbid_probe(monkeypatch)
     _tool_available(monkeypatch, "adb")
     cfg = _config(
-        tmp_path, ("targets:\n  demo:\n    platform: ios\n    app: {id: com.example.app}\n")
+        tmp_path, ("targets:\n  demo:\n    platform: ios\n    subject: {id: com.example.app}\n")
     )
     r = runner.invoke(app, ["doctor", "--target", "demo", "--backend", "adb", "--config", str(cfg)])
     assert r.exit_code == 2
@@ -120,7 +120,7 @@ def test_an_unrunnable_scenario_exits_1_and_names_every_reason(
         encoding="utf-8",
     )
     cfg = _config(
-        tmp_path, ("targets:\n  demo:\n    platform: android\n    app: {id: com.example.app}\n")
+        tmp_path, ("targets:\n  demo:\n    platform: android\n    subject: {id: com.example.app}\n")
     )
     r = runner.invoke(
         app,
@@ -158,7 +158,7 @@ def test_a_runnable_scenario_leaves_the_capability_gate_silent(
     scenario = tmp_path / "tap.yaml"
     scenario.write_text("- name: tap\n  steps:\n    - tap: { id: ok }\n", encoding="utf-8")
     cfg = _config(
-        tmp_path, ("targets:\n  demo:\n    platform: android\n    app: {id: com.example.app}\n")
+        tmp_path, ("targets:\n  demo:\n    platform: android\n    subject: {id: com.example.app}\n")
     )
     r = runner.invoke(
         app,
@@ -208,7 +208,7 @@ def test_android_counts_attached_adb_devices(
         lambda: pytest.fail("Android must not ask simctl"),
     )
     cfg = _config(
-        tmp_path, ("targets:\n  demo:\n    platform: android\n    app: {id: com.example.app}\n")
+        tmp_path, ("targets:\n  demo:\n    platform: android\n    subject: {id: com.example.app}\n")
     )
     r = runner.invoke(
         app,
@@ -240,7 +240,7 @@ def test_ios_counts_booted_simulators(tmp_path: Path, monkeypatch: pytest.Monkey
         "bajutsu.common.backend_cli.adb.booted_serials", lambda: pytest.fail("iOS must not ask adb")
     )
     cfg = _config(
-        tmp_path, ("targets:\n  demo:\n    platform: ios\n    app: {id: com.example.app}\n")
+        tmp_path, ("targets:\n  demo:\n    platform: ios\n    subject: {id: com.example.app}\n")
     )
     r = runner.invoke(
         app,
@@ -255,7 +255,7 @@ def test_ios_counts_booted_simulators(tmp_path: Path, monkeypatch: pytest.Monkey
 
 def _eff(tmp_path: Path, scenarios: str) -> Effective:
     cfg = load_config(
-        f"targets:\n  x: {{ platform: ios, app: {{ id: com.x }}, paths: {{ scenarios: {scenarios} }} }}\n"
+        f"targets:\n  x: {{ platform: ios, subject: {{ id: com.x }}, paths: {{ scenarios: {scenarios} }} }}\n"
     )
     return resolve(cfg, "x").rebased(tmp_path)
 
@@ -300,7 +300,7 @@ def test_the_command_refuses_a_backend_fallback_list(
     # A target names one platform, so `--backend` is a check, not an ordered fallback (BE-0452).
     _forbid_probe(monkeypatch)
     cfg = _config(
-        tmp_path, "targets:\n  demo: { platform: android, app: { id: com.example.app } }\n"
+        tmp_path, "targets:\n  demo: { platform: android, subject: { id: com.example.app } }\n"
     )
     r = runner.invoke(
         app, ["doctor", "--target", "demo", "--backend", "fake,adb", "--config", str(cfg)]
@@ -329,7 +329,7 @@ def test_the_command_prints_the_xcuitest_runner_tier(
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            "    app: {id: com.example.app}\n"
+            "    subject: {id: com.example.app}\n"
             "    driver:\n"
             "      runner: {testRunner: /nonexistent/Bajutsu.xctestrun}\n"
         ),

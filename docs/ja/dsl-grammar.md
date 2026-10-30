@@ -119,7 +119,7 @@ Scenario ::= {
   installs?:       list(string),            # 既定 []  — プライマリと並んで開始時にインストールして起動するデバイスグループのメンバー（BE-0447）。2つ以上のメンバーを持つグループのそれ以外のメンバーは後から入るメンバーで、`installApp` と `foreground` が立ち上げる（§4）
   data?:           list(map(string,string)),# インライン行  ┐ XOR
   dataFile?:       string,                  # CSV パス      ┘ （§6.3）
-  preconditions?:  <Preconditions>,         # 既定 {}  — ターゲットの `app` / `run` をシナリオごとに上書き（BE-0452）し、デバイスの状態を持つ（BE-0469）
+  preconditions?:  <Preconditions>,         # 既定 {}  — ターゲットの `subject` / `run` をシナリオごとに上書き（BE-0452、BE-0470）し、デバイスの状態を持つ（BE-0469）
   setup?:          list(<Step>),            # 既定 []  — steps の前に独立したフェーズとして走るセットアップ（BE-0392）。宣言した各ターゲットの `hooks.setup` の後に連結される
   steps:           list(<Step>),            # 必須
   expect?:         list(<Assertion>),       # 既定 []  — 最終チェック
@@ -145,18 +145,18 @@ Interrupt ::= { condition: <Assertion>, steps: list(<Step>), target?: string }
 CleanupRule ::= { on: "always" | "success" | "failure", steps: list(<Step>) }
 
 # ── Preconditions ──────────────────────────────────────────────────────
-# `app` と `run` はターゲットと同じグループ名を使います（BE-0452）。各フィールドは、シナリオが動かす各ターゲットの
-# 同じフィールドを上書きします。`app.launch.env` はキーごとにマージし、`app.launch.args` は追記し、
+# `subject` と `run` はターゲットと同じグループ名を使います（BE-0452、BE-0470）。各フィールドは、シナリオが動かす各ターゲットの
+# 同じフィールドを上書きします。`subject.launch.env` はキーごとにマージし、`subject.launch.args` は追記し、
 # `run.systemAlertHandling` の規則は連結します（シナリオの規則が先）。動かすどのターゲットの
 # プラットフォームにもないフィールドは、デバイスを操作する前に run を失敗させます。シナリオは
 # デバイスの条件を宣言しません。`runsOn` はターゲットだけが持ちます（BE-0469）。
 Preconditions ::= {
   app?:    {
-    reinstall?: ("overwrite" | "clean" | "erase"),  # 弱い順。未設定はターゲットの `app.reinstall`、なければ "clean"。iOS と Android、web は "erase" のみ（BE-0473）
+    reinstall?: ("overwrite" | "clean" | "erase"),  # 弱い順。未設定はターゲットの `subject.reinstall`、なければ "clean"。iOS と Android、web は "erase" のみ（BE-0473）
     launch?: {
-      env?:      map(string,string),        # 既定 {} — ターゲットの `app.launch.env` にマージ
+      env?:      map(string,string),        # 既定 {} — ターゲットの `subject.launch.env` にマージ
       args?:     list(string),              # 既定 [] — ターゲットの引数の後ろに追記。iOS のみ
-      deeplink?: string,                    # 未設定はターゲットの `app.launch.deeplink`。iOS と Android
+      deeplink?: string,                    # 未設定はターゲットの `subject.launch.deeplink`。iOS と Android
     },
   },
   device?: { ios?: <IosDevice> },           # 宛先がキー。動かさないプラットフォームのブロックは効果なし
@@ -169,7 +169,7 @@ Preconditions ::= {
 
 # シナリオが適用する iOS のデバイスの状態です。各フィールドは、ターゲットの `runsOn.ios` の同名の値を
 # 置き換えます。`seedPhotos` のパスはシナリオファイルを基準に解決します。重ね合わせたあとのリストが
-# 空でなければ、実効の `app.reinstall: erase` が必要です。
+# 空でなければ、実効の `subject.reinstall: erase` が必要です。
 IosDevice ::= { locale?: string, seedPhotos?: list(string) }
 
 # ── SystemAlertHandling（リアクティブなシステムアラートガード; 既定 ON）─
@@ -488,9 +488,9 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 | `Preconditions.run.systemAlertHandling` | 未指定（アラートガード ON。ただし規則が無いので、自分からはどのプロンプトにも答えない） |
 | `Preconditions.run.tipKitHandling` | 未指定（ターゲットの `run.tipKitHandling`、なければ OFF — tip 自体が検証対象になる場合があるため。iOS のみ） |
 | `Preconditions.run.inheritSetup` | `true`（宣言した各ターゲットの `hooks.setup` がシナリオの `setup` の前に走る） |
-| `Preconditions.app.reinstall` | 未設定 — ターゲットの `app.reinstall`、なければ `clean`。`--erase` は `erase` に引き上げ、`--no-erase` は `erase` を `clean` に下げます（BE-0473） |
-| `Preconditions.app.launch.args` | `[]` |
-| `Preconditions.app.launch.env` | `{}` |
+| `Preconditions.subject.reinstall` | 未設定 — ターゲットの `subject.reinstall`、なければ `clean`。`--erase` は `erase` に引き上げ、`--no-erase` は `erase` を `clean` に下げます（BE-0473） |
+| `Preconditions.subject.launch.args` | `[]` |
+| `Preconditions.subject.launch.env` | `{}` |
 | `SystemAlertHandling.rules` | `[]`（プロンプトの宣言が無いのでガードは何にも答えない。出会ったアラートはブロックされたステップの失敗理由に書き出される） |
 | `SystemAlertHandling.visionInstruction` | 未設定。ほかの値は使えません。`run` は拒否し（BE-0402）、`record` / `crawl` は自由記述を自身の `--alert-vision-instruction` フラグからのみ読みます |
 | `TypeText.submit` | `false` |
@@ -575,7 +575,7 @@ scenarios:
 
 ### 6.3 データ駆動シナリオ（`data` / `dataFile`）
 
-`data`（インライン行）か `dataFile`（CSV パス。両者は排他）を持つシナリオは、`${row.<column>}` を置換して **1 行 1 シナリオ**に展開されます（`expand_data`, `scenario/expand.py`）。派生シナリオは `"<name> [row N: col=val, …]"` に改名され、**元の preconditions を保ちます**。そのためどの行も、元の preconditions（`app.reinstall`）を継承した状態でアプリを準備します。
+`data`（インライン行）か `dataFile`（CSV パス。両者は排他）を持つシナリオは、`${row.<column>}` を置換して **1 行 1 シナリオ**に展開されます（`expand_data`, `scenario/expand.py`）。派生シナリオは `"<name> [row N: col=val, …]"` に改名され、**元の preconditions を保ちます**。そのためどの行も、元の preconditions（`subject.reinstall`）を継承した状態でアプリを準備します。
 
 ```yaml
 - name: search returns a result

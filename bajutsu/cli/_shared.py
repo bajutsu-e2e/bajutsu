@@ -452,7 +452,7 @@ def _refuse_bad_preconditions(
 ) -> None:
     """Refuse every scenario whose preconditions its driven targets cannot honor (BE-0452).
 
-    Runs before any device work, on the scenarios as written: an `app` or iOS-only `run` field no
+    Runs before any device work, on the scenarios as written: a `subject` or iOS-only `run` field no
     driven platform has, and a merged `seedPhotos` without an effective erase
     (`check_preconditions`).
 
@@ -641,9 +641,9 @@ def _with_headed(eff: Effective, headed: bool | None) -> Effective:
 
 
 def _with_erase_flag(eff: Effective, erase: bool | None) -> Effective:
-    """Apply `--no-erase` over the target's `app.reinstall`: an `erase` drops to `clean` (BE-0473).
+    """Apply `--no-erase` over the target's `subject.reinstall`: an `erase` drops to `clean` (BE-0473).
 
-    Each target a scenario drives merges its own `app.reinstall`, so the flag reaches every target
+    Each target a scenario drives merges its own `subject.reinstall`, so the flag reaches every target
     here rather than through the scenario. `--erase` needs no counterpart: it raises the scenario's
     own value, which wins over every target's.
     """

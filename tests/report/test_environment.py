@@ -43,7 +43,7 @@ def test_html_preconditions_render_in_result_tab() -> None:
         "steps": [{"tap": {"id": "a"}}],
         "preconditions": {
             "device": {"ios": {"locale": "ja_JP"}},
-            "app": {"launch": {"env": {"SAMPLE_SEED": "5"}}},
+            "subject": {"launch": {"env": {"SAMPLE_SEED": "5"}}},
         },
     }
     out = html_report("run9", [_passing()], definitions=[definition])

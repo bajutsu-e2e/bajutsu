@@ -30,7 +30,7 @@ templates:
 
   # Every showcase app reads SHOWCASE_UITEST to start in its test configuration.
   showcase-app:
-    app:
+    subject:
       launch: { env: { SHOWCASE_UITEST: "1" } }
 
   # The locally built BajutsuKit/Runner product, which every iOS target but showcase-swiftui-bundled
@@ -101,7 +101,7 @@ targets:
     # identifier-bearing elements in one invocation with no --backend.
     platform: ios
     extends: [showcase-app, local-runner]
-    app:
+    subject:
       id: com.bajutsu.showcase.ios.swiftui
       # `saved`: the SHOWCASE_SAVED_NOTE screen (SPEC §5.6), which this app and showcase-compose alone
       # implement.
@@ -136,7 +136,7 @@ targets:
   showcase-swiftui-bundled:
     platform: ios
     extends: showcase-app
-    app:
+    subject:
       id: com.bajutsu.showcase.ios.swiftui
       idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
       startWhen: { exists: { id: [stable.row.1, stable_row_1] } }
@@ -159,7 +159,7 @@ targets:
   showcase-swiftui-noax:
     platform: ios   # XCUITest, the sole iOS backend (BE-0290); its runner reaches labels
     extends: [showcase-app, local-runner]
-    app:
+    subject:
       id: com.bajutsu.showcase.ios.swiftui.noax
       idNamespaces: []   # honest: this build exposes no identifiers
       path: ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUINoAx.app
@@ -180,7 +180,7 @@ targets:
   showcase-swiftui-previous:
     platform: ios
     extends: [showcase-app, local-runner]
-    app:
+    subject:
       id: com.bajutsu.showcase.ios.swiftui
       idNamespaces: [saved]
       startWhen: { exists: { id: [saved.build] } }
@@ -193,7 +193,7 @@ targets:
     # tabs by tapping the native tab bar (BE-0107), which the generic XCUITest runner drives.
     platform: ios
     extends: [showcase-app, local-runner]
-    app:
+    subject:
       id: com.bajutsu.showcase.ios.uikit
       idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
       path: ios/uikit/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseUIKit.app
@@ -205,7 +205,7 @@ targets:
   showcase-uikit-noax:
     platform: ios   # XCUITest, the sole iOS backend (BE-0290); its runner reaches labels
     extends: [showcase-app, local-runner]
-    app:
+    subject:
       id: com.bajutsu.showcase.ios.uikit.noax
       idNamespaces: []
       path: ios/uikit/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseUIKitNoAx.app
@@ -221,8 +221,8 @@ targets:
   # ==== Android (BE-0007 preparation) =============================================
   # The Android twins of the four iOS products (demos/showcase/android). `platform: android`
   # resolves to `adb`, the BE-0007 driver: `run` against these drives the app on an attached
-  # emulator/device (id-based taps, value assertions over `uiautomator dump`). `app.id` carries the
-  # applicationId; `app.launch.env` arrives as intent extras. Interval evidence (screenrecord/logcat),
+  # emulator/device (id-based taps, value assertions over `uiautomator dump`). `subject.id` carries the
+  # applicationId; `subject.launch.env` arrives as intent extras. Interval evidence (screenrecord/logcat),
   # device control, and the by-scheme deeplink/back paths are BE-0007 follow-up slices.
 
   # ---- Compose, accessibility ON — testTags surface the dotted SPEC ids verbatim
@@ -230,7 +230,7 @@ targets:
   showcase-compose:
     platform: android
     extends: [showcase-app, anr-guard]
-    app:
+    subject:
       id: com.bajutsu.showcase.android.compose
       # Granted up front (`pm grant`) at lease time, so the notification prompt never blocks the run
       # (BE-0210); the shared permission.yaml relies on this on Android to stay deterministic — no dialog
@@ -249,7 +249,7 @@ targets:
   showcase-compose-previous:
     platform: android
     extends: [showcase-app, anr-guard]
-    app:
+    subject:
       id: com.bajutsu.showcase.android.compose
       grantPermissions: [android.permission.POST_NOTIFICATIONS]
       idNamespaces: [saved]
@@ -261,7 +261,7 @@ targets:
   showcase-compose-noax:
     platform: android
     extends: [showcase-app, anr-guard]
-    app:
+    subject:
       id: com.bajutsu.showcase.android.compose.noax
       idNamespaces: []   # honest: this build exposes no identifiers
       path: android/compose/build/outputs/apk/noax/debug/compose-noax-debug.apk
@@ -273,12 +273,12 @@ targets:
   # ids are the SPEC ids with both mapped to '_' (stable.refresh → stable_refresh). The shared
   # scenarios run here unchanged because each selector lists both id forms (BE-0221):
   # `id: [stable.refresh, stable_refresh]` matches whichever the tree renders — no driver-side id
-  # rewriting, no scenario fork. `app.startWhen` names the Stable-tab launch element in both forms; the
+  # rewriting, no scenario fork. `subject.startWhen` names the Stable-tab launch element in both forms; the
   # `idNamespaces` heuristic can't gate on it because `namespace_of` splits on `.`, absent here.
   showcase-views:
     platform: android
     extends: [showcase-app, anr-guard]
-    app:
+    subject:
       id: com.bajutsu.showcase.android.views
       idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
       startWhen: { exists: { id: [stable.row.1, stable_row_1] } }
@@ -291,7 +291,7 @@ targets:
   showcase-views-noax:
     platform: android
     extends: [showcase-app, anr-guard]
-    app:
+    subject:
       id: com.bajutsu.showcase.android.views.noax
       idNamespaces: []
       path: android/views/build/outputs/apk/noax/debug/views-noax-debug.apk
@@ -314,7 +314,7 @@ targets:
   showcase-flutter:
     platform: ios
     extends: [showcase-app, local-runner]
-    app:
+    subject:
       id: com.bajutsu.showcase.ios.flutter
       idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
       startWhen: { exists: { id: [stable.row.1, stable_row_1] } }
@@ -327,7 +327,7 @@ targets:
   showcase-flutter-android:
     platform: android
     extends: [showcase-app, anr-guard]
-    app:
+    subject:
       id: com.bajutsu.showcase.android.flutter
       grantPermissions: [android.permission.POST_NOTIFICATIONS]
       idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
@@ -341,7 +341,7 @@ targets:
   showcase-flutter-android-noax:
     platform: android
     extends: [showcase-app, anr-guard]
-    app:
+    subject:
       id: com.bajutsu.showcase.android.flutter.noax
       idNamespaces: []   # honest: this build exposes no identifiers
       path: flutter/build/app/outputs/flutter-apk/app-noax-debug.apk
@@ -358,7 +358,7 @@ targets:
   # never collide if run back to back).
   web:
     platform: web
-    app:
+    subject:
       url: "http://127.0.0.1:8789/index.html"
     run:
       # cross_platform_app_web.yaml's scenario-level launch env is meant for the iOS app; a browser

@@ -17,12 +17,12 @@ _WITH_SECRETS = (
     "targets:\n"
     "  app:\n"
     "    platform: ios\n"
-    "    app: {id: com.example.app}\n"
+    "    subject: {id: com.example.app}\n"
     "    evidence:\n"
     "      secrets: [LOGIN_PASSWORD, LOGIN_OTP]\n"
 )
 
-_NO_SECRETS = "targets:\n  app:\n    platform: ios\n    app: {id: com.example.app}\n"
+_NO_SECRETS = "targets:\n  app:\n    platform: ios\n    subject: {id: com.example.app}\n"
 
 
 def test_warns_when_secrets_bound(capsys: pytest.CaptureFixture[str]) -> None:
