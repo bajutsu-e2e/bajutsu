@@ -103,8 +103,7 @@ def command_preconditions(eff: Effective, *, erase: bool | None) -> ResolvedPrec
     if merged.seed_photos and not merged.erase:
         raise ValueError(
             f"target {eff.target!r} sets runsOn.ios.seedPhotos, which seeds only a wiped device: "
-            "set the target's app.reinstall: erase and drop --no-erase, or clear the target's "
-            "seedPhotos"
+            "drop --no-erase, or clear the target's seedPhotos"
         )
     return merged
 

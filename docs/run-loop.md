@@ -353,14 +353,15 @@ driver. An invocation whose targets declare no condition keeps the path above un
 >
 > The retry also forces `preconditions.app.reinstall: erase`, the same device reset a scenario
 > already gets by declaring that value — a Simulator restart on XCUITest, an app-level clean state on
-> adb — instead of a bare in-place respawn onto the very device that just crashed it. Two cases skip
-> the forced erase. One is a merged reinstall of `overwrite`, from the scenario or else its target,
-> which keeps the app's data across the lease. The other is a route that rejects any `erase`
-> precondition outright: a real device (`runsOn.ios.kind: device`) or the live route to an `appium`
-> grid. A merged `clean`, the built-in default, does *not* skip the forced retry: `clean` wipes the app's data anyway, so a guard on it
-> would disable the forced retry on the very production path it exists for. An explicit
-> `bajutsu run --no-erase` *is* honored: the CLI carries that flag into the run as
-> `force_erase_on_retry`, so an operator's deliberate opt-out still skips the forced retry. The CLI
+> adb — instead of a bare in-place respawn onto the very device that just crashed it. Three cases skip
+> the forced erase. The first is a merged reinstall of `overwrite`, from the scenario or else its
+> target, which keeps the app's data across the lease. The second is a route that rejects any
+> `erase` precondition outright: a real device (`runsOn.ios.kind: device`) or the live route to an
+> `appium` grid. The third is an explicit `bajutsu run --no-erase`: the CLI carries that flag into
+> the run as `force_erase_on_retry`, so an operator's deliberate opt-out still skips the forced
+> retry. A merged `clean`, the built-in default, does *not* skip it: `clean` wipes the app's data
+> anyway, so a guard on it would disable the forced retry on the very production path it exists
+> for. The CLI
 > no longer stamps a concrete erase value onto every scenario; `_filter_scenarios` moves a scenario's
 > reinstall only when a flag changes it
 > ([BE-0473](../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts.md)).

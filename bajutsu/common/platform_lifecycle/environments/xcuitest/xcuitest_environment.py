@@ -1550,10 +1550,12 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # A member launches its own app under its own target's declarations, so it reads the table
         # exactly as `start` does (BE-0467).
         pre, permissions = enforce_settings(self._actuator, eff, pre, permissions, self._udid)
-        if pre.erase and not self._lead_erases:
+        if install and pre.erase and not self._lead_erases:
             # Each target merges its own `app.reinstall`, so two targets on one Simulator can
             # disagree; wiping it now would destroy the lead's app, and skipping it would ignore
-            # what the member declared.
+            # what the member declared. The run preflight refuses this before any lease
+            # (`_group_erase_problem`); this is the backstop for any other caller. A later member
+            # (`install=False`) was installed by the scenario itself, so it asks for no wipe here.
             raise simctl.DeviceError(
                 f"target {eff.target!r} sets app.reinstall: erase, but it shares this Simulator "
                 "with a target that does not erase it; give both targets the same reinstall"

@@ -365,6 +365,35 @@ class _ScenarioRunner:
                 return f"unsupported on backend '{pool.actuator}' (target '{name}'): {'; '.join(reasons)}"
             if problems := _settings_problems(pool.actuator, pool.eff, s, pool.udid_spec):
                 return f"unsupported on backend '{pool.actuator}' (target '{name}'): {problems}"
+        return self._group_erase_problem(s)
+
+    def _group_erase_problem(self, s: Scenario) -> str | None:
+        """A Simulator group member that erases while the member preparing the device does not.
+
+        Each target merges its own `app.reinstall` (BE-0473), so two targets on one Simulator can
+        disagree. The device is wiped once, by the group's last starting member (`_lease_targets`),
+        so a member asking for `erase` on an anchor that does not erase is refused here, before any
+        lease. Android has no device-wide wipe, so its members never conflict.
+        """
+        later = set(s.later_targets)
+        for group in s.device_groups:
+            starting = [n for n in group if n not in later and n in self.targets]
+            if len(group) < 2 or not starting:
+                continue
+            anchor = starting[-1]
+
+            def erases(name: str) -> bool:
+                eff = self.targets[name].eff
+                return eff.platform == "ios" and resolve_preconditions(eff, s.preconditions).erase
+
+            if erases(anchor):
+                continue
+            if conflict := next((n for n in group if n in self.targets and erases(n)), None):
+                return (
+                    f"target '{conflict}' sets app.reinstall: erase, but it shares a Simulator with "
+                    f"'{anchor}', which prepares the device without erasing it; give every target "
+                    "in the device group the same reinstall"
+                )
         return None
 
     def _ignored_settings(self, s: Scenario, actuator: str | None) -> list[IgnoredSetting]:

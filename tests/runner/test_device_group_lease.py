@@ -192,6 +192,33 @@ def test_preflight_refuses_a_group_on_a_backend_that_cannot_share_a_device() -> 
     assert device.log == []  # refused before any device was leased
 
 
+@pytest.mark.parametrize(("erasing", "refused"), [("app", True), ("auth", False)])
+def test_preflight_refuses_a_member_that_erases_on_an_anchor_that_does_not(
+    erasing: str, refused: bool
+) -> None:
+    # Each target merges its own `app.reinstall` (BE-0473); `auth`, the last starting member, is the
+    # anchor that prepares the shared Simulator, so only its erase reaches the device.
+    device = _Device()
+    s = _scenario(
+        {
+            "targets": [["app", "auth"]],
+            "primaryTarget": "app",
+            "installs": ["auth"],
+            "steps": [{"tap": {"id": "ok"}}],
+        }
+    )
+    targets = _pools(device, "app", "auth")
+    pool = targets[erasing]
+    targets[erasing] = replace(pool, eff=replace(pool.eff, reinstall="erase"))
+    results = run_all(_eff(), [s], device.pool("unused"), targets=targets)
+    if refused:
+        assert not results[0].ok
+        assert "target 'app' sets app.reinstall: erase" in (results[0].failure or "")
+        assert device.log == []  # refused before any device was leased
+    else:
+        assert results[0].ok, results[0].failure
+
+
 # --- the pool's own join ---------------------------------------------------------------------
 
 

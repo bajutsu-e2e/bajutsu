@@ -887,6 +887,8 @@ def test_an_erasing_cold_spawn_re_pins_the_wiped_domain(
     eff = _sim_eff_locale(test_runner=str(_write_runner(tmp_path)), locale="ja_JP")
 
     env.start(eff, ResolvedPreconditions(reinstall="erase"))
+    # A device-group member may ask for the wipe only when the lease's own start did (BE-0473).
+    assert env._lead_erases is True
 
     assert domain["v"] == "ja_JP"  # re-pinned after the wipe, not left to the boot default
     verbs = _verbs(simctl_calls)
