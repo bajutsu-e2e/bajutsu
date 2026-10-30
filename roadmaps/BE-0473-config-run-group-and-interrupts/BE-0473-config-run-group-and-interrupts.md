@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0473") |
-| Implementing PR | [#2242](https://github.com/bajutsu-e2e/bajutsu/pull/2242) (units 3, 5, 6) |
+| Implementing PR | [#2242](https://github.com/bajutsu-e2e/bajutsu/pull/2242) (units 3, 5, 6), [#2263](https://github.com/bajutsu-e2e/bajutsu/pull/2263) (unit 2) |
 | Topic | Driver & backend architecture |
 | Related | [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure.md), [BE-0314](../BE-0314-scenario-interrupt-handlers/BE-0314-scenario-interrupt-handlers.md), [BE-0406](../BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts.md), [BE-0401](../BE-0401-system-alert-handling-dsl-consolidation/BE-0401-system-alert-handling-dsl-consolidation.md), [BE-0177](../BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md), [BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications.md), [BE-0221](../BE-0221-android-scenario-portability-guarantee/BE-0221-android-scenario-portability-guarantee.md) |
 <!-- /BE-METADATA -->
@@ -370,7 +370,7 @@ resolved `Effective` keeps `run_defaults` as an internal grouping, filled from t
 > (oldest first), linking the PRs.
 
 - [ ] Unit 1: interrupt entries
-- [ ] Unit 2: reinstall ladder
+- [x] Unit 2: reinstall ladder
 - [x] Unit 3: evidence fields
 - [ ] Unit 4: remove `run`
 - [x] Unit 5: notification scope
@@ -387,6 +387,19 @@ Log:
   later units move. One deviation from *Notification scope*: an endpoint's `targets:` filter matches
   scenario names, not config target names, so no config-level replacement exists for a target's own
   `notify`. The maintainer chose to remove it as written regardless.
+- [#2263](https://github.com/bajutsu-e2e/bajutsu/pull/2263): Landed unit 2. `subject.reinstall` and `preconditions.subject.reinstall` take `overwrite`,
+  `clean`, or `erase`, and `run.erase` and `preconditions.run.erase` fail at load naming
+  `subject.reinstall: erase`. `--erase` and `--no-erase` move the value along the ladder, the iOS and
+  Android lifecycles read the one value, and `seedPhotos` requires an effective `erase`. A stored run
+  plan's `erase: true` loads as `reinstall: erase`. The demo scenarios and the documents that name
+  `run.erase` moved in the same change. Two deviations from *Erase as the strongest reinstall*:
+  `defaults` has no `app`, so a shared erase is written under `defaults.platforms.<platform>.app`;
+  and the run no longer stamps the primary target's erase onto each scenario, so each target a
+  scenario drives merges its own `subject.reinstall`, and `--no-erase` lowers each target's own `erase`.
+  Two consequences follow. An iOS device-group member that erases on a Simulator its lead did not
+  erase now fails rather than running unwiped. And a stored plan shows the reinstall the scenario
+  wrote, not the one its target supplied. `run.ignoredSettings` (BE-0467), which the
+  *Where each old key goes* table predates, still sits under `run` and needs a home in unit 4.
 
 ## References
 

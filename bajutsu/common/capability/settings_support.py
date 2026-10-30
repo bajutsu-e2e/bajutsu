@@ -1,9 +1,9 @@
 """Which environment-specific settings each environment route can apply (BE-0467).
 
-A setting such as `run.erase` or `runsOn.ios.seedPhotos` reaches the device before the first step,
-and not every route can apply it: `simctl erase` reaches the Simulator and nothing else. Each route
-used to handle the gap its own way — a raise at launch, a silent ignore, or a BE-0082 preflight
-failure. This module is the one table they all read instead, so the run preflight, each
+A setting such as `subject.reinstall: erase` or `runsOn.ios.seedPhotos` reaches the device before the
+first step, and not every route can apply it: `simctl erase` reaches the Simulator and nothing else.
+Each route used to handle the gap its own way — a raise at launch, a silent ignore, or a BE-0082
+preflight failure. This module is the one table they all read instead, so the run preflight, each
 environment's launch, and (later) the lint and the serve dispatch cannot disagree.
 
 Every setting is in one of three states per route:
@@ -45,7 +45,7 @@ _PERMISSION_PREFIX = "permissions."
 
 # Each setting key, as `run.ignoredSettings` names it, with the source field a reader recognizes.
 SETTING_FIELDS: dict[str, str] = {
-    "erase": "run.erase",
+    "erase": "subject.reinstall: erase",
     "install": "subject.path install",
     **{
         f"{_PERMISSION_PREFIX}{service}": f"permissions.{service}"
@@ -109,7 +109,7 @@ _ROWS: dict[Route, dict[str, SettingSupport]] = {
         "launchArgs": _U,
         "deeplink": _S,
     },
-    # Every web run starts a fresh browser context, so `erase: true` already holds.
+    # Every web run starts a fresh browser context, so `reinstall: erase` already holds.
     "web": {
         "erase": _SAT,
         "install": _U,
@@ -332,7 +332,7 @@ def without_ignored(
     return (
         replace(
             pre,
-            erase=pre.erase and "erase" not in skip,
+            reinstall="clean" if pre.erase and "erase" in skip else pre.reinstall,
             seed_photos=[] if "seedPhotos" in skip else pre.seed_photos,
             locale=None if "locale" in skip else pre.locale,
             launch_env=(

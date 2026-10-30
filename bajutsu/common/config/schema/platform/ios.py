@@ -50,7 +50,7 @@ class IosDestination(_Model):
     locale: str | None = None
     # Images seeded into the Simulator's photo library on the erase path, in order, so
     # `selectPhotos` addresses a known library (BE-0452). Paths resolve against the config file; a
-    # scenario's own list replaces this one, and the merged list needs an effective `run.erase`.
+    # scenario's own list replaces this one, and the merged list needs an effective `subject.reinstall: erase`.
     seed_photos: list[str] = Field(default_factory=list, alias="seedPhotos")
 
     @property

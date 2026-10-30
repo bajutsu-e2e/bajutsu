@@ -50,7 +50,7 @@ class Effective:
     secrets: list[str] = field(default_factory=list)
     # The target's `subject.reinstall` (BE-0452): how the app is reinstalled when the scenario sets no
     # mode of its own. None leaves the built-in `clean`.
-    reinstall: Literal["clean", "overwrite"] | None = None
+    reinstall: Literal["overwrite", "clean", "erase"] | None = None
     # The target's `subject.launch.deeplink` (BE-0452), opened after launch unless the scenario sets one.
     deeplink: str | None = None
     # The target's `runsOn.ios.seedPhotos` (BE-0452), rebased against the config file; a scenario's own

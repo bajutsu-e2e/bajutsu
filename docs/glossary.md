@@ -37,10 +37,11 @@ extract modifiers. Defined by `Step` in `bajutsu/scenario/models/steps.py`.
 **precondition** — Per-scenario environment setup applied before the run. It merges over each
 target the scenario drives. Its fields:
 
-- `subject.reinstall` and `subject.launch.env` / `.args` / `.deeplink`
+- `subject.reinstall` (`overwrite`, `clean`, or `erase`, which wipes the whole device) and
+  `subject.launch.env` / `.args` / `.deeplink`
 - `device.ios.locale` / `.seedPhotos`: the iOS device state, replacing the target's `runsOn.ios`
   values
-- `run.erase` / `.systemAlertHandling` / `.tipKitHandling` / `.inheritSetup`
+- `run.systemAlertHandling` / `.tipKitHandling` / `.inheritSetup`
 
 A precondition declares no device condition; the target's `runsOn` holds those.
 

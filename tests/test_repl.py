@@ -1058,7 +1058,7 @@ def test_repl_defaults_to_no_erase_on_the_live_webdriver_route(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # The live route's device behind an `appium` grid is already booted with its build installed
-    # (BE-0238); its environment explicitly rejects `ResolvedPreconditions(erase=True)`, so an unset
+    # (BE-0238); its environment explicitly rejects `ResolvedPreconditions(reinstall="erase")`, so an unset
     # `--erase` must default to off there rather than the local route's on.
     monkeypatch.setattr("bajutsu.cli._shared.select_actuator", lambda *a, **k: "xcuitest")
     monkeypatch.setattr(

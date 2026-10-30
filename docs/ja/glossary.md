@@ -43,9 +43,9 @@ extract の修飾子を持ちません。定義は `bajutsu/scenario/models/step
 シナリオが動かす各ターゲットの値に重ねます。
 フィールドは次のとおりです。
 
-- `subject.reinstall` と `subject.launch.env` / `.args` / `.deeplink` です。
+- `subject.reinstall`（`overwrite`、`clean`、デバイス全体を wipe する `erase` のいずれか）と `subject.launch.env` / `.args` / `.deeplink` です。
 - `device.ios.locale` / `.seedPhotos` です。iOS のデバイスの状態で、ターゲットの `runsOn.ios` の値を置き換えます。
-- `run.erase` / `.systemAlertHandling` / `.tipKitHandling` / `.inheritSetup` です。
+- `run.systemAlertHandling` / `.tipKitHandling` / `.inheritSetup` です。
 
 precondition はデバイスの条件を宣言しません。条件はターゲットの `runsOn` が持ちます。
 

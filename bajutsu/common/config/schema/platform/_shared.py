@@ -52,10 +52,11 @@ class LaunchEnv(_Model):
     env: dict[str, str] = Field(default_factory=dict)
 
 
-# How the app is (re)installed before each run when the target gives a `subject.path` (BE-0452):
-# `clean` uninstalls first, `overwrite` installs over the existing app and keeps its data. Unset
-# leaves it to the scenario, then the built-in `clean`.
-Reinstall = Literal["clean", "overwrite"]
+# How much state a run wipes before launch (BE-0452, BE-0473), weakest first: `overwrite` installs
+# over the existing app and keeps its data, `clean` uninstalls first, `erase` wipes the whole device
+# (on Android, which has no device-wide wipe, the same as `clean`). Unset leaves it to the scenario,
+# then the built-in `clean`.
+Reinstall = Literal["overwrite", "clean", "erase"]
 
 
 def coerce_range(value: Any) -> Any:

@@ -30,14 +30,31 @@ class ResolvedPreconditions:
     `Effective.launch_env` and appends after its `launch_args`; every other field is already merged.
     """
 
-    erase: bool = False
-    reinstall: Literal["clean", "overwrite"] = "clean"
+    # How much state the run wipes before launch, weakest first (BE-0473).
+    reinstall: Literal["overwrite", "clean", "erase"] = "clean"
     launch_env: dict[str, str] = field(default_factory=dict)
     launch_args: list[str] = field(default_factory=list)
     deeplink: str | None = None
     # The scenario's own locale, or None to keep the target's `Effective.locale`.
     locale: str | None = None
     seed_photos: list[str] = field(default_factory=list)
+
+    @property
+    def erase(self) -> bool:
+        """Whether the run wipes the whole device: the top of the `reinstall` ladder."""
+        return self.reinstall == "erase"
+
+    def with_erase(self, erase: bool | None) -> ResolvedPreconditions:
+        """These preconditions under an `--erase` / `--no-erase` flag (BE-0473).
+
+        `--erase` raises the ladder to `erase`; `--no-erase` lowers an `erase` to `clean` and leaves
+        `overwrite` and `clean` alone; None (no flag) keeps the merged value.
+        """
+        if erase:
+            return replace(self, reinstall="erase")
+        if erase is False and self.erase:
+            return replace(self, reinstall="clean")
+        return self
 
     def resolved_locale(self, target_locale: str) -> str:
         """The locale this run uses: the scenario's own, else the target's."""
@@ -50,7 +67,7 @@ def resolve_preconditions(
     """Merge a scenario's preconditions over the target *eff* resolves.
 
     A scenario value wins over the target's; unset falls through to the target and then to the
-    built-in default (`reinstall: clean`, no erase).
+    built-in default (`reinstall: clean`).
 
     Args:
         eff: The target the scenario runs against.
@@ -63,7 +80,6 @@ def resolve_preconditions(
     seed = pre.seed_photos_for(platform)
     locale = pre.resolved_locale("", platform)
     return ResolvedPreconditions(
-        erase=pre.run.erase if pre.run.erase is not None else eff.run_defaults.erase,
         reinstall=pre.subject.reinstall or eff.reinstall or "clean",
         launch_env=dict(pre.subject.launch.env),
         launch_args=list(pre.subject.launch.args),
@@ -73,17 +89,18 @@ def resolve_preconditions(
     )
 
 
-def command_preconditions(eff: Effective, *, erase: bool) -> ResolvedPreconditions:
+def command_preconditions(eff: Effective, *, erase: bool | None) -> ResolvedPreconditions:
     """The target's own preconditions for a command that runs no scenario (`record`, `crawl`, `repl`).
 
-    The command's `--erase` decides the wipe; the target's `subject.reinstall`, `subject.launch.deeplink`,
-    and `runsOn.ios.seedPhotos` still apply.
+    The command's `--erase` / `--no-erase` moves the target's `subject.reinstall` along its ladder
+    (`ResolvedPreconditions.with_erase`); the target's `subject.launch.deeplink` and
+    `runsOn.ios.seedPhotos` still apply.
 
     Raises:
-        ValueError: The target seeds photos but the command does not erase, which would seed none.
+        ValueError: The target seeds photos but the run does not erase, which would seed none.
     """
-    merged = replace(resolve_preconditions(eff), erase=erase)
-    if merged.seed_photos and not erase:
+    merged = resolve_preconditions(eff).with_erase(erase)
+    if merged.seed_photos and not merged.erase:
         raise ValueError(
             f"target {eff.target!r} sets runsOn.ios.seedPhotos, which seeds only a wiped device: "
             "drop --no-erase, or clear the target's seedPhotos"
@@ -95,7 +112,9 @@ def _subject_fields(pre: Preconditions) -> list[tuple[str, ...]]:
     """The `subject` fields *pre* sets, as paths under `preconditions.subject`."""
     launch = pre.subject.launch
     candidates: list[tuple[tuple[str, ...], bool]] = [
-        (("reinstall",), pre.subject.reinstall is not None),
+        # `erase` keeps `run.erase`'s reach (BE-0473): a web run's fresh browser context already
+        # satisfies it, so a portable scenario that erases still runs there.
+        (("reinstall",), pre.subject.reinstall not in (None, "erase")),
         (("launch", "env"), bool(launch.env)),
         (("launch", "args"), bool(launch.args)),
         (("launch", "deeplink"), launch.deeplink is not None),
@@ -107,7 +126,6 @@ def _run_fields(pre: Preconditions) -> list[str]:
     """The `run` fields *pre* sets that a target's `run` also has, spelled as YAML writes them."""
     run = pre.run
     candidates = [
-        ("erase", run.erase is not None),
         ("systemAlertHandling", run.system_alert_handling is not None),
         ("tipKitHandling", run.tip_kit_handling is not None),
     ]
@@ -170,11 +188,11 @@ def check_preconditions(
 
     A field never goes ignored (BE-0452). A `subject` field or an iOS-only `run` field that no driven
     target's platform has is a problem. After merging, a target whose `seedPhotos` is non-empty needs an effective
-    `run.erase` (the flag, then the scenario, then the target), because seeding happens only on the
-    erase path.
+    `subject.reinstall: erase` (the scenario's, else the target's, then moved by the flag), because
+    seeding happens only on the erase path.
 
-    A non-primary target with seeded photos is a problem too: the run stamps `run.erase` and seeds
-    the photo library for the primary alone.
+    A non-primary target with seeded photos is a problem too: the run seeds the photo library for
+    the primary alone.
 
     Args:
         pre: The scenario's preconditions, as written (before a command fills in run defaults).
@@ -203,16 +221,16 @@ def check_preconditions(
     for i, eff in enumerate(targets):
         merged = resolve_preconditions(eff, pre)
         if i and merged.seed_photos:
-            # The run resolves `run.erase` and seeds the photo library for the primary alone.
+            # The run seeds the photo library for the primary alone.
             problems.append(
                 f"seedPhotos on target {eff.target!r} applies to the primary target alone; clear "
                 "it for this scenario, or make the target the scenario's primary"
             )
             continue
-        erase = erase_flag if erase_flag is not None else merged.erase
-        if merged.seed_photos and not erase:
+        if merged.seed_photos and not merged.with_erase(erase_flag).erase:
             problems.append(
                 f"seedPhotos on target {eff.target!r} needs a wiped device: set "
-                "preconditions.run.erase: true, the target's run.erase: true, or pass --erase"
+                "preconditions.subject.reinstall: erase, the target's subject.reinstall: erase, or pass "
+                "--erase"
             )
     return problems

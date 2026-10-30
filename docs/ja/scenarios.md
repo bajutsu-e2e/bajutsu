@@ -111,22 +111,21 @@ scenarios:
 ```yaml
 preconditions:
   subject:
-    reinstall: overwrite
+    reinstall: erase
     launch: { env: { FEATURE_X: "1" }, args: ["-debug"], deeplink: "showcase://cart" }
   device:
     ios: { locale: ja_JP, seedPhotos: [photos/cat.jpg] }
-  run: { erase: true, tipKitHandling: true }
+  run: { tipKitHandling: true }
 ```
 
 | キー | 型 | 既定 | 説明 |
 |---|---|---|---|
-| `subject.reinstall` | `clean` \| `overwrite` | 未設定（ターゲットの `subject.reinstall`、次に `clean`） | ターゲットの config が `subject.path` を指定したとき、各 run の前にアプリをどう再インストールするかを決めます。`clean` は uninstall してから install します（アプリとデータを fresh にします）。`overwrite` は既存アプリに上書き install します（データを保持します）。iOS と Android で使えます |
+| `subject.reinstall` | `overwrite` \| `clean` \| `erase` | 未設定（ターゲットの `subject.reinstall`、次に `clean`） | 各 run の前にどこまで状態を戻すかを、弱い順に決めます。`overwrite` は既存アプリに上書き install します（データを保持します）。`clean` は uninstall してから install します（アプリとデータを fresh にします）。`erase` はデバイス全体を wipe してから install します（`simctl erase`。アプリ、データ、設定を消去します）。install にはターゲットの config の `subject.path` が必要です。デバイス全体の wipe がない Android では、`erase` は `clean` と同じに動きます。iOS と Android で使えます。web のターゲットが受け付けるのは `erase` だけで、新しいブラウザコンテキストがすでにこの値を満たします（[BE-0473](../../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts-ja.md)） |
 | `subject.launch.env` | dict | `{}` | 起動時の環境変数です。ターゲットの `subject.launch.env` にキーごとにマージします。iOS は `SIMCTL_CHILD_*` で、Android は intent extra で注入します。Web では Playwright のコード生成が読みます |
 | `subject.launch.args` | list[str] | `[]` | 起動引数です。ターゲットの `subject.launch.args` の後ろに追記します。iOS 専用です |
 | `subject.launch.deeplink` | str | 未設定（ターゲットの `subject.launch.deeplink`） | 起動後にアプリが開く URL です（iOS は `simctl openurl`、Android は intent） |
 | `device.ios.locale` | str | 未設定（ターゲットの `runsOn.ios.locale`） | 起動時の locale と言語を強制し（`-AppleLocale` / `-AppleLanguages`）、Simulator のシステム言語も固定します。ターゲットと異なる値は cold respawn を強制します |
 | `device.ios.seedPhotos` | list[str] | 未設定（ターゲットの `runsOn.ios.seedPhotos`） | erase の経路で、Simulator の写真ライブラリに順に投入する画像です。パスはシナリオファイルを基準に解決します。シナリオのリストはターゲットのリストを置き換えます |
-| `run.erase` | bool | 未設定（ターゲットの `run.erase`、次にオフ） | 各テストの前にデバイス全体を wipe します（`simctl erase`。アプリ、データ、設定を消去します）。`reinstall` が全 wipe なしでアプリを新しい状態に保つので、まっさらなデバイスが必要なテストだけ `true` にします |
 | `run.systemAlertHandling` | bool / object | 未設定（ON） | リアクティブなアラートガードです（[下記](#systemalerthandlingシステムアラートガード)） |
 | `run.tipKitHandling` | bool | 未設定（ターゲットの `run.tipKitHandling`、次にオフ） | 操作をブロックしている Apple TipKit の tip を閉じます（iOS 専用。[下記](#tipkithandling操作をブロックする-tipkit-の-tip)） |
 | `run.inheritSetup` | bool | `true` | `false` にすると、このシナリオが宣言する全ターゲットの `hooks.setup` を省きます。各ターゲットの `hooks.cleanup` は走ります（[後述](#setup--cleanupセットアップとティアダウンのフェーズ)） |
@@ -172,16 +171,21 @@ targets: [app-ipad]
 > 示します。`preconditions.runsOn.ios.model` のような条件は失敗し、代わりにそれを宣言するターゲットの
 > パス `runsOn.ios.model` を示します。
 
-> `run.erase` の解決順は **CLI の `--erase` / `--no-erase` > このシナリオ自身の `run.erase` >
-> ターゲットの `run.erase` > 組み込みのオフ**です
-> （[BE-0177](../../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)、
-> [configuration](configuration.md#設定の階層defaults--targets)）。未設定のシナリオ（多くの場合はこれ）は、
-> ターゲットの config の値を継承します。`_filter_scenarios`（`run/cli.py`）が run の開始前に
-> この順序を解決します。
+> `subject.reinstall` の解決順は **このシナリオ自身の `subject.reinstall` > ターゲットの `subject.reinstall` >
+> 組み込みの `clean`** で、その結果を CLI のフラグが動かします
+> （[BE-0473](../../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts-ja.md)、
+> [configuration](configuration.md#設定の階層defaults--targets)）。`--erase` は値を `erase` にし、
+> `--no-erase` は `erase` を `clean` に下げ、`overwrite` と `clean` はそのままにします。
+> 未設定のシナリオ（多くの場合はこれ）は、ターゲットの config の値を継承します。
+> `_filter_scenarios`（`run/cli.py`）が run の開始前にフラグを反映します。そのため、`erase` を指定した
+> ターゲットは `--no-erase` でアプリをアンインストールします。アプリのデータを残したいシナリオは
+> `overwrite` と書きます。廃止した `preconditions.run.erase` はロード時に失敗し、
+> `preconditions.subject.reinstall: erase` を示します。
 
 > **写真の投入には wipe したデバイスが必要です。** 重ね合わせたあとの `seedPhotos` が空でなければ、
-> 実効の `run.erase`（フラグ、次にシナリオ、次にターゲット）が true である必要があります。写真ライブラリへの
-> 投入は erase の経路でだけ行うからです。ターゲットの `run.erase: true` でも条件を満たします。
+> 実効の `subject.reinstall`（シナリオの値、なければターゲットの値に、フラグを反映したもの）が `erase` である
+> 必要があります。写真ライブラリへの投入は erase の経路でだけ行うからです。ターゲットの
+> `subject.reinstall: erase` でも条件を満たします。
 > 複数のターゲットを動かすシナリオでは、写真を投入するのはプライマリだけです。重ね合わせたあとの
 > `seedPhotos` を持つプライマリ以外のターゲットは、run を失敗させます。`record`、`crawl`、`repl` は、
 > 写真を投入するターゲットに対する `--no-erase` を拒否します。どちらの拒否も、デバイスを操作する前に
@@ -192,13 +196,14 @@ targets: [app-ipad]
 > シナリオ間でデータを保持するために存在し、権限の許可状態もその保持対象に含まれるため、`overwrite`
 > では前のシナリオが許可した権限がそのまま見え続けます。
 
-> **BE-0452 や BE-0469 より前に保存した run も読み込めます。** シナリオのローダーは、古い平坦なキーを
+> **BE-0452、BE-0469、BE-0473 より前に保存した run も読み込めます。** シナリオのローダーは、古い平坦なキーを
 > 拒否します。対象は `erase`、`reinstall`、`launchEnv`、`launchArgs`、`deeplink`、`locale`、`seedPhotos`
 > です。トップレベルの `systemAlertHandling` と `iosTipKitHandling`、`preconditions.runsOn` も拒否します。
 > どのメッセージも、キーの移動先を示します。run ディレクトリをオフラインで読む処理は、保存された
 > `scenario.yaml` のほうを読み替えます。該当するのは、レポートの再描画、`trace`、`triage` です。保存された
 > `preconditions.runsOn` は、iOS の `locale` と `seedPhotos` を `device.ios` に移し、条件を捨てます。
-> 条件は、その run が使うデバイスをすでに選び終えているからです。
+> 条件は、その run が使うデバイスをすでに選び終えているからです。保存された `preconditions.erase` や
+> `preconditions.run.erase: true` は `subject.reinstall: erase` になり、保存された `false` は捨てます。
 
 どの環境でも、すべての前提条件を適用できるわけではありません。実機の iPhone では `simctl erase` を実行できず、
 ブラウザには `subject.launch.env` を渡すアプリの起動がありません。ターゲットの環境が前提条件を適用できないとき、
@@ -857,7 +862,7 @@ assertするまで、新しいステップもランナーの変更も要りま�
 シナリオが所有しないOSの画面を扱うので、次の制約があります。
 
 - **実測したのはiOS Simulatorだけです。** iOS 26.5で確かめました。実機とほかのランタイムは確かめていません。
-- **`run.erase: true`でレイアウトを固定します。** 長押しはアイコングリッドの中心に当たるので、グリッドの中心は空いた壁紙でなければなりません。eraseと再インストールのあと、SpringBoardはテスト用アプリをインストールしたページを開きます。このページは下半分が空いています。eraseは前の実行が追加したウィジェットも消すので、新しいウィジェットへのassertが一意に保たれます。
+- **`preconditions.subject.reinstall: erase`でレイアウトを固定します。** 長押しはアイコングリッドの中心に当たるので、グリッドの中心は空いた壁紙でなければなりません。eraseと再インストールのあと、SpringBoardはテスト用アプリをインストールしたページを開きます。このページは下半分が空いています。eraseは前の実行が追加したウィジェットも消すので、新しいウィジェットへのassertが一意に保たれます。
 - **`preconditions.device.ios.locale`で言語を固定します。** ラベルはすべてSpringBoard自身の文言です。アイコンの`identifier`でさえローカライズ済みの名前になります（英語では`Calendar`、日本語では`カレンダー`）。
 - **検索結果の行はツリーに現れません。** ギャラリーの検索欄に文字が入ると、SpringBoardのスナップショットは結果の一覧を空のコンテナとして返します。行は画面に表示されています。検索欄の下の決まった位置にある先頭の行を、`tapPoint`でタップします（iPhone 17 Proでは`{ x: 0.5, y: 0.29 }`）。
 - **サイズの選択には`swipe`ではなく`drag`を使います。** サイズのカルーセルは、弾くように動かしたときだけページが切り替わります。`swipe`は慣性のないスクロールなので、元のページへ戻ってしまいます。
@@ -2093,7 +2098,7 @@ report内で複数の折りたたみに分かれることがあります。そ�
 
 ### データ駆動シナリオ（`data` / `dataFile`）
 
-`data`（インライン行）か `dataFile`（CSV パス。両者は **排他**）を持つシナリオは、`${row.<column>}` を置換して **1 行 1 シナリオ**に展開されます（`expand_data`, `scenario/expand.py`）。派生シナリオは `"<name> [row N: col=val, …]"` に改名され、元の preconditions を保ちます。そのため各行ともアプリを fresh に再インストールし、テンプレートの `run.erase` / `subject.reinstall` を継承します。
+`data`（インライン行）か `dataFile`（CSV パス。両者は **排他**）を持つシナリオは、`${row.<column>}` を置換して **1 行 1 シナリオ**に展開されます（`expand_data`, `scenario/expand.py`）。派生シナリオは `"<name> [row N: col=val, …]"` に改名され、元の preconditions を保ちます。そのため各行ともアプリを fresh に再インストールし、テンプレートの `subject.reinstall` を継承します。
 
 ```yaml
 - name: search returns a result

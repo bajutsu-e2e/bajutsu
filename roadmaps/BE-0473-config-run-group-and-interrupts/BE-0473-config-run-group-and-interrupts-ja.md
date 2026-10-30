@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0473") |
-| 実装 PR | [#2242](https://github.com/bajutsu-e2e/bajutsu/pull/2242)（単位 3、5、6） |
+| 実装 PR | [#2242](https://github.com/bajutsu-e2e/bajutsu/pull/2242)（単位 3、5、6）、[#2263](https://github.com/bajutsu-e2e/bajutsu/pull/2263)（単位 2） |
 | トピック | ドライバとバックエンドのアーキテクチャ |
 | 関連 | [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)、[BE-0314](../BE-0314-scenario-interrupt-handlers/BE-0314-scenario-interrupt-handlers-ja.md)、[BE-0406](../BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md)、[BE-0401](../BE-0401-system-alert-handling-dsl-consolidation/BE-0401-system-alert-handling-dsl-consolidation-ja.md)、[BE-0177](../BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)、[BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications-ja.md)、[BE-0221](../BE-0221-android-scenario-portability-guarantee/BE-0221-android-scenario-portability-guarantee-ja.md) |
 <!-- /BE-METADATA -->
@@ -364,7 +364,7 @@ iOS の `tipKitHandling` だけだったからです。解決後の `Effective` 
 > ともに記録します。
 
 - [ ] 単位 1：割り込みエントリ
-- [ ] 単位 2：reinstall の段階
+- [x] 単位 2：reinstall の段階
 - [x] 単位 3：evidence のフィールド
 - [ ] 単位 4：`run` の削除
 - [x] 単位 5：通知の範囲
@@ -381,6 +381,20 @@ iOS の `tipKitHandling` だけだったからです。解決後の `Effective` 
   *通知の範囲* からは 1 点ずれています。エンドポイントの `targets:` は config のターゲット名ではなく
   シナリオ名で絞り込むので、ターゲット自身の `notify` を config で置き換える手段はありません。
   それでも、メンテナの判断で設計どおり削除しました。
+- [#2263](https://github.com/bajutsu-e2e/bajutsu/pull/2263)：単位 2 を実装しました。`subject.reinstall` と `preconditions.subject.reinstall` は `overwrite`、
+  `clean`、`erase` のいずれかを取り、`run.erase` と `preconditions.run.erase` は読み込み時に
+  `subject.reinstall: erase` を示すエラーになります。`--erase` と `--no-erase` はこの値を段階に沿って
+  動かし、iOS と Android のライフサイクルはこの 1 つの値だけを読みます。`seedPhotos` には実効の
+  `erase` が必要です。保存済みの実行プランにある `erase: true` は `reinstall: erase` として読み込みます。
+  `run.erase` を書いているデモのシナリオとドキュメントも同じ変更で直しました。*もっとも強い reinstall
+  としての erase* からは 2 点ずれています。1 つ目に、`defaults` には `app` がないので、共有する erase は
+  `defaults.platforms.<platform>.app` に書きます。2 つ目に、実行時にプライマリターゲットの erase を
+  各シナリオへ書き込むのをやめたので、シナリオが動かすターゲットはそれぞれ自身の `subject.reinstall` を
+  マージし、`--no-erase` も各ターゲット自身の `erase` を下げます。この結果が 2 つあります。iOS の
+  デバイスグループで、リードが消去しなかった Simulator 上でメンバーが erase を求めると、消去せずに
+  動くのではなく失敗します。また、保存された実行プランには、ターゲットが与えた reinstall ではなく
+  シナリオが書いた reinstall が残ります。また、*旧キーの移行先* の表より後に加わった `run.ignoredSettings`（BE-0467）は
+  まだ `run` の下にあり、単位 4 で移動先を決める必要があります。
 
 ## 参考
 

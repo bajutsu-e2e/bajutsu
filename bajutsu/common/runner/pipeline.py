@@ -272,16 +272,12 @@ class _ScenarioRunner:
     run_crash_budget: RunCrashRecoveryBudget = field(
         default_factory=lambda: RunCrashRecoveryBudget(None)
     )
-    # Whether a crash-triggered retry (attempt > 1) may force `preconditions.run.erase=True`. True (the
-    # default) matches every existing caller. `bajutsu run`'s `--no-erase` (an operator override of
-    # every scenario's `preconditions.run.erase`, applied by `_filter_scenarios` in
-    # `bajutsu/cli/commands/run.py` before a scenario ever reaches here) is the one signal this
-    # forced retry must still honor: by the time a scenario reaches `run_one`, `_filter_scenarios` has
-    # already resolved `preconditions.run.erase` to a concrete bool for every scenario (most commonly
-    # `False`, the built-in default nobody asked for), so a guard reading that field can no longer
-    # distinguish "the operator explicitly asked to keep the device as-is" from "nobody said
-    # anything" — this flag carries the pre-resolution CLI signal (`erase is not False`) instead, so
-    # `--no-erase` still means what it says even on a crash-triggered retry.
+    # Whether a crash-triggered retry (attempt > 1) may force `preconditions.subject.reinstall: erase`.
+    # True (the default) matches every existing caller. `bajutsu run`'s `--no-erase` is the one signal
+    # this forced retry must still honor, and no scenario's own value carries it: `_filter_scenarios`
+    # moves only a scenario that erases, so a scenario that never erased looks the same with the flag
+    # or without it. This flag carries the CLI signal (`erase is not False`) instead, so `--no-erase`
+    # still means what it says even on a crash-triggered retry.
     force_erase_on_retry: bool = True
     # Whether this run has been asked to stop (BE-0370). Read once per scenario below, before the
     # first lease is attempted, and handed down to `run_scenario` so the step loop and its condition
@@ -369,6 +365,35 @@ class _ScenarioRunner:
                 return f"unsupported on backend '{pool.actuator}' (target '{name}'): {'; '.join(reasons)}"
             if problems := _settings_problems(pool.actuator, pool.eff, s, pool.udid_spec):
                 return f"unsupported on backend '{pool.actuator}' (target '{name}'): {problems}"
+        return self._group_erase_problem(s)
+
+    def _group_erase_problem(self, s: Scenario) -> str | None:
+        """A Simulator group member that erases while the member preparing the device does not.
+
+        Each target merges its own `subject.reinstall` (BE-0473), so two targets on one Simulator can
+        disagree. The device is wiped once, by the group's last starting member (`_lease_targets`),
+        so a member asking for `erase` on an anchor that does not erase is refused here, before any
+        lease. Android has no device-wide wipe, so its members never conflict.
+        """
+        later = set(s.later_targets)
+        for group in s.device_groups:
+            starting = [n for n in group if n not in later and n in self.targets]
+            if len(group) < 2 or not starting:
+                continue
+            anchor = starting[-1]
+
+            def erases(name: str) -> bool:
+                eff = self.targets[name].eff
+                return eff.platform == "ios" and resolve_preconditions(eff, s.preconditions).erase
+
+            if erases(anchor):
+                continue
+            if conflict := next((n for n in group if n in self.targets and erases(n)), None):
+                return (
+                    f"target '{conflict}' sets subject.reinstall: erase, but it shares a Simulator with "
+                    f"'{anchor}', which prepares the device without erasing it; give every target "
+                    "in the device group the same reinstall"
+                )
         return None
 
     def _ignored_settings(self, s: Scenario, actuator: str | None) -> list[IgnoredSetting]:
@@ -765,13 +790,12 @@ class _ScenarioRunner:
                 # single-target run. Reset per attempt alongside `lz` for the same reason: a retry
                 # relaunches the whole set, so the previous attempt's drivers are already gone.
                 others: dict[str, Lease] = {}
-                # A retry forces the device recovery `erase: true` would give: respawning onto the
+                # A retry forces the device recovery `reinstall: erase` would give: respawning onto the
                 # device that just wedged reproduces the crash. Skipped on a merged `reinstall:
                 # overwrite`, from the scenario or its target's default (the app data must survive),
                 # on `not self.force_erase_on_retry` (the operator's `--no-erase`), and wherever
                 # forcing `erase` would itself raise (`erase_precondition_supported`, which would
-                # abort the whole run). `erase: false`
-                # is NOT a skip signal: the CLI has already collapsed it to a concrete bool by here.
+                # abort the whole run). A merged `clean` is NOT a skip signal: it keeps no data.
                 # An escalated attempt keeps this forced erase; the environment serving a replacement
                 # drops it. Every one of these choices is argued in BE-0353.
                 retry_scenario = s
@@ -791,7 +815,9 @@ class _ScenarioRunner:
                     retry_scenario = s.model_copy(
                         update={
                             "preconditions": pre.model_copy(
-                                update={"run": pre.run.model_copy(update={"erase": True})}
+                                update={
+                                    "subject": pre.subject.model_copy(update={"reinstall": "erase"})
+                                }
                             )
                         }
                     )
@@ -1982,13 +2008,13 @@ def run_all(
             run is never blocked, the same never-block-the-first-respawn rule
             `crash_recovery_budget` already follows per scenario.
         force_erase_on_retry: Whether a crash-triggered retry (attempt > 1) may force
-            `preconditions.run.erase=True`, the same recovery a scenario already gets by declaring
-            `erase: true` (see `_ScenarioRunner.run_one`). True (the default) preserves every
+            `preconditions.subject.reinstall: erase`, the same recovery a scenario already gets by
+            declaring it (see `_ScenarioRunner.run_one`). True (the default) preserves every
             existing caller's behavior. `bajutsu run --no-erase` passes False here, carrying the
-            operator's explicit opt-out past `_filter_scenarios`'s per-scenario resolution — the CLI
-            resolves every scenario's `preconditions.run.erase` to a concrete bool before `run_all` ever
-            sees it, so that field alone cannot distinguish "the operator asked to keep the device"
-            from "nobody said anything" by the time a retry decides whether to force it.
+            operator's explicit opt-out past `_filter_scenarios` — a scenario that never erased
+            reads the same with `--no-erase` or without it, so its `preconditions.subject.reinstall`
+            alone cannot distinguish "the operator asked to keep the device" from "nobody said
+            anything" by the time a retry decides whether to force it.
         cancelled: Reports whether this run has been asked to stop (BE-0370). A scenario the request
             reaches — at a step boundary, inside a condition wait's poll, or before it was leased at
             all — comes back as `RunResult(ok=False, failure="cancelled")`, so the caller still

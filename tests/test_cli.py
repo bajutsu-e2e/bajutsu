@@ -1539,7 +1539,7 @@ def test_browsers_matrix_replaces_a_listed_engine_condition(tmp_path: Path) -> N
         ("run", "browser", "runsOn.browser.kind"),
         ("run", "browsers", "runsOn.browser.kind"),
         ("run", "headed", "driver.headless"),
-        ("run", "erase", "preconditions.run.erase"),
+        ("run", "erase", "subject.reinstall"),
         ("run", "system_alert_handling", "preconditions.run.systemAlertHandling"),
         ("run", "ios_tipkit_handling", "preconditions.run.tipKitHandling"),
         ("run", "baselines", "paths.baselines"),

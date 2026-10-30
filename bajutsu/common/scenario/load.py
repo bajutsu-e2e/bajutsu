@@ -87,7 +87,6 @@ _PHASE_RENAMES = {"before": "setup", "after": "cleanup"}
 # A flat `preconditions` key BE-0452 regrouped, and the path it moved to inside `preconditions`; the
 # group BE-0452 named `app` is `subject` since BE-0470.
 _PRECONDITION_MOVES: dict[str, tuple[str, ...]] = {
-    "erase": ("run", "erase"),
     "reinstall": ("subject", "reinstall"),
     "launchEnv": ("subject", "launch", "env"),
     "launchArgs": ("subject", "launch", "args"),
@@ -112,6 +111,25 @@ def _place(tree: dict[str, Any], path: tuple[str, ...], value: Any) -> None:
     tree.setdefault(leaf, value)
 
 
+def _upgrade_erase(pre: dict[str, Any]) -> None:
+    """Fold a stored `erase` (flat, or under `run`) into `subject.reinstall` (BE-0473).
+
+    A plan the run stored carries the concrete bool it resolved. True wipes the device whatever
+    `reinstall` said, so it becomes `erase`; false left the reinstall mode alone, so it is dropped.
+    """
+    run = pre.get("run")
+    erased = [pre.pop("erase", False)]
+    if isinstance(run, dict):
+        erased.append(run.pop("erase", False))
+        if not run:
+            del pre["run"]
+    if any(erased):
+        subject = pre.get("subject")
+        if not isinstance(subject, dict):
+            subject = pre["subject"] = {}
+        subject["reinstall"] = "erase"
+
+
 def _upgrade_preconditions(raw: dict[str, Any]) -> None:
     """Regroup one stored scenario's `preconditions` and top-level run policy (BE-0452/0469/0470)."""
     pre = raw.get("preconditions")
@@ -130,6 +148,7 @@ def _upgrade_preconditions(raw: dict[str, Any]) -> None:
     for old, new in _RUN_MOVES.items():
         if old in raw:
             _place(pre, ("run", new), raw.pop(old))
+    _upgrade_erase(pre)
     # BE-0469 removed the scenario's `runsOn`: its iOS device state moved to `device.ios`, and its
     # conditions are dropped, since they already chose the devices this stored run ran on.
     runs_on = pre.pop("runsOn", None)

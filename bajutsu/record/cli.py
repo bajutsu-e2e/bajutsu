@@ -121,7 +121,8 @@ def record(
     erase: bool = typer.Option(
         True,
         "--erase/--no-erase",
-        help="erase the device before launching (app must be installed); the target's run.erase "
+        help="erase the device before launching (app must be installed); the target's "
+        "subject.reinstall: erase "
         "does not apply here (default: erase)",
     ),
     system_alert_handling: bool | None = typer.Option(

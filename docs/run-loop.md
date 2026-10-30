@@ -228,7 +228,7 @@ to the report.
 Builds the environment with `simctl` per the `preconditions`:
 
 ```
-erase (if pre.erase: shutdown → erase) → boot → bootstatus -b (wait out the boot)
+erase (if pre.subject.reinstall is erase: shutdown → erase) → boot → bootstatus -b (wait out the boot)
   → terminate(bundle) (for a clean launch state)
   → launch(bundle, [subject.launch.args, *locale_args(locale)], {**subject.launch.env, **preconditions.subject.launch.env})
   → openurl(deeplink) (if any) → make_driver(actuator, udid)
@@ -351,19 +351,20 @@ driver. An invocation whose targets declare no condition keeps the path above un
 > already under way, so that recovery's own bound (`BAJUTSU_XCUITEST_RECOVERY_TIMEOUT`, plus its
 > unbounded device re-prep) is what limits it instead.
 >
-> The retry also forces the same `erase` precondition a scenario already gets by declaring
-> `erase: true` — a Simulator restart on XCUITest, an app-level clean state on adb — instead of a bare
-> in-place respawn onto the very device that just crashed it, unless the scenario declares
-> `reinstall: overwrite` to keep its app's data across the lease, or the route itself rejects any
-> `erase` precondition outright (a real device, `runsOn.ios.kind: device`, or the live route to an `appium`
-> grid). A plain `erase: false` does *not* skip the forced retry: the CLI (`_filter_scenarios` in
-> `bajutsu/cli/commands/run.py`) resolves every scenario's `erase` to a concrete bool, most commonly
-> `false`, before the pipeline ever sees it, so a guard on that value alone would disable the forced
-> retry on the very production path it exists for — only `reinstall: overwrite` genuinely protects a
-> scenario's data, since `reinstall`'s own default (`clean`) wipes it regardless of `erase` anyway. An
-> explicit `bajutsu run --no-erase`, by contrast, *is* honored: the CLI carries that flag's
-> pre-resolution value (`erase is not False`) into the run as `force_erase_on_retry`, so an operator's
-> deliberate opt-out still skips the forced retry even though a scenario's own `erase: false` cannot.
+> The retry also forces `preconditions.subject.reinstall: erase`, the same device reset a scenario
+> already gets by declaring that value — a Simulator restart on XCUITest, an app-level clean state on
+> adb — instead of a bare in-place respawn onto the very device that just crashed it. Three cases skip
+> the forced erase. The first is a merged reinstall of `overwrite`, from the scenario or else its
+> target, which keeps the app's data across the lease. The second is a route that rejects any
+> `erase` precondition outright: a real device (`runsOn.ios.kind: device`) or the live route to an
+> `appium` grid. The third is an explicit `bajutsu run --no-erase`: the CLI carries that flag into
+> the run as `force_erase_on_retry`, so an operator's deliberate opt-out still skips the forced
+> retry. A merged `clean`, the built-in default, does *not* skip it: `clean` wipes the app's data
+> anyway, so a guard on it would disable the forced retry on the very production path it exists
+> for. The CLI
+> no longer stamps a concrete erase value onto every scenario; `_filter_scenarios` moves a scenario's
+> reinstall only when a flag changes it
+> ([BE-0473](../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts.md)).
 > If the forced-erase lease itself fails with a device-level fault (`simctl.DeviceError`/
 > `adb.DeviceError`, a sibling type to `BackendCrashError` rather than a subclass of it), the retry
 > degrades to the bare in-place respawn instead of letting that fault escape this loop and abort the

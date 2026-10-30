@@ -218,6 +218,26 @@ def test_a_clean_member_reinstalls_and_resets_its_permissions(
     assert run.ran("privacy", _AUTH)
 
 
+@pytest.mark.parametrize("lead_erases", [True, False])
+def test_an_erasing_member_needs_a_lead_that_erased(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, lead_erases: bool
+) -> None:
+    # Each target merges its own `subject.reinstall` (BE-0473), so the lead and a member can disagree.
+    app = tmp_path / "Auth.app"
+    app.mkdir()
+    run = _Simctl()
+    env = _started(run, _Runner(), monkeypatch)
+    env._lead_erases = lead_erases
+    pre = ResolvedPreconditions(reinstall="erase")
+    if lead_erases:
+        env.start_member(_eff(_AUTH, str(app)), pre)
+        assert run.ran("uninstall", _AUTH)  # the device is already wiped; the member resets its app
+    else:
+        with pytest.raises(simctl.DeviceError, match="does not erase it"):
+            env.start_member(_eff(_AUTH, str(app)), pre)
+        assert not run.ran("install", str(app))
+
+
 def test_a_later_member_starts_launch_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     app = tmp_path / "Auth.app"
     app.mkdir()

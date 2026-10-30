@@ -461,7 +461,7 @@ def test_android_environment_start_grants_configured_permissions_after_clear() -
     env = AndroidEnvironment("adb", "S", adb_run=_resolve_activity_run(calls))
     env.start(
         _eff(grant_permissions=["android.permission.POST_NOTIFICATIONS"]),
-        ResolvedPreconditions(erase=True),
+        ResolvedPreconditions(reinstall="erase"),
     )
     joined = [" ".join(c) for c in calls]
     assert any("pm grant com.bajutsu.showcase.android.compose "
@@ -485,7 +485,7 @@ def test_android_environment_start_applies_scenario_permissions_after_clear() ->
     env = AndroidEnvironment("adb", "S", adb_run=_resolve_activity_run(calls))
     env.start(
         _eff(grant_permissions=["android.permission.POST_NOTIFICATIONS"]),
-        ResolvedPreconditions(erase=True),
+        ResolvedPreconditions(reinstall="erase"),
         permissions={"camera": "grant", "location": "revoke"},
     )
     joined = [" ".join(c) for c in calls]
@@ -891,7 +891,7 @@ def test_android_environment_boot_ready_skip_still_fails_loudly_on_a_not_booted_
 
     env = AndroidEnvironment("adb", "S", adb_run=run, provision=ProvisionProfile(boot_ready=True))
     with pytest.raises(adb.DeviceError, match="device offline"):
-        env.start(_eff(), ResolvedPreconditions(erase=True))
+        env.start(_eff(), ResolvedPreconditions(reinstall="erase"))
 
 
 def test_android_environment_default_profile_boots_and_polls() -> None:

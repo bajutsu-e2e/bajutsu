@@ -152,7 +152,7 @@ CleanupRule ::= { on: "always" | "success" | "failure", steps: list(<Step>) }
 # デバイスの条件を宣言しません。`runsOn` はターゲットだけが持ちます（BE-0469）。
 Preconditions ::= {
   app?:    {
-    reinstall?: ("clean" | "overwrite"),    # 未設定はターゲットの `subject.reinstall`、なければ "clean"。iOS と Android
+    reinstall?: ("overwrite" | "clean" | "erase"),  # 弱い順。未設定はターゲットの `subject.reinstall`、なければ "clean"。iOS と Android、web は "erase" のみ（BE-0473）
     launch?: {
       env?:      map(string,string),        # 既定 {} — ターゲットの `subject.launch.env` にマージ
       args?:     list(string),              # 既定 [] — ターゲットの引数の後ろに追記。iOS のみ
@@ -161,7 +161,6 @@ Preconditions ::= {
   },
   device?: { ios?: <IosDevice> },           # 宛先がキー。動かさないプラットフォームのブロックは効果なし
   run?:    {
-    erase?:               boolean,          # 未設定はターゲットの `run.erase` を継承し、それもなければオフ（BE-0177）
     systemAlertHandling?: <SystemAlertHandling>,  # アラートガード; 未指定で ON
     tipKitHandling?:      boolean,          # ブロックしている TipKit の tip を閉じる; 未指定で OFF。iOS のみ
     inheritSetup?:        boolean,          # 既定 true — false で、宣言した全ターゲットの `hooks.setup` を省く。cleanup は走る
@@ -170,7 +169,7 @@ Preconditions ::= {
 
 # シナリオが適用する iOS のデバイスの状態です。各フィールドは、ターゲットの `runsOn.ios` の同名の値を
 # 置き換えます。`seedPhotos` のパスはシナリオファイルを基準に解決します。重ね合わせたあとのリストが
-# 空でなければ、実効の `run.erase` が必要です。
+# 空でなければ、実効の `subject.reinstall: erase` が必要です。
 IosDevice ::= { locale?: string, seedPhotos?: list(string) }
 
 # ── SystemAlertHandling（リアクティブなシステムアラートガード; 既定 ON）─
@@ -486,11 +485,10 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 | `Scenario.tags` / `expect` / `capturePolicy` / `mocks` / `interrupts` / `setup` / `cleanup` | `[]` |
 | `Scenario.preconditions` | `{}`（どのフィールドもターゲットの値に、次に組み込みの既定値に従います） |
 | `Scenario.permissions` | `{}`（起動前の権限状態を適用しない） |
-| `Preconditions.run.erase` | 未設定 — ターゲットの `run.erase` を継承し、それもなければオフ（BE-0177） |
 | `Preconditions.run.systemAlertHandling` | 未指定（アラートガード ON。ただし規則が無いので、自分からはどのプロンプトにも答えない） |
 | `Preconditions.run.tipKitHandling` | 未指定（ターゲットの `run.tipKitHandling`、なければ OFF — tip 自体が検証対象になる場合があるため。iOS のみ） |
 | `Preconditions.run.inheritSetup` | `true`（宣言した各ターゲットの `hooks.setup` がシナリオの `setup` の前に走る） |
-| `Preconditions.subject.reinstall` | 未設定 — ターゲットの `subject.reinstall`、なければ `clean` |
+| `Preconditions.subject.reinstall` | 未設定 — ターゲットの `subject.reinstall`、なければ `clean`。`--erase` は `erase` に引き上げ、`--no-erase` は `erase` を `clean` に下げます（BE-0473） |
 | `Preconditions.subject.launch.args` | `[]` |
 | `Preconditions.subject.launch.env` | `{}` |
 | `SystemAlertHandling.rules` | `[]`（プロンプトの宣言が無いのでガードは何にも答えない。出会ったアラートはブロックされたステップの失敗理由に書き出される） |
@@ -577,7 +575,7 @@ scenarios:
 
 ### 6.3 データ駆動シナリオ（`data` / `dataFile`）
 
-`data`（インライン行）か `dataFile`（CSV パス。両者は排他）を持つシナリオは、`${row.<column>}` を置換して **1 行 1 シナリオ**に展開されます（`expand_data`, `scenario/expand.py`）。派生シナリオは `"<name> [row N: col=val, …]"` に改名され、**元の preconditions を保ちます**。そのためどの行も、元の preconditions（`run.erase` / `subject.reinstall`）を継承した状態でアプリを準備します。
+`data`（インライン行）か `dataFile`（CSV パス。両者は排他）を持つシナリオは、`${row.<column>}` を置換して **1 行 1 シナリオ**に展開されます（`expand_data`, `scenario/expand.py`）。派生シナリオは `"<name> [row N: col=val, …]"` に改名され、**元の preconditions を保ちます**。そのためどの行も、元の preconditions（`subject.reinstall`）を継承した状態でアプリを準備します。
 
 ```yaml
 - name: search returns a result

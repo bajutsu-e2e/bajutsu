@@ -52,7 +52,7 @@ targets:
 _LOCATE = """\
 - name: locate
   tags: [geo]
-  preconditions: {run: {erase: true}}
+  preconditions: {subject: {reinstall: erase}}
   steps:
     - wait: { for: { id: a }, timeout: 1 }
     - setLocation: { lat: 1, lon: 2 }

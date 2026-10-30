@@ -23,10 +23,10 @@ SCENARIO_YAML = """
 - name: open settings and reindex
   preconditions:
     subject:
+      reinstall: erase
       launch: { env: { SAMPLE_SCREEN: "settings" }, deeplink: "bajutsusample://settings" }
     device:
       ios: { locale: "ja_JP" }
-    run: { erase: true }
   steps:
     - tap: { id: settings.open }
     - tap: { id: settings.reindex }
@@ -146,7 +146,7 @@ def test_load_scenario_example() -> None:
     assert len(scenarios) == 1
     s = scenarios[0]
     assert s.name == "open settings and reindex"
-    assert s.preconditions.run.erase is True
+    assert s.preconditions.subject.reinstall == "erase"
     assert s.preconditions.subject.launch.env == {"SAMPLE_SCREEN": "settings"}
     assert len(s.steps) == 2
     assert s.steps[1].capture == ["screenshot.after", "deviceLog"]

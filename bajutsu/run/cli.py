@@ -34,6 +34,7 @@ from bajutsu.cli._shared import (
     _resolve_kind,
     _select_actuator_or_exit,
     _start_launch_server_or_exit,
+    _with_erase_flag,
     _with_headed,
     _with_worker_device,
     _without_engine_condition,
@@ -1075,19 +1076,18 @@ def _filter_scenarios(
     tag: str,
     exclude: str,
     erase: bool | None,
-    target_erase: bool,
     ios_tipkit_handling: bool | None = None,
     target_ios_tipkit_handling: bool = False,
     check: Callable[[list[Scenario]], None] | None = None,
 ) -> list[Scenario]:
-    """Apply `--tag`/`--exclude` selection and resolve each scenario's `preconditions.run.erase`.
+    """Apply `--tag`/`--exclude` selection and apply `--erase` / `--no-erase` to each scenario.
 
     Selection runs over the combined set; an empty result is a usage error (exit 2). *check* then
     sees the selected scenarios as written, before any run default is filled in, so a field the
-    scenario never wrote cannot trip it (BE-0452). Erase resolves most-specific-wins (BE-0177):
-    `--erase` / `--no-erase` overrides every scenario, else a scenario's own explicit value, else
-    *target_erase* (the target config default, already the built-in off when unset). Leaves every
-    scenario with a concrete bool, so downstream never sees the unset `None`.
+    scenario never wrote cannot trip it (BE-0452). The flag moves `preconditions.subject.reinstall` along
+    its ladder (BE-0473): `--erase` makes it `erase`, and `--no-erase` lowers the scenario's own
+    `erase` to `clean`. A target's own `erase` is lowered on its `Effective` instead
+    (`_with_erase_flag`), since each target a scenario drives merges its own `subject.reinstall`.
     `preconditions.run.tipKitHandling` resolves by the same precedence, but is set only when it ends
     on or the flag names it, so a scenario that drives no iOS target never gains the iOS-only field.
     """
@@ -1101,10 +1101,11 @@ def _filter_scenarios(
     if check is not None:
         check(scenarios)
     for s in scenarios:
-        if erase is not None:
-            s.preconditions.run.erase = erase  # CLI flag overrides every scenario
-        elif s.preconditions.run.erase is None:
-            s.preconditions.run.erase = target_erase  # unset scenario inherits the target default
+        subject = s.preconditions.subject
+        if erase:
+            subject.reinstall = "erase"
+        elif erase is False and subject.reinstall == "erase":
+            subject.reinstall = "clean"
         if ios_tipkit_handling is not None:
             s.preconditions.run.tip_kit_handling = ios_tipkit_handling
         elif s.preconditions.run.tip_kit_handling is None and target_ios_tipkit_handling:
@@ -2165,11 +2166,11 @@ class _RunPlan:
     # Scenarios the worker capability check failed before any device work (BE-0450), keyed by their
     # index in `scenarios`: reported with the prefixed reason and never leased.
     worker_failures: Mapping[int, str]
-    # Whether a backend-crash-triggered retry may force `preconditions.run.erase=True`
+    # Whether a backend-crash-triggered retry may force `preconditions.subject.reinstall: erase`
     # (`bajutsu/common/runner/pipeline.py`'s forced-erase retry). `erase is not False` — True for the default
-    # (unset) and explicit `--erase`, False only for an explicit `--no-erase` — captured here, ahead of
-    # `_filter_scenarios` resolving every scenario's `preconditions.run.erase` to a concrete bool, since
-    # that resolved value can no longer distinguish an explicit opt-out from "nobody asked".
+    # (unset) and explicit `--erase`, False only for an explicit `--no-erase` — captured here, since
+    # `_filter_scenarios` moves only a scenario that erases, so no scenario's value says whether the
+    # operator opted out.
     force_erase_on_retry: bool
     # `--trace-driver` (BE-0415): one `<sid>/driver_trace.json` per scenario, recording every
     # Python<->driver call. Diagnostic only, off by default, never on the verdict path.
@@ -2779,8 +2780,9 @@ def run_body(
     erase: bool | None = typer.Option(
         None,
         "--erase/--no-erase",
-        help="override run.erase: wins over every scenario's preconditions.run.erase and the "
-        "target's run.erase (default: the scenario's, then the target's, then off)",
+        help="--erase makes every scenario's subject.reinstall `erase`; --no-erase lowers an `erase` to "
+        "`clean` and leaves `overwrite` alone (default: the scenario's, then the target's, then "
+        "`clean`)",
     ),
     ios_tipkit_handling: bool | None = typer.Option(
         None,
@@ -3013,7 +3015,6 @@ def run_body(
             tag,
             exclude,
             erase,
-            eff.run_defaults.erase,
             ios_tipkit_handling,
             eff.run_defaults.ios_tip_kit_handling,
             check=lambda selected: _check_preconditions_or_exit(
@@ -3112,7 +3113,7 @@ def run_body(
     # An `appium` environment hands its grid to the targets of its platform (BE-0452), before any
     # check below reads which route a target's device takes.
     target_effs = {
-        name: _with_worker_device(target_eff, worker)
+        name: _with_worker_device(_with_erase_flag(target_eff, erase), worker)
         for name, target_eff in _resolve_target_effs(
             loaded, scenarios, target_name, eff, headed=headed, browser=browser
         ).items()

@@ -89,10 +89,9 @@ def test_defaults_name_every_platform_with_every_field_optional() -> None:
 
 _EXAMPLE = """
 defaults:
-  run: { erase: true }
   platforms:
     ios:
-      subject: { launch: { env: { UITEST: "1" } } }
+      subject: { reinstall: erase, launch: { env: { UITEST: "1" } } }
       runsOn: {ios: {os: ">=17"}}
 targets:
   phone:

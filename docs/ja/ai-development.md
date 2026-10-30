@@ -1129,9 +1129,9 @@ Bajutsu のコメントは、すでに「何を」ではなく「なぜ」を書
 例(結果に畳み、導出は項目側に残した形)。
 
 ```python
-# A retry forces the device recovery `erase: true` would give. Skipped on a merged `reinstall:
+# A retry forces the device recovery `reinstall: erase` would give. Skipped on a merged `reinstall:
 # overwrite`, from the scenario or its target (the app data must survive), and on the operator's
-# `--no-erase`; a CLI-resolved `erase: false` is NOT the same signal (BE-0353).
+# `--no-erase`; a merged `clean` is NOT the same signal (BE-0353).
 ```
 
 次の形にはしません。

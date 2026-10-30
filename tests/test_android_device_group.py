@@ -287,10 +287,8 @@ def test_an_erase_clears_a_starting_member_too(tmp_path: Path) -> None:
     apk.write_bytes(b"apk")
     run = _Adb()
     env = _env(run)
-    env.start(_eff(_PRIMARY), ResolvedPreconditions(erase=True, reinstall="overwrite"))
-    env.start_member(
-        _eff(_AUTH, str(apk)), ResolvedPreconditions(erase=True, reinstall="overwrite")
-    )
+    env.start(_eff(_PRIMARY), ResolvedPreconditions(reinstall="erase"))
+    env.start_member(_eff(_AUTH, str(apk)), ResolvedPreconditions(reinstall="erase"))
     assert run.ran("uninstall", _AUTH)
     assert run.ran("pm", "clear", _AUTH)
     assert run.ran("force-stop", _AUTH)
