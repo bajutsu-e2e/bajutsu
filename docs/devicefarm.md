@@ -265,19 +265,76 @@ Unlike the headless submitter, the worker reserves one device per run through a 
 filter. It needs no device-pool ARN.
 
 > **Config and scenario placement.** The worker composes a separate package for each job. The
-> package holds the source checkout's three parts, plus the job's bundle directory under `bundle/`.
-> The bundle directory is the config's own directory, an uploaded bundle, or the config and scenario
-> the scenario store ships with the job. The request names the config and the scenario relative to
-> that directory. A scenario outside the config's directory makes `POST /api/run-set` return a 400
-> error. The target's `subject.path` travels as written, and the worker resolves a relative one against
-> the same directory. A missing binary fails the job before the worker uploads anything.
+> package holds those three parts of the source checkout, plus the readme and license files
+> `pyproject.toml` names, which the install needs. The job's bundle directory goes under `bundle/`.
+> The request names the config and the scenario relative to that directory. Where the bundle comes
+> from depends on where the config lives:
 >
-> **Application delivery.** A job whose config and scenario travel with it still needs the binary.
-> When no uploaded bundle carries the binary, the server stores the file that `subject.path` names in its
-> object store during the fan-out. The lease then carries a signed download link for that file. The
+> - **A config on the server's disk.** At the fan-out, the server zips the config's whole directory
+>   into its object store. Every job of the fan-out carries that one archive, and the lease signs a
+>   download link for it. The archive leaves out what a Device Farm package leaves out, such as
+>   `.git`, `runs/`, and `tmp/`. A scenario thus keeps the fixtures, components, and binary it
+>   references. The config travels as `bajutsu.config.yaml`, the name a worker looks for. The job
+>   names no path on the server's machine, so a worker on any machine can lease it (BE-0465). With
+>   the default `file://` store, the link points at the server itself.
+> - **An uploaded bundle.** The job carries the bundle itself.
+> - **The scenario store.** The job carries the config and the scenario text, and nothing else.
+>
+> A scenario outside the config's directory makes `POST /api/run-set` return a 400 error. The
+> target's `subject.path` travels as written, and the worker resolves a relative one against the bundle
+> directory. A missing binary fails the job before the worker uploads anything.
+>
+> **Application delivery.** A config on the server's disk carries its binary inside the archive. A
+> job off the scenario store carries no binary. For such a job, the server stores the file that
+> `subject.path` names in its object store during the fan-out. The lease then carries a signed download link for that file. The
 > worker downloads the binary to the same `subject.path` inside the job's directory. It then checks the
 > file's digest against the one the job names. Such a `subject.path` must name a file inside the config's directory, and the server
 > needs an object store. Otherwise `POST /api/run-set` returns a 400 error.
+
+> **The run on the device.** Device Farm installs the app upload on the reserved device before the
+> test spec starts. The package thus leaves the binary out and carries a `devicefarm-host.worker.yaml`
+> instead. Every run in the test spec takes that file as its `--worker-config`. Its `devicefarm-host`
+> environment tells the run that the device is booted and the app is installed. The run then
+> launches the installed build and never installs `subject.path`, on Android and iOS alike (BE-0465). A
+> scenario cannot replace the build there. `reinstall: clean` keeps the installed build and clears
+> its data. An `install` step fails, since the package holds no binary. On an iOS device, `erase` and
+> permission grants fail, as on any real device.
+
+### An iOS target
+
+An iOS target fans out like an Android one, with these differences:
+
+- The target sets `platform: ios` and `runsOn.ios.kind: device`. Its `subject.path` names the
+  `.ipa`, signed for Device Farm's devices (see
+  [iOS re-signing](#ios-re-signing-and-real-device-capabilities)).
+- The target declares `install` under `run.ignoredSettings`. A run on a real iOS device cannot
+  install `subject.path`, so the run refuses the setting unless the target declares it. On Device
+  Farm, the device already holds the build, and the declaration records that fact:
+
+  ```yaml
+  run:
+    ignoredSettings:
+      install: "Device Farm installs the .ipa before the test spec starts"
+  ```
+- Its `driver.runner.testRunner` names the device-build `.xctestrun`. To build the runner, run
+  `make -C demos/showcase runner-build-device`. Copy the build's whole `Products` directory into the
+  config's directory. The runner needs a signature from any development certificate, and its profile
+  need not list Device Farm's devices.
+- The config's directory travels whole, with no size cap. Keep it to the config, the scenarios, the
+  `.ipa`, and the runner's products. Build output beside the config, such as `DerivedData/` or an
+  `.xcarchive`, would travel too.
+- The Device Farm worker's `drivers` lists `xcuitest`.
+
+The worker submits an iOS job as an `XCTEST_UI` run, not the `APPIUM_PYTHON` run an Android job
+takes. An iPhone refuses a runner whose profile does not list the device (`0xe8008012`). An
+`APPIUM_PYTHON` run delivers the runner with its own signature. For an `XCTEST_UI` run, Device Farm
+re-signs the test package for the device it reserves. The package carries the runner app at its
+root. Bajutsu and the job's bundle sit beside it under `bajutsu-package/`, without the runner's
+products. Before the run, the test spec copies Device Farm's re-signed runner to the path that
+`driver.runner.testRunner` names.
+
+The fan-out carries no secret to the Device Farm host. A scenario that reads `${secrets.*}` gets no
+value there.
 
 ### The job budget
 
@@ -319,7 +376,15 @@ and per-org caps count queued jobs too. Those caps may still cut a large fan-out
 
 ### Fanning a target out
 
-A `POST /api/run-set` request fans a target out. Its body names the `target` and the batch provider
+The Replay tab dispatches a fan-out from the browser
+([web UI](web-ui.md#replay--run-a-scenario-and-read-its-report)). Choose a device-cloud environment,
+pick scenarios, and press Run. The tab lists the *batch* environments that a live worker
+advertises; an `appium` grid is reached through the plain run request instead (BE-0452).
+It reads them from `GET /api/environments`. The response gives each environment's `name`, its `kind`
+(`batch` or `grid`), and its `liveWorkers` count. It carries no ARN or credential.
+
+A `POST /api/run-set` request fans a target out. It needs the editor role, like `POST /api/run`.
+Its body names the `target` and the batch provider
 as `environment` (today `devicefarm`). An optional `scenarios` subset narrows the run:
 
 ```json
@@ -336,7 +401,12 @@ cannot honor it at all:
   run request reaches a grid ([self-hosting](self-hosting.md));
 - a web target, which has no device to reserve;
 - a target with no `subject.path`;
-- a config or scenario outside the config's directory, which the worker packages.
+- a config or scenario outside the config's directory, which the worker packages;
+- for a config on the server's disk, a server with no object store to deliver the archive through;
+- for a config on the server's disk, a path the archive cannot carry. A config path that leaves the
+  directory is one, such as an absolute `paths.scenarios`. A `subject.path` or scenario under a
+  left-out directory such as `tmp/` is another. The refusal spares an upload that would fail on
+  the device cloud.
 
 ### Restart and lease loss
 

@@ -10,22 +10,25 @@ from __future__ import annotations
 
 import io
 import json
+import plistlib
 import re
+import tomllib
 import zipfile
 from collections.abc import Iterator
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 from typing import Any
 
 import pytest
 import typer
+import yaml
 from typer.testing import CliRunner
 
 from bajutsu.cli import app
 from bajutsu.common.backend_cli import simctl
 from bajutsu.common.capability.route_tokens import is_route_token
-from bajutsu.common.capability.worker_capability import WorkerCapability
-from bajutsu.common.cloud.devicefarm import DeviceFarmError, Verdict
+from bajutsu.common.capability.worker_capability import WorkerCapability, parse_worker_capability
+from bajutsu.common.cloud.devicefarm import DeviceFarmError, Platform, Verdict
 from bajutsu.serve import batch_bootstrap
 from bajutsu.serve import batch_provider as bp
 from bajutsu.serve.cli import worker as worker_mod
@@ -65,8 +68,11 @@ class _FakeClient:
 
     def __init__(self) -> None:
         self.schedule_calls = 0
+        self.upload_types: list[str] = []
+        self.test_type: str | None = None
 
     def create_upload(self, *, projectArn: str, name: str, type: str) -> dict[str, Any]:  # noqa: N803 - boto3 kwargs
+        self.upload_types.append(type)
         return {"upload": {"arn": f"arn:upload/{name}", "url": f"https://s3/{name}"}}
 
     def get_upload(self, *, arn: str) -> dict[str, Any]:
@@ -74,6 +80,7 @@ class _FakeClient:
 
     def schedule_run(self, **kwargs: Any) -> dict[str, Any]:
         self.schedule_calls += 1
+        self.test_type = kwargs["test"]["type"]
         return {"run": {"arn": f"arn:run/{self.schedule_calls}"}}
 
     def get_run(self, *, arn: str) -> dict[str, Any]:
@@ -104,13 +111,22 @@ class _CapturingTransfer:
         return zipfile.ZipFile(io.BytesIO(data))
 
 
+def _spec_phases(transfer: _CapturingTransfer) -> dict[str, Any]:
+    """The phases of the one test spec a submit uploaded."""
+    (spec,) = (v for k, v in transfer.uploads.items() if k.endswith("testspec.yml"))
+    phases: dict[str, Any] = yaml.safe_load(spec)["phases"]
+    return phases
+
+
 def _source_tree(root: Path) -> Path:
-    """A stand-in for Bajutsu's checkout: the three parts a package takes from it, plus noise."""
+    """A stand-in for Bajutsu's checkout: the parts a package takes from it, plus noise."""
     (root / "tests").mkdir(parents=True)
     (root / "tests" / "test_x.py").write_text("", encoding="utf-8")
     (root / "bajutsu").mkdir()
     (root / "bajutsu" / "__init__.py").write_text("", encoding="utf-8")
     (root / "pyproject.toml").write_text("[project]\nname='bajutsu'\n", encoding="utf-8")
+    for name in ("DESIGN.md", "LICENSE", "NOTICE"):
+        (root / name).write_text("", encoding="utf-8")
     (root / "README.md").write_text("not packaged", encoding="utf-8")
     return root
 
@@ -138,6 +154,42 @@ def _bundle(root: Path) -> Path:
     (root / "runs" / "old").mkdir(parents=True)
     (root / "runs" / "old" / "manifest.json").write_text("{}", encoding="utf-8")
     return root
+
+
+def _ios_bundle(root: Path, *, runner: str | None = "products/Runner.xctestrun") -> Path:
+    """An iOS job's bundle: a device target, its `.ipa`, and the runner build `testRunner` names."""
+    (root / "scenarios").mkdir(parents=True)
+    (root / "scenarios" / "one.yaml").write_text(_SCENARIO, encoding="utf-8")
+    driver = f"    driver: {{ runner: {{ testRunner: {runner} }} }}\n" if runner else ""
+    (root / "bajutsu.config.yaml").write_text(
+        "targets:\n  demo:\n    platform: ios\n    subject: { id: com.example, path: app.ipa }\n"
+        f"    runsOn: {{ ios: {{ kind: device }} }}\n{driver}",
+        encoding="utf-8",
+    )
+    (root / "app.ipa").write_bytes(b"IPA")
+    products = root / "products"
+    runner_app = products / "Debug-iphoneos" / "Runner.app"
+    (runner_app / "PlugIns" / "UITests.xctest").mkdir(parents=True)
+    (runner_app / "Runner").write_bytes(b"MACHO")
+    (runner_app / "PlugIns" / "UITests.xctest" / "UITests").write_bytes(b"MACHO")
+    (products / "Debug-iphoneos" / "Host.app").mkdir()
+    (products / "Debug-iphoneos" / "Host.app" / "Host").write_bytes(b"MACHO")
+    (products / "Runner.xctestrun").write_bytes(
+        plistlib.dumps(
+            {
+                "UITests": {
+                    "TestHostPath": "__TESTROOT__/Debug-iphoneos/Runner.app",
+                    "UITargetAppPath": "__TESTROOT__/Debug-iphoneos/Host.app",
+                },
+                "__xctestrun_metadata__": {"FormatVersion": 1},
+            }
+        )
+    )
+    return root
+
+
+def _ios_request() -> bp.BatchRequest:
+    return replace(_request("app.ipa"), platform="ios")
 
 
 def _request(app_path: str = "app.apk") -> bp.BatchRequest:
@@ -264,12 +316,107 @@ def test_the_package_holds_the_source_parts_and_the_bundle(tmp_path: Path) -> No
     # The binary went up as the app upload instead.
     assert any(url.endswith("app.apk") for url in transfer.uploads)
     # The test spec runs the scenario from inside the bundle.
-    (spec,) = (v for k, v in transfer.uploads.items() if k.endswith("testspec.yml"))
-    assert "--scenario bundle/scenarios/one.yaml" in spec.decode()
-    assert "--config bundle/bajutsu.config.yaml" in spec.decode()
+    (run,) = _spec_phases(transfer)["test"]["commands"]
+    assert "--scenario bundle/scenarios/one.yaml" in run
+    assert "--config bundle/bajutsu.config.yaml" in run
     # Neither tree is written into.
     assert sorted(p.relative_to(source) for p in source.rglob("*")) == before
     assert not (bundle / "testspec.yml").exists()
+
+
+@pytest.mark.parametrize(
+    ("platform", "driver", "worker_file"),
+    [
+        ("android", "adb", "devicefarm-host.worker.yaml"),
+        ("ios", "xcuitest", "bajutsu-package/devicefarm-host.worker.yaml"),
+    ],
+)
+def test_every_run_takes_the_device_farm_installed_app(
+    tmp_path: Path, platform: Platform, driver: str, worker_file: str
+) -> None:
+    # Device Farm installs the app upload before the test spec runs, so the run launches that build
+    # through a `devicefarm-host` worker file rather than installing `subject.path` (BE-0465).
+    source = _source_tree(tmp_path / "src")
+    if platform == "ios":
+        bundle, request = _ios_bundle(tmp_path / "bundle"), _ios_request()
+    else:
+        bundle, request = _bundle(tmp_path / "bundle"), _request()
+    provider, _client, transfer = _provider(source)
+
+    provider.submit(request, work_dir=bundle, dest=tmp_path / "dest")
+
+    package = transfer.package()
+    worker = parse_worker_capability(package.read(worker_file).decode())
+    assert worker.environment == "devicefarm-host" and worker.drivers == (driver,)
+    runs = _spec_phases(transfer)["test"]["commands"]
+    assert runs and all(c.endswith("--worker-config devicefarm-host.worker.yaml") for c in runs)
+
+
+def test_an_android_run_stays_an_appium_python_test(tmp_path: Path) -> None:
+    provider, client, _transfer = _provider(_source_tree(tmp_path / "src"))
+    provider.submit(_request(), work_dir=_bundle(tmp_path / "bundle"), dest=tmp_path / "dest")
+    assert client.upload_types == [
+        "ANDROID_APP",
+        "APPIUM_PYTHON_TEST_PACKAGE",
+        "APPIUM_PYTHON_TEST_SPEC",
+    ]
+    assert client.test_type == "APPIUM_PYTHON"
+
+
+# macOS hands the worker a /var/folders work dir, a symlink to /private/var/folders.
+@pytest.mark.parametrize("through_symlink", [False, True])
+def test_an_ios_run_ships_its_runner_for_device_farm_to_re_sign(
+    tmp_path: Path, through_symlink: bool
+) -> None:
+    # An APPIUM_PYTHON package keeps the runner as signed, which a Device Farm iPhone refuses unless
+    # its profile lists that device; an XCTEST_UI package has Device Farm re-sign it (BE-0465).
+    work_dir = _ios_bundle(tmp_path / "bundle")
+    if through_symlink:
+        (tmp_path / "link").symlink_to(work_dir)
+        work_dir = tmp_path / "link"
+    provider, client, transfer = _provider(_source_tree(tmp_path / "src"))
+
+    verdict = provider.submit(_ios_request(), work_dir=work_dir, dest=tmp_path / "dest")
+
+    assert verdict.ok
+    assert client.upload_types == ["IOS_APP", "XCTEST_UI_TEST_PACKAGE", "XCTEST_UI_TEST_SPEC"]
+    assert client.test_type == "XCTEST_UI"
+    names = set(transfer.package().namelist())
+    # The runner app sits at the package root, where Device Farm looks for it.
+    assert {"Runner.app/Runner", "Runner.app/PlugIns/UITests.xctest/UITests"} <= names
+    # Bajutsu and the bundle sit beside it, with neither the binary nor the build Device Farm replaces.
+    assert {
+        "bajutsu-package/pyproject.toml",
+        "bajutsu-package/bajutsu/__init__.py",
+        "bajutsu-package/bundle/bajutsu.config.yaml",
+        "bajutsu-package/bundle/scenarios/one.yaml",
+    } <= names
+    assert not any(n.startswith("bajutsu-package/bundle/products/") for n in names)
+    assert "bajutsu-package/bundle/app.ipa" not in names
+    pre_test = " ".join(_spec_phases(transfer)["pre_test"]["commands"])
+    assert '"$HOME/bajutsu-work"/bundle/products/Runner.xctestrun' in pre_test
+
+
+def test_an_ios_target_without_a_runner_build_fails_before_any_upload(tmp_path: Path) -> None:
+    provider, client, transfer = _provider(_source_tree(tmp_path / "src"))
+    with pytest.raises(DeviceFarmError, match=r"driver\.runner\.testRunner"):
+        provider.submit(
+            _ios_request(),
+            work_dir=_ios_bundle(tmp_path / "bundle", runner=None),
+            dest=tmp_path / "dest",
+        )
+    assert client.schedule_calls == 0 and transfer.uploads == {}
+
+
+def test_a_runner_build_missing_its_runner_app_fails_before_any_upload(tmp_path: Path) -> None:
+    bundle = _ios_bundle(tmp_path / "bundle")
+    for path in sorted((bundle / "products" / "Debug-iphoneos" / "Runner.app").rglob("*"))[::-1]:
+        path.unlink() if path.is_file() else path.rmdir()
+    (bundle / "products" / "Debug-iphoneos" / "Runner.app").rmdir()
+    provider, client, transfer = _provider(_source_tree(tmp_path / "src"))
+    with pytest.raises(DeviceFarmError, match=r"Runner\.app"):
+        provider.submit(_ios_request(), work_dir=bundle, dest=tmp_path / "dest")
+    assert client.schedule_calls == 0 and transfer.uploads == {}
 
 
 def test_an_injected_launch_env_overlays_the_bundled_config(tmp_path: Path) -> None:
@@ -727,3 +874,21 @@ def test_only_a_cloud_batch_spec_may_leave_its_cmd_out() -> None:
     assert _spec_argv({"batch": asdict(_request())}) == []
     with pytest.raises(KeyError):
         _spec_argv({"job_id": "j"})
+
+
+def test_a_package_composed_from_the_source_tree_carries_every_file_its_build_needs() -> None:
+    # The test spec `pip install`s the package root, and hatchling refuses to build when a readme or
+    # license file pyproject.toml names is missing, so a package without one never installs Bajutsu.
+    root = Path(__file__).resolve().parents[2]
+    project = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+    needed = {"pyproject.toml", project["readme"], *project["license-files"]}
+    provider = bp.DeviceFarmBatchProvider(
+        client=_FakeClient(),
+        transfer=_CapturingTransfer(),
+        project_arn="arn:project/1",
+        sleep=lambda _: None,
+        source_root=root,
+    )
+    arcnames = {arc for _, arc in provider._package_entries(root / "bundle")}
+    assert needed <= arcnames
+    assert all((root / name).is_file() for name in needed)

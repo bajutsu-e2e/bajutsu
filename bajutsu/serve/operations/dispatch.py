@@ -5,15 +5,23 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import shutil
 import tempfile
 import zipfile
+from dataclasses import replace
 from pathlib import Path, PurePosixPath
 from typing import Any
 
 import yaml
 
 from bajutsu.common.capability.worker_capability import APPIUM, BATCH_PROVIDERS
-from bajutsu.common.cloud.devicefarm import Platform
+from bajutsu.common.cloud.devicefarm import (
+    DeviceFarmError,
+    Platform,
+    build_package,
+    is_package_excluded,
+)
+from bajutsu.common.config import load_config_file, resolve
 from bajutsu.common.report.manifest import MAX_LABEL_LENGTH
 from bajutsu.common.run_meta.id import new_run_id
 from bajutsu.common.scenario import load_scenario_file
@@ -41,10 +49,14 @@ from bajutsu.serve.operations.composition import scenarios_zip_strays
 from bajutsu.serve.operations.config import launch_label, resolve_provider_env
 from bajutsu.serve.operations.upload import _fetch_artifact, artifact_presence
 from bajutsu.serve.scenarios import Runnable, ScenarioScope
+from bajutsu.serve.server.object_store import upload_store_key
 from bajutsu.serve.state import ConfigBinding, Job, ServeState
 from bajutsu.serve.upload_artifacts import ArtifactKind, ArtifactOverrides, artifact_store_key
 
 _logger = logging.getLogger("bajutsu.serve.operations")
+
+# The name `find_bundle_config` looks for first, so a worker finds the config a fan-out bundles.
+_BUNDLE_CONFIG = "bajutsu.config.yaml"
 
 
 def _governed_build(state: ServeState, binding: ConfigBinding, build: str | None) -> str | None:
@@ -629,22 +641,136 @@ def _batch_application(
     # otherwise store bytes under a digest they do not have, and the worker's check would refuse them.
     with tempfile.TemporaryDirectory(prefix="bajutsu-app-") as tmp:
         snapshot = Path(tmp) / "app"
-        digest = hashlib.sha256()
-        with resolved.open("rb") as src, snapshot.open("wb") as dst:
-            while chunk := src.read(1024 * 1024):
-                digest.update(chunk)
-                dst.write(chunk)
-        sha = digest.hexdigest()
+        shutil.copyfile(resolved, snapshot)
+        sha = _sha256(snapshot)
         key = artifact_store_key(state.object_store_prefix, org, "binary", sha)
+        refusal = _put_once(
+            state, key, snapshot, "application/octet-stream", what="the application", of=resolved
+        )
+    return (None, refusal) if refusal is not None else (sha, None)
+
+
+def _sha256(path: Path) -> str:
+    """*path*'s sha256, read in chunks so a large binary never sits in memory whole."""
+    digest = hashlib.sha256()
+    with path.open("rb") as src:
+        while chunk := src.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _put_once(
+    state: ServeState, key: str, path: Path, content_type: str, *, what: str, of: Path
+) -> tuple[Any, int] | None:
+    """Store *path* under its content-addressed *key* unless it is already there, or say why not."""
+    assert state.object_store is not None  # each caller refused a server without one
+    try:
+        if not state.object_store.exists(key):
+            state.object_store.put_file(key, path, content_type=content_type)
+    except Exception as e:  # SDK-specific errors vary by backend (S3 vs GCS), as `bind_artifact`
+        _logger.warning("could not store %s %s", what, of, exc_info=True)
+        return {"error": f"could not store {what}: {e}"}, 502
+    return None
+
+
+def _bundle_refusal(cfg: Path, root: Path, requests: list[BatchRequest]) -> tuple[Any, int] | None:
+    """Why the config's directory cannot travel as a fan-out's bundle, or None.
+
+    Each refusal names what the worker would otherwise only find on the device cloud, after the
+    upload.
+    """
+    if cfg.resolve().parent != root.resolve():
+        return {"error": f"config is not at the root of its directory {root}"}, 400
+    try:
+        loaded = load_config_file(cfg)
+    except (OSError, ValueError, yaml.YAMLError) as e:
+        return {"error": f"cannot read the config: {e}"}, 400
+    # The worker confines the bundle's config to wherever it extracts it (`validate_bundle_config`),
+    # so confine against a directory that is not this one: an absolute path into this directory
+    # passes here and escapes there.
+    with tempfile.TemporaryDirectory(prefix="bajutsu-bundle-root-") as elsewhere:
+        for name in loaded.targets:
+            try:
+                resolve(loaded, name).rebased(Path(elsewhere), confine=True)
+            except ValueError as e:
+                return {"error": f"target '{name}': {e}"}, 400
+    first = requests[0]
+    for rel in (first.app_path, *(r.scenario for r in requests)):
+        if is_package_excluded(PurePosixPath(rel).parts):
+            return {"error": f"{rel!r} is under a directory a Device Farm package leaves out"}, 400
+    if not (root / first.app_path).is_file():
+        return {"error": f"appPath {first.app_path!r} names no file on this server"}, 400
+    return None
+
+
+def _store_config_dir(
+    state: ServeState, cfg: Path, root: Path, org: str
+) -> tuple[str | None, tuple[Any, int] | None]:
+    """Zip *root* into the object store under *org*'s upload key, returning the archive's sha256."""
+    assert state.object_store is not None  # `_config_dir_bundle` refused a server without one
+    with tempfile.TemporaryDirectory(prefix="bajutsu-bundle-") as tmp:
+        archive = Path(tmp) / "bundle.zip"
         try:
-            if not state.object_store.exists(key):
-                state.object_store.put_file(key, snapshot, content_type="application/octet-stream")
-        except (
-            Exception
-        ) as e:  # SDK-specific errors vary by backend (S3 vs GCS), as `bind_artifact`
-            _logger.warning("could not store the application %s", resolved, exc_info=True)
-            return None, ({"error": f"could not store the application: {e}"}, 502)
-    return sha, None
+            # A worker finds a bundle's config by its conventional name, so the config travels
+            # under it whatever this server calls the file.
+            build_package(
+                [(root, ".")],
+                archive,
+                extra_texts={_BUNDLE_CONFIG: cfg.read_text(encoding="utf-8")},
+                exclude_arcnames={_BUNDLE_CONFIG},
+            )
+        except (OSError, DeviceFarmError) as e:
+            return None, ({"error": f"could not package the config's directory: {e}"}, 500)
+        sha = _sha256(archive)
+        key = upload_store_key(state.object_store_prefix, org, sha)
+        refusal = _put_once(
+            state, key, archive, "application/zip", what="the config's directory", of=root
+        )
+    return (None, refusal) if refusal is not None else (sha, None)
+
+
+def _config_dir_bundle(
+    state: ServeState,
+    binding: ConfigBinding,
+    org: str,
+    requests: list[tuple[BatchRequest, dict[str, str]]],
+    *,
+    ships_files: bool,
+) -> tuple[
+    dict[str, Any] | None, list[tuple[BatchRequest, dict[str, str]]], tuple[Any, int] | None
+]:
+    """Ship the config's directory as the bundle of a fan-out off the server's disk, or say why not.
+
+    A job naming its files by their paths here is pinned to a worker on this machine, and a
+    device-cloud worker takes no such pin, so the job would never lease (BE-0465). The directory
+    travels whole, minus what a Device Farm package leaves out, so a scenario keeps the fixtures,
+    components, and binary it references. Returns the bundle reference every job of the fan-out
+    shares, in `Upload.worker_ref`'s shape, and the requests renamed to the bundled config. A job
+    that already ships its files, or an uploaded bundle, gets no bundle and its requests unchanged.
+    """
+    if ships_files or binding.upload is not None:
+        return None, requests, None
+    if state.object_store is None:
+        return (
+            None,
+            requests,
+            (
+                {
+                    "error": "the config's directory cannot reach a worker: this server has no object "
+                    "store to deliver it through"
+                },
+                400,
+            ),
+        )
+    cfg, root = binding.config, binding.cwd
+    assert cfg is not None  # start_run_set refused a binding with no config
+    if refused := _bundle_refusal(cfg, root, [r for r, _ in requests]):
+        return None, requests, refused
+    sha, store_err = _store_config_dir(state, cfg, root, org)
+    if store_err:
+        return None, requests, store_err
+    bundled = [(replace(r, config=_BUNDLE_CONFIG), m) for r, m in requests]
+    return {"id": sha, "artifacts": None, "scenarios_filename": None}, bundled, None
 
 
 def _run_set_refusal(state: ServeState, body: dict[str, Any]) -> tuple[Any, int] | None:
@@ -872,6 +998,11 @@ def start_run_set(  # noqa: C901, PLR0911
     batch_app, app_err = _batch_application(state, binding, org, app_path, ships_files=ships_files)
     if app_err:
         return app_err
+    bundle, requests, bundle_err = _config_dir_bundle(
+        state, binding, org, requests, ships_files=ships_files
+    )
+    if bundle_err:
+        return bundle_err
     dispatched: list[str] = []
     config_text = cfg.read_text(encoding="utf-8")
     for request, materials in requests:
@@ -889,6 +1020,7 @@ def start_run_set(  # noqa: C901, PLR0911
                 label=label,
                 capabilities=[environment_capability(provider)],
                 batch_app=batch_app,
+                bundle=bundle,
             ),
             binding=binding,
         )

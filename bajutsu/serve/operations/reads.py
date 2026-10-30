@@ -14,6 +14,7 @@ from bajutsu.analysis import stats as _stats
 from bajutsu.common import handoff
 from bajutsu.common.analytics import ledger as _usage_ledger
 from bajutsu.common.analytics import stats as _usage_stats
+from bajutsu.common.capability.worker_capability import APPIUM, BATCH_PROVIDERS
 from bajutsu.common.config import Config, load_config_file, resolve, unknown_target
 from bajutsu.common.devices import os as device_os
 from bajutsu.common.drivers import base as driver_base
@@ -886,8 +887,34 @@ def _valid_step_id(step_id: str) -> bool:
     return ".." not in parts
 
 
-def job_view(state: ServeState, job_id: str, *, machine_org: str | None = None) -> tuple[Any, int]:
+def list_environments(state: ServeState) -> tuple[Any, int]:
+    """The environments a live worker advertises, for the Replay tab's Environment selector (BE-0465).
+
+    Returns only names, kinds and live-worker counts, never a provider ARN or credential. `local`
+    is never listed: it needs no worker. A name that is neither a batch provider nor the Appium
+    grid is skipped, since a worker may advertise any token but the run-set endpoint could not
+    dispatch to it. Without a repository there is no queue and so no worker: an empty list.
+    """
+    live = state.repository.live_environments() if state.repository is not None else {}
+    environments = [
+        {"name": name, "kind": kind, "liveWorkers": count}
+        for name, count in sorted(live.items())
+        if (kind := "batch" if name in BATCH_PROVIDERS else "grid" if name == APPIUM else None)
+    ]
+    return {"environments": environments}, 200
+
+
+def job_view(
+    state: ServeState,
+    job_id: str,
+    *,
+    machine_org: str | None = None,
+    include_lines: bool = True,
+) -> tuple[Any, int]:
     """One job's live view — its status, and the log buffer while it is still running.
+
+    `include_lines=False` omits the log buffer, for a poller that only needs the status (the
+    run-set panel polls many jobs and reads each log from its own stream).
 
     A **machine** principal reads only its own org's jobs (BE-0414 unit 3), and one belonging to
     another org is answered **404, not 403**: a job id is opaque, so "forbidden" would confirm that
@@ -903,7 +930,7 @@ def job_view(state: ServeState, job_id: str, *, machine_org: str | None = None) 
     job = state.jobs.get(job_id)
     if job is None or (machine_org is not None and job.org != machine_org):
         return {"error": "no such job"}, 404
-    view = job.view()
+    view = job.view(include_lines=include_lines)
     # A job that ended on this process's own `Job` (one failed at dispatch) has an authoritative
     # view. A job that ran on a worker leaves the control-plane Job "running"; fall back to the
     # bus's terminal status then (BE-0015 W2).

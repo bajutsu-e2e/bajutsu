@@ -480,6 +480,7 @@ _ADMIN_PATHS = frozenset(
 _EDITOR_PATHS = frozenset(
     {
         "/api/run",
+        "/api/run-set",
         "/api/record",
         "/api/crawl",
         "/api/scenario",

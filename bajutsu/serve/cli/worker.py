@@ -33,6 +33,7 @@ from bajutsu.common.backend_cli import simctl
 from bajutsu.common.backends import PLATFORMS
 from bajutsu.common.capability.worker_capability import (
     APPIUM,
+    DEVICEFARM_HOST,
     LOCAL,
     RESERVED_ROUTING_REASON,
     WorkerCapability,
@@ -1241,6 +1242,12 @@ def _register_environment_or_exit(environment: str) -> None:
     """
     if environment in (LOCAL, APPIUM):
         return
+    if environment == DEVICEFARM_HOST:
+        raise typer.BadParameter(
+            f"environment '{DEVICEFARM_HOST}' is the run inside a Device Farm package, not a worker; "
+            "a worker that submits to Device Farm takes `environment: devicefarm`",
+            param_hint="--worker-config",
+        )
     from bajutsu.serve.batch_bootstrap import register_batch_providers
 
     try:

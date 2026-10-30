@@ -11,12 +11,14 @@ from typing import Any
 
 import yaml
 
+from bajutsu.common.capability.worker_capability import DEVICEFARM_HOST
 from bajutsu.common.cloud.devicefarm import (
     APP_UPLOAD_TYPE,
     REQUIREMENTS_TXT,
     DeviceFarmClient,
     DeviceFarmError,
     Interrupt,
+    Platform,
     Transfer,
     Verdict,
     build_package,
@@ -31,9 +33,11 @@ from bajutsu.common.config.schema.platform import PLATFORM_SCHEMAS
 from bajutsu.common.config.schema.platform._shared import destination_problems
 from bajutsu.common.devices.runs import unpack_conditions
 
+from ._package_layout import _PackageLayout
 from .batch_checkpoint import BatchCheckpoint
 from .batch_lifecycle_hook import BatchContext, BatchLifecycleHook
 from .batch_request import BatchRequest
+from .xctest_runner import xctest_runner
 
 _logger = logging.getLogger(__name__)
 
@@ -41,9 +45,17 @@ _logger = logging.getLogger(__name__)
 # than packed at the root, so a bundle that carries its own `tests/` or `pyproject.toml` can never
 # collide with the source tree's entries the test spec installs.
 BUNDLE_ARCNAME = "bundle"
-# The parts of the source tree a package needs: what the test spec `pip install`s, and the `tests/`
-# Device Farm's APPIUM_PYTHON_TEST_PACKAGE validation looks for at the root.
-_SOURCE_ENTRIES = ("pyproject.toml", "tests", "bajutsu")
+# The parts of the source tree a package needs: what the test spec `pip install`s (hatchling refuses
+# to build without the readme and license files pyproject.toml names), and the `tests/` Device Farm's
+# APPIUM_PYTHON_TEST_PACKAGE validation looks for at the root.
+_SOURCE_ENTRIES = ("pyproject.toml", "DESIGN.md", "LICENSE", "NOTICE", "tests", "bajutsu")
+# The worker file every run in a package takes (BE-0465). Device Farm installs the app upload before
+# the test spec starts, so a `devicefarm-host` environment has the run launch that build instead of
+# installing `subject.path`, on either platform. Its one driver is the backend the test spec runs.
+_HOST_WORKER_ARCNAME = f"{DEVICEFARM_HOST}.worker.yaml"
+_HOST_DRIVER: dict[Platform, str] = {"android": "adb", "ios": "xcuitest"}
+# The layout `_package_entries` assumes when a caller names none: no runner build, so APPIUM_PYTHON.
+_NO_RUNNER = _PackageLayout(runner=None)
 
 
 def _check_launch_env_collisions(
@@ -136,10 +148,11 @@ class DeviceFarmBatchProvider:
     `hooks` are lifecycle hooks (BE-0435) wired at process start only — never from a request,
     config field, or BatchRequest field.
 
-    With a `source_root`, each job's package is composed per job (BE-0448): the source tree's
-    `pyproject.toml`, `tests/`, and `bajutsu/`, plus the job's bundle directory under
-    `BUNDLE_ARCNAME`. Nothing is written into either tree. Without one, the bundle directory alone
-    is packed at the root, the shape the in-memory tests drive.
+    With a `source_root`, each job's package is composed per job (BE-0448): the `_SOURCE_ENTRIES`
+    of the source tree, plus the job's bundle directory under `BUNDLE_ARCNAME`. Nothing is written
+    into either tree. Without one, the bundle directory alone is packed at the root, the shape the
+    in-memory tests drive. Either way, an iOS job's package is an XCTEST_UI one: the runner app its
+    target names sits at the package root, and the rest moves under `XCTEST_PACKAGE_DIR` (BE-0465).
     """
 
     def __init__(
@@ -209,40 +222,46 @@ class DeviceFarmBatchProvider:
                     hook.before_submit(ctx)
 
                 app_path = _application(request, work_dir)
-                prefix = f"{BUNDLE_ARCNAME}/" if self._source_root is not None else ""
-                config_arc = f"{prefix}{request.config}"
-                extra_texts: dict[str, str] = {"requirements.txt": REQUIREMENTS_TXT}
-                # The binary travels as the run's app upload, so a copy inside the bundle would only
-                # double the package.
-                exclude_arcnames: set[str] = set(_inside(app_path, work_dir, prefix))
-
+                # An iOS runner goes up as an XCTEST_UI package, which Device Farm re-signs for the
+                # device it reserves (BE-0465).
+                layout = _PackageLayout(
+                    runner=(
+                        xctest_runner(work_dir, request.config, request.target)
+                        if request.platform == "ios"
+                        else None
+                    ),
+                    bundle=f"{BUNDLE_ARCNAME}/" if self._source_root is not None else "",
+                )
+                config_arc = f"{layout.bundle}{request.config}"
+                extra_texts: dict[str, str] = {
+                    layout.place("requirements.txt"): REQUIREMENTS_TXT,
+                    layout.place(_HOST_WORKER_ARCNAME): (
+                        f"version: 1\nenvironment: {DEVICEFARM_HOST}\n"
+                        f"drivers: [{_HOST_DRIVER[request.platform]}]\n"
+                    ),
+                }
+                # The binary travels as the run's app upload, which Device Farm installs before the
+                # run, so a copy inside the bundle would only double the package. So does the runner
+                # build: Device Farm hands the test spec a re-signed copy of it.
+                left_out = [app_path, *(layout.runner.build_files if layout.runner else ())]
+                exclude_arcnames = {
+                    layout.place(arc)
+                    for path in left_out
+                    for arc in _inside(path, work_dir, layout.bundle)
+                }
                 if ctx.launch_env:
-                    config_path = work_dir / request.config
-                    config_data: dict[str, Any] = (
-                        yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+                    extra_texts[layout.place(config_arc)] = _with_launch_env(
+                        request, work_dir, ctx.launch_env
                     )
-
-                    # Collision guard: scenario preconditions.subject.launch.env wins on-device, so a
-                    # key collision means the injected value is silently overridden — fail loudly here.
-                    _check_launch_env_collisions(
-                        scenario_path=work_dir / request.scenario,
-                        injected=ctx.launch_env,
-                    )
-
-                    targets = config_data.setdefault("targets", {})
-                    target = targets.setdefault(request.target, {})
-                    launch = target.setdefault("subject", {}).setdefault("launch", {})
-                    # ctx.launch_env wins over pre-existing config values on collision; it lands in
-                    # the target's `subject.launch.env` (BE-0452, BE-0470).
-                    launch["env"] = {**launch.get("env", {}), **ctx.launch_env}
-                    extra_texts[config_arc] = yaml.dump(config_data, allow_unicode=True)
-                    exclude_arcnames.add(config_arc)
+                    exclude_arcnames.add(layout.place(config_arc))
 
                 spec = render_test_spec(
-                    [f"{prefix}{request.scenario}"],
+                    [f"{layout.bundle}{request.scenario}"],
                     target=request.target,
                     config=config_arc,
                     platform=request.platform,
+                    worker_config=_HOST_WORKER_ARCNAME,
+                    xctest_runner=layout.xctest_runner,
                 )
                 with tempfile.TemporaryDirectory() as staging_name:
                     staging = Path(staging_name)
@@ -250,7 +269,7 @@ class DeviceFarmBatchProvider:
                     spec_path.write_text(spec, encoding="utf-8")
                     package_zip = staging / "devicefarm-package.zip"
                     build_package(
-                        self._package_entries(work_dir),
+                        self._package_entries(work_dir, layout),
                         package_zip,
                         extra_texts=extra_texts,
                         exclude_arcnames=exclude_arcnames,
@@ -265,6 +284,7 @@ class DeviceFarmBatchProvider:
                         spec_yaml=spec_path,
                         dest=dest,
                         app_upload_type=APP_UPLOAD_TYPE[request.platform],
+                        test_type=layout.test_type,
                         run_name=job_id or "bajutsu",
                         sleep=self._sleep,
                         on_scheduled=(checkpoint.save if checkpoint is not None else None),
@@ -293,14 +313,42 @@ class DeviceFarmBatchProvider:
         assert verdict is not None  # exceptions take the other path
         return verdict
 
-    def _package_entries(self, work_dir: Path) -> list[tuple[Path, str]]:
+    def _package_entries(
+        self, work_dir: Path, layout: _PackageLayout = _NO_RUNNER
+    ) -> list[tuple[Path, str]]:
         """The `(source, arcname)` pairs of one job's package (see the class docstring)."""
         if self._source_root is None:
-            return [(work_dir, ".")]
-        return [
-            *((self._source_root / name, name) for name in _SOURCE_ENTRIES),
-            (work_dir, BUNDLE_ARCNAME),
-        ]
+            entries = [(work_dir, ".")]
+        else:
+            entries = [
+                *((self._source_root / name, name) for name in _SOURCE_ENTRIES),
+                (work_dir, BUNDLE_ARCNAME),
+            ]
+        placed = [(source, layout.place(arc)) for source, arc in entries]
+        if layout.runner is None:
+            return placed
+        # Device Farm finds the runner app at the package root.
+        return [(layout.runner.app, layout.runner.app.name), *placed]
+
+
+def _with_launch_env(request: BatchRequest, work_dir: Path, launch_env: dict[str, str]) -> str:
+    """The job's config text with *launch_env* overlaid on its target's `subject.launch.env`.
+
+    The overlay lands where BE-0452 and BE-0470 put a target's launch environment.
+
+    Raises:
+        ValueError: A scenario's `preconditions.subject.launch.env` sets an injected key, which would
+            silently win on the device (see `_check_launch_env_collisions`).
+    """
+    config_path = work_dir / request.config
+    config_data: dict[str, Any] = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    _check_launch_env_collisions(scenario_path=work_dir / request.scenario, injected=launch_env)
+    targets = config_data.setdefault("targets", {})
+    target = targets.setdefault(request.target, {})
+    launch = target.setdefault("subject", {}).setdefault("launch", {})
+    # The injected value wins over a pre-existing config value on collision.
+    launch["env"] = {**launch.get("env", {}), **launch_env}
+    return yaml.dump(config_data, allow_unicode=True)
 
 
 def _application(request: BatchRequest, work_dir: Path) -> Path:
