@@ -198,8 +198,11 @@ class AdbDriver(CoordinateTreeDriver):
     # Generous on purpose, because it is only ever spent on a read that still matches the pre-gesture
     # screen: a read that already caught up costs nothing. A gesture whose lag can outlast even this
     # budget (e.g. motion behind an element taller than the viewport) is a distinct case handled by
-    # BE-0329's motion decisions, not by widening this ceiling further.
-    _READ_LAG_S = 4.0
+    # BE-0329's motion decisions, not by widening this ceiling further. On a contended CI emulator the
+    # newest read trailed the actuation's device mark by up to 3.3s when a 4s budget ran out, and the
+    # gesture that followed resolved from the stale screen and missed — so the ceiling leaves room for
+    # that lag. The mark path still closes the barrier as soon as a read postdates the actuation.
+    _READ_LAG_S = 8.0
     # How long a changed projection must hold before it counts as caught up (see `_advance_catchup`).
     # Android republishes node bounds one node at a time rather than atomically, so a read taken
     # mid-catch-up can be torn — some frames already new, the rest still pre-gesture — and a dwell
