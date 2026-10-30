@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0462") |
-| Implementing PR | [#2169](https://github.com/bajutsu-e2e/bajutsu/pull/2169) (Unit 2) |
+| Implementing PR | [#2169](https://github.com/bajutsu-e2e/bajutsu/pull/2169) (Unit 2), [#2267](https://github.com/bajutsu-e2e/bajutsu/pull/2267) (Unit 1 instrument) |
 | Topic | Platform support |
 <!-- /BE-METADATA -->
 
@@ -297,7 +297,7 @@ Log:
   - A re-press of an answered showing adds its id to that showing's entry. That holds while the
     entry is still undrained. A re-press after the drain has no entry left to extend. Unit 3 decides
     whether that gap matters for an "unconfirmed" answer.
-- [#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM) — Unit 1, instrument only. Every iOS
+- [#2267](https://github.com/bajutsu-e2e/bajutsu/pull/2267) — Unit 1, instrument only. Every iOS
   CI job now records what Unit 1 measures. The numbers themselves wait for enough runs, so the box
   stays open.
   - The `collect-ios-diagnostics` action's `start` phase runs
