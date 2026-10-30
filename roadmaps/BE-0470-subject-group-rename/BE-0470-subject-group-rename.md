@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0470") |
+| Implementing PR | [#2262](https://github.com/bajutsu-e2e/bajutsu/pull/2262) |
 | Topic | Driver & backend architecture |
 <!-- /BE-METADATA -->
 
@@ -147,7 +148,7 @@ word inside one path. The glossary entry for `subject` names both senses.
 
 Log:
 
-- [#PR](https://github.com/bajutsu-e2e/bajutsu/pull/PR) — Units 1-3. Shipped the whole item. An old
+- [#2262](https://github.com/bajutsu-e2e/bajutsu/pull/2262) — Units 1-3. Shipped the whole item. An old
   `app` key fails the load and names `subject` in a target, a template, `defaults.platforms`, and a
   scenario's `preconditions`. Two places the design did not list follow too: a template's own key
   check, and the template rebase path `subject.path`. The run-time error messages that named

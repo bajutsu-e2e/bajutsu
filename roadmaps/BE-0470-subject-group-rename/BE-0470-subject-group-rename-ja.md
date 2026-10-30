@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0470") |
+| 実装 PR | [#2262](https://github.com/bajutsu-e2e/bajutsu/pull/2262) |
 | トピック | Driver & backend architecture |
 <!-- /BE-METADATA -->
 
@@ -148,7 +149,7 @@ run に LLM は入らず、振る舞いも変わりません。本項目は conf
 
 ログ：
 
-- [#PR](https://github.com/bajutsu-e2e/bajutsu/pull/PR) — 単位 1-3。本項目全体を実装しました。古い
+- [#2262](https://github.com/bajutsu-e2e/bajutsu/pull/2262) — 単位 1-3。本項目全体を実装しました。古い
   `app` キーは、ターゲット、テンプレート、`defaults.platforms`、シナリオの `preconditions` のどこに
   書いても読み込みに失敗し、`subject` を示します。設計に挙がっていなかった 2 か所も合わせて改めました。
   テンプレート自身のキー検査と、テンプレートのパス付け替えの対象である `subject.path` です。実行時の
