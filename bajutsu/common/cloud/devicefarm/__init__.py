@@ -37,23 +37,24 @@ from ._functions import _PACKAGE_EXCLUDES as _PACKAGE_EXCLUDES
 from ._functions import _PLATFORM_RUN as _PLATFORM_RUN
 from ._functions import _POLL_INITIAL_SECONDS as _POLL_INITIAL_SECONDS
 from ._functions import _POLL_INTERVAL_SECONDS as _POLL_INTERVAL_SECONDS
-from ._functions import _UPLOAD_TEST_PACKAGE as _UPLOAD_TEST_PACKAGE
-from ._functions import _UPLOAD_TEST_SPEC as _UPLOAD_TEST_SPEC
+from ._functions import _TEST_UPLOAD_TYPES as _TEST_UPLOAD_TYPES
 from ._functions import _UV as _UV
 from ._functions import _VENV as _VENV
 from ._functions import (
     APP_UPLOAD_TYPE,
+    XCTEST_PACKAGE_DIR,
     Platform,
+    TestType,
     build_package,
     collect_run,
     device_selection_for,
     host_backend,
+    is_package_excluded,
     render_test_spec,
     stop_run,
     submit_and_collect,
     verdict_from_manifest,
 )
-from ._functions import _is_excluded as _is_excluded
 from ._functions import _next_poll_delay as _next_poll_delay
 from ._functions import _python_bootstrap_commands as _python_bootstrap_commands
 from ._functions import _safe_extract as _safe_extract
@@ -72,18 +73,21 @@ from .verdict import Verdict
 __all__ = [
     "APP_UPLOAD_TYPE",
     "REQUIREMENTS_TXT",
+    "XCTEST_PACKAGE_DIR",
     "DeviceFarmClient",
     "DeviceFarmError",
     "HttpTransfer",
     "Interrupt",
     "Platform",
     "RunInterrupted",
+    "TestType",
     "Transfer",
     "Verdict",
     "build_package",
     "collect_run",
     "device_selection_for",
     "host_backend",
+    "is_package_excluded",
     "render_test_spec",
     "stop_run",
     "submit_and_collect",

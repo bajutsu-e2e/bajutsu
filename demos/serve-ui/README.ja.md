@@ -13,6 +13,10 @@ Linux 上で動きます。Web UI の決定的なリグレッション網であ�
 | パス | 役割 |
 |---|---|
 | `dogfood.config.yaml` | `targets.webui`（`platform: web` ＋ `subject.url`（起動中の serve）＋ `services.server`、`subject.id` なし） |
+| `inner.config.yaml` | 内側の serve が読む config。web デモの `web` target に加え、fan-out 専用の Android target `zz-fanout-android` を持つ（BE-0465） |
+| `fanout/scenarios/` | `zz-fanout-android` が dispatch する 2 つのプレースホルダーシナリオ。実行はされない |
+| `web-scenarios/` | `demos/web/scenarios` のコピー（gitignore 済み）。実行のたびに `make web-scenarios` が作り直す。fan-out はこのディレクトリを zip にするので、`../web/scenarios` のようなパスは運べない |
+| `fanout/placeholder.apk` | `zz-fanout-android` が指すアプリの代わりのファイル。dispatch はアプリのファイルが無いと拒否するため、存在する必要がある |
 | `scenarios/shell-navigation.yaml` | 上部タブ（Record / Replay / Crawl / Author / Stats / Coverage）が表示中のビューを入れ替える |
 | `scenarios/theme.yaml` | テーマ切替が OS 設定に追従し、クリックで切り替わる |
 | `scenarios/crawl-form.yaml` | Crawl フォームが bind したターゲットと既定の探索予算を持つ |
@@ -27,6 +31,7 @@ Linux 上で動きます。Web UI の決定的なリグレッション網であ�
 | `scenarios/author-editor.yaml` | Edit モードの Load が YAML エディタを埋めて grade を付ける。不正な YAML はインラインの problems パネルに出る（BE-0138） |
 | `scenarios/stats.yaml` | Stats ビューが run のダッシュボードを読み込む（BE-0102） |
 | `scenarios/coverage.yaml` | Compute がターゲットの coverage マップを描画する（BE-0146） |
+| `scenarios/replay-device-cloud.yaml` | 偽の `devicefarm` worker が Replay の Environment セレクタに現れる。web target では理由とともに無効になり、Android target ではシナリオを run-set パネルへ fan-out し、Stop all が全行を取り消す（BE-0465） |
 | `scenarios/platform-ui.yaml` | 各パネルは選択中の target のプラットフォームに応じた操作だけを表示する。web target では iOS 用デバイス UI（simulators / workers / erase）ではなく headed トグルが出る |
 | `scenarios/panel-resize.yaml` | タイル区切り一本のドラッグは隣接する二枚だけを再配分し、三枚目に触れない |
 | `Makefile` | `web-deps` / `serve-ui` / `e2e` |
@@ -38,7 +43,7 @@ make -C demos/serve-ui e2e
 ```
 
 これは web backend（`uv sync --extra web` ＋ `playwright install chromium`）を入れ、`bajutsu serve` を起動し
-（[web デモ](../web)の config を読ませ、ドロップダウンに実在のアプリとシナリオが並ぶようにします）、Tier A の
+（[web デモ](../web)の target を再利用する `inner.config.yaml` を読ませ、ドロップダウンに実在のアプリとシナリオが並ぶようにします）、Tier A の
 シナリオで Web UI を Playwright backend から駆動し、serve を畳みます。serve は `make serve` ではなく直接起動
 します。dogfood は Web 限定で、XCUITest ランナーも iOS の actuator も関わらないからです。
 
@@ -91,6 +96,8 @@ Web UI のコントロールは `data-testid` 属性を持ちます。iOS の ac
 | 選択中シナリオの determinism audit バッジ | `replay-tools.yaml` |
 | codegen の書き出し（Playwright emit の提示、コードとファイル名、閉じる） | `replay-tools.yaml` |
 | プラットフォーム対応のコントロール（web では iOS デバイス UI を隠し headed を出す） | `platform-ui.yaml` |
+| Replay の Environment セレクタ（稼働中の device-cloud worker の表示、web target での無効化と理由、fan-out が使わない欄の非表示） | `replay-device-cloud.yaml` |
+| run-set パネル（dispatch したシナリオごとに 1 行、Stop all による各行の取り消し） | `replay-device-cloud.yaml` |
 | Crawl フォーム：bind したターゲット、既定の予算（1 / 50 / 200）、Start の提示 | `crawl-form.yaml` |
 | Crawl History：過去の run を読み取り専用で開き直す（past-crawl バッジ）、plan ツリーが保存済みマップを描画する | `crawl-history.yaml` |
 | Crawl の続きを探索する：未探索のフロンティアが残る過去の run が continue コントロールを出す | `crawl-history.yaml` |
@@ -114,7 +121,9 @@ Web UI のコントロールは `data-testid` 属性を持ちます。iOS の ac
   （ブラウザテストの中のブラウザ）を起動します。BE-0058 で先送りにしています。
 - **ネイティブ `<select>` の選択操作**：座標タップの web backend はネイティブのドロップダウンを
   開けません。「provider を選ぶ／ターゲットを変える」の先にあるもの（API キーの保存、Bedrock の
-  欄、provider 固有のフロー）は、選択前の状態だけをアサートします。
+  欄、provider 固有のフロー）は、選択前の状態だけをアサートします。唯一の例外は
+  `replay-device-cloud.yaml` で、`selectOption` ステップで Replay の target と environment を設定します。
+  偽の worker はジョブを lease せず、Stop all がすべて取り消すため、その fan-out は実行されません。
 - **ブラウザのネイティブ UI**：アップロードのファイル選択、codegen の Copy（クリップボード）と
   Download、トークンログインの `prompt()` ダイアログは、ページの DOM にありません。
 - **ホスト依存の状態**：Generate / Start の enabled とゲートのバナー（Claude への到達可能性）、
@@ -129,4 +138,5 @@ Web UI のコントロールは `data-testid` 属性を持ちます。iOS の ac
 
 web backend は座標でタップするため、ネイティブの `<select>` ドロップダウンを操作できません。これらのシナリオは、
 オプションを切り替えるのではなく、ページ読み込み時の**状態**（ドロップダウン操作を要しません）をアサート
-します。`<select>` の駆動と AI の往復は、dogfood のロードマップ項目で今後の課題として追跡します。
+します。唯一の例外は `replay-device-cloud.yaml` で、`selectOption` ステップでオプションを切り替えます。
+残りの `<select>` の駆動と AI の往復は、dogfood のロードマップ項目で今後の課題として追跡します。

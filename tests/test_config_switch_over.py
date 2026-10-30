@@ -594,6 +594,15 @@ def test_an_appium_worker_advertises_its_environment_alone() -> None:
     worker_mod._register_environment_or_exit("appium")  # no batch provider to register
 
 
+def test_a_devicefarm_host_file_starts_no_worker() -> None:
+    # `devicefarm-host` is the run a Device Farm package carries (BE-0465), never a worker of its own:
+    # it would lease jobs it has no device for, so the worker stops at startup and says why.
+    from bajutsu.serve.cli import worker as worker_mod
+
+    with pytest.raises(typer.BadParameter, match="Device Farm package"):
+        worker_mod._register_environment_or_exit("devicefarm-host")
+
+
 def test_an_appium_worker_runs_run_specs_and_refuses_a_batch() -> None:
     from bajutsu.serve.server.one_shot import environment_refusal
 

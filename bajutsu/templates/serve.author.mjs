@@ -15,6 +15,7 @@ import {loadHistory, setHistoryFilter, showTab, initPanels} from './serve.panels
 import {initCrawl} from './serve.crawl.mjs';
 import {initMetrics} from './serve.metrics.mjs';
 import {initOrgsView} from './serve.orgs.mjs';
+import {initRunSet} from './serve.runset.mjs';
 
 // authorInit / authorRefresh / applyCaptureCapability are assigned by the Author-tab IIFE below and
 // imported by core's showView / loadShared / loadConfig; declared here so they are real module
@@ -32,6 +33,7 @@ initPanels();
 initCrawl();
 initMetrics();
 initOrgsView();
+initRunSet();
 
 // Device UI is platform-specific: iOS controls (simulators, device pickers, erase, alert-dismiss)
 // show only for an iOS backend, web controls (the headed/show-browser toggle) only for web. The

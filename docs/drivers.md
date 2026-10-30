@@ -170,7 +170,7 @@ or environment, and any number below one.
 | Key | Meaning |
 |---|---|
 | `version` | The schema version. It must be `1`. |
-| `environment` | Where the worker runs jobs: `local` (the default), `appium` (a live Appium grid), or a device-cloud provider kind. `devicefarm` is the one provider kind known today. |
+| `environment` | Where the worker runs jobs: `local` (the default), `appium` (a live Appium grid), `devicefarm-host` (the run inside a Device Farm package, whose device Device Farm booted and installed the app on), or a device-cloud provider kind. `devicefarm` is the one provider kind known today. |
 | `appium` | Required with `environment: appium`, refused otherwise: the grid's `endpoint` URL and the one `platform` it serves (`ios` today). |
 | `maxJobConcurrency` | How many jobs the worker may run at once, a positive integer. Omitted means one, and a `local` worker accepts one alone. |
 | `maxTargetsPerJob` | How many targets one scenario may declare, a positive integer. The count spans every driver and device group, so a Simulator target and a browser target count two. Omitted means unbounded. |

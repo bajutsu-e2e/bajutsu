@@ -259,6 +259,14 @@ class Repository(Protocol):
         Live means seen within the lease timeout, as for `lacks_live_worker`.
         """
 
+    def live_environments(self) -> dict[str, int]:
+        """Live workers per advertised `environment:<name>` capability (BE-0465).
+
+        Live means seen within the lease timeout, the same window `lacks_live_worker` uses, and a
+        worker counts once per name it advertises. The UI lists these so an operator picks only an
+        environment a worker could actually serve.
+        """
+
     def lacks_live_worker(self, job_id: str) -> bool:
         """Whether *job_id* is queued and no live worker can serve it (BE-0449, the no-worker notice).
 

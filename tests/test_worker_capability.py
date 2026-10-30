@@ -67,6 +67,19 @@ def test_device_cloud_worker_may_run_several_jobs() -> None:
     assert cap.max_job_concurrency == 2
 
 
+def test_a_device_farm_host_hands_every_platform_its_preinstalled_device() -> None:
+    # The run a Device Farm package carries finds its device reserved and its app installed by Device
+    # Farm, on either platform, so every target takes the `devicefarm-host` provider (BE-0465).
+    cap = parse_worker_capability(
+        "version: 1\nenvironment: devicefarm-host\ndrivers: [adb, xcuitest]\n"
+    )
+    assert not cap.is_local and not cap.is_batch
+    assert cap.drives_on_host("adb") and cap.drives_on_host("xcuitest")
+    for platform in ("ios", "android", "xcuitest", "adb"):
+        provider = cap.device_provider_for(platform)
+        assert provider is not None and provider.kind == "devicefarm-host"
+
+
 @pytest.mark.parametrize(
     ("text", "fragment"),
     [
@@ -120,8 +133,9 @@ def test_environments_match_the_registrable_batch_providers(
         {"DEVICEFARM_PROJECT_ARN": "arn:aws:devicefarm:us-west-2:1:project:abc"}
     )
     assert set(registered) == kinds
-    # `appium` registers no batch provider: its grid submits nothing (BE-0452).
-    assert ENVIRONMENTS - {"local", "appium"} == kinds == BATCH_PROVIDERS
+    # `appium` registers no batch provider: its grid submits nothing (BE-0452). Nor does
+    # `devicefarm-host`, the run on a Device Farm host that a batch provider's package carries.
+    assert ENVIRONMENTS - {"local", "appium", "devicefarm-host"} == kinds == BATCH_PROVIDERS
 
 
 # --- driver host requirement --------------------------------------------------------------------

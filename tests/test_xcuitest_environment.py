@@ -65,6 +65,7 @@ from bajutsu.common.platform_lifecycle.environments.xcuitest import (
 from bajutsu.common.platform_lifecycle.environments.xcuitest import (
     xcuitest_environment as xcuitest_env_impl,
 )
+from bajutsu.common.platform_lifecycle.factories import environment_for
 from bajutsu.common.platform_lifecycle.protocols import CollectorHost
 
 _DEVICE_UDID = "00008030-000A1B2C3D4E"  # a physical-device id shape (not a simctl UUID)
@@ -100,13 +101,17 @@ def _fake_usbmux(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(xcuitest_env_impl, "UsbmuxForwarder", _FakeForwarder)
 
 
-def _device_eff(*, app_path: str | None = None, test_runner: str | None = None) -> Effective:
+def _device_eff(
+    *, app_path: str | None = None, test_runner: str | None = None, ignored: str | None = None
+) -> Effective:
     lines = ["targets:", "  s:", "    platform: ios", "    subject:", "      id: com.x"]
     if app_path is not None:
         lines.append(f"      path: {app_path}")
     lines += ["    runsOn: {ios: {kind: device}}"]
     if test_runner is not None:
         lines += ["    driver:", f"      runner: {{testRunner: {test_runner}}}"]
+    if ignored is not None:
+        lines += ["    run:", f"      ignoredSettings: {{{ignored}: preinstalled}}"]
     return resolve(load_config("\n".join(lines) + "\n"), "s")
 
 
@@ -149,6 +154,31 @@ def test_start_on_a_real_device_refuses_simctl_install() -> None:
         env.start(_device_eff(app_path="build/App.app"), ResolvedPreconditions())
 
 
+def test_start_on_a_real_device_that_declares_install_launches_the_build_in_place(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # A device that already holds the build (Device Farm installs the uploaded app, BE-0465) runs a
+    # target declaring `install` under `run.ignoredSettings` (BE-0467): `subject.path` names that build.
+    runner, captured = _fake_device_runner(monkeypatch, tmp_path)
+    env = XcuitestEnvironment("xcuitest", _DEVICE_UDID)
+    eff = _device_eff(app_path="App.ipa", test_runner=str(runner), ignored="install")
+    env.start(eff, ResolvedPreconditions())
+    assert f"platform=iOS,id={_DEVICE_UDID}" in captured["argv"]
+
+
+def test_the_factory_builds_an_ios_environment_that_honours_ignored_settings(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    runner, captured = _fake_device_runner(monkeypatch, tmp_path)
+    env = environment_for("xcuitest", _DEVICE_UDID)
+    eff = _device_eff(app_path="App.ipa", test_runner=str(runner), ignored="install")
+    # The declaration covers the install alone; an undeclared erase still fails loudly.
+    with pytest.raises(base.UnsupportedAction, match=r"run\.erase"):
+        env.start(eff, ResolvedPreconditions(erase=True))
+    env.start(eff, ResolvedPreconditions())
+    assert f"platform=iOS,id={_DEVICE_UDID}" in captured["argv"]
+
+
 def test_start_on_a_real_device_refuses_permission_grants() -> None:
     env = XcuitestEnvironment("xcuitest", _DEVICE_UDID)
     with pytest.raises(base.UnsupportedAction, match="route ios-device"):
@@ -161,21 +191,17 @@ def test_start_on_a_real_device_refuses_erase() -> None:
         env.start(_device_eff(), ResolvedPreconditions(erase=True))
 
 
-def test_start_on_a_real_device_targets_the_device_and_skips_simctl(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
-) -> None:
-    # The happy real-device path: no simctl call, and the xcodebuild destination is the device.
-    # Faked at the process boundary (Popen) and the driver factory — the runner needs Xcode + a
-    # device, which the gate has neither of.
+def _fake_device_runner(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> tuple[Path, dict[str, list[str]]]:
+    """A device-build runner file, with the runner's process and driver faked at their boundaries.
+
+    The runner needs Xcode and a device, which the gate has neither of. The returned dict receives
+    the spawned `xcodebuild` argv under "argv".
+    """
     runner = tmp_path / "Runner.xctestrun"
     with runner.open("wb") as f:
         plistlib.dump({"Target": {"TestingEnvironmentVariables": {}}}, f)
-
-    simctl_calls: list[list[str]] = []
-
-    def _record_run(argv: list[str], extra_env: Mapping[str, str] | None = None) -> str:
-        simctl_calls.append(argv)
-        return ""
 
     captured: dict[str, list[str]] = {}
 
@@ -198,6 +224,19 @@ def test_start_on_a_real_device_targets_the_device_and_skips_simctl(
 
     monkeypatch.setattr(subprocess, "Popen", _fake_popen)
     monkeypatch.setattr(backends, "make_driver", lambda *_a, **_k: _FakeDriver())
+    return runner, captured
+
+
+def test_start_on_a_real_device_targets_the_device_and_skips_simctl(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The happy real-device path: no simctl call, and the xcodebuild destination is the device.
+    runner, captured = _fake_device_runner(monkeypatch, tmp_path)
+    simctl_calls: list[list[str]] = []
+
+    def _record_run(argv: list[str], extra_env: Mapping[str, str] | None = None) -> str:
+        simctl_calls.append(argv)
+        return ""
 
     env = XcuitestEnvironment("xcuitest", _DEVICE_UDID, env_run=_record_run)
     env.start(_device_eff(test_runner=str(runner)), ResolvedPreconditions())
