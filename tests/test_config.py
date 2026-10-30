@@ -564,7 +564,7 @@ def test_web_app_launch_server_parsed() -> None:
 
 
 def test_app_without_bundleid_or_baseurl_rejected() -> None:
-    # Each platform's `app` model requires its own identifier (BE-0452).
+    # Each platform's `subject` model requires its own identifier (BE-0452).
     with pytest.raises(ValidationError, match=r"subject\.id: Field required"):
         load_config("targets:\n  x:\n    platform: ios\n    paths: {scenarios: scn/dir}\n")
 

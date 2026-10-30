@@ -445,7 +445,7 @@ def doctor(
     # Config gate first: a target missing the field its backend needs (iOS bundleId / web baseUrl)
     # is a usage/config error — fixable without any tool or device — so it exits 2 (distinct from a
     # genuine environment/tool failure, which exits 1) and is surfaced before any doomed probe
-    # (BE-0024). The platform's `app` model requires its own identifier at parse time; this catches
+    # (BE-0024). The platform's `subject` model requires its own identifier at parse time; this catches
     # a `--backend` override whose actuator needs another platform's field.
     cfg_checks = preflight.config_checks(
         actuator,

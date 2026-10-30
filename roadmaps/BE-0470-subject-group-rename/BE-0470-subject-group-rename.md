@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0470") |
-| Implementing PR | [#2262](https://github.com/bajutsu-e2e/bajutsu/pull/2262) |
+| Implementing PR | [#2262](https://github.com/bajutsu-e2e/bajutsu/pull/2262) (Units 1-3) |
 | Topic | Driver & backend architecture |
 <!-- /BE-METADATA -->
 

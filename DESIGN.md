@@ -212,7 +212,7 @@ UI 操作は **最も安定する選択手段から順に試し、成立した�
 
 ```yaml
 - name: ログタブでフィルタを開いて適用する
-  preconditions:                             # ターゲットと同じ app / run のグループ（BE-0452）と device（BE-0469）
+  preconditions:                             # ターゲットと同じ subject / run のグループ（BE-0452、BE-0470）と device（BE-0469）
     subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }         # 状態注入（launch args / env）

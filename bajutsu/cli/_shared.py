@@ -452,7 +452,7 @@ def _refuse_bad_preconditions(
 ) -> None:
     """Refuse every scenario whose preconditions its driven targets cannot honor (BE-0452).
 
-    Runs before any device work, on the scenarios as written: an `app` or iOS-only `run` field no
+    Runs before any device work, on the scenarios as written: a `subject` or iOS-only `run` field no
     driven platform has, and a merged `seedPhotos` without an effective erase
     (`check_preconditions`).
 
