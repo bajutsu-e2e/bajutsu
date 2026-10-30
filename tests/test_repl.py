@@ -50,7 +50,8 @@ def _macos_host(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 _EFF = resolve(
-    load_config("targets:\n  demo:\n    platform: ios\n    app: {id: com.example.demo}\n"), "demo"
+    load_config("targets:\n  demo:\n    platform: ios\n    subject: {id: com.example.demo}\n"),
+    "demo",
 )
 
 
@@ -931,7 +932,8 @@ def test_repl_needs_a_target() -> None:
 def _fake_config(tmp_path: Path) -> Path:
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "targets:\n  demo: { platform: fake, app: { id: com.example.demo } }\n", encoding="utf-8"
+        "targets:\n  demo: { platform: fake, subject: { id: com.example.demo } }\n",
+        encoding="utf-8",
     )
     return cfg
 
@@ -939,7 +941,7 @@ def _fake_config(tmp_path: Path) -> Path:
 def _ios_config(tmp_path: Path) -> Path:
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "targets:\n  demo: { platform: ios, app: { id: com.example.demo } }\n", encoding="utf-8"
+        "targets:\n  demo: { platform: ios, subject: { id: com.example.demo } }\n", encoding="utf-8"
     )
     return cfg
 
@@ -997,7 +999,7 @@ def test_repl_never_resolves_a_udid_for_the_web_backend(
             "targets:\n"
             "  demo:\n"
             "    platform: web\n"
-            "    app:\n"
+            "    subject:\n"
             "      url: http://localhost:9999\n"
             "      idNamespaces: [home]\n"
         ),
@@ -1304,7 +1306,7 @@ def _attach_config(tmp_path: Path, runs_on: str = "") -> Path:
     extra = f", runsOn: {{ {runs_on} }}" if runs_on else ""
     cfg.write_text(
         "targets:\n"
-        f"  demo: {{ platform: ios, app: {{ id: com.example.demo, idNamespaces: [home] }}{extra} }}\n",
+        f"  demo: {{ platform: ios, subject: {{ id: com.example.demo, idNamespaces: [home] }}{extra} }}\n",
         encoding="utf-8",
     )
     return cfg

@@ -17,7 +17,7 @@
 - name: grant the notification prompt with handleSystemAlert
   tags: [systemalert]
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
     run:

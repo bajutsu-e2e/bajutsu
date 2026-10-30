@@ -28,7 +28,7 @@ _CONFIG = (
     "targets:\n"
     "  demo:\n"
     "    platform: ios\n"
-    "    app: {id: com.example.demo}\n"
+    "    subject: {id: com.example.demo}\n"
     "    paths: {scenarios: ./scenarios}\n"
 )
 _SCENARIO = "- name: alpha\n  steps:\n    - tap: { id: home.title }\n"
@@ -223,7 +223,7 @@ def test_run_off_bundle_never_builds_from_uploaded_config(tmp_path: Path) -> Non
         "targets:\n"
         "  demo:\n"
         "    platform: ios\n"
-        "    app: {id: com.example.demo, path: ./Missing.app, build: touch /tmp/bajutsu-pwned}\n"
+        "    subject: {id: com.example.demo, path: ./Missing.app, build: touch /tmp/bajutsu-pwned}\n"
         "    paths: {scenarios: ./scenarios}\n"
     )
     spawned: list[list[str]] = []
@@ -373,14 +373,14 @@ def test_upload_rejects_config_path_outside_bundle(tmp_path: Path) -> None:
                 "targets:\n"
                 "  demo:\n"
                 "    platform: ios\n"
-                "    app: {id: com.example.demo}\n"
+                "    subject: {id: com.example.demo}\n"
                 "    paths: {scenarios: /etc}\n"
             ),
             (
                 "targets:\n"
                 "  demo:\n"
                 "    platform: ios\n"
-                "    app: {id: com.example.demo, path: ../../../etc/passwd}\n"
+                "    subject: {id: com.example.demo, path: ../../../etc/passwd}\n"
             ),
         ):
             status, resp = _post_bytes(

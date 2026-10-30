@@ -146,7 +146,7 @@ def _fan_out_state(tmp_path: Path, scenarios: dict[str, str]) -> ServeState:
             "targets:\n"
             "  demo:\n"
             "    platform: android\n"
-            "    app: {id: com.example.demo, path: app.apk}\n"
+            "    subject: {id: com.example.demo, path: app.apk}\n"
             "    paths: {scenarios: scenarios}\n"
         ),
         encoding="utf-8",

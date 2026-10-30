@@ -297,7 +297,10 @@ def _artifact_overrides(
             return None, ({"error": f"{field} {raw} is not stored for this org"}, 400)
         shas[kind] = raw
     if "binary" in shas and target_batch_info(cfg, target)[1] is None:
-        return None, ({"error": f"binaryArtifact needs target '{target}' to name an app.path"}, 400)
+        return None, (
+            {"error": f"binaryArtifact needs target '{target}' to name a subject.path"},
+            400,
+        )
     return ArtifactOverrides(
         target, binary=shas.get("binary"), scenarios=shas.get("scenarios")
     ), None
@@ -827,7 +830,9 @@ def start_run_set(  # noqa: C901, PLR0911
         return {"error": f"cloud-batch runs support android or ios, not {platform!r}"}, 400
     batch_platform: Platform = "android" if platform == "android" else "ios"
     if not app_path:
-        return {"error": f"target '{target}' has no app.path to install on the cloud device"}, 400
+        return {
+            "error": f"target '{target}' has no subject.path to install on the cloud device"
+        }, 400
     # Which scenarios to fan out: the requested subset, or every scenario in the target's dir.
     requested = body.get("scenarios")
     if requested is None:

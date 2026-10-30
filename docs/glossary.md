@@ -37,7 +37,7 @@ extract modifiers. Defined by `Step` in `bajutsu/scenario/models/steps.py`.
 **precondition** — Per-scenario environment setup applied before the run. It merges over each
 target the scenario drives. Its fields:
 
-- `app.reinstall` and `app.launch.env` / `.args` / `.deeplink`
+- `subject.reinstall` and `subject.launch.env` / `.args` / `.deeplink`
 - `device.ios.locale` / `.seedPhotos`: the iOS device state, replacing the target's `runsOn.ios`
   values
 - `run.erase` / `.systemAlertHandling` / `.tipKitHandling` / `.inheritSetup`
@@ -120,11 +120,20 @@ is why BE-0057 renamed the config concept from `app` to `target`.
 
 | Term | What it is |
 |---|---|
-| **target** | One config entry under `targets.<name>` describing an app to test: its required `platform`, its per-platform identifier (iOS and Android `app.id`, web `app.url`), plus `app.path`, `runsOn`, `driver`, and so on. A *config unit*. Defined by `TargetConfig` in `bajutsu/common/config/schema/target_config.py`. |
+| **target** | One config entry under `targets.<name>` describing an app to test: its required `platform`, its per-platform identifier (iOS and Android `subject.id`, web `subject.url`), plus `subject.path`, `runsOn`, `driver`, and so on. A *config unit*. Defined by `TargetConfig` in `bajutsu/common/config/schema/target_config.py`. |
 | **app** | The application under test itself — the software the target points at and that gets installed on a device. |
 | **device** | The concrete runtime instance the target is driven on — a Simulator / emulator / browser context, addressed at runtime by `udid`. A target's `runsOn` group describes it, with one block per destination (`runsOn.ios`, `runsOn.android`, `runsOn.browser`). Its device conditions (`runsOn.ios.model`, `runsOn.ios.os`, and the like) are matched against each available device before a run ([configuration](configuration.md#device-conditions-runson)). A list or a range splits a scenario into one run per value or major version. An open range that no device meets leaves a *not applicable* record instead of a failed run. |
 
 So a **target** (config) points at an **app** (software) driven on a **device** (runtime instance).
+
+### subject
+
+A target describes what it tests under its **subject** group: an app's `id`, `path`, and `launch` on
+iOS and Android, a site's `url` on the web. A scenario overrides the same fields under
+`preconditions.subject`. The group was called `app` until
+[BE-0470](../roadmaps/BE-0470-subject-group-rename/BE-0470-subject-group-rename.md) renamed it,
+because a web target's subject is a site rather than an app. A scenario's `email.match.subject` is a
+different word: it matches the subject header of a received mail, and the two never share a path.
 
 ## label
 

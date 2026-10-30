@@ -603,7 +603,7 @@ def make_driver(
         from bajutsu.common.drivers.playwright import PlaywrightDriver
 
         if not base_url:
-            raise ValueError("web backend requires base_url (set targets.<name>.app.url)")
+            raise ValueError("web backend requires base_url (set targets.<name>.subject.url)")
         return PlaywrightDriver(
             base_url,
             headless=headless,

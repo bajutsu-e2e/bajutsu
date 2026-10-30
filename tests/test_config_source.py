@@ -448,7 +448,7 @@ def test_load_effective_rebases_paths_against_git_checkout(
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            "    app: {id: com.example.demo, path: build/Demo.app}\n"
+            "    subject: {id: com.example.demo, path: build/Demo.app}\n"
             "    paths: {scenarios: e2e/scenarios}\n"
         ),
         encoding="utf-8",
@@ -480,7 +480,7 @@ def test_load_effective_local_config_rebases_against_the_config_dir(
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            "    app: {id: com.example.demo, path: build/Demo.app}\n"
+            "    subject: {id: com.example.demo, path: build/Demo.app}\n"
             "    paths: {scenarios: scn}\n"
         ),
         encoding="utf-8",
@@ -506,7 +506,7 @@ def test_load_effective_local_config_allows_a_path_outside_its_dir(tmp_path: Pat
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            "    app: {id: com.example.demo}\n"
+            "    subject: {id: com.example.demo}\n"
             "    paths: {scenarios: ../shared/scn}\n"
         ),
         encoding="utf-8",
@@ -528,7 +528,7 @@ def test_load_effective_local_config_returns_no_checkout_root(tmp_path: Path) ->
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            "    app: {id: com.example.demo}\n"
+            "    subject: {id: com.example.demo}\n"
             "    paths: {scenarios: scn}\n"
         ),
         encoding="utf-8",
@@ -590,7 +590,7 @@ def test_require_pinned_allows_a_full_sha(tmp_path: Path, monkeypatch: pytest.Mo
     root = tmp_path / "co"
     root.mkdir()
     (root / "bajutsu.config.yaml").write_text(
-        ("targets:\n  demo:\n    platform: ios\n    app: {id: com.example.demo}\n"),
+        ("targets:\n  demo:\n    platform: ios\n    subject: {id: com.example.demo}\n"),
         encoding="utf-8",
     )
     monkeypatch.setattr(
@@ -621,7 +621,7 @@ def test_load_effective_git_config_escaping_path_exits_cleanly(
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            "    app: {id: com.example.demo}\n"
+            "    subject: {id: com.example.demo}\n"
             "    paths: {scenarios: ../../../etc}\n"
         ),
         encoding="utf-8",
@@ -652,7 +652,7 @@ def test_run_builds_a_git_sourced_app_from_the_checkout_root(
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            "    app: {id: com.example.demo, path: build/Demo.app, build: mkdir -p build/Demo.app}\n"
+            "    subject: {id: com.example.demo, path: build/Demo.app, build: mkdir -p build/Demo.app}\n"
             "    paths: {scenarios: e2e}\n"
         ),
         encoding="utf-8",

@@ -40,12 +40,12 @@ def _project_with_secrets(tmp_path: Path, *, demo_secrets: str, other_secrets: s
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            f"    app: {{id: com.example.demo}}\n"
+            f"    subject: {{id: com.example.demo}}\n"
             f"    paths: {{scenarios: {scn_dir}}}\n"
             f"    evidence: {{secrets: {demo_secrets}}}\n"
             "  other:\n"
             "    platform: ios\n"
-            "    app: {id: com.example.other}\n"
+            "    subject: {id: com.example.other}\n"
             f"{other}"
         ),
         encoding="utf-8",

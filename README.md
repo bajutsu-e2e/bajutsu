@@ -107,7 +107,7 @@ Implemented and covered by tests (run without a Simulator):
   (baselines + `approve`), a golden element-tree comparison, `capturePolicy` trigger rules, and
   secret **redaction**
 - **Reporting** (`manifest.json` + JUnit XML + CTRF JSON + self-contained interactive HTML)
-- **Config resolution** (team defaults × per-target; iOS or Android `app.id`, web `app.url`) and
+- **Config resolution** (team defaults × per-target; iOS or Android `subject.id`, web `subject.url`) and
   **backend selection** (the target's `platform`), with a per-platform JSON Schema from
   `bajutsu config schema`
 - **Device conditions** (`runsOn`). A model list or an OS range splits a scenario into runs, one
@@ -250,7 +250,7 @@ backend) round out this walkthrough. The CLI also wires `audit` / `coverage` / `
 Per-app (and per-platform) settings live in a config file you pass with `--config`; the demos
 ship ready-to-run ones (e.g. [`demos/showcase/showcase.config.yaml`](demos/showcase/showcase.config.yaml),
 [`demos/web/demo.config.yaml`](demos/web/demo.config.yaml)). Each target names its `platform`,
-which picks the actuator. `app.id` names an iOS app, and `app.url` names a web app:
+which picks the actuator. `subject.id` names an iOS app, and `subject.url` names a web app:
 
 ```yaml
 defaults:
@@ -261,7 +261,7 @@ defaults:
 targets:
   showcase-swiftui:         # iOS app — driven on the Simulator via XCUITest
     platform: ios
-    app:
+    subject:
       id: com.bajutsu.showcase.ios.swiftui
       launch: { env: { SHOWCASE_UITEST: "1" } }
       idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
@@ -269,7 +269,7 @@ targets:
 
   web:                      # web app — driven in a browser via Playwright
     platform: web
-    app: { url: "http://127.0.0.1:8787/index.html" }
+    subject: { url: "http://127.0.0.1:8787/index.html" }
     paths: { scenarios: demos/web/scenarios }
 ```
 

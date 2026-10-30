@@ -14,7 +14,7 @@
     recorded golden — a text field, a value-mirrored stepper/toggle, and buttons
     (identity, state, traits exact; frame sane).
   preconditions:
-    app:
+    subject:
       launch:
         # Pinned to "0", not merely left unset: the iOS lanes run with `--touch-markers`, which sets the
         # key on every scenario that does not already carry it. Without the pin this scenario would run
@@ -45,7 +45,7 @@
     Assert that enabling the in-app touch visualization leaves the normalized element tree
     identical to the golden recorded without it.
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1", BAJUTSU_TOUCH_MARKERS: "1" }
   steps:

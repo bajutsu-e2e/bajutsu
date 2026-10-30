@@ -71,9 +71,7 @@ def test_env_add_media_of_an_empty_list_calls_nothing() -> None:
 
 
 def _eff(target_lines: str = "") -> Effective:
-    text = (
-        f"targets:\n  app:\n    platform: ios\n    app: {{ id: com.example.app }}\n{target_lines}"
-    )
+    text = f"targets:\n  app:\n    platform: ios\n    subject: {{ id: com.example.app }}\n{target_lines}"
     return resolve(load_config(text), "app")
 
 

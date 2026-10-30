@@ -12,7 +12,7 @@
 # exercised by the shared `run` scenarios (modals.yaml) instead.
 - name: filter sheet opens then closes
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:
@@ -28,7 +28,7 @@
 
 - name: gallery cover opens then closes
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:
@@ -44,7 +44,7 @@
 
 - name: search filters the catalog
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:

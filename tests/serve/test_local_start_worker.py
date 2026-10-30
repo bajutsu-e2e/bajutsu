@@ -97,7 +97,7 @@ def _fake_project(tmp_path: Path, platform: str = "ios") -> Path:
             "targets:\n"
             "  demo:\n"
             f"    platform: {platform}\n"
-            "    app: {id: com.example.demo}\n"
+            "    subject: {id: com.example.demo}\n"
             f"    paths: {{scenarios: {scn}}}\n"
             "    evidence:\n"
             "      secrets: [LOGIN_PASSWORD]\n"
@@ -797,7 +797,7 @@ def test_an_uploaded_bundle_runs_on_a_same_machine_worker(
                 "targets:\n"
                 "  demo:\n"
                 "    platform: ios\n"
-                "    app: {id: com.example.demo}\n"
+                "    subject: {id: com.example.demo}\n"
                 "    paths: {scenarios: ./scenarios}\n"
             ),
         )
@@ -943,7 +943,7 @@ def test_an_unsafe_ai_key_env_warns_that_the_server_reads_another(
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            "    app: {id: com.example.demo}\n"
+            "    subject: {id: com.example.demo}\n"
             "    evidence:\n"
             "      secrets: [LD_AUDIT_X]\n"
         ),

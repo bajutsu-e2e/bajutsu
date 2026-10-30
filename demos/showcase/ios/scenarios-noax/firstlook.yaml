@@ -6,7 +6,7 @@
 # off the static "Favorited" mirror text. Run over XCUITest (`--backend ios`).
 - name: open a horse and favorite it
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:

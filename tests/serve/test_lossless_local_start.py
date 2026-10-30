@@ -69,7 +69,7 @@ def _project(tmp_path: Path) -> Path:
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            f"    app: {{id: com.example.demo}}\n"
+            f"    subject: {{id: com.example.demo}}\n"
             f"    paths: {{scenarios: {scn_dir}}}\n"
             "    evidence:\n"
             "      secrets: [LOGIN_PASSWORD]\n"
@@ -363,7 +363,7 @@ def test_a_worker_downloads_the_baseline_an_approve_wrote(tmp_path: Path) -> Non
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            f"    app: {{id: com.example.demo, path: build/Demo.app}}\n"
+            f"    subject: {{id: com.example.demo, path: build/Demo.app}}\n"
             f"    paths: {{scenarios: {scn_dir}}}\n"
         ),
         encoding="utf-8",
@@ -423,7 +423,7 @@ def test_a_config_org_named_like_a_store_folder_is_never_seeded(
         "targets:\n"
         "  demo:\n"
         "    platform: ios\n"
-        "    app: {id: com.example.demo}\n"
+        "    subject: {id: com.example.demo}\n"
         "orgs:\n"
         "  baselines:\n"
         "    members: [alice]\n"

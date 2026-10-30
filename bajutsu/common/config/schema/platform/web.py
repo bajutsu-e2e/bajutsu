@@ -1,4 +1,4 @@
-"""The web target's `app`, `runsOn`, `driver`, and `run` extension (BE-0452)."""
+"""The web target's `subject`, `runsOn`, `driver`, and `run` extension (BE-0452)."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from ._shared import AppCommon, LaunchEnv, RangeField, RunsOnGroup, check_choice
 
 
 class WebApp(AppCommon):
-    """`app` on the web: the page under test."""
+    """`subject` on the web: the page under test."""
 
     url: str = Field(min_length=1)
     # The web run passes the launch environment nowhere; Playwright code generation reads it.

@@ -44,7 +44,7 @@ def _composed_config() -> bytes:
         b"targets:\n"
         b"  demo:\n"
         b"    platform: ios\n"
-        b"    app: {id: com.example.demo}\n"
+        b"    subject: {id: com.example.demo}\n"
         b"    paths: {scenarios: ./scenarios}\n"
     )
 

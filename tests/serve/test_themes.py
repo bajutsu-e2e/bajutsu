@@ -111,7 +111,7 @@ def test_read_default_theme(tmp_path: Path) -> None:
     assert read_default_theme(None) is None
     plain = tmp_path / "plain.yaml"
     plain.write_text(
-        ("targets:\n  demo:\n    platform: web\n    app: {url: 'https://example.test'}\n"),
+        ("targets:\n  demo:\n    platform: web\n    subject: {url: 'https://example.test'}\n"),
         encoding="utf-8",
     )
     assert read_default_theme(plain) is None

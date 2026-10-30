@@ -26,13 +26,13 @@ CONFIG = (
     "targets:\n"
     "  demo:\n"
     "    platform: ios\n"
-    "    app: {id: com.example.demo}\n"
+    "    subject: {id: com.example.demo}\n"
     "  checkout:\n"
     "    platform: ios\n"
-    "    app: {id: com.example.checkout}\n"
+    "    subject: {id: com.example.checkout}\n"
     "  other:\n"
     "    platform: ios\n"
-    "    app: {id: com.example.other}\n"
+    "    subject: {id: com.example.other}\n"
     "orgs:\n"
     "  acme:\n"
     "    members: [alice]\n"
@@ -120,11 +120,11 @@ def test_target_scoped_run_picker_offers_nothing_for_another_orgs_app(
         serve_engine,
         tmp_path,
         CONFIG.replace(
-            "    app: {id: com.example.demo}\n",
-            f"    app: {{id: com.example.demo}}\n    paths: {{scenarios: {suites}}}\n",
+            "    subject: {id: com.example.demo}\n",
+            f"    subject: {{id: com.example.demo}}\n    paths: {{scenarios: {suites}}}\n",
         ).replace(
-            "    app: {id: com.example.other}\n",
-            f"    app: {{id: com.example.other}}\n    paths: {{scenarios: {suites}}}\n",
+            "    subject: {id: com.example.other}\n",
+            f"    subject: {{id: com.example.other}}\n    paths: {{scenarios: {suites}}}\n",
         ),
     )
     assert state.repository is not None
@@ -190,7 +190,7 @@ def test_save_scenario_records_an_audit_entry(
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            f"    app: {{id: com.example.demo}}\n"
+            f"    subject: {{id: com.example.demo}}\n"
             f"    paths: {{scenarios: {scn_dir}}}\n"
         ),
         encoding="utf-8",
@@ -234,10 +234,10 @@ def test_no_orgs_block_keeps_a_single_tenant(
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            "    app: {id: com.example.demo}\n"
+            "    subject: {id: com.example.demo}\n"
             "  other:\n"
             "    platform: ios\n"
-            "    app: {id: com.example.other}\n"
+            "    subject: {id: com.example.other}\n"
         ),
         encoding="utf-8",
     )
@@ -301,7 +301,7 @@ def test_oauth_login_assigns_the_org_from_github_org_membership(
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            "    app: {id: com.example.demo}\n"
+            "    subject: {id: com.example.demo}\n"
             "orgs:\n"
             "  acme:\n"
             "    githubOrgs: [acme-gh]\n"
@@ -406,7 +406,7 @@ def test_request_resolves_the_org_once(serve_engine: Callable[..., Engine], tmp_
     repo = _CountingRepo(inner)
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        ("targets:\n  demo:\n    platform: ios\n    app: {id: com.example.demo}\n"),
+        ("targets:\n  demo:\n    platform: ios\n    subject: {id: com.example.demo}\n"),
         encoding="utf-8",
     )
     state = srv.ServeState(runs_dir=tmp_path / "runs", config=cfg, repository=repo)  # type: ignore[arg-type]
@@ -443,11 +443,11 @@ def test_usage_dashboard_reads_only_the_actors_orgs_ledgers(
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            f"    app: {{id: com.example.demo}}\n"
+            f"    subject: {{id: com.example.demo}}\n"
             f"    ai: {{usageLedger: {acme_ledger}}}\n"
             "  other:\n"
             "    platform: ios\n"
-            f"    app: {{id: com.example.other}}\n"
+            f"    subject: {{id: com.example.other}}\n"
             f"    ai: {{usageLedger: {globex_ledger}}}\n"
             "orgs:\n"
             "  acme:\n"

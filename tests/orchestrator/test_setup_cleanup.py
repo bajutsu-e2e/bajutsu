@@ -99,7 +99,7 @@ def test_target_config_carries_both_phases() -> None:
         "targets:\n"
         "  app:\n"
         "    platform: ios\n"
-        "    app: {id: com.example.app}\n"
+        "    subject: {id: com.example.app}\n"
         "    hooks:\n"
         "      setup:\n"
         "      - tap: {id: a}\n"
@@ -119,7 +119,7 @@ def test_a_target_cleanup_rule_takes_failure_and_names_it_for_error() -> None:
             "targets:\n"
             "  app:\n"
             "    platform: ios\n"
-            "    app: {id: com.example.app}\n"
+            "    subject: {id: com.example.app}\n"
             "    hooks:\n"
             "      cleanup:\n"
             f"      - 'on': {on}\n"
@@ -329,7 +329,7 @@ _MERGE_CONFIG = (
     "targets:\n"
     "  app:\n"
     "    platform: ios\n"
-    "    app: {id: com.example.app}\n"
+    "    subject: {id: com.example.app}\n"
     "    hooks:\n"
     "      setup:\n"
     "      - tap: {id: a}\n"
@@ -344,7 +344,7 @@ _WEB_HOOKS_CONFIG = (
     "targets:\n"
     "  app:\n"
     "    platform: ios\n"
-    "    app: {id: com.example.app}\n"
+    "    subject: {id: com.example.app}\n"
     "    hooks:\n"
     "      setup:\n"
     "      - tap: {id: a}\n"
@@ -354,7 +354,7 @@ _WEB_HOOKS_CONFIG = (
     "        - tap: {id: b}\n"
     "  web:\n"
     "    platform: web\n"
-    "    app: {url: 'http://localhost:1/'}\n"
+    "    subject: {url: 'http://localhost:1/'}\n"
     "    hooks:\n"
     "      setup:\n"
     "      - tap: {id: w}\n"
@@ -368,14 +368,14 @@ _STRAY_TARGET_HOOK_CONFIG = (
     "targets:\n"
     "  app:\n"
     "    platform: ios\n"
-    "    app: {id: com.example.app}\n"
+    "    subject: {id: com.example.app}\n"
     "    hooks:\n"
     "      setup:\n"
     "      - target: staging\n"
     "        tap: {id: a}\n"
     "  web:\n"
     "    platform: web\n"
-    "    app: {url: 'http://localhost:1/'}\n"
+    "    subject: {url: 'http://localhost:1/'}\n"
 )
 
 
@@ -405,7 +405,7 @@ def test_cleanup_merges_the_scenarios_own_first_then_config() -> None:
 
 def test_a_config_with_no_phases_leaves_the_scenarios_untouched() -> None:
     eff = resolve(
-        load_config("targets:\n  app:\n    platform: ios\n    app: {id: com.example.app}\n"),
+        load_config("targets:\n  app:\n    platform: ios\n    subject: {id: com.example.app}\n"),
         "app",
     )
     scenarios = [_scenario({"name": "s", "steps": [{"tap": {"id": "a"}}]})]
@@ -460,10 +460,10 @@ _NESTED_HOOK_CONFIG = (
     "targets:\n"
     "  a:\n"
     "    platform: ios\n"
-    "    app: {id: com.example.app}\n"
+    "    subject: {id: com.example.app}\n"
     "  b:\n"
     "    platform: web\n"
-    "    app: {url: 'http://localhost:1/'}\n"
+    "    subject: {url: 'http://localhost:1/'}\n"
     "    hooks:\n"
     "      setup:\n"
     "      - if:\n"
@@ -716,7 +716,8 @@ def _hooks_config(tmp_path: Path, hooks: str) -> Path:
     """A config file in *tmp_path* whose `app` target carries *hooks*, for `load_config_file`."""
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "targets:\n  app:\n    platform: ios\n    app: {id: com.example.app}\n    hooks:\n" + hooks,
+        "targets:\n  app:\n    platform: ios\n    subject: {id: com.example.app}\n    hooks:\n"
+        + hooks,
         encoding="utf-8",
     )
     return cfg
@@ -754,7 +755,7 @@ def test_a_component_in_hooks_needs_the_config_files_path() -> None:
             "targets:\n"
             "  app:\n"
             "    platform: ios\n"
-            "    app: {id: com.example.app}\n"
+            "    subject: {id: com.example.app}\n"
             "    hooks:\n"
             "      cleanup:\n"
             "      - 'on': always\n"
@@ -788,7 +789,7 @@ def test_an_app_wide_phase_cannot_use_a_group() -> None:
             "targets:\n"
             "  app:\n"
             "    platform: ios\n"
-            "    app: {id: com.example.app}\n"
+            "    subject: {id: com.example.app}\n"
             "    hooks:\n"
             "      setup:\n"
             "      - group:\n"
@@ -817,7 +818,7 @@ def test_a_group_hidden_inside_an_app_wide_hooks_target_group_is_caught_too() ->
             "targets:\n"
             "  app:\n"
             "    platform: ios\n"
-            "    app: {id: com.example.app}\n"
+            "    subject: {id: com.example.app}\n"
             "    hooks:\n"
             "      setup:\n"
             "      - target: app\n"
@@ -898,5 +899,5 @@ def test_an_app_wide_phase_cannot_replace_the_stub_table(field: str) -> None:
     )
     with pytest.raises(ValidationError, match="cannot use setMocks"):
         load_config(
-            ("targets:\n  app:\n    platform: ios\n    app: {id: com.example.app}\n") + block
+            ("targets:\n  app:\n    platform: ios\n    subject: {id: com.example.app}\n") + block
         )

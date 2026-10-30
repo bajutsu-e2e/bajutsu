@@ -820,16 +820,16 @@ class XcuitestEnvironment(_DeviceEnvironment):
         Raises:
             DeviceError: if no replacement can be created — chiefly a host that lost its iOS runtimes
                 along with the device, where there is nothing left to run on — or if the target
-                configures no `app.path`, since a blank replacement would have no app to install.
+                configures no `subject.path`, since a blank replacement would have no app to install.
         """
         old = self._udid
-        # A replacement is a blank device, so without an `app.path` to install onto it the retry has
+        # A replacement is a blank device, so without a `subject.path` to install onto it the retry has
         # nothing to launch: say so here rather than spending the create, the boot and a full cold
         # ceiling proving it.
         if require_ios(eff).app_path is None:
             raise simctl.DeviceError(
-                f"Simulator {old} {why} and this target configures no app.path, so a replacement "
-                "device would have no app to launch; set app.path so the recovery can install it, "
+                f"Simulator {old} {why} and this target configures no subject.path, so a replacement "
+                "device would have no app to launch; set subject.path so the recovery can install it, "
                 "or bring a fresh Simulator up with the app installed and re-run"
             )
         if self._device_type_id is None or self._device_runtime_id is None:
@@ -1132,7 +1132,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
                 app_path = Path(ios.app_path)
                 if not app_path.exists():
                     raise simctl.DeviceError(
-                        f"app.path not found: {ios.app_path} (build the app first)"
+                        f"subject.path not found: {ios.app_path} (build the app first)"
                     )
                 if clean_reinstall:
                     e.uninstall(ios.bundle_id)
@@ -1586,7 +1586,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
         if not app_path:
             return
         if not Path(app_path).exists():
-            raise simctl.DeviceError(f"app.path not found: {app_path} (build the app first)")
+            raise simctl.DeviceError(f"subject.path not found: {app_path} (build the app first)")
         if pre.reinstall == "clean":
             e.uninstall(bundle_id)
         e.install(app_path)
@@ -1602,7 +1602,9 @@ class XcuitestEnvironment(_DeviceEnvironment):
         """
         ios = require_ios(eff)
         if not ios.app_path or not Path(ios.app_path).exists():
-            raise simctl.DeviceError(f"app.path not found: {ios.app_path} (build the app first)")
+            raise simctl.DeviceError(
+                f"subject.path not found: {ios.app_path} (build the app first)"
+            )
         e = simctl.Env(self._udid, run=self._run)
         try:
             e.terminate(ios.bundle_id)

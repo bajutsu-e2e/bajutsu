@@ -82,7 +82,7 @@ def test_scenario_secrets_delegate_to_operations(
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            f"    app: {{id: com.example.demo}}\n"
+            f"    subject: {{id: com.example.demo}}\n"
             f"    paths: {{scenarios: {scn_dir}}}\n"
             "    evidence:\n"
             "      secrets: [LOGIN_PASSWORD]\n"
@@ -166,7 +166,7 @@ def test_upload_route_binds_bundle_like_stdlib(tmp_path: Path) -> None:
                 "targets:\n"
                 "  demo:\n"
                 "    platform: ios\n"
-                "    app: {id: com.example.demo}\n"
+                "    subject: {id: com.example.demo}\n"
                 "    paths: {scenarios: ./scenarios}\n"
             ),
         )
@@ -279,7 +279,7 @@ def test_compose_route_binds_like_stdlib(tmp_path: Path) -> None:
         b"targets:\n"
         b"  demo:\n"
         b"    platform: ios\n"
-        b"    app: {id: com.example.demo}\n"
+        b"    subject: {id: com.example.demo}\n"
         b"    paths: {scenarios: ./scenarios}\n"
     )
     scenarios = _zip({"scenarios/smoke.yaml": b"- name: a\n  steps: []\n"})
@@ -925,7 +925,7 @@ def test_doctor_endpoint_returns_checks(tmp_path: Path) -> None:
             "targets:\n"
             "  demo:\n"
             "    platform: fake\n"
-            f"    app: {{id: com.example.demo}}\n"
+            f"    subject: {{id: com.example.demo}}\n"
             f"    paths: {{scenarios: {scn_dir}}}\n"
         ),
         encoding="utf-8",

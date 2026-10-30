@@ -12,7 +12,7 @@
 # underscore Android Views form, so one scenario runs unchanged on every target (BE-0221).
 - name: a favorite set in setup is released by the cleanup rules
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   setup:

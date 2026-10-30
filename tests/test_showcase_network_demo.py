@@ -191,8 +191,8 @@ def test_echo_scenario_asserts_the_note_the_server_sent_back() -> None:
 
     # A non-loopback https host, since `canInit` never intercepts loopback and the app has no ATS
     # exception for plain http.
-    assert sc.preconditions is not None and sc.preconditions.app is not None
-    launch = sc.preconditions.app.launch
+    assert sc.preconditions is not None and sc.preconditions.subject is not None
+    launch = sc.preconditions.subject.launch
     assert launch is not None
     base = urlparse(launch.env["SHOWCASE_HTTP_BASE"])
     assert base.scheme == "https"

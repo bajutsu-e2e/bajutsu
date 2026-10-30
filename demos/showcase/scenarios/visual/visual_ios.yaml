@@ -14,7 +14,7 @@
 - name: visual stable catalog (ios)
   tags: [visual, lists]
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:

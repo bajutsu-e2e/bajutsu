@@ -68,18 +68,18 @@ def _write(tmp_path: Path) -> tuple[Path, Path]:
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            "    app:\n"
+            "    subject:\n"
             "      id: com.example.demo\n"
             "      idNamespaces: [home]\n"
             f"    paths: {{scenarios: {scn_dir}}}\n"
             "  bare:\n"
             "    platform: ios\n"
-            "    app:\n"
+            "    subject:\n"
             "      id: com.example.bare\n"
             "      idNamespaces: [home]\n"
             "  empty:\n"
             "    platform: ios\n"
-            "    app:\n"
+            "    subject:\n"
             "      id: com.example.empty\n"
             "      idNamespaces: [home]\n"
             f"    paths: {{scenarios: {empty_dir}}}\n"
@@ -168,7 +168,7 @@ def test_record_fails_closed_uses_configured_key_env(
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            "    app:\n"
+            "    subject:\n"
             "      id: com.example.demo\n"
             "      idNamespaces: [home]\n"
         ),
@@ -204,7 +204,7 @@ def _kill_switch_config(tmp_path: Path) -> Path:
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            "    app:\n"
+            "    subject:\n"
             "      id: com.example.demo\n"
             "      idNamespaces: [home]\n"
         ),
@@ -306,7 +306,7 @@ def test_credential_gap_messages_for_ant_are_actionable() -> None:
     from bajutsu.common.config import load_config, resolve
 
     eff = resolve(
-        load_config("targets:\n  demo:\n    platform: ios\n    app: {id: com.x}\n"), "demo"
+        load_config("targets:\n  demo:\n    platform: ios\n    subject: {id: com.x}\n"), "demo"
     )
     assert "ant auth login" in _credential_gap_message(ANT_CLI_MISSING, eff)
     assert "ant auth login" in _credential_gap_message(ANT_CLI_UNAUTHENTICATED, eff)
@@ -370,7 +370,7 @@ def test_run_on_the_fake_backend_passes_on_any_target_platform(
     scn.write_text("- name: ok\n  steps: []\n", encoding="utf-8")
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        f"targets:\n  demo:\n    platform: {platform}\n    app: {{id: com.example.demo}}\n",
+        f"targets:\n  demo:\n    platform: {platform}\n    subject: {{id: com.example.demo}}\n",
         encoding="utf-8",
     )
     r = invoke(
@@ -463,7 +463,7 @@ def _fake_run(tmp_path: Path, *, tags: str = "") -> tuple[Path, Path]:
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            "    app:\n"
+            "    subject:\n"
             "      id: com.example.demo\n"
             "      idNamespaces: [home]\n"
         ),
@@ -501,7 +501,7 @@ def test_record_writes_the_authored_scenario(
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            "    app:\n"
+            "    subject:\n"
             "      id: com.example.demo\n"
             "      idNamespaces: [home]\n"
         ),
@@ -590,7 +590,7 @@ def _fake_record_config(tmp_path: Path) -> Path:
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            "    app:\n"
+            "    subject:\n"
             "      id: com.example.demo\n"
             "      idNamespaces: [home]\n"
         ),
@@ -1039,10 +1039,10 @@ def test_a_pool_too_small_for_the_scenario_still_releases_every_device(tmp_path:
                 "targets:\n"
                 "  app:\n"
                 "    platform: ios\n"
-                "    app: {id: com.example.app}\n"
+                "    subject: {id: com.example.app}\n"
                 "  other:\n"
                 "    platform: ios\n"
-                "    app: {id: com.example.other}\n"
+                "    subject: {id: com.example.other}\n"
             ),
             encoding="utf-8",
         )
@@ -1093,7 +1093,7 @@ def test_run_rejects_a_bad_target_config_hook_end_to_end(tmp_path: Path) -> None
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            "    app: {id: com.example.demo}\n"
+            "    subject: {id: com.example.demo}\n"
             "    hooks:\n"
             "      setup:\n"
             "      - target: web\n"
@@ -1137,7 +1137,7 @@ def test_run_rejects_a_duplicate_extract_body_var_in_a_target_config_hook(tmp_pa
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            "    app: {id: com.example.demo}\n"
+            "    subject: {id: com.example.demo}\n"
             "    hooks:\n"
             "      setup:\n"
             "      - http:\n"
@@ -1184,7 +1184,7 @@ def test_run_tag_filtering_away_a_multi_target_scenario_lets_the_rest_run(
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            "    app:\n"
+            "    subject:\n"
             "      id: com.example.demo\n"
             "      idNamespaces: [home]\n"
         ),
@@ -1236,7 +1236,7 @@ def _suite_dir_with_a_cross_target_file(tmp_path: Path) -> Path:
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            "    app:\n"
+            "    subject:\n"
             "      id: com.example.demo\n"
             "      idNamespaces: [home]\n"
             "    paths: {scenarios: scenarios}\n"
@@ -1353,7 +1353,7 @@ def test_codegen_rejects_a_multi_target_scenario(tmp_path: Path) -> None:
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            "    app:\n"
+            "    subject:\n"
             "      id: com.example.demo\n"
             "      idNamespaces: [home]\n"
         ),
@@ -1379,7 +1379,7 @@ def _web_eff(browser: str) -> Effective:
         "targets:\n"
         "  web:\n"
         "    platform: web\n"
-        f"    app: {{url: 'http://x/'}}\n"
+        f"    subject: {{url: 'http://x/'}}\n"
         "    runsOn:\n"
         f"      browser: {{kind: {browser}}}\n"
     )
@@ -1405,7 +1405,7 @@ def test_resolve_browser_empty_flag_keeps_config() -> None:
 def test_resolve_browser_default_is_chromium() -> None:
     # No flag and no config: chromium, today's behaviour.
     eff = resolve(
-        load_config("targets:\n  web:\n    platform: web\n    app: {url: 'http://x/'}\n"), "web"
+        load_config("targets:\n  web:\n    platform: web\n    subject: {url: 'http://x/'}\n"), "web"
     )
     assert _browser_of(_resolve_browser(eff, "")) == "chromium"
 
@@ -1413,7 +1413,7 @@ def test_resolve_browser_default_is_chromium() -> None:
 def test_resolve_language_flag_overrides_config() -> None:
     # BE-0188: an explicit --language flag wins over the target's `ai.language` config.
     cfg = load_config(
-        "defaults:\n  ai: {language: en}\ntargets:\n  s:\n    platform: ios\n    app: {id: com.x}\n"
+        "defaults:\n  ai: {language: en}\ntargets:\n  s:\n    platform: ios\n    subject: {id: com.x}\n"
     )
     eff = resolve(cfg, "s")
     assert eff.ai is not None and eff.ai.language == "en"  # config says en
@@ -1424,14 +1424,14 @@ def test_resolve_language_flag_overrides_config() -> None:
 def test_resolve_language_flag_is_normalized() -> None:
     # BE-0188: the flag is normalized (strip + lowercase) like the config/serve paths, so the three
     # input surfaces agree on `JA` / ` ja `.
-    eff = resolve(load_config("targets:\n  s:\n    platform: ios\n    app: {id: com.x}\n"), "s")
+    eff = resolve(load_config("targets:\n  s:\n    platform: ios\n    subject: {id: com.x}\n"), "s")
     overridden = _resolve_language(eff, " JA ")
     assert overridden.ai is not None and overridden.ai.language == "ja"
 
 
 def test_resolve_language_empty_flag_keeps_config() -> None:
     cfg = load_config(
-        "defaults:\n  ai: {language: ja}\ntargets:\n  s:\n    platform: ios\n    app: {id: com.x}\n"
+        "defaults:\n  ai: {language: ja}\ntargets:\n  s:\n    platform: ios\n    subject: {id: com.x}\n"
     )
     eff = resolve(cfg, "s")
     kept = _resolve_language(eff, "")  # no flag
@@ -1440,7 +1440,7 @@ def test_resolve_language_empty_flag_keeps_config() -> None:
 
 def test_resolve_language_flag_without_ai_config() -> None:
     # No `ai:` block at all: the flag still applies, constructing the config it overrides.
-    eff = resolve(load_config("targets:\n  s:\n    platform: ios\n    app: {id: com.x}\n"), "s")
+    eff = resolve(load_config("targets:\n  s:\n    platform: ios\n    subject: {id: com.x}\n"), "s")
     assert eff.ai is None
     overridden = _resolve_language(eff, "ja")
     assert overridden.ai is not None and overridden.ai.language == "ja"
@@ -1495,7 +1495,7 @@ def test_browser_flag_replaces_a_listed_engine_condition() -> None:
         "targets:\n"
         "  site:\n"
         "    platform: web\n"
-        "    app: { url: 'http://x/' }\n"
+        "    subject: { url: 'http://x/' }\n"
         "    runsOn: { browser: { kind: [chromium, firefox] } }\n"
     )
     eff = resolve(cfg, "site")
@@ -1516,7 +1516,7 @@ def test_browsers_matrix_replaces_a_listed_engine_condition(tmp_path: Path) -> N
         "targets:\n"
         "  site:\n"
         "    platform: web\n"
-        "    app: { url: 'http://x/' }\n"
+        "    subject: { url: 'http://x/' }\n"
         "    runsOn: { browser: { kind: [chromium, webkit] } }\n",
         encoding="utf-8",
     )
@@ -1732,7 +1732,7 @@ def test_xcuitest_runner_summary_empty_for_other_actuators() -> None:
     from bajutsu.cli.commands.doctor import xcuitest_runner_summary
 
     eff = resolve(
-        load_config("targets:\n  demo:\n    platform: ios\n    app: {id: com.x}\n"), "demo"
+        load_config("targets:\n  demo:\n    platform: ios\n    subject: {id: com.x}\n"), "demo"
     )
     assert xcuitest_runner_summary(eff, "idb") == []
 
@@ -1741,7 +1741,7 @@ def _device_target(runner: str = "") -> Effective:
     driver = f", driver: {{ runner: {{ {runner} }} }}" if runner else ""
     return resolve(
         load_config(
-            "targets: { demo: { platform: ios, app: { id: com.x }, runsOn: {ios: {kind: device}}"
+            "targets: { demo: { platform: ios, subject: { id: com.x }, runsOn: {ios: {kind: device}}"
             + driver
             + " } }"
         ),
@@ -1924,7 +1924,7 @@ def test_current_screen_fake_backend_queries_the_driver(monkeypatch: pytest.Monk
         "bajutsu.common.backend_cli.simctl.resolve_udid", lambda u, run=None: "FAKE-UDID"
     )
     eff = resolve(
-        load_config("targets:\n  demo:\n    platform: ios\n    app: {id: com.x}\n"), "demo"
+        load_config("targets:\n  demo:\n    platform: ios\n    subject: {id: com.x}\n"), "demo"
     )
     assert _current_screen("fake", "booted", eff) == []  # the fake's screen starts empty
 
@@ -1981,7 +1981,7 @@ def test_check_scenarios_narrows_on_a_real_ios_device(tmp_path: Path) -> None:
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            "    app: {id: com.x}\n"
+            "    subject: {id: com.x}\n"
             "    runsOn: {ios: {kind: device}}\n"
             "    driver:\n"
             "      runner: {testRunner: Runner.xctestrun}\n"
@@ -1989,7 +1989,7 @@ def test_check_scenarios_narrows_on_a_real_ios_device(tmp_path: Path) -> None:
         "demo",
     )
     sim = resolve(
-        load_config("targets:\n  demo:\n    platform: ios\n    app: {id: com.x}\n"), "demo"
+        load_config("targets:\n  demo:\n    platform: ios\n    subject: {id: com.x}\n"), "demo"
     )
     reasons = check_scenarios(scn, capabilities_for_run("xcuitest", dev))
     assert len(reasons) == 1 and "setLocation" in reasons[0]
@@ -2009,7 +2009,7 @@ def test_doctor_scenario_check_reports_an_unsupported_permission_service(tmp_pat
         "    steps: [{tap: {id: ok}}]\n"
     )
     sim = resolve(
-        load_config("targets:\n  demo:\n    platform: ios\n    app: {id: com.x}\n"), "demo"
+        load_config("targets:\n  demo:\n    platform: ios\n    subject: {id: com.x}\n"), "demo"
     )
     caps = capabilities_for_run("xcuitest", sim)
     assert check_scenarios(scn, caps) == []
@@ -2025,7 +2025,7 @@ def test_claude_readiness_reachable_with_a_credential(monkeypatch: pytest.Monkey
     monkeypatch.delenv("BAJUTSU_AI_PROVIDER", raising=False)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
     eff = resolve(
-        load_config("targets:\n  demo:\n    platform: ios\n    app: {id: com.x}\n"), "demo"
+        load_config("targets:\n  demo:\n    platform: ios\n    subject: {id: com.x}\n"), "demo"
     )
     line = _claude_readiness(eff)
     assert "reachable" in line and "✓" in line
@@ -2041,7 +2041,7 @@ def test_claude_readiness_not_configured_without_a_credential(
     monkeypatch.delenv("BAJUTSU_AI_PROVIDER", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     eff = resolve(
-        load_config("targets:\n  demo:\n    platform: ios\n    app: {id: com.x}\n"), "demo"
+        load_config("targets:\n  demo:\n    platform: ios\n    subject: {id: com.x}\n"), "demo"
     )
     line = _claude_readiness(eff)
     assert "not configured (optional)" in line and "–" in line
@@ -2061,7 +2061,7 @@ def test_doctor_fake_backend_scores_the_current_screen(
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            "    app:\n"
+            "    subject:\n"
             "      id: com.example.demo\n"
             "      idNamespaces: [home]\n"
         ),
@@ -2094,7 +2094,7 @@ def test_doctor_reports_unreachable_screen_instead_of_crashing(
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            "    app:\n"
+            "    subject:\n"
             "      id: com.example.demo\n"
             "      idNamespaces: [home]\n"
         ),
@@ -2117,7 +2117,7 @@ def test_doctor_scenario_not_found_exits_2(tmp_path: Path) -> None:
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            "    app:\n"
+            "    subject:\n"
             "      id: com.example.demo\n"
             "      idNamespaces: [home]\n"
         ),
@@ -2170,7 +2170,7 @@ def test_serve_config_from_git_binds_checkout(
     checkout.mkdir()
     cfg = checkout / "bajutsu.config.yaml"
     cfg.write_text(
-        ("targets:\n  demo:\n    platform: ios\n    app: {id: com.example.demo}\n"),
+        ("targets:\n  demo:\n    platform: ios\n    subject: {id: com.example.demo}\n"),
         encoding="utf-8",
     )
     monkeypatch.setattr(
@@ -2212,7 +2212,7 @@ def test_serve_local_config_binds_the_config_directory(
     cfg_dir.mkdir()
     cfg = cfg_dir / "bajutsu.config.yaml"
     cfg.write_text(
-        ("targets:\n  demo:\n    platform: ios\n    app: {id: com.example.demo}\n"),
+        ("targets:\n  demo:\n    platform: ios\n    subject: {id: com.example.demo}\n"),
         encoding="utf-8",
     )
     captured: dict[str, object] = {}
@@ -2237,7 +2237,7 @@ def test_serve_local_relative_config_is_resolved_to_absolute(
     cfg_dir.mkdir()
     cfg = cfg_dir / "bajutsu.config.yaml"
     cfg.write_text(
-        ("targets:\n  demo:\n    platform: ios\n    app: {id: com.example.demo}\n"),
+        ("targets:\n  demo:\n    platform: ios\n    subject: {id: com.example.demo}\n"),
         encoding="utf-8",
     )
     launch_dir = tmp_path / "elsewhere"
@@ -2490,7 +2490,7 @@ def test_crawl_web_builds_one_browser_lane_per_worker(
     # A web target: `--backend` checks against the target's own platform (BE-0452).
     cfg = tmp_path / "web.config.yaml"
     cfg.write_text(
-        "targets:\n  demo: { platform: web, app: { url: 'http://127.0.0.1:1/' } }\n",
+        "targets:\n  demo: { platform: web, subject: { url: 'http://127.0.0.1:1/' } }\n",
         encoding="utf-8",
     )
     out = tmp_path / "crawlrun"
@@ -2699,7 +2699,7 @@ def _channel_never(_scenario: Scenario) -> bool:
 def test_touch_markers_flag_sets_the_launch_env() -> None:
     scenarios = [_touch_marker_scenario("a"), _touch_marker_scenario("b")]
     _apply_touch_markers(scenarios, True, channel_available=_channel_always)
-    assert [s.preconditions.app.launch.env["BAJUTSU_TOUCH_MARKERS"] for s in scenarios] == [
+    assert [s.preconditions.subject.launch.env["BAJUTSU_TOUCH_MARKERS"] for s in scenarios] == [
         "1",
         "1",
     ]
@@ -2709,14 +2709,14 @@ def test_touch_markers_default_leaves_the_launch_env_alone() -> None:
     """Off unless asked for: the marker is drawn inside the app under test."""
     scenario = _touch_marker_scenario()
     _apply_touch_markers([scenario], False, channel_available=_channel_always)
-    assert "BAJUTSU_TOUCH_MARKERS" not in scenario.preconditions.app.launch.env
+    assert "BAJUTSU_TOUCH_MARKERS" not in scenario.preconditions.subject.launch.env
 
 
 def test_touch_markers_does_not_override_a_scenario_that_set_it() -> None:
     scenario = _touch_marker_scenario()
-    scenario.preconditions.app.launch.env["BAJUTSU_TOUCH_MARKERS"] = "0"
+    scenario.preconditions.subject.launch.env["BAJUTSU_TOUCH_MARKERS"] = "0"
     _apply_touch_markers([scenario], True, channel_available=_channel_always)
-    assert scenario.preconditions.app.launch.env["BAJUTSU_TOUCH_MARKERS"] == "0"
+    assert scenario.preconditions.subject.launch.env["BAJUTSU_TOUCH_MARKERS"] == "0"
 
 
 def test_touch_markers_leave_the_channel_off_for_a_scenario_that_pinned_markers_off() -> None:
@@ -2728,10 +2728,10 @@ def test_touch_markers_leave_the_channel_off_for_a_scenario_that_pinned_markers_
     """
     scenario = _touch_marker_scenario("visual one")
     scenario.expect = [Assertion(visual=VisualMatch(baseline="home.png"))]
-    scenario.preconditions.app.launch.env["BAJUTSU_TOUCH_MARKERS"] = "0"
+    scenario.preconditions.subject.launch.env["BAJUTSU_TOUCH_MARKERS"] = "0"
     _apply_touch_markers([scenario], True, channel_available=_channel_always)
-    assert scenario.preconditions.app.launch.env["BAJUTSU_TOUCH_MARKERS"] == "0"
-    assert "BAJUTSU_CONTROL_CHANNEL" not in scenario.preconditions.app.launch.env
+    assert scenario.preconditions.subject.launch.env["BAJUTSU_TOUCH_MARKERS"] == "0"
+    assert "BAJUTSU_CONTROL_CHANNEL" not in scenario.preconditions.subject.launch.env
 
 
 def test_touch_markers_leave_markers_off_for_a_scenario_that_declined_the_channel() -> None:
@@ -2744,10 +2744,10 @@ def test_touch_markers_leave_markers_off_for_a_scenario_that_declined_the_channe
     """
     scenario = _touch_marker_scenario("visual one")
     scenario.expect = [Assertion(visual=VisualMatch(baseline="home.png"))]
-    scenario.preconditions.app.launch.env["BAJUTSU_CONTROL_CHANNEL"] = "0"
+    scenario.preconditions.subject.launch.env["BAJUTSU_CONTROL_CHANNEL"] = "0"
     _apply_touch_markers([scenario], True, channel_available=_channel_always)
-    assert "BAJUTSU_TOUCH_MARKERS" not in scenario.preconditions.app.launch.env
-    assert scenario.preconditions.app.launch.env["BAJUTSU_CONTROL_CHANNEL"] == "0"
+    assert "BAJUTSU_TOUCH_MARKERS" not in scenario.preconditions.subject.launch.env
+    assert scenario.preconditions.subject.launch.env["BAJUTSU_CONTROL_CHANNEL"] == "0"
 
 
 def test_touch_markers_warns_when_a_self_pinned_marker_cannot_be_hidden_declined() -> None:
@@ -2759,21 +2759,21 @@ def test_touch_markers_warns_when_a_self_pinned_marker_cannot_be_hidden_declined
     """
     scenario = _touch_marker_scenario("visual one")
     scenario.expect = [Assertion(visual=VisualMatch(baseline="home.png"))]
-    scenario.preconditions.app.launch.env["BAJUTSU_TOUCH_MARKERS"] = "1"
-    scenario.preconditions.app.launch.env["BAJUTSU_CONTROL_CHANNEL"] = "0"
+    scenario.preconditions.subject.launch.env["BAJUTSU_TOUCH_MARKERS"] = "1"
+    scenario.preconditions.subject.launch.env["BAJUTSU_CONTROL_CHANNEL"] = "0"
     _apply_touch_markers([scenario], True, channel_available=_channel_always)
-    assert scenario.preconditions.app.launch.env["BAJUTSU_TOUCH_MARKERS"] == "1"
-    assert scenario.preconditions.app.launch.env["BAJUTSU_CONTROL_CHANNEL"] == "0"
+    assert scenario.preconditions.subject.launch.env["BAJUTSU_TOUCH_MARKERS"] == "1"
+    assert scenario.preconditions.subject.launch.env["BAJUTSU_CONTROL_CHANNEL"] == "0"
 
 
 def test_touch_markers_warns_when_a_self_pinned_marker_cannot_be_hidden_no_actuator() -> None:
     """The same self-pinned-marker gap on the channel-less (actuator-can't-carry-it) path."""
     scenario = _touch_marker_scenario("visual one")
     scenario.expect = [Assertion(visual=VisualMatch(baseline="home.png"))]
-    scenario.preconditions.app.launch.env["BAJUTSU_TOUCH_MARKERS"] = "1"
+    scenario.preconditions.subject.launch.env["BAJUTSU_TOUCH_MARKERS"] = "1"
     _apply_touch_markers([scenario], True, channel_available=_channel_never)
-    assert scenario.preconditions.app.launch.env["BAJUTSU_TOUCH_MARKERS"] == "1"
-    assert "BAJUTSU_CONTROL_CHANNEL" not in scenario.preconditions.app.launch.env
+    assert scenario.preconditions.subject.launch.env["BAJUTSU_TOUCH_MARKERS"] == "1"
+    assert "BAJUTSU_CONTROL_CHANNEL" not in scenario.preconditions.subject.launch.env
 
 
 def test_touch_markers_self_pinned_note_names_the_scenario(
@@ -2782,8 +2782,8 @@ def test_touch_markers_self_pinned_note_names_the_scenario(
     """The fourth note fires for a self-pinned, unhideable marker, and names the right scenario."""
     scenario = _touch_marker_scenario("visual one")
     scenario.expect = [Assertion(visual=VisualMatch(baseline="home.png"))]
-    scenario.preconditions.app.launch.env["BAJUTSU_TOUCH_MARKERS"] = "1"
-    scenario.preconditions.app.launch.env["BAJUTSU_CONTROL_CHANNEL"] = "0"
+    scenario.preconditions.subject.launch.env["BAJUTSU_TOUCH_MARKERS"] = "1"
+    scenario.preconditions.subject.launch.env["BAJUTSU_CONTROL_CHANNEL"] = "0"
 
     _apply_touch_markers([scenario], True, channel_available=_channel_always)
 
@@ -2806,11 +2806,11 @@ def test_touch_markers_warns_a_self_pinned_channel_will_fail_not_just_go_unhidde
     """
     scenario = _touch_marker_scenario("visual one")
     scenario.expect = [Assertion(visual=VisualMatch(baseline="home.png"))]
-    scenario.preconditions.app.launch.env["BAJUTSU_TOUCH_MARKERS"] = "1"
-    scenario.preconditions.app.launch.env["BAJUTSU_CONTROL_CHANNEL"] = "1"
+    scenario.preconditions.subject.launch.env["BAJUTSU_TOUCH_MARKERS"] = "1"
+    scenario.preconditions.subject.launch.env["BAJUTSU_CONTROL_CHANNEL"] = "1"
     _apply_touch_markers([scenario], True, channel_available=_channel_never)
-    assert scenario.preconditions.app.launch.env["BAJUTSU_TOUCH_MARKERS"] == "1"
-    assert scenario.preconditions.app.launch.env["BAJUTSU_CONTROL_CHANNEL"] == "1"
+    assert scenario.preconditions.subject.launch.env["BAJUTSU_TOUCH_MARKERS"] == "1"
+    assert scenario.preconditions.subject.launch.env["BAJUTSU_CONTROL_CHANNEL"] == "1"
 
 
 def test_touch_markers_will_fail_note_names_the_scenario_and_not_the_other_notes(
@@ -2818,8 +2818,8 @@ def test_touch_markers_will_fail_note_names_the_scenario_and_not_the_other_notes
 ) -> None:
     scenario = _touch_marker_scenario("visual one")
     scenario.expect = [Assertion(visual=VisualMatch(baseline="home.png"))]
-    scenario.preconditions.app.launch.env["BAJUTSU_TOUCH_MARKERS"] = "1"
-    scenario.preconditions.app.launch.env["BAJUTSU_CONTROL_CHANNEL"] = "1"
+    scenario.preconditions.subject.launch.env["BAJUTSU_TOUCH_MARKERS"] = "1"
+    scenario.preconditions.subject.launch.env["BAJUTSU_CONTROL_CHANNEL"] = "1"
 
     _apply_touch_markers([scenario], True, channel_available=_channel_never)
 
@@ -2839,8 +2839,8 @@ def test_touch_markers_arm_the_channel_for_a_scenario_that_compares_a_screenshot
     scenario = _touch_marker_scenario("visual one")
     scenario.expect = [Assertion(visual=VisualMatch(baseline="home.png"))]
     _apply_touch_markers([scenario], True, channel_available=_channel_always)
-    assert scenario.preconditions.app.launch.env["BAJUTSU_TOUCH_MARKERS"] == "1"
-    assert scenario.preconditions.app.launch.env["BAJUTSU_CONTROL_CHANNEL"] == "1"
+    assert scenario.preconditions.subject.launch.env["BAJUTSU_TOUCH_MARKERS"] == "1"
+    assert scenario.preconditions.subject.launch.env["BAJUTSU_CONTROL_CHANNEL"] == "1"
 
 
 def test_visual_asserting_scenarios_finds_a_step_level_visual_nested_in_if_and_for_each() -> None:
@@ -2976,12 +2976,12 @@ def test_touch_markers_stay_off_for_a_non_visual_scenario_that_pinned_the_channe
     would fail a scenario that asked for neither the markers' hiding nor the channel.
     """
     scenario = _touch_marker_scenario("plain one")
-    scenario.preconditions.app.launch.env["BAJUTSU_CONTROL_CHANNEL"] = "1"
+    scenario.preconditions.subject.launch.env["BAJUTSU_CONTROL_CHANNEL"] = "1"
 
     _apply_touch_markers([scenario], True, channel_available=_channel_never)
 
-    assert "BAJUTSU_TOUCH_MARKERS" not in scenario.preconditions.app.launch.env
-    assert scenario.preconditions.app.launch.env["BAJUTSU_CONTROL_CHANNEL"] == "1"
+    assert "BAJUTSU_TOUCH_MARKERS" not in scenario.preconditions.subject.launch.env
+    assert scenario.preconditions.subject.launch.env["BAJUTSU_CONTROL_CHANNEL"] == "1"
     err = capsys.readouterr().err
     assert "no `visual` verdict to correct" in err
     assert "plain one" in err
@@ -3004,23 +3004,23 @@ def test_touch_markers_respects_a_target_level_pin_turning_markers_off() -> None
         channel_available=_channel_always,
         target_launch_env={"BAJUTSU_TOUCH_MARKERS": "0"},
     )
-    assert "BAJUTSU_TOUCH_MARKERS" not in scenario.preconditions.app.launch.env
-    assert "BAJUTSU_CONTROL_CHANNEL" not in scenario.preconditions.app.launch.env
+    assert "BAJUTSU_TOUCH_MARKERS" not in scenario.preconditions.subject.launch.env
+    assert "BAJUTSU_CONTROL_CHANNEL" not in scenario.preconditions.subject.launch.env
 
 
 def test_touch_markers_a_scenario_own_pin_overrides_the_target_level_one() -> None:
     """The scenario's own launch env still wins: the merge matches the launch's own precedence."""
     scenario = _touch_marker_scenario("visual one")
     scenario.expect = [Assertion(visual=VisualMatch(baseline="home.png"))]
-    scenario.preconditions.app.launch.env["BAJUTSU_TOUCH_MARKERS"] = "1"
+    scenario.preconditions.subject.launch.env["BAJUTSU_TOUCH_MARKERS"] = "1"
     _apply_touch_markers(
         [scenario],
         True,
         channel_available=_channel_always,
         target_launch_env={"BAJUTSU_TOUCH_MARKERS": "0"},
     )
-    assert scenario.preconditions.app.launch.env["BAJUTSU_TOUCH_MARKERS"] == "1"
-    assert scenario.preconditions.app.launch.env["BAJUTSU_CONTROL_CHANNEL"] == "1"
+    assert scenario.preconditions.subject.launch.env["BAJUTSU_TOUCH_MARKERS"] == "1"
+    assert scenario.preconditions.subject.launch.env["BAJUTSU_CONTROL_CHANNEL"] == "1"
 
 
 def test_touch_markers_stay_off_for_a_non_visual_pinned_channel_when_available() -> None:
@@ -3031,11 +3031,11 @@ def test_touch_markers_stay_off_for_a_non_visual_pinned_channel_when_available()
     one never did. So the answer is the same one the unavailable case gives.
     """
     scenario = _touch_marker_scenario("plain one")
-    scenario.preconditions.app.launch.env["BAJUTSU_CONTROL_CHANNEL"] = "1"
+    scenario.preconditions.subject.launch.env["BAJUTSU_CONTROL_CHANNEL"] = "1"
 
     _apply_touch_markers([scenario], True, channel_available=_channel_always)
 
-    assert "BAJUTSU_TOUCH_MARKERS" not in scenario.preconditions.app.launch.env
+    assert "BAJUTSU_TOUCH_MARKERS" not in scenario.preconditions.subject.launch.env
 
 
 def test_touch_markers_still_reach_a_visual_scenario_that_pinned_the_channel_on() -> None:
@@ -3047,9 +3047,9 @@ def test_touch_markers_still_reach_a_visual_scenario_that_pinned_the_channel_on(
     """
     scenario = _touch_marker_scenario("visual one")
     scenario.expect = [Assertion(visual=VisualMatch(baseline="home.png"))]
-    scenario.preconditions.app.launch.env["BAJUTSU_CONTROL_CHANNEL"] = "1"
+    scenario.preconditions.subject.launch.env["BAJUTSU_CONTROL_CHANNEL"] = "1"
     _apply_touch_markers([scenario], True, channel_available=_channel_always)
-    assert scenario.preconditions.app.launch.env["BAJUTSU_TOUCH_MARKERS"] == "1"
+    assert scenario.preconditions.subject.launch.env["BAJUTSU_TOUCH_MARKERS"] == "1"
 
 
 def test_touch_markers_still_land_on_a_non_visual_scenario_that_pinned_the_channel_off() -> None:
@@ -3060,12 +3060,12 @@ def test_touch_markers_still_land_on_a_non_visual_scenario_that_pinned_the_chann
     investigator the evidence for no reason at all.
     """
     scenario = _touch_marker_scenario("plain one")
-    scenario.preconditions.app.launch.env["BAJUTSU_CONTROL_CHANNEL"] = "0"
+    scenario.preconditions.subject.launch.env["BAJUTSU_CONTROL_CHANNEL"] = "0"
 
     _apply_touch_markers([scenario], True, channel_available=_channel_never)
 
-    assert scenario.preconditions.app.launch.env["BAJUTSU_TOUCH_MARKERS"] == "1"
-    assert scenario.preconditions.app.launch.env["BAJUTSU_CONTROL_CHANNEL"] == "0"
+    assert scenario.preconditions.subject.launch.env["BAJUTSU_TOUCH_MARKERS"] == "1"
+    assert scenario.preconditions.subject.launch.env["BAJUTSU_CONTROL_CHANNEL"] == "0"
 
 
 def test_touch_markers_arm_the_channel_for_a_step_level_visual_assertion() -> None:
@@ -3074,7 +3074,7 @@ def test_touch_markers_arm_the_channel_for_a_step_level_visual_assertion() -> No
         Step.model_validate({"assert": [Assertion(visual=VisualMatch(baseline="home.png"))]})
     ]
     _apply_touch_markers([scenario], True, channel_available=_channel_always)
-    assert scenario.preconditions.app.launch.env["BAJUTSU_CONTROL_CHANNEL"] == "1"
+    assert scenario.preconditions.subject.launch.env["BAJUTSU_CONTROL_CHANNEL"] == "1"
 
 
 def test_touch_markers_leave_the_channel_off_for_a_scenario_that_reads_no_screenshot() -> None:
@@ -3089,8 +3089,8 @@ def test_touch_markers_leave_the_channel_off_for_a_scenario_that_reads_no_screen
 
     _apply_touch_markers([visual, plain], True, channel_available=_channel_always)
 
-    assert plain.preconditions.app.launch.env["BAJUTSU_TOUCH_MARKERS"] == "1"
-    assert "BAJUTSU_CONTROL_CHANNEL" not in plain.preconditions.app.launch.env
+    assert plain.preconditions.subject.launch.env["BAJUTSU_TOUCH_MARKERS"] == "1"
+    assert "BAJUTSU_CONTROL_CHANNEL" not in plain.preconditions.subject.launch.env
 
 
 def test_touch_markers_fall_back_to_skipping_when_the_channel_cannot_be_carried() -> None:
@@ -3103,8 +3103,8 @@ def test_touch_markers_fall_back_to_skipping_when_the_channel_cannot_be_carried(
     scenario = _touch_marker_scenario("visual one")
     scenario.expect = [Assertion(visual=VisualMatch(baseline="home.png"))]
     _apply_touch_markers([scenario], True, channel_available=_channel_never)
-    assert "BAJUTSU_TOUCH_MARKERS" not in scenario.preconditions.app.launch.env
-    assert "BAJUTSU_CONTROL_CHANNEL" not in scenario.preconditions.app.launch.env
+    assert "BAJUTSU_TOUCH_MARKERS" not in scenario.preconditions.subject.launch.env
+    assert "BAJUTSU_CONTROL_CHANNEL" not in scenario.preconditions.subject.launch.env
 
 
 def test_touch_markers_reach_a_non_visual_scenario_even_when_the_channel_is_unavailable() -> None:
@@ -3115,8 +3115,8 @@ def test_touch_markers_reach_a_non_visual_scenario_even_when_the_channel_is_unav
 
     _apply_touch_markers([visual, plain], True, channel_available=_channel_never)
 
-    assert "BAJUTSU_TOUCH_MARKERS" not in visual.preconditions.app.launch.env
-    assert plain.preconditions.app.launch.env["BAJUTSU_TOUCH_MARKERS"] == "1"
+    assert "BAJUTSU_TOUCH_MARKERS" not in visual.preconditions.subject.launch.env
+    assert plain.preconditions.subject.launch.env["BAJUTSU_TOUCH_MARKERS"] == "1"
 
 
 def test_touch_markers_decide_availability_per_scenario_not_per_run(
@@ -3138,10 +3138,10 @@ def test_touch_markers_decide_availability_per_scenario_not_per_run(
         [stays, escalates], True, channel_available=lambda s: s.name == "stays on ios"
     )
 
-    assert stays.preconditions.app.launch.env["BAJUTSU_TOUCH_MARKERS"] == "1"
-    assert stays.preconditions.app.launch.env["BAJUTSU_CONTROL_CHANNEL"] == "1"
-    assert "BAJUTSU_TOUCH_MARKERS" not in escalates.preconditions.app.launch.env
-    assert "BAJUTSU_CONTROL_CHANNEL" not in escalates.preconditions.app.launch.env
+    assert stays.preconditions.subject.launch.env["BAJUTSU_TOUCH_MARKERS"] == "1"
+    assert stays.preconditions.subject.launch.env["BAJUTSU_CONTROL_CHANNEL"] == "1"
+    assert "BAJUTSU_TOUCH_MARKERS" not in escalates.preconditions.subject.launch.env
+    assert "BAJUTSU_CONTROL_CHANNEL" not in escalates.preconditions.subject.launch.env
     # Both notes fire in one run, each naming only its own scenarios — where the single `elif`
     # this replaced could print at most one of them.
     armed_note, channel_less_note = capsys.readouterr().err.splitlines()
@@ -3166,10 +3166,10 @@ def test_touch_markers_keeps_same_named_scenarios_independent() -> None:
 
     _apply_touch_markers([carries, escalates], True, channel_available=lambda s: s is carries)
 
-    assert carries.preconditions.app.launch.env["BAJUTSU_TOUCH_MARKERS"] == "1"
-    assert carries.preconditions.app.launch.env["BAJUTSU_CONTROL_CHANNEL"] == "1"
-    assert "BAJUTSU_TOUCH_MARKERS" not in escalates.preconditions.app.launch.env
-    assert "BAJUTSU_CONTROL_CHANNEL" not in escalates.preconditions.app.launch.env
+    assert carries.preconditions.subject.launch.env["BAJUTSU_TOUCH_MARKERS"] == "1"
+    assert carries.preconditions.subject.launch.env["BAJUTSU_CONTROL_CHANNEL"] == "1"
+    assert "BAJUTSU_TOUCH_MARKERS" not in escalates.preconditions.subject.launch.env
+    assert "BAJUTSU_CONTROL_CHANNEL" not in escalates.preconditions.subject.launch.env
 
 
 def test_channel_available_says_yes_for_an_ios_run_with_network_collection_on() -> None:
@@ -3265,7 +3265,7 @@ def test_touch_markers_announce_a_scenario_that_declined_the_channel(
     """
     scenario = _touch_marker_scenario("visual one")
     scenario.expect = [Assertion(visual=VisualMatch(baseline="home.png"))]
-    scenario.preconditions.app.launch.env["BAJUTSU_CONTROL_CHANNEL"] = "0"
+    scenario.preconditions.subject.launch.env["BAJUTSU_CONTROL_CHANNEL"] = "0"
 
     _apply_touch_markers([scenario], True, channel_available=_channel_always)
 
@@ -3335,10 +3335,10 @@ def test_set_mocks_arms_the_channel_where_it_can_be_carried() -> None:
         _touch_marker_scenario(),
     )
     _arm_mock_swaps([swapping, nested, plain], channel_available=_channel_always)
-    assert swapping.preconditions.app.launch.env["BAJUTSU_CONTROL_CHANNEL"] == "1"
-    assert nested.preconditions.app.launch.env["BAJUTSU_CONTROL_CHANNEL"] == "1"
+    assert swapping.preconditions.subject.launch.env["BAJUTSU_CONTROL_CHANNEL"] == "1"
+    assert nested.preconditions.subject.launch.env["BAJUTSU_CONTROL_CHANNEL"] == "1"
     # A scenario that swaps nothing never starts the app-side poll timer.
-    assert "BAJUTSU_CONTROL_CHANNEL" not in plain.preconditions.app.launch.env
+    assert "BAJUTSU_CONTROL_CHANNEL" not in plain.preconditions.subject.launch.env
 
 
 def test_set_mocks_where_the_channel_cannot_reach_the_app_is_refused_before_the_run(
@@ -3362,7 +3362,7 @@ def test_set_mocks_is_refused_where_the_scenario_or_its_target_declined_the_chan
     import typer
 
     own = _swapping_scenario("own")
-    own.preconditions.app.launch.env["BAJUTSU_CONTROL_CHANNEL"] = "0"
+    own.preconditions.subject.launch.env["BAJUTSU_CONTROL_CHANNEL"] = "0"
     with pytest.raises(typer.Exit):
         _arm_mock_swaps([own], channel_available=_channel_always)
     assert "own (BAJUTSU_CONTROL_CHANNEL is pinned to '0')" in capsys.readouterr().err
@@ -3374,7 +3374,7 @@ def test_set_mocks_is_refused_where_the_scenario_or_its_target_declined_the_chan
             channel_available=_channel_always,
             target_launch_env={"BAJUTSU_CONTROL_CHANNEL": "0"},
         )
-    assert "BAJUTSU_CONTROL_CHANNEL" not in by_target.preconditions.app.launch.env
+    assert "BAJUTSU_CONTROL_CHANNEL" not in by_target.preconditions.subject.launch.env
 
 
 _SWAP: dict[str, list[object]] = {"setMocks": []}
@@ -3400,7 +3400,7 @@ def test_set_mocks_is_found_in_every_phase_and_container(placement: dict[str, ob
     to prevent."""
     scenario = Scenario.model_validate({"name": "swap", **placement})
     _arm_mock_swaps([scenario], channel_available=_channel_always)
-    assert scenario.preconditions.app.launch.env["BAJUTSU_CONTROL_CHANNEL"] == "1"
+    assert scenario.preconditions.subject.launch.env["BAJUTSU_CONTROL_CHANNEL"] == "1"
 
 
 @pytest.mark.parametrize(
@@ -3423,7 +3423,7 @@ def test_set_mocks_off_the_primary_app_is_refused_before_the_run(
     with pytest.raises(typer.Exit):
         _arm_mock_swaps([scenario], channel_available=_channel_always)
     assert expected in capsys.readouterr().err
-    assert "BAJUTSU_CONTROL_CHANNEL" not in scenario.preconditions.app.launch.env
+    assert "BAJUTSU_CONTROL_CHANNEL" not in scenario.preconditions.subject.launch.env
 
 
 def test_set_mocks_naming_a_non_primary_target_is_refused(
@@ -3446,13 +3446,13 @@ def test_set_mocks_naming_a_non_primary_target_is_refused(
 def test_a_scenarios_own_channel_key_overrides_a_target_level_decline() -> None:
     """The scenario's launch env merges over the target's, as the launch itself merges them."""
     scenario = _swapping_scenario()
-    scenario.preconditions.app.launch.env["BAJUTSU_CONTROL_CHANNEL"] = "1"
+    scenario.preconditions.subject.launch.env["BAJUTSU_CONTROL_CHANNEL"] = "1"
     _arm_mock_swaps(
         [scenario],
         channel_available=_channel_always,
         target_launch_env={"BAJUTSU_CONTROL_CHANNEL": "0"},
     )
-    assert scenario.preconditions.app.launch.env["BAJUTSU_CONTROL_CHANNEL"] == "1"
+    assert scenario.preconditions.subject.launch.env["BAJUTSU_CONTROL_CHANNEL"] == "1"
 
 
 def test_a_misplaced_swap_is_not_blamed_on_the_backend(capsys: pytest.CaptureFixture[str]) -> None:
@@ -3497,13 +3497,13 @@ def test_arming_a_swap_announces_markers_it_now_hides(capsys: pytest.CaptureFixt
     shows_markers = Scenario.model_validate(
         {
             "name": "marked",
-            "preconditions": {"app": {"launch": {"env": {"BAJUTSU_TOUCH_MARKERS": "1"}}}},
+            "preconditions": {"subject": {"launch": {"env": {"BAJUTSU_TOUCH_MARKERS": "1"}}}},
             "steps": [_SWAP],
             "expect": [{"visual": {"baseline": "home.png"}}],
         }
     )
     no_visual = _swapping_scenario("plain")
-    no_visual.preconditions.app.launch.env["BAJUTSU_TOUCH_MARKERS"] = "1"
+    no_visual.preconditions.subject.launch.env["BAJUTSU_TOUCH_MARKERS"] = "1"
     _arm_mock_swaps([shows_markers, no_visual], channel_available=_channel_always)
     err = capsys.readouterr().err
     assert "hidden for each screenshot" in err and "marked" in err and "plain" not in err
@@ -3548,7 +3548,7 @@ def test_the_real_device_check_is_absent_off_a_real_device() -> None:
     from bajutsu.common.platform_lifecycle.environments.xcuitest import real_device_check
 
     sim = resolve(
-        load_config("targets:\n  demo:\n    platform: ios\n    app: {id: com.x}\n"), "demo"
+        load_config("targets:\n  demo:\n    platform: ios\n    subject: {id: com.x}\n"), "demo"
     )
     assert real_device_check(sim.platform_config.xcuitest, "xcuitest", "booted") is None  # type: ignore[union-attr]
     xcfg = _device_target().platform_config.xcuitest  # type: ignore[union-attr]
@@ -3579,7 +3579,7 @@ def test_real_device_host_addresses_lists_or_flags_them() -> None:
     (bad,) = real_device_host_addresses(_device_target("hostAddress: '1.2.3.4:5'"), "xcuitest")
     assert bad.startswith("  ✘ driver.runner.hostAddress: '1.2.3.4:5'")
     sim = resolve(
-        load_config("targets:\n  demo:\n    platform: ios\n    app: {id: com.x}\n"), "demo"
+        load_config("targets:\n  demo:\n    platform: ios\n    subject: {id: com.x}\n"), "demo"
     )
     assert real_device_host_addresses(sim, "xcuitest") == []
     assert real_device_host_addresses(_device_target(), "fake") == []

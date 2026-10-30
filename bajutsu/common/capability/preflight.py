@@ -92,11 +92,15 @@ def config_checks(
         return []
     if backend == "playwright":
         return [
-            Check("target baseUrl", bool(base_url), base_url or f"set targets.{target}.app.url")
+            Check("target baseUrl", bool(base_url), base_url or f"set targets.{target}.subject.url")
         ]
     if backend == "adb":
-        return [Check("target package", bool(package), package or f"set targets.{target}.app.id")]
-    return [Check("target bundleId", bool(bundle_id), bundle_id or f"set targets.{target}.app.id")]
+        return [
+            Check("target package", bool(package), package or f"set targets.{target}.subject.id")
+        ]
+    return [
+        Check("target bundleId", bool(bundle_id), bundle_id or f"set targets.{target}.subject.id")
+    ]
 
 
 def runnability(

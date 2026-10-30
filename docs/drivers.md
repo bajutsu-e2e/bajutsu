@@ -530,7 +530,7 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
   (`am start -a android.intent.action.VIEW`). The run manifest records `backend: "adb"` so the
   selected actuator is disclosed.
 - **Runtime permissions** (BE-0210): the permissions listed in the target's config
-  `app.grantPermissions` are granted up front with `adb shell pm grant <package> <permission>` at lease
+  `subject.grantPermissions` are granted up front with `adb shell pm grant <package> <permission>` at lease
   time — after `pm clear` (which resets grants) and before launch — so a runtime permission prompt
   never blocks a scenario. Granting deterministically up front, rather than tapping the dialog when
   it appears, keeps timing off the run path; the list is app-specific, so it lives in config, not the
@@ -712,7 +712,7 @@ fits the same toolchain as `make check`. Implementation: `common/drivers/playwri
   `screenshot` is `page.screenshot`; `wait_for` is single-shot via `find_all` (like every backend —
   the shared `base.wait_until` supplies the deadline poll).
 - Lifecycle is owned by the driver: a fresh `BrowserContext` is the `erase` equivalent, `navigate()`
-  (`page.goto(app.url)`) is the `launch`, and `close()` tears the browser down. There is no simctl
+  (`page.goto(subject.url)`) is the `launch`, and `close()` tears the browser down. There is no simctl
   device, so the run uses a dummy lease and no device control.
 - **Device mode** (BE-0228): a web target's `runsOn.browser.emulate` config selects how each `BrowserContext` is
   created — `desktop` (the default when omitted, a plain desktop context, unchanged from before) or a Playwright

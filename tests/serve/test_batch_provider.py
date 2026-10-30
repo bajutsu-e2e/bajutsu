@@ -276,10 +276,10 @@ def _android_request_with_config(
     work.mkdir()
 
     config: dict[str, Any] = {
-        "targets": {"demo": {"platform": "android", "app": {"id": "com.example.app"}}}
+        "targets": {"demo": {"platform": "android", "subject": {"id": "com.example.app"}}}
     }
     if existing_launch_env:
-        config["targets"]["demo"].setdefault("app", {}).setdefault("launch", {})["env"] = (
+        config["targets"]["demo"].setdefault("subject", {}).setdefault("launch", {})["env"] = (
             existing_launch_env
         )
     (work / "bajutsu.config.yaml").write_text(
@@ -292,7 +292,7 @@ def _android_request_with_config(
             f"          {k}: {v}" for k, v in scenario_preconditions_launch_env.items()
         )
         preconditions_block = (
-            f"\n  preconditions:\n    app:\n      launch:\n        env:\n{env_block}"
+            f"\n  preconditions:\n    subject:\n      launch:\n        env:\n{env_block}"
         )
     (work / "smoke.yaml").write_text(
         f"- name: alpha{preconditions_block}\n  steps: []\n", encoding="utf-8"
@@ -358,7 +358,7 @@ def test_no_launch_env_injection_preserves_existing_config(tmp_path: Path) -> No
         "targets:\n"
         "  demo:\n"
         "    platform: android\n"
-        "    app:\n"
+        "    subject:\n"
         "      id: com.example.app\n"
         "      launch:\n"
         "        env: {EXISTING: value}\n"
@@ -368,7 +368,7 @@ def test_no_launch_env_injection_preserves_existing_config(tmp_path: Path) -> No
     provider.submit(request, work_dir=work, dest=tmp_path / "d")
 
     config = _read_config_from_package(transfer.packages)
-    assert config["targets"]["demo"]["app"]["launch"].get("env", {}).get("EXISTING") == "value"
+    assert config["targets"]["demo"]["subject"]["launch"].get("env", {}).get("EXISTING") == "value"
     # No hooks means ctx.launch_env stays empty, so the extra_texts overlay never fires
     # (device_farm_batch_provider.py's `if ctx.launch_env:` guard) — the packaged bytes must be
     # exactly the config as written on disk, not a re-serialization that happens to look
@@ -396,7 +396,7 @@ def test_before_submit_launch_env_merged_into_packaged_config(tmp_path: Path) ->
     provider.submit(request, work_dir=work, dest=tmp_path / "d")
 
     config = _read_config_from_package(transfer.packages)
-    launch_env = config["targets"]["demo"]["app"]["launch"]["env"]
+    launch_env = config["targets"]["demo"]["subject"]["launch"]["env"]
     assert launch_env["PROXY_HOST"] == "proxy.example.com"
     assert launch_env["PROXY_PORT"] == "3128"
     # The merge lands via build_package's extra_texts overlay, never by rewriting work_dir — the
@@ -419,7 +419,7 @@ def test_injected_keys_win_over_existing_config_launch_env(tmp_path: Path) -> No
     provider.submit(request, work_dir=work, dest=tmp_path / "d")
 
     config = _read_config_from_package(transfer.packages)
-    launch_env = config["targets"]["demo"]["app"]["launch"]["env"]
+    launch_env = config["targets"]["demo"]["subject"]["launch"]["env"]
     assert launch_env["SHARED_KEY"] == "from_hook"
     assert launch_env["OTHER"] == "kept"
 
@@ -815,7 +815,7 @@ def test_collision_guard_accepts_non_overlapping_keys(tmp_path: Path) -> None:
 
     scenario = tmp_path / "scenario.yaml"
     scenario.write_text(
-        "- name: s1\n  preconditions:\n    app:\n      launch:\n        env:\n          OTHER_KEY: value\n"
+        "- name: s1\n  preconditions:\n    subject:\n      launch:\n        env:\n          OTHER_KEY: value\n"
     )
     _check_launch_env_collisions(scenario, {"PROXY_HOST": "proxy.example.com"})
 
@@ -897,7 +897,7 @@ def test_devicefarm_provider_refuses_a_runs_on_condition_a_template_supplies(
     )
     (work / "bajutsu.config.yaml").write_text(
         "templates:\n  android-base: { platform: android, extends: ./shared/pixel.yaml }\n"
-        "targets:\n  demo: { extends: android-base, app: { id: com.x } }\n",
+        "targets:\n  demo: { extends: android-base, subject: { id: com.x } }\n",
         encoding="utf-8",
     )
     (work / "smoke.yaml").write_text("- name: alpha\n  steps: []\n", encoding="utf-8")
@@ -943,7 +943,7 @@ def test_devicefarm_provider_confines_a_template_file_to_the_bundle(
         "runsOn: { android: { avd: Pixel_8 } }\n", encoding="utf-8"
     )
     (work / "sub" / "bajutsu.config.yaml").write_text(
-        f"targets:\n  demo: {{ extends: {ref}, platform: android, app: {{ id: com.x }} }}\n",
+        f"targets:\n  demo: {{ extends: {ref}, platform: android, subject: {{ id: com.x }} }}\n",
         encoding="utf-8",
     )
     (work / "smoke.yaml").write_text("- name: alpha\n  steps: []\n", encoding="utf-8")

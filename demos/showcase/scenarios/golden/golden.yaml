@@ -26,7 +26,7 @@
     the List rows (NavigationLink), the toolbar button, and the mirrored status the
     Motivation flagged as accuracy risks.
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:

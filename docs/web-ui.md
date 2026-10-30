@@ -172,7 +172,7 @@ three sources:
   branch); the whole subtree is fetched, so the config's scenarios and built app come with it.
 - **Upload a bundle (.zip).** Click **Choose a .zip…** (or drop a file on the box) to bring your own
   suite to a hosted server with no file-system access. The zip is a working local checkout — a
-  `bajutsu.config.yaml`, its `paths.scenarios` tree, and the built app binary the config's `app.path` names.
+  `bajutsu.config.yaml`, its `paths.scenarios` tree, and the built app binary the config's `subject.path` names.
   It carries no secrets; `${secrets.*}` resolve from the server's environment.
 - **or browse the server.** A file browser, confined to the server's `--root`, for picking a local
   `.yml`/`.yaml` config. A hosted deployment hides this source, since a remote user has no
@@ -624,7 +624,7 @@ is involved.
 ## Coverage — the E2E coverage map
 
 **What it does.** Renders the E2E coverage map for a target — the `coverage` command in the browser.
-It measures the scenario suite's stable-id references against the app's declared `app.idNamespaces`,
+It measures the scenario suite's stable-id references against the app's declared `subject.idNamespaces`,
 showing per-namespace coverage, the gap list (declared namespaces no scenario touches), and
 off-namespace ids. A selector the run binds later — a `${vars.*}` placeholder carrying a `totp` or
 `email` step's output — names no element, so the map leaves the placeholder out instead of counting

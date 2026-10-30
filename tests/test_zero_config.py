@@ -100,7 +100,7 @@ def _fake_config(tmp_path: Path) -> tuple[Path, Path]:
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            "    app:\n"
+            "    subject:\n"
             "      id: com.example.demo\n"
             "      idNamespaces: [home]\n"
         ),

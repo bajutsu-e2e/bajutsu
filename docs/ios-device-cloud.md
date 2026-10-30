@@ -36,7 +36,7 @@ The XCUITest backend targets the Simulator by default. A single config key on th
 targets:
   my-app:
     platform: ios
-    app: { id: com.example.myapp }
+    subject: { id: com.example.myapp }
     runsOn:
       ios:
         kind: device   # "simulator" (the default) or "device"
@@ -49,7 +49,7 @@ attached device's udid, or the udid a device cloud hands the run.
 
 A real device also skips the Simulator bring-up that `simctl` performs, which drops three
 preconditions the Simulator path takes for granted: erasing the device, installing the app from a
-local `app.path`, and granting permissions up front. A scenario that needs one of those on a real
+local `subject.path`, and granting permissions up front. A scenario that needs one of those on a real
 device fails loudly rather than silently doing nothing, and the Device Farm route below installs the
 app through the cloud instead. This same key drives a locally attached iPhone or iPad, so the
 real-device work is useful on its own, before any cloud is involved.
@@ -340,7 +340,7 @@ narrowed capabilities — with a clear reason, before any device work — rather
 
 A worked example config lives at
 [`demos/showcase/live/showcase.live.config.yaml`](../demos/showcase/live/showcase.live.config.yaml):
-it mirrors the local `showcase-swiftui` target but carries no local `app.path` or
+it mirrors the local `showcase-swiftui` target but carries no local `subject.path` or
 `driver.runner.testRunner`, since the reserved device already holds the build and the live route
 speaks WebDriver rather than the runner channel. The
 [`demos/showcase/live/worker.yaml`](../demos/showcase/live/worker.yaml) file beside it names the grid. Point that file's

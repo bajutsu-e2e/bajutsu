@@ -18,23 +18,23 @@ def test_preconditions_default() -> None:
     assert (
         s.preconditions.run.erase is None
     )  # unset: inherit target config, then built-in off (BE-0177)
-    assert s.preconditions.app.reinstall is None  # unset: the target, then the built-in clean
+    assert s.preconditions.subject.reinstall is None  # unset: the target, then the built-in clean
 
 
 def test_preconditions_reinstall_validated() -> None:
     s = Scenario.model_validate(
         {
             "name": "x",
-            "preconditions": {"run": {"erase": True}, "app": {"reinstall": "overwrite"}},
+            "preconditions": {"run": {"erase": True}, "subject": {"reinstall": "overwrite"}},
             "steps": [{"tap": {"id": "a"}}],
         }
     )
-    assert s.preconditions.run.erase is True and s.preconditions.app.reinstall == "overwrite"
+    assert s.preconditions.run.erase is True and s.preconditions.subject.reinstall == "overwrite"
     with pytest.raises(ValidationError):  # only clean | overwrite are accepted
         Scenario.model_validate(
             {
                 "name": "x",
-                "preconditions": {"app": {"reinstall": "bogus"}},
+                "preconditions": {"subject": {"reinstall": "bogus"}},
                 "steps": [{"tap": {"id": "a"}}],
             }
         )

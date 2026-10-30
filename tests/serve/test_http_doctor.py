@@ -28,7 +28,7 @@ def test_doctor_returns_checks_for_target(tmp_path: Path) -> None:
     _scn_dir, _cfg, runs = project(tmp_path)
     cfg = tmp_path / "fake.config.yaml"
     cfg.write_text(
-        ("targets:\n  demo:\n    platform: ios\n    app: {id: com.example.demo}\n"),
+        ("targets:\n  demo:\n    platform: ios\n    subject: {id: com.example.demo}\n"),
         encoding="utf-8",
     )
     state = srv.ServeState(config=cfg, runs_dir=runs, cwd=tmp_path)
@@ -104,7 +104,7 @@ def test_doctor_fake_backend_returns_ok(tmp_path: Path) -> None:
             "targets:\n"
             "  demo:\n"
             "    platform: fake\n"
-            f"    app: {{id: com.example.demo}}\n"
+            f"    subject: {{id: com.example.demo}}\n"
             f"    paths: {{scenarios: {scn_dir}}}\n"
         ),
         encoding="utf-8",
@@ -137,7 +137,7 @@ def test_doctor_score_present_for_fake_backend(tmp_path: Path) -> None:
             "targets:\n"
             "  demo:\n"
             "    platform: fake\n"
-            f"    app: {{id: com.example.demo}}\n"
+            f"    subject: {{id: com.example.demo}}\n"
             f"    paths: {{scenarios: {scn_dir}}}\n"
         ),
         encoding="utf-8",
@@ -170,7 +170,7 @@ def test_doctor_score_null_when_unrunnable(tmp_path: Path, monkeypatch: pytest.M
             "targets:\n"
             "  webapp:\n"
             "    platform: ios\n"
-            f"    app: {{id: com.example}}\n"
+            f"    subject: {{id: com.example}}\n"
             f"    paths: {{scenarios: {scn_dir}}}\n"
         ),
         encoding="utf-8",
@@ -218,7 +218,7 @@ def test_doctor_web_target_with_base_url(tmp_path: Path, monkeypatch: pytest.Mon
             "targets:\n"
             "  webapp:\n"
             "    platform: web\n"
-            f"    app: {{url: 'http://localhost:3000'}}\n"
+            f"    subject: {{url: 'http://localhost:3000'}}\n"
             f"    paths: {{scenarios: {scn_dir}}}\n"
         ),
         encoding="utf-8",

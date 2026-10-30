@@ -9,7 +9,7 @@
 - name: tipkit guard clears a tip blocking a tap
   tags: [tipkit]
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1", SHOWCASE_TIPKIT: "1" }
     run:
@@ -25,7 +25,7 @@
 - name: tipkit guard clears a tip blocking a wait
   tags: [tipkit]
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1", SHOWCASE_TIPKIT: "1" }
     run:
@@ -42,7 +42,7 @@
 - name: a tip is left alone when the scenario does not ask for the guard
   tags: [tipkit]
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1", SHOWCASE_TIPKIT: "1" }
   steps:
@@ -60,7 +60,7 @@
 - name: an app's own confirmation dialog is left alone by the guard
   tags: [tipkit, swiftui]
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
     run:

@@ -117,7 +117,7 @@ def _eff(**target: str) -> Effective:
         else:
             top += f"    {k}: {v}\n"
     fields = top + "".join(f"    {g}:\n{body}" for g, body in groups.items())
-    cfg = load_config(f"targets:\n  x:\n    platform: ios\n    app: {{id: com.x}}\n{fields}")
+    cfg = load_config(f"targets:\n  x:\n    platform: ios\n    subject: {{id: com.x}}\n{fields}")
     return resolve(cfg, "x")
 
 

@@ -173,7 +173,7 @@ def probe_screen(
         # practice the caller's config gate already caught it; this is the defensive backstop.
         base_url = web_base_url(eff)
         if not base_url:
-            raise DoctorProbeError("web target needs baseUrl (set targets.<name>.app.url)")
+            raise DoctorProbeError("web target needs baseUrl (set targets.<name>.subject.url)")
         web = require_web(eff)
         # Lazy import keeps Playwright (a heavy optional dep) off the default path.
         from bajutsu.common.drivers.playwright import PlaywrightDriver, _playwright_error_types

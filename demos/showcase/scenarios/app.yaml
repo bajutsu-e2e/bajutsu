@@ -19,7 +19,7 @@
 - name: app drives Safari and back, twice, around real showcase navigation
   tags: [app]
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:

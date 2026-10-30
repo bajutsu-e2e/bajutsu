@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0470](BE-0470-subject-group-rename.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0470") |
 | Topic | Driver & backend architecture |
 <!-- /BE-METADATA -->
@@ -141,9 +141,17 @@ word inside one path. The glossary entry for `subject` names both senses.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1: schema
-- [ ] Unit 2: configs and scenarios
-- [ ] Unit 3: docs
+- [x] Unit 1: schema
+- [x] Unit 2: configs and scenarios
+- [x] Unit 3: docs
+
+Log:
+
+- [#PR](https://github.com/bajutsu-e2e/bajutsu/pull/PR) — Units 1-3. Shipped the whole item. An old
+  `app` key fails the load and names `subject` in a target, a template, `defaults.platforms`, and a
+  scenario's `preconditions`. Two places the design did not list follow too: a template's own key
+  check, and the template rebase path `subject.path`. The run-time error messages that named
+  `app.url`, `app.id`, or `app.path` now name the `subject` path.
 
 ## References
 

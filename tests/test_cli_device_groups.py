@@ -26,14 +26,14 @@ def _effs(tmp_path: Path, extra: str = "") -> dict[str, Effective]:
     cfg = load_config(
         f"""
 targets:
-  old: {{ platform: ios, app: {{ id: com.example.showcase }} }}
-  new: {{ platform: ios, app: {{ id: com.example.showcase, path: {build} }} }}
-  auth: {{ platform: ios, app: {{ id: com.example.auth }} }}
-  ja: {{ platform: ios, app: {{ id: com.example.ja }}, runsOn: {{ios: {{locale: ja_JP}}}} }}
-  phone: {{ platform: ios, app: {{ id: com.example.phone }}, runsOn: {{ios: {{kind: device}}}} }}
-  droid: {{ platform: android, app: {{ id: com.example.droid }} }}
-  site: {{ platform: web, app: {{ url: "http://localhost:1/" }} }}
-  nobuild: {{ platform: ios, app: {{ id: com.example.showcase }} }}
+  old: {{ platform: ios, subject: {{ id: com.example.showcase }} }}
+  new: {{ platform: ios, subject: {{ id: com.example.showcase, path: {build} }} }}
+  auth: {{ platform: ios, subject: {{ id: com.example.auth }} }}
+  ja: {{ platform: ios, subject: {{ id: com.example.ja }}, runsOn: {{ios: {{locale: ja_JP}}}} }}
+  phone: {{ platform: ios, subject: {{ id: com.example.phone }}, runsOn: {{ios: {{kind: device}}}} }}
+  droid: {{ platform: android, subject: {{ id: com.example.droid }} }}
+  site: {{ platform: web, subject: {{ url: "http://localhost:1/" }} }}
+  nobuild: {{ platform: ios, subject: {{ id: com.example.showcase }} }}
 {extra}"""
     )
     # Every target runs on the fake driver, as `--backend fake` would have it, keeping its own shape.
@@ -143,7 +143,7 @@ def test_an_install_whose_build_is_missing_is_refused(
         "targets:\n"
         "  gone:\n"
         "    platform: ios\n"
-        f"    app: {{id: com.example.showcase, path: {missing}}}\n"
+        f"    subject: {{id: com.example.showcase, path: {missing}}}\n"
     )
     effs["gone"] = resolve(cfg, "gone")
     s = _scenario(
@@ -195,7 +195,7 @@ def test_a_git_sourced_install_builds_on_demand_and_reports_a_failed_build(
         "targets:\n"
         "  built:\n"
         "    platform: ios\n"
-        f"    app: {{id: com.example.showcase, path: {missing}, build: 'false'}}\n"
+        f"    subject: {{id: com.example.showcase, path: {missing}, build: 'false'}}\n"
     )
     effs["built"] = resolve(cfg, "built")
     s = _scenario(
@@ -277,7 +277,7 @@ def test_a_nested_install_still_needs_its_build(
         "targets:\n"
         "  gone:\n"
         "    platform: ios\n"
-        f"    app: {{id: com.example.showcase, path: {tmp_path / 'Gone.app'}}}\n"
+        f"    subject: {{id: com.example.showcase, path: {tmp_path / 'Gone.app'}}}\n"
     )
     effs["gone"] = resolve(cfg, "gone")
     s = _scenario(targets=[["old", "gone"]], primaryTarget="old", **placement)
@@ -294,7 +294,7 @@ def test_a_starting_members_missing_build_is_refused(
         "targets:\n"
         "  auth2:\n"
         "    platform: ios\n"
-        f"    app: {{id: com.example.auth2, path: {tmp_path / 'Auth2.app'}}}\n"
+        f"    subject: {{id: com.example.auth2, path: {tmp_path / 'Auth2.app'}}}\n"
     )
     effs["auth2"] = replace(resolve(cfg, "auth2"), backend=["fake"])
     s = _scenario(targets=[["old", "auth2"]], primaryTarget="old", installs=["auth2"])
@@ -307,7 +307,9 @@ def test_members_on_different_backends_cannot_share_a_device(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     effs = _effs(tmp_path)
-    cfg = load_config("targets:\n  other:\n    platform: ios\n    app: {id: com.example.other}\n")
+    cfg = load_config(
+        "targets:\n  other:\n    platform: ios\n    subject: {id: com.example.other}\n"
+    )
     effs["other"] = resolve(cfg, "other")  # its own `[ios]`, not the others' `[fake]`
     s = _scenario(targets=[["auth", "other"]], primaryTarget="auth", installs=["other"])
     with pytest.raises(typer.Exit):

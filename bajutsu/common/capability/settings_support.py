@@ -46,16 +46,16 @@ _PERMISSION_PREFIX = "permissions."
 # Each setting key, as `run.ignoredSettings` names it, with the source field a reader recognizes.
 SETTING_FIELDS: dict[str, str] = {
     "erase": "run.erase",
-    "install": "app.path install",
+    "install": "subject.path install",
     **{
         f"{_PERMISSION_PREFIX}{service}": f"permissions.{service}"
         for service in base.PERMISSION_SERVICES
     },
     "seedPhotos": "runsOn.ios.seedPhotos",
     "locale": "runsOn.ios.locale",
-    "launchEnv": "app.launch.env",
-    "launchArgs": "app.launch.args",
-    "deeplink": "app.launch.deeplink",
+    "launchEnv": "subject.launch.env",
+    "launchArgs": "subject.launch.args",
+    "deeplink": "subject.launch.deeplink",
 }
 SETTING_KEYS: tuple[str, ...] = tuple(SETTING_FIELDS)
 
@@ -64,7 +64,7 @@ _SAT: SettingSupport = "satisfied"
 _U: SettingSupport = "unsupported"
 
 # Every key but the per-service permissions, which follow the route's capability tokens instead.
-# Android has no `app.launch.args` (`am start` takes none) and no iOS photo library or locale, and the
+# Android has no `subject.launch.args` (`am start` takes none) and no iOS photo library or locale, and the
 # web has no install, photo library, locale, launch arguments, or deeplink. `settings_in_effect`
 # never puts those keys in effect on those routes, because the loader and the platform-keyed
 # preconditions keep the fields off them (BE-0452); the rows read `unsupported` so a later change
@@ -194,10 +194,10 @@ def settings_in_effect(
     from bajutsu.common.config.schema.platform import accepts_field, schema_for
 
     platform = eff.platform_config
-    # A scenario's `app.launch` values apply to the targets whose platform has the field (BE-0452):
+    # A scenario's `subject.launch` values apply to the targets whose platform has the field (BE-0452):
     # an iOS-and-web scenario's deeplink is meant for the iOS app, never the browser, so it is not in
     # effect on the web target. The target's own values only exist where its platform has them.
-    app_schema = schema_for(eff.schema_platform).app
+    app_schema = schema_for(eff.schema_platform).subject
 
     def launch(name: str) -> bool:
         return accepts_field(app_schema, ("launch", name))
@@ -213,7 +213,7 @@ def settings_in_effect(
         **{f"{_PERMISSION_PREFIX}{service}": True for service in permissions or {}},
         "seedPhotos": bool(pre.seed_photos),
         "locale": locale,
-        # A web target's own `app.launch.env` feeds Playwright code generation, never a run, so only
+        # A web target's own `subject.launch.env` feeds Playwright code generation, never a run, so only
         # an app platform's own launch values are asked of the device; a scenario's still count.
         "launchEnv": (native and _user_env(eff.launch_env))
         or (launch("env") and _user_env(pre.launch_env)),

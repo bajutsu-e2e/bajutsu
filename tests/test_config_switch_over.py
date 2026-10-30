@@ -32,7 +32,7 @@ def _eff(text: str, name: str = "t") -> Effective:
     return resolve(load_config(text), name)
 
 
-_IOS = "targets:\n  t: { platform: ios, app: { id: com.x } }\n"
+_IOS = "targets:\n  t: { platform: ios, subject: { id: com.x } }\n"
 _GRID = "version: 1\nenvironment: appium\nappium: { endpoint: 'https://grid.example/wd/hub' }\n"
 
 
@@ -72,16 +72,16 @@ def test_the_cli_backend_check_exits_2(capsys: pytest.CaptureFixture[str]) -> No
 
 def test_conditions_resolve_onto_the_effective_config() -> None:
     eff = _eff(
-        'targets:\n  t: { platform: ios, app: { id: com.x }, runsOn: {ios: {os: ">=18"}} }\n'
+        'targets:\n  t: { platform: ios, subject: { id: com.x }, runsOn: {ios: {os: ">=18"}} }\n'
     )
     assert eff.conditions == {"os": ">=18"}
     android = _eff(
-        "targets:\n  t: { platform: android, app: { id: com.x }, runsOn: {android: {avd: [A, B]}} }\n"
+        "targets:\n  t: { platform: android, subject: { id: com.x }, runsOn: {android: {avd: [A, B]}} }\n"
     )
     assert android.conditions == {"avd": ["A", "B"]}
     # One engine is how a web target is driven, not a condition; a listed one multiplies runs.
     web = _eff(
-        "targets:\n  t: { platform: web, app: { url: 'http://x/' }, "
+        "targets:\n  t: { platform: web, subject: { url: 'http://x/' }, "
         "runsOn: { browser: { kind: [chromium, webkit] } } }\n"
     )
     assert web.conditions == {"browser.kind": ["chromium", "webkit"]}
@@ -89,7 +89,9 @@ def test_conditions_resolve_onto_the_effective_config() -> None:
 
 
 def test_the_fake_driver_skips_conditions_with_one_notice(caplog: pytest.LogCaptureFixture) -> None:
-    eff = _eff('targets:\n  t: { platform: ios, app: { id: com.x }, runsOn: {ios: {os: "18"}} }\n')
+    eff = _eff(
+        'targets:\n  t: { platform: ios, subject: { id: com.x }, runsOn: {ios: {os: "18"}} }\n'
+    )
     deprecations._emitted.discard("conditions.fake")
     with caplog.at_level(logging.WARNING, logger=deprecations.logger.name):
         assert _shared._note_fake_conditions(eff, ["fake"])
@@ -107,12 +109,12 @@ def test_a_kind_device_target_cannot_declare_a_condition() -> None:
 
     with pytest.raises(ValidationError, match="kind includes device cannot declare"):
         load_config(
-            "targets:\n  t: { platform: ios, app: { id: com.x }, runsOn: {ios: {kind: device, os: '18'}} }\n"
+            "targets:\n  t: { platform: ios, subject: { id: com.x }, runsOn: {ios: {kind: device, os: '18'}} }\n"
         )
     # A team-wide `model` default reaches here after the merge, and the target clears it with null.
     cfg = load_config(
         "defaults:\n  platforms:\n    ios:\n      runsOn: {ios: {model: iPhone 16}}\n"
-        "targets:\n  t: { platform: ios, app: { id: com.x }, runsOn: {ios: {kind: device, model: null}} }\n"
+        "targets:\n  t: { platform: ios, subject: { id: com.x }, runsOn: {ios: {kind: device, model: null}} }\n"
     )
     assert resolve(cfg, "t").conditions == {}
 
@@ -135,7 +137,7 @@ def test_an_appium_environment_hands_its_grid_to_its_platform_alone() -> None:
     assert ios.device_provider == DeviceProvider(
         kind="appium", endpoint="https://grid.example/wd/hub"
     )
-    web = _eff("targets:\n  t: { platform: web, app: { url: 'http://x/' } }\n")
+    web = _eff("targets:\n  t: { platform: web, subject: { url: 'http://x/' } }\n")
     assert _shared._with_worker_device(web, grid).device_provider is None
     assert _shared._device_udid_or_exit(ios, "booted") == "https://grid.example/wd/hub"
     assert _shared._device_udid_or_exit(_eff(_IOS), "booted") == "booted"
@@ -188,9 +190,9 @@ def test_two_grid_targets_in_one_scenario_are_refused(capsys: pytest.CaptureFixt
     grid = _grid()
     cfg = load_config(
         "targets:\n"
-        "  a: { platform: ios, app: { id: com.a } }\n"
-        "  b: { platform: ios, app: { id: com.b } }\n"
-        "  w: { platform: web, app: { url: 'http://x/' } }\n"
+        "  a: { platform: ios, subject: { id: com.a } }\n"
+        "  b: { platform: ios, subject: { id: com.b } }\n"
+        "  w: { platform: web, subject: { url: 'http://x/' } }\n"
     )
     effs = {n: _shared._with_worker_device(resolve(cfg, n), grid) for n in ("a", "b", "w")}
     mixed = Scenario.model_validate({"name": "mixed", "targets": ["a", "w"], "steps": []})
@@ -252,7 +254,7 @@ def _hooked() -> Effective:
         "targets:\n"
         "  t:\n"
         "    platform: ios\n"
-        "    app: { id: com.x }\n"
+        "    subject: { id: com.x }\n"
         "    hooks:\n"
         "      setup: [{ tap: { id: login } }]\n"
         "      cleanup: [{ 'on': always, steps: [{ tap: { id: logout } }] }]\n"
@@ -309,22 +311,22 @@ def test_merge_defaults_takes_the_targets_platform_block_and_skips_ai() -> None:
             "web": {"driver": {"headless": False}},
         },
     }
-    merged = merge_defaults(defaults, {"platform": "ios", "app": {"id": "com.x"}})
+    merged = merge_defaults(defaults, {"platform": "ios", "subject": {"id": "com.x"}})
     assert merged == {
         "run": {"erase": True},
         "runsOn": {"ios": {"locale": "ja_JP"}},
         "platform": "ios",
-        "app": {"id": "com.x"},
+        "subject": {"id": "com.x"},
     }
     # A target with no platform takes the shared groups alone, then fails for the missing key.
-    assert merge_defaults(defaults, {"app": {"id": "com.x"}}) == {
+    assert merge_defaults(defaults, {"subject": {"id": "com.x"}}) == {
         "run": {"erase": True},
-        "app": {"id": "com.x"},
+        "subject": {"id": "com.x"},
     }
 
 
 def test_a_fake_target_keeps_the_identifier_contract() -> None:
-    eff = _eff("targets:\n  t: { platform: fake, app: { idNamespaces: [home] } }\n")
+    eff = _eff("targets:\n  t: { platform: fake, subject: { idNamespaces: [home] } }\n")
     assert eff.backend == ["fake"]
     assert eff.id_namespaces == ["home"]
     assert eff.platform == "ios"  # the iOS-shaped sub-config, as before BE-0452
@@ -347,7 +349,7 @@ def test_a_hooks_component_that_cannot_be_read_fails_loudly(tmp_path: Path) -> N
     (tmp_path / "dir.yaml").mkdir()  # a path that exists but cannot be read as a file
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "targets:\n  t:\n    platform: ios\n    app: { id: com.x }\n"
+        "targets:\n  t:\n    platform: ios\n    subject: { id: com.x }\n"
         "    hooks: { setup: [{ use: { component: dir.yaml } }] }\n",
         encoding="utf-8",
     )
@@ -360,7 +362,7 @@ def test_a_hooks_group_is_refused() -> None:
 
     with pytest.raises(ValidationError, match="hooks cannot use a group"):
         load_config(
-            "targets:\n  t:\n    platform: ios\n    app: { id: com.x }\n"
+            "targets:\n  t:\n    platform: ios\n    subject: { id: com.x }\n"
             "    hooks: { setup: [{ group: { name: g, steps: [{ tap: { id: a } }] } }] }\n"
         )
 
@@ -411,7 +413,7 @@ def test_doctor_discloses_how_scenarios_split_across_a_ladder(
     (scenarios / "a.yaml").write_text("- name: one\n  steps:\n    - tap: { id: ok }\n", "utf-8")
     eff = resolve(
         load_config(
-            "targets:\n  t: { platform: android, app: { id: com.x }, paths: { scenarios: e2e } }\n"
+            "targets:\n  t: { platform: android, subject: { id: com.x }, paths: { scenarios: e2e } }\n"
         ),
         "t",
     ).rebased(tmp_path)
@@ -448,11 +450,11 @@ def test_doctor_exits_2_on_a_failed_config_gate(
 
     monkeypatch.setattr(
         "bajutsu.common.capability.preflight.config_checks",
-        lambda *a, **k: [Check("target app.id", False, "set targets.t.app.id")],
+        lambda *a, **k: [Check("target subject.id", False, "set targets.t.subject.id")],
     )
     result = _doctor(tmp_path, "--backend", "fake")
     assert result.exit_code == 2
-    assert "set targets.t.app.id" in result.output
+    assert "set targets.t.subject.id" in result.output
 
 
 def test_doctor_probes_the_first_run_of_a_condition(
@@ -485,7 +487,7 @@ def test_doctor_probes_the_first_run_of_a_condition(
     monkeypatch.setattr("bajutsu.cli.commands.doctor._current_screen", screen)
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        'targets:\n  t: { platform: ios, app: { id: com.x }, runsOn: {ios: {os: "18"}} }\n',
+        'targets:\n  t: { platform: ios, subject: { id: com.x }, runsOn: {ios: {os: "18"}} }\n',
         encoding="utf-8",
     )
     argv = ["doctor", "--target", "t", "--config", str(cfg), "--udid", "u17,u18"]
@@ -520,7 +522,7 @@ def test_the_mcp_probe_takes_its_device_through_the_worker(monkeypatch: pytest.M
     with pytest.raises(ValueError, match=r"runsOn\.ios\.os"):
         _probe_device(
             _eff(
-                'targets:\n  t: { platform: ios, app: { id: com.x }, runsOn: {ios: {os: "18"}} }\n'
+                'targets:\n  t: { platform: ios, subject: { id: com.x }, runsOn: {ios: {os: "18"}} }\n'
             ),
             "booted",
             _grid(),
@@ -618,14 +620,14 @@ def test_null_cannot_clear_a_team_wide_secret_or_redaction(written: str) -> None
     defaults = "defaults:\n  evidence: { secrets: [TEAM], redact: { fields: [password] } }\n"
     with pytest.raises(ValidationError, match="null cannot clear it"):
         load_config(
-            defaults + f"targets:\n  t: {{ platform: ios, app: {{ id: com.x }}, {written} }}\n"
+            defaults + f"targets:\n  t: {{ platform: ios, subject: {{ id: com.x }}, {written} }}\n"
         )
 
 
 def test_null_still_clears_an_ordinary_inherited_value() -> None:
     cfg = load_config(
         "defaults:\n  paths: { scenarios: shared }\n"
-        "targets:\n  t: { platform: ios, app: { id: com.x }, paths: { scenarios: null } }\n"
+        "targets:\n  t: { platform: ios, subject: { id: com.x }, paths: { scenarios: null } }\n"
     )
     assert resolve(cfg, "t").evidence_dirs.scenarios is None
 
@@ -636,8 +638,8 @@ def test_config_level_unmask_switches_are_honoured_and_inherited() -> None:
     cfg = load_config(
         "defaults:\n  evidence: { redact: { unmaskSecureFields: true } }\n"
         "targets:\n"
-        "  a: { platform: ios, app: { id: com.a } }\n"
-        "  b: { platform: ios, app: { id: com.b }, "
+        "  a: { platform: ios, subject: { id: com.a } }\n"
+        "  b: { platform: ios, subject: { id: com.b }, "
         "evidence: { redact: { unmaskCredentialNames: true } } }\n"
     )
     a, b = resolve(cfg, "a").redact, resolve(cfg, "b").redact
@@ -657,8 +659,8 @@ def _serve_state(tmp_path: Path, scenario: str) -> Any:
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
         "targets:\n"
-        f"  demo: {{ platform: ios, app: {{ id: com.x }}, paths: {{ scenarios: {scn} }} }}\n"
-        "  site: { platform: web, app: { url: 'http://x/' } }\n",
+        f"  demo: {{ platform: ios, subject: {{ id: com.x }}, paths: {{ scenarios: {scn} }} }}\n"
+        "  site: { platform: web, subject: { url: 'http://x/' } }\n",
         encoding="utf-8",
     )
     (tmp_path / "runs").mkdir()
@@ -748,14 +750,14 @@ def test_a_listed_kind_and_a_family_are_conditions_and_a_single_kind_is_not() ->
     from bajutsu.common.config.accessors import xcuitest_targets_real_device
 
     both = _eff(
-        "targets:\n  t: { platform: ios, app: { id: com.x }, "
+        "targets:\n  t: { platform: ios, subject: { id: com.x }, "
         "runsOn: {ios: {kind: [simulator, device], family: [iphone, ipad]}} }\n"
     )
     assert both.conditions == {"kind": ["simulator", "device"], "family": ["iphone", "ipad"]}
     # The first listed kind stands in until a run applies its own.
     assert not xcuitest_targets_real_device(both)
     single = _eff(
-        "targets:\n  t: { platform: ios, app: { id: com.x }, "
+        "targets:\n  t: { platform: ios, subject: { id: com.x }, "
         "runsOn: {ios: {kind: device, family: ipad}} }\n"
     )
     assert single.conditions == {"family": "ipad"}
@@ -767,7 +769,7 @@ def test_each_run_applies_its_kind_and_drops_the_kind_condition() -> None:
     from bajutsu.run.device_matrix import apply_kind
 
     eff = _eff(
-        "targets:\n  t: { platform: ios, app: { id: com.x }, "
+        "targets:\n  t: { platform: ios, subject: { id: com.x }, "
         "runsOn: {ios: {kind: [simulator, device], family: ipad}} }\n"
     )
     on_device = apply_kind(eff, "device")
@@ -782,7 +784,7 @@ def test_a_family_is_matched_on_a_real_device_but_not_on_a_remote_one() -> None:
     from bajutsu.common.config.preconditions import remote_condition_problems
 
     device = _eff(
-        "targets:\n  t: { platform: ios, app: { id: com.x }, runsOn: {ios: {kind: device, family: ipad}} }\n"
+        "targets:\n  t: { platform: ios, subject: { id: com.x }, runsOn: {ios: {kind: device, family: ipad}} }\n"
     )
     assert remote_condition_problems(device, device.conditions) == []
     remote = replace(device, device_provider=DeviceProvider(kind="appium", endpoint="http://grid/"))

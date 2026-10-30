@@ -40,10 +40,10 @@ _COLLIDING_YAML = (
     "targets:\n"
     "  checkout:\n"
     "    platform: ios\n"
-    "    app: {id: com.example.checkout}\n"
+    "    subject: {id: com.example.checkout}\n"
     "  spare:\n"
     "    platform: ios\n"
-    "    app: {id: com.example.spare}\n"
+    "    subject: {id: com.example.spare}\n"
     "orgs:\n"
     "  acme:\n"
     "    members: [alice]\n"
@@ -180,7 +180,7 @@ def test_orgs_from_db_reads_a_row_with_no_membership_as_empty(
     state = _state(
         serve_engine,
         tmp_path,
-        body=("targets:\n  checkout:\n    platform: ios\n    app: {id: com.x}\n"),
+        body=("targets:\n  checkout:\n    platform: ios\n    subject: {id: com.x}\n"),
     )
     assert state.repository is not None
     state.repository.ensure_org("legacy", slug="legacy", name="legacy")
@@ -244,7 +244,7 @@ def test_a_membershipless_orgs_table_is_the_operator_actionable_denial(
         serve_engine,
         tmp_path,
         body=(
-            "targets:\n  checkout:\n    platform: ios\n    app: {id: com.x}\n"
+            "targets:\n  checkout:\n    platform: ios\n    subject: {id: com.x}\n"
         ),  # no orgs: block, so nothing to seed
         oauth=_FakeOAuth("mallory", teams=["ops-gh/root"]),
         admin_teams=["ops-gh/root"],
@@ -321,10 +321,10 @@ def test_an_org_literally_named_default_owns_nothing_it_declares(
             "targets:\n"
             "  checkout:\n"
             "    platform: ios\n"
-            "    app: {id: com.x}\n"
+            "    subject: {id: com.x}\n"
             "  spare:\n"
             "    platform: ios\n"
-            "    app: {id: com.y}\n"
+            "    subject: {id: com.y}\n"
             "orgs:\n"
             "  default:\n"
             "    members: [alice]\n"
@@ -353,7 +353,7 @@ def test_an_uploaded_bundle_belongs_to_the_org_that_bound_it(
         "targets:\n"
         "  docs:\n"
         "    platform: web\n"
-        "    app: {url: 'https://example.test/'}\n"
+        "    subject: {url: 'https://example.test/'}\n"
         "orgs:\n"
         "  sansaninc:\n"
         "    githubOrgs: [sansaninc]\n"
@@ -401,7 +401,7 @@ def test_a_git_bound_config_belongs_to_the_org_that_bound_it(
             "targets:\n"
             "  docs:\n"
             "    platform: web\n"
-            "    app: {url: 'https://example.test/'}\n"
+            "    subject: {url: 'https://example.test/'}\n"
             "orgs:\n"
             "  someone-else:\n"
             "    targets: [docs]\n"
@@ -803,7 +803,7 @@ def test_seeding_reports_nothing_for_an_entry_that_only_declares_targets(
             "targets:\n"
             "  checkout:\n"
             "    platform: ios\n"
-            "    app: {id: com.x}\n"
+            "    subject: {id: com.x}\n"
             "orgs:\n"
             "  acme:\n"
             "    targets: [checkout]\n"
@@ -832,7 +832,7 @@ def test_a_targets_only_entry_is_left_unseeded_so_a_restored_roster_still_seeds(
             "targets:\n"
             "  checkout:\n"
             "    platform: ios\n"
-            "    app: {id: com.x}\n"
+            "    subject: {id: com.x}\n"
             "orgs:\n"
             "  acme:\n"
             "    targets: [checkout]\n"
@@ -847,7 +847,7 @@ def test_a_targets_only_entry_is_left_unseeded_so_a_restored_roster_still_seeds(
             "targets:\n"
             "  checkout:\n"
             "    platform: ios\n"
-            "    app: {id: com.x}\n"
+            "    subject: {id: com.x}\n"
             "orgs:\n"
             "  acme:\n"
             "    members: [alice]\n"
@@ -1099,7 +1099,7 @@ def test_the_admin_team_bypass_admits_a_sign_in_against_an_empty_table_and_creat
     state = _state(
         serve_engine,
         tmp_path,
-        body=("targets:\n  checkout:\n    platform: ios\n    app: {id: com.x}\n"),
+        body=("targets:\n  checkout:\n    platform: ios\n    subject: {id: com.x}\n"),
         oauth=_FakeOAuth("root", teams=["ops-gh/root"]),
         admin_teams=["ops-gh/root"],
     )

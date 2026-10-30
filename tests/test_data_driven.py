@@ -171,5 +171,5 @@ def test_row_instances_do_not_share_nested_models() -> None:
     )
     out = expand_data(scns, _no_csv)
     assert out[0].preconditions is not out[1].preconditions
-    out[0].preconditions.app.launch.env["k"] = "v"
-    assert out[1].preconditions.app.launch.env == {}
+    out[0].preconditions.subject.launch.env["k"] = "v"
+    assert out[1].preconditions.subject.launch.env == {}

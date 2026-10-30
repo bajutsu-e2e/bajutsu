@@ -12,7 +12,7 @@
 - name: grant notification permission
   tags: [permission, system]
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
     run:

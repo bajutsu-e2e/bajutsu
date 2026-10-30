@@ -269,7 +269,7 @@ def test_probe_screen_fake_backend_never_touches_simctl() -> None:
         raise AssertionError("fake backend must not invoke simctl")
 
     eff = resolve(
-        load_config("targets:\n  demo:\n    platform: ios\n    app: {id: com.x}\n"), "demo"
+        load_config("targets:\n  demo:\n    platform: ios\n    subject: {id: com.x}\n"), "demo"
     )
     assert probe_screen("fake", "booted", eff, simctl_run=boom) == []  # fake's screen starts empty
 
@@ -308,7 +308,7 @@ def test_probe_screen_xcuitest_uses_a_short_lived_runner(monkeypatch: pytest.Mon
     torn: list[str] = []
     _patch_read_env(monkeypatch, built, torn)
     eff = resolve(
-        load_config("targets:\n  demo:\n    platform: ios\n    app: {id: com.x}\n"), "demo"
+        load_config("targets:\n  demo:\n    platform: ios\n    subject: {id: com.x}\n"), "demo"
     )
     elements = probe_screen("xcuitest", "DEV-1", eff)
     assert [e["identifier"] for e in elements] == ["probe.ok"]
@@ -324,7 +324,7 @@ def test_probe_screen_routes_udid_resolution_through_injected_simctl(
     torn: list[str] = []
     _patch_read_env(monkeypatch, built, torn)
     eff = resolve(
-        load_config("targets:\n  demo:\n    platform: ios\n    app: {id: com.x}\n"), "demo"
+        load_config("targets:\n  demo:\n    platform: ios\n    subject: {id: com.x}\n"), "demo"
     )
     probe_screen("xcuitest", "booted", eff, simctl_run=lambda _c, _e: _booted_json("BOOTED-9"))
     assert built == ["BOOTED-9"]
@@ -345,7 +345,7 @@ def test_probe_screen_takes_the_first_udid_of_a_comma_list(
         lambda self, udid: udid,
     )
     eff = resolve(
-        load_config("targets:\n  demo:\n    platform: android\n    app: {id: com.x}\n"), "demo"
+        load_config("targets:\n  demo:\n    platform: android\n    subject: {id: com.x}\n"), "demo"
     )
     probe_screen("adb", "A,B", eff)
     assert made == [("adb", "A")]
@@ -361,7 +361,7 @@ def test_probe_screen_web_without_base_url_raises_probe_error() -> None:
 
     eff = dataclasses.replace(
         resolve(
-            load_config("targets:\n  web:\n    platform: web\n    app: {url: 'http://x'}\n"),
+            load_config("targets:\n  web:\n    platform: web\n    subject: {url: 'http://x'}\n"),
             "web",
         ),
         platform_config=WebConfig(base_url=None),

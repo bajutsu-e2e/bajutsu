@@ -91,7 +91,7 @@ def _project(tmp_path: Path) -> Path:
             "targets:\n"
             "  demo:\n"
             "    platform: ios\n"
-            f"    app: {{id: com.example.demo}}\n"
+            f"    subject: {{id: com.example.demo}}\n"
             f"    paths: {{scenarios: {scn}}}\n"
         ),
         encoding="utf-8",

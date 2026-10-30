@@ -10,7 +10,7 @@
 - name: receive a push notification
   tags: [system]
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:
@@ -50,7 +50,7 @@
 - name: a foreground notification banner is swiped away, not tapped
   tags: [systemalert]
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1", SHOWCASE_NOTIFICATION_BANNER: "1" }
     run:

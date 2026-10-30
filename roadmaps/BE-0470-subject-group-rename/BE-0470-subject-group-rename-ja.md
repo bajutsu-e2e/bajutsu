@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0470](BE-0470-subject-group-rename-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **承認済み** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0470") |
 | トピック | Driver & backend architecture |
 <!-- /BE-METADATA -->
@@ -142,9 +142,17 @@ run に LLM は入らず、振る舞いも変わりません。本項目は conf
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] ユニット 1: スキーマ
-- [ ] ユニット 2: config とシナリオ
-- [ ] ユニット 3: ドキュメント
+- [x] ユニット 1: スキーマ
+- [x] ユニット 2: config とシナリオ
+- [x] ユニット 3: ドキュメント
+
+ログ：
+
+- [#PR](https://github.com/bajutsu-e2e/bajutsu/pull/PR) — 単位 1-3。本項目全体を実装しました。古い
+  `app` キーは、ターゲット、テンプレート、`defaults.platforms`、シナリオの `preconditions` のどこに
+  書いても読み込みに失敗し、`subject` を示します。設計に挙がっていなかった 2 か所も合わせて改めました。
+  テンプレート自身のキー検査と、テンプレートのパス付け替えの対象である `subject.path` です。実行時の
+  エラーメッセージのうち `app.url`、`app.id`、`app.path` を示していたものは、`subject` のパスを示します。
 
 ## 参考
 

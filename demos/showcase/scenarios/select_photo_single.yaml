@@ -5,7 +5,7 @@
 - name: selectPhotos auto-confirms when a single-selection picker dismisses itself
   tags: [swiftui]
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
     device:

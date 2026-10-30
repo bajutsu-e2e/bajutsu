@@ -8,7 +8,7 @@
 # form, so one scenario runs on every target (BE-0221).
 - name: copy then paste round-trips through the mirror
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:

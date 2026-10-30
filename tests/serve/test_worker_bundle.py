@@ -24,7 +24,7 @@ _CONFIG = (
     "targets:\n"
     "  demo:\n"
     "    platform: ios\n"
-    "    app: {id: com.example.demo, path: ./build/Demo.app}\n"
+    "    subject: {id: com.example.demo, path: ./build/Demo.app}\n"
     "    paths: {scenarios: ./scenarios}\n"
 )
 # A stand-in bundle id for the cases that never complete a download — a refusal before the fetch,

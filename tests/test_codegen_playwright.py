@@ -234,7 +234,7 @@ def test_relaunch_gotos_base_url() -> None:
 
 def test_launch_env_seeds_localstorage() -> None:
     code = _gen(
-        "- name: x\n  preconditions:\n    app: { launch: { env: { B: '2' } } }\n  steps:\n    - tap: { id: a }\n",
+        "- name: x\n  preconditions:\n    subject: { launch: { env: { B: '2' } } }\n  steps:\n    - tap: { id: a }\n",
         env={"A": "1"},
     )
     assert "await page.addInitScript(() => localStorage.setItem('A', '1'));" in code
@@ -420,12 +420,12 @@ def _cli_setup(tmp_path: Path) -> tuple[Path, Path]:
             "targets:\n"
             "  web:\n"
             "    platform: web\n"
-            "    app:\n"
+            "    subject:\n"
             "      url: http://localhost:3000\n"
             "      idNamespaces: [home]\n"
             "  ios:\n"
             "    platform: ios\n"
-            "    app:\n"
+            "    subject:\n"
             "      id: com.example.ios\n"
             "      idNamespaces: [home]\n"
         ),
@@ -466,7 +466,7 @@ def test_cli_emit_playwright_without_base_url_exits(tmp_path: Path) -> None:
         app, ["codegen", str(scn), "--target", "ios", "--emit", "playwright", "--config", str(cfg)]
     )
     assert r.exit_code == 2
-    assert "app.url" in r.output
+    assert "subject.url" in r.output
 
 
 def test_cli_unsupported_emit_exits(tmp_path: Path) -> None:

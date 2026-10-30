@@ -8,7 +8,7 @@
 # the live tree rendered, so the body taps by that exact id with no dual-form list.
 - name: forEach opens every real catalog row
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:

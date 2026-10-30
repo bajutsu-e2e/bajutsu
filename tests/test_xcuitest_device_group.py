@@ -254,7 +254,7 @@ def test_install_app_refuses_a_missing_build(tmp_path: Path) -> None:
     from bajutsu.common.backend_cli import simctl
 
     env = XcuitestEnvironment("xcuitest", _UDID, _Simctl())
-    with pytest.raises(simctl.DeviceError, match=r"app\.path not found"):
+    with pytest.raises(simctl.DeviceError, match=r"subject\.path not found"):
         env.install_member(_eff(_APP, str(tmp_path / "Gone.app")), keep_data=True)
 
 
@@ -434,7 +434,7 @@ def test_a_member_with_a_missing_build_is_refused(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     env = _started(_Simctl(), _Runner(), monkeypatch)
-    with pytest.raises(simctl.DeviceError, match=r"app\.path not found"):
+    with pytest.raises(simctl.DeviceError, match=r"subject\.path not found"):
         env.start_member(_eff(_AUTH, str(tmp_path / "Gone.app")), ResolvedPreconditions())
 
 

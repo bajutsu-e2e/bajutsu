@@ -480,7 +480,7 @@ markers.
 
 The run loop reads those two launch-environment keys and nothing else, so it cannot tell a pair
 the flag armed from one a scenario assembled itself. It reads them from the scenario's *effective*
-launch environment. That environment merges the target's own `app.launch.env` underneath the
+launch environment. That environment merges the target's own `subject.launch.env` underneath the
 scenario's own. The merge follows the same order the launch itself uses. A target-level pin
 counts here the same as a scenario's own pin. That is why `--touch-markers` leaves a scenario
 with no `visual` verdict unmarked. That happens whenever the effective environment already sets
@@ -521,7 +521,7 @@ The file is self-contained so a rerun-to-green does not discard it:
 
 | Field | What it answers |
 |---|---|
-| `readiness` | Whether the post-launch readiness gate had passed, on which signal (`readyWhen`, the target's `app.startWhen` condition / `namespace` / `count`, or `timeout`), and whether the screen had `settled` — separates "the gate returned before the content" from "the content rendered but the awaited element did not". A `settled: false` says the gate returned while the tree was still changing, which is when a synthesized touch is dropped: read it as "the actuation before this wait may never have landed", since a dropped tap is still reported as delivered. `null` on a lane that carried no readiness result. |
+| `readiness` | Whether the post-launch readiness gate had passed, on which signal (`readyWhen`, the target's `subject.startWhen` condition / `namespace` / `count`, or `timeout`), and whether the screen had `settled` — separates "the gate returned before the content" from "the content rendered but the awaited element did not". A `settled: false` says the gate returned while the tree was still changing, which is when a synthesized touch is dropped: read it as "the actuation before this wait may never have landed", since a dropped tap is still reported as delivered. `null` on a lane that carried no readiness result. |
 | `trace` | The poll timeline: how many polls, when the tree first became non-empty (`firstNonemptySeconds`, `null` if it never did), and how many elements were present at the timeout — separating "nothing rendered / transient-empty" from "rendered, awaited element absent" from "slow cold-boot render". |
 | `provenance` | A [BE-0049](../roadmaps/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md) stamp (scenario hash, tool version, git revision), so the evidence stays identifiable independently of the run. Its `scenarioHash` fingerprints **this scenario alone**, without the file-level `description` the run manifest's `scenarioHash` folds in when present — so it can diverge from the manifest's hash even for a single-scenario run, not only for a suite/matrix run. |
 | `elements` | The (redacted) element tree at the moment of timeout. |

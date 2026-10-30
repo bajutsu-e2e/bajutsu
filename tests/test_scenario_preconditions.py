@@ -43,7 +43,7 @@ _CONFIG = """
 targets:
   phone:
     platform: ios
-    app:
+    subject:
       id: com.example.phone
       reinstall: overwrite
       launch: { env: { A: "1" }, args: ["-target"], deeplink: "app://home" }
@@ -51,10 +51,10 @@ targets:
     run: { erase: true }
   droid:
     platform: android
-    app: { id: com.example.droid, launch: { deeplink: "app://droid" } }
+    subject: { id: com.example.droid, launch: { deeplink: "app://droid" } }
   site:
     platform: web
-    app: { url: "http://localhost:1/" }
+    subject: { url: "http://localhost:1/" }
   fake:
     platform: fake
 """
@@ -76,10 +76,10 @@ def _pre(text: str) -> Preconditions:
     ("old", "new"),
     [
         ("erase: true", "preconditions.run.erase"),
-        ("reinstall: clean", "preconditions.app.reinstall"),
-        ("launchEnv: { A: '1' }", "preconditions.app.launch.env"),
-        ("launchArgs: [-x]", "preconditions.app.launch.args"),
-        ("deeplink: 'app://x'", "preconditions.app.launch.deeplink"),
+        ("reinstall: clean", "preconditions.subject.reinstall"),
+        ("launchEnv: { A: '1' }", "preconditions.subject.launch.env"),
+        ("launchArgs: [-x]", "preconditions.subject.launch.args"),
+        ("deeplink: 'app://x'", "preconditions.subject.launch.deeplink"),
         ("locale: ja_JP", "preconditions.device.ios.locale"),
         ("seedPhotos: [a.png]", "preconditions.device.ios.seedPhotos"),
     ],
@@ -103,7 +103,7 @@ def test_a_top_level_run_field_fails_naming_its_new_home(old: str, new: str) -> 
 
 def test_a_scenario_cannot_set_a_field_that_identifies_the_app() -> None:
     with pytest.raises(ValueError, match="id"):
-        _pre("{ app: { id: com.example.other } }")
+        _pre("{ subject: { id: com.example.other } }")
 
 
 def test_a_non_mapping_preconditions_fails_as_a_type_error() -> None:
@@ -124,7 +124,7 @@ def test_the_groups_round_trip_through_a_dump() -> None:
     text = (
         "- name: s\n"
         "  preconditions:\n"
-        "    app: { reinstall: overwrite, launch: { env: { A: '1' }, deeplink: 'app://x' } }\n"
+        "    subject: { reinstall: overwrite, launch: { env: { A: '1' }, deeplink: 'app://x' } }\n"
         "    device: { ios: { locale: ja_JP } }\n"
         "    run: { erase: true, tipKitHandling: true, systemAlertHandling: false }\n"
         "  steps: []\n"
@@ -172,7 +172,7 @@ def test_the_target_fills_what_the_scenario_leaves_unset() -> None:
 
 def test_the_scenario_wins_over_the_target() -> None:
     pre = _pre(
-        "{ app: { reinstall: clean, launch: { env: { B: '2' }, args: [-s], deeplink: 'app://s' } },"
+        "{ subject: { reinstall: clean, launch: { env: { B: '2' }, args: [-s], deeplink: 'app://s' } },"
         " device: { ios: { locale: en_GB, seedPhotos: [] } }, run: { erase: false } }"
     )
     merged = resolve_preconditions(_effs()["phone"], pre)
@@ -252,22 +252,24 @@ def test_lint_reports_a_scenario_runs_on_and_a_malformed_device_block() -> None:
 
 
 def test_an_app_field_no_driven_platform_has_fails() -> None:
-    (problem,) = check_preconditions(_pre("{ app: { launch: { args: [-x] } } }"), [_effs()["site"]])
-    assert problem.startswith("preconditions.app.launch.args applies to no target")
+    (problem,) = check_preconditions(
+        _pre("{ subject: { launch: { args: [-x] } } }"), [_effs()["site"]]
+    )
+    assert problem.startswith("preconditions.subject.launch.args applies to no target")
     assert "(platform web)" in problem
 
 
 def test_an_app_field_one_driven_platform_has_passes() -> None:
     effs = _effs()
-    pre = _pre("{ app: { launch: { args: [-x] }, reinstall: overwrite } }")
+    pre = _pre("{ subject: { launch: { args: [-x] }, reinstall: overwrite } }")
     assert check_preconditions(pre, [effs["phone"], effs["site"]]) == []
 
 
 def test_the_fake_platform_has_no_launch_fields() -> None:
     (problem,) = check_preconditions(
-        _pre("{ app: { launch: { env: { A: '1' } } } }"), [_effs()["fake"]]
+        _pre("{ subject: { launch: { env: { A: '1' } } } }"), [_effs()["fake"]]
     )
-    assert "preconditions.app.launch.env" in problem
+    assert "preconditions.subject.launch.env" in problem
 
 
 def test_an_ios_only_run_field_fails_without_an_ios_target() -> None:
@@ -323,7 +325,7 @@ def test_each_scenario_is_checked_against_the_targets_it_declares() -> None:
         ("both", ["site", "phone"]),
         ("own", ["site"]),
     ]
-    both.preconditions = _pre("{ app: { launch: { args: [-x] } } }")
+    both.preconditions = _pre("{ subject: { launch: { args: [-x] } } }")
     _refuse_bad_preconditions(checks, erase=None)
 
 
@@ -331,7 +333,7 @@ _WEB_CONFIG = """
 targets:
   site:
     platform: web
-    app: {{ url: "http://localhost:1/" }}
+    subject: {{ url: "http://localhost:1/" }}
     paths: {{ scenarios: {scenarios} }}
 """
 
@@ -340,7 +342,7 @@ def test_run_refuses_a_field_no_driven_target_has_before_any_device_work(tmp_pat
     scn = tmp_path / "s.yaml"
     scn.write_text(
         "- name: args on the web\n"
-        "  preconditions: { app: { launch: { args: [-x] } } }\n"
+        "  preconditions: { subject: { launch: { args: [-x] } } }\n"
         "  steps: [{ tap: { id: a } }]\n",
         encoding="utf-8",
     )
@@ -350,7 +352,7 @@ def test_run_refuses_a_field_no_driven_target_has_before_any_device_work(tmp_pat
         CliRunner(), app, ["run", "--scenario", str(scn), "--target", "site", "--config", str(cfg)]
     )
     assert r.exit_code == 2
-    assert "args on the web: preconditions.app.launch.args applies to no target" in r.output
+    assert "args on the web: preconditions.subject.launch.args applies to no target" in r.output
 
 
 # --- stored runs and the report ---
@@ -380,8 +382,8 @@ def test_a_plan_stored_before_the_regrouping_still_loads() -> None:
         False,
         True,
     )
-    assert pre.app.reinstall == "overwrite"
-    assert (pre.app.launch.env, pre.app.launch.args, pre.app.launch.deeplink) == (
+    assert pre.subject.reinstall == "overwrite"
+    assert (pre.subject.launch.env, pre.subject.launch.args, pre.subject.launch.deeplink) == (
         {"A": "1"},
         ["-x"],
         "app://x",
@@ -408,6 +410,30 @@ def test_a_plan_stored_with_a_scenario_runs_on_keeps_its_device_state() -> None:
     assert scenario.preconditions.resolved_locale("en_US") == "ja_JP"
     conditions_only = "- name: c\n  preconditions: { runsOn: { ios: { os: '18' } } }\n  steps: []\n"
     assert not _yaml.safe_load(_upgraded_scenario_text(conditions_only))[0].get("preconditions")
+
+
+def test_the_app_group_fails_naming_subject() -> None:
+    # BE-0470 renamed the group; the loader accepts one spelling.
+    with pytest.raises(ValueError, match=r"'preconditions\.app' moved to 'preconditions\.subject'"):
+        _pre("{ app: { reinstall: clean } }")
+
+
+def test_a_plan_stored_with_the_app_group_still_loads() -> None:
+    # A plan stored between BE-0452 and BE-0470 holds `app`; a flat key beside it joins the group.
+    text = (
+        "- name: s\n"
+        "  preconditions:\n"
+        "    app: { reinstall: overwrite, launch: { env: { A: '1' } } }\n"
+        "    deeplink: 'app://x'\n"
+        "  steps: []\n"
+    )
+    upgraded = _yaml.safe_load(_upgraded_scenario_text(text))
+    assert upgraded[0]["preconditions"] == {
+        "subject": {"reinstall": "overwrite", "launch": {"env": {"A": "1"}, "deeplink": "app://x"}}
+    }
+    (scenario,) = load_stored_scenario_file(text).scenarios
+    assert scenario.preconditions.subject.reinstall == "overwrite"
+    assert scenario.preconditions.subject.launch.deeplink == "app://x"
 
 
 def test_the_upgrade_leaves_a_regrouped_plan_alone() -> None:

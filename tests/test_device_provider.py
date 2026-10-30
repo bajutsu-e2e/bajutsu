@@ -205,7 +205,7 @@ def test_run_warns_and_keeps_its_verdict_when_release_raises(
                 "targets:\n"
                 "  demo:\n"
                 "    platform: ios\n"
-                "    app:\n"
+                "    subject:\n"
                 "      id: com.example.demo\n"
                 "      idNamespaces: [home]\n"
             ),

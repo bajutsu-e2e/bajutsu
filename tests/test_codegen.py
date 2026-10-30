@@ -25,7 +25,7 @@ def test_header_and_helpers() -> None:
 
 def test_launch_env_merges_app_and_scenario() -> None:
     code = _gen(
-        "- name: x\n  preconditions:\n    app: { launch: { env: { B: '2' } } }\n  steps:\n    - tap: { id: a }\n",
+        "- name: x\n  preconditions:\n    subject: { launch: { env: { B: '2' } } }\n  steps:\n    - tap: { id: a }\n",
         env={"A": "1"},
     )
     assert 'app.launchEnvironment["A"] = "1"' in code

@@ -1,4 +1,4 @@
-"""Fields every platform's `app` group shares, and the field validators the platform models reuse."""
+"""Fields every platform's `subject` group shares, and the field validators the platform models reuse."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ from .._model import _Model
 
 
 class StartWhen(_Model):
-    """`app.startWhen`: the condition a run waits for before the first step (BE-0452).
+    """`subject.startWhen`: the condition a run waits for before the first step (BE-0452).
 
     The same form an `interrupts` entry uses for its `condition`, so the config has one way to say
     "this element is on screen". Only `exists` is accepted, and without `negate`, because that is
@@ -33,24 +33,26 @@ class StartWhen(_Model):
     @model_validator(mode="after")
     def _no_negate(self) -> Self:
         if self.exists.negate:
-            raise ValueError("app.startWhen.exists cannot set negate: the run waits for presence")
+            raise ValueError(
+                "subject.startWhen.exists cannot set negate: the run waits for presence"
+            )
         return self
 
 
 class AppCommon(_Model):
-    """The `app` fields every platform has: readiness and the identifier contract."""
+    """The `subject` fields every platform has: readiness and the identifier contract."""
 
     start_when: StartWhen | None = Field(default=None, alias="startWhen")
     id_namespaces: list[str] = Field(default_factory=list, alias="idNamespaces")
 
 
 class LaunchEnv(_Model):
-    """`app.launch` on a platform that reads only environment variables (the web)."""
+    """`subject.launch` on a platform that reads only environment variables (the web)."""
 
     env: dict[str, str] = Field(default_factory=dict)
 
 
-# How the app is (re)installed before each run when the target gives an `app.path` (BE-0452):
+# How the app is (re)installed before each run when the target gives a `subject.path` (BE-0452):
 # `clean` uninstalls first, `overwrite` installs over the existing app and keeps its data. Unset
 # leaves it to the scenario, then the built-in `clean`.
 Reinstall = Literal["clean", "overwrite"]

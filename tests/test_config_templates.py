@@ -36,15 +36,15 @@ def test_layers_fold_from_defaults_through_templates_to_the_target() -> None:
         """
 defaults:
   evidence: { collectNetwork: false }
-  platforms: { ios: { app: { launch: { env: { LAYER: platform, P: "1" } } } } }
+  platforms: { ios: { subject: { launch: { env: { LAYER: platform, P: "1" } } } } }
 templates:
-  first: { app: { launch: { env: { LAYER: first, F: "1" } } } }
-  second: { app: { launch: { env: { LAYER: second, S: "1" } } } }
+  first: { subject: { launch: { env: { LAYER: first, F: "1" } } } }
+  second: { subject: { launch: { env: { LAYER: second, S: "1" } } } }
 targets:
   t:
     extends: [first, second]
     platform: ios
-    app: { id: com.x }
+    subject: { id: com.x }
 """
     )
     eff = resolve(config, "t")
@@ -56,9 +56,9 @@ def test_the_target_wins_over_every_template() -> None:
     config = load_config(
         """
 templates:
-  base: { platform: ios, app: { id: com.base, launch: { args: [-a] } } }
+  base: { platform: ios, subject: { id: com.base, launch: { args: [-a] } } }
 targets:
-  t: { extends: base, app: { id: com.x } }
+  t: { extends: base, subject: { id: com.x } }
 """
     )
     eff = resolve(config, "t")
@@ -70,11 +70,11 @@ def test_an_extending_template_wins_over_its_base_and_a_shared_base_folds_once()
     config = load_config(
         """
 templates:
-  base: { platform: ios, app: { launch: { env: { WHO: base } } } }
-  child: { extends: base, app: { launch: { env: { WHO: child } } } }
+  base: { platform: ios, subject: { launch: { env: { WHO: base } } } }
+  child: { extends: base, subject: { launch: { env: { WHO: child } } } }
 targets:
   # `base` again after `child` keeps its first position, so `child` still wins.
-  t: { extends: [child, base], app: { id: com.x } }
+  t: { extends: [child, base], subject: { id: com.x } }
 """
     )
     assert resolve(config, "t").launch_env == {"WHO": "child"}
@@ -84,11 +84,11 @@ def test_a_template_null_clears_a_value_defaults_supplies() -> None:
     config = load_config(
         """
 defaults:
-  platforms: { ios: { app: { launch: { env: { DROP: "1", KEEP: "1" } } } } }
+  platforms: { ios: { subject: { launch: { env: { DROP: "1", KEEP: "1" } } } } }
 templates:
-  clear: { app: { launch: { env: { DROP: null } } } }
+  clear: { subject: { launch: { env: { DROP: null } } } }
 targets:
-  t: { extends: clear, platform: ios, app: { id: com.x } }
+  t: { extends: clear, platform: ios, subject: { id: com.x } }
 """
     )
     assert resolve(config, "t").launch_env == {"KEEP": "1"}
@@ -101,7 +101,7 @@ templates:
   t1: { evidence: { secrets: [ONE], redact: { fields: [password] } } }
   t2: { evidence: { secrets: [TWO, ONE] } }
 targets:
-  t: { extends: [t1, t2], platform: ios, app: { id: com.x }, evidence: { secrets: [OWN] } }
+  t: { extends: [t1, t2], platform: ios, subject: { id: com.x }, evidence: { secrets: [OWN] } }
 """
     eff = resolve(load_config(text), "t")
     assert eff.secrets == ["TEAM", "ONE", "TWO", "OWN"]
@@ -117,7 +117,7 @@ defaults: { ai: { provider: anthropic, model: base-model } }
 templates:
   ai: { ai: { model: template-model, effort: high } }
 targets:
-  t: { extends: ai, platform: ios, app: { id: com.x }, ai: { effort: low } }
+  t: { extends: ai, platform: ios, subject: { id: com.x }, ai: { effort: low } }
 """
     )
     ai = resolve(config, "t").ai
@@ -130,7 +130,7 @@ def test_a_target_takes_its_platform_from_a_template() -> None:
         """
 defaults: { platforms: { web: { driver: { headless: false } } } }
 templates:
-  site: { platform: web, app: { url: "http://localhost:3000/" } }
+  site: { platform: web, subject: { url: "http://localhost:3000/" } }
 targets:
   t: { extends: site }
 """
@@ -147,14 +147,14 @@ def test_layers_that_declare_different_platforms_fail_naming_both() -> None:
     ):
         load_config(
             "templates:\n  base: { platform: ios }\n"
-            "targets:\n  t: { extends: base, platform: web, app: { url: 'http://x/' } }\n"
+            "targets:\n  t: { extends: base, platform: web, subject: { url: 'http://x/' } }\n"
         )
 
 
 def test_a_target_with_no_platform_from_any_layer_fails_as_before() -> None:
     with pytest.raises(ValidationError, match="a target needs `platform`"):
         load_config(
-            "templates:\n  base: { app: { id: com.x } }\ntargets:\n  t: { extends: base }\n"
+            "templates:\n  base: { subject: { id: com.x } }\ntargets:\n  t: { extends: base }\n"
         )
 
 
@@ -162,7 +162,7 @@ def test_an_unknown_template_lists_the_known_ones() -> None:
     with pytest.raises(ValidationError, match=r"unknown template 'nope'; templates: a, b"):
         load_config(
             "templates: { a: {}, b: {} }\n"
-            "targets:\n  t: { extends: nope, platform: ios, app: { id: com.x } }\n"
+            "targets:\n  t: { extends: nope, platform: ios, subject: { id: com.x } }\n"
         )
 
 
@@ -170,7 +170,7 @@ def test_a_cycle_prints_its_path() -> None:
     with pytest.raises(ValidationError, match="a template cycle: a → b → a"):
         load_config(
             "templates:\n  a: { extends: b }\n  b: { extends: a }\n"
-            "targets:\n  t: { extends: a, platform: ios, app: { id: com.x } }\n"
+            "targets:\n  t: { extends: a, platform: ios, subject: { id: com.x } }\n"
         )
 
 
@@ -186,7 +186,7 @@ def test_a_template_file_key_outside_the_target_keys_fails(tmp_path: Path) -> No
     _write(tmp_path / "a.yaml", "bundleId: com.x\n")
     cfg = _write(
         tmp_path / "bajutsu.config.yaml",
-        "targets:\n  t: { extends: ./a.yaml, platform: ios, app: { id: com.x } }\n",
+        "targets:\n  t: { extends: ./a.yaml, platform: ios, subject: { id: com.x } }\n",
     )
     with pytest.raises(ValidationError, match=r"template file './a.yaml': unknown field"):
         load_config_file(cfg)
@@ -196,7 +196,7 @@ def test_a_template_file_that_is_not_utf8_names_the_file(tmp_path: Path) -> None
     (tmp_path / "a.yaml").write_bytes(b"platform: \xff\xfe\n")
     cfg = _write(
         tmp_path / "bajutsu.config.yaml",
-        "targets:\n  t: { extends: ./a.yaml, platform: ios, app: { id: com.x } }\n",
+        "targets:\n  t: { extends: ./a.yaml, platform: ios, subject: { id: com.x } }\n",
     )
     with pytest.raises(ValidationError, match=r"cannot read template file '\./a\.yaml'"):
         load_config_file(cfg)
@@ -204,8 +204,8 @@ def test_a_template_file_that_is_not_utf8_names_the_file(tmp_path: Path) -> None
 
 def test_a_target_null_clears_a_value_a_template_supplies() -> None:
     config = load_config(
-        "templates: { base: { platform: ios, app: { launch: { args: [-a], env: { E: '1' } } } } }\n"
-        "targets:\n  t: { extends: base, app: { id: com.x, launch: { args: null } } }\n"
+        "templates: { base: { platform: ios, subject: { launch: { args: [-a], env: { E: '1' } } } } }\n"
+        "targets:\n  t: { extends: base, subject: { id: com.x, launch: { args: null } } }\n"
     )
     eff = resolve(config, "t")
     assert (eff.launch_args, eff.launch_env) == ([], {"E": "1"})
@@ -213,7 +213,7 @@ def test_a_target_null_clears_a_value_a_template_supplies() -> None:
 
 def test_a_malformed_extends_fails() -> None:
     with pytest.raises(ValidationError, match="must be a template name or a list of them"):
-        load_config("targets:\n  t: { extends: { a: 1 }, platform: ios, app: { id: com.x } }\n")
+        load_config("targets:\n  t: { extends: { a: 1 }, platform: ios, subject: { id: com.x } }\n")
 
 
 def test_a_file_template_resolves_its_own_relative_paths(tmp_path: Path) -> None:
@@ -221,7 +221,7 @@ def test_a_file_template_resolves_its_own_relative_paths(tmp_path: Path) -> None
         tmp_path / "shared" / "ios.template.yaml",
         """
 platform: ios
-app: { path: build/App.app }
+subject: { path: build/App.app }
 runsOn: { ios: { seedPhotos: [photos/a.png, /abs/b.png] } }
 driver: { runner: { testRunner: ../runner/R.xctestrun } }
 paths: { baselines: baselines }
@@ -229,7 +229,7 @@ paths: { baselines: baselines }
     )
     cfg = _write(
         tmp_path / "suite" / "bajutsu.config.yaml",
-        "targets:\n  t: { extends: ../shared/ios.template.yaml, app: { id: com.x } }\n",
+        "targets:\n  t: { extends: ../shared/ios.template.yaml, subject: { id: com.x } }\n",
     )
     eff = resolve(load_config_file(cfg, root=tmp_path), "t").rebased(cfg.parent, confine=False)
     shared = (tmp_path / "shared").resolve()
@@ -248,11 +248,15 @@ paths: { baselines: baselines }
 
 
 def test_a_file_template_chains_files_relative_to_itself(tmp_path: Path) -> None:
-    _write(tmp_path / "t" / "base.yaml", "platform: ios\napp: { launch: { env: { B: '1' } } }\n")
-    _write(tmp_path / "t" / "child.yaml", "extends: ./base.yaml\napp: { launch: { args: [-c] } }\n")
+    _write(
+        tmp_path / "t" / "base.yaml", "platform: ios\nsubject: { launch: { env: { B: '1' } } }\n"
+    )
+    _write(
+        tmp_path / "t" / "child.yaml", "extends: ./base.yaml\nsubject: { launch: { args: [-c] } }\n"
+    )
     cfg = _write(
         tmp_path / "bajutsu.config.yaml",
-        "targets:\n  t: { extends: t/child.yaml, app: { id: com.x } }\n",
+        "targets:\n  t: { extends: t/child.yaml, subject: { id: com.x } }\n",
     )
     eff = resolve(load_config_file(cfg), "t")
     assert (eff.launch_env, eff.launch_args) == ({"B": "1"}, ["-c"])
@@ -263,7 +267,7 @@ def test_a_file_template_names_files_alone(tmp_path: Path) -> None:
     cfg = _write(
         tmp_path / "bajutsu.config.yaml",
         "templates: { base: { platform: ios } }\n"
-        "targets:\n  t: { extends: ./child.yaml, app: { id: com.x } }\n",
+        "targets:\n  t: { extends: ./child.yaml, subject: { id: com.x } }\n",
     )
     with pytest.raises(ValidationError, match="in a template file must be a file path"):
         load_config_file(cfg)
@@ -287,7 +291,7 @@ hooks:
     )
     cfg = _write(
         tmp_path / "suite" / "bajutsu.config.yaml",
-        "targets:\n  t: { extends: ../shared/hooks.yaml, platform: ios, app: { id: com.x } }\n",
+        "targets:\n  t: { extends: ../shared/hooks.yaml, platform: ios, subject: { id: com.x } }\n",
     )
     run = resolve(load_config_file(cfg, root=tmp_path), "t").run_defaults
     gated = run.setup[0].if_
@@ -333,7 +337,7 @@ def test_a_file_template_must_stay_inside_the_suite_root(tmp_path: Path) -> None
     _write(tmp_path / "outside.yaml", "platform: ios\n")
     cfg = _write(
         tmp_path / "suite" / "bajutsu.config.yaml",
-        "targets:\n  t: { extends: ../outside.yaml, app: { id: com.x } }\n",
+        "targets:\n  t: { extends: ../outside.yaml, subject: { id: com.x } }\n",
     )
     with pytest.raises(ValidationError, match="resolves outside the suite root"):
         load_config_file(cfg)
@@ -342,7 +346,7 @@ def test_a_file_template_must_stay_inside_the_suite_root(tmp_path: Path) -> None
 def test_a_missing_file_template_fails_loudly(tmp_path: Path) -> None:
     cfg = _write(
         tmp_path / "bajutsu.config.yaml",
-        "targets:\n  t: { extends: ./gone.yaml, platform: ios, app: { id: com.x } }\n",
+        "targets:\n  t: { extends: ./gone.yaml, platform: ios, subject: { id: com.x } }\n",
     )
     with pytest.raises(ValidationError, match=r"cannot read template file '\./gone\.yaml'"):
         load_config_file(cfg)
@@ -350,7 +354,7 @@ def test_a_missing_file_template_fails_loudly(tmp_path: Path) -> None:
 
 def test_a_config_with_no_file_names_inline_templates_alone() -> None:
     with pytest.raises(ValidationError, match="loaded without its path"):
-        load_config("targets:\n  t: { extends: ./a.yaml, platform: ios, app: { id: com.x } }\n")
+        load_config("targets:\n  t: { extends: ./a.yaml, platform: ios, subject: { id: com.x } }\n")
 
 
 def test_the_rebased_paths_match_the_fields_effective_rebases() -> None:
@@ -363,8 +367,8 @@ def test_the_rebased_paths_match_the_fields_effective_rebases() -> None:
 def test_a_template_is_never_a_target() -> None:
     config = load_config(
         "templates: { showcase-ios: { platform: ios } }\n"
-        "targets:\n  b: { extends: showcase-ios, app: { id: com.b } }\n"
-        "  a: { extends: showcase-ios, app: { id: com.a } }\n"
+        "targets:\n  b: { extends: showcase-ios, subject: { id: com.b } }\n"
+        "  a: { extends: showcase-ios, subject: { id: com.a } }\n"
     )
     assert set(config.targets) == {"a", "b"}
     with pytest.raises(KeyError, match="'showcase-ios' is a template, not a target; targets: a, b"):
@@ -374,8 +378,8 @@ def test_a_template_is_never_a_target() -> None:
 
 def test_a_template_and_a_target_may_share_a_name() -> None:
     config = load_config(
-        "templates: { app: { platform: ios, app: { launch: { args: [-t] } } } }\n"
-        "targets:\n  app: { extends: app, app: { id: com.x } }\n"
+        "templates: { app: { platform: ios, subject: { launch: { args: [-t] } } } }\n"
+        "targets:\n  app: { extends: app, subject: { id: com.x } }\n"
     )
     assert resolve(config, "app").launch_args == ["-t"]
 
@@ -386,11 +390,11 @@ _SCHEMA = config_json_schema()
 @pytest.mark.parametrize(
     "templates",
     [
-        {"ios": {"platform": "ios", "app": {"launch": {"env": {"A": "1"}}}}},
-        {"bare": {"app": {"url": "http://x/"}, "evidence": {"secrets": ["S"]}}},
+        {"ios": {"platform": "ios", "subject": {"launch": {"env": {"A": "1"}}}}},
+        {"bare": {"subject": {"url": "http://x/"}, "evidence": {"secrets": ["S"]}}},
         {"chained": {"extends": ["a", "./b.yaml"], "evidence": {"redact": {"fields": ["pw"]}}}},
         # A template's `null` clears a group `defaults` set, as a target's may.
-        {"clear": {"platform": "ios", "app": None}},
+        {"clear": {"platform": "ios", "subject": None}},
         {"clear": {"driver": None}},
     ],
 )
@@ -403,7 +407,7 @@ def test_the_schema_accepts_a_template(templates: dict[str, object]) -> None:
     [
         {"typo": {"bundleId": "com.x"}},
         # A template that names its platform takes that platform's groups only.
-        {"web": {"platform": "web", "app": {"id": "com.x"}}},
+        {"web": {"platform": "web", "subject": {"id": "com.x"}}},
     ],
 )
 def test_the_schema_refuses_a_malformed_template(templates: dict[str, object]) -> None:
@@ -457,6 +461,6 @@ def test_a_rebased_component_ref_stays_a_path(tmp_path: Path) -> None:
     _write(tmp_path / "sub" / "t.yaml", "hooks: { setup: [{ use: { component: ../comp } }] }\n")
     cfg = _write(
         tmp_path / "bajutsu.config.yaml",
-        "targets:\n  t: { extends: ./sub/t.yaml, platform: ios, app: { id: com.x } }\n",
+        "targets:\n  t: { extends: ./sub/t.yaml, platform: ios, subject: { id: com.x } }\n",
     )
     assert resolve(load_config_file(cfg), "t").run_defaults.setup[0].tap is not None

@@ -4,7 +4,7 @@
 # (no literal-scheme deeplinks), so this drives both a11y targets.
 - name: the list has off-screen rows
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:
@@ -18,7 +18,7 @@
 
 - name: tap a visible notice to open its detail, then pop back
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:
@@ -45,7 +45,7 @@
 # below-the-fold rows), the inverse of `swipe`'s finger direction.
 - name: scroll to an off-screen notice and open it
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:

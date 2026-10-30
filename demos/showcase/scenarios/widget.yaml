@@ -28,7 +28,7 @@
 - name: add a Calendar widget from the Home Screen gallery and open it
   tags: [app, springboard]
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
     device:

@@ -32,7 +32,7 @@
 - name: deny the notification prompt through systemAlertHandling rules
   tags: [systemalert]
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
     run:
@@ -50,7 +50,7 @@
 - name: grant the tracking prompt through systemAlertHandling rules
   tags: [systemalert]
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
     run:
@@ -71,7 +71,7 @@
 - name: deny the tracking prompt through systemAlertHandling rules
   tags: [systemalert]
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
     run:
@@ -90,7 +90,7 @@
 - name: grant the paste-consent prompt through systemAlertHandling rules
   tags: [systemalert]
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
     run:
@@ -109,7 +109,7 @@
 - name: deny the paste-consent prompt through systemAlertHandling rules
   tags: [systemalert]
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
     run:

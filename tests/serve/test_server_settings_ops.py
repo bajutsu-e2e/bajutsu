@@ -133,7 +133,7 @@ def test_testrunner_override_is_reflected(tmp_path: Path, monkeypatch: pytest.Mo
         "targets:\n"
         "  demo:\n"
         "    platform: ios\n"
-        "    app: {id: com.example.demo}\n"
+        "    subject: {id: com.example.demo}\n"
         "    driver:\n"
         "      runner: {testRunner: /r/App.xctestrun}\n"
     )
@@ -151,10 +151,10 @@ def test_testrunner_override_survives_an_unresolvable_target(
         "targets:\n"
         "  broken:\n"
         "    platform: ios\n"
-        "    app: {id: com.example.broken}\n"
+        "    subject: {id: com.example.broken}\n"
         "  pinned:\n"
         "    platform: ios\n"
-        "    app: {id: com.example.pinned}\n"
+        "    subject: {id: com.example.pinned}\n"
     )
 
     def fake_resolve(cfg: object, name: str) -> str:
@@ -192,10 +192,10 @@ def test_testrunner_override_true_when_any_target_pins_it(
         "targets:\n"
         "  plain:\n"
         "    platform: ios\n"
-        "    app: {id: com.example.plain}\n"
+        "    subject: {id: com.example.plain}\n"
         "  pinned:\n"
         "    platform: ios\n"
-        "    app: {id: com.example.pinned}\n"
+        "    subject: {id: com.example.pinned}\n"
         "    driver:\n"
         "      runner: {testRunner: /r/App.xctestrun}\n"
     )

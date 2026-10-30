@@ -19,7 +19,7 @@
 # two halves.
 - name: extract captures the counter's real tree value and feeds a later step
   preconditions:
-    app:
+    subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
   steps:

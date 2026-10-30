@@ -32,7 +32,7 @@ The showcase makes visible the two axes on which Bajutsu's design rests:
   [`demos/showcase/scenarios/`](../demos/showcase/scenarios) runs unchanged against either. What
   differs is the element tree the backend sees, which is exactly what a cross-toolkit driver must absorb.
 - **Accessibility axis** (no suffix ↔ `-noax`) — the `-noax` builds carry **no** identifiers
-  (`app.idNamespaces: []`). They are the controlled experiment for selector stability (DESIGN §5): the
+  (`subject.idNamespaces: []`). They are the controlled experiment for selector stability (DESIGN §5): the
   same goal recorded against both shows the value of accessibility work as a concrete diff, and they
   are the `record` / `doctor` "missing accessibility" subjects.
 
@@ -59,12 +59,12 @@ make -C demos/showcase run-flutter-android # the Flutter twin on Android: build 
 make -C demos/showcase/android e2e-codegen # the Android twin: scenario → UI Automator → connectedAndroidTest (needs a booted emulator, BE-0294)
 ```
 
-`bajutsu run` / `serve` also build the app on demand via each target's `app.build` command, so a manual
+`bajutsu run` / `serve` also build the app on demand via each target's `subject.build` command, so a manual
 build is rarely needed.
 
 ## Launch-environment hooks
 
-Set in the target's `app.launch.env` or a scenario's `preconditions.app.launch.env`. They reach the app as `SIMCTL_CHILD_<NAME>` ([drivers](drivers.md#environment-management-simctl)).
+Set in the target's `subject.launch.env` or a scenario's `preconditions.subject.launch.env`. They reach the app as `SIMCTL_CHILD_<NAME>` ([drivers](drivers.md#environment-management-simctl)).
 BE-0079 removed the launch-env shortcuts to a *data state* and to a *pushed screen*: the catalog is
 fixed (no seed knob), and a deeplink no longer jumps onto a detail — a detail is reached only by
 tapping its row. BE-0107 finished the job by retiring `SHOWCASE_TAB`, the last launch-env shortcut to

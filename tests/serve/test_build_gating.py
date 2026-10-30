@@ -51,7 +51,7 @@ def test_api_bound_git_config_is_marked_untrusted(
     checkout.mkdir()
     git_cfg = checkout / "bajutsu.config.yaml"
     git_cfg.write_text(
-        ("targets:\n  fromgit:\n    platform: ios\n    app: {id: com.example.fromgit}\n"),
+        ("targets:\n  fromgit:\n    platform: ios\n    subject: {id: com.example.fromgit}\n"),
         encoding="utf-8",
     )
     monkeypatch.setattr(

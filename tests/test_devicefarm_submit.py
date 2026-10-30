@@ -242,7 +242,7 @@ def test_pre_test_commands_rejects_a_bare_string() -> None:
 def test_devicefarm_config_skips_app_install_for_the_pre_installed_app() -> None:
     # Device Farm installs the uploaded APK on the reserved device itself, so the config it uploads
     # must carry no appPath: an appPath makes the adb backend try to `adb install` a file absent from
-    # the test package (the "app.path not found" failure this config avoids). A None app_path is the
+    # the test package (the "subject.path not found" failure this config avoids). A None app_path is the
     # runner's existing "run against the already-installed app" path — package is enough to launch.
     from bajutsu.common.config import load_config, resolve
 
@@ -256,7 +256,7 @@ def test_devicefarm_config_skips_app_install_for_the_pre_installed_app() -> None
 
 def test_devicefarm_ios_config_targets_a_real_device() -> None:
     # Device Farm installs the uploaded .ipa on the reserved device itself and the XCUITest backend
-    # skips simctl bring-up for real devices, so the config must carry no app.path and must set
+    # skips simctl bring-up for real devices, so the config must carry no subject.path and must set
     # runsOn.ios.kind: device — a typo in either silently breaks the batch run.
     from bajutsu.common.config import load_config, resolve
 
