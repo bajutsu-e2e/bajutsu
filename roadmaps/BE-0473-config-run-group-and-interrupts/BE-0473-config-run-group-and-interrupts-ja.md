@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0473") |
-| 実装 PR | [#2242](https://github.com/bajutsu-e2e/bajutsu/pull/2242)（単位 3、5、6） |
+| 実装 PR | [#2242](https://github.com/bajutsu-e2e/bajutsu/pull/2242)（単位 3、5、6）、[#2263](https://github.com/bajutsu-e2e/bajutsu/pull/2263)（単位 2） |
 | トピック | ドライバとバックエンドのアーキテクチャ |
 | 関連 | [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)、[BE-0314](../BE-0314-scenario-interrupt-handlers/BE-0314-scenario-interrupt-handlers-ja.md)、[BE-0406](../BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md)、[BE-0401](../BE-0401-system-alert-handling-dsl-consolidation/BE-0401-system-alert-handling-dsl-consolidation-ja.md)、[BE-0177](../BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)、[BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications-ja.md)、[BE-0221](../BE-0221-android-scenario-portability-guarantee/BE-0221-android-scenario-portability-guarantee-ja.md) |
 <!-- /BE-METADATA -->
@@ -381,7 +381,7 @@ iOS の `tipKitHandling` だけだったからです。解決後の `Effective` 
   *通知の範囲* からは 1 点ずれています。エンドポイントの `targets:` は config のターゲット名ではなく
   シナリオ名で絞り込むので、ターゲット自身の `notify` を config で置き換える手段はありません。
   それでも、メンテナの判断で設計どおり削除しました。
-- PR_LINK：単位 2 を実装しました。`app.reinstall` と `preconditions.app.reinstall` は `overwrite`、
+- [#2263](https://github.com/bajutsu-e2e/bajutsu/pull/2263)：単位 2 を実装しました。`app.reinstall` と `preconditions.app.reinstall` は `overwrite`、
   `clean`、`erase` のいずれかを取り、`run.erase` と `preconditions.run.erase` は読み込み時に
   `app.reinstall: erase` を示すエラーになります。`--erase` と `--no-erase` はこの値を段階に沿って
   動かし、iOS と Android のライフサイクルはこの 1 つの値だけを読みます。`seedPhotos` には実効の

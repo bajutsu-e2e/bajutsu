@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0473") |
-| Implementing PR | [#2242](https://github.com/bajutsu-e2e/bajutsu/pull/2242) (units 3, 5, 6) |
+| Implementing PR | [#2242](https://github.com/bajutsu-e2e/bajutsu/pull/2242) (units 3, 5, 6), [#2263](https://github.com/bajutsu-e2e/bajutsu/pull/2263) (unit 2) |
 | Topic | Driver & backend architecture |
 | Related | [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure.md), [BE-0314](../BE-0314-scenario-interrupt-handlers/BE-0314-scenario-interrupt-handlers.md), [BE-0406](../BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts.md), [BE-0401](../BE-0401-system-alert-handling-dsl-consolidation/BE-0401-system-alert-handling-dsl-consolidation.md), [BE-0177](../BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md), [BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications.md), [BE-0221](../BE-0221-android-scenario-portability-guarantee/BE-0221-android-scenario-portability-guarantee.md) |
 <!-- /BE-METADATA -->
@@ -387,7 +387,7 @@ Log:
   later units move. One deviation from *Notification scope*: an endpoint's `targets:` filter matches
   scenario names, not config target names, so no config-level replacement exists for a target's own
   `notify`. The maintainer chose to remove it as written regardless.
-- PR_LINK: Landed unit 2. `app.reinstall` and `preconditions.app.reinstall` take `overwrite`,
+- [#2263](https://github.com/bajutsu-e2e/bajutsu/pull/2263): Landed unit 2. `app.reinstall` and `preconditions.app.reinstall` take `overwrite`,
   `clean`, or `erase`, and `run.erase` and `preconditions.run.erase` fail at load naming
   `app.reinstall: erase`. `--erase` and `--no-erase` move the value along the ladder, the iOS and
   Android lifecycles read the one value, and `seedPhotos` requires an effective `erase`. A stored run
