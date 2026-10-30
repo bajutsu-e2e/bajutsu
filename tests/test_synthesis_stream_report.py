@@ -10,6 +10,10 @@ from __future__ import annotations
 
 import io
 import json
+import signal
+import subprocess
+import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -198,7 +202,8 @@ def test_meta_records_surface_recorder_health(tmp_path: Path) -> None:
             _bb(1.0, "x"),
             {"host_ts": T0 + 2, "meta": "end", "session": 1, "rc": 1, "written": 1, "skipped": 3},
             {"host_ts": T0 + 4, "meta": "start", "session": 2},
-            {"host_ts": T0 + 5, "meta": "gave-up", "sessions": 2},
+            {"host_ts": T0 + 5, "meta": "end", "session": 2, "rc": 1, "written": 0, "skipped": 0},
+            {"host_ts": T0 + 6, "meta": "gave-up", "sessions": 2},
         ],
     )
     report = analyze([rec])
@@ -207,7 +212,8 @@ def test_meta_records_surface_recorder_health(tmp_path: Path) -> None:
     warnings = "\n".join(report["warnings"])
     assert "no runner markers" in warnings
     assert "skipped 3 stream line(s)" in warnings
-    assert "ended 1 time(s) mid-job" in warnings
+    assert "ended 2 time(s) mid-job" in warnings
+    assert "killed outright" not in warnings
     assert "gave up" in warnings
 
 
@@ -325,3 +331,47 @@ def test_main_restarts_the_stream_and_gives_up_only_after_no_session_writes(
     assert metas == ["start", "end", "start", "end", "gave-up"]
     health = analyze([out])["health"][0]
     assert (health["sessions"], health["events"], health["stream_ends"]) == (2, 1, 2)
+
+
+def test_a_session_with_no_terminator_reads_as_a_killed_recorder(tmp_path: Path) -> None:
+    rec = _write(
+        tmp_path / "synthesis-stream.ndjson",
+        [
+            {"host_ts": T0, "meta": "start", "session": 1},
+            _runner(1.0, "begin c0/1"),
+            {"host_ts": T0 + 2, "meta": "stopped"},
+            {"host_ts": T0 + 3, "meta": "start", "session": 2},
+            _runner(4.0, "begin c0/2"),
+        ],
+    )
+    report = analyze([rec])
+    # The first session was stopped by the action; only the second, cut off with no record, warns.
+    assert any("1 session(s) have no `end` or `stopped` record" in w for w in report["warnings"])
+
+
+def test_sigterm_closes_the_running_session_with_a_stopped_record(tmp_path: Path) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "xcrun").write_text("#!/bin/bash\nexec sleep 30\n")
+    (bin_dir / "xcrun").chmod(0o755)
+    out = tmp_path / "synthesis-stream.ndjson"
+    script = Path(synthesis_stream_record.__file__)
+    proc = subprocess.Popen(
+        [sys.executable, str(script), "--udid", "UDID-1", "--out", str(out)],
+        env={"PATH": f"{bin_dir}:/usr/bin:/bin"},
+        stderr=subprocess.DEVNULL,
+    )
+    try:
+        # A bounded wait on the condition the test needs, not a fixed pause.
+        deadline = time.monotonic() + 10
+        while not (out.exists() and out.read_text()) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        proc.send_signal(signal.SIGTERM)
+        assert proc.wait(timeout=10) == 0
+    finally:
+        proc.kill()
+    metas = [r["meta"] for r in map(json.loads, out.read_text().splitlines()) if "meta" in r]
+    assert metas == ["start", "stopped"]
+    assert analyze([out])["warnings"] == [
+        f"{out}: no events recorded",
+    ]

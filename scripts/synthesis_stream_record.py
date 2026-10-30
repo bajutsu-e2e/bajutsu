@@ -14,10 +14,12 @@ category is itself something Unit 1 has to establish for the monitor's own predi
 The child writes through a pseudo-terminal, not a pipe. A pipe lets `log stream` block-buffer its
 output, which would charge the buffering to the very arrival lag this exists to measure.
 
-Every stream session is bracketed by `meta` records (`start`, then `end` with the child's exit code
-and how many lines it wrote and skipped), so an empty or cut-short recording reads as a recorder
-failure rather than as a quiet run. A stream that ends (the lanes that reboot or erase the device
-mid-job end it) is restarted until this process is told to stop.
+Every stream session opens with a `start` record and closes with one terminator: `end` (the stream
+ended on its own; it carries the child's exit code and how many lines it wrote and skipped) or
+`stopped` (the action's SIGTERM). A session left with neither was killed outright or crashed, so an
+empty or cut-short recording reads as a recorder failure rather than as a quiet run. A stream that
+ends (the lanes that reboot or erase the device mid-job end it) is restarted until this process is
+told to stop.
 
 Purely an observer: it decides nothing, and it runs until the `collect-ios-diagnostics` action stops
 it with SIGTERM.
@@ -184,7 +186,14 @@ def stream_once(udid: str, out: TextIO) -> tuple[int, int, int]:
     return child.returncode, written, skipped
 
 
+# The open recording, so the signal handler can close the running session with a `stopped` record.
+_recording: list[TextIO] = []
+
+
 def _stop(_signum: int, _frame: FrameType | None) -> None:
+    # Python runs this between bytecodes on the main thread, so no record is half-written beneath it.
+    if _recording:
+        write_meta(_recording[0], "stopped")
     sys.exit(0)
 
 
@@ -202,6 +211,7 @@ def main(argv: list[str] | None = None) -> int:
     # Created owner-only rather than chmod-ed afterwards: the stream carries the app's own messages.
     fd = os.open(args.out, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
     with os.fdopen(fd, "a", encoding="utf-8") as out:
+        _recording.append(out)
         session = 0
         last_productive = time.monotonic()
         while True:

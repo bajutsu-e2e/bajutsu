@@ -214,8 +214,8 @@ Protocol（HTTP）チャネルで駆動します。Android の失敗はもう少
   `runs/diagnostics/synthesis-stream.ndjson` へ書き、`collect` で記録を止めます。デバイスの再起動などで
   ジョブの途中にストリームが終わったときは、購読をやり直します。購読の開始と終了には `meta` レコードを
   書くので、空の記録や途中で切れた記録は、何も起きなかった実行とは区別され、集計で警告として現れます。ジョブの後に
-  `log show` で取り出したログには到着時刻がありません。そのため、マーカーがホストに届くまでの時間も、
-  `backboardd` の行が自分より後の時刻の runner の行より遅れて届くことがあるかもわかりません。この 2 つは、
+  `log show` で取り出したログには到着時刻がありません。そのため、マーカーがホストに届くまでの時間もわかりませんし、
+  `backboardd` の行が自分より後の時刻の runner の行より遅れて届くことがあるかどうかもわかりません。この 2 つは、
   [BE-0462](../../roadmaps/BE-0462-ios-dropped-touch-retry/BE-0462-ios-dropped-touch-retry-ja.md) の
   タッチ取りこぼし監視が必要とする値です。成果物をダウンロードして
   [`scripts/synthesis_stream_report.py`](../../scripts/synthesis_stream_report.py) にかけると、

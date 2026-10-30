@@ -105,6 +105,7 @@ class Recording:
     bad_lines: int = 0
     sessions: int = 0
     stream_ends: int = 0
+    unterminated: int = 0
     recorder_skipped: int = 0
     gave_up: bool = False
 
@@ -129,6 +130,11 @@ class Recording:
             found.append(
                 f"the stream ended {self.stream_ends} time(s) mid-job; events between sessions are missing"
             )
+        if self.unterminated:
+            found.append(
+                f"{self.unterminated} session(s) have no `end` or `stopped` record:"
+                " the recorder was killed outright or crashed"
+            )
         if self.gave_up:
             found.append("the recorder gave up restarting the stream")
         return [f"{self.path}: {w}" for w in found]
@@ -152,6 +158,7 @@ def load(path: Path) -> Recording:
     """Read one recording, counting its `meta` records and every line it could not read."""
     lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
     rec_out = Recording(path=path, events=[])
+    open_session = False
     for i, line in enumerate(lines):
         try:
             rec = json.loads(line)
@@ -165,11 +172,16 @@ def load(path: Path) -> Recording:
             continue
         meta = rec.get("meta")
         if meta == "start":
+            rec_out.unterminated += open_session
             rec_out.sessions += 1
+            open_session = True
         elif meta == "end":
-            # A session the action stopped never writes `end`, so every `end` is a stream that died.
+            # The action's stop writes `stopped` instead, so every `end` is a stream that died.
             rec_out.stream_ends += 1
             rec_out.recorder_skipped += int(rec.get("skipped", 0))
+            open_session = False
+        elif meta == "stopped":
+            open_session = False
         elif meta == "gave-up":
             rec_out.gave_up = True
         if meta is not None:
@@ -188,6 +200,7 @@ def load(path: Path) -> Recording:
             )
         except (KeyError, TypeError, ValueError):
             rec_out.bad_lines += 1
+    rec_out.unterminated += open_session
     return rec_out
 
 
