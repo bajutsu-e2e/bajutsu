@@ -217,6 +217,20 @@ there.
   collection had to settle that question from a launch-env argument instead of a measurement. Both
   this and the render probe are written once per job, so the second `start` a job may make never
   overwrites the pre-run reading with a mid-job one.
+- **Live, about each synthesized touch**, also from `start` and kept on green jobs:
+  [`scripts/synthesis_stream_record.py`](../scripts/synthesis_stream_record.py) streams the guest's
+  `log stream` for the runner's `bajutsu.runner` markers and for `backboardd` and `testmanagerd`,
+  and writes each event to `runs/diagnostics/synthesis-stream.ndjson` with the time it reached the
+  host. `collect` stops the recorder. A stream that ends mid-job (a lane that reboots the device
+  ends it) is restarted, and every session is bracketed by `meta` records, so an empty or cut-short
+  recording surfaces as a warning in the report instead of reading as a quiet run. A `log show` extract taken after the job carries no arrival
+  time, so it cannot say how long a marker took to reach the host, or whether a `backboardd` line
+  ever arrived behind a runner line stamped later than it. Those are the two numbers
+  [BE-0462](../roadmaps/BE-0462-ios-dropped-touch-retry/BE-0462-ios-dropped-touch-retry.md)'s
+  dropped-touch monitor needs. Download the artifacts and run
+  [`scripts/synthesis_stream_report.py`](../scripts/synthesis_stream_report.py) over them to get
+  the arrival-lag percentiles, the arrival-order inversions, and every drop line attributed to the
+  touch window that contains it. The recorder is an observer and decides nothing.
 
 We split the unified-log extract in two on purpose, and the reason is worth stating because the
 opposite is the natural assumption. The Simulator's guest processes that serve screenshots —
