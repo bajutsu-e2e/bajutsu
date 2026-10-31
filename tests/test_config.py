@@ -1617,6 +1617,30 @@ def test_a_target_without_screens_keeps_the_team_wide_screens() -> None:
     assert rd.ios_tip_kit_handling is True
 
 
+def test_a_prompt_named_twice_in_a_target_still_fails_over_defaults() -> None:
+    # The per-form merge keeps each layer's own entries, so the duplicate check still sees both.
+    with pytest.raises(ValidationError, match="more than once"):
+        load_config(
+            "defaults:\n  hooks:\n    interrupts: [{systemAlert: tracking, choice: deny}]\n"
+            "targets:\n  s:\n    platform: ios\n    subject: {id: com.x}\n"
+            "    hooks:\n      interrupts:\n"
+            "        - {systemAlert: notifications, choice: grant}\n"
+            "        - {systemAlert: notifications, choice: deny}\n"
+        )
+
+
+def test_an_empty_target_interrupts_list_clears_the_inherited_entries() -> None:
+    cfg = load_config(
+        "defaults:\n  hooks:\n    interrupts:\n"
+        "      - {condition: {exists: {id: team}}}\n"
+        "      - {systemAlert: notifications, choice: grant}\n"
+        "targets:\n  s:\n    platform: ios\n    subject: {id: com.x}\n"
+        "    hooks: {interrupts: []}\n"
+    )
+    rd = resolve(cfg, "s").run_defaults
+    assert (rd.interrupts, rd.system_alerts) == ([], [])
+
+
 def test_collect_network_defaults_on_and_inherits_from_defaults() -> None:
     target = "  s:\n    platform: ios\n    subject: {id: com.x}\n"
     assert resolve(load_config("targets:\n" + target), "s").run_defaults.network is True

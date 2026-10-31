@@ -141,7 +141,8 @@ The merge follows five rules:
   one. `hooks.interrupts` merges form by form, since one list holds three forms: the screen entries
   replace the inherited ones when the target writes any, a `systemAlert` entry replaces the
   inherited entry for the same prompt, and a `tipKit` entry replaces the inherited one. A target
-  that adds one screen handler therefore keeps the prompts `defaults` answers.
+  that adds one screen handler therefore keeps the prompts `defaults` answers. An empty
+  `hooks.interrupts: []` still clears every inherited entry.
 - A target may not write `null` on those union lists, nor on `evidence` or `evidence.redact`. The load fails and names the path, so a target never wipes the team's masking.
 - `ai` merges field by field, as described [below](#ai-provider-ai-be-0047).
 

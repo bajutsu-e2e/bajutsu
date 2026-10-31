@@ -212,6 +212,13 @@ def test_preconditions_run_guard_off_names_what_remains() -> None:
     assert "choice: leave" in str(exc.value)
 
 
+def test_preconditions_run_of_no_mapping_still_fails() -> None:
+    with pytest.raises(ValidationError, match=r"preconditions\.run was removed"):
+        Scenario.model_validate(
+            {"name": "x", "preconditions": {"run": True}, "steps": [{"tap": {"id": "a"}}]}
+        )
+
+
 def test_a_scenario_leave_entry_rejects_frozen_screen_timeout() -> None:
     # Nothing inherits from a scenario entry, and a leave answers nothing, so the value is dead.
     with pytest.raises(ValidationError, match="would tune nothing"):

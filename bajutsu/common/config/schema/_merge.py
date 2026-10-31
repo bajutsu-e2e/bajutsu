@@ -47,13 +47,20 @@ def _merge_interrupts(base: list[Any], over: list[Any]) -> list[Any]:
     One list holds three forms, so replacing it whole would let a target that adds one screen handler
     drop every team-wide system-alert answer without a word. Each form keeps the merge it would have
     as a key of its own: the screens replace as a list when *over* writes any, a `systemAlert` entry
-    replaces *base*'s for the same prompt, and a `tipKit` entry replaces *base*'s.
+    replaces *base*'s for the same prompt, and a `tipKit` entry replaces *base*'s. An empty *over*
+    clears the whole list.
     """
+    if not over:
+        # An empty list still clears what was inherited, as it did when the list held screens alone.
+        return []
     screens = [e for e in over if _form(e) == "screen"] or [e for e in base if _form(e) == "screen"]
-    alerts = {e["systemAlert"]: e for e in base if _form(e) == "systemAlert"}
-    alerts.update({e["systemAlert"]: e for e in over if _form(e) == "systemAlert"})
+    # Each layer's own entries pass through untouched, so a prompt one layer names twice still
+    # reaches the model's duplicate check rather than being collapsed here.
+    over_alerts = [e for e in over if _form(e) == "systemAlert"]
+    named = {e["systemAlert"] for e in over_alerts}
+    alerts = [e for e in base if _form(e) == "systemAlert" and e["systemAlert"] not in named]
     tip_kit = [e for e in over if _form(e) == "tipKit"] or [e for e in base if _form(e) == "tipKit"]
-    return [*screens, *alerts.values(), *tip_kit]
+    return [*screens, *alerts, *over_alerts, *tip_kit]
 
 
 def merge_layer(
