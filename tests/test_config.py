@@ -1655,6 +1655,11 @@ def test_a_run_block_with_no_known_key_still_fails() -> None:
         load_config("defaults:\n  run: {}\ntargets: {}\n")
 
 
+def test_a_run_key_of_no_mapping_still_fails() -> None:
+    with pytest.raises(ValidationError, match=r"targets\.<name>\.run was removed"):
+        load_config("targets:\n  s:\n    platform: ios\n    subject: {id: com.x}\n    run: true\n")
+
+
 def test_a_target_with_two_moved_run_keys_names_both() -> None:
     with pytest.raises(ValidationError) as exc:
         load_config(

@@ -418,10 +418,9 @@ Log:
   `defaults.platforms` or `x-` anchors. One decision the design left open: `hooks.interrupts` now
   merges across `defaults`, templates, and the target form by form, not as one replaced list. The
   screen entries replace when a layer writes any, a `systemAlert` entry replaces the entry for the
-  same prompt, and a `tipKit` entry replaces the inherited one; an empty list still clears them all.
-  Otherwise a target that added one
+  same prompt, and a `tipKit` entry replaces the inherited one. Otherwise a target that added one
   screen handler would silently drop every prompt `defaults` answers, which lived under a key of
-  its own before this item.
+  its own before this item. An empty list still clears every inherited entry.
 
 ## References
 
