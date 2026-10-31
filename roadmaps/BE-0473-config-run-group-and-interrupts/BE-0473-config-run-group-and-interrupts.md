@@ -407,7 +407,7 @@ Log:
   `defaults.platforms.<platform>`, and a scenario's preconditions, and each old key fails at load
   naming its new location; `inheritSetup` moved to `preconditions.inheritSetup`. A stored run plan's
   old keys load as the new entries. The demo scenarios, the showcase config, and the documents moved
-  in the same change. Four deviations from *Detailed design*. First, `run.ignoredSettings` moved to
+  in the same change. Five deviations from *Detailed design*. First, `run.ignoredSettings` moved to
   `runsOn.ignoredSettings`, since it describes the environment `runsOn` names; the maintainer chose
   this home. Second, the guard has one frozen-screen bound, so when several answering entries set
   `frozenScreenTimeout`, the most tolerant value wins: the largest, and 0 over any value. Third,
@@ -415,7 +415,10 @@ Log:
   `--system-alert-handling` only restates the default, and `record` and `crawl` no longer read a
   target's switch. Fourth, the showcase config already stated the runner path and the launch
   environment once through `templates` (BE-0471), so unit 7 moved no values into
-  `defaults.platforms` or `x-` anchors. One decision the design left open: `hooks.interrupts` now
+  `defaults.platforms` or `x-` anchors. Fifth, a run's stored plan no longer records
+  `--no-system-alert-handling`: no scenario form for a guard that is off remains, so the offline
+  readers show such a run's plan like a guarded one's. Recording the resolved guard state in the
+  run's metadata is left for a follow-up if it is wanted. One decision the design left open: `hooks.interrupts` now
   merges across `defaults`, templates, and the target form by form, not as one replaced list. The
   screen entries replace when a layer writes any, a `systemAlert` entry replaces the entry for the
   same prompt, and a `tipKit` entry replaces the inherited one. Otherwise a target that added one
