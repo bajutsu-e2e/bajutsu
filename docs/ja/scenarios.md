@@ -60,7 +60,7 @@ scenarios:
 | `primaryTarget` | str | なし | `target` を省略したステップやトップレベルの `expect` エントリが動くターゲット。`targets` の最初の名前（最初のグループの最初のメンバー）と一致する必要があります（[下記](#targets--target複数ターゲットシナリオbe-0428)） |
 | `installs` | list[str] | `[]` | プライマリと並んで開始時にインストールして起動するデバイスグループのメンバー。2つ以上のメンバーを持つグループのそれ以外のメンバーは、後から `installApp` ステップでインストールします（[デバイスグループ](#デバイスグループ1台のデバイスで複数のアプリを動かすbe-0447)） |
 | `data` / `dataFile` | list / str | なし | データ駆動の行。インライン `data` か `dataFile`（CSV パス）で指定する。1 行 1 run に展開し `${row.col}` を置換する。両者は排他（[再利用とデータ駆動とタグ](#再利用とデータ駆動とタグ)） |
-| `preconditions` | object | `{}` | テスト前の環境準備です。ターゲットと同じグループ名の `subject` と `run` をターゲットの値に重ね、デバイスの状態を `device` に書きます（[下記](#preconditions環境準備)） |
+| `preconditions` | object | `{}` | テスト前の環境準備です。ターゲットと同じグループ名の `subject` をターゲットの値に重ね、デバイスの状態を `device` に、ターゲットのセットアップを引き継ぐかを `inheritSetup` に書きます（[下記](#preconditions環境準備)） |
 | `setup` | list | `[]` | `steps` の前に**独立したフェーズ**として走るセットアップのステップ列。ここで失敗するとシナリオを打ち切る（[下記](#setup--cleanupセットアップとティアダウンのフェーズ)） |
 | `steps` | list | 必須 | アクションの並び（下記） |
 | `expect` | list | `[]` | 全ステップ成功後の最終アサーション（[selectors](selectors.md#アサーション評価)） |
@@ -70,7 +70,7 @@ scenarios:
 | `mocks` | list | `[]` | 決定的なネットワークスタブ。一致する送信リクエストには、ネットワークへ行かず定型レスポンスを返す（[ネットワークモック](#ネットワークモック決定的スタブ)） |
 | `redact` | object | なし | 証跡を書き出す前に適用するマスク（[evidence](evidence.md#マスキングredact)） |
 | `permissions` | dict | `{}` | 宣言的な OS 権限の状態（`{ <service>: grant \| revoke }`）。**アプリの起動前**に適用する（[下記](#permissions起動前の権限状態)） |
-| `interrupts` | list | `[]` | **予測できない時点**で現れる差し込み画面のハンドラ。各エントリは `{ condition, steps }` で、画面が現れた場所を問わず随時判定する（[下記](#interrupts予測できない差し込み画面への対処)） |
+| `interrupts` | list | `[]` | **予測できない時点**で現れたときに run が自動で片付けるもの。ターゲットの `hooks.interrupts` の上に重なる。各エントリは書いたキーで 3 つの形のどれかに決まる。差し込み画面（`{ condition, steps }`、[下記](#interrupts予測できない差し込み画面への対処)）、OS のプロンプト（`{ systemAlert, choice }`、[下記](#systemalertシステムアラートガード)）、Apple の TipKit のポップオーバー（`{ tipKit }`、[下記](#tipkit操作をブロックする-tipkit-の-tip)）のいずれかである |
 
 ```yaml
 - name: filter narrows the catalog
@@ -96,17 +96,21 @@ scenarios:
 `bajutsu/common/config/preconditions.py` が行います。runner の `launch_driver` は重ね合わせた結果を読んで、
 起動手順を組み立てます（[run-loop](run-loop.md#runner実行パイプライン)）。
 
-シナリオの `preconditions` は 3 つのグループを持ちます。`subject` と `run` はターゲットと同じグループ名を
+シナリオの `preconditions` は 2 つのグループと 1 つのフラグを持ちます。`subject` はターゲットと同じグループ名を
 使うので、1 つのフィールドは config でもシナリオでも同じ綴りになります
 （[BE-0452](../../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)）。
 `device` は、シナリオが適用するデバイスの状態を宛先ごとに持ちます。宛先は `device.ios` だけです
 （[BE-0469](../../roadmaps/BE-0469-runson-destination-blocks/BE-0469-runson-destination-blocks-ja.md)）。
+`inheritSetup` は、このシナリオの前にターゲットの `hooks.setup` を実行するかを決めます。
 シナリオに書いたフィールドは、ターゲットの [config](configuration.md) の同じフィールドを上書きします。
-例外は次の 3 つです。
+例外は次の 2 つです。
 
 - `subject.launch.env` はキーごとにマージします。
 - `subject.launch.args` はターゲットの引数の後ろに追記します。
-- `run.systemAlertHandling` の規則は連結し、シナリオの規則を先に照合します。
+
+システムアラートや TipKit の tip のように、run が自動で答えるものは前提条件ではありません。シナリオは
+それらを自身のトップレベルの `interrupts` のエントリとして宣言し、そのエントリがターゲットの
+`hooks.interrupts` の上に重なります（[下記](#層の重ね方1-つのキーは-3-か所から届く)）。
 
 ```yaml
 preconditions:
@@ -115,7 +119,7 @@ preconditions:
     launch: { env: { FEATURE_X: "1" }, args: ["-debug"], deeplink: "showcase://cart" }
   device:
     ios: { locale: ja_JP, seedPhotos: [photos/cat.jpg] }
-  run: { tipKitHandling: true }
+  inheritSetup: false
 ```
 
 | キー | 型 | 既定 | 説明 |
@@ -126,18 +130,16 @@ preconditions:
 | `subject.launch.deeplink` | str | 未設定（ターゲットの `subject.launch.deeplink`） | 起動後にアプリが開く URL です（iOS は `simctl openurl`、Android は intent） |
 | `device.ios.locale` | str | 未設定（ターゲットの `runsOn.ios.locale`） | 起動時の locale と言語を強制し（`-AppleLocale` / `-AppleLanguages`）、Simulator のシステム言語も固定します。ターゲットと異なる値は cold respawn を強制します |
 | `device.ios.seedPhotos` | list[str] | 未設定（ターゲットの `runsOn.ios.seedPhotos`） | erase の経路で、Simulator の写真ライブラリに順に投入する画像です。パスはシナリオファイルを基準に解決します。シナリオのリストはターゲットのリストを置き換えます |
-| `run.systemAlertHandling` | bool / object | 未設定（ON） | リアクティブなアラートガードです（[下記](#systemalerthandlingシステムアラートガード)） |
-| `run.tipKitHandling` | bool | 未設定（ターゲットの `run.tipKitHandling`、次にオフ） | 操作をブロックしている Apple TipKit の tip を閉じます（iOS 専用。[下記](#tipkithandling操作をブロックする-tipkit-の-tip)） |
-| `run.inheritSetup` | bool | `true` | `false` にすると、このシナリオが宣言する全ターゲットの `hooks.setup` を省きます。各ターゲットの `hooks.cleanup` は走ります（[後述](#setup--cleanupセットアップとティアダウンのフェーズ)） |
+| `inheritSetup` | bool | `true` | `false` にすると、このシナリオが宣言する全ターゲットの `hooks.setup` を省きます。各ターゲットの `hooks.cleanup` は走ります（[後述](#setup--cleanupセットアップとティアダウンのフェーズ)） |
 
 シナリオは、アプリを識別したりビルドしたりするフィールド（`id`、`path`、`build`、`startWhen`、
 `idNamespaces`）を設定できません。これらはターゲットが持ちます。`evidence.secrets` はターゲット側の和集合の
 ままなので、シナリオからは設定できません。
 
 > **各フィールドは、デバイスを操作する前に、シナリオが動かすターゲットと照合します。** 動かすどの
-> ターゲットのプラットフォームにもない `subject` のフィールドや、iOS 専用の `run` のフィールドは、無視せずに
-> フィールド名を示して run を失敗させます。Web だけのシナリオの `subject.launch.args` や、Android
-> ターゲットだけに対する `run.tipKitHandling` が該当します。各ターゲットは自分のプラットフォームが持つ
+> ターゲットのプラットフォームにもない `subject` のフィールドは、無視せずにフィールド名を示して run を
+> 失敗させます。Web だけのシナリオの `subject.launch.args` が該当します。シナリオの `interrupts` にある
+> `tipKit` のエントリも、動かすターゲットに iOS がなければ同じように失敗します。各ターゲットは自分のプラットフォームが持つ
 > `subject` のフィールドだけを適用します。そのため、iOS と Web をまたぐシナリオは、iOS 側のために
 > `subject.launch.args` を書けます。単一プラットフォームの複数のターゲットが `paths.scenarios` から同じ
 > シナリオファイルを読む場合、そのファイルは `targets` を宣言するか、該当するターゲットだけが読む
@@ -179,8 +181,8 @@ targets: [app-ipad]
 > 未設定のシナリオ（多くの場合はこれ）は、ターゲットの config の値を継承します。
 > `_filter_scenarios`（`run/cli.py`）が run の開始前にフラグを反映します。そのため、`erase` を指定した
 > ターゲットは `--no-erase` でアプリをアンインストールします。アプリのデータを残したいシナリオは
-> `overwrite` と書きます。廃止した `preconditions.run.erase` はロード時に失敗し、
-> `preconditions.subject.reinstall: erase` を示します。
+> `overwrite` と書きます。廃止した `preconditions.run` はロード時に失敗し、エラーメッセージが
+> 各フィールドの移動先を示します（[下記](#旧来のキーからの移行)）。
 
 > **写真の投入には wipe したデバイスが必要です。** 重ね合わせたあとの `seedPhotos` が空でなければ、
 > 実効の `subject.reinstall`（シナリオの値、なければターゲットの値に、フラグを反映したもの）が `erase` である
@@ -198,30 +200,46 @@ targets: [app-ipad]
 
 > **BE-0452、BE-0469、BE-0473 より前に保存した run も読み込めます。** シナリオのローダーは、古い平坦なキーを
 > 拒否します。対象は `erase`、`reinstall`、`launchEnv`、`launchArgs`、`deeplink`、`locale`、`seedPhotos`
-> です。トップレベルの `systemAlertHandling` と `iosTipKitHandling`、`preconditions.runsOn` も拒否します。
+> です。トップレベルの `systemAlertHandling` と `iosTipKitHandling`、`preconditions.runsOn`、`preconditions.run` も拒否します。
 > どのメッセージも、キーの移動先を示します。run ディレクトリをオフラインで読む処理は、保存された
 > `scenario.yaml` のほうを読み替えます。該当するのは、レポートの再描画、`trace`、`triage` です。保存された
 > `preconditions.runsOn` は、iOS の `locale` と `seedPhotos` を `device.ios` に移し、条件を捨てます。
 > 条件は、その run が使うデバイスをすでに選び終えているからです。保存された `preconditions.erase` や
 > `preconditions.run.erase: true` は `subject.reinstall: erase` になり、保存された `false` は捨てます。
+> 保存された `preconditions.run.systemAlertHandling` は、ルールごとにシナリオの `interrupts` の
+> `systemAlert` のエントリになります。保存された `tipKitHandling` は `tipKit` のエントリになり、
+> 保存された `inheritSetup` は `preconditions.inheritSetup` に移ります。
 
 どの環境でも、すべての前提条件を適用できるわけではありません。実機の iPhone では `simctl erase` を実行できず、
 ブラウザには `subject.launch.env` を渡すアプリの起動がありません。ターゲットの環境が前提条件を適用できないとき、
 シナリオはデバイスを使う前に失敗します。ターゲットは、その前提条件の無視を宣言できます
-（[設定](configuration.md#環境ごとの設定runignoredsettingsbe-0467)）。`bajutsu lint --config <file> --target <name>` は、
+（[設定](configuration.md#環境ごとの設定runsonignoredsettingsbe-0467)）。`bajutsu lint --config <file> --target <name>` は、
 同じ指摘をデバイスなしで報告します（[cli](cli.md#lint)）。
 
-## tipKitHandling（操作をブロックする TipKit の tip）
+## tipKit（操作をブロックする TipKit の tip）
 
-`preconditions.run.tipKitHandling: true` は、操作をブロックしている Apple **TipKit** の tip を閉じます。
+シナリオの `interrupts` に `- tipKit: dismiss` と書くと、操作をブロックしている Apple **TipKit** の tip を閉じます。
 tip はフレームワークが所有する popover です。このガードがあれば、同じ回避策をシナリオごとに手で書かずに
 済みます。ガードは tip を、閉じるための scrim（`PopoverDismissRegion`）とその tip 自身のコンテナ
 （`TipView`）の両方で判定します。ごく普通の `confirmationDialog` も同一の scrim を設置するので、
 そちらには手を触れないようにする必要があるからです。同じ理由で、tip 向けの `interrupts` エントリを
 手で書く場合は `TipView` を手がかりにします。`TipView` は TipKit 自身のコンテナです。SwiftUI と
-UIKit のどちらの表示でも、存在を計測で確認済みです。このフィールドは iOS 専用で、既定は**オフ**です。
-tip 自体がシナリオの検証対象になる場合があるからです。CLI の `--ios-tipkit-handling` /
-`--no-ios-tipkit-handling` が優先します。
+UIKit のどちらの表示でも、存在を計測で確認済みです。このガードは iOS 専用で、既定は**オフ**です。
+tip 自体がシナリオの検証対象になる場合があるからです。
+
+```yaml
+- name: open the catalog past a blocking tip
+  interrupts:
+    - tipKit: dismiss
+  steps:
+    - tap: { id: catalog.open }
+```
+
+ターゲットの `hooks.interrupts` に同じエントリを書くと、そのターゲットのすべてのシナリオでガードが
+オンになります。シナリオがエントリを書いた場合は、ターゲットのエントリよりシナリオのものが優先します。
+tip を検証するシナリオは `- tipKit: leave` と書いて、ターゲットの `dismiss` をオフにします。どちらにも
+エントリがなければ、ガードはオフのままです。CLI の `--ios-tipkit-handling` /
+`--no-ios-tipkit-handling` は、すべてのシナリオのエントリを `dismiss` または `leave` に設定します。
 
 ## systemAlertHandling（システムアラートガード）
 

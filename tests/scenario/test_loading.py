@@ -13,7 +13,8 @@ from bajutsu.common.scenario import (
     load_scenarios,
     redact_totp_secrets,
 )
-from bajutsu.common.scenario.models.scenario import SCHEMA_VERSION, SystemAlertHandling
+from bajutsu.common.scenario import system_alert_entries
+from bajutsu.common.scenario.models.scenario import SCHEMA_VERSION
 
 # A valid base32 TOTP seed used across the redaction tests below.
 _TOTP_SEED = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
@@ -323,48 +324,42 @@ def test_redact_totp_secrets_reaches_nested_steps() -> None:
 
 
 @pytest.mark.parametrize(
-    "policy",
+    "entries",
     [
-        {"rules": [{"prompt": "notifications", "choice": "grant"}]},
-        {"pollInterval": 2},
-        {"visionInstruction": "tap Allow"},
-        {},
+        [{"systemAlert": "notifications", "choice": "grant"}],
+        [{"systemAlert": "notifications", "choice": "leave", "pollInterval": 2}],
+        [{"systemAlert": "savePassword", "choice": "deny", "frozenScreenTimeout": 0}],
+        [{"tipKit": "dismiss"}],
+        [],
     ],
-    ids=["rules-only", "pollInterval-only", "visionInstruction-only", "empty"],
+    ids=["grant", "leave-with-poll", "frozen-zero", "tipKit", "empty"],
 )
-def test_redact_totp_secrets_round_trips_every_policy_shape(
-    policy: dict[str, object],
+def test_redact_totp_secrets_round_trips_every_interrupt_shape(
+    entries: list[dict[str, object]],
 ) -> None:
     # Re-validating a model's own dump must not be able to fail. A field whose validator rejects its
-    # own default is how that used to happen — `systemAlertHandling.labels` rejected `[]` while `[]`
+    # own default is how that used to happen — the alert guard's `labels` rejected `[]` while `[]`
     # was also its default (BE-0401), so a policy steering the guard by anything else died here, on
-    # the `run` path, after the steps had passed. `labels` is gone (BE-0406); the invariant is not.
-    scn = Scenario.model_validate(
-        {"name": "a", "steps": [], "preconditions": {"run": {"systemAlertHandling": policy}}}
-    )
+    # the `run` path, after the steps had passed. The invariant outlives that field.
+    scn = Scenario.model_validate({"name": "a", "steps": [], "interrupts": entries})
     assert redact_totp_secrets(scn).model_dump() == scn.model_dump()
 
 
-def test_redact_totp_secrets_preserves_an_explicit_system_alert_policy() -> None:
+def test_redact_totp_secrets_preserves_an_explicit_system_alert_entry() -> None:
     # Dropping default-valued fields on the way out must not drop a declared one on the way back.
     scn = Scenario.model_validate(
         {
             "name": "a",
             "steps": [{"totp": {"secret": _TOTP_SEED, "into": {"var": "code"}}}],
-            "preconditions": {
-                "run": {
-                    "systemAlertHandling": {
-                        "rules": [{"prompt": "notifications", "choice": "grant"}],
-                        "pollInterval": 0.5,
-                    }
-                }
-            },
+            "interrupts": [
+                {"systemAlert": "notifications", "choice": "grant", "pollInterval": 0.5}
+            ],
         }
     )
-    policy = redact_totp_secrets(scn).preconditions.run.system_alert_handling
-    assert isinstance(policy, SystemAlertHandling)
-    assert [(r.prompt, r.choice) for r in policy.rules] == [("notifications", "grant")]
-    assert policy.poll_interval == 0.5
+    entries = system_alert_entries(redact_totp_secrets(scn).interrupts)
+    assert [(e.system_alert, e.choice, e.poll_interval) for e in entries] == [
+        ("notifications", "grant", 0.5)
+    ]
 
 
 def test_dump_scenario_file_round_trips_an_exact_visual_assertion() -> None:

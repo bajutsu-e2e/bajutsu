@@ -18,7 +18,7 @@ from bajutsu.common.config import (
     resolve,
     xcuitest_targets_real_device,
 )
-from bajutsu.common.scenario import SystemAlertHandling
+from bajutsu.common.scenario import Interrupt
 
 
 def _ios(eff: Effective) -> IosConfig:
@@ -332,7 +332,7 @@ def test_a_flat_or_removed_target_key_is_rejected(removed: str) -> None:
 
 @pytest.mark.parametrize("removed", ["backend: [ios]", "device: iPhone 15", "requires: [ios18]"])
 def test_a_removed_defaults_key_is_rejected(removed: str) -> None:
-    with pytest.raises(ValidationError, match="defaults accepts services, run"):
+    with pytest.raises(ValidationError, match="defaults accepts services, hooks"):
         load_config(f"defaults:\n  {removed}\ntargets: {{}}\n")
 
 
@@ -1406,14 +1406,15 @@ def test_scalar_root_containing_orgs_raises_validationerror_not_attributeerror()
         load_config("orgs\n")
 
 
-# --- BE-0177: per-target run-behavior defaults (systemAlertHandling / erase / network) ---
+# --- BE-0177: per-target run-behavior defaults (interrupts / erase / network) ---
 
 
 def test_run_behavior_defaults_when_unset() -> None:
-    # An unset target resolves to the built-in defaults: guard on (system_alert_handling None → on
-    # with the built-in dismissive labels), no reinstall mode (the built-in clean), network on.
+    # An unset target resolves to the built-in defaults: no declared answers (the guard stays on
+    # with none), no reinstall mode (the built-in clean), network on.
     eff = resolve(load_config("targets:\n  s:\n    platform: ios\n    subject: {id: com.x}\n"), "s")
-    assert eff.run_defaults.system_alert_handling is None
+    assert eff.run_defaults.system_alerts == []
+    assert eff.run_defaults.interrupts == []
     assert eff.reinstall is None
     assert eff.run_defaults.network is True
 
@@ -1431,11 +1432,84 @@ def test_target_ios_tip_kit_handling_resolves_and_defaults_off() -> None:
             "  s:\n"
             "    platform: ios\n"
             "    subject: {id: com.x}\n"
-            "    run: {tipKitHandling: true}\n"
+            "    hooks: {interrupts: [{tipKit: dismiss}]}\n"
         ),
         "s",
     )
     assert opted_in.run_defaults.ios_tip_kit_handling is True
+    left = resolve(
+        load_config(
+            "targets:\n"
+            "  s:\n"
+            "    platform: ios\n"
+            "    subject: {id: com.x}\n"
+            "    hooks: {interrupts: [{tipKit: leave}]}\n"
+        ),
+        "s",
+    )
+    assert left.run_defaults.ios_tip_kit_handling is False
+
+
+@pytest.mark.parametrize("platform", ["android", "web"])
+def test_a_tip_kit_entry_needs_an_ios_target(platform: str) -> None:
+    subject = "{id: com.x}" if platform == "android" else "{url: 'http://x'}"
+    with pytest.raises(ValidationError, match="a `tipKit` entry needs an iOS target"):
+        load_config(
+            "targets:\n"
+            "  s:\n"
+            f"    platform: {platform}\n"
+            f"    subject: {subject}\n"
+            "    hooks: {interrupts: [{tipKit: dismiss}]}\n"
+        )
+
+
+def test_hooks_interrupts_split_by_form_onto_run_defaults() -> None:
+    eff = resolve(
+        load_config(
+            "targets:\n"
+            "  s:\n"
+            "    platform: ios\n"
+            "    subject: {id: com.x}\n"
+            "    hooks:\n"
+            "      interrupts:\n"
+            "        - condition: {exists: {id: aerr_wait}}\n"
+            "          steps: [{tap: {id: aerr_close}}]\n"
+            "        - {systemAlert: notifications, choice: grant}\n"
+            "        - {systemAlert: savePassword, choice: deny, frozenScreenTimeout: 20}\n"
+            "        - {tipKit: dismiss}\n"
+        ),
+        "s",
+    )
+    rd = eff.run_defaults
+    assert [type(e) for e in rd.interrupts] == [Interrupt]
+    assert [(e.system_alert, e.choice) for e in rd.system_alerts] == [
+        ("notifications", "grant"),
+        ("savePassword", "deny"),
+    ]
+    assert rd.system_alerts[1].frozen_screen_timeout == 20
+    assert rd.ios_tip_kit_handling is True
+
+
+@pytest.mark.parametrize(
+    ("entries", "error"),
+    [
+        (
+            "[{systemAlert: paste, choice: deny}, {systemAlert: paste, choice: grant}]",
+            "paste more than once",
+        ),
+        ("[{tipKit: dismiss}, {tipKit: leave}]", "more than one tipKit entry"),
+        (
+            "[{systemAlert: paste, choice: deny, tipKit: dismiss}]",
+            "mixes the systemAlert and tipKit",
+        ),
+    ],
+)
+def test_hooks_interrupts_reject_a_duplicate_or_mixed_entry(entries: str, error: str) -> None:
+    with pytest.raises(ValidationError, match=error):
+        load_config(
+            "targets:\n  s:\n    platform: ios\n    subject: {id: com.x}\n"
+            f"    hooks: {{interrupts: {entries}}}\n"
+        )
 
 
 def test_target_reinstall_and_network_resolve() -> None:
@@ -1458,6 +1532,9 @@ def test_target_reinstall_and_network_resolve() -> None:
         ("visualCompare: exact", "evidence.visualCompare"),
         ("secrets: [A]", "evidence.secrets"),
         ("erase: true", "subject.reinstall: erase"),
+        ("systemAlertHandling: false", "hooks.interrupts: one `- systemAlert: <prompt>` entry"),
+        ("tipKitHandling: true", "hooks.interrupts: `- tipKit: dismiss`"),
+        ("ignoredSettings: {}", "runsOn.ignoredSettings"),
     ],
 )
 def test_a_moved_run_key_names_its_new_location(old: str, new: str) -> None:
@@ -1467,7 +1544,7 @@ def test_a_moved_run_key_names_its_new_location(old: str, new: str) -> None:
         load_config(target)
     with pytest.raises(ValidationError, match=rf"run\.\w+ moved to {re.escape(new)}"):
         load_config(f"defaults:\n  run: {{{old}}}\ntargets: {{}}\n")
-    with pytest.raises(ValidationError, match=rf"ios\.run\.\w+ moved to {re.escape(new)}"):
+    with pytest.raises(ValidationError, match=rf"run\.\w+ moved to {re.escape(new)}"):
         load_config(f"defaults:\n  platforms:\n    ios:\n      run: {{{old}}}\ntargets: {{}}\n")
 
 
@@ -1478,49 +1555,21 @@ def test_collect_network_defaults_on_and_inherits_from_defaults() -> None:
     assert resolve(cfg, "s").run_defaults.network is False
 
 
-def test_target_system_alert_handling_bool_carries_off() -> None:
-    # BE-0401: the bare boolean is the only spelling of off, on a target as on a scenario.
-    eff = resolve(
-        load_config(
-            "targets:\n"
-            "  s:\n"
-            "    platform: ios\n"
-            "    subject: {id: com.x}\n"
-            "    run: {systemAlertHandling: false}\n"
-        ),
-        "s",
-    )
-    assert eff.run_defaults.system_alert_handling is False
+def test_a_run_block_with_no_known_key_still_fails() -> None:
+    with pytest.raises(ValidationError, match=r"targets\.<name>\.run was removed"):
+        load_config("targets:\n  s:\n    platform: ios\n    subject: {id: com.x}\n    run: {}\n")
+    with pytest.raises(ValidationError, match=r"defaults\.run was removed"):
+        load_config("defaults:\n  run: {}\ntargets: {}\n")
 
 
-def test_target_system_alert_handling_object_form() -> None:
-    cfg = load_config(
-        "targets:\n"
-        "  s:\n"
-        "    platform: ios\n"
-        "    subject: {id: com.x}\n"
-        "    run:\n"
-        "      systemAlertHandling:\n"
-        "        rules:\n"
-        "        - {prompt: notifications, choice: grant}\n"
-        "        visionInstruction: tap Allow\n"
-    )
-    eff = resolve(cfg, "s")
-    policy = eff.run_defaults.system_alert_handling
-    assert isinstance(policy, SystemAlertHandling)  # a mapping is always on
-    assert [(r.prompt, r.choice) for r in policy.rules] == [("notifications", "grant")]
-    assert policy.vision_instruction == "tap Allow"
-
-
-@pytest.mark.parametrize("old", ["alertHandling", "dismissAlerts"])
-def test_target_renamed_alert_keys_fail_naming_the_canonical_key(old: str) -> None:
-    # BE-0401 deleted both aliases rather than carrying them a third time; under `run` (BE-0452)
-    # each fails as an unknown key whose message lists `systemAlertHandling`.
+def test_a_target_with_two_moved_run_keys_names_both() -> None:
     with pytest.raises(ValidationError) as exc:
         load_config(
-            f"targets:\n  s:\n    platform: ios\n    subject: {{id: com.x}}\n    run: {{{old}: false}}\n"
+            "targets:\n  s:\n    platform: ios\n    subject: {id: com.x}\n"
+            "    run: {erase: true, tipKitHandling: true}\n"
         )
-    assert "systemAlertHandling" in str(exc.value)
+    assert "run.erase moved to" in str(exc.value)
+    assert "run.tipKitHandling moved to" in str(exc.value)
 
 
 def test_destination_blocks_resolve_to_the_target_conditions_and_state() -> None:

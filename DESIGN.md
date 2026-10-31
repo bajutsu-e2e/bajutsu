@@ -403,13 +403,15 @@ bajutsu codegen <scenario.yaml> --target <name> --emit xcuitest -o UITests/   # 
 
 `bajutsu.config.yaml` を `defaults` と `targets` の 2 層で持ち、その間に省略可能な `templates` を挟めます。値の解決順は **既定 < テンプレート < アプリ < シナリオ** で、右ほど優先します（テストに近いほうが勝ちます）。
 
-target が受け付けるキーは次の 10 個で、未知のキーは読み込み時に失敗します。
+target が受け付けるキーは次の 9 個で、未知のキーは読み込み時に失敗します。
 
 - `platform`（必須。`ios` / `android` / `web` / `fake`）
 - `subject` / `runsOn` / `driver`（形がプラットフォームで変わるグループ）
-- `services` / `run` / `hooks` / `evidence` / `paths` / `ai`
+- `services` / `hooks` / `evidence` / `paths` / `ai`（`services` は run が依存するサービスで、run が起動するものと run が接続するものの両方を指します）
 
-`defaults` は、プラットフォームに依らないグループ（`services` / `run` / `hooks` / `evidence` / `paths` / `ai`）を直接持ちます。形がプラットフォームで変わるグループは `defaults.platforms.<platform>` の下に置きます。辞書はキーごとにマージし（target が優先）、target の `null` は継承した値を消します。リストは置き換えますが、`evidence.secrets` と `evidence.redact` だけは和集合を取ります。グループ分けの理由は [BE-0452](roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md) にあります。結果の通知先（`notify`）はトップレベルのリストだけが決め、target ごとには持ちません（[BE-0473](roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts-ja.md)）。名前が `x-` で始まるトップレベルのキーは読み込み時に無視するので、target 同士で共有する YAML アンカーの置き場所に使えます。
+以前の `run` グループは解体し、各キーをそれが関わるグループへ移しました。システムアラートと TipKit への対処は `hooks.interrupts` のエントリに、`ignoredSettings` は `runsOn` に置きます（[BE-0473](roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts-ja.md)）。
+
+`defaults` は、プラットフォームに依らないグループ（`services` / `hooks` / `evidence` / `paths` / `ai`）を直接持ちます。形がプラットフォームで変わるグループは `defaults.platforms.<platform>` の下に置きます。辞書はキーごとにマージし（target が優先）、target の `null` は継承した値を消します。リストは置き換えますが、`evidence.secrets` と `evidence.redact` だけは和集合を取ります。グループ分けの理由は [BE-0452](roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md) にあります。結果の通知先（`notify`）はトップレベルのリストだけが決め、target ごとには持ちません（[BE-0473](roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts-ja.md)）。名前が `x-` で始まるトップレベルのキーは読み込み時に無視するので、target 同士で共有する YAML アンカーの置き場所に使えます。
 
 `templates:` は、名前の付いた部分的な target ブロックを持ちます。target は `extends` でテンプレート名かテンプレートファイルを挙げ、`defaults` と `defaults.platforms.<platform>` の上、target 自身の下に順に重ねます。マージ規則は上と同じです。テンプレートは `targets:` の外に置くので、実行対象として選ばれることはありません。設計の理由は [BE-0471](roadmaps/BE-0471-target-templates/BE-0471-target-templates-ja.md) にあります。
 
@@ -554,7 +556,7 @@ runs/<runId>/
 
 ### 環境ごとの設定と、デバイスを使う前のチェック（BE-0467）
 
-`subject.reinstall: erase` や `runsOn.ios.seedPhotos` のような設定は、最初のステップより前にデバイスへ届きます。どのルートでも適用できるわけではありません（`simctl erase` は Simulator にしか届きません）。ルートは `ios-simulator`、`ios-device`、`ios-live`、`android`、`web` の 5 つです。ルートごとの対応表が、各設定を `supported`、`satisfied`、`unsupported` のいずれかに分けます（`common/capability/settings_support.py`）。`unsupported` の設定は、ターゲットが `run.ignoredSettings` に理由付きで無視を宣言しない限り、デバイスを使う前にシナリオを失敗させます。ステップは決して skip しません。
+`subject.reinstall: erase` や `runsOn.ios.seedPhotos` のような設定は、最初のステップより前にデバイスへ届きます。どのルートでも適用できるわけではありません（`simctl erase` は Simulator にしか届きません）。ルートは `ios-simulator`、`ios-device`、`ios-live`、`android`、`web` の 5 つです。ルートごとの対応表が、各設定を `supported`、`satisfied`、`unsupported` のいずれかに分けます（`common/capability/settings_support.py`）。`unsupported` の設定は、ターゲットが `runsOn.ignoredSettings` に理由付きで無視を宣言しない限り、デバイスを使う前にシナリオを失敗させます。ステップは決して skip しません。
 
 同じ対応表と BE-0082 の要件表を、次の 3 か所が読みます。3 か所の判定が食い違うことはありません。
 

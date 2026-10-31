@@ -101,7 +101,7 @@ The `bajutsu/` package (Python 3.13+, pydantic v2 / typer / anthropic / pyyaml /
 | `common/scenario/interp.py` | `${ns.key}` interpolation primitive (`params.` / `row.` / `secrets.` / `vars.`) | [scenarios](scenarios.md) |
 | `common/mailbox.py` | Pure, network-free matching/extraction logic for the `email` step (BE-0046): normalize a mailbox provider's messages, match on `to`/`subject`/`subjectMatches`, select only a message that arrived after the step started, and extract a value by regex into `${vars.*}` | [scenarios](scenarios.md) |
 | `common/totp.py` | RFC 6238 time-based one-time password (TOTP) for the `totp` step (BE-0046): a pure, deterministic function of the shared secret and the time, so a code is derivable with no network and no device | [scenarios](scenarios.md) |
-| `common/config/` | Team defaults × per-target resolution (`Effective`) (package: `schema` / `effective` / `resolve` / `accessors` / `preconditions` / `json_schema`). `schema` holds one model per target group (`services`, `run_policy`, `hooks`, `evidence`, `paths`), the `_merge` step that folds `defaults` into each target before validation, the `_templates` step that expands a target's `extends` into the ordered layers `_merge` folds onto `defaults` ([BE-0471](../roadmaps/BE-0471-target-templates/BE-0471-target-templates.md)), and the `platform/` registry that supplies each platform's `subject` / `runsOn` / `driver` / `run` models, with `runsOn` holding one block per destination the platform allows ([BE-0469](../roadmaps/BE-0469-runson-destination-blocks/BE-0469-runson-destination-blocks.md)); `load_config(text, path=, root=)` / `load_config_file(path, root=)` take the config's own path and the suite root so a `use:` component under `hooks` resolves at load; `preconditions` merges a scenario's `preconditions` (`subject`, `run`, and the `device` state) over each target it drives, and `json_schema` builds the config's JSON Schema from the models and the registry for `bajutsu config schema` ([BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)) | [configuration](configuration.md) |
+| `common/config/` | Team defaults × per-target resolution (`Effective`) (package: `schema` / `effective` / `resolve` / `accessors` / `preconditions` / `json_schema`). `schema` holds one model per target group (`services`, `hooks`, `evidence`, `paths`), the `_merge` step that folds `defaults` into each target before validation, the `_templates` step that expands a target's `extends` into the ordered layers `_merge` folds onto `defaults` ([BE-0471](../roadmaps/BE-0471-target-templates/BE-0471-target-templates.md)), and the `platform/` registry that supplies each platform's `subject` / `runsOn` / `driver` models, with `runsOn` holding one block per destination the platform allows ([BE-0469](../roadmaps/BE-0469-runson-destination-blocks/BE-0469-runson-destination-blocks.md)); `load_config(text, path=, root=)` / `load_config_file(path, root=)` take the config's own path and the suite root so a `use:` component under `hooks` resolves at load; `preconditions` merges a scenario's `preconditions` (`subject` and the `device` state) over each target it drives, and `json_schema` builds the config's JSON Schema from the models and the registry for `bajutsu config schema` ([BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)) | [configuration](configuration.md) |
 | `common/config_source/` | Acquire a config (and its scenario tree) from a Git source at an immutable commit SHA into a content-addressed cache (BE-0063) — where a config comes from, distinct from `common/config/`'s schema and resolution | [configuration](configuration.md) |
 | `common/backends.py` | Backend availability check · actuator selection (platform-aware registry: `ios` / `android` / `web` / `fake`) · driver construction | [drivers](drivers.md#backend-selection-and-the-actuator) |
 | `common/devices/` | Device-identity helpers shared across backends (package): `os.py` (the parsed device OS — platform/major/minor — read from the `device_runtime` label, BE-0358), `id.py` (the device-id validator every backend's `--udid`/config path shares, guarding against argv option injection), `errors.py` (the platform-neutral `DeviceError` base `simctl`/`adb` subclass, BE-0260, plus the `DeviceTimeout` beneath it that every backend raises when a device operation exceeded its deadline rather than failing, BE-0374), `version.py` (`VersionSpec`, npm's range grammar for `runsOn` version ranges), `facts.py` (reads what `runsOn` conditions compare from each available device: the Simulator's device-type name, family, and runtime, a real iOS device's family over `devicectl`, and a pool that mixes the two (BE-0468), an Android device's API level and Android Virtual Device (AVD) name, a browser's version), `runs.py` (forms a scenario's runs from lists and ranges — one per listed `kind` too — resolves each run's `family` priority list, combines the runs across targets, and picks each run's eligible devices; BE-0452, BE-0468), and `browsers.py` (the browser kinds `runsOn.browser.kind` names, and the Playwright engine and channel each launches as; BE-0468) | [drivers](drivers.md) |
@@ -777,7 +777,7 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   where the phase runs under a slice of the cancellation grace window instead of the latched cancel
   source. The target config carries the same two phases as `hooks.setup` and `hooks.cleanup` (BE-0452),
   merging config-then-scenario for `setup` and scenario-then-config for `cleanup`; a scenario's
-  `preconditions.run.inheritSetup: false` skips its targets' `hooks.setup`; both phases report as their own blocks and reach every export
+  `preconditions.inheritSetup: false` skips its targets' `hooks.setup`; both phases report as their own blocks and reach every export
 
 #### DSL gestures, text entry, and device actions
 
@@ -927,8 +927,10 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   SpringBoard alert stays the step's. An alert the step judges not its own goes to
   `POST /systemAlert/resolve`, which answers while that alert still offers the buttons the step
   read, and not otherwise, so the two never answer the same prompt
-- DSL `systemAlertHandling` (BE-0315), the reactive counterpart: an alert guard. It answers the
-  prompts the scenario's own `rules` name, with no model call. Since BE-0461 the XCUITest backend
+- DSL `systemAlert` interrupts entries (BE-0315; a `systemAlertHandling` key until BE-0473), the
+  reactive counterpart: an alert guard. It answers the prompts that the `systemAlert` entries of the
+  scenario's `interrupts` and the target's `hooks.interrupts` name, with no model call; each entry
+  is one rule. Since BE-0461 the XCUITest backend
   answers them inside the requests that read the screen, not from a watcher in Python. Under a
   governing guard, a wait's polls and an action's target reads send
   `GET /elements?resolveAlerts=true`. The runner then works in three steps:
@@ -999,7 +1001,7 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   travel with the guard's pacing, so the runner can answer such a prompt inside the request that
   reads the screen (BE-0461). A `handleSystemAlert` step's own prompt/choice
   form is not necessarily among those rules — the step exists precisely for a prompt an author
-  chooses not to declare in `systemAlertHandling` — so while that one step waits the orchestrator
+  chooses not to declare as a `systemAlert` entry — so while that one step waits the orchestrator
   pushes one more rule for the step's own target alongside the scenario's, and restores the
   scenario's own policy once the step returns, fails, or the wait raises. Without it, an earlier
   action's own interruption could meet that same prompt first, find no matching rule, and fail a
@@ -1018,8 +1020,8 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   button's. The branch sits ahead of the `governs` check because neither alert outcome fits a
   banner: a governing policy recorded it as an undeclared interruption and failed an otherwise
   passing step, while an ungoverned one left XCUITest to wait the banner out, measured at ~9s per
-  interrupted interaction against ~0.6s undisturbed. `systemAlertHandling` itself is on by default,
-  and `false` disables it per scenario — the banner branch above runs either way.
+  interrupted interaction against ~0.6s undisturbed. The guard itself is on by default, and
+  `--no-system-alert-handling` disables it for every scenario — the banner branch above runs either way.
 - A banner reaches that monitor only on an *interaction* — a plain query never invokes it, so a
   banner sitting on screen with nothing tapping through it is never cleared there (BE-0416 Units
   2/3/8). A second, proactive path covers that gap: `Driver.notification_banner_frame()`
@@ -1038,7 +1040,7 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   differ by one round trip, landing the swipe on whatever the app now shows at that point instead.
   The swipe is re-confirmed gone by a bounded poll immediately after, the same discipline the
   interruption monitor's own
-  confirm-before-claiming applies. The query is rate-limited to `systemAlertHandling`'s
+  confirm-before-claiming applies. The query is rate-limited to the guard's
   own resolved `pollInterval` (BE-0315's default when the guard is off), so a passing scenario pays
   it once per interval rather than once per step.
   The `expect`-phase visual capture gets the same unconditional check immediately before it,
@@ -1047,7 +1049,7 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   above runs only after the step body finishes, too late for a capture taken inside it. No scenario
   or CLI toggle: a scenario cannot observe a banner, so none can be broken by clearing it — the same
   "no known use for a toggle" the interruption path above already established
-- DSL `preconditions.run.tipKitHandling` (BE-0389; a top-level `iosTipKitHandling` until BE-0452), an opt-in guard for a blocking Apple TipKit tip: TipKit's
+- DSL `- tipKit: dismiss` interrupts entry (BE-0389; a top-level `iosTipKitHandling` until BE-0452, then `tipKitHandling` until BE-0473), an opt-in guard for a blocking Apple TipKit tip: TipKit's
   presentation marks the content it covers accessibility-hidden rather than merely occluding it, so a
   blocked tap can fail as `ElementNotFound`, not only `ElementNotTappable`. The XCUITest backend alone
   declares `Capability.HANDLE_TIPKIT_TIP` and implements `Driver.dismiss_blocking_tip()` by resolving
@@ -1057,10 +1059,11 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   in the same accessibility tree every wait poll and tap resolution already fetches. The step loop
   retries a step once when the dismiss actually found and cleared a tip, beside the alert guard's own
   end-of-step branch, and the dismiss also composes onto BE-0314's `on_interrupt_poll` hook so a tip
-  does not hold a wait to its full timeout either. Defaults off (unlike `systemAlertHandling`) because a
-  scenario sometimes asserts on the tip itself; `--ios-tipkit-handling`/`--no-ios-tipkit-handling`
-  follows the same flag > scenario > target > default precedence as `systemAlertHandling`'s own
-  on/off bit (BE-0177); `systemAlertHandling`'s policy keys compose by type instead (BE-0401)
+  does not hold a wait to its full timeout either. Defaults off (unlike the alert guard) because a
+  scenario sometimes asserts on the tip itself, which writes `- tipKit: leave` to turn off its
+  target's `dismiss`. The resolution is flag > scenario > target > off: `--ios-tipkit-handling` /
+  `--no-ios-tipkit-handling` set every scenario's entry to `dismiss` / `leave` (BE-0177). The
+  `systemAlert` entries compose per prompt instead (BE-0401, BE-0473)
 
 #### DSL cross-app control
 

@@ -131,7 +131,7 @@ Scenario ::= {
   mocks?:          list(<Mock>),            # default []
   redact?:         <Redact>,
   permissions?:    <Permissions>,           # pre-launch OS permission state; default {}
-  interrupts?:     list(<Interrupt>),       # default []  — handlers for interstitials that surface at an unpredictable point (BE-0314), appended after the target's `hooks.interrupts`
+  interrupts?:     list(<InterruptEntry>),  # default []  — what the run clears on its own at an unpredictable point (BE-0314, BE-0473), layered over the target's `hooks.interrupts`
 }
 
 Component ::= { params?: list(string), steps: list(<Step>) }
@@ -142,18 +142,25 @@ Component ::= { params?: list(string), steps: list(<Step>) }
 # it watches the primary target (BE-0438).
 Interrupt ::= { condition: <Assertion>, steps: list(<Step>), target?: string }
 
+# One `interrupts` list holds three forms, told apart by the key an entry writes (BE-0473): a screen in
+# the app's own tree, an operating-system prompt the system-alert guard answers, and Apple's TipKit
+# popover. An entry that mixes keys of two forms fails at load. The target's `hooks.interrupts` takes
+# the same forms. Screen entries concatenate, the target's first; how the other two forms combine is
+# under SystemAlertInterrupt and TipKitInterrupt below.
+InterruptEntry ::= <Interrupt> | <SystemAlertInterrupt> | <TipKitInterrupt>
+
 # One teardown rule (BE-0392): the outcome it answers, and the steps to run for that outcome. The
 # outcome is the scenario's own machine-checked verdict, never a model call.
 CleanupRule ::= { on: "always" | "success" | "failure", steps: list(<Step>) }
 
 # ── Preconditions ──────────────────────────────────────────────────────
-# `subject` and `run` take the target's own group names (BE-0452, BE-0470). Each field overrides the same field of every target the
-# scenario drives; `subject.launch.env` merges key by key, `subject.launch.args` appends, and the rules of
-# `run.systemAlertHandling` concatenate (the scenario's first). A field no driven target's platform
-# has fails the run before any device work. A scenario declares no device condition: `runsOn` belongs
+# `subject` takes the target's own group name (BE-0452, BE-0470). Each field overrides the same field of every target the
+# scenario drives; `subject.launch.env` merges key by key and `subject.launch.args` appends. A field no
+# driven target's platform has fails the run before any device work. The former `preconditions.run`
+# fails at load and names each field's new home (BE-0473). A scenario declares no device condition: `runsOn` belongs
 # to the target alone (BE-0469).
 Preconditions ::= {
-  app?:    {
+  subject?: {
     reinstall?: ("overwrite" | "clean" | "erase"),  # weakest first; unset: the target's `subject.reinstall`, else "clean"; iOS and Android, plus "erase" on web (BE-0473)
     launch?: {
       env?:      map(string,string),        # default {} — merged over the target's `subject.launch.env`
@@ -162,11 +169,7 @@ Preconditions ::= {
     },
   },
   device?: { ios?: <IosDevice> },           # keyed by destination; a block for an undriven platform has no effect
-  run?:    {
-    systemAlertHandling?: <SystemAlertHandling>,  # alert guard; on when unset
-    tipKitHandling?:      boolean,          # dismiss a blocking TipKit tip; off when unset; iOS only
-    inheritSetup?:        boolean,          # default true — false skips every declared target's `hooks.setup`; their cleanup still runs
-  },
+  inheritSetup?: boolean,                   # default true — false skips every declared target's `hooks.setup`; their cleanup still runs
 }
 
 # The iOS device state a scenario applies; each field replaces the target's `runsOn.ios` value of the
@@ -174,18 +177,27 @@ Preconditions ::= {
 # an effective `subject.reinstall: erase`.
 IosDevice ::= { locale?: string, seedPhotos?: list(string) }
 
-# ── SystemAlertHandling (reactive system-alert guard; on by default) ───
-# Native SpringBoard query + tap on XCUITest (no model, reusing BE-0316; BE-0315), plus an in-tree
-# tap for a prompt that query cannot see. An alert no rule identifies is reported on the blocked
-# step's own failure, never guessed at (BE-0402, BE-0406).
-SystemAlertHandling ::= boolean                                   # true = on with no rules, false = off
-               | { rules?: [<SystemAlertRule>],             # the guard's whole declaration (BE-0406)
-                   visionInstruction?: string,              # free text; reaches no command — `run` rejects it
-                   pollInterval?: number,                    # native poll cadence, seconds (default 1)
-                   frozenScreenTimeout?: number }            # frozen-screen stop, seconds (default 10, 0 = off)
-SystemAlertRule ::= { prompt: notifications|tracking|paste|savePassword|localNetwork, choice: grant|deny }  # unique prompt per list
+# ── SystemAlertInterrupt (the reactive system-alert guard's answers) ───
+# The guard is on unless `run --no-system-alert-handling`; no scenario or target switches it off as a
+# whole. It answers a prompt by a native SpringBoard query + tap on XCUITest (no model, reusing
+# BE-0316; BE-0315), plus an in-tree tap for a prompt that query cannot see. An alert no entry names
+# is reported on the blocked step's own failure, never guessed at (BE-0402, BE-0406). Per prompt, a
+# scenario entry replaces the target's `choice` and inherits an omitted `frozenScreenTimeout`; other
+# prompts from both lists apply. One prompt appears at most once per list (BE-0473).
+SystemAlertInterrupt ::= {
+  systemAlert: notifications|tracking|paste|savePassword|localNetwork,
+  choice: grant|deny|leave,             # leave: answer nothing, e.g. when the scenario's own handleSystemAlert step does
+  pollInterval?: number,                # native poll cadence, seconds (default 1); scenario › --alert-poll-interval › target, smallest within a layer
+  frozenScreenTimeout?: number,         # frozen-screen stop, seconds (default 10, 0 = off); savePassword alone
+}
                 # savePassword is guard-only: iOS raises it in-process, so the in-tree dismissal
                 # alone answers it and the handleSystemAlert step below rejects it (BE-0406)
+
+# ── TipKitInterrupt (Apple's TipKit popover; iOS only) ─────────────────
+# Off unless an entry asks for it, since a tip is sometimes the assertion's own subject. The
+# scenario's entry wins over the target's; `run --ios-tipkit-handling` / `--no-ios-tipkit-handling`
+# set every scenario's entry to dismiss / leave. At most one per list (BE-0473).
+TipKitInterrupt ::= { tipKit: dismiss|leave }
 
 Permissions ::= map(PermissionService, PermissionAction)    # applied before the app launches
 PermissionService ::= "location" | "camera" | "microphone" | "contacts"
@@ -498,14 +510,12 @@ Omitted optional keys take these values (so a minimal scenario is just `name` + 
 | `Scenario.tags` / `expect` / `capturePolicy` / `mocks` / `interrupts` / `setup` / `cleanup` | `[]` |
 | `Scenario.preconditions` | `{}` (every field falls through to the target, then the built-in default) |
 | `Scenario.permissions` | `{}` (no pre-launch permission state applied) |
-| `Preconditions.run.systemAlertHandling` | unset (alert guard on, with no rules — so it answers no prompt of its own) |
-| `Preconditions.run.tipKitHandling` | unset (the target's `run.tipKitHandling`, else off — a tip is sometimes the assertion; iOS only) |
-| `Preconditions.run.inheritSetup` | `true` (every declared target's `hooks.setup` runs ahead of the scenario's `setup`) |
+| `Preconditions.inheritSetup` | `true` (every declared target's `hooks.setup` runs ahead of the scenario's `setup`) |
 | `Preconditions.subject.reinstall` | unset — the target's `subject.reinstall`, else `clean`; `--erase` raises it to `erase`, `--no-erase` lowers an `erase` to `clean` (BE-0473) |
 | `Preconditions.subject.launch.args` | `[]` |
 | `Preconditions.subject.launch.env` | `{}` |
-| `SystemAlertHandling.rules` | `[]` (no prompt is declared, so the guard answers none; an alert it meets is named on the blocked step's failure) |
-| `SystemAlertHandling.visionInstruction` | unset — and no other value is usable: `run` refuses one (BE-0402) and `record` / `crawl` read the free text only from their own `--alert-vision-instruction` flag |
+| `systemAlert` entries | none (the guard is on but answers no prompt; an alert it meets is named on the blocked step's failure) |
+| `tipKit` entry | none (the target's entry, else off — a tip is sometimes the assertion; iOS only) |
 | `TypeText.submit` | `false` |
 | `Exists.negate` | `false` |
 | `MockResponse.status` | `200` |
@@ -646,7 +656,7 @@ derived scenario is renamed `"<name> [row N: col=val, …]"` and **keeps the ori
   inside the suite root (BE-0174).
   [BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)
   removed the former `preconditions.setup` prelude file.
-  A scenario that must not run its targets' `hooks.setup` sets `preconditions.run.inheritSetup: false`.
+  A scenario that must not run its targets' `hooks.setup` sets `preconditions.inheritSetup: false`.
 - **`secrets`** (declared in config as `evidence.secrets` — a list of environment-variable names): each
   declared name `X` is resolved from `os.environ[X]` and bound to `${secrets.X}`, substituted into the
   executed step **at action time** (`cli/commands/run.py`, `orchestrator/substitution.py` `_interp_step`). The scenario keeps the
@@ -675,7 +685,7 @@ load_scenarios        # parse + validate against this grammar
   a sequence of scenarios or a `{description, scenarios}` mapping, and any rule in
   [§4](#4-cardinality--mutual-exclusion-constraints) failing is a load error (`scenario/load.py`).
 - `dump_scenarios(scenarios) -> str` serializes back to YAML, dropping only fields the author never
-  set and emitting alias keys (`idMatches`, `tipKitHandling`, …). The output **reloads cleanly** — this
+  set and emitting alias keys (`idMatches`, `inheritSetup`, …). The output **reloads cleanly** — this
   is the round-trip `record` relies on (`scenario/serialize.py`).
 
 For the semantics behind the shapes — how a selector resolves to 0/1/2+ elements, how each assertion compares, how waits time out — see [selectors](selectors.md) and [run-loop](run-loop.md). To start writing scenarios by example, see [scenarios](scenarios.md).

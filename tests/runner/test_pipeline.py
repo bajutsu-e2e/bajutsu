@@ -2051,33 +2051,30 @@ def test_run_all_hands_the_target_s_launch_env_to_run_scenario(
 
 
 def test_run_all_alert_guard_for_selects_per_scenario() -> None:
-    # The factory picks each scenario's guard from its systemAlertHandling: the guarded scenario
-    # recovers from a blocked tap and passes; the one that disabled it fails.
+    # The factory picks each scenario's guard per scenario: the guarded scenario recovers from a
+    # blocked tap and passes; the one handed no guard fails.
     from bajutsu.common.orchestrator import AlertGuardConfig
 
     scenarios = [
         Scenario.model_validate(
             {
                 "name": "guarded",
-                "preconditions": {"run": {"systemAlertHandling": True}},
                 "steps": [{"tap": {"id": "later"}}],
             }
         ),
         Scenario.model_validate(
             {
                 "name": "bare",
-                "preconditions": {"run": {"systemAlertHandling": False}},
                 "steps": [{"tap": {"id": "later"}}],
             }
         ),
     ]
 
     def alert_guard_for(s: Scenario) -> AlertGuardConfig | None:
-        # `false` is the whole off form since BE-0401; a mapping (or an absent key) means on.
         # One surface only: the scenario-start push refuses a rule claiming both (BE-0461).
         return (
             None
-            if s.preconditions.run.system_alert_handling is False
+            if s.name == "bare"
             else AlertGuardConfig(rules=[guard_rule(in_tree=False)])
         )
 
@@ -2128,7 +2125,7 @@ def test_run_all_marks_the_scenario_start_policy_push() -> None:
 
 
 def test_run_all_alert_guard_for_uncovered_locale_fails_the_scenario_not_the_run() -> None:
-    # A `systemAlertHandling.rules` entry naming a prompt this scenario's locale has no known labels
+    # A `systemAlert` interrupts entry naming a prompt this scenario's locale has no known labels
     # for raises while the guard is still under construction (before any lease is even taken) — the
     # run must turn that into one clean failed RunResult per scenario, not an uncaught exception that
     # would abort every remaining scenario too.

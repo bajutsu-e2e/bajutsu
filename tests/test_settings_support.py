@@ -32,7 +32,7 @@ def _eff(platform: str, *, lines: tuple[str, ...] = ()) -> Effective:
 
 
 def _device(*lines: str) -> Effective:
-    return _eff("ios", lines=("    runsOn: {ios: {kind: device}}", *lines))
+    return _eff("ios", lines=("    runsOn:", "      ios: {kind: device}", *lines))
 
 
 def _ignoring(eff: Effective, **reasons: str) -> Effective:
@@ -139,7 +139,7 @@ def test_an_unsupported_setting_is_a_problem_naming_its_declaration() -> None:
     check = check_settings("xcuitest", _device(), ResolvedPreconditions(reinstall="erase"))
     assert check.unsupported == ["erase"]
     [problem] = check.problems()
-    assert "subject.reinstall: erase" in problem and "targets.t.run.ignoredSettings" in problem
+    assert "subject.reinstall: erase" in problem and "targets.t.runsOn.ignoredSettings" in problem
 
 
 def test_a_declared_setting_is_ignored_with_its_reason() -> None:
@@ -197,7 +197,7 @@ def test_the_web_environment_refuses_a_launch_env_it_would_have_ignored() -> Non
 
 
 def test_ignored_settings_reach_the_run_defaults() -> None:
-    eff = _device("    run: {ignoredSettings: {erase: 'this lane keeps app data'}}")
+    eff = _device("      ignoredSettings: {erase: 'this lane keeps app data'}")
     assert eff.run_defaults.ignored_settings == {"erase": "this lane keeps app data"}
 
 
@@ -207,19 +207,19 @@ def test_ignored_settings_reach_the_run_defaults() -> None:
 )
 def test_a_bad_declaration_fails_at_load(declared: str, match: str) -> None:
     with pytest.raises(ValueError, match=match):
-        _device(f"    run: {{ignoredSettings: {declared}}}")
+        _device(f"      ignoredSettings: {declared}")
 
 
 @pytest.mark.parametrize(
     "defaults",
     [
-        "  run: {ignoredSettings: {erase: why}}",
-        "  platforms: {ios: {run: {ignoredSettings: {erase: why}}}}",
+        "  platforms: {ios: {runsOn: {ignoredSettings: {erase: why}}}}",
+        "  platforms: {android: {runsOn: {ignoredSettings: {erase: why}}}}",
     ],
 )
 def test_defaults_may_not_declare_an_ignored_setting(defaults: str) -> None:
     text = f"defaults:\n{defaults}\ntargets:\n  t:\n    platform: ios\n    subject: {{id: com.x}}\n"
-    with pytest.raises(ValueError, match=r"defaults may not set run\.ignoredSettings"):
+    with pytest.raises(ValueError, match=r"defaults may not set runsOn\.ignoredSettings"):
         load_config(text)
 
 

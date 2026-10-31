@@ -116,8 +116,9 @@ Two properties of this route need care on the device side:
 
 - From iOS 14, an app asks for **Local Network permission** before its first local-network
   connection. The search makes such a connection, so a fresh install raises the prompt during
-  launch. Every Device Farm job is a fresh install. Declare `{ prompt: localNetwork, choice: grant }`
-  in `systemAlertHandling.rules` ([scenarios](scenarios.md)). The guard then answers the prompt,
+  launch. Every Device Farm job is a fresh install. Declare a `systemAlert: localNetwork` entry with
+  `choice: grant` in the target's `hooks.interrupts` or the scenario's `interrupts`
+  ([scenarios](scenarios.md)). The guard then answers the prompt,
   including one already up when the scenario starts. Until the grant, the search gets no answer and
   the reports wait. We measured this on an iPhone
   with iOS 27.0.1. iOS showed the prompt even with no `NSLocalNetworkUsageDescription` entry.

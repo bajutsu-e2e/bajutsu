@@ -129,7 +129,7 @@ Scenario ::= {
   mocks?:          list(<Mock>),            # 既定 []
   redact?:         <Redact>,
   permissions?:    <Permissions>,           # 起動前の OS 権限状態; 既定 {}
-  interrupts?:     list(<Interrupt>),       # 既定 []  — 予測できないタイミングで現れる中断画面のハンドラ（BE-0314）。ターゲットの `hooks.interrupts` の後に追加される
+  interrupts?:     list(<InterruptEntry>),  # 既定 []  — 予測できないタイミングで現れたものを run が自分で片付ける宣言（BE-0314、BE-0473）。ターゲットの `hooks.interrupts` に重ねる
 }
 
 Component ::= { params?: list(string), steps: list(<Step>) }
@@ -140,18 +140,25 @@ Component ::= { params?: list(string), steps: list(<Step>) }
 # 監視する宣言済みターゲットを指定します。省略するとプライマリターゲットを監視します（BE-0438）。
 Interrupt ::= { condition: <Assertion>, steps: list(<Step>), target?: string }
 
+# 1 つの `interrupts` リストは 3 つの形を持ち、エントリが書くキーで区別します（BE-0473）。アプリ自身の
+# ツリーにある画面、システムアラートガードが答える OS のプロンプト、Apple の TipKit の popover です。
+# 2 つの形のキーを混ぜたエントリはロード時に失敗します。ターゲットの `hooks.interrupts` も同じ形を取ります。
+# 画面のエントリは、ターゲットのものを先にして連結します。残る 2 つの形の重ね方は、後述の
+# SystemAlertInterrupt と TipKitInterrupt に書きます。
+InterruptEntry ::= <Interrupt> | <SystemAlertInterrupt> | <TipKitInterrupt>
+
 # ティアダウンのルール 1 件です（BE-0392）。答える結末と、その結末のときに走らせるステップを組にします。
 # 結末はシナリオ自身のマシンチェックされた判定であり、モデル呼び出しではありません。
 CleanupRule ::= { on: "always" | "success" | "failure", steps: list(<Step>) }
 
 # ── Preconditions ──────────────────────────────────────────────────────
-# `subject` と `run` はターゲットと同じグループ名を使います（BE-0452、BE-0470）。各フィールドは、シナリオが動かす各ターゲットの
-# 同じフィールドを上書きします。`subject.launch.env` はキーごとにマージし、`subject.launch.args` は追記し、
-# `run.systemAlertHandling` の規則は連結します（シナリオの規則が先）。動かすどのターゲットの
-# プラットフォームにもないフィールドは、デバイスを操作する前に run を失敗させます。シナリオは
+# `subject` はターゲットと同じグループ名を使います（BE-0452、BE-0470）。各フィールドは、シナリオが動かす各ターゲットの
+# 同じフィールドを上書きします。`subject.launch.env` はキーごとにマージし、`subject.launch.args` は追記します。
+# 動かすどのターゲットのプラットフォームにもないフィールドは、デバイスを操作する前に run を失敗させます。
+# 以前の `preconditions.run` はロード時に失敗し、各フィールドの移動先を示します（BE-0473）。シナリオは
 # デバイスの条件を宣言しません。`runsOn` はターゲットだけが持ちます（BE-0469）。
 Preconditions ::= {
-  app?:    {
+  subject?: {
     reinstall?: ("overwrite" | "clean" | "erase"),  # 弱い順。未設定はターゲットの `subject.reinstall`、なければ "clean"。iOS と Android、web は "erase" のみ（BE-0473）
     launch?: {
       env?:      map(string,string),        # 既定 {} — ターゲットの `subject.launch.env` にマージ
@@ -160,11 +167,7 @@ Preconditions ::= {
     },
   },
   device?: { ios?: <IosDevice> },           # 宛先がキー。動かさないプラットフォームのブロックは効果なし
-  run?:    {
-    systemAlertHandling?: <SystemAlertHandling>,  # アラートガード; 未指定で ON
-    tipKitHandling?:      boolean,          # ブロックしている TipKit の tip を閉じる; 未指定で OFF。iOS のみ
-    inheritSetup?:        boolean,          # 既定 true — false で、宣言した全ターゲットの `hooks.setup` を省く。cleanup は走る
-  },
+  inheritSetup?: boolean,                   # 既定 true — false で、宣言した全ターゲットの `hooks.setup` を省く。cleanup は走る
 }
 
 # シナリオが適用する iOS のデバイスの状態です。各フィールドは、ターゲットの `runsOn.ios` の同名の値を
@@ -172,18 +175,28 @@ Preconditions ::= {
 # 空でなければ、実効の `subject.reinstall: erase` が必要です。
 IosDevice ::= { locale?: string, seedPhotos?: list(string) }
 
-# ── SystemAlertHandling（リアクティブなシステムアラートガード; 既定 ON）─
-# XCUITest ではネイティブの SpringBoard 照会 + tap（モデルなし、BE-0316 を再利用。BE-0315）に加え、
-# その照会に映らないプロンプト向けのツリー内タップ。どの規則も同定しないアラートは、
-# 推測せずブロックされたステップの失敗理由に書き出す（BE-0402、BE-0406）。
-SystemAlertHandling ::= boolean                              # true=規則なしで ON、false=OFF
-               | { rules?: [<SystemAlertRule>],             # ガードの宣言のすべて（BE-0406）
-                   visionInstruction?: string,              # 自由記述。どのコマンドにも届かない。run は拒否する
-                   pollInterval?: number,                    # ネイティブのポーリング間隔・秒（既定 1）
-                   frozenScreenTimeout?: number }            # 止まった画面での打ち切り・秒（既定 10、0 で無効）
-SystemAlertRule ::= { prompt: notifications|tracking|paste|savePassword|localNetwork, choice: grant|deny }  # 1リストにつきプロンプトは一意
+# ── SystemAlertInterrupt（リアクティブなシステムアラートガードの答え）─
+# ガードは `run --no-system-alert-handling` を付けない限り ON です。シナリオやターゲットがガード全体を
+# OFF にする手段はありません。XCUITest ではネイティブの SpringBoard 照会 + tap（モデルなし、BE-0316 を
+# 再利用。BE-0315）で答え、その照会に映らないプロンプトにはツリー内でタップします。どのエントリも名指し
+# しないアラートは、推測せずブロックされたステップの失敗理由に書き出します（BE-0402、BE-0406）。
+# プロンプトごとに、シナリオのエントリがターゲットの `choice` を置き換え、省略した `frozenScreenTimeout`
+# はターゲットから受け継ぎます。それ以外のプロンプトは両方のリストから適用します。
+# 1 つのリストに同じプロンプトは 1 回だけ書けます（BE-0473）。
+SystemAlertInterrupt ::= {
+  systemAlert: notifications|tracking|paste|savePassword|localNetwork,
+  choice: grant|deny|leave,             # leave は何も答えない。シナリオ自身の handleSystemAlert ステップが処理する場合など
+  pollInterval?: number,                # ネイティブのポーリング間隔・秒（既定 1）。シナリオ › --alert-poll-interval › ターゲット、同じ層では最小値
+  frozenScreenTimeout?: number,         # 止まった画面での打ち切り・秒（既定 10、0 で無効）。savePassword のみ
+}
                 # savePassword はガード専用。iOS がプロセス内に出すため、ツリー内タップだけが答えられる。
                 # 後述の handleSystemAlert ステップはこれを拒否する（BE-0406）
+
+# ── TipKitInterrupt（Apple の TipKit の popover。iOS のみ）─────────────
+# エントリが求めない限り OFF です。tip 自体がアサーションの対象になる場合があるためです。シナリオの
+# エントリがターゲットのエントリに優先します。`run --ios-tipkit-handling` / `--no-ios-tipkit-handling`
+# は、すべてのシナリオのエントリを dismiss / leave に設定します。1 つのリストに 1 件までです（BE-0473）。
+TipKitInterrupt ::= { tipKit: dismiss|leave }
 
 Permissions ::= map(PermissionService, PermissionAction)    # アプリの起動前に適用する
 PermissionService ::= "location" | "camera" | "microphone" | "contacts"
@@ -485,14 +498,12 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 | `Scenario.tags` / `expect` / `capturePolicy` / `mocks` / `interrupts` / `setup` / `cleanup` | `[]` |
 | `Scenario.preconditions` | `{}`（どのフィールドもターゲットの値に、次に組み込みの既定値に従います） |
 | `Scenario.permissions` | `{}`（起動前の権限状態を適用しない） |
-| `Preconditions.run.systemAlertHandling` | 未指定（アラートガード ON。ただし規則が無いので、自分からはどのプロンプトにも答えない） |
-| `Preconditions.run.tipKitHandling` | 未指定（ターゲットの `run.tipKitHandling`、なければ OFF — tip 自体が検証対象になる場合があるため。iOS のみ） |
-| `Preconditions.run.inheritSetup` | `true`（宣言した各ターゲットの `hooks.setup` がシナリオの `setup` の前に走る） |
+| `Preconditions.inheritSetup` | `true`（宣言した各ターゲットの `hooks.setup` がシナリオの `setup` の前に走る） |
 | `Preconditions.subject.reinstall` | 未設定 — ターゲットの `subject.reinstall`、なければ `clean`。`--erase` は `erase` に引き上げ、`--no-erase` は `erase` を `clean` に下げます（BE-0473） |
 | `Preconditions.subject.launch.args` | `[]` |
 | `Preconditions.subject.launch.env` | `{}` |
-| `SystemAlertHandling.rules` | `[]`（プロンプトの宣言が無いのでガードは何にも答えない。出会ったアラートはブロックされたステップの失敗理由に書き出される） |
-| `SystemAlertHandling.visionInstruction` | 未設定。ほかの値は使えません。`run` は拒否し（BE-0402）、`record` / `crawl` は自由記述を自身の `--alert-vision-instruction` フラグからのみ読みます |
+| `systemAlert` エントリ | なし（ガードは ON ですが、どのプロンプトにも答えません。出会ったアラートはブロックされたステップの失敗理由に書き出します） |
+| `tipKit` エントリ | なし（ターゲットのエントリ、なければ OFF。tip 自体が検証対象になる場合があるためです。iOS のみ） |
 | `TypeText.submit` | `false` |
 | `Exists.negate` | `false` |
 | `MockResponse.status` | `200` |
@@ -590,7 +601,7 @@ scenarios:
 
 ### 6.4 共有のセットアップ、secrets、タグ選択
 
-- **共有のセットアップ**：1 度だけ記述するログインやナビゲーションの手順は、コンポーネント（§6.2）にします。シナリオ自身の `setup` か、config にあるターゲットの `hooks.setup` から `use` で呼び出します。ターゲットの hooks が呼ぶコンポーネントは config のロード時に config ファイルのディレクトリを基準に解決し、スイートのルートの内側に収まっている必要があります（BE-0174）。以前の `preconditions.setup` プレリュードファイルは廃止しました（[BE-0452](../../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)）。ターゲットの `hooks.setup` を走らせたくないシナリオは、`preconditions.run.inheritSetup: false` を指定します。
+- **共有のセットアップ**：1 度だけ記述するログインやナビゲーションの手順は、コンポーネント（§6.2）にします。シナリオ自身の `setup` か、config にあるターゲットの `hooks.setup` から `use` で呼び出します。ターゲットの hooks が呼ぶコンポーネントは config のロード時に config ファイルのディレクトリを基準に解決し、スイートのルートの内側に収まっている必要があります（BE-0174）。以前の `preconditions.setup` プレリュードファイルは廃止しました（[BE-0452](../../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)）。ターゲットの `hooks.setup` を走らせたくないシナリオは、`preconditions.inheritSetup: false` を指定します。
 - **`secrets`**（config の `evidence.secrets` で宣言する、環境変数名のリスト）：宣言した各名 `X` は `os.environ[X]` から解決され `${secrets.X}` に束縛され、**アクション時**に実行ステップへ置換されます（`cli/commands/run.py`, `orchestrator/substitution.py` `_interp_step`）。シナリオは `${secrets.X}` トークンを保ち値は持たず、リテラル値は証跡で自動マスクされます（`Redactor`）。`params.*` / `row.*` と異なり、この名前空間はロード時ではなく run ループが解決します。
 - **`tags`** と CLI の `--tag` / `--exclude` で実行対象を絞ります。`exclude` が `include` より優先されます（`select_scenarios`, `scenario/select.py`）。
 
@@ -611,6 +622,6 @@ load_scenarios        # この文法に対しパース + 検証
 ## 7. 検証とラウンドトリップ
 
 - `load_scenarios(text) -> list[Scenario]` は上記すべてに対して検証します。トップレベルはシナリオのシーケンスか `{description, scenarios}` マッピングのいずれかが必須で、[§4](#4-個数と排他の制約) のいずれかの規則違反はロードエラーになります（`scenario/load.py`）。
-- `dump_scenarios(scenarios) -> str` は YAML へ戻します。著者が設定しなかったフィールドだけを落とし、エイリアスキー（`idMatches`、`tipKitHandling` など）で出力します。出力は **そのまま再ロード可能**で、`record` が依存するラウンドトリップです（`scenario/serialize.py`）。
+- `dump_scenarios(scenarios) -> str` は YAML へ戻します。著者が設定しなかったフィールドだけを落とし、エイリアスキー（`idMatches`、`inheritSetup` など）で出力します。出力は **そのまま再ロード可能**で、`record` が依存するラウンドトリップです（`scenario/serialize.py`）。
 
 形の背後にある意味論（セレクタが 0/1/2+ 件にどう解決するか、各アサーションがどう比較するか、wait がどうタイムアウトするか）は [selectors](selectors.md) と [run-loop](run-loop.md) を参照してください。例でシナリオを書き始めるには [scenarios](scenarios.md) を参照してください。

@@ -16,11 +16,25 @@ Related: [app-agnostic in concepts](concepts.md#6-app-agnostic-push-differences-
 scenario** (the one closer to the test wins). A template is optional. It joins the chain when a
 target names one ([below](#templates-templates-be-0471)).
 
-A target accepts ten keys. Each key groups the settings for one purpose
+A target accepts nine keys. Each key groups the settings for one purpose
 ([BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)).
-Every target must name its `platform`. The loader fails on a key outside these ten and lists the
+Every target must name its `platform`. The loader fails on a key outside these nine and lists the
 keys a target accepts. It never reads the flat keys of earlier releases, such as `bundleId` or
 `appPath`.
+
+The `run` group was removed by
+[BE-0473](../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts.md),
+from a target, from `defaults`, and from `defaults.platforms.<platform>` alike. Its fields each
+moved to the group that already answers the same question. A config that still writes `run` fails
+to load, and the error names the new location of each field it carries:
+
+| Old key | New location |
+|---|---|
+| `run.erase: true` | `subject.reinstall: erase` |
+| `run.network`, `run.visualCompare`, `run.secrets` | `evidence.collectNetwork`, `evidence.visualCompare`, `evidence.secrets` |
+| `run.systemAlertHandling` | one `- systemAlert: <prompt>` entry with its `choice` per rule, in `hooks.interrupts` ([below](#system-alerts-and-tipkit-in-hooksinterrupts)) |
+| `run.tipKitHandling: true` | `- tipKit: dismiss` in `hooks.interrupts` |
+| `run.ignoredSettings` | `runsOn.ignoredSettings` ([below](#environment-specific-settings-runsonignoredsettings-be-0467)) |
 
 The [`subject`](glossary.md#subject) group was named `app` until
 [BE-0470](../roadmaps/BE-0470-subject-group-rename/BE-0470-subject-group-rename.md). A config that
@@ -34,9 +48,8 @@ the whole edit.
 | `subject` | What is under test (an app or a site): its identifier, how to build and launch it, readiness, and the id contract | Yes |
 | `runsOn` | Where the target runs: one block per destination, holding device conditions and device state | Yes |
 | `driver` | How Bajutsu drives the target | Yes |
-| `services` | The servers a run starts or stands in for | No |
-| `run` | The policy of a run | iOS adds `tipKitHandling` |
-| `hooks` | Steps that wrap every scenario | No |
+| `services` | The services a run depends on: the ones it starts and the ones it reaches | No |
+| `hooks` | Steps that wrap every scenario, and what the run clears on its own when it surfaces | No |
 | `evidence` | What a run keeps, how it compares, and what it masks | No |
 | `paths` | Where files live | No |
 | `ai` | Which provider backs the AI paths | No |
@@ -69,9 +82,11 @@ targets:
       idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
     driver:
       runner: { testRunner: ../../BajutsuKit/Runner/build/dd/Build/Products/BajutsuRunner.xctestrun }
-    run:
-      systemAlertHandling: { rules: [{ prompt: notifications, choice: grant }] }   # --system-alert-handling overrides per run
-      tipKitHandling: true                     # iOS only: the TipKit tip guard (built-in off)
+    hooks:
+      interrupts:
+        - systemAlert: notifications           # answer the notification prompt; --no-system-alert-handling turns the guard off
+          choice: grant
+        - tipKit: dismiss                      # iOS only: dismiss a blocking TipKit tip (built-in off)
     paths: { scenarios: scenarios }            # this target's scenarios dir (run reads it; record writes here)
 
   web:                            # a web target (Playwright backend) is identified by URL
@@ -95,7 +110,10 @@ so a key another platform takes fails as unknown on this one, with the accepted 
 | `subject` | `id`, `path`, `build`, `reinstall`, `launch.env`, `launch.args`, `launch.deeplink`, `startWhen`, `idNamespaces` | `id`, `path`, `build`, `reinstall`, `launch.env`, `launch.deeplink`, `grantPermissions`, `startWhen`, `idNamespaces` | `url`, `launch.env`, `startWhen`, `idNamespaces` |
 | `runsOn` | `ios.model`, `ios.os`, `ios.kind`, `ios.family`, `ios.locale`, `ios.seedPhotos` | `android.avd`, `android.apiLevel` | `browser.kind`, `browser.version`, `browser.emulate` |
 | `driver` | `runner.testRunner`, `runner.build`, `runner.hostAddress` | `nativeZ` | `headless` |
-| `run`, extra fields | `tipKitHandling` | — | — |
+
+`runsOn` also takes `ignoredSettings` on every platform. That key names no destination. It lists
+the settings the target's environment cannot apply
+([below](#environment-specific-settings-runsonignoredsettings-be-0467)).
 
 The test-only `fake` platform takes an optional `subject.id`, `subject.startWhen`, and `subject.idNamespaces`,
 and nothing in `runsOn` or `driver`. A `fake` target resolves to the iOS-shaped sub-config.
@@ -104,9 +122,8 @@ The shared groups hold the same fields on every platform:
 
 | Group | Fields |
 |---|---|
-| `services` | `server` (bring up the app's own host for the run, below), `mockServer`, `mailbox` ([below](#mailbox-the-email-step)) |
-| `run` | `systemAlertHandling`, `ignoredSettings` (target only, [below](#environment-specific-settings-runignoredsettings-be-0467)) |
-| `hooks` | `setup`, `cleanup`, `interrupts` |
+| `services` | `server` (bring up the app's own host for the run, below), `mockServer`, `mailbox` (an external inbox the run polls and never starts, [below](#mailbox-the-email-step)) |
+| `hooks` | `setup`, `cleanup`, `interrupts` (screens, system alerts, and TipKit, [below](#system-alerts-and-tipkit-in-hooksinterrupts)) |
 | `evidence` | `capture`, `redact`, `collectNetwork`, `visualCompare`, `secrets` |
 | `paths` | `scenarios`, `baselines`, `schemas`, `goldens` |
 
@@ -445,9 +462,9 @@ platforms — rather than `effective.bundle_id` directly, which does not exist.
 | `conditions` | `runsOn` | the device conditions the target declares ([above](#device-conditions-runson)), ranges as written; `run` forms its runs from them, and `doctor` lists those runs |
 | `device_provider` | `--worker-config` | where this target's devices come from. The config no longer names it: an `appium` environment in the `worker.yaml` the command runs under hands the grid's endpoint to the targets of the grid's platform ([what a machine can run](#what-a-machine-can-run-outside-the-config-be-0450)), and every other target takes the built-in `local` provider (the `--udid` path). Bajutsu drives that endpoint end to end over a live W3C WebDriver transport ([iOS device cloud](ios-device-cloud.md#live--an-appium-endpoint-provider), [BE-0236](../roadmaps/BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md), [BE-0238](../roadmaps/BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md)) |
 | `launch_server` | `services.server` | optional `{cmd, readyUrl, readyTimeout, cwd, env}` — bring up the app's host for the run, then tear it down: probe `readyUrl` (default `subject.url`), reuse it if already serving, else run `cmd` and wait until ready (a condition wait, never a fixed sleep). The web analogue of `subject.build` ([BE-0059](../roadmaps/BE-0059-launch-target-server/BE-0059-launch-target-server.md)). For an **uploaded** bundle in `serve`, the host never runs `cmd` directly — `serve --upload-exec` governs it (see [self-hosting](self-hosting.md#uploaded-config-command-execution-be-0090)); a `sandbox` run needs the extra fields `dockerImage` (a Docker image reference, e.g. `node:20-slim`) **or** `dockerfile` (a bundle-relative path built with `docker build`) — exactly one — plus `port` (the in-container listen port, published to a loopback host port) ([BE-0090](../roadmaps/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md)) |
-| `run_defaults.system_alert_handling` / `.ios_tip_kit_handling` | `run` | per-app defaults for run-behavior settings otherwise set per scenario or on a CLI flag ([BE-0177](../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md)). `run.systemAlertHandling` takes the scenario form (`false`, or `{ rules, visionInstruction, pollInterval }`) and defaults the alert guard. Its on/off bit resolves **flag > scenario > this > built-in on** (`--system-alert-handling`/`--no-system-alert-handling`), mirroring `--headed`/`headless`, but each policy key composes by its own type ([BE-0401](../roadmaps/BE-0401-system-alert-handling-dsl-consolidation/BE-0401-system-alert-handling-dsl-consolidation.md)): the list `rules` is **concatenated** innermost layer first, so a scenario's answers are tried before this default's and neither layer deletes the other; the scalar `pollInterval` takes the innermost layer that supplies one (scenario, else `--alert-poll-interval`, else this). `visionInstruction` reaches `run` from no layer at all: [BE-0402](../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md) removed the fallback it steered, so a scenario or a target config carrying it is rejected before the run starts. A rule here answers its prompt even inside a scenario that rules on other prompts — the guard prints a notice when it does, and the scenario overrides it by writing its own rule for that prompt. `labels` was removed by [BE-0406](../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts.md): a button label named a button, never the alert it sat on, so a target config could license a tap on a screen no scenario had described. See [`systemAlertHandling` layering](scenarios.md#layering-a-key-reaches-a-run-from-three-places). `run.tipKitHandling` defaults the TipKit tip guard (iOS only, built-in **off**) and rides the same precedence via `--ios-tipkit-handling`/`--no-ios-tipkit-handling` |
-| `run_defaults.setup` / `.cleanup` / `.interrupts` | `hooks.setup` / `hooks.cleanup` / `hooks.interrupts` | steps that wrap every scenario of the target: `setup` runs ahead of a scenario's own `setup`, `cleanup` behind its own `cleanup` (a rule takes `on: always`, `success`, or `failure`, the words a scenario's `cleanup` rule uses), and `interrupts` are checked before the scenario's. A hook step may call a component with `use: { component: <file>, with: … }`: the loader resolves it when the config loads, against the config file's directory, and refuses a reference that leaves the suite root ([BE-0174](../roadmaps/BE-0174-scenario-ref-path-containment/BE-0174-scenario-ref-path-containment.md)). `group:` and `setMocks` stay rejected there. A scenario skips every declared target's `hooks.setup` with `preconditions.run.inheritSetup: false`; the cleanup still runs |
-| `locale` | `runsOn.ios.locale` | iOS: applied at launch (`simctl` launch args), built-in `en_US`. On the XCUITest backend it also pins the **Simulator's own system language** on every cold spawn — written to the device's global preference domain, then rebooted so SpringBoard renders it — so an out-of-process permission prompt's button text is the one this `locale` predicts rather than whatever language the Simulator happened to carry; a scenario whose `preconditions.device.ios.locale` differs from the pinned one forces a cold respawn rather than reusing a warm runner ([BE-0320](../roadmaps/BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md)). A `handleSystemAlert` step under a language outside the label table (English and Japanese) answers by the button's position instead; a `systemAlertHandling.rules` entry under such a language still fails the scenario before any device work ([BE-0445](../roadmaps/BE-0445-system-alert-locale-agnostic-answer/BE-0445-system-alert-locale-agnostic-answer.md)) |
+| `run_defaults.system_alerts` / `.ios_tip_kit_handling` | the `systemAlert` and `tipKit` entries of `hooks.interrupts` | per-app defaults for the system-alert guard and the TipKit guard, which a scenario's own `interrupts` layers over ([BE-0177](../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md), [BE-0473](../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts.md)). A `systemAlert` entry answers its prompt even inside a scenario that declares entries for other prompts; the run prints a notice when it does, and the scenario overrides it with its own entry for that prompt. The layering rules are [below](#system-alerts-and-tipkit-in-hooksinterrupts) and in [scenarios](scenarios.md#layering-a-key-reaches-a-run-from-three-places). `tipKit: dismiss` defaults the TipKit guard (iOS only, built-in **off**); `--ios-tipkit-handling`/`--no-ios-tipkit-handling` override it for every scenario |
+| `run_defaults.setup` / `.cleanup` / `.interrupts` | `hooks.setup` / `hooks.cleanup` / `hooks.interrupts` | steps that wrap every scenario of the target: `setup` runs ahead of a scenario's own `setup`, `cleanup` behind its own `cleanup` (a rule takes `on: always`, `success`, or `failure`, the words a scenario's `cleanup` rule uses), and `interrupts` are checked before the scenario's. A hook step may call a component with `use: { component: <file>, with: … }`: the loader resolves it when the config loads, against the config file's directory, and refuses a reference that leaves the suite root ([BE-0174](../roadmaps/BE-0174-scenario-ref-path-containment/BE-0174-scenario-ref-path-containment.md)). `group:` and `setMocks` stay rejected there. A scenario skips every declared target's `hooks.setup` with `preconditions.inheritSetup: false`; the cleanup still runs. The `systemAlert` and `tipKit` entries of `hooks.interrupts` resolve into the two fields of the row above, so `.interrupts` holds the screen entries alone |
+| `locale` | `runsOn.ios.locale` | iOS: applied at launch (`simctl` launch args), built-in `en_US`. On the XCUITest backend it also pins the **Simulator's own system language** on every cold spawn — written to the device's global preference domain, then rebooted so SpringBoard renders it — so an out-of-process permission prompt's button text is the one this `locale` predicts rather than whatever language the Simulator happened to carry; a scenario whose `preconditions.device.ios.locale` differs from the pinned one forces a cold respawn rather than reusing a warm runner ([BE-0320](../roadmaps/BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md)). A `handleSystemAlert` step under a language outside the label table (English and Japanese) answers by the button's position instead; a `systemAlert` entry in `interrupts` under such a language still fails the scenario before any device work ([BE-0445](../roadmaps/BE-0445-system-alert-locale-agnostic-answer/BE-0445-system-alert-locale-agnostic-answer.md)) |
 | `launch_env` / `launch_args` | `subject.launch.env` / `subject.launch.args` | a scenario's `preconditions.subject.launch.env` merges over the environment key by key, and its `.args` append after the arguments; `launch.args` is iOS only |
 | `reinstall` | `subject.reinstall` | iOS and Android: how much state is reset before each scenario, as one ladder from weakest to strongest. `overwrite` installs over the app and keeps its data; `clean` uninstalls, then installs; `erase` wipes the whole device, then installs (on Android, which has no device-wide wipe, the same as `clean`). The install itself needs `subject.path`. A scenario's `preconditions.subject.reinstall` wins; unset on both, the built-in `clean` applies ([BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)). `bajutsu run --erase` raises every scenario to `erase`, and `--no-erase` lowers an `erase` to `clean`. `erase` replaces the removed `run.erase: true`, which now fails at load naming this key; in `defaults`, which has no `subject` group, write it as `defaults.platforms.<platform>.subject.reinstall: erase` ([BE-0473](../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts.md)) |
 | `deeplink` | `subject.launch.deeplink` | iOS and Android: a URL the app opens once it has launched; a scenario's `preconditions.subject.launch.deeplink` replaces it |
@@ -481,7 +498,76 @@ into the action (`${secrets.X}`), and **masks the literal value everywhere it wo
 evidence** ([evidence](evidence.md#masking-redact)). The scenario source keeps the `${secrets.X}`
 token, never the value.
 
-### Environment-specific settings (`run.ignoredSettings`, BE-0467)
+### System alerts and TipKit in `hooks.interrupts`
+
+`hooks.interrupts` lists what a run clears on its own when it surfaces mid-scenario. One list holds
+three forms of entry
+([BE-0473](../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts.md)).
+The key an entry writes decides its form, so a reader never infers the form from a value's type:
+
+| Form | Required keys | Optional keys | What it clears |
+|---|---|---|---|
+| Screen | `condition` | `steps` | An interstitial screen in the app's own tree ([scenarios](scenarios.md#interrupts-handling-unpredictable-interstitial-screens)) |
+| System alert | `systemAlert`, `choice` | `pollInterval`, `frozenScreenTimeout` | An operating-system prompt, answered by the system-alert guard ([scenarios](scenarios.md#systemalert-the-system-alert-guard)) |
+| TipKit | `tipKit` | none | Apple's TipKit popover, on an iOS target alone ([scenarios](scenarios.md#tipkit-a-blocking-tipkit-tip)) |
+
+```yaml
+targets:
+  showcase-swiftui:
+    platform: ios
+    subject: { id: com.bajutsu.showcase.ios.swiftui }
+    hooks:
+      interrupts:
+        - condition: { exists: { id: [aerr_wait] } }   # an in-app screen
+          steps:
+            - tap: { id: [aerr_close] }
+        - systemAlert: notifications                   # an OS prompt
+          choice: grant
+        - systemAlert: savePassword
+          choice: deny
+          frozenScreenTimeout: 20                      # tuning that belongs to this prompt alone
+        - tipKit: dismiss                              # Apple's TipKit popover
+```
+
+The values each form takes:
+
+- `systemAlert` names a prompt: `notifications`, `tracking`, `paste`, `savePassword`, or
+  `localNetwork`.
+- `choice` is `grant`, `deny`, or `leave`. `leave` answers nothing for that prompt.
+- `pollInterval` sets how often, in seconds, the guard checks SpringBoard while a wait is pending.
+  The built-in value is one second.
+- `frozenScreenTimeout` sets how long, in seconds, a guarded wait tolerates a frozen screen before
+  it stops; `0` turns the stop off, and the built-in value is 10 seconds. It is accepted only on a
+  prompt raised into the app's own tree, which today means `savePassword`. On any other prompt the
+  load fails, because nothing would read the value.
+- `tipKit` is `dismiss` or `leave`. A `tipKit` entry on a target whose platform is not iOS fails at
+  load.
+
+The loader refuses three mistakes, each with an error that names it. An entry that mixes keys of
+two forms fails and names both forms. Two entries for the same prompt fail, and so do two `tipKit`
+entries, in one list. A target-level entry may not set `target`, and its steps may not use `group`
+or `setMocks`.
+
+The guard itself has no on/off key in the config. The guard runs unless `bajutsu run` gets
+`--no-system-alert-handling`. A target that used to write `systemAlertHandling: false` writes
+`choice: leave` on each prompt it means to leave instead. `visionInstruction` is gone too: `run`
+never reads a model, and `record` and `crawl` take `--alert-vision-instruction` on the command line.
+
+A scenario's own `interrupts` takes the same three forms and layers over the target's entries:
+
+| Form | How the target's and the scenario's entries combine |
+|---|---|
+| Screen | Concatenated, the target's entries first |
+| System alert | Per prompt: the scenario's entry replaces the target's `choice` and inherits an omitted `frozenScreenTimeout` from the target's entry for that prompt; the other prompts from both apply |
+| TipKit | The scenario's entry, else the target's; absent from both means off |
+
+`pollInterval` resolves by layer instead: the scenario, then `--alert-poll-interval`, then the
+target. Within one layer, the smallest value wins, because a shorter interval satisfies every entry
+that asked for a longer one. The guard has one frozen-screen bound. That bound is the most tolerant
+value among the entries that answer a prompt: the largest, with `0` (the stop off) over any value.
+[Scenarios](scenarios.md#layering-a-key-reaches-a-run-from-three-places) walks through each rule.
+
+### Environment-specific settings (`runsOn.ignoredSettings`, BE-0467)
 
 Some settings reach the device before the first step, and not every environment can apply them. The
 iOS Simulator wipes a device with `simctl erase`, which a real iPhone or a WebDriver endpoint cannot
@@ -509,13 +595,19 @@ run preflight, which names the setting, the target, and the declaration that wou
 environment refuses an unsupported setting again as it launches, so a lease driven directly, as
 `record` or `crawl` takes one, cannot apply it either.
 
-The one opt-out is the target's `run.ignoredSettings`: the setting key, and the reason the run goes
-without it.
+The one opt-out is the target's `runsOn.ignoredSettings`: the setting key, and the reason the run goes
+without it. The map sits in `runsOn` beside the destination blocks, because it describes the same
+environment. It was `run.ignoredSettings` until
+[BE-0473](../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts.md)
+removed the `run` group.
 
 ```yaml
 targets:
   iphone-device:
-    run:
+    platform: ios
+    subject: { id: com.example.app }
+    runsOn:
+      ios: { kind: device }
       ignoredSettings:
         erase: "A real device keeps app data; this lane accepts state from earlier runs"
 ```
@@ -526,8 +618,8 @@ settings" table in the HTML report's Environment panel, a `bajutsu.ignoredSettin
 JUnit testcase, and `ignoredSettings` in the CTRF test's `extra` ([reporting](reporting.md)). The
 launch also logs a warning naming it — the only trace for a lease that writes no report, such as
 `record` or `crawl`. The map is checked when the config loads: an unknown key or a
-blank reason fails, and `defaults.run` may not carry it, because an ignored setting belongs to one
-environment. A declaration for a setting the target's route supports or satisfies fails the run
+blank reason fails, and `defaults.platforms.<platform>.runsOn` may not carry it, because an ignored
+setting belongs to one environment. A declaration for a setting the target's route supports or satisfies fails the run
 preflight, so a stale declaration cannot hide a regression once the route gains the setting. A
 scenario never declares a setting ignored; it stays one definition of the test for every environment.
 
@@ -1039,7 +1131,7 @@ To add a new app, add **app-side preparation and one config entry**. The tool it
    plus `subject.launch.env`, `subject.idNamespaces`, and the rest as needed.
 3. **(Optional) a shared setup** — factor login etc. into a component file and call it from the
    target's `hooks.setup` with `use: { component: <file> }`, so it runs before every scenario's own
-   steps; a scenario opts out with `preconditions.run.inheritSetup: false`.
+   steps; a scenario opts out with `preconditions.inheritSetup: false`.
 4. **Verify with `bajutsu doctor --target <name>`** — look at the convention score (below).
 5. **Place scenarios** — write identifiers in the app's namespace.
 

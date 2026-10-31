@@ -155,9 +155,9 @@ means the same thing after the run that produced it exits
   never changes `ok` or `reason`. Empty on a step that has none, and absent on every run recorded
   before `schemaVersion` 16, which a reader treats as no warnings.
 - `ignored_settings`: each setting the scenario put in effect that a target's route could not apply
-  and the target declared under `run.ignoredSettings`, as `{target, key, reason}`
+  and the target declared under `runsOn.ignoredSettings`, as `{target, key, reason}`
   ([BE-0467](../roadmaps/BE-0467-environment-specific-settings/BE-0467-environment-specific-settings.md),
-  [configuration](configuration.md#environment-specific-settings-runignoredsettings-be-0467)). It
+  [configuration](configuration.md#environment-specific-settings-runsonignoredsettings-be-0467)). It
   never changes `ok`. Empty on a scenario that ignored nothing or that the preflight refused before any launch, and absent on
   every run recorded before `schemaVersion` 17, which a reader treats as none ignored.
 - `network.json`'s `startedAt` (one file per scenario, not shown in the manifest above): each
@@ -201,7 +201,7 @@ For CI integration. **one scenario = one `<testcase>`.** A failing scenario gets
 `text` lists each step / expect's ok/FAIL and reason. On a `--browsers` matrix run the engine is
 keyed into the case (`classname="bajutsu.<engine>"`), so CI sees `chromium.login` and `webkit.login`
 as distinct cases (BE-0076); a single-engine run keeps `classname="bajutsu"`. A scenario that ran
-without a setting its target declared under `run.ignoredSettings` carries a `<properties>` block
+without a setting its target declared under `runsOn.ignoredSettings` carries a `<properties>` block
 with one `bajutsu.ignoredSettings` property, whose value is a JSON array of `{target, key, reason}`
 ([BE-0467](../roadmaps/BE-0467-environment-specific-settings/BE-0467-environment-specific-settings.md));
 the verdict does not change.

@@ -155,10 +155,10 @@ DEVICEFARM_PROJECT_ARN=arn:aws:devicefarm:us-west-2:123456789012:project:abc \
 iOS のターゲットも Android と同じように fan-out できます。違いは次のとおりです。
 
 - ターゲットには `platform: ios` と `runsOn.ios.kind: device` を設定します。`subject.path` は、Device Farm のデバイス向けに署名した `.ipa` を指します（[iOS: 再署名と実機のケーパビリティ](#ios-再署名と実機のケーパビリティ)を参照してください）。
-- ターゲットの `run.ignoredSettings` に `install` を宣言します。iOS の実機では `subject.path` をインストールできないので、宣言がなければ実行がこの設定を拒否します。Device Farm では端末にビルドがすでに入っており、宣言はそのことを記録します。
+- ターゲットの `runsOn.ignoredSettings` に `install` を宣言します。iOS の実機では `subject.path` をインストールできないので、宣言がなければ実行がこの設定を拒否します。Device Farm では端末にビルドがすでに入っており、宣言はそのことを記録します。
 
   ```yaml
-  run:
+  runsOn:
     ignoredSettings:
       install: "Device Farm installs the .ipa before the test spec starts"
   ```
