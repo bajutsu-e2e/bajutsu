@@ -44,7 +44,7 @@ The map gates only the **true hard requirements** the capability set cleanly dec
   injected relauncher, not `DeviceControl`.
 - a `permissions` entry is not gated here: it is a setting applied before the steps, not a step, so
   the BE-0467 settings check (`settings_support.py`) judges each service against the same BE-0276
-  token, and honours a target's `run.ignoredSettings` declaration in one place.
+  token, and honours a target's `runsOn.ignoredSettings` declaration in one place.
 - every run needs `query` + `elements` (the baseline read path).
 
 Deliberately **not** gated (an audit of what each construct actually depends on, BE-0082):
@@ -65,7 +65,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from bajutsu.common.drivers import base
-from bajutsu.common.scenario import Assertion, Scenario, Step
+from bajutsu.common.scenario import Assertion, Interrupt, Scenario, Step
 
 if TYPE_CHECKING:
     from bajutsu.common.capability.worker_capability import WorkerCapability
@@ -171,7 +171,8 @@ def _navigate_locations(sc: Scenario) -> list[str]:
     # `_walk_scenario` stops at setup / steps / cleanup; an interrupt's recovery steps run on the
     # leased device too, so a `navigate` there has to be caught before the lease as well.
     for i, entry in enumerate(sc.interrupts):
-        paths.extend(found(_walk_steps(entry.steps, f"interrupts[{i}] ")))
+        if isinstance(entry, Interrupt):
+            paths.extend(found(_walk_steps(entry.steps, f"interrupts[{i}] ")))
     return paths
 
 
@@ -197,6 +198,8 @@ def _attribute_locations(sc: Scenario) -> list[str]:
     paths = [f"expect[{i}]" for i, a in enumerate(sc.expect or []) if a.attribute is not None]
     paths.extend(found(_walk_scenario(sc)))
     for i, entry in enumerate(sc.interrupts):
+        if not isinstance(entry, Interrupt):
+            continue
         if entry.condition.attribute is not None:
             paths.append(f"interrupts[{i}] > condition")
         paths.extend(found(_walk_steps(entry.steps, f"interrupts[{i}] ")))
@@ -351,7 +354,7 @@ def steps_for_target(s: Scenario, target: str) -> Scenario:
             "expect": [a for a in s.expect if (a.target or s.final_primary) in routed],
             "interrupts": [
                 e
-                for e in s.interrupts
+                for e in s.screens
                 if e.target == target or (e.target is None and target in primaries)
             ],
         }

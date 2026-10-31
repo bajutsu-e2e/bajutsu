@@ -134,9 +134,3 @@ class IosDriver(_Model):
     """`driver` on iOS: how Bajutsu drives the app through XCUITest."""
 
     runner: IosRunner = Field(default_factory=IosRunner)
-
-
-class IosRun(_Model):
-    """The iOS fields of `run`, added to the run policy every platform shares."""
-
-    tip_kit_handling: bool | None = Field(default=None, alias="tipKitHandling")

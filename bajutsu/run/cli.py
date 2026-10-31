@@ -16,7 +16,6 @@ if TYPE_CHECKING:
     from bajutsu.common.doctor import Score
 
 import typer
-from pydantic import ValidationError
 
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
@@ -101,9 +100,9 @@ from bajutsu.common.scenario import (
     RawScenario,
     Scenario,
     Step,
-    SystemAlertHandling,
-    SystemAlertHandlingField,
+    SystemAlertInterrupt,
     SystemAlertRule,
+    TipKitInterrupt,
     _scenarios_declaring_targets,
     contained_ref,
     declared_name,
@@ -114,6 +113,8 @@ from bajutsu.common.scenario import (
     read_csv,
     scenario_sources,
     select_scenarios,
+    system_alert_entries,
+    tip_kit_entry,
 )
 from bajutsu.common.scenario.system_alerts import (
     UncoveredSystemAlertLocale,
@@ -963,7 +964,7 @@ def _install_steps(s: Scenario) -> Iterator[Step]:
     yield from walk(s.setup)
     for rule in s.cleanup:
         yield from walk(rule.steps)
-    for entry in s.interrupts:
+    for entry in s.screens:
         yield from walk(entry.steps)
 
 
@@ -1088,8 +1089,9 @@ def _filter_scenarios(
     its ladder (BE-0473): `--erase` makes it `erase`, and `--no-erase` lowers the scenario's own
     `erase` to `clean`. A target's own `erase` is lowered on its `Effective` instead
     (`_with_erase_flag`), since each target a scenario drives merges its own `subject.reinstall`.
-    `preconditions.run.tipKitHandling` resolves by the same precedence, but is set only when it ends
-    on or the flag names it, so a scenario that drives no iOS target never gains the iOS-only field.
+    The scenario's `tipKit` interrupt entry resolves by the same precedence — the flag, then the
+    scenario's own entry, then the target's `dismiss` — and is written only when it ends on or the
+    flag names it, so a scenario that drives no iOS target never gains the iOS-only entry.
     """
     include = [t.strip() for t in tag.split(",") if t.strip()]
     excluded = [t.strip() for t in exclude.split(",") if t.strip()]
@@ -1107,10 +1109,16 @@ def _filter_scenarios(
         elif erase is False and subject.reinstall == "erase":
             subject.reinstall = "clean"
         if ios_tipkit_handling is not None:
-            s.preconditions.run.tip_kit_handling = ios_tipkit_handling
-        elif s.preconditions.run.tip_kit_handling is None and target_ios_tipkit_handling:
-            s.preconditions.run.tip_kit_handling = True
+            _set_tip_kit(s, "dismiss" if ios_tipkit_handling else "leave")
+        elif tip_kit_entry(s.interrupts) is None and target_ios_tipkit_handling:
+            _set_tip_kit(s, "dismiss")
     return scenarios
+
+
+def _set_tip_kit(s: Scenario, value: str) -> None:
+    """Make *value* the scenario's one `tipKit` entry, replacing any it wrote."""
+    others = [e for e in s.interrupts if not isinstance(e, TipKitInterrupt)]
+    s.interrupts = [*others, TipKitInterrupt.model_validate({"tipKit": value})]
 
 
 def _check_preconditions_or_exit(
@@ -1154,29 +1162,6 @@ def _select_actuator(
     return actuator, backends
 
 
-def _apply_system_alert_handling(
-    scenarios: list[Scenario], system_alert_handling: bool | None
-) -> None:
-    """Apply the `--system-alert-handling` / `--no-system-alert-handling` override to every scenario.
-
-    Turning the guard on preserves whatever policy the scenario already declared and re-enables one
-    that had switched itself off; turning it off replaces the whole field with `False`, which is what
-    off *is* now the boolean carries on and off (BE-0401) — an off guard reads no policy. A no-op
-    when the flag is unset (each scenario's own `systemAlertHandling`, default on, decides). Mirrors
-    the `--erase` override.
-    """
-    if system_alert_handling is None:
-        return
-    for s in scenarios:
-        if not system_alert_handling:
-            s.preconditions.run.system_alert_handling = False
-            continue
-        prev = s.preconditions.run.system_alert_handling
-        s.preconditions.run.system_alert_handling = (
-            prev if isinstance(prev, SystemAlertHandling) else (SystemAlertHandling())
-        )
-
-
 def _resolve_rules(rules: list[SystemAlertRule], locale: str) -> list[ResolvedAlertRule]:
     """Each rule's prompt resolved to one entry per rendering it has under `locale`.
 
@@ -1202,7 +1187,7 @@ def _resolve_rules(rules: list[SystemAlertRule], locale: str) -> list[ResolvedAl
             # actually failed.
             covered = ", ".join(covered_languages(rule.prompt))
             raise UncoveredSystemAlertLocale(
-                f"systemAlertHandling.rules prompt: {rule.prompt} has no known button labels for "
+                f"interrupts systemAlert: {rule.prompt} has no known button labels for "
                 f"locale {locale!r}; covered: {covered}. Answer that prompt with a "
                 "handleSystemAlert step instead, which falls back to the button's position "
                 "(BE-0445), add the language to bajutsu/common/scenario/system_alerts.py, or pin a "
@@ -1222,196 +1207,159 @@ def _resolve_rules(rules: list[SystemAlertRule], locale: str) -> list[ResolvedAl
     return resolved
 
 
-def _flag_alert_policy(poll_interval: float | None) -> SystemAlertHandling | None:
-    """The command-line layer of `systemAlertHandling`, or None when no flag declares one.
-
-    Only `pollInterval` has a flag. `rules` has none: an entry pairs a prompt with a choice, which
-    one flag value cannot carry legibly, so a per-prompt declaration stays a scenario-file and
-    target-config one (BE-0401). `--alert-labels` went with `labels` itself (BE-0406), and
-    `visionInstruction` has had none since BE-0402 removed `run`'s vision fallback.
+def _check_flag_poll_interval(poll_interval: float | None) -> None:
+    """Refuse a non-positive `--alert-poll-interval`, as a CLI error rather than a traceback.
 
     Raises:
-        typer.Exit: a flag's value does not satisfy the schema, reported as a CLI error rather than a
-            validation traceback.
+        typer.Exit: The value is zero or negative.
     """
-    fields: dict[str, Any] = {}
-    if poll_interval is not None:
-        fields["pollInterval"] = poll_interval
-    if not fields:
-        return None
-    try:
-        return SystemAlertHandling.model_validate(fields)
-    except ValidationError as exc:
-        typer.echo(f"invalid alert-guard flag: {exc}")
-        raise typer.Exit(2) from exc
+    if poll_interval is not None and poll_interval <= 0:
+        typer.echo("invalid --alert-poll-interval: it must be positive")
+        raise typer.Exit(2)
 
 
 def _warn_target_rules_reach(
     s: Scenario,
-    scenario_rules: list[SystemAlertRule],
-    target_rules: list[SystemAlertRule],
+    scenario_entries: list[SystemAlertInterrupt],
+    target_entries: list[SystemAlertInterrupt],
 ) -> None:
-    """Notice each target rule that will answer a prompt inside a scenario answering for itself.
+    """Notice each target entry that will answer a prompt inside a scenario answering for itself.
 
     Composition restores a case BE-0382 removed on purpose. The behavior is correct under the
-    specificity ladder — the layers concatenate, innermost first — but BE-0382's objection was that
-    it is *silent*: a project-wide edit changes a scenario that already declares for itself. The
-    notice keeps the composition and removes the silence. Only a rule the scenario does not already
-    rule on is named, since its own rule shadows the target's for that prompt.
-
-    "Answering for itself" reads the scenario's own rules and nothing else: `rules` is the only
-    declaration left (BE-0406) and no flag can carry one, so the scenario is the only layer inside
-    the target's that a declaration can come from.
+    specificity ladder — a scenario's entry replaces the target's for its own prompt, and the
+    target's answer every other — but BE-0382's objection was that it is *silent*: a project-wide
+    edit changes a scenario that already declares for itself. The notice keeps the composition and
+    removes the silence. Only a prompt the scenario does not already name is reported, and a target
+    entry that leaves its prompt answers nothing, so it is not reported either.
 
     Keyed on the scenario *and* the prompt, not the prompt alone: `warn_once` dedupes for the whole
     process, so a prompt-only code would warn for the first affected scenario of a run and pass over
     the rest in the very silence this removes.
     """
-    if not target_rules or not scenario_rules:
+    if not target_entries or not scenario_entries:
         return
-    ruled = {r.prompt for r in scenario_rules}
-    for rule in target_rules:
-        if rule.prompt in ruled:
+    named = {e.system_alert for e in scenario_entries}
+    for entry in target_entries:
+        if entry.system_alert in named or entry.choice == "leave":
             continue
         warn_once(
-            f"systemAlertHandling.targetRule.{s.name}.{rule.prompt}",
-            f"scenario {s.name!r} declares its own system-alert rules, and the target config's "
-            f"rule for the {rule.prompt} prompt still answers it ({rule.choice}); "
-            "write the scenario's own rule for that prompt to override it.",
+            f"interrupts.targetSystemAlert.{s.name}.{entry.system_alert}",
+            f"scenario {s.name!r} declares its own systemAlert entries, and the target config's "
+            f"entry for the {entry.system_alert} prompt still answers it ({entry.choice}); "
+            "write the scenario's own entry for that prompt (`choice: leave` to answer nothing) "
+            "to override it.",
         )
 
 
-def _policy_of(value: SystemAlertHandlingField) -> SystemAlertHandling | None:
-    """The policy a layer declares, or None when it declares none (absent) or switches the guard off.
+def _merged_system_alerts(
+    scenario_entries: list[SystemAlertInterrupt], target_entries: list[SystemAlertInterrupt]
+) -> list[SystemAlertInterrupt]:
+    """The `systemAlert` entries in effect: the scenario's per prompt, then the target's (BE-0473).
 
-    `False` and an absent key are both "no policy here" to every caller that reads declarations; only
-    the enabled check below distinguishes them.
+    A scenario entry replaces the target's `choice` for the same prompt and inherits an omitted
+    `frozenScreenTimeout` from it, since that value describes the app rather than the scenario. The
+    scenario's entries come first: matching returns on the first rule whose prompt it identifies, and
+    `_widest_first` keeps that order for two layers' copies of one shape.
     """
-    return value if isinstance(value, SystemAlertHandling) else None
+    by_prompt = {e.system_alert: e for e in target_entries}
+    merged: list[SystemAlertInterrupt] = []
+    for entry in scenario_entries:
+        target = by_prompt.pop(entry.system_alert, None)
+        inherit = entry.frozen_screen_timeout is None and target is not None
+        merged.append(
+            entry.model_copy(update={"frozen_screen_timeout": target.frozen_screen_timeout})
+            if inherit and target is not None
+            else entry
+        )
+    return [*merged, *by_prompt.values()]
 
 
-def _reject_vision_instruction(
-    scenarios: list[Scenario], target_policy: SystemAlertHandling | None
-) -> None:
-    """Stop the whole run when a layer supplies a `visionInstruction` (BE-0402).
+def _layer_poll_interval(entries: list[SystemAlertInterrupt]) -> float | None:
+    """One layer's `pollInterval`: the smallest its entries set, or None when none sets one.
 
-    The key steers only the AI-vision fallback, which `run` no longer has, so acting on it is
-    impossible and ignoring it is worse than failing: a scenario that wrote `visionInstruction: "tap
-    Allow"` to *grant* a permission would silently fall through to the built-in dismissive labels and
-    deny it instead — the silent wrong answer BE-0382 spent its Motivation ruling out for the same
-    field. The key itself now reaches no command: `run` refuses it here, and `record` / `crawl` read
-    the free-text form only from their own `--alert-vision-instruction` flag, never from a scenario or
-    a target config. It stays in the schema so a file carrying it gets this message rather than
-    Pydantic's generic "extra fields not permitted" — the same reason BE-0401 kept `instruction`
-    reachable long enough to name its replacement. Two layers can carry it — a scenario and the
-    target config's `run_defaults`; the command line cannot, since `run` retired the flag that set it.
-
-    Checked eagerly over every scenario, before the per-scenario closure is ever returned. That
-    closure runs inside the run loop, in a worker, so a check placed there would fire on scenario N
-    with scenarios 1…N-1 already executed — partway through a run. This deliberately differs from
-    `resolved_locale`, which does raise from inside the closure and is caught as one scenario's
-    failure: an uncovered locale is a condition of the run, an unusable `visionInstruction` is an
-    authoring mistake in the file and is detectable without a device, so a suite is rejected or
-    accepted whole.
-
-    Raises:
-        typer.Exit: any layer supplies the key, reported as a CLI error naming where it came from.
+    A shorter interval satisfies every entry that asked for a longer one, so the smallest never
+    weakens another entry's request (BE-0473).
     """
-    named = [
-        f"scenario {s.name!r}"
-        for s in scenarios
-        if (policy := _policy_of(s.preconditions.run.system_alert_handling)) is not None
-        and policy.vision_instruction
-    ]
-    if target_policy is not None and target_policy.vision_instruction:
-        named.append("the target config's run_defaults")
-    if not named:
-        return
-    typer.echo(
-        f"systemAlertHandling.visionInstruction is not supported by `run` ({', '.join(named)}): "
-        "it steers only the AI-vision fallback, which `run` no longer has (BE-0402). Answer the "
-        "prompt you expect with `rules: [{ prompt: ..., choice: ... }]` instead. "
-        "`record` and `crawl` still read it."
-    )
-    raise typer.Exit(2)
+    return min((e.poll_interval for e in entries if e.poll_interval is not None), default=None)
+
+
+def _frozen_screen_timeout(answered: list[SystemAlertInterrupt]) -> float:
+    """The guard-wide frozen-screen bound from the entries that answer a prompt.
+
+    The guard has one bound, so the most tolerant entry wins: the largest value, and 0 (the stop
+    turned off) over any value. A stricter bound would stop the wait on the screen another entry's
+    app was declared to hold that long.
+    """
+    values = [e.frozen_screen_timeout for e in answered if e.frozen_screen_timeout is not None]
+    if not values:
+        return DEFAULT_FROZEN_SCREEN_TIMEOUT
+    return 0.0 if 0 in values else max(values)
 
 
 def _alert_guard_factory(
-    scenarios: list[Scenario], eff: Effective, flag_policy: SystemAlertHandling | None
+    eff: Effective, *, enabled: bool | None, flag_poll_interval: float | None
 ) -> AlertGuardFor | None:
-    """Build a per-scenario alert-guard factory, or None when no scenario wants a guard.
+    """Build a per-scenario alert-guard factory, or None when `--no-system-alert-handling` is passed.
 
     Each scenario gets its own `AlertGuardConfig`, which since BE-0402 is deterministic throughout:
     the native path (BE-0315, reusing BE-0316's `handle_system_alert`) and the in-tree dismiss, and
     nothing else. `run` reaches no model here under any flag, so no AI credential is consulted and
     none is needed.
 
-    A setting reaches the run from three layers — the scenario, *flag_policy* (the command line), and
-    the target config (BE-0177) — composed by the key's type (BE-0401): `rules` concatenates
-    innermost layer first, so both layers' entries stay reachable, and `pollInterval` takes the
-    innermost layer that supplies one. `rules` reaches only two of the three, since no flag can carry
-    a prompt paired with a choice legibly.
+    The guard is on unless the flag turns it off. Its answers come from the `systemAlert` entries of
+    the scenario's `interrupts` layered over the target's `hooks.interrupts` (BE-0473,
+    `_merged_system_alerts`); an entry whose `choice` is `leave` answers nothing. `pollInterval`
+    resolves layer by layer, the scenario, then *flag_poll_interval*, then the target, and within a
+    layer takes the smallest value (`_layer_poll_interval`).
 
     Raises:
-        typer.Exit: a layer supplies a `visionInstruction`, which `run` can no longer act on.
+        typer.Exit: *flag_poll_interval* is not positive.
     """
-
-    # A scenario's guard is on when its own `systemAlertHandling` says so, else the target config's,
-    # else the built-in on (BE-0177). The `--system-alert-handling` flag is already baked onto the
-    # scenario by `_apply_system_alert_handling`, so it needs no separate check here.
-    def _enabled(s: Scenario) -> bool:
-        if s.preconditions.run.system_alert_handling is not None:
-            return s.preconditions.run.system_alert_handling is not False
-        if eff.run_defaults.system_alert_handling is not None:
-            return eff.run_defaults.system_alert_handling is not False
-        return True
-
-    if not any(_enabled(s) for s in scenarios):
+    _check_flag_poll_interval(flag_poll_interval)
+    if enabled is False:
         return None
-
-    target_policy = _policy_of(eff.run_defaults.system_alert_handling)
-    _reject_vision_instruction(scenarios, target_policy)
+    target_entries = eff.run_defaults.system_alerts
 
     def _guard_for(s: Scenario) -> AlertGuardConfig | None:
-        if not _enabled(s):
-            return None
-        # Innermost layer first, so a scalar's precedence and a list's concatenation are the same
-        # walk over the same sequence.
-        scenario_policy = _policy_of(s.preconditions.run.system_alert_handling)
-        layers = [p for p in (scenario_policy, flag_policy, target_policy) if p is not None]
+        scenario_entries = system_alert_entries(s.interrupts)
         poll_interval = next(
-            (layer.poll_interval for layer in layers if layer.poll_interval is not None),
+            (
+                v
+                for v in (
+                    _layer_poll_interval(scenario_entries),
+                    flag_poll_interval,
+                    _layer_poll_interval(target_entries),
+                )
+                if v is not None
+            ),
             DEFAULT_ALERT_POLL_INTERVAL,
         )
-
-        # The scenario's own rules ahead of the target's: matching returns on the first rule whose
-        # prompt it identifies, so a rule for the same prompt in both layers is an override, not the
-        # parse-time error a duplicate within one list is. Both layers stay in effect — the target's
-        # rules answer every prompt the scenario ruled on none of — which is the suppression BE-0382
-        # defined and BE-0401 reversed, under the notice below. Resolved against this scenario's own
-        # locale — the same value the run pins the Simulator's system language to — so a rule's labels
-        # are the ones actually on screen; an uncovered language raises here, before this scenario's
-        # device work (caught by the runner as a scenario failure).
-        scenario_rules = scenario_policy.rules if scenario_policy else []
-        target_rules = target_policy.rules if target_policy else []
-        # The notice reads the scenario's own declaration, not the concatenation below: that carries
-        # the target's *own* rules, which would make a scenario that declares nothing look like one
+        # The notice reads the scenario's own entries, not the merge below: that carries the
+        # target's *own* entries, which would make a scenario that declares nothing look like one
         # answering for itself.
-        _warn_target_rules_reach(s, scenario_rules, target_rules)
+        _warn_target_rules_reach(s, scenario_entries, target_entries)
+        answered = [
+            e
+            for e in _merged_system_alerts(scenario_entries, target_entries)
+            if e.choice != "leave"
+        ]
+        # Resolved against this scenario's own locale — the same value the run pins the Simulator's
+        # system language to — so a rule's labels are the ones actually on screen; an uncovered
+        # language raises here, before this scenario's device work (caught by the runner as a
+        # scenario failure).
         locale = s.preconditions.resolved_locale(eff.locale, eff.platform)
-        rules = _resolve_rules([*scenario_rules, *target_rules], locale)
-
-        frozen_screen_timeout = next(
-            (
-                layer.frozen_screen_timeout
-                for layer in layers
-                if layer.frozen_screen_timeout is not None
-            ),
-            DEFAULT_FROZEN_SCREEN_TIMEOUT,
+        rules = _resolve_rules(
+            [
+                SystemAlertRule(prompt=e.system_alert, choice=e.choice)
+                for e in answered
+                if e.choice != "leave"
+            ],
+            locale,
         )
-
         return AlertGuardConfig(
-            rules=rules, poll_interval=poll_interval, frozen_screen_timeout=frozen_screen_timeout
+            rules=rules,
+            poll_interval=poll_interval,
+            frozen_screen_timeout=_frozen_screen_timeout(answered),
         )
 
     return _guard_for
@@ -1475,7 +1423,7 @@ def _visual_asserting_scenarios(scenarios: list[Scenario]) -> set[int]:
             *s.setup,
             *s.steps,
             *(step for rule in s.cleanup for step in rule.steps),
-            *(step for entry in s.interrupts for step in entry.steps),
+            *(step for entry in s.screens for step in entry.steps),
         ]
         step_assertions = [a for step in _walk_visual_steps(all_steps) for a in step.assert_ or []]
         if any(a.visual is not None for a in [*s.expect, *step_assertions]):
@@ -1741,7 +1689,7 @@ def _scenario_mock_swaps(s: Scenario) -> list[_MockSwap]:
     swaps = list(
         _mock_swaps([*s.setup, *s.steps, *(step for rule in s.cleanup for step in rule.steps)])
     )
-    for entry in s.interrupts:
+    for entry in s.screens:
         swaps.extend(_mock_swaps(entry.steps, target=entry.target))
     return swaps
 
@@ -2787,21 +2735,22 @@ def run_body(
     ios_tipkit_handling: bool | None = typer.Option(
         None,
         "--ios-tipkit-handling/--no-ios-tipkit-handling",
-        help="dismiss a blocking iOS TipKit tip; overrides run.tipKitHandling, winning over every "
-        "scenario's preconditions.run.tipKitHandling and the target's (default: off)",
+        help="dismiss a blocking iOS TipKit tip, or keep it; sets every scenario's `tipKit` "
+        "interrupts entry, over the scenario's own and the target's (default: off)",
     ),
     # --- Alerts, capture & logging ---
     system_alert_handling: bool | None = typer.Option(
         None,
         "--system-alert-handling/--no-system-alert-handling",
-        help="override run.systemAlertHandling, winning over every scenario's "
-        "preconditions.run.systemAlertHandling and the target's (default: on; the guard is fully "
-        "deterministic and makes no model call)",
+        help="turn the system-alert guard on or off for every scenario; on, it answers the "
+        "`systemAlert` interrupts entries of the scenario and the target (default: on; the guard is "
+        "fully deterministic and makes no model call)",
     ),
     alert_poll_interval: float | None = typer.Option(
         None,
         "--alert-poll-interval",
-        help="seconds between the native system-alert presence queries (a scenario's own wins)",
+        help="seconds between the native system-alert presence queries (a scenario's own "
+        "`systemAlert` entry wins; this wins over the target's)",
     ),
     log_predicate: str = typer.Option(
         "", "--log-predicate", help="NSPredicate narrowing the deviceLog stream (e.g. subsystem)"
@@ -2969,7 +2918,7 @@ def run_body(
     """Run a scenario deterministically.
 
     Pass/fail is machine-only; the sole AI is the alert guard (on by default per scenario), which
-    only fires to clear an OS prompt that blocked a step — see each scenario's `systemAlertHandling`.
+    only fires to clear an OS prompt that blocked a step — see each scenario's `systemAlert` interrupts entries.
     """
     # Resolve the run's inputs from the flags — each step is an independently testable helper — then
     # assemble the plan and hand it to dispatch/finish. `run` itself stays a thin sequence.
@@ -3170,13 +3119,10 @@ def run_body(
             step_gate=step_gate,
         )
         workers = _resolve_multi_target_workers(scenarios, setups, primary.workers)
-        _apply_system_alert_handling(
-            scenarios, resolve_system_alert_handling_flag(system_alert_handling)
-        )
         alert_guard_for = _alert_guard_factory(
-            scenarios,
             eff,
-            _flag_alert_policy(alert_poll_interval),
+            enabled=resolve_system_alert_handling_flag(system_alert_handling),
+            flag_poll_interval=alert_poll_interval,
         )
         # Network collection resolves `--network/--no-network` over the target's
         # `evidence.collectNetwork`, then on (BE-0177); the resolved bool baked into mocks and the plan

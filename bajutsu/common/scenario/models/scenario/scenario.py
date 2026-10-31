@@ -17,7 +17,15 @@ from bajutsu.common.scenario.models._base import _Model
 from bajutsu.common.scenario.models.assertions import Assertion
 from bajutsu.common.scenario.models.evidence import CaptureRule, Network, Redact
 from bajutsu.common.scenario.models.mocks import Mock
-from bajutsu.common.scenario.models.steps import CleanupRule, Interrupt, Step
+from bajutsu.common.scenario.models.steps import (
+    CleanupRule,
+    Interrupt,
+    InterruptEntry,
+    Step,
+    check_interrupt_entries,
+    screen_entries,
+    tip_kit_entry,
+)
 
 from ._group_nesting import _check_no_nested_group
 from ._http_extract import _check_http_extract_vars
@@ -63,19 +71,19 @@ class Scenario(_Model):
     installs: list[str] = Field(default_factory=list)
     # Per-scenario OS permission state (BE-0276), applied before the app process starts: grant or
     # revoke a permission up front so the runtime prompt never appears (iOS `simctl privacy`,
-    # Android `pm grant`/`pm revoke`). Deterministic and AI-free, unlike the vision
-    # systemAlertHandling guard below, which reacts to a prompt only after it appears. Kept as a
+    # Android `pm grant`/`pm revoke`). Deterministic and ahead of the prompt, unlike a `systemAlert`
+    # entry in `interrupts` below, which reacts to a prompt only after it appears. Kept as a
     # plain `dict[str, str]` (validated below against the vocabulary) rather than a `Literal`-keyed
     # dict, so it stays assignable to the `Mapping[str, str]` the platform-lifecycle `start()` seam
     # expects.
     permissions: dict[str, str] = Field(default_factory=dict)
-    # Handlers for interstitial screens that surface at an unpredictable point (BE-0314): each entry
-    # names a `condition` (the assertion DSL `if` uses) and the `steps` that clear it. The runner
-    # checks each opportunistically against trees it has already fetched, wherever the screen appears
-    # — so an author need not predict the one spot to place an `if`. Appended to the target config's
-    # own `interrupts` (config entries first), mirroring how `systemAlertHandling` layers config
-    # under scenario. Empty (the default) means no scenario-level handler, so it prunes from a dump.
-    interrupts: list[Interrupt] = Field(default_factory=list)
+    # What the run clears on its own when it surfaces mid-scenario (BE-0314, BE-0473): a screen in
+    # the app's tree (`condition` + `steps`), checked opportunistically against trees the runner has
+    # already fetched; an OS prompt (`systemAlert` + `choice`) for the reactive guard; or Apple's
+    # TipKit popover (`tipKit`). Layered over the target's `hooks.interrupts`: screens concatenate
+    # (target entries first), a prompt's entry here replaces the target's for that prompt, and a
+    # `tipKit` entry here replaces the target's. Empty (the default) prunes from a dump.
+    interrupts: list[InterruptEntry] = Field(default_factory=list)
     data: list[dict[str, str]] | None = None
     data_file: str | None = Field(default=None, alias="dataFile")
     preconditions: Preconditions = Field(default_factory=Preconditions)
@@ -140,6 +148,21 @@ class Scenario(_Model):
         self._final_primary = name
 
     @property
+    def screens(self) -> list[Interrupt]:
+        """The screen entries of `interrupts` (`condition` + `steps`), in order."""
+        return screen_entries(self.interrupts)
+
+    @property
+    def dismisses_tips(self) -> bool:
+        """Whether the scenario's `interrupts` carries `- tipKit: dismiss` (BE-0473).
+
+        The run writes the target's and the flag's choice onto this entry before the scenario runs,
+        so it is the one value the loop reads.
+        """
+        entry = tip_kit_entry(self.interrupts)
+        return entry is not None and entry.tip_kit == "dismiss"
+
+    @property
     def source_stem(self) -> str | None:
         """The stem of the file this scenario was loaded from, or `None` outside a file loader."""
         return self._source_stem
@@ -152,19 +175,21 @@ class Scenario(_Model):
     @classmethod
     def _reject_renamed_alert_keys(cls, data: Any) -> Any:
         # `systemAlertHandling` renamed `alertHandling`, which had itself renamed `dismissAlerts`
-        # (BE-0317 / BE-0327). Both aliases were deleted rather than carried a third time (BE-0401),
-        # so name the canonical key here instead of leaving Pydantic's generic extra-field error.
-        for old in ("alertHandling", "dismissAlerts"):
-            reject_renamed_key(
-                data, surface="scenario", old=old, new="preconditions.run.systemAlertHandling"
-            )
-        # The run-policy fields moved under `preconditions.run` (BE-0452), which reads no old key.
-        for old, new in (
-            ("systemAlertHandling", "preconditions.run.systemAlertHandling"),
-            ("iosTipKitHandling", "preconditions.run.tipKitHandling"),
-        ):
-            if isinstance(data, dict) and old in data:
-                raise ValueError(f"scenario field '{old}' moved to '{new}'")
+        # (BE-0317 / BE-0327), and BE-0473 turned the declaration into `interrupts` entries; name the
+        # destination here instead of leaving Pydantic's generic extra-field error.
+        moved = {
+            "alertHandling": "a `- systemAlert: <prompt>` entry with its `choice`",
+            "dismissAlerts": "a `- systemAlert: <prompt>` entry with its `choice`",
+            "systemAlertHandling": "a `- systemAlert: <prompt>` entry with its `choice`",
+            "iosTipKitHandling": "a `- tipKit: dismiss` entry",
+        }
+        if isinstance(data, dict):
+            for old, new in moved.items():
+                if old in data:
+                    raise ValueError(
+                        f"scenario field '{old}' was removed; write {new} in the scenario's "
+                        "`interrupts` (BE-0473)"
+                    )
         # The lifecycle phases took the target's words (BE-0452), and old keys are not read.
         reject_renamed_key(data, surface="scenario", old="before", new="setup")
         reject_renamed_key(data, surface="scenario", old="after", new="cleanup")
@@ -179,6 +204,11 @@ class Scenario(_Model):
             if action not in _PERMISSION_ACTIONS:
                 raise ValueError(f"unknown permission action: {action!r} (expected grant|revoke)")
         return v
+
+    @model_validator(mode="after")
+    def _one_entry_per_prompt(self) -> Self:
+        check_interrupt_entries(self.interrupts, "interrupts")
+        return self
 
     @model_validator(mode="after")
     def _one_data_source(self) -> Self:

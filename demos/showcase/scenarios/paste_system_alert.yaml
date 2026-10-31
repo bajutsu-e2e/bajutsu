@@ -4,9 +4,9 @@
 # `UIPasteboard.general.string` raises the consent prompt that system.yaml's in-app Copy → Paste
 # round-trip deliberately never reaches. The prompt is answered by a native accessibility query on
 # the SpringBoard alert: no screenshot, no vision model, no Claude API key, so the whole flow stays
-# deterministic (prime directive 1: AI never decides pass/fail). `systemAlertHandling: false` proves
-# it — with the vision guard off, a handleSystemAlert that failed to tap would fail the run rather
-# than be rescued by the guard.
+# deterministic (prime directive 1: AI never decides pass/fail). The `choice: leave` entry proves
+# it — with the reactive guard told to answer nothing for this prompt, a handleSystemAlert that failed
+# to tap would fail the run rather than be rescued by the guard.
 #
 # The consent is asked every time (iOS records it as `kTCCServicePasteboard` at "ask", and no
 # `simctl privacy` toggle reaches that service), so the scenario is repeatable on one device rather
@@ -38,8 +38,8 @@
     subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
-    run:
-      systemAlertHandling: false
+  interrupts:
+    - { systemAlert: paste, choice: leave }
   steps:
     - setClipboard: { text: "bajutsu-cross-clip" }   # written from outside the app (BE-0052)
     - tap: { label: "Permissions", traits: [button] }
@@ -65,8 +65,8 @@
     subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
-    run:
-      systemAlertHandling: false
+  interrupts:
+    - { systemAlert: paste, choice: leave }
   steps:
     # The same seed as the grant scenario, and here it is the string that must *not* arrive: the
     # refused read publishes the `(none)` marker, so a tap that hit the grant button by mistake fails
@@ -94,8 +94,8 @@
     device:
       ios:
         locale: ja_JP
-    run:
-      systemAlertHandling: false
+  interrupts:
+    - { systemAlert: paste, choice: leave }
   steps:
     - setClipboard: { text: "bajutsu-cross-clip" }
     - tap: { label: "Permissions", traits: [button] }
@@ -116,8 +116,8 @@
     device:
       ios:
         locale: ja_JP
-    run:
-      systemAlertHandling: false
+  interrupts:
+    - { systemAlert: paste, choice: leave }
   steps:
     - setClipboard: { text: "bajutsu-cross-clip" }
     - tap: { label: "Permissions", traits: [button] }

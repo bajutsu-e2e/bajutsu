@@ -45,7 +45,7 @@ class HandleSystemAlert(_Model):
 
     Not every covered prompt is nameable here. This step reads the SpringBoard query alone, so a
     prompt iOS raises into the application's own process — `savePassword` — is rejected below and
-    declared as a `systemAlertHandling` rule instead (BE-0406).
+    declared as a `systemAlert` interrupts entry instead (BE-0406, BE-0473).
     """
 
     sel: Selector | None = None
@@ -73,7 +73,7 @@ class HandleSystemAlert(_Model):
                 f"handleSystemAlert cannot answer the {self.prompt} prompt: iOS raises it inside "
                 "the application's own process, where this step's SpringBoard query never sees it. "
                 f"Declare it reactively instead — "
-                f"systemAlertHandling: {{ rules: [{{ prompt: {self.prompt}, choice: … }}] }}"
+                f"interrupts: [{{ systemAlert: {self.prompt}, choice: … }}]"
             )
         return self
 

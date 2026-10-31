@@ -317,7 +317,7 @@ def expand_components(
         scenario.setup = expand(scenario.setup, [], resolve)
         for rule in scenario.cleanup:
             rule.steps = expand(rule.steps, [], resolve)
-        for entry in scenario.interrupts:
+        for entry in scenario.screens:
             entry.steps = expand(entry.steps, [], resolve)
         # The assignments above are plain attribute writes, which Pydantic never re-runs a
         # `model_validator` against — so a component's own steps would otherwise splice in a

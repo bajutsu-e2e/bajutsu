@@ -1,6 +1,6 @@
-"""A scenario's preconditions: the target's `subject` and `run` overridden, and the device state.
+"""A scenario's preconditions: the target's `subject` overridden, and the device state.
 
-`subject` and `run` take the target's names (BE-0452, BE-0470), so a field has one spelling at both levels. Where
+`subject` takes the target's name (BE-0452, BE-0470), so a field has one spelling at both levels. Where
 a run happens belongs to the target alone (BE-0469): a scenario names a target that declares the
 `runsOn` it needs, and sets only the device state it applies under `device`.
 """
@@ -8,24 +8,11 @@ a run happens belongs to the target alone (BE-0469): a scenario names a target t
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Annotated, Any, Literal
+from typing import Any, Literal
 
-from pydantic import BeforeValidator, Field, model_validator
+from pydantic import Field, model_validator
 
 from bajutsu.common.scenario.models._base import _Model
-
-from ._functions import _coerce_system_alert_handling
-from .system_alert_handling import SystemAlertHandling
-
-# The on-disk type of a `systemAlertHandling` field, shared by the scenario and the target config so
-# the two layers accept exactly the same forms. The boolean carries on and off (BE-0401): `false`
-# disables the guard, a mapping is on and holds the policy, and `None` (the key absent) inherits the
-# layer above. `{ enabled: false, rules: [...] }` — a policy the runtime discarded without a word —
-# is not representable.
-SystemAlertHandlingField = Annotated[
-    Literal[False] | SystemAlertHandling | None,
-    BeforeValidator(_coerce_system_alert_handling),
-]
 
 # Where each flat key of the pre-BE-0452 `preconditions` went; the loader reads none of them, and a
 # stored run's plan is rewritten by `load_stored_scenario_file` instead.
@@ -37,6 +24,18 @@ FLAT_PRECONDITION_KEYS: dict[str, str] = {
     "deeplink": "preconditions.subject.launch.deeplink",
     "locale": "preconditions.device.ios.locale",
     "seedPhotos": "preconditions.device.ios.seedPhotos",
+}
+
+# Where each field of the removed `preconditions.run` went (BE-0473). The loader reads none of them,
+# and a stored run's plan is rewritten by `load_stored_scenario_file` instead.
+PRECONDITION_RUN_KEYS: dict[str, str] = {
+    "erase": "preconditions.subject.reinstall: write `erase` for true, and `clean` or `overwrite` "
+    "for false",
+    "systemAlertHandling": "the scenario's own `interrupts`: one `- systemAlert: <prompt>` entry "
+    "with its `choice` per rule, and `choice: leave` for a prompt the scenario answers itself",
+    "tipKitHandling": "the scenario's own `interrupts`: `- tipKit: dismiss` for true, "
+    "`- tipKit: leave` for false",
+    "inheritSetup": "preconditions.inheritSetup",
 }
 
 # The device state BE-0469 moved from `preconditions.runsOn.<platform>` to `preconditions.device.ios`.
@@ -74,6 +73,14 @@ def _runs_on_moves(runs_on: Any) -> list[str]:
     return moves or ["preconditions.runsOn was removed: name a target that declares its runsOn"]
 
 
+def _run_moves(run: Any) -> list[str]:
+    """Where each field of a scenario's former `preconditions.run` went (BE-0473)."""
+    keys = [k for k in run if k in PRECONDITION_RUN_KEYS] if isinstance(run, dict) else []
+    return [
+        f"preconditions.run.{key} moved to {PRECONDITION_RUN_KEYS[key]} (BE-0473)" for key in keys
+    ] or ["preconditions.run was removed (BE-0473)"]
+
+
 class PreconditionsLaunch(_Model):
     """`preconditions.subject.launch`: what the scenario adds to the target's launch.
 
@@ -99,40 +106,6 @@ class PreconditionsApp(_Model):
     # built-in `clean` (BE-0452).
     reinstall: Literal["overwrite", "clean", "erase"] | None = None
     launch: PreconditionsLaunch = Field(default_factory=PreconditionsLaunch)
-
-
-class PreconditionsRun(_Model):
-    """`preconditions.run`: the scenario's own run policy (BE-0452).
-
-    Each value sits between a command-line flag and the target's `run`: a flag wins over the
-    scenario, and the scenario over the target. `secrets` stays a target-level union, so it is not
-    accepted here.
-    """
-
-    # The alert guard runs on by default; unset means "on, tap the prompt's default button" (see
-    # SystemAlertHandling). The scenario's rules are checked before the target's.
-    system_alert_handling: SystemAlertHandlingField = Field(
-        default=None, alias="systemAlertHandling"
-    )
-    # Dismiss a blocking TipKit tip when one is in the way; iOS only, so a scenario that drives no
-    # iOS target cannot set it. Off unless asked for: a tip is sometimes the very thing a scenario
-    # asserts on.
-    tip_kit_handling: bool | None = Field(default=None, alias="tipKitHandling")
-    # False skips the `hooks.setup` of every target the scenario declares (the target it runs
-    # against, when it declares none). The targets' cleanup still runs, since cleanup runs on every
-    # path out of a scenario.
-    inherit_setup: bool = Field(default=True, alias="inheritSetup")
-
-    @model_validator(mode="before")
-    @classmethod
-    def _reject_moved_keys(cls, data: Any) -> Any:
-        # The loader reads no old key (BE-0473), so the error is the migration path.
-        if isinstance(data, dict) and "erase" in data:
-            raise ValueError(
-                "preconditions.run.erase moved to preconditions.subject.reinstall (BE-0473): "
-                "write `erase` for true, and `clean` or `overwrite` for false"
-            )
-        return data
 
 
 class PreconditionsIosDevice(_Model):
@@ -161,11 +134,14 @@ class PreconditionsDevice(_Model):
 
 
 class Preconditions(_Model):
-    """Per-test environment setup: the target's `subject` and `run` overridden, and the device state."""
+    """Per-test environment setup: the target's `subject` overridden, and the device state."""
 
     subject: PreconditionsApp = Field(default_factory=PreconditionsApp)
     device: PreconditionsDevice = Field(default_factory=PreconditionsDevice)
-    run: PreconditionsRun = Field(default_factory=PreconditionsRun)
+    # False skips the `hooks.setup` of every target the scenario declares (the target it runs
+    # against, when it declares none). The targets' cleanup still runs, since cleanup runs on every
+    # path out of a scenario.
+    inherit_setup: bool = Field(default=True, alias="inheritSetup")
 
     @model_validator(mode="before")
     @classmethod
@@ -182,6 +158,8 @@ class Preconditions(_Model):
                 )
             if "runsOn" in data:
                 raise ValueError("; ".join(_runs_on_moves(data["runsOn"])))
+            if "run" in data:
+                raise ValueError("; ".join(_run_moves(data["run"])))
         return data
 
     def _ios_device(self, platform: str) -> PreconditionsIosDevice | None:

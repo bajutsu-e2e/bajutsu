@@ -3,28 +3,28 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from functools import cache, partial
-from typing import Any, cast
+from functools import partial
+from typing import Any
 
-from pydantic import Field, ValidationError, ValidationInfo, create_model, model_validator
+from pydantic import Field, ValidationError, model_validator
+
+from bajutsu.common.scenario import Interrupt, tip_kit_entry
 
 from ._model import _Model
 from .ai_settings import AiSettings
 from .evidence import Evidence
 from .hooks import Hooks, _nested_steps
 from .paths import Paths
-from .platform.registry import schema_for, validate_group, validate_model
-from .run_policy import RunPolicy
+from .platform.registry import schema_for, validate_group
 from .services import Services
 
-# The ten keys a target accepts, in the order the documentation lists them.
+# The nine keys a target accepts, in the order the documentation lists them.
 TARGET_KEYS: tuple[str, ...] = (
     "platform",
     "subject",
     "runsOn",
     "driver",
     "services",
-    "run",
     "hooks",
     "evidence",
     "paths",
@@ -39,17 +39,26 @@ MOVED_TARGET_KEYS: dict[str, str] = {
     "`targets:` narrows it to scenario names (BE-0473)",
 }
 
+# Where each field of the removed `run` group went (BE-0473), for a target, `defaults`, and
+# `defaults.platforms.<platform>` alike. Pydantic's generic extra-field error names no replacement.
+MOVED_RUN_KEYS: dict[str, str] = {
+    # `defaults` has no `subject`, so a shared erase goes under its platform block.
+    "erase": "subject.reinstall: erase (in defaults, platforms.<platform>.subject.reinstall)",
+    "network": "evidence.collectNetwork",
+    "visualCompare": "evidence.visualCompare",
+    "secrets": "evidence.secrets",
+    "systemAlertHandling": "hooks.interrupts: one `- systemAlert: <prompt>` entry with its `choice` "
+    "per rule, carrying pollInterval and frozenScreenTimeout on the entries they serve",
+    "tipKitHandling": "hooks.interrupts: `- tipKit: dismiss`",
+    "ignoredSettings": "runsOn.ignoredSettings",
+}
 
-@cache
-def run_model(platform: str) -> type[RunPolicy]:
-    """The model of a `platform` target's `run`: the shared run policy joined to the platform's fields.
 
-    Raises:
-        ValueError: No platform of that name is registered.
-    """
-    extension = schema_for(platform).run
-    joined = create_model(f"{extension.__name__}Policy", __base__=(extension, RunPolicy))
-    return cast("type[RunPolicy]", joined)
+def run_moves(where: str, run: Any) -> str:
+    """The message naming where each key of a removed `run` block went (BE-0473)."""
+    keys = [k for k in run if k in MOVED_RUN_KEYS] if isinstance(run, dict) else []
+    moves = [f"{where}.{k} moved to {MOVED_RUN_KEYS[k]}" for k in keys]
+    return "; ".join(moves) or f"{where} was removed"
 
 
 def _validated(where: str, validate: Callable[[], _Model]) -> _Model:
@@ -68,9 +77,8 @@ def _validated(where: str, validate: Callable[[], _Model]) -> _Model:
 class TargetConfig(_Model):
     """One app's config under `targets.<name>`, after `defaults` has been merged into it.
 
-    `platform` decides the actuator and selects the models that validate the four platform-shaped
-    groups (`subject`, `runsOn`, `driver`, and the platform's fields of `run`) from the registry, so the
-    core names no platform here. Every model forbids extra keys, so a key another platform takes
+    `platform` decides the actuator and selects the models that validate the three platform-shaped
+    groups (`subject`, `runsOn`, and `driver`) from the registry, so the core names no platform here. Every model forbids extra keys, so a key another platform takes
     fails as unknown, with the accepted fields listed.
     """
 
@@ -80,8 +88,6 @@ class TargetConfig(_Model):
     runs_on: _Model = Field(alias="runsOn")
     driver: _Model
     services: Services = Field(default_factory=Services)
-    # The shared run policy joined to the platform's own fields (`run_model`).
-    run: RunPolicy = Field(default_factory=RunPolicy)
     hooks: Hooks = Field(default_factory=Hooks)
     evidence: Evidence = Field(default_factory=Evidence)
     paths: Paths = Field(default_factory=Paths)
@@ -96,6 +102,8 @@ class TargetConfig(_Model):
         if schema_for(self.platform).element_attribute:
             return self
         for i, entry in enumerate(self.hooks.interrupts):
+            if not isinstance(entry, Interrupt):
+                continue
             conditions = [entry.condition]
             for step in _nested_steps(entry.steps):
                 conditions.extend(step.assert_ or [])
@@ -108,11 +116,23 @@ class TargetConfig(_Model):
                 )
         return self
 
+    @model_validator(mode="after")
+    def _tip_kit_needs_ios(self) -> TargetConfig:
+        # TipKit is Apple's, so the entry has nothing to dismiss on another platform.
+        if self.platform != "ios" and tip_kit_entry(self.hooks.interrupts) is not None:
+            raise ValueError(
+                f"hooks.interrupts: a `tipKit` entry needs an iOS target; platform "
+                f"{self.platform!r} shows no TipKit popover"
+            )
+        return self
+
     @model_validator(mode="before")
     @classmethod
-    def _platform_groups(cls, data: Any, info: ValidationInfo) -> Any:
+    def _platform_groups(cls, data: Any) -> Any:
         if not isinstance(data, dict):
             return data
+        if "run" in data:
+            raise ValueError(run_moves("targets.<name>.run", data["run"]) + " (BE-0473)")
         for old, new in MOVED_TARGET_KEYS.items():
             if old in data:
                 raise ValueError(f"targets.<name>.{old} moved to {new}")
@@ -133,15 +153,4 @@ class TargetConfig(_Model):
             out[group] = _validated(
                 group, partial(validate_group, platform, group, data.get(group), where=group)
             )
-        out["run"] = _validated(
-            "run",
-            partial(
-                validate_model,
-                run_model(platform),
-                data.get("run"),
-                platform=platform,
-                where="run",
-                context=info.context,
-            ),
-        )
         return out

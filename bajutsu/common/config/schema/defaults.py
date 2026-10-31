@@ -11,14 +11,13 @@ from .ai_settings import AiSettings
 from .evidence import Evidence
 from .hooks import Hooks
 from .paths import Paths
-from .platform._shared import destination_problems
+from .platform._shared import IGNORED_SETTINGS, destination_problems
 from .platform.registry import GROUPS, allowed_fields, schema_for
-from .run_policy import MOVED_RUN_KEYS, RunPolicy
 from .services import Services
+from .target_config import run_moves
 
 DEFAULTS_KEYS: tuple[str, ...] = (
     "services",
-    "run",
     "hooks",
     "evidence",
     "paths",
@@ -38,7 +37,6 @@ class PlatformDefaults(_Model):
     subject: dict[str, Any] = Field(default_factory=dict)
     runs_on: dict[str, Any] = Field(default_factory=dict, alias="runsOn")
     driver: dict[str, Any] = Field(default_factory=dict)
-    run: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="before")
     @classmethod
@@ -48,6 +46,8 @@ class PlatformDefaults(_Model):
             raise ValueError(
                 "`app` moved to `subject`; the fields inside keep their names (BE-0470)"
             )
+        if isinstance(data, dict) and "run" in data:
+            raise ValueError(run_moves("run", data["run"]) + " (BE-0473)")
         return data
 
 
@@ -60,7 +60,6 @@ class Defaults(_Model):
     """
 
     services: Services | None = None
-    run: RunPolicy | None = None
     hooks: Hooks | None = None
     evidence: Evidence | None = None
     paths: Paths | None = None
@@ -71,6 +70,8 @@ class Defaults(_Model):
     @model_validator(mode="before")
     @classmethod
     def _known_keys(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "run" in data:
+            raise ValueError(run_moves("defaults.run", data["run"]) + " (BE-0473)")
         if isinstance(data, dict) and (unknown := [k for k in data if k not in DEFAULTS_KEYS]):
             raise ValueError(
                 f"unknown defaults field(s) {', '.join(map(repr, unknown))}; defaults accepts "
@@ -82,11 +83,10 @@ class Defaults(_Model):
     def _no_ignored_settings(self) -> Self:
         # An ignored setting belongs to one environment, so it is declared on that target alone
         # (BE-0467); a team-wide default would hide a gap on every route at once.
-        written = self.run is not None and bool(self.run.ignored_settings)
-        if written or any("ignoredSettings" in g.run for g in self.platforms.values()):
+        if any(IGNORED_SETTINGS in g.runs_on for g in self.platforms.values()):
             raise ValueError(
-                "defaults may not set run.ignoredSettings; declare it on the target whose "
-                "environment cannot apply the setting (targets.<name>.run.ignoredSettings)"
+                "defaults may not set runsOn.ignoredSettings; declare it on the target whose "
+                "environment cannot apply the setting (targets.<name>.runsOn.ignoredSettings)"
             )
         return self
 
@@ -99,7 +99,6 @@ class Defaults(_Model):
                     "subject": groups.subject,
                     "runsOn": groups.runs_on,
                     "driver": groups.driver,
-                    "run": groups.run,
                 }[group]
                 if group == "runsOn":
                     # A flat key is named with the destination path it moved to (BE-0469).
@@ -107,13 +106,6 @@ class Defaults(_Model):
                         raise ValueError(f"defaults.platforms.{platform}: {'; '.join(problems)}")
                     continue
                 accepted = allowed_fields(schema.model(group))
-                if group == "run":
-                    accepted = (*allowed_fields(RunPolicy), *accepted)
-                    if moved := [k for k in written if k in MOVED_RUN_KEYS]:
-                        raise ValueError(
-                            f"defaults.platforms.{platform}.run.{moved[0]} moved to "
-                            f"{MOVED_RUN_KEYS[moved[0]]} (BE-0473)"
-                        )
                 if unknown := [k for k in written if k not in accepted]:
                     raise ValueError(
                         f"defaults.platforms.{platform}.{group}: unknown field(s) "

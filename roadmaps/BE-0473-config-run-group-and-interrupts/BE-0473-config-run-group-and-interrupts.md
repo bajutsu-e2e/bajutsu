@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0473](BE-0473-config-run-group-and-interrupts.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0473") |
 | Implementing PR | [#2242](https://github.com/bajutsu-e2e/bajutsu/pull/2242) (units 3, 5, 6), [#2263](https://github.com/bajutsu-e2e/bajutsu/pull/2263) (unit 2) |
 | Topic | Driver & backend architecture |
@@ -369,14 +369,14 @@ resolved `Effective` keeps `run_defaults` as an internal grouping, filled from t
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1: interrupt entries
+- [x] Unit 1: interrupt entries
 - [x] Unit 2: reinstall ladder
 - [x] Unit 3: evidence fields
-- [ ] Unit 4: remove `run`
+- [x] Unit 4: remove `run`
 - [x] Unit 5: notification scope
 - [x] Unit 6: anchor host keys
-- [ ] Unit 7: configs and scenarios
-- [ ] Unit 8: documentation
+- [x] Unit 7: configs and scenarios
+- [x] Unit 8: documentation
 
 Log:
 
@@ -400,6 +400,22 @@ Log:
   erase now fails rather than running unwiped. And a stored plan shows the reinstall the scenario
   wrote, not the one its target supplied. `run.ignoredSettings` (BE-0467), which the
   *Where each old key goes* table predates, still sits under `run` and needs a home in unit 4.
+- [#PR_NUMBER](https://github.com/bajutsu-e2e/bajutsu/pull/PR_NUMBER): Landed units 1, 4, 7, and 8, completing the item. `hooks.interrupts` and a
+  scenario's own `interrupts` take the `systemAlert` and `tipKit` forms beside the screen form, with
+  `choice: leave`, per-entry `pollInterval` and `frozenScreenTimeout`, and the layering *Layering
+  between target, scenario, and command line* describes. `run` is gone from a target, `defaults`,
+  `defaults.platforms.<platform>`, and a scenario's preconditions, and each old key fails at load
+  naming its new location; `inheritSetup` moved to `preconditions.inheritSetup`. A stored run plan's
+  old keys load as the new entries. The demo scenarios, the showcase config, and the documents moved
+  in the same change. Four deviations from *Detailed design*. First, `run.ignoredSettings` moved to
+  `runsOn.ignoredSettings`, since it describes the environment `runsOn` names; the maintainer chose
+  this home. Second, the guard has one frozen-screen bound, so when several answering entries set
+  `frozenScreenTimeout`, the most tolerant value wins: the largest, and 0 over any value. Third,
+  with `systemAlertHandling: false` gone, no config switches the whole guard, so
+  `--system-alert-handling` only restates the default, and `record` and `crawl` no longer read a
+  target's switch. Fourth, the showcase config already stated the runner path and the launch
+  environment once through `templates` (BE-0471), so unit 7 moved no values into
+  `defaults.platforms` or `x-` anchors.
 
 ## References
 

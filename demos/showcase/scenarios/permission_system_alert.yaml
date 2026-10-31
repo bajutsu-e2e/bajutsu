@@ -1,9 +1,10 @@
-# handleSystemAlert (BE-0316): the deterministic, native counterpart to permission.yaml's vision
-# `systemAlertHandling` grant of the same notification prompt. It fires the OS notification-permission
+# handleSystemAlert (BE-0316): the deterministic, native counterpart to permission.yaml's reactive
+# `systemAlert` grant of the same notification prompt. It fires the OS notification-permission
 # request, then taps the SpringBoard prompt's grant button by a native accessibility query — no
 # screenshot, no vision model, no Claude API key — so the whole flow stays deterministic (prime
-# directive 1: AI never decides pass/fail). `systemAlertHandling: false` proves it: with the vision guard
-# off, a handleSystemAlert that failed to tap would fail the run rather than be rescued by the guard,
+# directive 1: AI never decides pass/fail). The `choice: leave` entry proves it: with the reactive guard
+# told to answer nothing for this prompt, a handleSystemAlert that failed to tap would fail the run
+# rather than be rescued by the guard,
 # so this scenario genuinely exercises the new step.
 #
 # iOS (XCUITest) only. Only that backend declares the handleSystemAlert capability, so this file is
@@ -20,8 +21,8 @@
     subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
-    run:
-      systemAlertHandling: false
+  interrupts:
+    - { systemAlert: notifications, choice: leave }
   steps:
     - tap: { label: "Permissions", traits: [button] }
     - wait: { for: { id: perm.requestNotif }, timeout: 10 }

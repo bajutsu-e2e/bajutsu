@@ -49,5 +49,5 @@ def _check_no_nested_group(scenario: Scenario) -> None:
     _walk_no_nested_group(scenario.setup, None)
     for rule in scenario.cleanup:
         _walk_no_nested_group(rule.steps, None)
-    for entry in scenario.interrupts:
+    for entry in scenario.screens:
         _walk_no_nested_group(entry.steps, None)

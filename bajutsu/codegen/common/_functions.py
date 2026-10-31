@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import math
 import re
+from typing import Any
 
-from bajutsu.common.scenario import Scenario, Step
+from bajutsu.common.scenario import Interrupt, InterruptEntry, Scenario, Step
 from bajutsu.common.scenario.models.actions import bypass_hint
 
 from .code_generator import CodeGenerator
@@ -207,10 +208,17 @@ def interrupts_setup_lines(scenario: Scenario) -> list[str]:
     """
     return [
         f"// TODO: interrupts[{i}] "
-        f"{_collapse_line_terminators(str(entry.condition.model_dump(by_alias=True, exclude_none=True, exclude_defaults=True)))}"
+        f"{_collapse_line_terminators(str(_interrupt_summary(entry)))}"
         " — bajutsu checks this opportunistically at run time; not generated"
         for i, entry in enumerate(scenario.interrupts)
     ]
+
+
+def _interrupt_summary(entry: InterruptEntry) -> dict[str, Any]:
+    # A screen entry is named by its condition, as before BE-0473; a systemAlert or tipKit entry is
+    # its own whole declaration.
+    target = entry.condition if isinstance(entry, Interrupt) else entry
+    return target.model_dump(by_alias=True, exclude_none=True, exclude_defaults=True)
 
 
 def indent_lines(lines: list[str], levels: int = 1) -> list[str]:

@@ -11,9 +11,11 @@ from pydantic import (
     BeforeValidator,
     Field,
     WithJsonSchema,
+    field_validator,
     model_validator,
 )
 
+from bajutsu.common.capability.settings_support import SETTING_KEYS
 from bajutsu.common.devices.version import VersionSpec
 from bajutsu.common.scenario import Exists
 
@@ -125,7 +127,7 @@ def destination_problems(model: type[BaseModel], block: Mapping[str, Any]) -> li
     allowed = ", ".join(destinations) or "(none)"
     problems: list[str] = []
     for key in block:
-        if key in destinations:
+        if key in destinations or key == IGNORED_SETTINGS:
             continue
         owner = next(
             (
@@ -145,12 +147,36 @@ def destination_problems(model: type[BaseModel], block: Mapping[str, Any]) -> li
     return problems
 
 
+# The one `runsOn` key that is not a destination: the settings this target's environment cannot apply.
+IGNORED_SETTINGS = "ignoredSettings"
+
+
 class RunsOnGroup(_Model):
     """The base of a platform's `runsOn` group: one block per destination it allows (BE-0469).
 
     `platform` names the app under test and `runsOn` where it runs, so the pair is checked rather than
     the two names compared: the destination keys a subclass declares are the allowed ones.
+    `ignoredSettings` sits beside them, since it describes the same environment (BE-0473).
     """
+
+    # Environment-specific settings this target's route cannot apply and runs without, each with the
+    # reason the report shows (BE-0467). Target-only: `defaults` refuses it, since an ignored setting
+    # belongs to one environment.
+    ignored_settings: dict[str, str] = Field(default_factory=dict, alias="ignoredSettings")
+
+    @field_validator("ignored_settings")
+    @classmethod
+    def _known_settings(cls, v: dict[str, str]) -> dict[str, str]:
+        if unknown := [k for k in v if k not in SETTING_KEYS]:
+            raise ValueError(
+                f"runsOn.ignoredSettings: unknown setting(s) {', '.join(map(repr, unknown))}; "
+                f"known settings: {', '.join(SETTING_KEYS)}"
+            )
+        if blank := [k for k, reason in v.items() if not reason.strip()]:
+            raise ValueError(
+                f"runsOn.ignoredSettings: {', '.join(map(repr, blank))} needs a non-blank reason"
+            )
+        return v
 
     @model_validator(mode="before")
     @classmethod

@@ -62,6 +62,7 @@ from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.common.github import GitHubAccessError
 from bajutsu.common.run_meta.files import is_soft_deleted
 from bajutsu.common.runner.launch_server import start_launch_server
+from bajutsu.common.scenario import tip_kit_entry
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -86,8 +87,8 @@ def resolve_system_alert_handling_flag(
 ) -> bool | None:
     """Resolve the `--system-alert-handling` flag against each command's own unset behavior.
 
-    `run` leaves it None (each scenario's own value applies), while `record` and `crawl` pass the
-    target's `run.systemAlertHandling` as the default, on unless the target turns it off (BE-0452).
+    `run` leaves it None (the guard is on unless the flag turns it off), while `record` and `crawl`
+    pass on as the default; no config key switches the whole guard off (BE-0473).
     Shared by all three so the flag behaves identically on each. The `--alert-handling` /
     `--dismiss-alerts` aliases this once merged were deleted with no replacement (BE-0401).
     """
@@ -467,7 +468,12 @@ def _refuse_bad_preconditions(
     for s, targets in checks:
         problems += [
             f"{s.name}: {problem}"
-            for problem in check_preconditions(s.preconditions, targets, erase_flag=erase)
+            for problem in check_preconditions(
+                s.preconditions,
+                targets,
+                erase_flag=erase,
+                tip_kit=tip_kit_entry(s.interrupts) is not None,
+            )
         ]
     if problems:
         for problem in problems:

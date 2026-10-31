@@ -22,7 +22,6 @@ from .notify_endpoint import _NOTIFY_EVENTS as _NOTIFY_EVENTS
 from .notify_endpoint import NotifyEndpoint
 from .paths import Paths
 from .pricing_entry import PricingEntry
-from .run_policy import RunPolicy
 from .services import Services
 from .target_config import TargetConfig
 from .xcuitest_config import XcuitestConfig
@@ -42,7 +41,6 @@ __all__ = [
     "Paths",
     "PlatformDefaults",
     "PricingEntry",
-    "RunPolicy",
     "Services",
     "TargetConfig",
     "XcuitestConfig",

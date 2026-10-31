@@ -15,8 +15,8 @@
     subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
-    run:
-      systemAlertHandling: { rules: [{ prompt: notifications, choice: grant }] }
+  interrupts:
+    - { systemAlert: notifications, choice: grant }
   steps:
     - tap: { label: "Permissions", traits: [button] }
     - wait: { for: { label: "Request Notifications", traits: [button] }, timeout: 10 }

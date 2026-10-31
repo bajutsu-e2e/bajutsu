@@ -52,7 +52,3 @@ class AndroidDriver(_Model):
     # Measure each opted-in view's `View.getZ()` (BE-0355); off by default because the walk costs
     # 20-100ms on every read and answers nothing unless the app links `BajutsuAndroid`.
     native_z: bool = Field(default=False, alias="nativeZ")
-
-
-class AndroidRun(_Model):
-    """The Android fields of `run`: none beyond the shared run policy."""

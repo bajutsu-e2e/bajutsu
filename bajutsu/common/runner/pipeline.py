@@ -432,7 +432,7 @@ class _ScenarioRunner:
         The same `launch_scenario` — the crash-retry loop's possibly erase-forced copy — goes to
         every target, since `preconditions` and `permissions` are scenario-level. Each target's share
         is judged by its own route's settings table (BE-0467): a value its route cannot apply fails
-        the preflight unless that target declares it under `run.ignoredSettings`.
+        the preflight unless that target declares it under `runsOn.ignoredSettings`.
 
         A device group takes one lease, for its last starting member, which prepares the device once;
         the group's other starting members then join it in reverse declared order, so the group's
@@ -701,7 +701,7 @@ class _ScenarioRunner:
                 self.alert_guard_for(s) if self.alert_guard_for is not None else self.alert_guard
             )
         except UncoveredSystemAlertLocale as exc:
-            # A `systemAlertHandling.rules` entry names a prompt this scenario's locale has no known
+            # A `systemAlert` interrupts entry names a prompt this scenario's locale has no known
             # labels for — the same fail-loudly-before-any-device-work choice `handleSystemAlert`'s
             # own `prompt`/`choice` resolution makes, surfaced here as a clean per-scenario failure
             # rather than an uncaught exception that would abort the whole run.
@@ -1319,7 +1319,7 @@ class _ScenarioRunner:
 
         return TargetRoster(
             primary=primary_target,
-            entries=list(s.interrupts),
+            entries=s.screens,
             status=dict.fromkeys(later, MemberStatus.NOT_INSTALLED),
             activate=activate if later else None,
             install=install if later else None,
@@ -1506,7 +1506,7 @@ class _ScenarioRunner:
                 ),
                 # Config-level interrupts first, then the scenario's own (BE-0314): an app-wide
                 # interstitial handler composes with a per-scenario addition, the config-then-scenario
-                # order the systemAlertHandling default already follows. The scenario's own are
+                # order a `systemAlert` entry's layering already follows. The scenario's own are
                 # narrowed to the entries the primary watches (BE-0438).
                 interrupts=(
                     # A self-declaring scenario's own entries reach the step loop through its
@@ -1650,7 +1650,7 @@ def _settings_problems(actuator: str | None, eff: Effective, s: Scenario, udid_s
     """Why *eff*'s route cannot apply the settings *s* puts in effect, or "" (BE-0467).
 
     Judged before any device work, beside BE-0082's step check: a setting the route cannot apply
-    fails the scenario unless the target declares it under `run.ignoredSettings`.
+    fails the scenario unless the target declares it under `runsOn.ignoredSettings`.
     """
     check = check_settings(
         actuator, eff, resolve_preconditions(eff, s.preconditions), s.permissions, udid_spec
@@ -1667,8 +1667,8 @@ def _scenario_interrupts_for(s: Scenario, name: str, primary_target: str) -> lis
     would instead drop an entry naming that target and silence it.
     """
     if not primary_target:
-        return list(s.interrupts)
-    return [e for e in s.interrupts if (e.target or primary_target) == name]
+        return s.screens
+    return [e for e in s.screens if (e.target or primary_target) == name]
 
 
 def _device_leases(s: Scenario, held: Mapping[str, Lease]) -> list[tuple[str, Lease]]:
@@ -1804,10 +1804,10 @@ def _hooks_for(
     inside the rule rather than the rule itself, which carries no target of its own — so a hook is
     exactly as unambiguous about which target it acts on as an author-written step already has to be.
 
-    A scenario with `preconditions.run.inheritSetup: false` folds in no target's setup (BE-0452); the
+    A scenario with `preconditions.inheritSetup: false` folds in no target's setup (BE-0452); the
     targets' cleanup still runs, since cleanup runs on every path out of a scenario.
     """
-    inherit = s.preconditions.run.inherit_setup
+    inherit = s.preconditions.inherit_setup
     if not s.targets:
         return list(eff.run_defaults.setup) if inherit else [], list(eff.run_defaults.cleanup)
     setup: list[Step] = []
@@ -1952,7 +1952,7 @@ def run_all(
         clock: Injectable time source for condition waits, so tests need no real sleeps. None uses
             the real clock.
         alert_guard: A single alert-guard handler, used by tests.
-        alert_guard_for: Picks each scenario's alert-guard handler (honoring its `systemAlertHandling`);
+        alert_guard_for: Picks each scenario's alert-guard handler (honoring its `systemAlert` interrupts entries);
             takes precedence over `alert_guard`.
         run_dir: Where per-scenario artifacts (network.json, visual diffs) are written. None skips
             writing them.

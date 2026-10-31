@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0473](BE-0473-config-run-group-and-interrupts-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0473") |
 | 実装 PR | [#2242](https://github.com/bajutsu-e2e/bajutsu/pull/2242)（単位 3、5、6）、[#2263](https://github.com/bajutsu-e2e/bajutsu/pull/2263)（単位 2） |
 | トピック | ドライバとバックエンドのアーキテクチャ |
@@ -363,14 +363,14 @@ iOS の `tipKitHandling` だけだったからです。解決後の `Effective` 
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 単位 1：割り込みエントリ
+- [x] 単位 1：割り込みエントリ
 - [x] 単位 2：reinstall の段階
 - [x] 単位 3：evidence のフィールド
-- [ ] 単位 4：`run` の削除
+- [x] 単位 4：`run` の削除
 - [x] 単位 5：通知の範囲
 - [x] 単位 6：アンカー用のキー
-- [ ] 単位 7：設定ファイルとシナリオ
-- [ ] 単位 8：ドキュメント
+- [x] 単位 7：設定ファイルとシナリオ
+- [x] 単位 8：ドキュメント
 
 ログ：
 
@@ -395,6 +395,22 @@ iOS の `tipKitHandling` だけだったからです。解決後の `Effective` 
   動くのではなく失敗します。また、保存された実行プランには、ターゲットが与えた reinstall ではなく
   シナリオが書いた reinstall が残ります。また、*旧キーの移行先* の表より後に加わった `run.ignoredSettings`（BE-0467）は
   まだ `run` の下にあり、単位 4 で移動先を決める必要があります。
+- [#PR_NUMBER](https://github.com/bajutsu-e2e/bajutsu/pull/PR_NUMBER)：単位 1、4、7、8 を実装し、この項目を完了しました。`hooks.interrupts` と
+  シナリオ自身の `interrupts` は、画面の形式に加えて `systemAlert` と `tipKit` の形式を取ります。
+  `choice: leave`、エントリごとの `pollInterval` と `frozenScreenTimeout`、および *target、シナリオ、
+  コマンドラインの重ね方* が述べる重ね方もあわせて実装しました。ターゲット、`defaults`、
+  `defaults.platforms.<platform>`、シナリオの preconditions から `run` を取り除き、旧キーは読み込み時に
+  移動先を示すエラーになります。`inheritSetup` は `preconditions.inheritSetup` へ移しました。保存済みの
+  実行プランにある旧キーは、新しいエントリとして読み込みます。デモのシナリオ、showcase の設定、
+  ドキュメントも同じ変更で直しました。*詳細設計* からは 4 点ずれています。1 つ目に、`run.ignoredSettings`
+  は `runsOn.ignoredSettings` へ移しました。`runsOn` が示す実行環境についての設定だからで、移動先は
+  メンテナが選びました。2 つ目に、ガードが持つ画面停止の上限は 1 つなので、応答するエントリのうち
+  複数が `frozenScreenTimeout` を書いたときは、もっとも寛容な値を採ります。つまり最大の値で、0 は
+  どの値よりも優先します。3 つ目に、`systemAlertHandling: false` がなくなったため、ガード全体を切り替える
+  設定はありません。`--system-alert-handling` は既定値を述べ直すだけになり、`record` と `crawl` も
+  ターゲットのスイッチを読まなくなりました。4 つ目に、showcase の設定はすでに `templates`（BE-0471）で
+  runner のパスと起動時の環境変数を 1 か所に書いていたので、単位 7 では値を `defaults.platforms` や
+  `x-` アンカーへ移していません。
 
 ## 参考
 

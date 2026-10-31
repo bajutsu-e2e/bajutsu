@@ -364,8 +364,8 @@ associated domain の仕掛けも要ります。無ければ iOS は何も申し
 - **起動時プロンプトなし。** 起動時に通知/位置情報の許可を要求せず、**Permissions** タブ（§5.4）の明示
   タップでのみ要求する。
 - **意図的なアラート**は **Permissions** タブにのみ存在：通知プロンプトと位置情報プロンプト。どちらも
-  SpringBoard（プロセス外）で、アプリ内のどのアクセシビリティ照会にも見えないので、run の **vision alert guard**
-  / `systemAlertHandling` の典型フィクスチャになります（このフィクスチャのシナリオは
+  SpringBoard（プロセス外）で、アプリ内のどのアクセシビリティ照会にも見えないので、run の**反応型アラートガード**
+  / その `systemAlert` interrupts エントリの典型フィクスチャになります（このフィクスチャのシナリオは
   [`permission.yaml`](scenarios/permission.yaml)）。別プロセスが仕込んだペーストボードを読むと、同じタブに
   3 つ目のプロンプトが上がります。ペースト同意のプロンプトで、
   [`paste_system_alert.yaml`](scenarios/paste_system_alert.yaml) の `handleSystemAlert` がネイティブに

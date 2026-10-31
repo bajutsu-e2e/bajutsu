@@ -26,7 +26,3 @@ class FakeRunsOn(RunsOnGroup):
 
 class FakeDriver(_Model):
     """`driver` on the fake platform: no fields."""
-
-
-class FakeRun(_Model):
-    """The fake fields of `run`: none beyond the shared run policy."""
