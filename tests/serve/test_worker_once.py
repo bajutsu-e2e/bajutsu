@@ -372,22 +372,26 @@ class _CancellableProc:
 
     def wait(self, timeout: float | None = None) -> int | None:
         self.started.set()
-        self._ended.wait(timeout)
+        # An untimed wait is the hang this double exists to catch: a signal the kernel hands to
+        # another thread never wakes it, so the main thread would never run the cancel handler.
+        # Bounded so a regression fails here instead of holding the suite until CI's job timeout.
+        if not self._ended.wait(10 if timeout is None else timeout):
+            if timeout is None:
+                raise AssertionError("waited on the child with no timeout")
+            raise subprocess.TimeoutExpired(cmd="x", timeout=timeout)
         return self.returncode
 
     def poll(self) -> int | None:
         return self.returncode
 
 
-def test_a_signal_cancels_a_one_shot_run_gracefully(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setenv(GRACE_ENV, "0.1")  # the escalation timer finds the run already gone
+def _cancel_one_shot_on(tmp_path: Path, send: Any) -> tuple[int, _CancellableProc]:
+    """Run a graceful one-shot spec and call *send* from another thread once its child waits."""
     proc = _CancellableProc()
 
     def signal_once_running() -> None:
         assert proc.started.wait(5)
-        os.kill(os.getpid(), signal.SIGTERM)
+        send()
 
     threading.Thread(target=signal_once_running, daemon=True).start()
     code = one_shot.run_spec_once(
@@ -396,8 +400,31 @@ def test_a_signal_cancels_a_one_shot_run_gracefully(
         cwd=tmp_path,
         popen=lambda cmd, **kw: proc,
     )
+    return code, proc
+
+
+def test_a_signal_cancels_a_one_shot_run_gracefully(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(GRACE_ENV, "0.1")  # the escalation timer finds the run already gone
+    code, proc = _cancel_one_shot_on(tmp_path, lambda: os.kill(os.getpid(), signal.SIGTERM))
     assert code == 128 + signal.SIGTERM
     # Graceful: the leader alone is asked to stop (BE-0370), not its group killed.
+    assert proc.signals == [signal.SIGTERM]
+
+
+@pytest.mark.skipif(not hasattr(signal, "pthread_kill"), reason="POSIX thread signals")
+def test_a_signal_delivered_to_another_thread_still_cancels_a_one_shot_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The kernel may hand a process-directed SIGTERM to any thread, and Python runs the handler only
+    # once the main thread executes bytecode again. Delivering it to a helper thread on purpose makes
+    # that race deterministic: an untimed wait on the child would never wake to relay the cancel.
+    monkeypatch.setenv(GRACE_ENV, "0.1")
+    code, proc = _cancel_one_shot_on(
+        tmp_path, lambda: signal.pthread_kill(threading.get_ident(), signal.SIGTERM)
+    )
+    assert code == 128 + signal.SIGTERM
     assert proc.signals == [signal.SIGTERM]
 
 
