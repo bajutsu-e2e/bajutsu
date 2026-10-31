@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0462") |
-| 実装 PR | [#2169](https://github.com/bajutsu-e2e/bajutsu/pull/2169)（ユニット 2） |
+| 実装 PR | [#2169](https://github.com/bajutsu-e2e/bajutsu/pull/2169)（ユニット 2）、[#2267](https://github.com/bajutsu-e2e/bajutsu/pull/2267)（ユニット 1 の計測の仕組み） |
 | トピック | Platform support |
 <!-- /BE-METADATA -->
 
@@ -282,6 +282,43 @@ runner は終了マーカーの直後にフェンスマーカーを出すので�
   - 回答済みの表示をもう一度押すと、その表示の記録がまだ drain されていなければ、記録へ id を足します。
     drain の後に押した場合は、足す先の記録がありません。この欠けが「未確認」の判定に響くかどうかは、
     ユニット 3 で決めます。
+- [#2267](https://github.com/bajutsu-e2e/bajutsu/pull/2267)：ユニット 1 のうち、計測の仕組みだけを
+  入れました。iOS の CI ジョブはすべて、ユニット 1 が測る値を記録するようになりました。数値そのものは十分な
+  実行が溜まってから記録するので、チェックはまだ付けません。
+  - `collect-ios-diagnostics` アクションの `start` で
+    [`scripts/synthesis_stream_record.py`](../../scripts/synthesis_stream_record.py) を動かします。
+    このスクリプトは、runner のマーカーと `backboardd` および `testmanagerd` の行をゲストのログから
+    購読し、各イベントにホストへ届いた時刻を付けます。`collect` で記録を止めます。到着遅延は失敗した
+    ジョブだけでなくすべてのタッチから測るので、成功したジョブでもファイルを残します。
+  - デバイスの再起動などでジョブの途中にストリームが終わったときは、購読をやり直します。購読の開始と
+    終了には `meta` レコードを書きます。集計は、空の記録、購読のやり直し、読めない行を警告として示すので、
+    壊れた記録が取りこぼしのない実行に見えることはありません。終了マーカーのない区間には取りこぼし行を
+    割り当てず、別に挙げます。
+  - [`scripts/synthesis_stream_report.py`](../../scripts/synthesis_stream_report.py) は、記録を
+    いくつでも読み込みます。出力は、マーカーの種類ごとと `backboardd` の到着遅延、自分より後の時刻の
+    runner の行より遅れて届いた `backboardd` の行、各取りこぼし行とそのカテゴリです。取りこぼし行は、
+    その時刻に開いているもっとも内側の区間に割り当て、取りこぼした区間の中の行をすべて表示します。
+    どの区間にも入らない取りこぼし行は別に挙げます。
+  - 記録は `backboardd` の行をカテゴリで絞らず、すべて取ります。設計は `TouchEvents` カテゴリだけを
+    購読するとしていますが、集計で取りこぼし行のカテゴリを数えて確かめます。ユニット 3 は、この集計を根拠に購読の条件を決められます。きっかけは、CI の
+    ゲストで `log show` が取り出したログに `TouchEvents` の行が 1 行もなかったことです。
+  - 手元で新しく作った iOS 27 の Simulator で試したところ、`backboardd` のイベントを 410 件記録
+    しました。アプリの起動中の到着遅延は、p50 が 0.013 秒、p95 が 1.4 秒でした。この試行ではタッチを
+    合成していないので、マーカーや取りこぼしについてはまだ何も言えません。
+  - CI での最初の記録は、この PR 自身の `actuation (xcuitest)` ジョブ
+    （実行 [41047132384](https://github.com/bajutsu-e2e/bajutsu/actions/runs/41047132384)）で取れました。
+    このホストは劣化していて、録画のストール、runner のコールドスタート失敗、Simulator の再起動が
+    起きていました。1 回の実行では何も確定しませんが、次の実行に引き継ぐべき事実が 4 つあります。
+    - 合成の区間を 62 個記録し、取りこぼしは 1 件でした。取りこぼしたのは runner のセッションの最初の
+      タッチで、区間の中に `unknown digitizer` と `skipping event` が出ていました。取りこぼし行は
+      すべて `TouchEvents` カテゴリに出ていたので、設計のカテゴリは正しいことになります。
+    - 62 個の区間すべてに、`already have a main display digitizer` と
+      `cancel -- digitizer did disappear` の 2 行が出ていました。届いたタッチの区間も例外ではありません。どちらも取りこぼしのしるしではありません。
+    - `backboardd` の行のうち 3 行が、自分より後の時刻の runner の行より遅れて届きました。遅れは最大
+      28 ミリ秒です。取りこぼし行ではありませんでしたが、件数は 0 ではありません。ユニット 1 は、この
+      場合はユニット 3 の前に設計を見直すとしています。
+    - 終了マーカーの到着遅延は p99 で 2.3 秒でした。`backboardd` の行は p95 で 35 秒遅れており、
+      ホストは明らかに処理が追いついていませんでした。
 
 ## 参考
 

@@ -155,6 +155,37 @@ runs:
           chmod 600 "$DEST/ps-baseline.txt" 2>/dev/null || true
         fi
 
+        # BE-0462 Unit 1: the guest's touch-synthesis log stream, each line stamped with its arrival
+        # on this host, kept on green jobs too — the arrival lag the host monitor's bound needs is
+        # measured from every touch, not only from the failing ones. An observer like the sampler
+        # below, and idempotent for the same reason. System `python3`, not `uv run`: the recorder is
+        # stdlib-only, and this phase runs before some jobs have synced an environment. Its stderr
+        # (every `log stream` session's end, and the child's own errors) is kept beside the
+        # recording, so an empty recording can be told from a quiet one.
+        streampid="$DEST/synthesis-stream.pid"
+        # Actions sets GITHUB_ACTION_PATH for every composite action; the default only keeps `set -u`
+        # from failing the step anywhere it is unset.
+        recorder="${GITHUB_ACTION_PATH:-.github/actions/collect-ios-diagnostics}/../../../scripts/synthesis_stream_record.py"
+        if [ -z "$udid" ]; then
+          echo "::warning::bajutsu diagnostics: no device id resolved; the synthesis stream is NOT recorded"
+        # Matched on the command line, not `kill -0` alone: a stale pid file can name a pid the OS
+        # has since reused, which would skip recording while claiming it runs. `-ww` because BSD `ps`
+        # may cut the command line to the terminal width, before the script name ever appears.
+        elif [ -f "$streampid" ] && ps -ww -p "$(cat "$streampid")" -o command= 2>/dev/null | grep -q synthesis_stream_record; then
+          echo "synthesis stream already recording (pid $(cat "$streampid"))"
+        else
+          nohup python3 "$recorder" --udid "$udid" --out "$DEST/synthesis-stream.ndjson" \
+            >/dev/null 2>>"$DEST/synthesis-stream.err" &
+          echo $! >"$streampid"
+          # One second is a liveness check on an observer, not a wait any verdict depends on.
+          sleep 1
+          if kill -0 "$(cat "$streampid")" 2>/dev/null; then
+            echo "synthesis stream recording → $DEST/synthesis-stream.ndjson (pid $(cat "$streampid"))"
+          else
+            echo "::warning::bajutsu diagnostics: the synthesis-stream recorder exited at startup ($(head -c 200 "$DEST/synthesis-stream.err" 2>/dev/null))"
+          fi
+        fi
+
         # The sampler is an observer outside any run loop: its interval is a sampling cadence, not a
         # wait a verdict depends on, so the ban on fixed sleeps in the run loop is untouched. Started
         # idempotently, because the jobs that call this action twice (bundled-runner runs two smoke
@@ -215,6 +246,36 @@ runs:
         if [ -f "$pidfile" ]; then
           kill "$(cat "$pidfile")" 2>/dev/null
           rm -f "$pidfile"
+        fi
+        # SIGTERM, which the recorder turns into a clean stop of its own `log stream` child. Every
+        # line it wrote is already flushed; waiting for the exit keeps the count below, and the
+        # upload after this action, from racing the recorder's last write. Ten seconds outlasts the
+        # recorder's own five-second wait on a `log stream` slow to honour SIGTERM.
+        streampid="$DEST/synthesis-stream.pid"
+        if [ -f "$streampid" ]; then
+          rpid="$(cat "$streampid")"
+          # The same command-line match as `start`: a recorder that gave up mid-job may have had its
+          # pid reused, and a bare `kill` would then signal an unrelated host process.
+          if ps -ww -p "$rpid" -o command= 2>/dev/null | grep -q synthesis_stream_record; then
+            kill "$rpid" 2>/dev/null
+            waited=0
+            while kill -0 "$rpid" 2>/dev/null && [ "$waited" -lt 10 ]; do
+              sleep 1
+              waited=$((waited + 1))
+            done
+            if kill -0 "$rpid" 2>/dev/null; then
+              echo "::warning::bajutsu diagnostics: the synthesis-stream recorder did not exit within ${waited}s; the event count below and the artifact upload can race its last write"
+            fi
+          else
+            echo "::warning::bajutsu diagnostics: the synthesis-stream recorder had already exited ($(tail -c 200 "$DEST/synthesis-stream.err" 2>/dev/null))"
+          fi
+          rm -f "$streampid"
+          events=0
+          if [ -f "$DEST/synthesis-stream.ndjson" ]; then
+            events=$(grep -vc '"meta"' "$DEST/synthesis-stream.ndjson" 2>/dev/null || true)
+          fi
+          echo "synthesis stream: ${events:-0} event(s) recorded"
+          [ "${events:-0}" -gt 0 ] || echo "::warning::bajutsu diagnostics: the synthesis stream recorded no events"
         fi
 
         udid="$UDID"
