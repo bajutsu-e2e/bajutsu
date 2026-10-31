@@ -24,6 +24,7 @@ from bajutsu.common.scenario.models.steps import (
     Step,
     check_interrupt_entries,
     screen_entries,
+    system_alert_entries,
     tip_kit_entry,
 )
 
@@ -208,6 +209,15 @@ class Scenario(_Model):
     @model_validator(mode="after")
     def _one_entry_per_prompt(self) -> Self:
         check_interrupt_entries(self.interrupts, "interrupts")
+        # A scenario entry that answers nothing has no bound to tune, and no layer below it inherits
+        # from the scenario, so the value would be read by nothing. A target's `leave` entry may
+        # carry one, since a scenario entry for the same prompt inherits it.
+        for entry in system_alert_entries(self.interrupts):
+            if entry.choice == "leave" and entry.frozen_screen_timeout is not None:
+                raise ValueError(
+                    f"interrupts: the {entry.system_alert} entry leaves its prompt, so its "
+                    "frozenScreenTimeout would tune nothing; drop it, or answer the prompt"
+                )
         return self
 
     @model_validator(mode="after")

@@ -73,11 +73,25 @@ def _runs_on_moves(runs_on: Any) -> list[str]:
     return moves or ["preconditions.runsOn was removed: name a target that declares its runsOn"]
 
 
+# A `false` that switched the guard off for one scenario has no whole-scenario form left.
+_GUARD_OFF = (
+    "preconditions.run.systemAlertHandling: false has no scenario form (BE-0473): write "
+    "`- systemAlert: <prompt>` with `choice: leave` in the scenario's own `interrupts` for each "
+    "prompt it answers itself, including each one the target answers, or pass "
+    "--no-system-alert-handling for the whole run"
+)
+
+
 def _run_moves(run: Any) -> list[str]:
     """Where each field of a scenario's former `preconditions.run` went (BE-0473)."""
-    keys = [k for k in run if k in PRECONDITION_RUN_KEYS] if isinstance(run, dict) else []
+    if not isinstance(run, dict):
+        return ["preconditions.run was removed (BE-0473)"]
     return [
-        f"preconditions.run.{key} moved to {PRECONDITION_RUN_KEYS[key]} (BE-0473)" for key in keys
+        _GUARD_OFF
+        if key == "systemAlertHandling" and run[key] is False
+        else f"preconditions.run.{key} moved to {PRECONDITION_RUN_KEYS[key]} (BE-0473)"
+        for key in run
+        if key in PRECONDITION_RUN_KEYS
     ] or ["preconditions.run was removed (BE-0473)"]
 
 

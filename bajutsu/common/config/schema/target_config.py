@@ -54,10 +54,37 @@ MOVED_RUN_KEYS: dict[str, str] = {
 }
 
 
-def run_moves(where: str, run: Any) -> str:
-    """The message naming where each key of a removed `run` block went (BE-0473)."""
-    keys = [k for k in run if k in MOVED_RUN_KEYS] if isinstance(run, dict) else []
-    moves = [f"{where}.{k} moved to {MOVED_RUN_KEYS[k]}" for k in keys]
+# A value that switched something off has no entry to move to, so its message names what remains.
+_OFF_MOVES: dict[str, str] = {
+    "systemAlertHandling": "has no config form: the guard is on unless --no-system-alert-handling is "
+    "passed to run, record, or crawl; to leave one prompt alone, write `- systemAlert: <prompt>` "
+    "with `choice: leave` in hooks.interrupts",
+    "tipKitHandling": "has no config form to keep: TipKit is off unless a `- tipKit: dismiss` entry "
+    "asks for it, so delete the key",
+}
+
+
+def run_moves(where: str, run: Any, *, per_platform: bool = False) -> str:
+    """The message naming where each key of a removed `run` block went (BE-0473).
+
+    A `false` that switched the guard or TipKit off is named with what remains of it, since deleting
+    the key would otherwise turn the guard back on in `record` and `crawl` without a word. Under
+    `defaults.platforms.<platform>` (*per_platform*), which holds no `hooks`, an interrupts entry is
+    sent to each target of the platform instead.
+    """
+    if not isinstance(run, dict):
+        return f"{where} was removed"
+    moves: list[str] = []
+    for key in (k for k in run if k in MOVED_RUN_KEYS):
+        if run[key] is False and key in _OFF_MOVES:
+            moves.append(f"{where}.{key}: false {_OFF_MOVES[key]}")
+        elif per_platform and MOVED_RUN_KEYS[key].startswith("hooks.interrupts"):
+            moves.append(
+                f"{where}.{key} moved to {MOVED_RUN_KEYS[key]}, written on each target of the "
+                "platform or a template they extend; defaults.platforms has no hooks"
+            )
+        else:
+            moves.append(f"{where}.{key} moved to {MOVED_RUN_KEYS[key]}")
     return "; ".join(moves) or f"{where} was removed"
 
 

@@ -138,7 +138,10 @@ The merge follows five rules:
 - A target clears an inherited value by writing `null`.
 - A list replaces the inherited one, except `evidence.secrets` and each `evidence.redact` list,
   which union. Replacing them would let a target that adds one secret stop masking every team-wide
-  one.
+  one. `hooks.interrupts` merges form by form, since one list holds three forms: the screen entries
+  replace the inherited ones when the target writes any, a `systemAlert` entry replaces the
+  inherited entry for the same prompt, and a `tipKit` entry replaces the inherited one. A target
+  that adds one screen handler therefore keeps the prompts `defaults` answers.
 - A target may not write `null` on those union lists, nor on `evidence` or `evidence.redact`. The load fails and names the path, so a target never wipes the team's masking.
 - `ai` merges field by field, as described [below](#ai-provider-ai-be-0047).
 

@@ -415,7 +415,12 @@ Log:
   `--system-alert-handling` only restates the default, and `record` and `crawl` no longer read a
   target's switch. Fourth, the showcase config already stated the runner path and the launch
   environment once through `templates` (BE-0471), so unit 7 moved no values into
-  `defaults.platforms` or `x-` anchors.
+  `defaults.platforms` or `x-` anchors. One decision the design left open: `hooks.interrupts` now
+  merges across `defaults`, templates, and the target form by form, not as one replaced list. The
+  screen entries replace when a layer writes any, a `systemAlert` entry replaces the entry for the
+  same prompt, and a `tipKit` entry replaces the inherited one. Otherwise a target that added one
+  screen handler would silently drop every prompt `defaults` answers, which lived under a key of
+  its own before this item.
 
 ## References
 

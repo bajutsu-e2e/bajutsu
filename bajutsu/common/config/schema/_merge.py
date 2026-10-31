@@ -23,8 +23,37 @@ _NO_NULL: frozenset[tuple[str, ...]] = _UNION_LISTS | {
     ("evidence", "redact"),
 }
 
+# The list whose entries come in three forms (BE-0473), merged form by form by `_merge_interrupts`.
+_INTERRUPTS: tuple[str, ...] = ("hooks", "interrupts")
+
 # `ai` keeps its field-by-field merge in `resolve`, and `platforms` is not a target key.
 _NOT_MERGED = frozenset({"ai", "platforms"})
+
+
+def _form(entry: Any) -> str:
+    # The key that decides an entry's form, as `Interrupt`'s discriminator reads it; an entry of no
+    # known form stays with the screens, where the model then rejects it.
+    if isinstance(entry, dict):
+        if isinstance(entry.get("systemAlert"), str):
+            return "systemAlert"
+        if "tipKit" in entry:
+            return "tipKit"
+    return "screen"
+
+
+def _merge_interrupts(base: list[Any], over: list[Any]) -> list[Any]:
+    """*over*'s `interrupts` laid on *base*'s, one form at a time (BE-0473).
+
+    One list holds three forms, so replacing it whole would let a target that adds one screen handler
+    drop every team-wide system-alert answer without a word. Each form keeps the merge it would have
+    as a key of its own: the screens replace as a list when *over* writes any, a `systemAlert` entry
+    replaces *base*'s for the same prompt, and a `tipKit` entry replaces *base*'s.
+    """
+    screens = [e for e in over if _form(e) == "screen"] or [e for e in base if _form(e) == "screen"]
+    alerts = {e["systemAlert"]: e for e in base if _form(e) == "systemAlert"}
+    alerts.update({e["systemAlert"]: e for e in over if _form(e) == "systemAlert"})
+    tip_kit = [e for e in over if _form(e) == "tipKit"] or [e for e in base if _form(e) == "tipKit"]
+    return [*screens, *alerts.values(), *tip_kit]
 
 
 def merge_layer(
@@ -33,7 +62,8 @@ def merge_layer(
     """*over* laid on *base*: dictionaries merge key by key, *over* wins, and None clears a key.
 
     Lists replace, except the ones `_UNION_LISTS` names, which keep both sides in order without a
-    repeat. Neither argument is changed.
+    repeat, and `hooks.interrupts`, which merges form by form (`_merge_interrupts`). Neither argument
+    is changed.
 
     Raises:
         ValueError: *over* writes `null` on a union list or a block holding one (`_NO_NULL`).
@@ -53,6 +83,8 @@ def merge_layer(
             out[key] = merge_layer(current, value, here)
         elif here in _UNION_LISTS and isinstance(current, list) and isinstance(value, list):
             out[key] = list(dict.fromkeys([*current, *value]))
+        elif here == _INTERRUPTS and isinstance(current, list) and isinstance(value, list):
+            out[key] = _merge_interrupts(current, value)
         else:
             out[key] = value
     return out

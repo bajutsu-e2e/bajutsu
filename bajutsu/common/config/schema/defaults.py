@@ -47,7 +47,7 @@ class PlatformDefaults(_Model):
                 "`app` moved to `subject`; the fields inside keep their names (BE-0470)"
             )
         if isinstance(data, dict) and "run" in data:
-            raise ValueError(run_moves("run", data["run"]) + " (BE-0473)")
+            raise ValueError(run_moves("run", data["run"], per_platform=True) + " (BE-0473)")
         return data
 
 

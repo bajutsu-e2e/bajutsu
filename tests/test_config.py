@@ -1532,7 +1532,10 @@ def test_target_reinstall_and_network_resolve() -> None:
         ("visualCompare: exact", "evidence.visualCompare"),
         ("secrets: [A]", "evidence.secrets"),
         ("erase: true", "subject.reinstall: erase"),
-        ("systemAlertHandling: false", "hooks.interrupts: one `- systemAlert: <prompt>` entry"),
+        (
+            "systemAlertHandling: {rules: []}",
+            "hooks.interrupts: one `- systemAlert: <prompt>` entry",
+        ),
         ("tipKitHandling: true", "hooks.interrupts: `- tipKit: dismiss`"),
         ("ignoredSettings: {}", "runsOn.ignoredSettings"),
     ],
@@ -1546,6 +1549,72 @@ def test_a_moved_run_key_names_its_new_location(old: str, new: str) -> None:
         load_config(f"defaults:\n  run: {{{old}}}\ntargets: {{}}\n")
     with pytest.raises(ValidationError, match=rf"run\.\w+ moved to {re.escape(new)}"):
         load_config(f"defaults:\n  platforms:\n    ios:\n      run: {{{old}}}\ntargets: {{}}\n")
+
+
+@pytest.mark.parametrize(
+    ("old", "names"),
+    [
+        ("systemAlertHandling: false", "--no-system-alert-handling"),
+        ("tipKitHandling: false", "TipKit is off unless"),
+    ],
+)
+def test_a_moved_off_switch_names_what_remains_of_it(old: str, names: str) -> None:
+    # Deleting a `false` would turn the guard back on in record and crawl, so the error says how
+    # the switch survives rather than pointing at an entry that cannot express it.
+    with pytest.raises(ValidationError, match=re.escape(names)):
+        load_config(
+            f"targets:\n  s:\n    platform: ios\n    subject: {{id: com.x}}\n    run: {{{old}}}\n"
+        )
+
+
+def test_a_per_platform_interrupts_move_names_each_target() -> None:
+    # defaults.platforms has no `hooks`, and defaults.hooks reaches every platform.
+    with pytest.raises(ValidationError, match="written on each target of the platform"):
+        load_config(
+            "defaults:\n  platforms:\n    ios:\n      run: {tipKitHandling: true}\ntargets: {}\n"
+        )
+
+
+def test_a_target_screen_handler_keeps_the_team_wide_alert_and_tipkit_entries() -> None:
+    # hooks.interrupts merges form by form (BE-0473): a target adding a screen handler must not
+    # drop the prompts defaults answers, which lived under a separate key before the merge.
+    cfg = load_config(
+        "defaults:\n"
+        "  hooks:\n"
+        "    interrupts:\n"
+        "      - {condition: {exists: {id: team}}}\n"
+        "      - {systemAlert: notifications, choice: grant}\n"
+        "      - {systemAlert: tracking, choice: deny}\n"
+        "      - {tipKit: dismiss}\n"
+        "targets:\n"
+        "  s:\n"
+        "    platform: ios\n"
+        "    subject: {id: com.x}\n"
+        "    hooks:\n"
+        "      interrupts:\n"
+        "        - {condition: {exists: {id: own}}}\n"
+        "        - {systemAlert: tracking, choice: grant}\n"
+        "        - {tipKit: leave}\n"
+    )
+    rd = resolve(cfg, "s").run_defaults
+    # Screens replace as a list, as before; a prompt's entry replaces the team's for that prompt.
+    assert [e.condition.exists.sel.id for e in rd.interrupts if e.condition.exists] == ["own"]
+    assert {(e.system_alert, e.choice) for e in rd.system_alerts} == {
+        ("notifications", "grant"),
+        ("tracking", "grant"),
+    }
+    assert rd.ios_tip_kit_handling is False
+
+
+def test_a_target_without_screens_keeps_the_team_wide_screens() -> None:
+    cfg = load_config(
+        "defaults:\n  hooks:\n    interrupts: [{condition: {exists: {id: team}}}]\n"
+        "targets:\n  s:\n    platform: ios\n    subject: {id: com.x}\n"
+        "    hooks:\n      interrupts: [{tipKit: dismiss}]\n"
+    )
+    rd = resolve(cfg, "s").run_defaults
+    assert len(rd.interrupts) == 1
+    assert rd.ios_tip_kit_handling is True
 
 
 def test_collect_network_defaults_on_and_inherits_from_defaults() -> None:

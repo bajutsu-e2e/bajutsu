@@ -2917,8 +2917,9 @@ def run_body(
 ) -> None:
     """Run a scenario deterministically.
 
-    Pass/fail is machine-only; the sole AI is the alert guard (on by default per scenario), which
-    only fires to clear an OS prompt that blocked a step — see each scenario's `systemAlert` interrupts entries.
+    Pass/fail is machine-only, and `run` reaches no model: the alert guard (on unless
+    `--no-system-alert-handling`) only clears an OS prompt that blocked a step, answering the
+    scenario's and the target's `systemAlert` interrupts entries.
     """
     # Resolve the run's inputs from the flags — each step is an independently testable helper — then
     # assemble the plan and hand it to dispatch/finish. `run` itself stays a thin sequence.

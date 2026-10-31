@@ -200,6 +200,32 @@ def test_preconditions_run_names_each_new_location(key: str, names: str) -> None
     assert names in str(exc.value)
 
 
+def test_preconditions_run_guard_off_names_what_remains() -> None:
+    with pytest.raises(ValidationError, match="has no scenario form") as exc:
+        Scenario.model_validate(
+            {
+                "name": "x",
+                "preconditions": {"run": {"systemAlertHandling": False}},
+                "steps": [{"tap": {"id": "a"}}],
+            }
+        )
+    assert "choice: leave" in str(exc.value)
+
+
+def test_a_scenario_leave_entry_rejects_frozen_screen_timeout() -> None:
+    # Nothing inherits from a scenario entry, and a leave answers nothing, so the value is dead.
+    with pytest.raises(ValidationError, match="would tune nothing"):
+        Scenario.model_validate(
+            {
+                "name": "x",
+                "interrupts": [
+                    {"systemAlert": "savePassword", "choice": "leave", "frozenScreenTimeout": 0}
+                ],
+                "steps": [{"tap": {"id": "a"}}],
+            }
+        )
+
+
 def test_preconditions_run_without_a_known_key_still_fails() -> None:
     with pytest.raises(ValidationError, match=r"preconditions\.run was removed"):
         Scenario.model_validate(
