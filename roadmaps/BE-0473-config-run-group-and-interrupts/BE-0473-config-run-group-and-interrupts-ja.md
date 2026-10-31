@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0473") |
-| 実装 PR | [#2242](https://github.com/bajutsu-e2e/bajutsu/pull/2242)（単位 3、5、6）、[#2263](https://github.com/bajutsu-e2e/bajutsu/pull/2263)（単位 2） |
+| 実装 PR | [#2242](https://github.com/bajutsu-e2e/bajutsu/pull/2242)（単位 3、5、6）、[#2263](https://github.com/bajutsu-e2e/bajutsu/pull/2263)（単位 2）、[#2270](https://github.com/bajutsu-e2e/bajutsu/pull/2270)（単位 1、4、7、8） |
 | トピック | ドライバとバックエンドのアーキテクチャ |
 | 関連 | [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)、[BE-0314](../BE-0314-scenario-interrupt-handlers/BE-0314-scenario-interrupt-handlers-ja.md)、[BE-0406](../BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md)、[BE-0401](../BE-0401-system-alert-handling-dsl-consolidation/BE-0401-system-alert-handling-dsl-consolidation-ja.md)、[BE-0177](../BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)、[BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications-ja.md)、[BE-0221](../BE-0221-android-scenario-portability-guarantee/BE-0221-android-scenario-portability-guarantee-ja.md) |
 <!-- /BE-METADATA -->
@@ -395,7 +395,7 @@ iOS の `tipKitHandling` だけだったからです。解決後の `Effective` 
   動くのではなく失敗します。また、保存された実行プランには、ターゲットが与えた reinstall ではなく
   シナリオが書いた reinstall が残ります。また、*旧キーの移行先* の表より後に加わった `run.ignoredSettings`（BE-0467）は
   まだ `run` の下にあり、単位 4 で移動先を決める必要があります。
-- [#PR_NUMBER](https://github.com/bajutsu-e2e/bajutsu/pull/PR_NUMBER)：単位 1、4、7、8 を実装し、この項目を完了しました。`hooks.interrupts` と
+- [#2270](https://github.com/bajutsu-e2e/bajutsu/pull/2270)：単位 1、4、7、8 を実装し、この項目を完了しました。`hooks.interrupts` と
   シナリオ自身の `interrupts` は、画面の形式に加えて `systemAlert` と `tipKit` の形式を取ります。
   `choice: leave`、エントリごとの `pollInterval` と `frozenScreenTimeout`、および *target、シナリオ、
   コマンドラインの重ね方* が述べる重ね方もあわせて実装しました。ターゲット、`defaults`、
