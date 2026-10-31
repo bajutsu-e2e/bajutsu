@@ -186,7 +186,7 @@ def test_use_expands_inside_an_interrupt_handler() -> None:
 """
     )
     expand_components(scns, _resolver({"login.yaml": LOGIN}))
-    steps = scns[0].interrupts[0].steps
+    steps = scns[0].screens[0].steps
     assert len(steps) == 4  # 3 component steps + the handler's own tap
     assert steps[0].type is not None and steps[0].type.text == "alice"
     assert steps[1].type is not None and steps[1].type.text == "hunter2"

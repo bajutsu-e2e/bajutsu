@@ -201,7 +201,7 @@ def test_preconditions_run_names_each_new_location(key: str, names: str) -> None
 
 
 def test_preconditions_run_without_a_known_key_still_fails() -> None:
-    with pytest.raises(ValidationError, match="preconditions.run was removed"):
+    with pytest.raises(ValidationError, match=r"preconditions\.run was removed"):
         Scenario.model_validate(
             {"name": "x", "preconditions": {"run": {}}, "steps": [{"tap": {"id": "a"}}]}
         )
@@ -503,3 +503,8 @@ def test_set_mocks_obeys_the_one_action_rule_and_validates_its_entries() -> None
         Scenario.model_validate(
             {"name": "x", "steps": [{"setMocks": [{"respond": {"status": 500}}]}]}
         )
+
+
+def test_a_non_mapping_scenario_fails_as_a_type_error() -> None:
+    with pytest.raises(ValidationError):
+        Scenario.model_validate("x")

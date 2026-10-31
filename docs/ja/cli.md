@@ -24,7 +24,7 @@
 
 ## `run`
 
-シナリオを **決定的に実行**します。合否は機械判定のみで、[BE-0402](../../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback-ja.md) 以降は**どのフラグを付けてもモデルに到達しません**。**アラートガード**（`--no-system-alert-handling` を付けない限り ON）は、シナリオの `interrupts` とターゲットの `hooks.interrupts` にある `systemAlert` エントリが名指しする OS プロンプトに、ネイティブの SpringBoard 経路（iOS XCUITest、モデル不使用）で答えます。どのエントリも名指ししないプロンプトや、その経路が名指しできないプロンプトには手を触れず、ブロックされたステップ自身の失敗理由に書き出します。詳しくは [`systemAlert` の interrupts エントリ](scenarios.md#systemalerthandlingシステムアラートガード) を参照してください。
+シナリオを **決定的に実行**します。合否は機械判定のみで、[BE-0402](../../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback-ja.md) 以降は**どのフラグを付けてもモデルに到達しません**。**アラートガード**は、`--no-system-alert-handling` を付けない限り ON です。ガードが答えるのは、シナリオの `interrupts` とターゲットの `hooks.interrupts` にある `systemAlert` エントリが名指しする OS プロンプトです。答えにはネイティブの SpringBoard 経路（iOS XCUITest、モデル不使用）を使います。どのエントリも名指ししないプロンプトや、その経路が名指しできないプロンプトには手を触れず、ブロックされたステップ自身の失敗理由に書き出します。詳しくは [`systemAlert` の interrupts エントリ](scenarios.md#systemalerthandlingシステムアラートガード) を参照してください。
 
 ```bash
 bajutsu run --target <name> [--scenario <file.yaml>] [options]
@@ -87,7 +87,7 @@ web backend が動く Windows では、`run` は BE-0449 以前と同じく run 
 | `--erase / --no-erase` | シナリオ › config › `clean` | すべてのシナリオについて、実効の `subject.reinstall` を段階（`overwrite` < `clean` < `erase`）に沿って動かします。`--erase` は値を `erase`（シム全体を wipe）にし、`--no-erase` は `erase` を `clean` に下げ、`overwrite` と `clean` はそのままにします。どちらも省略すると、各シナリオの `preconditions.subject.reinstall`、次にターゲットの `subject.reinstall`、次に `clean` の順で解決します（[BE-0473](../../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts-ja.md)）。そのため、`erase` を指定したターゲットは `--no-erase` でアプリをアンインストールします。アプリのデータを残したいシナリオは `preconditions.subject.reinstall: overwrite` と書きます |
 | `--system-alert-handling / --no-system-alert-handling` | ON | すべてのシナリオについてシステムアラートガードを ON / OFF にします。ON のとき、ガードはシナリオの `interrupts` とターゲットの `hooks.interrupts` にある `systemAlert` エントリに答えます。iOS バックエンドから見えないシステムアラートを消すリアクティブなガードで、XCUITest 上ではネイティブに処理します（モデル不使用、BE-0315）。シナリオやターゲットがガード全体を OFF にする手段はありません。プロンプトを自分で処理するシナリオは、そのプロンプトのエントリに `choice: leave` と書きます（[BE-0473](../../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts-ja.md)）。どのエントリも名指ししないアラートには何もしません。ガード対象の `wait` は見たものを自身のタイムアウトで必ず名指しし、wait の外のステップは、ネイティブ照会がアラートを列挙できたときだけ名指しします。ネイティブ照会を持たないバックエンドでは名指しする材料がないため、そのステップは従来どおり失敗します（BE-0402）。AI 認証情報は一切不要です（[recording](recording.md#システムアラートの自動対処)） |
 | `--ios-tipkit-handling / --no-ios-tipkit-handling` | シナリオ › config › OFF | 操作をブロックしている Apple **TipKit** の tip（フレームワークが所有する popover）を閉じるか、残すかを決めます。このフラグは、すべてのシナリオの `tipKit` の interrupts エントリを `dismiss` または `leave` に設定し、シナリオ自身のエントリとターゲットのエントリに優先します。同じ回避策をシナリオごとに手で書かずに済ませるためのガードです。ガードは tip を、閉じるための scrim（`PopoverDismissRegion`）とその tip 自身のコンテナ（`TipView`）の両方で判定します。`confirmationDialog` が同一の scrim を設置するため、そちらには手を触れないようにする必要があるからです。同じ理由で、tip 向けの画面エントリを `interrupts`（またはターゲットの `hooks.interrupts`）に手で書く場合は `TipView` を手がかりにします。iOS 専用（他のバックエンドでは何もしません）で、求められない限り **OFF** です。tip 自体がアサーションの対象になる場合があるからです。省略時は各シナリオ自身の `tipKit` エントリ、次にターゲットのエントリ、次に OFF の順で解決します。認証情報は不要です（[scenarios](scenarios.md)） |
-| `--alert-poll-interval` | 未設定 | ネイティブのシステムアラート presence 照会の間隔（秒）。シナリオ自身の `systemAlert` エントリの `pollInterval` がこのフラグに優先し、このフラグはターゲットの値に優先します。同じ層の中では最も小さい値を使います。エントリそのものにフラグはありません。1 エントリはプロンプトと選択の組であり、フラグの値 1 つでは読みやすく運べないため、宣言はシナリオファイルとターゲット config に置いたままにしています（[BE-0406](../../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md)） |
+| `--alert-poll-interval` | 未設定 | ネイティブのシステムアラート presence 照会の間隔（秒）。シナリオ自身の `systemAlert` エントリの `pollInterval` がこのフラグに優先し、このフラグはターゲットの値に優先します。同じ層の中では、いちばん小さい値を使います。エントリそのものにフラグはありません。1 エントリはプロンプトと選択の組であり、フラグの値 1 つでは読みやすく運べないため、宣言はシナリオファイルとターゲット config に置いたままにしています（[BE-0406](../../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md)） |
 | `--log-predicate` | "" | `deviceLog` ストリームを絞る NSPredicate（例 subsystem） |
 | `--log-subsystem` | "" | `appTrace` 用の os_log subsystem（既定はアプリの `subject.id`） |
 | `--network / --no-network` | config › ON | `request` アサーション用にアプリの通信を収集。省略時はターゲットの `evidence.collectNetwork` config、次に ON の順で解決（[BE-0177](../../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)）。iOS はアプリに BajutsuKit が必要。web は Playwright でネイティブに観測し、シナリオの `mocks` をその場でスタブします |
@@ -141,7 +141,7 @@ web backend が動く Windows では、`run` は BE-0449 以前と同じく run 
   条件が複数の run を作るときの `--step` も終了コード 2 で終わります。
 - **シナリオの preconditions は、デバイスを操作する前に検査します（BE-0452）。** `run` と `audit` は、
   各シナリオを、そのシナリオが動かすターゲットと照合します。動かすどのターゲットのプラットフォームにも
-  ない `subject` のフィールドや、iOS 専用の `tipKit` の interrupts エントリは、フィールド名を示して終了コード 2 で
+  ない `subject` のフィールドや、iOS 専用の `tipKit` エントリは、フィールド名を示して終了コード 2 で
   終わります。実効の `subject.reinstall: erase` を伴わない `seedPhotos` も同じです（[scenarios](scenarios.md#preconditions環境準備)）。
 - `AI usage:` 行は出力しません。`run` はどのフラグを付けてもトークンを消費しないため（BE-0402）、
   使用量台帳を導入せず、報告もしません。`record`、`crawl`、`triage --ai` は従来どおり出力します。

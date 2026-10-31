@@ -927,10 +927,10 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   SpringBoard alert stays the step's. An alert the step judges not its own goes to
   `POST /systemAlert/resolve`, which answers while that alert still offers the buttons the step
   read, and not otherwise, so the two never answer the same prompt
-- DSL `systemAlert` interrupts entries (BE-0315; a `systemAlertHandling` key until BE-0473), the
-  reactive counterpart: an alert guard. It answers the prompts that the `systemAlert` entries of the
-  scenario's `interrupts` and the target's `hooks.interrupts` name, with no model call; each entry
-  is one rule. Since BE-0461 the XCUITest backend
+- DSL `systemAlert` interrupts entries (BE-0315), the reactive counterpart: an alert guard. Until
+  BE-0473 they were a `systemAlertHandling` key. The guard answers each prompt a `systemAlert`
+  entry names, in the scenario or its target. It makes no model
+  call. Each entry is one rule. Since BE-0461 the XCUITest backend
   answers them inside the requests that read the screen, not from a watcher in Python. Under a
   governing guard, a wait's polls and an action's target reads send
   `GET /elements?resolveAlerts=true`. The runner then works in three steps:
@@ -1060,10 +1060,10 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   retries a step once when the dismiss actually found and cleared a tip, beside the alert guard's own
   end-of-step branch, and the dismiss also composes onto BE-0314's `on_interrupt_poll` hook so a tip
   does not hold a wait to its full timeout either. Defaults off (unlike the alert guard) because a
-  scenario sometimes asserts on the tip itself, which writes `- tipKit: leave` to turn off its
-  target's `dismiss`. The resolution is flag > scenario > target > off: `--ios-tipkit-handling` /
-  `--no-ios-tipkit-handling` set every scenario's entry to `dismiss` / `leave` (BE-0177). The
-  `systemAlert` entries compose per prompt instead (BE-0401, BE-0473)
+  scenario sometimes asserts on the tip itself. Such a scenario writes `- tipKit: leave` to turn off
+  its target's `dismiss`. The resolution order is flag, scenario, target, then off (BE-0177).
+  `--ios-tipkit-handling` / `--no-ios-tipkit-handling` set every scenario's entry to `dismiss` /
+  `leave`. The `systemAlert` entries compose per prompt instead (BE-0401, BE-0473)
 
 #### DSL cross-app control
 

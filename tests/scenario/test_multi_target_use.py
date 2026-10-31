@@ -505,12 +505,12 @@ def _with_recovery(recovery: dict[str, object], **fields: object) -> Scenario:
 
 def test_a_recovery_use_naming_target_stamps_it() -> None:
     s = _with_recovery(_use("sign-in", target="web"))
-    assert _targets(s.interrupts[0].steps) == ["web", "web"]
+    assert _targets(s.screens[0].steps) == ["web", "web"]
 
 
 def test_a_recovery_use_omitting_target_stays_on_the_guard_runner_even_with_a_primary() -> None:
     s = _with_recovery(_use("sign-in"), primaryTarget="app")
-    assert [st.resolved_target for st in s.interrupts[0].steps] == [None, None]
+    assert [st.resolved_target for st in s.screens[0].steps] == [None, None]
 
 
 def test_lifecycle_before_use_follows_the_main_steps_rule() -> None:

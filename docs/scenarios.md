@@ -106,7 +106,7 @@ Implementation: `Preconditions` in `scenario/models/scenario/preconditions.py`. 
 reads the merged result to build the launch sequence ([run-loop](run-loop.md#runner-the-run-pipeline)).
 
 A scenario's `preconditions` holds two groups and one flag. `subject` uses the target's own group
-name, so a field has one spelling in the config and in the scenario
+name. A field thus has one spelling in the config and in the scenario
 ([BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)).
 `device` holds the device state the scenario applies, keyed by destination. Today `device.ios` is
 the one block
@@ -118,9 +118,9 @@ fields combine with the target's instead:
 - `subject.launch.env` merges key by key.
 - `subject.launch.args` appends after the target's arguments.
 
-What the run answers on its own, a system alert or a TipKit tip, is not a precondition. A
-scenario declares it as entries of its own top-level `interrupts`, which layer over the target's
-`hooks.interrupts` ([below](#layering-a-key-reaches-a-run-from-three-places)).
+A system alert or a TipKit tip, which the run answers on its own, is not a precondition. A
+scenario declares one as an entry of its own top-level `interrupts`. Those entries layer over the
+target's `hooks.interrupts` ([below](#layering-a-key-reaches-a-run-from-three-places)).
 
 ```yaml
 preconditions:
@@ -252,6 +252,10 @@ The command-line flag `--ios-tipkit-handling` / `--no-ios-tipkit-handling` sets 
 entry to `dismiss` or `leave`.
 
 ## systemAlert (the system-alert guard)
+
+A `systemAlert` entry in an `interrupts` list names an operating-system prompt and the run's answer.
+The scenario's own top-level `interrupts` takes the entry. The target's `hooks.interrupts` takes it
+too ([configuration](configuration.md#system-alerts-and-tipkit-in-hooksinterrupts)).
 
 The iOS backend cannot see or tap **SpringBoard-level prompts** (a notification or App Tracking Transparency request, "Allow Paste"). These prompts cover the app and collapse its element tree, silently blocking a step. The **alert guard** clears them reactively. On the iOS XCUITest backend it takes a **deterministic native path** (BE-0315): reusing BE-0316's SpringBoard query, it reads which buttons the alert offers and taps the one a `systemAlert` entry names — no screenshot and no model round trip, so it clears the common prompts in well under a tenth of a second and runs **without `ANTHROPIC_API_KEY`**. Where nothing deterministic can act — a backend without the capability, an alert no entry of yours identifies, or a non-SpringBoard surface the query cannot enumerate that no entry identifies either (the in-tree path below clears the ones an entry does identify) — **the guard does nothing** ([BE-0402](../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md)). The blocked step or `wait` runs on to its own timeout, exactly as it would with no guard configured, and that timeout **names what the guard saw**: `wait timeout: for {'id': 'submit'} (10.0s) — an unhandled system alert is blocking the screen (buttons: Allow, Don't Allow)`, or the hedged `… — the screen appears blocked, possibly by a system alert or another overlay outside the app's view` where nothing enumerated it. Before BE-0402 that case fell back to an AI-vision guard reading a screenshot; `run` no longer does, so **no flag of `run`'s reaches a model at all**. (`record` and `crawl` keep that guard for authoring — [details](recording.md#dismissing-system-alerts-automatically).) For a `wait` step (`for`/`gone`/`settled`/`screenChanged`), the guard acts **mid-wait**: on XCUITest, each of the wait's own tree reads answers a prompt an entry names before it returns the tree, checking SpringBoard at most once per `pollInterval` (default one second) ([BE-0461](../roadmaps/BE-0461-request-boundary-alert-resolution/BE-0461-request-boundary-alert-resolution.md)). The wait recovers before its own timeout elapses rather than waiting for the step to fail first (BE-0269).
 
@@ -518,14 +522,14 @@ The two tuning values resolve differently, because the guard holds one of each p
 | on / off | `--no-system-alert-handling` turns the guard off for every scenario; no scenario or target key does. `--ios-tipkit-handling` / `--no-ios-tipkit-handling` set every scenario's `tipKit` entry to `dismiss` or `leave` |
 
 **Specificity settles a conflict, not the layer a declaration came from.** A target entry for the
-tracking prompt answers tracking even inside a scenario that declares notifications alone, because
-each entry reaches the one prompt it names; both stay in effect. To override the target's entry,
-write the scenario's own entry for the same prompt — an override whose reach is the one prompt you
-named. `choice: leave` is that override when the scenario means to answer nothing. Unlike the
-removed `systemAlertHandling: false`, the entry names the prompt it leaves, so a prompt the target
-adds later still applies to the scenario. When a target entry does answer inside a scenario that
-declares `systemAlert` entries of its own, `run` prints a notice once per affected scenario and
-prompt, naming the prompt.
+tracking prompt answers tracking even inside a scenario that declares notifications alone. Each
+entry reaches the one prompt it names, so both stay in effect. To override the target's entry,
+write the scenario's own entry for the same prompt. That override reaches the one prompt you named.
+`choice: leave` is the override for a scenario that means to answer nothing. The removed
+`systemAlertHandling: false` named no prompt, whereas a `leave` entry names the prompt it leaves. A
+prompt the target adds later thus still applies to the scenario. Sometimes a target entry answers
+inside a scenario that declares `systemAlert` entries of its own. `run` then prints a notice naming
+the prompt, once per affected scenario and prompt.
 
 ### Migrating from the old keys
 
@@ -639,8 +643,8 @@ resolves the label the pinned `locale` renders
 ```
 
 `prompt` is `notifications`, `tracking`, `paste`, or `localNetwork`; `choice` is `grant` or `deny`.
-The step rejects `choice: leave` at load, because a step that taps no button means nothing; `leave`
-belongs to a `systemAlert` entry alone. The guard's own `systemAlert` entries take one more prompt
+The step rejects `choice: leave` at load, because a step that taps no button means nothing.
+`leave` belongs to a `systemAlert` entry alone. The guard's own `systemAlert` entries take one more prompt
 this step cannot, `savePassword`, which the step rejects at parse time —
 see [the surfaces table](#answering-more-than-one-prompt-differently) above. One step names the
 button by its meaning, so the same file grants the prompt under `en_US` and under `ja_JP` without an

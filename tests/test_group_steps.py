@@ -122,7 +122,7 @@ def test_group_expands_in_before_and_after_and_interrupts() -> None:
     scenario = scns[0]
     assert scenario.setup[0].report_group == "setup"
     assert scenario.cleanup[0].steps[0].report_group == "teardown"
-    assert scenario.interrupts[0].steps[0].report_group == "dismiss"
+    assert scenario.screens[0].steps[0].report_group == "dismiss"
 
 
 def test_a_group_id_stays_unique_across_separate_expand_components_calls() -> None:

@@ -927,3 +927,19 @@ def test_resolve_evidence_dirs_defaults_and_golden_context(tmp_path: Path) -> No
     (scn.parent / "goldens").mkdir()
     _, _, gc2 = _resolve_evidence_dirs("", "", "", _eff(), scn)
     assert gc2 is not None  # goldens dir exists → golden assertions can resolve within it
+
+
+def test_alert_guard_factory_does_not_notice_a_target_entry_that_leaves_its_prompt(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # A target entry with `choice: leave` answers nothing, so it reaches no scenario to notice.
+    import logging
+
+    from bajutsu.common import deprecations
+
+    eff = _eff(interrupts="[{ systemAlert: tracking, choice: leave }]")
+    s = _tap_scenario("a", [{"systemAlert": "notifications", "choice": "grant"}])
+    deprecations._emitted.discard("interrupts.targetSystemAlert.a.tracking")
+    with caplog.at_level(logging.WARNING, logger="bajutsu.common.deprecations"):
+        assert [r.tap_label for r in _guard(s, eff).rules] == ["Allow"]
+    assert not [r for r in caplog.records if "tracking" in r.message]

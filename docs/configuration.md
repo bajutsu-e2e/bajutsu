@@ -22,11 +22,10 @@ Every target must name its `platform`. The loader fails on a key outside these n
 keys a target accepts. It never reads the flat keys of earlier releases, such as `bundleId` or
 `appPath`.
 
-The `run` group was removed by
-[BE-0473](../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts.md),
-from a target, from `defaults`, and from `defaults.platforms.<platform>` alike. Its fields each
-moved to the group that already answers the same question. A config that still writes `run` fails
-to load, and the error names the new location of each field it carries:
+[BE-0473](../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts.md)
+removed the `run` group. A target, `defaults`, and `defaults.platforms.<platform>` all refuse it.
+Each of its fields moved to the group that already answers the same question. A config that still
+writes `run` fails to load. The error names the new location of each field it carries:
 
 | Old key | New location |
 |---|---|
@@ -531,15 +530,15 @@ targets:
 
 The values each form takes:
 
-- `systemAlert` names a prompt: `notifications`, `tracking`, `paste`, `savePassword`, or
-  `localNetwork`.
+- `systemAlert` names one of five prompts: `notifications`, `tracking`, `paste`, `savePassword`,
+  or `localNetwork`.
 - `choice` is `grant`, `deny`, or `leave`. `leave` answers nothing for that prompt.
 - `pollInterval` sets how often, in seconds, the guard checks SpringBoard while a wait is pending.
   The built-in value is one second.
 - `frozenScreenTimeout` sets how long, in seconds, a guarded wait tolerates a frozen screen before
-  it stops; `0` turns the stop off, and the built-in value is 10 seconds. It is accepted only on a
-  prompt raised into the app's own tree, which today means `savePassword`. On any other prompt the
-  load fails, because nothing would read the value.
+  it stops. `0` turns the stop off, and the built-in value is 10 seconds. The loader accepts the key
+  on a prompt raised into the app's own tree alone, which today means `savePassword`. On any other
+  prompt the load fails, because nothing would read the value.
 - `tipKit` is `dismiss` or `leave`. A `tipKit` entry on a target whose platform is not iOS fails at
   load.
 
@@ -549,9 +548,9 @@ entries, in one list. A target-level entry may not set `target`, and its steps m
 or `setMocks`.
 
 The guard itself has no on/off key in the config. The guard runs unless `bajutsu run` gets
-`--no-system-alert-handling`. A target that used to write `systemAlertHandling: false` writes
-`choice: leave` on each prompt it means to leave instead. `visionInstruction` is gone too: `run`
-never reads a model, and `record` and `crawl` take `--alert-vision-instruction` on the command line.
+`--no-system-alert-handling`. A target that used to write `systemAlertHandling: false` now writes
+`choice: leave` on each prompt it leaves. The config no longer takes `visionInstruction` either.
+`run` never reads a model, and `record` and `crawl` take `--alert-vision-instruction` instead.
 
 A scenario's own `interrupts` takes the same three forms and layers over the target's entries:
 
@@ -562,8 +561,8 @@ A scenario's own `interrupts` takes the same three forms and layers over the tar
 | TipKit | The scenario's entry, else the target's; absent from both means off |
 
 `pollInterval` resolves by layer instead: the scenario, then `--alert-poll-interval`, then the
-target. Within one layer, the smallest value wins, because a shorter interval satisfies every entry
-that asked for a longer one. The guard has one frozen-screen bound. That bound is the most tolerant
+target. Within one layer, the smallest value wins. A shorter interval satisfies every entry that
+asked for a longer one. The guard has one frozen-screen bound. That bound is the most tolerant
 value among the entries that answer a prompt: the largest, with `0` (the stop off) over any value.
 [Scenarios](scenarios.md#layering-a-key-reaches-a-run-from-three-places) walks through each rule.
 
@@ -597,7 +596,7 @@ environment refuses an unsupported setting again as it launches, so a lease driv
 
 The one opt-out is the target's `runsOn.ignoredSettings`: the setting key, and the reason the run goes
 without it. The map sits in `runsOn` beside the destination blocks, because it describes the same
-environment. It was `run.ignoredSettings` until
+environment. The key was `run.ignoredSettings` until
 [BE-0473](../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts.md)
 removed the `run` group.
 

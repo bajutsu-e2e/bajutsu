@@ -386,7 +386,7 @@ def test_ignored_settings_is_validated_beside_the_destinations() -> None:
         load_config(head + "{ bogus: why } } }\n")
     with pytest.raises(ValidationError, match="needs a non-blank reason"):
         load_config(head + "{ erase: '  ' } } }\n")
-    with pytest.raises(ValidationError, match="defaults may not set runsOn.ignoredSettings"):
+    with pytest.raises(ValidationError, match=r"defaults may not set runsOn\.ignoredSettings"):
         load_config(
             "defaults:\n  platforms:\n    ios:\n      runsOn: { ignoredSettings: { erase: x } }\n"
             "targets: {}\n"

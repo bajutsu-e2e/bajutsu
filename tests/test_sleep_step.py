@@ -116,7 +116,7 @@ def _queries(step: dict[str, object], *, guarded: bool) -> int:
     )
     driver = CountingDriver([el("x", "X")])
     # `runner.pipeline` passes the scenario's interrupts explicitly; `run_scenario` does not read them.
-    result = run_scenario(driver, scenario, clock=FakeClock(), interrupts=scenario.interrupts)
+    result = run_scenario(driver, scenario, clock=FakeClock(), interrupts=scenario.screens)
     assert result.ok, result.failure
     return driver.queries
 

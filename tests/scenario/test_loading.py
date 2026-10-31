@@ -12,8 +12,8 @@ from bajutsu.common.scenario import (
     load_scenario_file,
     load_scenarios,
     redact_totp_secrets,
+    system_alert_entries,
 )
-from bajutsu.common.scenario import system_alert_entries
 from bajutsu.common.scenario.models.scenario import SCHEMA_VERSION
 
 # A valid base32 TOTP seed used across the redaction tests below.

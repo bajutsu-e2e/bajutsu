@@ -2072,11 +2072,7 @@ def test_run_all_alert_guard_for_selects_per_scenario() -> None:
 
     def alert_guard_for(s: Scenario) -> AlertGuardConfig | None:
         # One surface only: the scenario-start push refuses a rule claiming both (BE-0461).
-        return (
-            None
-            if s.name == "bare"
-            else AlertGuardConfig(rules=[guard_rule(in_tree=False)])
-        )
+        return None if s.name == "bare" else AlertGuardConfig(rules=[guard_rule(in_tree=False)])
 
     # Answering the prompt reveals the tap's target, so the guarded scenario recovers and passes.
     def lease(eff: Effective, scenario: Scenario) -> Lease:

@@ -88,8 +88,8 @@ def test_scenario_interrupts_parse() -> None:
         """
     )[0]
     assert len(s.interrupts) == 1
-    assert s.interrupts[0].condition.exists is not None
-    assert s.interrupts[0].steps[0].tap is not None
+    assert s.screens[0].condition.exists is not None
+    assert s.screens[0].steps[0].tap is not None
 
 
 def test_empty_interrupts_prunes_from_dump() -> None:
@@ -552,7 +552,7 @@ def test_config_interrupts_run_before_scenario_interrupts() -> None:
         driver,
         scenario,
         clock=FakeClock(),
-        interrupts=[*config_interrupts, *scenario.interrupts],
+        interrupts=[*config_interrupts, *scenario.screens],
     )
     assert result.ok, result.failure
     first_two = _tap_ids(driver)[:2]

@@ -28,7 +28,7 @@ Related: [run-loop](run-loop.md) · [recording](recording.md) · [codegen](codeg
 
 ## `run`
 
-Runs a scenario **deterministically**; pass/fail is machine-only, and since [BE-0402](../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md) **no flag of `run`'s reaches a model at all**. Its **alert guard** (on unless `--no-system-alert-handling`) answers the OS prompts that the `systemAlert` entries of the scenario's `interrupts` and the target's `hooks.interrupts` name, through the native SpringBoard path (iOS XCUITest, no model); a prompt no entry names, or that path can't name, is left alone and named in the blocked step's own failure — see [the `systemAlert` interrupts entries](scenarios.md#systemalerthandling-the-system-alert-guard).
+Runs a scenario **deterministically**; pass/fail is machine-only, and since [BE-0402](../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md) **no flag of `run`'s reaches a model at all**. Its **alert guard** is on unless `--no-system-alert-handling` turns it off. It answers each OS prompt a `systemAlert` interrupts entry names, in the scenario or its target. It answers through the native SpringBoard path (iOS XCUITest, no model). Any other prompt stays untouched. The blocked step's own failure names it — see [the `systemAlert` interrupts entries](scenarios.md#systemalerthandling-the-system-alert-guard).
 
 ```bash
 bajutsu run --target <name> [--scenario <file.yaml>] [options]
