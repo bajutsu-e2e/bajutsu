@@ -187,7 +187,7 @@ SystemAlertInterrupt ::= {
   systemAlert: notifications|tracking|paste|savePassword|localNetwork,
   choice: grant|deny|leave,             # leave は何も答えない。シナリオ自身の handleSystemAlert ステップが処理する場合など
   pollInterval?: number,                # ネイティブのポーリング間隔・秒（既定 1）。シナリオ › --alert-poll-interval › ターゲット、同じ層では最小値
-  frozenScreenTimeout?: number,         # 止まった画面での打ち切り・秒（既定 10、0 で無効）。savePassword のみ
+  frozenScreenTimeout?: number,         # 止まった画面での打ち切り・秒（既定 10、0 で無効）。アプリ自身のツリーに出るプロンプト（savePassword）のみ
 }
                 # savePassword はガード専用。iOS がプロセス内に出すため、ツリー内タップだけが答えられる。
                 # 後述の handleSystemAlert ステップはこれを拒否する（BE-0406）

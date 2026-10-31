@@ -24,7 +24,7 @@
 
 ## `run`
 
-シナリオを **決定的に実行**します。合否は機械判定のみで、[BE-0402](../../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback-ja.md) 以降は**どのフラグを付けてもモデルに到達しません**。**アラートガード**は、`--no-system-alert-handling` を付けない限り ON です。ガードが答えるのは、シナリオの `interrupts` とターゲットの `hooks.interrupts` にある `systemAlert` エントリが名指しする OS プロンプトです。答えにはネイティブの SpringBoard 経路（iOS XCUITest、モデル不使用）を使います。どのエントリも名指ししないプロンプトや、その経路が名指しできないプロンプトには手を触れず、ブロックされたステップ自身の失敗理由に書き出します。詳しくは [`systemAlert` の interrupts エントリ](scenarios.md#systemalerthandlingシステムアラートガード) を参照してください。
+シナリオを **決定的に実行**します。合否は機械判定のみで、[BE-0402](../../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback-ja.md) 以降は**どのフラグを付けてもモデルに到達しません**。**アラートガード**は、`--no-system-alert-handling` を付けない限り ON です。ガードが答えるのは、シナリオの `interrupts` とターゲットの `hooks.interrupts` にある `systemAlert` エントリが名指しする OS プロンプトです。答えにはネイティブの SpringBoard 経路（iOS XCUITest、モデル不使用）を使います。どのエントリも名指ししないプロンプトや、その経路が名指しできないプロンプトには手を触れず、ブロックされたステップ自身の失敗理由に書き出します。詳しくは [`systemAlert` の interrupts エントリ](scenarios.md#systemalertシステムアラートガード) を参照してください。
 
 ```bash
 bajutsu run --target <name> [--scenario <file.yaml>] [options]

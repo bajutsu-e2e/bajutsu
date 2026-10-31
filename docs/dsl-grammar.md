@@ -188,7 +188,7 @@ SystemAlertInterrupt ::= {
   systemAlert: notifications|tracking|paste|savePassword|localNetwork,
   choice: grant|deny|leave,             # leave: answer nothing, e.g. when the scenario's own handleSystemAlert step does
   pollInterval?: number,                # native poll cadence, seconds (default 1); scenario › --alert-poll-interval › target, smallest within a layer
-  frozenScreenTimeout?: number,         # frozen-screen stop, seconds (default 10, 0 = off); savePassword alone
+  frozenScreenTimeout?: number,         # frozen-screen stop, seconds (default 10, 0 = off); a prompt raised in the app's own tree (savePassword)
 }
                 # savePassword is guard-only: iOS raises it in-process, so the in-tree dismissal
                 # alone answers it and the handleSystemAlert step below rejects it (BE-0406)
