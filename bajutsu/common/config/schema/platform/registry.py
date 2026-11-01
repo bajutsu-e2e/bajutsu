@@ -1,6 +1,6 @@
 """The platform schema registry: each platform's models for the groups whose shape it decides (BE-0452).
 
-A target's `subject`, `runsOn`, `driver`, and the extra fields of `run` differ by platform. The core
+A target's `subject`, `runsOn`, and `driver` differ by platform. The core
 looks the platform up here instead of naming platforms in its own schema, so adding one (Flutter, for
 example) means registering one more entry. The models are plain Pydantic, so loading a config never
 imports Playwright or simctl.
@@ -17,27 +17,22 @@ from typing import Any, Literal
 from pydantic import BaseModel, ValidationError
 
 from .._model import _Model
-from .android import AndroidApp, AndroidDriver, AndroidRun, AndroidRunsOn
-from .fake import FakeApp, FakeDriver, FakeRun, FakeRunsOn
-from .ios import IosApp, IosDriver, IosRun, IosRunsOn
-from .web import WebApp, WebDriver, WebRun, WebRunsOn
+from .android import AndroidApp, AndroidDriver, AndroidRunsOn
+from .fake import FakeApp, FakeDriver, FakeRunsOn
+from .ios import IosApp, IosDriver, IosRunsOn
+from .web import WebApp, WebDriver, WebRunsOn
 
-Group = Literal["subject", "runsOn", "driver", "run"]
-GROUPS: tuple[Group, ...] = ("subject", "runsOn", "driver", "run")
+Group = Literal["subject", "runsOn", "driver"]
+GROUPS: tuple[Group, ...] = ("subject", "runsOn", "driver")
 
 
 @dataclass(frozen=True)
 class PlatformSchema:
-    """The models one platform registers, one per platform-shaped group.
-
-    `run` holds only the platform's additions to the shared run policy, such as iOS's
-    `tipKitHandling`; the shared fields are validated by the target, not here.
-    """
+    """The models one platform registers, one per platform-shaped group."""
 
     subject: type[_Model]
     runs_on: type[_Model]
     driver: type[_Model]
-    run: type[_Model]
     # Whether this platform's backend reads an HTML attribute (`elementAttribute`, BE-0466), so a
     # config can refuse an `attribute` in `hooks.interrupts` without importing a driver. A test pins
     # it to each backend's `CAPABILITIES`.
@@ -49,7 +44,6 @@ class PlatformSchema:
             "subject": self.subject,
             "runsOn": self.runs_on,
             "driver": self.driver,
-            "run": self.run,
         }[group]
 
 
@@ -57,18 +51,15 @@ class PlatformSchema:
 # gain an actuator without registering its schema, nor a schema without an actuator.
 PLATFORM_SCHEMAS: Mapping[str, PlatformSchema] = types.MappingProxyType(
     {
-        "ios": PlatformSchema(subject=IosApp, runs_on=IosRunsOn, driver=IosDriver, run=IosRun),
-        "android": PlatformSchema(
-            subject=AndroidApp, runs_on=AndroidRunsOn, driver=AndroidDriver, run=AndroidRun
-        ),
+        "ios": PlatformSchema(subject=IosApp, runs_on=IosRunsOn, driver=IosDriver),
+        "android": PlatformSchema(subject=AndroidApp, runs_on=AndroidRunsOn, driver=AndroidDriver),
         "web": PlatformSchema(
-            subject=WebApp, runs_on=WebRunsOn, driver=WebDriver, run=WebRun, element_attribute=True
+            subject=WebApp, runs_on=WebRunsOn, driver=WebDriver, element_attribute=True
         ),
         "fake": PlatformSchema(
             subject=FakeApp,
             runs_on=FakeRunsOn,
             driver=FakeDriver,
-            run=FakeRun,
             element_attribute=True,
         ),
     }
@@ -167,8 +158,7 @@ def validate_model(
 ) -> _Model:
     """Validate *data* with *model*, rewriting an unknown-key error to list the accepted fields.
 
-    `validate_group` for a model the caller composes itself, such as a target's `run`, which joins
-    the shared run policy to the platform's own fields.
+    `validate_group` for a model the caller picks itself.
 
     Args:
         model: The model to validate with.

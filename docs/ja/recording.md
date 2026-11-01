@@ -344,16 +344,18 @@ class SystemAlertGuard:
   （[run-loop](run-loop.md#run_scenario1-シナリオの実行)）。`wait` ステップ
   （`for`/`gone`/`settled`/`screenChanged`）では、ネイティブ経路はさらに独自の間隔（既定 1 秒。wait 自体の
   条件ポーリングとは切り離しています）でポーリングされるため、wait 自体のタイムアウトを待たず、末尾の
-  再試行より前に回復できます（BE-0269）。シナリオ側では `systemAlertHandling: false` で無効化、
-  `{ rules: [{ prompt: notifications, choice: grant }] }` でガードが答えるプロンプトとその選択を
-  指定できます。`rules` がガードの宣言のすべてです
-  （[BE-0406](../../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md)）。
-  `{ visionInstruction: … }` は `run` ではどの経路にも届かないため、どのシナリオも実行する前に拒否されます。
-  `--system-alert-handling`/`--no-system-alert-handling` は全シナリオを上書きし、
-  `--alert-poll-interval` はそのキーをその 1 回の run に与えます。`rules` に専用のフラグはありません。
+  再試行より前に回復できます（BE-0269）。ガードが答えるのは、シナリオの `interrupts` かターゲットの
+  `hooks.interrupts` にある `systemAlert` エントリが名指ししたプロンプトだけです。
+  `- systemAlert: notifications` と `choice: grant` の組で、プロンプトとガードの答えを指定します
+  （[BE-0406](../../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md)、
+  [BE-0473](../../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts-ja.md)）。
+  プロンプトを自分で処理するシナリオは、そのプロンプトのエントリに `choice: leave` と書きます。
+  シナリオがガード全体を無効にする手段はありません。`run` はモデルに届かないため、エントリは視覚向けの指示を持ちません。
+  `--no-system-alert-handling` は全シナリオでガードを無効にし、`--alert-poll-interval` は
+  その 1 回の run のポーリング間隔を決めます。エントリそのものに専用のフラグはありません。
 - `record --system-alert-handling`: 既定で ON です（オーサリング時はまだシナリオが無いため）。割り込むプロンプトを片付け、
   エージェントに常にクリーンな画面を見せます。**dismissal は環境操作であって記録ステップではありません**
-  （リプレイ側は各シナリオの `systemAlertHandling` で対処します）。
+  （リプレイ側は `systemAlert` の interrupts エントリで対処します）。
 
 > 視覚ガードは `ANTHROPIC_API_KEY` が必要です（[cli の .env](cli.md#環境変数env)）。無くても
 > **ベストエフォート**で単に no-op し、run を失敗させません。これが当てはまるのはネイティブ経路を持たない

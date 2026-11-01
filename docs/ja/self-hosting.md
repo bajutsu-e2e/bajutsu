@@ -1157,7 +1157,7 @@ Linux の web ワーカーに渡って失敗しかねません。それは本物
   エンドポイント）、`android`、`web` のいずれかです。3 つの iOS ルートは対応する設定が異なるので、
   プラットフォームだけでは区別できません。ジョブは次の 2 種類のトークンを必要とします。
   - `cap:<route>:<capability>`：そのターゲットに割り当てたステップが必要とする capability ごとに 1 つ
-  - `setting:<route>:<key>`：ジョブが有効にする設定のうち、ターゲットが `run.ignoredSettings` で無視を
+  - `setting:<route>:<key>`：ジョブが有効にする設定のうち、ターゲットが `runsOn.ignoredSettings` で無視を
     宣言していないものごとに 1 つ
 
   Appium のグリッドで動かす実行では、iOS のターゲットを `ios-live` に置きます。

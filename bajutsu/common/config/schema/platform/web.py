@@ -75,7 +75,3 @@ class WebDriver(_Model):
     """`driver` on the web: how Bajutsu shows the browser it drives."""
 
     headless: bool = True
-
-
-class WebRun(_Model):
-    """The web fields of `run`: none beyond the shared run policy."""

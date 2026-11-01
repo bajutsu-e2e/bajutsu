@@ -987,7 +987,7 @@ class XcuitestDriver:
         only the rules this surface can actually meet: an alert raised inside the application's own
         process never interrupts an XCUITest interaction, so its rules are dropped (BE-0406).
 
-        `governs` is true for any scenario whose `systemAlertHandling` is on, independent of whether
+        `governs` is true for any scenario whose system-alert guard is on, independent of whether
         any rule survived that drop — a real declaration filtered down to nothing this surface can
         act on is not the same as no declaration at all, and only the latter should keep the silent
         grant an absent monitor gives (BE-0406 Unit 2b).

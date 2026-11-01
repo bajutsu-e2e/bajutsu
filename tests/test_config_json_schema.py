@@ -27,7 +27,7 @@ from bajutsu.common.config.schema.platform.registry import (
     PLATFORM_SCHEMAS,
     allowed_fields,
 )
-from bajutsu.common.config.schema.target_config import TARGET_KEYS, run_model
+from bajutsu.common.config.schema.target_config import TARGET_KEYS
 from bajutsu.common.lint import scenario_json_schema
 
 _REPO = Path(__file__).resolve().parent.parent
@@ -73,7 +73,7 @@ def test_each_group_lists_exactly_the_fields_its_model_accepts(platform: str) ->
     schema = PLATFORM_SCHEMAS[platform]
     props = _branch(platform)["properties"]
     for group in GROUPS:
-        model = run_model(platform) if group == "run" else schema.model(group)
+        model = schema.model(group)
         assert set(_resolve(props[group]).get("properties", {})) == set(allowed_fields(model))
 
 
@@ -192,11 +192,14 @@ def test_the_command_prints_the_schema() -> None:
 def test_runs_on_is_one_block_per_destination(
     platform: str, destination: str, fields: set[str]
 ) -> None:
+    # `ignoredSettings` sits beside the destination, describing the same environment (BE-0473).
     runs_on = _resolve(_branch(platform)["properties"]["runsOn"])
-    assert set(runs_on["properties"]) == {destination}
+    assert set(runs_on["properties"]) == {destination, "ignoredSettings"}
     assert runs_on["additionalProperties"] is False
     assert set(_resolve(runs_on["properties"][destination])["properties"]) == fields
-    assert _resolve(_branch("fake")["properties"]["runsOn"]).get("properties", {}) == {}
+    assert set(_resolve(_branch("fake")["properties"]["runsOn"]).get("properties", {})) == {
+        "ignoredSettings"
+    }
 
 
 def test_the_scenario_schema_states_device_and_no_runs_on() -> None:

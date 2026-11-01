@@ -2,7 +2,7 @@
 
 Covers the `--backend` check, the "not yet supported" refusal of `runsOn` conditions, the URL form of
 `--udid` going away, the `appium` environment a `--worker-config` names (and the device each command
-takes through it), the scenario's `preconditions.run.inheritSetup`, the worker's view of an `appium`
+takes through it), the scenario's `preconditions.inheritSetup`, the worker's view of an `appium`
 environment, and the loader's merge of `defaults` into a target.
 """
 
@@ -270,7 +270,7 @@ def test_inherit_setup_false_skips_the_targets_setup_and_keeps_its_cleanup(
     body: dict[str, Any] = {
         "name": "s",
         "steps": [],
-        "preconditions": {"run": {"inheritSetup": False}},
+        "preconditions": {"inheritSetup": False},
     }
     if targets is not None:
         body["targets"] = targets

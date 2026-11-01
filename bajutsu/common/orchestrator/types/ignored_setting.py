@@ -13,6 +13,6 @@ class IgnoredSetting:
     reach the report. Disclosed beside the verdict, never part of it.
     """
 
-    target: str  # the target that declared it under `run.ignoredSettings`
+    target: str  # the target that declared it under `runsOn.ignoredSettings`
     key: str  # the setting key, e.g. "erase" or "permissions.camera"
     reason: str  # the declared reason the target runs without it

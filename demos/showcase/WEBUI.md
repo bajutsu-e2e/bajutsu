@@ -89,8 +89,8 @@ no model round trip, no `ANTHROPIC_API_KEY`. The report's steps table then shows
 **"system alert dismissed"** row carrying the button's label.
 
 The scenario declares which prompt to expect and what to answer on it. Writing
-`systemAlertHandling: { rules: [{ prompt: notifications, choice: grant }] }` grants it. Writing
-`choice: deny` refuses it instead. An alert no rule identifies is left alone. The blocked step's own
+the `interrupts` entry `{ systemAlert: notifications, choice: grant }` grants it. Writing
+`choice: deny` refuses it instead. An alert no entry identifies is left alone. The blocked step's own
 failure reason names the buttons it offered.
 
 ### 5. Video and device logs

@@ -49,7 +49,7 @@ Claude を使わない側のすべては、設定ゼロで動きます。資格�
 
 分類はコマンド名ではなく経路の粒度です。`triage` は Claude を使わず、`--ai` フラグ一つで Claude の
 経路に切り替わります。`run` は [BE-0402](../../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback-ja.md) 以降、**フラグで開く例外を1つも持たない**まま
-Claude を使いません。アラートガード（`--system-alert-handling`。シナリオごとに既定で有効）がかつての
+Claude を使いません。アラートガード（`--system-alert-handling`。既定で有効）がかつての
 例外でした。ネイティブの SpringBoard 経路がプロンプトを名指しできないとき、ガードがスクリーンショットを
 モデルに読ませ、返ってきた座標をタップしていたからです。そのフォールバックは `run` から取り除かれたため、
 ガードは資格情報を必要とせず、参照もせず、名指しできないプロンプトには手を触れません。代わりに、ブロック

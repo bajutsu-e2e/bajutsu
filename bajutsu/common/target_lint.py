@@ -32,6 +32,7 @@ from bajutsu.common.scenario import (
     load_expanded_scenarios,
     load_scenario_file,
     scenario_sources,
+    tip_kit_entry,
 )
 
 if TYPE_CHECKING:
@@ -104,7 +105,11 @@ def lint_against_targets(
         s = plan.scenario
         findings += [
             TargetFinding(scenario=s.name, target=", ".join(plan.effs), message=problem)
-            for problem in check_preconditions(s.preconditions, list(plan.effs.values()))
+            for problem in check_preconditions(
+                s.preconditions,
+                list(plan.effs.values()),
+                tip_kit=tip_kit_entry(s.interrupts) is not None,
+            )
         ]
         step_lines = lines.get(declared_name(s.name))
         for name, eff in plan.effs.items():

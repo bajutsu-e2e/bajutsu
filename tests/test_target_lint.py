@@ -27,8 +27,8 @@ targets:
   phone-ok:
     platform: ios
     subject: {id: com.x}
-    runsOn: {ios: {kind: device}}
-    run:
+    runsOn:
+      ios: {kind: device}
       ignoredSettings:
         erase: "this lane accepts state from earlier runs"
   site:

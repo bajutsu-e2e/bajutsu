@@ -366,16 +366,19 @@ class SystemAlertGuard:
   ([run-loop](run-loop.md#run_scenario-running-one-scenario)). For a `wait` step
   (`for`/`gone`/`settled`/`screenChanged`), the native path is additionally polled on its own
   interval (default 1s, decoupled from the wait's own condition poll), so a blocked wait can recover
-  before its own timeout elapses instead of only at the end-of-step retry (BE-0269). A scenario sets
-  `systemAlertHandling: false` to opt out, or `{ rules: [{ prompt: notifications, choice: grant }] }`
-  to name a prompt the guard answers by its own choice — `rules` is the guard's whole declaration
-  ([BE-0406](../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts.md));
-  `{ visionInstruction: … }` reaches no path under `run` and is refused before any scenario starts.
-  `--system-alert-handling`/`--no-system-alert-handling` overrides every scenario, and
-  `--alert-poll-interval` supplies that one key for a single run. `rules` has no flag of its own.
+  before its own timeout elapses instead of only at the end-of-step retry (BE-0269). The guard answers
+  only the prompts that a `systemAlert` entry names, in the scenario's `interrupts` or the target's
+  `hooks.interrupts`: `- systemAlert: notifications` with `choice: grant` names a prompt and the
+  guard's answer to it
+  ([BE-0406](../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts.md),
+  [BE-0473](../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts.md)).
+  A scenario that handles a prompt itself writes `choice: leave` on that prompt's entry; no scenario
+  switches the whole guard off. An entry carries no vision instruction, since `run` reaches no model.
+  `--no-system-alert-handling` turns the guard off for every scenario, and `--alert-poll-interval`
+  sets the poll cadence for a single run. The entries have no flag of their own.
 - `record --system-alert-handling`: on by default (authoring has no scenario yet). Clears prompts
   that interrupt authoring so the agent always sees a clean screen. **A dismissal is an environment
-  operation, not a recorded step** (replay handles it via each scenario's `systemAlertHandling`).
+  operation, not a recorded step** (replay handles it via the `systemAlert` interrupts entries).
 
 > The vision guard needs `ANTHROPIC_API_KEY` ([.env in cli](cli.md#environment-variables-env));
 > without one it is **best-effort** and simply no-ops, never failing a run. That applies to

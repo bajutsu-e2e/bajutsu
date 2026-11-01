@@ -87,26 +87,27 @@ Full file (including the cross-platform id-candidate-list form):
 ## Grant a system permission dialog
 
 A runtime permission prompt (notifications, location, …) is an **out-of-process system alert**, not
-part of the app's own UI — the iOS backend can't tap it directly. `systemAlertHandling` hands that one
-tap to the reactive alert guard, which watches for the prompt and taps "Allow" through a deterministic
+part of the app's own UI — the iOS backend can't tap it directly. A `systemAlert` entry in the
+scenario's `interrupts` hands that one tap to the reactive alert guard, which watches for the prompt and taps "Allow" through a deterministic
 native accessibility query, with no screenshot and no model call, while every assertion around it
-stays machine-checked. Name the prompt you expect and the choice to make on it — `rules` is the
-guard's whole declaration
-([BE-0406](../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts.md)),
+stays machine-checked. Name the prompt you expect and the choice to make on it — the guard answers
+no prompt that no entry names
+([BE-0406](../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts.md),
+[BE-0473](../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts.md)),
 and the run resolves the button from the prompt and the pinned locale, so the file stays correct on a
-Japanese Simulator too. `visionInstruction` steered the vision fallback and now reaches no command
-from a scenario, so `run` refuses it outright rather than running with a policy it cannot act on
+Japanese Simulator too. An entry carries no vision instruction, since `run` reaches no model
 ([BE-0402](../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md)).
 
 ```yaml
 - name: grant notification permission
   tags: [permission, system]
   preconditions:
-    run:
-      systemAlertHandling: { rules: [{ prompt: notifications, choice: grant }] }
     subject:
       launch:
         env: { SHOWCASE_UITEST: "1" }
+  interrupts:
+    - systemAlert: notifications
+      choice: grant
   steps:
     - tap: { label: "Permissions", traits: [button] }
     - wait: { for: { id: perm.requestNotif }, timeout: 10 }
@@ -118,7 +119,7 @@ from a scenario, so `run` refuses it outright rather than running with a policy 
     - value: { sel: { id: perm.notif.value }, equals: "authorized" }
 ```
 
-`systemAlertHandling` is an alert **handler**, never an assertion — it never touches the pass/fail
+A `systemAlert` entry is an alert **handler**, never an assertion — it never touches the pass/fail
 verdict, only unblocks a step that would otherwise hang on an alert the iOS backend can't see into. On Android
 the same scenario runs with no prompt at all (the target config pre-grants the permission), so the
 guard stays idle — one scenario, two platforms, no branching. Full file with the

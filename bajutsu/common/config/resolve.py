@@ -30,10 +30,11 @@ from bajutsu.common.config.schema import (
     XcuitestConfig,
     _Model,
 )
-from bajutsu.common.config.schema.platform._shared import AppCommon
+from bajutsu.common.config.schema.platform._shared import AppCommon, RunsOnGroup
 from bajutsu.common.config.schema.platform.android import AndroidApp, AndroidDriver, AndroidRunsOn
-from bajutsu.common.config.schema.platform.ios import IosApp, IosDriver, IosKind, IosRun, IosRunsOn
+from bajutsu.common.config.schema.platform.ios import IosApp, IosDriver, IosKind, IosRunsOn
 from bajutsu.common.config.schema.platform.web import WebApp, WebDriver, WebRunsOn
+from bajutsu.common.scenario import system_alert_entries, tip_kit_entry
 
 
 def _merge_ai(base: AiSettings | None, over: AiSettings | None) -> AiConfig | None:
@@ -206,8 +207,7 @@ def resolve(config: Config, target: str) -> Effective:
     ios = runs_on.ios if isinstance(runs_on, IosRunsOn) else None
     locale = (ios.locale if ios is not None else None) or DEFAULT_LOCALE
     seed_photos = list(ios.seed_photos) if ios is not None else []
-    run = a.run
-    tip_kit = run.tip_kit_handling if isinstance(run, IosRun) else None
+    tip_kit = tip_kit_entry(a.hooks.interrupts)
     return Effective(
         target=target,
         platform_config=_platform_config(a),
@@ -243,13 +243,15 @@ def resolve(config: Config, target: str) -> Effective:
         notify=list(config.notify),
         visual_compare=a.evidence.visual_compare or "exact",
         run_defaults=RunDefaults(
-            system_alert_handling=run.system_alert_handling,
+            system_alerts=system_alert_entries(a.hooks.interrupts),
             network=a.evidence.collect_network,
-            ios_tip_kit_handling=tip_kit if tip_kit is not None else False,
-            interrupts=list(a.hooks.interrupts),
+            ios_tip_kit_handling=tip_kit is not None and tip_kit.tip_kit == "dismiss",
+            interrupts=a.hooks.screens,
             setup=list(a.hooks.setup),
             cleanup=list(a.hooks.cleanup),
-            ignored_settings=dict(run.ignored_settings),
+            ignored_settings=(
+                dict(runs_on.ignored_settings) if isinstance(runs_on, RunsOnGroup) else {}
+            ),
         ),
     )
 

@@ -1,4 +1,4 @@
-"""One `systemAlertHandling.rules` entry, resolved for a locale."""
+"""One `systemAlert` interrupts entry, resolved for a locale."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class ResolvedAlertRule:
-    """One shape of one `systemAlertHandling.rules` entry, resolved for a locale.
+    """One shape of one `systemAlert` interrupts entry, resolved for a locale.
 
     `identifying_labels` are the labels that together name this shape, resolved from
     `bajutsu.common.scenario.system_alerts` for the run's locale — matching requires all of them,

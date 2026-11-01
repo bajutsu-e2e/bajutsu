@@ -153,7 +153,7 @@ def target_route_needs(
         s: The expanded scenario, with its lifecycle hooks folded in.
         name: The target's name.
         actuator: The actuator the target runs on; None or `fake` needs no token.
-        eff: The target's effective config, carrying its `run.ignoredSettings`.
+        eff: The target's effective config, carrying its `runsOn.ignoredSettings`.
         routed: Whether *s* declares its targets, so only the steps naming *name* count.
         grouped: Whether *name* shares a device with another target (BE-0447).
         udid_spec: The device spec, which names a WebDriver endpoint on the live route.

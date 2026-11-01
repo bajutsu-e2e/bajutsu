@@ -46,7 +46,7 @@ def redact_totp_secrets(scenario: Scenario) -> Scenario:
     `exclude_defaults` is what keeps that round-trip total: a field validator may reject a value the
     author can never write but a dump still emits — a `default_factory`'s own empty list, which
     `exclude_none` does not drop — so re-validating a model's own dump would fail on a field nobody
-    declared (BE-0401 met this on the since-removed `systemAlertHandling.labels`). Excluding
+    declared (BE-0401 met this on the since-removed `labels` of the alert-guard declaration). Excluding
     default-valued fields hands `model_validate` only what was declared, and re-validation restores
     each default, so the returned model is field-for-field the input.
     """

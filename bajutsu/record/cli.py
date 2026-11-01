@@ -128,8 +128,7 @@ def record(
     system_alert_handling: bool | None = typer.Option(
         None,
         "--system-alert-handling/--no-system-alert-handling",
-        help="handle unexpected OS prompts while authoring; overrides the target's "
-        "run.systemAlertHandling (default: on; uses the same API key)",
+        help="handle unexpected OS prompts while authoring (default: on; uses the same API key)",
     ),
     max_steps: int = typer.Option(
         30,
@@ -231,11 +230,9 @@ def record(
     # Under `runsOn` conditions the command takes the first run's device, never several (BE-0452).
     eff, udid = _first_run_or_exit(eff, actuator, udid)
     alert_guard = None
-    # There is no scenario yet to carry its own setting, so the flag sits over the target's
-    # `run.systemAlertHandling`, which is on unless the target writes `false` (BE-0452).
-    if resolve_system_alert_handling_flag(
-        system_alert_handling, default=eff.run_defaults.system_alert_handling is not False
-    ):
+    # The guard is on unless the flag turns it off: a config can answer or leave a prompt by name,
+    # but carries no switch for the whole guard (BE-0473).
+    if resolve_system_alert_handling_flag(system_alert_handling, default=True):
         alert_guard = _build_alert_guard(eff, redactor, alert_vision_instruction)
     # Resolve through the selected environment's own device lookup, as `repl` does: simctl for the
     # local iOS route, the endpoint as is for an `appium` grid, and no device at all for the web.

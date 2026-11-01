@@ -113,7 +113,7 @@ def _run_backend(results: list[RunResult]) -> str:
 #   whose window wait saw the wall clock jump. Empty on every step that has none; a step without the
 #   field belongs to a run that predates it, which a reader treats as no warnings.
 # v17 (BE-0467): a scenario carries "ignored_settings" — each setting a target's route could not
-#   apply and the target declared under `run.ignoredSettings`, with its reason. Absent on an older
+#   apply and the target declared under `runsOn.ignoredSettings`, with its reason. Absent on an older
 #   run, which a reader treats as none ignored.
 SCHEMA_VERSION = 17
 

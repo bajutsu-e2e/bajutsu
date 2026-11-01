@@ -1200,7 +1200,7 @@ deterministic `run` verdict.
   token:
   - `cap:<route>:<capability>` for each capability the steps routed to that target need;
   - `setting:<route>:<key>` for each setting it puts in effect that the target does not declare
-    under `run.ignoredSettings`.
+    under `runsOn.ignoredSettings`.
 
   A run on an Appium grid puts its iOS targets on `ios-live`.
 - **A worker advertises one token set per route its drivers drive.** `xcuitest` drives the

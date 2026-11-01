@@ -245,7 +245,7 @@ def test_interrupt_recovery_steps_never_prompt() -> None:
         driver,
         scenario,
         clock=FakeClock(),
-        interrupts=list(scenario.interrupts),
+        interrupts=list(scenario.screens),
         step_gate=_gate(term, pause_first=True),
     )
     assert term.prompts == 1

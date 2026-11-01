@@ -86,8 +86,8 @@ iOS バックエンドのアクセシビリティ照会は前面アプリしか�
 タップしたボタンのラベルを伴う**「system alert dismissed」**の行が出ます。
 
 どのプロンプトを想定し、そこで何と答えるかは、シナリオ自身の宣言です。
-`systemAlertHandling: { rules: [{ prompt: notifications, choice: grant }] }` なら通知のプロンプトを許可し、
-`choice: deny` なら拒否します。どの rule も特定できないアラートには手を触れず、止まったステップの失敗理由で
+`interrupts` のエントリ `{ systemAlert: notifications, choice: grant }` なら通知のプロンプトを許可し、
+`choice: deny` なら拒否します。どのエントリも特定できないアラートには手を触れず、止まったステップの失敗理由で
 そのボタンを名指しします。
 
 ### 5. 動画とデバイスログ

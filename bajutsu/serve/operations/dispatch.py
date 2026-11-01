@@ -174,7 +174,7 @@ def _reject_run_vision_instruction(body: dict[str, Any]) -> tuple[Any, int] | No
         return None
     return {
         "error": "'alertVisionInstruction' is not supported by run (BE-0402); "
-        "write the scenario's own preconditions.run.systemAlertHandling.rules instead"
+        "write the scenario's own `- systemAlert: <prompt>` interrupts entries instead"
     }, 400
 
 
@@ -190,7 +190,7 @@ def _reject_run_alert_labels(body: dict[str, Any]) -> tuple[Any, int] | None:
         return None
     return {
         "error": "'alertLabels' is not supported by run (BE-0406); name the prompts you expect "
-        "with the scenario's own preconditions.run.systemAlertHandling.rules instead"
+        "with the scenario's own `- systemAlert: <prompt>` interrupts entries instead"
     }, 400
 
 

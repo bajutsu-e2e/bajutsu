@@ -97,8 +97,8 @@ Implemented and covered by tests (run without a Simulator):
   `web` for WebView content / device control / `http` / `totp` / `email` / `generate` / `manual` —
   waits, mid-step `assert`, reusable components (`use`), control flow (`if` / `forEach`), variables
   (`extract` → `${vars.*}`), parametrization (`data` / `dataFile`), `preconditions`, `permissions`,
-  `interrupts`, `systemAlertHandling`, network `mocks`, a `network` filter, `capturePolicy` evidence
-  rules, and `redact` — with strict validation, YAML round-trip, and a generated JSON Schema
+  `interrupts` (in-app screens, system alerts, and TipKit tips), network `mocks`, a `network`
+  filter, `capturePolicy` evidence rules, and `redact` — with strict validation, YAML round-trip, and a generated JSON Schema
 - **Assertion evaluation** (exists / value / label / count / enabled / disabled / selected /
   request / requestSequence / event / responseSchema / clipboard / golden / **visual**)
 - **Tier 2 run loop** (act → wait → verify), tested via an in-memory fake driver

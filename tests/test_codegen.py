@@ -315,6 +315,18 @@ def test_interrupts_field_emits_a_labeled_todo_per_entry() -> None:
     assert "checks this opportunistically at run time" in code
 
 
+def test_interrupts_field_names_a_system_alert_and_a_tip_kit_entry_whole() -> None:
+    # A `systemAlert` or `tipKit` entry (BE-0473) has no condition; its TODO names the declaration.
+    code = _gen(
+        "- name: x\n  interrupts:\n"
+        "    - { systemAlert: notifications, choice: grant }\n"
+        "    - { tipKit: dismiss }\n"
+        "  steps:\n    - tap: { id: a }\n"
+    )
+    assert "// TODO: interrupts[0]" in code and "notifications" in code
+    assert "// TODO: interrupts[1]" in code and "dismiss" in code
+
+
 def test_request_assertion_emits_labeled_todo() -> None:
     # XCUITest has no network interception, so a `request` assertion stays a TODO — but a labeled one
     # naming the endpoint and why, like the device-control steps, not a bare "unsupported" (BE-0026).

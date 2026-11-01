@@ -36,7 +36,12 @@ from bajutsu.common.config import (
 )
 from bajutsu.common.lint import lint_diagnostics, lint_text
 from bajutsu.common.report.rows import _preconditions_rows
-from bajutsu.common.scenario import Preconditions, Scenario, load_scenarios
+from bajutsu.common.scenario import (
+    Preconditions,
+    Scenario,
+    load_scenarios,
+    system_alert_entries,
+)
 from bajutsu.common.scenario.load import _upgraded_scenario_text, load_stored_scenario_file
 from bajutsu.common.scenario.serialize import scenario_dict
 
@@ -92,13 +97,14 @@ def test_a_flat_key_fails_naming_its_new_home(old: str, new: str) -> None:
 @pytest.mark.parametrize(
     ("old", "new"),
     [
-        ("systemAlertHandling: false", "preconditions.run.systemAlertHandling"),
-        ("iosTipKitHandling: true", "preconditions.run.tipKitHandling"),
+        ("systemAlertHandling: false", "`- systemAlert: <prompt>`"),
+        ("iosTipKitHandling: true", "`- tipKit: dismiss`"),
     ],
 )
 def test_a_top_level_run_field_fails_naming_its_new_home(old: str, new: str) -> None:
-    with pytest.raises(ValueError, match=f"moved to '{new}'"):
+    with pytest.raises(ValueError, match="`interrupts`") as exc:
         load_scenarios(f"- name: s\n  {old}\n  steps: []\n")
+    assert new in str(exc.value)
 
 
 def test_a_scenario_cannot_set_a_field_that_identifies_the_app() -> None:
@@ -126,16 +132,13 @@ def test_the_groups_round_trip_through_a_dump() -> None:
         "  preconditions:\n"
         "    subject: { reinstall: overwrite, launch: { env: { A: '1' }, deeplink: 'app://x' } }\n"
         "    device: { ios: { locale: ja_JP } }\n"
-        "    run: { tipKitHandling: true, systemAlertHandling: false }\n"
+        "    inheritSetup: false\n"
         "  steps: []\n"
     )
     (scenario,) = load_scenarios(text)
     dumped = scenario_dict(scenario)
     assert Scenario.model_validate(dumped) == scenario
-    assert dumped["preconditions"]["run"] == {
-        "systemAlertHandling": False,
-        "tipKitHandling": True,
-    }
+    assert dumped["preconditions"]["inheritSetup"] is False
 
 
 # --- the merge over a target ---
@@ -301,12 +304,14 @@ def test_the_fake_platform_has_no_launch_fields() -> None:
     assert "preconditions.subject.launch.env" in problem
 
 
-def test_an_ios_only_run_field_fails_without_an_ios_target() -> None:
+def test_a_tip_kit_entry_fails_without_an_ios_target() -> None:
     effs = _effs()
-    pre = _pre("{ run: { tipKitHandling: true } }")
-    (problem,) = check_preconditions(pre, [effs["droid"]])
-    assert problem.startswith("preconditions.run.tipKitHandling applies to no target")
-    assert check_preconditions(pre, [effs["phone"]]) == []
+    pre = _pre("{}")
+    (problem,) = check_preconditions(pre, [effs["droid"]], tip_kit=True)
+    assert problem.startswith("interrupts: the tipKit entry applies to no target")
+    assert check_preconditions(pre, [effs["phone"]], tip_kit=True) == []
+    assert check_preconditions(pre, [effs["phone"], effs["droid"]], tip_kit=True) == []
+    assert check_preconditions(pre, [effs["droid"]]) == []
     # A web target has no `reinstall`, yet its fresh browser context satisfies `erase` (BE-0473).
     assert check_preconditions(_pre("{ subject: { reinstall: erase } }"), [effs["site"]]) == []
     (problem,) = check_preconditions(_pre("{ subject: { reinstall: clean } }"), [effs["site"]])
@@ -408,7 +413,9 @@ _PRE_REGROUP_PLAN = (
 def test_a_plan_stored_before_the_regrouping_still_loads() -> None:
     (scenario,) = load_stored_scenario_file(_PRE_REGROUP_PLAN).scenarios
     pre = scenario.preconditions
-    assert (pre.run.system_alert_handling, pre.run.tip_kit_handling) == (False, True)
+    # A stored `false` guard was the run-wide switch, so it leaves no entry; TipKit becomes one.
+    assert system_alert_entries(scenario.interrupts) == []
+    assert scenario.dismisses_tips
     # A stored erase wiped the device whatever `reinstall` said, so it lands on the top rung.
     assert pre.subject.reinstall == "erase"
     assert (pre.subject.launch.env, pre.subject.launch.args, pre.subject.launch.deeplink) == (
@@ -451,7 +458,7 @@ def test_a_plan_stored_with_a_scenario_runs_on_keeps_its_device_state() -> None:
             "{ run: { erase: false }, subject: { reinstall: overwrite } }",
             {"subject": {"reinstall": "overwrite"}},
         ),
-        ("{ run: { erase: false, tipKitHandling: true } }", {"run": {"tipKitHandling": True}}),
+        ("{ run: { erase: false, inheritSetup: false } }", {"inheritSetup": False}),
     ],
 )
 def test_a_plan_stored_with_run_erase_folds_it_into_reinstall(stored: str, want: object) -> None:
@@ -459,6 +466,51 @@ def test_a_plan_stored_with_run_erase_folds_it_into_reinstall(stored: str, want:
     text = f"- name: s\n  preconditions: {stored}\n  steps: []\n"
     assert _yaml.safe_load(_upgraded_scenario_text(text))[0]["preconditions"] == want
     load_stored_scenario_file(text)
+
+
+@pytest.mark.parametrize(
+    ("stored", "want"),
+    [
+        ("{ tipKitHandling: true }", [{"tipKit": "dismiss"}]),
+        ("{ tipKitHandling: false }", [{"tipKit": "leave"}]),
+        ("{ systemAlertHandling: false }", None),
+        ("{ systemAlertHandling: { visionInstruction: tap Allow } }", None),
+        (
+            "{ systemAlertHandling: { pollInterval: 3, frozenScreenTimeout: 20, rules: ["
+            "{ prompt: notifications, choice: grant }, { prompt: savePassword, choice: deny }] } }",
+            [
+                {"systemAlert": "notifications", "choice": "grant", "pollInterval": 3},
+                {"systemAlert": "savePassword", "choice": "deny", "frozenScreenTimeout": 20},
+            ],
+        ),
+        # A guard-wide tuning value with no entry to carry it has nothing left to tune.
+        ("{ systemAlertHandling: { pollInterval: 3 } }", None),
+    ],
+)
+def test_a_plan_stored_with_run_alert_fields_moves_them_to_interrupts(
+    stored: str, want: object
+) -> None:
+    # BE-0473: the guard and TipKit became the scenario's own `interrupts` entries.
+    text = f"- name: s\n  preconditions: {{ run: {stored} }}\n  steps: []\n"
+    upgraded = _yaml.safe_load(_upgraded_scenario_text(text))[0]
+    assert upgraded.get("interrupts") == want
+    assert not upgraded.get("preconditions")
+    load_stored_scenario_file(text)
+
+
+def test_a_stored_plans_alert_entries_append_after_its_own_interrupts() -> None:
+    text = (
+        "- name: s\n"
+        "  systemAlertHandling: { rules: [{ prompt: paste, choice: deny }] }\n"
+        "  interrupts:\n"
+        "    - condition: { exists: { id: a } }\n"
+        "  steps: []\n"
+    )
+    (scenario,) = load_stored_scenario_file(text).scenarios
+    assert len(scenario.screens) == 1
+    assert [(e.system_alert, e.choice) for e in system_alert_entries(scenario.interrupts)] == [
+        ("paste", "deny")
+    ]
 
 
 def test_the_app_group_fails_naming_subject() -> None:

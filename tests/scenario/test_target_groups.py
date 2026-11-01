@@ -277,8 +277,8 @@ def test_before_and_after_and_interrupts_are_expanded_the_same_way() -> None:
     assert s.setup[0].tap is not None and s.setup[0].tap.id == "b"
     assert s.cleanup[0].steps[0].target == "app"
     assert s.cleanup[0].steps[0].tap is not None and s.cleanup[0].steps[0].tap.id == "a"
-    assert s.interrupts[0].steps[0].target == "app"
-    assert s.interrupts[0].steps[0].tap is not None and s.interrupts[0].steps[0].tap.id == "i"
+    assert s.screens[0].steps[0].target == "app"
+    assert s.screens[0].steps[0].tap is not None and s.screens[0].steps[0].tap.id == "i"
 
 
 def test_if_as_a_direct_child_inherits_the_groups_target() -> None:

@@ -192,7 +192,7 @@ def test_an_interrupts_entry_still_works_with_a_primary_set() -> None:
         steps=[_step()],
         interrupts=[{"condition": {"exists": {"id": "popup"}}, "steps": [_step()]}],
     )
-    assert s.interrupts[0].target is None
+    assert s.screens[0].target is None
 
 
 def test_a_recovery_step_omitting_target_never_resolves_through_the_primary() -> None:
@@ -204,7 +204,7 @@ def test_a_recovery_step_omitting_target_never_resolves_through_the_primary() ->
         steps=[_step(target="app")],
         interrupts=[{"condition": {"exists": {"id": "popup"}}, "steps": [_step()]}],
     )
-    assert s.interrupts[0].steps[0].resolved_target is None
+    assert s.screens[0].steps[0].resolved_target is None
 
 
 # --- round trip: the resolution never reaches a dump ------------------------------------------

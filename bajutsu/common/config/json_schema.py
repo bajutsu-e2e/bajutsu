@@ -1,6 +1,6 @@
 """The config's JSON Schema, generated from the models and the platform registry (BE-0452).
 
-`bajutsu config schema` prints it for editor integration. A target's four platform-shaped groups
+`bajutsu config schema` prints it for editor integration. A target's three platform-shaped groups
 are validated by the models its `platform` selects, so the schema states each platform's target as
 its own branch of a `oneOf` with `platform` as the discriminator: an editor that reads the schema
 completes the keys of the platform written. Nothing here is written by hand; a new platform in the
@@ -17,7 +17,7 @@ from pydantic import Field, create_model
 from .schema._model import _Model
 from .schema.config import Config
 from .schema.platform.registry import GROUPS, PLATFORM_SCHEMAS
-from .schema.target_config import TargetConfig, run_model
+from .schema.target_config import TargetConfig
 
 # The JSON Schema dialect Pydantic emits.
 DIALECT = "https://json-schema.org/draft/2020-12/schema"
@@ -34,7 +34,6 @@ def _target_model(platform: str) -> type[_Model]:
         "subject": schema.subject,
         "runs_on": schema.runs_on,
         "driver": schema.driver,
-        "run": run_model(platform),
     }
     fields: dict[str, Any] = {"platform": (Literal[platform], ...)}
     for name, info in TargetConfig.model_fields.items():

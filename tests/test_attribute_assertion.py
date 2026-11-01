@@ -344,3 +344,18 @@ def test_the_fake_driver_returns_a_selector_failure_per_pair() -> None:
     found, missing = driver.read_attributes([({"id": "docs.link"}, "href"), ({"id": "x"}, "href")])
     assert found == "/docs"
     assert isinstance(missing, base.ElementNotFound)
+
+
+def test_preflight_skips_system_alert_and_tip_kit_entries_keeping_each_index() -> None:
+    # A `systemAlert` or `tipKit` entry (BE-0473) reads no tree and takes no step, so only the screen
+    # entry is judged, and its path keeps its own index in the one `interrupts` list.
+    sc = _sc(
+        interrupts=[
+            {"systemAlert": "notifications", "choice": "grant"},
+            {"tipKit": "dismiss"},
+            {"condition": _ATTR, "steps": [{"navigate": "/a"}]},
+        ]
+    )
+    reasons = capability_preflight.unsupported(sc, _MOBILE_CAPS)
+    assert any("interrupts[2] > condition" in r for r in reasons)
+    assert not any("interrupts[0]" in r or "interrupts[1]" in r for r in reasons)

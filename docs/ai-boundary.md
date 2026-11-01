@@ -51,7 +51,7 @@ The classification is at the granularity of the **path**, not the command name: 
 Claude-free, and a single `--ai` flag flips it onto the Claude path. `run` is Claude-free with **no
 flag-gated exception at all** since
 [BE-0402](../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md).
-Its alert guard (`--system-alert-handling`, on by default per scenario) used to be one: where the
+Its alert guard (`--system-alert-handling`, on by default) used to be one: where the
 native SpringBoard path could not name a prompt, the guard read a screenshot with a model and tapped
 where it was told. That fallback is gone from `run`, so the guard needs no credential, consults none,
 and leaves a prompt it cannot name alone — naming it in the blocked step's own failure instead.

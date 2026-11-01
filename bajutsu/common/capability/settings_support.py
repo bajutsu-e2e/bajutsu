@@ -12,7 +12,7 @@ Every setting is in one of three states per route:
 - `satisfied` — the route already guarantees what it asks for (a web run's fresh browser context is
   already erased), so it is never an error.
 - `unsupported` — the route cannot apply it. The run fails before any device work unless the target
-  declares the setting under `run.ignoredSettings` with a reason; a declared setting is not applied.
+  declares the setting under `runsOn.ignoredSettings` with a reason; a declared setting is not applied.
 
 A declaration for a setting the route supports or satisfies is itself an error, so a stale one
 cannot hide a regression once the route gains the setting.
@@ -43,7 +43,7 @@ Route = Literal["ios-simulator", "ios-device", "ios-live", "android", "web"]
 
 _PERMISSION_PREFIX = "permissions."
 
-# Each setting key, as `run.ignoredSettings` names it, with the source field a reader recognizes.
+# Each setting key, as `runsOn.ignoredSettings` names it, with the source field a reader recognizes.
 SETTING_FIELDS: dict[str, str] = {
     "erase": "subject.reinstall: erase",
     "install": "subject.path install",
@@ -259,14 +259,14 @@ class SettingsCheck:
         return [
             f"{SETTING_FIELDS[key]} is not supported on target '{self.target}' (route "
             f"{self.route}); remove it, or declare '{key}' with a reason under "
-            f"targets.{self.target}.run.ignoredSettings to run without it"
+            f"targets.{self.target}.runsOn.ignoredSettings to run without it"
             for key in self.unsupported
         ]
 
     def problems(self) -> list[str]:
         """One message per unsupported or stale key; empty when the target can run."""
         return self.unsupported_problems() + [
-            f"targets.{self.target}.run.ignoredSettings declares '{key}', which target "
+            f"targets.{self.target}.runsOn.ignoredSettings declares '{key}', which target "
             f"'{self.target}' (route {self.route}) supports; remove the declaration"
             for key in self.stale
         ]
@@ -283,7 +283,7 @@ def check_settings(
 
     Args:
         actuator: The actuator the target runs on.
-        eff: The target's effective config, carrying its `run.ignoredSettings`.
+        eff: The target's effective config, carrying its `runsOn.ignoredSettings`.
         pre: The scenario's preconditions merged over the target's.
         permissions: The scenario's `permissions` field.
         udid_spec: The device spec the run resolves, which names a WebDriver endpoint on that route.
@@ -370,7 +370,7 @@ def enforce_settings(
         # A run's report lists each ignored setting too, but a lease driven directly (`record`,
         # `crawl`, `repl`) writes no report, so the log is where its reader sees what was dropped.
         _logger.warning(
-            "target %r runs without %s (run.ignoredSettings): %s",
+            "target %r runs without %s (runsOn.ignoredSettings): %s",
             check.target,
             SETTING_FIELDS[key],
             reason,

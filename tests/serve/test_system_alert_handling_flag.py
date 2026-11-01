@@ -49,12 +49,12 @@ def test_removed_key_rejected_even_alongside_the_canonical_one(removed: str) -> 
 
 _VISION_ERROR = {
     "error": "'alertVisionInstruction' is not supported by run (BE-0402); "
-    "write the scenario's own preconditions.run.systemAlertHandling.rules instead"
+    "write the scenario's own `- systemAlert: <prompt>` interrupts entries instead"
 }
 
 _LABELS_ERROR = {
     "error": "'alertLabels' is not supported by run (BE-0406); name the prompts you expect "
-    "with the scenario's own preconditions.run.systemAlertHandling.rules instead"
+    "with the scenario's own `- systemAlert: <prompt>` interrupts entries instead"
 }
 
 
@@ -120,7 +120,7 @@ def test_start_run_rejects_alert_labels(tmp_path: Path) -> None:
     assert code == 400
     assert payload == _LABELS_ERROR
     # The refusal names the replacement, so a caller reads what to write instead of the dropped key.
-    assert "systemAlertHandling.rules" in payload["error"]
+    assert "systemAlert" in payload["error"] and "interrupts" in payload["error"]
 
 
 def test_record_and_crawl_still_accept_alert_vision_instruction(tmp_path: Path) -> None:
