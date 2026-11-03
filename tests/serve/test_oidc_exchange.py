@@ -1197,6 +1197,22 @@ def test_revoking_matches_the_roster_casing(
     assert state.auth.valid_session(sid) is False
 
 
+def test_the_revoke_audit_names_the_repository_the_way_its_sessions_do(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    """The admin's `Acme/App` matched the sessions of `acme/app`, and every entry those sessions
+    wrote folds it. A revoke row keeping the admin's casing would split one repository's history in
+    two for anyone filtering the audit log by repository (#2141)."""
+    key = _key()
+    state = _state(serve_engine, tmp_path, key)
+    admin = _admin(state)
+    _machine(state, key, "acme")
+
+    ops.revoke_machine_sessions(state, "acme", {"repository": "Acme/App"}, actor=admin)
+    (row,) = [row for row in _audit_rows(state) if row.action == "org.machineSessions.revoke"]
+    assert row.detail["repository"] == "acme/app"
+
+
 def test_an_allowlisted_read_is_audited_even_if_the_session_expires_mid_request(
     tmp_path: Path,
 ) -> None:
