@@ -1,6 +1,6 @@
 [English](../../getting-started/ios.md) · **日本語**
 
-# iOS Simulator でシナリオを実行する（Getting started の iOS トラック）
+# iOS Simulator でシナリオを実行する
 
 > このページでは、[Getting started](index.md) のループを **iOS Simulator** 上で完結させます。
 > showcase アプリをビルドし、シナリオを1つ実行して、合格したことを確かめます。Bajutsu は
