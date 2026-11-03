@@ -661,16 +661,20 @@ def _classify_runner(
     return "bundled", None, None
 
 
-def _resolve_runner(xcfg: XcuitestConfig | None, device_type: str) -> Path:
+def _resolve_runner(
+    xcfg: XcuitestConfig | None, device_type: str, *, build_cwd: Path | None = None
+) -> Path:
     """Resolve the `.xctestrun` to run: an explicit testRunner, else its build, else the bundle.
 
     Precedence keeps explicit config above the default. A configured `testRunner` is used, built on
-    demand via `build` when the file is missing. With neither configured, a Simulator run falls back
-    to the wheel-bundled generic runner (BE-0292), materialized into a writable cache; a real device
-    instead takes the per-user signed build `bajutsu runner build --device` cached (BE-0456), and
-    fails loudly — never building mid-run — when there is none. In a dev
-    checkout, `ensure_bundled_runner_fresh` rebuilds that fallback first when BajutsuKit's own source
-    has moved past it, so this tier never silently serves a stale bundle.
+    demand via `build` when the file is missing; the build runs from `build_cwd`, the directory the
+    target's paths were rebased against, so a relative `testRunner` and its build agree. With
+    neither configured, a Simulator run falls back to the wheel-bundled generic runner (BE-0292),
+    materialized into a writable cache; a real device instead takes the per-user signed build
+    `bajutsu runner build --device` cached (BE-0456), and fails loudly — never building mid-run —
+    when there is none. In a dev checkout, `ensure_bundled_runner_fresh` rebuilds that fallback
+    first when BajutsuKit's own source has moved past it, so this tier never silently serves a
+    stale bundle.
     """
     tier, test_runner, build = _classify_runner(xcfg, device_type)
 
@@ -685,7 +689,13 @@ def _resolve_runner(xcfg: XcuitestConfig | None, device_type: str) -> Path:
         runner_path = Path(test_runner)
         if not runner_path.exists() and build:
             try:
-                subprocess.run(shlex.split(build), check=True)
+                argv = shlex.split(build)  # a mis-quoted build string is a clean failure
+            except ValueError as exc:
+                raise simctl.DeviceError(
+                    f"xcuitest build command is not valid shell syntax: {build!r} ({exc})"
+                ) from exc
+            try:
+                subprocess.run(argv, cwd=build_cwd, check=True)
             except (subprocess.CalledProcessError, OSError) as exc:
                 raise simctl.DeviceError(f"xcuitest build command failed: {build}") from exc
         if not runner_path.exists():

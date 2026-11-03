@@ -524,6 +524,57 @@ def test_a_cold_spawn_stamps_the_launch_marker_before_spawning_the_runner(
     assert seen[0] is not None
 
 
+def test_a_cold_spawn_builds_the_runner_from_the_rebased_config_dir(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # #2277: the runner's `build` must run where the config's paths were rebased, not the shell's
+    # directory — dropping `build_cwd` at this call site would silently undo the fix.
+    env = xcuitest_environment.XcuitestEnvironment("xcuitest", _UDID)
+    env._prepare_simulator = lambda *a, **kw: None  # type: ignore[method-assign]
+    env._launch_params = lambda *a, **kw: ({}, [])  # type: ignore[method-assign]
+    seen: list[object] = []
+
+    def fake_resolve(*a: object, **kw: object) -> Path:
+        seen.append(kw.get("build_cwd"))
+        raise RuntimeError("stop before spawning")
+
+    monkeypatch.setattr(xcuitest_environment, "_resolve_runner", fake_resolve)
+
+    with pytest.raises(RuntimeError, match="stop before spawning"):
+        env._spawn_cold(
+            _ios_eff(None).rebased(tmp_path), ResolvedPreconditions(), "simulator", None, None
+        )
+
+    assert seen == [tmp_path]
+
+
+def test_an_attach_builds_the_runner_from_the_rebased_config_dir(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The attach twin of the cold-spawn test above: both call sites forward `build_cwd` (#2277).
+    env = xcuitest_environment.XcuitestEnvironment("xcuitest", _UDID)
+    monkeypatch.setattr(simctl, "device_booted", lambda *a, **kw: True)
+    monkeypatch.setattr(
+        simctl,
+        "Env",
+        lambda *a, **kw: SimpleNamespace(is_app_running=lambda bundle_id: True),
+    )
+    seen: list[object] = []
+
+    def fake_resolve(*a: object, **kw: object) -> Path:
+        seen.append(kw.get("build_cwd"))
+        raise RuntimeError("stop before spawning")
+
+    monkeypatch.setattr(xcuitest_environment, "_resolve_runner", fake_resolve)
+
+    with pytest.raises(RuntimeError, match="stop before spawning"):
+        env._start_attached(
+            _ios_eff(None).rebased(tmp_path), ResolvedPreconditions(), "simulator", None, None
+        )
+
+    assert seen == [tmp_path]
+
+
 def test_resume_warm_stamps_the_launch_marker_before_launching_the_app(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
