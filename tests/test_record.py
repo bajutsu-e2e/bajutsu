@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 import pytest
 from conftest import ShotDriver
 
@@ -185,6 +187,46 @@ def test_record_without_capture_video_requests_no_interval() -> None:
     scenario = record(driver, "x", agent)  # default: no video
     assert scenario.steps[0].capture is None
     assert requested_intervals(scenario) == []
+
+
+@pytest.mark.parametrize(
+    ("actuator", "device_type", "udid", "expected"),
+    [
+        ("xcuitest", None, "UDID", True),
+        ("xcuitest", "simulator", "UDID", True),
+        # simctl cannot record a physical device, so the replay would only skip the video (#2258)
+        ("xcuitest", "device", "UDID", False),
+        # a live WebDriver endpoint has no simctl either
+        ("xcuitest", None, "http://127.0.0.1:4723", False),
+        ("fake", None, "UDID", False),
+    ],
+)
+def test_record_tags_video_only_where_the_route_can_record_it(
+    actuator: str, device_type: Literal["simulator", "device"] | None, udid: str, expected: bool
+) -> None:
+    from bajutsu.common.config import Effective, IosConfig, XcuitestConfig
+    from bajutsu.common.scenario import Redact
+    from bajutsu.record.cli import _authoring_captures_video
+
+    xcuitest = (
+        XcuitestConfig(testRunner="Runner.xctestrun", deviceType=device_type)
+        if device_type
+        else None
+    )
+    eff = Effective(
+        target="demo",
+        platform_config=IosConfig(bundle_id="com.example.demo", xcuitest=xcuitest),
+        backend=["ios"],
+        locale="en_US",
+        launch_env={},
+        launch_args=[],
+        id_namespaces=[],
+        reserved_namespaces=[],
+        mock_server=None,
+        capture=[],
+        redact=Redact(),
+    )
+    assert _authoring_captures_video(actuator, eff, udid) is expected
 
 
 class RecordingHandoff:

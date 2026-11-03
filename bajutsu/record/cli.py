@@ -37,6 +37,7 @@ from bajutsu.common.agents.claude import MODEL as _RECORD_MODEL
 from bajutsu.common.agents.factory import make_agent
 from bajutsu.common.ai import announce_ai
 from bajutsu.common.analytics import usage as _usage
+from bajutsu.common.backends import capabilities_for_run
 from bajutsu.common.config import Effective
 from bajutsu.common.devices import errors as device_errors
 from bajutsu.common.devices.browsers import BROWSER_KINDS
@@ -46,6 +47,18 @@ from bajutsu.common.platform_lifecycle import environment_for
 from bajutsu.common.runner import launch_driver
 from bajutsu.common.scenario import dump_scenarios
 from bajutsu.record.loop import record as record_loop
+
+
+def _authoring_captures_video(actuator: str, eff: Effective, udid: str) -> bool:
+    """Whether `record` tags the authored scenario for a scenario-wide video (BE-0256).
+
+    The Environment seam answers whether the platform records video while authoring at all, but it
+    cannot see the target's route: a real iOS device (`runsOn.ios.kind: device`) has no simctl
+    video, and `capabilities_for_run` already drops `video` there (BE-0467). Requiring both keeps
+    `record` from requesting a capture every replay would then skip (issue #2258).
+    """
+    seam_records = environment_for(actuator, udid).captures_video()
+    return seam_records and base.Capability.VIDEO in capabilities_for_run(actuator, eff, udid)
 
 
 def _secret_tokens(eff: Effective) -> list[tuple[str, str]]:
@@ -278,11 +291,11 @@ def record(
             alert_guard=alert_guard,
             secret_tokens=_secret_tokens(eff),
             # Whether to record a scenario-wide screen video while authoring is the platform's to
-            # answer, behind the Environment seam (BE-0256): the simctl-backed device (xcuitest)
+            # answer, behind the Environment seam (BE-0256): the simctl-backed Simulator (xcuitest)
             # records via a simctl interval, web captures by other means during replay, and the fake
             # actuator has no device. Asking the seam is what fixes xcuitest, which a per-actuator
-            # name test historically skipped silently.
-            capture_video=environment_for(actuator, udid).captures_video(),
+            # name test historically skipped silently; the run's capabilities narrow it per route.
+            capture_video=_authoring_captures_video(actuator, eff, udid),
             report=say,
             # A "needs human" turn hands off to this responder; with no responder (CI, non-interactive)
             # the loop raises below rather than hanging or guessing (BE-0179).

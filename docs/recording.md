@@ -200,8 +200,9 @@ For a mobile (iOS-simulator) target, `record` tags the recorded scenario's first
 `capture: [video]`, so replaying it records a scenario-wide screen video. A single step's inline
 `capture` is what `requested_intervals` uses to start the run-wide interval, so the whole replay is
 recorded, not just one action's window. The recording is a `simctl` interval (BE-0028), so this is
-specific to the iOS backend — a web target captures video by other means, and the recorded scenario
-carries no `capture` for it.
+specific to a locally driven iOS Simulator. The recorded scenario carries no `capture` for a web
+target (which captures video by other means), for a real iOS device (`runsOn.ios.kind: device`), or
+for a device driven through a live WebDriver endpoint — `simctl` reaches neither of the latter two.
 
 ### Leaning the turn payload and bounding its cost (BE-0194)
 
