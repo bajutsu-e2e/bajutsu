@@ -322,6 +322,8 @@ _LANE_PATHS: dict[str, str] = {
         # same jobs the two actions above do, and a change to it (a probe that hangs, a collection
         # that fails a step) can take a lane down as surely as editing the workflow file.
         r"|\.github/actions/collect-ios-diagnostics/"
+        # The retrying `ios-build` download every build-artifact consumer starts from (issue #2266).
+        r"|\.github/actions/download-ios-build/"
     ),
     "android": (
         # Only the adb driver and the Python side of the resident UI Automator channel (BE-0245) this
