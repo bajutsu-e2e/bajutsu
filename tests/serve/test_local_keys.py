@@ -6,6 +6,8 @@ agreement between concurrent creators, and the env-first secrets key.
 
 from __future__ import annotations
 
+import errno
+import fcntl
 import os
 import stat
 import threading
@@ -14,8 +16,10 @@ from pathlib import Path
 import pytest
 from cryptography.fernet import Fernet
 
+from bajutsu.serve.helpers import ServeStartupError
 from bajutsu.serve.server import local_keys
 from bajutsu.serve.server.local_keys import (
+    claim_state_dir,
     ensure_state_dir,
     load_or_create_key,
     local_state_dir,
@@ -293,3 +297,63 @@ def test_a_malformed_machine_id_is_refused(tmp_path: Path) -> None:
     path.write_text("not one token\n", encoding="ascii")
     with pytest.raises(ValueError, match="does not hold a machine id"):
         local_keys.read_machine_id(state)
+
+
+def _hold_lock_elsewhere(state: Path) -> int:
+    # flock locks belong to an open file description, so a second open in this process stands in
+    # for another server's process.
+    fd = os.open(state / local_keys.SERVE_LOCK_FILE, os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        os.close(fd)
+        raise
+    return fd
+
+
+def test_claim_refuses_a_state_dir_another_server_holds(tmp_path: Path) -> None:
+    state = ensure_state_dir(tmp_path / ".bajutsu")
+    fd = _hold_lock_elsewhere(state)
+    try:
+        with pytest.raises(
+            ServeStartupError, match=r"already using the state directory .*\.bajutsu"
+        ):
+            claim_state_dir(state)
+    finally:
+        os.close(fd)
+
+
+def test_claim_succeeds_once_the_other_server_exits(tmp_path: Path) -> None:
+    state = ensure_state_dir(tmp_path / ".bajutsu")
+    os.close(_hold_lock_elsewhere(state))  # the kernel releases the lock with its holder
+    claim_state_dir(state)
+    with pytest.raises(BlockingIOError):
+        _hold_lock_elsewhere(state)
+
+
+def test_claiming_a_state_dir_this_process_holds_is_a_no_op(tmp_path: Path) -> None:
+    state = ensure_state_dir(tmp_path / ".bajutsu")
+    claim_state_dir(state)
+    claim_state_dir(state)
+    assert list(local_keys._held_locks) == [state.resolve()]
+
+
+def test_claim_refuses_a_symlinked_lock_file(tmp_path: Path) -> None:
+    state = ensure_state_dir(tmp_path / ".bajutsu")
+    (state / local_keys.SERVE_LOCK_FILE).symlink_to(tmp_path / "elsewhere")
+    with pytest.raises(ServeStartupError, match="refusing to use the lock file"):
+        claim_state_dir(state)
+
+
+def test_claim_reports_a_filesystem_that_cannot_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = ensure_state_dir(tmp_path / ".bajutsu")
+
+    def no_lock(_fd: int, _op: int) -> None:
+        raise OSError(errno.ENOLCK, "No locks available")
+
+    monkeypatch.setattr(fcntl, "flock", no_lock)
+    with pytest.raises(ServeStartupError, match="cannot lock the state directory"):
+        claim_state_dir(state)
+    assert not local_keys._held_locks

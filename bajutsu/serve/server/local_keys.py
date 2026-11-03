@@ -33,6 +33,8 @@ SIGNING_KEY_FILE = "store-signing.key"
 # machine (BE-0449). Not a secret, but kept with the same owner-only rules: a file another account
 # could replace would let it steer those jobs.
 MACHINE_ID_FILE = "machine-id"
+# Held under an exclusive lock for the life of the server that owns the state directory.
+SERVE_LOCK_FILE = "serve.lock"
 # 256 bits matches HMAC-SHA256's block-independent security level; more buys nothing.
 SIGNING_KEY_BYTES = 32
 
@@ -66,6 +68,49 @@ def ensure_state_dir(path: Path) -> Path:
     path.chmod(STATE_DIR_MODE)
     _ignore_everything(path)
     return path
+
+
+# The lock descriptors this process holds, by state directory, kept open so the locks last until exit.
+_held_locks: dict[Path, int] = {}
+
+
+def claim_state_dir(path: Path) -> None:
+    """Take *path* for this process's server, refusing one another live server already holds.
+
+    Two servers on one state directory share its queue database but each mints job ids from its
+    own counter, so the later one's dispatch collides on an id the other already wrote, and either
+    server's worker leases the other's jobs (issue #2264). An ``flock`` on a file inside the
+    directory is released by the kernel when its holder exits, so a crashed server leaves nothing
+    to clean up. Claiming a directory this process already holds is a no-op.
+
+    Raises:
+        ServeStartupError: another live process holds *path*.
+    """
+    import fcntl  # Unix-only; the worker imports this module for `read_machine_id` alone
+
+    key = path.resolve()
+    if key in _held_locks:
+        return
+    lock = path / SERVE_LOCK_FILE
+    try:
+        fd = os.open(lock, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, KEY_FILE_MODE)
+    except OSError as e:  # ELOOP: a symlinked lock file, refused rather than followed
+        raise ServeStartupError(f"refusing to use the lock file {lock}: {e}") from e
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        os.close(fd)
+        raise ServeStartupError(
+            f"another bajutsu serve is already using the state directory {path}: two servers there "
+            "would share one queue and collide on job ids. Stop the other server, or give this one "
+            "a runs directory under another parent (the state directory sits beside it), or its "
+            "own BAJUTSU_DATABASE_URL and BAJUTSU_SECRETS_KEY"
+        ) from None
+    except OSError as e:
+        # A filesystem without flock support must say so, not reach the operator as a traceback.
+        os.close(fd)
+        raise ServeStartupError(f"cannot lock the state directory {path}: {e}") from e
+    _held_locks[key] = fd
 
 
 def _ignore_everything(path: Path) -> None:
