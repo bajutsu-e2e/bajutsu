@@ -20,7 +20,7 @@ from pydantic import ValidationError
 from bajutsu.serve import oplog
 from bajutsu.serve.authz import _record_audit
 from bajutsu.serve.orgs import DEFAULT_ORG, AllowedRepository
-from bajutsu.serve.sessions import machine_identity
+from bajutsu.serve.sessions import machine_identity, machine_repository
 from bajutsu.serve.state import ServeState
 from bajutsu.serve.store_keys import reserved_slug_error
 
@@ -338,9 +338,8 @@ def revoke_machine_sessions(
     if raw is not None and (not isinstance(raw, str) or not raw.strip()):
         return {"error": "repository must be a non-empty string"}, 400
     repository = raw.strip() if isinstance(raw, str) else None
-    revoked = state.auth.sessions.revoke_machine_sessions(
-        slug, identity=None if repository is None else machine_identity(repository)
-    )
+    identity = None if repository is None else machine_identity(repository)
+    revoked = state.auth.sessions.revoke_machine_sessions(slug, identity=identity)
     # Logged whether or not it matched. Zero is a legitimate answer — the sessions may already have
     # expired — but it is also what a mistyped repository returns, and an operator reaching for this
     # endpoint is acting on a name that has just changed. The deployment's log is where the two can
@@ -355,13 +354,17 @@ def revoke_machine_sessions(
     # No `drop_revoked_bindings` to match `delete_org`'s: a machine session takes no per-session
     # binding slot, because both backends resolve one to None before it reaches `binding_for`
     # (BE-0414 unit 3). There is nothing to reclaim.
+    #
+    # The detail names the repository through `machine_repository`, as every other entry about a
+    # machine principal does: the admin's casing matched those sessions, and keeping it here would
+    # split one repository's audit history in two (#2141).
     _record_audit(
         state,
         actor,
         state.org_of(actor),
         "org.machineSessions.revoke",
         slug,
-        {"repository": repository, "sessionsRevoked": revoked},
+        {"repository": machine_repository(identity), "sessionsRevoked": revoked},
     )
     return {"ok": True, "slug": slug, "repository": repository, "sessionsRevoked": revoked}, 200
 
