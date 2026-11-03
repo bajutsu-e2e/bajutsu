@@ -138,13 +138,29 @@ def test_a_token_older_than_the_ceiling_is_refused_while_still_unexpired() -> No
 
 @pytest.mark.parametrize("jti", [None, "", 42, {"a": 1}])
 def test_a_token_without_a_usable_jti_is_refused(jti: object) -> None:
-    """Fail closed rather than skip the replay cache. The absent and empty forms are caught by the
-    claims registry; a *numeric* one reaches `verify`'s own guard, which is the only thing between
-    a token with no spendable identifier and an unbounded replay window."""
+    """Fail closed rather than skip the replay cache. The claims registry catches every form here
+    (joserfc 1.7.5 began type-checking registered claims); `verify`'s own guard is the backstop the
+    test below pins."""
     key = _key()
     cache = JwksCache(ISSUER, fetch=_fetcher(key))
     with pytest.raises(OidcError):
         verify(_token(key, jti=jti), _config(), cache)
+
+
+@pytest.mark.parametrize(
+    ("claims", "match"),
+    [({"jti": 42}, "no 'jti'"), ({"iat": "not-a-number"}, "not a number")],
+)
+def test_verify_refuses_a_malformed_claim_the_registry_let_through(
+    monkeypatch: pytest.MonkeyPatch, claims: dict[str, Any], match: str
+) -> None:
+    """The replay cache and the age ceiling must not rest on the library's type checks alone: an
+    upstream change that stopped making them would otherwise open an unbounded replay window."""
+    monkeypatch.setattr(jwt.JWTClaimsRegistry, "validate", lambda self, claims: None)
+    key = _key()
+    cache = JwksCache(ISSUER, fetch=_fetcher(key))
+    with pytest.raises(OidcError, match=match):
+        verify(_token(key, **claims), _config(), cache)
 
 
 @pytest.mark.parametrize("iat", [None, "not-a-number"])
