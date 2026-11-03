@@ -112,8 +112,9 @@ The path after `PASS` is the run's manifest. The command exits with code 0 when 
 passes and with code 1 when any scenario fails. The CI (continuous integration) gate reads that exit
 code ([run-loop](../run-loop.md)).
 
-A line that starts with `FAIL` names the same manifest. The cause may be the environment, such as
-no booted Simulator or missing Xcode command-line tools. Run `doctor` to check the environment:
+A line that starts with `FAIL` names that run's manifest the same way. The cause may be the
+environment, such as no booted Simulator or missing Xcode command-line tools. Run `doctor` to check
+the environment:
 
 ```bash
 uv run bajutsu doctor --target showcase-swiftui --config demos/showcase/showcase.config.yaml
@@ -138,8 +139,15 @@ runner and installs the fresh build. It then runs the suite on the first booted 
 make -C demos/showcase run-swiftui
 ```
 
-The target skips the scenarios that need another platform or a dedicated build. Its recipe passes
-their tags to `run`:
+The target skips the scenarios that each have a dedicated `make` target of their own. Each of those
+scenarios needs a setup this run lacks, such as one of these:
+
+- another platform's device
+- a served fixture page
+- pixel baselines
+- controlled device state
+
+The recipe passes their tags to `run`:
 
 ```bash
 --exclude xcuitest,systemalert,visual,android,browser,app,multi-target

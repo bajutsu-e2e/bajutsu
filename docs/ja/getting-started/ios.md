@@ -141,8 +141,9 @@ uv run bajutsu doctor --target showcase-swiftui --config demos/showcase/showcase
 make -C demos/showcase run-swiftui
 ```
 
-別のプラットフォームや専用のビルドを必要とするシナリオは実行しません。このターゲットは、それらの
-シナリオのタグを `run` に渡して除外します。
+このターゲットは、専用の `make` ターゲットを持つシナリオを実行しません。別のプラットフォームの
+デバイス、あらかじめ起動したフィクスチャのページ、ピクセル比較の基準画像、整えたデバイスの状態など、
+それぞれが固有の前提を必要とするからです。これらのシナリオのタグを `run` に渡して除外します。
 
 ```bash
 --exclude xcuitest,systemalert,visual,android,browser,app,multi-target
