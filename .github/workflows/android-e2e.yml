@@ -230,7 +230,7 @@ jobs:
     # BAJUTSU_RUN_CRASH_RECOVERY_BUDGET (_default_run_crash_recovery_budget) is the run-scoped
     # counterpart: it caps crash-recovery time across every scenario in one `bajutsu run` process, not
     # per scenario. On this lane that scope is narrower than it sounds: `make -C
-    # demos/showcase/android e2e` shells one `bajutsu run --scenario …` per file, 28 separate
+    # demos/showcase/android e2e` shells one `bajutsu run --scenario …` per file, 29 separate
     # invocations (E2E_SCENARIOS + E2E_VIEWS_SCENARIOS), each getting its own fresh 480s budget — not
     # the single job-wide budget ios-e2e.yml's `run`/`actuation` jobs get by folding many scenarios into
     # one invocation. Most of those files hold one scenario, and a scenario can never observe its own

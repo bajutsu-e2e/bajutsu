@@ -90,10 +90,12 @@ which a `uiautomator dump` does not expose). Three Android-only carve-outs from 
 
 Because Compose testTags reproduce the dotted ids verbatim, the shared [`scenarios/`](scenarios)
 set drives `showcase-compose` unchanged. The Views ids are underscore-mapped (an `android:id`
-name allows neither `.` nor `-`); the shared set drives `showcase-views` unchanged too because each
-selector lists **both** id forms — `id: [stable.refresh, stable_refresh]` matches whichever the tree
-renders, an OR resolved by the deterministic core, keeping the id convention explicit in the scenario
-rather than a driver-side `.` ↔ `_` rewrite (BE-0221). Networking goes through **OkHttp** with
+name allows neither `.` nor `-`); the shared scenarios a Views lane runs drive `showcase-views`
+unchanged too because each of their selectors lists **both** id forms — `id: [stable.refresh,
+stable_refresh]` matches whichever the tree renders, an OR resolved by the deterministic core, keeping
+the id convention explicit in the scenario rather than a driver-side `.` ↔ `_` rewrite (BE-0221). A
+scenario no Views lane runs carries the dotted id alone, since no lane would ever resolve its underscore
+form ([cross-platform ids](../../docs/scenarios.md#cross-platform-ids-a-candidate-list-be-0221)). Networking goes through **OkHttp** with
 `BajutsuAndroid`'s interceptor, so `network` evidence works on Android too (BE-0283, §6); `mocks`
 stay a follow-up. Everything else below holds for all four Android products, except the native alert
 carve-out above.
