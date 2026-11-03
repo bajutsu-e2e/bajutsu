@@ -132,8 +132,11 @@ E2E_ENV = BAJUTSU_MIN_WAIT_TIMEOUT=$(E2E_WAIT_FLOOR) BAJUTSU_LOG_LEVEL=$(E2E_LOG
 # true for one toolkit into a guarantee checked for both, on every push/PR. Views runs the subset
 # whose selectors carry both id forms and that is verified on the Views tree; `components` / `modals`
 # stay Compose-only until their id forms and modal timing are confirmed on Views (a BE-0221 follow-up).
+# The underscore form belongs only in a scenario this list runs: anywhere else no lane resolves it, so a
+# typo in it could never fail (issue #2233). `device.yaml` carries the underscore form, so it joins
+# (verified on a local arm64 emulator).
 E2E_VIEWS_SCENARIOS := smoke firstlook navigation search data_driven relaunch system extract foreach \
-	interrupts
+	interrupts device
 
 # The wrapper jar IS committed (like any standard Android repo), so a fresh clone builds with no
 # extra step. Only run this to bump the pinned Gradle version — never as part of a build, since it

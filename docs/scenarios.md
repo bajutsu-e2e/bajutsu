@@ -978,6 +978,8 @@ A scenario is shared across platforms only to the extent its selectors are by `i
 
 The dotted form matches on iOS and Android Compose (which reproduce it verbatim); the underscore form matches on Android Views. Only one form is ever on screen for a given app, so the selection stays deterministic: if **both** candidate forms happened to be present at once, the selector is ambiguous and fails fast — an OR never turns a two-or-more match into a silent pick. The candidate list keeps the id convention **explicit in the scenario**, rather than a hidden driver-side `.`↔`_` rewrite that could conflate distinct ids. The showcase's shared scenarios use this so `showcase-swiftui` / `showcase-compose` / `showcase-views` all run the same files.
 
+List the underscore form only in a scenario a Views target actually runs: `E2E_VIEWS_SCENARIOS` in [`demos/showcase/android/Makefile`](../demos/showcase/android/Makefile), or a lane that drives `showcase-views` directly. In any other scenario no lane resolves that candidate, so a typo in it never fails and a reader cannot tell a needed candidate from a dead one; such a scenario carries the single dotted id.
+
 ## Step grammar (`steps`)
 
 Each step is **exactly one action** + optional modifiers (`capture:` / `name:`). Two or more

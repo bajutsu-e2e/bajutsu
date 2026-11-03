@@ -99,12 +99,12 @@
     # Written from outside the app, so the app's own read raises the cross-process consent prompt.
     - setClipboard: { text: "bajutsu-cross-clip" }
     - tap: { label: "Permissions", traits: [button] }
-    - wait: { for: { id: [perm.requestNotif, perm_requestNotif] }, timeout: 10 }
-    - scroll: { to: { id: [sys.paste.value, sys_paste_value] }, direction: down }
-    - tap: { id: [sys.paste, sys_paste] }
-    - wait: { for: { id: [sys.paste.value, sys_paste_value], value: "bajutsu-cross-clip" }, timeout: 10 }
+    - wait: { for: { id: perm.requestNotif }, timeout: 10 }
+    - scroll: { to: { id: sys.paste.value }, direction: down }
+    - tap: { id: sys.paste }
+    - wait: { for: { id: sys.paste.value, value: "bajutsu-cross-clip" }, timeout: 10 }
   expect:
-    - value: { sel: { id: [sys.paste.value, sys_paste_value] }, equals: "bajutsu-cross-clip" }
+    - value: { sel: { id: sys.paste.value }, equals: "bajutsu-cross-clip" }
 
 - name: deny the paste-consent prompt through a systemAlert interrupts entry
   tags: [systemalert]
@@ -117,9 +117,9 @@
   steps:
     - setClipboard: { text: "bajutsu-cross-clip" }
     - tap: { label: "Permissions", traits: [button] }
-    - wait: { for: { id: [perm.requestNotif, perm_requestNotif] }, timeout: 10 }
-    - scroll: { to: { id: [sys.paste.value, sys_paste_value] }, direction: down }
-    - tap: { id: [sys.paste, sys_paste] }
-    - wait: { for: { id: [sys.paste.value, sys_paste_value], value: "(none)" }, timeout: 10 }
+    - wait: { for: { id: perm.requestNotif }, timeout: 10 }
+    - scroll: { to: { id: sys.paste.value }, direction: down }
+    - tap: { id: sys.paste }
+    - wait: { for: { id: sys.paste.value, value: "(none)" }, timeout: 10 }
   expect:
-    - value: { sel: { id: [sys.paste.value, sys_paste_value] }, equals: "(none)" }
+    - value: { sel: { id: sys.paste.value }, equals: "(none)" }
