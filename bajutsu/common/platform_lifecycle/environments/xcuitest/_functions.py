@@ -689,7 +689,13 @@ def _resolve_runner(
         runner_path = Path(test_runner)
         if not runner_path.exists() and build:
             try:
-                subprocess.run(shlex.split(build), cwd=build_cwd, check=True)
+                argv = shlex.split(build)  # a mis-quoted build string is a clean failure
+            except ValueError as exc:
+                raise simctl.DeviceError(
+                    f"xcuitest build command is not valid shell syntax: {build!r} ({exc})"
+                ) from exc
+            try:
+                subprocess.run(argv, cwd=build_cwd, check=True)
             except (subprocess.CalledProcessError, OSError) as exc:
                 raise simctl.DeviceError(f"xcuitest build command failed: {build}") from exc
         if not runner_path.exists():

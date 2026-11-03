@@ -110,6 +110,14 @@ def test_a_failing_build_command_is_a_device_error(
         xcuitest._resolve_runner(cfg, "simulator", build_cwd=tmp_path)
 
 
+def test_a_mis_quoted_build_command_is_a_device_error(tmp_path: Path) -> None:
+    cfg = XcuitestConfig.model_validate(
+        {"testRunner": str(tmp_path / "Built.xctestrun"), "build": 'make "runner'}
+    )
+    with pytest.raises(simctl.DeviceError, match="not valid shell syntax"):
+        xcuitest._resolve_runner(cfg, "simulator", build_cwd=tmp_path)
+
+
 def test_missing_test_runner_without_build_fails(tmp_path: Path) -> None:
     cfg = XcuitestConfig.model_validate({"testRunner": str(tmp_path / "nope.xctestrun")})
     with pytest.raises(simctl.DeviceError, match="testRunner not found"):
