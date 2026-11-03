@@ -26,7 +26,7 @@
 
 XCUITest backend には、`brew` の追加パッケージも pip の extra も要りません。Xcode だけで動きます。
 
-## ステップ 4：showcase アプリをビルドする
+## ステップ 4：showcase アプリと runner をビルドする
 
 showcase アプリは、このウォークスルーで操作する対象のアプリです。リポジトリには、同じアプリを
 SwiftUI と UIKit の2通りで書いたものが入っています。どちらにも、アクセシビリティ識別子を付けた版と
@@ -46,6 +46,19 @@ ls -d demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/B
 生成された `.xcodeproj` と `build/` は、Git の管理から外してあります。プロジェクトの定義は、
 リポジトリに含まれる `project.yml` が持ちます。起動時の環境変数と識別子の一覧は
 [showcase](../showcase.md) のページにあります。
+
+XCUITest backend は、**事前にビルドしたオンデバイスの runner** を通してアプリを操作します。runner の
+場所は、ターゲットの `driver.runner.testRunner` が指定します。runner を一度ビルドします。
+
+```bash
+make -C demos/showcase runner-build
+```
+
+runner のテスト実行ファイルがあれば、ビルドは成功しています。
+
+```bash
+ls BajutsuKit/Runner/build/dd/Build/Products/BajutsuRunner.xctestrun
+```
 
 ## ステップ 5：Simulator でシナリオを実行する
 
@@ -70,11 +83,14 @@ xcrun simctl list devices booted
 起動した Simulator で smoke シナリオを実行します。
 
 ```bash
-uv run bajutsu run --scenario demos/showcase/scenarios/smoke.yaml --target showcase-swiftui --backend ios --udid booted --no-erase
+uv run bajutsu run --scenario demos/showcase/scenarios/smoke.yaml --target showcase-swiftui --backend ios --udid booted --no-erase --config demos/showcase/showcase.config.yaml
 ```
 
 各フラグの意味は次のとおりです。
 
+- `--config demos/showcase/showcase.config.yaml` は、showcase の config を読みます。このフラグがないと、
+  `run` はカレントディレクトリの `bajutsu.config.yaml` を読みます。リポジトリのルートにあるこのファイルは、
+  ドキュメントサイト用のターゲットしか定めていません。
 - `--target showcase-swiftui` は、ターゲットの定義 `targets.showcase-swiftui` を選びます。この定義は
   [`demos/showcase/showcase.config.yaml`](../../../demos/showcase/showcase.config.yaml) にあります。
   アプリの bundle id、起動時の環境変数、許可する id の名前空間を定めています。ツール自体はどのアプリでも
@@ -84,11 +100,6 @@ uv run bajutsu run --scenario demos/showcase/scenarios/smoke.yaml --target showc
   渡すと、終了コード 2 で終わります。
 - `--udid booted` は、上で起動した Simulator を対象にします。
 - `--no-erase` は、最初に `simctl erase` をかけず、インストール済みのアプリをそのまま使います。
-
-XCUITest backend は、**事前にビルドしたオンデバイスの runner** を通してアプリを操作します。runner の
-場所は、ターゲットの `driver.runner.testRunner` が指定します。showcase の config は、runner を
-ビルドするコマンドも定めています。runner がなければ初回の実行でビルドするので、初回は2回目以降より
-時間がかかります。
 
 ### 実行結果を確かめる
 
@@ -106,7 +117,7 @@ PASS  runs/20260610-120000/manifest.json
 起動中の Simulator がない場合や、Xcode のコマンドラインツールがない場合です。`doctor` で環境を確かめます。
 
 ```bash
-uv run bajutsu doctor --target showcase-swiftui
+uv run bajutsu doctor --target showcase-swiftui --config demos/showcase/showcase.config.yaml
 ```
 
 `doctor` は、必要なコマンドラインツールと起動中のデバイスについて、✓/✗ のチェックリストを表示します。
@@ -147,7 +158,7 @@ Claude に showcase アプリをゴールへ向けて探索させ、シナリオ
 `.env` ファイルに `ANTHROPIC_API_KEY=sk-ant-…` を書いてから、次のコマンドを実行します。
 
 ```bash
-uv run bajutsu record --target showcase-swiftui --goal "log in and increment the counter to 3"   # アプリのシナリオディレクトリへ書く
+uv run bajutsu record --target showcase-swiftui --goal "log in and increment the counter to 3" --config demos/showcase/showcase.config.yaml   # アプリのシナリオディレクトリへ書く
 ```
 
 ### ネイティブの XCUITest を出力する
@@ -155,7 +166,7 @@ uv run bajutsu record --target showcase-swiftui --goal "log in and increment the
 `codegen` は、シナリオをネイティブの XCUITest のソースファイルに変換します。
 
 ```bash
-uv run bajutsu codegen demos/showcase/scenarios/smoke.yaml --target showcase-swiftui -o UITests/Smoke.swift
+uv run bajutsu codegen demos/showcase/scenarios/smoke.yaml --target showcase-swiftui -o UITests/Smoke.swift --config demos/showcase/showcase.config.yaml
 ```
 
 生成したコードが実際にコンパイルできることは、`make -C demos/showcase ui-test` で確かめられます。

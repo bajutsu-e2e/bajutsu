@@ -25,7 +25,7 @@ This page covers Steps 4 and 5 of the shared walkthrough. Before you start, chec
 
 The XCUITest backend needs no extra `brew` package and no pip extra. Xcode alone is enough.
 
-## Step 4 — Build the showcase app
+## Step 4 — Build the showcase app and its runner
 
 The showcase app is the fixture this walkthrough runs against. The repository ships one app written
 twice, in SwiftUI and in UIKit. Each version comes with and without accessibility identifiers. The
@@ -45,6 +45,19 @@ ls -d demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/B
 Git ignores the generated `.xcodeproj` and `build/`. The checked-in `project.yml` defines the
 project. The [showcase](../showcase.md) page lists the launch environment variables and the
 identifier catalog.
+
+The XCUITest backend drives the app through a **prebuilt on-device runner**. The target's
+`driver.runner.testRunner` names that runner. Build the runner once:
+
+```bash
+make -C demos/showcase runner-build
+```
+
+The build succeeded when the runner's test-run file exists:
+
+```bash
+ls BajutsuKit/Runner/build/dd/Build/Products/BajutsuRunner.xctestrun
+```
 
 ## Step 5 — Run a scenario on the Simulator
 
@@ -69,11 +82,14 @@ xcrun simctl list devices booted
 Run the smoke scenario on the booted Simulator:
 
 ```bash
-uv run bajutsu run --scenario demos/showcase/scenarios/smoke.yaml --target showcase-swiftui --backend ios --udid booted --no-erase
+uv run bajutsu run --scenario demos/showcase/scenarios/smoke.yaml --target showcase-swiftui --backend ios --udid booted --no-erase --config demos/showcase/showcase.config.yaml
 ```
 
 The flags mean the following:
 
+- `--config demos/showcase/showcase.config.yaml` reads the showcase config. Without the flag, `run`
+  reads `bajutsu.config.yaml` in the current directory. At the repository root, that file defines
+  the docs-site target alone.
 - `--target showcase-swiftui` selects `targets.showcase-swiftui` from
   [`demos/showcase/showcase.config.yaml`](../../demos/showcase/showcase.config.yaml). That entry
   holds the app's bundle id, launch environment, and allowed id namespaces. The tool stays the same
@@ -83,10 +99,6 @@ The flags mean the following:
   the target makes the run exit with code 2.
 - `--udid booted` runs on the Simulator you booted above.
 - `--no-erase` keeps the installed app instead of running `simctl erase` first.
-
-The XCUITest backend drives the app through a **prebuilt on-device runner**. The target's
-`driver.runner.testRunner` names that runner. The showcase config also names the command that builds the runner. The
-first run builds the runner on demand, so that run takes longer than later ones.
 
 ### Check the result
 
@@ -104,7 +116,7 @@ A line that starts with `FAIL` names the same manifest. The cause may be the env
 no booted Simulator or missing Xcode command-line tools. Run `doctor` to check the environment:
 
 ```bash
-uv run bajutsu doctor --target showcase-swiftui
+uv run bajutsu doctor --target showcase-swiftui --config demos/showcase/showcase.config.yaml
 ```
 
 `doctor` prints a ✓/✗ checklist of the required command-line tools and the booted device. It then
@@ -143,7 +155,7 @@ Claude can explore the showcase app toward a goal and write the scenario for you
 `ANTHROPIC_API_KEY=sk-ant-…` in a `.env` file, then run:
 
 ```bash
-uv run bajutsu record --target showcase-swiftui --goal "log in and increment the counter to 3"   # writes into the app's scenarios dir
+uv run bajutsu record --target showcase-swiftui --goal "log in and increment the counter to 3" --config demos/showcase/showcase.config.yaml   # writes into the app's scenarios dir
 ```
 
 ### Emit a native XCUITest
@@ -151,7 +163,7 @@ uv run bajutsu record --target showcase-swiftui --goal "log in and increment the
 `codegen` turns a scenario into a native XCUITest source file:
 
 ```bash
-uv run bajutsu codegen demos/showcase/scenarios/smoke.yaml --target showcase-swiftui -o UITests/Smoke.swift
+uv run bajutsu codegen demos/showcase/scenarios/smoke.yaml --target showcase-swiftui -o UITests/Smoke.swift --config demos/showcase/showcase.config.yaml
 ```
 
 To see codegen compile for real, run `make -C demos/showcase ui-test`. That target uses a different
