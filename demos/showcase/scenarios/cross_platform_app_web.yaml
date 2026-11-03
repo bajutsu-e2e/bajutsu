@@ -34,11 +34,11 @@ scenarios:
       - target: showcase-swiftui
         tap: { label: "Search", traits: [button] }
       - target: showcase-swiftui
-        wait: { for: { id: [search.field, search_field] }, timeout: 10 }
+        wait: { for: { id: search.field }, timeout: 10 }
       - target: showcase-swiftui
-        type: { text: "Horse 3", into: { id: [search.field, search_field] } }
+        type: { text: "Horse 3", into: { id: search.field } }
       - target: showcase-swiftui
-        wait: { for: { id: [search.row.3, search_row_3] }, timeout: 5 }
+        wait: { for: { id: search.row.3 }, timeout: 5 }
       # The caller fixes the target: every step of `web-sign-in` runs against `web` (BE-0446).
       - use: { component: web-sign-in, with: { email: a@b.com, password: pw } }
         target: web
@@ -48,6 +48,6 @@ scenarios:
         tap: { id: counter.increment }
     expect:
       - target: showcase-swiftui
-        count: { sel: { idMatches: ["search.row.*", "search_row_*"] }, equals: 1 }
+        count: { sel: { idMatches: "search.row.*" }, equals: 1 }
       - target: web
         value: { sel: { id: counter.value }, equals: "2" }

@@ -46,18 +46,18 @@
     # The tab transition is asynchronous, so wait for the tab's own first control before scrolling —
     # otherwise the scroll can swipe the launch tab (system.yaml and permission_system_alert.yaml
     # hold the same wait for the same reason).
-    - wait: { for: { id: [perm.requestNotif, perm_requestNotif] }, timeout: 10 }
-    - scroll: { to: { id: [sys.paste.value, sys_paste_value] }, direction: down }
-    - tap: { id: [sys.paste, sys_paste] }            # the app reads UIPasteboard.general.string
+    - wait: { for: { id: perm.requestNotif }, timeout: 10 }
+    - scroll: { to: { id: sys.paste.value }, direction: down }
+    - tap: { id: sys.paste }            # the app reads UIPasteboard.general.string
     # Name the intent, not the text (BE-0320): the run pins the Simulator's system language to the
     # scenario's locale and resolves the label SpringBoard renders under it, which is what lets the
     # Japanese pair below reuse these same steps with nothing but a `locale:` line changed.
     - handleSystemAlert: { prompt: paste, choice: grant, timeout: 10 }
     # The app reads the pasteboard off the main thread, so it publishes the pasted value only after
     # that read returns — condition-wait for it rather than racing the assertion (prime directive 2).
-    - wait: { for: { id: [sys.paste.value, sys_paste_value], value: "bajutsu-cross-clip" }, timeout: 10 }
+    - wait: { for: { id: sys.paste.value, value: "bajutsu-cross-clip" }, timeout: 10 }
   expect:
-    - value: { sel: { id: [sys.paste.value, sys_paste_value] }, equals: "bajutsu-cross-clip" }
+    - value: { sel: { id: sys.paste.value }, equals: "bajutsu-cross-clip" }
 
 - name: deny the paste-consent prompt with handleSystemAlert
   tags: [systemalert]
@@ -73,13 +73,13 @@
     # this scenario on the value rather than passing it.
     - setClipboard: { text: "bajutsu-cross-clip" }
     - tap: { label: "Permissions", traits: [button] }
-    - wait: { for: { id: [perm.requestNotif, perm_requestNotif] }, timeout: 10 }
-    - scroll: { to: { id: [sys.paste.value, sys_paste_value] }, direction: down }
-    - tap: { id: [sys.paste, sys_paste] }
+    - wait: { for: { id: perm.requestNotif }, timeout: 10 }
+    - scroll: { to: { id: sys.paste.value }, direction: down }
+    - tap: { id: sys.paste }
     - handleSystemAlert: { prompt: paste, choice: deny, timeout: 10 }
-    - wait: { for: { id: [sys.paste.value, sys_paste_value], value: "(none)" }, timeout: 10 }
+    - wait: { for: { id: sys.paste.value, value: "(none)" }, timeout: 10 }
   expect:
-    - value: { sel: { id: [sys.paste.value, sys_paste_value] }, equals: "(none)" }
+    - value: { sel: { id: sys.paste.value }, equals: "(none)" }
 
 # The Japanese pair. `locale: ja_JP` is the only difference from the two above: it pins the app's own
 # language and the device's system language alike (BE-0320), so the lookup resolves「ペーストを許可」
@@ -99,13 +99,13 @@
   steps:
     - setClipboard: { text: "bajutsu-cross-clip" }
     - tap: { label: "Permissions", traits: [button] }
-    - wait: { for: { id: [perm.requestNotif, perm_requestNotif] }, timeout: 10 }
-    - scroll: { to: { id: [sys.paste.value, sys_paste_value] }, direction: down }
-    - tap: { id: [sys.paste, sys_paste] }
+    - wait: { for: { id: perm.requestNotif }, timeout: 10 }
+    - scroll: { to: { id: sys.paste.value }, direction: down }
+    - tap: { id: sys.paste }
     - handleSystemAlert: { prompt: paste, choice: grant, timeout: 10 }
-    - wait: { for: { id: [sys.paste.value, sys_paste_value], value: "bajutsu-cross-clip" }, timeout: 10 }
+    - wait: { for: { id: sys.paste.value, value: "bajutsu-cross-clip" }, timeout: 10 }
   expect:
-    - value: { sel: { id: [sys.paste.value, sys_paste_value] }, equals: "bajutsu-cross-clip" }
+    - value: { sel: { id: sys.paste.value }, equals: "bajutsu-cross-clip" }
 
 - name: deny the paste-consent prompt on a Japanese Simulator
   tags: [systemalert]
@@ -121,10 +121,10 @@
   steps:
     - setClipboard: { text: "bajutsu-cross-clip" }
     - tap: { label: "Permissions", traits: [button] }
-    - wait: { for: { id: [perm.requestNotif, perm_requestNotif] }, timeout: 10 }
-    - scroll: { to: { id: [sys.paste.value, sys_paste_value] }, direction: down }
-    - tap: { id: [sys.paste, sys_paste] }
+    - wait: { for: { id: perm.requestNotif }, timeout: 10 }
+    - scroll: { to: { id: sys.paste.value }, direction: down }
+    - tap: { id: sys.paste }
     - handleSystemAlert: { prompt: paste, choice: deny, timeout: 10 }
-    - wait: { for: { id: [sys.paste.value, sys_paste_value], value: "(none)" }, timeout: 10 }
+    - wait: { for: { id: sys.paste.value, value: "(none)" }, timeout: 10 }
   expect:
-    - value: { sel: { id: [sys.paste.value, sys_paste_value] }, equals: "(none)" }
+    - value: { sel: { id: sys.paste.value }, equals: "(none)" }
