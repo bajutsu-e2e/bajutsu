@@ -302,7 +302,11 @@ def _hold_lock_elsewhere(state: Path) -> int:
     # flock locks belong to an open file description, so a second open in this process stands in
     # for another server's process.
     fd = os.open(state / local_keys.SERVE_LOCK_FILE, os.O_CREAT | os.O_RDWR, 0o600)
-    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        os.close(fd)
+        raise
     return fd
 
 
