@@ -46,6 +46,10 @@ concurrency:
   group: web-e2e-${{ github.ref }}
   cancel-in-progress: true
 
+# Every job that installs Chromium is pinned to ubuntu-24.04: `ubuntu-latest` moved to 26.04 around
+# 2026-11-03, and the locked Playwright (1.60.0, uv.lock) refuses it with "Playwright does not
+# support chromium on ubuntu26.04-x64". Unpin (back to ubuntu-latest) once uv.lock carries a
+# Playwright release that installs Chromium on 26.04. The two Chromium-free jobs stay on latest.
 jobs:
   # Decide whether a browser run is warranted. The Chromium jobs only fire when the PR touches what
   # they exercise — the drivers, the run path, the serve backend and demos, or this workflow. The
@@ -75,7 +79,7 @@ jobs:
     name: smoke (playwright)
     needs: changes
     if: needs.changes.outputs.relevant == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # pinned: see the note above `jobs:`
     timeout-minutes: 30
     # The web smoke needs only the `web` extra, never the dev group (mypy / pytest / ruff + the
     # gate-only extras). UV_NO_DEV makes every uv call here skip it — both the explicit `uv sync`
@@ -118,7 +122,7 @@ jobs:
     name: dogfood (serve UI)
     needs: changes
     if: needs.changes.outputs.relevant == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # pinned: see the note above `jobs:`
     timeout-minutes: 30
     env:
       UV_NO_DEV: "1"
@@ -152,7 +156,7 @@ jobs:
     name: conformance (playwright)
     needs: changes
     if: needs.changes.outputs.relevant == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # pinned: see the note above `jobs:`
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -215,7 +219,7 @@ jobs:
     name: network (playwright)
     needs: changes
     if: needs.changes.outputs.relevant == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # pinned: see the note above `jobs:`
     timeout-minutes: 30
     env:
       UV_NO_DEV: "1"
@@ -261,7 +265,7 @@ jobs:
     name: codegen (playwright)
     needs: changes
     if: needs.changes.outputs.relevant == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # pinned: see the note above `jobs:`
     timeout-minutes: 30
     env:
       UV_NO_DEV: "1"
@@ -304,7 +308,7 @@ jobs:
     name: onboarding (doctor / provision)
     needs: changes
     if: needs.changes.outputs.relevant == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # pinned: see the note above `jobs:`
     timeout-minutes: 30
     env:
       UV_NO_DEV: "1"
