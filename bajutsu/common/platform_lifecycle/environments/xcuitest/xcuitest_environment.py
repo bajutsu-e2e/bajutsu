@@ -475,7 +475,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
             launch_env, launch_args = self._launch_params(eff, pre, extra_env)
             forwarded_base.update(_forwarded_launch(launch_env, launch_args))
             self._app_launched_at = time.time()
-        runner_path = _resolve_runner(ios.xcuitest, device_type)
+        runner_path = _resolve_runner(ios.xcuitest, device_type, build_cwd=eff.base_dir)
 
         def spawn() -> _Spawned:
             return self._spawn_runner(runner_path, forwarded_base, device_type)
@@ -528,7 +528,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # BAJUTSU_LAUNCH_ARGS only for a runner older than the encoded pair (`_forwarded_launch`);
         # the plain form's URLs arrive with `//` collapsed, so it is not the one to inspect.
         launch_env, launch_args = self._launch_params(eff, pre, extra_env)
-        runner_path = _resolve_runner(ios.xcuitest, device_type)
+        runner_path = _resolve_runner(ios.xcuitest, device_type, build_cwd=eff.base_dir)
         forwarded_base = {
             # One generic runner drives whatever app the run targets, so it launches this
             # bundle id via XCUIApplication(bundleIdentifier:) rather than its own target app.

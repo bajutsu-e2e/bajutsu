@@ -89,6 +89,11 @@ class Effective:
     # Per-app run-behavior defaults (BE-0177 / BE-0252): the layer the run consults when neither a
     # CLI flag nor the scenario sets the value.
     run_defaults: RunDefaults = field(default_factory=RunDefaults)
+    # The directory `rebased` resolved the relative path fields against — the config file's own
+    # directory, a Git checkout root, or an uploaded bundle's root. The runner's build command
+    # (`driver.runner.build`) runs here, so it lands where a relative `testRunner` already points
+    # (#2277). None until rebased; that build then inherits the process's working directory.
+    base_dir: Path | None = None
 
     @property
     def platform(self) -> str:
@@ -130,11 +135,12 @@ class Effective:
 
         The common path fields — `scenarios` / `baselines` / `schemas` / `goldens` — the iOS or
         Android sub-config's `app_path`, and an iOS target's `seed_photos` are rebased; a future
-        path field is rebased by adding it here. `build` (a shell command) is intentionally absent,
-        and a component the target's hooks call was already resolved against the config file when
-        it loaded. Called for a Git checkout (BE-0063), for an uploaded bundle, and — `root` the
-        config file's own directory — for a local config (BE-0242), so the caller's working
-        directory no longer decides where a config's paths point.
+        path field is rebased by adding it here. `build` (a shell command) is intentionally absent —
+        it is not rewritten but run from `root`, recorded as `base_dir` — and a component the
+        target's hooks call was already resolved against the config file when it loaded. Called
+        for a Git checkout (BE-0063), for an uploaded bundle, and — `root` the config file's own
+        directory — for a local config (BE-0242), so the caller's working directory no longer
+        decides where a config's paths point.
 
         `confine` gates the escape check: when true, an absolute or `../` value that would leave the
         confinement boundary raises ValueError, mirroring the serve-hardening path confinement
@@ -181,6 +187,7 @@ class Effective:
 
         common = replace(
             self,
+            base_dir=root,
             evidence_dirs=replace(
                 self.evidence_dirs,
                 scenarios=at("paths.scenarios", self.evidence_dirs.scenarios),

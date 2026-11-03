@@ -763,6 +763,9 @@ def test_rebased_resolves_xcuitest_test_runner() -> None:
     xcuitest = _ios(rebased).xcuitest
     assert xcuitest is not None
     assert xcuitest.test_runner == "/co/build/Runner.xctestrun"
+    # The runner's build runs from the same root, so it writes where `testRunner` points (#2277).
+    assert eff.base_dir is None
+    assert rebased.base_dir == Path("/co")
 
 
 def test_rebased_preserves_xcuitest_device_type() -> None:

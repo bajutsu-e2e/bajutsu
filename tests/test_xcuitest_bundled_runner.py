@@ -70,11 +70,44 @@ def test_missing_test_runner_runs_the_build_command(
     runner = tmp_path / "Built.xctestrun"
     cfg = XcuitestConfig.model_validate({"testRunner": str(runner), "build": "make runner"})
 
-    def _fake_run(argv: list[str], check: bool = False) -> None:
+    def _fake_run(argv: list[str], cwd: Path | None = None, check: bool = False) -> None:
         runner.write_bytes(b"")  # the build produces the configured path
 
     monkeypatch.setattr(subprocess, "run", _fake_run)
     assert xcuitest._resolve_runner(cfg, "simulator") == runner
+
+
+def test_the_build_command_runs_in_build_cwd(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # #2277: the build runs where the config's relative paths resolve, not the shell's directory —
+    # a `make runner-build` only the config's own Makefile defines must still find it.
+    runner = tmp_path / "Built.xctestrun"
+    cfg = XcuitestConfig.model_validate({"testRunner": str(runner), "build": "make runner"})
+    seen: list[Path | None] = []
+
+    def _fake_run(argv: list[str], cwd: Path | None = None, check: bool = False) -> None:
+        seen.append(cwd)
+        runner.write_bytes(b"")
+
+    monkeypatch.setattr(subprocess, "run", _fake_run)
+    assert xcuitest._resolve_runner(cfg, "simulator", build_cwd=tmp_path) == runner
+    assert seen == [tmp_path]
+
+
+def test_a_failing_build_command_is_a_device_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cfg = XcuitestConfig.model_validate(
+        {"testRunner": str(tmp_path / "Built.xctestrun"), "build": "make runner"}
+    )
+
+    def _fake_run(argv: list[str], cwd: Path | None = None, check: bool = False) -> None:
+        raise subprocess.CalledProcessError(2, argv)
+
+    monkeypatch.setattr(subprocess, "run", _fake_run)
+    with pytest.raises(simctl.DeviceError, match="xcuitest build command failed: make runner"):
+        xcuitest._resolve_runner(cfg, "simulator", build_cwd=tmp_path)
 
 
 def test_missing_test_runner_without_build_fails(tmp_path: Path) -> None:
