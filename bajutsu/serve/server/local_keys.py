@@ -91,7 +91,11 @@ def claim_state_dir(path: Path) -> None:
     key = path.resolve()
     if key in _held_locks:
         return
-    fd = os.open(path / SERVE_LOCK_FILE, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, KEY_FILE_MODE)
+    lock = path / SERVE_LOCK_FILE
+    try:
+        fd = os.open(lock, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, KEY_FILE_MODE)
+    except OSError as e:  # ELOOP: a symlinked lock file, refused rather than followed
+        raise ServeStartupError(f"refusing to use the lock file {lock}: {e}") from e
     try:
         fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
@@ -102,6 +106,10 @@ def claim_state_dir(path: Path) -> None:
             "a runs directory under another parent (the state directory sits beside it), or its "
             "own BAJUTSU_DATABASE_URL and BAJUTSU_SECRETS_KEY"
         ) from None
+    except OSError as e:
+        # A filesystem without flock support must say so, not reach the operator as a traceback.
+        os.close(fd)
+        raise ServeStartupError(f"cannot lock the state directory {path}: {e}") from e
     _held_locks[key] = fd
 
 

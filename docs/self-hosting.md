@@ -448,9 +448,9 @@ key that another local account can read would expose every stored secret.
 One `.bajutsu/` serves one server at a time. The server holds a lock on `.bajutsu/serve.lock` while
 it runs. A second `bajutsu serve` on the same directory refuses to start and names the directory.
 Two servers there would share one queue: each would hand out job ids the other already used, and a
-worker of either would take the other's jobs. To run two servers from one checkout, give each a
-runs directory under its own parent directory, since `.bajutsu/` sits beside the runs directory. Or
-give each its own `BAJUTSU_DATABASE_URL` and `BAJUTSU_SECRETS_KEY`. The lock ends with the process, so a server
+worker of either would take the other's jobs. To run two servers from one checkout, point each
+one's `--runs` at a directory under its own parent, since `.bajutsu/` sits beside the runs
+directory. Or give each its own `BAJUTSU_DATABASE_URL` and `BAJUTSU_SECRETS_KEY`. The lock ends with the process, so a server
 that crashed leaves nothing to remove.
 
 The file store uses the bucket's key layout, with one difference. The default org's run artifacts

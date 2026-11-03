@@ -109,6 +109,23 @@ def test_a_second_local_start_on_one_state_dir_is_refused(tmp_path: Path) -> Non
         os.close(fd)
 
 
+def test_a_start_on_a_configured_database_takes_no_state_dir_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The documented way to run two servers from one checkout: each names its own database, so
+    # neither claims the shared `.bajutsu/` (issue #2264).
+    _project(tmp_path)
+    from bajutsu.serve.server.db._functions import upgrade_to_head
+
+    own = f"sqlite:///{tmp_path / 'own.db'}"
+    upgrade_to_head(own)  # an operator's database is migrated by the operator, not the start
+    monkeypatch.setenv("BAJUTSU_DATABASE_URL", own)
+    monkeypatch.setenv("BAJUTSU_SECRETS_KEY", Fernet.generate_key().decode("ascii"))
+    _local(tmp_path)
+    assert not local_keys._held_locks
+    assert not (tmp_path / ".bajutsu" / local_keys.SERVE_LOCK_FILE).exists()
+
+
 class _Recording:
     """An executor that keeps what it is handed, so a dispatch test stays synchronous."""
 

@@ -6,6 +6,7 @@ agreement between concurrent creators, and the env-first secrets key.
 
 from __future__ import annotations
 
+import errno
 import fcntl
 import os
 import stat
@@ -335,3 +336,24 @@ def test_claiming_a_state_dir_this_process_holds_is_a_no_op(tmp_path: Path) -> N
     claim_state_dir(state)
     claim_state_dir(state)
     assert list(local_keys._held_locks) == [state.resolve()]
+
+
+def test_claim_refuses_a_symlinked_lock_file(tmp_path: Path) -> None:
+    state = ensure_state_dir(tmp_path / ".bajutsu")
+    (state / local_keys.SERVE_LOCK_FILE).symlink_to(tmp_path / "elsewhere")
+    with pytest.raises(ServeStartupError, match="refusing to use the lock file"):
+        claim_state_dir(state)
+
+
+def test_claim_reports_a_filesystem_that_cannot_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = ensure_state_dir(tmp_path / ".bajutsu")
+
+    def no_lock(_fd: int, _op: int) -> None:
+        raise OSError(errno.ENOLCK, "No locks available")
+
+    monkeypatch.setattr(fcntl, "flock", no_lock)
+    with pytest.raises(ServeStartupError, match="cannot lock the state directory"):
+        claim_state_dir(state)
+    assert not local_keys._held_locks
