@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING
 
 from bajutsu.serve.helpers import ServeStartupError
 from bajutsu.serve.server.file_object_store import FileObjectStore, UrlSigner
-from bajutsu.serve.server.local_keys import signing_key
+from bajutsu.serve.server.local_keys import claim_state_dir, ensure_state_dir, signing_key
 from bajutsu.serve.server.object_store import (
     ObjectStore,
     artifact_prefix,
@@ -41,6 +41,19 @@ _WILDCARD_HOSTS = frozenset({"", "0.0.0.0", "::"})  # noqa: S104 — matching a 
 def default_database_url(state_dir: Path) -> str:
     """The SQLite URL of the queue database a local start keeps in *state_dir*."""
     return f"sqlite:///{state_dir / QUEUE_DB_FILE}"
+
+
+def local_database_url(state_dir: Path) -> str:
+    """The default queue database a local start opens, once this process has claimed *state_dir*.
+
+    The queue is one file per state directory, so it serves one server at a time (issue #2264).
+
+    Raises:
+        ServeStartupError: *state_dir* is unsafe, or another live server already holds it.
+    """
+    ensure_state_dir(state_dir)
+    claim_state_dir(state_dir)
+    return default_database_url(state_dir)
 
 
 def hosted_from_env(*, server_store_set: bool) -> bool:

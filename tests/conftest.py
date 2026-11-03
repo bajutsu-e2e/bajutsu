@@ -626,3 +626,18 @@ class StubArtifactStore:
 
     def list_trashed_runs(self) -> list[dict[str, Any]]:
         return []
+
+
+@pytest.fixture(autouse=True)
+def _release_state_dir_locks() -> Iterator[None]:
+    """Release the state-directory locks a test's server start took (issue #2264).
+
+    `claim_state_dir` keeps each lock's descriptor open for the life of the process, as a real
+    server needs, so without this every test that builds a local server would leak one.
+    """
+    yield
+    from bajutsu.serve.server import local_keys
+
+    for fd in local_keys._held_locks.values():
+        os.close(fd)
+    local_keys._held_locks.clear()

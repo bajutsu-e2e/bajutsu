@@ -9,8 +9,10 @@ settings file. The secret read that makes the second possible is locked off ever
 from __future__ import annotations
 
 import ast
+import fcntl
 import hashlib
 import json
+import os
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -22,6 +24,7 @@ from fastapi.testclient import TestClient
 from bajutsu import serve as srv
 from bajutsu.serve import jobs
 from bajutsu.serve import operations as ops
+from bajutsu.serve.helpers import ServeStartupError
 from bajutsu.serve.jobs import _spawn_env, job_secret_env
 from bajutsu.serve.operations.config import (
     AI_API_KEY_SECRET,
@@ -30,6 +33,7 @@ from bajutsu.serve.operations.config import (
     restore_persisted_provider_settings,
 )
 from bajutsu.serve.secrets import EnvSecretStore
+from bajutsu.serve.server import local_keys
 from bajutsu.serve.server.app import make_app
 from bajutsu.serve.server.worker_job import job_spec
 from bajutsu.serve.state import Job
@@ -89,6 +93,20 @@ def _local(tmp_path: Path) -> srv.ServeState:
         max_concurrent=4,
         token=None,
     )
+
+
+def test_a_second_local_start_on_one_state_dir_is_refused(tmp_path: Path) -> None:
+    # Two servers on one `.bajutsu/` would share its queue and collide on job ids (issue #2264). A
+    # second open of the lock file stands in for the other server's process.
+    _project(tmp_path)
+    state = local_keys.ensure_state_dir(tmp_path / ".bajutsu")
+    fd = os.open(state / local_keys.SERVE_LOCK_FILE, os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with pytest.raises(ServeStartupError, match="already using the state directory"):
+            _local(tmp_path)
+    finally:
+        os.close(fd)
 
 
 class _Recording:

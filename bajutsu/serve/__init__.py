@@ -391,11 +391,11 @@ def _build_server_state(  # noqa: C901
     from bajutsu.serve.server.baselines import ObjectBaselineStore
     from bajutsu.serve.server.db import engine_from_url, repository_from_env
     from bajutsu.serve.server.db_executor import DbQueueExecutor
-    from bajutsu.serve.server.local_keys import ensure_state_dir, local_state_dir, machine_id
+    from bajutsu.serve.server.local_keys import local_state_dir, machine_id
     from bajutsu.serve.server.local_start import (
         artifact_store,
-        default_database_url,
         hosted_from_env,
+        local_database_url,
         secrets_fernet,
     )
     from bajutsu.serve.server.oauth import GitHubOAuthClient
@@ -435,9 +435,7 @@ def _build_server_state(  # noqa: C901
         )
     # Only a local start (no bucket) gets the default SQLite (BE-0449); a bucket was refused above
     # unless it names a database.
-    local_db_url = (
-        default_database_url(ensure_state_dir(state_dir)) if local_layout and not db_url else None
-    )
+    local_db_url = local_database_url(state_dir) if local_layout and not db_url else None
     # `repository_from_env` migrates the default SQLite, since no operator will.
     repo = repository_from_env(default_url=local_db_url)
     engine_url = db_url or local_db_url
