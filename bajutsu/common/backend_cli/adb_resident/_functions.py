@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import contextlib
 import hashlib
 import http.client
@@ -300,6 +301,45 @@ def act(
             published_mark=_parse_mark(resp.getheader(_ACT_PUBLISH_HEADER)),
             read=_act_read(resp, raw),
         )
+
+
+def type_text(
+    host_port: int, text: str, *, timeout: float = 10.0, keepalive: Keepalive | None = None
+) -> None:
+    """Ask the resident server to enter `text` into the field that holds input focus.
+
+    The text crosses in the request body, base64-encoded, because a query string is what a proxy or a
+    log would keep and a typed value may be a secret. Encoding also leaves the server's character
+    reader counting bytes one-for-one against `Content-Length`.
+
+    Raises:
+        AdbActUnsupported: the server predates `/type`, so a rebuilt server is the only remedy.
+        AdbActUncertain: the request went out but its reply was lost, so the text may already be in
+            the field and sending it again could enter it twice.
+        AdbResidentError: the channel could not be reached, or the device refused — no focused field,
+            a password field, a field without `ACTION_SET_TEXT`. Its message is the device's reason,
+            which never quotes the text.
+    """
+    body = base64.b64encode(text.encode("utf-8"))
+    with _channel(host_port, keepalive, timeout) as conn:
+        try:
+            conn.request("POST", "/type", body=body)
+        except (OSError, http.client.HTTPException) as exc:
+            raise AdbResidentError(
+                f"resident text entry unreachable on port {host_port}: {exc}"
+            ) from exc
+        try:
+            resp = conn.getresponse()
+            raw = resp.read()
+        except (OSError, http.client.HTTPException) as exc:
+            raise AdbActUncertain(
+                f"resident text entry was sent but its reply was lost on port {host_port}: {exc}"
+            ) from exc
+    if resp.status == _NO_ENDPOINT_STATUS:
+        raise AdbActUnsupported(f"resident server has no /type endpoint (HTTP {resp.status})")
+    if resp.status != 200:
+        reason = raw.decode("utf-8", "replace").strip()
+        raise AdbResidentError(f"resident text entry returned HTTP {resp.status}: {reason}")
 
 
 def _act_read(resp: http.client.HTTPResponse, raw: bytes) -> HierarchyRead | None:

@@ -27,7 +27,7 @@ from bajutsu.common.drivers.fake import FakeDriver
 if TYPE_CHECKING:
     from bajutsu.common.config import Effective
     from bajutsu.common.devices.os import DeviceOS
-    from bajutsu.common.drivers.adb import ActFn, ClockFetch, HierarchyFetch
+    from bajutsu.common.drivers.adb import ActFn, ClockFetch, HierarchyFetch, TypeFn
     from bajutsu.common.drivers.zorder import ZOrderSource
     from bajutsu.common.scenario import Scenario
 
@@ -532,6 +532,7 @@ def make_driver(
     fetch_hierarchy: HierarchyFetch | None = None,
     fetch_clock: ClockFetch | None = None,
     act: ActFn | None = None,
+    type_on_device: TypeFn | None = None,
     device_os: DeviceOS | None = None,
     is_real_device: bool = False,
     package: str | None = None,
@@ -545,7 +546,8 @@ def make_driver(
     supplied, else via `uiautomator dump`, and takes a `fetch_clock` device-clock probe to anchor its
     read-lag barrier (BE-0332 Unit 3). `act` is that channel's actuation endpoint: with it a `tap`
     resolves its target on the device, so no host-computed coordinate is injected; without it the
-    coordinate actuators stand in. Every other actuator ignores all three. The xcuitest backend reads
+    coordinate actuators stand in. `type_on_device` is its text endpoint, the route for text `input
+    text` cannot carry. Every other actuator ignores all four. The xcuitest backend reads
     `runner_alive` — the environment's `xcodebuild`-process liveness check — so crash-recovery can fail
     fast on a runner whose process has exited. It also takes `on_stall`, the environment's bounded
     diagnostics capture (BE-0361), called when that same layer declares a mid-run crash, and
@@ -576,6 +578,7 @@ def make_driver(
             fetch_hierarchy=fetch_hierarchy,
             fetch_clock=fetch_clock,
             act=act,
+            type_on_device=type_on_device,
             package=package,
             api_level=api_level,
             launched_at=launched_at,

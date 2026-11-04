@@ -9,6 +9,7 @@ server lifecycle over an injected `run`. Real on-device verification is a later 
 
 from __future__ import annotations
 
+import base64
 import http.client
 import http.server
 import socket
@@ -25,6 +26,7 @@ from bajutsu.common.drivers.adb import (
     ActOutcome,
     ActRequest,
     AdbActUncertain,
+    AdbActUnsupported,
     AdbResidentError,
     HierarchyRead,
     elements_with_identities,
@@ -127,7 +129,16 @@ class _SourceHandler(http.server.BaseHTTPRequestHandler):
     # never waited for its gesture to publish, and the device that waited and saw nothing.
     act_publish: str | None = None
 
+    type_status = 200  # what POST /type answers
+    type_reason = b""  # the body of that answer
+    type_drop_reply = False  # accept the request, then hang up without answering
+    last_type_path: str | None = None  # the full POST /type target the client last sent
+    last_type_body: bytes | None = None  # the body of that request
+
     def do_POST(self) -> None:
+        if self.path == "/type":
+            self._do_type()
+            return
         if self.path.split("?", 1)[0] != "/act":
             self.send_error(404)
             return
@@ -141,6 +152,18 @@ class _SourceHandler(http.server.BaseHTTPRequestHandler):
         if self.act_publish is not None:
             self.send_header(adb_resident._ACT_PUBLISH_HEADER, self.act_publish)
         self.end_headers()
+
+    def _do_type(self) -> None:
+        type(self).last_type_path = self.path
+        type(self).last_type_body = self.rfile.read(int(self.headers["Content-Length"]))
+        if self.type_drop_reply:
+            self.close_connection = True
+            self.wfile.close()
+            return
+        self.send_response(self.type_status)
+        self.send_header("Content-Length", str(len(self.type_reason)))
+        self.end_headers()
+        self.wfile.write(self.type_reason)
 
     def do_GET(self) -> None:
         route = self.path.split("?", 1)[
@@ -1152,6 +1175,79 @@ def _act_request(**over: object) -> ActRequest:
     }
     fields.update(over)
     return ActRequest(**fields)  # type: ignore[arg-type]
+
+
+def test_type_text_carries_the_text_in_the_body_never_the_target() -> None:
+    # A typed value may be a secret, so it stays out of the request target a proxy or a log would keep.
+    port, server = _serve_once()
+    _SourceHandler.type_status = 200
+    try:
+        adb_resident.type_text(port, "馬術 🐎")
+    finally:
+        server.shutdown()
+    assert _SourceHandler.last_type_path == "/type"
+    assert base64.b64decode(_SourceHandler.last_type_body or b"").decode("utf-8") == "馬術 🐎"
+
+
+def test_type_text_raises_the_devices_reason_when_it_refuses() -> None:
+    port, server = _serve_once()
+    _SourceHandler.type_status = 422
+    _SourceHandler.type_reason = b"the focused field is a password field\n"
+    try:
+        with pytest.raises(AdbResidentError, match="HTTP 422: the focused field is a password"):
+            adb_resident.type_text(port, "馬")
+    finally:
+        _SourceHandler.type_status = 200
+        _SourceHandler.type_reason = b""
+        server.shutdown()
+
+
+def test_type_text_separates_a_lost_reply_from_one_never_sent() -> None:
+    # Resending after a lost reply could enter the text twice; a connect that never happened cannot.
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        closed = probe.getsockname()[1]
+    with pytest.raises(AdbResidentError) as never_sent:
+        adb_resident.type_text(closed, "馬", timeout=0.2)
+    assert not isinstance(never_sent.value, AdbActUncertain)
+
+    port, server = _serve_once()
+    _SourceHandler.type_drop_reply = True
+    try:
+        with pytest.raises(AdbActUncertain, match="sent but its reply was lost"):
+            adb_resident.type_text(port, "馬")
+    finally:
+        _SourceHandler.type_drop_reply = False
+        server.shutdown()
+
+
+def test_type_text_names_a_server_without_the_endpoint() -> None:
+    port, server = _serve_once()
+    _SourceHandler.type_status = 404
+    try:
+        with pytest.raises(AdbActUnsupported, match="no /type endpoint"):
+            adb_resident.type_text(port, "馬")
+    finally:
+        _SourceHandler.type_status = 200
+        server.shutdown()
+
+
+def test_the_lease_channel_hands_text_to_the_type_probe(tmp_path: Path) -> None:
+    server_apk, test_apk = tmp_path / "s.apk", tmp_path / "t.apk"
+    server_apk.write_bytes(b"s")
+    test_apk.write_bytes(b"t")
+    typed: list[tuple[int, str]] = []
+    resident = adb_resident.ResidentServer(
+        "S",
+        run=lambda argv: "4321\n" if "forward" in argv else "",
+        spawn=lambda argv: _FakeProc(),
+        fetch=lambda port, since: HierarchyRead("<hierarchy/>"),
+        type_probe=lambda port, text: typed.append((port, text)),
+        server_apk=server_apk,
+        test_apk=test_apk,
+    )
+    resident.start().type_text("馬")
+    assert typed == [(4321, "馬")]
 
 
 def test_act_sends_the_element_identity_and_no_coordinate() -> None:

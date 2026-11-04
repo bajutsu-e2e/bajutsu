@@ -19,6 +19,7 @@ from ._functions import (
     fetch_clock,
     fetch_source,
     narrowed_root,
+    type_text,
 )
 from ._process import _Process
 from ._shared import _SERVER_APK, _TEST_APK, logger
@@ -32,6 +33,7 @@ Spawn = Callable[[list[str]], _Process]
 Fetch = Callable[[int, float | None], HierarchyRead]
 ClockProbe = Callable[[int], float | None]
 ActProbe = Callable[[int, ActRequest], ActOutcome]
+TypeProbe = Callable[[int, str], None]
 
 
 class ResidentServer:
@@ -57,6 +59,7 @@ class ResidentServer:
         fetch: Fetch | None = None,
         clock: ClockProbe | None = None,
         act_probe: ActProbe | None = None,
+        type_probe: TypeProbe | None = None,
         server_apk: Path = _SERVER_APK,
         test_apk: Path = _TEST_APK,
         installed: dict[str, tuple[str, str]] | None = None,
@@ -92,6 +95,9 @@ class ResidentServer:
             lambda port, request: act(
                 port, request, keepalive=self._keepalive, want_tree=not native_z
             )
+        )
+        self._type_text = type_probe or (
+            lambda port, text: type_text(port, text, keepalive=self._keepalive)
         )
         self._server_apk = server_apk
         self._test_apk = test_apk
@@ -162,7 +168,12 @@ class ResidentServer:
             # actuation endpoint would trade a small regression for a large one.
             return self._act(port, request)
 
-        return ResidentChannel(fetch, clock, act_on_device)
+        def type_on_device(text: str) -> None:
+            # Like `act_on_device`, a fault here leaves the read channel up: it says nothing about
+            # the reads, and the driver fails this one step on it.
+            self._type_text(port, text)
+
+        return ResidentChannel(fetch, clock, act_on_device, type_on_device)
 
     def _install_apks(self) -> None:
         """Put this run's resident-server pair on the device, unless it is already the pair there.

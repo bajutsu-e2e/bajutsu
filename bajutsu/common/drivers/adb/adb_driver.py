@@ -49,6 +49,7 @@ ClockFetch = Callable[[], float | None]
 # than letting a coordinate be guessed. Raises `AdbResidentError` when the channel itself fails, which
 # the driver degrades to its own coordinate path.
 ActFn = Callable[[ActRequest], ActOutcome]
+TypeFn = Callable[[str], None]
 
 # Android's `uiautomator` dump reports bounds in raw display pixels, so that is the space stamped on
 # this backend's actuation records — a coordinate only means something alongside its unit.
@@ -143,6 +144,23 @@ def _traced_act(act: ActFn) -> ActFn:
     return _wrapped
 
 
+def _traced_type(type_text: TypeFn) -> TypeFn:
+    def _wrapped(text: str) -> None:
+        ctx = tracing.current_trace()
+        if ctx is None:
+            type_text(text)
+            return
+        started_at = time.time()
+        t0 = time.perf_counter()
+        try:
+            type_text(text)
+        finally:
+            # The name and the timing only: a typed value may be a secret.
+            ctx.record("transport", "type", started_at, time.perf_counter() - t0)
+
+    return _wrapped
+
+
 class AdbDriver(CoordinateTreeDriver):
     """Driver implementation for the Android emulator via adb + UI Automator.
 
@@ -219,6 +237,7 @@ class AdbDriver(CoordinateTreeDriver):
         fetch_hierarchy: HierarchyFetch | None = None,
         fetch_clock: ClockFetch | None = None,
         act: ActFn | None = None,
+        type_on_device: TypeFn | None = None,
         package: str | None = None,
         api_level: int | None = None,
         launched_at: Callable[[], tuple[float, str] | None] | None = None,
@@ -248,7 +267,7 @@ class AdbDriver(CoordinateTreeDriver):
         self._front_check = False
         self.serial = adb.checked_serial(serial)
         # BE-0415: a driver built while a trace is open times every subprocess call `run` issues and
-        # every resident-channel round trip these three callables make. Checked once here, not on
+        # every resident-channel round trip these four callables make. Checked once here, not on
         # every call — see `_traced_run` et al.'s own comment. `_run_text` (below) reads the same
         # ambient trace directly instead, since it is a plain staticmethod with no instance to wrap.
         if tracing.current_trace() is not None:
@@ -259,6 +278,8 @@ class AdbDriver(CoordinateTreeDriver):
                 fetch_clock = _traced_fetch_clock(fetch_clock)
             if act is not None:
                 act = _traced_act(act)
+            if type_on_device is not None:
+                type_on_device = _traced_type(type_on_device)
         self._run = run
         # When set, reads go through the resident channel and fall back to `uiautomator dump` only on
         # failure (BE-0245). Unset (the default) keeps today's dump-every-read behavior exactly.
@@ -273,6 +294,8 @@ class AdbDriver(CoordinateTreeDriver):
         # round trip later. None (the dump path, or an older server) keeps the coordinate actuators,
         # which stay the declared degraded mode rather than a silent second-best.
         self._act_fn = act
+        # The resident server's text endpoint, the only route for text `input text` cannot carry.
+        self._type_fn = type_on_device
         # Each element's device-addressable identity, keyed by `id()` of the element dict the last read
         # produced — the same object `resolve_unique` hands back, so a resolved element maps straight to
         # what the device needs. Rebuilt on every read; a stale key simply misses and degrades.
@@ -1654,7 +1677,36 @@ class AdbDriver(CoordinateTreeDriver):
         # `_run_text` bypasses `_act`, so invalidate by hand: the input may have just changed the
         # screen exactly as any other actuation would.
         self.invalidate_settled_cache()
-        self._run_text(adb.shell_cmd(self.serial), adb.text_script(text))
+        if adb.input_text_can_type(text):
+            self._run_text(adb.shell_cmd(self.serial), adb.text_script(text))
+        else:
+            self._type_through_server(text)
+
+    def _type_through_server(self, text: str) -> None:
+        """Enter text `input text` cannot carry through the resident server, or fail the step.
+
+        There is no second route to degrade to, so every refusal fails loudly here (prime directive
+        2) rather than leaving the field untouched for a later assertion to puzzle over.
+        """
+        if self._type_fn is None or self._act_unavailable:
+            raise base.UnsupportedAction(
+                "this text needs the resident UI Automator server, which is not running on this "
+                "lease: `input text` can only enter ASCII without a literal `%s`"
+            )
+        try:
+            self._type_fn(text)
+        except AdbActUnsupported as exc:
+            raise base.UnsupportedAction(
+                f"{exc}; rebuild it with `make -C BajutsuAndroidUIAutomatorServer build`"
+            ) from exc
+        except AdbActUncertain as exc:
+            # The same call `_device_act` makes on a lost reply: resending could enter the text
+            # twice, while a text that never arrived fails the scenario's own assertion.
+            logger.warning(
+                "resident text entry may or may not have landed (%s); continuing as if it did", exc
+            )
+        except AdbResidentError as exc:
+            raise base.UnsupportedAction(str(exc)) from exc
 
     @staticmethod
     def _run_text(cmd: list[str], script: str) -> None:

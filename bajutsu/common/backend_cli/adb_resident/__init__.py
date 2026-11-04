@@ -26,7 +26,7 @@ from ._functions import _parse_mark as _parse_mark
 from ._functions import _parse_native_z as _parse_native_z
 from ._functions import _warn_once as _warn_once
 from ._functions import _warned as _warned
-from ._functions import act, fetch_clock, fetch_source, narrowed_root, server_apks_built
+from ._functions import act, fetch_clock, fetch_source, narrowed_root, server_apks_built, type_text
 from ._process import _Process as _Process
 from ._shared import _REPO_ROOT as _REPO_ROOT
 from ._shared import _SERVER_APK as _SERVER_APK
@@ -35,7 +35,7 @@ from ._shared import logger
 from .keepalive import _KEEPALIVE_IDLE_RECONNECT_S as _KEEPALIVE_IDLE_RECONNECT_S
 from .keepalive import Keepalive
 from .resident_channel import ResidentChannel
-from .resident_server import ActProbe, ClockProbe, Fetch, ResidentServer, Spawn
+from .resident_server import ActProbe, ClockProbe, Fetch, ResidentServer, Spawn, TypeProbe
 
 __all__ = [
     "ActProbe",
@@ -45,10 +45,12 @@ __all__ = [
     "ResidentChannel",
     "ResidentServer",
     "Spawn",
+    "TypeProbe",
     "act",
     "fetch_clock",
     "fetch_source",
     "logger",
     "narrowed_root",
     "server_apks_built",
+    "type_text",
 ]

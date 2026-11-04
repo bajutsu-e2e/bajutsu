@@ -48,7 +48,7 @@ from .act_request import ActRequest
 from .adb_act_uncertain import AdbActUncertain
 from .adb_act_unsupported import AdbActUnsupported
 from .adb_driver import _UNIT as _UNIT
-from .adb_driver import ActFn, AdbDriver, ClockFetch, HierarchyFetch, RunFn
+from .adb_driver import ActFn, AdbDriver, ClockFetch, HierarchyFetch, RunFn, TypeFn
 from .adb_resident_error import AdbResidentError
 from .hierarchy_read import HierarchyRead
 
@@ -65,6 +65,7 @@ __all__ = [
     "HierarchyRead",
     "NodeIdentity",
     "RunFn",
+    "TypeFn",
     "elements_with_identities",
     "logger",
     "parse_hierarchy",

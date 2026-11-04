@@ -26,9 +26,11 @@ included into an app's build.
   (`ResidentServerTest.serve`) that never returns — it opens a socket and serves until the
   instrumentation is killed, which is what keeps the `UiAutomation` session warm.
 - Transport is a hand-rolled HTTP/1.1 over a raw `ServerSocket` bound to loopback (port 6790), with
-  no HTTP or JSON dependency: the server answers exactly one verb on one path.
+  no HTTP or JSON dependency: the server answers a small, fixed set of paths.
 - `GET /source` returns `UiDevice.dumpWindowHierarchy()`'s XML, the same
   `AccessibilityNodeInfoDumper` format bajutsu's `parse_hierarchy` already parses.
+- `POST /type` enters text that `adb shell input text` cannot carry into the field holding input
+  focus. The text arrives as a base64 request body, and the server applies it with `ACTION_SET_TEXT`.
 
 One window difference is reconciled on the Python side: `dumpWindowHierarchy()` traverses every
 window, so its XML also carries the SystemUI status bar (clock, wifi, battery, notification icons —

@@ -539,11 +539,12 @@ flutter-android-noax-build:
 # `systemalert`, `alert` (scenarios/alert.yaml — no Flutter Log screen has a native-alert affordance
 # yet), `visual` (scenarios/visual.yaml, which needs the `--baselines` directory `vrt` supplies), and
 # `app` (scenarios/app.yaml — its return-leg assertion targets the a11y showcase apps' own
-# "Permissions" screen, which Flutter has no counterpart for).
+# "Permissions" screen, which Flutter has no counterpart for). `android` drops the scenarios that
+# only an Android target can run.
 # Prereqs: a booted Simulator, `make runner-build`; an attached emulator for Android.
 run-flutter: flutter-build runner-build
 	cd $(ROOT) && uv run bajutsu run --target showcase-flutter --udid $(SIM) --backend xcuitest \
-		--exclude network,systemalert,alert,visual,swiftui,browser,app --config $(CONFIG)
+		--exclude network,systemalert,alert,visual,swiftui,browser,app,android --config $(CONFIG)
 
 # The same on-device set the native Compose lane runs (demos/showcase/android/Makefile), minus
 # device.yaml — its device-control clipboard round-trips through the in-app BajutsuAndroid receiver

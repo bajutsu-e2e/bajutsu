@@ -718,6 +718,17 @@ def text_script(text: str) -> str:
     return f"input text {shlex.quote(text.replace(' ', '%s'))}"
 
 
+def input_text_can_type(text: str) -> bool:
+    """Whether `input text` can enter `text` exactly as written.
+
+    `input` turns each character into key events through the virtual keyboard's character map, which
+    has no key for a non-ASCII character: the command dies with a NullPointerException instead. It
+    also reads a literal `%s` as its space escape, with no way to escape the escape, so that text
+    would arrive altered. Either case has to take the resident server's `/type` instead.
+    """
+    return text.isascii() and "%s" not in text
+
+
 def pm_clear_cmd(serial: str, package: str) -> list[str]:
     """Reset the app's data/state — the Android `erase` equivalent."""
     return _adb(serial, "shell", "pm", "clear", package)

@@ -273,6 +273,7 @@ class AndroidEnvironment:
             fetch_hierarchy=channel.fetch if channel is not None else None,
             fetch_clock=channel.clock if channel is not None else None,
             act=channel.act if channel is not None else None,
+            type_on_device=channel.type_text if channel is not None else None,
             package=package,
             api_level=self._read_api_level(),
             launched_at=launched_at,
