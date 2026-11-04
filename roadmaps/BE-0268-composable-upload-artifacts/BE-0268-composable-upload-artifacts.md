@@ -87,157 +87,85 @@ Five units make up the work, and they do not overlap: the per-artifact model, th
 
 ### 1. Three content-addressed artifact kinds
 
-An **artifact** is one of three kinds, each stored by the sha256 of its bytes in the object store
-[BE-0243](../BE-0243-upload-bundle-durable-storage/BE-0243-upload-bundle-durable-storage.md)
-introduced (`bajutsu/object_store.py`), under the same per-org prefix scheme every sibling store
-already uses (`org_prefix` / `upload_prefix` in `bajutsu/serve/server/object_store.py`), extended
-with a per-kind sub-prefix so the three never collide:
+An **artifact** is one of three kinds. Each kind is stored by the sha256 of its bytes in the object store that [BE-0243](../BE-0243-upload-bundle-durable-storage/BE-0243-upload-bundle-durable-storage.md) introduced (`bajutsu/object_store.py`). The key uses the per-org prefix scheme that every sibling store already shares (`org_prefix` / `upload_prefix` in `bajutsu/serve/server/object_store.py`), extended with a per-kind sub-prefix so the three kinds never collide.
 
-- **`config`** — a single `bajutsu.config.yaml` (its bytes; small).
-- **`scenarios`** — the scenario subtree, carried as a `.zip` of the YAML tree (`scenarios/…`,
-  plus `baselines/` / `setup/` when the config references them; small text).
-- **`binary`** — the built app artifact (`.app.zip` / `.ipa`; large), exactly what BE-0073's bundle
-  carried, now stored on its own.
+- **`config`**: a single `bajutsu.config.yaml` (its bytes; small).
+- **`scenarios`**: the scenario subtree, carried as a `.zip` of the YAML tree (`scenarios/…`, plus `baselines/` and `setup/` when the config references them; small text).
+- **`binary`**: the built app artifact (`.app.zip` or `.ipa`; large). The BE-0073 bundle carried exactly this artifact, which is now stored on its own.
 
-Content-addressing gives the "upload only what changed" and "no-op on an unchanged binary"
-properties for free: the store already dedupes by key, and `ObjectStore.exists(key)` lets a client
-(or the UI) check "is this sha already stored?" and skip the upload when it is. This is the same
-`exists`/`put_bytes`/`presigned_put_url` seam BE-0243 and the worker-upload path
-(`bajutsu/serve/operations/worker_uploads.py`, `presign.py`) already rely on.
+Content-addressing yields "upload only what changed" and "no-op on an unchanged binary" at no extra cost. The store already dedupes by key. `ObjectStore.exists(key)` lets a client (or the UI) ask whether a sha is already stored, and skip the upload when it is. BE-0243 and the worker-upload path (`bajutsu/serve/operations/worker_uploads.py`, `presign.py`) already rely on the same `exists` / `put_bytes` / `presigned_put_url` seam.
 
 ### 2. Composition of three artifacts into one tree
 
-The crux BE-0073 and [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source.md) both
-protect is unchanged: the runner needs a **single self-contained tree** the config's relative
-`scenarios` / `appPath` / `baselines` / `setup` resolve against
-(`bajutsu/serve/operations/upload.py` `_validate_bundle_config` + `Effective.rebased`). So a
-**composition** is a triple of artifact shas `(config_sha, scenarios_sha, binary_sha)`, and a new
-`materialize_composition` step assembles them into a fresh, serve-owned, confined directory — the
-sibling of BE-0073's `materialize_bundle`:
+[BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md) and [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source.md) both protect one invariant, and this item keeps it. The runner needs a **single self-contained tree**, against which the config's relative `scenarios`, `appPath`, `baselines`, and `setup` paths resolve (`_validate_bundle_config` and `Effective.rebased` in `bajutsu/serve/operations/upload.py`).
 
-1. Write the `config` artifact's bytes as `bajutsu.config.yaml` at the tree root. **The config is
-   the single source of truth for layout**: it names, via its own relative `scenarios` and
-   `appPath` fields, exactly where the other two artifacts must land.
-2. Extract the `scenarios` zip so that the config's `scenarios` path resolves (e.g. `./scenarios`),
-   with the same zip-slip / zip-bomb bounds BE-0073 enforces on extraction.
-3. Place the `binary` artifact at the config's `appPath` (a `.app` dir from a `.app.zip`, or an
-   `.ipa` left as-is), the one field that already answers "where is the binary".
+A **composition** is therefore a triple of artifact shas, `(config_sha, scenarios_sha, binary_sha)`. A new `materialize_composition` step assembles the triple into a fresh, serve-owned, confined directory. It is the sibling of BE-0073's `materialize_bundle`, and it works in three steps:
 
-Then it runs BE-0073's existing `_validate_bundle_config` against the assembled root: every target's
-path fields must confine to the tree, and — the new coherence check this design adds — the config's
-`appPath` and `scenarios` must actually be **filled by the supplied artifacts**. A triple that names
-a config whose `appPath` no binary artifact fills, or whose `scenarios` no scenarios artifact fills,
-is rejected at bind time with a specific error, never run against a half-materialized tree
-(directive 2). Everything downstream — `resolve()`, the runner, the drivers, the assertion
-evaluator, the report — is byte-for-byte the same code path a BE-0073 bundle or a local `--config`
-run takes; only the *assembly* is new.
+1. Write the `config` artifact's bytes as `bajutsu.config.yaml` at the tree root. The config is the single source of truth for layout. Its own relative `scenarios` and `appPath` fields name where the other two artifacts must land.
+2. Extract the `scenarios` zip so that the config's `scenarios` path resolves (for example `./scenarios`). Extraction uses the same zip-slip and zip-bomb bounds that BE-0073 enforces.
+3. Place the `binary` artifact at the config's `appPath`: a `.app` directory from a `.app.zip`, or an `.ipa` left as is. `appPath` is the one field that already answers "where is the binary".
 
-**Provenance.** The run's `manifest.json` records the **triple of shas** (and each artifact's
-display filename), extending BE-0073's single-zip-sha provenance. "What did this run execute?" is
-answerable to the exact bytes of each of the three parts — a stronger guarantee than the combined
-zip gave, and the audit anchor for the combination matrix.
+The step then runs BE-0073's existing `_validate_bundle_config` against the assembled root. Every target's path fields must confine to the tree. This design adds one coherence check: the config's `appPath` and `scenarios` must be **filled by the supplied artifacts**. A triple is rejected at bind time with a specific error when its config names an `appPath` that no binary artifact fills, or a `scenarios` path that no scenarios artifact fills. The run never starts against a half-materialized tree (directive 2).
+
+Everything downstream of assembly is unchanged: `resolve()`, the runner, the drivers, the assertion evaluator, and the report. A composed run takes byte-for-byte the same code path as a BE-0073 bundle or a local `--config` run.
+
+**Provenance.** The run's `manifest.json` records the triple of shas and each artifact's display filename. This extends BE-0073's single-zip-sha provenance. The question "what did this run execute?" now has an answer down to the exact bytes of each of the three parts. That guarantee is stronger than the combined zip gave, and it anchors audits of the combination matrix.
 
 ### 3. Upload API, per kind and additive, with the combined zip kept as sugar
 
-Three authenticated upload paths, each streaming a raw body to a temp file with bounded memory
-(BE-0073's pattern) and returning the stored **sha256**:
+Three authenticated upload paths stream a raw body to a temp file with bounded memory (the BE-0073 pattern) and return the stored **sha256**.
 
-- `POST /api/artifacts/config` — body is the YAML bytes.
-- `POST /api/artifacts/scenarios` — body is the scenario-tree zip.
-- `POST /api/artifacts/binary` — body is the `.app.zip` / `.ipa`.
+- `POST /api/artifacts/config`: the body is the YAML bytes.
+- `POST /api/artifacts/scenarios`: the body is the scenario-tree zip.
+- `POST /api/artifacts/binary`: the body is the `.app.zip` or `.ipa`.
 
-Each is an admin-or-editor action behind [BE-0051](../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)
-token auth, screened by the same [BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md)
-hosted-source allowlist that already governs upload. A companion `HEAD`/exists check (or a
-`presigned_put_url` as the worker-upload path does) lets a client skip re-sending bytes already
-stored — the mechanism behind "don't re-upload the unchanged binary". The existing combined
-`POST /api/upload` **stays**, reinterpreted as sugar: on the server it decomposes the zip into the
-same three content-addressed artifacts and forms the composition, so the one-drop flow keeps working
-and every upload — combined or split — lands on one internal representation.
+Each path is an admin-or-editor action behind the token auth of [BE-0051](../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md). The hosted-source allowlist of [BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md), which already governs upload, screens each path too.
+
+A companion `HEAD`/exists check, or a `presigned_put_url` as the worker-upload path uses, lets a client skip bytes that are already stored. This is the mechanism behind "do not re-upload the unchanged binary".
+
+The existing combined `POST /api/upload` stays, reinterpreted as sugar. On the server, it decomposes the zip into the same three content-addressed artifacts and forms the composition. The one-drop flow keeps working, and every upload, combined or split, lands on one internal representation.
 
 ### 4. Project binding that widens BE-0225's `upload` source record
 
-[BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub.md) binds a project to a
-discriminated config-source record (`kind` + locator); its `upload` kind today points at a single
-bundle sha (`activate_uploaded_project` fetch-and-extracts that one zip,
-`bajutsu/serve/operations/upload.py`). This item widens the `upload` locator from one sha to the
-**triple** `(config_sha, scenarios_sha, binary_sha)`. `activate`/`run` then calls
-`materialize_composition` instead of `materialize_bundle`. Backward compatibility is a shape check:
-a legacy single-sha `upload` record still resolves through `materialize_bundle`; a triple resolves
-through the new step. Updating one leg of a bound project (a new binary sha, same scenarios/config)
-is a record edit, not a re-upload — this is where the combination matrix and the incremental-update
-wins surface at the project level.
+[BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub.md) binds a project to a discriminated config-source record (`kind` plus a locator). Its `upload` kind points at a single bundle sha today: `activate_uploaded_project` fetches and extracts that one zip (`bajutsu/serve/operations/upload.py`).
+
+This item widens the `upload` locator from one sha to the triple `(config_sha, scenarios_sha, binary_sha)`. `activate` and `run` then call `materialize_composition` instead of `materialize_bundle`. Backward compatibility rests on a shape check. A legacy single-sha `upload` record still resolves through `materialize_bundle`, and a triple resolves through the new step.
+
+Updating one leg of a bound project (a new binary sha with the same scenarios and config) is a record edit, not a re-upload. The combination matrix and the incremental-update gains surface here, at the project level.
 
 ### 5. UI
 
-The **Open config → Upload** surface gains **three drop zones** — Config, Scenarios, Binary — each
-showing the currently-selected artifact (filename + short sha) with a **reuse last** affordance, so
-a user re-drops only what changed and the client skips the upload for any zone whose sha is already
-stored. A small **composition picker** lets a user assemble a triple from artifacts already uploaded
-(pick config vX, scenarios vY, binary vZ) and run it — the surface that makes the combination matrix
-a few clicks rather than N full uploads. Runs still flow through the same job machinery
-(`bajutsu/serve/jobs.py`) and show in History; [BE-0060](../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md)
-export closes the round trip unchanged.
+The **Open config → Upload** surface gains three drop zones: Config, Scenarios, and Binary. Each zone shows the currently selected artifact (filename and short sha) with a **reuse last** control. A user re-drops only what changed, and the client skips the upload for any zone whose sha is already stored.
+
+A small **composition picker** lets a user assemble a triple from artifacts that are already uploaded (pick config vX, scenarios vY, binary vZ) and run it. The combination matrix becomes a few clicks instead of N full uploads.
+
+Runs still flow through the same job machinery (`bajutsu/serve/jobs.py`) and show in History. The export of [BE-0060](../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md) closes the round trip unchanged.
 
 ### Determinism, the gate, and app-agnosticism
 
-- **No LLM, no effect on the verdict.** Composition is acquisition + assembly before the
-  deterministic `run`; pass/fail stays machine-only. Directives 1 and 2 hold by construction.
-- **Linux-testable.** Per-artifact storage, the exists/dedup check, zip-slip / zip-bomb bounds on
-  the scenarios and binary artifacts, the composition assembly, and the coherence validation are all
-  pure packaging/plumbing and unit-test on the existing Linux gate against fixture artifacts — no
-  Simulator. Only the actual app *install + run* needs a Mac, as for any iOS run.
-- **App-agnostic.** The config is the sole layout authority; the compose step reads `appPath` /
-  `scenarios` from it and never branches per app. Per-app differences stay in the composed config's
-  `targets.<name>`.
+- **No LLM, no effect on the verdict.** Composition is acquisition and assembly before the deterministic `run`. Pass/fail stays machine-only, so directives 1 and 2 hold by construction.
+- **Linux-testable.** Per-artifact storage, the exists/dedup check, the zip-slip and zip-bomb bounds on the scenarios and binary artifacts, the composition assembly, and the coherence validation are pure packaging and plumbing. They unit-test on the existing Linux gate against fixture artifacts, with no Simulator. Only the app install and run needs a Mac, as for any iOS run.
+- **App-agnostic.** The config is the sole layout authority. The compose step reads `appPath` and `scenarios` from it and never branches per app. Per-app differences stay in the composed config's `targets.<name>`.
 
 ### Backend scope
 
-The headline case is **iOS**: the `binary` artifact is a `.app.zip` / `.ipa` placed at the config's
-`appPath` and installed into the Simulator, exactly as BE-0073. The web (Playwright) backend has no
-"app binary"; its analogue is a bundled **static site** served via
-[BE-0059](../BE-0059-launch-target-server/BE-0059-launch-target-server.md) — the same follow-up
-BE-0073 already deferred. The three-artifact split is backend-neutral in shape (it is still "a config
-tree, delivered in parts"), so the mechanism does not hard-code iOS; a web variant (a `site` artifact
-in place of `binary`) is a later slice.
+The headline case is **iOS**. The `binary` artifact is a `.app.zip` or `.ipa` that the run places at the config's `appPath` and installs into the Simulator, exactly as in BE-0073.
+
+The web (Playwright) backend has no app binary. Its analogue is a bundled static site served through [BE-0059](../BE-0059-launch-target-server/BE-0059-launch-target-server.md), the same follow-up that BE-0073 already deferred. The three-artifact split is backend-neutral in shape, because it still means "a config tree, delivered in parts". The mechanism therefore does not hard-code iOS. A web variant, with a `site` artifact in place of `binary`, is a later slice.
 
 ### Out of scope
 
-- **Building the app from source.** As in BE-0073 and [DESIGN §1](../../DESIGN.md), Bajutsu receives
-  a prebuilt artifact; the `binary` artifact carries the build product, it does not build it.
-- **A versioned library / retention policy for artifacts.** Content-addressed storage naturally
-  dedupes and enables reuse, but *cataloguing* named artifact versions and their retention is the
-  Git source's ([BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source.md)) and
-  [BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub.md)'s territory; this item
-  stores artifacts and composes triples, it does not add a browsable version registry.
-- **Multi-tenant execution isolation.** Per-tenant Simulators and egress controls remain
-  [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) /
-  [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) territory.
+- **Building the app from source.** As in BE-0073 and [DESIGN §1](../../DESIGN.md), Bajutsu receives a prebuilt artifact. The `binary` artifact carries the build product and does not build it.
+- **A versioned library or retention policy for artifacts.** Content-addressed storage dedupes and enables reuse. Cataloguing named artifact versions and their retention belongs to the Git source ([BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source.md)) and to [BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub.md). This item stores artifacts and composes triples, and adds no browsable version registry.
+- **Multi-tenant execution isolation.** Per-tenant Simulators and egress controls remain the territory of [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) and [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md).
 
 ## Alternatives considered
 
-- **Keep the single combined zip (status quo, [BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md)).**
-  Rejected as the *only* option: it couples three artifacts of very different cadence into one
-  upload, forces re-shipping the large binary for a one-line scenario edit, and makes every cell of a
-  binary×scenario combination matrix a separate full upload. The combined zip is kept — as sugar
-  that decomposes into the three artifacts — but is no longer the only shape.
-- **Client-side diff/patch of the bundle zip.** Upload a delta against the last bundle. Rejected:
-  binary diffing is brittle and format-specific, it still models one opaque artifact rather than
-  three with independent lifecycles, and it gives no clean path to the combination matrix (a delta is
-  relative to one base, not a free choice of triple). Content-addressed whole artifacts are simpler
-  and dedupe for free.
-- **Upload only the config, not the tree** (BE-0073's original rejection). Not reopened: this design
-  keeps all three parts present at run time and composes them, so BE-0073's relative-path objection
-  is satisfied rather than dismissed.
-- **A bespoke multi-part manifest format describing the layout.** Rejected for the same reason
-  BE-0073 rejected one: the config *is* the layout description — its `scenarios` / `appPath` already
-  say where each artifact lands. Reusing the config as the compose authority, over
-  [BE-0243](../BE-0243-upload-bundle-durable-storage/BE-0243-upload-bundle-durable-storage.md)'s
-  object store, invents no new format.
-- **Fold into BE-0073 or BE-0243.** Rejected: BE-0073 is the combined-bundle acquisition and BE-0243
-  is that bundle's durable storage; both are shipped and stable. Decomposition + run-time composition
-  is a distinct feature with its own API, project-record shape, and UI, and is cleanly `Related`
-  rather than a retro-edit of a closed item.
+- **Keep the single combined zip (status quo, [BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md)).** Rejected as the only option. The zip couples three artifacts of very different cadence into one upload, forces re-shipping the large binary for a one-line scenario edit, and makes every cell of a binary-by-scenario combination matrix a separate full upload. The combined zip is kept as sugar that decomposes into the three artifacts, and is no longer the only shape.
+- **Client-side diff or patch of the bundle zip.** The client would upload a delta against the last bundle. Rejected for three reasons. Binary diffing is brittle and format-specific. The delta still models one opaque artifact, not three with independent lifecycles. A delta is relative to one base, so it gives no clean path to a free choice of triple. Content-addressed whole artifacts are simpler and dedupe at no extra cost.
+- **Upload only the config, not the tree** (BE-0073's original rejection). Not reopened. This design keeps all three parts present at run time and composes them, so BE-0073's relative-path objection is satisfied instead of dismissed.
+- **A bespoke multi-part manifest format describing the layout.** Rejected for the reason BE-0073 gave: the config is the layout description. Its `scenarios` and `appPath` fields already say where each artifact lands. Reusing the config as the compose authority, over the object store of [BE-0243](../BE-0243-upload-bundle-durable-storage/BE-0243-upload-bundle-durable-storage.md), invents no new format.
+- **Fold the change into BE-0073 or BE-0243.** Rejected. BE-0073 is the combined-bundle acquisition and BE-0243 is that bundle's durable storage, and both are shipped and stable. Decomposition with run-time composition is a distinct feature with its own API, project-record shape, and UI. It links to both items as `Related`, and does not retro-edit a closed item.
 
 ## Progress
 

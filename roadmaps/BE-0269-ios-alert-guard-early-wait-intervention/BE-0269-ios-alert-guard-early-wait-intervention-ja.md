@@ -92,7 +92,7 @@
   [`bajutsu/cli/commands/crawl.py`](../../bajutsu/cli/commands/crawl.py) を通じて再利用します。
 - [`bajutsu/orchestrator/loop.py:550`](../../bajutsu/orchestrator/loop.py)：現在ステップ末尾
   にしかない `on_blocked` の呼び出しを、`wait` ステップについてはこのアイテムで前倒しします。
-- [BE-0231](../BE-0231-smoke-idb-first-wait-settling/BE-0231-smoke-idb-first-wait-settling-ja.md)
- ：smoke CI レーンで現在の最悪ケースを少なくとも約 20 秒にしている `BAJUTSU_MIN_WAIT_TIMEOUT` 下限。
-- [BE-0118](../BE-0118-wait-for-contract-unification/BE-0118-wait-for-contract-unification-ja.md)
- ：このアイテムの `_wait()` への変更が土台とする `wait_for` のポーリング契約。
+- [BE-0231](../BE-0231-smoke-idb-first-wait-settling/BE-0231-smoke-idb-first-wait-settling-ja.md)：
+  smoke CI レーンで現在の最悪ケースを少なくとも約 20 秒にしている `BAJUTSU_MIN_WAIT_TIMEOUT` 下限。
+- [BE-0118](../BE-0118-wait-for-contract-unification/BE-0118-wait-for-contract-unification-ja.md)：
+  このアイテムの `_wait()` への変更が土台とする `wait_for` のポーリング契約。

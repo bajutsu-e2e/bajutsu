@@ -32,113 +32,45 @@ which added the same raw-YAML + structured-tree read-only viewer for the bound *
 
 ## Motivation
 
-Replay is the tab where a run is *chosen and launched*, yet it is the one place you cannot see what
-you are launching. The current info box (`showInfo()` in `bajutsu/templates/serve.panels.js`) renders
-only the descriptions returned by the `/api/scenarios` listing — never the steps. So to answer
-ordinary pre-run questions — *"which selectors does this scenario tap? does it already assert the
-thing I care about? how many steps is it?"* — a user must leave the UI and open the YAML on disk, or
-switch to the Author tab and re-pick the scenario there through its own independent picker. The
-friction is worst exactly when it matters most:
+Replay is the tab where a run is *chosen and launched*, yet it is the one place where a user cannot see what is being launched. The current info box (`showInfo()` in `bajutsu/templates/serve.panels.js`) renders only the descriptions that the `/api/scenarios` listing returns, and never the steps.
 
-- **Before running an unfamiliar scenario** (someone else's, or one materialized from a Git-sourced
-  or uploaded-zip config, where the on-disk path is an opaque content-addressed cache location) you
-  have no in-UI way to confirm what it does before spending a run on it.
-- **When triaging** (BE-0147) you can see *why a run failed* from Replay, but not read the scenario
-  body that produced the failing step without leaving the view.
-- **Determinism grading** (BE-0145) already scores the selected scenario in the Replay Form and
-  reports *"step 3 uses a fragile selector"* — but you cannot see step 3 from there.
+Ordinary pre-run questions go unanswered in the UI: which selectors does this scenario tap, does it already assert the thing I care about, and how many steps does it have? To answer them, a user must leave the UI and open the YAML on disk. The other route is to switch to the Author tab and re-pick the scenario there through its own independent picker. The friction is worst in three situations, exactly where visibility matters most:
 
-The server side already provides this capability, and Replay does not use it. The
-endpoint `GET /api/scenario?target=&path=` (`bajutsu/serve/handler.py`, `ops.read_scenario` in
-`bajutsu/serve/operations/reads.py`) already returns the scenario's `{"yaml": …}`; it is called today
-only by the Record tab (to show just-authored YAML) and the Author editor. Surfacing that same
-content where a scenario is *selected to run* closes the "see what you run" gap with almost no new
-backend — the mirror of what BE-0187 did for config.
+- **Before running an unfamiliar scenario.** The scenario may be someone else's, or it may be materialized from a Git-sourced or uploaded-zip config, where the on-disk path is an opaque content-addressed cache location. The UI offers no way to confirm what the scenario does before spending a run on it.
+- **When triaging (BE-0147).** From Replay, a user can see *why a run failed*. A user cannot read the scenario body that produced the failing step without leaving the view.
+- **When reading a determinism grade (BE-0145).** The Replay Form already scores the selected scenario and reports, for example, "step 3 uses a fragile selector". A user cannot see step 3 from there.
+
+The server side already provides this capability, and Replay does not use it. The endpoint `GET /api/scenario?target=&path=` (`bajutsu/serve/handler.py`, `ops.read_scenario` in `bajutsu/serve/operations/reads.py`) already returns the scenario's `{"yaml": …}`. Today only the Record tab (to show just-authored YAML) and the Author editor call it. Surfacing the same content where a scenario is *selected to run* closes the "see what you run" gap with almost no new backend. It mirrors what BE-0187 did for config.
 
 ## Detailed design
 
-A read-only viewer wired into the Replay tab. No `run` / CI path is touched (prime directive 1); this
-is a Tier-1 convenience surface, and it is app-agnostic (prime directive 3) — it reads whatever
-scenario the active config exposes, with no per-app branching.
+A read-only viewer is wired into the Replay tab. No `run` / CI path is touched (prime directive 1). The viewer is a Tier-1 convenience surface. It is also app-agnostic (prime directive 3), because it reads whatever scenario the active config exposes, with no per-app branching.
 
-- **Reuse the existing read endpoint, and its existing runner-based step extraction.** The viewer
-  fetches the selected scenario's body from the existing `GET /api/scenario?target=<t>&path=<p>`
-  (returns `{"yaml": …}`), so the raw-YAML view needs no new server route. For the structured steps
-  view, reuse the extraction that endpoint **already has**: `read_scenario` returns a `steps` field
-  built by `_step_artifacts` / `_step_action_fields`, which calls `load_scenario_file(...).scenarios`
-  (the runner's own parse) and `Step.model_dump(...)` to yield `{action, fields}` per step
-  (`bajutsu/serve/operations/reads.py`, from [BE-0013](../BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md)).
-  Today that `steps` field is only returned when a `run_id` is supplied, because the *run-scoped*
-  additions it also computes (`elementsUrl` / `screenshotUrl`) need a completed run's manifest — the
-  structural extraction itself does not. The work is therefore to **ungate the structural part** of
-  `steps` so the endpoint can return the runner-derived step structure without a prior run (the
-  run-scoped URLs stay `run_id`-only). This keeps the structured view faithful to the runner's parse
-  — it *is* the runner's parse — instead of introducing a second parser (see *Alternatives
-  considered*).
+- **Reuse the existing read endpoint and its runner-based step extraction.** The viewer fetches the selected scenario's body from the existing `GET /api/scenario?target=<t>&path=<p>`, which returns `{"yaml": …}`. The raw-YAML view therefore needs no new server route.
 
-- **A "View scenario" affordance in the Replay Form.** Add a control next to the existing
-  scenario `<select>` / info box / grade badge (`bajutsu/templates/serve.html.j2`,
-  `bajutsu/templates/serve.panels.js`) that opens the viewer for the currently selected scenario. It
-  is enabled whenever a scenario is selected (no prior run required) — reading the scenario is
-  independent of run artifacts, unlike BE-0262's step-picker which needs a `runId`.
+  The structured steps view reuses the extraction that the endpoint **already has**. `read_scenario` returns a `steps` field built by `_step_artifacts` and `_step_action_fields`. These call `load_scenario_file(...).scenarios` (the runner's own parse) and `Step.model_dump(...)` to yield `{action, fields}` per step (`bajutsu/serve/operations/reads.py`, from [BE-0013](../BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md)).
 
-- **A modal / dedicated viewer pane with a raw-YAML ↔ structured toggle** (matching the BE-0187
-  pattern):
-  - **Raw YAML** — the scenario file's text as returned by the endpoint, in a read-only,
-    monospaced, scrollable block. This is the authoritative view (byte-for-byte what runs).
-  - **Structured steps** — a per-named-scenario, human-readable list rendered from the endpoint's
-    runner-derived `steps` (above): for each scenario its `name` / `description`, then its ordered
-    steps rendered compactly (action + selector/target + key args, e.g. `tap { id: nav.replay }`,
-    `assert exists { id: … }`). This is the "skim what it does" view; the raw YAML remains one toggle
-    away for the exact source.
-  - The viewer is strictly read-only: no edit, no save, no re-bind. Editing remains the Author tab's
-    job; a future fast-follow could add a "open in Author" link, but this item deliberately stops at
-    viewing (see *Alternatives considered*).
+  Today the endpoint returns `steps` only when a `run_id` is supplied. The reason is that the *run-scoped* additions it also computes (`elementsUrl` and `screenshotUrl`) need a completed run's manifest. The structural extraction itself does not need one. The work is therefore to **ungate the structural part** of `steps`, so that the endpoint returns the runner-derived step structure without a prior run. The run-scoped URLs stay `run_id`-only. The structured view stays faithful to the runner's parse, because it *is* the runner's parse, and the design avoids a second parser (see *Alternatives considered*).
 
-- **Front-end module placement.** The Replay tab's JS lives in `bajutsu/templates/serve.panels.js`
-  (Record / Replay / Triage) after the BE-0202 modularization; the markup is in
-  `bajutsu/templates/serve.html.j2`. The viewer and its toggle are added there. Follow the serve
-  modal / retained-pane conventions already used by BE-0187's config viewer and the theme editor so
-  the overlay stacks and dismisses consistently.
+- **A "View scenario" control in the Replay Form.** A control next to the existing scenario `<select>`, info box, and grade badge (`bajutsu/templates/serve.html.j2`, `bajutsu/templates/serve.panels.js`) opens the viewer for the currently selected scenario. The control is enabled whenever a scenario is selected, and needs no prior run. Reading the scenario is independent of run artifacts, unlike the step picker of BE-0262, which needs a `runId`.
 
-- **Test IDs + dogfood coverage.** Add stable `data-testid`s for the View-scenario control, the
-  viewer container, the raw/structured toggle, and the rendered content, and add a dogfood E2E
-  scenario alongside `demos/serve-ui/scenarios/replay-tools.yaml` that opens the viewer, asserts the
-  YAML text is shown, toggles to the structured view, and asserts a known step appears. This is the
-  web-backend (Playwright) regression net for the new surface, matching the existing Replay dogfood
-  fixtures (BE-0058 / BE-0189).
+- **A modal or dedicated viewer pane with a raw-YAML and structured toggle**, matching the BE-0187 pattern:
+  - **Raw YAML.** The scenario file's text, as the endpoint returns it, in a read-only, monospaced, scrollable block. This is the authoritative view, byte-for-byte what runs.
+  - **Structured steps.** A human-readable list per named scenario, rendered from the endpoint's runner-derived `steps` (above). Each scenario shows its `name` and `description`, then its ordered steps rendered compactly: action, selector or target, and key arguments, for example `tap { id: nav.replay }` and `assert exists { id: … }`. This is the "skim what it does" view. The raw YAML remains one toggle away for the exact source.
+  - **Read-only behavior.** The viewer allows no edit, no save, and no re-bind. Editing remains the Author tab's job. A future fast-follow could add an "open in Author" link, but this item deliberately stops at viewing (see *Alternatives considered*).
 
-- **Docs.** Update the serve section of `docs/architecture.md` (and its `docs/ja/` mirror) to note
-  that Replay now surfaces the selected scenario's contents read-only.
+- **Front-end module placement.** After the BE-0202 modularization, the Replay tab's JS lives in `bajutsu/templates/serve.panels.js` (Record, Replay, and Triage), and the markup lives in `bajutsu/templates/serve.html.j2`. The viewer and its toggle are added there. The viewer follows the serve modal and retained-pane conventions that BE-0187's config viewer and the theme editor already use, so that the overlay stacks and dismisses consistently.
+
+- **Test IDs and dogfood coverage.** Stable `data-testid`s cover the View-scenario control, the viewer container, the raw/structured toggle, and the rendered content. A dogfood E2E scenario sits alongside `demos/serve-ui/scenarios/replay-tools.yaml`. It opens the viewer, asserts that the YAML text is shown, toggles to the structured view, and asserts that a known step appears. This is the web-backend (Playwright) regression net for the new surface. It matches the existing Replay dogfood fixtures (BE-0058 and BE-0189).
+
+- **Docs.** The serve section of `docs/architecture.md` (and its `docs/ja/` mirror) notes that Replay now surfaces the selected scenario's contents read-only.
 
 ## Alternatives considered
 
-- **A link from Replay into the Author editor instead of an in-Replay viewer.** Rejected as the
-  primary design: Author is an *editor* (mutable, its own scenario state and picker), so it is
-  heavier than "let me glance at what I'm about to run" and pulls the user out of the Replay context.
-  A read-only viewer keeps the confirm-before-run loop inside Replay. An "open in Author" link
-  remains a reasonable optional fast-follow, but is out of scope here.
-
-- **Raw YAML only (no structured view).** The minimal version — just display `{"yaml": …}`. It
-  closes the core gap with the least code, but the structured steps view is what makes a long
-  scenario skimmable and pairs naturally with the determinism grade's per-step feedback (BE-0145).
-  This item adopts the toggle so both are available; if scope must shrink, raw-YAML-first with the
-  structured view as a follow-up is the natural split.
-
-- **Deriving the structured view client-side (reparsing the YAML in JS).** Considered for keeping
-  the feature purely front-end, but rejected: it introduces a *second* parser of scenario structure
-  in the browser, which can drift from how the runner actually parses a scenario. The server already
-  avoids that — `read_scenario`'s `steps` is built from the runner's own `Step` model
-  (`_step_artifacts` / `Step.model_dump`, from BE-0013), so reusing it *is* the runner's parse. The
-  only reason it is `run_id`-gated today is the run-scoped `elementsUrl` / `screenshotUrl` it also
-  attaches; ungating the structural part (Detailed design) is a smaller and more faithful change than
-  a parallel JS parser. A new *separate* "render scenario" endpoint is likewise unnecessary — the
-  extraction already lives on `read_scenario`.
-
-- **Folding this into BE-0187.** BE-0187 is already Implemented and is specifically the *config*
-  viewer; scenarios are a distinct subject with a distinct entry point (the Replay picker) and a
-  distinct structured view (steps, not config keys). This is a sibling item that reuses BE-0187's UI
-  pattern, not an extension of it.
+- **A link from Replay into the Author editor, instead of an in-Replay viewer.** Rejected as the primary design. Author is an *editor*, with mutable state and its own scenario picker. It is heavier than "let me glance at what I am about to run", and it pulls the user out of the Replay context. A read-only viewer keeps the confirm-before-run loop inside Replay. An "open in Author" link remains a reasonable optional fast-follow, and is out of scope here.
+- **Raw YAML only, with no structured view.** This minimal version displays `{"yaml": …}` and nothing else. It closes the core gap with the least code. The structured steps view, however, is what makes a long scenario skimmable, and it pairs naturally with the per-step feedback of the determinism grade (BE-0145). This item adopts the toggle so that both views are available. If scope must shrink, raw YAML first with the structured view as a follow-up is the natural split.
+- **Derive the structured view client-side, by reparsing the YAML in JS.** Considered as a way to keep the feature purely front-end. Rejected. It introduces a *second* parser of scenario structure in the browser, which can drift from how the runner actually parses a scenario. The server already avoids that problem: the `steps` of `read_scenario` come from the runner's own `Step` model (`_step_artifacts` and `Step.model_dump`, from BE-0013), so reusing it *is* the runner's parse. Today the endpoint gates `steps` on `run_id` solely because of the run-scoped `elementsUrl` and `screenshotUrl` it also attaches. Ungating the structural part (see *Detailed design*) is a smaller and more faithful change than a parallel JS parser. A new, *separate* "render scenario" endpoint is likewise unnecessary, because the extraction already lives on `read_scenario`.
+- **Fold the viewer into BE-0187.** Rejected. BE-0187 is already Implemented and is specifically the *config* viewer. Scenarios are a distinct subject, with a distinct entry point (the Replay picker) and a distinct structured view (steps, not config keys). This item is a sibling that reuses BE-0187's UI pattern, not an extension of BE-0187.
 
 ## Progress
 

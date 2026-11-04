@@ -48,9 +48,9 @@ The fix must not defeat prime directive 1 (AI never judges pass/fail) or prime d
 deterministic condition check in `_wait()`. Any AI-vision call the guard makes has to stay rare and
 bounded.
 
-The guard therefore cannot fire on every 0.05s poll tick (`_POLL` in
-`bajutsu/orchestrator/waits.py:14`). `ClaudeAlertLocator.locate` (`bajutsu/alerts.py:163`) does a real
-network round trip, which is far too slow and costly at that cadence.
+The guard cannot fire on every 0.05s poll tick (`_POLL` in `bajutsu/orchestrator/waits.py:14`),
+because `ClaudeAlertLocator.locate` (`bajutsu/alerts.py:163`) does a real network round trip. That
+round trip is far too slow and costly at that cadence.
 
 ## Detailed design
 
@@ -67,10 +67,10 @@ network round trip, which is far too slow and costly at that cadence.
    turn".
 
    Every screen-polling wait branch (`for`, `gone`, `screenChanged`, and `settled`) already calls
-   `driver.query()` on each poll tick and holds the result. The `_wait_settled` docstring
-   (`bajutsu/orchestrator/waits.py:142`) already names a screen "covered by a system alert" as one it
-   never treats as settled. The pre-check is therefore `not shows_app_ui(elements)` on the
-   already-fetched tree, at zero extra query cost. Reusing the existing detector, instead of adding a
+   `driver.query()` on each poll tick and holds the result, so the pre-check is
+   `not shows_app_ui(elements)` on that already-fetched tree, at zero extra query cost. The
+   `_wait_settled` docstring (`bajutsu/orchestrator/waits.py:142`) already names a screen "covered by a
+   system alert" as one it never treats as settled. Reusing the existing detector, instead of adding a
    new one, keeps the two detection paths from drifting apart.
 
    The `request` (network `WaitRequest`) branch is deliberately out of scope. It polls observed network
