@@ -19,73 +19,78 @@
 この項目自身のディレクトリ配下、[`misc/step-performance/`](misc/step-performance/README.md)
 に記録した実機測定は、両バックエンドの `tap` ステップ 1 回を end-to-end で計測しました。
 iOS シミュレータで 0.95〜1.07 秒、Android エミュレータの常駐サーバー経路で 3.25〜3.32 秒です。
-目標の 250〜500 ミリ秒に対して、大きく上回っています。この時間のほとんどはタップ自体の
-処理ではありません。orchestrator と両ドライバが毎ステップ払っている、ホストと端末間の
-冗長な往復です。しかも、`Driver` プロトコルにも、どちらのバックエンドが話す通信形式にも、
-今日時点で手を加えずに削減できます。この項目は、その削減を提案するものです。証拠取得の
-重複排除とドライバ内部の調整からなる MECE（相互に排他的で、全体として網羅的）なリストで、
-低コストで独立して着手できる対策から段階的に進めます。目標値は、iOS の `tap` ステップで
-1 回あたり 0.3〜0.6 秒、Android で 0.6〜1.2 秒です。着実な前進にはなりますが、250〜500
-ミリ秒という目標には届きません。残るギャップを埋めるには端末側ステップ実行機が必要で、
-これはプロトコルレベルの変更としてこの項目の対象外とし、別途、より大規模な提案として
-追跡します。
+どちらも目標の 250〜500 ミリ秒を大きく上回っています。
+
+この時間のほとんどはタップ自体の処理ではありません。orchestrator と両ドライバが毎ステップ払っている、
+ホストと端末間の冗長な往復に費やされています。この往復は、`Driver` プロトコルにも、どちらの
+バックエンドが話す通信形式にも手を加えずに、今日の時点で削減できます。
+
+この項目は、その削減を提案します。証拠取得の重複排除とドライバ内部の調整からなる MECE（相互に排他的で、
+全体として網羅的）なリストで、低コストで独立して着手できる対策から段階的に進めます。目標値は、
+iOS の `tap` ステップで 1 回あたり 0.3〜0.6 秒、Android で 0.6〜1.2 秒です。着実な前進にはなりますが、
+250〜500 ミリ秒という目標には届きません。残るギャップを埋めるには端末側ステップ実行機が必要です。
+実行機はプロトコルレベルの変更なので、この項目の対象外とし、別途、より大規模な提案として追跡します。
 
 ## 動機
 
 実測されたステップが遅い理由は、タップそのものが遅いからではありません。iOS の
-`POST /tap` は平均 690 ミリ秒、Android の `POST /act` は平均 2204 ミリ秒です
-（どちらも[`demos/showcase/scenarios/controls.yaml`](../../demos/showcase/scenarios/controls.yaml)
-に対して、2026-09-03 に 3 回ずつ計測）。それでも、単純な `tap` ステップ 1 回で、
+`POST /tap` は平均 690 ミリ秒、Android の `POST /act` は平均 2204 ミリ秒です。
+どちらも[`demos/showcase/scenarios/controls.yaml`](../../demos/showcase/scenarios/controls.yaml)
+に対して、2026-09-03 に 3 回ずつ計測しました。それでも、単純な `tap` ステップ 1 回で、
 orchestrator が次のステップに進むまでに端末との往復が iOS で 5 回、Android で 7 回発生します。
-スクリーンショット 2 枚とタップ本体はどちらの OS にも共通です。iOS はこれに木の読み取り
-1 回と割り込みの drain 1 回が加わって 5 回、割り込みの drain を持たない Android は木の
-読み取りが 4 回加わって 7 回になります。このうちステップの意味的な仕事をしているのは
-1 回だけです。
 
-この回数の上に、さらに 3 つのコストが重なります。第 1 に、証拠の取得は同期的で、
-しかもしばしば重複しています。`before.png` は、直前のステップの `after.png` が残した
-状態から何も変化していないにもかかわらず、毎回撮り直されます
-（[`bajutsu/common/orchestrator/loop.py:1274-1329`](../../bajutsu/common/orchestrator/loop.py)）。
-`elements.json` も、アクションの前後で毎ステップ 2 回、シリアライズと秘匿処理を経て
-書き込まれます（[`bajutsu/common/evidence/sink.py:161-210`](../../bajutsu/common/evidence/sink.py)）。
-第 2 に、`wait until: settled` は、待ちを始めた時点で画面がすでに静止していても、
-100 ミリ秒の下限を払います。これは
+スクリーンショット 2 枚とタップ本体は、どちらの OS にも共通です。iOS はこれに木の読み取り 1 回と
+割り込みの drain 1 回が加わって 5 回になります。Android は割り込みの drain を持たず、木の読み取りが
+4 回加わって 7 回になります。このうちステップの意味的な仕事をしているのは 1 回だけです。
+
+この回数の上に、さらに 3 つのコストが重なります。
+
+第 1 に、証拠の取得は同期的で、しばしば重複しています。`before.png` は、直前のステップの
+`after.png` が残した状態から何も変化していないにもかかわらず、毎回撮り直されます。
+対象コードは [`bajutsu/common/orchestrator/loop.py:1274-1329`](../../bajutsu/common/orchestrator/loop.py) です。
+`elements.json` も、アクションの前後で毎ステップ 2 回、シリアライズと秘匿処理を経て書き込まれます。
+対象コードは [`bajutsu/common/evidence/sink.py:161-210`](../../bajutsu/common/evidence/sink.py) です。
+
+第 2 に、`wait until: settled` は、待ちを始めた時点で画面がすでに静止していても、100 ミリ秒の下限を
+払います。この下限は、
 [`bajutsu/common/orchestrator/waits.py:31-32`](../../bajutsu/common/orchestrator/waits.py)
-にある 3 回の読み取りの積です。第 3 に、各バックエンドはそれぞれ、ステップの大半を占める
-単一の往復の内側に、独自の内部コストを抱えています。iOS は `POST /tap` の内側で、
-約 11 個の要素属性を 1 つずつ解決します
-（[`BajutsuKit/Runner/Sources/XcuitestElementProvider.swift:127-151,410-430`](../../BajutsuKit/Runner/Sources/XcuitestElementProvider.swift)）。
-Android の常駐サーバーは、`POST /act` の大半を、`POSTDATE_BUDGET_MS` という固定の待ちに
-費やしているとみられます。この待ちは、画面がすでに静止していると満たしようがありません
-（[`BajutsuAndroidUIAutomatorServer/server/src/androidTest/java/dev/bajutsu/android/server/ResidentServerTest.kt:184-188,642`](../../BajutsuAndroidUIAutomatorServer/server/src/androidTest/java/dev/bajutsu/android/server/ResidentServerTest.kt)、
-[`bajutsu/common/drivers/adb.py:812-831,1299`](../../bajutsu/common/drivers/adb.py)）。
+にある 3 回の読み取りの積です。
+
+第 3 に、各バックエンドは、ステップの大半を占める単一の往復の内側に、独自の内部コストを抱えています。
+iOS は `POST /tap` の内側で、約 11 個の要素属性を 1 つずつ解決します。
+対象コードは [`BajutsuKit/Runner/Sources/XcuitestElementProvider.swift:127-151,410-430`](../../BajutsuKit/Runner/Sources/XcuitestElementProvider.swift) です。
+Android の常駐サーバーは、`POST /act` の大半を、`POSTDATE_BUDGET_MS` という固定の待ちに費やしているとみられます。
+画面がすでに静止していると、この待ちは満たしようがありません。
+対象コードは
+[`BajutsuAndroidUIAutomatorServer/server/src/androidTest/java/dev/bajutsu/android/server/ResidentServerTest.kt:184-188,642`](../../BajutsuAndroidUIAutomatorServer/server/src/androidTest/java/dev/bajutsu/android/server/ResidentServerTest.kt)
+と
+[`bajutsu/common/drivers/adb.py:812-831,1299`](../../bajutsu/common/drivers/adb.py)
+です。
 
 以上はいずれも、決定性の契約には触れません。以下の削減はどれも、冗長な読み取りの除去、
-冗長な書き込みの除去、あるいは画面がすでに静止していれば満たしようのない固定の待ちの
-除去にとどまります。
-条件待ちをポーリングから固定の `sleep` に変えるものはなく、セレクタの解決方法を変えるものも
-ありません。この変更が実測どおりに効いたかどうかは、後から読む人が自分で確かめられます。
-[`trace_run.py`](misc/step-performance/trace_run.py) を同じシナリオに対して
-再実行し、iOS の `tap` ステップがこの項目の目標である 0.3〜0.6 秒の帯に、Android が
-0.6〜1.2 秒の帯に収まることを確認すればよく、これは調査が今日の基準値 0.95〜1.07 秒と
-3.25〜3.32 秒を測ったのと同じ手順です。
+冗長な書き込みの除去、あるいは画面がすでに静止していれば満たしようのない固定の待ちの除去にとどまります。
+条件待ちをポーリングから固定の `sleep` に変えるものはなく、セレクタの解決方法を変えるものもありません。
+
+この変更が実測どおりに効いたかどうかは、後から読む人が自分で確かめられます。
+[`trace_run.py`](misc/step-performance/trace_run.py) を同じシナリオに対して再実行し、iOS の `tap`
+ステップがこの項目の目標である 0.3〜0.6 秒の帯に、Android が 0.6〜1.2 秒の帯に収まることを確認します。
+調査が今日の基準値 0.95〜1.07 秒と 3.25〜3.32 秒を測ったのと同じ手順です。
 
 ## 詳細設計
 
 **実装の順番。** この項目は、関連する 4 項目の厳密な順番のうち最初です。この項目、
 端末側プロトコルの項目、iOS 実行機の項目、Android 実行機の項目の順に進みます。後続の
-どの項目も、直前の項目が出荷されるまで着手してはいけません。プロトコルの項目は、この
-項目が出荷し実測した基準値に対して設計するものであり、まだ動いている数値を対象には
-設計できないためです。また、この項目は、後続の項目が自分の成果を確認するために使う
-トレーサー（[`trace_run.py`](misc/step-performance/trace_run.py)）を実証する役割も
-兼ねています。この項目にはこの順番の中で先行する項目がなく、ただちに着手できます。
+どの項目も、直前の項目が出荷されるまで着手してはいけません。プロトコルの項目は、この項目が出荷し
+実測した基準値に対して設計するもので、まだ動いている数値は対象にできないためです。この項目は、
+後続の項目が自分の成果を確認するために使うトレーサー
+（[`trace_run.py`](misc/step-performance/trace_run.py)）を実証する役割も兼ねています。
+この項目にはこの順番の中で先行する項目がなく、ただちに着手できます。
 
-作業は、両バックエンド共通、iOS 専用、Android 専用という独立した 3 つのグループに
-分かれています。それぞれが、[`trace_run.py`](misc/step-performance/trace_run.py)
-がすでに確立した共通の物差しに対して、単独の Pull Request として出荷できます。以下のどの
-作業単位も、`Driver` プロトコルやシナリオの YAML 形式、条件待ちが何をポーリングするかを
-変更しません。それぞれが、冗長な呼び出しの削除か、固定コストの内部処理の並べ替えであり、
-driver conformance suite
+作業は、両バックエンド共通、iOS 専用、Android 専用という独立した 3 つのグループに分かれています。
+各グループは、[`trace_run.py`](misc/step-performance/trace_run.py) がすでに確立した共通の物差しに
+対して、単独の Pull Request として出荷できます。以下のどの作業単位も、`Driver` プロトコルやシナリオの
+YAML 形式、条件待ちが何をポーリングするかを変更しません。各作業単位は、冗長な呼び出しの削除か、
+固定コストの内部処理の並べ替えです。driver conformance suite
 （[BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md)）と
 トレーサーの再実行で検証します。
 
@@ -99,28 +104,21 @@ driver conformance suite
    1 つのステップの終わりから次のステップの始まりまでの間には、アクチュエーションが
    発生しません。したがって両者は端末の同一状態を観測しています。シナリオ最初のステップ
    だけは、これまでどおり 1 回読み取ります。ステップごとにスクリーンショット 1 枚分を
-   節約できます（iOS で 90 ミリ秒、Android で 103 ミリ秒）——
-   [`loop.py:1274-1329`](../../bajutsu/common/orchestrator/loop.py)。
+   節約できます（iOS で 90 ミリ秒、Android で 103 ミリ秒。参照：[`loop.py:1274-1329`](../../bajutsu/common/orchestrator/loop.py)）。
 2. **`after.png` と `elements.json` の書き込みを臨界パスから外す。** ステップ自体の結果が
    確定した時点で、両方とも非同期に取得して書き込み、次のステップが書き込み完了を
-   待たないようにします——
-   [`loop.py:1601`](../../bajutsu/common/orchestrator/loop.py)、
-   [`evidence/core.py:174-186`](../../bajutsu/common/evidence/core.py)。
+   待たないようにします（参照：[`loop.py:1601`](../../bajutsu/common/orchestrator/loop.py)、 [`evidence/core.py:174-186`](../../bajutsu/common/evidence/core.py)）。
 3. **`elements.json` はステップ後に 1 回だけ書く。** アクション前の読み取りは、
-   キャプチャポリシーが実際に要求する場合を除いて取りやめます——
-   [`loop.py:1712-1727`](../../bajutsu/common/orchestrator/loop.py)、
-   [`evidence_rules.py:190-194`](../../bajutsu/common/orchestrator/evidence_rules.py)。
+   キャプチャポリシーが実際に要求する場合を除いて取りやめます（参照：[`loop.py:1712-1727`](../../bajutsu/common/orchestrator/loop.py)、 [`evidence_rules.py:190-194`](../../bajutsu/common/orchestrator/evidence_rules.py)）。
 4. **証拠 sink 内部に隠れた初回ステップの読み取りを消す。** sink は、シナリオの最初の
    ステップが走る前に独自の query を発行しています。この読み取りは、そのステップ自身の
-   通常の読み取りと合流させ、二重の支払いを避けます——
-   [`evidence/core.py:170`](../../bajutsu/common/evidence/core.py)。
+   通常の読み取りと合流させ、二重の支払いを避けます（参照：[`evidence/core.py:170`](../../bajutsu/common/evidence/core.py)）。
 5. **BE-0310 の遷移シグナルによる静止待ちの間、ポーリングを止める。** 画面遷移シグナル
    （[BE-0310](../BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness-ja.md)）
    が発火した後の 0.3 秒の静止確認期間は、そのステップに guard か interrupt ハンドラが
-   登録されている場合だけ読み取りを続ければよく、それ以外はシグナル自体を条件とします——
-   [`waits.py:1042-1061`](../../bajutsu/common/orchestrator/waits.py)。
+   登録されている場合だけ読み取りを続ければよく、それ以外はシグナル自体を条件とします（参照：[`waits.py:1042-1061`](../../bajutsu/common/orchestrator/waits.py)）。
 6. **`drain_interruptions` を、専用の往復ではなく `/tap` か `/elements` の応答に
-   同乗させる。** iOS は毎ステップ、これだけのために新規 TCP 接続を張っています
+   同乗させる。** iOS は毎ステップ、これだけのために新規の Transmission Control Protocol（TCP）接続を張っています
    （[`xcuitest.py:591,1170`](../../bajutsu/common/drivers/xcuitest.py)）。Android は
    すでにメモリ内で保持しているため、この項目は iOS 限定です。
 
@@ -143,18 +141,14 @@ driver conformance suite
 9. **`safariViewService.state` のプロセス間確認は、スナップショットにリモートビューの
    境界ノードがあるときだけ行う。** 現状は、対象アプリが Web ビューを埋め込んでいるか
    どうかにかかわらず、すべての query がこの XPC（プロセス間通信）による確認を
-   払っています——
-   [`XcuitestElementProvider.swift:50`](../../BajutsuKit/Runner/Sources/XcuitestElementProvider.swift)。
+   払っています（参照：[`XcuitestElementProvider.swift:50`](../../BajutsuKit/Runner/Sources/XcuitestElementProvider.swift)）。
    期待される削減量は query 1 回あたり 5〜50 ミリ秒です。この作業単位は
    [#2117](https://github.com/bajutsu-e2e/bajutsu/pull/2117) で差し戻しました。iOS 26 では、境界ノードがサービス側の
    スナップショットにだけ現れ、アプリ側には現れません。そのため、この条件は成り立ちません。
 10. **`/zorder` の第 2 往復を遅延評価にする。** セレクタが実際に曖昧で、その解決が
-    必要なときだけ z 順を取得します——
-    [`xcuitest.py:744-768`](../../bajutsu/common/drivers/xcuitest.py)。期待される
+    必要なときだけ z 順を取得します（参照：[`xcuitest.py:744-768`](../../bajutsu/common/drivers/xcuitest.py)）。期待される
     削減量は、現状無条件に走っている query 1 回あたり 5〜30 ミリ秒です。
-11. **XCUITest チャネルの両端で HTTP keep-alive を有効にする。**——
-    [`xcuitest.py:591`](../../bajutsu/common/drivers/xcuitest.py)、
-    [`HTTPServer.swift:326`](../../BajutsuKit/Sources/BajutsuRunner/HTTPServer.swift)。
+11. **XCUITest チャネルの両端で HyperText Transfer Protocol（HTTP）keep-alive を有効にする。** （参照： [`xcuitest.py:591`](../../bajutsu/common/drivers/xcuitest.py)、 [`HTTPServer.swift:326`](../../BajutsuKit/Sources/BajutsuRunner/HTTPServer.swift)）。
     期待される削減量は往復 1 回あたり 1〜3 ミリ秒ですが、シナリオ中の多数の読み取りに
     積み重なります。
 12. **stale 要素への初回リトライでは、sleep を挟まず即座に再問い合わせする。** runner は
@@ -165,17 +159,14 @@ driver conformance suite
     sleep を取り除いてもリトライの決定性は弱まりません。
 13. **SpringBoard のアラートボタンを列挙する前に、`alerts.firstMatch.exists` を先に
     確認する。** 現状のプローブは、確認のたびに全ボタンを列挙します。まず存在有無だけを
-    確認し、実際にアラートがあるときだけ列挙します——
-    [`XcuitestElementProvider.swift:302-320`](../../BajutsuKit/Runner/Sources/XcuitestElementProvider.swift)。
+    確認し、実際にアラートがあるときだけ列挙します（参照：[`XcuitestElementProvider.swift:302-320`](../../BajutsuKit/Runner/Sources/XcuitestElementProvider.swift)）。
     期待される削減量はプローブ 1 回あたり 100〜400 ミリ秒です。
 14. **`BAJUTSU_XCUITEST_MAX_WARM_REUSES` を現状の 3 から引き上げ、アプリバンドルの
     digest が変わっていなければ再インストールを省く。** シナリオの境界ごとに 4〜10
-    秒を節約します——
-    [`environments/xcuitest.py:259-306`](../../bajutsu/common/platform_lifecycle/environments/xcuitest.py)。
+    秒を節約します（参照：[`environments/xcuitest.py:259-306`](../../bajutsu/common/platform_lifecycle/environments/xcuitest.py)）。
 15. **文字入力を、1 文字ごとの `typeText` ではなく `simctl pbcopy` とペーストの
     キー入力に置き換える。** 着手前に検討が必要です。ペーストは一部の入力ハンドラを
-    経由しないため、ペーストを受け付けない入力欄向けのフォールバックが要ります——
-    [`simctl.py:842-878`](../../bajutsu/common/backend_cli/simctl.py)。期待される
+    経由しないため、ペーストを受け付けない入力欄向けのフォールバックが要ります（参照：[`simctl.py:842-878`](../../bajutsu/common/backend_cli/simctl.py)）。期待される
     削減量は、入力 1 文字あたり約 40 ミリ秒です。
 
 ### グループ 3 — Android ドライバ内部
@@ -200,43 +191,31 @@ driver conformance suite
     [`adb.py:536`](../../bajutsu/common/drivers/adb.py)）への影響も検討が必要です。
     このバリアが現状ふさいでいる競合を、対策が再び開けてしまわないようにするためです。
 17. **`settledDump` の 2 回目の読み取りを、1 回目との間にアクセシビリティイベントが
-    来ていなければ省く。** `ReadMark` はすでにイベントの有無を把握しています——
-    [`ResidentServerTest.kt:482-490,558-587`](../../BajutsuAndroidUIAutomatorServer/server/src/androidTest/java/dev/bajutsu/android/server/ResidentServerTest.kt)。
+    来ていなければ省く。** `ReadMark` はすでにイベントの有無を把握しています（参照：[`ResidentServerTest.kt:482-490,558-587`](../../BajutsuAndroidUIAutomatorServer/server/src/androidTest/java/dev/bajutsu/android/server/ResidentServerTest.kt)）。
     期待される削減量は読み取り 1 回あたり 100〜200 ミリ秒です。
-18. **`nativeZ` の全ノード走査を、毎回ではなくアプリごとのオプトインにする。**——
-    [`ResidentServerTest.kt:427-457`](../../BajutsuAndroidUIAutomatorServer/server/src/androidTest/java/dev/bajutsu/android/server/ResidentServerTest.kt)。
+18. **`nativeZ` の全ノード走査を、毎回ではなくアプリごとのオプトインにする。** （参照： [`ResidentServerTest.kt:427-457`](../../BajutsuAndroidUIAutomatorServer/server/src/androidTest/java/dev/bajutsu/android/server/ResidentServerTest.kt)）。
     期待される削減量は読み取り 1 回あたり 20〜100 ミリ秒です。
 19. **`/act` の応答自体に、すでに静止した木を同乗させる。** サーバーが端末側で木の一致を
     2 回すでに確認しているときは、ホストの `_settle` が最初の読み取りを省けるように
-    します——
-    [`adb.py:1015-1031,1341`](../../bajutsu/common/drivers/adb.py)、
-    [`ResidentServerTest.kt:516-524`](../../BajutsuAndroidUIAutomatorServer/server/src/androidTest/java/dev/bajutsu/android/server/ResidentServerTest.kt)。
+    します（参照：[`adb.py:1015-1031,1341`](../../bajutsu/common/drivers/adb.py)、 [`ResidentServerTest.kt:516-524`](../../BajutsuAndroidUIAutomatorServer/server/src/androidTest/java/dev/bajutsu/android/server/ResidentServerTest.kt)）。
     期待される削減量は 400〜600 ミリ秒です。
 20. **スクリーンショットを、常駐サーバーから `UiAutomation.takeScreenshot()` で
     取得する。** `adb exec-out screencap` の subprocess 起動（実測 103 ミリ秒）を
-    取り除きます——
-    [`backend_cli/adb.py:975-990`](../../bajutsu/common/backend_cli/adb.py)。
+    取り除きます（参照：[`backend_cli/adb.py:975-990`](../../bajutsu/common/backend_cli/adb.py)）。
 21. **常駐サーバーのソケットを読み取りのたびに閉じず、開いたまま使い回す。** 現状は
-    読み取りごとに `Connection: close` で応答しています——
-    [`adb_resident.py:125,183,269`](../../bajutsu/common/backend_cli/adb_resident.py)、
-    [`ResidentServerTest.kt:83,544`](../../BajutsuAndroidUIAutomatorServer/server/src/androidTest/java/dev/bajutsu/android/server/ResidentServerTest.kt)。
+    読み取りごとに `Connection: close` で応答しています（参照：[`adb_resident.py:125,183,269`](../../bajutsu/common/backend_cli/adb_resident.py)、 [`ResidentServerTest.kt:83,544`](../../BajutsuAndroidUIAutomatorServer/server/src/androidTest/java/dev/bajutsu/android/server/ResidentServerTest.kt)）。
     期待される削減量は読み取り 1 回あたり 30〜150 ミリ秒です。
 22. **常駐サーバーの Android Application Package（APK）を、run 全体で使い回す。**
     署名とバージョンがすでにインストール済みのものと一致していれば、再インストールを
-    省きます——
-    [`adb_resident.py:395-399`](../../bajutsu/common/backend_cli/adb_resident.py)、
-    [`environments/android.py:367`](../../bajutsu/common/platform_lifecycle/environments/android.py)。
+    省きます（参照：[`adb_resident.py:395-399`](../../bajutsu/common/backend_cli/adb_resident.py)、 [`environments/android.py:367`](../../bajutsu/common/platform_lifecycle/environments/android.py)）。
     期待される削減量はシナリオの境界ごとに 6〜12 秒です。調査で実測した 1.5 秒は、
     すでに起動済みでパッケージも導入済みのエミュレータへの再インストール分であり、
     コールドスタートの数値ではありません。
-23. **ホスト側での階層 XML の二重パースをやめる。**——
-    [`adb_resident.py:78-102`](../../bajutsu/common/backend_cli/adb_resident.py)、
-    [`drivers/adb.py:404-437`](../../bajutsu/common/drivers/adb.py)。期待される
+23. **ホスト側での階層 Extensible Markup Language（XML）の二重パースをやめる。** （参照： [`adb_resident.py:78-102`](../../bajutsu/common/backend_cli/adb_resident.py)、 [`drivers/adb.py:404-437`](../../bajutsu/common/drivers/adb.py)）。期待される
     削減量は読み取り 1 回あたり 10〜40 ミリ秒です。
 24. **`/act` に、タップと同じ公開確認を持つ `swipe` 版を追加する。** 調査では `scroll`
     ステップを 7.1 秒と実測しており、タップより重くなっています。これは、swipe 自体と
-    確認用の読み取りがそれぞれ別に、作業単位 16 と同じ固定予算を使い切っているためです
-    ——[`drivers/adb.py:1477-1552`](../../bajutsu/common/drivers/adb.py)。この作業単位は
+    確認用の読み取りがそれぞれ別に、作業単位 16 と同じ固定予算を使い切っているためです（参照：[`drivers/adb.py:1477-1552`](../../bajutsu/common/drivers/adb.py)）。この作業単位は
     作業単位 16 と根本原因を共有しており、しかも画面外のタップ復旧経路のコストも
     合わせて下げます。タップ対象が画面外から始まったとき、その復旧は内部で `scroll` を
     再試行するためです
@@ -255,11 +234,9 @@ driver conformance suite
 - **現在の境界を調整せず、実行機に直接進む。**
   [BE-0234](../BE-0234-adb-run-performance/BE-0234-adb-run-performance-ja.md) が自らの
   対策を段階分けしたのと同じ理由で却下します。内部調整の作業単位はリスクが低く、
-  小さな独立した Pull Request として出荷でき、後の実行機の項目が自分の効果を示す
-  ためにも依存する測定ツール——
-  [`trace_run.py`](misc/step-performance/trace_run.py) と
-  [`bench_orchestrator.py`](misc/step-performance/bench_orchestrator.py)
-  ——を実証する役割も果たします。
+  小さな独立した Pull Request として出荷でき、後の実行機の項目が自分の効果を示すために
+  依存する測定ツール（[`trace_run.py`](misc/step-performance/trace_run.py) と
+  [`bench_orchestrator.py`](misc/step-performance/bench_orchestrator.py)）を実証する役割も果たします。
 - **Android の `POSTDATE_BUDGET_MS`（作業単位 16）は、サーバーログでの確認が
   先に要るため、別の項目に切り出す。** 検討しましたが、現時点では見送ります。
   この項目のほかの Android の作業単位と、ドライバとランナーの範囲、「プロトコルは
@@ -316,7 +293,7 @@ driver conformance suite
     `accessibilityActivationPoint` を尊重し、部分的な遮蔽下では frame の幾何学的中心とは
     異なる点になりえます。座標タップは一方で、常にその幾何学的中心に着地します。実際の
     ヒットポイントが空いている要素でも、サイレントな誤タップを起こしかねません。その後の
-    調査では、XCUITest の公開 API が解決済みのヒットポイントも、点から要素への
+    調査では、XCUITest の公開 Application Programming Interface（API）が解決済みのヒットポイントも、点から要素への
     ヒットテストも提供しないことを確認しました。誤タップのリスクを受け入れるか、タップの
     たびにツリーを読み直す（この作業単位が削ろうとしていた往復そのものを復活させて
     しまいます）かのどちらかしか道がなく、2 つの点を整合させる設計は成り立ちません。
@@ -563,8 +540,8 @@ driver conformance suite
 [BE-0310 — アクセシビリティの画面遷移通知による readiness 判定の精度向上](../BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness-ja.md)、
 [BE-0341 — ステップの動作前にレポート証跡を取得する](../BE-0341-pre-action-evidence-capture/BE-0341-pre-action-evidence-capture-ja.md)、
 [BE-0396 — SFSafariViewController の要素ツリーをそれを描くプロセスから読む](../BE-0396-ios-sfsafariviewcontroller-tree/BE-0396-ios-sfsafariviewcontroller-tree-ja.md)、
-[`misc/step-performance/README.md`](misc/step-performance/README.md)——
-この項目が要約している測定の全文、
+[`misc/step-performance/README.md`](misc/step-performance/README.md)
+（この項目が要約している測定の全文）、
 [`bajutsu/common/orchestrator/loop.py`](../../bajutsu/common/orchestrator/loop.py)、
 [`bajutsu/common/drivers/xcuitest.py`](../../bajutsu/common/drivers/xcuitest.py)、
 [`bajutsu/common/drivers/adb.py`](../../bajutsu/common/drivers/adb.py)、
