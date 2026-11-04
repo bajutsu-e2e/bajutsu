@@ -41,7 +41,7 @@ Each handler resolves the run id against the configured `runs/` directory and **
 
 The design stays inside the prime directives. Resources are **read-only**: they surface evidence the deterministic runner already wrote, and they add no path by which the LLM could influence pass or fail. The manifest an agent reads is the exact `manifest.json` that the run/CI gate judged against. The resource is a delivery channel, not a second source of truth. Resource serving is orthogonal to the run loop, so the gate stays entirely LLM-free.
 
-The `runs/` directory is a server-level setting (the directory the server was pointed at), not a per-app one. Evidence from every app lands under the same run tree.
+The `runs/` directory is a server-level setting (the directory that the operator points the server at), not a per-app one. Evidence from every app lands under the same run tree.
 
 ## Alternatives considered
 

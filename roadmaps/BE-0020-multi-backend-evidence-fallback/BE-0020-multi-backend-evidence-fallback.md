@@ -61,11 +61,15 @@ Keep `select_actuator` unchanged. Add a resolver `evidence_backends(backends, ac
 
 If no backend supplies a gap kind, the capture is **skipped with a recorded reason**. This is graceful degradation and never a run failure.
 
-Because each platform has only one implemented actuator today (`ios → idb`, `web → playwright`), the same-platform filter resolves to *no* provider in production until a platform gains a second actuator (iOS + XCUITest, [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md)) — a safe no-op that changes nothing for current runs. The first slice is therefore exercised with a same-platform network-capable fake (below).
+Each platform has only one implemented actuator today (`ios → idb`, `web → playwright`). In production, the same-platform filter therefore resolves to *no* provider until a platform gains a second actuator (iOS with XCUITest, [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md)). That makes the filter a safe no-op, and current runs do not change. The first slice is exercised with a same-platform fake that supports network capture (below).
 
 ### Read-only enforced structurally, not by convention
 
-Rather than build the fallback's full `Driver` and trust callers not to actuate, introduce a narrow `EvidenceProvider` Protocol in `drivers/base.py` exposing only `capabilities()` plus read-only observation surfaces (e.g. `network_collector()`), with no `tap` / `type` / `swipe` / `wait` / `query`. The fallback is referenced *only* through `EvidenceProvider`, so "the fallback never actuates" becomes a mypy-strict compile-time fact — the strongest form of the §3.3 / §5 single-actuator guarantee. Selector resolution (`resolve_unique`, the determinism core) is reached only through the actuator's `Driver`, untouched. There are still no fixed sleeps; ambiguous selectors still fail; evidence capture sits entirely outside the pass/fail path.
+Building the fallback's full `Driver` would mean trusting callers not to actuate. Instead, introduce a narrow `EvidenceProvider` Protocol in `drivers/base.py`. It exposes only `capabilities()` and read-only observation surfaces (for example, `network_collector()`). It has no `tap`, `type`, `swipe`, `wait`, or `query`.
+
+The fallback is referenced *only* through `EvidenceProvider`. "The fallback never actuates" therefore becomes a compile-time fact under mypy strict. This is the strongest form of the single-actuator guarantee in §3.3 and §5.
+
+Selector resolution (`resolve_unique`, the determinism core) is reached only through the actuator's `Driver`, and this design does not touch it. There are still no fixed sleeps, and ambiguous selectors still fail. Evidence capture sits entirely outside the pass/fail path.
 
 ### Lifecycle (reuse the collector machinery)
 
@@ -79,39 +83,75 @@ Coordination is already solved. The collector runs on a background thread or eve
 
 ### Provenance (keep the manifest honest)
 
-`Artifact.provider` must name the backend that actually supplied each artifact: web native = `"playwright"`; idb app collector = `"collector"` (unchanged); a fallback = `"<backend> (fallback)"`. For the first slice the field stays a **plain string** (decision 2): it is human-readable, and the gap reason rides the `SkippedCapture` list rather than the provider string. Add a per-scenario `SkippedCapture(kind, reason)` list on the scenario's result (decision 3) so a gap is *disclosed* rather than silently empty — it rides `asdict` into `manifest.json` and surfaces in `report/panels.py` beside the existing degradation disclosures. The structured provider form (`{provider, role, reason}`), a top-level `evidenceBackends: [...]`, and the matching `SCHEMA_VERSION` bump (currently 3; BE-0068 versioning degrades older runs gracefully) are **deferred to a follow-up slice** so the first slice changes no schema.
+`Artifact.provider` must name the backend that actually supplied each artifact:
+
+- Web native: `"playwright"`.
+- idb app collector: `"collector"` (unchanged).
+- A fallback: `"<backend> (fallback)"`.
+
+For the first slice, the field stays a **plain string** (decision 2). A plain string is human-readable, and the gap reason rides the `SkippedCapture` list, not the provider string.
+
+Add a per-scenario `SkippedCapture(kind, reason)` list to the scenario's result (decision 3). A gap is then *disclosed*, not silently empty. The list rides `asdict` into `manifest.json`. It surfaces in `report/panels.py` beside the existing degradation disclosures.
+
+Three items are **deferred to a follow-up slice**, so the first slice changes no schema:
+
+- the structured provider form (`{provider, role, reason}`)
+- a top-level `evidenceBackends: [...]`
+- the matching `SCHEMA_VERSION` bump (currently 3; the versioning of BE-0068 degrades older runs gracefully)
 
 ### First slice (most value, lowest risk, gate-testable)
 
-Wire **`network`** as the single fallback kind, exercised entirely with fakes — no Simulator. The whole downstream network path (the `Collector` Protocol, per-scenario `clear()`, the `request` assertion, `network.json` + provenance) already exists and is backend-agnostic, so the slice only adds *resolution + instantiation* of a read-only `Collector` and drops it into the existing slot. The pure resolution layer (`evidence_backends`, gap detection, dispatch) is unit-testable like `select_actuator` is today (inject `available`). End-to-end, add a network-capable `FakeDriver` variant returning a deterministic `NetworkExchange` list (in-process, not a behavior mock), run a scenario with actuator = a no-network fake and one network-capable fake in the list, and assert `network.json` is written, its `provider` names the fallback, and `request` assertions read the exchanges. The whole slice stays inside the Linux `make check` gate.
+Wire **`network`** as the single fallback kind, and exercise it entirely with fakes, with no Simulator. The whole downstream network path already exists and is backend-agnostic: the `Collector` Protocol, the per-scenario `clear()`, the `request` assertion, and `network.json` with provenance. The slice therefore adds only the *resolution and instantiation* of a read-only `Collector`, and drops it into the existing slot.
 
-### Scope & non-goals
+The pure resolution layer (`evidence_backends`, gap detection, dispatch) is unit-testable, like `select_actuator` is today. The test injects `available`.
 
-**In scope:** read-only evidence providers from non-actuator backends; gap detection against `capabilities_for(actuator)`; provider-per-capability dispatch in list order; honest provenance (artifact `provider` + skip records); first slice = `network`.
+The end-to-end test works as follows:
 
-**Non-goals:** any fallback *actuation* (capability gaps in actuation are the actuator ladder's job, BE-0019); opportunistic capture-from-all (rejected below); changing `video` / `deviceLog` / `appTrace` resolution (backend-independent `simctl`); any LLM (this is evidence plumbing, never judging); a new config surface (reuse the ordered `backend` list).
+1. Add a network-capable `FakeDriver` variant. It returns a deterministic `NetworkExchange` list, in-process, not as a behavior mock.
+2. Run a scenario whose list holds an actuator that is a no-network fake and one network-capable fake.
+3. Assert that `network.json` is written, that its `provider` names the fallback, and that `request` assertions read the exchanges.
+
+The whole slice stays inside the Linux `make check` gate.
+
+### Scope and non-goals
+
+**In scope:**
+
+- Read-only evidence providers from non-actuator backends.
+- Gap detection against `capabilities_for(actuator)`.
+- Provider-per-capability dispatch in list order.
+- Honest provenance (artifact `provider` plus skip records).
+- First slice: `network`.
+
+**Non-goals:**
+
+- Any fallback *actuation*. Capability gaps in actuation are the job of the actuator ladder (BE-0019).
+- Opportunistic capture from all backends (rejected below).
+- Changing the `video`, `deviceLog`, and `appTrace` resolution (backend-independent `simctl`).
+- Any LLM. This is evidence plumbing and never judges.
+- A new config surface. The design reuses the ordered `backend` list.
 
 ### Decisions
 
-The four open questions are resolved as follows; each is folded into the design above.
+The four open questions are resolved as follows. Each resolution is folded into the design above.
 
-1. **Provider eligibility = "observes the same system under test".** A provider is eligible only if it resolves to an actuator on the **actuator's own platform** (reverse-lookup in `backends.PLATFORMS`), so a cross-platform list never has one platform's backend observe another's app. This is the most important constraint and it shapes `evidence_backends`. A consequence is that the fallback is a no-op until a platform has a second actuator (BE-0019), which is why the first slice is proven with same-platform fakes.
-2. **Provider string format: a plain string for the first slice** (`"<backend> (fallback)"`). The structured `{provider, role, reason}` form is deferred to the follow-up that also adds `evidenceBackends` to the manifest and bumps `SCHEMA_VERSION` — keeping the first slice schema-stable.
-3. **Skip records are per-scenario.** A scenario may request `network` only sometimes, so `SkippedCapture(kind, reason)` lives on the scenario's result, not the run's.
-4. **Providers are strictly `backend`-list-derived in the first slice.** A target-independent source (the mock server §9 names) genuinely sidesteps the platform constraint in (1), but it is a different kind of source; wiring it as a `network` provider is a documented follow-up, not part of this slice.
+1. **Provider eligibility is "observes the same system under test".** A provider is eligible only if it resolves to an actuator on the **actuator's own platform** (reverse lookup in `backends.PLATFORMS`). A cross-platform list therefore never has one platform's backend observe another's app. This is the most important constraint, and it shapes `evidence_backends`. A consequence is that the fallback is a no-op until a platform has a second actuator (BE-0019). That is why the first slice is proven with same-platform fakes.
+2. **Provider string format: a plain string for the first slice** (`"<backend> (fallback)"`). The structured `{provider, role, reason}` form is deferred to the follow-up that also adds `evidenceBackends` to the manifest and bumps `SCHEMA_VERSION`. That keeps the first slice schema-stable.
+3. **Skip records are per-scenario.** A scenario may request `network` only sometimes. `SkippedCapture(kind, reason)` therefore lives on the scenario's result, not the run's.
+4. **Providers are strictly derived from the `backend` list in the first slice.** A target-independent source (the mock server that §9 names) sidesteps the platform constraint in decision 1. It is, however, a different kind of source. Wiring it as a `network` provider is a documented follow-up, not part of this slice.
 
 ### Implementation sketch (small PR-sized slices)
 
-1. **Pure resolution layer** — `backends.py`: `evidence_backends`, `KIND_CAPABILITY`, `resolve_evidence_providers(...) -> (provider_per_kind, skipped)`; fully unit-tested, no runner change.
-2. **Read-only provider interface** — `drivers/base.py:EvidenceProvider` Protocol; `PlaywrightDriver` already satisfies the network part; add a network-capable `FakeDriver` variant for tests.
-3. **Wire network fallback into the pool** — `pool.py` resolves and instantiates the provider's `Collector` into `lz.collector`; `pipeline._write_network` stamps the honest provider; `RunResult` gains `skipped_captures`.
-4. **Provenance surfacing + docs** — optional manifest `evidenceBackends` (+ `SCHEMA_VERSION` bump); `report/panels.py` shows skips; update `docs/drivers.md` + `docs/ja/drivers.md` and `docs/evidence.md` (Japanese per the `japanese-tech-writing` skill).
+1. **Pure resolution layer.** In `backends.py`, add `evidence_backends`, `KIND_CAPABILITY`, and `resolve_evidence_providers(...) -> (provider_per_kind, skipped)`. Unit-test it fully. The runner does not change.
+2. **Read-only provider interface.** Add the `drivers/base.py:EvidenceProvider` Protocol. `PlaywrightDriver` already satisfies the network part. Add a network-capable `FakeDriver` variant for tests.
+3. **Wire the network fallback into the pool.** `pool.py` resolves the provider and instantiates its `Collector` into `lz.collector`. `pipeline._write_network` stamps the honest provider. `RunResult` gains `skipped_captures`.
+4. **Surface provenance and update docs.** Optionally add `evidenceBackends` to the manifest (with a `SCHEMA_VERSION` bump). `report/panels.py` shows skips. Update `docs/drivers.md`, `docs/ja/drivers.md`, and `docs/evidence.md` (Japanese per the `japanese-tech-writing` skill).
 
 ## Alternatives considered
 
-- **Leave it skipped (status quo).** Skipping a capability the actuator lacks is simple, but it discards evidence that a declared backend could have produced, weakening exactly the failure investigation Bajutsu exists to support. Since §9 already designed the fallback and the `provider` field already exists, wiring it is a small, faithful step rather than new architecture.
-- **Let a fallback backend actuate when it is "better" for a step.** This would route some actions to a second driver. That breaks the single-actuator rule and reintroduces the non-determinism of two drivers contending for one device. Actuation must stay with the one fixed actuator; capability gaps in *actuation* are addressed by the actuator ladder (BE-0019), and only *evidence* gaps are filled here, read-only.
-- **Merge each backend's captures opportunistically (capture from all that can).** Capturing the same evidence from multiple backends at once adds cost and ambiguity about which copy is authoritative, and risks the observer effect §9 warns about. Resolving one provider per capability, in list order, keeps a single clear source and bounded cost.
+- **Leave it skipped (status quo).** Skipping a capability that the actuator lacks is simple. It also discards evidence that a declared backend could have produced, which weakens the failure investigation that Bajutsu exists to support. DESIGN §9 already designs the fallback, and the `provider` field already exists. Wiring the fallback is therefore a small, faithful step, not new architecture.
+- **Let a fallback backend actuate when it is "better" for a step.** This routes some actions to a second driver. It breaks the single-actuator rule and reintroduces the non-determinism of two drivers contending for one device. Actuation must stay with the one fixed actuator. The actuator ladder (BE-0019) addresses capability gaps in *actuation*. This proposal fills only *evidence* gaps, read-only.
+- **Merge each backend's captures opportunistically (capture from all that can).** Capturing the same evidence from several backends at once adds cost. It also leaves it unclear which copy is authoritative, and it risks the observer effect that §9 warns about. Resolving one provider per capability, in list order, keeps a single clear source and a bounded cost.
 
 ## Progress
 
@@ -119,6 +159,20 @@ The four open questions are resolved as follows; each is folded into the design 
 
 ## References
 
-[drivers.md](../../docs/drivers.md) (the "not yet wired up" note), [evidence.md](../../docs/evidence.md), [DESIGN §9](../../DESIGN.md); `bajutsu/backends.py` (`select_actuator`, `resolve_actuators`, `capabilities_for`), `bajutsu/drivers/base.py` (`Capability`, `Driver`, `resolve_unique`), `bajutsu/capability_preflight.py` (the idb-`network` note), `bajutsu/evidence.py` (`Artifact`, `FileSink`), `bajutsu/network.py` (`Collector`, `NetworkCollector`), `bajutsu/runner/pool.py` (`device_pool` — the seam), `bajutsu/runner/pipeline.py` (`_write_network`, `run_all`), `bajutsu/report/manifest.py` (`SCHEMA_VERSION`), `bajutsu/drivers/playwright.py` (native `network`, `network_collector`), `bajutsu/drivers/fake.py` (`CAPABILITIES`).
+- Docs: [drivers.md](../../docs/drivers.md) (the "not yet wired up" note), [evidence.md](../../docs/evidence.md), [DESIGN §9](../../DESIGN.md).
+- `bajutsu/backends.py`: `select_actuator`, `resolve_actuators`, `capabilities_for`.
+- `bajutsu/drivers/base.py`: `Capability`, `Driver`, `resolve_unique`.
+- `bajutsu/capability_preflight.py`: the idb `network` note.
+- `bajutsu/evidence.py`: `Artifact`, `FileSink`.
+- `bajutsu/network.py`: `Collector`, `NetworkCollector`.
+- `bajutsu/runner/pool.py`: `device_pool`, the seam.
+- `bajutsu/runner/pipeline.py`: `_write_network`, `run_all`.
+- `bajutsu/report/manifest.py`: `SCHEMA_VERSION`.
+- `bajutsu/drivers/playwright.py`: native `network`, `network_collector`.
+- `bajutsu/drivers/fake.py`: `CAPABILITIES`.
 
-**Dependencies / related items:** [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) (a second iOS actuator sharply increases the value — one iOS actuator covers the other's gaps — but this can land first with fakes), [BE-0082](../BE-0082-capability-preflight-check/BE-0082-capability-preflight-check.md) (gives `capabilities_for` and the pure-preflight pattern reused here). The web (Playwright) backend already has native `network` and is the reference read-only `Collector`.
+**Dependencies and related items:**
+
+- [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md): a second iOS actuator sharply increases the value, because one iOS actuator covers the other's gaps. This item can land first with fakes.
+- [BE-0082](../BE-0082-capability-preflight-check/BE-0082-capability-preflight-check.md): provides `capabilities_for` and the pure-preflight pattern reused here.
+- The web (Playwright) backend already has native `network`. It is the reference read-only `Collector`.

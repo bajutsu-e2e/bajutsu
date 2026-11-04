@@ -21,7 +21,7 @@ doctor の実行可能性ゲートは実装済みです（[architecture.md](../.
 
 ## 動機
 
-Bajutsu でうまくいくかどうかを最初に左右するのは、*セットアップ*が健全かどうかです。セットアップが健全であるための条件は 3 つあります。
+Bajutsu の成否をまず左右するのは、*セットアップ*が健全かどうかです。セットアップが健全であるための条件は 3 つあります。
 
 - 適切なコマンドラインツールがインストールされている。
 - Simulator が起動している。
@@ -50,16 +50,16 @@ Bajutsu は、この問いの両面にすでに答えています。
 
 - **`doctor` が web（Playwright）バックエンドに対応。** 実行可能性ゲート（`preflight.py`）は iOS 向けの形でした。常に Xcode の `xcrun` と起動済みのシミュレータを要求し、Playwright ランタイムは確認しませんでした。そのため、web ターゲットに対する `bajutsu doctor` は、誤ったツールを要求したうえで、simctl の udid を解決する段階でクラッシュしていました。
 
-  ゲートは、バックエンドの系統で分岐するようになりました。web バックエンドは、Playwright パッケージとその Chromium ブラウザを確認します。対処策は `uv sync --extra web` と `playwright install chromium` で、Xcode もシミュレータも不要です。`doctor` は、新しいブラウザをターゲットの `baseUrl` に遷移させて、そのページを採点します。規約スコア自体は、もともとバックエンド非依存です。各要素の id と trait を読むだけだからです。そのため、web バックエンドの `data-testid` の id も、そのまま採点されます。
+  ゲートは、バックエンドの系統で分岐するようになりました。web バックエンドは、Playwright パッケージとその Chromium ブラウザを確認します。対処策は `uv sync --extra web` と `playwright install chromium` で、Xcode もシミュレータも不要です。`doctor` は、新しいブラウザをターゲットの `baseUrl` に遷移させて、そのページを採点します。規約スコア自体は、もともとバックエンド非依存です。各要素の id と trait を読むだけだからです。そのため、web バックエンドの `data-testid` の id は、そのまま採点されます。
 - **actionable な要素が 1 つもない画面は `Ready` ではなく `Blocked` と判定** ([#337](https://github.com/bajutsu-e2e/bajutsu/pull/337))。`doctor.score` は、actionable な要素がないとき、id カバレッジを `1.0` として導出していました。そのため、空の画面、まだ読み込まれていない画面、想定外の画面が `Ready` と採点されました。この紛らわしい偽陽性は、`doctor` が実際にはテスト対象を 1 つも見つけていないのに、初回利用者へ「設定は健全だ」と伝えてしまいます。
 
   スコアは、「actionable な要素がない」状態を `Blocked` として扱うようになりました。`render` は、その原因の見当（「アプリは想定した画面にあり、完全に読み込まれていますか」）を示します。これで、シグナルが本当の問題を指します。この点検は決定的で、LLM は関与しません。
 - **`doctor` がツールやデバイスを探る前に、ターゲットのバックエンド設定を点検** ([#361](https://github.com/bajutsu-e2e/bajutsu/pull/361))。`doctor` は、ターゲットを解決するとすぐ、ツールやデバイスの探索に入っていました。そのため、選択したバックエンドに対して誤ったフィールドを持つターゲットが、分かりにくい後続の起動や遷移の失敗として現れました。たとえば、`baseUrl` だけを持つ iOS ターゲットや、`bundleId` だけを持つ web ターゲットです。`bundleId` を欠く iOS ターゲットは、事前に点検されることすらありませんでした。設定のパースは、両方のフィールドを欠くターゲットは弾きます。しかし、実行するバックエンドにとって誤ったフィールドは弾きません。
 
   新しい `preflight.config_checks` が、選択したバックエンドに必要なフィールド（web は `baseUrl`、iOS は `bundleId`）の有無を点検します。対処法には、ターゲット名を含めます。`doctor` はこの点検を最初に走らせるので、無駄な探索を始める前に、修正できるチェックリストで早く失敗します。この点検は決定的で、LLM は関与しません。
-- **Web の trait/role マッピングを 6 から 20 エントリに拡充** ([#405](https://github.com/bajutsu-e2e/bajutsu/pull/405))。Playwright バックエンドの `_ROLE_MAP` がカバーしていたのは、`a`、`button`、`input`、`textarea` だけでした。さらに、テキスト入力を `ACTIONABLE_TRAITS` に含まれない `textbox` trait にマッピングしていたため、`doctor.score` は web のテキスト入力をすべて見落としていました。
+- **Web の trait/role マッピングを 6 から 20 エントリに拡充** ([#405](https://github.com/bajutsu-e2e/bajutsu/pull/405))。Playwright バックエンドの `_ROLE_MAP` がカバーしていたのは、`a`、`button`、`input`、`textarea` だけでした。さらに、テキスト入力を `textbox` trait にマッピングしていました。`textbox` は `ACTIONABLE_TRAITS` に含まれません。そのため、`doctor.score` は web のテキスト入力をすべて見落としていました。
 
-  マップは、checkbox、radio、switch、select/combobox/listbox、option/menuitem、searchbox、spinbutton、textarea（`textView`）をカバーするようになりました。既存のテキスト入力のマッピングも、`ACTIONABLE_TRAITS` に含まれる `textField` に修正しました。スコアリングのロジック自体は変更していません。
+  マップは、checkbox、radio、switch、select/combobox/listbox、option/menuitem、searchbox、spinbutton、textarea（`textView`）をカバーするようになりました。既存のテキスト入力のマッピングは、`textField` に修正しました。`textField` は `ACTIONABLE_TRAITS` に含まれます。スコアリングのロジック自体は変更していません。
 - **`doctor` の id カバレッジのしきい値が設定可能に** ([#406](https://github.com/bajutsu-e2e/bajutsu/pull/406))。`OK_COVERAGE`（0.9）と `FAIL_COVERAGE`（0.7）は、ハードコードされた定数でした。テスト用 id を付ける必要のない装飾的な要素が多いチームには、グレード判定を調整する手段がありませんでした。
 
   新しい `defaults.doctor` 設定セクション（`idCoverageOk` と `idCoverageFail`）が、`score()` まで渡されます。値はロード時に検証します。どちらも [0, 1] の範囲で、ok >= fail でなければなりません。ハードコードされた値が既定値として残るので、既存の config は変更なしで動きます。この点検は決定的で、LLM は関与しません。

@@ -15,7 +15,7 @@
 
 ## Introduction
 
-The doctor feasibility gate is implemented ([architecture.md](../../docs/architecture.md#implementation-status)). It consists of the command-line interface (CLI) tool suite plus a check for a booted Simulator.
+Bajutsu already ships the doctor feasibility gate ([architecture.md](../../docs/architecture.md#implementation-status)). The gate consists of the command-line interface (CLI) tool suite plus a check for a booted Simulator.
 
 This item originally ran as a placeholder that absorbed small doctor and onboarding improvements as they came up. That practice has ended. Every new onboarding improvement, of any size, is now proposed as its own BE item. The Progress section below records the candidates that shipped while this item served as the catch-all.
 
@@ -23,8 +23,8 @@ This item originally ran as a placeholder that absorbed small doctor and onboard
 
 Whether someone succeeds with Bajutsu depends first on whether their *setup* is sound. Three conditions make it sound:
 
-- The right command-line tools are installed.
-- A Simulator is booted.
+- The right command-line tools exist on the machine.
+- A Simulator has booted.
 - The app's screens carry enough accessibility ids to be addressable.
 
 Bajutsu already answers both halves of that question:
@@ -34,17 +34,17 @@ Bajutsu already answers both halves of that question:
 
 Together they form the onboarding surface: the checks that catch a problem *before* a run fails for a confusing reason.
 
-Onboarding is not a one-time feature, however. It accretes. A new way to get stuck surfaces from time to time: a missing dependency, an unhelpful default, or a check that would have saved someone an hour. The fix usually belongs in `doctor` or `preflight`, not in a feature of its own. This item gives those small, related improvements a home and an ID to land against. Without it, each improvement would spawn a throwaway proposal.
+Onboarding is not a one-time feature. It accretes. A new way to get stuck surfaces from time to time: a missing dependency, an unhelpful default, or a check that would have saved someone an hour. The fix typically belongs in `doctor` or `preflight`, not in a feature of its own. This item gives those small, related improvements a home and an ID to land against. Without it, each improvement would spawn a throwaway proposal.
 
 ## Detailed design
 
 This is a deliberate **placeholder** topic, not a single concrete spec. The implemented onboarding surface is already documented in [architecture.md](../../docs/architecture.md#implementation-status). It has two parts: `preflight.py` (the environment runnability gate) and `doctor.py` (the convention score). The principle for this item is how *new* candidates get added. It is not a feature to build now.
 
-- A new onboarding or doctor candidate is a small, focused improvement to the diagnose-before-you-run surface. Examples are a new runnability check, a clearer remedy string, a sharper `doctor` signal, and a better first-run default. A candidate too small to justify a standalone BE proposal is recorded here as a sub-item with its own short rationale.
+- A new onboarding or doctor candidate is a small, focused improvement to the diagnose-before-you-run surface. Examples are a new runnability check, a clearer remedy string, a sharper `doctor` signal, and a better first-run default. A candidate too small to justify a standalone BE proposal goes here as a sub-item with its own short rationale.
 - A candidate is **in scope** when it helps a user discover and fix a setup or convention problem *before* a run fails confusingly. It is **out of scope** when it reaches beyond diagnosis: it changes the run loop, adds a driver capability, or the like. An out-of-scope candidate becomes its own BE item.
 - Every candidate inherits the prime directives unchanged. The checks stay deterministic and LLM-free (`doctor.score` is "AI is not involved" by construction). Per-app specifics (id namespaces, backend) come from config, which keeps the checks app-agnostic.
 
-While this item served as the catch-all, the standing rule was that a candidate which grew large enough to deserve its own design discussion graduated to a dedicated BE item and was removed from here. The catch-all itself is now retired. Every future onboarding improvement, large or small, gets its own BE item from the start.
+While this item served as the catch-all, one rule stood. A candidate that grew large enough for its own design discussion graduated to a dedicated BE item. This item then dropped the candidate. The catch-all itself is now retired. Every future onboarding improvement, large or small, gets its own BE item from the start.
 
 ### Shipped candidates
 
@@ -59,8 +59,8 @@ While this item served as the catch-all, the standing rule was that a candidate 
   A new `preflight.config_checks` verifies that the selected backend's required field is present (web: `baseUrl`, iOS: `bundleId`). The remedy names the target. `doctor` runs the check first, so it fails fast with a fixable checklist instead of a doomed probe. The check stays deterministic and LLM-free.
 - **Web trait/role mapping expanded from 6 to 20 entries** ([#405](https://github.com/bajutsu-e2e/bajutsu/pull/405)). The Playwright backend's `_ROLE_MAP` covered only `a`, `button`, `input`, and `textarea`. Worse, it mapped text inputs to a `textbox` trait that was not in `ACTIONABLE_TRAITS`, so `doctor.score` could not see any web text input.
 
-  The map now covers checkbox, radio, switch, select/combobox/listbox, option/menuitem, searchbox, spinbutton, and textarea (as `textView`). The existing text-input mapping was fixed to `textField`, which `ACTIONABLE_TRAITS` includes. The scoring logic itself is unchanged.
-- **`doctor` id-coverage thresholds are configurable** ([#406](https://github.com/bajutsu-e2e/bajutsu/pull/406)). `OK_COVERAGE` (0.9) and `FAIL_COVERAGE` (0.7) were hardcoded constants. A team with many decorative elements that legitimately lack test ids had no way to adjust the grading.
+  The map now covers checkbox, radio, switch, select/combobox/listbox, option/menuitem, searchbox, spinbutton, and textarea (as `textView`). The fix also moved the existing text-input mapping to `textField`, which `ACTIONABLE_TRAITS` includes. The scoring logic itself did not change.
+- **`doctor` id-coverage thresholds are configurable** ([#406](https://github.com/bajutsu-e2e/bajutsu/pull/406)). `OK_COVERAGE` (0.9) and `FAIL_COVERAGE` (0.7) were constants in the code. A team with many decorative elements that legitimately lack test ids had no way to adjust the grading.
 
   A new `defaults.doctor` config section (`idCoverageOk` and `idCoverageFail`) threads through to `score()`. Load time validates the values: both lie in [0, 1], and ok >= fail. Existing configs are unchanged, because the hardcoded values remain the defaults. The check stays deterministic and LLM-free.
 - **`doctor --scenario` checks capability compatibility before a run** ([#407](https://github.com/bajutsu-e2e/bajutsu/pull/407)). A user could pass all `doctor` checks and still fail mid-run, because the scenario used a capability that the backend lacked (for example, `pinch` on idb without `multiTouch`).
