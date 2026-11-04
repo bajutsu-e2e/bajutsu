@@ -51,7 +51,7 @@ limitation.
 
 The gap went unnoticed because BE-0211's clipboard round-trip was only ever exercised against a
 **fake injected `run`**. In `test_android_device_control.py`, `fake_run` stores and echoes the text in
-a dict. It never touched a device. The fake proves the command *builders* and the delegation wiring.
+a dict, and never reaches a device. The fake proves the command *builders* and the delegation wiring.
 It does not prove that the device honors the commands.
 
 The gap was discovered on-device while shipping BE-0208's device-control lane slice

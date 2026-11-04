@@ -109,8 +109,7 @@ BE-0208 wiring. It changes no shared scenario and adds no LLM to any path.
 3. **Declare the `multiTouch` capability.** Add `base.Capability.MULTI_TOUCH` to the driver's static
    `CAPABILITIES` frozenset. The set is a class constant that the preflight (BE-0082) reads via
    `backends.capabilities_for` **with no device**, so the declaration is necessarily static. The root
-   precondition is enforced at actuation time (item 2), not in the capability set. The consequence is
-   plain: preflight admits `gestures_multitouch` on adb. On a non-rooted device it fails fast at the
+   precondition is enforced at actuation time (item 2), not in the capability set. Document the consequence plainly: preflight admits `gestures_multitouch` on adb. On a non-rooted device it fails fast at the
    gesture step rather than before it.
 4. **Give the Android showcase a gesture screen.** Add a Compose gesture screen gated by the
    `SHOWCASE_GESTURES` launch env. It mirrors the iOS

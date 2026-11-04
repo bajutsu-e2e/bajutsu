@@ -87,10 +87,9 @@ Replace the current "PR only when asked" step with an **auto-PR** step. It appli
   verification line.
 - Fill the `Implementing PR:` row in both BE language files with the real number, and push that
   follow-up. This is the existing step-10 requirement, now unconditional.
-- Remove the "don't open a PR unless the user asks" caveat **for this skill**. The Draft rules from
-  `CLAUDE.md` still hold, including never marking a PR ready while CI is red. The PR is created as
-  a Draft. Only the human (or a later explicit step) marks it ready, never automatically while CI is
-  red.
+- Remove the "don't open a PR unless the user asks" caveat **for this skill**. The Draft and
+  never-mark-ready-while-red rules from `CLAUDE.md` still hold: the PR is created as a Draft, and
+  only the human (or a later explicit step) marks it ready, never automatically while CI is red.
 
 One exception applies. Suppose the `implement-be` output is itself documentation-only: skills,
 `CLAUDE.md`, or roadmap prose, with no product code. Then `CLAUDE.md`'s existing "documentation-only

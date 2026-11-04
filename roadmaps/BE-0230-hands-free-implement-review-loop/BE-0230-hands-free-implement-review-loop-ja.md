@@ -97,8 +97,8 @@ PR は Ready for review で開く」規則が優先します。Draft ではな�
 
 followup の作業に、implement フェーズの文脈（設計の会話やファイルの読み込み）は不要です。引き継ぐべき状態は、
 PR とそのブランチ、BE ファイルだけです。トークンを多く使う followup の作業を、周回のたびに implement の
-トランスクリプト全体の上で走らせると、長寿命のセッションでこのプロジェクトのトークン経済が狙うコストが
-そのまま発生します。
+トランスクリプト全体の上で走らせると、長寿命のセッションでこのプロジェクトのトークン経済が問題にしている
+コストが、そのまま発生します。
 
 元の提案は、「手渡しの時点で一度 compact する」という意図を記録していました。具体的な呼び出し方法は未解決の
 ままでした。実装はこの問いを、`/compact` では解けないと結論づけました。**スキルは実行途中にスラッシュ
@@ -282,8 +282,8 @@ working agreement の PR 規則を更新し、二つの経路を明示的かつ�
 
 - [`implement-be`](../../.claude/skills/implement-be/SKILL.md)：この項目が拡張するスキル（step 10〜12）。
 - [`pr-followup`](../../.claude/skills/pr-followup/SKILL.md)：ループが各周回で呼ぶスキル。
-- [`ideation`](../../.claude/skills/ideation/SKILL.md) · [`propose-and-build`](../../.claude/skills/propose-and-build/SKILL.md)
- ：auto-PR から明示的に除外する、BE を作成するスキル。
+- [`ideation`](../../.claude/skills/ideation/SKILL.md) ·
+  [`propose-and-build`](../../.claude/skills/propose-and-build/SKILL.md)：auto-PR から明示的に除外する、BE を作成するスキル。
 - [`CLAUDE.md`](../../CLAUDE.md)：Unit 4 が PR 規則を更新する working agreement。
 - [BE-0089](../BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation.md)：マージ時の
   BE id 採番。提案 PR が人間のレビューの分岐点であり続ける理由。

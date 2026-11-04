@@ -58,7 +58,7 @@ BE-0208 の Android e2e レーンは、単一タッチの限界まで共有シ�
 前例はすぐ近くにあります。
 [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity-ja.md) は、ダブルタップの
 ために、root 化したデバイス向けの `sendevent` 経路をすでに adb ドライバに教えています。`input tap` を 2 回
-連ねると、プラットフォームのダブルタップ受付時間を超過したためです。この経路が、本項目の拡張する仕組みを
+連ねると、プラットフォームのダブルタップ受付時間を超過したためです。この経路が、本項目が拡張する仕組みを
 確立しました。
 
 - エミュレータのタッチ入力ノードを見つける（最も番号の小さい `virtio_input_multi_touch_*` の `eventN`、
@@ -111,7 +111,7 @@ capability を表明し、共有シナリオが期待するジェスチャ画面
 3. **`multiTouch` capability を表明する。** ドライバの静的な `CAPABILITIES` frozenset に
    `base.Capability.MULTI_TOUCH` を加えます。このセットは、事前チェック（BE-0082）が
    `backends.capabilities_for` を通じて**デバイスなしで**読み取るクラス定数なので、表明は必然的に静的です。
-   root の前提は、capability セットではなく操作時（項目 2）に強制します。帰結は次のとおりです。事前チェックは
+   root の前提は、capability セットではなく操作時（項目 2）に強制します。その帰結を平明に記します。事前チェックは
    adb で `gestures_multitouch` を通過させます。root 化していないデバイスでは、その手前ではなくジェスチャの
    ステップで速やかに失敗します。
 4. **Android showcase にジェスチャ画面を与える。** `SHOWCASE_GESTURES` の launch env で切り替わる Compose の
