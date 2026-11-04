@@ -15,54 +15,30 @@
 
 ## Introduction
 
-A target's `runsOn` names the device it needs by an exact string, and a browser by a Playwright
-engine. This item adds two ways to name a target's environment by category instead.
+A target's `runsOn` names the device it needs by an exact string, and a browser by a Playwright engine. This item adds two ways to name a target's environment by category instead.
 
-- **`runsOn.ios.family`** names an iOS device family. `family: [iphone, ipad]` is a priority list:
-  the run takes one device of the first listed family the pool has, a Simulator or a connected real
-  device.
-- **`kind`** names the kinds of environment a target supports: `runsOn.ios.kind: [simulator,
-  device]`, or `runsOn.browser.kind: [chrome, edge, firefox]`. Without an argument, the run covers
-  every listed kind, one run each. A command-line argument that names a kind runs that kind alone.
+- **`runsOn.ios.family`** names an iOS device family. `family: [iphone, ipad]` is a priority list. The run takes one device of the first listed family the pool has, a Simulator or a connected real device.
+- **`kind`** names the kinds of environment a target supports. Two examples are `runsOn.ios.kind: [simulator, device]` and `runsOn.browser.kind: [chrome, edge, firefox]`. Without an argument, the run covers every listed kind, one run each. A command-line argument that names a kind runs that kind alone.
 
-`runsOn.browser.kind` replaces `engine`, so a browser target names Chrome and Edge as well as the
-three Playwright engines. A server worker checks a real-device family before it takes a job.
+`runsOn.browser.kind` replaces `engine`, so a browser target names Chrome and Edge as well as the three Playwright engines. A server worker checks a real-device family before it takes a job.
 
 ## Motivation
 
-Today a config cannot say "an iPad, any iPad". It must name one device type, and Apple renames and
-replaces device types with each Xcode release. A target pinned to `"iPad Pro 13-inch (M4)"` stops
-matching on the first host whose Xcode lacks that type. The run then fails with the `model`
-condition unmet, although the scenario only needed a tablet-sized screen. A target that names no
-model avoids the failure, but it also loses the intent: the run takes the first model in pool
-order, which may be an iPhone on one host and an iPad on another. A list on `model` does not help,
-because it means "run once per value", so `model: [iPhone ..., iPad ...]` doubles the runs when the
-author wanted either one.
+Today a config cannot say "an iPad, any iPad". It must name one device type, and Apple renames and replaces device types with each Xcode release. A target pinned to `"iPad Pro 13-inch (M4)"` stops matching on the first host whose Xcode lacks that type. The run then fails with the `model` condition unmet, although the scenario only needed a tablet-sized screen.
 
-A target also declares exactly one kind of device. Many apps behave the same on a Simulator and on
-a real device, yet covering both takes two targets with otherwise identical settings. Every
-scenario that names a target then has to pick one of them, and a scenario cannot name both without
-becoming a multi-target scenario, which drives the two devices at once in one run.
+A target that names no model avoids the failure but loses the intent. The run takes the first model in pool order, which may be an iPhone on one host and an iPad on another. A list on `model` does not help, because it means "run once per value". `model: [iPhone ..., iPad ...]` doubles the runs when the author wanted either one.
 
-Browsers have the matching gap. `engine` names a Playwright rendering engine (`chromium`, `firefox`,
-or `webkit`), an implementation detail rather than the browser a user runs. A config cannot name
-Chrome or Edge, which Playwright launches as the `chromium` engine with a channel. Two names for
-one choice also sit side by side: `engine` in the config and `--browser` on the command line.
+A target also declares exactly one kind of device. Many apps behave the same on a Simulator and on a real device, yet covering both takes two targets with otherwise identical settings. Every scenario that names a target then has to pick one of them. A scenario cannot name both without becoming a multi-target scenario, which drives the two devices at once in one run.
 
-The outcome a reader can check after this ships is concrete. A config written as
-`runsOn.ios.family: [iphone, ipad]` keeps resolving after an Xcode update renames every device type,
-with no edit to the config. One target with `kind: [simulator, device]` runs each scenario on both,
-and `--kind device` runs it on the real device alone. Each run's label, manifest, and `doctor`
-listing show which kind, family, and model the run took.
+Browsers have the matching gap. `engine` names a Playwright rendering engine (`chromium`, `firefox`, or `webkit`). That is an implementation detail rather than the browser a user runs. A config cannot name Chrome or Edge, which Playwright launches as the `chromium` engine with a channel. Two names for one choice also sit side by side: `engine` in the config and `--browser` on the command line.
+
+The outcome a reader can check after this ships is concrete. A config written as `runsOn.ios.family: [iphone, ipad]` keeps resolving after an Xcode update renames every device type. The config needs no edit. One target with `kind: [simulator, device]` runs each scenario on both, and `--kind device` runs it on the real device alone. Each run's label, manifest, and `doctor` listing show which kind, family, and model the run took.
 
 ### Scope
 
-The item builds on the companion proposal *Group runsOn by destination and drop the scenario's
-runsOn*, which lands first. That proposal moves every field under `runsOn.ios`, `runsOn.android`,
-or `runsOn.browser`, and removes the scenario's `runsOn`. This item changes what some of those
-fields mean and moves no field. Android gains neither `family` nor `kind`. An Android target that
-omits `avd` already accepts any emulator, and Android form factor (phone or tablet) would need its
-own device read, so both stay out of this item.
+The item builds on the companion proposal *Group runsOn by destination and drop the scenario's runsOn*, which lands first. That proposal moves every field under `runsOn.ios`, `runsOn.android`, or `runsOn.browser`, and removes the scenario's `runsOn`. This item changes what some of those fields mean and moves no field.
+
+Android gains neither `family` nor `kind`. An Android target that omits `avd` already accepts any emulator. Android form factor (phone or tablet) would need its own device read. Both stay out of this item.
 
 ## Detailed design
 
@@ -154,18 +130,12 @@ composes with every `kind`, because both a Simulator and a real device report on
 
 Each rule runs on the merged config block, after team defaults have folded in.
 
-- `family` and `model` together fail the load and name both fields. A target clears an inherited
-  one with `null`.
-- `model` and `os` fail the load when `kind` includes `device`, because a real device cannot check
-  them. A Simulator-only target keeps both, as today.
-- A target that an `appium` grid or a Device Farm job serves has no pool to read, so a `family`
-  there fails before any device work, as every condition does today.
-- `runsOn.browser.version` with a list of browser kinds fails the load, for the reason a list of
-  engines does today: each browser numbers its versions differently.
-- An empty list, a repeated entry, and an unknown kind or family fail the load and name the allowed
-  values.
-- `runsOn.browser.engine` fails the load and names `kind`. The message states that a `kind` list
-  runs once per listed browser, as an `engine` list did, so the rewrite keeps every run.
+- `family` and `model` together fail the load and name both fields. A target clears an inherited one with `null`.
+- `model` and `os` fail the load when `kind` includes `device`, because a real device cannot check them. A Simulator-only target keeps both, as today.
+- A target that an `appium` grid or a Device Farm job serves has no pool to read. A `family` there fails before any device work, as every condition does today.
+- `runsOn.browser.version` with a list of browser kinds fails the load. The reason matches the one for a list of engines today: each browser numbers its versions differently.
+- An empty list, a repeated entry, and an unknown kind or family fail the load and name the allowed values.
+- `runsOn.browser.engine` fails the load and names `kind`. The message states that a `kind` list runs once per listed browser, as an `engine` list did, so the rewrite keeps every run.
 
 `family` composes with `os` on a Simulator. The version range multiplies runs as before. Each run of
 a major version picks its own family from the devices at that version.
@@ -182,29 +152,15 @@ a major version picks its own family from the devices at that version.
 4. If no listed family has a device, the run fails. The reason names the kind, the listed families,
    and the available devices, as a missing `model` does today.
 
-`eligible_set` then narrows to the winning family and applies the existing rule: the first model in
-pool order, then the newest release that has enough devices. The rule does not look past the
-winner when the demand exceeds the winner's device count. That run fails and names the family,
-because a deterministic choice matters more here than the largest possible fit.
+`eligible_set` then narrows to the winning family and applies the existing rule. The rule takes the first model in pool order, then the newest release that has enough devices. It does not look past the winner when the demand exceeds the winner's device count. That run fails and names the family, because a deterministic choice matters more here than the largest possible fit.
 
-A run that resolved a family out of two or more listed families gains a coordinate, `family=ipad`.
-The coordinate shows in the run label, in the manifest's `run_coordinates`, and in the flakiness
-key beside the device OS. Without it, the same scenario would key one history across hosts where
-the winner differs, and a layout difference between an iPhone and an iPad would read as flakiness
-([BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact.md)).
-A single `family: ipad` adds no coordinate, in the way a single `model` adds none.
+A run that resolved a family out of two or more listed families gains a coordinate, `family=ipad`. The coordinate shows in the run label, in the manifest's `run_coordinates`, and in the flakiness key beside the device OS. Without the coordinate, the same scenario would key one history across hosts where the winner differs. A layout difference between an iPhone and an iPad would then read as flakiness ([BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact.md)). A single `family: ipad` adds no coordinate, in the way a single `model` adds none.
 
-A target that lists both kinds needs a pool that holds both. The pool is every udid of `--udid`, and
-each udid belongs to the kind of the listing that shows it: `simctl` for a Simulator, `devicectl`
-for a real device. A udid that neither listing shows raises `DeviceReadError`. Each run's kind sets
-its XCUITest destination, which `kind` sets for the whole target today. A target whose list
-includes `device` needs the signed device runner, as a `kind: device` target does.
+A target that lists both kinds needs a pool that holds both. The pool is every udid of `--udid`. Each udid belongs to the kind of the listing that shows it: `simctl` for a Simulator, `devicectl` for a real device. A udid that neither listing shows raises `DeviceReadError`.
 
-On the web, each run's browser kind fills the existing engine slot of `TargetRun`, with the channel
-beside it. `target_pool` in `bajutsu/run/device_matrix.py` reads one `DeviceFacts` per browser
-through `read_web`, which launches the browser headless and raises `DeviceReadError` when it cannot.
-A Chrome or Edge that the host lacks therefore fails its run loudly. The driver passes the channel
-to Playwright's `launch`.
+Each run's kind sets its XCUITest destination, which `kind` sets for the whole target today. A target whose list includes `device` needs the signed device runner, as a `kind: device` target does.
+
+On the web, each run's browser kind fills the existing engine slot of `TargetRun`, with the channel beside it. `target_pool` in `bajutsu/run/device_matrix.py` reads one `DeviceFacts` per browser through `read_web`. That function launches the browser headless and raises `DeviceReadError` when it cannot. A Chrome or Edge that the host lacks therefore fails its run loudly. The driver passes the channel to Playwright's `launch`.
 
 `record`, `crawl`, and `repl` never multiply runs. They take the first listed kind unless `--kind`
 or `--browser` names one, the first resolvable family, and exit 2 when nothing fits.
@@ -216,29 +172,17 @@ from the `productFamily` of the device type it already looks up for the name. A 
 `productFamily` raises `DeviceReadError`, because the reader fails loudly rather than guessing.
 Android and web devices carry `None`.
 
-A real device gains a reader of its own, `read_ios_device`. It reads every udid of the pool from
-`xcrun devicectl list devices` with JSON output, taking `hardwareProperties.deviceType` (`iPhone`,
-`iPad`) as the family. A udid that the listing does not show, or that reports no device type, raises
-`DeviceReadError`. The reader reads the family alone. A real device's model and release are
-readable too, but a `model` condition would compare a product identifier such as `iPad13,8`, not
-the Simulator's device-type name. Matching on that identifier needs a separate design, so `model`
-and `os` stay refused on a real device. The read runs before any device work, in the same pool
-read that `read_ios` serves for Simulators.
+A real device gains a reader of its own, `read_ios_device`. It reads every udid of the pool from `xcrun devicectl list devices` with JSON output. It takes `hardwareProperties.deviceType` (`iPhone`, `iPad`) as the family. A udid that the listing does not show, or that reports no device type, raises `DeviceReadError`.
+
+The reader reads the family alone. A real device's model and release are readable too. A `model` condition would compare a product identifier such as `iPad13,8`, not the Simulator's device-type name. Matching on that identifier needs a separate design, so `model` and `os` stay refused on a real device. The read runs before any device work, in the same pool read that `read_ios` serves for Simulators.
 
 ### Checking on the worker
 
-A server worker already knows which real devices it can drive, so the worker checks a real-device
-`family` before it takes a job. The check reuses the capability routing of
-[BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues.md). Under that
-routing, a job carries the tokens it requires, and a worker leases the job only when it advertises
-all of them (`can_serve` in `bajutsu/serve/capabilities.py`). Workers already advertise `iphone`
-and `ipad` from their Simulator inventory (`simctl_capabilities`).
+A server worker already knows which real devices it can drive, so the worker checks a real-device `family` before it takes a job. The check reuses the capability routing of [BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues.md).
 
-- **What the worker advertises.** A worker adds `device:iphone` and `device:ipad` tokens for the
-  real devices connected to it, read through the same `devicectl` reader as `read_ios_device`.
-  Real devices come and go, so the worker refreshes these tokens before each lease attempt rather
-  than once at registration. `device:` becomes a reserved prefix, like `environment:` and `host:`,
-  so an operator's hand-written tokens cannot claim a device the worker lacks.
+Under that routing, a job carries the tokens it requires. A worker leases the job only when it advertises all of them (`can_serve` in `bajutsu/serve/capabilities.py`). Workers already advertise `iphone` and `ipad` from their Simulator inventory (`simctl_capabilities`).
+
+- **What the worker advertises.** A worker adds `device:iphone` and `device:ipad` tokens for the real devices connected to it. It reads them through the same `devicectl` reader as `read_ios_device`. Real devices come and go, so the worker refreshes these tokens before each lease attempt rather than once at registration. `device:` becomes a reserved prefix, like `environment:` and `host:`. An operator's hand-written tokens therefore cannot claim a device the worker lacks.
 - **What a job requires.** Each run routes on its own kind, since a `kind` list forms separate runs.
   A real-device run with one family requires that token, for example `device:ipad`. A family
   priority list cannot become a subset requirement, because any one family suffices. The run's job
@@ -250,10 +194,7 @@ and `ipad` from their Simulator inventory (`simctl_capabilities`).
   device on that worker runs it. The winner lands in the run's coordinates, so the flakiness key
   separates runs that took different families.
 
-A job that no worker can serve stays queued, as a job with an unmet token does today. A device that
-disconnects between the lease and the run fails the run when the worker reads its pool, because
-the reader raises `DeviceReadError` rather than skipping the device. Routing never touches the
-verdict: it decides where a job runs, and the run itself stays deterministic.
+A job that no worker can serve stays queued, as a job with an unmet token does today. A device that disconnects between the lease and the run fails the run when the worker reads its pool. The reader raises `DeviceReadError` rather than skipping the device. Routing never touches the verdict: it decides where a job runs, and the run itself stays deterministic.
 
 ### Schema, reports, and docs
 
@@ -271,10 +212,7 @@ verdict: it decides where a job runs, and the run itself stays deterministic.
 
 ### Prime-directive compliance
 
-No LLM enters a run. The resolution is a pure function of the config, the arguments, and the pool,
-and the same inputs yield the same runs. An ambiguous request does not tap whatever matched first:
-a `family` list fixes the order in advance, a `kind` list names every run, and a pool that fits no
-entry fails the run. All differences stay in config.
+No LLM enters a run. The resolution is a pure function of the config, the arguments, and the pool, and the same inputs yield the same runs. An ambiguous request does not tap whatever matched first. A `family` list fixes the order in advance, a `kind` list names every run, and a pool that fits no entry fails the run. All differences stay in config.
 
 ### Out of scope
 
@@ -288,32 +226,18 @@ entry fails the run. All differences stay in config.
 
 ### Work breakdown
 
-1. **Read the family.** Add `family` to `DeviceFacts` and read it in `read_ios` from
-   `productFamily`; confirm on a real `simctl list devicetypes` that every iPhone and iPad type
-   carries it. Add `read_ios_device` for real devices over `devicectl`, and confirm on a connected
-   iPhone and iPad that `hardwareProperties.deviceType` carries the family.
-2. **Schema.** Add `runsOn.ios.family`, let `runsOn.ios.kind` take a list, replace
-   `runsOn.browser.engine` with `kind`, and add the load-time rules and the `engine` migration
-   message. Extend the JSON Schema output.
-3. **Resolution.** Form one run per selected kind, read a pool that mixes Simulators and real
-   devices, resolve the family list in `form_target_runs`, narrow `eligible_set` by the winning
-   family, and add the `kind` and `family` coordinates. Cover `first_run` and `declared_runs`.
-   `declared_runs` has no pool to resolve against. It lists a family list as one run whose family
-   depends on the pool, the way `PER_AVAILABLE_MAJOR` labels an open range.
-4. **Arguments and launch.** Add `--kind`, let `--browser` and `--browsers` take the browser kinds
-   and check them against the target's list, pass the channel to Playwright's `launch`, and set the
-   XCUITest destination from each run's kind.
+1. **Read the family.** Add `family` to `DeviceFacts` and read it in `read_ios` from `productFamily`. Confirm on a real `simctl list devicetypes` that every iPhone and iPad type carries it. Add `read_ios_device` for real devices over `devicectl`. Confirm on a connected iPhone and iPad that `hardwareProperties.deviceType` carries the family.
+2. **Schema.** Add `runsOn.ios.family` and let `runsOn.ios.kind` take a list. Replace `runsOn.browser.engine` with `kind`. Add the load-time rules and the `engine` migration message. Extend the JSON Schema output.
+3. **Resolution.** Form one run per selected kind and read a pool that mixes Simulators and real devices. Resolve the family list in `form_target_runs` and narrow `eligible_set` by the winning family. Add the `kind` and `family` coordinates. Cover `first_run` and `declared_runs`. `declared_runs` has no pool to resolve against. It lists a family list as one run whose family depends on the pool, the way `PER_AVAILABLE_MAJOR` labels an open range.
+4. **Arguments and launch.** Add `--kind`. Let `--browser` and `--browsers` take the browser kinds and check them against the target's list. Pass the channel to Playwright's `launch`, and set the XCUITest destination from each run's kind.
 5. **Reporting.** Show the kind and the winning family in the run label, the manifest, `doctor`,
    and the flakiness key.
 6. **Worker routing.** Advertise `device:iphone` and `device:ipad` from the worker's connected
    real devices, refreshed before each lease. Reserve the `device:` prefix, add the family any-of
    group to a run's requirement, and extend `can_serve` to accept it.
-7. **Docs and demos.** Update the bilingual docs named above, and carry the examples into the
-   configuration page's `runsOn` section in both languages. Switch one demo config from an exact
-   model to `family`, and one from `engine` to `kind`.
+7. **Docs and demos.** Update the bilingual docs named above. Carry the examples into the configuration page's `runsOn` section in both languages. Switch one demo config from an exact model to `family`, and one from `engine` to `kind`.
 
-Each unit carries its own tests: the schema rules, the migration message, the argument checks, a
-fake pool for each resolution branch, and the failure messages.
+Each unit carries its own tests. The tests cover the schema rules, the migration message, the argument checks, a fake pool for each resolution branch, and the failure messages.
 
 ## Alternatives considered
 

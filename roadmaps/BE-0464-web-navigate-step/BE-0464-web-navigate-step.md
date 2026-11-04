@@ -15,19 +15,21 @@
 
 ## Introduction
 
-This item adds a `navigate` step that loads a URL in the middle of a scenario on the web (Playwright) backend. The step takes a single string, such as `- navigate: /settings`. A path that starts with `/` resolves against the target's `baseUrl`, and an absolute `http` or `https` URL is used as written. The step waits for the page's `load` event and then returns. It does not inspect the HTTP status, so the scenario asserts what the page shows afterward. The step rides on a new `Driver.goto(url)` method and a new `urlNavigation` capability. Only the web backend advertises the capability, so a scenario that uses `navigate` on iOS or Android fails in preflight, before any device is leased. That includes a `navigate` nested inside an iOS `web:` block.
+This item adds a `navigate` step that loads a URL in the middle of a scenario on the web (Playwright) backend. The step takes a single string, such as `- navigate: /settings`. A path that starts with `/` resolves against the target's `baseUrl`. The step uses an absolute `http` or `https` URL as written. It waits for the page's `load` event and then returns. It does not inspect the HTTP status, so the scenario asserts what the page shows afterward.
+
+The step rides on a new `Driver.goto(url)` method and a new `urlNavigation` capability. The web backend alone advertises the capability. A scenario that uses `navigate` on iOS or Android therefore fails in preflight, before any device is leased. That includes a `navigate` nested inside an iOS `web:` block.
 
 ## Motivation
 
-Today a web scenario can reach a page in only two ways. The browser opens `baseUrl` when a run starts or resets, and the author then taps through the UI until the wanted page appears. The `back` step adds history navigation, but no step opens an arbitrary URL.
+Today a web scenario has two ways to reach a page, and no others. The browser opens `baseUrl` when a run starts or resets, and the author then taps through the UI until the wanted page appears. The `back` step adds history navigation, but no step opens an arbitrary URL.
 
 That gap causes three problems for the author of a web scenario:
 
-- **Deep pages cost a UI walk.** A scenario that tests an account settings page must first replay the sign-in and menu taps that reach it. Each tap is another place for the scenario to fail for a reason unrelated to the page under test.
-- **Entry points that are not links cannot be tested.** A password-reset link from an email, a shared-item URL, or a page reached only by typing the address has no control to tap. The scenario cannot start from that entry point.
-- **Redirects cannot be exercised.** An old URL that should redirect, or a protected URL that should send an anonymous visitor to sign-in, needs a step that loads exactly that URL.
+- **Deep pages cost a UI walk.** A scenario that tests an account settings page must first replay the sign-in and menu taps that reach the page. Each tap is another place for the scenario to fail for a reason unrelated to the page under test.
+- **Entry points that are not links cannot be tested.** A password-reset link from an email, a shared-item URL, or a page reached by typing the address has no control to tap. The scenario cannot start from that entry point.
+- **Redirects cannot be exercised.** An old URL that should redirect needs a step that loads that URL. A protected URL that should send an anonymous visitor to sign-in needs the same step.
 
-The observable outcome is this. A scenario that now spends five to ten steps tapping to a deep page can open the page with one `navigate` step, and a scenario for a redirect or an email link can be written at all. The web demo scenarios will include one that opens a page by URL and asserts its content.
+The observable outcome is a shorter scenario. A scenario that spends five to ten steps tapping to a deep page can open the page with one `navigate` step. A scenario for a redirect or an email link becomes possible to write. The web demo scenarios will include one that opens a page by URL and asserts its content.
 
 ## Detailed design
 
@@ -41,9 +43,11 @@ steps:
   - assert: [{ exists: { id: settings.title } }]
 ```
 
-`navigate` is an ordinary action: a step carries exactly one action, and the common modifiers (`name`, `capture`, `target`) apply as they do to every other action. The YAML value is a plain string. A `Navigate` model with one `url` field accepts that string through a `before` validator that maps it to `{url: <string>}`. `Exists` uses the same validator technique to accept its inline form (`bajutsu/common/scenario/models/assertions/exists.py:21`). The validator rejects a mapping, so `{url: ...}` does not become an undocumented public shape that a later `waitUntil` option must stay compatible with.
+`navigate` is an ordinary action. A step carries one action, and the common modifiers (`name`, `capture`, `target`) apply as they do to every other action. The YAML value is a plain string. A `Navigate` model with one `url` field accepts that string through a `before` validator that maps it to `{url: <string>}`. `Exists` uses the same validator technique to accept its inline form (`bajutsu/common/scenario/models/assertions/exists.py:21`).
 
-URL resolution follows the standard reference resolution (`urllib.parse.urljoin`), with the target's `baseUrl` as the base:
+The validator rejects a mapping. As a result, `{url: ...}` does not become an undocumented public shape that a later `waitUntil` option must stay compatible with.
+
+URL resolution follows the standard reference resolution (`urllib.parse.urljoin`). The target's `baseUrl` serves as the base.
 
 | Value | Result |
 |---|---|
@@ -52,16 +56,16 @@ URL resolution follows the standard reference resolution (`urllib.parse.urljoin`
 | `https://other.example/x` | used as written; a different origin is allowed |
 | any scheme other than `http` or `https` | rejected when the scenario loads |
 
-Rejecting other schemes keeps `file:`, `data:`, and `javascript:` out of the step. The load-time check applies only to values with no `${...}` token. A value that contains a token is checked again after expansion, at run time. One shared function holds the scheme rule, and both checks call it. `HttpRequest` shares `first_duplicate_var` between its load-time and run-time checks the same way (`bajutsu/common/scenario/models/actions/http_request.py:20`). Resolution offers no protection of its own, because `urljoin` returns an absolute reference such as `javascript:alert(1)` unchanged.
+Rejecting other schemes keeps `file:`, `data:`, and `javascript:` out of the step. The load-time check covers values with no `${...}` token alone. The runner checks a value that contains a token again after expansion, at run time. One shared function holds the scheme rule, and both checks call it. `HttpRequest` shares `first_duplicate_var` between its load-time and run-time checks the same way (`bajutsu/common/scenario/models/actions/http_request.py:20`). Resolution offers no protection of its own, because `urljoin` returns an absolute reference such as `javascript:alert(1)` unchanged.
 
 ### Behavior at run time
 
-1. The handler expands `${...}` tokens in the string and applies the scheme rule to the result. It then passes the possibly relative reference to `Driver.goto`. The driver, not the handler, resolves the reference against `baseUrl`. The Playwright driver already holds the base (`playwright_driver.py:57`), so the orchestrator gains no new dependency on target config. The contract of `Driver.goto` is therefore "a reference, resolved against the backend's own base".
-2. The Playwright driver records an actuation (`gesture: navigate`), calls `page.goto(url)`, and returns once the `load` event fires. The step adds a history entry. Cookies and storage persist, so `navigate` is not a context reset (`reset_context` stays the crawl's clean-start primitive).
-3. The step does not read the response status. A 404 page loads, the step passes, and the next `assert` or `wait` decides the verdict. `last_nav_status` stays a crawl-only signal (`bajutsu/common/drivers/playwright/_functions.py:143`).
-4. A navigation error that the URL itself causes, such as a failed name lookup, a refused connection, or a timeout, fails the step with Playwright's message. The driver must not classify it as a browser wedge. `_wedge_guard` converts any Playwright error into a recoverable `DeviceError` (`bajutsu/common/drivers/playwright/_functions.py:109`), which the crawl's workers answer by relaunching the browser. A scenario run would then treat an author's typo as a browser fault. `goto` therefore needs its own error mapping.
+1. The handler expands `${...}` tokens in the string and applies the scheme rule to the result. It then passes the possibly relative reference to `Driver.goto`. The driver resolves the reference against `baseUrl`, not the handler. The Playwright driver already holds the base (`playwright_driver.py:57`), so the orchestrator gains no new dependency on target config. The contract of `Driver.goto` is thus "a reference, resolved against the backend's own base".
+2. The Playwright driver records an actuation (`gesture: navigate`), calls `page.goto(url)`, and returns once the `load` event occurs. The step adds a history entry. Cookies and storage persist, so `navigate` is not a context reset (`reset_context` stays the crawl's clean-start operation).
+3. The step does not read the response status. A 404 page loads, the step passes, and the next `assert` or `wait` decides the verdict. `last_nav_status` stays a signal for the crawl alone (`bajutsu/common/drivers/playwright/_functions.py:143`).
+4. A navigation error that the URL itself causes fails the step with Playwright's message. Examples are a failed name lookup, a refused connection, and a timeout. The driver must not classify such an error as a browser wedge. `_wedge_guard` converts any Playwright error into a recoverable `DeviceError` (`bajutsu/common/drivers/playwright/_functions.py:109`). The crawl's workers answer that error by relaunching the browser. A scenario run would then treat an author's typo as a browser fault. `goto` thus needs its own error mapping.
 
-The step stays inside the prime directives. It contains no fixed pause, the wait is the browser's own `load` condition, and the verdict still comes only from assertions.
+The step stays inside the prime directives. It contains no fixed pause, and the wait is the browser's own `load` condition. The verdict still comes from assertions alone.
 
 ### Driver, capability, and preflight
 
@@ -80,16 +84,16 @@ The step stays inside the prime directives. It contains no fixed pause, the wait
 
 The driver method is named `goto` because `BackendLifecycle.navigate()` already means "open `baseUrl`" and takes no argument (`bajutsu/common/drivers/base/backend_lifecycle.py:25`). A second `navigate` with a different meaning on one driver would confuse readers.
 
-`navigate` resolves no selector, so on a device group it would land on whichever member is in front. It joins `back` in the no-selector set for that reason (BE-0447).
+`navigate` resolves no selector, so on a device group it would land on whichever member is in front. For that reason, it joins `back` in the no-selector set (BE-0447).
 
 ### Codegen, authoring, and documentation surfaces
 
-- The Playwright generator emits `await page.goto(new URL(<value>, BASE_URL).toString());`, which matches the driver's resolution. The generator renders the value through its own `_ts()` string-literal helper (`bajutsu/codegen/playwright.py:74`), as it renders every other literal, because a `'` is legal in a URL query. Values it cannot render as a literal fall back to the existing labeled `// TODO` form (`bajutsu/codegen/playwright.py`, near the `back` case at line 376). The XCUITest and UI Automator generators emit the same labeled `TODO`.
-- The step vocabulary is listed in several places beyond the model. The implementation checks and updates `bajutsu/common/scenario/edit.py`, `bajutsu/repl/session.py`, and `app_crash_latches.py`, then adds the action to `docs/scenarios.md`, `docs/dsl-grammar.md`, `docs/drivers.md`, `docs/codegen.md`, and their `docs/ja/` mirrors.
+- The Playwright generator emits `await page.goto(new URL(<value>, BASE_URL).toString());`, which matches the driver's resolution. The generator renders the value through its own `_ts()` string-literal helper (`bajutsu/codegen/playwright.py:74`), as it renders every other literal, because a `'` is legal in a URL query. A value that the generator cannot render as a literal falls back to the existing labeled `// TODO` form (`bajutsu/codegen/playwright.py`, near the `back` case at line 376). The XCUITest and UI Automator generators emit the same labeled `TODO`.
+- The step vocabulary appears in more places than the model. The implementation checks and updates `bajutsu/common/scenario/edit.py`, `bajutsu/repl/session.py`, and `app_crash_latches.py`. It then adds the action to `docs/scenarios.md`, `docs/dsl-grammar.md`, `docs/drivers.md`, `docs/codegen.md`, and their `docs/ja/` mirrors.
 
 ### Out of scope
 
-- iOS deep links and Android intents. The `Driver.goto` name and the capability token leave room for them, but each needs its own item (URL scheme resolution, the confirmation dialog iOS shows, and the `DeviceControl` surface).
+- iOS deep links and Android intents. The `Driver.goto` name and the capability token leave room for them. Each needs its own item for URL scheme resolution, the confirmation dialog on iOS, and the `DeviceControl` surface.
 - A host allowlist. The `http` step also accepts any URL, so `navigate` adds no new reach (`bajutsu/common/scenario/models/actions/http_request.py`). A hosted-run policy, if wanted, belongs under the security items and covers both steps.
 - Response-status checking and a `waitUntil` option. The string form leaves room to grow into a mapping later.
 - Replacing `reset_context` or the `baseUrl` launch.
@@ -142,19 +146,12 @@ The driver method is named `goto` because `BackendLifecycle.navigate()` already 
 Log:
 
 - Proposed.
-- [#2207](https://github.com/bajutsu-e2e/bajutsu/pull/2207) — Shipped all eight units in one change. Built against today's tree, with three deviations from the
-  design text: `Navigate` also dumps back to the plain string, because `_interp_step`, `serialize`,
-  and a saved run's reload each dump a step and re-validate it, and a dumped `{url: ...}` would meet
-  the rejected mapping form. The load-time scheme check runs from the `Scenario` validator rather than
-  the model, for the reason `_http_extract.py` gives (a model check would re-fire after substitution
-  as an uncaught `ValidationError`). `goto` maps every Playwright navigation error except
-  a closed page (`TargetClosedError`) or a crashed renderer to `SelectorError`, and leaves the URL out
-  of the message, since a substituted secret could ride in it; a real-Chromium test pins the split (an
-  unresolvable host fails the step, a closed page stays a wedge). The preflight follows `web:` and `app:` blocks for
-  `navigate` alone, so no other construct's failure moves from run time to preflight. The Playwright
-  codegen check is a unit-test expectation rather than a golden file, since the one golden
-  (`smoke.spec.ts`) tracks `smoke.yaml`. The open point on relative resolution stays as designed
-  (`urljoin`).
+- [#2207](https://github.com/bajutsu-e2e/bajutsu/pull/2207) — Shipped all eight units in one change, built against today's tree. Three things deviate from the design text.
+  - `Navigate` also dumps back to the plain string. `_interp_step`, `serialize`, and a saved run's reload each dump a step and re-validate it. A dumped `{url: ...}` would meet the rejected mapping form.
+  - The load-time scheme check runs from the `Scenario` validator rather than the model, for the reason `_http_extract.py` gives. A model check would re-fire after substitution as an uncaught `ValidationError`.
+  - `goto` maps every Playwright navigation error to `SelectorError`, except a closed page (`TargetClosedError`) or a crashed renderer. It leaves the URL out of the message, since a substituted secret could ride in it. A real-Chromium test pins the split: an unresolvable host fails the step, and a closed page stays a wedge.
+
+  The preflight follows `web:` and `app:` blocks for `navigate` alone, so no other construct's failure moves from run time to preflight. The Playwright codegen check is a unit-test expectation rather than a golden file, since the one golden (`smoke.spec.ts`) tracks `smoke.yaml`. The open point on relative resolution stays as designed (`urljoin`).
 
 ## References
 

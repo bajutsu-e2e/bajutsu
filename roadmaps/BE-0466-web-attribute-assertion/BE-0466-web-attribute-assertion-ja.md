@@ -15,7 +15,11 @@
 
 ## はじめに
 
-この項目は、web（Playwright）バックエンドに `attribute` アサーションを加えます。`attribute` アサーションは、名前で指定した HyperText Markup Language（HTML）属性を、1つの要素について確かめます。例として、作者が `attribute: { sel: { id: docs.link }, name: href, equals: /docs }` を書いた場合を考えます。この場合、その要素の `href` 属性が `/docs` と等しければ実行は成功します。比較には、`value` アサーションや `label` アサーションと同じく `equals`、`contains`、`matches` を使います。さらに、存在してはならない属性のために `absent: true` を加えます。
+この項目は、web（Playwright）バックエンドに `attribute` アサーションを加えます。`attribute` アサーションは、名前で指定した HyperText Markup Language（HTML）属性を、1つの要素について確かめます。
+
+例として、作者が `attribute: { sel: { id: docs.link }, name: href, equals: /docs }` を書いた場合を考えます。この場合、その要素の `href` 属性が `/docs` と等しければ実行は成功します。
+
+比較には、`value` アサーションや `label` アサーションと同じく `equals`、`contains`、`matches` を使います。さらに、存在してはならない属性のために `absent: true` を加えます。
 
 ドライバーは、ランナーがアサーションを評価するときに、その属性だけを読みます。クエリが返す要素のスナップショットは変わりません。読み出しには、新しい `Driver.read_attribute` メソッドと、新しい `elementAttribute` という capability を使います。この capability を持つのは web バックエンドだけです。iOS や Android で `attribute` を使うシナリオは、デバイスを確保する前の preflight で失敗します。
 
@@ -27,9 +31,13 @@
 - **画像**：`<img>` の意味は `src` と `alt` にあります。正しい画像が読み込まれたか、代替テキストがあるかを、シナリオは確かめられません。
 - **ページがデータとして示す状態**：ページは、状態を属性で示すことがよくあります。`data-*` 属性（`data-state="ready"`）がその例です。Accessible Rich Internet Applications（ARIA）属性（`aria-expanded`、`aria-busy`、`aria-current`）も使われます。テストの作者がこの状態を確かめたいのは、ページ自身が報告する状態だからです。
 
-進行中の変更が、この欠落の一部を埋めます。web のクエリが、タグごとに値を持つ属性から `value` を埋めるようにする変更です（[#2216](https://github.com/bajutsu-e2e/bajutsu/pull/2216)）。たとえばリンクは `href`、画像は `src`、独自のスライダーは `aria-valuenow` から読みます。ただし、この変更がタグごとに割り当てる属性は、ツールが決めた1つだけです。要素は多くの属性を持ち、作者が必要とするのは別の属性であることがよくあります。画像なら `src` ではなく `alt` が必要な場合があり、ツールには推測できない `data-*` 属性が必要な場合もあります。アプリケーションに固有の属性は、タグごとの初期値では扱えません。
+進行中の変更が、この欠落の一部を埋めます。web のクエリが、タグごとに値を持つ属性から `value` を埋めるようにする変更です（[#2216](https://github.com/bajutsu-e2e/bajutsu/pull/2216)）。たとえばリンクは `href`、画像は `src`、独自のスライダーは `aria-valuenow` から読みます。ただし、この変更がタグごとに割り当てる属性は、ツールが決めた1つだけです。
 
-この項目で観察できる成果は次のとおりです。web シナリオは、作者が名前を挙げた属性を、ツールを変えずに1つの `attribute` アサーションで確かめられるようになります。リンク先や `data-state` の値がその例です。web のデモには、リンクの `href` と `data-*` 属性を確かめるシナリオを加え、web のエンドツーエンド（E2E）レーンで成功させます。どのアサーションも名前を挙げない属性は読まないので、要素のスナップショット、golden、レポートは大きくなりません。
+要素は多くの属性を持ち、作者が必要とするのは別の属性であることがよくあります。画像なら `src` ではなく `alt` が必要な場合があります。ツールには推測できない `data-*` 属性が必要な場合もあります。アプリケーションに固有の属性は、タグごとの初期値では扱えません。
+
+この項目で観察できる成果は次のとおりです。web シナリオは、作者が名前を挙げた属性を、ツールを変えずに1つの `attribute` アサーションで確かめられるようになります。リンク先や `data-state` の値がその例です。
+
+web のデモには、リンクの `href` と `data-*` 属性を確かめるシナリオを加え、web のエンドツーエンド（E2E）レーンで成功させます。どのアサーションも名前を挙げない属性は読まないので、要素のスナップショット、golden、レポートは大きくなりません。
 
 ## 詳細設計
 
@@ -55,7 +63,7 @@ AttributeMatch ::= { sel: <Selector>, name: string }
 - **`sel`**：通常のセレクタです。`value` と同じ規則で解決します。一致する要素がなければアサーションは失敗し、2つ以上あれば曖昧として失敗します。要素は、クエリが一覧に入れるもの（`data-testid` か `role` を持つもの、または操作できるタグ）でなければなりません。そのため、何も持たない `<img>` を確かめるには `data-testid` が必要です。
 - **`name`**：属性名です。検証では HTML の属性名の構文を受け付け、空の名前を拒否します。属性名は、そのままの形で `getAttribute` へ渡します。そのため、HTML の要素では大文字と小文字を区別せず、SVG や MathML の要素では区別します。これは DOM と同じ振る舞いで、検証で小文字に変えることはしません。
 - **比較の種類**：4つのうちちょうど1つを指定します。`equals`、`contains`、`matches` は、`value` と `label` がすでに使う `TextMatch` の規則に従います。`matches` は正規表現です。`absent: true` は、その名前の属性を要素が持たないときに成功します。
-- **存在と空は区別します**：空の値で存在する属性は `""` として読まれます。この場合、`equals: ""` は成功し、`absent: true` は失敗します。属性がない場合、`equals`、`contains`、`matches` は失敗し、失敗の理由には属性がないことを示します。
+- **存在と空は区別します**：空の値で存在する属性は `""` として読まれます。この場合、`equals: ""` は成功し、`absent: true` は失敗します。属性がない場合は、`equals`、`contains`、`matches` のどれも失敗します。失敗の理由には、属性がないことを示します。
 - **`${...}` トークン**：期待値の文字列に含まれるトークンは、ほかのアサーションのフィールドと同じく展開します。
 
 このアサーションは、シナリオの言語が `Assertion` を受け付ける次のすべての場所で使えます。
@@ -65,20 +73,26 @@ AttributeMatch ::= { sel: <Selector>, name: string }
 - `if` の条件
 - `interrupts` の条件
 
-`wait` ステップが受け付けるのは、セレクタ（`for`）か、決まった `until` の形（`screenChanged`、`settled`、`gone`、`request`）のどれかです。アサーションを受け付ける `until` の形はないので、`attribute` は待機の条件にはなりません。待機の条件にすることは対象外とします。
+`wait` ステップが受け付けるのは、セレクタ（`for`）か、決まった `until` の形のどれかです。`until` の形は `screenChanged`、`settled`、`gone`、`request` です。アサーションを受け付ける `until` の形はないので、`attribute` は待機の条件にはなりません。待機の条件にすることは対象外とします。
 
 ### 実行時の振る舞い
 
-ステップの `assert` リストとシナリオの `expect` リストは、条件待ちとして実行します。その実装は `_poll_asserts`（`bajutsu/common/orchestrator/loop/_functions.py:129`）です。`_poll_asserts` は、アサーションが成功するか lane の待機の下限に達するまで、`driver.query()` を呼び直します。このポーリングは、読み出しの競合を防ぐためにあります。操作が変えた値は、操作から戻った少し後に反映されることがあるからです。この項目が対象とする `data-state` や `aria-busy` のような属性は、まさにそのように変わります。そのため、属性の読み出しもポーリングに合わせます。
+ステップの `assert` リストとシナリオの `expect` リストは、条件待ちとして実行します。その実装は `_poll_asserts`（`bajutsu/common/orchestrator/loop/_functions.py:129`）です。`_poll_asserts` は、アサーションが成功するか lane の待機の下限に達するまで、`driver.query()` を呼び直します。
 
-ポーリングの時間の上限は、lane の待機の下限だけで決まります。環境変数 `BAJUTSU_MIN_WAIT_TIMEOUT` が設定されていなければ、`_timeout_floor()` は 0 です。この環境変数は `bajutsu/common/orchestrator/waits/_functions.py:47` で定義されています。いまこの値を設定しているのは、iOS と Android の lane だけです。そのため web の lane では、まとまりごとに1回だけ読み、ポーリングは何も加えません。作業単位7では、Android の lane と同じく、web のデモの実行に待機の下限を設定します。アサーションを受け付ける `until` の形はないので、`wait` ステップで下限の代わりはできません。
+このポーリングは、読み出しの競合を防ぐためにあります。操作が変えた値は、操作から戻った少し後に反映されることがあるからです。この項目が対象とする `data-state` や `aria-busy` のような属性は、まさにそのように変わります。そのため、属性の読み出しもポーリングに合わせます。
 
-1. 各回の `driver.query()` の直後に、補助関数 `_attributes_for(driver, block)` が、まとまりの中の各 `attribute` アサーションを処理します。補助関数は、アサーションの展開済みのセレクタで `Driver.read_attribute(sel, name)` を1回呼びます。読み出しが `SelectorError` を送出した場合（一致する要素がない場合や、2つ以上ある場合）、補助関数は値の代わりにその理由を記録します。アサーションはその理由で失敗し、ステップを中断せずに次の回で読み直します。
+ポーリングの時間の上限は、lane の待機の下限だけで決まります。環境変数 `BAJUTSU_MIN_WAIT_TIMEOUT` が設定されていなければ、`_timeout_floor()` は 0 です。この環境変数は `bajutsu/common/orchestrator/waits/_functions.py:47` で定義されています。いまこの値を設定しているのは、iOS と Android の lane だけです。
+
+そのため web の lane では、まとまりごとに1回だけ読み、ポーリングは何も加えません。作業単位7では、Android の lane と同じく、web のデモの実行に待機の下限を設定します。アサーションを受け付ける `until` の形はないので、`wait` ステップで下限の代わりはできません。
+
+1. 各回の `driver.query()` の直後に、補助関数 `_attributes_for(driver, block)` が、まとまりの中の各 `attribute` アサーションを処理します。補助関数は、アサーションの展開済みのセレクタで `Driver.read_attribute(sel, name)` を1回呼びます。読み出しが `SelectorError` を送出する場合があります。一致する要素がない場合や、2つ以上ある場合です。このとき補助関数は、値の代わりにその理由を記録します。アサーションはその理由で失敗し、ステップを中断せずに次の回で読み直します。
 2. 補助関数は、結果を `EvalContext` の新しい `attributes` フィールドに、展開済みのセレクタと属性名をキーとして保存します。評価関数が `evaluate_one` から受け取るのはアサーションだけで、まとまりの中の位置は渡されないからです。その回の評価には、このコンテキストを使います。
 3. 評価関数は、読んだ値を比較の種類に従って比べ、通常の `AssertionResult` を返します。セレクタが解決できない場合は、`value` アサーションと同じ理由を返します。
 4. 失敗が続く `attribute` アサーションは、`value` などツリーから導く種類と同じく、ポーリングを続けさせます。そのため、この種類は `_READ_ONCE_KINDS`（`_functions.py:109`）に入れません。`_READ_ONCE_KINDS` は、読み直しても結果が変わらない種類の集合です。
 
-`if` の条件と `interrupts` の条件は、いまはコンテキストなしで評価します。`_run_if`（`_functions.py:1349`）はツリーを1回読み、そのクエリの後で同じ補助関数を呼びます。`_InterruptGuard._fire_once`（`_interrupt_guard.py:66`）は自身ではクエリを行わず、ループがすでに持つツリーに対して評価します。そのツリーは、`wait` のポーリングの各回で読んだものか、操作のステップが操作の前に読んだものです。そのため補助関数はそのツリーに対して呼ばれ、属性はポーリングの各回で読み直されます。どちらの場合も、そこに置いた `attribute` が分岐や発火を決めます。
+`if` の条件と `interrupts` の条件は、いまはコンテキストなしで評価します。`_run_if`（`_functions.py:1349`）はツリーを1回読み、そのクエリの後で同じ補助関数を呼びます。
+
+`_InterruptGuard._fire_once`（`_interrupt_guard.py:66`）は、自身ではクエリを行いません。ループがすでに持つツリーに対して評価します。そのツリーは、`wait` のポーリングの各回で読んだものか、操作のステップが操作の前に読んだものです。補助関数はそのツリーに対して呼ばれ、属性はポーリングの各回で読み直されます。どちらの場合も、そこに置いた `attribute` が分岐や発火を決めます。
 
 評価関数は、ツリーとコンテキストだけを受け取る純粋な関数のままです。読み出しは、`_clipboard_for`（`_functions.py:315`）でのクリップボードの読み出しと同じく、組になるクエリの隣でランナーが行います。ただし、読み直しても変わらないクリップボードとは違い、属性はツリーを読むたびに読み直します。
 
@@ -91,7 +105,7 @@ AttributeMatch ::= { sel: <Selector>, name: string }
 
 ### web ドライバーでの属性の読み方
 
-`read_attribute` は、`Driver` プロトコルで要素を指すほかのメソッド（`tap`、`select_option`、`wait_for` など）と同じく、`Selector` を受け取ります。ドライバーは、タップと同じ `resolve_unique`（`bajutsu/common/drivers/base/_functions.py:284`）で、自身でセレクタを解決します。そのため、要素の特定は決定性の中核にとどまります。同じセレクタに対して、`tap: { sel: … }` と `attribute: { sel: … }` の判定が食い違うことはありません。
+`read_attribute` は、`Driver` プロトコルで要素を指すほかのメソッドと同じく、`Selector` を受け取ります。ほかのメソッドは `tap`、`select_option`、`wait_for` などです。ドライバーは、タップと同じ `resolve_unique`（`bajutsu/common/drivers/base/_functions.py:284`）で、自身でセレクタを解決します。そのため、要素の特定は決定性の中核にとどまります。同じセレクタに対して、`tap: { sel: … }` と `attribute: { sel: … }` の判定が食い違うことはありません。
 
 Playwright ドライバーは、1回の `page.evaluate` で属性を読みます。
 
@@ -99,7 +113,11 @@ Playwright ドライバーは、1回の `page.evaluate` で属性を読みます
 2. ドライバーは、`parse_dom` で記録を `Element` に写像し、各記録の属性を対応する要素の隣に保ちます。
 3. `resolve_unique(elements, sel)` が要素を1つに決め、その要素の属性を返します。一致する要素がなければ `ElementNotFound` を、2つ以上あれば `AmbiguousSelector` を送出します。どちらも `SelectorError` です。
 
-要素の特定と属性の読み出しを同じ走査の中で行うので、その間にページが変わる余地はありません。スナップショットの要素を実際のノードに照合し直す処理も要りません。走査はクエリと同じものです。覆われた要素や表示領域の外にある要素も、ほかの要素と同じく読めます。属性名は `json.dumps` で符号化してスクリプトに渡し、そのまま埋め込みません。タップで使う `_point_hits`（`playwright_driver.py:389`）も、`identifier` や `label` を同じ方法で渡しています。読み出しのたびにページを1回走査するので、クエリを1回増やすのと同じ費用がかかります。
+要素の特定と属性の読み出しを同じ走査の中で行うので、その間にページが変わる余地はありません。スナップショットの要素を実際のノードに照合し直す処理も要りません。
+
+走査はクエリと同じものです。覆われた要素や表示領域の外にある要素も、ほかの要素と同じく読めます。
+
+属性名は `json.dumps` で符号化してスクリプトに渡し、そのまま埋め込みません。タップで使う `_point_hits`（`playwright_driver.py:389`）も、`identifier` や `label` を同じ方法で渡しています。読み出しのたびにページを1回走査するので、クエリを1回増やすのと同じ費用がかかります。
 
 ### ドライバー、capability、preflight
 
@@ -115,16 +133,22 @@ Playwright ドライバーは、1回の `page.evaluate` で属性を読みます
 | ほかのドライバー | iOS と Android の `select_option` と同じく `UnsupportedAction` を送出します | `adb`、`xcuitest`、`xcuitest_live`、`webview` の各ドライバー |
 | 設定の検証 | web 以外のターゲットの `hooks.interrupts` にある `attribute` を拒否します | `bajutsu/common/config/schema/target_config.py` |
 
-WebView を埋め込んだ iOS アプリでも、Bajutsu は BajutsuKit のブリッジを通して Document Object Model（DOM）にアクセスできます。ブリッジを操作するのは `WebContextDriver`（`bajutsu/common/drivers/webview/web_context_driver.py`）です。最初の段階では、このブリッジは対象外とします。`WebContextDriver` はいま `selectOption` に対して `UnsupportedAction` を送出しており、`read_attribute` にも同じく送出させます。そのため、iOS のターゲットで `web:` ブロックの中に置いた `attribute` アサーションも、デバイスを確保する前の preflight で失敗します。
+WebView を埋め込んだ iOS アプリでも、Bajutsu は BajutsuKit のブリッジを通して Document Object Model（DOM）にアクセスできます。ブリッジを操作するのは `WebContextDriver`（`bajutsu/common/drivers/webview/web_context_driver.py`）です。
 
-ターゲットの設定は、独自の interrupt を宣言できます（`hooks.interrupts`、`bajutsu/common/config/schema/hooks.py:47`）。ランナーは、それをシナリオの項目とあわせて使います。preflight はシナリオだけを読むので、設定側の項目は見えません。そのため、web 以外のターゲットの `hooks.interrupts` に `attribute` があれば、設定の読み込み時の検証で拒否します。この検証は、`Hooks` そのものではなく、統合後の `TargetConfig`（`bajutsu/common/config/schema/target_config.py:79`）に置きます。`Hooks` はプラットフォームを持たないからです。同じ `Hooks` モデルは、チーム共通の `defaults.hooks`（`defaults.py:53`）にも使われます。`defaults.hooks` は、各ターゲットを検証する前にそのターゲットへ統合されます。そのため、`TargetConfig` での1つの検証で、どちらの書き方もターゲットごとのプラットフォームに照らして判定できます。バックエンドが `elementAttribute` を広告するかどうかはターゲットのプラットフォームで決まるので、この検証にデバイスは要りません。
+最初の段階では、このブリッジは対象外とします。`WebContextDriver` はいま `selectOption` に対して `UnsupportedAction` を送出しており、`read_attribute` にも同じく送出させます。そのため、iOS のターゲットで `web:` ブロックの中に置いた `attribute` アサーションも、デバイスを確保する前の preflight で失敗します。
+
+ターゲットの設定は、独自の interrupt を宣言できます（`hooks.interrupts`、`bajutsu/common/config/schema/hooks.py:47`）。ランナーは、それをシナリオの項目とあわせて使います。preflight はシナリオだけを読むので、設定側の項目は見えません。そのため、web 以外のターゲットの `hooks.interrupts` に `attribute` があれば、設定の読み込み時の検証で拒否します。
+
+この検証は、`Hooks` そのものではなく、統合後の `TargetConfig`（`bajutsu/common/config/schema/target_config.py:79`）に置きます。`Hooks` はプラットフォームを持たないからです。同じ `Hooks` モデルは、チーム共通の `defaults.hooks`（`defaults.py:53`）にも使われます。`defaults.hooks` は、各ターゲットを検証する前にそのターゲットへ統合されます。そのため、`TargetConfig` での1つの検証で、どちらの書き方もターゲットごとのプラットフォームに照らして判定できます。
+
+バックエンドが `elementAttribute` を広告するかどうかはターゲットのプラットフォームで決まるので、この検証にデバイスは要りません。
 
 ### レポート、golden、秘密情報
 
 属性は必要なときにだけ読むので、実行結果に属性が現れるのは、アサーションがその属性の名前を挙げたときだけです。
 
 - **スナップショットと golden**：クエリのスナップショットと `Element` 型は変わりません。golden ファイル、crawl の出力、レポートの要素ツリーにフィールドは増えません。
-- **アサーションの結果**：失敗の理由には、いまの `value` アサーションと同じく実際の値を出します（`expected equals='/docs' but actual='/about'`）。この文字列は、ほかの理由の文字列と同じく成果物の秘匿化の境界（[BE-0331](../BE-0331-artifact-redaction-boundary/BE-0331-artifact-redaction-boundary-ja.md)）を通るので、解決済みの秘密情報は伏せられます。
+- **アサーションの結果**：失敗の理由には、いまの `value` アサーションと同じく実際の値を出します（`expected equals='/docs' but actual='/about'`）。この文字列は、ほかの理由の文字列と同じく成果物の秘匿化の境界（[BE-0331](../BE-0331-artifact-redaction-boundary/BE-0331-artifact-redaction-boundary-ja.md)）を通ります。解決済みの秘密情報は、そこで伏せられます。
 - **作者が明かしうるもの**：作者は、トークンを持つ属性の名前を挙げることもできます。その場合、レポートには作者が求めたその1つの値が出ます。秘密情報だとわかっている値は、秘匿化の境界が引き続き伏せます。ツールがすべての属性をまとめて集めることはないので、誰も名前を挙げていない属性が漏れることはありません。
 
 ### コード生成、記述支援、文書の面

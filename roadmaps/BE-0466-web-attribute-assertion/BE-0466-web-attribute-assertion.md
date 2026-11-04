@@ -15,7 +15,11 @@
 
 ## Introduction
 
-This item adds an `attribute` assertion that checks one named HyperText Markup Language (HTML) attribute of one element on the web (Playwright) backend. An author writes `attribute: { sel: { id: docs.link }, name: href, equals: /docs }`, and the run passes when that element's `href` attribute equals `/docs`. The assertion compares with `equals`, `contains`, or `matches`, as the `value` and `label` assertions do. It adds `absent: true` for an attribute that must not be present. The driver reads the attribute on demand, when the runner evaluates the assertion. The element snapshot that every query returns stays unchanged. The read rides on a new `Driver.read_attribute` method and a new `elementAttribute` capability. Only the web backend advertises the capability, so a scenario that uses `attribute` on iOS or Android fails in preflight, before any device is leased.
+This item adds an `attribute` assertion on the web (Playwright) backend. The assertion checks one named HyperText Markup Language (HTML) attribute of one element. An author writes `attribute: { sel: { id: docs.link }, name: href, equals: /docs }`. The run passes when the `href` attribute of that element equals `/docs`.
+
+The assertion compares with `equals`, `contains`, or `matches`, as the `value` and `label` assertions do. It adds `absent: true` for an attribute that must not be present. The driver reads the attribute on demand, when the runner evaluates the assertion. The element snapshot that every query returns stays unchanged.
+
+The read rides on a new `Driver.read_attribute` method and a new `elementAttribute` capability. Only the web backend advertises the capability. A scenario that uses `attribute` on iOS or Android therefore fails in preflight, before any device is leased.
 
 ## Motivation
 
@@ -23,11 +27,15 @@ A web scenario today can check three properties of an element: its accessible la
 
 - **Link targets.** A link's `href` decides where a click goes. A scenario can check that the link exists and what it says, but not where it points.
 - **Images.** An `<img>` carries its meaning in `src` and `alt`. A scenario cannot check that the right image loaded or that its alternative text is present.
-- **State that a page exposes as data.** Pages often mark state in `data-*` attributes (`data-state="ready"`) or Accessible Rich Internet Applications (ARIA) attributes (`aria-expanded`, `aria-busy`, `aria-current`). A test author wants to assert on that state, because it is what the page itself reports.
+- **State that a page exposes as data.** Pages often mark state in `data-*` attributes (`data-state="ready"`). Pages also use Accessible Rich Internet Applications (ARIA) attributes (`aria-expanded`, `aria-busy`, `aria-current`). A test author wants to assert on that state, because the page itself reports it.
 
-A change in progress narrows part of this gap. It makes the web query fill `value` from the attribute that carries each tag's value: `href` for a link, `src` for an image, and `aria-valuenow` for a custom slider ([#2216](https://github.com/bajutsu-e2e/bajutsu/pull/2216)). That change gives each tag one fixed attribute, chosen by the tool. An element has many attributes, though, and an author often needs a different one: the `alt` of an image rather than its `src`, or a `data-*` attribute that no tool could guess. A per-tag default cannot cover attributes that are specific to one application.
+A change in progress narrows part of this gap. It makes the web query fill `value` from the attribute that carries each tag's value: `href` for a link, `src` for an image, and `aria-valuenow` for a custom slider ([#2216](https://github.com/bajutsu-e2e/bajutsu/pull/2216)). That change gives each tag one fixed attribute, chosen by the tool.
 
-The observable outcome is this. A web scenario can assert any attribute an author names, such as a link's target or a `data-state` value, with one `attribute` assertion and no change to the tool. A web demo scenario will assert a link's `href` and a `data-*` attribute, and it will pass in the web end-to-end (E2E) lane. Element snapshots, goldens, and reports will not grow, because nothing reads an attribute that no assertion names.
+An element has many attributes, though, and an author often needs a different one. Examples are the `alt` of an image rather than its `src`, or a `data-*` attribute that no tool could guess. A per-tag default cannot cover attributes that are specific to one application.
+
+The observable outcome is this. A web scenario can assert any attribute an author names, with one `attribute` assertion and no change to the tool. A link's target and a `data-state` value are two examples.
+
+A web demo scenario will assert a link's `href` and a `data-*` attribute. It will pass in the web end-to-end (E2E) lane. Element snapshots, goldens, and reports will not grow, because nothing reads an attribute that no assertion names.
 
 ## Detailed design
 
@@ -50,10 +58,10 @@ AttributeMatch ::= { sel: <Selector>, name: string }
                  & ( {equals:string} | {contains:string} | {matches:string} | {absent:true} )
 ```
 
-- **`sel`** is an ordinary selector. It resolves exactly as it does for `value`. No match fails the assertion, and two or more matches fail it as ambiguous. The element must be one the query lists (a `data-testid`, a `role`, or an interactive tag), so a bare `<img>` needs a `data-testid` to be asserted on.
-- **`name`** is the attribute name. Validation accepts the HTML attribute-name syntax and rejects an empty name. The name reaches `getAttribute` unchanged, so it matches case-insensitively on HTML elements and exactly on SVG or MathML elements, as the DOM does; validation never lowercases it.
+- **`sel`** is an ordinary selector. It resolves exactly as it does for `value`. No match fails the assertion, and two or more matches fail it as ambiguous. The query must list the element (a `data-testid`, a `role`, or an interactive tag). A bare `<img>` therefore needs a `data-testid` to be asserted on.
+- **`name`** is the attribute name. Validation accepts the HTML attribute-name syntax and rejects an empty name. The name reaches `getAttribute` unchanged. It matches case-insensitively on HTML elements and exactly on SVG or MathML elements, as the DOM does. Validation never lowercases it.
 - **The operator** is exactly one of four. `equals`, `contains`, and `matches` follow the `TextMatch` rules that `value` and `label` already use. `matches` is a regular expression. `absent: true` passes when the element has no attribute by that name.
-- **Presence differs from emptiness.** An attribute that is present with an empty value reads as `""`, so `equals: ""` passes and `absent: true` fails. An attribute that is missing fails `equals`, `contains`, and `matches`, with a reason that says the attribute is absent.
+- **Presence differs from emptiness.** An attribute that is present with an empty value reads as `""`. `equals: ""` then passes and `absent: true` fails. A missing attribute fails `equals`, `contains`, and `matches`. The failure reason says the attribute is absent.
 - **`${...}` tokens** in the expected string are expanded like any other assertion field.
 
 The assertion works wherever the scenario language accepts an `Assertion`:
@@ -63,41 +71,49 @@ The assertion works wherever the scenario language accepts an `Assertion`:
 - an `if` condition;
 - an `interrupts` condition.
 
-A `wait` step takes a selector (`for`) or one of a fixed set of `until` forms (`screenChanged`, `settled`, `gone`, `request`). No `until` form takes an assertion, so `attribute` does not become a wait condition. Making it one is out of scope.
+A `wait` step takes a selector (`for`) or one of a fixed set of `until` forms: `screenChanged`, `settled`, `gone`, and `request`. No `until` form takes an assertion, so `attribute` does not become a wait condition. Making it one is out of scope.
 
 ### Behavior at run time
 
-A step's `assert` list and the scenario's `expect` list run as a condition wait. `_poll_asserts` (`bajutsu/common/orchestrator/loop/_functions.py:129`) calls `driver.query()` again on every tick until the assertions pass or the lane's wait floor runs out. The poll exists to close a read race: a value that an action changes can land a moment after the action returns. The attributes this item targets, such as `data-state` and `aria-busy`, change in exactly that way, so the read follows the poll.
+A step's `assert` list and the scenario's `expect` list run as a condition wait. `_poll_asserts` (`bajutsu/common/orchestrator/loop/_functions.py:129`) calls `driver.query()` again on every tick. It stops when the assertions pass or the lane's wait floor runs out.
 
-The poll's budget is the lane's wait floor and nothing else. `_timeout_floor()` is zero unless `BAJUTSU_MIN_WAIT_TIMEOUT` is set (`bajutsu/common/orchestrator/waits/_functions.py:47`), and today only the iOS and Android lanes set it. The web lane therefore takes one read per block, and the poll adds nothing there. Unit 7 sets a wait floor on the web demo's run, as the Android lane does. A `wait` step cannot stand in for the floor, because no `until` form takes an assertion.
+The poll exists to close a read race: a value that an action changes can land a moment after the action returns. The attributes this item targets change in exactly that way. `data-state` and `aria-busy` are two examples. The read therefore follows the poll.
 
-1. On each tick, right after `driver.query()`, a helper `_attributes_for(driver, block)` handles each `attribute` assertion in the block. The helper calls `Driver.read_attribute(sel, name)` once, with the assertion's interpolated selector. If the read raises `SelectorError` (no element matches, or more than one does), the helper records that reason instead of a value, so the assertion fails with it and the poll reads again on the next tick rather than aborting the step.
-2. The helper stores the results in a new `attributes` field on `EvalContext`, keyed by the assertion's interpolated selector and attribute name, because the evaluator receives the assertion alone from `evaluate_one` and never its position in the block. The tick evaluates the block with that context.
+The poll's budget is the lane's wait floor and nothing else. `_timeout_floor()` is zero unless `BAJUTSU_MIN_WAIT_TIMEOUT` is set (`bajutsu/common/orchestrator/waits/_functions.py:47`). Today only the iOS and Android lanes set it. The web lane therefore takes one read per block, and the poll adds nothing there. Unit 7 sets a wait floor on the web demo's run, as the Android lane does. A `wait` step cannot stand in for the floor, because no `until` form takes an assertion.
+
+1. Right after `driver.query()` on each tick, a helper `_attributes_for(driver, block)` handles each `attribute` assertion in the block. The helper calls `Driver.read_attribute(sel, name)` once, with the assertion's interpolated selector. The read may raise `SelectorError`, when no element matches or more than one does. The helper then records the reason instead of a value. The assertion fails with that reason, and the poll reads again on the next tick instead of aborting the step.
+2. The helper stores the results in a new `attributes` field on `EvalContext`. The key is the assertion's interpolated selector and attribute name. The key cannot be the assertion's position, because `evaluate_one` hands the evaluator the assertion alone. The tick evaluates the block with that context.
 3. The evaluator compares the read value with the operator and returns an ordinary `AssertionResult`. A selector that fails to resolve returns the same reason the `value` assertion gives.
-4. A still-failing `attribute` assertion keeps the poll going, like `value` and the other tree-derived kinds. The kind therefore stays out of `_READ_ONCE_KINDS` (`_functions.py:109`), the set of kinds whose result a re-read cannot change.
+4. A still-failing `attribute` assertion keeps the poll going, like `value` and the other tree-derived kinds. The kind therefore stays out of `_READ_ONCE_KINDS` (`_functions.py:109`). That set holds the kinds whose result a re-read cannot change.
 
-An `if` condition and an `interrupts` condition evaluate without a context today. `_run_if` (`_functions.py:1349`) reads the tree once and calls the same helper after that query. `_InterruptGuard._fire_once` (`_interrupt_guard.py:66`) runs no query of its own: it evaluates against a tree the loop already holds, on every `wait` poll tick and on an act step's pre-action read, so it calls the helper against that tree and repeats the read on each tick. Either way, an `attribute` there decides the branch or the fire.
+An `if` condition and an `interrupts` condition evaluate without a context today. `_run_if` (`_functions.py:1349`) reads the tree once and calls the same helper after that query.
 
-The evaluators stay pure functions of the tree and the context. The read happens in the runner, next to the query it pairs with, as the `clipboard` read does in `_clipboard_for` (`_functions.py:315`). Unlike the clipboard, which no re-read can change, the attribute read repeats with each tree.
+`_InterruptGuard._fire_once` (`_interrupt_guard.py:66`) runs no query of its own. It evaluates against a tree the loop already holds, on every `wait` poll tick and on an act step's pre-action read. It calls the helper against that tree and repeats the read on each tick. Either way, an `attribute` there decides the branch or the fire.
+
+The evaluators stay pure functions of the tree and the context. The read happens in the runner, next to the query it pairs with, as the `clipboard` read does in `_clipboard_for` (`_functions.py:315`). No re-read can change the clipboard. The attribute read, by contrast, repeats with each tree.
 
 The assertion stays inside the prime directives:
 
 - **No large language model (LLM).** The verdict is a string comparison.
 - **No fixed pause.** Each read is one synchronous call inside the existing condition wait.
 - **No guessing.** An ambiguous selector fails through `resolve_unique`, the same rule a tap uses.
-- **App-agnostic.** The attribute name lives in the scenario, and the tool holds no per-application list of attributes.
+- **App-agnostic.** The attribute name lives in the scenario. The tool holds no per-application list of attributes.
 
 ### Reading the attribute in the web driver
 
-`read_attribute` takes a `Selector`, like every other element-addressing method on the `Driver` protocol (`tap`, `select_option`, `wait_for`, and the rest). The driver resolves the selector itself, through the same `resolve_unique` (`bajutsu/common/drivers/base/_functions.py:284`) that a tap uses. Element identity therefore stays in the determinism core, and `tap: { sel: … }` and `attribute: { sel: … }` reach the same verdict on the same selector.
+`read_attribute` takes a `Selector`, like every other element-addressing method on the `Driver` protocol: `tap`, `select_option`, `wait_for`, and the rest. The driver resolves the selector itself. It uses the same `resolve_unique` (`bajutsu/common/drivers/base/_functions.py:284`) that a tap uses. Element identity therefore stays in the determinism core. `tap: { sel: … }` and `attribute: { sel: … }` reach the same verdict on the same selector.
 
 The Playwright driver reads the attribute in one `page.evaluate` call:
 
 1. The script runs the same walk as `QUERY_JS` (`bajutsu/common/drivers/dom.py`). Each record also carries `el.getAttribute(name)`, which is `null` for a missing attribute.
-2. The driver maps the records to `Element`s with `parse_dom`, keeping each record's attribute beside its element.
-3. `resolve_unique(elements, sel)` picks the one element and returns its attribute. No match raises `ElementNotFound`, and two or more raise `AmbiguousSelector`, both of which are `SelectorError`s.
+2. The driver maps the records to `Element`s with `parse_dom`. It keeps each record's attribute beside its element.
+3. `resolve_unique(elements, sel)` picks the one element and returns its attribute. No match raises `ElementNotFound`. Two or more matches raise `AmbiguousSelector`. Both are `SelectorError`s.
 
-Resolving against the same walk that carries the attribute leaves no gap in which the page could change between finding the element and reading it, so the driver never re-matches a snapshot element to a live node. The walk is the query's own, so a covered element and one outside the viewport read the same as any other listed element. The name reaches the script `json.dumps`-encoded, as `_point_hits` encodes `identifier` and `label` (`bajutsu/common/drivers/playwright/playwright_driver.py:389`), never spliced in raw. Each read costs one walk of the page, the price of a second query.
+Resolving against the same walk that carries the attribute leaves no gap in which the page could change between finding the element and reading it. The driver therefore never re-matches a snapshot element to a live node.
+
+The walk is the query's own. A covered element and one outside the viewport read the same as any other listed element.
+
+The name reaches the script `json.dumps`-encoded, as `_point_hits` encodes `identifier` and `label` (`bajutsu/common/drivers/playwright/playwright_driver.py:389`). The driver never splices the name in raw. Each read costs one walk of the page, the price of a second query.
 
 ### Driver, capability, and preflight
 
@@ -113,21 +129,23 @@ Resolving against the same walk that carries the attribute leaves no gap in whic
 | Other drivers | raise `UnsupportedAction`, the way `select_option` does on iOS and Android | `adb`, `xcuitest`, `xcuitest_live`, `webview` drivers |
 | Config validation | reject an `attribute` in a non-web target's `hooks.interrupts` | `bajutsu/common/config/schema/target_config.py` |
 
-Bajutsu also reaches the Document Object Model (DOM) of a WebView embedded in an iOS app, through the BajutsuKit bridge that `WebContextDriver` (`bajutsu/common/drivers/webview/web_context_driver.py`) drives. The bridge is out of scope for the first slice: `WebContextDriver` already raises `UnsupportedAction` for `selectOption`, and it will raise the same for `read_attribute`. The preflight therefore fails an `attribute` assertion nested in a `web:` block on an iOS target, before any device is leased.
+Bajutsu also reaches the Document Object Model (DOM) of a WebView embedded in an iOS app. The route is the BajutsuKit bridge that `WebContextDriver` (`bajutsu/common/drivers/webview/web_context_driver.py`) drives. The bridge is out of scope for the first slice. `WebContextDriver` already raises `UnsupportedAction` for `selectOption`, and it will raise the same for `read_attribute`. The preflight therefore fails an `attribute` assertion nested in a `web:` block on an iOS target, before any device is leased.
 
-A target's config can declare interrupts of its own (`hooks.interrupts`, `bajutsu/common/config/schema/hooks.py:47`), which the runner merges with the scenario's entries. The preflight reads the scenario alone, so it never sees those entries. Config validation therefore rejects an `attribute` in the `hooks.interrupts` of a non-web target when the config loads. The check belongs on the merged `TargetConfig` (`bajutsu/common/config/schema/target_config.py:79`) rather than on `Hooks` itself, which carries no platform. The same `Hooks` model backs the team-wide `defaults.hooks` (`defaults.py:53`), which merges into each target before that target is validated, so one check there judges both shapes under each target's own platform. The target's platform already decides whether its backend advertises `elementAttribute`, so the check needs no device.
+A target's config can declare interrupts of its own (`hooks.interrupts`, `bajutsu/common/config/schema/hooks.py:47`). The runner merges them with the scenario's entries. The preflight reads the scenario alone, so it never sees the config's entries. Config validation therefore rejects an `attribute` in the `hooks.interrupts` of a non-web target when the config loads.
+
+The check belongs on the merged `TargetConfig` (`bajutsu/common/config/schema/target_config.py:79`) rather than on `Hooks` itself, which carries no platform. The same `Hooks` model backs the team-wide `defaults.hooks` (`defaults.py:53`). That model merges into each target before the target is validated. One check on `TargetConfig` thus judges both shapes under each target's own platform. The target's platform already decides whether its backend advertises `elementAttribute`, so the check needs no device.
 
 ### Reports, goldens, and secrets
 
 Because the read is on demand, an attribute enters the run's output only when an assertion names it.
 
 - **Snapshots and goldens.** The query snapshot and the `Element` type do not change. Golden files, crawl output, and the element tree in a report gain no field.
-- **The assertion result.** A failure reason prints the actual value, as the `value` assertion does today (`expected equals='/docs' but actual='/about'`). The string passes the artifact redaction boundary ([BE-0331](../BE-0331-artifact-redaction-boundary/BE-0331-artifact-redaction-boundary.md)) like every other reason, so a resolved secret in it is masked.
-- **What an author can expose.** An author can name an attribute that holds a token. The report then shows that one value, which the author asked for, and the redaction boundary still masks values it knows to be secrets. The tool never collects every attribute in bulk, so an attribute nobody named cannot leak.
+- **The assertion result.** A failure reason prints the actual value, as the `value` assertion does today (`expected equals='/docs' but actual='/about'`). The string passes the artifact redaction boundary ([BE-0331](../BE-0331-artifact-redaction-boundary/BE-0331-artifact-redaction-boundary.md)) like every other reason. The boundary masks a resolved secret in the string.
+- **What an author can expose.** An author can name an attribute that holds a token. The report then shows that one value, which the author asked for. The redaction boundary still masks values it knows to be secrets. The tool never collects every attribute in bulk, so an attribute nobody named cannot leak.
 
 ### Codegen, authoring, and documentation surfaces
 
-- The Playwright generator emits `await expect(locator).toHaveAttribute(name, value)`. It passes a regular expression for `matches`, and an escaped regular expression for `contains`. It emits `not.toHaveAttribute(name)` for `absent`. The XCUITest and UI Automator generators emit the labeled `// TODO` they use for other web-only constructs.
+- The Playwright generator emits `await expect(locator).toHaveAttribute(name, value)`. It passes a regular expression for `matches` and an escaped regular expression for `contains`. It emits `not.toHaveAttribute(name)` for `absent`. The XCUITest and UI Automator generators emit the labeled `// TODO` they use for other web-only constructs.
 - Several places list the assertion vocabulary beyond the model. The implementation checks and updates each of them:
 
   | Surface | Where |
@@ -139,9 +157,9 @@ Because the read is on demand, an attribute enters the run's output only when an
 ### Out of scope
 
 - **Selecting an element by attribute** (`sel: { attr: { href: /docs } }`). Matching would need every attribute in the snapshot, which this item avoids. A later item can revisit selection on its own terms.
-- **An attribute as a wait condition** (`wait: { until: { attribute: … } }`). No `until` form today takes an assertion, and a polled attribute read deserves its own design.
-- **The BajutsuKit WebView bridge.** The bridge needs a new message type, and it can follow once the Playwright path has settled the contract.
-- **DOM properties.** The assertion reads attributes (`getAttribute`), not live properties such as `checked`, so its value is what the markup and the page's script set. The `value` assertion keeps covering the live value of a form control.
+- **An attribute as a wait condition** (`wait: { until: { attribute: … } }`). No `until` form today takes an assertion. A polled attribute read deserves its own design.
+- **The BajutsuKit WebView bridge.** The bridge needs a new message type. It can follow once the Playwright path has settled the contract.
+- **DOM properties.** The assertion reads attributes (`getAttribute`), not live properties such as `checked`. Its value is therefore what the markup and the page's script set. The `value` assertion keeps covering the live value of a form control.
 
 ### Work breakdown (MECE)
 
@@ -159,13 +177,13 @@ Because the read is on demand, an attribute enters the run's output only when an
 ### Open points for review
 
 - **The kind's name.** We chose `attribute`, which reads naturally beside `value` and `label`. A shorter `attr` saves typing but departs from the spelled-out names the other kinds use.
-- **The `absent` operator.** We chose `absent: true` over reusing `exists` with a new field, because the question is about one attribute of an element that does exist.
-- **`read_attribute` takes a `Selector`, not an `Element`.** Taking the snapshot `Element` would save the second walk, but each backend would then re-match it to a live node with its own rule. That rule could call ambiguous what `resolve_unique` already accepted as unique, and every later DOM-capable backend would re-implement it. Resolving the selector in the driver keeps one matching rule, at the cost of one walk per read.
+- **The `absent` operator.** We chose `absent: true` over reusing `exists` with a new field. The question concerns one attribute of an element that does exist.
+- **`read_attribute` takes a `Selector`, not an `Element`.** Taking the snapshot `Element` would save the second walk. Each backend would then re-match the element to a live node with its own rule. That rule could call ambiguous what `resolve_unique` already accepted as unique. Every later DOM-capable backend would also re-implement the rule. Resolving the selector in the driver keeps one matching rule, at the cost of one walk per read.
 
 ## Alternatives considered
 
-- **Collect every attribute in each query snapshot.** Each `Element` would carry an `attributes` map, and the assertion would read from the snapshot like `value`. We rejected this approach for three reasons. Every query would grow with markup that no assertion reads. Golden files would change whenever a page added an unrelated attribute. A `data-*` attribute that holds a token would appear in every report, even when nobody asked for it.
-- **Let the target config choose which attribute fills `value`.** A `targets.<name>` map such as `img: alt` would extend the per-tag default of [#2216](https://github.com/bajutsu-e2e/bajutsu/pull/2216) with no change to the scenario language. We rejected this approach because it gives each tag a single attribute for the whole target. A scenario could not check both an image's `src` and its `alt`, and an attribute that varies by element, such as `data-state`, has no tag to key on.
+- **Collect every attribute in each query snapshot.** Each `Element` would carry an `attributes` map. The assertion would read from the snapshot like `value`. We rejected this approach for three reasons. Every query would grow with markup that no assertion reads. Golden files would change whenever a page added an unrelated attribute. A `data-*` attribute that holds a token would appear in every report, even when nobody asked for it.
+- **Let the target config choose which attribute fills `value`.** A `targets.<name>` map such as `img: alt` would extend the per-tag default of [#2216](https://github.com/bajutsu-e2e/bajutsu/pull/2216) with no change to the scenario language. We rejected this approach because it gives each tag a single attribute for the whole target. A scenario could not check both the `src` and the `alt` of an image. An attribute that varies by element, such as `data-state`, has no tag to key on.
 - **Add selection by attribute in the same item.** Selection would let an author address an element by `href` alone. We left selection out because matching needs every attribute in the snapshot, which brings back the costs of the first alternative.
 
 ## Progress
