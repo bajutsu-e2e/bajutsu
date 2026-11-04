@@ -16,25 +16,26 @@
 
 ## Introduction
 
-Pinning the Simulator's **timezone** — one of the device-state primitives
+This item covers pinning the Simulator's **timezone**. Timezone was one of the device-state
+primitives that
 [BE-0052](../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)
-proposed. BE-0052's implementation triage found no reliable, deterministic actuator for it, so it
-moves here as its own deferred item, separate from the shake gesture (a different blocker, tracked
-in its own item), to wait on a verified mechanism.
+proposed. BE-0052's implementation triage found no reliable, deterministic actuator for it. The
+primitive moves here as its own deferred item. The shake gesture has a different blocker and is
+tracked in its own item. This item waits on a verified mechanism.
 
 ## Motivation
 
-Date-dependent UI — a "Today" header, a countdown, a scheduling screen — can only be tested across
-timezones if the test can pin the device's zone. Without that, the result drifts with where CI
-happens to run: the same scenario can pass on one machine and fail on another purely because of the
-host's local time. Pinning the zone deterministically would also close an easy "Maestro can, Bajutsu
-can't" objection, since Maestro ships a broad device-control vocabulary that Bajutsu already matches
-for most of BE-0035's primitives.
+Testing date-dependent UI across timezones requires that the test can pin the device's zone. Such UI
+includes a "Today" header, a countdown, and a scheduling screen. Without pinning, the result drifts with where
+CI happens to run. The same scenario can pass on one machine and fail on another purely because of
+the host's local time. Pinning the zone deterministically would also close an easy "Maestro can,
+Bajutsu can't" objection. Maestro ships a broad device-control vocabulary, and Bajutsu already
+matches it for most of BE-0035's primitives.
 
-What blocks this is not authoring effort but the absence of a deterministic, per-device actuator. A
-primitive that appears to run but leaves the UI reading the wrong zone is worse than no primitive: it
-produces a green run that proves nothing, which is exactly what determinism-first (prime directive
-#2) forbids.
+Authoring effort is not what blocks this item. The block is the absence of a deterministic,
+per-device actuator. A primitive that appears to run but leaves the UI reading the wrong zone is
+worse than no primitive. It produces a green run that proves nothing, which is exactly what
+determinism-first (prime directive #2) forbids.
 
 ## Detailed design
 
@@ -48,34 +49,38 @@ The proposed surface is unchanged from BE-0052:
 
 - `simctl` has no `timezone` subcommand, and neither does `idb`. The Simulator's timezone is
   **inherited from the host Mac** (`/etc/localtime`), so a booted device reports the host's zone.
-- The only actuator that moves the whole device is changing the **host Mac's** timezone
-  (`sudo systemsetup -settimezone`, or rewriting `/etc/localtime`). That is global, needs `sudo`,
-  affects every Simulator at once, and mutates the developer's or CI machine's clock — it breaks
-  per-scenario and per-device isolation and is out of contract.
-- A launch-time `SIMCTL_CHILD_TZ` (or a `TZ` launch-env) sets only the app process's C-library
-  `localtime`. Most iOS date UI reads `TimeZone.current` / `NSTimeZone.systemTimeZone`
-  (Core Foundation), which **ignores `TZ`** — so this "runs" but the UI does not change, the worst
+- The sole actuator that moves the whole device is changing the **host Mac's** timezone
+  (`sudo systemsetup -settimezone`, or rewriting `/etc/localtime`). This approach has three costs:
+  it is global, it needs `sudo`, and it affects every Simulator at once. It also mutates the
+  developer's or CI machine's clock. It breaks per-scenario and per-device isolation and is out of
+  contract.
+- A launch-time `SIMCTL_CHILD_TZ` (or a `TZ` launch-env) sets the app process's C-library
+  `localtime` alone. Most iOS date UI reads `TimeZone.current` / `NSTimeZone.systemTimeZone` (Core
+  Foundation), which **ignores `TZ`**. The step "runs" but the UI does not change. That is the worst
   kind of silent no-op.
-- The Simulator's GUI menus have no timezone item, so GUI automation (AppleScript, RocketSim; see
-  the companion *Shake device primitive* item for why that path is itself constrained) does not
-  help either.
+- The Simulator's GUI menus have no timezone item, so GUI automation (AppleScript, RocketSim) does
+  not help either. The companion *Shake device primitive* item explains why that path is itself
+  constrained.
 
 A viable mechanism would have to move the device-wide `TimeZone.current` for one Simulator, from the
 command line, without touching the host. None is known today.
 
-**Prime directives.** A future implementation must keep the `run`/CI gate AI-free (directive #1),
-actuate deterministically with a machine-checkable result and no settle-sleep (directive #2), and
-keep the timezone id in the scenario or `apps.<name>` config, not in tool code (directive #3).
+**Prime directives.** A future implementation must meet three conditions:
+
+- Keep the `run`/CI gate AI-free (directive #1).
+- Actuate deterministically, with a machine-checkable result and no settle-sleep (directive #2).
+- Keep the timezone id in the scenario or `apps.<name>` config, not in tool code (directive #3).
 
 ## Alternatives considered
 
-- **Ship via `SIMCTL_CHILD_TZ` at launch.** Rejected: it moves only libc `localtime`, not the
-  `TimeZone.current` most iOS date UI reads, so it is a silent no-op for the very UI it is meant to
-  test — a determinism-first violation.
-- **Ship by changing the host Mac's timezone.** Rejected: global, `sudo`-gated, affects all
-  Simulators, and mutates the host/CI clock. It breaks device isolation and is out of contract.
+- **Ship via `SIMCTL_CHILD_TZ` at launch.** Rejected. It moves libc `localtime` and not the
+  `TimeZone.current` that most iOS date UI reads. It is a silent no-op for the very UI it is meant
+  to test, which is a determinism-first violation.
+- **Ship by changing the host Mac's timezone.** Rejected. The change is global, `sudo`-gated, and
+  affects all Simulators. It also mutates the host/CI clock. It breaks device isolation and is out
+  of contract.
 - **Approximate it from inside the app (a launch flag that fixes the timezone).** Rejected as the
-  primary mechanism: it pushes the burden onto every target app and breaks app-agnosticism. Launch
+  primary mechanism. It pushes the burden onto every target app and breaks app-agnosticism. Launch
   env remains available for genuinely app-specific setup.
 
 ## Progress

@@ -16,24 +16,24 @@
 
 ## Introduction
 
-Triggering the **shake** gesture — one of the device-state primitives
+This item covers triggering the **shake** gesture. Shake was one of the device-state primitives that
 [BE-0052](../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)
 proposed. BE-0052's implementation triage found no reliable, deterministic, headless actuator for
-it, so it moves here as its own deferred item, separate from the timezone primitive (a different
-blocker, tracked in its own item), to wait on a verified mechanism.
+it. The gesture moves here as its own deferred item. The timezone primitive has a different
+blocker and is tracked in its own item. This item waits on a verified mechanism.
 
 ## Motivation
 
 Some apps bind "undo" or a debug menu to the shake gesture, and there is no way to trigger it today.
-Closing this gap would remove an easy "Maestro can, Bajutsu can't" objection, since Maestro ships a
-broad device-control vocabulary that Bajutsu already matches for most of BE-0035's primitives.
+Closing this gap would remove an easy "Maestro can, Bajutsu can't" objection. Maestro ships a broad
+device-control vocabulary, and Bajutsu already matches it for most of BE-0035's primitives.
 
-What blocks this is not authoring effort but the absence of a deterministic actuator that runs
-headlessly. A primitive that only works with a GUI window open and a manually granted permission is
-a fundamentally different kind of primitive than the rest of the device-control surface, which runs
-against a plain `simctl boot`ed device with no GUI. Recording precisely what is missing keeps the
-door open for a future headless mechanism, without forcing an adoption decision on the GUI-dependent
-path today.
+Authoring effort is not what blocks this item. The block is the absence of a deterministic actuator
+that runs headlessly. A primitive that works with a GUI window open and a manually granted
+permission is a fundamentally different kind of primitive from the rest of the device-control
+surface. The rest runs against a plain `simctl boot`ed device with no GUI. Recording precisely what
+is missing keeps the door open for a future headless mechanism. It also avoids forcing an adoption
+decision on the GUI-dependent path today.
 
 ## Detailed design
 
@@ -47,41 +47,45 @@ The proposed surface is unchanged from BE-0052:
 
 - `simctl` has no `shake` subcommand; `idb` has no shake command either. Shake is a Simulator GUI
   menu item (Device ▸ Shake).
-- It can be triggered by **GUI automation** — AppleScript / System Events clicking the menu, or a
+- **GUI automation** can trigger it: AppleScript / System Events clicking the menu, or a
   third-party tool such as RocketSim. This path is deterministic (no LLM), so it does not violate
-  prime directive #1. But it requires the Simulator **GUI app to be running** and an
-  **Accessibility grant** for the controlling process, is fragile to menu localization and layout,
-  acts on the *focused* Simulator (non-deterministic across multiple booted devices), and
-  **cannot run in headless CI** (`simctl boot` without the GUI). RocketSim specifically does not
-  expose shake or timezone through its CLI (only tap/swipe/type/button/inspect), needs its own Mac
-  app plus Accessibility, and would add a paid, closed-source dependency on the `run` path — so it
-  does not improve on plain AppleScript for this.
+  prime directive #1. But it has these costs:
+  - It requires the Simulator **GUI app to be running** and an **Accessibility grant** for the
+    controlling process.
+  - It is fragile to menu localization and layout.
+  - It acts on the *focused* Simulator, which is non-deterministic across multiple booted devices.
+  - It **cannot run in headless CI** (`simctl boot` without the GUI).
+  - RocketSim does not expose shake or timezone through its CLI (tap/swipe/type/button/inspect alone).
+    It needs its own Mac app plus Accessibility. It would add a paid, closed-source dependency on the
+    `run` path. It does not improve on plain AppleScript for this.
 
 A viable mechanism would have to trigger shake headlessly (no GUI, no Accessibility grant) and
-target a specific device. None is known today. If shake is ever adopted through GUI automation as an
-explicit, opt-in, local-only escape hatch, it must fail cleanly where the GUI or Accessibility grant
-is absent (like the existing device-control steps on the fake driver and in parallel runs), and it
-must be documented as unavailable in headless CI.
+target a specific device. None is known today. Suppose shake is ever adopted through GUI automation
+as an explicit, opt-in, local-only escape hatch. Then it must fail cleanly where the GUI or
+Accessibility grant is absent, like the existing device-control steps on the fake driver and in
+parallel runs. It must also be documented as unavailable in headless CI.
 
-**Codegen.** Shake remains `simctl`-less (or GUI-only), so — like the other device-control steps and
-consistent with [BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md)
-— a future implementation would emit a labeled `// TODO` naming the command rather than a faithful
-XCUITest step.
+**Codegen.** Shake remains `simctl`-less (or GUI-only). Like the other device-control steps, and
+consistent with [BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md),
+a future implementation would emit a labeled `// TODO` naming the command. It would not emit a
+faithful XCUITest step.
 
-**Prime directives.** A future implementation must keep the `run`/CI gate AI-free (directive #1),
-actuate deterministically with a machine-checkable result and no settle-sleep (directive #2), and
-introduce no per-app code (directive #3).
+**Prime directives.** A future implementation must meet three conditions:
+
+- Keep the `run`/CI gate AI-free (directive #1).
+- Actuate deterministically, with a machine-checkable result and no settle-sleep (directive #2).
+- Introduce no per-app code (directive #3).
 
 ## Alternatives considered
 
-- **Ship via AppleScript / RocketSim GUI automation now.** Deferred rather than adopted: it needs
-  the Simulator GUI plus an Accessibility grant, is unavailable in headless CI, and (for RocketSim)
-  adds a paid third-party dependency on the `run` path. If taken up later it must be an explicit,
-  clean-failing, local-only escape hatch, not a headless primitive.
+- **Ship via AppleScript / RocketSim GUI automation now.** Deferred rather than adopted. It needs
+  the Simulator GUI plus an Accessibility grant and is unavailable in headless CI. For RocketSim, it
+  also adds a paid third-party dependency on the `run` path. If taken up later, it must be an
+  explicit, clean-failing, local-only escape hatch, not a headless primitive.
 - **Approximate it from inside the app (a debug deeplink that simulates a shake).** Rejected as the
-  primary mechanism: it pushes the burden onto every target app and breaks app-agnosticism. Launch
+  primary mechanism. It pushes the burden onto every target app and breaks app-agnosticism. Launch
   env remains available for genuinely app-specific setup.
-- **Drive the system through the alert-guard vision path (screenshot + tap).** Rejected: that path
+- **Drive the system through the alert-guard vision path (screenshot + tap).** Rejected. That path
   is an AI fallback and must never enter the deterministic run gate (prime directive #1).
 
 ## Progress
