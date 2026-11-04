@@ -18,70 +18,81 @@
 
 A real-device measurement pass, recorded under
 [`misc/step-performance/`](misc/step-performance/README.md) in this item's own
-directory, timed a single `tap` step end to end on both backends: 0.95–1.07 seconds on the iOS
-Simulator, 3.25–3.32 seconds on the Android emulator's resident-server path, against a 250–500
-millisecond target. Almost none of that time is the tap itself — it is redundant host-device round
-trips the orchestrator and the two drivers pay on every step, reachable today with no change to the
-`Driver` protocol or the wire format either backend speaks. This item is that reduction: a MECE list
-of evidence-capture and driver-internal cuts, phased so the cheap, self-contained wins ship first. It
-targets roughly 0.3–0.6 seconds per iOS tap step and 0.6–1.2 seconds per Android tap step — real
-progress, but still short of the 250–500 millisecond target. Closing the remaining gap needs a
-device-side step executor, a protocol-level change out of this item's scope and tracked as a separate,
-larger set of proposals.
+directory, timed a single `tap` step end to end on both backends. The step took 0.95–1.07 seconds on
+the iOS Simulator. On the Android emulator's resident-server path it took 3.25–3.32 seconds. The
+target is 250–500 milliseconds. Almost none of that time is the tap itself. The time goes to
+redundant host-device round trips. The orchestrator and the two drivers pay them on every step.
+Both backends can shed those round trips today. Neither the `Driver` protocol nor the wire format
+either backend speaks needs to change.
+
+This item is that reduction: a mutually exclusive, collectively exhaustive (MECE) list of
+evidence-capture and driver-internal cuts, phased so the cheap, self-contained wins ship first. It
+targets roughly 0.3–0.6 seconds per iOS tap step and 0.6–1.2 seconds per Android tap step. That is
+real progress, but still short of the 250–500 millisecond target. Closing the remaining gap needs a
+device-side step executor. The executor is a protocol-level change out of this item's scope, tracked
+as a separate, larger set of proposals.
 
 ## Motivation
 
 The measured step is not slow because the tap is slow. `POST /tap` on iOS averages 690 milliseconds
 and Android's `POST /act` averages 2204 milliseconds (both against
 [`demos/showcase/scenarios/controls.yaml`](../../demos/showcase/scenarios/controls.yaml), three
-samples each, 2026-09-03), but a plain `tap` step round-trips the device five times on iOS and seven
-times on Android before the orchestrator moves to the next step. Two screenshots and the tap itself
-are common to both: iOS adds one tree read and one interruption drain (5 total), while Android — which
-has no interruption-drain round trip — adds four tree reads (7 total). Only one of those round trips
-does the step's actual semantic work.
+samples each, 2026-09-03). Yet a plain `tap` step round-trips the device five times on iOS and seven
+times on Android before the orchestrator moves to the next step.
 
-Three costs stack on top of that count. First, evidence capture is written synchronously and
-sometimes redundantly: `before.png` is taken even though nothing actuated the device since the
-previous step's `after.png` left it in an identical state
-([`bajutsu/common/orchestrator/loop.py:1274-1329`](../../bajutsu/common/orchestrator/loop.py)),
-and `elements.json` is serialized, secret-scrubbed, and written twice per step — once before the
-action, once after
-([`bajutsu/common/evidence/sink.py:161-210`](../../bajutsu/common/evidence/sink.py)). Second, a
-`wait until: settled` step pays a 100 millisecond floor — three reads at
-[`bajutsu/common/orchestrator/waits.py:31-32`](../../bajutsu/common/orchestrator/waits.py) — even
-when the screen was already settled before the wait began. Third, each backend carries its own
-internal overhead inside the single round trip that dominates its step: iOS resolves roughly eleven
-element attributes one at a time inside `POST /tap`
-([`BajutsuKit/Runner/Sources/XcuitestElementProvider.swift:127-151,410-430`](../../BajutsuKit/Runner/Sources/XcuitestElementProvider.swift)),
-and Android's resident server appears to spend most of `POST /act` inside a fixed
-`POSTDATE_BUDGET_MS` wait that a settled screen can never satisfy before its budget runs out
+Two screenshots and the tap itself are common to both backends. iOS adds one tree read and one
+interruption drain (5 total). Android has no interruption-drain round trip and adds four tree reads
+(7 total). Only one of those round trips does the step's actual semantic work.
+
+Three costs stack on top of that count.
+
+First, evidence capture is written synchronously and sometimes redundantly. `before.png` is taken
+even though nothing actuated the device since the previous step's `after.png` left it in an
+identical state
+([`bajutsu/common/orchestrator/loop.py:1274-1329`](../../bajutsu/common/orchestrator/loop.py)).
+`elements.json` is serialized, secret-scrubbed, and written twice per step, once before the action
+and once after
+([`bajutsu/common/evidence/sink.py:161-210`](../../bajutsu/common/evidence/sink.py)).
+
+Second, a `wait until: settled` step pays a 100 millisecond floor, which is three reads at
+[`bajutsu/common/orchestrator/waits.py:31-32`](../../bajutsu/common/orchestrator/waits.py). The
+floor applies even when the screen was already settled before the wait began.
+
+Third, each backend carries its own internal overhead inside the single round trip that dominates
+its step. iOS resolves roughly eleven element attributes one at a time inside `POST /tap`
+([`BajutsuKit/Runner/Sources/XcuitestElementProvider.swift:127-151,410-430`](../../BajutsuKit/Runner/Sources/XcuitestElementProvider.swift)).
+Android's resident server appears to spend most of `POST /act` inside a fixed `POSTDATE_BUDGET_MS`
+wait. A settled screen can never satisfy that wait before its budget runs out
 ([`BajutsuAndroidUIAutomatorServer/server/src/androidTest/java/dev/bajutsu/android/server/ResidentServerTest.kt:184-188,642`](../../BajutsuAndroidUIAutomatorServer/server/src/androidTest/java/dev/bajutsu/android/server/ResidentServerTest.kt)).
 
 None of this touches the determinism contract. Every cut below removes a redundant read, a redundant
-write, or a fixed wait that a settled screen can never satisfy — no condition wait moves from
-polling to a fixed `sleep`, and no selector resolution changes. A reader can check that the change
-landed the way the investigation measured it: rerun
-[`trace_run.py`](misc/step-performance/trace_run.py) against the same scenario and confirm
-the iOS tap step lands in the 0.3–0.6 second band and the Android tap step in the 0.6–1.2 second band
-this item targets, the same way the investigation measured today's 0.95–1.07 and 3.25–3.32 second
-baselines.
+write, or a fixed wait that a settled screen can never satisfy. No condition wait moves from polling
+to a fixed `sleep`, and no selector resolution changes.
+
+A reader can check that the change landed the way the investigation measured it. Rerun
+[`trace_run.py`](misc/step-performance/trace_run.py) against the same scenario. Confirm that the iOS
+tap step lands in the 0.3–0.6 second band and the Android tap step in the 0.6–1.2 second band this
+item targets. The investigation measured today's 0.95–1.07 and 3.25–3.32 second baselines the same
+way.
 
 ## Detailed design
 
-**Implementation order.** This item is the first of four related items in a strict order: this item,
-then the device-side protocol item, then the iOS executor item, then the Android executor item. Each
-later item must not begin until its predecessor has shipped — the protocol item is designed against
-this item's shipped, measured baseline, not a moving target, and this item is also what proves out the
-tracer ([`trace_run.py`](misc/step-performance/trace_run.py)) the later items depend on to verify
-their own results. This item has no predecessor in the sequence and can begin immediately.
+**Implementation order.** This item is the first of four related items, built in a strict order:
+this item, then the device-side protocol item, then the iOS executor item, then the Android executor
+item. Each later item must not begin until its predecessor has shipped. The protocol item is
+designed against this item's shipped, measured baseline, not a moving target. This item also proves
+out the tracer ([`trace_run.py`](misc/step-performance/trace_run.py)), which the later items depend
+on to verify their own results. This item has no predecessor in the sequence and can begin
+immediately.
 
-The work is phased in three independent groups — common to both backends, iOS-only, and
-Android-only — each shippable as its own pull request against the shared yardstick
-[`trace_run.py`](misc/step-performance/trace_run.py) already establishes. None of the units
-below changes the `Driver` protocol, a scenario's YAML shape, or what a condition wait polls for; each
-is a redundant call removed or a fixed-cost internal reordered, verified against the driver
-conformance suite ([BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md))
-and a rerun of the tracer.
+The work is phased in three independent groups: common to both backends, iOS-only, and
+Android-only. Each group ships as its own pull request against the shared yardstick that
+[`trace_run.py`](misc/step-performance/trace_run.py) already establishes. None of the units below
+changes the `Driver` protocol, a scenario's YAML shape, or what a condition wait polls for. Each
+unit removes a redundant call or reorders a fixed-cost internal, and each is verified against the
+driver conformance suite
+([BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md)) and a rerun of
+the tracer.
 
 **Group 1 is complete.** Units 1 and 3–6 landed as described. Unit 2 landed as its `after.png`
 half alone; *Progress* below records the measurement behind dropping its `elements.json` half.
@@ -110,7 +121,7 @@ half alone; *Progress* below records the measurement behind dropping its `elemen
    interrupt handler is registered for the step; otherwise the signal alone is the condition —
    [`waits.py:1042-1061`](../../bajutsu/common/orchestrator/waits.py).
 6. **Fold `drain_interruptions` into the `/tap` or `/elements` response instead of its own round
-   trip.** iOS pays a fresh TCP connection for this every step
+   trip.** iOS pays a fresh Transmission Control Protocol (TCP) connection for this every step
    ([`xcuitest.py:591,1170`](../../bajutsu/common/drivers/xcuitest.py)); Android already keeps it
    in memory, so this unit is iOS-only.
 
@@ -138,7 +149,7 @@ half alone; *Progress* below records the measurement behind dropping its `elemen
     ambiguous and needs it resolved —
     [`xcuitest.py:744-768`](../../bajutsu/common/drivers/xcuitest.py). Expected saving: 5–30
     milliseconds per query it currently runs unconditionally for.
-11. **Enable HTTP keep-alive on both ends of the XCUITest channel** —
+11. **Enable HyperText Transfer Protocol (HTTP) keep-alive on both ends of the XCUITest channel** —
     [`xcuitest.py:591`](../../bajutsu/common/drivers/xcuitest.py),
     [`HTTPServer.swift:326`](../../BajutsuKit/Sources/BajutsuRunner/HTTPServer.swift). Expected
     saving: 1–3 milliseconds per round trip, compounding across a scenario's many reads.
@@ -206,7 +217,7 @@ half alone; *Progress* below records the measurement behind dropping its `elemen
     6–12 seconds per scenario boundary — the investigation's measured 1.5 seconds is a reinstall onto
     an emulator that was already booted with the package already present once, not a cold-start
     figure.
-23. **Stop parsing the hierarchy XML twice on the host** —
+23. **Stop parsing the hierarchy Extensible Markup Language (XML) twice on the host** —
     [`adb_resident.py:78-102`](../../bajutsu/common/backend_cli/adb_resident.py),
     [`drivers/adb.py:404-437`](../../bajutsu/common/drivers/adb.py). Expected saving: 10–40
     milliseconds per read.
@@ -286,7 +297,7 @@ half alone; *Progress* below records the measurement behind dropping its `elemen
     element (which honours a custom `accessibilityActivationPoint` and can differ from the
     frame's geometric center under partial occlusion), while a coordinate tap always lands on
     that geometric center — a silent mis-tap on an element whose real hit point was clear. A
-    follow-up investigation confirmed XCUITest's public API exposes neither the resolved
+    follow-up investigation confirmed XCUITest's public Application Programming Interface (API) exposes neither the resolved
     activation point nor a point-to-element hit test, so the two points cannot be reconciled
     without either accepting that risk or re-querying the tree at tap time — which would undo the
     round trip this unit exists to save. Decided: keep the Safari-only route; not pursued further
