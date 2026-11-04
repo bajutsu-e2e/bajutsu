@@ -16,73 +16,82 @@
 ## Introduction
 
 Surface the E2E coverage map ([BE-0050](../BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map.md))
-in the `serve` Web UI: show, in the browser, how much of an app's surface the scenario suite
-exercises — id namespaces covered vs declared, the gap list, off-namespace ids, and (with a run
-set) endpoints observed vs asserted, observed ids vs declared namespaces, and the screens a crawl
-discovered that those runs reached. Read-only, AI-free, never a gate.
+in the `serve` Web UI. The browser shows how much of an app's surface the scenario suite exercises:
+
+- id namespaces covered versus declared
+- the gap list
+- off-namespace ids
+
+With a run set, it also shows endpoints observed versus asserted, and observed ids versus declared
+namespaces. It shows the screens a crawl discovered that those runs reached. The view is read-only,
+AI-free, and never a gate.
 
 ## Motivation
 
-[BE-0050](../BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map.md) ships
-`bajutsu coverage`: a read-only, deterministic aggregation that answers "what do our E2E tests
-actually cover?" — per-namespace id coverage measured against the app's declared `idNamespaces`, the gap
-list (declared namespaces no scenario touches), off-namespace ids, and, with `--runs`, endpoints
-observed vs asserted (`bajutsu/coverage.py`). It is a question teams routinely ask and UI-only
-competitors cannot answer. But it lives on the CLI, while the place a team looks at its suite and
-its runs is the browser — the Replay / History views already list runs and embed reports.
-Surfacing the coverage map there turns "is this screen / namespace tested?" into something visible
-next to the runs it is derived from.
+[BE-0050](../BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map.md) ships `bajutsu coverage`. It is a
+read-only, deterministic aggregation that answers "what do our E2E tests actually cover?" It reports:
+
+- per-namespace id coverage, measured against the app's declared `idNamespaces`
+- the gap list: declared namespaces no scenario touches
+- off-namespace ids
+- with `--runs`, endpoints observed versus asserted (`bajutsu/coverage.py`)
+
+Teams routinely ask this question, and UI-only competitors cannot answer it. But the aggregation
+lives on the CLI, while the place a team looks at its suite and its runs is the browser. The
+Replay and History views already list runs and embed reports. Surfacing the coverage map there makes
+"is this screen or namespace tested?" visible next to the runs it is derived from.
 
 ## Detailed design
 
-Tier-1, read-only; the UI only shells out to the existing aggregation.
+Tier-1, read-only; the UI merely shells out to the existing aggregation.
 
-- **A "Coverage" view**, posting to `POST /api/coverage` (`{target, runs?, crawl?}`). It runs the
-  aggregation and returns per-namespace id coverage, the gap list, off-namespace ids, and — when a
-  run set is selected — the endpoints-observed-vs-asserted dimension (the union of `network.json`
-  across those runs) alongside the observed-id dimension.
+- **A "Coverage" view**, posting to `POST /api/coverage` (`{target, runs?, crawl?}`). The endpoint
+  runs the aggregation and returns per-namespace id coverage, the gap list, and off-namespace ids.
+  When a run set is selected, it also returns the endpoints-observed-versus-asserted dimension (the
+  union of `network.json` across those runs) and the observed-id dimension.
 - **A linkable `GET /coverage` page**, carrying its inputs in the query string
   (`?target=&runs=&crawl=`), so a reader can open and link a coverage map directly. The three other
-  analytics views (`/stats`, `/flakiness`, `/usage`) each have such a page; the coverage map needs a
-  target, which is why its own arrived later.
+  analytics views (`/stats`, `/flakiness`, `/usage`) each have such a page. The coverage map needs a
+  target, which is why its own page arrived later.
 - **Read-only, deterministic, AI-free.** Every figure is a deterministic count over declared
-  namespaces and captured artifacts; no model, no judgement call, never a gate (a team may still
-  track the number in CI as informational — unchanged by this UI).
-- **Dimensions, in slices.** The id-namespace dimension is the first slice (its denominator is fully
-  defined and on disk); the endpoint and observed-id dimensions fold in when a run set is chosen; the
-  screens-visited dimension folds in when a crawl
+  namespaces and captured artifacts. There is no model and no judgement call, and the view is never a
+  gate. A team may still track the number in CI as informational; this UI leaves that unchanged.
+- **Dimensions, in slices.** The id-namespace dimension is the first slice, because its denominator
+  is fully defined and on disk. The endpoint and observed-id dimensions fold in when a run set is
+  chosen. The screens-visited dimension folds in when a crawl
   ([BE-0038](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md))
   supplies the discovered denominator its `screenmap.json` holds, the same input the CLI's `--crawl`
   takes.
-- **A run belongs to the target it ran.** The run picker offers only runs of the selected target's
-  own scenarios, matched on the scenario names a run's summary records — the same compatibility key
-  the Author picker scopes on
-  ([BE-0262](../BE-0262-serve-author-live-step-picker/BE-0262-serve-author-live-step-picker.md)). A run of
-  another target's scenarios carries evidence this map cannot place. The crawl picker is **not**
-  scoped the same way, because a crawl records no target to scope on: `screenmap.json` and the
-  history entry built from it carry screens, transitions, crashes, and the frontier, and nothing
-  naming the app crawled. A crawl of another app therefore measures as every screen unvisited, so
-  the picker says so in its hint rather than implying a scope it cannot enforce.
+- **A run belongs to the target it ran.** The run picker offers runs of the selected target's own
+  scenarios, matched on the scenario names a run's summary records. The Author picker scopes on the
+  same compatibility key
+  ([BE-0262](../BE-0262-serve-author-live-step-picker/BE-0262-serve-author-live-step-picker.md)). A
+  run of another target's scenarios carries evidence this map cannot place.
+
+  The crawl picker is **not** scoped the same way, because a crawl records no target to scope on.
+  `screenmap.json` and the history entry built from it carry screens, transitions, crashes, and the
+  frontier, and nothing naming the app crawled. A crawl of another app measures as every screen
+  unvisited. The picker says so in its hint rather than implying a scope it cannot enforce.
 - **A placeholder is not an id.** The suite loader expands components (`params.*`) and data rows
-  (`row.*`) before building the map; the run binds a `${vars.*}` or `${secrets.*}` token surviving
-  that expansion, so the token names no element and the map excludes it rather than counting its text
-  and inventing a `${vars` namespace among the off-namespace ids.
+  (`row.*`) before building the map. A `${vars.*}` or `${secrets.*}` token survives that expansion,
+  because the run binds it later. The token names no element, so the map excludes it. Counting its
+  text would invent a `${vars` namespace among the off-namespace ids.
 - **An empty denominator is an empty state.** Each dimension's `coverage` is 1.0 when it has nothing
-  to measure, so a target declaring no namespaces would otherwise draw a full bar over "0/0" and
-  claim complete coverage. Every dimension states that it has nothing to measure instead.
+  to measure. A target declaring no namespaces would otherwise draw a full bar over "0/0" and claim
+  complete coverage. Every dimension states that it has nothing to measure instead.
 - **App-agnostic.** The denominator (`idNamespaces`), the runs, and the crawl all come from config
   and the run history, not hard-coded knowledge.
 
 ## Alternatives considered
 
 * **Leave coverage CLI-only.** Rejected: coverage is a reporting view, and the browser is where the
-  suite and its runs are already reviewed; a terminal table is the wrong home for a map meant to be
+  suite and its runs are already reviewed. A terminal table is the wrong home for a map meant to be
   scanned.
 * **Compute coverage live in the browser from raw artifacts.** Rejected: the deterministic
-  aggregation already exists server-side; re-implementing it in JS would risk drift and duplicate
+  aggregation already exists server-side. Re-implementing it in JS would risk drift and duplicate
   the exact count.
-* **Gate CI on a coverage threshold from the UI.** Out of scope and against the grain — coverage is
-  informational; a team may track it in CI themselves, but the UI never turns it into a verdict.
+* **Gate CI on a coverage threshold from the UI.** Out of scope and against the grain. Coverage is
+  informational; a team may track it in CI itself, but the UI never turns it into a verdict.
 
 ## Progress
 

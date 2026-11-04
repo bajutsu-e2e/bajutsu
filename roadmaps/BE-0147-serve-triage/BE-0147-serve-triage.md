@@ -15,65 +15,74 @@
 
 ## Introduction
 
-Bring the `triage` failure investigator into the `serve` Web UI: when a run fails in the Replay /
-History view, let the user diagnose it and preview a proposed fix in the browser instead of
-dropping to a terminal. Heuristic triage is the default and is fully deterministic; the Claude
-(`--ai`) path is opt-in and acts only as an investigator. Applying a fix is an explicit,
-diff-previewed human action. No LLM enters the gate, and a run's verdict is never recomputed.
+Bring the `triage` failure investigator into the `serve` Web UI. When a run fails in the Replay or
+History view, the user diagnoses it and previews a proposed fix in the browser, instead of dropping
+to a terminal.
+
+Heuristic triage is the default and is fully deterministic. The Claude (`--ai`) path is opt-in and
+acts as an investigator alone. Applying a fix is an explicit, diff-previewed human action. No LLM
+enters the gate, and a run's verdict is never recomputed.
 
 ## Motivation
 
-The browser is where a failure is first seen — the Replay view streams the run and embeds its red
-report — yet the UI stops exactly there: it shows *that* a scenario failed but offers no next step
-toward understanding *why*. The capability already exists on the CLI. `bajutsu triage` assembles a
-failed run's context (the failing step, its assertion, and the captured element tree / screenshot /
-network) and hands it to a `TriageAgent`: the default rule-based `HeuristicTriageAgent`
-(`bajutsu/triage.py`), or — with `--ai` — the Claude-backed agent that also reads the failure
-screenshot (`bajutsu/claude_triage.py`). An agent can propose a *structured* fix (`renameId` /
-`addIndex` / `raiseTimeout`); `--apply` / `--write` patches the scenario source (diff-previewed,
-opt-in) and `--rerun` confirms it. Today all of that is terminal-only, so a person looking at the
-failed report in the browser has to copy the run id, switch to a shell, and re-run the
-investigation by hand. Surfacing triage where the failure is already on screen closes that loop —
-the single most common thing a user wants after a red run.
+The browser is where a failure is first seen. The Replay view streams the run and embeds its red
+report. Yet the UI stops exactly there: it shows *that* a scenario failed but offers no next step
+toward understanding *why*.
+
+The capability already exists on the CLI. `bajutsu triage` assembles a failed run's context: the
+failing step, its assertion, and the captured element tree, screenshot, and network. It hands that
+context to a `TriageAgent`. The default is the rule-based `HeuristicTriageAgent`
+(`bajutsu/triage.py`). With `--ai`, the Claude-backed agent also reads the failure screenshot
+(`bajutsu/claude_triage.py`).
+
+An agent can propose a *structured* fix (`renameId` / `addIndex` / `raiseTimeout`). `--apply` /
+`--write` patches the scenario source, diff-previewed and opt-in. `--rerun` confirms the patch.
+
+Today all of that is terminal-only. A person looking at the failed report in the browser has to copy
+the run id, switch to a shell, and re-run the investigation by hand. Surfacing triage where the
+failure is already on screen closes that loop. That is the single most common thing a user wants after
+a red run.
 
 ## Detailed design
 
 Tier-1, advisory; the UI only shells out to the existing command.
 
 - **Entry point.** A "Triage" action on a failed run, in the Replay report and the History list,
-  posting to a new `POST /api/triage` (`{runId, scenario, ai?}`). It runs triage as a serve
-  *job*, reusing the existing job + SSE log-stream + cancel machinery (`bajutsu/serve/jobs.py`, the
-  `/api/jobs/{id}/events` stream) that the run / record / crawl actions already use.
-- **Result.** The diagnosis (root-cause summary and the implicated step / assertion) renders in
-  the panel; when the agent proposes one, the structured fix is shown as a **diff preview** against
-  the scenario source — the same diff `--apply` prints on the CLI. Applying is a separate, explicit
-  click that writes through the existing scenario save path (`POST /api/scenario`, already validated
-  by `load_scenario_file`); an optional "apply & re-run" chains into the existing run job.
-- **AI is opt-in and only an investigator.** Heuristic triage is the default and deterministic. The
-  `--ai` path uses the configured AI provider exactly as `record` / `crawl` / the alert guard do
-  (the Settings modal's provider / key selection already exists); when no provider is configured the
-  AI toggle is disabled with a hint, and heuristic triage still works.
+  posts to a new `POST /api/triage` (`{runId, scenario, ai?}`). The endpoint runs triage as a serve
+  *job*. It reuses the job, SSE log-stream, and cancel machinery that the run, record, and crawl
+  actions already use (`bajutsu/serve/jobs.py`, the `/api/jobs/{id}/events` stream).
+- **Result.** The panel renders the diagnosis: the root-cause summary and the implicated step or
+  assertion. When the agent proposes a structured fix, the panel shows it as a **diff preview**
+  against the scenario source, the same diff `--apply` prints on the CLI. Applying is a separate,
+  explicit click. It writes through the existing scenario save path (`POST /api/scenario`, already
+  validated by `load_scenario_file`). An optional "apply & re-run" chains into the existing run job.
+- **AI is opt-in and an investigator alone.** Heuristic triage is the default and deterministic. The
+  `--ai` path uses the configured AI provider exactly as `record`, `crawl`, and the alert guard do.
+  The Settings modal's provider and key selection already exists. When no provider is configured,
+  the AI toggle is disabled with a hint, and heuristic triage still works.
 - **App-agnostic.** Triage operates over the run directory's stored artifacts and the scenario
-  source resolved from config (`targets.<name>`); nothing here is per-app in the tool.
+  source resolved from config (`targets.<name>`). Nothing in the tool is per-app.
 
-This respects the prime directives by construction: the verdict came from the deterministic run and
-is read back, never recomputed; AI (when used) only investigates; and the fix is a proposal the
-human accepts, never an automatic edit.
+The design respects the prime directives by construction:
+
+- The verdict came from the deterministic run and is read back, never recomputed.
+- AI, when used, only investigates.
+- The fix is a proposal the human accepts, never an automatic edit.
 
 ## Alternatives considered
 
-* **Leave triage CLI-only (status quo).** The failure is shown in the browser but the investigation
-  must move to a terminal. Rejected — the report view is the lowest-friction place to ask "why did
-  this fail?", and the job / stream / save plumbing to host it already exists.
-* **Auto-apply the proposed fix.** Rejected: it collides with the self-healing guard rule (AI
-  proposes, the human opts in —
+* **Leave triage CLI-only (status quo).** The failure is shown in the browser, but the investigation
+  must move to a terminal. Rejected: the report view is the lowest-friction place to ask "why did
+  this fail?", and the job, stream, and save plumbing to host it already exists.
+* **Auto-apply the proposed fix.** Rejected: auto-applying collides with the self-healing guard rule
+  (AI proposes, the human opts in —
   [BE-0039](../BE-0039-self-healing-propose-optin/BE-0039-self-healing-propose-optin.md))
   and risks silently "making the test laxer"
   ([BE-0023](../BE-0023-self-healing-guards/BE-0023-self-healing-guards.md)). The fix
   is always a diff the user accepts.
 * **Run triage inline in the request rather than as a job.** Rejected: AI triage can take many
-  seconds and must be cancelable and streamable like the other long actions; reusing the job model
-  keeps the UX consistent and the server responsive.
+  seconds, and it must be cancelable and streamable like the other long actions. Reusing the job
+  model keeps the UX consistent and the server responsive.
 
 ## Progress
 
