@@ -19,21 +19,27 @@
 - ユニット / 結合テスト（XCTest の領域。E2E に集中）
 - アプリのビルド自体（既存 `xcodebuild` 成果物を前提に受け取る）
 
-> **デバイスクラウド実行について（BE-0236）。** かつてはここに「実機 / クラウドデバイスファーム」をスコープ外として挙げていました。BE-0236 でこの姿勢を改め、run が駆動するデバイスの取得元を差し替えられる **device provider** の seam を導入しました。provider は worker 能力ファイル（`worker.yaml`）の `environment` で選びます。既定の `local`（従来のローカル接続デバイス）はそのままで、`environment: appium` にすると別のデバイス（ネットワーク越しに予約したクラウドデバイスなど）を run に渡せます。以前は target の `deviceProvider` で選んでいましたが、[BE-0452](roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md) でこのキーを worker 側へ移しました。seam は run/CI の判定経路の外にあり（provider の仕事はデバイスの取得と解放だけ）、決定的コア・ドライバ・ランナーは不変です。具象の provider（例: Firebase Device Streaming のように、実機を対話的にネットワーク越しに貸し出すサービス）は、決定的ゲートがクラウド SDK に依存しないよう、任意導入の別アダプタとして実装します。本項目は seam を出荷し、既定は `local` なので既存のターゲットの挙動は変わりません。AWS Device Farm はバッチサービスであって、この device provider の seam が前提とするような、run 中にネットワーク越しに対話的に借りられるライブデバイスは提供しないため、この seam の対象外です（[`docs/ja/devicefarm.md`](docs/ja/devicefarm.md) の submitter と、serve のジョブを Device Farm へ投入する worker が別途カバーします。BE-0448、BE-0484）。
+> **デバイスクラウド実行について（BE-0236）。** かつてここには、「実機 / クラウドデバイスファーム」をスコープ外として挙げていました。BE-0236 でこの姿勢を改め、**device provider** の seam を導入しました。device provider は、run が駆動するデバイスの取得元を差し替えられる仕組みです。provider は worker 能力ファイル（`worker.yaml`）の `environment` で選びます。既定の `local` は従来のローカル接続デバイスで、そのままです。`environment: appium` にすると、ネットワーク越しに予約したクラウドデバイスなど、別のデバイスを run に渡せます。以前は target の `deviceProvider` で選んでいましたが、[BE-0452](roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md) でこのキーを worker 側へ移しました。
+>
+> seam は run/CI の判定経路の外にあり、provider の仕事はデバイスの取得と解放だけです。決定的コア、ドライバ、ランナーは不変です。具象の provider（例: Firebase Device Streaming のように、実機を対話的にネットワーク越しに貸し出すサービス）は、任意導入の別アダプタとして実装します。決定的ゲートがクラウド SDK に依存しないようにするためです。本項目は seam を出荷します。既定は `local` なので、既存のターゲットの挙動は変わりません。
+>
+> AWS Device Farm は、この seam の対象外です。バッチサービスであり、この seam が前提とする、run 中にネットワーク越しに対話的に借りられるライブデバイスを提供しないためです（[`docs/ja/devicefarm.md`](docs/ja/devicefarm.md) の submitter と、serve のジョブを Device Farm へ投入する worker が別途カバーします。BE-0448、BE-0484）。
 
-> **補足（なぜ最初に iOS Simulator を選んだか）。** 最初の backend に iOS Simulator を選んだのは、ヘッドレスで動き、`simctl` でスクリプト化でき、`simctl clone` で水平にスケールでき、実機やクラウドデバイスファームを必要としないため、決定性と CI 親和性を最も安く得られたからです。これは「Simulator 限定」という恒久的な制約ではなく、最初の足場の選択でした。決定的コアは backend 非依存なので、同じシナリオ形式とランナーのまま web（Playwright）と Android（adb）へ広がり、BE-0236 の device provider seam でデバイスの取得元まで差し替えられるようになりました。
+> **補足（なぜ最初に iOS Simulator を選んだか）。** 最初の backend に iOS Simulator を選んだ理由は、決定性と CI 親和性を最も安く得られたことです。Simulator はヘッドレスで動き、`simctl` でスクリプト化でき、`simctl clone` で水平にスケールでき、実機やクラウドデバイスファームを必要としません。「Simulator 限定」という恒久的な制約ではなく、最初の足場の選択でした。決定的コアは backend 非依存なので、同じシナリオ形式とランナーのまま web（Playwright）と Android（adb）へ広がりました。BE-0236 の device provider seam により、デバイスの取得元まで差し替えられます。
 
-### 1.1 dogfood 対象（最初のテスト対象）
+### 1.1 dogfood 対象
 
-Bajutsu の **dogfood 対象**は、リポジトリ同梱のショーケースアプリ `demos/showcase/`（`showcase-swiftui` なら `com.bajutsu.showcase.ios.swiftui`）です。あらゆるプリミティブを試せるよう計装してあります。§6 の例（タブを開く env フック、再取得、通信のアサーション）は、このショーケースに実在する UI / フックに対応します。BE-0079 で旧来の `demo` / `sample` / `sample2` を退役させ、これを唯一の iOS フィクスチャにしました。詳細は [`demos/showcase/SPEC.md`](demos/showcase/SPEC.md) を参照してください。
+Bajutsu の **dogfood 対象**（最初のテスト対象）は、リポジトリ同梱のショーケースアプリ `demos/showcase/` です。`showcase-swiftui` なら `com.bajutsu.showcase.ios.swiftui` です。あらゆるプリミティブを試せるよう計装してあります。§6 の例（タブを開く env フック、再取得、通信のアサーション）の UI / フックは、このショーケースに実在します。BE-0079 で旧来の `demo` / `sample` / `sample2` を退役させ、このショーケースを唯一の iOS フィクスチャにしました。詳細は [`demos/showcase/SPEC.md`](demos/showcase/SPEC.md) を参照してください。
 
-- **位置づけ**：同梱ショーケースは「現実的なテスト対象」であって Bajutsu のコア依存ではなく、汎用の E2E ツールとして他アプリにも使えます（iOS では XCUITest、web では Playwright を backend にします）
+- **位置づけ**：同梱ショーケースは「現実的なテスト対象」であって、Bajutsu のコア依存ではありません。Bajutsu は汎用の E2E ツールとして他アプリにも使えます（iOS では XCUITest、web では Playwright を backend にします）
 - **含意**：§7 の実装規約はまず同梱ショーケースに適用して検証します
 - **汎用性**：同梱ショーケースは対象アプリの 1 つにすぎません。新しいアプリは `targets.<name>` の config エントリ（§8）と §7 適用（§7.1）で増やせ、ツール本体、ドライバ、実行系は不変です。Bajutsu は特定アプリに結合しません
 
 ---
 
-## 2. 中核となる設計判断（不変の思想）
+## 2. 中核となる設計判断
+
+次の表は、不変の思想にあたる設計判断を挙げます。
 
 | 判断 | 方針 | 理由 |
 |---|---|---|
@@ -91,16 +97,16 @@ Reporter (manifest.json + JUnit/CTRF/HTML + スクショ/録画)
 | `run` | Tier2 | なし | 各ステップを act → wait(条件待機) → verify。**合否は `expect` の機械アサーションのみ**で決まる |
 | `trace` / triage | — | 調査役 | 失敗証跡を AI が読み、原因要約・修正提案（人間レビュー前提・M4） |
 
-> **要点**：「AI がステップ成功を判定する」ことはしません。`run` の合否は常に機械アサーションで決まります。AI は *書く*（record）か *調べる*（triage）だけで、*判定者* にはなりません。これが §2「AI を CI ゲートに持ち込まない」の実装上の具体化です。
+> **要点**：「AI がステップ成功を判定する」ことはしません。`run` の合否は常に機械アサーションで決まります。AI は *書く*（record）か *調べる*（triage）だけで、*判定者* にはなりません。この分担が、§2「AI を CI ゲートに持ち込まない」の実装上の具体化です。
 
-### 3.2 ネットワーク制御（in-scenario の mocks）
+### 3.2 ネットワーク制御
 
-決定的なネットワーク（§2「ネットワークをモックへ」）と、iOS backend の `network` 証跡源を、シナリオ内に宣言する **`mocks`（in-protocol の決定的スタブ）** で兼ねます。当初はアプリと外部ネットワークの間に立つ単一の外部モックサーバでこれを担う設計でしたが、外部サーバは [BE-0027](roadmaps/BE-0027-mock-server-external/BE-0027-mock-server-external-ja.md) で見送り、実装を in-protocol のスタブへ移しました。
+決定的なネットワーク（§2「ネットワークをモックへ」）と、iOS backend の `network` 証跡源を、シナリオ内に宣言する **`mocks`（in-protocol の決定的スタブ）** で兼ねます。当初は、アプリと外部ネットワークの間に立つ単一の外部モックサーバで、決定性と証跡の両方を担う設計でした。外部サーバは [BE-0027](roadmaps/BE-0027-mock-server-external/BE-0027-mock-server-external-ja.md) で見送り、実装を in-protocol のスタブへ移しました。
 
 - **居場所**：外部プロセスではなくプロトコル層のスタブです。アプリの発する各リクエストを、シナリオの `mocks` に宣言した `match` で照合し、一致すれば `respond` の定型応答をアプリ内で返します（§6.1）。ライブサーバに触れないため、テストはオフラインで安定します
-- **2 つの役割**：(a) **決定性** = 一致したリクエストへ事前定義のスタブ応答を返します。(b) **証跡** = 発受信したリクエストを in-protocol の network collector が記録し、`network` アーティファクト（`network.json`）の取得元になります（§9）
+- **2 つの役割**：(a) **決定性** = 一致したリクエストへ事前定義のスタブ応答を返します。(b) **証跡** = 発受信したリクエストを in-protocol の network collector が記録します。記録は、`network` アーティファクト（`network.json`）の取得元になります（§9）
 - **証跡源**：XCUITest はネイティブのネットワーク監視を持たないため、`network` は **in-protocol の collector から取得**します。取得できないときは `manifest` に skip 理由を明示します
-- **設定**：`mocks` はシナリオ単位に書きます（§6.1）。`bajutsu.config.yaml` の `services.mockServer`（起動コマンド / ポート）は当初の外部サーバ向けスキーマが残るのみで実装されておらず、`mocks` に置き換わっています（[BE-0027](roadmaps/BE-0027-mock-server-external/BE-0027-mock-server-external-ja.md)）
+- **設定**：`mocks` はシナリオ単位に書きます（§6.1）。`bajutsu.config.yaml` の `services.mockServer`（起動コマンド / ポート）は、当初の外部サーバ向けスキーマが残るのみで、実装されていません。`mocks` に置き換わっています（[BE-0027](roadmaps/BE-0027-mock-server-external/BE-0027-mock-server-external-ja.md)）
 
 ### 3.3 並列実行とアイソレーション
 
@@ -115,21 +121,21 @@ Reporter (manifest.json + JUnit/CTRF/HTML + スクショ/録画)
 
 ---
 
-## 4. 実装言語 = Python に伴う構成
+## 4. 実装言語を Python とすることに伴う構成
 
-Bajutsu は Python パッケージとして実装します。現行のパッケージ構造（`serve/`、`crawl`、`mcp/`、`drivers`、`orchestrator`、`runner` ほか、5 万行超）の正となる一覧は [`docs/ja/architecture.md`](docs/ja/architecture.md) にあります。ここで構造の全体像を凍結すると実装とすぐに乖離するため、本文では設計上の中核の継ぎ目だけを述べます。その継ぎ目とは `common/drivers/base.py` の Driver 抽象で、バックエンド差はここで吸収し、XCUITest / adb / Playwright といった実体をこのインターフェースの背後に収めます（§5）。
+Bajutsu は Python パッケージとして実装します。現行のパッケージ構造（`serve/`、`crawl`、`mcp/`、`drivers`、`orchestrator`、`runner` ほか、5 万行超）の正となる一覧は [`docs/ja/architecture.md`](docs/ja/architecture.md) にあります。ここで構造の全体像を凍結すると実装とすぐに乖離するため、本文では設計上の中核の継ぎ目だけを述べます。その継ぎ目とは `common/drivers/base.py` の Driver 抽象です。バックエンド差はここで吸収し、XCUITest / adb / Playwright といった実体をこのインターフェースの背後に収めます（§5）。
 
 **技術選定**
 - CLI：`Typer`（or Click）／設定とシナリオの検証：`pydantic`
-- 外部ツール連携：`subprocess` で `xcrun simctl` / `xcodebuild` を呼び、常駐 XCUITest runner とは loopback HTTP で通信し（実機では usbmuxd で橋渡しし）、各々の出力をパース
+- 外部ツール連携：`subprocess` で `xcrun simctl` / `xcodebuild` を呼び、出力をパースします。常駐 XCUITest runner とは loopback HTTP で通信します（実機では usbmuxd で橋渡しします）
 - LLM：`anthropic` SDK（Claude）。シナリオと要素ダンプは prompt cache に載せてトークン削減
 - 配布：`pipx install bajutsu` を想定
 
 ---
 
-## 5. ドライバ抽象（バックエンド非依存）
+## 5. ドライバ抽象
 
-バックエンドを差し替えられるよう、**共通インターフェースを最初に固定**し、能力差は抽象側で吸収します。現状の登録バックエンドは XCUITest（iOS）、adb（Android）、Playwright（web）です。XCUITest は iOS の唯一の backend です（[BE-0290](roadmaps/BE-0290-xcuitest-default-ios-backend/BE-0290-xcuitest-default-ios-backend-ja.md) で idb を撤去。当初のヘッドレスな idb と対置する第一候補として入れたのが [BE-0019](roadmaps/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md) の経緯です）。adb は fast ゲートとエミュレータ上の e2e CI まで到達済みです（[BE-0208](roadmaps/BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci-ja.md)）。将来の追加に備えて、この抽象を維持します。
+ドライバ抽象はバックエンド非依存です。バックエンドを差し替えられるよう、**共通インターフェースを最初に固定**し、能力差は抽象側で吸収します。現状の登録バックエンドは XCUITest（iOS）、adb（Android）、Playwright（web）です。XCUITest は iOS の唯一の backend です。[BE-0290](roadmaps/BE-0290-xcuitest-default-ios-backend/BE-0290-xcuitest-default-ios-backend-ja.md) で idb を撤去しました。XCUITest は、当初のヘッドレスな idb と対置する第一候補として [BE-0019](roadmaps/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md) で入れた経緯があります。adb は fast ゲートとエミュレータ上の e2e CI まで到達済みです（[BE-0208](roadmaps/BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci-ja.md)）。将来の追加に備えて、この抽象を維持します。
 
 ```python
 # common/drivers/base.py（概念）
@@ -177,9 +183,9 @@ class Driver(Protocol):
 
 > **要点**：セレクタは常に識別子（id）で書きます。XCUITest は `query()` で id を引き当ててから、その識別子で直接 tap します。座標を経由しないので選択も actuation も id で安定し、シナリオはバックエンド非依存に保たれます。
 
-### セレクタ解決のセマンティクス（決定性の要）
+### セレクタ解決のセマンティクス
 
-`query()` で取得した要素ツリーに、Selector の各フィールドを **AND** で適用して候補を絞ります。
+セレクタ解決は決定性の要です。`query()` で取得した要素ツリーに、Selector の各フィールドを **AND** で適用して候補を絞ります。
 
 - **0 件** → 要素不在です。待機（`wait_until`）経由ならタイムアウト、即時アクションなら失敗です
 - **1 件** → 解決成功です
@@ -188,9 +194,9 @@ class Driver(Protocol):
 
 > ambiguity 検出はここに一元化します。抽象側は **常に `query()` で候補数を検証してから** actuation へ渡すので、「曖昧なら失敗」挙動はバックエンドに依らず一貫します。
 
-### 操作の安定度順（stability ladder）
+### 操作の安定度順
 
-UI 操作は **最も安定する選択手段から順に試し、成立した手段を採用**します。採用結果は record で凍結し（§6.5）、`run` は凍結済みを決定的に再実行します。安定度で変わるのは **どの要素を選ぶか** です。actuation は backend によって異なります。XCUITest は解決した要素を identifier で直接 tap します（BE-0019）。adb は常駐 UI Automator サーバの `/act` エンドポイントへ解決済みの identity を渡し、端末側で tap / long press / double tap を行います。エンドポイントが使えない、または対象の identity を特定できないときに限り、frame 中心への座標 tap へ縮退します（BE-0339。pinch / rotate は二本指ジェスチャで frame が要るため座標のままです）。下に行くほど壊れやすく、順 3 を使ったら manifest に degradation として明示します（§10）。
+操作の安定度順は、英語では stability ladder と呼びます。UI 操作は **最も安定する選択手段から順に試し、成立した手段を採用**します。採用結果は record で凍結し（§6.5）、`run` は凍結済みを決定的に再実行します。安定度で変わるのは **どの要素を選ぶか** です。actuation は backend によって異なります。XCUITest は解決した要素を identifier で直接 tap します（BE-0019）。adb は常駐 UI Automator サーバの `/act` エンドポイントへ解決済みの identity を渡し、端末側で tap / long press / double tap を行います。エンドポイントが使えない、または対象の identity を特定できないときに限り、frame 中心への座標 tap へ縮退します（BE-0339）。pinch / rotate は二本指ジェスチャで frame が要るため、座標のままです。下に行くほど壊れやすく、順 3 を使ったら manifest に degradation として明示します（§10）。
 
 | 順 | 選択（どの要素） | 安定性 |
 |---|---|---|
@@ -198,16 +204,16 @@ UI 操作は **最も安定する選択手段から順に試し、成立した�
 | 2 | `label` / `traits` で解決 | 選択がローカライズに弱い。id 無し要素のみ |
 | 3 | `index` / 生座標 | レイアウト変化で壊れる。最終手段・manifest 必須 |
 
-- **要素ツリーに現れない操作対象は `tapPoint`（順 3 の座標タップ）で叩く**：ID なしアプリのタブバーのタブのように、アクセシビリティツリーが addressable な要素として公開しない操作対象は、順 1〜2 では選べません。この場合 record のエージェントはスクリーンショットから位置を読み取り、正規化座標（0..1、左上原点）を `tapPoint` として凍結します。`run` は現在の画面サイズを掛けて `driver.tap_point` に再生します。セレクタで検証できない最下段なので、ツリーに載っている要素には使わず、必ず `id`/`label` で指します。
-- **actuation は backend ごとに異なる**：XCUITest は `query()` で解決した要素の identifier で直接 tap し、座標を経由しません（BE-0019）。adb は常駐サーバへ解決済みの identity を渡して端末側で tap / long press / double tap を行い、エンドポイントが使えないときだけ frame 中心の座標 tap に縮退します（BE-0339）。pinch / rotate は adb では引き続き座標です。選択（順 1〜3）はどの backend でも id で安定させます。
-- **actuator はシナリオごとに、最も安く十分な backend**：actuator を複数持つプラットフォームでは、各シナリオを、そのステップが実際に必要とする能力を満たす最も安い backend で走らせます（BE-0240）。判定は `capability_preflight`（§9）が計算する `unsupported(scenario, 能力集合)` を各候補に対して再利用するだけで、新しい能力モデルは要りません。iOS は [BE-0290](roadmaps/BE-0290-xcuitest-default-ios-backend/BE-0290-xcuitest-default-ios-backend-ja.md) で idb を撤去して以来、単一 actuator（XCUITest）なので、`pinch` / `rotate` の `multiTouch` を含むすべての構文をそのまま扱います。actuator はシナリオの実行のあいだ固定で、複数 backend が同一デバイスを同時に操作しないことで §3.3 の決定性を維持します（従来の「run 中は固定」という単位をシナリオ単位へ狭めたもので、規則自体は緩めません）。現状は XCUITest（iOS）、adb（Android）、Playwright（web）で、将来 backend を追加できるようリスト構造を残します
+- **要素ツリーに現れない操作対象は `tapPoint`（順 3 の座標タップ）で叩く**：ID なしアプリのタブバーのタブは、アクセシビリティツリーに addressable な要素として現れない例です。順 1〜2 では、こうした操作対象を選べません。この場合 record のエージェントはスクリーンショットから位置を読み取り、正規化座標（0..1、左上原点）を `tapPoint` として凍結します。`run` は現在の画面サイズを掛けて `driver.tap_point` に再生します。セレクタで検証できない最下段なので、ツリーに載っている要素には使わず、必ず `id`/`label` で指します。
+- **actuation は backend ごとに異なる**：XCUITest は `query()` で解決した要素の identifier で直接 tap し、座標を経由しません（BE-0019）。adb は常駐サーバへ解決済みの identity を渡し、端末側で tap / long press / double tap を行います。エンドポイントが使えないときだけ、frame 中心の座標 tap に縮退します（BE-0339）。pinch / rotate は adb では引き続き座標です。選択（順 1〜3）はどの backend でも id で安定させます。
+- **actuator はシナリオごとに、最も安く十分な backend**：actuator を複数持つプラットフォームでは、各シナリオを最も安い backend で走らせます。選ぶ対象は、そのステップが実際に必要とする能力を満たす backend です（BE-0240）。判定は `capability_preflight`（§9）が計算する `unsupported(scenario, 能力集合)` を各候補に対して再利用するだけで、新しい能力モデルは要りません。iOS は [BE-0290](roadmaps/BE-0290-xcuitest-default-ios-backend/BE-0290-xcuitest-default-ios-backend-ja.md) で idb を撤去して以来、単一 actuator（XCUITest）です。そのため、`pinch` / `rotate` の `multiTouch` を含むすべての構文をそのまま扱います。actuator はシナリオの実行のあいだ固定です。複数 backend が同一デバイスを同時に操作しないことで、§3.3 の決定性を維持します（従来の「run 中は固定」という単位をシナリオ単位へ狭めたもので、規則自体は緩めません）。現状は XCUITest（iOS）、adb（Android）、Playwright（web）で、将来 backend を追加できるようリスト構造を残します。
 - **actuator は target の `platform` が決める**：`--backend` は選択ではなく検査です。target のプラットフォーム名、その actuator 名、`fake` のいずれかを受け付け、フォールバックも能力による昇格もしません（`--udid` と同様です、§3.3）。それ以外の値やカンマ区切りのリストは終了コード 2 で終了します（[BE-0452](roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)）
 
 ---
 
-## 6. シナリオ仕様（自然言語 → 構造化）
+## 6. シナリオ仕様
 
-自然言語シナリオは、オーケストレータが以下の構造化フォーマットへ正規化して保存します。`run`（Tier2）はこの構造を **AI 非依存** で実行します（§3.1）。
+シナリオ仕様は、自然言語を構造化する形式です。自然言語シナリオは、オーケストレータが以下の構造化フォーマットへ正規化して保存します。`run`（Tier2）はこの構造を **AI 非依存** で実行します（§3.1）。
 
 ### 6.1 トップレベル構造
 
@@ -233,7 +239,7 @@ UI 操作は **最も安定する選択手段から順に試し、成立した�
 
 `capturePolicy`（繰り返し発火する証跡ルール）と `redact` はシナリオ単位またはファイル単位で指定します（§9 A）。識別子、既定の起動環境変数（config の `subject.launch.env`）、mock は **アプリ固有** で、§7（規約）と §8（`targets.<name>` config）が供給します。シナリオはアプリの名前空間で識別子を書き、ツール本体は不変です（§7.1）。
 
-### 6.2 ステップ文法（アクション）
+### 6.2 ステップ文法
 
 各ステップは 1 アクション + 任意の修飾子（`capture:` / ステップ名）です。アクションは §5 の Driver と env 操作に概ね 1:1 対応します。
 
@@ -250,7 +256,7 @@ UI 操作は **最も安定する選択手段から順に試し、成立した�
 
 > 起動環境、`deeplink`、`erase` は基本 `preconditions`（`subject.launch`、`subject.reinstall: erase`）で宣言しますが、シナリオ途中で再起動や再注入をしたい場合はステップとしても書けます（`relaunch: { env: {...} }`）。
 
-### 6.3 待機（条件待機のみ）
+### 6.3 待機
 
 ```yaml
 - wait: { for: { id: stable.row.1 }, timeout: 10 }        # 要素が現れるまで
@@ -261,9 +267,9 @@ UI 操作は **最も安定する選択手段から順に試し、成立した�
 
 `timeout` は必須です（無限待ちは禁止です）。タイムアウトはステップ失敗として扱い、`result: failure` 安全網（§9 A）が発火します。`wait` が固定時間だけ待つことはありません。固定の待機は別の `sleep` ステップだけが担い、上限と必須の理由と監査の finding によって例外であることを可視に保ちます（§10）。
 
-### 6.4 アサーション DSL（機械チェック）
+### 6.4 アサーション DSL
 
-`expect`（ステップ末尾の最終検証）と `assert`（中間検証）は同じ DSL です。リスト内は全て **AND** で、各アサーションは **直前の wait 完了後の `query()`** に対して評価します。1 つでも失敗ならステップ失敗です。
+アサーションは機械チェックです。`expect`（ステップ末尾の最終検証）と `assert`（中間検証）は同じ DSL です。リスト内は全て **AND** で、各アサーションは **直前の wait 完了後の `query()`** に対して評価します。1 つでも失敗ならステップ失敗です。
 
 | アサーション | 意味 | 例 |
 |---|---|---|
@@ -276,9 +282,9 @@ UI 操作は **最も安定する選択手段から順に試し、成立した�
 
 > **ロケール依存に注意**：`label` / `value` の文字列比較や、可視テキストを直接見るアサーションはローカライズで壊れます。これらは config の **固定 locale**（§8）に紐付けて実行し、セレクタ自体は `id` で書きます（§7）。§6.1 例の `label` 比較も固定 locale が前提です。
 
-### 6.5 正規化とラウンドトリップ（記録 → 編集 → 再実行）
+### 6.5 正規化とラウンドトリップ
 
-構造化シナリオ（§6）+ capturePolicy（§9 A）が **唯一の永続物**です。AI は最初の 1 回だけ書き、以後は人間が所有します（プレーンな YAML で、PR でレビューできます）。
+ラウンドトリップは、記録、編集、再実行の順に進みます。構造化シナリオ（§6）+ capturePolicy（§9 A）が **唯一の永続物**です。AI は最初の 1 回だけ書き、以後は人間が所有します（プレーンな YAML で、PR でレビューできます）。
 
 | 段階 | 主体 | 内容 |
 |---|---|---|
@@ -288,38 +294,38 @@ UI 操作は **最も安定する選択手段から順に試し、成立した�
 | **update**（M4） | AI（調査役） | UI 変更でシナリオが壊れたら、**全体再記録ではなく最小差分**を提案。人間がレビューして取り込む（手編集を保全） |
 
 - **冪等な正規化**：同じ自然言語からは同じ構造が出る（決定的マッピング）ことを目標にし、再記録時の無用な差分（churn）を抑えます
-- **AI 出力は常に「提案差分」**：record / update いずれも AI は YAML を黙って直接書き換えず、人間が承認する差分として出します。これによりコミット済み YAML が勝手に変わらないことを保証します（§2「テストを甘くしない」と整合します、§11）
+- **AI 出力は常に「提案差分」**：record / update いずれも AI は YAML を黙って直接書き換えず、人間が承認する差分として出します。この運用により、コミット済み YAML が勝手に変わらないことを保証します（§2「テストを甘くしない」と整合します、§11）
 - **バージョン管理**：シナリオはリポジトリ内のただのファイルです。履歴は git が持ち、Bajutsu は独自ストアを持ちません
 
 ---
 
-## 7. 対象アプリへの実装規約（ツールに同梱するガイド）
+## 7. 対象アプリへの実装規約
 
-ツールが安定動作するために、テスト対象アプリへ推奨する実装規約。
+ツールに同梱するガイドです。ツールが安定動作するために、テスト対象アプリへ推奨する実装規約を挙げます。
 
-- 主要操作要素に `accessibilityIdentifier`（一意、非ローカライズ、データ由来の ID。命名規約は §7.3）
-- `accessibilityLabel` / traits / value で状態を露出（検証用）
-- 装飾は `.accessibilityHidden(true)`、複合行は `.accessibilityElement(children:)` でツリー整形
-- 状態構築用の launch args / env フック（オンボーディング skip、シート直開きなど）
-- テスト時はアニメーションを無効化し、ネットワークをモックへ
-- 内部処理の証跡が必要なら `os_signpost` / `OSLog`（subsystem 指定）を仕込む
+- 主要操作要素に `accessibilityIdentifier` を付けます（一意、非ローカライズ、データ由来の ID。命名規約は §7.3）
+- `accessibilityLabel` / traits / value で、検証用に状態を露出します
+- 装飾は `.accessibilityHidden(true)` にし、複合行は `.accessibilityElement(children:)` でツリーを整形します
+- 状態構築用の launch args / env フックを用意します（オンボーディング skip、シート直開きなど）
+- テスト時はアニメーションを無効化し、ネットワークをモックにします
+- 内部処理の証跡が必要なら、`os_signpost` / `OSLog`（subsystem 指定）を仕込みます
 
 > `accessibilityLabel` はローカライズされ文言が変わりうるため **セレクタには使いません**。
 > 安定セレクタは `accessibilityIdentifier` です。label は VoiceOver / AI の意味理解用に残します（役割が違います）。
 
-### 7.1 新しいアプリのオンボーディング（per-target に必要なもの）
+### 7.1 新しいアプリのオンボーディング
 
-汎用化の単位は「アプリ」です。新しいアプリを対象にするとき変えるのは **ツールではなくアプリ側の準備 + config 1 エントリ** です。
+per-target に必要なものを示します。汎用化の単位は「アプリ」です。新しいアプリを対象にするとき変えるのは **ツールではなくアプリ側の準備 + config 1 エントリ** です。
 
-1. **§7 規約を適用**：主要要素に `accessibilityIdentifier`（アプリ固有の名前空間で。例 `settings.*`）、状態を label / traits / value に露出、launch hook、anim off、ネットワークの mock 化
-2. **config に `targets.<name>` を追加**（§8）：`platform` / `subject.id` / 既定の `subject.launch.env` / `services.mockServer` / `evidence.redact`
-3. **再利用セットアップを用意**（任意）：複数シナリオ共通の前段（ログインなど）をコンポーネントへ切り出し、シナリオの `setup` か `hooks.setup` から `use:` で呼ぶ（§6.1）
-4. **`bajutsu doctor --target <name>` で検証**：実行可能ゲートと §7 充足度スコアを出す（測り方は §7.2）
-5. **シナリオを `scenarios/<name>/` に配置**：識別子はそのアプリの名前空間で書く
+1. **§7 規約を適用**：主要要素に `accessibilityIdentifier`（アプリ固有の名前空間で。例 `settings.*`）を付けます。状態を label / traits / value に露出し、launch hook、anim off、ネットワークの mock 化を行います
+2. **config に `targets.<name>` を追加**（§8）：次のキーを書きます。`platform` / `subject.id` / 既定の `subject.launch.env` / `services.mockServer` / `evidence.redact`
+3. **再利用セットアップを用意**（任意）：複数シナリオ共通の前段（ログインなど）をコンポーネントへ切り出し、シナリオの `setup` か `hooks.setup` から `use:` で呼びます（§6.1）
+4. **`bajutsu doctor --target <name>` で検証**：実行可能ゲートと §7 充足度スコアを出します（測り方は §7.2）
+5. **シナリオを `scenarios/<name>/` に配置**：識別子はそのアプリの名前空間で書きます
 
 > 「様々なアプリ」は *ツールの分岐* ではなく *config とシナリオの追加* で増えます。ツール本体、ドライバ、実行系は不変で、各アプリの決定性は同じ §7 規約により担保されます（§2）。
 
-### 7.2 §7 充足度の測り方（`doctor --target`）
+### 7.2 §7 充足度の測り方
 
 `doctor --target <name>` は **AI 非依存で決定的**です（§3.1 の通り doctor は配線検証であって著者ではありません）。アプリを 1 回起動し、入口画面の `query()` を解析して **(1) 実行可能ゲート** と **(2) §7 充足度スコア** を出します。
 
@@ -343,15 +349,15 @@ UI 操作は **最も安定する選択手段から順に試し、成立した�
 （しきい値は config で調整できます。`label` と一致する id や、状態を持つのに `value` 未設定の要素は **advisory 警告**としてスコア外で列挙します）
 
 **判定（グレード）**：
-- **Ready（緑）**：全ゲート pass + 3 指標すべて ✓
-- **Partial（黄）**：実行はできるが指標が warn 域 → 該当要素を列挙（label / traits / frame）。座標フォールバックとフレーキーの予告
-- **Blocked（赤）**：ゲート ✗ / `uniqueness` 違反 / `idCoverage` < fail
+- **Ready（緑）**：全ゲートが pass で、3 指標すべてが ✓ のときです
+- **Partial（黄）**：実行はできますが、指標が warn 域のときです。該当要素（label / traits / frame）を列挙し、座標フォールバックとフレーキーを予告します
+- **Blocked（赤）**：ゲートが ✗、`uniqueness` 違反、または `idCoverage` が fail 未満のときです
 
 **出力**：人間向けサマリ + `--json`（CI ゲート用）です。不足要素は **実体を列挙**して「どこに id を足すか」を直に示します（§10「切り詰めた箇所を明示」と整合します）。
 
 > **測定範囲の正直さ**：`doctor` が採点するのは、起動直後に表示される画面 1 枚（web ターゲットでは `subject.url` を開いた直後のページ）だけです。宣言済み deeplink で直接開ける画面や、`record` 実行が残した他画面の `elements` ダンプ（§9）を読み込んで測定範囲を広げる仕組みは、現時点では実装していません。
 
-### 7.3 識別子の命名規約と名前空間（`idNamespaces`）
+### 7.3 識別子の命名規約と名前空間
 
 `accessibilityIdentifier` は **`<namespace>.<element>` のドット区切り階層**です。すべて小文字で、各セグメントは `[a-z0-9-]`（複数語はハイフン）です。先頭セグメント = 名前空間で、`targets.<name>.idNamespaces`（§8）に宣言した集合のいずれかです。
 
@@ -380,13 +386,13 @@ result.row.<recordId>       # 動的行: 末尾は「データ由来の安定キ
 
 ---
 
-## 8. CLI と設定（per-target / マルチアプリ）
+## 8. CLI と設定
 
-ツール本体はアプリ非依存です。**アプリ固有の差分はすべて config に寄せ**、同じバイナリと同じドライバで複数アプリを回します。
+per-target の設定で、複数アプリを扱います。ツール本体はアプリ非依存です。**アプリ固有の差分はすべて config に寄せ**、同じバイナリと同じドライバで複数アプリを回します。
 
 プラットフォームがアプリプロセスの内側からしか公開しない機能は、アプリに組み込む一律のテスト支援 SDK を通じて実現します。この SDK はどのアプリにも同じものを組み込むので、config に寄せる per-app の差分ではありません。ドライバやランナーがアプリごとに変わらないというアプリ非依存の原則を保ったまま、アプリの協力が要る機能を扱えます。
 
-iOS では BajutsuKit が `URLSession` の通信を捕捉してネットワークのアサーションを支え、Android では BajutsuAndroid がクリップボードを担います（[BE-0233](roadmaps/BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity-ja.md)）。クリップボードは Android 10 以降、フォアグラウンドのアプリと既定の IME しか触れず、シェルからは操作できないので、アプリ内で処理するこの経路が唯一の決定的で保守可能な方法です。
+iOS では BajutsuKit が `URLSession` の通信を捕捉し、ネットワークのアサーションを支えます。Android では BajutsuAndroid がクリップボードを担います（[BE-0233](roadmaps/BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity-ja.md)）。クリップボードは Android 10 以降、フォアグラウンドのアプリと既定の IME しか触れず、シェルからは操作できません。そのため、アプリ内で処理するこの経路が唯一の決定的で保守可能な方法です。
 
 SDK は test/debug ビルドに限って有効化し、リリースには載せません。この方式では、機能が実際に動くかどうかがアプリの協力に依存します。そのため対象アプリが SDK を組み込んでいない場合は、空の結果を成功と見なさず、明確なエラーで失敗させます。
 
@@ -400,9 +406,9 @@ bajutsu trace --explain <scenario>            # 証跡ルールの発火回数�
 bajutsu codegen <scenario.yaml> --target <name> --emit xcuitest -o UITests/   # M3。--emit は xcuitest / playwright / uiautomator
 ```
 
-### 設定の階層（チーム既定 × アプリ別）
+### 設定の階層
 
-`bajutsu.config.yaml` を `defaults` と `targets` の 2 層で持ち、その間に省略可能な `templates` を挟めます。値の解決順は **既定 < テンプレート < アプリ < シナリオ** で、右ほど優先します（テストに近いほうが勝ちます）。
+階層は、チーム既定とアプリ別の 2 つです。`bajutsu.config.yaml` を `defaults` と `targets` の 2 層で持ち、その間に省略可能な `templates` を挟めます。値の解決順は **既定 < テンプレート < アプリ < シナリオ** で、右ほど優先します（テストに近いほうが勝ちます）。
 
 target が受け付けるキーは次の 9 個で、未知のキーは読み込み時に失敗します。
 
@@ -412,9 +418,13 @@ target が受け付けるキーは次の 9 個で、未知のキーは読み込�
 
 以前の `run` グループは解体し、各キーをそれが関わるグループへ移しました。システムアラートと TipKit への対処は `hooks.interrupts` のエントリに、`ignoredSettings` は `runsOn` に置きます（[BE-0473](roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts-ja.md)）。
 
-`defaults` は、プラットフォームに依らないグループ（`services` / `hooks` / `evidence` / `paths` / `ai`）を直接持ちます。形がプラットフォームで変わるグループは `defaults.platforms.<platform>` の下に置きます。辞書はキーごとにマージし（target が優先）、target の `null` は継承した値を消します。リストは置き換えますが、`evidence.secrets` と `evidence.redact` だけは和集合を取ります。グループ分けの理由は [BE-0452](roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md) にあります。結果の通知先（`notify`）はトップレベルのリストだけが決め、target ごとには持ちません（[BE-0473](roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts-ja.md)）。名前が `x-` で始まるトップレベルのキーは読み込み時に無視するので、target 同士で共有する YAML アンカーの置き場所に使えます。
+`defaults` は、プラットフォームに依らないグループ（`services` / `hooks` / `evidence` / `paths` / `ai`）を直接持ちます。形がプラットフォームで変わるグループは `defaults.platforms.<platform>` の下に置きます。辞書はキーごとにマージし（target が優先）、target の `null` は継承した値を消します。リストは置き換えますが、`evidence.secrets` と `evidence.redact` だけは和集合を取ります。グループ分けの理由は [BE-0452](roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md) にあります。
 
-`templates:` は、名前の付いた部分的な target ブロックを持ちます。target は `extends` でテンプレート名かテンプレートファイルを挙げ、`defaults` と `defaults.platforms.<platform>` の上、target 自身の下に順に重ねます。マージ規則は上と同じです。テンプレートは `targets:` の外に置くので、実行対象として選ばれることはありません。設計の理由は [BE-0471](roadmaps/BE-0471-target-templates/BE-0471-target-templates-ja.md) にあります。
+結果の通知先（`notify`）はトップレベルのリストだけが決め、target ごとには持ちません（[BE-0473](roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts-ja.md)）。
+
+名前が `x-` で始まるトップレベルのキーは読み込み時に無視するので、target 同士で共有する YAML アンカーの置き場所に使えます。
+
+`templates:` は、名前の付いた部分的な target ブロックを持ちます。target は `extends` でテンプレート名かテンプレートファイルを挙げます。テンプレートは、`defaults` と `defaults.platforms.<platform>` の上、target 自身の下に順に重なります。マージ規則は上と同じです。テンプレートは `targets:` の外に置くので、実行対象として選ばれることはありません。設計の理由は [BE-0471](roadmaps/BE-0471-target-templates/BE-0471-target-templates-ja.md) にあります。
 
 ```yaml
 reservedNamespaces: [auth, nav]  # 共有フロー / コンポーネントの id 契約（§7.3）
@@ -446,9 +456,9 @@ targets:
 
 ---
 
-## 9. 証跡（Evidence/Trace）サブシステム
+## 9. 証跡サブシステム
 
-「特定の動作のたびに証跡を取る」要求は、単発指示ではなく **繰り返し発火するルール** として設計します。
+証跡サブシステムは Evidence/Trace とも呼びます。「特定の動作のたびに証跡を取る」要求は、単発指示ではなく **繰り返し発火するルール** として設計します。
 
 ### 指示の 3 方法
 
@@ -458,9 +468,9 @@ targets:
 | **B. ステップ単体への付与** | この 1 ステップだけ取りたい | 特定の遷移後に要素ダンプ |
 | **C. 既定ポリシー** | 全体の最低保証 | 失敗時は必ずスクリーンショット + 録画 + ログ |
 
-自然言語の指示（例:「送信を押すたびにスクショとネットワークログを残して」）は、オーケストレータが **A のルール構造へ正規化** してシナリオに保存します。これにより指示は決定的に再実行でき、二度目以降は AI なしでも同じ証跡が取れます。
+自然言語の指示（例:「送信を押すたびにスクショとネットワークログを残して」）は、オーケストレータが **A のルール構造へ正規化** してシナリオに保存します。この正規化により、指示は決定的に再実行でき、二度目以降は AI なしでも同じ証跡が取れます。
 
-### A. ルール（トリガー方式）の構造
+### A. ルールの構造
 
 ```yaml
 capturePolicy:
@@ -483,7 +493,7 @@ redact:                       # 保存前にマスクする対象（§9 注意�
   fields:  ["token", "password"]
 ```
 
-### B. ステップ単体（インライン）
+### B. ステップ単体への付与
 
 ```yaml
 - tap: { id: settings.reindex }
@@ -492,11 +502,17 @@ redact:                       # 保存前にマスクする対象（§9 注意�
 
 ### capture トークン文法と取得タイミング
 
-`capture:` の各要素は `<種別>[.<修飾子>]` の形を取ります（インライン §9 B / ルール §9 A 共通）。
+`capture:` の各要素は `<種別>[.<修飾子>]` の形を取ります（ステップ単体への付与 §9 B / ルール §9 A 共通）。
 
 - **種別**：`screenshot` / `elements` / `actionLog` / `deviceLog` / `network` / `video` / `appTrace` / `rawTree`（下表）
 - **修飾子**：`before` / `after` / `around`（操作前に開始し後で停止）/ `onError`
-- **既定の修飾子**：常時発火するベースラインは動作の前後の両方ですが、ツリーを取得するのは動作後だけです（BE-0407）。動作の前に `screenshot.before` を、動作のあとに `screenshot.after` と `elements`（§10）を取得します。前のステップから何も操作していないあいだは、`screenshot.before` は前のステップの `after.png` の画素をそのまま複製できます。割り込みの回復ステップ、`handleSystemAlert` ステップ、`interrupts` を宣言したシナリオのどのステップでも、複製せず常に新たに撮影します。`systemAlertHandling` のもとで動くどのステップでも同様です。非同期の割り込み画面がステップの間に現れていないという前提が、これらの場合には成り立たないためです。`systemAlertHandling` は既定でオンです。既定の設定のままの `run` はどのステップでも新たに撮影し、複製が効くのはシナリオかターゲット設定でガードを切った場合だけです。`elements.json` のファイル名は 1 つなので、動作後に取得したツリーがそのステップの記録として残ります。ビューアが表示する `after.png` と、要素の枠を描く基準とするツリーとを同じ瞬間に揃えるためです。`capturePolicy` ルールやインラインの `capture:` が発火したときは、修飾子なしの瞬時系（`screenshot` / `elements`）は従来どおり `after` が既定です。`rawTree` も、常に動作後のベースラインと同じ読み取りで取得します。動作前の生ダンプを要求する手段は現状ありません（必要になれば `screenshot.before` に対応する `rawTree.before` 修飾子を設けます）。区間系（`video` / `deviceLog` / `network` / `appTrace`）は `around`、`actionLog` は常時記録です
+- **既定の修飾子**：常時発火するベースラインは動作の前後の両方ですが、ツリーを取得するのは動作後だけです（BE-0407）。動作の前に `screenshot.before` を、動作のあとに `screenshot.after` と `elements`（§10）を取得します。
+  - 前のステップから何も操作していないあいだは、`screenshot.before` は前のステップの `after.png` の画素をそのまま複製できます。
+  - 割り込みの回復ステップ、`handleSystemAlert` ステップ、`interrupts` を宣言したシナリオのどのステップでも、複製せず常に新たに撮影します。`systemAlertHandling` のもとで動くどのステップでも同様です。非同期の割り込み画面がステップの間に現れていないという前提が、これらの場合には成り立たないためです。
+  - `systemAlertHandling` は既定でオンです。既定の設定のままの `run` はどのステップでも新たに撮影し、複製が効くのはシナリオかターゲット設定でガードを切った場合だけです。
+  - `elements.json` のファイル名は 1 つなので、動作後に取得したツリーがそのステップの記録として残ります。ビューアが表示する `after.png` と、要素の枠を描く基準とするツリーとを同じ瞬間に揃えるためです。
+  - `capturePolicy` ルールやインラインの `capture:` が発火したときは、修飾子なしの瞬時系（`screenshot` / `elements`）は従来どおり `after` が既定です。`rawTree` も、常に動作後のベースラインと同じ読み取りで取得します。動作前の生ダンプを要求する手段は現状ありません（必要になれば `screenshot.before` に対応する `rawTree.before` 修飾子を設けます）。
+  - 区間系（`video` / `deviceLog` / `network` / `appTrace`）は `around`、`actionLog` は常時記録です。
 - 区間を持つ種別は `around` でライフサイクル管理し、停止はステップの wait 完了に同期させます（→ 後述「区間境界」）
 
 ### 証跡種別と取得元
@@ -538,9 +554,9 @@ runs/<runId>/
 
 `manifest.json` がレポートと CI（JUnit attachments）の単一の真実になります。
 
-### バックエンド対応と能力差の吸収（actuator + フォールバック）
+### バックエンド対応と能力差の吸収
 
-`backend` は **安定度順の順序付きリスト**です（§8 / §5 stability ladder）。`tap` / `type` / `swipe` / `wait` / `query`（操作と解決）は **actuator のみ** が行います。**actuator はシナリオごとに、最も安く十分な backend** です（BE-0240。選定規則の詳細は §5 stability ladder を参照）。まだシナリオが手元に無い場面（doctor、プールの起動時セットアップ、明示的な単一 actuator の固定）は、安定度順で最初に利用可能なものを選びます。actuator 以外は **能力を補うフォールバック**で、実体は read-only な証跡供給に限ります。`capabilities()`（§5）で各 backend の提供能力を引きます。
+actuator とフォールバックで吸収します。`backend` は **安定度順の順序付きリスト**です（§8 / §5 stability ladder）。`tap` / `type` / `swipe` / `wait` / `query`（操作と解決）は **actuator のみ** が行います。**actuator はシナリオごとに、最も安く十分な backend** です（BE-0240。選定規則の詳細は §5 stability ladder を参照）。まだシナリオが手元に無い場面（doctor、プールの起動時セットアップ、明示的な単一 actuator の固定）は、安定度順で最初に利用可能なものを選びます。actuator 以外は **能力を補うフォールバック**で、実体は read-only な証跡供給に限ります。`capabilities()`（§5）で各 backend の提供能力を引きます。
 
 能力ごとの解決順：
 
@@ -553,7 +569,7 @@ runs/<runId>/
 | `network` | **in-protocol の collector**（§3.2）から取得 → 無ければ skip（XCUITest はネイティブ監視を持たない） |
 
 - **可用性を見る**：証跡源がこの環境で取得できない場合（例: network collector が無効）はスキップして次へ進みます。最終的に collector / simctl を見て、無ければ skip します
-- **来歴を残す**：各アーティファクトが **どの provider から来たか** を `manifest` に記録します（例: `network: in-protocol collector（XCUITest はネイティブ監視なし）`）。未取得は capability フラグと共に skip 理由を明示します（§10）
+- **来歴を残す**：各アーティファクトが **どの provider から来たか** を `manifest` に記録します。例: `network: in-protocol collector（XCUITest はネイティブ監視なし）`。未取得は capability フラグと共に skip 理由を明示します（§10）
 
 ### 環境ごとの設定と、デバイスを使う前のチェック（BE-0467）
 
@@ -563,11 +579,14 @@ runs/<runId>/
 
 - **run の preflight**：lease の前に、ターゲットごとにステップと設定を判定します。
 - **`bajutsu lint --config --target`**：デバイスなしで、展開後のシナリオを同じ規則で判定します（`common/target_lint.py`）。serve のエディタの lint も、選択中のターゲットを同じ規則で判定します。
-- **serve の配送**：ジョブは `cap:<route>:<capability>` と `setting:<route>:<key>` のトークンを要求し、ワーカーは自分が動かすルートごとにトークンを広告します（`common/capability/route_tokens.py`）。ワーカーは claim の時点でもう一度照合します。`run-set` のジョブは実行場所を指定しません。振り分けに使うのは、ターゲットのプラットフォーム、`job:run-intent`、iOS なら実行する種類ごとの `kind:` トークンと、ターゲットが `runsOn.ios.family` を指定していればそのデバイスファミリーのトークンです。そのため、そのプラットフォームを扱い、条件に合うデバイスを持つワーカーなら、ローカルでも Device Farm でも受け取れます。Device Farm のワーカーはファミリーのトークンを広告しないので、ファミリーを指定した iOS のターゲットはローカルのワーカーを待ちます（[BE-0484](roadmaps/BE-0484-job-group-lease/BE-0484-job-group-lease-ja.md)）。
+- **serve の配送**：ジョブは `cap:<route>:<capability>` と `setting:<route>:<key>` のトークンを要求します。ワーカーは、自分が動かすルートごとにトークンを広告します（`common/capability/route_tokens.py`）。ワーカーは claim の時点でもう一度照合します。
+  - `run-set` のジョブは、実行場所を指定しません。振り分けに使うのは、ターゲットのプラットフォームと `job:run-intent` です。iOS なら、実行する種類ごとの `kind:` トークンも使います。ターゲットが `runsOn.ios.family` を指定していれば、そのデバイスファミリーのトークンも使います。
+  - そのため、そのプラットフォームを扱い、条件に合うデバイスを持つワーカーなら、ローカルでも Device Farm でも受け取れます。
+  - Device Farm のワーカーはファミリーのトークンを広告しません。ファミリーを指定した iOS のターゲットは、ローカルのワーカーを待ちます（[BE-0484](roadmaps/BE-0484-job-group-lease/BE-0484-job-group-lease-ja.md)）。
 
 どれも大規模言語モデル（LLM）を使わない決定的な判定で、`run` の判定経路にモデルは入りません。
 
-### 注意点（証跡特有）
+### 証跡特有の注意点
 
 - **観測者効果**：録画とログストリームは僅かに時間挙動へ影響します。決定性検証では `around` 区間の長さを固定し、待機は条件待機のまま保ちます
 - **コスト管理**：`video` を全操作に付けると重くなります。ルールはマッチ条件を絞り、既定は `screenshot` + `elements` + `actionLog` の軽量 3 点とし、`video` / `network` はオプトインにします
@@ -577,33 +596,35 @@ runs/<runId>/
 
 ---
 
-## 10. フレーキー対策（出荷基準チェックリスト）
+## 10. フレーキー対策
 
-- [ ] 固定の待機は理由つきの `sleep` ステップだけ（それ以外はすべて条件待機）
-- [ ] セレクタはローカライズ文言に依存しない
-- [ ] 各テストはクリーン環境から開始
-- [ ] 合否はすべて機械チェック可能なアサーション
-- [ ] 失敗時に必ずスクリーンショット + 要素ダンプを残す
-- [ ] カバレッジを切り詰めた箇所（リトライ無し、証跡 skip 等）はログ / manifest に明示
-- [ ] 座標 / index フォールバック（stability ladder 順 3〜4）を使ったステップは manifest に degradation として明示（§5）
-  - 半分は済んでいます。ステップごとの actuation の記録（§9 の `actionLog`）が経路を明示するので、adb で常駐エンドポイントを使えず座標へ落ちた tap / longPress / doubleTap は、`identity` ではなく `coordinate` として現れます。ただしトークン単体を縮退と読むことはできません。`coordinate` は Playwright、WebView、iOS の swipe / scroll / tapPoint では通常の経路でもあるので、判断には backend が要ります。`index` セレクタへの縮退（actuation ではなくセレクタ解決の問題）は未着手です
+次のチェックリストが、出荷基準です。
+
+- [ ] 固定の待機は、理由つきの `sleep` ステップだけにします（それ以外はすべて条件待機です）
+- [ ] セレクタはローカライズ文言に依存させません
+- [ ] 各テストはクリーン環境から開始します
+- [ ] 合否はすべて、機械チェック可能なアサーションで決めます
+- [ ] 失敗時に必ずスクリーンショット + 要素ダンプを残します
+- [ ] カバレッジを切り詰めた箇所（リトライ無し、証跡 skip 等）は、ログ / manifest に明示します
+- [ ] 座標 / index フォールバック（stability ladder 順 3〜4）を使ったステップは、manifest に degradation として明示します（§5）
+  - 半分は済んでいます。ステップごとの actuation の記録（§9 の `actionLog`）が経路を明示します。そのため、adb で常駐エンドポイントを使えず座標へ落ちた tap / longPress / doubleTap は、`identity` ではなく `coordinate` として現れます。ただしトークン単体を縮退と読むことはできません。`coordinate` は Playwright、WebView、iOS の swipe / scroll / tapPoint では通常の経路でもあるので、判断には backend が要ります。`index` セレクタへの縮退（actuation ではなくセレクタ解決の問題）は未着手です
 
 ---
 
 ## 11. リスクと未解決論点
 
 - adb の要素ツリー取得の一時的な空（画面遷移中）
-  - 画面遷移中、adb の `uiautomator dump` が一過性で「ほぼ空」のツリーを返すことがあります（画面は描画済みでも発生します）。単発の `expect`/`assert` や条件 `wait` がこの一瞬のスナップショットを掴むと誤失敗します。対策として、座標系 backend が継承する `CoordinateTreeDriver.query()` 基底クラス（BE-0254。[BE-0290](roadmaps/BE-0290-xcuitest-default-ios-backend/BE-0290-xcuitest-default-ios-backend-ja.md) で idb を撤去して以来、adb 専用）に上限付きリトライを実装しています。これは、一度リッチなツリー（`_max_seen >= 2`）を観測済みで、かつ結果が `< 2` 要素のときのみ「未準備」とみなし、短いバックオフで再取得するものです（基点 0.05 秒を毎回倍加し 0.2 秒で頭打ち、5 回までの合計で最大 ~0.75s）。`_max_seen` ゲートにより、もともと疎な画面はマスクせず即返します。`await_ready` の起動時しきい値（`>= 2`）と同一基準です。
-- AI の自己修復が「テストを甘くする」方向に働くリスク → 人間レビューを挟む
-- 証跡ルールの過剰マッチによる成果物肥大 → `--explain` ドライランと既定ポリシーの軽量化
+  - 画面遷移中、adb の `uiautomator dump` が一過性で「ほぼ空」のツリーを返すことがあります（画面は描画済みでも発生します）。単発の `expect`/`assert` や条件 `wait` がこの一瞬のスナップショットを掴むと誤失敗します。対策として、座標系 backend が継承する基底クラスの `CoordinateTreeDriver.query()` に、上限付きリトライを実装しています。この基底クラスは BE-0254 のもので、[BE-0290](roadmaps/BE-0290-xcuitest-default-ios-backend/BE-0290-xcuitest-default-ios-backend-ja.md) で idb を撤去して以来、adb 専用です。リトライは、一度リッチなツリー（`_max_seen >= 2`）を観測済みで、かつ結果が `< 2` 要素のときのみ「未準備」とみなし、短いバックオフで再取得します。バックオフは基点 0.05 秒を毎回倍加し、0.2 秒で頭打ちです。5 回までの合計は最大 ~0.75s です。`_max_seen` ゲートにより、もともと疎な画面はマスクせず即返します。`await_ready` の起動時しきい値（`>= 2`）と同一基準です。
+- AI の自己修復が「テストを甘くする」方向に働くリスクには、人間レビューを挟みます
+- 証跡ルールの過剰マッチによる成果物肥大には、`--explain` ドライランと既定ポリシーの軽量化で対処します
 
 ---
 
-## 12. MVP ロードマップ（段階）
+## 12. MVP ロードマップ
 
 | マイルストーン | 内容 |
 |---|---|
-| **M1** | `simctl.py`（simctl ラッパ）+ `drivers/base,idb`（共通 IF、id → frame 中心のセレクタ解決）+ YAML シナリオ(pydantic) + `assertions/` + 証跡の軽量 3 点（`screenshot`/`elements`/`actionLog`）と `result: failure` 安全網 + `manifest.json` + per-target config（`targets.<name>` 解決, `bajutsu run --target` / `doctor --target`）。**idb でシナリオが通る** こと、**config だけで対象アプリを切り替えられる** ことを完了条件とする |
+| **M1** | `simctl.py`（simctl ラッパ）+ `drivers/base,idb`（共通 IF、id → frame 中心のセレクタ解決）+ YAML シナリオ(pydantic) + `assertions/` + 証跡の軽量 3 点（`screenshot`/`elements`/`actionLog`）と `result: failure` 安全網 + `manifest.json` + per-target config（`targets.<name>` 解決, `bajutsu run --target` / `doctor --target`）。**idb でシナリオが通る** こと、**config だけで対象アプリを切り替えられる** ことを完了条件とします |
 | **M2** | observe→act→verify の AI ループ（自然言語ステップ・証跡指示の解釈と正規化）+ ルール方式（トリガー）一式 + `video` / `deviceLog` + Reporter(JUnit/HTML) |
 | **M3** | `network`（in-protocol の mocks / collector、§3.2）+ `appTrace`（os_signpost）+ redaction + XCUITest codegen（Tier2）+ CI 統合 |
 | **M4** | 自己修復トリアージ（失敗証跡から原因要約・テスト更新提案、人間レビュー前提） |
