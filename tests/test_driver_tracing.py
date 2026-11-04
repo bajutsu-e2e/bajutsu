@@ -263,7 +263,9 @@ def test_adb_server_text_entry_records_its_transport_call_without_the_text() -> 
     # A typed value may be a secret, so the trace keeps the call's name and timing alone.
     typed: list[str] = []
     with tracing.open_trace() as ctx:
-        driver = AdbDriver("U", run=lambda _args: _DUMP, type_on_device=typed.append)
+        driver = AdbDriver(
+            "U", run=lambda _args: _DUMP, type_on_device=lambda t, _since: typed.append(t)
+        )
         driver.type_text("秘密")
     assert typed == ["秘密"]
     record = next(r for r in ctx.records if r.category == "transport" and r.name == "type")
@@ -275,7 +277,7 @@ def test_traced_type_passes_through_once_the_trace_has_closed() -> None:
     from bajutsu.common.drivers.adb.adb_driver import _traced_type
 
     typed: list[str] = []
-    _traced_type(typed.append)("馬")
+    _traced_type(lambda t, _since: typed.append(t))("馬", None)
     assert typed == ["馬"]
 
 

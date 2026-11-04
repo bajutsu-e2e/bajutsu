@@ -49,7 +49,7 @@ ClockFetch = Callable[[], float | None]
 # than letting a coordinate be guessed. Raises `AdbResidentError` when the channel itself fails, which
 # the driver degrades to its own coordinate path.
 ActFn = Callable[[ActRequest], ActOutcome]
-TypeFn = Callable[[str], None]
+TypeFn = Callable[[str, float | None], None]
 
 # Android's `uiautomator` dump reports bounds in raw display pixels, so that is the space stamped on
 # this backend's actuation records — a coordinate only means something alongside its unit.
@@ -145,15 +145,15 @@ def _traced_act(act: ActFn) -> ActFn:
 
 
 def _traced_type(type_text: TypeFn) -> TypeFn:
-    def _wrapped(text: str) -> None:
+    def _wrapped(text: str, since: float | None) -> None:
         ctx = tracing.current_trace()
         if ctx is None:
-            type_text(text)
+            type_text(text, since)
             return
         started_at = time.time()
         t0 = time.perf_counter()
         try:
-            type_text(text)
+            type_text(text, since)
         finally:
             # The name and the timing only: a typed value may be a secret.
             ctx.record("transport", "type", started_at, time.perf_counter() - t0)
@@ -296,6 +296,9 @@ class AdbDriver(CoordinateTreeDriver):
         self._act_fn = act
         # The resident server's text endpoint, the only route for text `input text` cannot carry.
         self._type_fn = type_on_device
+        # The device clock as of the latest text entry, on either route. `/type` rewrites the whole
+        # field from what it reads, so its read must postdate the text the last entry put there.
+        self._text_mark: float | None = None
         # Each element's device-addressable identity, keyed by `id()` of the element dict the last read
         # produced — the same object `resolve_unique` hands back, so a resolved element maps straight to
         # what the device needs. Rebuilt on every read; a stale key simply misses and degrades.
@@ -1677,12 +1680,14 @@ class AdbDriver(CoordinateTreeDriver):
         # `_run_text` bypasses `_act`, so invalidate by hand: the input may have just changed the
         # screen exactly as any other actuation would.
         self.invalidate_settled_cache()
+        since = self._text_mark
+        self._text_mark = self._capture_mark()
         if adb.input_text_can_type(text):
             self._run_text(adb.shell_cmd(self.serial), adb.text_script(text))
         else:
-            self._type_through_server(text)
+            self._type_through_server(text, since)
 
-    def _type_through_server(self, text: str) -> None:
+    def _type_through_server(self, text: str, since: float | None) -> None:
         """Enter text `input text` cannot carry through the resident server, or fail the step.
 
         There is no second route to degrade to, so every refusal fails loudly here (prime directive
@@ -1693,8 +1698,11 @@ class AdbDriver(CoordinateTreeDriver):
                 "this text needs the resident UI Automator server, which is not running on this "
                 "lease: `input text` can only enter ASCII"
             )
+        # The `into` tap may be newer than the last entry, and its barrier's mark is the later bound.
+        tap = self._catchup.actuation_mark if self._catchup is not None else None
+        marks = [mark for mark in (since, tap) if mark is not None]
         try:
-            self._type_fn(text)
+            self._type_fn(text, max(marks, default=None))
         except AdbActUnsupported as exc:
             raise base.UnsupportedAction(
                 f"{exc}; rebuild it with `make -C BajutsuAndroidUIAutomatorServer build`"

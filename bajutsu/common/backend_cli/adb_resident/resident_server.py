@@ -33,7 +33,7 @@ Spawn = Callable[[list[str]], _Process]
 Fetch = Callable[[int, float | None], HierarchyRead]
 ClockProbe = Callable[[int], float | None]
 ActProbe = Callable[[int, ActRequest], ActOutcome]
-TypeProbe = Callable[[int, str], None]
+TypeProbe = Callable[[int, str, float | None], None]
 
 
 class ResidentServer:
@@ -97,7 +97,7 @@ class ResidentServer:
             )
         )
         self._type_text = type_probe or (
-            lambda port, text: type_text(port, text, keepalive=self._keepalive)
+            lambda port, text, since: type_text(port, text, since, keepalive=self._keepalive)
         )
         self._server_apk = server_apk
         self._test_apk = test_apk
@@ -168,10 +168,10 @@ class ResidentServer:
             # actuation endpoint would trade a small regression for a large one.
             return self._act(port, request)
 
-        def type_on_device(text: str) -> None:
+        def type_on_device(text: str, since: float | None) -> None:
             # Like `act_on_device`, a fault here leaves the read channel up: it says nothing about
             # the reads, and the driver fails this one step on it.
-            self._type_text(port, text)
+            self._type_text(port, text, since)
 
         return ResidentChannel(fetch, clock, act_on_device, type_on_device)
 

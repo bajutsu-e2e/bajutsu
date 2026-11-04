@@ -136,7 +136,7 @@ class _SourceHandler(http.server.BaseHTTPRequestHandler):
     last_type_body: bytes | None = None  # the body of that request
 
     def do_POST(self) -> None:
-        if self.path == "/type":
+        if self.path.split("?", 1)[0] == "/type":
             self._do_type()
             return
         if self.path.split("?", 1)[0] != "/act":
@@ -1189,6 +1189,15 @@ def test_type_text_carries_the_text_in_the_body_never_the_target() -> None:
     assert base64.b64decode(_SourceHandler.last_type_body or b"").decode("utf-8") == "馬術 🐎"
 
 
+def test_type_text_sends_the_mark_the_devices_read_must_postdate() -> None:
+    port, server = _serve_once()
+    try:
+        adb_resident.type_text(port, "馬", 42.0)
+    finally:
+        server.shutdown()
+    assert _SourceHandler.last_type_path == "/type?since=42.0"
+
+
 def test_type_text_raises_the_devices_reason_when_it_refuses() -> None:
     port, server = _serve_once()
     _SourceHandler.type_status = 422
@@ -1236,18 +1245,18 @@ def test_the_lease_channel_hands_text_to_the_type_probe(tmp_path: Path) -> None:
     server_apk, test_apk = tmp_path / "s.apk", tmp_path / "t.apk"
     server_apk.write_bytes(b"s")
     test_apk.write_bytes(b"t")
-    typed: list[tuple[int, str]] = []
+    typed: list[tuple[int, str, float | None]] = []
     resident = adb_resident.ResidentServer(
         "S",
         run=lambda argv: "4321\n" if "forward" in argv else "",
         spawn=lambda argv: _FakeProc(),
         fetch=lambda port, since: HierarchyRead("<hierarchy/>"),
-        type_probe=lambda port, text: typed.append((port, text)),
+        type_probe=lambda port, text, since: typed.append((port, text, since)),
         server_apk=server_apk,
         test_apk=test_apk,
     )
-    resident.start().type_text("馬")
-    assert typed == [(4321, "馬")]
+    resident.start().type_text("馬", 7.0)
+    assert typed == [(4321, "馬", 7.0)]
 
 
 def test_act_sends_the_element_identity_and_no_coordinate() -> None:

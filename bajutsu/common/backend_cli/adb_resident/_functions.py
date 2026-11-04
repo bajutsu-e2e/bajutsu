@@ -304,13 +304,19 @@ def act(
 
 
 def type_text(
-    host_port: int, text: str, *, timeout: float = 10.0, keepalive: Keepalive | None = None
+    host_port: int,
+    text: str,
+    since: float | None = None,
+    *,
+    timeout: float = 10.0,
+    keepalive: Keepalive | None = None,
 ) -> None:
     """Ask the resident server to enter `text` into the field that holds input focus.
 
     The text crosses in the request body, base64-encoded, because a query string is what a proxy or a
     log would keep and a typed value may be a secret. Encoding also leaves the server's character
-    reader counting bytes one-for-one against `Content-Length`.
+    reader counting bytes one-for-one against `Content-Length`. `since` is the device-clock mark the
+    server's read of the field must postdate, because it builds the new value from that read.
 
     Raises:
         AdbActUnsupported: the server predates `/type`, so a rebuilt server is the only remedy.
@@ -321,9 +327,10 @@ def type_text(
             which never quotes the text.
     """
     body = base64.b64encode(text.encode("utf-8"))
+    path = "/type" if since is None else "/type?" + urllib.parse.urlencode({"since": since})
     with _channel(host_port, keepalive, timeout) as conn:
         try:
-            conn.request("POST", "/type", body=body)
+            conn.request("POST", path, body=body)
         except (OSError, http.client.HTTPException) as exc:
             raise AdbResidentError(
                 f"resident text entry unreachable on port {host_port}: {exc}"

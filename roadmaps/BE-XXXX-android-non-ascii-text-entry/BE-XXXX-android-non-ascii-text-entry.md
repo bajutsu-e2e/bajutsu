@@ -67,7 +67,9 @@ logs neither the body nor its length.
 
 The server then performs these steps:
 
-1. Wait for the app to go idle, so that a read cannot miss the text an earlier step entered. Then wait
+1. Wait for an accessibility event newer than the `since` mark, then for the app to go idle. The host
+   takes that device-clock mark before each text entry, so a read cannot miss the text an earlier
+   step entered. Without a newer event, the wait ends after two seconds. Then wait
    up to two seconds for an editable node to hold input focus. Until the focus from the tap on `into`
    arrives, the node holding focus can be the one from before the tap.
 2. Refuse the request if the node is a password field, is not editable, or does not offer

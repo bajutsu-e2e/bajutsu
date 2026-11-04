@@ -143,7 +143,7 @@ class ResidentServerTest {
             when (target.substringBefore('?')) {
                 "/source" -> respondSource(out, device, readMark, target)
                 "/act" -> respondAct(out, device, readMark, target)
-                "/type" -> respondType(out, device, request.body)
+                "/type" -> respondType(out, device, readMark, target, request.body)
                 "/clock" ->
                     respond(
                         out,
@@ -192,7 +192,10 @@ class ResidentServerTest {
         while (left > 0) {
             val read = reader.read(buffer, 0, minOf(left, buffer.size))
             // A peer gone mid-body: nothing was served, and a partial text must not reach `/type`.
-            if (read < 0) return null
+            if (read < 0) {
+                Log.w(TAG, "connection ended mid-body; nothing was served")
+                return null
+            }
             val chunk = String(buffer, 0, read)
             body.append(chunk)
             left -= chunk.toByteArray(StandardCharsets.UTF_8).size
@@ -314,7 +317,13 @@ class ResidentServerTest {
      * nothing here can tell what the action would overwrite. So is a field without the action. Each
      * refusal is a non-200 the host fails the step on, and no reply ever quotes the text.
      */
-    private fun respondType(out: OutputStream, device: UiDevice, encoded: String) {
+    private fun respondType(
+        out: OutputStream,
+        device: UiDevice,
+        readMark: ReadMark,
+        target: String,
+        encoded: String,
+    ) {
         val text = try {
             String(Base64.decode(encoded, Base64.NO_WRAP), StandardCharsets.UTF_8)
         } catch (e: IllegalArgumentException) {
@@ -322,9 +331,14 @@ class ResidentServerTest {
             return respond(out, BAD_REQUEST, TEXT, "body is not base64\n".bytes())
         }
         // The new value is built from this read and replaces the whole field, so a read older than the
-        // previous step's text would erase that text. Idle lets the app's update arrive, and the
-        // `refresh` in `awaitInputFocus` keeps a cached node from answering for it.
+        // previous step's text would erase that text. The host's `since` mark predates that step, so
+        // an event newer than it proves the app has started publishing the text; idle then lets the
+        // publishing finish, and the `refresh` in `awaitInputFocus` keeps a cached node from answering.
         device.waitForIdle()
+        sinceOf(target)?.let {
+            readMark.awaitPostdate(it, POSTDATE_BUDGET_MS)
+            device.waitForIdle()
+        }
         val field = awaitInputFocus()
             ?: return respond(out, STALE_STATUS, TEXT, "no field holds input focus\n".bytes())
         val refusal = when {

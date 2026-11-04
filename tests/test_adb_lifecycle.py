@@ -523,7 +523,7 @@ class _FakeResident:
             self._fetch,  # type: ignore[arg-type]
             self._clock,  # type: ignore[arg-type]
             lambda _r: ActOutcome(acted=True, published_mark=None),
-            lambda _text: None,
+            lambda _text, _since: None,
         )
 
     def stop(self) -> None:
@@ -841,7 +841,7 @@ def test_android_environment_preinstalled_skip_is_about_the_app_not_the_resident
                 lambda _since: HierarchyRead("<hierarchy/>"),
                 lambda: None,
                 lambda _r: ActOutcome(acted=True, published_mark=None),
-                lambda _text: None,
+                lambda _text, _since: None,
             )
 
     env = AndroidEnvironment(

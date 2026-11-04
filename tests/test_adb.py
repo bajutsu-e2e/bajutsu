@@ -868,7 +868,9 @@ def test_type_text_routes_what_input_text_cannot_carry_to_the_server(
 ) -> None:
     monkeypatch.setattr(AdbDriver, "_run_text", staticmethod(_no_shell))
     typed: list[str] = []
-    AdbDriver("U", run=lambda a: "", type_on_device=typed.append).type_text(text)
+    AdbDriver("U", run=lambda a: "", type_on_device=lambda t, _since: typed.append(t)).type_text(
+        text
+    )
     assert typed == [text]
 
 
@@ -879,7 +881,7 @@ def test_type_text_keeps_plain_ascii_on_input_text(monkeypatch: pytest.MonkeyPat
         AdbDriver, "_run_text", staticmethod(lambda _cmd, script: scripts.append(script))
     )
 
-    def _no_server(_text: str) -> None:
+    def _no_server(_text: str, _since: float | None) -> None:
         raise AssertionError("plain ASCII must stay on `input text`")
 
     AdbDriver("U", run=lambda a: "", type_on_device=_no_server).type_text("horse")
@@ -902,17 +904,42 @@ def test_type_text_fails_the_step_without_a_server(monkeypatch: pytest.MonkeyPat
 def test_type_text_fails_the_step_on_a_refusal_naming_the_reason(
     fault: Exception, match: str
 ) -> None:
-    def _refuse(_text: str) -> None:
+    def _refuse(_text: str, _since: float | None) -> None:
         raise fault
 
     with pytest.raises(base.UnsupportedAction, match=match):
         AdbDriver("U", run=lambda a: "", type_on_device=_refuse).type_text("馬")
 
 
+def test_server_text_entry_postdates_the_previous_entry_on_either_route(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # `/type` rewrites the whole field from its read, so a read older than the last entry would erase it.
+    monkeypatch.setattr(AdbDriver, "_run_text", staticmethod(lambda _cmd, _script: None))
+    clock = iter([10.0, 20.0, 30.0])
+    sent: list[float | None] = []
+    driver = AdbDriver(
+        "U",
+        run=lambda a: "",
+        fetch_clock=lambda: next(clock),
+        type_on_device=lambda _t, since: sent.append(since),
+    )
+    driver.type_text("abc")
+    driver.type_text("馬")
+    driver.type_text("術")
+    assert sent == [10.0, 20.0]
+
+
+def test_server_text_entry_sends_no_mark_with_nothing_to_postdate() -> None:
+    sent: list[float | None] = []
+    AdbDriver("U", run=lambda a: "", type_on_device=lambda _t, s: sent.append(s)).type_text("馬")
+    assert sent == [None]
+
+
 def test_type_text_does_not_resend_after_a_lost_reply(caplog: pytest.LogCaptureFixture) -> None:
     calls: list[str] = []
 
-    def _lost(text: str) -> None:
+    def _lost(text: str, _since: float | None) -> None:
         calls.append(text)
         raise AdbActUncertain("reply lost")
 
