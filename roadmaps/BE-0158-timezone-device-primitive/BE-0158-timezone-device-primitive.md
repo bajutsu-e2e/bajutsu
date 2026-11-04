@@ -50,9 +50,9 @@ The proposed surface is unchanged from BE-0052:
 - `simctl` has no `timezone` subcommand, and neither does `idb`. The Simulator's timezone is
   **inherited from the host Mac** (`/etc/localtime`), so a booted device reports the host's zone.
 - The sole actuator that moves the whole device is changing the **host Mac's** timezone
-  (`sudo systemsetup -settimezone`, or rewriting `/etc/localtime`). This approach has three costs:
-  it is global, it needs `sudo`, and it affects every Simulator at once. It also mutates the
-  developer's or CI machine's clock. It breaks per-scenario and per-device isolation and is out of
+  (`sudo systemsetup -settimezone`, or rewriting `/etc/localtime`). That approach is global, needs
+  `sudo`, affects every Simulator at once, and mutates the developer's or CI machine's clock. It
+  breaks per-scenario and per-device isolation and is out of
   contract.
 - A launch-time `SIMCTL_CHILD_TZ` (or a `TZ` launch-env) sets the app process's C-library
   `localtime` alone. Most iOS date UI reads `TimeZone.current` / `NSTimeZone.systemTimeZone` (Core

@@ -50,9 +50,9 @@ BE-0035 の大半のプリミティブで、すでにそれに追いついてい
   **ホスト Mac から継承**します(`/etc/localtime`)。そのため、起動中のデバイスはホストのゾーンを
   返します。
 - デバイス全体を動かせる唯一の作動手段は、**ホスト Mac** のタイムゾーンを変えること
-  (`sudo systemsetup -settimezone`、または `/etc/localtime` の書き換え)です。この手段には3つの
-  問題があります。グローバルであること、`sudo` を要すること、全シミュレータへ波及することです。開発機や CI の時計も書き換えます。シナリオごと・デバイスごとの分離を壊すもので、
-  契約外です。
+  (`sudo systemsetup -settimezone`、または `/etc/localtime` の書き換え)です。この手段はグローバルで、
+  `sudo` を要し、すべてのシミュレータへ波及し、開発機や CI の時計も書き換えます。シナリオごと・
+  デバイスごとの分離を壊すもので、契約外です。
 - launch 時の `SIMCTL_CHILD_TZ`(または `TZ` の launch-env)は、アプリプロセスの C ライブラリの
   `localtime` だけを設定します。iOS の日付 UI の多くは `TimeZone.current` /
   `NSTimeZone.systemTimeZone`(Core Foundation)を読みます。これは **`TZ` を無視**します。
