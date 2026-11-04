@@ -18,102 +18,128 @@
 ## Introduction
 
 The aggregate run-stats dashboard ([BE-0102](../BE-0102-run-stats-dashboard/BE-0102-run-stats-dashboard.md))
-answers "how is *this* config doing?" — pass-rate over time, run durations, the most-failing
-scenarios and steps, and a flakiness class, all aggregated over the run history of the single
-active config. Once `serve` becomes a hub that registers several configs as projects (the
-sibling **config project hub** proposal), the natural next question is a *comparative* one:
-"how do my projects compare against each other, and which one needs attention?"
+answers "how is *this* config doing?" It aggregates the run history of the single active config.
+The aggregates are pass-rate over time, run durations, the most-failing scenarios and steps, and a
+flakiness class.
 
-This proposal adds a **cross-project comparison view**: one dashboard that ranks and charts the
-registered projects side by side — pass-rate, flaky-rate, and run duration per project — so a
-team maintaining several configs can see at a glance which project is regressing, which is
-flaky, and which is slow, without opening each project's single-config dashboard in turn.
+Once `serve` becomes a hub that registers several configs as projects (the sibling **config project
+hub** proposal), a *comparative* question follows: "how do my projects compare against each other,
+and which one needs attention?"
+
+This proposal adds a **cross-project comparison view**. One dashboard ranks and charts the
+registered projects side by side, showing pass-rate, flaky-rate, and run duration per project. A
+team that maintains several configs can then see at a glance which project is regressing, which is
+flaky, and which is slow. Nobody has to open each project's single-config dashboard in turn.
 
 ## Motivation
 
-BE-0102 is deliberately single-config: every metric it computes is scoped to the currently
-bound config's run history, and there is no surface that puts two configs next to each other.
-For a single app that is exactly right. But the whole point of the config project hub is that a
-team holds *several* projects at once, and a per-project dashboard alone forces a serial,
-one-at-a-time reading: to find the worst-behaving project you would switch to each in turn,
-read its numbers, and hold the comparison in your head.
+BE-0102 is deliberately single-config. Every metric it computes is scoped to the currently bound
+config's run history, and no surface puts two configs next to each other. For a single app, that is
+exactly right.
 
-A comparison view removes that. The moment the hub records runs with a `project_id` (the config
-project hub item wires the foreign key BE-0015 left dangling), the run history becomes
-partitionable *by project*, and the same aggregations BE-0102 already computes can be run once
-per project and laid out together. The value is the ranking and the trend lines across
-projects — "project *checkout* dropped from 98% to 71% pass-rate this week; project *search* is
-the flakiest" — which no single-config dashboard can show.
+The whole point of the config project hub, however, is that a team holds *several* projects at once.
+A per-project dashboard alone forces a serial, one-at-a-time reading. To find the worst-behaving
+project, you would switch to each in turn, read its numbers, and hold the comparison in your head.
 
-This is the analytics complement to [BE-0220](../BE-0220-flaky-suggestion-and-cross-run-fix/BE-0220-flaky-suggestion-and-cross-run-fix.md),
-which mines cross-run history to *rank and propose fixes for* individual flaky scenarios. BE-0220
-works within a run history to find flaky scenarios; this item works *across projects* to compare
-their aggregate health. They share the underlying run store and are complementary, not
-overlapping — one is scenario-level and prescriptive, the other is project-level and comparative.
+A comparison view removes that burden. The hub records runs with a `project_id`, because the config
+project hub item wires the foreign key that BE-0015 left dangling. The run history then becomes
+partitionable *by project*. The aggregations BE-0102 already computes can run once per project and be
+laid out together.
+
+The value is the ranking and the trend lines across projects. Two examples: "project *checkout*
+dropped from 98% to 71% pass-rate this week", and "project *search* is the flakiest". No
+single-config dashboard can show either.
+
+This item is the analytics complement to
+[BE-0220](../BE-0220-flaky-suggestion-and-cross-run-fix/BE-0220-flaky-suggestion-and-cross-run-fix.md).
+BE-0220 mines cross-run history to *rank and propose fixes for* individual flaky scenarios. It works
+within a run history to find flaky scenarios. This item works *across projects* to compare their
+aggregate health.
+
+The two share the underlying run store, and they are complementary rather than overlapping. BE-0220
+is scenario-level and prescriptive. This item is project-level and comparative.
 
 This stays within the prime directives, exactly as BE-0102 does. It is a **read-only aggregation**
-over stored run data: the verdicts it charts were already decided deterministically by `run`; no
+over stored run data. The verdicts it charts were already decided deterministically by `run`, and no
 LLM enters the computation. It reuses each project's config through the hub, so it stays
-app-agnostic — it compares whatever projects are registered and encodes nothing about a
-particular app.
+app-agnostic: it compares whatever projects are registered and encodes nothing about a particular
+app.
 
 ## Detailed design
 
-The work is MECE across three units: the aggregation, the API, and the UI. It depends on the
-config project hub having landed the per-project run history it reads.
+The work is MECE across three units: the aggregation, the API, and the UI. It depends on the config
+project hub having landed the per-project run history that this item reads.
 
 ### 1. Cross-project aggregation (reuse BE-0102's computation)
 
-Reuse BE-0102's existing per-config aggregation rather than reimplementing it. BE-0102 computes,
-for one config's run history, pass-rate over time, run durations, most-failing
-scenarios/steps, and a flakiness class. Factor that computation so it takes a run set as input,
-then run it **once per registered project** over that project's `project_id`-scoped runs, and
-assemble the per-project results into a comparison model: for each project, its latest pass-rate,
-its flaky-rate, its median/95th-percentile duration, and a short trend series.
+Reuse BE-0102's existing per-config aggregation rather than reimplementing it. For one config's run
+history, BE-0102 computes these values:
 
-BE-0102's flakiness output is a per-scenario *classification* (each scenario is labelled flaky or
-not over the window), so the comparison needs one scalar per project to rank on. The **flaky-rate**
-is that roll-up: the share of the project's scenarios BE-0102 classifies as flaky over the window
-(flaky-classified scenarios ÷ total scenarios). This is a plain count over BE-0102's existing
-labels — it adds no new flakiness heuristic, keeping "reuse BE-0102's computation" literal — and
-answers the ranking question ("which project has the most flaky surface?") directly.
+- pass-rate over time
+- run durations
+- the most-failing scenarios and steps
+- a flakiness class
 
-The aggregation is pure and deterministic, sits in the Python core (out of any Simulator path),
-and is testable on the Linux gate against fixture run data.
+Factor that computation so it takes a run set as input. Then run it **once per registered project**
+over that project's `project_id`-scoped runs. Assemble the per-project results into a comparison
+model. For each project, the model holds four values:
+
+- its latest pass-rate
+- its flaky-rate
+- its median and 95th-percentile duration
+- a short trend series
+
+BE-0102's flakiness output is a per-scenario *classification*. Each scenario is labelled flaky or
+not over the window. The comparison needs one scalar per project to rank on. The **flaky-rate** is
+that roll-up: the share of the project's scenarios that BE-0102 classifies as flaky over the window
+(flaky-classified scenarios ÷ total scenarios).
+
+The flaky-rate is a plain count over BE-0102's existing labels. It adds no new flakiness heuristic,
+which keeps "reuse BE-0102's computation" literal. It answers the ranking question ("which project
+has the most flaky surface?") directly.
+
+The aggregation is pure and deterministic. It sits in the Python core, out of any Simulator path, and
+is testable on the Linux gate against fixture run data.
 
 ### 2. API
 
-- `GET /api/metrics/projects` — the comparison model: one row per registered project with its
-  headline metrics (pass-rate, flaky-rate, duration percentiles) and a trend series over a
-  requested window. Org-scoped, resolving to `default` locally, exactly as the hub's endpoints do.
+- `GET /api/metrics/projects` — the comparison model. It returns one row per registered project, with
+  its headline metrics (pass-rate, flaky-rate, duration percentiles) and a trend series over a
+  requested window. It is org-scoped and resolves to `default` locally, exactly as the hub's
+  endpoints do.
 
-This sits alongside — not replacing — BE-0102's single-config metrics endpoint; a caller who
-wants one project's detail still uses the BE-0102 view.
+This endpoint sits alongside BE-0102's single-config metrics endpoint and does not replace it. A
+caller who wants one project's detail still uses the BE-0102 view.
 
 ### 3. UI
 
-A **comparison dashboard** view in serve: a sortable table of projects (sort by pass-rate,
-flaky-rate, or duration to surface the worst offender) plus small multiples — one trend
-sparkline per project for pass-rate over the window — so regressions and flakiness stand out
-across the whole set at a glance. Selecting a project row deep-links into that project's existing
-BE-0102 single-config dashboard (rebound via the hub's project switcher), so the comparison view
-is the entry point and BE-0102 is the drill-down.
+A **comparison dashboard** view in serve has two parts:
+
+- A sortable table of projects. Sorting by pass-rate, flaky-rate, or duration surfaces the worst
+  offender.
+- Small multiples: one pass-rate trend sparkline per project over the window. Regressions and
+  flakiness stand out across the whole set at a glance.
+
+Selecting a project row deep-links into that project's existing BE-0102 single-config dashboard,
+rebound via the hub's project switcher. The comparison view is the entry point, and BE-0102 is the
+drill-down.
 
 ## Alternatives considered
 
-- **Extend BE-0102 in place to take a project filter.** Rejected as the primary framing: BE-0102
-  is the *single-config* detail view and stays useful as-is (it is the drill-down target here).
-  The comparison is a distinct surface — a ranking and small-multiples layout across projects —
-  not a filtered variant of one config's dashboard, so it is its own item that *reuses* BE-0102's
-  computation rather than growing inside it.
-- **Fold cross-project comparison into the config project hub item.** Rejected to keep each item
-  shippable on its own: the hub is the registry + per-project run plumbing (valuable without any
-  comparison view), and the comparison dashboard is the analytics layer on top. Separating them
-  lets the hub land first and this build on the `project_id`-scoped history it produces.
+- **Extend BE-0102 in place to take a project filter.** Rejected as the primary framing. BE-0102 is
+  the *single-config* detail view and stays useful as-is, because it is the drill-down target here.
+  The comparison is a distinct surface: a ranking and small-multiples layout across projects. It is
+  not a filtered variant of one config's dashboard. It is therefore its own item that *reuses*
+  BE-0102's computation rather than growing inside it.
+- **Fold cross-project comparison into the config project hub item.** Rejected, to keep each item
+  shippable on its own. The hub is the registry plus the per-project run plumbing, which is valuable
+  without any comparison view. The comparison dashboard is the analytics layer on top. Separating
+  them lets the hub land first, and this item then builds on the `project_id`-scoped history the hub
+  produces.
 - **Merge with [BE-0220](../BE-0220-flaky-suggestion-and-cross-run-fix/BE-0220-flaky-suggestion-and-cross-run-fix.md).**
-  Rejected: BE-0220 is scenario-level and prescriptive (rank flaky scenarios, propose fixes) and
-  its fix-proposal path is AI-assisted; this item is project-level, comparative, and a pure
-  read-only aggregation with no AI. They share the run store and are linked `Related`, but their
+  Rejected. BE-0220 is scenario-level and prescriptive (rank flaky scenarios, propose fixes), and its
+  fix-proposal path is AI-assisted. This item is project-level and comparative, and it is a pure
+  read-only aggregation with no AI. The two share the run store and are linked `Related`, but their
   outputs and audiences differ.
 
 ## Progress
