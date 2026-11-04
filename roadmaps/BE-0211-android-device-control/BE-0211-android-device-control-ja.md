@@ -21,7 +21,7 @@ Android バックエンド（[BE-0007](../BE-0007-android-backend/BE-0007-androi
 （`bajutsu/platform_lifecycle.py`）。そのため、すべてのデバイス制御ステップ（`setLocation`、
 `setClipboard` など）が `UnsupportedAction` で失敗します。
 
-Android エミュレータは、ファミリの一部を満たせます。`setLocation` は `emu geo fix` で動き、
+Android エミュレータは、ファミリの一部を満たせます。`setLocation` は `emu geo fix` で、
 クリップボードの read/write/clear も実行できます。本項目は、まさにそのサブセットに対する
 `AndroidDeviceControl` を実装して、environment に配線します。その結果、エミュレータが操作を
 実現できる範囲で idb と同等になります。

@@ -63,8 +63,8 @@ reconstruct them piecemeal:
   `app` to `target`, to separate it from the app it describes.
 - **`capturePolicy` "rule".** [`docs/evidence.md`](../../docs/evidence.md) calls a `capturePolicy`
   entry a "rule" throughout. The schema does define a `CaptureRule` type
-  (`bajutsu/scenario/models/evidence.py`). Three names for the same concept exist, `capturePolicy`,
-  `CaptureRule`, and "rule" in prose, and nothing reconciles them.
+  (`bajutsu/scenario/models/evidence.py`). Yet nothing reconciles the three names
+  `capturePolicy`, `CaptureRule`, and "rule" in prose.
 
 The project is pre-alpha, and the [public docs site](../BE-0093-public-docs-site/BE-0093-public-docs-site.md)
 has already shipped. More readers and more pages will accumulate around today's terminology
@@ -117,9 +117,9 @@ The work breaks down into five independent, sequential units:
 
 Out of scope: renaming any term at the code, CLI-flag, or config-key level (`capturePolicy`,
 `backend`, "Tier 1" / "Tier 2", and similar remain unchanged). This proposal documents and
-disambiguates the terms Bajutsu already uses. It does not argue for renaming any of them. Suppose
-the inventory surfaces a term whose *name itself*, not just its documentation, seems worth
-revisiting. That becomes its own future proposal rather than scope creep here.
+disambiguates the terms Bajutsu already uses. It does not argue for renaming any of them. The
+inventory may surface a term whose *name itself*, not just its documentation, seems worth
+revisiting. Such a term becomes its own future proposal rather than scope creep here.
 
 A sibling proposal, the web-only beginner tutorial drafted alongside this one, depends on this one
 landing first. Its new tutorial track can then use the disambiguated vocabulary this glossary

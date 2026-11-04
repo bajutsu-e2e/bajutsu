@@ -20,8 +20,8 @@ The Android backend ([BE-0007](../BE-0007-android-backend/BE-0007-android-backen
 device control. `AndroidEnvironment.device_control()` returns `None` (`bajutsu/platform_lifecycle.py`),
 so every device-control step (`setLocation`, `setClipboard`, …) fails as `UnsupportedAction`.
 
-The Android emulator can honor a subset of the family. `setLocation` works via `emu geo fix`, and
-the clipboard read/write/clear operations also work. This item implements an `AndroidDeviceControl`
+The Android emulator can honor a subset of the family: `setLocation` via `emu geo fix`, and the
+clipboard read/write/clear operations. This item implements an `AndroidDeviceControl`
 for exactly that subset and wires it into the environment. The result is parity with idb wherever
 the emulator can back the operation.
 
