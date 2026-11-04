@@ -1,5 +1,5 @@
 # Driver & selectors
 
-The common interface every backend satisfies, and the shared types a selector resolves against.
+Every backend satisfies this common interface. The page also covers the shared types a selector resolves against.
 
 ::: bajutsu.common.drivers.base

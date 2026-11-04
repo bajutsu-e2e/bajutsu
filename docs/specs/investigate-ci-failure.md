@@ -6,16 +6,17 @@
 > [BE-0367](../../roadmaps/BE-0367-android-ci-emulator-diagnostics/BE-0367-android-ci-emulator-diagnostics.md)、
 > [docs/ci.md](../ci.md)、[investigate-scenario-flakiness](investigate-scenario-flakiness.md)
 
-このリポジトリ自身の開発CI（`.github/workflows/`）が失敗したとき、原因を分類し、根拠付きのレポート
-として返すエージェントスキルを追加します。分類は「ログにそのまま出ている不具合」「既知のインフラ由来
-の揺れ」「未知の症状」のいずれかです。[`pr-followup`](../../.apm/skills/pr-followup/SKILL.md) の
-Step 2からサブステップとして呼ばれ、修正そのものはpr-followup側に残します。
+このリポジトリ自身の開発CI（`.github/workflows/`）が失敗したときに、原因を分類するエージェントスキルを追加します。
+スキルは、分類と根拠を並べたレポートを返します。
+分類は、ログにそのまま出ている不具合、既知のインフラ由来の揺れ、未知の症状のいずれかです。
+[`pr-followup`](../../.apm/skills/pr-followup/SKILL.md) の Step 2 がこのスキルをサブステップとして呼びます。
+修正そのものは pr-followup 側に残します。
 
 ## 1. なにをつくるのか
 
-`.apm/skills/investigate-ci-failure/SKILL.md` を新規に作ります。入力はPR番号で、
-[`pr-followup`](../../.apm/skills/pr-followup/SKILL.md) のStep 2から渡されます。出力は、失敗して
-いるチェックそれぞれについて次の4分類のいずれかと、その根拠を並べたレポートです。
+`.apm/skills/investigate-ci-failure/SKILL.md` を新規に作ります。
+入力は PR 番号で、[`pr-followup`](../../.apm/skills/pr-followup/SKILL.md) の Step 2 から渡されます。
+出力は、失敗しているチェックそれぞれに、次の4分類のいずれかとその根拠を添えたレポートです。
 
 | 分類 | 意味 |
 |---|---|
@@ -24,109 +25,101 @@ Step 2からサブステップとして呼ばれ、修正そのものはpr-follo
 | `e2e-known-flake` | iOS、Android、webいずれかのE2Eレーンのジョブの失敗が、既知のインフラ由来の揺れに一致する |
 | `e2e-unclassified` | E2Eレーンのジョブが失敗しているが、既知の型に一致せず、履歴照合でも不安定と判定されない |
 
-判定の根拠には2つを使います。1つは、
-[BE-0361](../../roadmaps/BE-0361-ios-ci-simulator-diagnostics/BE-0361-ios-ci-simulator-diagnostics.md)
-/
-[BE-0367](../../roadmaps/BE-0367-android-ci-emulator-diagnostics/BE-0367-android-ci-emulator-diagnostics.md)
-が積んでいる3層診断（`runs/diagnostics/` 配下のartifact）です。もう1つは、
-[investigate-scenario-flakiness](investigate-scenario-flakiness.md) による過去run履歴の照合です。
+判定の根拠には2つを使います。
+1つは、[BE-0361](../../roadmaps/BE-0361-ios-ci-simulator-diagnostics/BE-0361-ios-ci-simulator-diagnostics.md)
+と [BE-0367](../../roadmaps/BE-0367-android-ci-emulator-diagnostics/BE-0367-android-ci-emulator-diagnostics.md)
+が積んでいる3層診断（`runs/diagnostics/` 配下のartifact）です。
+もう1つは、[investigate-scenario-flakiness](investigate-scenario-flakiness.md) による過去run履歴の照合です。
 
 ### やらないこと
 
-- **コードの修正、push、再実行はしない。** [`record-issue`](../../.apm/skills/record-issue/SKILL.md)
-  と同じく、分類と根拠の提示までがこのスキルの範囲であり、実際に行動するのは呼び出し元の
-  [`pr-followup`](../../.apm/skills/pr-followup/SKILL.md) である。
-- **`devicefarm.yml` / `ai-smoke.yml` は対象にしない。** どちらも `workflow_dispatch` 専用で、PRの
-  必須チェックにならない。[`pr-followup`](../../.apm/skills/pr-followup/SKILL.md) のStep 1が読む
-  `gh pr checks` の対象にも出てこないため、扱う場面自体が生じない。
-- **人間による単独起動の入力形式は今回作らない。** PR番号以外の入力（run-id、「直近のmain失敗」
-  など）を受け付ける拡張は、4章の代替案に理由とともに書き残し、今回のスコープからは外す。
+- **コードの修正、push、再実行はしない。** [`record-issue`](../../.apm/skills/record-issue/SKILL.md) と同じく、このスキルの範囲は分類と根拠の提示までです。実際に行動するのは、呼び出し元の [`pr-followup`](../../.apm/skills/pr-followup/SKILL.md) です。
+- **`devicefarm.yml` と `ai-smoke.yml` は対象にしない。** どちらも `workflow_dispatch` 専用で、PRの必須チェックになりません。[`pr-followup`](../../.apm/skills/pr-followup/SKILL.md) の Step 1 が読む `gh pr checks` の対象にも出てこないため、扱う場面自体が生じません。
+- **人間による単独起動の入力形式は今回作らない。** PR番号以外の入力（run-id、「直近のmain失敗」など）を受け付ける拡張は、今回のスコープから外します。理由は4章の代替案に書き残します。
 
 ## 2. なぜつくるのか
 
-現状の [`pr-followup`](../../.apm/skills/pr-followup/SKILL.md) のStep 2は一段構えの手順です。
-`gh run view --log-failed` でログを読み、原因を特定し、直接直します。`ci.yml` の `check` ジョブの
-ように失敗理由がログにそのまま出るケースはこれで足ります。ただし、iOS、Android、webの各E2Eレーンでは
-足りません。
-[BE-0361](../../roadmaps/BE-0361-ios-ci-simulator-diagnostics/BE-0361-ios-ci-simulator-diagnostics.md)
-/
-[BE-0367](../../roadmaps/BE-0367-android-ci-emulator-diagnostics/BE-0367-android-ci-emulator-diagnostics.md)
-が3層診断を追加しました。それは `runs/diagnostics/` 配下のartifactとして積まれるだけです。
-`gh run view --log-failed` の出力には現れません。したがって現状のStep 2は、E2Eレーンの失敗に対して
-診断artifactを一切見ずに、ログの断片だけから原因を推測しています。
+現状の [`pr-followup`](../../.apm/skills/pr-followup/SKILL.md) の Step 2 は一段構えの手順です。
+`gh run view --log-failed` でログを読み、原因を特定し、直接直します。
+`ci.yml` の `check` ジョブのように、失敗理由がログにそのまま出るケースには、この手順で足ります。
+iOS、Android、webの各E2Eレーンには足りません。
 
-診断artifactを見ないことは、2つの失敗の仕方につながります。[docs/ci.md](../ci.md) が列挙する既知の
-インフラ由来の揺れ（`SimRenderServer` のクラッシュ、`CoreSimulator` の応答待ち、Androidレンダラの
-wedgeなど）があります。1つは、これをコードの回帰と誤認し、無関係な修正をpushしてCIをもう一度回す
-ことです。もう1つは逆に、本当の回帰を「いつもの揺れ」と決めつけて見送ることです。どちらも、
-[`pr-followup`](../../.apm/skills/pr-followup/SKILL.md) のループが「push、CI待ち、また外れる」を
-繰り返すコストとしてそのまま跳ね返ります。
+[BE-0361](../../roadmaps/BE-0361-ios-ci-simulator-diagnostics/BE-0361-ios-ci-simulator-diagnostics.md)
+と [BE-0367](../../roadmaps/BE-0367-android-ci-emulator-diagnostics/BE-0367-android-ci-emulator-diagnostics.md)
+が3層診断を追加しました。
+3層診断は `runs/diagnostics/` 配下のartifactとして積まれるだけで、`gh run view --log-failed` の出力には現れません。
+したがって現状の Step 2 は、E2Eレーンの失敗に対して診断artifactを一切見ずに、ログの断片だけから原因を推測しています。
+
+診断artifactを見ないと、2つの失敗の仕方が生じます。
+前提として、[docs/ci.md](../ci.md) が列挙する既知のインフラ由来の揺れがあります。
+例は、`SimRenderServer` のクラッシュ、`CoreSimulator` の応答待ち、Androidレンダラのwedgeです。
+1つ目の失敗は、既知の揺れをコードの回帰と誤認し、無関係な修正をpushしてCIをもう一度回すことです。
+2つ目は逆に、本当の回帰を「いつもの揺れ」と決めつけて見送ることです。
+どちらも、[`pr-followup`](../../.apm/skills/pr-followup/SKILL.md) のループが「push、CI待ち、また外れる」を繰り返すコストとしてそのまま跳ね返ります。
 
 [BE-0220](../../roadmaps/BE-0220-flaky-suggestion-and-cross-run-fix/BE-0220-flaky-suggestion-and-cross-run-fix.md)
-の `triage --flaky` は、この2つの失敗の仕方を人間の勘ではなくデータ（同一シナリオの過去run群における
-合否の分布）で切り分ける仕組みをすでに持っています。ただしCIの実行結果はどこにも履歴として蓄積されて
-いません。`serve-db.yml` はPostgres方言のテストレーンであり、CIの実行結果を蓄積する仕組みでは
-ありません。この履歴の不在こそが、[`pr-followup`](../../.apm/skills/pr-followup/SKILL.md) がまだ
-`triage --flaky` を使えていない直接の理由です。investigate-ci-failureはこの不在を埋めます。
-`gh run download` で直近のrunをその場で履歴ディレクトリに再構成し、
-[investigate-scenario-flakiness](investigate-scenario-flakiness.md) に渡します。
+の `triage --flaky` は、この2つの失敗の仕方を、人間の勘ではなくデータで切り分ける仕組みをすでに持っています。
+データとは、同一シナリオの過去run群における合否の分布です。
+ただしCIの実行結果は、どこにも履歴として蓄積されていません。
+`serve-db.yml` はPostgres方言のテストレーンであり、CIの実行結果を蓄積する仕組みではありません。
+この履歴の不在が、[`pr-followup`](../../.apm/skills/pr-followup/SKILL.md) がまだ `triage --flaky` を使えていない直接の理由です。
+investigate-ci-failureは、この不在を埋めます。
+`gh run download` で直近のrunをその場で履歴ディレクトリに再構成し、[investigate-scenario-flakiness](investigate-scenario-flakiness.md) に渡します。
 
 ## 3. どう実現するか
 
 ### 配置
 
 - `.apm/skills/investigate-ci-failure/SKILL.md`（手順の本体）
-- `.apm/skills/investigate-ci-failure/references/known-ci-failure-patterns.md`。既知のインフラ由来
-  flakyパターンの一覧である。種は [docs/ci.md](../ci.md) が本文中で個別に触れている症状から書き
-  起こす。`Timed out while requesting screenshot` の再現、`CoreSimulator` の応答待ち、Androidレンダ
-  ラのwedgeなどである。以後このスキルが新しいパターンを確認するたびに追記する。
+- `.apm/skills/investigate-ci-failure/references/known-ci-failure-patterns.md`：既知のインフラ由来flakyパターンの一覧です。最初の項目は、[docs/ci.md](../ci.md) が本文中で個別に触れている症状から書き起こします。例は、`Timed out while requesting screenshot` の再現、`CoreSimulator` の応答待ち、Androidレンダラのwedgeです。以後、このスキルが新しいパターンを確認するたびに追記します。
 
 ### 入力
 
-PR番号1つです。[`pr-followup`](../../.apm/skills/pr-followup/SKILL.md) のStep 2から渡されます。
+PR番号1つです。[`pr-followup`](../../.apm/skills/pr-followup/SKILL.md) の Step 2 から渡されます。
 
 ### 手順
 
-1. `gh pr checks <PR>` で失敗しているチェックを列挙する。それぞれについて
-   `gh run view <run-id> --json jobs` でジョブ名を取り、`ci.yml` の `check` ジョブか、E2Eレーンの
-   ジョブか、それ以外（`pr-title` / `roadmap-id` / `mcp-wire` など）かを判別する。
-2. `check` ジョブの失敗は、`gh run view --log-failed` で失敗したstep名を読み、
-   `known-ci-failure-patterns.md` の `gate-mechanical` 一覧（lockfileのずれ、フォーマット崩れ、skill
-   デプロイのずれのそれぞれについて、直し方が1コマンドで書いてある）と照合する。一致すれば
-   `gate-mechanical` としてその直し方ごと返す。一致しなければ `code-defect` として、ログの該当箇所を
-   添えて返す。
-3. E2Eレーンのジョブの失敗は、次の手順で判別する。まず `collect-ios-diagnostics` /
-   `collect-android-diagnostics` / ホスト側サンプラーが `runs/diagnostics/` 配下に積んだartifactを、
-   `gh run download <run-id> -n <artifact名>` で取得する。取得したartifactを
-   `known-ci-failure-patterns.md` の `e2e-known-flake` 一覧と突き合わせる。
-4. 手順3で判別できない場合は、履歴照合へ進む。「判別できない」とは、一致するパターンがない、または
-   初めて見る症状の場合を指す。対象は、同じワークフロー、同じジョブ名の直近runとする。件数はデフォル
-   トで20件とし、`main` へのpushとmerge queueのrunに限る。
-   `gh run list --workflow <wf> -L 20 --json databaseId,conclusion,headBranch,createdAt` で直近run
-   を列挙し、それぞれの対象artifactを `gh run download` で1つのディレクトリにまとめる。このディレク
-   トリを [investigate-scenario-flakiness](investigate-scenario-flakiness.md) に渡す。`use_ai` は
-   渡さない。分類に要るのは `classification` の値だけで、triageの原因仮説は要らないためである。
-   返ってきたレポートで対象シナリオが `flaky` 判定なら `e2e-known-flake` とする。データに基づく
-   新しいパターンとしての判定である。そうでなければ `e2e-unclassified` として返す。
-5. 手順4で `e2e-known-flake` と判定した場合は、確認した症状を `known-ci-failure-patterns.md` に
-   追記する。追記はファイルの変更にとどめ、その変更をpushするかどうかの判断はしない。判断は呼び出し元
-   の[`pr-followup`](../../.apm/skills/pr-followup/SKILL.md) に委ねる。
-6. 全チェックの分類結果を1本のレポートにまとめて返す。各項目はチェック名、分類、根拠、推奨アクション
-   の4つで構成する。根拠は、ログの該当行、artifactのパス、または
-   [investigate-scenario-flakiness](investigate-scenario-flakiness.md) が返したシナリオ名と
-   `flip_rate` である。推奨アクションは、`gate-mechanical` なら直し方のコマンド、`code-defect` なら
-   「通常の修正フローに進む」、`e2e-known-flake` なら「再実行のみで足りる可能性が高い」、
-   `e2e-unclassified` なら「人間の判断が要る」である。
+1. `gh pr checks <PR>` で、失敗しているチェックを列挙します。
+   それぞれについて `gh run view <run-id> --json jobs` でジョブ名を取り、次のどれかに判別します。
+   - `ci.yml` の `check` ジョブ
+   - E2Eレーンのジョブ
+   - それ以外（`pr-title`、`roadmap-id`、`mcp-wire` など）
+2. `check` ジョブの失敗は、`gh run view --log-failed` で失敗したstep名を読み、`known-ci-failure-patterns.md` の `gate-mechanical` 一覧と照合します。
+   一覧には、lockfileのずれ、フォーマット崩れ、skillデプロイのずれのそれぞれについて、1コマンドの直し方が書いてあります。
+   一致すれば、`gate-mechanical` として直し方ごと返します。
+   一致しなければ、ログの該当箇所を添えて `code-defect` として返します。
+3. E2Eレーンのジョブの失敗は、次の順で判別します。
+   まず、`collect-ios-diagnostics`、`collect-android-diagnostics`、ホスト側サンプラーが `runs/diagnostics/` 配下に積んだartifactを、`gh run download <run-id> -n <artifact名>` で取得します。
+   次に、取得したartifactを `known-ci-failure-patterns.md` の `e2e-known-flake` 一覧と突き合わせます。
+4. 手順3で判別できない場合は、履歴照合へ進みます。
+   「判別できない」とは、一致するパターンがない場合、または初めて見る症状の場合を指します。
+   対象は、同じワークフロー、同じジョブ名の直近runです。
+   件数のデフォルトは20件で、`main` へのpushとmerge queueのrunに限ります。
+   `gh run list --workflow <wf> -L 20 --json databaseId,conclusion,headBranch,createdAt` で直近runを列挙し、それぞれの対象artifactを `gh run download` で1つのディレクトリにまとめます。
+   このディレクトリを [investigate-scenario-flakiness](investigate-scenario-flakiness.md) に渡します。
+   `use_ai` は渡しません。分類に要るのは `classification` の値だけで、triageの原因仮説は要らないためです。
+   返ってきたレポートで対象シナリオが `flaky` 判定なら、`e2e-known-flake` とします。これは、データに基づく新しいパターンとしての判定です。
+   そうでなければ、`e2e-unclassified` として返します。
+5. 手順4で `e2e-known-flake` と判定した場合は、確認した症状を `known-ci-failure-patterns.md` に追記します。
+   追記はファイルの変更にとどめ、その変更をpushするかどうかは判断しません。
+   判断は、呼び出し元の [`pr-followup`](../../.apm/skills/pr-followup/SKILL.md) に委ねます。
+6. 全チェックの分類結果を、1本のレポートにまとめて返します。
+   各項目は、チェック名、分類、根拠、推奨アクションの4つで構成します。
+   根拠は、ログの該当行、artifactのパス、または [investigate-scenario-flakiness](investigate-scenario-flakiness.md) が返したシナリオ名と `flip_rate` です。
+   推奨アクションは、分類ごとに次のとおりです。
+   - `gate-mechanical`：直し方のコマンド
+   - `code-defect`：「通常の修正フローに進む」
+   - `e2e-known-flake`：「再実行のみで足りる可能性が高い」
+   - `e2e-unclassified`：「人間の判断が要る」
 
 ### `pr-followup` 側の変更
 
-Step 2の冒頭でinvestigate-ci-failureを呼び、返ってきた分類に応じて次のように分岐させます。
+Step 2 の冒頭でinvestigate-ci-failureを呼び、返ってきた分類に応じて次のように分岐させます。
 
-- `gate-mechanical` は、レポートに書かれたコマンドをそのまま実行する。
-- `code-defect` は、現行のStep 2の手順（ログを読み、直す）をそのまま続ける。
-- `e2e-known-flake` は、`gh run rerun --failed <run-id>` で再実行を要求する。コードは変更しない。
-- `e2e-unclassified` は、[`pr-followup`](../../.apm/skills/pr-followup/SKILL.md) の既存のエスカレー
-  ション経路に載せ、人間の判断を仰ぐ。
+- `gate-mechanical` は、レポートに書かれたコマンドをそのまま実行します。
+- `code-defect` は、現行の Step 2 の手順（ログを読み、直す）をそのまま続けます。
+- `e2e-known-flake` は、`gh run rerun --failed <run-id>` で再実行を要求します。コードは変更しません。
+- `e2e-unclassified` は、[`pr-followup`](../../.apm/skills/pr-followup/SKILL.md) の既存のエスカレーション経路に載せ、人間の判断を仰ぎます。
 
 ## 4. 検討した代替案と、採らなかった理由
 
