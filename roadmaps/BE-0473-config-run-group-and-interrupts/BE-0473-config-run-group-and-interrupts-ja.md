@@ -66,7 +66,7 @@ BE-0452 は target のフラットなキーを用途別に組み直しました�
 有効な `run.erase` があるかを確かめます。
 
 一方、Android のライフサイクルは、`erase` と `reinstall: clean` を、何を消すかという1つの判断として読みます。
-2つに対して同じ処理もします（`bajutsu/common/platform_lifecycle/environments/android/android_environment.py`）。
+どちらも同じように処理します（`bajutsu/common/platform_lifecycle/environments/android/android_environment.py`）。
 スキーマは、その1つの判断を `app.reinstall` と `run.erase` に分けて置いています。
 
 同じファイルには、小さな不整合も2つあります。1つ目は `notify` です。`notify` は、Webhook を一部の target に絞る方法を

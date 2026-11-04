@@ -171,8 +171,8 @@ A scenario entry with `choice: leave` replaces the target's answer for that prom
 scenario turns off one inherited answer.
 
 A scenario such as `push.yaml` writes `systemAlertHandling: false` today to handle one prompt itself.
-It writes `- systemAlert: notifications` with `choice: leave` instead. Unlike `false`, the entry names
-the prompt it leaves, so a prompt the target adds later still applies to that scenario.
+After this item, it writes `- systemAlert: notifications` with `choice: leave` instead. Unlike `false`,
+the entry names the prompt it leaves, so a prompt the target adds later still applies to that scenario.
 
 Two entries for the same prompt within one layer fail at load, as two `rules` for one prompt fail
 today.
