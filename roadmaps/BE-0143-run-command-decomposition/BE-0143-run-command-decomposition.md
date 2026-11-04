@@ -16,78 +16,98 @@
 ## Introduction
 
 `run`, the command that decides pass/fail for every scenario, is implemented as one 418-line
-function. This item extracts its option declarations and orchestration steps into cohesive
-helpers behind the same CLI surface, so the deterministic core's most load-bearing command
-becomes readable and independently testable without changing its behavior.
+function. This item extracts its option declarations and orchestration steps into cohesive helpers
+behind the same CLI surface. The most load-bearing command of the deterministic core then becomes
+readable and independently testable, and its behavior does not change.
 
 ## Motivation
 
-`bajutsu/cli/commands/run.py:186` opens a single function, `run`, that does not return until
-`bajutsu/cli/commands/run.py:603` (`register` starts at line 604) — 418 lines in one function
-body. Of those, roughly 118 lines (186–303) are `typer.Option` declarations for the command's
-large flag surface, and the remaining ~300 lines (304–601) are the orchestration: resolving the
-effective config and building the app if needed, resolving `--headed`/`--browser`/`--browsers`,
-loading and filtering scenarios by `--tag`/`--exclude`, selecting the actuator and validating the
-`--browsers` matrix against it, resolving device lanes, constructing the alert-guard factory,
-resolving the baselines/schemas/goldens directories, emitting the start webhook, bringing up the
-launch server, dispatching either the single-engine or cross-browser-matrix execution path, and
-finally emitting the verdict, the end-of-run webhook, the optional `--zip` artifact, and the AI
-usage summary. A function this size is hard to read start to finish, hard to test at anything
-finer than "run the whole command," and risky to change — a single edit anywhere in the body can
-touch state built up over the preceding 300 lines. This is a size-M effort: the seams between
-these stages are already implicit in the code's own comments (e.g. "Validate the backend before
-touching the Simulator CLIs", "Mocks ride the network channel"), so extraction is mostly a matter
-of naming and moving, not redesigning.
+`bajutsu/cli/commands/run.py:186` opens a single function, `run`. The function does not return until
+`bajutsu/cli/commands/run.py:603`, and `register` starts at line 604. That makes 418 lines in one
+function body, split into two parts:
+
+- **About 118 lines (186–303)** are `typer.Option` declarations for the command's large flag
+  surface.
+- **The remaining ~300 lines (304–601)** are the orchestration. The function runs these steps in
+  order:
+  1. Resolve the effective config, and build the app if needed.
+  2. Resolve `--headed`, `--browser`, and `--browsers`.
+  3. Load scenarios, and filter them by `--tag` and `--exclude`.
+  4. Select the actuator, and validate the `--browsers` matrix against it.
+  5. Resolve device lanes.
+  6. Construct the alert-guard factory.
+  7. Resolve the baselines, schemas, and goldens directories.
+  8. Emit the start webhook.
+  9. Bring up the launch server.
+  10. Dispatch either the single-engine path or the cross-browser-matrix path.
+  11. Emit the verdict, the end-of-run webhook, the optional `--zip` artifact, and the AI usage
+      summary.
+
+A function of this size has three problems:
+
+- Readers struggle to follow it start to finish.
+- Tests cannot target anything finer than "run the whole command".
+- Changes carry risk. A single edit anywhere in the body can touch state built up over the
+  preceding 300 lines.
+
+This is a size-M effort. The seams between the stages already show in the code's own comments, for
+example "Validate the backend before touching the Simulator CLIs" and "Mocks ride the network
+channel". The extraction mostly names and moves code. It does not redesign it.
 
 ## Detailed design
 
-The refactor is behavior-preserving: `run`'s CLI surface (flags, defaults, exit codes, stdout/
-stderr output) does not change, and the coverage added by the cli-command-coverage item should
-land first so this decomposition has a regression net to verify against. The work breaks down
-into two independent axes:
+The refactor preserves behavior. The CLI surface of `run` does not change: flags, defaults, exit
+codes, and stdout and stderr output stay as they are. The coverage added by the cli-command-coverage
+item should land first, so that this decomposition has a regression net to verify against. The work
+breaks down into two independent axes:
 
 - **Option-declaration grouping.** The ~118 lines of `typer.Option(...)` declarations
-  (`bajutsu/cli/commands/run.py:186`–`303`) group into related clusters already visible in their
-  ordering — target/scenario selection, backend/device selection, browser/engine selection,
-  baseline/schema/golden directory overrides, and reporting/output flags (`--progress`, `--zip`,
-  `--runs-dir`). These do not need to become separate functions (`typer.Option` calls must stay
-  in the signature), but the signature itself can be organized with clearer section comments, or
-  grouped via a small number of `dataclass`-based option bundles that `run` re-expands, whichever
-  keeps `typer`'s introspection working without duplicating the flag surface (see the sibling
-  serve-cli-flag-mirror-drift item, which is the mirror-image problem: `serve` currently hand-
-  duplicates this same surface).
-- **Orchestration-step extraction.** The ~300-line body decomposes into helpers alongside the
-  file's existing `_resolve_*`/`_scenario_files`/`_expand_file` helpers, each taking and
-  returning plain data so they stay unit-testable without a Simulator:
-  - config/build resolution (`_load_effective_with_source` call through `build_if_missing`)
-  - browser/engine resolution (`--headed`, `_resolve_browser`, `_parse_browsers`) — already
-    partially extracted
-  - scenario loading and `--tag`/`--exclude` filtering, including the `--erase` override
-  - backend/actuator selection and `--browsers`-matrix-on-non-web validation
+  (`bajutsu/cli/commands/run.py:186`–`303`) fall into clusters that their ordering already shows:
+  - target and scenario selection
+  - backend and device selection
+  - browser and engine selection
+  - baseline, schema, and golden directory overrides
+  - reporting and output flags (`--progress`, `--zip`, `--runs-dir`)
+
+  The declarations do not need to become separate functions, because `typer.Option` calls must stay
+  in the signature. The signature itself can be organized with clearer section comments. It can
+  also be grouped via a small number of `dataclass`-based option bundles that `run` re-expands.
+  Either approach must keep `typer`'s introspection working without duplicating the flag surface.
+  The sibling serve-cli-flag-mirror-drift item covers the mirror-image problem: `serve` currently
+  duplicates this same surface by hand.
+- **Orchestration-step extraction.** The ~300-line body decomposes into helpers alongside the file's
+  existing `_resolve_*`, `_scenario_files`, and `_expand_file` helpers. Each helper takes and
+  returns plain data, so it stays unit-testable without a Simulator:
+  - config and build resolution (the `_load_effective_with_source` call through `build_if_missing`)
+  - browser and engine resolution (`--headed`, `_resolve_browser`, `_parse_browsers`), which is
+    already partially extracted
+  - scenario loading and `--tag` / `--exclude` filtering, including the `--erase` override
+  - backend and actuator selection, plus `--browsers`-matrix validation on a non-web backend
   - device-lane resolution and the `--dismiss-alerts` override
   - alert-guard factory construction (the `_guard_for` closure and its credential-gap checks)
-  - baselines/schemas/goldens directory resolution (already extracted; wire into the new steps)
-  - the single-engine vs. cross-browser-matrix dispatch (the `run_pass`/`device_pool`/
-    `run_and_report`/`run_matrix_and_report` branch)
+  - baselines, schemas, and goldens directory resolution (already extracted; wire it into the new
+    steps)
+  - the single-engine versus cross-browser-matrix dispatch (the `run_pass` / `device_pool` /
+    `run_and_report` / `run_matrix_and_report` branch)
   - post-run reporting (verdict echo, end-of-run webhook, `--zip` packaging, AI usage summary)
 
-  `run` itself becomes a thin sequence of calls to these helpers, each independently testable by
-  the cli-command-coverage item's new fast tests.
+  `run` itself becomes a thin sequence of calls to these helpers. The new fast tests from the
+  cli-command-coverage item can test each helper independently.
 
 ## Alternatives considered
 
-- **Leave `run` as one function and rely on comments to delineate its stages.** Rejected: the
-  function already carries explanatory comments at each stage boundary (as quoted above), which
-  shows the seams are known but not yet expressed in code — comments do not make the stages
+- **Leave `run` as one function and rely on comments to delineate its stages.** Rejected. The
+  function already carries explanatory comments at each stage boundary (quoted above). The comments
+  show that the seams are known but not yet expressed in code. Comments do not make the stages
   independently testable or safe to change in isolation.
 - **Introduce a `Runner` class that holds the orchestration as methods on shared state.** Rejected
-  for this pass: it would still leave one large surface (now spread across methods with implicit
-  shared state via `self`) rather than the plain-data helpers this item favors, which are easier
-  to unit-test and reason about in isolation. Worth reconsidering only if the extracted helpers
-  turn out to need more shared context than fits cleanly as function parameters.
-- **Do the extraction and the coverage work in one PR.** Rejected: refactoring without an existing
-  test net first would make it hard to tell whether the extraction preserved behavior. Sequencing
-  the cli-command-coverage item first gives this refactor a safety net to verify against.
+  for this pass. The class would still leave one large surface, now spread across methods with
+  implicit shared state via `self`. The plain-data helpers that this item favors are easier to
+  unit-test and to reason about in isolation. The class deserves reconsideration if the extracted
+  helpers turn out to need more shared context than fits cleanly as function parameters.
+- **Do the extraction and the coverage work in one PR.** Rejected. Refactoring without an existing
+  test net would make it hard to tell whether the extraction preserved behavior. Sequencing the
+  cli-command-coverage item first gives this refactor a safety net to verify against.
 
 ## Progress
 
