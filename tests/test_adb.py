@@ -834,18 +834,35 @@ def test_type_text_passes_value_over_stdin_not_argv(monkeypatch: pytest.MonkeyPa
         ("100%", True),
         ("馬", False),
         ("cafe\u0301", False),
-        ("a%sb", False),
+        ("a%sb", True),
     ],
 )
 def test_input_text_can_type_only_what_it_enters_unaltered(text: str, can: bool) -> None:
     assert adb.input_text_can_type(text) is can
 
 
+@pytest.mark.parametrize(
+    ("text", "script"),
+    [
+        ("100%sure", "input text 100% && input text sure"),
+        ("%s", "input text % && input text s"),
+        ("a%s b", "input text a% && input text s%sb"),
+        ("%s%s", "input text % && input text s% && input text s"),
+        ("50% off", "input text 50%%soff"),
+    ],
+)
+def test_text_script_keeps_a_literal_percent_s_from_reading_as_a_space(
+    text: str, script: str
+) -> None:
+    # `input` turns `%s` into a space with no way to escape it, so no one call may hold the pair.
+    assert adb.text_script(text) == script
+
+
 def _no_shell(_cmd: list[str], _script: str) -> None:
     raise AssertionError("this text must not reach `input text`")
 
 
-@pytest.mark.parametrize("text", ["馬術", "a%sb"])
+@pytest.mark.parametrize("text", ["馬術", "a%sb馬"])
 def test_type_text_routes_what_input_text_cannot_carry_to_the_server(
     monkeypatch: pytest.MonkeyPatch, text: str
 ) -> None:

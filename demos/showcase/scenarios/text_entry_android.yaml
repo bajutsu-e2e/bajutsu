@@ -2,6 +2,7 @@
 # this text takes the resident server's `/type`, and the plain ASCII among it stays on `input text`.
 # The steps in a row prove the two routes compose in both orders: each one has to insert at the caret
 # the last one left, and `/type` has to see the text `input text` just entered, or it would erase it.
+# The last step is a literal `%s`, which `input text` would read as a space unless the driver splits it.
 # Each id lists both its dotted SPEC form (Compose) and its underscore Android Views form, so the
 # scenario runs unchanged on both.
 #
@@ -20,7 +21,8 @@
     - type: { text: "術🐎" }
     - type: { text: " x" }
     - type: { text: "語" }
+    - type: { text: " 100%sure" }
     - wait: { for: { id: [search.results-empty, search_results_empty] }, timeout: 5 }
   expect:
     # A field's content is its accessibility `text`, which the adb backend reads as the label.
-    - exists: { id: [search.field, search_field], label: "馬術🐎 x語" }
+    - exists: { id: [search.field, search_field], label: "馬術🐎 x語 100%sure" }

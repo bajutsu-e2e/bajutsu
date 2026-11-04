@@ -1691,7 +1691,7 @@ class AdbDriver(CoordinateTreeDriver):
         if self._type_fn is None or self._act_unavailable:
             raise base.UnsupportedAction(
                 "this text needs the resident UI Automator server, which is not running on this "
-                "lease: `input text` can only enter ASCII without a literal `%s`"
+                "lease: `input text` can only enter ASCII"
             )
         try:
             self._type_fn(text)

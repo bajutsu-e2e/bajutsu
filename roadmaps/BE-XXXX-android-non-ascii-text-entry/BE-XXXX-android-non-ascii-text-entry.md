@@ -38,20 +38,25 @@ test leaves that app's text paths uncovered.
 
 `input text` has a second, quieter defect. It reads a literal `%s` as its escape for a space and
 offers no way to escape the escape, so `100%sure` arrives as `100 ure`. The step passes and the field
-holds the wrong value.
+holds the wrong value. The driver now splits that text into two `input text` calls.
 
 A later reader can check the outcome directly: `demos/showcase/scenarios/text_entry_android.yaml`
-types `馬`, `術🐎`, ` x`, and `語` in turn, and the field then holds `馬術🐎 x語` on both the Compose and
+types `馬`, `術🐎`, ` x`, `語`, and ` 100%sure` in turn, and the field then holds `馬術🐎 x語 100%sure` on both the Compose and
 the Views showcase apps.
 
 ## Detailed design
 
 ### Route
 
-`AdbDriver.type_text` asks one question, `adb.input_text_can_type(text)`: is the text ASCII, with no
-literal `%s`? When the answer is yes, the driver runs `input text` exactly as before, so existing
-scenarios keep sending real key events. When the answer is no, the driver sends the text to `/type`.
-The route depends on the text alone, which keeps the choice deterministic (prime directive 2).
+`AdbDriver.type_text` asks one question, `adb.input_text_can_type(text)`: is the text ASCII? When the
+answer is yes, the driver runs `input text`, so existing scenarios keep sending real key events. When
+the answer is no, the driver sends the text to `/type`. The route depends on the text alone, which
+keeps the choice deterministic (prime directive 2).
+
+ASCII text with a literal `%s` stays on `input text`. The driver splits the text between `%` and `s`
+into separate calls, where neither call sees the pair: `100%sure` becomes `input text 100%` followed
+by `input text sure`. A password field therefore keeps taking any ASCII text at the caret, because key
+events need no read of the field's content.
 
 ### The `/type` endpoint
 
@@ -92,13 +97,14 @@ text.
 
 `ACTION_SET_TEXT` reaches the field directly, so this route exercises no input method editor (IME):
 no composing state, no conversion candidates. A scenario cannot test IME behavior through it.
-A field that does not offer the action, such as a custom-drawn Flutter text field, fails the step.
+A field that does not offer the action fails the step.
 
 The text goes to whichever editable field holds focus. The endpoint does not check that the field is the `into`
 target, which matches `input text`: its key events also go to the focused field.
 
-We refuse password fields outright, because the platform masks or omits their accessibility text.
-The server cannot tell what `ACTION_SET_TEXT` would overwrite, even to confirm that the field is empty.
+We refuse non-ASCII text in a password field, because the platform masks or omits the field's
+accessibility text. The server cannot tell what `ACTION_SET_TEXT` would overwrite, even to confirm
+that the field is empty. ASCII text never reaches this refusal.
 
 ## Alternatives considered
 
@@ -117,6 +123,7 @@ The server cannot tell what `ACTION_SET_TEXT` would overwrite, even to confirm t
 > (oldest first), linking the PRs.
 
 - [x] Route text by `input_text_can_type` in `AdbDriver.type_text`.
+- [x] Split a literal `%s` across `input text` calls in `adb.text_script`.
 - [x] Add the `/type` endpoint to the resident server, with request-body reading.
 - [x] Add the host client, the channel wiring, and the failure mapping.
 - [x] Add the unit tests and the `text_entry_android` end-to-end scenario for Compose and Views.
@@ -128,6 +135,10 @@ Log:
   The new scenario passed there on Compose and Views. With the resident server disabled, it failed
   with the named reason. No end-to-end scenario covers the password refusal or an insertion before
   the end of the text.
+- 2026-11-04: Moved every ASCII string back to `input text` by splitting a literal `%s`. On the same
+  emulator, the Compose password field took `ab`, `c%sd`, and `e` at the caret, growing from two to
+  six to seven masked characters. The field refused `馬` and kept its value. A manual run checked
+  this, and the masked text shows the length alone, not the characters.
 
 ## References
 
