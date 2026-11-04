@@ -15,87 +15,65 @@
 
 ## Introduction
 
-This item drives Flutter apps with the **existing XCUITest / adb backends unchanged**. It treats
-Flutter as an id convention plus a verification task, not as a new backend or a semantics bridge.
+This item drives Flutter apps with the **existing XCUITest / adb backends unchanged**. It treats Flutter as an id convention plus a verification task, not as a new backend or a semantics bridge.
 
-Flutter renders its own pixels through Skia / Impeller, but neither native backend reads pixels.
-XCUITest reads the XCTest automation snapshot, and adb reads the UI Automator tree. Flutter already
-bridges its own semantics tree into both. A Flutter widget that sets
-`SemanticsProperties.identifier` therefore surfaces as a resolvable element on both
-[backends](../../docs/glossary.md#driver-backend-actuator-platform) with no new code.
+Flutter renders its own pixels through Skia / Impeller, but neither native backend reads pixels. XCUITest reads the XCTest automation snapshot, and adb reads the UI Automator tree. Flutter already bridges its own semantics tree into both.
 
-The item ships three deliverables: the id convention, an example app, and the on-device verification
-that the surfacing actually holds. It does not ship a new actuator.
+A Flutter widget that sets `SemanticsProperties.identifier` thus surfaces as a resolvable element on both [backends](../../docs/glossary.md#driver-backend-actuator-platform) with no new code.
+
+The item ships three deliverables: the id convention, an example app, and the on-device verification that the surfacing actually holds. It does not ship a new actuator.
 
 ## Motivation
 
-The native iOS ([XCUITest](../../docs/drivers.md#xcuitest-ios)) and Android
-([adb](../../docs/drivers.md#adb-android)) backends resolve
-[selectors](../../docs/glossary.md#scenario-authoring) by reading an accessibility tree. They never
-analyze rendered pixels, and this holds for a Flutter app as for a native one.
+The native iOS ([XCUITest](../../docs/drivers.md#xcuitest-ios)) and Android ([adb](../../docs/drivers.md#adb-android)) backends resolve [selectors](../../docs/glossary.md#scenario-authoring) by reading an accessibility tree. They never analyze rendered pixels, and this holds for a Flutter app as for a native one.
 
-The two backends then actuate differently. XCUITest taps the resolved element directly by its
-accessibility identifier, which is a semantic tap with no coordinates. adb, the one coordinate
-backend, computes a tap from the element's frame center. Either way, the tap lands on the widget
-without ever touching a pixel. The premise "Flutter draws its own pixels, therefore it needs a new
-actuator" conflates two independent layers.
+The two backends then actuate differently:
 
-Flutter does draw a single opaque surface via Skia / Impeller. **Separately**, it maintains a
-semantics tree and translates that tree into the OS accessibility APIs. Android's
-`AccessibilityBridge` turns each `SemanticsNode` into a virtual `AccessibilityNodeInfo`. The iOS
-engine exposes `SemanticsObject`s (`UIAccessibility` elements). XCUITest's automation snapshot and
-adb's UI Automator dump read exactly that tree.
+- XCUITest taps the resolved element directly by its accessibility identifier. This is a semantic tap with no coordinates.
+- adb, the one coordinate backend, computes a tap from the element's frame center.
 
-Each semantics node also carries an on-screen rectangle. On Android, a frame-center tap lands on
-the widget, and Flutter's own gesture arena routes the delivered OS touch to the right widget. On
-iOS, XCUITest resolves the same node by identifier and taps it directly, with no coordinate math at
-all. The renderer (Skia or Impeller) is irrelevant to either path.
+Either way, the tap lands on the widget without ever touching a pixel. The premise "Flutter draws its own pixels, therefore it needs a new actuator" conflates two independent layers.
 
-Since Flutter 3.19, `SemanticsProperties.identifier` maps straight into that tree — `resource-id` on
-Android (via `AccessibilityNodeInfo.setViewIdResourceName`) and `accessibilityIdentifier` on iOS. So
-the platform-neutral `id` selector the rest of the system already uses lands on the surfaced
-identifier, keeping the selector model, machine assertions, the orchestrator loop, and the reporter
-byte-for-byte unchanged. What Flutter support needs is therefore the id convention and the proof
-that it holds on device, not a new OS actuator or a framework bridge.
+Flutter does draw a single opaque surface via Skia / Impeller. **Separately**, it maintains a semantics tree and translates that tree into the operating system (OS) accessibility APIs.
+
+- Android's `AccessibilityBridge` turns each `SemanticsNode` into a virtual `AccessibilityNodeInfo`.
+- The iOS engine exposes `SemanticsObject`s (`UIAccessibility` elements).
+
+XCUITest's automation snapshot and adb's UI Automator dump read that same tree.
+
+Each semantics node also carries an on-screen rectangle. On Android, a frame-center tap lands on the widget, and Flutter's own gesture arena routes the delivered OS touch to the right widget. On iOS, XCUITest resolves the same node by identifier and taps it directly, with no coordinate math at all. The renderer (Skia or Impeller) is irrelevant to either path.
+
+Since Flutter 3.19, `SemanticsProperties.identifier` maps straight into that tree. It becomes `resource-id` on Android (via `AccessibilityNodeInfo.setViewIdResourceName`) and `accessibilityIdentifier` on iOS.
+
+The platform-neutral `id` selector that the rest of the system already uses thus lands on the surfaced identifier. The selector model, the machine assertions, the orchestrator loop, and the reporter stay byte-for-byte unchanged.
+
+Flutter support needs the id convention and the proof that it holds on a device. It does not need a new OS actuator or a framework bridge.
 
 ## Detailed design
 
 ### Why XCUITest / adb already reach a Flutter UI
 
-Flutter draws its UI into one native view (Android `FlutterSurfaceView`, iOS `FlutterView`) with no
-child views, so the OS accessibility tree sees one opaque surface by default. The engine's
-accessibility bridge makes the widgets resolvable, independently of rendering. The bridge
-builds a semantics tree and pushes it into the OS accessibility APIs that the native backends
-already read.
+Flutter draws its UI into one native view (Android `FlutterSurfaceView`, iOS `FlutterView`) with no child views. The OS accessibility tree sees one opaque surface by default.
 
-- adb's unchanged `resolve_unique` path resolves a `resource-id` surfaced this way, and adb
-  actuates by a frame-center coordinate tap.
-- XCUITest's automation snapshot resolves an `accessibilityIdentifier` surfaced this way, and
-  XCUITest actuates its native semantic tap, with no coordinates involved.
+The engine's accessibility bridge makes the widgets resolvable, independently of rendering. The bridge builds a semantics tree and pushes it into the OS accessibility APIs that the native backends already read.
 
-This is why the item adds no backend. The surfacing already exists on both platforms. The work is
-to make an app use it and to prove that the two conditions below hold.
+- adb's unchanged `resolve_unique` path resolves a `resource-id` surfaced this way, and adb actuates it by a frame-center coordinate tap.
+- XCUITest's automation snapshot resolves an `accessibilityIdentifier` surfaced this way, and XCUITest actuates it by its native semantic tap, with no coordinates involved.
+
+This is why the item adds no backend. The surfacing already exists on both platforms. The work is to make an app use it and to prove that the two conditions below hold.
 
 ### The two conditions that must hold
 
-The bridge is not unconditional. Whether XCUITest / adb can drive a Flutter widget depends on the
-framework's semantics state, not on the renderer. Two conditions apply:
+The bridge is not unconditional. Whether XCUITest / adb can drive a Flutter widget depends on the framework's semantics state, not on the renderer. Two conditions apply:
 
-- **The semantics tree is built lazily.** Flutter constructs it only when an accessibility client
-  connects, or when the app calls `SemanticsBinding.instance.ensureSemantics()`. On Android,
-  UI Automator connects as an accessibility service and triggers construction. Whether reading the
-  XCTest automation snapshot (through BajutsuKit's resident runner) triggers it on iOS the same way
-  is the open question to settle on device; if it does not, the convention documents a one-line
-  `ensureSemantics()` call as the fallback.
-- **Only widgets that carry semantics appear.** Standard Material / Cupertino widgets and text carry
-  semantics automatically, but a `CustomPaint`-drawn control that is not wrapped in `Semantics` never
-  enters the tree and cannot be resolved. Wrapping it in `Semantics(identifier: …)` is the same
-  convention that surfaces the id. Whether a custom control is drawn by Skia or Impeller does not
-  affect this — only whether the developer attached semantics does.
+- **The semantics tree is built lazily.** Flutter constructs the tree when an accessibility client connects, or when the app calls `SemanticsBinding.instance.ensureSemantics()`.
+  - On Android, UI Automator connects as an accessibility service and triggers construction.
+  - On iOS, the open question is whether reading the XCTest automation snapshot (through BajutsuKit's resident runner) triggers construction the same way. The answer is to settle on a device. If it does not, the convention documents a one-line `ensureSemantics()` call as the fallback.
+- **Widgets without semantics do not appear.** Standard Material / Cupertino widgets and text carry semantics automatically. A `CustomPaint`-drawn control that is not wrapped in `Semantics` never enters the tree and cannot be resolved. Wrapping the control in `Semantics(identifier: …)` is the same convention that surfaces the id. Whether Skia or Impeller draws a custom control does not affect this. Only whether the developer attached semantics does.
 
 ### The id convention
 
-The convention stated in the docs, alongside the iOS and Android ones:
+The docs state the convention alongside the iOS and Android ones:
 
 | `Selector` field | Flutter (via XCUITest / adb) |
 |---|---|
@@ -104,73 +82,40 @@ The convention stated in the docs, alongside the iOS and Android ones:
 | `value` | the widget's semantics value (the state-value mirror, SPEC §2.1) |
 | `traits` (role filter) | the semantics role surfaced as the platform widget class / trait |
 
-Flutter 3.19 (February 2024) is the stated minimum, because `identifier` surfacing lands there.
+Flutter 3.19 (February 2024) is the stated minimum, because `identifier` surfacing lands in that version.
 
 ### Work breakdown (MECE)
 
-1. **Flutter showcase target.** A Flutter demo under `demos/` whose widgets set
-   `Semantics(identifier: …)`, added as a `backend: [ios]` / `backend: [android]` target so the
-   existing showcase scenarios (id / tap / type / value) run against it through XCUITest and adb
-   unchanged. No Flutter-specific scenario DSL is introduced. Any `Element` normalization tweak a
-   surfaced Flutter tree needs to map cleanly lands here.
-2. **The id-convention docs.** State the Flutter id convention (the table above), the Flutter 3.19
-   minimum, the lazy-semantics precondition and the `ensureSemantics()` fallback, and the explicit
-   out-of-scope boundary (below) in `docs/drivers.md` and its ja mirror.
-3. **On-device verification.** The item's real technical risk lives here — settle the three hypotheses
-   on device and fold the results into the convention:
-   - semantics-tree activation timing (Android via UI Automator's accessibility-service connection;
-     iOS via XCUITest's automation snapshot through BajutsuKit's resident runner — the open question,
-     with the `ensureSemantics()` fallback);
-   - `MergeSemantics` merging and off-screen (scroll) culling, confirming a selector still resolves
-     uniquely and documenting the caveats;
-   - that `identifier` surfaces as `accessibilityIdentifier` / `resource-id` on both backends in
-     3.19+.
+1. **Flutter showcase target.** A Flutter demo under `demos/` has widgets that set `Semantics(identifier: …)`. It is added as a `backend: [ios]` / `backend: [android]` target, so the existing showcase scenarios (id / tap / type / value) run against it through XCUITest and adb unchanged. No Flutter-specific scenario DSL (domain-specific language) is introduced. Any `Element` normalization tweak that a surfaced Flutter tree needs to map cleanly lands in this unit.
+2. **The id-convention docs.** `docs/drivers.md` and its ja mirror state five things: the Flutter id convention (the table above), the Flutter 3.19 minimum, the lazy-semantics precondition, the `ensureSemantics()` fallback, and the explicit out-of-scope boundary (below).
+3. **On-device verification.** The item's real technical risk lives here. Three hypotheses are settled on a device, and the results are folded into the convention:
+   - Semantics-tree activation timing. Android activates through UI Automator's accessibility-service connection. iOS activates through XCUITest's automation snapshot via BajutsuKit's resident runner. The iOS case is the open question, with the `ensureSemantics()` fallback.
+   - `MergeSemantics` merging and off-screen (scroll) culling. The check confirms that a selector still resolves uniquely, and the caveats are documented.
+   - `identifier` surfaces as `accessibilityIdentifier` / `resource-id` on both backends in Flutter 3.19+.
 
 ### Out of scope
 
-- **A Dart VM Service semantics bridge.** Not built (see *Alternatives considered*): it does not serve
-  the app it is meant to save, and its preconditions conflict with the E2E use case.
-- **The WebView / embedded-web hybrid case.** Owned by [BE-0037](../BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support.md),
-  which is **Implemented** (`bajutsu/webview.py` + the BajutsuKit bridge). Extending it to the Android
-  WebView is a BE-0037 follow-up, unrelated to Flutter's own rendering, so it is not part of this item.
-- **Flutter Web (CanvasKit).** Flutter for the web paints to a canvas and does not surface elements
-  into the DOM, so the Playwright backend cannot resolve them; the SEO/semantics DOM overlay is a
-  separate concern and is out of scope.
-- **Apps that neither surface `identifier` nor can be modified.** Without a developer-assigned id in
-  *some* tree, coordinate actuation cannot resolve selectors deterministically and ambiguous-fails-fast
-  cannot be honored, so such apps are honestly out of scope rather than served by a fragile bridge.
+- **A Dart VM Service semantics bridge.** Not built (see *Alternatives considered*). The bridge does not serve the app it is meant to save, and its preconditions conflict with the end-to-end (E2E) use case.
+- **The WebView / embedded-web hybrid case.** [BE-0037](../BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support.md) owns it, and that item is **Implemented** (`bajutsu/webview.py` plus the BajutsuKit bridge). Extending it to the Android WebView is a BE-0037 follow-up, unrelated to Flutter's own rendering. It is not part of this item.
+- **Flutter Web (CanvasKit).** Flutter for the web paints to a canvas and does not surface elements into the Document Object Model (DOM), so the Playwright backend cannot resolve them. The search-engine-optimization (SEO) and semantics DOM overlay is a separate concern and is out of scope.
+- **Apps that neither surface `identifier` nor can be modified.** Without a developer-assigned id in *some* tree, coordinate actuation cannot resolve selectors deterministically, and ambiguous-fails-fast cannot be honored. Such apps are honestly out of scope, rather than served by a fragile bridge.
 
 ### Phasing — the last remaining platform
 
-iOS ([XCUITest](../BE-0290-xcuitest-default-ios-backend/BE-0290-xcuitest-default-ios-backend.md)),
-[Android](../BE-0007-android-backend/BE-0007-android-backend.md) (adb), and
-[Web](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) (Playwright) have all
-landed and been validated on a device or on the gate. This item no longer waits on a
-predecessor landing. Flutter is the one remaining platform on the reach axis (see
-[docs/vision.md §1](../../docs/vision.md#1-reach--more-platforms-and-surfaces)).
+iOS ([XCUITest](../BE-0290-xcuitest-default-ios-backend/BE-0290-xcuitest-default-ios-backend.md)), [Android](../BE-0007-android-backend/BE-0007-android-backend.md) (adb), and [Web](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) (Playwright) have all landed and been validated on a device or on the gate. This item no longer waits on a predecessor landing. Flutter is the one remaining platform on the reach axis (see [docs/vision.md §1](../../docs/vision.md#1-reach--more-platforms-and-surfaces)).
 
-What is left is this item's own scope: a demo, a convention, and the on-device verification above.
-That is a fraction of a new backend, and it is not a framework-specific bridge.
+The remaining scope is this item's own: a demo, a convention, and the on-device verification above. That is a fraction of a new backend, and it is not a framework-specific bridge.
 
 ## Alternatives considered
 
-- **A Dart VM Service semantics bridge (the earlier primary fallback).** Rejected as built work,
-  demoted to a documented option to revisit only on clear demand. Reading the semantics tree over the
-  Dart VM Service requires a debug/profile build (the VM Service is disabled in release, which the E2E
-  use case wants) and app-side `integration_test` / Flutter Driver instrumentation — and if the app
-  can be instrumented, setting `identifier` is cheaper and needs no bridge, so the fallback's intended
-  beneficiary (an app that cannot surface an id) is essentially empty. Flutter Driver is itself
-  deprecated, so maintaining an in-repo VM Service client would track the framework for little reach.
-  Revisit only if a concrete need appears for an app that cannot set `identifier` yet may be driven in
-  a debug build.
-- **A new OS-level actuator for Flutter (coordinate taps over rendered pixels).** Rejected: without a
-  stable, developer-assigned id surfaced into *some* tree, coordinate actuation cannot resolve
-  selectors deterministically, and ambiguous-fails-fast cannot be honored. Flutter's own semantics
-  tree, bridged into the OS accessibility tree, is the right source — and the native backends already
-  read it.
-- **Building a bridge before the native trees land.** Deferred with the phasing note above while iOS
-  and Android were still being built out; both have since landed (BE-0290, BE-0007), which is what
-  unblocks this item's on-device verification work now.
+- **A Dart VM Service semantics bridge (the earlier primary fallback).** Rejected as built work, and demoted to a documented option to revisit only on clear demand. Three facts support the rejection:
+  - Reading the semantics tree over the Dart VM Service requires a debug or profile build. The VM Service is disabled in release builds, which the E2E use case wants.
+  - It also requires app-side `integration_test` / Flutter Driver instrumentation. If the app can be instrumented, setting `identifier` is cheaper and needs no bridge. The fallback's intended beneficiary, an app that cannot surface an id, is essentially empty.
+  - Flutter Driver is itself deprecated. Maintaining an in-repo VM Service client would track the framework for little reach.
+
+  Revisit only if a concrete need appears for an app that cannot set `identifier` yet may be driven in a debug build.
+- **A new OS-level actuator for Flutter (coordinate taps over rendered pixels).** Rejected. Without a stable, developer-assigned id surfaced into *some* tree, coordinate actuation cannot resolve selectors deterministically, and ambiguous-fails-fast cannot be honored. Flutter's own semantics tree, bridged into the OS accessibility tree, is the right source, and the native backends already read it.
+- **Building a bridge before the native trees land.** Deferred with the phasing note above, while iOS and Android were still being built out. Both have since landed (BE-0290, BE-0007), which is what unblocks this item's on-device verification work now.
 
 ## Progress
 
