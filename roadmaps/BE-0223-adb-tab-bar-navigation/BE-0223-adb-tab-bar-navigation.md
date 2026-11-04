@@ -97,8 +97,8 @@ which is the point, and adds no LLM to any path.
    to the software-render timing of the CI emulator. This step discharges Unit 5 of BE-0208.
 5. **Add tab navigation to the driver conformance suite.** Extend the driver conformance contract
    ([BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md)) with a
-   tab-bar navigation case. Backends then check the capability across the suite, rather than the
-   showcase lane merely implying it.
+   tab-bar navigation case. The suite then checks the capability on every backend rather than leaving it
+   implied by the showcase lane.
 
 ## Alternatives considered
 

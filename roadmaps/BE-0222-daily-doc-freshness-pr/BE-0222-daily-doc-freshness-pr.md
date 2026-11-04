@@ -121,8 +121,8 @@ identically.
    - **An AI provider**, selected exactly as `claude-review.yml` does (BE-0203,
      [BE-0104](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend.md)). The
      selection uses the Claude Code subscription (`CLAUDE_CODE_OAUTH_TOKEN`) when present. Otherwise
-     it uses Amazon Bedrock via OIDC (`AWS_BEDROCK_ROLE_ARN` + `BEDROCK_MODEL_ID`), and else the
-     workflow is dormant. The provider authors the updates.
+     it uses Amazon Bedrock via OIDC (`AWS_BEDROCK_ROLE_ARN` + `BEDROCK_MODEL_ID`). If neither is
+     present, the workflow is dormant. The provider authors the updates.
    - **The automation App token** (`AUTOMATION_BOT_APP_ID` / `AUTOMATION_BOT_PRIVATE_KEY`, via
      `actions/create-github-app-token`), used as `roadmap-id.yml` and `roadmap-drift-check.yml` use it.
      A PR opened with the default `GITHUB_TOKEN` does **not** trigger other workflows, so the refresh
