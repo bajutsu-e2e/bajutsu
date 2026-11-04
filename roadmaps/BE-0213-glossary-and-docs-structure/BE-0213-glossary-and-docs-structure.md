@@ -15,121 +15,134 @@
 
 ## Introduction
 
-Bajutsu's documentation uses a cluster of closely related domain terms — `scenario`, `goal`,
+Bajutsu's documentation uses a cluster of closely related domain terms: `scenario`, `goal`,
 `step`, `driver` / `backend` / `actuator` / `platform`, `target` / `app` / `device`, `trace` /
-`triage`, and the `capturePolicy` "rule" — without one place that defines each term and how it
-relates to its neighbors. This proposal adds a dedicated glossary page and revisits the
-surrounding documentation structure (the reading order in [`docs/overview.md`](../../docs/overview.md),
-and where a first-time reader meets these terms) so that a newcomer is never left guessing which
-of two similar-sounding words is which.
+`triage`, and the `capturePolicy` "rule". No single place defines each term and how it relates to
+its neighbors.
+
+This proposal adds a dedicated glossary page. It also revisits the surrounding documentation
+structure: the reading order in [`docs/overview.md`](../../docs/overview.md), and where a
+first-time reader meets these terms. The aim is that a newcomer is never left guessing which of two
+similar-sounding words is which.
 
 ## Motivation
 
-No existing page collects term definitions: a repo-wide search for "glossary" / "用語" /
+No existing page collects term definitions. A repo-wide search for "glossary" / "用語" /
 "terminology" turns up nothing but tangential mentions. [`docs/concepts.md`](../../docs/concepts.md)
-explains the design *rationale* (why the two-tier structure exists, why selectors prefer an id),
-not a term-by-term reference a reader can look a word up in.
+explains the design *rationale* (why the two-tier structure exists, why selectors prefer an id). It
+is not a term-by-term reference a reader can look a word up in.
 
-A concrete inconsistency turned up while auditing the docs for this proposal:
+Auditing the docs for this proposal turned up a concrete inconsistency.
 [`docs/getting-started.md:81`](../../docs/getting-started.md) calls a scenario file "a list of
-named **tests**", while [`docs/scenarios.md`](../../docs/scenarios.md) and the schema itself
+named **tests**". [`docs/scenarios.md`](../../docs/scenarios.md) and the schema itself
 (`SCHEMA_VERSION`, `bajutsu/scenario/models/scenario.py`) call each entry "a **scenario**". A
-reader who lands on both pages meets two names for the same object with no signal that they're the
-same thing.
+reader who lands on both pages meets two names for the same object, with no signal that they are
+the same thing.
 
-Beyond that one slip, several term clusters are genuinely non-trivial and currently reconstructed
-piecemeal by the reader:
+Beyond that one slip, several term clusters are genuinely non-trivial. Readers currently
+reconstruct them piecemeal:
 
-- `driver` (the abstract `Driver` interface) / `backend` (idb, xcuitest, adb, playwright, fake — the
-  implementations of it, and the config's stability-ordered list) / `actuator` (the one backend
-  chosen for a given run) / `platform` (`ios` / `android` / `web` / `fake` — a token that expands to
-  a backend). [`docs/drivers.md`](../../docs/drivers.md) and
-  [`docs/concepts.md`](../../docs/concepts.md)`#5` each explain part of this, but neither states
-  the full relationship in one place. (The enumeration here follows `bajutsu/backends.py`'s
-  `IMPLEMENTED` set / `PLATFORM_ACTUATORS`, not the docs — `docs/multi-platform.md` and CLAUDE.md
-  still call Android "planned" though `adb` is already wired as an actuator, which is itself a
-  drift this inventory is meant to catch.)
-- `trace` (inspect a finished run as a text timeline) and `triage` (diagnose a failed run and
-  propose a fix) are two distinct CLI commands one edit apart in spelling — an easy pair to
-  conflate on a first read of [`docs/cli.md`](../../docs/cli.md).
-- `target` (a `targets.<name>` config entry) / `app` (the application under test itself) / `device`
-  (the Simulator instance a target is driven on) look interchangeable to a newcomer even though
-  BE-0057 deliberately renamed the config concept from `app` to `target` to separate it from the
-  app it describes.
-- A `capturePolicy` entry is called a "rule" throughout [`docs/evidence.md`](../../docs/evidence.md);
-  the schema does define a `CaptureRule` type (`bajutsu/scenario/models/evidence.py`), but the three
-  names for the same concept — `capturePolicy`, `CaptureRule`, and "rule" in prose — aren't
-  reconciled anywhere.
+- **`driver` / `backend` / `actuator` / `platform`.**
+  - `driver` is the abstract `Driver` interface.
+  - `backend` covers idb, xcuitest, adb, playwright, and fake: the implementations of the
+    interface, and also the config's stability-ordered list.
+  - `actuator` is the one backend chosen for a given run.
+  - `platform` is a token (`ios` / `android` / `web` / `fake`) that expands to a backend.
 
-The project is pre-alpha and the [public docs site](../BE-0093-public-docs-site/BE-0093-public-docs-site.md)
-has already shipped, so more readers and more pages will accumulate around today's terminology
+  [`docs/drivers.md`](../../docs/drivers.md) and [`docs/concepts.md`](../../docs/concepts.md)`#5`
+  each explain part of this. Neither states the full relationship in one place. The enumeration
+  here follows the `IMPLEMENTED` set and `PLATFORM_ACTUATORS` in `bajutsu/backends.py`, not the
+  docs. `docs/multi-platform.md` and CLAUDE.md still call Android "planned", though `adb` is already
+  wired as an actuator. That drift is exactly what this inventory is meant to catch.
+- **`trace` and `triage`.** `trace` inspects a finished run as a text timeline. `triage` diagnoses
+  a failed run and proposes a fix. They are two distinct CLI commands one edit apart in spelling,
+  an easy pair to conflate on a first read of [`docs/cli.md`](../../docs/cli.md).
+- **`target` / `app` / `device`.** `target` is a `targets.<name>` config entry. `app` is the
+  application under test itself. `device` is the Simulator instance a target is driven on. The
+  three look interchangeable to a newcomer. BE-0057 deliberately renamed the config concept from
+  `app` to `target`, to separate it from the app it describes.
+- **`capturePolicy` "rule".** [`docs/evidence.md`](../../docs/evidence.md) calls a `capturePolicy`
+  entry a "rule" throughout. The schema does define a `CaptureRule` type
+  (`bajutsu/scenario/models/evidence.py`). Three names for the same concept exist, `capturePolicy`,
+  `CaptureRule`, and "rule" in prose, and nothing reconciles them.
+
+The project is pre-alpha, and the [public docs site](../BE-0093-public-docs-site/BE-0093-public-docs-site.md)
+has already shipped. More readers and more pages will accumulate around today's terminology
 choices from here on. CLAUDE.md's own documentation-style rule already asks for "no coined terms"
-and "no omissions" per sentence; this proposal applies the same bar structurally, with one page a
-reader (and every other page) can point to instead of re-defining a term locally each time.
+and "no omissions" per sentence. This proposal applies the same bar structurally: one page that a
+reader, and every other page, can point to, instead of each page re-defining a term locally.
 
 ## Detailed design
 
 The work breaks down into five independent, sequential units:
 
 1. **Term inventory.** Enumerate every domain term surfacing in scenario authoring, natural-language
-   goals/instructions, and the CLI/config surface — `scenario`, `goal`, `step`, `precondition`,
-   `expect` / assertion, selector / identifier, `component`, `capturePolicy` rule, evidence, Tier 1 /
-   Tier 2, `driver` / `backend` / `actuator` / `platform`, `target` / `app` / `device`, and the CLI
-   verbs (`record` / `crawl` / `run` / `trace` / `triage` / `codegen` / `doctor`), plus `from`
-   (provenance). The source of truth is the current implementation (the DSL grammar and the pydantic
-   models under `bajutsu/scenario/`, and the backend registry in `bajutsu/backends.py`), not how a
-   given doc page happens to phrase it today — the docs already lag the code on this point (Android /
+   goals/instructions, and the CLI/config surface:
+   - `scenario`, `goal`, `step`, `precondition`
+   - `expect` / assertion, selector / identifier, `component`
+   - `capturePolicy` rule, evidence, Tier 1 / Tier 2
+   - `driver` / `backend` / `actuator` / `platform`, `target` / `app` / `device`
+   - the CLI verbs (`record` / `crawl` / `run` / `trace` / `triage` / `codegen` / `doctor`)
+   - `from` (provenance)
+
+   The source of truth is the current implementation: the DSL grammar, the pydantic models under
+   `bajutsu/scenario/`, and the backend registry in `bajutsu/backends.py`. It is not how a given
+   doc page happens to phrase a term today. The docs already lag the code on this point (Android /
    `adb`).
 2. **A new page, `docs/glossary.md` (+ `docs/ja/glossary.md`).** One entry per term: a one-sentence
-   definition, a pointer to the page/module that explains it in depth, and — for each cluster
-   identified above — an explicit disambiguation (e.g. a short table for `driver` / `backend` /
-   `actuator` / `platform`; one line settling "a scenario **file** holds a list of scenarios; each
-   named entry is itself **a scenario**, never a *test*"; one line distinguishing `trace` from
-   `triage`). Existing pages should link a term's first mention to its glossary entry instead of
+   definition, and a pointer to the page or module that explains it in depth. Each cluster
+   identified above also gets an explicit disambiguation:
+   - a short table for `driver` / `backend` / `actuator` / `platform`
+   - one line settling "a scenario **file** holds a list of scenarios; each named entry is itself
+     **a scenario**, never a *test*"
+   - one line distinguishing `trace` from `triage`
+
+   Existing pages should link a term's first mention to its glossary entry instead of
    re-explaining it inline.
-3. **Fix the inconsistencies the inventory surfaces.** At minimum, the confirmed one:
+3. **Fix the inconsistencies the inventory surfaces.** At minimum, fix the confirmed one:
    `docs/getting-started.md:81`'s "a list of named tests" → "a list of named scenarios", matching
-   `docs/scenarios.md`'s own definition. Sweep the rest of `getting-started.md`, `docs/index.md`,
-   and `docs/overview.md` for the same drift while the inventory is fresh.
+   `docs/scenarios.md`'s own definition. While the inventory is fresh, sweep the rest of
+   `getting-started.md`, `docs/index.md`, and `docs/overview.md` for the same drift.
 4. **Reading-order and structure review.** Decide where the glossary sits in
-   `docs/overview.md`'s numbered reading order — a candidate is directly before or after
-   `concepts.md`, so a reader has the vocabulary before the design rationale leans on it — and
-   whether `concepts.md`'s per-principle prose should shrink to link glossary entries rather than
-   re-define terms locally. Update `README.md` and `docs/index.md`'s pointers to match whatever
-   order is chosen.
+   `docs/overview.md`'s numbered reading order. A candidate is directly before or after
+   `concepts.md`, so a reader has the vocabulary before the design rationale leans on it. Also
+   decide whether `concepts.md`'s per-principle prose should shrink to link glossary entries rather
+   than re-define terms locally. Update `README.md` and `docs/index.md`'s pointers to match
+   whatever order is chosen.
 5. **Bilingual pass.** Write `docs/ja/glossary.md` as natural Japanese per the
    [`japanese-tech-writing`](../../.claude/skills/japanese-tech-writing/) skill, not a literal
-   translation — DESIGN.md's own Japanese vocabulary doesn't always map one-to-one onto the English
-   glossary entries (it uses 証跡 loosely for both "evidence" and "trace", for instance), so the
-   Japanese entry should make that mapping explicit wherever it isn't literal.
+   translation. DESIGN.md's own Japanese vocabulary does not always map one-to-one onto the English
+   glossary entries. For instance, it uses 証跡 loosely for both "evidence" and "trace". The
+   Japanese entry should make that mapping explicit wherever it is not literal.
 
 Out of scope: renaming any term at the code, CLI-flag, or config-key level (`capturePolicy`,
 `backend`, "Tier 1" / "Tier 2", and similar remain unchanged). This proposal documents and
-disambiguates the terms Bajutsu already uses; it does not argue for renaming any of them. If the
-inventory surfaces a term whose *name itself* (not just its documentation) seems worth revisiting,
-that becomes its own future proposal rather than scope creep here.
+disambiguates the terms Bajutsu already uses. It does not argue for renaming any of them. Suppose
+the inventory surfaces a term whose *name itself*, not just its documentation, seems worth
+revisiting. That becomes its own future proposal rather than scope creep here.
 
 A sibling proposal, the web-only beginner tutorial drafted alongside this one, depends on this one
-landing first so its new tutorial track can use the disambiguated vocabulary this glossary settles,
-rather than inventing its own phrasing in parallel. The two are reciprocal siblings; a `Related`
-metadata link between them is added once CI allocates their real IDs (a placeholder `BE-0213` cannot
-cross-reference another new item — the per-item rewrite would resolve it to this item's own number).
+landing first. Its new tutorial track can then use the disambiguated vocabulary this glossary
+settles, rather than inventing its own phrasing in parallel. The two are reciprocal siblings. A
+`Related` metadata link between them is added once CI allocates their real IDs. A placeholder
+`BE-0213` cannot cross-reference another new item, because the per-item rewrite would resolve it to
+this item's own number.
 
 ## Alternatives considered
 
 - **Fold the glossary into `concepts.md` instead of a new page.** Rejected: `concepts.md` explains
-  *why* Bajutsu is shaped the way it is; a glossary explains *what a word means*. Mixing the two
-  means every future term addition edits a page whose job is design rationale, and looking up one
-  word requires reading past the rationale to find it.
+  *why* Bajutsu is shaped the way it is, while a glossary explains *what a word means*. Mixing the
+  two means every future term addition edits a page whose job is design rationale. Looking up one
+  word then requires reading past the rationale to find it.
 - **Give each feature page its own small "terms used here" box instead of one canonical glossary.**
-  Rejected: this doesn't solve the cross-page inconsistency this proposal is responding to — each
-  page would still write its own definition, which is exactly how "test" vs. "scenario" drifted
-  apart in the first place. Cross-referencing a term from any page requires one canonical source to
-  point to.
+  Rejected: this does not solve the cross-page inconsistency this proposal responds to. Each page
+  would still write its own definition, which is exactly how "test" vs. "scenario" drifted apart in
+  the first place. Cross-referencing a term from any page requires one canonical source to point
+  to.
 - **Leave the current terms and structure as they are, and fix drift opportunistically in future
   doc PRs.** Rejected: without a deliberate, all-pages-at-once inventory pass, a near-synonym
   cluster like `driver` / `backend` / `actuator` / `platform` never surfaces as a problem to any
-  single PR — it only became visible here by grepping every page side by side.
+  single PR. It became visible here only by grepping every page side by side.
 
 ## Progress
 
