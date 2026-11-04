@@ -15,70 +15,98 @@
 
 ## Introduction
 
-When the Author editor applies a change to the scenario — writing a picked selector into a step
-(Edit's Apply) or inserting proposed assertions and a settle wait (Enrich's Accept) — it edits the
-YAML by hand, in JavaScript, as text. The Edit-mode Apply click handler (`#au-apply`) and `enrichApply` in
-`bajutsu/templates/serve.author.js` split the textarea on newlines, scan for a step's line with
-`trimStart()`/`startsWith('- tap:')`-style
-prefix matching, compute indentation with a regex, and splice replacement lines back in. There is no
-parser in the loop: the frontend re-derives YAML structure from string shape.
+The Author editor edits scenario YAML by hand, as text, in JavaScript. It does so in two cases:
 
-This item replaces that string surgery with a proper parse → mutate → serialize round-trip, reusing the
-same scenario model and serializer the backend already owns (`bajutsu/scenario/serialize.py`'s
-`dump_scenario_file`, the function Capture's save already uses).
+- Edit's Apply writes a picked [selector](../../docs/glossary.md#scenario-authoring) into a step.
+- Enrich's Accept inserts proposed assertions and a settle wait.
+
+The Apply click handler (`#au-apply`) and `enrichApply` in `bajutsu/templates/serve.author.js` work
+as follows:
+
+- They split the textarea on newlines.
+- They scan for a step's line with prefix matching in the style of `trimStart()` and
+  `startsWith('- tap:')`.
+- They compute indentation with a regex.
+- They splice replacement lines back in.
+
+No parser sits in the loop. The frontend re-derives YAML structure from string shape.
+
+This item replaces that string surgery with a proper parse → mutate → serialize round-trip. The
+round-trip reuses the scenario model and serializer that the backend already owns:
+`dump_scenario_file` in `bajutsu/scenario/serialize.py`, the function that Capture's save already
+uses.
 
 ## Motivation
 
-Editing YAML as flat text is brittle by construction. The current matchers assume canonical formatting:
-one step per `- action:` line, block style, predictable indentation, no interleaved comments, the
-target scenario found by scanning `- name:` lines. Any scenario that deviates — a flow-style step
-(`- tap: { id: … }` across lines), a comment between steps, a non-standard indent, two scenarios in one
-file, a selector value containing a `:` or `#` — can cause Apply/Enrich to edit the wrong line, corrupt
-indentation, or silently no-op. And because the write is unvalidated text, a bad edit only surfaces
-later when the debounced lint runs, not at the point of the mutation.
+Editing YAML as flat text is brittle by construction. The current matchers assume canonical
+formatting:
 
-The project already has the right tool: scenarios have a Pydantic model and a canonical serializer, and
-Capture's save path round-trips through `dump_scenario_file`. The Author *edit* paths reimplement a
-worse, lossy version of that in the browser. Consolidating on parse → mutate → serialize makes Apply and
-Enrich structurally correct regardless of the source formatting, and removes a chunk of fragile
-string-scanning JS — an affinity win (one serializer, not two notions of "how a step looks") on top of
-the correctness win.
+- one step per `- action:` line
+- block style
+- predictable indentation
+- no interleaved comments
+- a target scenario found by scanning `- name:` lines
 
-The one real tension is formatting preservation: a naive re-serialize can reflow the author's whole file
-and discard comments. The design must decide the mutation boundary (see below) so an Apply doesn't
-rewrite unrelated lines. No prime directive is affected — this is authoring-side editing; the deterministic
-`run` reads the saved YAML as it always has.
+A scenario that deviates from this can make Apply or Enrich edit the wrong line, corrupt
+indentation, or silently do nothing. Examples of deviation are a flow-style step (`- tap: { id: … }`
+across lines), a comment between steps, a non-standard indent, two scenarios in one file, and a
+selector value that contains `:` or `#`. The write is also unvalidated text. A bad edit therefore
+surfaces only when the debounced lint runs, not at the point of the mutation.
+
+The project already has the right tool. Scenarios have a Pydantic model and a canonical serializer,
+and Capture's save path round-trips through `dump_scenario_file`. The Author *edit* paths
+reimplement a worse, lossy version of that tool in the browser.
+
+Consolidating on parse → mutate → serialize makes Apply and Enrich structurally correct regardless
+of the source formatting. It also removes a chunk of fragile string-scanning JavaScript. Beyond
+correctness, this is a win in affinity: one serializer, not two notions of "how a step looks".
+
+The one real tension is formatting preservation. A naive re-serialize can reflow the author's whole
+file and discard comments. The design must decide the mutation boundary (see below) so that an Apply
+does not rewrite unrelated lines.
+
+No prime directive is affected. This is authoring-side editing, and the deterministic `run` reads
+the saved YAML as it always has.
 
 ## Detailed design
 
-1. **Choose the round-trip boundary.** Decide where parse→serialize happens so a single-step edit does
-   not reflow the entire document or drop comments. Options, to be evaluated in the work:
-   (a) a serialize endpoint that mutates the parsed model and returns canonical YAML for the whole file
-   (simplest, reuses `dump_scenario_file`, but reflows formatting/comments); (b) a scoped serializer that
-   emits only the changed step/expect block for the frontend to splice at a parser-identified span
-   (preserves surrounding text, more work). The item picks one and records why.
-2. **Apply (Edit) through the model.** Replace the Apply click handler's line-splice with: locate the step in the parsed
-   model, set its selector, serialize. The selector-to-YAML helper (`auSelectorYaml`) and its manual
-   quoting become unnecessary once the serializer owns quoting of `:`/`#`-bearing values.
-3. **Accept (Enrich) through the model.** Replace `enrichApply`'s expect/settle line insertion with a
-   model mutation (append assertions, insert the settle wait after the last step) then serialize, removing
-   the `_extractName`/`stepsEnd`/`expectStart` line-hunting.
+1. **Choose the round-trip boundary.** Decide where parse → serialize happens, so that a single-step
+   edit does not reflow the entire document or drop comments. The work evaluates two options:
+   - (a) A serialize endpoint that mutates the parsed model and returns canonical YAML for the whole
+     file. This is the simplest option and reuses `dump_scenario_file`, but it reflows formatting
+     and comments.
+   - (b) A scoped serializer that emits only the changed step or expect block. The frontend splices
+     the block in at a span that a parser identified. This preserves the surrounding text but takes
+     more work.
+
+   The item picks one option and records why.
+2. **Apply (Edit) through the model.** Replace the Apply click handler's line splice with three
+   operations: locate the step in the parsed model, set its selector, and serialize. The
+   selector-to-YAML helper (`auSelectorYaml`) and its manual quoting become unnecessary once the
+   serializer owns the quoting of values that contain `:` or `#`.
+3. **Accept (Enrich) through the model.** Replace `enrichApply`'s expect and settle line insertion
+   with a model mutation, then serialize. The mutation appends the assertions and inserts the settle
+   wait after the last step. This removes the `_extractName`, `stepsEnd`, and `expectStart`
+   line-hunting.
 4. **Keep the editor's live validation.** The result still flows into the textarea and the existing
-   lint/audit/gutter refresh, so a human reviews and Saves; nothing here bypasses `save_scenario`.
-5. **Tests.** Round-trip correctness on scenarios that today's string matchers mishandle — flow-style
-   steps, comments between steps, a selector value with `:`/`#`, and a two-scenario file — asserting the
-   right step/scenario is mutated and the rest is preserved to the chosen boundary's guarantee.
+   lint, audit, and gutter refresh. A human reviews the result and saves it. Nothing here bypasses
+   `save_scenario`.
+5. **Tests.** Cover round-trip correctness on scenarios that today's string matchers mishandle:
+   flow-style steps, comments between steps, a selector value with `:` or `#`, and a two-scenario
+   file. Assert that the right step and scenario are mutated, and that the rest is preserved to the
+   guarantee of the chosen boundary.
 
 ## Alternatives considered
 
-- **Harden the string matchers in place.** More special cases (flow style, comments, quoting) piled onto
-  a fundamentally text-shaped approach; it never reaches the correctness a parser gives for free and
-  keeps two divergent ideas of scenario structure.
-- **Full-file canonical re-serialize, accept the reflow.** The simplest implementation, but reformatting
-  an author's file and dropping their comments on every Apply is a poor authoring experience; acceptable
-  only if the design explicitly chooses it and the UI signals it.
-- **Do nothing (rely on lint to catch damage).** Lint flags an invalid *result* but cannot recover the
-  author's intent after a mis-spliced edit; catching it after the fact is worse than not corrupting it.
+- **Harden the string matchers in place.** This piles more special cases (flow style, comments,
+  quoting) onto a fundamentally text-shaped approach. The approach never reaches the correctness
+  that a parser gives for free, and it keeps two divergent ideas of scenario structure.
+- **Full-file canonical re-serialize, accepting the reflow.** This is the simplest implementation.
+  Reformatting an author's file and dropping their comments on every Apply is a poor authoring
+  experience, though. It is acceptable only if the design explicitly chooses it and the UI signals it.
+- **Do nothing and rely on lint to catch damage.** Lint flags an invalid *result*, but it cannot
+  recover the author's intent after a mis-spliced edit. Catching damage after the fact is worse than
+  not corrupting the file.
 
 ## Progress
 
@@ -92,22 +120,30 @@ rewrite unrelated lines. No prime directive is affected — this is authoring-si
 - [x] Unit 4 — preserve live lint/audit review before Save.
 - [x] Unit 5 — round-trip tests over the formats the string matchers mishandle.
 
-**Boundary chosen (Unit 1): scoped-block splice, PyYAML-only.** The editor loads the raw file text
-(comments intact), so a full-file re-serialize would drop every comment and reflow unrelated
-scenarios on each Apply. Instead the backend parses with PyYAML, locates the changed step / expect
-span via `yaml.compose` source marks, re-serializes only that block, and splices it into the raw
-text — comments outside the block survive. A comment-preserving round-trip via `ruamel` was rejected
-to avoid a second YAML engine with different `on/off`-bool semantics than `bajutsu/_yaml.py`.
+**Boundary chosen (Unit 1): scoped-block splice, PyYAML only.** The editor loads the raw file text
+with its comments intact. A full-file re-serialize would therefore drop every comment and reflow
+unrelated scenarios on each Apply. Instead, the backend works in four steps:
+
+- It parses the file with PyYAML.
+- It locates the changed step or expect span through `yaml.compose` source marks.
+- It re-serializes only that block.
+- It splices the block into the raw text.
+
+Comments outside the block survive. A comment-preserving round-trip through `ruamel` was rejected,
+because it would add a second YAML engine whose `on`/`off` boolean semantics differ from
+`bajutsu/_yaml.py`.
 
 Log (oldest first):
 
-- Implemented in [#1079](https://github.com/bajutsu-e2e/bajutsu/pull/1079): new
-  `bajutsu/scenario/edit.py` (`apply_selector` / `apply_enrichment`) and a `dump_block` serializer
-  helper; two AI-free serve endpoints (`/api/scenario/apply-selector`, `/api/scenario/enrich-apply`)
-  in `bajutsu/serve/operations/author_edit.py`; the Author editor's `#au-apply` handler and
-  `enrichApply` now POST to them, deleting `auSelectorYaml` / `enrichAssertionYaml` / `_extractName`
-  and all line-scanning. Round-trip tests cover flow-style steps, comments between steps, a `:`/`#`
-  selector value, and a two-scenario file.
+- Implemented in [#1079](https://github.com/bajutsu-e2e/bajutsu/pull/1079).
+  - New `bajutsu/scenario/edit.py` (`apply_selector` / `apply_enrichment`) and a `dump_block`
+    serializer helper.
+  - Two AI-free serve endpoints (`/api/scenario/apply-selector`, `/api/scenario/enrich-apply`) in
+    `bajutsu/serve/operations/author_edit.py`.
+  - The Author editor's `#au-apply` handler and `enrichApply` now POST to the endpoints. They delete
+    `auSelectorYaml`, `enrichAssertionYaml`, `_extractName`, and all line-scanning.
+  - Round-trip tests cover flow-style steps, comments between steps, a `:`/`#` selector value, and a
+    two-scenario file.
 
 ## References
 

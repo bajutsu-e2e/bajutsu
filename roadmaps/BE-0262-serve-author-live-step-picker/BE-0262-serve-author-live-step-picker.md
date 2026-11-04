@@ -15,70 +15,85 @@
 
 ## Introduction
 
-The Author tab's Edit mode ([BE-0013](../BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md))
-lets an author fix a step's selector by clicking on a screenshot: the click is resolved against the
-element tree and the picked selector is written back into the YAML. Today that flow depends entirely
-on a *prior run's* stored artifacts. The step list comes from `/api/scenario?…&runId=…`; with no run
-selected there are zero steps, and the picker's resolve call (`/api/scenario/resolve`) requires a
-`runId` + `stepId` and returns `invalid or missing runId` without one. The Run dropdown that feeds it
-lists **every run in the hub, unfiltered by target or scenario** (`/api/runs`).
+In the Author tab's Edit mode ([BE-0013](../BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md)),
+an author fixes a step's selector by clicking on a screenshot. The click is resolved against the
+element tree, and the picked selector is written back into the YAML.
 
-The result: on a scenario that has never been run, Edit's headline screenshot-picker is unusable, and
-even when runs exist the picker offers runs from unrelated scenarios whose step ids cannot match. This
-item makes Edit usable without a prior run and scopes the run picker to what can actually match.
+Today this flow depends entirely on the stored artifacts of a *prior run*:
+
+- The step list comes from `/api/scenario?…&runId=…`. With no run selected, the list has zero steps.
+- The picker's resolve call (`/api/scenario/resolve`) requires a `runId` and a `stepId`. Without them
+  it returns `invalid or missing runId`.
+- The Run dropdown that feeds the picker lists **every run in the hub, unfiltered by target or
+  scenario** (`/api/runs`).
+
+As a result, Edit's headline screenshot picker is unusable on a scenario that has never run. Even
+when runs exist, the picker offers runs from unrelated scenarios, whose step ids cannot match.
+
+This item makes Edit usable without a prior run. It also scopes the run picker to the runs that can
+actually match.
 
 ## Motivation
 
-Edit mode's promise is "open a scenario, click on the screen, fix the selector". In practice an author
-must first go run the scenario elsewhere to produce the artifacts, then come back, then hope the global
-run list surfaces the right run. The one entry path that avoided this — flowing a just-captured scenario
-straight into Edit (`auOpenSaved`) — starts from Capture, which is itself broken on `[ios]` targets
-(addressed by the sibling actuator-selection proposal). So for most scenarios the screenshot picker, the
-distinguishing feature of Edit over plain text editing, does not function.
+Edit mode promises "open a scenario, click on the screen, fix the selector". In practice, an author
+must first run the scenario elsewhere to produce the artifacts. The author then comes back and hopes
+that the global run list surfaces the right run.
 
-Two fixes make it work:
+One entry path avoided this: flowing a just-captured scenario straight into Edit (`auOpenSaved`).
+That path starts from Capture, which is itself broken on `[ios]` targets (the sibling
+actuator-selection proposal addresses that). For most scenarios, then, the screenshot picker does
+not function. The picker is the feature that distinguishes Edit from plain text editing.
+
+Two fixes make the picker work:
 
 1. **A live source for step-picking.** Like Capture, Edit can boot a live driver and take a current
-   screenshot + element tree, so a selector can be resolved against *now* rather than only against a
-   frozen past run. This gives Edit a working picker with no prerequisite run.
-2. **Scope the run picker.** When runs *are* used (to review a specific past state), the Run dropdown
-   should list only runs for the selected target and scenario, so a chosen run's step ids line up with
-   the loaded scenario instead of silently mismatching.
+   screenshot and element tree. A selector can then be resolved against *now*, not merely against a
+   frozen past run. Edit gets a working picker with no prerequisite run.
+2. **A scoped run picker.** Authors still use runs to review a specific past state. In that case the
+   Run dropdown should list only the runs for the selected target and scenario. A chosen run's step
+   ids then line up with the loaded scenario, instead of silently mismatching.
 
-Neither touches the verdict path: resolution is authoring assistance that proposes a selector for the
-human to Apply and Save; `run` remains deterministic and AI-free. Determinism and app-agnosticism are
-unaffected (the live driver is chosen per target's config, reusing the same selection as Capture).
+Neither fix touches the verdict path. Resolution is authoring assistance: it proposes a selector for
+the human to Apply and Save. `run` remains deterministic and AI-free. Determinism and
+app-agnosticism are unaffected, because the live driver is chosen from the target's config and reuses
+the same selection as Capture.
 
 ## Detailed design
 
-1. **Target/scenario-scoped run list.** Filter the Author Run dropdown to runs whose target and scenario
-   match the current selection. Prefer filtering server-side (a scoped query param on `/api/runs`, or a
-   dedicated Author runs endpoint) over client-side filtering of the global list, so the payload stays
-   small and the scoping is authoritative.
-2. **Live step-picking without a run.** Add a live-resolve path for Edit that boots a driver for the
-   selected target (reusing the shared, cost-ordered actuator selection — see the sibling
-   actuator-selection proposal — so it does not re-introduce the same `[ios]` crash), takes a screenshot
-   + query, and resolves a screen click against the live tree, mirroring Capture's `mark` resolution.
-   The picked selector flows into the same Apply → YAML write the run-backed path already uses.
+1. **Target- and scenario-scoped run list.** Filter the Author Run dropdown to the runs whose target
+   and scenario match the current selection. Filter server-side, with a scoped query parameter on
+   `/api/runs` or a dedicated Author runs endpoint. Server-side filtering is preferable to
+   client-side filtering of the global list, because the payload stays small and the scoping is
+   authoritative.
+2. **Live step-picking without a run.** Add a live-resolve path for Edit. The path boots a driver for
+   the selected target, takes a screenshot and a query, and resolves a screen click against the live
+   tree. It mirrors Capture's `mark` resolution.
+   - The driver comes from the shared, cost-ordered actuator selection (see the sibling
+     actuator-selection proposal), so the path does not re-introduce the same `[ios]` crash.
+   - The picked selector flows into the same Apply → YAML write that the run-backed path already
+     uses.
 3. **Make the mode's dependency explicit in the UI.** When no run is selected and no live session is
-   open, the Edit screen states how to get a picker (start a live session) rather than showing an inert
-   placeholder; when a run is selected, keep the existing per-step screenshot navigation.
-4. **Session + safety reuse.** Reuse the capture-session machinery (single active session, per-actor
-   ownership, teardown) so a live Edit session cannot leak a driver or collide across users, consistent
-   with how Capture manages its session.
-5. **Tests.** Scoped-run-list filtering (a run for another scenario is excluded); a live-resolve path
-   returns a selector for a click (via the stub driver factory); the no-run/no-session placeholder state.
+   open, the Edit screen states how to get a picker (start a live session), in place of an inert
+   placeholder. When a run is selected, the existing per-step screenshot navigation stays.
+4. **Session and safety reuse.** Reuse the capture-session machinery: a single active session,
+   per-actor ownership, and teardown. A live Edit session then cannot leak a driver or collide
+   across users, consistent with how Capture manages its session.
+5. **Tests.** Cover three cases:
+   - Scoped-run-list filtering: a run for another scenario is excluded.
+   - The live-resolve path returns a selector for a click, through the stub driver factory.
+   - The no-run, no-session placeholder state.
 
 ## Alternatives considered
 
-- **Require a run before Edit's picker (status quo).** Keeps Edit a pure post-run refinement tool, but
-  that is precisely the friction this item removes; text-only editing already covers the no-run case, so
-  the picker adds nothing unless it can work live.
-- **Client-side filtering of the global run list only.** Simpler, but still ships every run to the
-  browser and leaves the scoping non-authoritative; a server-scoped list is cleaner and smaller.
-- **Auto-run the scenario to generate artifacts on demand.** Heavier (a full deterministic run inside an
-  authoring click) and conflates authoring with the verdict path; a live screenshot is enough to resolve
-  a selector.
+- **Require a run before Edit's picker (status quo).** This keeps Edit a pure post-run refinement
+  tool. That is precisely the friction this item removes. Text-only editing already covers the
+  no-run case, so the picker adds nothing unless it can work live.
+- **Client-side filtering of the global run list alone.** This is simpler, but it still ships every
+  run to the browser and leaves the scoping non-authoritative. A server-scoped list is cleaner and
+  smaller.
+- **Auto-run the scenario to generate artifacts on demand.** This is heavier, because it runs a full
+  deterministic run inside an authoring click. It also conflates authoring with the verdict path. A
+  live screenshot is enough to resolve a selector.
 
 ## Progress
 
@@ -94,19 +109,24 @@ unaffected (the live driver is chosen per target's config, reusing the same sele
 
 ### Log
 
-- [#1134](https://github.com/bajutsu-e2e/bajutsu/pull/1134) — implemented all five units in one PR. Unit 1 scopes `/api/runs` by scenario name
-  (`runs_payload` filter + `serve.author.mjs` `auLoadRuns`). Unit 2 boots a live driver via Capture's
-  session and adds `resolve_capture_pick` (pure resolve, no actuation) reached through
-  `POST /api/capture/resolve`; `read_scenario` now derives the step list from the scenario YAML when
-  no run is selected so a never-run scenario still has steps to fix. Unit 3 states how to start a live
-  session in place of the inert no-run placeholder. Unit 4 reuses the single-session slot, per-actor
-  ownership, and adds `close_capture` (`POST /api/capture/close`) for save-less teardown. Unit 5 adds
-  the scoping, live-resolve, and placeholder-state tests.
-- [#1137](https://github.com/bajutsu-e2e/bajutsu/pull/1137) — follow-up on two non-blocking review notes
-  from #1134. `runs_payload` scoped the run list *after* the DB's newest-50 cap, so in hosted mode a run
-  of the loaded scenario outside that window was dropped; it now lists unbounded and re-caps after
-  filtering when a scenario is given. Also tightened the extracted `_resolve_point` / `_feedback_payload`
-  types from `Any` to `CaptureResult`.
+- [#1134](https://github.com/bajutsu-e2e/bajutsu/pull/1134) implemented all five units in one PR.
+  - Unit 1 scopes `/api/runs` by scenario name (the `runs_payload` filter and `auLoadRuns` in
+    `serve.author.mjs`).
+  - Unit 2 boots a live driver through Capture's session. It adds `resolve_capture_pick` (a pure
+    resolve with no actuation), reached through `POST /api/capture/resolve`. When no run is
+    selected, `read_scenario` now derives the step list from the scenario YAML, so a never-run
+    scenario still has steps to fix.
+  - Unit 3 states how to start a live session, in place of the inert no-run placeholder.
+  - Unit 4 reuses the single-session slot and per-actor ownership. It adds `close_capture`
+    (`POST /api/capture/close`) for save-less teardown.
+  - Unit 5 adds the scoping, live-resolve, and placeholder-state tests.
+- [#1137](https://github.com/bajutsu-e2e/bajutsu/pull/1137) followed up on two non-blocking review
+  notes from #1134.
+  - `runs_payload` scoped the run list *after* the database's newest-50 cap. In hosted mode, a run of
+    the loaded scenario outside that window was dropped. When a scenario is given, the function now
+    lists without a bound and re-caps after filtering.
+  - The extracted `_resolve_point` and `_feedback_payload` types are tightened from `Any` to
+    `CaptureResult`.
 
 ## References
 

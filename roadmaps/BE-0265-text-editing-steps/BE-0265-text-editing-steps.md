@@ -15,41 +15,49 @@
 
 ## Introduction
 
-The only text-entry step today is `type` (`bajutsu/orchestrator/actions/handlers/gestures.py`),
-which appends characters via `driver.type_text()` on every backend. There is no way to clear a
-field, delete part of its content, select text, or copy a selection to the clipboard. This item
-adds four steps — `select`, `clear`, `delete`, `copy` — that close that gap while staying inside
-the existing determinism model.
+The only text-entry [step](../../docs/glossary.md#scenario-authoring) today is `type`
+(`bajutsu/orchestrator/actions/handlers/gestures.py`). It appends characters through
+`driver.type_text()` on every backend. A scenario cannot clear a field, delete part of its content,
+select text, or copy a selection to the clipboard.
+
+This item adds four steps that close that gap: `select`, `clear`, `delete`, and `copy`. The steps
+stay inside the existing determinism model.
 
 ## Motivation
 
-Real forms are edited, not just filled once: a user clears a field and retypes, backspaces a typo,
+Real forms are edited, not filled once. A user clears a field and retypes, backspaces a typo,
 selects a value to copy it elsewhere, or replaces part of an existing value. None of that is
-expressible in a scenario today; the only workaround is a strained sequence of `tap` /
-`longPress` guesses with no defined outcome, which is exactly the non-determinism the driver
+expressible in a scenario today. The only workaround is a strained sequence of `tap` and
+`longPress` guesses with no defined outcome. That is exactly the non-determinism that the driver
 abstraction exists to avoid.
 
-The natural design hazard is treating "selection" as a piece of state — *which characters are
-currently selected* — that a step could set and a later assertion could check. No backend exposes
-that as queryable state: `Element` (`DESIGN.md` §5) carries `value` but no selection range, and
-none of idb / adb / XCUITest expose a selection query. Modeling `select` that way would need new,
-backend-specific state no `query()` can verify, in tension with the determinism-first directive
-(prime directive 2) and the "ambiguity fails rather than guesses" contract the selector semantics
-already enforce.
+The natural design hazard is to treat "selection" as a piece of state: *which characters are
+currently selected*. A step could set that state, and a later assertion could check it. No backend
+exposes selection as queryable state:
 
-The fix is to keep `select` (and `copy`) as **actions**, not state: given the same field content
-and the same fixed step parameters, the action is deterministic, and *its own outcome is never the
-thing asserted*. Verification lands on what happens next — a `type` that replaces the selection
-(existing `value` assertion), or a `copy` that is checked through the clipboard read-back BE-0052
-already shipped (`expect: - clipboard: { equals | matches }`). `clear` and `delete` need no new
-assertion at all: both are backspace-shaped mutations of `value`, and `value` is already an
-assertable `Element` field and an existing `Assertion` case
+- `Element` (`DESIGN.md` §5) carries `value` but no selection range.
+- None of idb, adb, and XCUITest exposes a selection query.
+
+Modeling `select` as state would need new, backend-specific state that no `query()` can verify. That
+conflicts with the determinism-first directive (prime directive 2) and with the "ambiguity fails
+rather than guesses" contract that the selector semantics already enforce.
+
+The fix is to keep `select` (and `copy`) as **actions**, not state. Given the same field content and
+the same fixed step parameters, the action is deterministic. *Its own outcome is never the thing
+asserted.* Verification lands on what happens next:
+
+- A `type` that replaces the selection is verified by the existing `value` assertion.
+- A `copy` is verified through the clipboard read-back that BE-0052 already shipped
+  (`expect: - clipboard: { equals | matches }`).
+
+`clear` and `delete` need no new assertion at all. Both are backspace-shaped mutations of `value`.
+`value` is already an assertable `Element` field and an existing `Assertion` case
 (`bajutsu/scenario/models/assertions.py`).
 
 ## Detailed design
 
-Four new steps, following the existing `type` shape (`into` selects the target field first, then
-the step's own effect runs):
+Four new steps follow the existing `type` shape. `into` selects the target field first, and then the
+step's own effect runs.
 
 ```yaml
 - select: { into: form.note, mode: all }   # select the field's full current content
@@ -58,76 +66,80 @@ the step's own effect runs):
 - delete: { into: form.note, count: 3 }     # delete the last 3 characters
 ```
 
-- **`select`** — `mode: all` only for this item (a platform "select all" action: e.g. a hardware
-  ⌘A key event on the iOS Simulator, Android's long-press ▸ "Select All", `Ctrl+A` / triple-click
-  on web). Word- or range-level selection (`mode: word`, offset-based ranges) is deliberately out
-  of scope: it needs drag-handle or cursor-position primitives none of the backends expose today,
-  and the boundary semantics (what counts as a "word") are locale- and OS-dependent — a
-  significantly bigger, less deterministic surface that can be scoped later if a concrete need
-  shows up.
-- **`copy`** — triggers the platform's "Copy" action on whatever is currently selected (no
-  target selector of its own; it acts on the active selection `select` produced). Its result is
-  verified purely through the existing clipboard read-back, not through any new state this step
-  introduces. **When nothing is selected** (no prior `select`, or a step cleared the selection),
-  `copy` fails the step deterministically rather than silently copying nothing or leaving the
-  clipboard's prior contents in place: a "copy" with no selection is a scenario-authoring mistake,
-  and per prime directive 2 it must surface as a failure, not a silent no-op that a later clipboard
-  assertion might misread as success. The check is on Bajutsu's side (was a selection established
-  since the last selection-clearing action?), not delegated to whatever each backend's native copy
-  happens to do with an empty selection — so the failure is identical across backends.
-- **`clear`** — clears the named field's entire content. `Element.value` (already returned by
-  `query()`) gives the current string; the actuation removes exactly that many characters
-  (backspace-equivalent) rather than guessing a fixed count, so it is agnostic to whatever content
+- **`select`** supports `mode: all` only, in this item. It performs a platform "select all" action:
+  a hardware ⌘A key event on the iOS Simulator, long-press ▸ "Select All" on Android, and `Ctrl+A`
+  or triple-click on web. Word-level and range-level selection (`mode: word`, offset-based ranges)
+  are deliberately out of scope.
+  - They need drag-handle or cursor-position primitives that no backend exposes today.
+  - The boundary semantics (what counts as a "word") depend on locale and OS.
+  - The result is a significantly bigger, less deterministic surface. A later item can scope it if a
+    concrete need shows up.
+- **`copy`** triggers the platform's "Copy" action on whatever is currently selected. It has no
+  target selector of its own, because it acts on the active selection that `select` produced. The
+  existing clipboard read-back verifies its result. The step introduces no new state.
+  - **When nothing is selected**, `copy` fails the step deterministically. Nothing is selected when
+    no `select` came before, or when a step cleared the selection. `copy` neither silently copies
+    nothing nor leaves the clipboard's prior contents in place.
+  - A "copy" with no selection is a scenario-authoring mistake. Per prime directive 2, it must
+    surface as a failure, not as a silent no-op that a later clipboard assertion might misread as
+    success.
+  - The check sits on Bajutsu's side: was a selection established since the last
+    selection-clearing action? It is not delegated to whatever each backend's native copy does with
+    an empty selection. The failure is therefore identical across backends.
+- **`clear`** clears the named field's entire content. `Element.value`, which `query()` already
+  returns, gives the current string. The actuation removes exactly that many characters
+  (backspace-equivalent), not a guessed fixed count. It is therefore agnostic to whatever content
   the field already held.
-- **`delete`** — removes `count` characters from the end of the field's current value, the same
-  backspace-equivalent mechanism as `clear` bounded to a smaller count. Useful for a scripted typo
-  correction or partial edit without clearing the whole field.
+- **`delete`** removes `count` characters from the end of the field's current value. It uses the
+  same backspace-equivalent mechanism as `clear`, bounded to a smaller count. It serves a scripted
+  typo correction or a partial edit without clearing the whole field.
 
-**Per-backend actuation** — the concrete mechanism is a per-backend implementation detail
-finalized at build time (mirroring BE-0052's own experience, where two of four primitives needed
-implementation-time triage to find a mechanism that actually holds up). The directions to
-evaluate:
+**Per-backend actuation.** The concrete mechanism is a per-backend implementation detail, finalized
+at build time. This mirrors BE-0052's own experience, where two of four primitives needed
+implementation-time triage to find a mechanism that holds up. The directions to evaluate are:
 
-- **idb** — `driver.type_text()` already reaches the focused field over `idb_companion`'s text
-  gRPC call (`bajutsu/drivers/idb.py`); whether control characters (e.g. `\b`) are honored the same
-  way a hardware backspace key would be needs implementation-time verification. If not, a
-  companion HID key-event call (as opposed to the text-injection call) is the fallback.
-- **adb** — `input keyevent KEYCODE_DEL` (67) repeated `count` times, run the same way the existing
-  `KEYCODE_BACK` call is (`bajutsu/adb.py`); `select`'s "select all" has no single keyevent
+- **idb.** `driver.type_text()` already reaches the focused field over `idb_companion`'s text gRPC
+  call (`bajutsu/drivers/idb.py`). Implementation-time verification must show whether control
+  characters (for example `\b`) are honored the way a hardware backspace key would be. If they are
+  not, the fallback is a companion HID key-event call, as opposed to the text-injection call.
+- **adb.** Run `input keyevent KEYCODE_DEL` (67) `count` times, the same way the existing
+  `KEYCODE_BACK` call runs (`bajutsu/adb.py`). `select`'s "select all" has no single keyevent
   equivalent and likely needs the long-press context-menu path.
-- **XCUITest** — same HTTP transport channel used for `type` (`/type`); evaluate a same-shape
-  `/select` and `/copy` (or a general `/keyEvent`) endpoint on the runner side (`BajutsuKit`),
-  since `XCUIElement` exposes both text replacement and keyboard-key events natively.
-- **Playwright** — the most direct backend: `page.fill(selector, "")` for `clear`,
-  `keyboard.press("Backspace")` repeated for `delete`, `selectText()` / triple-click for `select`,
-  and the standard clipboard permission + `navigator.clipboard` (or `Ctrl+C` key event) for `copy`.
+- **XCUITest.** Use the same HTTP transport channel as `type` (`/type`). Evaluate a same-shape
+  `/select` and `/copy` endpoint, or a general `/keyEvent` endpoint, on the runner side
+  (`BajutsuKit`). `XCUIElement` natively exposes both text replacement and keyboard-key events.
+- **Playwright.** This is the most direct backend:
+  - `page.fill(selector, "")` for `clear`
+  - `keyboard.press("Backspace")`, repeated, for `delete`
+  - `selectText()` or triple-click for `select`
+  - the standard clipboard permission plus `navigator.clipboard` (or a `Ctrl+C` key event) for `copy`
 
-Prime directives preserved:
+The design preserves the prime directives:
 
-- **Determinism.** Every step is a fixed mutation (backspace-equivalent count, or a platform select
-  -all/copy action) with a machine-checkable result reached through existing `value` / `clipboard`
-  assertions — no new unverifiable state, no `sleep`, no LLM.
-- **App-agnostic.** No per-app code; `into` addresses the target the same way every other selector
-  -based step does.
-- **Codegen.** These map to native XCUITest / Espresso / Playwright actions with direct
-  equivalents, so codegen emits real calls rather than a `// TODO` stub (unlike BE-0052's
+- **Determinism.** Every step is a fixed mutation: a backspace-equivalent count, or a platform
+  select-all or copy action. The result is machine-checkable through the existing `value` and
+  `clipboard` assertions. The design adds no new unverifiable state, no `sleep`, and no LLM.
+- **App-agnostic.** No per-app code is needed. `into` addresses the target the same way every other
+  selector-based step does.
+- **Codegen.** These steps map to native XCUITest, Espresso, and Playwright actions with direct
+  equivalents. Codegen therefore emits real calls, not a `// TODO` stub (unlike BE-0052's
   `simctl`-only primitives).
 
 ## Alternatives considered
 
-- **Model `select` as queryable state (a selection range on `Element`).** Rejected: no backend
-  exposes selection state through its element/query surface, so any assertion against it would be
-  unverifiable — a determinism-first violation, not just an implementation gap.
-- **Fold `select` + `copy` into a single `copySelection` step.** Considered, since "select all then
-  copy" is the only flow this item ships. Kept as two steps instead: `select` is meaningful on its
-  own once other selection-consuming actions exist (e.g. typing over a selection replaces it), and
-  keeping `copy` separate mirrors the existing one-action-per-step convention (like `type`'s
-  `into` + effect shape) rather than special-casing this one combination.
-- **Extend `type` with a `mode: replace` / `clear: true` modifier instead of a new `clear` step.**
-  Rejected: `type` requires `text`, so "clear without retyping" would need an empty string
-  standing in for intent, and mixing "focus + optionally clear + optionally type" into one step's
-  modifiers reads less clearly in a scenario than two small, single-purpose steps chained in
-  sequence.
+- **Model `select` as queryable state (a selection range on `Element`).** Rejected. No backend
+  exposes selection state through its element and query surface, so any assertion against it would
+  be unverifiable. That is a determinism-first violation, not merely an implementation gap.
+- **Fold `select` and `copy` into a single `copySelection` step.** Considered, because "select all,
+  then copy" is the only flow this item ships. Kept as two steps instead, for two reasons.
+  - `select` is meaningful on its own once other selection-consuming actions exist. For example,
+    typing over a selection replaces it.
+  - Keeping `copy` separate mirrors the existing one-action-per-step convention (like `type`'s
+    `into` plus effect shape). It avoids special-casing this one combination.
+- **Extend `type` with a `mode: replace` or `clear: true` modifier, instead of a new `clear` step.**
+  Rejected. `type` requires `text`, so "clear without retyping" would need an empty string standing
+  in for intent. A scenario also reads less clearly when one step's modifiers mix "focus, optionally
+  clear, optionally type". Two small, single-purpose steps chained in sequence read better.
 
 ## Progress
 
@@ -142,13 +154,18 @@ Prime directives preserved:
 
 **Log**
 
-- [#1114](https://github.com/bajutsu-e2e/bajutsu/pull/1114) — All four steps land in one PR: scenario models (`select` / `clear` / `delete` /
-  `copy`), the `delete_text` / `select_all` / `copy_selection` `Driver` primitives across every
-  backend (fake / adb / playwright / xcuitest / idb / webview), the `copy`-requires-`select`
-  selection-state seam centralized in `_do_action`, codegen for all three emitters, and bilingual
-  docs. idb `select` / `copy` and the web-context driver raise `UnsupportedAction` (codegen routes
-  to XCUITest), mirroring the multi-touch precedent. Verified by the deterministic gate; on-device
-  actuation is build-time triage per *Detailed design*.
+- [#1114](https://github.com/bajutsu-e2e/bajutsu/pull/1114) landed all four steps in one PR. The PR
+  contains:
+  - The scenario models (`select`, `clear`, `delete`, `copy`).
+  - The `delete_text`, `select_all`, and `copy_selection` `Driver` primitives across every backend
+    (fake, adb, playwright, xcuitest, idb, webview).
+  - The `copy`-requires-`select` selection-state seam, centralized in `_do_action`.
+  - Codegen for all three emitters.
+  - Bilingual docs.
+
+  idb `select` and `copy`, and the web-context driver, raise `UnsupportedAction`. Codegen routes
+  these to XCUITest, mirroring the multi-touch precedent. The deterministic gate verified the PR.
+  On-device actuation is build-time triage per *Detailed design*.
 
 ## References
 

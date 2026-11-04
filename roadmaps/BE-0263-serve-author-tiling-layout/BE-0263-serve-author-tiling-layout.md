@@ -15,68 +15,93 @@
 
 ## Introduction
 
-The serve Web UI gives its three interactive views — Replay, Record, and Crawl — a tiling layout:
-`initTiling` in `bajutsu/templates/serve.author.js` registers each view in a `SPECS` list, and each
-becomes a tree of resizable, drag-to-split/swap panes whose layout persists in localStorage. The
-Author view ([BE-0098](../BE-0098-unified-authoring-surface/BE-0098-unified-authoring-surface.md)) is
-**not** in `SPECS`. It keeps a fixed CSS grid — `#view-author{grid-template-columns:var(--rec-left,340px)
-var(--gw) 1fr}` — that stacks the controls, step list, YAML editor, determinism badge, codegen panel,
-and enrich panel into one ~340px column, while the screenshot pane (often empty) takes the entire
-remaining width.
+The serve Web UI gives its three interactive views a tiling layout. The views are Replay, Record,
+and Crawl. `initTiling` in `bajutsu/templates/serve.author.js` registers each view in a `SPECS`
+list. Each view becomes a tree of resizable panes that the user can drag to split or swap, and the
+layout persists in localStorage.
 
-The effect is a view that reads as broken: the YAML editor — the primary work surface — is jammed into
-a narrow column with a horizontal scrollbar, and the space allocation is inverted from what authoring
-needs. This item brings Author into the same tiling system as the other editors so its panes resize and
+The Author view ([BE-0098](../BE-0098-unified-authoring-surface/BE-0098-unified-authoring-surface.md))
+is **not** in `SPECS`. It keeps a fixed CSS grid:
+`#view-author{grid-template-columns:var(--rec-left,340px) var(--gw) 1fr}`. The grid stacks six
+elements into one column about 340px wide:
+
+- the controls
+- the step list
+- the YAML editor
+- the determinism badge
+- the codegen panel
+- the enrich panel
+
+The screenshot pane, often empty, takes the entire remaining width.
+
+The view therefore reads as broken. The YAML editor, the primary work surface, is jammed into a
+narrow column with a horizontal scrollbar. The space allocation is the inverse of what authoring
+needs.
+
+This item brings Author into the same tiling system as the other editors. Its panes then resize and
 rearrange, and the editor gets the room it deserves.
 
 ## Motivation
 
-Author is the most editing-heavy view in serve — its whole purpose is to look at a screen and write
-YAML — yet it is the only interactive view denied the tiling that makes the others usable at different
-window sizes and task focuses. The current fixed grid was a reasonable first cut ("form on the left,
-screen on the right"), but it puts the two things an author works with most (the YAML and the screen)
-in a fixed 340px-vs-rest split that cannot be adjusted, and crams the steps/audit/codegen/enrich panels
-into the same narrow column.
+Author is the most editing-heavy view in serve. Its whole purpose is to look at a screen and write
+YAML. Yet it is the only interactive view denied the tiling that makes the others usable at
+different window sizes and task focuses.
 
-Beyond the immediate "it looks broken" symptom, this is an **affinity gap**: Record and Replay already
-solve exactly this with `initTiling`, and Author reimplements a lesser layout instead of joining them.
-Registering Author in `SPECS` reuses the drag-split, resize, persistence, and reduced-motion handling
-the tiler already provides (the responsive small-screen path from BE-0072 and the themable transitions
-from BE-0191 come along for free), rather than growing a second, weaker layout code path.
+The current fixed grid was a reasonable first cut ("form on the left, screen on the right"). It
+puts the two things an author works with most, the YAML and the screen, in a fixed 340px-versus-rest
+split that cannot be adjusted. It also crams the steps, audit, codegen, and enrich panels into the
+same narrow column.
 
-No prime directive is touched — this is presentation only. The determinism-relevant reduced-motion
-guard the tiler already honors (BE-0191/BE-0072) is inherited, so on-device authoring stays as
-deterministic as the other views.
+Beyond the immediate "it looks broken" symptom, this is an **affinity gap**. Record and Replay
+already solve exactly this problem with `initTiling`, and Author reimplements a lesser layout
+instead of joining them. Registering Author in `SPECS` reuses the drag-split, resize, persistence,
+and reduced-motion handling that the tiler already provides. The responsive small-screen path from
+BE-0072 and the themable transitions from BE-0191 come along for free. The codebase no longer grows
+a second, weaker layout code path.
+
+No prime directive is touched, because the change is presentation only. The tiler already honors a
+reduced-motion guard that matters for determinism (BE-0191 and BE-0072), and Author inherits it. On-device
+authoring therefore stays as deterministic as the other views.
 
 ## Detailed design
 
-1. **Register `view-author` in `SPECS`.** Add a spec describing Author's panes and a sensible default
-   layout tree. Candidate panes: controls (target/scenario/mode), step list, YAML editor (with its
-   badge/problems/audit/codegen/enrich affordances), and the screen (screenshot / picker). Mark panes
-   that come and go (e.g. the screen when no session/run is active) `optional`, as Record's run-result
-   pane already is, so hiding one keeps the tree valid.
-2. **Make the YAML editor a first-class pane.** Give the editor its own resizable pane so it can be the
-   dominant surface, rather than being the third card in a 340px stack.
-3. **Reconcile the markup and CSS.** Adjust the Author section's structure and the `#view-author` grid
-   rule so the tiler owns the layout (as it does for Record/Replay via the block-level `<main>` +
-   `.tile-root`), removing the now-redundant fixed-column grid while keeping the non-tiled narrow-tier
-   stack (BE-0072) working.
-4. **Persist and validate like the others.** Author's tree persists under the same `bajutsu-tiles`
-   key with the same validity check (unique, known, all-required-present leaves), so a stale saved
-   layout degrades gracefully to the default.
-5. **Verification.** Because layout is hard to unit-test, verify in the browser (per the project's
-   serve-UI norm): the editor pane is dominant and resizable, panes split/swap, the layout persists,
-   and the narrow-tier stack is unaffected. Add/adjust any existing tiler tests that enumerate `SPECS`.
+1. **Register `view-author` in `SPECS`.** Add a spec that describes Author's panes and a sensible
+   default layout tree. The candidate panes are:
+   - controls (target, scenario, mode)
+   - step list
+   - YAML editor, with its badge, problems, audit, codegen, and enrich affordances
+   - the screen (screenshot or picker)
+
+   Mark the panes that come and go `optional`, as Record's run-result pane already is. The screen
+   when no session or run is active is one example. Hiding such a pane then keeps the tree valid.
+2. **Make the YAML editor a first-class pane.** Give the editor its own resizable pane, so it can be
+   the dominant surface instead of the third card in a 340px stack.
+3. **Reconcile the markup and CSS.** Adjust the Author section's structure and the `#view-author`
+   grid rule so that the tiler owns the layout. This is how Record and Replay work, through the
+   block-level `<main>` and `.tile-root`. The change removes the now-redundant fixed-column grid and
+   keeps the non-tiled narrow-tier stack (BE-0072) working.
+4. **Persist and validate like the other views.** Author's tree persists under the same
+   `bajutsu-tiles` key, with the same validity check: leaves are unique, known, and all required
+   leaves are present. A stale saved layout then degrades gracefully to the default.
+5. **Verification.** Layout is hard to unit-test, so verify in the browser, per the project's
+   serve-UI norm:
+   - The editor pane is dominant and resizable.
+   - Panes split and swap.
+   - The layout persists.
+   - The narrow-tier stack is unaffected.
+
+   Add or adjust any existing tiler tests that enumerate `SPECS`.
 
 ## Alternatives considered
 
-- **Keep the fixed grid, just widen the left column / flip the split.** A quick cosmetic patch, but it
-  leaves Author with a bespoke, non-adjustable layout and the affinity gap intact — the next window
-  size or task focus is wrong again. Reusing the tiler is the durable fix.
-- **A dedicated Author-only resizable layout.** A second layout engine to maintain alongside
-  `initTiling`, for no benefit the shared tiler doesn't already provide.
-- **Defer until an ES-module frontend (BE-0247) lands.** BE-0247 restructures how the JS is delivered,
-  not the tiler's behavior; Author can join `SPECS` now and ride whatever module story arrives later.
+- **Keep the fixed grid and just widen the left column or flip the split.** This is a quick cosmetic
+  patch. It leaves Author with a bespoke, non-adjustable layout and the affinity gap intact, so the
+  next window size or task focus is wrong again. Reusing the tiler is the durable fix.
+- **A dedicated Author-only resizable layout.** This adds a second layout engine to maintain
+  alongside `initTiling`, for no benefit that the shared tiler does not already provide.
+- **Defer until an ES-module frontend (BE-0247) lands.** BE-0247 restructures how the JavaScript is
+  delivered, not the tiler's behavior. Author can join `SPECS` now and ride whatever module story
+  arrives later.
 
 ## Progress
 
@@ -96,8 +121,8 @@ deterministic as the other views.
 
 **Log**
 
-- Author registered in `initTiling`'s `SPECS`; markup + CSS reconciled to drop the fixed grid; the
-  YAML editor, steps, and screen become first-class resizable panes.
+- Author registered in `initTiling`'s `SPECS`. Markup and CSS were reconciled to drop the fixed
+  grid. The YAML editor, steps, and screen became first-class resizable panes.
   ([#1164](https://github.com/bajutsu-e2e/bajutsu/pull/1164))
 
 ## References
