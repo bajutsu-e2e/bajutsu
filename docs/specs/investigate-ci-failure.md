@@ -33,9 +33,9 @@
 
 ### やらないこと
 
-- **コードの修正、push、再実行はしない。** [`record-issue`](../../.apm/skills/record-issue/SKILL.md) と同じく、このスキルの範囲は分類と根拠の提示までです。実際に行動するのは、呼び出し元の [`pr-followup`](../../.apm/skills/pr-followup/SKILL.md) です。
-- **`devicefarm.yml` と `ai-smoke.yml` は対象にしない。** どちらも `workflow_dispatch` 専用で、PRの必須チェックになりません。[`pr-followup`](../../.apm/skills/pr-followup/SKILL.md) の Step 1 が読む `gh pr checks` の対象にも出てこないため、扱う場面自体が生じません。
-- **人間による単独起動の入力形式は今回作らない。** PR番号以外の入力（run-id、「直近のmain失敗」など）を受け付ける拡張は、今回のスコープから外します。理由は4章の代替案に書き残します。
+- **コードの修正、push、再実行はしません。** [`record-issue`](../../.apm/skills/record-issue/SKILL.md) と同じく、このスキルの範囲は分類と根拠の提示までです。実際に行動するのは、呼び出し元の [`pr-followup`](../../.apm/skills/pr-followup/SKILL.md) です。
+- **`devicefarm.yml` と `ai-smoke.yml` は対象にしません。** どちらも `workflow_dispatch` 専用で、PRの必須チェックになりません。[`pr-followup`](../../.apm/skills/pr-followup/SKILL.md) の Step 1 が読む `gh pr checks` の対象にも出てこないため、扱う場面自体が生じません。
+- **人間による単独起動の入力形式は、今回は作りません。** PR番号以外の入力（run-id、「直近のmain失敗」など）を受け付ける拡張は、今回のスコープから外します。理由は4章の代替案に書き残します。
 
 ## 2. なぜつくるのか
 

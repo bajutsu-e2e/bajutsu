@@ -4,8 +4,8 @@ This page lists the public surface of the Python core. The reference is generate
 The generator reads them statically and imports no module, so the lazy and optional backends are never loaded.
 
 `make docs` builds this reference, and the deterministic `make check` gate does **not** include it.
-The hand-written, bilingual guides under [`docs/`](https://github.com/bajutsu-e2e/bajutsu/tree/main/docs) explain concepts and workflows.
-This reference maps the public API.
+It complements the hand-written, bilingual guides under [`docs/`](https://github.com/bajutsu-e2e/bajutsu/tree/main/docs):
+those guides explain concepts and workflows, and this reference maps the public API.
 
 - **[Driver & selectors](drivers.md)** — the backend-agnostic `Driver` protocol and the shared
   `Selector` and `Element` types.

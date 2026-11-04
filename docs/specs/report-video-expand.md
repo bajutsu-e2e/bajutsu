@@ -4,7 +4,7 @@
 > 対象: `bajutsu/templates/report.html.j2`、`bajutsu/templates/report.css`、`bajutsu/templates/report.js`
 > 関連: [BE-0428](../../roadmaps/BE-0428-multi-target-scenario-execution/BE-0428-multi-target-scenario-execution.md)（マルチターゲット動画）、[BE-0439](../../roadmaps/BE-0439-step-groups-report-folding/BE-0439-step-groups-report-folding.md)（ステップの折りたたみ）、[docs/reporting.md](../reporting.md)
 
-各シナリオの動画プレイヤーに拡大ボタンを追加します。押すと、動画本体を画面いっぱいのモーダルへ移し、その右側にそのシナリオのステップ一覧を複製して並べます。動画の再生に合わせて、どのステップが実行中かをハイライトします。この挙動は、既存のコンパクト表示にあるものをモーダル側にも再現します。
+各シナリオの動画プレイヤーに拡大ボタンを追加します。押すと、動画本体を画面いっぱいのモーダルへ移し、その右側にそのシナリオのステップ一覧を複製して並べます。動画の再生に合わせて、どのステップが実行中かをハイライトします。このハイライトは、既存のコンパクト表示にあるものをモーダル側でも再現したものです。
 
 ## 1. なにをつくるのか
 
