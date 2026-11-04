@@ -15,57 +15,65 @@
 
 ## Introduction
 
-`bajutsu codegen --emit uiautomator` turns a scenario into a Kotlin UI Automator test, but no
-workflow, Makefile target, or Gradle build ever compiles the generated file. Every assertion in
-`tests/test_codegen_uiautomator.py` checks the emitted source as a string, so a Kotlin syntax error
-or a call that no longer matches the real `androidx.test.uiautomator` API would pass the whole
-suite. This is the weakest of the three codegen targets: unlike XCUITest (a gating `xcodebuild test`
-job) and unlike Playwright (a comparable real-compile check proposed separately), UI Automator has no
-real-compile check of any kind, gating or not. This item adds one, reusing the emulator and Gradle toolchain
-`android-e2e.yml` already sets up for the conformance suite.
+`bajutsu codegen --emit uiautomator` turns a scenario into a Kotlin UI Automator test. No workflow,
+Makefile target, or Gradle build ever compiles the generated file. Every assertion in
+`tests/test_codegen_uiautomator.py` checks the emitted source as a string. A Kotlin syntax error, or a
+call that no longer matches the real `androidx.test.uiautomator` API, would pass the whole suite.
+
+UI Automator is the weakest of the three codegen targets. XCUITest has a gating `xcodebuild test`
+job, and Playwright has a comparable real-compile check proposed separately. UI Automator has no
+real-compile check of any kind, gating or not. This item adds one, reusing the emulator and Gradle
+toolchain that `android-e2e.yml` already sets up for the conformance suite.
 
 ## Motivation
 
-The emitter's unit tests confirm the right Kotlin call comes out for a given step (`By.res(...)`,
-`device.findObject(...).click()`, and so on), which is real coverage of the mapping logic. It is not
-coverage of codegen's actual claim: that the emitted file is a real, buildable Android test. A
-substring match on `import androidx.test.uiautomator.By` proves the text is present; it proves
-nothing about whether the surrounding Kotlin actually parses, whether the referenced UI Automator
-APIs exist at the pinned library version, or whether the resulting test passes against a running
-app. `android-e2e.yml` already builds the showcase app's Compose and Views variants and a resident
-UI Automator server for the conformance suite ([BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md),
-[BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server.md)) —
-none of that Gradle/emulator infrastructure is wired to codegen output, so a broken emitter change
-would ship silently.
+The emitter's unit tests confirm that the right Kotlin call comes out for a given step
+(`By.res(...)`, `device.findObject(...).click()`, and so on). That is real coverage of the mapping
+logic, but it does not cover the actual claim of codegen: that the emitted file is a real, buildable
+Android test.
+
+A substring match on `import androidx.test.uiautomator.By` proves the text is present. It proves
+nothing on three other questions:
+
+- whether the surrounding Kotlin parses
+- whether the referenced UI Automator APIs exist at the pinned library version
+- whether the resulting test passes against a running app
+
+`android-e2e.yml` already builds the showcase app's Compose and Views variants and a resident UI
+Automator server for the conformance suite
+([BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md),
+[BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server.md)).
+None of that Gradle and emulator infrastructure is wired to codegen output, so a broken emitter
+change would ship silently.
 
 ## Detailed design
 
 Proposal altitude. The work is MECE along the units below.
 
 - **Emit and land a fixture.** Generate a showcase scenario's UI Automator test via
-  `bajutsu codegen --emit uiautomator` and check the generated `.kt` file into
-  `demos/showcase`, the way `ComponentsUITests.swift` is checked in for XCUITest.
-- **Build and run it for real.** Add the generated test to the showcase Android project's
-  instrumented test source set, build it with Gradle, and run it against the booted emulator
-  `android-e2e.yml` already provisions, asserting it passes.
-- **Wire it into CI.** Add an `android-e2e.yml` job mirroring `xcuitest (codegen)`; land it
+  `bajutsu codegen --emit uiautomator`. Check the generated `.kt` file into `demos/showcase`, the way
+  `ComponentsUITests.swift` is checked in for XCUITest.
+- **Build and run it for real.** Add the generated test to the instrumented test source set of the
+  showcase Android project, and build it with Gradle. Run it against the booted emulator that
+  `android-e2e.yml` already provisions, and assert that it passes.
+- **Wire it into CI.** Add an `android-e2e.yml` job that mirrors `xcuitest (codegen)`. Land it
   non-gating first, per the signal-then-required precedent in
   [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md), and
   promote it once stable.
 - **Match the XCUITest floor, not exceed it.** Scope the fixture scenario to the same DSL surface the
-  XCUITest codegen gate covers (`tap` / `wait` / `type` / basic assertions), so all three targets
+  XCUITest codegen gate covers (`tap` / `wait` / `type` / basic assertions). All three targets then
   share a comparable real-compile floor.
 
 ## Alternatives considered
 
-- **Compile with the Kotlin compiler alone, without running on a device.** Cheaper, and it would
-  catch a syntax or type error, but the emitted calls are UI Automator API calls whose behavior
-  (`By.res` resolution, `waitForIdle` semantics) can only be confirmed against a running app on a
-  real or emulated device — a compile-only check would still miss a call that compiles but never
+- **Compile with the Kotlin compiler alone, without running on a device.** This is cheaper and catches
+  a syntax or type error. The emitted calls are UI Automator API calls, though, and their behavior
+  (`By.res` resolution, `waitForIdle` semantics) can be confirmed merely against a running app on a
+  real or emulated device. A compile-only check would still miss a call that compiles but never
   matches anything.
-- **Leave the string-only test suite as the only gate.** It covers the emitter's DSL surface broadly
-  already; the gap is not coverage breadth but coverage kind, and no number of additional substring
-  assertions would catch a real UI Automator API drift.
+- **Leave the string-only test suite as the sole gate.** The suite already covers the emitter's DSL
+  surface broadly. The gap is the kind of coverage, not its breadth, and no number of additional
+  substring assertions would catch a real UI Automator API drift.
 
 ## Progress
 
