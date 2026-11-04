@@ -15,63 +15,72 @@
 
 ## はじめに
 
-`bajutsu codegen --emit playwright` はシナリオを TypeScript の Playwright テストへ変換しますが、
-生成されたファイルを実際にコンパイルして実行する工程はリポジトリのどこにもありません。
-`tests/test_codegen_playwright.py` の全アサーションは、出力ソースを文字列として検査しているだけです。
-本項目はこの欠落したゲートを追加します。シナリオから Playwright テストを生成し、実際の
-`@playwright/test` ランナーで実ブラウザに対して実行し、成功することを検証します。XCUITest 向け
-codegen がすでに持つ実コンパイルゲート（`ios-e2e.yml` の `xcuitest (codegen)` ジョブ）に倣う形です。
+`bajutsu codegen --emit playwright` はシナリオを TypeScript の Playwright テストへ変換します。
+しかし、生成されたファイルを実際にコンパイルして実行する工程は、リポジトリのどこにもありません。
+`tests/test_codegen_playwright.py` の全アサーションが、出力ソースを文字列として検査しているだけだからです。
+
+本項目は、欠落しているゲートを追加します。このゲートは、シナリオから Playwright テストを生成し、
+実際の `@playwright/test` ランナーで実ブラウザに対して実行し、成功することを検証します。
+XCUITest 向け codegen がすでに持つ実コンパイルゲート、つまり `ios-e2e.yml` の
+`xcuitest (codegen)` ジョブに倣う形です。
 
 ## 動機
 
 エミッタのユニットテストは、それ自体が扱う水準では十分に厚みがあります。あるステップに対して
 正しい TypeScript 呼び出し（`page.getByTestId(...)`、`expect(...).toBeVisible()` など）が出力される
-ことは確認できます。しかし確認できないのは、codegen が本来主張していること、すなわち「生成された
-ファイルが実際に動く本物のネイティブテストである」という点です。`import { test, expect } from
-'@playwright/test';` という文字列がテキスト中に存在することは部分一致で証明できても、そのファイルが
-実際の `tsconfig` の下でコンパイルできるか、連鎖するメソッド呼び出しがインストール済みの
-`@playwright/test` の実際の API 表面に対して解決するか、生成されたアサーションが実ページに対して
-本当に成立するかは何も示しません。メソッド名の誤り、テンプレートリテラルの崩れ、あるいは実際の
-Playwright API からドリフトしたエミッタの変更は、`tests/test_codegen_playwright.py` の 453 行すべてを
-素通りし、ユーザーが生成されたファイルを実際に動かして初めて表面化します。
+ことは確認できます。しかし、codegen が本来主張していること、つまり生成されたファイルが実際に動く
+本物のネイティブテストであることは、確認できません。
 
-このギャップを埋めるワークフローや Makefile ターゲットは今のところ存在しません。`demos/web` 自体の
-`e2e` ターゲットは、codegen の出力を経由せず Bajutsu 自身のドライバ層から直接 Playwright backend を
-駆動しており、この検証の代わりにはなりません。XCUITest 向け codegen はすでにこの型を実証済みです。
-`demos/showcase/Makefile` の `ui-test` ターゲットが Swift ファイルを生成し、`xcodegen` でビルドし、
-実際の `xcodebuild test` で実行しており、しかもこのジョブは必須の CI チェックです。Playwright には
-対応する工程が一切ない一方、検証コストは2つのターゲットのうちむしろ安価です。Simulator や macOS
-ランナーも不要で、`demos/web` がすでに導入済みの Chromium だけで足ります。
+`import { test, expect } from '@playwright/test';` という文字列がテキスト中に存在することは、
+部分一致で証明できます。次の3点については、何も示しません。
+
+- そのファイルが、実際の `tsconfig` の下でコンパイルできるか
+- 連鎖するメソッド呼び出しが、インストール済みの `@playwright/test` の実際の API 表面に対して解決するか
+- 生成されたアサーションが、実ページに対して成立するか
+
+次の3種類の欠陥は、`tests/test_codegen_playwright.py` の 453 行すべてを素通りします。
+メソッド名の誤り、テンプレートリテラルの崩れ、実際の Playwright API からドリフトしたエミッタの変更です。欠陥が表面化するのは、ユーザーが
+生成されたファイルを実際に動かしたときです。
+
+このギャップを埋めるワークフローや Makefile ターゲットは、今のところ存在しません。`demos/web` 自体の
+`e2e` ターゲットは、実行時に Bajutsu 自身のドライバ層から Playwright backend を直接駆動します。
+codegen の出力は経由しないので、この検証の代わりにはなりません。
+
+XCUITest 向け codegen は、すでにこの型を実証済みです。`demos/showcase/Makefile` の `ui-test`
+ターゲットが Swift ファイルを生成し、`xcodegen` でビルドし、実際の `xcodebuild test` で実行します。
+このジョブは必須の CI チェックです。Playwright には対応する工程が一切ありません。それでいて、検証
+コストは2つのターゲットのうち安価な側です。Simulator と macOS ランナーは要らず、`demos/web` が
+すでに導入済みの Chromium だけで足ります。
 
 ## 詳細設計
 
 提案の粒度です。作業は以下の単位に沿って MECE に分かれます。
 
-- **生成してフィクスチャとして固定する**：`bajutsu codegen --emit playwright` で `demos/web` の
-  シナリオから Playwright テストを生成し、XCUITest ターゲットの `ComponentsUITests.swift` と同様に、
-  生成された `.spec.ts` をリポジトリにチェックインします。
+- **生成してフィクスチャとして固定する**：`bajutsu codegen --emit playwright` で、`demos/web` の
+  シナリオから Playwright テストを生成します。XCUITest ターゲットの `ComponentsUITests.swift` と
+  同様に、生成された `.spec.ts` をリポジトリにチェックインします。
 - **実際に実行する**：`demos/web` がすでに導入済みの Chromium に対して、実際の `@playwright/test`
-  ランナーで生成された spec を実行し、成功することを検証します。`tsc --noEmit` による構文チェックの
-  みでは代替できません（理由は「検討した代替案」を参照）。
+  ランナーで生成された spec を実行し、成功することを検証します。`tsc --noEmit` による構文チェック
+  だけでは代替できません（理由は「検討した代替案」を参照）。
 - **CI に組み込む**：`ui-test` 同様の Makefile ターゲットと、`xcuitest (codegen)` と同じ
   `web-e2e.yml` のジョブを追加します。
   [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md)
-  の前例にならい、まず非 gating の signal として着地させ、安定を確認してから必須化します。
-- **XCUITest の水準に合わせ、それを超えない**：フィクスチャシナリオの範囲は、現行の XCUITest 向け
-  codegen ゲートが対象とする DSL 表面（`tap` / `wait` / `type` / 基本的なアサーション）に揃え、両
-  ターゲットが同じ実コンパイルの床から始まるようにします。この床を超えて各エミッタの*コンパイル
-  対象* DSL 範囲を広げることは、これに続く別の課題です。
+  の前例にならい、まず非 gating の signal として着地させます。安定を確認してから必須化します。
+- **XCUITest の水準に合わせ、それを超えない**：フィクスチャシナリオの範囲を、現行の XCUITest 向け
+  codegen ゲートの DSL 表面（`tap` / `wait` / `type` / 基本的なアサーション）に揃えます。
+  これにより、両ターゲットが同じ実コンパイルの床から始まります。この床を超えて各エミッタの
+  *コンパイル対象* DSL 範囲を広げることは、これに続く別の課題です。
 
 ## 検討した代替案
 
-- **`@playwright/test` を実行せず `tsc --noEmit` のみで型検査する**：コストは低く、構文エラーや型
-  エラーは検出できますが、ファイルがコンパイルできることしか証明できません。生成されたセレクタや
-  操作、アサーションが実ページに対して本当に成立するかまでは示しません。これはまさに、XCUITest
-  向けゲートが Swift の構文チェックだけでなく実際の `xcodebuild test` を選んだ理由と同じであり、
-  その理由はそのまま当てはまります。
-- **文字列のみのテストスイートをゲートのまま残す**：エミッタの DSL 表面自体は広くカバーされており、
-  問題はカバレッジの広さではなく検証の種類にあります。部分一致のアサーションをいくら増やしても、
-  実際の `@playwright/test` API のドリフトは検出できません。
+- **`@playwright/test` を実行せず `tsc --noEmit` のみで型検査する**：コストは低く、構文エラーや
+  型エラーは検出できます。ただし、証明できるのはファイルがコンパイルできることだけです。生成された
+  セレクタ、操作、アサーションが実ページに対して成立するかまでは示しません。同じギャップがあるため、
+  XCUITest 向けゲートは Swift の構文チェックではなく実際の `xcodebuild test` を選びました。その理由は、
+  そのまま当てはまります。
+- **文字列のみのテストスイートをゲートのまま残す**：エミッタの DSL 表面は、すでに広くカバーされて
+  います。問題はカバレッジの広さではなく、検証の種類にあります。部分一致のアサーションをいくら
+  増やしても、実際の `@playwright/test` API のドリフトは検出できません。
 
 ## 進捗
 
