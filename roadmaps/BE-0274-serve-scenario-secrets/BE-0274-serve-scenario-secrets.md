@@ -16,13 +16,14 @@
 
 ## Introduction
 
-A scenario declares the secrets it needs under a config's `secrets:` list — a list of environment
-variable names `${secrets.X}` resolves at run time (BE-0032). Today the only way to supply those
-values is the process environment the `bajutsu` CLI (or `serve`) happens to run in — there is no
-`serve` Web UI affordance to see which names a bound config declares, or to set their values. This
-proposal extends `serve`'s existing write-once `SecretStore` (BE-0136) to cover this case: a
-**Secrets** panel lists every name the active config declares, each with a masked, write-once field,
-so an operator can provision a scenario's secrets from the Web UI instead of exporting environment
+A scenario declares the secrets it needs under a config's `secrets:` list. The list holds environment
+variable names, which `${secrets.X}` resolves at run time (BE-0032). Today the only way to supply those
+values is the process environment in which the `bajutsu` CLI (or `serve`) happens to run. The `serve`
+Web UI has no control to see which names a bound config declares, or to set their values.
+
+This proposal extends the existing write-once `SecretStore` of `serve` (BE-0136) to cover this case. A
+**Secrets** panel lists every name the active config declares, each with a masked, write-once field. An
+operator can then provision a scenario's secrets from the Web UI, instead of exporting environment
 variables (or hand-editing `.env`) before starting `serve`.
 
 ## Motivation
@@ -189,7 +190,7 @@ a self-hosted run consuming a stored scenario secret on the remote worker is the
       local-run env inheritance, hosted `DbSecretStore` per-org round trip (ciphertext never plaintext)
 - [x] Docs updated (`docs/web-ui.md`, `docs/self-hosting.md`, both languages)
 
-**Log**
+### Log
 
 - Implemented all checklist items in one change: `GET`/`POST /api/secrets` + `declared_secret_names`
   in `operations/config.py`, the `_env_var_for_secret` identity mapping for declared names in

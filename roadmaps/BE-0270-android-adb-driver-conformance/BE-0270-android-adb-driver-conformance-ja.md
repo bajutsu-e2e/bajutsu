@@ -15,9 +15,20 @@
 
 ## はじめに
 
-driver conformance suite（[BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md)）は、backend 非依存の一つの契約です。曖昧なセレクタは最初の一致に作用せず失敗する、0 件のセレクタは成功を報告せず失敗する、`capabilities()` は観測される挙動と一致する、`wait_for` は単発の検査で、共有の `wait_until` ループがそれを条件待ちに変える、というものです。この契約（`tests/driver_conformance.py`）は現在、3 つのドライバに対して走っています。高速な Linux ゲート上の `FakeDriver`、web CI 上の Playwright（`tests/test_driver_conformance_web.py`）、そして実機上の iOS の 2 つの backend である idb と XCUITest（`tests/test_driver_conformance_ondevice.py`。`ios-e2e.yml` の `conformance (idb + xcuitest)` ジョブが駆動）です。
+driver conformance suite（[BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md)）は、backend 非依存の一つの契約で、次の 4 つの条項から成ります。
 
-出荷済みのドライバのうち、この契約が一度も走っていないのが **adb backend（Android、BE-0007）** です。Android の実機レーンは機能スモーク、element ツリー golden、ピクセル VRT を実行しますが、idb / XCUITest / Playwright がそれぞれ証明されているのと同じ意味で、adb ドライバが実機上で決定性コアの不変条件を守ることを検査するジョブはありません。この項目はその欠落を埋めます。
+- 曖昧なセレクタは、最初の一致に作用せず失敗する。
+- 0 件のセレクタは、成功を報告せず失敗する。
+- `capabilities()` は、観測される挙動と一致する。
+- `wait_for` は単発の検査であり、共有の `wait_until` ループがそれを条件待ちに変える。
+
+契約は `tests/driver_conformance.py` にあり、現在は次の 3 つのドライバに対して走っています。
+
+- 高速な Linux ゲート上の `FakeDriver`。
+- web CI 上の Playwright（`tests/test_driver_conformance_web.py`）。
+- 実機上の iOS の 2 つの backend、idb と XCUITest（`tests/test_driver_conformance_ondevice.py`。`ios-e2e.yml` の `conformance (idb + xcuitest)` ジョブが駆動します）。
+
+出荷済みのドライバのうち、この契約が一度も走っていないのが adb backend（Android、BE-0007）です。Android の実機レーンは、機能スモーク、element ツリー golden、ピクセル単位の visual regression test（VRT）を実行します。ところが、idb、XCUITest、Playwright がそれぞれ証明されているのと同じ意味で、adb ドライバが実機上で決定性コアの不変条件を守ることを検査するジョブはありません。この項目は、その欠落を埋めます。
 
 ## 動機
 
@@ -85,9 +96,9 @@ UnsupportedAction を出さずに作用し、`select_option` は `UnsupportedAct
 
 ## 参考
 
-- [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md) — この項目が adb backend へ拡張する、backend 非依存の conformance 契約。
-- [BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md) — 検査対象の adb backend。
-- [BE-0221](../BE-0221-android-scenario-portability-guarantee/BE-0221-android-scenario-portability-guarantee-ja.md) — conformance 画面が覆うべきドット区切り／アンダースコアの id 形式。
-- [BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server-ja.md) — adb ドライバがセレクタを解決する、常駐チャネルと `uiautomator dump` の 2 経路。
-- `e2e-workflow-structural-parity` 提案（BE id は自身のマージ時に採番）— Android レーンを観点ごとのジョブに分割することを提案し、この `conformance (adb)` の欠落をそこではスコープ外として記している項目。
+- [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md)：この項目が adb backend へ拡張する、backend 非依存の conformance 契約。
+- [BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md)：検査対象の adb backend。
+- [BE-0221](../BE-0221-android-scenario-portability-guarantee/BE-0221-android-scenario-portability-guarantee-ja.md)：conformance 画面が覆うべきドット区切り／アンダースコアの id 形式。
+- [BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server-ja.md)：adb ドライバがセレクタを解決する、常駐チャネルと `uiautomator dump` の 2 経路。
+- `e2e-workflow-structural-parity` 提案（BE id は自身のマージ時に採番）：Android レーンを観点ごとのジョブに分割することを提案し、この `conformance (adb)` の欠落をそこではスコープ外として記している項目。
 - `tests/driver_conformance.py`、`tests/test_driver_conformance_ondevice.py`、`tests/test_driver_conformance_web.py`、[`android-e2e.yml`](../../.github/workflows/android-e2e.yml)。

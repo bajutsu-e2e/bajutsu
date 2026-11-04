@@ -15,12 +15,12 @@
 
 ## Introduction
 
-Add a small, always-visible indicator to the serve Web UI header showing which commit —
-or, absent a Git checkout, which released version — of bajutsu itself is running. It sits
-quietly beside the `bajutsu` wordmark, distinct from the config-provenance badge
-([BE-0187](../BE-0187-serve-config-view/BE-0187-serve-config-view.md)): it answers a
-different question — not "where did the loaded config come from" but "which build of the
-tool is serving this page."
+Add a small, always-visible indicator to the serve Web UI header. It shows which commit of bajutsu
+itself is running, or which released version when no Git checkout exists. The indicator sits beside
+the `bajutsu` wordmark and stays distinct from the config-provenance badge
+([BE-0187](../BE-0187-serve-config-view/BE-0187-serve-config-view.md)). The two answer different
+questions. The config badge answers "where did the loaded config come from". The new indicator answers
+"which build of the tool is serving this page".
 
 ## Motivation
 

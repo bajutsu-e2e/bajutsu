@@ -15,100 +15,113 @@
 
 ## Introduction
 
-The system-alert guard (`bajutsu/alerts.py`, `SystemAlertGuard.dismiss`) clears an OS-level
-prompt (e.g. iOS's "Save Password?") that idb's app-scoped accessibility query cannot see and
-that therefore silently blocks a run. Today the guard only runs once a step has already failed
-outright — for a `wait` step that means the *entire* `timeout` budget (commonly 10–30s, and at
-least the `BAJUTSU_MIN_WAIT_TIMEOUT` floor of 20s on the smoke CI lane per BE-0231) elapses
-before the guard gets a chance to intervene, even when the blocking alert appeared seconds into
-the wait. This proposes checking for a blocking alert on a much shorter, independent cadence
-inside the wait's own poll loop, so the guard fires as soon as the alert is detectable instead
-of only after the whole wait has already been wasted.
+The system-alert guard (`bajutsu/alerts.py`, `SystemAlertGuard.dismiss`) clears an OS-level prompt,
+such as iOS's "Save Password?". Idb's app-scoped accessibility query cannot see such a prompt,
+so the prompt blocks the run without any signal.
+
+Today the guard runs after a step has already failed outright.
+For a `wait` step, the entire `timeout` budget elapses before the guard can intervene. The budget is commonly 10–30
+seconds. On the smoke CI lane it is at least the `BAJUTSU_MIN_WAIT_TIMEOUT` floor of 20 seconds
+(BE-0231). The delay applies even when the blocking alert appeared seconds into the wait.
+
+This proposal checks for a blocking alert on a much shorter, independent cadence inside the wait's own
+poll loop. The guard then acts as soon as the alert is detectable, with no need to wait out the budget.
 
 ## Motivation
 
-`bajutsu/orchestrator/loop.py:550` wires the alert guard (`on_blocked`) so it is invoked only
-`if not ok` — i.e. only after `_run_step_body` has already returned failure. For a `wait` step,
-`_wait()` (`bajutsu/orchestrator/waits.py:72`) reaches that failure only at its `deadline`, built
-from the step's full `timeout`. Concretely: a scenario with `wait: {for: ..., timeout: 20}` that
-happens to trigger a "Save Password?" prompt two seconds in will sit polling a collapsed element
-tree for the remaining ~18 seconds before the guard is even asked to look at the screen. Every
-such alert during a run pays close to the full wait timeout in pure latency, which compounds
-across a scenario (or a suite) with more than one system prompt and inflates local and CI run
-time for no correctness benefit — the outcome is identical whether the guard fires at 2s or 18s,
-only slower.
+`bajutsu/orchestrator/loop.py:550` calls the alert guard (`on_blocked`) under `if not ok`.
+That call happens after `_run_step_body` has already returned failure. For a `wait` step,
+`_wait()` (`bajutsu/orchestrator/waits.py:72`) reaches that failure at its `deadline`.
+The step's full `timeout` determines the `deadline`.
+
+Take a scenario with `wait: {for: ..., timeout: 20}` that triggers a "Save Password" prompt two
+seconds in. The wait polls a collapsed element tree for the remaining 18 seconds or so. Only then does
+anyone ask the guard to look at the screen.
+
+Every system alert during a run costs close to the full wait timeout in pure latency. The cost
+compounds across a scenario (or a suite) with more than one system prompt. It inflates local and CI
+run time with no gain in correctness, because the outcome is identical whether the guard fires at 2s
+or 18s, only slower.
 
 The fix must not defeat prime directive 1 (AI never judges pass/fail) or prime directive 2
-(determinism first, no fixed `sleep`): the eventual step outcome still has to come from the
-existing deterministic condition check in `_wait()`, and any AI-vision call the guard makes has
-to stay rare and bounded — it cannot become a call fired on every 0.05s poll tick
-(`_POLL` in `bajutsu/orchestrator/waits.py:14`), since `ClaudeAlertLocator.locate`
-(`bajutsu/alerts.py:163`) does a real network round trip and is far too slow and costly to run at
-that cadence.
+(determinism first, no fixed `sleep`). The eventual step outcome still has to come from the existing
+deterministic condition check in `_wait()`. Any AI-vision call the guard makes has to stay rare and
+bounded.
+
+The guard therefore cannot fire on every 0.05s poll tick (`_POLL` in
+`bajutsu/orchestrator/waits.py:14`). `ClaudeAlertLocator.locate` (`bajutsu/alerts.py:163`) does a real
+network round trip, which is far too slow and costly at that cadence.
 
 ## Detailed design
 
 1. **A cheap, deterministic pre-check, reusing the existing detector.** A blocking
-   SpringBoard-level prompt has an observable signature: idb's accessibility query is scoped to
-   the foreground app, so a system alert collapses the queried element tree to a bare window with
-   no actionable content. The repo already computes exactly this — `shows_app_ui(elements) -> bool`
-   (`bajutsu/elements.py`) — and it is deliberately more careful than "a single window node": its
-   docstring counts a screen as app UI when any non-`application` element carries an `identifier`
-   *or* a `label`, so label/coordinate-driven apps without accessibility identifiers (the showcase
-   `-noax` variants) are not mistaken for a blocked screen — "the bug that made the guard fire
-   every turn". Every screen-polling wait branch — `for`/`gone`/`screenChanged` and `settled`
-   (whose `_wait_settled` docstring already names a screen "covered by a system alert" as one it
-   never treats as settled, `bajutsu/orchestrator/waits.py:142`) — already calls `driver.query()`
-   on each poll tick and holds the result, so the pre-check is just `not shows_app_ui(elements)` on
-   that already-fetched tree, at zero extra query cost. Reusing the existing detector rather than
-   adding a fresh one keeps the two detection paths from drifting apart. The `request` (network
-   `WaitRequest`) branch is deliberately out of scope: it polls observed network traffic, not the
-   screen, so the signal does not apply to it. This is the deterministic trigger; it never itself
-   decides pass/fail, only whether it's worth asking the guard to look.
-2. **Debounce before acting.** A single collapsed poll can be a transient render frame, not a
-   real alert, so require the signature to hold for a short run of consecutive polls before
-   treating it as "likely blocked" — mirroring the existing `_SETTLE_POLLS` pattern used by
-   `_wait_settled` (`bajutsu/orchestrator/waits.py:15,142`). This bounds the added latency to a
-   small, fixed number of poll intervals (well under a second at `_POLL = 0.05`), not the fraction
-   of a second doubling into an open-ended new sleep.
-3. **Invoke the guard mid-wait, then resume the same wait.** Thread an optional guard callback
-   into `_wait()` (and its `_wait_settled` helper, so the `settled` branch is covered too) — today
-   the guard callback exists only at the `loop.py:550` step-retry level — so that once the debounced
-   heuristic fires, `_wait()` calls it directly, in place, instead of
-   waiting for `deadline`. On a successful dismiss, polling for the *original* condition resumes
-   against the *same* `deadline` — the guard's early intervention changes only when recovery is
-   attempted, not the timeout budget that still governs when the step is allowed to fail. This is
-   the same shape `record.py`'s `clear_blocking` already uses on the record path (poll → `not
-   shows_app_ui` → invoke the guard → retry), and the crawl path reuses it via
-   `bajutsu/cli/commands/crawl.py`'s wiring; the work here is to bring that established loop to the
-   deterministic `run`/`wait` path rather than to invent a new one.
-4. **Cap the intervention rate.** Because `ClaudeAlertLocator.locate` is a real AI-vision call, cap
-   how often it can fire within one wait (a minimum cooldown between attempts, and/or a small max-
-   attempts-per-wait ceiling) so a persistent false-positive collapse — or a dismiss that doesn't
-   actually clear the prompt — cannot turn the poll loop into a hot AI-call loop. Once the cap is
-   hit, `_wait()` falls back to today's behavior: keep polling to `deadline` and let the existing
-   `loop.py:550` end-of-step guard call take one more shot.
-5. **Scope to `wait` steps behind an existing opt-in.** The guard already only runs when alert
-   dismissal is enabled (`--dismiss-alerts` / the guard factory in
-   `bajutsu/cli/commands/run.py:324`); this change only moves *when*, within an already-enabled
-   guard's lifecycle, it gets its first chance to look — it introduces no new default-on AI call
-   for scenarios that don't opt in.
+   SpringBoard-level prompt has an observable signature. idb's accessibility query is scoped to the
+   foreground app, so a system alert collapses the queried element tree to a bare window with no
+   actionable content.
+
+   The repo already computes exactly this in `shows_app_ui(elements) -> bool` (`bajutsu/elements.py`).
+   The function is more careful than "a single window node". Its docstring counts a screen as app UI
+   when any non-`application` element carries an `identifier` *or* a `label`. Label- and
+   coordinate-driven apps without accessibility identifiers (the showcase `-noax` variants) are
+   therefore not mistaken for a blocked screen, which was "the bug that made the guard fire every
+   turn".
+
+   Every screen-polling wait branch (`for`, `gone`, `screenChanged`, and `settled`) already calls
+   `driver.query()` on each poll tick and holds the result. The `_wait_settled` docstring
+   (`bajutsu/orchestrator/waits.py:142`) already names a screen "covered by a system alert" as one it
+   never treats as settled. The pre-check is therefore `not shows_app_ui(elements)` on the
+   already-fetched tree, at zero extra query cost. Reusing the existing detector, instead of adding a
+   new one, keeps the two detection paths from drifting apart.
+
+   The `request` (network `WaitRequest`) branch is deliberately out of scope. It polls observed network
+   traffic, not the screen, so the signal does not apply to it. The pre-check is the deterministic
+   trigger. It never decides pass/fail, only whether asking the guard to look is worthwhile.
+2. **Debounce before acting.** A single collapsed poll can be a transient render frame, not a real
+   alert. The signature must therefore hold for a short run of consecutive polls before the wait treats
+   the screen as "likely blocked". This mirrors the `_SETTLE_POLLS` pattern that `_wait_settled` uses
+   (`bajutsu/orchestrator/waits.py:15,142`). The added latency is bounded to a small, fixed number of
+   poll intervals, well under a second at `_POLL = 0.05`, and does not become an open-ended new sleep.
+3. **Invoke the guard mid-wait, then resume the same wait.** An optional guard callback is threaded
+   into `_wait()` and its `_wait_settled` helper, so the `settled` branch is covered too. Today the
+   guard callback exists only at the step-retry level in `loop.py:550`. Once the debounced heuristic
+   fires, `_wait()` calls the guard directly, in place, instead of waiting for `deadline`.
+
+   After a successful dismiss, polling for the *original* condition resumes against the *same*
+   `deadline`. The early intervention changes only when recovery is attempted, not the timeout budget
+   that governs when the step may fail.
+
+   The record path already has this shape: `clear_blocking` in `record.py` polls, checks
+   `not shows_app_ui`, invokes the guard, and retries. The crawl path reuses that loop through the
+   wiring in `bajutsu/cli/commands/crawl.py`. The work here brings the established loop to the
+   deterministic `run`/`wait` path, without inventing a new one.
+4. **Cap the intervention rate.** `ClaudeAlertLocator.locate` is a real AI-vision call, so the wait
+   caps how often it can fire: a minimum cooldown between attempts, a small maximum number of attempts
+   per wait, or both. A persistent false-positive collapse, or a dismiss that does not clear the prompt,
+   then cannot turn the poll loop into a hot AI-call loop. Once the cap is hit, `_wait()` falls back to
+   today's behavior. It keeps polling to `deadline` and lets the existing end-of-step guard call at
+   `loop.py:550` take one more shot.
+5. **Scope to `wait` steps behind an existing opt-in.** The guard already runs only when alert
+   dismissal is enabled (`--dismiss-alerts`, through the guard factory in
+   `bajutsu/cli/commands/run.py:324`). This change moves only *when*, within an already-enabled guard's
+   lifecycle, the guard gets its first chance to look. It introduces no new default-on AI call for
+   scenarios that do not opt in.
 
 ## Alternatives considered
 
-- **Just shorten `_POLL` and call the AI-vision guard on every tick.** Rejected: `_POLL` governs
-  the condition-check cadence for every wait, including ones with no alert risk at all, and
-  running a real Claude vision call at ~20 Hz is both cost-prohibitive and far slower than the
-  poll interval it would be nested inside — it would make the hot path latency-bound by the AI
-  backend instead of by the app under test.
-- **A purely time-based periodic guard call (e.g. every 2s), no tree inspection.** Simpler, but
-  wastes AI calls on waits whose tree never shows the collapse signature at all — the deterministic
-  pre-check this proposes is strictly cheaper (it's already-fetched data) and matches the failure
-  signature `alerts.py` itself documents, so it is preferred over a blind timer.
-- **Ask idb for alert presence directly.** No such signal exists: idb's accessibility query is
-  app-scoped by design (per `alerts.py`'s docstring), so SpringBoard-level prompts are invisible to
-  it outright — the collapsed-tree signature is the best available proxy, not a workaround for a
-  richer API this repo chose not to use.
+- **Shorten `_POLL` and call the AI-vision guard on every tick.** Rejected. `_POLL` governs the
+  condition-check cadence for every wait, including waits with no alert risk at all. A real Claude
+  vision call at about 20 Hz is cost-prohibitive and far slower than the poll interval it would be
+  nested inside. The hot path would become latency-bound by the AI backend instead of by the app under
+  test.
+- **A purely time-based periodic guard call (for example every 2s), with no tree inspection.** This is
+  simpler, but it wastes AI calls on waits whose tree never shows the collapse signature. The
+  deterministic pre-check this proposal makes is strictly cheaper, because it reads already-fetched
+  data. The pre-check also matches the failure signature that `alerts.py` itself documents. It is
+  therefore preferred over a blind timer.
+- **Ask idb for alert presence directly.** No such signal exists. By design (per the `alerts.py`
+  docstring), idb's accessibility query is app-scoped, so SpringBoard-level prompts are invisible to
+  it. The collapsed-tree signature is the best available proxy, not a workaround for a richer API that
+  this repo chose not to use.
 
 ## Progress
 
@@ -129,7 +142,7 @@ that cadence.
 - [x] Unit 4 — cooldown (`_GUARD_COOLDOWN`) and max-attempts (`_GUARD_MAX_ATTEMPTS`) cap on guard
       invocations within one wait; on exhaustion it logs once and falls back to the wait's timeout.
 
-**Log**
+### Log
 
 - [#1122](https://github.com/bajutsu-e2e/bajutsu/pull/1122) — implemented all four units in `bajutsu/orchestrator/waits.py` (the `_AlertGuardGate`
   gate + threading `on_blocked`/`alerts` through `_wait`/`_wait_settled`) and

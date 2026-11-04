@@ -134,7 +134,7 @@ separately; the three units below are what remains.
 - [x] Add a per-PR `golden (idb)` job to `ios-e2e.yml`, excluded from the `E2E` gate's `needs:`.
 - [x] Document the per-platform E2E job-set convention in `docs/ai-development.md` (+ ja mirror).
 
-Log:
+### Log
 
 - Proposal + implementation authored together and landed in one PR (BE-creation, so the human
   opens it; `roadmap-id` allocates the real BE id on merge, and the `Implementing PR` row is filled

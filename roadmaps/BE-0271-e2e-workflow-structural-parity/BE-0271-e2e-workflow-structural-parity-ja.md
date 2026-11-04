@@ -14,33 +14,22 @@
 
 ## はじめに
 
-Bajutsu には、プラットフォームごとの実機・実環境 E2E ワークフローが3つあります。
-[`android-e2e.yml`](../../.github/workflows/android-e2e.yml)、
-[`ios-e2e.yml`](../../.github/workflows/ios-e2e.yml)、
-[`web-e2e.yml`](../../.github/workflows/web-e2e.yml) です。対称性に向けた最初の一歩はすでに入って
-います。iOS の機能ジョブと必須 `E2E` ゲートを抱えていた独立ワークフロー `e2e.yml` が `ios-e2e.yml` に
-統合され、iOS レーンは `smoke (idb)`・`xcuitest (codegen)`・`xcuitest (multi-touch)`・
-`conformance (idb + xcuitest)`・`visual (idb)`・必須の `E2E` 集約ジョブを備えた、単体で完結する1
-ファイルになりました。この3ファイルの間には、構造上の非対称がまだ2つ残っています。
+Bajutsu には、プラットフォームごとの実機または実環境 E2E ワークフローが 3 つあります。[`android-e2e.yml`](../../.github/workflows/android-e2e.yml)、[`ios-e2e.yml`](../../.github/workflows/ios-e2e.yml)、[`web-e2e.yml`](../../.github/workflows/web-e2e.yml) です。
 
-- `android-e2e.yml` はいまだに **1つのジョブ** `smoke + golden + visual + fallback (adb)` に、機能
-  シナリオの実行・element ツリーの golden 比較・ピクセル単位の visual regression test（VRT）・
-  resident/fallback チャネルの確認をまとめて詰め込んでいます。`ios-e2e.yml` と `web-e2e.yml` が作業を
-  名前付きジョブに分けているのに対して、Android だけが束ねたままです。
+対称性に向けた最初の一歩は、すでに入っています。iOS の機能ジョブと必須 `E2E` ゲートを抱えていた独立ワークフロー `e2e.yml` が `ios-e2e.yml` に統合されました。iOS レーンは、`smoke (idb)`、`xcuitest (codegen)`、`xcuitest (multi-touch)`、`conformance (idb + xcuitest)`、`visual (idb)`、必須の `E2E` 集約ジョブを備えた、単体で完結する 1 ファイルになりました。この 3 ファイルの間には、構造上の非対称がまだ 2 つ残っています。
+
+- `android-e2e.yml` は、いまだに **1 つのジョブ** `smoke + golden + visual + fallback (adb)` を走らせています。このジョブに、機能シナリオの実行、element ツリーの golden 比較、ピクセル単位の visual regression test（VRT）、resident/fallback チャネルの確認が詰め込まれています。`ios-e2e.yml` と `web-e2e.yml` が作業を名前付きジョブに分けているのに対して、Android だけが束ねたままです。
 - iOS には **PR ごとの element ツリー golden がありません**。`ios-e2e.yml` は
   smoke/codegen/gestures/conformance/visual を走らせますが、idb の golden は
   [`idb-monitor.yml`](../../.github/workflows/idb-monitor.yml) で週次実行されるのみです。一方
   `android-e2e.yml` は golden を関連する PR ごとに走らせています。
 
-3つのレーンが共有する機能面の核 ── 「bajutsu は実際にそのプラットフォームを操作できるのか」 ── は
-**smoke** ジョブです。実バックエンド上で showcase のシナリオを `bajutsu run` で回し、決定的に合否を
-判定します。この項目は、その smoke ジョブとその周辺のチェックを、3プラットフォームで構造的に対称に
-します。
+3 つのレーンが共有する機能面の核は、**smoke** ジョブです。「bajutsu は実際にそのプラットフォームを操作できるのか」を確かめるジョブで、実バックエンド上で showcase のシナリオを `bajutsu run` で回し、決定的に合否を判定します。この項目は、その smoke ジョブとその周辺のチェックを、3 プラットフォームで構造的に対称にします。
 
 ## 動機
 
 - **プラットフォームの E2E ワークフローは、ジョブ単位でどの機能が壊れたかを示すべきです。**
-  `android-e2e.yml` の単一ジョブは、機能スモーク・golden・visual・fallback という4つの異なる確認を1つの
+  `android-e2e.yml` の単一ジョブは、機能スモーク、golden、visual、fallback という 4 つの異なる確認を 1 つの
   合否として報告します。チェックが赤くなっても、実行ログを開かない限り4つのうちどれが壊れたのかレビュ
   アーにはわかりません。チェック一覧こそが最初に読まれ、YAML 本体はそうではないという点は
   [BE-0122](../BE-0122-workflow-name-legibility/BE-0122-workflow-name-legibility.md) がすでに確立して
@@ -50,8 +39,8 @@ Bajutsu には、プラットフォームごとの実機・実環境 E2E ワー�
 - **機能面のカバレッジは、プラットフォームが実際に対応している範囲では対称であるべきです。** iOS と
   Android はどちらも、正規化したアクセシビリティツリーを固定する element ツリー golden（BE-0006）を
   持っています。Android はこれを PR ごとに、iOS は週次のみ走らせています。iOS が週次のみだったことには
-  正当な理由 ── `idb_companion` の upstream ドリフト監視を PR の活動から切り離すこと（`idb-monitor.yml`
-  の冒頭コメント）── がありました。ただしその論拠は*監視*にかかるものであって、*回帰チェック*にかかる
+  正当な理由がありました。`idb_companion` の upstream ドリフト監視を PR の活動から切り離すこと（`idb-monitor.yml`
+  の冒頭コメント）です。ただしその論拠は*監視*にかかるものであって、*回帰チェック*にかかる
   ものではありません。決定的でホスト非依存なツリー golden が、Android と同じように各 PR も守ることを
   妨げるものは何もありません。
 - **文書化されていない非対称性は、不具合に見えてしまいます。** iOS の golden が週次のみだったことは
@@ -70,7 +59,7 @@ Bajutsu には、プラットフォームごとの実機・実環境 E2E ワー�
    `visual` として、`ios-e2e.yml` と `web-e2e.yml` のジョブ分割に合わせます。それぞれ、すでに通って
    いる Android の `make` ターゲットに対応します。
    - `smoke (adb)` → `make -C demos/showcase/android e2e`（Compose を全シナリオ、Views を id 検証済み
-     サブセットで回す ── 機能面の核）。
+     サブセットで回す。機能面の核です）。
    - `golden (adb)` → `make e2e-golden && make e2e-fallback`。resident チャネル上で element ツリー
      golden を実行し、続いて `BAJUTSU_ADB_RESIDENT=0` で再実行して `uiautomator dump` フォールバックを
      動かし、両チャネルが同じツリーを返すことを確認します（BE-0245）。`fallback` を4つ目のジョブに
@@ -87,8 +76,7 @@ Bajutsu には、プラットフォームごとの実機・実環境 E2E ワー�
    `web-e2e.yml` と同じく、独立した3ジョブになります。
 
 2. **`ios-e2e.yml` に、PR ごとの `golden (idb)` ジョブを追加します。** `bajutsu-e2e` アクション経由で
-   `golden.yaml` を idb 上で実行します（`idb-monitor.yml` が週次で回しているのと同じシナリオ・
-   ベースライン）。既存の `changes` ジョブでゲートしますが、`visual` とまったく同じように、**`E2E`
+   `golden.yaml` を idb 上で実行します（`idb-monitor.yml` が週次で回しているのと同じシナリオとベースライン）。既存の `changes` ジョブでゲートしますが、`visual` とまったく同じように、**`E2E`
    ゲートの `needs:` からは意図的に除外します**。ツリー golden は決定的でホスト非依存ですが、
    `idb_companion` は upstream の依存であり、そのドリフトが Bajutsu 側の変更と無関係に golden を
    赤くしうるため、golden のドリフトはマージを止めずに PR ごとのシグナルとして表れるべきだからです。
@@ -96,10 +84,10 @@ Bajutsu には、プラットフォームごとの実機・実環境 E2E ワー�
    なります。週次の `idb-monitor.yml` の golden は残します。その目的は*最新の* `idb_companion` に対して
    走らせるという前方視点のものであり、PR ごとのジョブが置き換えるものではないからです。
 
-3. **プラットフォームごとの E2E ジョブ構成の規約を書き出します。** smoke・golden・visual・
-   conformance・codegen・gestures・fallback のうち、各プラットフォームの実機・実環境ワークフローが
+3. **プラットフォームごとの E2E ジョブ構成の規約を書き出します。** smoke、golden、visual、
+   conformance、codegen、gestures、fallback のうち、各プラットフォームの実機または実環境ワークフローが
    どれを備えるか、そして備えない場合はなぜか（例: Web には golden/visual がない、Android にはまだ
-   conformance がない ── 単位4）を、[`docs/ai-development.md`](../../docs/ai-development.md)（英語版と
+   conformance がない。単位 4）を、[`docs/ai-development.md`](../../docs/ai-development.md)（英語版と
    `docs/ja/` の対訳）に記載します。将来のバックエンド（`CLAUDE.md` にある通り、次に予定されている
    4つ目は Flutter です）は、3つのファイルから逆算する代わりに、書き出された形に合わせられるように
    なります。
@@ -121,7 +109,7 @@ Bajutsu には、プラットフォームごとの実機・実環境 E2E ワー�
   の*マージを止めうるからです。まさにこの結合を PR の経路から切り離すために、週次の `idb-monitor.yml`
   が作られたのでした。`visual` と同じく `needs:` から除外することで、マージを止めるリスクなしに PR
   ごとのシグナルを保ちます。
-- **3プラットフォームの E2E ワークフローを、1つのパラメータ化・再利用可能なワークフローへ統合する案。**
+- **3 プラットフォームの E2E ワークフローを、1 つのパラメータ化された再利用可能なワークフローへ統合する案。**
   構造的な対称性を一度に最大化できますが、今後の変更の影響範囲が1プラットフォームから3プラット
   フォームへと広がってしまいます。また、必須チェックのブランチ保護設定も、統合後のワークフローが
   生成するジョブ名に合わせて移行する必要があります。ここで得られる利点に対してリスクが見合わない
@@ -139,7 +127,7 @@ Bajutsu には、プラットフォームごとの実機・実環境 E2E ワー�
 - [x] `ios-e2e.yml` に PR ごとの `golden (idb)` ジョブを追加し、`E2E` ゲートの `needs:` からは除外する。
 - [x] プラットフォームごとの E2E ジョブ構成の規約を `docs/ai-development.md`（+ 対訳）に記載する。
 
-ログ:
+### ログ
 
 - 提案と実装をまとめて起草し、1 つの PR で着地させました（BE 作成を伴うため PR は人間が開きます。
   `roadmap-id` がマージ時に本番の BE id を採番し、`Implementing PR` 行はそのときに補完します）。Android
@@ -153,11 +141,10 @@ Bajutsu には、プラットフォームごとの実機・実環境 E2E ワー�
   [`ios-e2e.yml`](../../.github/workflows/ios-e2e.yml)、
   [`web-e2e.yml`](../../.github/workflows/web-e2e.yml)、
   [`idb-monitor.yml`](../../.github/workflows/idb-monitor.yml)
-- [BE-0122](../BE-0122-workflow-name-legibility/BE-0122-workflow-name-legibility.md) — ワークフロー・
-  ジョブ名の可読性向上。この項目は、その論拠をジョブ粒度・中身の水準まで一段掘り下げて引き継ぎます。
+- [BE-0122](../BE-0122-workflow-name-legibility/BE-0122-workflow-name-legibility.md)：ワークフローとジョブ名の可読性向上。この項目は、その論拠をジョブの粒度と中身の水準まで一段掘り下げて引き継ぎます。
 - [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md)、
   [BE-0221](../BE-0221-android-scenario-portability-guarantee/BE-0221-android-scenario-portability-guarantee.md)、
   [BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server.md)
-  — Android E2E レーンの経緯。この項目が今回ジョブに分割する中身そのものです。
-- [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md) — 単位5の
+ ：Android E2E レーンの経緯。この項目が今回ジョブに分割する中身そのものです。
+- [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md)：単位5の
   スコープ外の注記で触れているドライバ conformance スイート。

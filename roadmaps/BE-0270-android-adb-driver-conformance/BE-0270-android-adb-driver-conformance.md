@@ -16,26 +16,32 @@
 ## Introduction
 
 The driver conformance suite ([BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md))
-is one backend-agnostic contract — an ambiguous selector fails rather than acting on the first
-match, a zero-match selector fails rather than reporting success, `capabilities()` matches observed
-behavior, and `wait_for` is a single-shot check the shared `wait_until` loop turns into a condition
-wait. That contract (`tests/driver_conformance.py`) runs today against three drivers: `FakeDriver`
-on the fast Linux gate, Playwright in web CI (`tests/test_driver_conformance_web.py`), and the two
-iOS backends — idb and XCUITest — on-device (`tests/test_driver_conformance_ondevice.py`, driven by
-`ios-e2e.yml`'s `conformance (idb + xcuitest)` job).
+is one backend-agnostic contract with four clauses:
 
-The **adb backend (Android, BE-0007) is the one shipped driver the contract never runs against.**
-Android's on-device lane exercises functional smoke, the element-tree golden, and the pixel VRT, but
-no job asserts that the adb driver honors the determinism-core invariants on a real device the way
-idb, XCUITest, and Playwright are each proven to. This item closes that gap.
+- An ambiguous selector fails instead of acting on the first match.
+- A zero-match selector fails instead of reporting success.
+- `capabilities()` matches observed behavior.
+- `wait_for` is a single-shot check that the shared `wait_until` loop turns into a condition wait.
+
+The contract lives in `tests/driver_conformance.py` and runs today against three drivers:
+
+- `FakeDriver`, on the fast Linux gate.
+- Playwright, in web CI (`tests/test_driver_conformance_web.py`).
+- The two iOS backends, idb and XCUITest, on-device (`tests/test_driver_conformance_ondevice.py`,
+  driven by the `conformance (idb + xcuitest)` job in `ios-e2e.yml`).
+
+The adb backend (Android, BE-0007) is the one shipped driver that the contract never runs against.
+Android's on-device lane exercises functional smoke, the element-tree golden, and the pixel visual
+regression test (VRT). No job asserts that the adb driver honors the determinism-core invariants on a
+real device, the way idb, XCUITest, and Playwright are each proven to. This item closes that gap.
 
 ## Motivation
 
-- **The contract is only as strong as its coverage.** BE-0114's whole point is that the
-  determinism-core invariants hold *identically* on every real actuator, not just on `FakeDriver`.
-  An unproven backend is exactly where a divergence hides — e.g. an ambiguous adb selector that taps
+- **The contract is only as strong as its coverage.** The point of BE-0114 is that the
+  determinism-core invariants hold *identically* on every real actuator, not merely on `FakeDriver`.
+  An unproven backend is where a divergence hides. For example, an ambiguous adb selector that taps
   the first match instead of failing (a prime-directive-2 violation) would pass every existing
-  Android job, because smoke/golden/visual all use unambiguous selectors by construction.
+  Android job, because smoke, golden, and visual all use unambiguous selectors by construction.
 - **adb resolves selectors differently from the other backends.** The adb driver reads over two
   channels (the resident UI Automator server, BE-0245, and the `uiautomator dump` fallback) and
   matches ids in two forms (dotted and underscore, BE-0221). Those are adb-specific paths the iOS
@@ -107,7 +113,7 @@ opt-in the showcase already uses — no per-app branching in the tool. The work 
 - [x] Add the `conformance (adb)` job to `android-e2e.yml`.
 - [x] Confirm the adb driver's `capabilities()` matches behavior for the capability tests.
 
-**Unit 1 decision — Compose only, Views out (recorded per *Alternatives considered*).** The contract
+**Unit 1 decision: Compose only, Views out (recorded per *Alternatives considered*).** The contract
 seeds plain identifiers (`dup` / `ok` / `a` / `b` / `Log` / `g` / `sel` / `s`), none carrying the
 `.`/`_` the two toolkits' id forms (BE-0221) differ over, so a Views screen would resolve the
 identical ids through the identical `_strip_pkg` path — no added conformance coverage. And a
@@ -116,7 +122,7 @@ runtime string (surfaced as a `resource-id` via `testTagsAsResourceId`), while a
 must be a compile-time `R` entry. Compose is the one toolkit that can render the contract's screens
 at all.
 
-**Unit 2 decision — intent over file push.** The reseed re-launches the `singleTask` activity with a
+**Unit 2 decision: intent over file push.** The reseed re-launches the `singleTask` activity with a
 new `SHOWCASE_CONFORMANCE` intent extra, delivered via `onNewIntent` (the proven deep-link path),
 rather than pushing a spec file (iOS's channel): `adb push` cannot reach the app's sandbox, and the
 intent reuses the `launchEnv`→intent-extras convention (BE-0007) with no new app-side polling. The
@@ -124,7 +130,7 @@ empty (zero-match) screen is encoded with a leading-`,` sentinel so the value is
 string, which adb's `am start --es KEY ""` would drop (the trailing-empty-arg quirk the clipboard
 channel also documents).
 
-**Unit 5 finding — no `capabilities()` correction needed.** The adb driver's declared set
+**Unit 5 finding: no `capabilities()` correction needed.** The adb driver's declared set
 (`QUERY` / `ELEMENTS` / `MULTI_TOUCH`, `SELECT_OPTION` absent) already matches behavior for the
 capability tests on the rooted `google_apis` emulator: `pinch`/`rotate` actuate over the rooted
 `sendevent` sweep (BE-0232) without raising, and `select_option` raises `UnsupportedAction`. The
@@ -141,14 +147,14 @@ hold the `MULTI_TOUCH` precondition.
 
 ## References
 
-- [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md) — the
+- [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md): the
   backend-agnostic conformance contract this item extends to the adb backend.
-- [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md) — the adb backend under test.
+- [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md): the adb backend under test.
 - [BE-0221](../BE-0221-android-scenario-portability-guarantee/BE-0221-android-scenario-portability-guarantee.md)
-  — the dotted/underscore id forms the conformance screen must cover.
+  : the dotted/underscore id forms the conformance screen must cover.
 - [BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server.md)
-  — the resident vs `uiautomator dump` read channels the adb driver resolves selectors over.
-- The `e2e-workflow-structural-parity` proposal (BE id allocated on its own merge) — proposes
+  : the resident and `uiautomator dump` read channels that the adb driver resolves selectors over.
+- The `e2e-workflow-structural-parity` proposal (BE id allocated on its own merge): proposes
   splitting the Android lane into per-concern jobs and flags this `conformance (adb)` gap as
   out-of-scope there.
 - `tests/driver_conformance.py`, `tests/test_driver_conformance_ondevice.py`,

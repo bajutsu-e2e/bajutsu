@@ -1,6 +1,6 @@
 **English** · [日本語](BE-0273-serve-replay-scenario-viewer-ja.md)
 
-# BE-0273 — View a scenario's contents from the Replay tab (raw YAML + structured steps)
+# BE-0273 — View a scenario's contents from the Replay tab as raw YAML and structured steps
 
 <!-- BE-METADATA -->
 | Field | Value |
@@ -16,14 +16,16 @@
 
 ## Introduction
 
-The serve Web UI's **Replay** tab is where a user selects a scenario and runs it. Today the tab
-lets you *pick* a scenario and *run* it, but never *look at what it contains*: before pressing Run
-you see only the scenario file's top-level `description` and each named scenario's `name` /
-`description`. The steps, selectors, assertions — the actual body of the scenario you are about to
-run — are invisible. This proposal adds a read-only **scenario viewer** reachable from Replay: a
-"View scenario" affordance that opens the selected scenario's contents as **raw YAML** with a toggle
-to a **structured steps view**. It is a read-only, non-gating convenience surface — it never edits
-the scenario and never enters the `run` / CI verdict path.
+The serve Web UI's **Replay** tab is where a user selects a scenario and runs it. The tab lets a user
+*pick* a scenario and *run* it, but not *look at what it contains*. Before pressing Run, the user sees
+the scenario file's top-level `description` and each named scenario's `name` and `description`, and
+nothing else. The steps, selectors, and assertions, which form the body of the scenario about to run,
+stay invisible.
+
+This proposal adds a read-only **scenario viewer** reachable from Replay. A "View scenario" control
+opens the selected scenario's contents as **raw YAML**, with a toggle to a **structured steps view**.
+The viewer is a read-only, non-gating convenience surface. It never edits the scenario and never
+enters the `run` / CI verdict path.
 
 It is the scenario-level counterpart of [BE-0187](../BE-0187-serve-config-view/BE-0187-serve-config-view.md),
 which added the same raw-YAML + structured-tree read-only viewer for the bound **config**.
@@ -46,7 +48,7 @@ friction is worst exactly when it matters most:
 - **Determinism grading** (BE-0145) already scores the selected scenario in the Replay Form and
   reports *"step 3 uses a fragile selector"* — but you cannot see step 3 from there.
 
-The capability is essentially already built server-side and simply not wired into Replay. The
+The server side already provides this capability, and Replay does not use it. The
 endpoint `GET /api/scenario?target=&path=` (`bajutsu/serve/handler.py`, `ops.read_scenario` in
 `bajutsu/serve/operations/reads.py`) already returns the scenario's `{"yaml": …}`; it is called today
 only by the Record tab (to show just-authored YAML) and the Author editor. Surfacing that same

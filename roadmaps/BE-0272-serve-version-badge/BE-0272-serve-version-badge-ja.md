@@ -1,6 +1,6 @@
 [English](BE-0272-serve-version-badge.md) · **日本語**
 
-# BE-0272 — serve の Web UI のヘッダーに bajutsu 自身のコミット・バージョンを表示する
+# BE-0272 — serve の Web UI のヘッダーに bajutsu 自身のコミットとバージョンを表示する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
@@ -51,7 +51,7 @@ serve なのか分かりません。
   最新の状態を取得するため、チェックアウトを編集しながら走らせっぱなしにしたセッション
   でも表示がずれません。
 - `.git` が存在しない環境（`pip install bajutsu` の後など）では、レスポンスから
-  コミット・ブランチ・dirty 判定を省略し、フロントエンドはバージョン文字列だけを
+  コミット、ブランチ、dirty 判定を省略し、フロントエンドはバージョン文字列だけを
   表示します。
 - **アクセス制御**：この情報取得をすべての訪問者に開くか、ロールで制限するかを実装時に
   決めます。注意が要るのはブランチ名です。本リポジトリ自身の慣習（`CLAUDE.md`
@@ -60,7 +60,7 @@ serve なのか分かりません。
   そのまま見せると、何を作業中かが漏れます。[BE-0187](../BE-0187-serve-config-view/BE-0187-serve-config-view-ja.md)
   は、開示範囲の広い `/api/config/content` の読み取りを `admin` ロールに制限する前例を
   作りました。バージョン文字列だけは機微ではないため、バージョンは開いたまま、
-  コミット・ブランチ・dirty 判定（少なくともブランチ名）は `admin` に制限するのが
+  コミット、ブランチ、dirty 判定（少なくともブランチ名）は `admin` に制限するのが
   妥当な既定です。
 - **フロントエンド**：ヘッダーのテンプレート内、`bajutsu` というタイトルの横に小さな
   バッジを配置します（例：`v0.0.0 · a1b2c3d (branch-name)`）。dirty のときは専用の
@@ -93,12 +93,12 @@ serve なのか分かりません。
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [x] バックエンド：バージョンとコミット・ブランチ・dirty 判定を公開する。GET を 2 本に
+- [x] バックエンド：バージョンとコミット、ブランチ、dirty 判定を公開する。GET を 2 本に
       分けました（`bajutsu/serve/operations/version.py`）。`GET /api/version`（公開）と
       `GET /api/version/checkout`（`git` の plumbing、リクエストごとに読み取り）です。
       Git はプロセスの作業ディレクトリではなく bajutsu 自身のパッケージディレクトリを起点に
       読むため、bind した `github:` config のチェックアウトをツール自身のビルドと取り違えません。
-- [x] アクセス制御：バージョンは公開のまま、コミット・ブランチ・dirty 判定は
+- [x] アクセス制御：バージョンは公開のまま、コミット、ブランチ、dirty 判定は
       `bajutsu/serve/authz.py` の GET 早期分岐で `admin` に制限しました（ブランチ名は
       作業中のトピックを含みうるため）。
 - [x] フロントエンド：ヘッダーの `#appversion` バッジ（`serve.html.j2`）を、`serve.core.mjs`
@@ -112,15 +112,15 @@ serve なのか分かりません。
 - （本 PR）2 本のエンドポイントと authz の制限、ヘッダーバッジを実装し、オペレーション層と
   HTTP のテスト（`tests/serve/test_version_ops.py`、`tests/serve/test_http_version.py`）、
   RBAC のテスト（`tests/serve/test_rbac.py`）を追加しました。状態を実装済みに変更しました。
-- [#1124](https://github.com/bajutsu-e2e/bajutsu/pull/1124) — バッジをナビタブの末尾から
+- [#1124](https://github.com/bajutsu-e2e/bajutsu/pull/1124)：バッジをナビタブの末尾から
   `bajutsu` というタイトルの横（`.brandrow`）へ移しました。マークアップとエンドポイント、
   `loadVersion()` は変更していません。この項目の記述も実態に合わせました。
 
 ## 参考
 
-- [BE-0187](../BE-0187-serve-config-view/BE-0187-serve-config-view-ja.md) — このバッジと
+- [BE-0187](../BE-0187-serve-config-view/BE-0187-serve-config-view-ja.md)：このバッジと
   区別している、config 由来の表示（バッジはタイトルの横に置きます）。
-- [BE-0202](../BE-0202-serve-js-modularization/BE-0202-serve-js-modularization-ja.md) —
+- [BE-0202](../BE-0202-serve-js-modularization/BE-0202-serve-js-modularization-ja.md)：
   このバッジが拡張する serve.js のモジュール構造。
-- `CLAUDE.md`「Isolate concurrent sessions with worktrees」— 複数チェックアウトが
+- `CLAUDE.md`「Isolate concurrent sessions with worktrees」：複数チェックアウトが
   並行するという、この提案の動機となる場面。
