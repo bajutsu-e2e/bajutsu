@@ -63,7 +63,7 @@ Tier 1 の読み取り専用です。UI は既存の集計を起動するだけ�
   クロール（[BE-0038](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md)）が
   `screenmap.json` に持つ発見済みの分母を与えたときに加わります。CLI の `--crawl` が取る入力と同じです。
 - **run は、それを実行したターゲットのもの。** run のピッカーには、選んだターゲット自身のシナリオを
-  実行した run を並べます。突き合わせの鍵は、run のサマリに記録されたシナリオ名です。Author のピッカーが
+  実行した run だけを並べます。突き合わせの鍵は、run のサマリに記録されたシナリオ名です。Author のピッカーが
   絞り込みに使う鍵と同じです
   （[BE-0262](../BE-0262-serve-author-live-step-picker/BE-0262-serve-author-live-step-picker-ja.md)）。
   別のターゲットのシナリオを実行した run が運んでくるのは、このマップが位置づけられない証跡です。

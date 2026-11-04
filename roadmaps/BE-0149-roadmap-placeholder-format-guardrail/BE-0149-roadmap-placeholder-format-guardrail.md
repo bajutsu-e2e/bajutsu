@@ -176,9 +176,9 @@ hand" (as PR #568 did) into "review and merge one generated PR."
 [`scripts/check_renumber_diff.py`](../../scripts/check_renumber_diff.py). The guard caps the commit's
 blast radius to `roadmaps/**` (BE-0089).
 
-Extend that guard rather than adding a second, parallel one. It also calls the shared
-predicate/checker that item 1 introduces, against the renumbered item. The call runs right after
-`check_renumber_diff.py` and before `git push`.
+Extend that guard rather than adding a second, parallel one. The extended guard also calls the
+shared predicate/checker that item 1 introduces, against the renumbered item. The call runs right
+after `check_renumber_diff.py` and before `git push`.
 
 On failure, the workflow aborts the push. `main` is left exactly as the merge already left it, so no
 broken commit lands. The workflow then fails loudly, naming the offending item and violations. A

@@ -63,7 +63,7 @@ Tier-1, read-only; the UI merely shells out to the existing aggregation.
   supplies the discovered denominator its `screenmap.json` holds, the same input the CLI's `--crawl`
   takes.
 - **A run belongs to the target it ran.** The run picker offers runs of the selected target's own
-  scenarios, matched on the scenario names a run's summary records. The Author picker scopes on the
+  scenarios alone, matched on the scenario names a run's summary records. The Author picker scopes on the
   same compatibility key
   ([BE-0262](../BE-0262-serve-author-live-step-picker/BE-0262-serve-author-live-step-picker.md)). A
   run of another target's scenarios carries evidence this map cannot place.
