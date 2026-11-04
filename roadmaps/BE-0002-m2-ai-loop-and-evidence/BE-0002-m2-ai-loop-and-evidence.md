@@ -15,19 +15,25 @@
 
 ## Introduction
 
-The Tier 1 AI authoring loop (`record`) plus the evidence subsystem: `capturePolicy` rules, `video` / `deviceLog` interval captures, and the reporter (JUnit / HTML).
+Milestone 2 (M2) delivers the [Tier 1](../../docs/glossary.md#the-two-tiers) AI authoring loop (`record`) and the [evidence](../../docs/glossary.md#evidence-capturepolicy-trace-triage) subsystem. The subsystem has three parts: `capturePolicy` rules, `video` and `deviceLog` interval captures, and the reporter (JUnit and HTML).
 
 ## Motivation
 
-Authoring scenarios by hand is slow, and failures are hard to investigate without evidence. M2 lets AI write scenarios (Tier 1) and normalizes "capture on every X" into reusable rules so a deterministic re-run reproduces the same evidence without AI.
+Authoring scenarios by hand is slow, and failures are hard to investigate without evidence. M2 lets AI write scenarios (Tier 1). M2 also normalizes "capture on every X" into reusable rules, so a deterministic re-run reproduces the same evidence without AI.
 
 ## Detailed design
 
-Built around the `Agent` abstraction (a Claude implementation + a system-alert guard), the evidence Sinks (instant screenshot / elements; interval video / deviceLog via simctl), and the `capturePolicy` trigger rules; reports emit `manifest.json` + JUnit XML + a self-contained HTML.
+M2 is built around three pieces:
+
+- the `Agent` abstraction, with a Claude implementation and a system-alert guard;
+- the evidence Sinks, which capture screenshots and elements instantly and capture `video` and `deviceLog` at intervals through simctl;
+- the `capturePolicy` trigger rules.
+
+Reports emit `manifest.json`, JUnit XML, and a self-contained HTML file.
 
 ## Alternatives considered
 
-Idempotent normalization / provenance comments remain light — a follow-up rather than an alternative.
+Idempotent normalization and provenance comments remain lightweight. They are a follow-up, not an alternative.
 
 ## Progress
 

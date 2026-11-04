@@ -15,19 +15,24 @@
 
 ## Introduction
 
-Self-healing triage: `bajutsu triage` assembles a failed run's context and diagnoses it (root cause + suggested fixes) — **advisory only, never the pass/fail judge**.
+Milestone 4 (M4) delivers self-healing [triage](../../docs/glossary.md#evidence-capturepolicy-trace-triage). `bajutsu triage` assembles the context of a failed run and diagnoses it, returning a root cause and suggested fixes. The diagnosis is **advisory only and never the pass/fail judge**.
 
 ## Motivation
 
-Regressions are expensive to maintain. M4 lowers that cost by letting AI investigate failures and propose minimal fixes, while keeping the determinism boundary intact: a fix is applied only when a human opts in after reviewing the diff.
+Regressions are expensive to maintain. M4 lowers that cost by letting AI investigate failures and propose minimal fixes. The determinism boundary stays intact: a fix is applied only when a human reviews the diff and opts in.
 
 ## Detailed design
 
-Diagnosis runs through one of two agents behind the same `TriageAgent` protocol: the rule-based `HeuristicTriageAgent` or `triage --ai` (Claude, which also reads the failure screenshot). An agent may propose a structured fix — `renameId`, `addIndex`, or `raiseTimeout` — which `--apply` shows as a dry-run diff, `--write` applies to the source, and `--rerun` re-verifies. Validated end-to-end on a real Simulator.
+Diagnosis runs through one of two agents behind the same `TriageAgent` protocol:
+
+- the rule-based `HeuristicTriageAgent`;
+- `triage --ai`, which uses Claude and also reads the failure screenshot.
+
+An agent may propose a structured fix: `renameId`, `addIndex`, or `raiseTimeout`. Three flags then act on the fix. `--apply` shows it as a dry-run diff, `--write` applies it to the source, and `--rerun` re-verifies it. The flow was validated end to end on a real Simulator.
 
 ## Alternatives considered
 
-Competitors auto-correct during a run; Bajutsu deliberately rejects implicit in-run correction to avoid "making tests laxer" ([DESIGN §11](../../DESIGN.md)).
+Competing tools auto-correct during a run. Bajutsu deliberately rejects implicit in-run correction, to avoid "making tests laxer" ([DESIGN §11](../../DESIGN.md)).
 
 ## Progress
 

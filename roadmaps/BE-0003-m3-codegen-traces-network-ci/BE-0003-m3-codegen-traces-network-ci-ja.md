@@ -15,19 +15,32 @@
 
 ## はじめに
 
-XCUITest codegen、アプリトレース（`appTrace` / os_signpost）、証跡のリダクション、ネットワークの**観測**（アプリ内コレクタと `request` アサーション）、**決定的モック**（シナリオの `mocks` をオフラインの in-protocol スタブへ変換する）、そして CI です。
+マイルストーン 3（M3）では、次の 5 つの機能を提供します。
+
+- XCUITest codegen
+- アプリトレース（`appTrace` / os_signpost）
+- 証跡のリダクション
+- ネットワークの**観測**（アプリ内コレクタと `request` アサーション）
+- **決定的モック**（シナリオの `mocks` をオフラインの in-protocol スタブへ変換する）
+
+M3 は、継続的インテグレーション（CI）も加えます。
 
 ## 動機
 
-実際のパイプラインで採用されるには、ネイティブテストの出力、ネットワークの観測（と決定的なスタブ化）、証跡中のシークレットのリダクション、すべての変更を CI（継続的インテグレーション）でゲートすることが必要になります。
+実際のパイプラインがツールを採用するには、次の 4 つが必要です。ネイティブテストの出力、ネットワークの観測（と決定的なスタブ化）、証跡中のシークレットのリダクション、すべての変更に対する CI のゲートです。
 
 ## 詳細設計
 
-codegen は、シナリオを構造的に等価な XCUITest（Swift）へ変換します（テスト時に AI は使いません）。`ci.yml` は Linux（py3.13）で ruff、mypy、pytest を実行し、`e2e.yml` は macOS Simulator で idb スモークシナリオと codegen から XCUITest への経路（`make -C demos/features ui-test`）を実行します。いずれも実機で検証済みです。
+codegen は、シナリオを構造的に等価な XCUITest（Swift）へ変換します。テスト時に AI は使いません。変更のゲートは、次の 2 つのワークフローが担います。
+
+- `ci.yml` は、Linux（py3.13）で ruff、mypy、pytest を実行します。
+- `e2e.yml` は、macOS Simulator で idb スモークシナリオと、codegen から XCUITest への経路（`make -C demos/features ui-test`）を実行します。
+
+どちらも実機で検証済みです。
 
 ## 検討した代替案
 
-外部の `mockServer` コマンドは宣言的な in-protocol `mocks` に置き換わり、配線されないまま残しています（保留中の提案として追跡しています）。
+宣言的な in-protocol `mocks` が、外部の `mockServer` コマンドに置き換わりました。このコマンドは配線されないまま残しており、保留中の提案として追跡しています。
 
 ## 進捗
 
