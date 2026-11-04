@@ -16,8 +16,8 @@
 ## Introduction
 
 `bajutsu repl --target <name> --attach` connects the manual shell to an app that is already running
-on a booted iOS Simulator, and leaves that app exactly as it is. The command neither erases the
-device, installs a build, nor relaunches the app. The operator reads the screen they were already
+on a booted iOS Simulator, and leaves that app exactly as it is. The command does not erase the
+device, install a build, or relaunch the app. The operator reads the screen they were already
 looking at with `tree` and acts on it with `tap <id>`.
 
 The XCUITest runner is the part that has to change. Today the runner calls `app.launch()` when it
@@ -40,7 +40,7 @@ That replacement discards what the operator came to inspect. A developer who rea
 hand, or who runs the app from Xcode with the debugger attached, loses the screen state, the
 logged-in session, and the debugger connection the moment the shell starts. Diagnosing a selector
 that fails on a deep screen then means navigating back to that screen after every connection. The
-cost repeats on each reconnect, and it falls on the situation the shell exists for: the screen is
+cost repeats on each reconnect. It falls on the situation the shell exists for: the screen is
 hard to reach, and a typed id does not resolve.
 
 Once this ships, an operator who has an app open on a booted Simulator runs
@@ -91,8 +91,9 @@ order:
    deeplink.
 4. If the app is not running, spawn the runner without the variable, and the environment reports
    the outcome (`attached` or `launched`) to its caller. `repl` prints
-   `<bundle id> was not running; launching it` for the `launched` outcome. The runner launches the app as it does today. The launch still
-   skips erase, install, and every other device-wide step. Before that spawn, a new
+   `<bundle id> was not running; launching it` for the `launched` outcome. The runner launches the app
+   as it does today, and the launch still skips erase, install, and every other device-wide step.
+   Before that spawn, a new
    `simctl.Env.app_container_exists(bundle_id)` check fails with a `DeviceError` naming the bundle
    id when the app is not installed, and the command exits 2. The runner's own `app.launch()` does
    not fail cleanly on an uninstalled bundle id, so the check cannot be left to it.

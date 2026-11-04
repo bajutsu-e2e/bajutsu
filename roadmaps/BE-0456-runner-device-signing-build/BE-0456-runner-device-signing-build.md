@@ -148,8 +148,8 @@ settings cannot do. The staged copy changes, never the committed file.
 The staged spec also rewrites the SPM package path from `../..` to the staged root. The build then
 runs `xcodebuild build-for-testing -destination generic/platform=iOS
 -skipPackagePluginValidation` (the `OpenAPIGenerator` build plugin needs that flag
-non-interactively), adding `-allowProvisioningUpdates` for automatic signing only, and copies the single `*.xctestrun` to
-`BajutsuRunner.xctestrun`, as `runner-build-device` does today.
+non-interactively). It adds `-allowProvisioningUpdates` for automatic signing only. It then copies the
+single `*.xctestrun` to `BajutsuRunner.xctestrun`, as `runner-build-device` does today.
 
 ### The cache and its key
 
@@ -205,9 +205,10 @@ gains one tier: with no `testRunner`, it finds the signing file through lookup e
 computes the key, and uses the cached `.xctestrun` if a complete directory exists. Two distinct
 errors cover the misses. If no signing file is found, the run fails and names both lookup
 locations. If the directory is absent, the run fails at once with the exact
-`bajutsu runner build --device` command to run. The run never builds implicitly,
-because a signing build is slow, can raise a Keychain prompt, and can register identifiers with
-Apple, and none of that belongs in the middle of a pooled run. An explicit `testRunner` still wins
+`bajutsu runner build --device` command to run.
+
+The run never builds implicitly. A signing build is slow, can raise a Keychain prompt, and can
+register identifiers with Apple, and none of that belongs in the middle of a pooled run. An explicit `testRunner` still wins
 over the cache.
 
 ### The showcase Makefile
@@ -215,8 +216,8 @@ over the cache.
 `runner-build-device` in `demos/showcase/Makefile` becomes a call to `bajutsu runner build
 --device`. It appends `--signing $(SIGNING)` only when `SIGNING` is set, so an unset value falls
 through to `BAJUTSU_SIGNING_FILE` and the default path. It keeps the `build/` output path the
-Device Farm runbook uses. The `DEVELOPMENT_TEAM`-only invocation stops working for the runner and fails with a message that
-points at the signing file. Only the runner path changes. `swiftui-archive-device` and
+Device Farm runbook uses. The `DEVELOPMENT_TEAM`-only invocation stops working for the runner and
+fails with a message that points at the signing file. Only the runner path changes. `swiftui-archive-device` and
 `swiftui-ipa-device` keep building the demo app from `DEVELOPMENT_TEAM`.
 
 ### Out of scope
@@ -235,9 +236,9 @@ points at the signing file. Only the runner path changes. `swiftui-archive-devic
   `bundleIdPrefix` and `bundleIds` exclusivity) and lookup order, spec
   override rendering for both modes, `xcodebuild` and `xcodegen` argument construction, cache-key
   stability and sensitivity (a checkout and a wheel layout of the same sources share a key; a
-renewed profile changes it), atomic publication and the incomplete-directory miss, profile
-expiry, the staged-manifest target check, and the run-time resolution errors. The external commands sit behind
-  an injected runner, so none of these tests needs Xcode.
+  renewed profile changes it), atomic publication and the incomplete-directory miss, profile
+  expiry, the staged-manifest target check, and the run-time resolution errors. The external
+  commands sit behind an injected runner, so none of these tests needs Xcode.
 - A manual proof on real hardware, outside `make check`: build with automatic signing under a
   second team's identifiers, build with manual signing, and run one scenario on a device with no
   `testRunner`.

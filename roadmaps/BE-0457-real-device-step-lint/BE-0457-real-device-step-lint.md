@@ -179,8 +179,10 @@ such as `"step 3 > if > then[0]: setLocation …"`, which the existing YAML node
 `capability_preflight` gains a variant of `unsupported` that yields `(step, covering_reason, reason)`
 triples. `covering_reason` is the nearest `skipOnRealDevice` on the step or on any enclosing `if`,
 `forEach`, `web`, or `app` step, and is `None` for an uncovered step. Both the step check and the
-`extract` check read it, and so does the run preflight below. The lint reads each step's `source_loc`, and the existing walk (`_resolve_line`, `lint.py:154`) maps it to a
-line. A finding inside a component thus lands on the `use:` line that pulled the component in.
+`extract` check read it, and so does the run preflight below.
+
+The lint reads each step's `source_loc`, and the existing walk (`_resolve_line`, `lint.py:154`) maps
+it to a line. A finding inside a component thus lands on the `use:` line that pulled the component in.
 
 The command-line interface gains `--config <path>` and `--target <name>` in
 `bajutsu/cli/commands/lint.py`. The lint resolves targets the way the run does:
