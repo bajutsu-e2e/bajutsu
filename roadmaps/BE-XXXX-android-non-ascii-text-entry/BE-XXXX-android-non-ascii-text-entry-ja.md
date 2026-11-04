@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
-| 実装 PR | PR の作成後に記入します |
+| 実装 PR | [#2283](https://github.com/bajutsu-e2e/bajutsu/pull/2283) |
 | トピック | Platform support |
 <!-- /BE-METADATA -->
 
@@ -96,7 +96,7 @@ host は、文字列を base64 にして本文に入れた `POST /type` を送�
 
 ログ:
 
-- 2026-11-04: API 34 のエミュレーターで NullPointerException を再現してから、経路を実装しました。新しいシナリオは同じ環境の Compose と Views で成功しました。常駐サーバーを無効にすると、理由を示して失敗しました。パスワード欄の拒否と、文字列の途中への挿入を検証する E2E シナリオはありません。
+- 2026-11-04（[#2283](https://github.com/bajutsu-e2e/bajutsu/pull/2283)）: API 34 のエミュレーターで NullPointerException を再現してから、経路を実装しました。新しいシナリオは同じ環境の Compose と Views で成功しました。常駐サーバーを無効にすると、理由を示して失敗しました。パスワード欄の拒否と、文字列の途中への挿入を検証する E2E シナリオはありません。
 
 ## 参考
 

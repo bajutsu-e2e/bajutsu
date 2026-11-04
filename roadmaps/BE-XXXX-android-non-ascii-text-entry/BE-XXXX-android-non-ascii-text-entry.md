@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
-| Implementing PR | Filled in once the PR is open |
+| Implementing PR | [#2283](https://github.com/bajutsu-e2e/bajutsu/pull/2283) |
 | Topic | Platform support |
 <!-- /BE-METADATA -->
 
@@ -124,7 +124,7 @@ The server cannot tell what `ACTION_SET_TEXT` would overwrite, even to confirm t
 
 Log:
 
-- 2026-11-04: Reproduced the NullPointerException on an API 34 emulator, then implemented the route.
+- 2026-11-04 ([#2283](https://github.com/bajutsu-e2e/bajutsu/pull/2283)): Reproduced the NullPointerException on an API 34 emulator, then implemented the route.
   The new scenario passed there on Compose and Views. With the resident server disabled, it failed
   with the named reason. No end-to-end scenario covers the password refusal or an insertion before
   the end of the text.
