@@ -20,9 +20,8 @@ A continuous-integration (CI) job authenticates to a hosted `bajutsu serve` by e
 OpenID Connect (OIDC) token GitHub Actions issues it for a short-lived machine session
 ([BE-0414](../BE-0414-ci-oidc-machine-identity/BE-0414-ci-oidc-machine-identity.md)). Each audit
 entry that session writes names the repository and nothing narrower. This item records the GitHub
-Actions job as well: the workflow run, its attempt, and the job within it. The
-audit trail then answers "which job did this", where today it stops at "some job in this
-repository".
+Actions job as well: the workflow run, its attempt, and the job within it. The audit trail then
+answers "which job did this". Today it stops at "some job in this repository".
 
 ## Motivation
 
@@ -38,8 +37,8 @@ The token the job presents already says which job it is. GitHub Actions signs `r
 `run_attempt`, and `check_run_id` into every OIDC token, beside the `repository` BE-0414 reads
 ([GitHub's claim reference](https://docs.github.com/en/actions/reference/security/oidc)).
 `check_run_id` is the job's own identifier, the one in the job page's URL. `serve` verifies the
-token's signature at the exchange, so these claims are as trustworthy as the repository is. `serve`
-discards them today.
+token's signature at the exchange, so these claims are as trustworthy as the repository. Today
+`serve` discards them.
 
 The outcome a later reader can check is the audit entry itself. An entry a machine session writes
 for `POST /api/run` carries the run id and the check-run id of the job that dispatched the run. On
@@ -70,10 +69,10 @@ The field keeps GitHub's name `check_run_id` rather than a neutral `job_id`. `PO
 with serve's own `jobId`, so an audit key of that name would invite joining the two.
 
 Each field stays optional. A provider that emits no such claim, or a GitHub token minted before a
-claim existed, maps it to `None`. The exchange never refuses a token for lacking one, because these
-fields describe the job rather than authorize it. For the same reason the three ids accept a number
-as well as a string: GitHub documents no type for them, and dropping a number would silently drop
-the job from the record.
+claim existed, maps it to `None`. The exchange never refuses a token for lacking one. These
+fields describe the job and grant no access. The three ids also accept a number as well as a
+string, because GitHub documents no type for them. Dropping a number would drop the job from the
+record without any signal.
 
 `OidcProvider` names each claim, the same way it already names `repository_claim`.
 
@@ -84,8 +83,8 @@ and omits each absent field. Its keys are `runId`, `runAttempt`, `checkRunId`, `
 `ref`, `sha`, `environment`, and `triggeredBy`. The record leaves out the repository, because the
 audit entry names it on its own.
 
-The record keeps the ids as parts rather than a link to the job's page. The link's host is not in
-the token: GitHub Enterprise Server serves the same path on its own host, so a link built for
+The record keeps the ids as parts rather than a link to the job's page. The token does not carry
+the link's host. GitHub Enterprise Server serves the same path on its own host, so a link built for
 github.com would open a different repository's page, or none. A link built from one id alone would
 open the wrong page too. The parts stay true in both cases, and a reader that wants the link builds
 it from them.
@@ -106,9 +105,10 @@ request presents the session cookie, never the token. A human session never carr
 
 ### Unit 3 — Write the job into the audit entry
 
-Both request backends already resolve a machine principal's org once, at the gate, and hand it to
-the operations behind the machine allowlist as `machine_org`. The job record travels the same way, and both backends answer it from the principal the gate
-already read. Every machine call that writes an audit entry carries the job.
+Both request backends already resolve a machine principal's org once, at the gate. They hand it to
+the operations behind the machine allowlist as `machine_org`. The job record travels the same way,
+and both backends answer it from the principal the gate already read. Every machine call that writes
+an audit entry carries the job.
 
 - **`POST /api/run` and the artifact probe.** Both go through `RequestCtx`, which gains `ci_job()`.
 - **The three artifact uploads.** Each backend streams these through a raw-body handler outside
@@ -118,9 +118,9 @@ already read. Every machine call that writes an audit entry carries the job.
 job.
 
 `_record_audit` (in `bajutsu/serve/authz.py`) takes the record as an optional `ci_job` argument. For
-a machine principal it keeps writing `repository` into the detail payload, which BE-0414 documents,
-and adds the record under `actor`. The key `actor` says what the record stands in for. The record
-fills the role `actor_id` fills for a person, in the one place a pipeline can carry it.
+a machine principal, it keeps writing `repository` into the detail payload, which BE-0414 documents.
+It also adds the record under `actor`. The key `actor` says what the record stands in for. The
+record fills the role `actor_id` fills for a person, in the one place a pipeline can carry it.
 
 ```json
 {
@@ -140,9 +140,9 @@ The exchange also writes an audit entry of its own, action `oidc.exchange`, with
 its target and the same detail payload. Today `serve` logs an exchange to the operator log alone.
 An entry in the audit log ties each later entry's job back to the moment its session began.
 
-This is the one audit write that does not fail its request. It runs after the token's `jti` is
-spent, so a failed write answering 500 would leave the pipeline with a burned one-shot token:
-resending it is refused as a replay. The exchange logs the failure at ERROR under the event
+This is the one audit write that does not fail its request. It runs after the exchange spends the
+token's `jti`, so a failed write answering 500 would leave the pipeline with a burned one-shot
+token. The exchange refuses a resend of that token as a replay. The exchange logs the failure at ERROR under the event
 `oidc.audit_failed` and still returns the session. No later entry depends on this one, since each
 carries the job on its own.
 

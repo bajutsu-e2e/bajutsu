@@ -94,7 +94,7 @@ conditional follow-up.
 The design also leaves availability out. A party on the route can drop or delay any request. A party
 that reads a request can deliver a copy to the collector ahead of the app's own. Either way, the step
 that depends on the request fails loudly on its existing timeout, and no forged exchange or command
-reaches the verdict. The *Stolen commands* threat thus shrinks to that loud failure; it does not
+reaches the verdict. The *Stolen commands* threat thus shrinks to that loud failure, and does not
 vanish.
 
 The design also leaves the token's delivery alone. The token reaches the app in the launch
@@ -131,16 +131,18 @@ which of its addresses a request named. An address in the signature would add no
 The probe signs each candidate's `GET /ping` with its own nonce, as every other request does. Several
 candidates can reach one collector, through Wi-Fi and through the CoreDevice tunnel, for example.
 With one shared nonce, the collector would accept the copy that arrived first and refuse the rest.
-Arrival order would then replace the host's preference order. The version line
-lets a later scheme change the canonical form without a misread on either side.
+Arrival order would then replace the host's preference order.
+
+The version line lets a later scheme change the canonical form without a misread on either side.
 
 The collector checks the header first. A missing or malformed header gets a 401 before the collector
 reads the body. A nonce that the collector has already accepted gets a 409, also before the body.
 Both of those answers leave the request body unread, so both set `close_connection`, as today's
 bearer refusal does (`bajutsu/common/evidence/network/_functions.py`). A reply that skips the body
-desynchronizes a reused connection, and the reject path stays safe whatever protocol version the
-handler speaks.
-Then the collector reads the body, recomputes the signature, and compares in constant time
+desynchronizes a reused connection. Setting `close_connection` keeps the reject path safe whatever
+protocol version the handler speaks.
+
+Next, the collector reads the body, recomputes the signature, and compares in constant time
 (`hmac.compare_digest`). A mismatch gets a 401, as a wrong token does today.
 
 The collector records a nonce once its signature matches, and no earlier. It checks and records the
@@ -149,14 +151,14 @@ request, handled at once on the server's threads, then cannot both pass. A forge
 a nonce read in transit cannot lock out the genuine request either, since a forgery never matches.
 
 Reading the body before the verdict is the one new exposure, because the bearer check refused a
-stranger before reading anything. A fixed cap on the body would be the obvious guard, and it would
+stranger before reading anything. A fixed cap on the body would be the obvious guard, but it would
 break capture. BajutsuKit reports bodies whole on purpose: a JSON body cut mid-object fails a
 `responseSchema` assertion on a valid payload. The collector sets no cap for that reason. It feeds the body
 through SHA-256 as it reads, holding a fixed amount in memory and spooling the rest to a temporary
 file (`tempfile.SpooledTemporaryFile`). A sender without the token thus costs bounded memory, and a
 large signed body still reaches `network.json` whole. On a mismatch, the collector drops the spool.
-A stranger can still make the collector write a large spool before the mismatch. That cost is one
-of availability, which this item leaves out.
+A stranger can still make the collector write a large spool before the mismatch. That cost falls
+under availability, which this item leaves out.
 
 ### Freshness without a clock
 
@@ -183,9 +185,9 @@ counter fails for another reason. BajutsuKit sends reports on concurrent `URLSes
 requests arrive out of order. A strictly rising counter would refuse valid requests.
 
 A reused nonce gets a 409, not a 401, for BajutsuKit's sake. The control channel treats a 401 as
-terminal and stops polling for the rest of the process: a wrong token is a misconfiguration that no
-retry fixes. A reused nonce means instead that a copy of the request arrived first. One forwarded
-poll must not end the channel for every later scenario. BajutsuKit thus treats a 409 as
+terminal and stops polling for the rest of the process, because a wrong token is a misconfiguration
+that no retry fixes. A reused nonce means instead that a copy of the request arrived first. One
+forwarded poll must not end the channel for every later scenario. BajutsuKit thus treats a 409 as
 not-answered and keeps polling, and the probe treats it the same way.
 
 ### Signed answers
@@ -267,10 +269,10 @@ the loopback:
 
 On a real device, an older BajutsuKit's bearer header gets a 401, and the run records no exchanges.
 That outcome must name its cause. The collector counts the refused bearer headers whose value
-matches this run's token, compared in constant time; every other bearer header gets the same 401
-uncounted. A host that reaches the all-interface listener with a made-up value then cannot raise a
-false warning. When the count is above zero, the run log carries one warning. The warning says that the app's BajutsuKit
-predates signed requests and needs a rebuild for a real-device run.
+matches this run's token, compared in constant time. Every other bearer header gets the same 401
+uncounted, so a host that reaches the all-interface listener with a made-up value cannot raise a
+false warning. When the count is above zero, the run log carries one warning. The warning says that
+the app's BajutsuKit predates signed requests and needs a rebuild for a real-device run.
 
 ### The host announces the scheme
 
@@ -322,8 +324,8 @@ and BajutsuKit's floor is iOS 15.
 
 The change adds no model call. Verification is a pure function of the token, the request, and the
 nonce set (prime directive 1). The change adds no wait and reads no clock (prime directive 2). It
-adds no configuration key either; the pool injects the announcement, and no user configures it. The binding alone decides the policy, and every target behaves the
-same way (prime directive 3).
+adds no configuration key either, because the pool injects the announcement and no user configures
+it. The binding alone decides the policy, and every target behaves the same way (prime directive 3).
 
 ### Verification
 
@@ -417,7 +419,7 @@ Log:
   dispatches on the `Authorization` scheme, spools the body while hashing it, and refuses a spent
   nonce with 409. It signs every authenticated answer and refuses the bearer header beyond the
   loopback. The collector logs the outdated-BajutsuKit warning itself, at the first refused bearer
-  that carries the run's token, rather than at teardown from the pool: the failing scenario is read
+  that carries the run's token, rather than at teardown from the pool, because the failing scenario is read
   while the run is still going. The nonce count reaches the run log when the collector stops, at
   `BAJUTSU_LOG_LEVEL=info`. The pool announces
   `BAJUTSU_COLLECTOR_AUTH=hmac`. BajutsuKit signs through `CollectorCredential` and verifies the
