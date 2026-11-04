@@ -35,7 +35,7 @@ Four modules all claim some piece of "environment" or "config", with non-interse
   type system (TBD).
 - `bajutsu/dotenv.py` (55 lines) is a "Minimal .env loader: read KEY=VALUE lines into the environment"
   (`dotenv.py:1`). It loads a `.env` file's secrets into `os.environ`.
-- `bajutsu/config_source.py` (243 lines) will "Acquire a config (and its scenario tree) from a Git
+- `bajutsu/config_source.py` (243 lines) is documented as "Acquire a config (and its scenario tree) from a Git
   source" (`config_source.py:1`, BE-0063). It fetches and materializes a config from `github:owner/repo`
   or `git+https://...` specs.
 

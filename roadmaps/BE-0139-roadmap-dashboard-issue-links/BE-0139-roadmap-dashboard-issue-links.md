@@ -70,7 +70,8 @@ the card already shows.
    row in its fenced metadata block, `Tracking issue`. The value is the same search-URL link
    (`| Tracking issue | [Search](…) |`).
 
-   `Implementing PR` is filled in by hand once a PR ships. This field needs no author judgment at all.
+   Unlike `Implementing PR`, which is filled in by hand once a PR ships, this row needs no author
+   judgment at all.
    Its value is a pure function of the file's own `BE-NNNN` id, so it is as mechanical as the header
    link or the `# BE-NNNN — …` title that the format already requires.
 
@@ -98,7 +99,7 @@ the card already shows.
 7. **No change to BE-0109's sync, label, or workflow.** The search URL derives from the id and from the
    fixed title and label convention that BE-0109 already guarantees. Nothing needs to be read back from
    GitHub, so `sync_roadmap_tracking_issues.py` and `roadmap-tracking-issues.yml` are untouched.
-8. **The link can legitimately return zero results.** BE-0109 opens an issue for an item that was
+8. **The link can legitimately return zero results.** BE-0109 opens an issue only for an item that was
    `Approved` or `In progress` at some point when the sync ran. An item can ship as `Implemented` in the
    same PR that introduced it ("born implemented"). It never passes through an open status, so it never
    gets an issue, and its search link shows no results.
