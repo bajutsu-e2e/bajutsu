@@ -16,65 +16,78 @@
 
 ## Introduction
 
-The iOS E2E lane's idb scenarios — smoke, golden, visual — only check whether the screen shows the right content: they use `wait` and
-`expect` and contain no `tap` / `type` / `swipe` / `back` / gesture step. idb's only real action
-actuation in CI is `tap`, via the conformance job. Its other actuators (`type_text`, `swipe`,
-`scroll`, `back`, `long_press`, `double_tap`, `tap_point`) and the whole device-control family are
-actuated on no iOS lane. Android already exercises all of these on a real device
-([BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md)); iOS
+The idb scenarios in the iOS E2E lane (smoke, golden, visual) check only whether the screen shows the
+right content. They use `wait` and `expect`, and none contains a `tap` / `type` / `swipe` / `back` or gesture
+step. The one real action that idb actuates in CI is `tap`, through the conformance job. Its other
+actuators (`type_text`, `swipe`, `scroll`, `back`, `long_press`, `double_tap`, `tap_point`) and the
+whole device-control family are actuated on no iOS lane.
+
+Android already exercises all of these on a real device
+([BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md)), and iOS
 should reach the same bar. The showcase already carries the scenarios (`gestures.yaml`,
-`device.yaml`, `push.yaml`) — they run only in local-only Makefile targets, not CI. This item
-wires real iOS actuation into the existing `ios-e2e.yml`.
+`device.yaml`, `push.yaml`), but they run only in local-only Makefile targets and not in CI. This
+item wires real iOS actuation into the existing `ios-e2e.yml`.
 
 ## Motivation
 
-Android is by far the most-exercised backend and today the only one proving `swipe`, `scroll`,
-`back`, `longPress`, `doubleTap`, `relaunch`, `setLocation`, and clipboard on a real device
+Android is by far the most-exercised backend. Today it is also the only backend that proves `swipe` /
+`scroll` / `back` / `longPress` / `doubleTap` / `relaunch` / `setLocation` and clipboard on a real device
 ([BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md),
 [BE-0221](../BE-0221-android-scenario-portability-guarantee/BE-0221-android-scenario-portability-guarantee.md)).
-iOS's actuators are proven only at the command-construction level (mocked-subprocess unit tests).
-This asymmetry undercuts the backend-agnostic promise for the platform that ships the required
-`E2E` gate: iOS actuators bypass shared code in the XCUITest runner channel and the idb companion,
+iOS's actuators are proven only at the command-construction level, with mocked-subprocess unit
+tests. The asymmetry undercuts the backend-agnostic promise for the platform that ships the required
+`E2E` gate. iOS actuators bypass shared code in the XCUITest runner channel and the idb companion,
 so a per-backend regression there would fail no iOS lane today.
 
-The gap is not missing scenarios — they exist — but missing CI wiring. An interaction job on
-`ios-e2e` (tap / type / swipe / scroll / back, plus doubleTap and longPress from `gestures.yaml`),
-and one XCUITest scenario exercising `/type` / `/swipe` / `/back` on the runner channel, close the
-gesture and text side. Device control (push, status-bar override/clear, keychain, foreground /
-background) is advertised by idb and XCUITest via `DEVICE_CONTROL_ALL` with simctl builders that
-are unit-tested, but `device.yaml` / `push.yaml` run on no iOS lane, so only Android proves any
-device control (and only `setLocation` + clipboard) on a real device.
+The gap is missing CI wiring, not missing scenarios, because the scenarios exist. Two additions
+close the gesture and text side:
 
-macOS runners are metered at ten times the Linux rate, so the design is deliberate about which new
-jobs gate versus signal. It reuses the existing `ios-e2e.yml` (no new workflow) and follows the
-structural-parity shape [BE-0271](../BE-0271-e2e-workflow-structural-parity/BE-0271-e2e-workflow-structural-parity.md)
-established, and it starts new jobs as non-gating signal in the spirit of the readiness-stability
-work in [BE-0218](../BE-0218-e2e-simulator-flaky-readiness-actuation/BE-0218-e2e-simulator-flaky-readiness-actuation.md).
+- an interaction job on `ios-e2e` (tap / type / swipe / scroll / back, plus doubleTap and longPress
+  from `gestures.yaml`)
+- one XCUITest scenario that exercises `/type`, `/swipe`, and `/back` on the runner channel
+
+Device control (push / status-bar override and clear / keychain / foreground and background) is
+advertised by idb and XCUITest through `DEVICE_CONTROL_ALL`, with simctl builders that are
+unit-tested. But `device.yaml` and `push.yaml` run on no iOS lane, so only Android proves any device
+control on a real device, and only `setLocation` and clipboard.
+
+macOS runners are metered at ten times the Linux rate, so the design decides deliberately which new
+jobs gate and which only signal. The design reuses the existing `ios-e2e.yml` and adds no new
+workflow. It follows the structural-parity shape that
+[BE-0271](../BE-0271-e2e-workflow-structural-parity/BE-0271-e2e-workflow-structural-parity.md)
+established. In the spirit of the readiness-stability work in
+[BE-0218](../BE-0218-e2e-simulator-flaky-readiness-actuation/BE-0218-e2e-simulator-flaky-readiness-actuation.md),
+new jobs start as a non-gating signal.
 
 ## Detailed design
 
-Proposal altitude. The work is MECE along the units below.
+This section works at proposal altitude. The work divides into the units below, which are mutually
+exclusive and collectively exhaustive (MECE).
 
-- **iOS idb interaction job.** Promote an interaction scenario (tap / type / swipe / scroll / back,
-  plus doubleTap and longPress from `gestures.yaml`) into a metered `ios-e2e` job, so idb's
-  actuators run against a real Simulator rather than only in the conformance contract.
-- **XCUITest actuation.** Add a scenario exercising `/type`, `/swipe`, and `/back` on the
-  `XcuitestDriver` runner channel, which today reaches on-device CI only for tap / pinch / rotate.
-- **iOS device control.** Connect `device.yaml` / `push.yaml` as a non-gating job exercising
-  `setLocation`, clipboard, status-bar override / clear, keychain reset, and foreground /
+- **iOS idb interaction job.** Promote an interaction scenario (tap / type / swipe / scroll / back, plus
+  doubleTap and longPress from `gestures.yaml`) into a metered `ios-e2e` job, so idb's actuators run
+  against a real Simulator and not only in the conformance contract.
+- **XCUITest actuation.** Add a scenario that exercises `/type`, `/swipe`, and `/back` on the
+  `XcuitestDriver` runner channel. Today that channel reaches on-device CI only for tap, pinch, and
+  rotate.
+- **iOS device control.** Connect `device.yaml` and `push.yaml` as a non-gating job that exercises
+  `setLocation` / clipboard / status-bar override and clear / keychain reset / foreground and
   background against a real Simulator.
-- **Cost discipline.** Right-size which jobs are required versus signal given the macOS metering,
-  reusing the single `ios-e2e.yml` file and the per-job split shape rather than a new workflow.
+- **Cost discipline.** Right-size which jobs are required and which only signal, given the macOS
+  metering. Reuse the single `ios-e2e.yml` file and the per-job split shape instead of adding a new
+  workflow.
 
 ## Alternatives considered
 
-- **Rely on Android for cross-backend actuation confidence.** Android's breadth does not transfer:
-  iOS actuators run through the XCUITest runner channel and the idb companion, code the Android
-  lane never touches. Trusting Android for iOS behavior is exactly the backend-agnostic assumption
-  the conformance work exists to check, not to take on faith.
-- **Make every new job a required gate.** The macOS ten-times metering makes that costly, and the
-  Simulator lane's flakiness history ([BE-0218](../BE-0218-e2e-simulator-flaky-readiness-actuation/BE-0218-e2e-simulator-flaky-readiness-actuation.md))
-  argues for landing new actuation jobs as signal first and promoting only once they prove stable.
+- **Rely on Android for cross-backend actuation confidence.** Rejected. Android's breadth does not
+  transfer, because iOS actuators run through the XCUITest runner channel and the idb companion, code
+  that the Android lane never touches. Trusting Android for iOS behavior is exactly the
+  backend-agnostic assumption that the conformance work exists to check and not to take on faith.
+- **Make every new job a required gate.** Rejected. The macOS ten-times metering makes that costly,
+  and the Simulator lane's flakiness history
+  ([BE-0218](../BE-0218-e2e-simulator-flaky-readiness-actuation/BE-0218-e2e-simulator-flaky-readiness-actuation.md))
+  argues for landing new actuation jobs as a signal first and promoting them only once they prove
+  stable.
 
 ## Progress
 
