@@ -39,8 +39,7 @@ App Tracking Transparency（ATT）、プロセス間のペースト確認です�
 この設定の実行時の表現は、本提案がスキーマへ与えようとしている形をすでに持っています。
 `AlertGuardConfig`（`bajutsu/orchestrator/types.py`）は、ネイティブ経路のための`labels`と`rules`を
 持ちます。視覚フォールバックのための`vision`ハンドラは、そこから分けて保持します。ガードが動く時点で
-2つの経路は
-すでに別のデータです。2つの経路が混ざっているのはディスク上のスキーマだけです。そこでは
+2つの経路はすでに別のデータです。2つの経路が混ざっているのはディスク上のスキーマだけです。そこでは
 `instruction`という1つのキーが両方へ流れ、どちらへ行くかは作者がリストを書いたか文字列を書いたかで
 決まります。
 
@@ -125,15 +124,19 @@ SystemAlertRule ::= { prompt: notifications | tracking | paste, choice: grant | 
 表明ではなく、明示された`visionInstruction`は表明だからです。
 
 ヒントを導くもとになるのは、**`labels`を与えている層のうちもっとも内側の1つ**です。ネイティブ経路が
-たどる連結ではありません。ネイティブ経路はラベルを厳密に比較するので、候補が長くなっても、どこかの
-層が名指ししたラベルを探す手間が増えるだけです。一方でフォールバックへの指示は locator がゆるく解釈
-する自由文であり、連結したリストを渡すと2つの答えを同時に手渡すことになります。ターゲット設定が
-`labels: ["Allow"]`で許可し、シナリオが`labels: ["Don't Allow"]`で拒否している場合を考えます。
-「…in order: Don't Allow, Allow」と描画され、locator が後者を取る余地が生まれます。`rules`を
-フォールバックから外している理由と同じ危険が、1つ隣のフィールドで起きます。そこで扱いも同じにします。
-フォールバックが聞くのは1つの層だけで、それは発言した層のうちもっとも具体的な層です。`rules`がフォールバックへ何も渡さない点は、BE-0382が記録した理由のまま変わり
-ません。フォールバックへ届く経路はどれも、どの規則もアラートを同定できなかった経路です。したがって
-規則のラベルは、構成上かならず別のプロンプトへの答えであり、それを渡せばシナリオが名指ししていない
+たどる連結ではありません。ネイティブ経路はラベルを厳密に比較します。候補が長くなっても、どこかの
+層が名指ししたラベルを探す手間が増えるだけです。
+
+一方でフォールバックへの指示は、locator がゆるく解釈する自由文です。連結したリストを渡すと、
+2つの答えを同時に手渡すことになります。ターゲット設定が`labels: ["Allow"]`で許可し、シナリオが
+`labels: ["Don't Allow"]`で拒否している場合を考えます。「…in order: Don't Allow, Allow」と描画され、
+locator が後者を取る余地が生まれます。`rules`をフォールバックから外している理由と同じ危険が、
+1つ隣のフィールドで起きます。そこで扱いも同じにします。
+フォールバックが聞くのは1つの層だけで、それは発言した層のうちもっとも具体的な層です。
+
+`rules`がフォールバックへ何も渡さない点は、BE-0382が記録した理由のまま変わりません。
+フォールバックへ届く経路はどれも、どの規則もアラートを同定できなかった経路です。したがって
+規則のラベルは、構成上かならず別のプロンプトへの答えです。それを渡せば、シナリオが名指ししていない
 プロンプトを受諾する方向へ locator を誘導してしまいます。
 
 ### 適用は2つの段階に分かれ、段階の内側では具体的な宣言が勝つ
@@ -360,28 +363,20 @@ Web UIは、コマンドライン自身のオプションのメタデータか�
 - [x] テスト — 上の各単位を覆う決定的なテスト群。
 
 - 2026-08-30 — 一度の変更で出荷しました。スキーマの分割、型で決まる層の合成と構築時の通知、
-  コマンドラインとWeb UIの surface、6ページのドキュメントとその日本語側、showcaseのシナリオ、
+  コマンドラインとWeb UIの面、6ページのドキュメントとその日本語側、showcaseのシナリオ、
   決定的なテスト群。
 
 ## 参考
 
-- [BE-0315 — リアクティブなアラートガードを、BE-0316 の SpringBoard 経路を再利用して決定論的・ネイティブにする](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling-ja.md)
-  — 本提案がスキーマへ移すネイティブ経路とAI視覚フォールバックの分離、および分割の対象となる
+- [BE-0315 — リアクティブなアラートガードを、BE-0316 の SpringBoard 経路を再利用して決定論的・ネイティブにする](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling-ja.md)：本提案がスキーマへ移すネイティブ経路とAI視覚フォールバックの分離、および分割の対象となる
   `instruction`キー。
-- [BE-0382 — リアクティブなシステムアラートガードが、対応済みのプロンプトごとに個別の規則で応答できるようにする](../BE-0382-system-alert-per-prompt-rules/BE-0382-system-alert-per-prompt-rules-ja.md)
-  — 本提案が変更せずに保つ`rules`キー、具体性の並びが延長する「`rules`のあとに`instruction`」の
+- [BE-0382 — リアクティブなシステムアラートガードが、対応済みのプロンプトごとに個別の規則で応答できるようにする](../BE-0382-system-alert-per-prompt-rules/BE-0382-system-alert-per-prompt-rules-ja.md)：本提案が変更せずに保つ`rules`キー、具体性の並びが延長する「`rules`のあとに`instruction`」の
   優先順位、および本提案が反転させるターゲット規則の抑制。
-- [BE-0316 — iOS の権限プロンプトを明示的に操作する mid-flow ステップ](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step-ja.md)
-  — `rules`が再利用する`prompt`と`choice`の語彙を持つプロアクティブなステップ。
-- [BE-0320 — iOS システムアラートのボタン選択を Simulator のシステム言語によらず決定論的にする](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md)
-  — 規則がラベルを解決するロケール別のラベル表と、リテラルなラベル一覧が言語に縛られる理由。
-- [BE-0177 — run のテスト動作設定にターゲット config の既定値を持たせる](../BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)
-  — 本提案がシナリオとの合成を定義し直すターゲット設定の層。
-- [BE-0317 — dismissAlerts ガードを、却下も許可も表す alertHandling に改名する](../BE-0317-rename-dismiss-alerts-to-alert-handling/BE-0317-rename-dismiss-alerts-to-alert-handling-ja.md)
-  — 1度目の改名と、本提案が削除する`dismissAlerts`エイリアス。
-- [BE-0327 — alertHandling ガードを、扱う対象を表す systemAlertHandling に改名する](../BE-0327-rename-alert-handling-to-system-alert-handling/BE-0327-rename-alert-handling-to-system-alert-handling-ja.md)
-  — 2度目の改名と、本提案が削除する`alertHandling`エイリアス。
-- [BE-0134 — serve と CLI のフラグ二重管理による drift をなくす](../BE-0134-serve-cli-flag-mirror-drift/BE-0134-serve-cli-flag-mirror-drift-ja.md)
-  — 追加と削除のたびにWeb UIを追従させる取り決め。
-- [`docs/ja/scenarios.md`](../../docs/ja/scenarios.md) — 本提案が書き換える`systemAlertHandling`の
+- [BE-0316 — iOS の権限プロンプトを明示的に操作する mid-flow ステップ](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step-ja.md)：`rules`が再利用する`prompt`と`choice`の語彙を持つプロアクティブなステップ。
+- [BE-0320 — iOS システムアラートのボタン選択を Simulator のシステム言語によらず決定論的にする](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md)：規則がラベルを解決するロケール別のラベル表と、リテラルなラベル一覧が言語に縛られる理由。
+- [BE-0177 — run のテスト動作設定にターゲット config の既定値を持たせる](../BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)：本提案がシナリオとの合成を定義し直すターゲット設定の層。
+- [BE-0317 — dismissAlerts ガードを、却下も許可も表す alertHandling に改名する](../BE-0317-rename-dismiss-alerts-to-alert-handling/BE-0317-rename-dismiss-alerts-to-alert-handling-ja.md)：1度目の改名と、本提案が削除する`dismissAlerts`エイリアス。
+- [BE-0327 — alertHandling ガードを、扱う対象を表す systemAlertHandling に改名する](../BE-0327-rename-alert-handling-to-system-alert-handling/BE-0327-rename-alert-handling-to-system-alert-handling-ja.md)：2度目の改名と、本提案が削除する`alertHandling`エイリアス。
+- [BE-0134 — serve と CLI のフラグ二重管理による drift をなくす](../BE-0134-serve-cli-flag-mirror-drift/BE-0134-serve-cli-flag-mirror-drift-ja.md)：追加と削除のたびにWeb UIを追従させる取り決め。
+- [`docs/ja/scenarios.md`](../../docs/ja/scenarios.md)：本提案が書き換える`systemAlertHandling`の
   リファレンス。
