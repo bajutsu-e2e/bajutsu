@@ -15,7 +15,13 @@
 
 ## Introduction
 
-Bajutsu is scoped today to the iOS Simulator only ([DESIGN §1](../../DESIGN.md), [README](../../README.md)), but its core was deliberately built behind a backend-agnostic `Driver` interface. This item is the cross-cutting abstraction work that lets the same deterministic core also drive Android (emulator) and Web (browser): extracting the iOS-specific seams behind platform-neutral protocols, generalizing the config schema with a `platform` discriminator, and auditing the runner and orchestrator for leaked iOS assumptions. The per-platform backends themselves are separate items — Android is [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md), Web is [BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) (web-playwright-backend), and the already-landed selector/registry slice is [BE-0042](../BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md) (platform-backend-registry). This item is the shared substrate they all build on.
+Bajutsu is scoped today to the iOS Simulator only ([DESIGN §1](../../DESIGN.md), [README](../../README.md)). Its core, however, was deliberately built behind a backend-agnostic `Driver` interface. This item is the cross-cutting abstraction work that lets the same deterministic core also drive Android (emulator) and Web (browser). The work has three parts:
+
+- extracting the iOS-specific seams behind platform-neutral protocols;
+- generalizing the config schema with a `platform` discriminator;
+- auditing the runner and orchestrator for leaked iOS assumptions.
+
+The per-platform backends themselves are separate items. Android is [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md), and Web is [BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) (web-playwright-backend). The selector and registry slice, which has already landed, is [BE-0042](../BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md) (platform-backend-registry). This item is the shared substrate that all of them build on.
 
 ## Motivation
 
@@ -27,7 +33,7 @@ The deterministic spine — scenario DSL (domain-specific language), selector re
 2. **The environment manager** (`env.py`) — `simctl` boot / erase / launch / openurl.
 3. **The stable-id convention** (`accessibilityIdentifier`, [DESIGN §7](../../DESIGN.md)) — the app-side source that makes `Selector.id` resolution deterministic.
 
-Adding multi-platform support means **adding a new triple** (actuator + environment + id convention) per platform, while the deterministic core stays byte-for-byte the same. This is the same move the design already anticipates for a second iOS actuator (XCUITest, [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md)) — generalized across OSes.
+Adding multi-platform support means **adding a new triple** of actuator, environment, and id convention for each platform. The deterministic core stays byte-for-byte the same. The design already anticipates the same move for a second iOS actuator (XCUITest, [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md)); this item generalizes it across operating systems.
 
 #### What stays unchanged vs. what each platform adds
 
@@ -45,13 +51,13 @@ Adding multi-platform support means **adding a new triple** (actuator + environm
 | **doctor convention checks** (`doctor.py`) | **New per platform** — the §7-equivalent score |
 | **codegen emitter** (`codegen.py`) | **New per platform** — the native test it transpiles to |
 
-The first new platform is the most expensive to add because it forces any latent iOS-specific assumptions in the "unchanged" column out into the open. The second platform is cheaper. Doing this abstraction work as its own item pays that cost once, with no device involved.
+The first new platform is the most expensive to add, because it forces any latent iOS-specific assumption in the "unchanged" column out into the open. The second platform is cheaper. Doing the abstraction work as its own item pays that cost once, with no device involved.
 
 ## Detailed design
 
 ### The crux: selector portability
 
-A scenario is portable across platforms **only to the extent its selectors are by `id`**. Each platform has a native equivalent of `accessibilityIdentifier` — a **non-localized, developer-assigned, data-derived** handle — and the per-platform id convention ([DESIGN §7.3](../../DESIGN.md)) maps onto it:
+A scenario is portable across platforms **only to the extent that its selectors are by `id`**. Each platform has a native equivalent of `accessibilityIdentifier`: a **non-localized, developer-assigned, data-derived** handle. The per-platform id convention ([DESIGN §7.3](../../DESIGN.md)) maps onto it:
 
 | `Selector` field | iOS | Android | Web |
 |---|---|---|---|
@@ -60,13 +66,17 @@ A scenario is portable across platforms **only to the extent its selectors are b
 | `traits` (role filter) | UI traits (`button`, `link`, …) | widget class (`android.widget.Button`) | ARIA (Accessible Rich Internet Applications) `role` (`button`, `link`, `textbox`) |
 | `value` | accessibility value | `text` / checked state | input `value` / `aria-*` |
 
-The key property: **the YAML selector `{ id: settings.reindex }` is already platform-neutral.** What differs is *which app-side attribute the backend reads to satisfy it* — and that lives entirely inside the new Driver, never in the scenario.
+The key property is that **the YAML selector `{ id: settings.reindex }` is already platform-neutral.** What differs is *which app-side attribute the backend reads to satisfy it*. That difference lives entirely inside the new Driver, never in the scenario.
 
-**Honest stance on shared scenarios.** Three apps for the same product rarely have identical screens, so the realistic model is **per-platform scenarios that share one DSL, one runner, and one toolchain** — not one YAML run thrice. Cross-platform *reuse* is then an **opt-in** for the slices that genuinely match, expressed through the existing **reserved/shared id namespaces** (`auth.*`, `nav.*`, [DESIGN §7.3](../../DESIGN.md)): a login `setup:` component can run on all three platforms iff those ids are kept in parity. The tool provides *portable tooling* and *portable scenarios* only where the team maintains an id contract — a single YAML is not automatically a tri-platform test.
+**Honest stance on shared scenarios.** Three apps for the same product rarely have identical screens. The realistic model is therefore **per-platform scenarios that share one DSL, one runner, and one toolchain**, not one YAML run three times.
+
+Cross-platform *reuse* is an **opt-in** for the slices that genuinely match. The existing **reserved/shared id namespaces** (`auth.*`, `nav.*`, [DESIGN §7.3](../../DESIGN.md)) express it. A login `setup:` component can run on all three platforms if and only if those ids are kept in parity.
+
+The tool provides *portable tooling*. It provides *portable scenarios* only where the team maintains an id contract. A single YAML is not automatically a tri-platform test.
 
 ### Configuration changes
 
-`apps.<name>` gains a **`platform`** discriminator and per-platform target fields; the deterministic resolution order (`defaults < app < scenario`) is unchanged.
+`apps.<name>` gains a **`platform`** discriminator and per-platform target fields. The deterministic resolution order (`defaults < app < scenario`) is unchanged.
 
 ```yaml
 defaults:
@@ -95,7 +105,9 @@ apps:
     idNamespaces:   [home, settings]
 ```
 
-`platform` selects which **environment manager** and **backend registry** are in play; the rest of the schema (namespaces, redact, setup, capture) stays shared. The selector slice of this registry has already landed (`bajutsu/backends.py` keys off a platform registry, and `--backend` / `backend:` accept a platform token); see [BE-0042](../BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md). This item covers the remaining cross-cutting work: the `platform` config field and the `Environment` protocol the registry hands off to.
+`platform` selects which **environment manager** and **backend registry** are in play. The rest of the schema (namespaces, redact, setup, capture) stays shared.
+
+The selector slice of this registry has already landed: `bajutsu/backends.py` keys off a platform registry, and `--backend` / `backend:` accept a platform token (see [BE-0042](../BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md)). This item covers the remaining cross-cutting work: the `platform` config field and the `Environment` protocol that the registry hands off to.
 
 > **The web backend's v1 took a shortcut here.** The first Web (Playwright) slice ([BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)) needed a target URL but not yet a `platform` discriminator, so it added a single `baseUrl` field to `apps.<name>` and kept the environment lifecycle (fresh `BrowserContext` = `erase`, `goto(baseUrl)` = `launch`) **inside the driver**, branching the runner on `actuator == "playwright"` instead of going through a neutral `Environment` protocol. That was the smallest correct change to land a working web `run`. This item generalizes it: the `platform` field subsumes the `bundleId`-vs-`baseUrl` choice, and the per-platform lifecycle moves behind the `Environment` protocol so the runner stops branching on the actuator name.
 
@@ -110,11 +122,11 @@ The four mechanisms hold on every backend — only their *implementation* differ
 | Clean environment per test | `simctl erase` | `pm clear` | fresh `new_context()` |
 | Pass/fail machine-checkable only | normalized `Element` | normalized `Element` | normalized `Element` |
 
-`resolve_unique` and `assertions.py` are shared code — the determinism guarantees are not re-implemented per platform, which is the whole point of normalizing every backend's tree into the common `Element`.
+`resolve_unique` and `assertions.py` are shared code. The determinism guarantees are not re-implemented per platform, which is the whole point of normalizing every backend's tree into the common `Element`.
 
 ### Phase 0 — abstract the seams
 
-This item is **Phase 0** of the multi-platform rollout: the generalization that has to happen before any second platform can land.
+This item is **Phase 0** of the multi-platform rollout. It is the generalization that has to happen before any second platform can land.
 
 | Phase | Scope | Why this order |
 |---|---|---|
@@ -130,7 +142,13 @@ The per-platform backends that build on this (Web first, then Android) are track
 
 ### The `Environment` seam (implementation)
 
-The audit confirms the "unchanged core" claim: no iOS assumption leaked into `resolve_unique`, `assertions`, the orchestrator loop, or the reporter. The only platform leakage is **control flow that branches on the actuator name**, concentrated in three places — `runner/launch.py` (the per-run bring-up fork, `if actuator == "playwright"`), `runner/pool.py` (the parallel-lane `is_web` split plus `cast(PlaywrightDriver, …)` for the web-only network/relaunch), and `cli/commands/crawl.py` (the reset/recovery split). The web v1 shortcut ([BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)) kept its lifecycle inside the driver and reached it through those branches.
+The audit confirms the "unchanged core" claim: no iOS assumption leaked into `resolve_unique`, `assertions`, the orchestrator loop, or the reporter. The only platform leakage is **control flow that branches on the actuator name**. It is concentrated in three places:
+
+- `runner/launch.py`: the per-run bring-up fork, `if actuator == "playwright"`.
+- `runner/pool.py`: the parallel-lane `is_web` split, plus `cast(PlaywrightDriver, …)` for the web-only network and relaunch.
+- `cli/commands/crawl.py`: the reset and recovery split.
+
+The web v1 shortcut ([BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)) kept its lifecycle inside the driver and reached it through those branches.
 
 The fix is a single Protocol the runner calls instead of branching:
 
@@ -139,7 +157,13 @@ class Environment(Protocol):
     def start(self, eff, pre, *, extra_env=None, record_video_dir=None) -> Driver: ...
 ```
 
-`start` owns a platform's whole per-run startup and returns a ready-to-poll driver — so the caller never knows whether that meant a `simctl` device sequence or a fresh browser context. `IosEnvironment` runs the simctl sequence (erase → boot → install → launch → deeplink) then builds the idb driver; `WebEnvironment` builds the Playwright driver and `navigate()`s (the web-only call now confined to that class, off the runner); `FakeEnvironment` is a no-op. `environment_for(actuator, udid, env_run)` is the factory. A future `AndroidEnvironment` ([BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md)) implements the same Protocol over `adb` (`pm clear` → AVD → `am start` → deeplink intent).
+`start` owns a platform's whole per-run startup and returns a ready-to-poll driver. The caller never knows whether that meant a `simctl` device sequence or a fresh browser context. Each implementation does the following:
+
+- `IosEnvironment` runs the simctl sequence (erase → boot → install → launch → deeplink), then builds the idb driver.
+- `WebEnvironment` builds the Playwright driver and calls `navigate()`. The web-only call is now confined to that class, off the runner.
+- `FakeEnvironment` is a no-op.
+
+`environment_for(actuator, udid, env_run)` is the factory. A future `AndroidEnvironment` ([BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md)) implements the same Protocol over `adb` (`pm clear` → AVD → `am start` → deeplink intent).
 
 Phase 0 lands incrementally so each PR stays small and the gate stays green:
 
@@ -150,9 +174,9 @@ Phase 0 lands incrementally so each PR stays small and the gate stays green:
 
 ## Alternatives considered
 
-- **Per-platform forks of the runner.** Rejected on the core premise: re-implementing `resolve_unique` / `assertions.py` per platform would duplicate exactly the determinism guarantees that normalizing into a common `Element` tree exists to share. The whole value of the abstraction is that the deterministic spine stays single-sourced.
-- **One YAML run thrice as the portability model.** Rejected as dishonest about real apps: three apps for the same product rarely share screens. The chosen model is per-platform scenarios over one shared DSL/runner/toolchain, with cross-platform reuse opt-in through shared id namespaces.
-- **Defer the abstraction until a second platform is actually built.** Rejected because the first platform pays the abstraction cost regardless; doing it as a device-free Phase 0 surfaces leaked iOS-isms at the lowest cost and de-risks the second-platform work.
+- **Per-platform forks of the runner.** Rejected on the core premise. Re-implementing `resolve_unique` and `assertions.py` per platform would duplicate exactly the determinism guarantees that a common `Element` tree exists to share. The whole value of the abstraction is that the deterministic spine stays single-sourced.
+- **One YAML run thrice as the portability model.** Rejected as dishonest about real apps, because three apps for the same product rarely share screens. The chosen model is per-platform scenarios over one shared DSL, runner, and toolchain. Cross-platform reuse is opt-in through shared id namespaces.
+- **Defer the abstraction until a second platform is actually built.** Rejected, because the first platform pays the abstraction cost regardless. Doing the work as a device-free Phase 0 surfaces leaked iOS-isms at the lowest cost and de-risks the second-platform work.
 
 ## Progress
 

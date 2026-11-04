@@ -15,7 +15,13 @@
 
 ## はじめに
 
-現状の Bajutsu は iOS Simulator 限定にスコープを切っています（[DESIGN §1](../../DESIGN.md)、[README](../../README.md)）が、そのコアは意図的にバックエンド非依存の `Driver` インターフェースの背後に構築されています。本項目は、同じ決定的コアで Android（エミュレータ）と Web（ブラウザ）も操作できるようにするための横断的な抽象化作業です。iOS 固有の継ぎ目をプラットフォーム中立なプロトコルの背後に抽出し、config スキーマを `platform` 判別子で一般化し、runner と orchestrator に漏れた iOS 前提を監査します。プラットフォーム別バックエンドそのものは別項目です。Android は [BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md)、Web は [BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)（web-playwright-backend）、すでに実装済みのセレクタ/レジストリのスライスは [BE-0042](../BE-0042-platform-backend-registry/BE-0042-platform-backend-registry-ja.md)（platform-backend-registry）です。本項目は、それらすべてが乗る共有の土台にあたります。
+現状の Bajutsu は iOS Simulator 限定にスコープを切っています（[DESIGN §1](../../DESIGN.md)、[README](../../README.md)）が、そのコアは意図的にバックエンド非依存の `Driver` インターフェースの背後に構築されています。本項目は、同じ決定的コアで Android（エミュレータ）と Web（ブラウザ）も操作できるようにするための横断的な抽象化作業です。作業は 3 つからなります。
+
+- iOS 固有の継ぎ目を、プラットフォーム中立なプロトコルの背後に抽出する。
+- config スキーマを `platform` 判別子で一般化する。
+- runner と orchestrator に漏れた iOS 前提を監査する。
+
+プラットフォーム別バックエンドそのものは別項目です。Android は [BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md)、Web は [BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)（web-playwright-backend）です。すでに実装済みのセレクタ/レジストリのスライスは、[BE-0042](../BE-0042-platform-backend-registry/BE-0042-platform-backend-registry-ja.md)（platform-backend-registry）です。本項目は、それらすべてが乗る共有の土台にあたります。
 
 ## 動機
 
@@ -62,7 +68,11 @@
 
 要点は、**YAML のセレクタ `{ id: settings.reindex }` はすでにプラットフォーム中立だ**ということです。変わるのは *バックエンドがそれを満たすためにアプリ側のどの属性を読むか* だけで、それは新しい Driver の内側に完全に閉じます。シナリオには出てきません。
 
-**共有シナリオについての見解。** 同一プロダクトの 3 アプリが画面まで完全一致することは稀です。現実的なモデルは **1 つの DSL、1 つのランナー、1 つのツールチェーンを共有する、プラットフォーム別シナリオ**であって、1 つの YAML を 3 回実行することではありません。横断的な*再利用*は、本当に一致する範囲についての **opt-in** とし、既存の **予約/共有 id 名前空間**（`auth.*`、`nav.*`、[DESIGN §7.3](../../DESIGN.md)）で表現します。ログインの `setup:` コンポーネントは、それらの id が各プラットフォームで parity を保たれている限り、3 つすべてで動きます。このツールが提供するのは *可搬なツール* であり、*可搬なシナリオ* はチームが id 契約を維持する範囲でのみ提供します。1 つの YAML が自動的に 3 プラットフォームのテストになるわけではありません。
+**共有シナリオについての見解。** 同一プロダクトの 3 アプリが画面まで完全一致することは稀です。現実的なモデルは、**1 つの DSL、1 つのランナー、1 つのツールチェーンを共有する、プラットフォーム別シナリオ**です。1 つの YAML を 3 回実行するモデルではありません。
+
+横断的な*再利用*は、本当に一致する範囲についての **opt-in** とします。既存の **予約/共有 id 名前空間**（`auth.*`、`nav.*`、[DESIGN §7.3](../../DESIGN.md)）で表現します。ログインの `setup:` コンポーネントは、それらの id が各プラットフォームで parity を保たれている限り、3 つすべてで動きます。
+
+このツールが提供するのは*可搬なツール*です。*可搬なシナリオ*は、チームが id 契約を維持する範囲でのみ提供します。1 つの YAML が自動的に 3 プラットフォームのテストになるわけではありません。
 
 ### 設定の変更
 
@@ -130,7 +140,13 @@ apps:
 
 ### `Environment` 継ぎ目（実装）
 
-監査の結果、「変わらないコア」という主張は成り立っていました。`resolve_unique`、`assertions`、orchestrator ループ、reporter のいずれにも iOS 前提は漏れていません。プラットフォーム依存の漏れはアクチュエータ名で分岐する制御フローだけで、3 箇所に集中しています。`runner/launch.py`（run ごとの起動フォーク、`if actuator == "playwright"`）、`runner/pool.py`（並列レーンの `is_web` 分岐と、web 専用のネットワーク／再起動のための `cast(PlaywrightDriver, …)`）、`cli/commands/crawl.py`（リセットと復旧の分岐）です。Web v1 のショートカット（[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）は、ライフサイクルを driver の中に抱え、これらの分岐を経由して到達していました。
+監査の結果、「変わらないコア」という主張は成り立っていました。`resolve_unique`、`assertions`、orchestrator ループ、reporter のいずれにも iOS 前提は漏れていません。プラットフォーム依存の漏れは、アクチュエータ名で分岐する制御フローだけです。漏れは 3 箇所に集中しています。
+
+- `runner/launch.py`：run ごとの起動フォーク、`if actuator == "playwright"`
+- `runner/pool.py`：並列レーンの `is_web` 分岐と、web 専用のネットワーク／再起動のための `cast(PlaywrightDriver, …)`
+- `cli/commands/crawl.py`：リセットと復旧の分岐
+
+Web v1 のショートカット（[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）は、ライフサイクルを driver の中に抱え、これらの分岐を経由して到達していました。
 
 解は、runner が分岐の代わりに呼ぶ単一のプロトコルです。
 

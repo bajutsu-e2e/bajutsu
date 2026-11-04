@@ -15,8 +15,8 @@
 
 ## はじめに
 
-Flutter アプリを、新しいバックエンドや semantics ブリッジではなく、**既存の XCUITest / adb バックエンドの
-まま**駆動します。この項目は Flutter を、新機能ではなく id 規約と検証の課題として扱います。Flutter は
+この項目は、Flutter アプリを**既存の XCUITest / adb バックエンドのまま**駆動します。Flutter を、新しい
+バックエンドや semantics ブリッジではなく、id 規約と検証の課題として扱います。Flutter は
 Skia / Impeller で自前のピクセルを描きますが、どちらのネイティブバックエンドもピクセルを読みません。
 XCUITest は XCTest の自動化スナップショットを読み、adb は UI Automator のツリーを読みます。そして
 Flutter は、自身の semantics ツリーをその両方へ橋渡ししています。したがって `SemanticsProperties.identifier`

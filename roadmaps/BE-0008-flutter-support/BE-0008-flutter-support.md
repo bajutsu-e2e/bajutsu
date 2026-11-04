@@ -15,35 +15,41 @@
 
 ## Introduction
 
-Drive Flutter apps with the **existing XCUITest / adb backends unchanged**, by treating Flutter as
-an id convention plus a verification task rather than a new backend or a semantics bridge. Flutter
-renders its own pixels through Skia / Impeller, but neither native backend reads pixels — XCUITest
-reads the XCTest automation snapshot and adb reads the UI Automator tree, and Flutter already
+This item drives Flutter apps with the **existing XCUITest / adb backends unchanged**. It treats
+Flutter as an id convention plus a verification task, not as a new backend or a semantics bridge.
+
+Flutter renders its own pixels through Skia / Impeller, but neither native backend reads pixels.
+XCUITest reads the XCTest automation snapshot, and adb reads the UI Automator tree. Flutter already
 bridges its own semantics tree into both. A Flutter widget that sets
 `SemanticsProperties.identifier` therefore surfaces as a resolvable element on both
-[backends](../../docs/glossary.md#driver-backend-actuator-platform) with no new code. This item
-ships the id convention, an example app, and the on-device verification that the surfacing actually
-holds — not a new actuator.
+[backends](../../docs/glossary.md#driver-backend-actuator-platform) with no new code.
+
+The item ships three deliverables: the id convention, an example app, and the on-device verification
+that the surfacing actually holds. It does not ship a new actuator.
 
 ## Motivation
 
 The native iOS ([XCUITest](../../docs/drivers.md#xcuitest-ios)) and Android
 ([adb](../../docs/drivers.md#adb-android)) backends resolve
-[selectors](../../docs/glossary.md#scenario-authoring) by reading an accessibility tree, never by
-analyzing rendered pixels — the same for a Flutter app as for a native one. The two backends then
-actuate differently: XCUITest taps the resolved element directly by its accessibility identifier (a
-semantic tap, no coordinates), while adb, the one coordinate backend, computes a tap from the
-element's frame center. Either way, the tap lands on the widget without ever touching a pixel, so
-the premise "Flutter draws its own pixels, therefore it needs a new actuator" conflates two
-independent layers. Flutter does draw a single opaque surface via Skia / Impeller, but
-**separately** it maintains a semantics tree and translates it into the OS accessibility APIs:
-Android's `AccessibilityBridge` turns each `SemanticsNode` into a virtual `AccessibilityNodeInfo`,
-and the iOS engine exposes `SemanticsObject`s (`UIAccessibility` elements). XCUITest's automation
-snapshot and adb's UI Automator dump read exactly that. Each semantics node also carries an
-on-screen rectangle, so on Android a frame-center tap lands on the widget and Flutter's own gesture
-arena routes the delivered OS touch to the right widget; on iOS, XCUITest resolves the same node by
-identifier and taps it directly, with no coordinate math at all. The renderer (Skia or Impeller) is
-irrelevant to either path.
+[selectors](../../docs/glossary.md#scenario-authoring) by reading an accessibility tree. They never
+analyze rendered pixels, and this holds for a Flutter app as for a native one.
+
+The two backends then actuate differently. XCUITest taps the resolved element directly by its
+accessibility identifier, which is a semantic tap with no coordinates. adb, the one coordinate
+backend, computes a tap from the element's frame center. Either way, the tap lands on the widget
+without ever touching a pixel. The premise "Flutter draws its own pixels, therefore it needs a new
+actuator" conflates two independent layers.
+
+Flutter does draw a single opaque surface via Skia / Impeller. **Separately**, it maintains a
+semantics tree and translates that tree into the OS accessibility APIs. Android's
+`AccessibilityBridge` turns each `SemanticsNode` into a virtual `AccessibilityNodeInfo`. The iOS
+engine exposes `SemanticsObject`s (`UIAccessibility` elements). XCUITest's automation snapshot and
+adb's UI Automator dump read exactly that tree.
+
+Each semantics node also carries an on-screen rectangle. On Android, a frame-center tap lands on
+the widget, and Flutter's own gesture arena routes the delivered OS touch to the right widget. On
+iOS, XCUITest resolves the same node by identifier and taps it directly, with no coordinate math at
+all. The renderer (Skia or Impeller) is irrelevant to either path.
 
 Since Flutter 3.19, `SemanticsProperties.identifier` maps straight into that tree — `resource-id` on
 Android (via `AccessibilityNodeInfo.setViewIdResourceName`) and `accessibilityIdentifier` on iOS. So
@@ -57,19 +63,23 @@ that it holds on device, not a new OS actuator or a framework bridge.
 ### Why XCUITest / adb already reach a Flutter UI
 
 Flutter draws its UI into one native view (Android `FlutterSurfaceView`, iOS `FlutterView`) with no
-child views, so the OS accessibility tree sees one opaque surface by default. What makes the
-widgets resolvable is the engine's accessibility bridge, which is independent of rendering: it
-builds a semantics tree and pushes it into the OS accessibility APIs the native backends already
-read. A `resource-id` surfaced this way is resolved by adb's unchanged `resolve_unique` path and
-actuated by a frame-center coordinate tap; an `accessibilityIdentifier` surfaced this way is
-resolved by XCUITest's automation snapshot and actuated by its native semantic tap — no coordinates
-involved. This is why the item adds no backend: the surfacing already exists on both platforms, and
-the work is to make an app use it and to prove the two conditions below hold.
+child views, so the OS accessibility tree sees one opaque surface by default. The engine's
+accessibility bridge makes the widgets resolvable, independently of rendering. The bridge
+builds a semantics tree and pushes it into the OS accessibility APIs that the native backends
+already read.
+
+- adb's unchanged `resolve_unique` path resolves a `resource-id` surfaced this way, and adb
+  actuates by a frame-center coordinate tap.
+- XCUITest's automation snapshot resolves an `accessibilityIdentifier` surfaced this way, and
+  XCUITest actuates its native semantic tap, with no coordinates involved.
+
+This is why the item adds no backend. The surfacing already exists on both platforms. The work is
+to make an app use it and to prove that the two conditions below hold.
 
 ### The two conditions that must hold
 
 The bridge is not unconditional. Whether XCUITest / adb can drive a Flutter widget depends on the
-framework's semantics state, not on the renderer:
+framework's semantics state, not on the renderer. Two conditions apply:
 
 - **The semantics tree is built lazily.** Flutter constructs it only when an accessibility client
   connects, or when the app calls `SemanticsBinding.instance.ensureSemantics()`. On Android,
@@ -135,11 +145,12 @@ Flutter 3.19 (February 2024) is the stated minimum, because `identifier` surfaci
 iOS ([XCUITest](../BE-0290-xcuitest-default-ios-backend/BE-0290-xcuitest-default-ios-backend.md)),
 [Android](../BE-0007-android-backend/BE-0007-android-backend.md) (adb), and
 [Web](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) (Playwright) have all
-landed and been validated on-device / on-gate, so this item is no longer blocked on a predecessor
-landing — Flutter is the one remaining platform in the reach axis (see
-[docs/vision.md §1](../../docs/vision.md#1-reach--more-platforms-and-surfaces)). What is left is this
-item's own scope: a demo, a convention, and the on-device verification above — a fraction of a new
-backend, not a framework-specific bridge.
+landed and been validated on a device or on the gate. This item no longer waits on a
+predecessor landing. Flutter is the one remaining platform on the reach axis (see
+[docs/vision.md §1](../../docs/vision.md#1-reach--more-platforms-and-surfaces)).
+
+What is left is this item's own scope: a demo, a convention, and the on-device verification above.
+That is a fraction of a new backend, and it is not a framework-specific bridge.
 
 ## Alternatives considered
 

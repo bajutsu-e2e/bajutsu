@@ -16,22 +16,26 @@
 
 ## Introduction
 
-A driver for the Android emulator, driving the UI via `adb` + UI Automator and mapping
-`resource-id` / `content-desc` selectors id-first. Architecturally it is the twin of the existing
-iOS `idb` backend: subprocess-driven, coordinate-based actuation, no semantic tap. Adding it means
-adding a new triple — actuator + environment manager + id convention — while the deterministic
-core stays byte-for-byte the same.
+This item adds a driver for the Android emulator. The driver operates the UI through `adb` and UI
+Automator, and it maps `resource-id` and `content-desc` selectors id-first. Architecturally it is
+the twin of the existing iOS `idb` backend: it is subprocess-driven and actuates by coordinates,
+with no semantic tap. Adding it means adding a new triple of actuator, environment manager, and id
+convention. The deterministic core stays byte-for-byte the same.
 
 ## Motivation
 
-Android is the **architectural twin of idb**: subprocess-driven, coordinate actuation, and a
-transiently-empty tree during transitions — so it reuses idb's *resolve-with-retry,
-fail-ambiguity-fast* pattern (see [drivers](../../docs/drivers.md)) almost unchanged. Building it
-validates that the iOS-specific parts were really isolated to the three seams (actuator,
-environment manager, stable-id convention), with almost no new shape introduced into the
-"unchanged" core. It also extends the product's reach to the second-most-common mobile target
-without touching the scenario DSL, the selector model, machine assertions, the orchestrator loop,
-or the reporter.
+Android is the **architectural twin of idb**. Both are subprocess-driven, both actuate by
+coordinates, and both return a transiently empty tree during transitions. Android therefore reuses
+idb's *resolve-with-retry, fail-ambiguity-fast* pattern almost unchanged (see
+[drivers](../../docs/drivers.md)).
+
+Building the backend validates that the iOS-specific parts were really isolated to three seams:
+the actuator, the environment manager, and the stable-id convention. It does so with almost no new
+shape introduced into the "unchanged" core.
+
+The backend also extends the product's reach to the second-most-common mobile target. It touches
+none of the scenario DSL, the selector model, machine assertions, the orchestrator loop, or the
+reporter.
 
 ## Detailed design
 
@@ -45,23 +49,34 @@ or the reporter.
 | **Evidence providers** | screenshot = `adb exec-out screencap`; video = `adb shell screenrecord`; `deviceLog` = `adb logcat` (filtered by tag/pid); `network` = no native monitor → same mock story as iOS |
 | **codegen target** | Espresso or UI Automator (Kotlin/Java) |
 
-The **environment** row lands as an `AndroidEnvironment` implementing the cross-platform `Environment` Protocol from [BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md): its `start` runs the adb sequence (`pm clear` for a clean state → `am start` to launch → `am start -a android.intent.action.VIEW -d <url>` for a deeplink) and returns the `adb` driver. Actuator and environment are thus the Android instances of the same two seams iOS fills with idb + simctl, so Android adds no new shape to the runner — it plugs into the seam BE-0009 extracts.
+The **environment** row lands as an `AndroidEnvironment`. It implements the cross-platform `Environment` Protocol from [BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md). Its `start` runs the adb sequence and returns the `adb` driver:
+
+1. `pm clear` for a clean state.
+2. `am start` to launch.
+3. `am start -a android.intent.action.VIEW -d <url>` for a deeplink.
+
+The actuator and the environment are the Android instances of the same two seams that iOS fills with idb and simctl. Android therefore adds no new shape to the runner. It plugs into the seam that BE-0009 extracts.
 
 ### The architectural twin of idb
 
-Android is the **architectural twin of idb**: subprocess-driven, coordinate actuation, and a
-transiently-empty tree during screen transitions. Because of that shared shape it reuses idb's
-*resolve-with-retry, fail-ambiguity-fast* pattern — poll the tree, retry on a transiently-empty
-result, and fail immediately if a selector resolves to more than one element rather than "tapping
-whatever matched first" (see [drivers](../../docs/drivers.md)). Validating it proves the iOS-specific
-parts were truly confined to the three seams, with almost no new shape required from the rest of
-the system.
+Android is the **architectural twin of idb**. Both are subprocess-driven, both actuate by
+coordinates, and both return a transiently empty tree during screen transitions. Because of this
+shared shape, Android reuses idb's *resolve-with-retry, fail-ambiguity-fast* pattern (see
+[drivers](../../docs/drivers.md)). The pattern has three rules:
+
+- Poll the tree.
+- Retry on a transiently empty result.
+- Fail immediately if a selector resolves to more than one element, rather than "tapping whatever
+  matched first".
+
+The Android backend thereby proves that the iOS-specific parts were truly confined to the three
+seams. The rest of the system needs almost no new shape.
 
 ### The selector mapping
 
-The YAML selector (`{ id: settings.reindex }`) is already platform-neutral; only *which app-side
-attribute the backend reads to satisfy it* differs, and that lives entirely inside the new Driver.
-On Android the `Selector` fields map as:
+The YAML selector (`{ id: settings.reindex }`) is already platform-neutral. Only *which app-side
+attribute the backend reads to satisfy it* differs, and that difference lives entirely inside the
+new Driver. On Android, the `Selector` fields map as follows:
 
 | `Selector` field | iOS | Android |
 |---|---|---|
@@ -72,7 +87,7 @@ On Android the `Selector` fields map as:
 
 ### Where it sits in the capability matrix
 
-The capability tokens already express the spread — Android slots in at the lean end without
+The capability tokens already express the spread. Android slots in at the lean end without
 inventing concepts:
 
 | Capability | idb (iOS) | adb (Android) | Playwright (Web) | fake |
@@ -83,32 +98,33 @@ inventing concepts:
 | `network` (native) | — | — | ✅ | — |
 | `multiTouch` | — | — | ✅ (emulated) | ✅ |
 
-idb and Android sit at the lean end (coordinate actuation, mocked network); Playwright at the rich
-end (semantic, native network). That an unmodified capability model spans both extremes is
-evidence the abstraction holds.
+idb and Android sit at the lean end, with coordinate actuation and mocked network. Playwright sits
+at the rich end, with semantic actions and native network. An unmodified capability model spans
+both extremes, which is evidence that the abstraction holds.
 
 ### The concrete tooling
 
-Everything the backend needs is a subprocess call to `adb` (plus `emulator` for boot), which is why
+Everything the backend needs is a subprocess call to `adb`, plus `emulator` for boot. This is why
 Android is idb's twin:
 
 - **Tree** — `adb -s <serial> exec-out uiautomator dump /dev/tty` streams the window's XML. Each
-  `<node>` carries `resource-id`, `content-desc`, `text`, `class`, and `bounds="[x1,y1][x2,y2]"`; the
-  driver parses `bounds` into the `Frame` (x, y, w, h) and taps its centre — the same frame-centre
-  round-trip idb performs.
+  `<node>` carries `resource-id`, `content-desc`, `text`, `class`, and `bounds="[x1,y1][x2,y2]"`.
+  The driver parses `bounds` into the `Frame` (x, y, w, h) and taps its centre, the same
+  frame-centre round-trip that idb performs.
 - **Actuation** — `adb shell input tap x y` / `input swipe x1 y1 x2 y2 <ms>` / `input text <s>`.
   Coordinate-based and single-touch — no semantic tap, exactly like idb.
 - **The transient-empty tree** — mid-transition, `uiautomator dump` intermittently fails with *"null
-  root node returned by UiTestAutomationBridge"* (the animation has not settled). This is the precise
-  analogue of idb's near-empty tree during a SwiftUI transition, so the driver reuses idb's
-  *resolve-with-retry, fail-ambiguity-fast* discipline unchanged: retry the dump a bounded number of
-  times, and still fail immediately on an ambiguous (2+) match rather than tapping whatever matched
-  first.
+  root node returned by UiTestAutomationBridge"*, because the animation has not settled. This is the
+  precise analogue of idb's near-empty tree during a SwiftUI transition. The driver therefore reuses
+  idb's *resolve-with-retry, fail-ambiguity-fast* discipline unchanged. It retries the dump a bounded
+  number of times, and it still fails immediately on an ambiguous (2+) match rather than tapping
+  whatever matched first.
 - **Compose ids** — `Modifier.testTag("…")` surfaces as `resource-id` only when the subtree's root
-  sets `Modifier.semantics { testTagsAsResourceId = true }` (Compose 1.2.0-alpha08 and later). That is
-  the id convention the docs will state for Compose apps.
-- **Boot readiness** — an AVD boot is followed by `adb wait-for-device` and then polling `getprop
-  sys.boot_completed` for `1` (a bounded condition wait, no fixed sleep) before the app is launched.
+  sets `Modifier.semantics { testTagsAsResourceId = true }` (Compose 1.2.0-alpha08 and later). The
+  docs will state this as the id convention for Compose apps.
+- **Boot readiness** — an AVD boot is followed by `adb wait-for-device`. The driver then polls `getprop
+  sys.boot_completed` for `1` before it launches the app. The poll is a bounded condition wait with
+  no fixed sleep.
 
 ### Work breakdown (MECE)
 
@@ -145,12 +161,14 @@ Android is idb's twin:
 ### Phasing — Phase 2, after Web
 
 Android is **Phase 2**, taken up *after* the Web (Playwright) backend ([BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)).
-Web goes first because it is the only platform that needs no macOS and no device emulator, so it
-fits the existing Linux `make check` / CI gate from day one and proves the core is platform-neutral
-at the lowest cost. Android then confirms the *lean / coordinate* path on top of an
-already-generalized core: its coordinate model mirrors idb almost exactly, so it introduces little
-new shape, and the emulator runs on Linux CI via KVM (the Linux Kernel Virtual Machine), exercising
-the **lean** end of `capabilities()`.
+Web goes first because it is the only platform that needs no macOS and no device emulator. It fits
+the existing Linux `make check` / CI gate from day one, and it proves at the lowest cost that the
+core is platform-neutral.
+
+Android then confirms the *lean / coordinate* path on top of an already-generalized core. Its
+coordinate model mirrors idb almost exactly, so it introduces little new shape. The emulator runs on
+Linux CI via the Linux Kernel Virtual Machine (KVM), which exercises the **lean** end of
+`capabilities()`.
 
 ## Alternatives considered
 
