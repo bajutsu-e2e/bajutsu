@@ -1,22 +1,24 @@
 **English** · [日本語](ja/showcase.md)
 
-# The showcase suite (Bajutsu's single cross-platform fixture)
+# The showcase suite
 
-> Bajutsu's test fixture lives under [`demos/showcase/`](../demos/showcase). The same screen
-> contract is built five times — SwiftUI and UIKit on iOS, Jetpack Compose and Views on Android, and
-> one Flutter codebase that targets both platforms — mostly in an accessibility-on / -off pair per
-> toolkit (Flutter's iOS build ships accessibility-on only, for now). Together, the five codebases
-> register a dozen `targets.<name>` entries in
-> [`demos/showcase/showcase.config.yaml`](../demos/showcase/showcase.config.yaml). It packs the
-> interaction surface a real app has (five tabs with push navigation, four modal styles shared by
-> every codebase plus a fifth, iOS-only native alert, text entry, gestures, async loading, live +
-> mockable networking, an OS-alert screen) into the smallest coherent app that still tells that
-> whole story.
+> Bajutsu's single cross-platform test fixture lives under [`demos/showcase/`](../demos/showcase).
+> The same screen contract is built five times: SwiftUI and UIKit on iOS, Jetpack Compose and Views
+> on Android, and one Flutter codebase that targets both platforms. Most toolkits come as an
+> accessibility-on / -off pair (Flutter's iOS build ships accessibility-on only, for now).
 >
-> BE-0079 made it the **single** iOS fixture, retiring the older `demo` / `sample` / `sample2` apps;
+> The five codebases together register a dozen `targets.<name>` entries in
+> [`demos/showcase/showcase.config.yaml`](../demos/showcase/showcase.config.yaml).
+>
+> The fixture packs the interaction surface of a real app into the smallest coherent app that still
+> tells that whole story: five tabs with push navigation, four modal styles shared by every
+> codebase plus a fifth, iOS-only native alert, text entry, gestures, async loading, live and
+> mockable networking, and an OS-alert screen.
+>
+> BE-0079 made it the **single** iOS fixture, retiring the older `demo` / `sample` / `sample2` apps.
 > BE-0007 and BE-0008 then grew that iOS fixture into today's cross-platform one, adding the Android
-> and Flutter twins. The authoritative, screen-by-screen contract — every identifier, every scenario
-> mapping — is [`demos/showcase/SPEC.md`](../demos/showcase/SPEC.md); this page summarizes how to
+> and Flutter twins. The authoritative, screen-by-screen contract (every identifier, every scenario
+> mapping) is [`demos/showcase/SPEC.md`](../demos/showcase/SPEC.md). This page summarizes how to
 > reach it.
 
 Related: [scenarios](scenarios.md) · [configuration](configuration.md) · [codegen](codegen.md) · [cli](cli.md)
@@ -27,14 +29,16 @@ Related: [scenarios](scenarios.md) · [configuration](configuration.md) · [code
 
 The showcase makes visible the two axes on which Bajutsu's design rests:
 
-- **Toolkit axis** (UIKit vs SwiftUI) — the two accessibility-on products (`showcase-swiftui` /
+- **Toolkit axis** (UIKit vs SwiftUI): the two accessibility-on products (`showcase-swiftui` /
   `showcase-uikit`) expose an *identical* identifier contract, so the shared
   [`demos/showcase/scenarios/`](../demos/showcase/scenarios) runs unchanged against either. What
-  differs is the element tree the backend sees, which is exactly what a cross-toolkit driver must absorb.
-- **Accessibility axis** (no suffix ↔ `-noax`) — the `-noax` builds carry **no** identifiers
-  (`subject.idNamespaces: []`). They are the controlled experiment for selector stability (DESIGN §5): the
-  same goal recorded against both shows the value of accessibility work as a concrete diff, and they
-  are the `record` / `doctor` "missing accessibility" subjects.
+  differs is the element tree the backend sees, which is exactly what a cross-toolkit driver must
+  absorb.
+- **Accessibility axis** (no suffix ↔ `-noax`): the `-noax` builds carry **no** identifiers
+  (`subject.idNamespaces: []`). They are the controlled experiment for selector stability
+  (DESIGN §5). Recording the same goal against both builds shows the value of accessibility work
+  as a concrete diff. The `-noax` builds are also the `record` / `doctor` "missing accessibility"
+  subjects.
 
 ## Build and run
 
@@ -59,19 +63,23 @@ make -C demos/showcase run-flutter-android # the Flutter twin on Android: build 
 make -C demos/showcase/android e2e-codegen # the Android twin: scenario → UI Automator → connectedAndroidTest (needs a booted emulator, BE-0294)
 ```
 
-`bajutsu run` / `serve` also build the app on demand via each target's `subject.build` command, so a manual
-build is rarely needed.
+`bajutsu run` and `serve` also build the app on demand through each target's `subject.build`
+command, so a manual build is rarely needed.
 
 ## Launch-environment hooks
 
-Set in the target's `subject.launch.env` or a scenario's `preconditions.subject.launch.env`. They reach the app as `SIMCTL_CHILD_<NAME>` ([drivers](drivers.md#environment-management-simctl)).
-BE-0079 removed the launch-env shortcuts to a *data state* and to a *pushed screen*: the catalog is
-fixed (no seed knob), and a deeplink no longer jumps onto a detail — a detail is reached only by
-tapping its row. BE-0107 finished the job by retiring `SHOWCASE_TAB`, the last launch-env shortcut to
-a screen: the app always launches on the Stable tab, and every other tab is reached by tapping the
-native tab bar. The XCUITest backend taps the native tab bar's individual tabs, so the tab-crossing
-scenarios run on `--backend ios`. Every screen beyond the launch tab is
-reached by driving the UI, and a scenario observes the app's own data rather than relying on an injected data state.
+Set these variables in the target's `subject.launch.env` or a scenario's
+`preconditions.subject.launch.env`. They reach the app as `SIMCTL_CHILD_<NAME>`
+([drivers](drivers.md#environment-management-simctl)).
+
+BE-0079 removed the launch-env shortcuts to a *data state* and to a *pushed screen*. The catalog is
+fixed (no seed knob). A deeplink no longer jumps onto a detail, and only tapping its row opens one. BE-0107 finished the job by retiring `SHOWCASE_TAB`, the last launch-env shortcut
+to a screen. The app always launches on the Stable tab, and every other tab is reached by tapping
+the native tab bar. The XCUITest backend taps the native tab bar's individual tabs, so the
+tab-crossing scenarios run on `--backend ios`.
+
+A scenario reaches every screen beyond the launch tab by driving the UI, and observes the app's own
+data rather than relying on an injected data state.
 
 | Variable | Effect |
 |---|---|

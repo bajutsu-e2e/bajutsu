@@ -2,36 +2,38 @@
 
 # Bajutsu documentation
 
-> Implementation-grounded reference for the natural-language-driven E2E (end-to-end) testing tool.
-> Its deterministic core is platform-neutral; the one platform-specific seam is the **backend**
-> behind a single `Driver` interface, so a new platform is a new backend — the iOS Simulator
-> (XCUITest), a web (Playwright) backend, and an Android (adb) backend are all landed. Flutter apps
-> run through those same backends unchanged, with no separate Flutter backend.
-> [`README.md`](../README.md) is the introduction and [`DESIGN.md`](../DESIGN.md)
-> covers the design rationale; this set of pages explains **what the code actually
-> does today**, feature by feature. Planned work is in [the roadmap](../roadmaps/README.md).
+> Implementation-grounded reference for the natural-language-driven end-to-end (E2E) testing tool.
+> Its deterministic core is platform-neutral. The one platform-specific seam is the **backend**
+> behind a single `Driver` interface, so a new platform is a new backend. The iOS Simulator
+> (XCUITest) backend, a web (Playwright) backend, and an Android (adb) backend have all landed.
+> Flutter apps run through those same backends unchanged, with no separate Flutter backend.
+>
+> [`README.md`](../README.md) is the introduction, and [`DESIGN.md`](../DESIGN.md) covers the
+> design rationale. This set of pages explains **what the code actually does today**, feature by
+> feature. Planned work is in [the roadmap](../roadmaps/README.md).
 
 Bajutsu takes test scenarios written in (or recorded from) natural language, drives an app
-(tap / type / swipe / wait), and verifies the result with **machine-checkable assertions**. Because
-the only platform-specific seam is the **backend**, the same scenarios run on the iOS Simulator
-(XCUITest) or in a browser (Playwright) by swapping it. The central idea is to keep AI out of the CI (continuous
-integration) gate: AI is the scenario author and the failure investigator, never the pass/fail
-judge (see [concepts](concepts.md)).
+(tap / type / swipe / wait), and verifies the result with **machine-checkable assertions**. The
+**backend** is the only platform-specific seam, so swapping it runs the same scenarios on the iOS
+Simulator (XCUITest) or in a browser (Playwright).
 
-## The big picture (data flow)
+The central idea is to keep AI out of the continuous integration (CI) gate. AI is the scenario
+author and the failure investigator, never the pass/fail judge (see [concepts](concepts.md)).
+
+## The big picture of the data flow
 
 ![Data-flow diagram: a natural-language goal or hand edit produces a Scenario YAML; Tier 2's Orchestrator runs it deterministically through the backend-agnostic Driver API against XCUITest, adb, or Playwright; the verdict feeds the Reporter and, on failure, triage, which may suggest scenario edits.](assets/diagrams/architecture-data-flow.svg)
 
-Which module owns each box, and how they depend on each other — including the dependency-layer
-view of the same system — is in [architecture](architecture.md).
+[architecture](architecture.md) shows which module owns each box and how the modules depend on
+each other, including a dependency-layer view of the same system.
 
 ## Pages (suggested reading order)
 
-> **New here? Start with the [Getting started tutorial](getting-started/index.md)** — a hands-on
-> walkthrough (install → unit tests → scenario → device run → report). Then come
-> back to the reference pages below. **On a machine without a Mac** (Linux, Windows, a container),
-> follow the [web track](getting-started/web.md) instead: the same loop against a browser with the
-> Playwright backend, no Xcode or Simulator required.
+> **New here? Start with the [Getting started tutorial](getting-started/index.md)**, a hands-on
+> walkthrough (install → unit tests → scenario → device run → report). Then return to the
+> reference pages below. **On a machine without a Mac** (Linux, Windows, a container), follow the
+> [web track](getting-started/web.md) instead. It runs the same loop against a browser with the
+> Playwright backend, and needs no Xcode or Simulator.
 
 | # | Page | What it covers |
 |---|---|---|
@@ -79,15 +81,15 @@ bajutsu codegen <scenario.yaml> --target <name> -o UITests/Foo.swift
 bajutsu serve                                           # local web UI (Tier 1; not for CI)
 ```
 
-Details in [cli](cli.md).
+[cli](cli.md) lists every command and option.
 
 ## How this documentation is written
 
-- **Code is the source of truth.** Statements map to the current implementation (`bajutsu/`),
+- **Code is the source of truth.** Each statement maps to the current implementation (`bajutsu/`),
   with `file.py:line` pointers at key spots.
-- **Design vs. implementation gaps are explicit.** Features described in [`DESIGN.md`](../DESIGN.md)
-  but not yet wired up (the external `mockServer` command — superseded by scenario `mocks`) are
-  flagged as such on each page and in the
+- **Design vs. implementation gaps are explicit.** A feature that [`DESIGN.md`](../DESIGN.md)
+  describes but the code does not yet wire up (the external `mockServer` command, superseded by
+  scenario `mocks`) is flagged on each page and in the
   [architecture status table](architecture.md#implementation-status).
-- **Languages.** English is primary; a Japanese translation lives under [`ja/`](ja/overview.md).
-  Code comments / docstrings are in English.
+- **Languages.** English is primary, and a Japanese translation lives under [`ja/`](ja/overview.md).
+  Code comments and docstrings are in English.
