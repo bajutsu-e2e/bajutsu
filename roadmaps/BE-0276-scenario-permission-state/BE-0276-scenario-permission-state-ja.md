@@ -1,6 +1,6 @@
 [English](BE-0276-scenario-permission-state.md) · **日本語**
 
-# BE-0276 — シナリオ単位で宣言する権限状態（simctl privacy / pm grant）
+# BE-0276 — シナリオ単位で宣言する権限状態
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
@@ -30,7 +30,7 @@ OS の権限状態を、アプリの起動前にシナリオ単位で宣言的�
 「アラートガード」だけです。ステップがブロックされると、`run` は画面のスクリーンショットを撮り、どこを
 タップするかを Claude に尋ねてプロンプトを消します（[`bajutsu/alerts.py`](../../bajutsu/alerts.py)）。これは
 `run` に残る唯一の AI 経路であり、プロンプトが想定外のときにこそ適した道具です。権限があらかじめ分かって
-いる場合は、その状態を先に設定するほうが優れています。
+いる場合は、その状態を先に設定するほうが優れています。理由は 3 つあります。
 
 - **決定論的な経路から LLM 呼び出しを取り除けます。** 事前の付与は `simctl` や `adb` の単純な副作用で、
   結果は機械的に検証できます。スクリーンショットもモデルも `ANTHROPIC_API_KEY` も要りません。第二の AI 面を
@@ -42,13 +42,13 @@ OS の権限状態を、アプリの起動前にシナリオ単位で宣言的�
   「アラートガード」か実際のタップで許可する）、別のシナリオは権限を許可済みにして検証対象の機能へ直接進みたい、
   という違いが生じます。この違いはシナリオの性質なので、シナリオファイルに置くのが自然です。
 
-競合（Maestro）との対比という点でも位置づけられます。Maestro は `setPermissions` を標準で備えており、
+**競合（Maestro）との対比。** Maestro は `setPermissions` を標準で備えており、
 [BE-0052](../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md)
 は device-state ファミリの残りを出荷する際、これを table-stakes のギャップとしてすでに記していました。
 本項目はそのギャップを埋めます。差別化はその実現方法にあります。単一の宣言的なクロスプラットフォームの
 フィールドを、各 backend が自分のネイティブな機構へマッピングし、決定論性とアプリ非依存性を保ちます。
 
-クロスプラットフォームの土台もすでにあります。Android は lease 時に適用する config レベルの
+**クロスプラットフォームの土台。** Android は lease 時に適用する config レベルの
 `grantPermissions` リストで、実行時権限を事前付与しています
 （[BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity-ja.md)。呼び出し箇所は
 `bajutsu/platform_lifecycle/environments/android.py`、実装は `bajutsu/adb.py` の `Android.grant_permissions`
@@ -89,15 +89,17 @@ scenario:
 - **Android** → `pm grant|revoke <package> <android.permission.*>`。既存の config レベル `grantPermissions` の
   裏側の仕組みを再利用します。
 
-### カバレッジの正直さ（通知）
+### 通知で対応範囲が分かれる点
 
-`simctl privacy` には通知に対応する権限項目がありません（iOS の通知認可は TCC の対象ではないためです）。
+`simctl privacy` には通知に対応する権限項目がありません。iOS の通知認可は TCC の対象ではないためです。
 そのため iOS の backend は `notifications` を非対応と宣言します。これを列挙したシナリオは preflight で
 失敗し、通知プロンプトの経路として `dismissAlerts` を指し示す明快なメッセージを出します。Android の
 `POST_NOTIFICATIONS` は実行時権限（`pm grant`、API 33 以降）なので、Android は対応します。共通語彙は、
 提供できない一様な面を装うのではなく、この非対称を正直に扱います。
 
-### 作業分解（MECE）
+### 作業分解
+
+作業は、相互に排他的で全体を網羅する（MECE）8 つのユニットに分かれます。
 
 1. **シナリオスキーマと語彙**：`permissions` フィールド（権限項目から `grant`/`revoke` へのマップ）を
    追加し、parse と検証を行い、共通の権限項目の enum を定義します。未知の権限項目や、`grant`/`revoke`

@@ -16,66 +16,76 @@
 
 ## Introduction
 
-The network path — capture, request/response mocking, and the request / event / sequence /
-response-schema assertions — is fully modeled and unit-tested as pure logic, and its runtime is
-wired for two backends: iOS captures out-of-process (the app POSTs each exchange to the
-`NetworkCollector` on loopback), and web captures in-process (the Playwright driver hooks
-`requestfinished` and fulfils mocks via `page.route`). No CI lane drives that runtime against a
-real device or browser. Both web jobs pass `--no-network`, and the iOS network demo scenarios
-(`network_live.yaml`, `network_mock.yaml`) are referenced by no Makefile target and no workflow.
-This item wires the real network path into CI, web first (cheap on Linux) then iOS.
+The network path covers capture, request and response mocking, and the request, event, sequence, and
+response-schema assertions. The path is fully modeled and unit-tested as pure logic, and its runtime
+is wired for two backends:
+
+- iOS captures out-of-process: the app POSTs each exchange to the `NetworkCollector` on loopback.
+- Web captures in-process: the Playwright driver hooks `requestfinished` and fulfils mocks through
+  `page.route`.
+
+No CI lane drives that runtime against a real device or browser. Both web jobs pass `--no-network`,
+and no Makefile target or workflow references the iOS network demo scenarios (`network_live.yaml`,
+`network_mock.yaml`). This item wires the real network path into CI, web first (cheap on Linux) and
+then iOS.
 
 ## Motivation
 
-The network path is the project's single largest untested real-path surface. The pure matchers, the
-one-to-one request assignment, the response-schema validation, and the sequence matching are
-covered by unit tests, and the collector's HTTP receiver plus token authentication are exercised
-as an in-process self-loop. What no test observes is the real boundary: the app-side sender
-(the BajutsuKit POST), the `page.route` interception, the `requestfinished` timing relative to a
-step, and the `mocked` provenance flag as recorded from a real stub rather than a model default.
+The network path is the project's single largest untested real-path surface. Unit tests cover the
+pure matchers, the one-to-one request assignment, the response-schema validation, and the sequence
+matching. An in-process self-loop exercises the collector's HTTP receiver and token authentication.
+No test observes the real boundary:
 
-Redaction of real network evidence is the sharpest instance. The redaction algorithms are
-thoroughly unit-tested, but every input is a hand-built exchange dict or a hand-written log file.
-Whether a secret in a *really captured* header or body is masked in the persisted evidence is
-proven nowhere, because no lane produces such evidence. A regression that leaked a captured
-credential would pass the whole suite.
+- the app-side sender (the BajutsuKit POST)
+- the `page.route` interception
+- the `requestfinished` timing relative to a step
+- the `mocked` provenance flag as recorded from a real stub, and not from a model default
 
-The scenarios that would exercise the real path already exist for iOS and are orphaned; the web side needs
-only that the existing jobs stop opting out with `--no-network`. So the cost is mostly wiring, not
-new authoring. Android is a separate matter and stays out of scope: it has no native network
-monitor (`observes_network_via_driver` is false and the adb driver declares no `NETWORK`
-capability), so there is nothing to actuate there yet — this item records the Android gap
-explicitly rather than skipping it silently.
+Redaction of real network evidence is the sharpest instance. The redaction algorithms are thoroughly
+unit-tested, but every input is a hand-built exchange dict or a hand-written log file. Nothing
+proves that a secret in a *really captured* header or body is masked in the persisted evidence,
+because no lane produces such evidence. A regression that leaked a captured credential would pass
+the whole suite.
+
+The scenarios that would exercise the real path already exist for iOS, and nothing runs them. The
+web side needs only that the existing jobs stop opting out with `--no-network`. The cost is mostly
+wiring and not new authoring.
+
+Android is a separate matter and stays out of scope. Android has no native network monitor
+(`observes_network_via_driver` is false and the adb driver declares no `NETWORK` capability), so
+there is nothing to actuate there yet. This item records the Android gap explicitly and does not skip
+it silently.
 
 ## Detailed design
 
-Proposal altitude. The work is MECE along the units below.
+This section works at proposal altitude. The work divides into the units below, which are mutually
+exclusive and collectively exhaustive (MECE).
 
 - **Web network smoke.** Author (or adapt) a `demos/web` scenario with a request mock and a request
-  assertion, run without `--no-network`, asserting that `page.route` intercepts the request, that
-  `requestfinished` capture records the exchange, and that the mocked exchange is recorded with
-  `mocked` set.
-- **Web redaction of real evidence.** Extend that scenario so a captured exchange carries a secret
-  in a header and body, and assert the persisted evidence masks it — closing the "redaction of
-  real network evidence" gap on the cheap Linux lane.
-- **iOS collector real path.** Connect `network_mock.yaml` / `network_live.yaml` as a non-gating
-  `ios-e2e` job so the BajutsuKit → loopback POST → assertion + redaction chain runs on a real
-  Simulator.
+  assertion, and run it without `--no-network`. The scenario asserts three things: `page.route`
+  intercepts the request, `requestfinished` capture records the exchange, and the mocked exchange is
+  recorded with `mocked` set.
+- **Web redaction of real evidence.** Extend that scenario so a captured exchange carries a secret in
+  a header and body, and assert that the persisted evidence masks the secret. This closes the
+  "redaction of real network evidence" gap on the cheap Linux lane.
+- **iOS collector real path.** Connect `network_mock.yaml` and `network_live.yaml` as a non-gating
+  `ios-e2e` job, so the chain from the BajutsuKit loopback POST through the assertion and redaction
+  runs on a real Simulator.
 - **Record the Android gap.** Note explicitly, in the workflow and the coverage narrative, that
-  Android network capture is out of scope pending a native monitor, so the absence reads as a
-  deliberate boundary, not an oversight.
-- **Start non-gating.** Land the new jobs as signal (not required checks) first, following the
-  golden / visual precedent, and promote to required only once they prove stable.
+  Android network capture is out of scope pending a native monitor. The absence then reads as a
+  deliberate boundary and not an oversight.
+- **Start non-gating.** Land the new jobs as a signal (not required checks) first, following the
+  golden and visual precedent, and promote them to required only once they prove stable.
 
 ## Alternatives considered
 
-- **Keep `--no-network` everywhere and rely on unit tests.** The unit tests prove the pure logic
-  and the collector's receiver, but never the app-side sender, the browser interception, or
-  redaction of really captured evidence. The largest real-path gap would stay unobserved.
+- **Keep `--no-network` everywhere and rely on unit tests.** Rejected. The unit tests prove the pure
+  logic and the collector's receiver, but never the app-side sender, the browser interception, or
+  the redaction of really captured evidence. The largest real-path gap would stay unobserved.
 - **Use an external mock server ([BE-0027](../BE-0027-mock-server-external/BE-0027-mock-server-external.md))
-  instead of driver-level interception.** That approach is a different layer (a standalone stub the
-  app talks to) and complements this item rather than replacing it; it would not exercise the
-  `page.route` / collector path this item is about.
+  instead of driver-level interception.** Rejected as a replacement. An external mock server works at
+  a different layer (a standalone stub that the app talks to) and complements this item. It would
+  not exercise the `page.route` and collector path that this item targets.
 
 ## Progress
 
