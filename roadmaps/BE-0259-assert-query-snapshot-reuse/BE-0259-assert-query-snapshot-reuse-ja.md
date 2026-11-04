@@ -35,13 +35,13 @@ BE-0234（Implemented、#987）は、この隙間の大半をすでに解消し�
 - idb [ドライバ](../../docs/ja/glossary.md#driver-backend-actuator-platform)（`bajutsu/drivers/idb.py:397`）では、`_center` が `_settle()` を呼びます。このコストは query 1 回分で、ツリーの identifier と frame の組が安定していなければ、さらに複数回かかります。
 - 続けて `_center` は `_resolve`（`idb.py:376`）を呼びます。セレクタが最初の試行で見つからないと、`_resolve` は 3 秒のデッドラインまで、自前のポーリングで再度 query します。
 - `tap` は、`base.wait_until`（`base.py:359`）の内側から呼ばれることが多くあります。`base.wait_until` もデッドラインとポーリングのループです。そのため、不安定な 1 回の tap に、独立した 2 つのデッドライン管理が付き、それぞれ自分のスケジュールで query を重ねます。
-- adb ドライバでは、`_scroll_into_view`（`bajutsu/drivers/adb.py:369`）が、スクロールの試行ごとに `_settle()` をもう 1 回追加します（`adb.py:379`）。画面外の要素までスクロールが必要な tap は、概念上は 1 つの操作です。それでも十数回のツリー全体取得のサブプロセスが発生することがあります。
+- adb ドライバでは、`_scroll_into_view`（`bajutsu/drivers/adb.py:369`）が、スクロールの試行ごとに `_settle()` をもう 1 回追加します（`adb.py:379`）。画面外の要素までスクロールが必要な tap は、概念上は 1 つの操作です。それでも十数回のツリー全体取得のサブプロセスを発生させることがあります。
 
 ここまでの内容は、シナリオが何をアサートするかを変えるものではありません。避けられる遅延が、`assert` を多用するすべての run と、対象が画面外にあるすべての tap に生じています。
 
 ## 詳細設計
 
-これは**挙動を保存する**リファクタリングです。ステップのアサーションと extract が見る要素は、これまでと同じ要素で、取得回数だけが減ります。セレクタの解決、アサーションの意味、wait と poll の条件、ドライバのインターフェースには、変更を加えません。作業は、互いに独立した次の 3 単位に MECE に分かれます。
+これは**挙動を保存する**リファクタリングです。ステップのアサーションと extract が見る要素は、これまでと同じ要素で、取得回数だけが減ります。セレクタの解決、アサーションの意味、wait と poll の条件、ドライバのインターフェースには、変更を加えません。作業は、互いに独立していて MECE な、次の 3 単位に分かれます。
 
 - **画面を変化させないステップについて、`_run_step_body` の query 結果をループの `after` スナップショットとして使い回します。**
   - `_run_step_body` を変更します（`bajutsu/orchestrator/loop.py`。関数は 141 行目から、`assert_` の query は 172 行目です）。既存の `(ok, reason, assertion_results)` に加えて、`assert_` で query した要素一覧を返します。`wait` が query するなら、その要素一覧も返します。
@@ -49,10 +49,10 @@ BE-0234（Implemented、#987）は、この隙間の大半をすでに解消し�
   - `tap`、`type`、`swipe` などのアクションステップは、実行後に画面が実際に変わっている可能性があるため、引き続き実行後に新しく query します。本単位が取り除くのは、「前」と「後」が同一の query であると証明できるステップの、余分な 2 回目の query だけです。
   - `extract` 修飾子（`bajutsu/scenario/models/steps.py:134`）は、追加の作業なしにこの変更の恩恵を受けます。画面を変化させないステップに付く場合は、使い回されたスナップショットを読みます。画面を変化させるステップに付く場合は、これまでどおり実行後の新しい query を読みます。
 
-- **tap の実行過程で、層ごとに再 query する代わりに、確定した 1 つのスナップショットを受け渡します。**
+- **tap の実行過程で、各層で再 query せず、確定した 1 つのスナップショットを受け渡します。**
   - idb ドライバと adb ドライバでは、`_center`（`idb.py:397`）が `_settle()` を呼んでから `_resolve`（`idb.py:376`）を呼びます。`_resolve` は、キャッシュミス時に自前で再度 query します。
   - `_resolve` を変更し、`_settle()` がすでに生成したツリーを、再試行の全体を通じて優先的に使うようにします。最初の試行用の `initial_tree` 引数は、すでにあります（`idb.py:376`）。
-  - `_center` を変更し、最初に見つからなかった時点で `_resolve` にもう一度 query させる代わりに、確定したツリーを渡します。
+  - `_center` を変更し、最初に見つからなかった時点で `_resolve` へもう一度 query させるのではなく、確定したツリーを渡します。
   - 外側の `base.wait_until` のデッドラインループ（`base.py:359`）は変更しません。本単位が取り除くのは、隣接する層がすでに手元に持つデータと同じデータのために、下位の層が直後にもう一度実行していた query だけです。
 
 - **query の回数が減ったことを確認する回帰テストを追加します。**
@@ -82,7 +82,7 @@ BE-0234（Implemented、#987）は、この隙間の大半をすでに解消し�
 ### ログ
 
 - **Unit 1 — 完了。** `_run_step_body` は、画面を変化させないステップについて、query した確定済みのツリーを返すようになりました。対象は `assert_` と、`_wait` と `_wait_settled` が最後にポーリングしたツリーを返す `wait` です。ステップループは、そのツリーで `_ScreenRead` を種として初期化します。`screenChanged`、`extract`、wait 診断、キャプチャの各利用側は、同じ query をもう一度発行せず、スナップショットを使い回します。画面を変化させるステップやツリーを読まないステップ（`tap`・`type` など、`email`、`wait until: request`）は `None` を返します。そのため、ステップ後の読み取りは新しい query のままで、挙動は保存されます。（`bajutsu/orchestrator/loop.py`、`bajutsu/orchestrator/waits.py`。）
-- **Unit 2 — すでに満たされており、変更は不要でした。** 本単位が対象としていた tap 時の重複した query は、もう存在しません。`_center`（idb）と `_resolve_frame_and_screen`（adb）は、`_settle()` が生成したツリーを `_resolve(..., initial_tree=tree)` に渡しています。tap は確定したツリー上で解決され、通常の経路では 2 回目の query が発生しません。idb は BE-0087（`settle before actuation`）以降これを行っており、adb の同等の対応は BE-0210 で入りました。`adb._scroll_into_view` にスクロールごとに残る `_settle()` は、画面が動いたあとの本来必要な再読み取りで、重複ではありません。そのため、そのまま残しています。
+- **Unit 2 — すでに満たされており、変更は不要でした。** 本単位が対象としていた tap 時の重複した query は、もう存在しません。`_center`（idb）と `_resolve_frame_and_screen`（adb）は、`_settle()` が生成したツリーを `_resolve(..., initial_tree=tree)` に渡しています。tap は確定したツリー上で解決され、通常の経路では 2 回目の query が発生しません。idb は BE-0087（`settle before actuation`）以降これを行っており、adb の同等の対応は BE-0210 で入りました。`adb._scroll_into_view` に残るスクロールごとの `_settle()` は、画面が動いたあとの本来必要な再読み取りで、重複ではありません。そのため、そのまま残しています。
 - **Unit 3 — 完了。** `tests/orchestrator/test_read_count.py` に BE-0259 のケースを追加しました。
   - `assert`+extract のステップは、`query()` をちょうど 1 回だけ発行します（従来の 2 回から減少）。
   - `screenChanged` ポリシー下の `assert` は、2 回で済みます（従来の 3 回から減少）。

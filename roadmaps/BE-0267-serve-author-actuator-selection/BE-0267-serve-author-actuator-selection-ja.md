@@ -48,8 +48,8 @@ capture や enrich のセッションは、1 台の実機を操作するだけ�
 2. **capture と enrich を、共通の選択に通します。** `start_capture` と `start_enrich` は、backend 列を同じ手順で組み立てます。`target_cfg.backend or config.defaults.backend` の `[0]` です。この手順を共通ファクトリに畳み込み、両モードが、`[0]` ではなく backend 列全体をセレクタに渡すようにします。これで、コスト順は、エイリアス先頭に固定されず、全候補に対して働きます。
 3. **XCUITest が唯一の選択肢のときは、到達可能に保ちます。** `backend: [xcuitest]` を明示的に固定する target では、黙って idb に書き換えず、「runner not started」という明確なエラーを出し続けます。選択が変えるのは、複数候補の中でどれが勝つかだけです。単一の明示アクチュエータは、BE-0240 の「単一アクチュエータ指定は固定」規則と一致して、従来どおり固定です。
 4. **回帰テストを書きます。** serve-operations のテストで、次の 2 つの挙動を確認します。
-   - `[ios]` target が、capture と enrich で idb に解決されること。既存のテストが使う、fake または stub の driver factory を経由します。
-   - 単一アクチュエータの target が、不変であること。
+   - `[ios]` target が、capture と enrich で idb に解決されます。既存のテストが使う、fake または stub の driver factory を経由します。
+   - 単一アクチュエータの target が、不変です。
 
 ## 検討した代替案
 

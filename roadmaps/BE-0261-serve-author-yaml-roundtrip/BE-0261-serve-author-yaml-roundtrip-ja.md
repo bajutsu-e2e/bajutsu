@@ -17,8 +17,8 @@
 
 Author エディタは、シナリオの YAML を JavaScript のコードで、テキストとして手作業で編集します。編集するのは次の 2 つの場面です。
 
-- Edit の Apply が、選んだ[セレクタ](../../docs/ja/glossary.md#シナリオのオーサリング)をステップに書き込む。
-- Enrich の Accept が、提案されたアサーションと settle の wait を挿入する。
+- Edit の Apply が、選んだ[セレクタ](../../docs/ja/glossary.md#シナリオのオーサリング)をステップに書き込みます。
+- Enrich の Accept が、提案されたアサーションと settle の wait を挿入します。
 
 `bajutsu/templates/serve.author.js` の Apply クリックハンドラ（`#au-apply`）と `enrichApply` は、次のように動きます。
 

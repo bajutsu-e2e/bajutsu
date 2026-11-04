@@ -27,7 +27,7 @@ It returns XCUITest first for any `backend: [ios]` target.
 [BE-0240](../BE-0240-ios-capability-aware-actuator-selection/BE-0240-ios-capability-aware-actuator-selection.md)
 introduced a *cost-ordered*, scenario-aware selection: `select_actuator_for_scenario`, with
 `COST_ORDER["ios"] = ("idb", "xcuitest")`. The run ladder then prefers the cheaper idb actuator. It
-escalates to XCUITest only when a scenario's constructs demand it.
+escalates to XCUITest when a scenario's constructs demand it.
 
 The serve capture and enrich path never adopted this selection. This item closes that gap, so serve
 authoring selects an actuator the same way the deterministic run path does.
@@ -42,12 +42,12 @@ pressing **Start capture** crashes:
    runner_port (the runner must be started first)`, because serve never starts an XCUITest runner.
 
 Enrich takes the identical backend-selection block. Once an AI credential is configured, Enrich
-fails the same way. In practice, Capture, the headline Author feature, does not work on the very
+fails the same way. In practice, Capture, the headline Author feature, does not work on the
 targets that the showcase ships as its "authoring" examples.
 
 The deeper problem is a **divergence between serve and the run ladder**. BE-0240 established that iOS
-authoring should default to idb, which needs no runner, and escalate only on demand. The run path
-honors this. Serve authoring silently uses the older alias order and picks the one actuator it
+authoring should default to idb, which needs no runner, and escalate on demand alone. The run path
+honors this. Serve authoring uses the older alias order and picks the one actuator it
 cannot bring up.
 
 A capture or enrich session drives one live device and does not need scenario-aware escalation. It
@@ -76,8 +76,8 @@ is corrective for multi-candidate targets (`[ios]`).
    Fold that into the shared factory. Both modes then hand the full backend list, not just `[0]`, to
    the selector. The cost order operates over every candidate, not over the pinned alias head.
 3. **Keep XCUITest reachable when it is the only choice.** A target that pins `backend: [xcuitest]`
-   explicitly must still surface the clear "runner not started" error, not be silently rewritten to
-   idb. Selection changes only which candidate wins among several. A single explicit actuator stays
+   explicitly must still surface the clear "runner not started" error, not be rewritten to
+   idb. Selection changes which candidate wins among several, and nothing else. A single explicit actuator stays
    a hard pin, consistent with BE-0240's "single-actuator request is a hard pin" rule.
 4. **Regression tests.** Add serve-operations tests for two behaviors:
    - A `[ios]` target resolves to idb in capture and enrich, through the fake or stub driver factory

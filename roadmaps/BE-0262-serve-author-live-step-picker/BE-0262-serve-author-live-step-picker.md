@@ -110,8 +110,8 @@ the same selection as Capture.
 ### Log
 
 - [#1134](https://github.com/bajutsu-e2e/bajutsu/pull/1134) implemented all five units in one PR.
-  - Unit 1 scopes `/api/runs` by scenario name (the `runs_payload` filter and `auLoadRuns` in
-    `serve.author.mjs`).
+  - Unit 1 scopes `/api/runs` by scenario name. The change is the `runs_payload` filter plus
+    `auLoadRuns` in `serve.author.mjs`.
   - Unit 2 boots a live driver through Capture's session. It adds `resolve_capture_pick` (a pure
     resolve with no actuation), reached through `POST /api/capture/resolve`. When no run is
     selected, `read_scenario` now derives the step list from the scenario YAML, so a never-run

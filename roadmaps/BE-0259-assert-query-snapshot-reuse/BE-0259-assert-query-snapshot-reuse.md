@@ -86,7 +86,7 @@ independent units.
     (`idb.py:376`). On a cache miss, `_resolve` re-queries internally.
   - Change `_resolve` to accept and prefer the tree that `_settle()` already produced. It already
     has an `initial_tree` parameter for the first attempt (`idb.py:376`).
-  - Change `_center` to pass the settled tree through to every first not-found.
+  - Change `_center` to pass the settled tree through to `_resolve` at every first not-found.
   - Leave the outer `base.wait_until` deadline loop (`base.py:359`) untouched. This unit removes
     only a query that a lower layer ran again right after a sibling layer already held the same data.
 

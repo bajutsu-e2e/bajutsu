@@ -59,7 +59,7 @@ and reduced-motion handling that the tiler already provides. The responsive smal
 BE-0072 and the themable transitions from BE-0191 come along for free. The codebase no longer grows
 a second, weaker layout code path.
 
-No prime directive is touched, because the change is presentation only. The tiler already honors a
+No prime directive is in play, because the change touches presentation alone. The tiler already honors a
 reduced-motion guard that matters for determinism (BE-0191 and BE-0072), and Author inherits it. On-device
 authoring therefore stays as deterministic as the other views.
 

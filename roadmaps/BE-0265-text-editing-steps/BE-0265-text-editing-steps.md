@@ -15,7 +15,7 @@
 
 ## Introduction
 
-The only text-entry [step](../../docs/glossary.md#scenario-authoring) today is `type`
+The sole text-entry [step](../../docs/glossary.md#scenario-authoring) today is `type`
 (`bajutsu/orchestrator/actions/handlers/gestures.py`). It appends characters through
 `driver.type_text()` on every backend. A scenario cannot clear a field, delete part of its content,
 select text, or copy a selection to the clipboard.
@@ -27,8 +27,8 @@ stay inside the existing determinism model.
 
 Real forms are edited, not filled once. A user clears a field and retypes, backspaces a typo,
 selects a value to copy it elsewhere, or replaces part of an existing value. None of that is
-expressible in a scenario today. The only workaround is a strained sequence of `tap` and
-`longPress` guesses with no defined outcome. That is exactly the non-determinism that the driver
+expressible in a scenario today. The sole workaround is a strained sequence of `tap` and
+`longPress` guesses with no defined outcome. That is the non-determinism that the driver
 abstraction exists to avoid.
 
 The natural design hazard is to treat "selection" as a piece of state: *which characters are
@@ -85,7 +85,7 @@ step's own effect runs.
     success.
   - The check sits on Bajutsu's side: was a selection established since the last
     selection-clearing action? It is not delegated to whatever each backend's native copy does with
-    an empty selection. The failure is therefore identical across backends.
+    an empty selection. The failure is identical across backends.
 - **`clear`** clears the named field's entire content. `Element.value`, which `query()` already
   returns, gives the current string. The actuation removes exactly that many characters
   (backspace-equivalent), not a guessed fixed count. It is therefore agnostic to whatever content

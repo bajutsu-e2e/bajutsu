@@ -48,10 +48,10 @@ formatting:
 - a target scenario found by scanning `- name:` lines
 
 A scenario that deviates from this can make Apply or Enrich edit the wrong line, corrupt
-indentation, or silently do nothing. Examples of deviation are a flow-style step (`- tap: { id: … }`
+indentation, or do nothing without warning. Examples of deviation are a flow-style step (`- tap: { id: … }`
 across lines), a comment between steps, a non-standard indent, two scenarios in one file, and a
-selector value that contains `:` or `#`. The write is also unvalidated text. A bad edit therefore
-surfaces only when the debounced lint runs, not at the point of the mutation.
+selector value that contains `:` or `#`. The write is also unvalidated text. A bad edit surfaces
+merely when the debounced lint runs, not at the point of the mutation.
 
 The project already has the right tool. Scenarios have a Pydantic model and a canonical serializer,
 and Capture's save path round-trips through `dump_scenario_file`. The Author *edit* paths
@@ -65,7 +65,7 @@ The one real tension is formatting preservation. A naive re-serialize can reflow
 file and discard comments. The design must decide the mutation boundary (see below) so that an Apply
 does not rewrite unrelated lines.
 
-No prime directive is affected. This is authoring-side editing, and the deterministic `run` reads
+No prime directive changes. This is authoring-side editing, and the deterministic `run` reads
 the saved YAML as it always has.
 
 ## Detailed design
@@ -75,7 +75,7 @@ the saved YAML as it always has.
    - (a) A serialize endpoint that mutates the parsed model and returns canonical YAML for the whole
      file. This is the simplest option and reuses `dump_scenario_file`, but it reflows formatting
      and comments.
-   - (b) A scoped serializer that emits only the changed step or expect block. The frontend splices
+   - (b) A scoped serializer that emits the changed step or expect block alone. The frontend splices
      the block in at a span that a parser identified. This preserves the surrounding text but takes
      more work.
 

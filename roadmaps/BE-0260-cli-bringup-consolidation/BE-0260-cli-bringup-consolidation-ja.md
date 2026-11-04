@@ -15,14 +15,14 @@
 
 ## はじめに
 
-`run`、`crawl`、`record`、`audit` の各コマンドは、自分の処理に入る前に、同じ 4 種類のデバイスとバックエンドの起動処理を行っています。
+`run`、`crawl`、`record`、`audit` の各コマンドは、自分の処理へ入る前に、同じ 4 種類のデバイスとバックエンドの起動処理を行っています。
 
 - [アクチュエータ](../../docs/ja/glossary.md#driver-backend-actuator-platform)の選択
 - 対象アプリの起動サーバーの立ち上げ
 - UDID の解決
 - アラートガードの構築（該当する場合）
 
-各コマンドは、これらの処理を、同じ `try: … except RuntimeError → typer.Exit(2)`（または `except DeviceError`）という定型コードで個別に包んでいます。
+各コマンドは、同じ `try: … except RuntimeError → typer.Exit(2)`（または `except DeviceError`）という定型コードで、これらを個別に包んでいます。
 
 本項目は、4 種類の複製をそれぞれ `bajutsu/cli/_shared.py` の共有ヘルパーへ統合します。あわせて `adb.DeviceError` にプラットフォーム中立な基底クラスを与えます。これにより、汎用的なハンドラが、捕捉する例外の名前を得るためだけに iOS 側の `simctl` モジュールを import する必要はなくなります。
 
@@ -56,11 +56,11 @@
 1. **`_select_actuator_or_exit(backend, eff, engines)`**（`bajutsu/cli/_shared.py`）は、`ensure_web_runtime` のループ、`select_actuator` の呼び出し、`except RuntimeError → typer.Exit(2)` の境界を 1 つのヘルパーにまとめます。ヘルパーは `(actuator, backends)` を返し、`run.py`、`crawl.py`、`record.py`、`audit.py` にある 4 箇所の複製を置き換えます。
 2. **`_start_launch_server_or_exit(eff, *, upload_exec)`**（`bajutsu/cli/_shared.py`）は、`start_launch_server` の呼び出しと `except RuntimeError → typer.Exit(2)` の境界を 1 つのヘルパーにまとめます。ヘルパーは `(stop_server, exec_decision)` を返し、4 箇所の複製を置き換えます。
    - 呼び出し側ごとの違いは、呼び出し側に残します。たとえば、crawl は `atexit.register(stop_server)` を使い、run は `finally: stop_server()` を使います。ヘルパーが担うのは、4 箇所に共通する「立ち上げて、だめなら終了する」部分だけです。
-   - 1 つだけ、明示的な判断が要る違いがあります。`audit.py` の `except RuntimeError` ブロック（`audit.py:171-173`）は、`typer.Exit(2)` の前に `shutdown()` も呼びます。`shutdown()` は、すでに確保済みのデバイスプールのリースを片付けます。他の 3 つのコマンドには、この呼び出しがありません。
+   - 1 つだけ、明示的な判断を要する違いがあります。`audit.py` の `except RuntimeError` ブロック（`audit.py:171-173`）は、`typer.Exit(2)` の前に `shutdown()` も呼びます。`shutdown()` は、すでに確保済みのデバイスプールのリースを片付けます。他の 3 つのコマンドには、この呼び出しがありません。
    - そこでヘルパーは、任意の `on_error: Callable[[], None] | None`（終了前に実行するクリーンアップフック）を受け取ります。`audit` は `shutdown` を渡して、この片付けを保ちます。他の 3 つは何も渡さず、今日とまったく同じ挙動になります。
 3. **`_build_alert_guard(eff, redactor, instruction)`**（`bajutsu/cli/_shared.py`）は、`ClaudeAlertLocator` の生成と `SystemAlertGuard(...).dismiss` の取得を 1 つのヘルパーにまとめます。ヘルパーは、束縛済みの `dismiss` 呼び出し可能オブジェクトを返し、`run.py`、`crawl.py`、`record.py` にある 3 箇所の複製を置き換えます。
    - ヘルパーは、`run.py` の `credential_gap(eff.ai)` 分岐（`run.py:363-376`）を取り込みます。資格情報が欠けている場合は、同じ警告を出し、何もしないガードを返します。
-   - 3 箇所のうち 2 箇所については、この変更は、純粋に振る舞いを保つものではありません。`crawl.py` と `record.py` は、今日は無条件に locator を構築しています。取り込むと、両コマンドは、資格情報が欠けているときに、先へ進む代わりに、`run` と同じく穏当に何もしない挙動を得ます。
+   - 3 箇所のうち 2 箇所については、この変更は、純粋に振る舞いを保つものではありません。`crawl.py` と `record.py` は、今日は無条件に locator を構築しています。取り込むと、両コマンドは、資格情報が欠けているときに先へ進まず、`run` と同じく穏当に何もしない挙動を得ます。
    - この揃えは意図的です。AI オーサリング系の 3 コマンドは、同じように振る舞いを弱めるべきだからです。本項目は、これが偶発的な変更ではなく、決定された振る舞いの変更であることを明示するために、ここに記します。
 4. **UDID の解決は、共有ヘルパーを新設せず、呼び出し側ごとの薄いラッパーのままとします。**
    - 各呼び出し側の `_simctl.resolve_udid(...)` は、UDID 以外の引数がすでに異なっています。
@@ -76,8 +76,8 @@
 
 ## 検討した代替案
 
-- **各コマンドのエントリポイントをデコレータで包む案。** 検討したうえで採用しません。4 つの処理は、コマンドごとに異なる箇所で立ち上がります。アクチュエータの選択は設定解決が終わる前、起動サーバーの立ち上げはプランの構築後、アラートガードは `--dismiss-alerts` が指定された場合に限って行われます。単一のデコレータにしても、素朴なヘルパーと同じだけの引数が必要です。しかも、Typer のコマンドシグネチャや、どの時点で終了しうるかが、明示的な関数呼び出しよりも、呼び出し箇所から読み取りにくくなります。
-- **`adb.DeviceError` が `simctl.DeviceError` を継承する現状を維持する案。** 採用しません。この継承関係が、汎用ハンドラごとに `bajutsu.simctl` を import させる直接の原因です。3 つ目のプラットフォームバックエンド（Android はすでに実装済みで、さらに増える可能性があります）は、`simctl.DeviceError` をさらに継承して逆転を重ねるか、独自の場当たり的な基底クラスを用意するかを迫られます。
+- **各コマンドのエントリポイントをデコレータで包む案。** 検討したうえで採用しません。4 つの処理は、コマンドごとに異なる箇所で立ち上がります。アクチュエータの選択は設定解決が終わる前、起動サーバーの立ち上げはプランの構築後、アラートガードは `--dismiss-alerts` が指定された場合に限って行われます。単一のデコレータにしても、素朴なヘルパーと同じだけの引数が必要です。しかも、Typer のコマンドシグネチャと、どの時点で終了しうるかが、明示的な関数呼び出しより読み取りにくくなります。
+- **`adb.DeviceError` が `simctl.DeviceError` を継承する現状を維持する案。** 採用しません。この継承関係が、汎用ハンドラごとに `bajutsu.simctl` を import させる直接の原因です。3 つ目のプラットフォームバックエンド（Android はすでに実装済みで、さらに増える可能性があります）は、次のどちらかを迫られます。`simctl.DeviceError` をさらに継承して逆転を重ねるか、独自の場当たり的な基底クラスを用意するかです。
 - **4 つのヘルパーを `cli/_shared.py` の代わりに `bajutsu/orchestrator.py` やドライバ側のモジュールに置く案。** 採用しません。4 つはいずれも CLI コマンドの起動処理に関する関心事（設定、Typer の終了コード、`typer.echo`）で、決定的なドライバとオーケストレータのコアには役割がありません。`_shared.py` には、設定の読み込みやシークレットの redaction など、コマンドごとに重複していた他のヘルパーが、同じ理由ですでに置かれています。
 
 ## 進捗
