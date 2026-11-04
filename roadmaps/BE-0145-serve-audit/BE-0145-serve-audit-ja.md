@@ -31,10 +31,10 @@
 `bajutsu audit`（`bajutsu/audit.py`）を出荷しています。このコマンドは、読み取り専用の静的スコアで、
 次の 3 つを行います。
 
-- 各セレクタを安定性のはしごで採点する。一意に解決する `id` が `label` / `traits` に勝り、
-  それらが `index` / 生座標に勝る。
-- 具体的な要素や条件を持たない（ゆるい）`until` の `wait` ステップを指摘する。
-- 安定した `id` で置き換えられる座標ジェスチャを指摘する。
+- 各セレクタを安定性のはしごで採点します。一意に解決する `id` が `label` / `traits` に勝り、
+  それらが `index` / 生座標に勝ります。
+- 具体的な要素や条件を持たない（ゆるい）`until` の `wait` ステップを指摘します。
+- 安定した `id` で置き換えられる座標ジェスチャを指摘します。
 
 この監査は、Bajutsu の「契約として決定的」という主張を手に取れるものにします。ただし、CLI
 でだけです。Web UI のシナリオエディタは、決定性のフィードバックをまったく出しません。生成した
@@ -106,7 +106,7 @@ GUI エディタ（[BE-0013](../BE-0013-scenario-gui-editor/BE-0013-scenario-gui
   [BE-0013 — シナリオ GUI エディタ](../BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor-ja.md)：
   姉妹のその場フィードバック面（`doctor` スコア）。
   [BE-0050 — E2E カバレッジマップ](../BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map-ja.md)：
-  監査のセレクタ走査を共有し、この面と並ぶ独自の Web UI 面を持つ。
+  監査のセレクタ走査を共有し、この面と並ぶ独自の Web UI 面を持ちます。
 * [BE-0011 — ローカル Web UI（`bajutsu serve`）](../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve-ja.md)、
   [BE-0072 — serve Web UI のレスポンシブ対応](../BE-0072-responsive-web-ui/BE-0072-responsive-web-ui-ja.md)：
   本項目が拡張する UI と、引き継ぐ小さい画面向けレイアウト。
