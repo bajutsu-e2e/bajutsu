@@ -16,37 +16,28 @@
 
 ## はじめに
 
-本項目は、公開ホスト版 Web UI の**設計とそれを実現するソフトウェア**であり、そのソフトウェアは
-**すべて着地しました**。local/server パリティに加えて、認証、永続化、RBAC、監査、クォータ、そして
-**マルチテナンシー**を備えたサーバ backend がすでに出荷されています（下記「移行」「永続化と認証」
-「§8 マルチテナンシー」を参照）。残っているのは、実インフラ上への**運用デプロイ**です。すなわち、
-control plane、macOS worker プール、データベース、オブジェクトストレージのプロビジョニング、本番の
-認証とシークレットの配線、そして稼働環境のセキュリティ項目のクローズです。このデプロイは種類の違う
-作業であり（インフラと運用であって、有料かつ macOS 限定のキャパシティに左右されます）、
-[BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model-ja.md) や
-[BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction-ja.md)
-がこのアンブレラから切り出されたのと同じやり方で、独立した項目「ホスト版 Web UI サービスのデプロイ」
-として別に追跡します。本提案は、ローカルの `bajutsu serve`（`bajutsu/serve/`）を**共有の公開サービス**に
-するための、サーバ、DB、ストレージ、デプロイの具体的な技術選定です。
-現状の UI は Tier 1 の便利機能で、`127.0.0.1` にバインドし、認証はなく、同一ホスト上で
-`bajutsu run` を subprocess 起動するだけです（[cli](../../docs/ja/cli.md#serve) ·
-[reporting](../../docs/ja/reporting.md)）。公開によって変わるのはアドレスだけではなく、**システムの
-形そのもの**です。Web UI は**薄いランチャー**なので、これをホスティングするとは実質「**ランナーを
-ホスティングする**」ことであり、それは Linux のコントロールプレーンと macOS ワーカープールから
-成る共有公開サービスへとつながります。
+本項目は、公開ホスト版 Web UI の**設計とそれを実現するソフトウェア**です。そのソフトウェアは**すべて着地しました**。local/server パリティに加えて、サーバ backend がすでに出荷されています。backend は、認証、永続化、ロールベースアクセス制御（RBAC）、監査、クォータ、**マルチテナンシー**を備えます（下記「移行」「永続化と認証」「§8 マルチテナンシー」を参照）。
+
+残っているのは、実インフラ上への**運用デプロイ**です。内容は次のとおりです。
+
+- control plane、macOS worker プール、データベース、オブジェクトストレージをプロビジョニングします。
+- 本番の認証とシークレットを配線します。
+- 稼働環境のセキュリティ項目をクローズします。
+
+このデプロイは、インフラと運用の作業であり、有料かつ macOS 限定のキャパシティに左右されます。そのため、独立した項目「ホスト版 Web UI サービスのデプロイ」として別に追跡します。この項目は、[BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model-ja.md) や [BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction-ja.md) がこのアンブレラから切り出されたのと同じやり方で切り出されました。
+
+本提案は、サーバ、DB、ストレージ、デプロイの具体的な技術選定です。この技術選定によって、ローカルの `bajutsu serve`（`bajutsu/serve/`）を**共有の公開サービス**にします。現状の UI は [Tier 1](../../docs/ja/glossary.md#2-つの層) の便利機能です。`127.0.0.1` にバインドし、認証はなく、同一ホスト上で `bajutsu run` を subprocess 起動するだけです（[cli](../../docs/ja/cli.md#serve) · [reporting](../../docs/ja/reporting.md)）。
+
+公開によって変わるのは、アドレスだけではなく、**システムの形そのもの**です。Web UI は**薄いランチャー**なので、UI をホスティングするとは、**ランナーをホスティングする**ことです。その結果は、Linux のコントロールプレーンと macOS ワーカープールから成る、共有の公開サービスになります。
 
 関連: [architecture](../../docs/ja/architecture.md) · [ci](../../docs/ja/ci.md) · セルフホスト版の対
 [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)。
 
 ## 動機
 
-Web UI は**薄いランチャー**です。`/api/run` は `python -m bajutsu run …` を起動し、それが
-`idb` + `simctl` 経由で **iOS Simulator** を駆動します。そして Simulator は **macOS 上にしか存在
-しません**。つまり「Web UI をホスティングする」とは実質「**ランナーをホスティングする**」であり、
-ランナーには Mac が必要です。汎用 Linux PaaS（Cloud Run / Vercel / Linux 上の Fly Machines）では
-run を実行できません。
+Web UI は**薄いランチャー**です。`/api/run` は `python -m bajutsu run …` を起動し、そのコマンドが `idb` + `simctl` 経由で **iOS Simulator** を駆動します。Simulator は **macOS 上にしか存在しません**。したがって、Web UI をホスティングするとは**ランナーをホスティングする**ことであり、ランナーには Mac が必要です。汎用 Linux 向けの PaaS（Platform as a Service。Cloud Run、Vercel、Linux 上の Fly Machines）では、run を実行できません。
 
-このため、現状の単一プロセス設計には無い**分離トポロジ**が必要になります。
+この要件のため、現状の単一プロセス設計には無い**分離トポロジ**が必要になります。
 
 ```
         ブラウザ（多数のユーザ）
@@ -61,10 +52,10 @@ run を実行できません。
        安価・水平スケール               高価・macOS 限定・隔離が必要
 ```
 
-安価でステートフルなマルチユーザ部分（認証、履歴、キュー、レポート閲覧）は Linux に置きます。高価で
-macOS 限定の部分は、ジョブを受け取り、クリーンな Simulator で実行し、ログを流し、成果物を
-アップロードするだけのステートレスなワーカーに絞り込みます。これが中心的なリファクタです。
-**`serve` のプロセス内 `subprocess.Popen` を、ブローカーに積むジョブへ変え、リモートワーカーが
+安価でステートフルなマルチユーザ部分（認証、履歴、キュー、レポート閲覧）は、Linux に置きます。高価で
+macOS 限定の部分は、ステートレスなワーカーに絞り込みます。ワーカーは、ジョブを受け取り、クリーンな
+Simulator で実行し、ログを流し、成果物をアップロードするだけです。この分離から、中心的なリファクタが
+決まります。**`serve` のプロセス内 `subprocess.Popen` を、ブローカーに積むジョブへ変え、リモートワーカーが
 消費する形にします。**
 
 ## 詳細設計
@@ -89,124 +80,127 @@ macOS 限定の部分は、ジョブを受け取り、クリーンな Simulator 
 ### 各構成要素の役割
 
 #### コントロールプレーン（Linux、安価、水平スケール）
-今日の `serve` の発展形です。エンドポイント（すべて認証付き）:
+コントロールプレーンは、今日の `serve` を発展させたものです。エンドポイントはすべて認証を要求します。
 
 - `GET /` → プロジェクト単位の UI（scenario/app の候補は**ファイルシステムではなく DB** から）。
-- `POST /api/run` → リクエストを**呼び出し元のプロジェクトに対して検証**します（クライアント指定の
-  ファイルパスは禁止。セキュリティ参照）。`run` 行を書き、**ジョブを enqueue**（Postgres `jobs`
-  テーブルの `queued` 行）して id を返します。
-- `GET /api/runs/stream/<id>` → ライブログの **SSE** ストリーム（現 UI の 1 秒ポーリングを置換）。
-  `LogBus` シーム経由です（[BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model-ja.md)
-  が当初ここで想定していた Redis pub/sub を置き換えました）。
-- `GET /runs/<id>/…` → レポート資産を **短命の署名付き R2 URL** で配信（現状のローカル
-  `_serve_run_file` を置換）。
+- `POST /api/run` → リクエストを**呼び出し元のプロジェクトに対して検証**します。クライアント指定の
+  ファイルパスは禁止です（セキュリティ参照）。`run` 行を書き、**ジョブを enqueue**（Postgres `jobs`
+  テーブルの `queued` 行）して、ジョブの id を返します。
+- `GET /api/runs/stream/<id>` → ライブログの **SSE** ストリーム。現 UI の 1 秒ポーリングを置き換えます。
+  ストリームは `LogBus` シームが支えます（[BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model-ja.md)
+  が、当初ここで想定していた Redis pub/sub を置き換えました）。
+- `GET /runs/<id>/…` → レポート資産を **短命の署名付き R2 URL** で配信します。現状のローカル
+  `_serve_run_file` を置き換えます。
 
 #### ジョブ分配（コントロールプレーン ↔ ワーカー）
 
-ジョブ分配には Postgres の `jobs` テーブルを HTTP 越しに lease する方式を使います
+ジョブ分配には、Postgres の `jobs` テーブルを HTTP 越しに lease する方式を使います
 （[BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model-ja.md)）。
-run は `queued` の行になり、worker が `POST /api/worker/lease` でポーリングして lease します。run
-完了後、worker は run ツリー（`console.log` 含む）をオブジェクトストレージにアップロードし、結果を
-`POST /api/worker/result` に返します。制御プレーンが完了した run を記録するので、worker はデータベースへの
-アクセスを必要としません。Redis や RQ は不要です。
+run は `queued` の行になり、worker が `POST /api/worker/lease` をポーリングして、その行を lease します。
+run の完了後、worker は run ツリー（`console.log` 含む）をオブジェクトストレージにアップロードし、
+結果を `POST /api/worker/result` に返します。制御プレーンが完了した run を記録するので、worker は
+データベースへのアクセスを必要としません。Redis も RQ も使いません。
 
 #### macOS ワーカー（ステートレス、隔離、使い捨て）
-Orka が払い出す各 Mac 上の小さな Python エージェント（launchd サービス）:
+Orka が払い出す各 Mac では、小さな Python エージェントが launchd サービスとして動きます。エージェントは 5 手順で働きます。
 
 1. HTTP でジョブを lease します（`POST /api/worker/lease`）。
 2. そのプロジェクトの**シナリオをコントロールプレーン/オブジェクトストアから取得**します
    （クライアントが選んだパスは使いません）。
-3. **消去済みのクリーンな Simulator** を用意します（`bajutsu run --erase`）。公開マルチテナントは
-   **隔離必須**で、これはローカル UI の高速 `--no-erase` 再利用ループを意図的に捨てることを意味します。
-4. stdout をコントロールプレーンの `LogBus` に流し、完了時に **`runs/<id>/` ツリーを R2 に
+3. **消去済みのクリーンな Simulator** を用意します（`bajutsu run --erase`）。公開マルチテナントでは run の
+   **隔離が必須**です。そのため、ローカル UI の高速な `--no-erase` 再利用ループを、意図的に捨てます。
+4. stdout をコントロールプレーンの `LogBus` に流します。完了時には **`runs/<id>/` ツリーを R2 に
    アップロード**し、結果（exit code、run id、manifest 要約）をコントロールプレーンへ `POST` します。
 5. Simulator を破棄します。
 
 ### デプロイ計画（段階的）
 
 #### フェーズ 1：MVP、最短で出す
-- **コントロールプレーン**をコンテナ化し、**Fly.io**（or Render）へ。マネージドの **Fly Postgres**
-  （ジョブキューとセッションもここに載ります）。成果物は **Cloudflare R2**。TLS はプラットフォーム/Caddy。**GitHub OAuth**。
-- **ワーカー**: **MacStadium Orka 1 ノード**でエージェント稼働。シナリオや app 設定はプロジェクト
-  単位で Postgres/R2 に保存。
-- **シークレット**は Fly/Doppler。各 org が自分の `ANTHROPIC_API_KEY` を持ち込みます。
-- ゴール: ログイン済みユーザがプロジェクト + シナリオを選び Run を実行し、ライブログを見て、レポートを
-  閲覧します。共有インフラ上で安全に、end-to-end で行えるようにします。
+- **コントロールプレーン**：コンテナ化して **Fly.io**（または Render）に置きます。マネージドの **Fly Postgres** が、ジョブキューとセッションも担います。成果物は **Cloudflare R2** に置きます。TLS はプラットフォームまたは Caddy が担います。サインインは **GitHub OAuth** です。
+- **ワーカー**：**MacStadium Orka 1 ノード**でエージェントを動かします。シナリオと app 設定は、プロジェクト
+  単位で Postgres/R2 に保存します。
+- **シークレット**：Fly/Doppler に置きます。各 org が自分の `ANTHROPIC_API_KEY` を持ち込みます。
+- **ゴール**：ログイン済みユーザが、プロジェクトとシナリオを選んで Run を実行し、ライブログを見て、レポートを
+  閲覧します。この全体が、共有インフラ上で安全に、end-to-end で動きます。
 
 #### フェーズ 2：スケール
-- コントロールプレーン → **Kubernetes**（GKE/EKS）、マネージド **Cloud SQL/RDS**。
-- Postgres `jobs` のキュー深さ駆動の **Orka オートスケール** Mac プール。org ごとの**並行数クォータ**。
-- R2 前段に成果物 **CDN（コンテンツデリバリネットワーク）**。必要ならコントロールプレーンをマルチリージョン化。
-- フル可観測性（Sentry + Grafana ダッシュボード + キュー深さ/ワーカー健全性のアラート）。
+- コントロールプレーンを **Kubernetes**（GKE/EKS）へ移し、マネージド **Cloud SQL/RDS** を使います。
+- Mac プールを **Orka** でオートスケールします。駆動するのは Postgres `jobs` のキュー深さです。org ごとの**並行数クォータ**も加えます。
+- R2 の前段に、成果物 **CDN**（コンテンツデリバリネットワーク）を置きます。必要なら、コントロールプレーンをマルチリージョン化します。
+- 完全な可観測性を備えます。Sentry、Grafana ダッシュボード、キュー深さとワーカー健全性のアラートです。
 
 #### コストの実情
-Linux のコントロールプレーン、Postgres、R2 は**安価で弾力的**です。一方 **Mac が費用を支配**し、
-きれいにゼロスケールしません（Orka ノード / EC2 Mac の 24h 最小）。プールは**少数のウォームフロア +
-キュー深さ**で設計し、決定的な*ゲート*は使い捨て CI（[ci](../../docs/ja/ci.md)）に寄せて、ホステッド
-プールは回帰テストの物量ではなく**対話的オーサリングだけ**を担わせます。
+Linux のコントロールプレーン、Postgres、R2 は**安価で弾力的**です。一方、**Mac が費用を支配**し、
+きれいにゼロスケールしません（Orka ノードと EC2 Mac には 24h の最小割当があります）。
+
+この費用構造から、プールの設計が決まります。プールの規模は、**少数のウォームフロアとキュー深さ**で決めます。
+決定的な*ゲート*は、使い捨ての CI（[ci](../../docs/ja/ci.md)）に寄せます。こうすれば、ホステッドプールは
+回帰テストの物量を負わず、**対話的オーサリング**だけを担います。
 
 ### セキュリティ強化（公開前に必須）
 
-現 `serve` が安全なのは localhost 限定かつ単一ユーザだからです。公開はこの両方の前提を壊すため、以下は
-任意ではありません。
+現 `serve` が安全なのは、localhost 限定かつ単一ユーザだからです。公開はこの両方の前提を壊すため、
+以下の項目は任意ではありません。
 
 - **全エンドポイントに認証**（OAuth + org 単位 RBAC）。run 起動をユーザ/org 単位で**レート制限**します。
 - **任意パスでのシナリオ実行を排除**します。現状 `/api/run` は `body["scenario"]` を、`scenarios_dir`
-  内かの検査なしに `bajutsu run` の argv へそのまま渡します（`bajutsu/serve/` の
-  `run_command`/`do_POST`）。ホステッドでは**シナリオはプロジェクト単位で保存し worker が id で
-  取得**します。クライアントはパスを指定せず、`backend`/`udid` も自由文字列でなく**許可リスト**で検証します。
+  内かどうかを検査せずに、`bajutsu run` の argv へそのまま渡します（`bajutsu/serve/` の
+  `run_command`/`do_POST`）。ホステッドでは、**シナリオをプロジェクト単位で保存し、worker が id で
+  取得**します。クライアントはパスを指定しません。サーバは `backend` と `udid` を、自由文字列として
+  渡さず、**許可リスト**で検証します。
 - **org ごとの BYO `ANTHROPIC_API_KEY`**。AI 機能（`--dismiss-alerts`、`record`）のコスト/悪用を
   鍵の持ち主の org に限定します。
-- **ワーカーのサンドボックス化**。シナリオは実質「デバイスを操作する非信頼コード」です。各 run を
-  **使い捨て Mac/Simulator** で、**egress 許可リスト**付き、**テナント間でシークレット共有なし**で実行します。
-- **署名付きで期限の切れる成果物 URL**、**CORS/CSRF** 対策、標準セキュリティヘッダ、そして誰が何をいつ
-  実行したかの**監査ログ**。
-- **org 単位のクォータ/並行上限**。1 テナントが希少で高価な Mac プールを枯渇させないようにします。
+- **ワーカーのサンドボックス化**。シナリオは実質「デバイスを操作する非信頼コード」です。各 run は、
+  **使い捨ての Mac/Simulator** で、**egress 許可リスト**を付け、**テナント間でシークレットを共有せずに**
+  実行します。
+- **Web 層の保護**。**署名付きで期限の切れる成果物 URL**、クロスオリジンリソース共有（CORS）と
+  クロスサイトリクエストフォージェリ（CSRF）への対策、標準のセキュリティヘッダを備えます。
+- **監査ログ**。誰が何をいつ実行したかを記録します。
+- **org 単位のクォータと並行上限**。1 テナントが、希少で高価な Mac プールを枯渇させないようにします。
 
 ### stdlib の `serve` からの移行（ゼロからの書き直しではなく段階的に）
 
 **土台はすでに着地済みです。** `bajutsu serve` はパッケージ（`bajutsu/serve/`）になり、差し替え可能な
-4 つの **seam** を中心に構成されています。各 seam にはローカル実装が `main` 上にあるため、下記の各ステップは
-「ローカル実装を、既存の seam の背後でサーバ実装に差し替える」作業であって、書き直しではありません。
+4 つの **seam** を中心に構成されています。各 seam には、ローカル実装が `main` 上にあります。したがって、
+下記の各ステップは、ローカル実装を既存の seam の背後でサーバ実装に差し替える作業であり、書き直しではありません。
 
-- **`RunExecutor`**：ジョブ起動（ローカルは `run_job` を回すプロセス内デーモンスレッド）。
-- **`LogBus`**：ライブログ配信（ローカルはインメモリのバッファ。UI はすでに SSE で配信済み）。
-- **`ArtifactStore`**：run 成果物の読み取り（ローカルは `runs_dir` に封じ込めたファイルシステム）。
-- **`ScenarioStore`**：シナリオ解決（ローカルはアプリの scenarios dir に封じ込め）。
+- **`RunExecutor`**：ジョブを起動します。ローカルでは、`run_job` を回すプロセス内デーモンスレッドです。
+- **`LogBus`**：ライブログを配信します。ローカルではインメモリのバッファで、UI はそのバッファをすでに SSE で配信しています。
+- **`ArtifactStore`**：run 成果物を読み取ります。ローカルでは、`runs_dir` に封じ込めたファイルシステムです。
+- **`ScenarioStore`**：シナリオを解決します。ローカルでは、アプリの scenarios dir に封じ込めています。
 
 [BE-0051](../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting-ja.md)
-が認証と入力検証を出荷済みで、純粋ヘルパ（`list_scenarios`、`list_runs`、`run_command`、`Job` モデル）も
-すでに `bajutsu/serve/helpers.py` に切り出されています。したがって:
+が認証と入力検証を出荷済みです。純粋ヘルパ（`list_scenarios`、`list_runs`、`run_command`、`Job` モデル）も、
+すでに `bajutsu/serve/helpers.py` に切り出されています。移行は 5 ステップで進みます。
 
 1. 切り出し済みの純粋ヘルパと埋め込み HTML を FastAPI アプリへ移し、v1 フロントとします。
-2. **キュー型の `RunExecutor`**（Postgres `jobs` テーブルへ enqueue）と、今 `run_job` がビルドするのと
-   同じ `bajutsu run` argv を実行する worker エントリポイントを用意します。
-3. **サーバ版の `LogBus`** と、ローカルのファイル読み取りを **R2 署名付き URL のリダイレクト**に
-   置き換える **オブジェクトストレージの `ArtifactStore`** を用意します。
-4. **OAuth + Postgres**（org/project/run）と、ファイルシステムではなくストレージから id で解決する
-   **プロジェクト単位の `ScenarioStore`** を追加します。**シングルテナント backend 向けに出荷済み**で、下記の
-   7a/7b/7c が着地分と今後を詳述します。
-5. **Orka ワーカー 1 台**を立て、上記セキュリティ項目を閉じてから、プールをスケールします。
+2. **キュー型の `RunExecutor`** を用意します。`RunExecutor` は Postgres `jobs` テーブルへ enqueue します。今 `run_job` が組み立てるのと同じ `bajutsu run` argv を実行する、worker エントリポイントも用意します。
+3. **サーバ版の `LogBus`** と、**オブジェクトストレージの `ArtifactStore`** を用意します。`ArtifactStore` は、ローカルのファイル読み取りの代わりに、**R2 署名付き URL のリダイレクト**を返します。
+4. **OAuth + Postgres**（org、project、run）と、**プロジェクト単位の `ScenarioStore`** を追加します。`ScenarioStore` は、ファイルシステムではなくストレージから、id でシナリオを解決します。このステップは**シングルテナント backend 向けに出荷済み**です。下記の 7a/7b/7c が、着地分と今後を詳述します。
+5. **Orka ワーカー 1 台**を立て、上記のセキュリティ項目を閉じてから、プールをスケールします。
 
-各ステップは独立に出荷でき、テストもできます。決定的コア（`bajutsu run` とレポート）は終始不変で、変わるのは
-その*起動方法*と*配管*がクラウドへ移ることだけです。
+各ステップは独立に出荷でき、テストもできます。決定的コア（`bajutsu run` とレポート）は終始不変です。
+クラウドへ移るのは、コアの*起動方法*と*配管*だけです。
 
 ### 永続化と認証（シングルテナント backend に出荷済み、7a/7b/7c）
 
-移行のステップ 1〜3（5 つの差し替え可能な seam）は着地済みで、**ステップ 4、すなわち永続化と認証も、
-シングルテナントのサーバ backend 向けに出荷されました**。次の 3 つの不変条件は維持されています。ローカルの
-挙動を変えないこと。各スライスのテストを Linux ゲートで完結させること（Simulator も、稼働中の Postgres、
-オブジェクトストレージも要らない）。各スライスを既存の seam パターンに倣わせること（Protocol と注入
-実装の組で、optional extra の背後に遅延 import し、既定の `serve`/CLI 経路では読み込まない）。ここでの
-「シングルテナント」は、固定の default org に全ユーザが属する形を指します。マルチテナントの org スコープ部分は
-この backend の上にあとから着地しました（後述の「§8 マルチテナンシー」を参照）。
+移行のステップ 1〜3（5 つの差し替え可能な seam）は着地済みです。**ステップ 4、すなわち永続化と認証も、
+シングルテナントのサーバ backend 向けに出荷されました**。ここでの「シングルテナント」は、固定の default org に
+全ユーザが属する形を指します。マルチテナントの org スコープ部分は、この backend の上にあとから着地しました
+（後述の「§8 マルチテナンシー」を参照）。
+
+ステップ 4 は、現在も維持されている次の 3 つの不変条件のもとで作りました。
+
+- ローカルの挙動を変えません。
+- 各スライスのテストは Linux ゲートで完結します。Simulator も、稼働中の Postgres やオブジェクトストレージも要りません。
+- 各スライスは既存の seam パターンに倣います。Protocol と注入実装の組で、optional extra の背後に遅延 import し、既定の `serve`/CLI 経路では読み込みません。
 
 #### 7a 永続化レイヤ（#144、#145）
 
-5 本目の seam `Repository`（`bajutsu/serve/server/db.py`）を、`ObjectStore` と同じ作りで置きました。Protocol、
-注入する SQLAlchemy 2.0 実装、環境変数から組み立てるファクトリ、遅延 import です。テーブル一式と外部キーは
-最初の Alembic マイグレーションで決め切っています（後から足すのは、ゲートが使う SQLite では苦痛だからです）。
-`users.role` は後続のマイグレーション（0002）で追加しました。
+5 本目の seam `Repository`（`bajutsu/serve/server/db.py`）は、`ObjectStore` と同じ作りです。Protocol、
+注入する SQLAlchemy 2.0 実装、環境変数から組み立てるファクトリ、遅延 import から成ります。最初の Alembic
+マイグレーションで、テーブル一式と外部キーを決め切っています。後から足すのは、ゲートが使う SQLite では
+苦痛だからです。後続のマイグレーション（0002）が `users.role` を追加しました。
 
 ```
 orgs       id, slug（一意）, name, created_at
@@ -218,55 +212,65 @@ audit_log  id, org_id → orgs, actor_id → users, action, target, at, detail�
 ```
 
 `org_id` を全テーブルに通してあるのは、マルチテナント化したときに org 単位で絞り込めるようにするためです。
-可変な manifest 要約と監査の詳細だけを `JSON().with_variant(JSONB, "postgresql")` にしているので、同じモデルが
-SQLite（ゲート）でも Postgres（本番）でも動きます。配線は seam を組み立てる唯一の場所 `_build_server_state` に
-置き、`BAJUTSU_DATABASE_URL` で切り替えます。未設定のとき、およびローカル backend では `repository` は `None` の
-ままで、データベースなしでも挙動は変わりません。`db` extra が `sqlalchemy`、`alembic`、`psycopg` を担います。
-（`Repository` は `record_run`／`get_run`／`list_runs` を備えます。run の一覧は、データベースを配線したら DB から
-返し（後述の 7c-4）、無いときはオブジェクトストレージから取得します。）
+可変な manifest 要約と監査の詳細だけを `JSON().with_variant(JSONB, "postgresql")` にしています。そのため、
+同じモデルが SQLite（ゲート）でも Postgres（本番）でも動きます。
+
+配線は、seam を組み立てる唯一の場所 `_build_server_state` に置き、`BAJUTSU_DATABASE_URL` で切り替えます。
+未設定のとき、およびローカル backend では、`repository` は `None` のままです。データベースなしでも挙動は
+変わりません。`db` extra が `sqlalchemy`、`alembic`、`psycopg` を担います。
+
+`Repository` は `record_run`、`get_run`、`list_runs` を備えます。データベースを配線したら、run の一覧は
+DB から返します（後述の 7c-4）。配線していないときは、オブジェクトストレージから取得します。
 
 #### 7b GitHub OAuth と永続セッション（#148、#149）
 
-セッションをインメモリの `set[str]` から `SessionStore` seam へ移しました。ローカルはインメモリ（再起動で
-消える）、サーバは TTL 付きの永続ストア（再起動を越え、レプリカを跨ぐ）です（当初は Redis。その後
-[BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model-ja.md) が
-このサーバ側ストアを Postgres `sessions` テーブルへ移しました）。**Authlib による GitHub OAuth** を、
-ブラウザ向けの追加のサインイン手段として加えました。`/api/oauth/login` と `/api/oauth/callback`、CSRF state
-cookie、そして不透明な session id を入れた HttpOnly cookie（サーバ側ストアで検証）からなり、
-**GitHub username の許可リスト**（`BAJUTSU_OAUTH_ALLOWED_USERS`）で
-制限し、ログインした login をセッションの identity として紐付けます。共有トークン（BE-0051）とは共存し、
-トークンはオペレータの認証（full access、CI など）、OAuth はユーザごとのブラウザログインです。`operations` 層は
-provider に依存せず、認証は handler/app のミドルウェアに置きます。依存は `authlib` extra が担います。（**[BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac-ja.md) で置き換え：**
+セッションを、インメモリの `set[str]` から `SessionStore` seam へ移しました。ローカルのストアはインメモリで、
+再起動でセッションが消えます。サーバのストアは TTL（有効期間）付きの永続ストアで、再起動を越え、レプリカを
+跨ぎます。サーバのストアは、当初は Redis でした。その後、[BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model-ja.md)
+が Postgres `sessions` テーブルへ移しました。
+
+**Authlib による GitHub OAuth** を、ブラウザ向けの追加のサインイン手段として加えました。構成は、
+`/api/oauth/login` と `/api/oauth/callback`、CSRF state cookie、不透明な session id を入れた HttpOnly cookie
+（サーバ側ストアで検証）です。**GitHub username の許可リスト**（`BAJUTSU_OAUTH_ALLOWED_USERS`）がサインインを
+制限し、ログインした login をセッションの identity として紐付けます。
+
+OAuth は共有トークン（BE-0051）と共存します。トークンはオペレータの認証で、full access を持ち、たとえば CI で
+使います。OAuth は、ユーザごとのブラウザログインです。（**[BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac-ja.md) で置き換え：**
 サインインは、この username 許可リストではなく GitHub organization のメンバーシップに従うようになりました。
-OAuth を構成した後は、共有トークンも worker の通信だけに狭まり、それ以外の endpoint に対するオペレータ資格
+OAuth を構成した後は、共有トークンが worker の通信だけに狭まり、それ以外の endpoint に対するオペレータ資格
 としての到達範囲は廃止されました。）
+
+`operations` 層は provider に依存しません。認証は handler/app のミドルウェアに置きます。依存は `authlib`
+extra が担います。
 
 #### 7c identity、RBAC、監査、クォータ（シングルテナント）（#150、#151、#152）
 
 データベースを配線したサーバ backend で動きます。
 
-- **identity 永続化と監査ログ**（#150）: OAuth ログインがユーザを default org に upsert し、run/record/crawl が
-  「誰が、何を、いつ」を `audit_log` に記録します。
-- **per-user RBAC**（#151）: 各ユーザに role を持たせます。viewer（閲覧のみ）、editor（run/record/crawl/approve/
-  保存）、admin（config、API キー、provider）です。role は env 方針（`BAJUTSU_OAUTH_ADMINS`／
-  `BAJUTSU_OAUTH_VIEWERS`、既定 editor）から毎回のログイン時に再計算するので、方針変更にデータマイグレーションは
-  要りません。強制は認証と同じ gate 層に置き、gate されるのは OAuth セッションだけで、オペレータのトークンは
-  full access のままです。（**[BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac-ja.md) で置き換え：**
+- **identity 永続化と監査ログ**（#150）：OAuth ログインがユーザを default org に upsert します。run、record、
+  crawl は、「誰が、何を、いつ」を `audit_log` に記録します。
+- **per-user RBAC**（#151）：各ユーザに role を持たせます。viewer は閲覧のみです。editor は run、record、crawl、
+  approve、保存ができます。admin は config、API キー、provider を扱えます。role は env 方針
+  （`BAJUTSU_OAUTH_ADMINS`／`BAJUTSU_OAUTH_VIEWERS`、既定 editor）から、毎回のログイン時に再計算します。
+  そのため、方針の変更にデータマイグレーションは要りません。強制は、認証と同じ gate 層に置きます。gate されるのは
+  OAuth セッションだけで、オペレータのトークンは full access のままです。
+  （**[BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac-ja.md) で置き換え：**
   role は今後、env のログインリストではなく GitHub Team のメンバーシップに従います。org の `editorTeam` が
-  editor を、サーバ全体で 1 つの `BAJUTSU_OAUTH_ADMIN_TEAM` が admin を決め、既定は viewer です。毎回のログイン時
-  に再計算するという原則はそのまま保たれます。）
-- **per-user 並行クォータ**（#152）: `BAJUTSU_MAX_CONCURRENT_PER_USER` が 1 ユーザの同時実行数を抑え、誰も
-  希少なデバイスプールを枯渇させないようにします（org が 1 つの間、per-org クォータは既存のグローバル
-  `max_concurrent` と同義です）。
-- **DB からの run 一覧**（7c-4）: 完了した run を `runs` テーブルに記録し（id、org、起動したユーザ、合否、
-  manifest サマリ）、run 履歴のエンドポイントは artifact ストアを走査せずに、その org の記録済み run を返します。
-  データベースが無いとき（local／stdlib serve）は従来どおり artifact ストアから直接読むので、挙動は変わりません。
-  一覧はすでに org スコープで、org 解決が入るまでは単一の default org に解決されるだけです。
+  editor を決め、サーバ全体で 1 つの `BAJUTSU_OAUTH_ADMIN_TEAM` が admin を決めます。既定は viewer です。
+  毎回のログイン時に再計算するという原則は、そのまま保たれます。）
+- **per-user 並行クォータ**（#152）：`BAJUTSU_MAX_CONCURRENT_PER_USER` が 1 ユーザの同時実行数を抑え、
+  誰も希少なデバイスプールを枯渇させないようにします。org が 1 つの間、per-org クォータは既存のグローバル
+  `max_concurrent` と同義です。
+- **DB からの run 一覧**（7c-4）：完了した run を `runs` テーブルに記録します。記録するのは、id、org、起動した
+  ユーザ、合否、manifest サマリです。run 履歴のエンドポイントは、artifact ストアを走査せずに、その org の
+  記録済み run を返します。データベースが無いとき（local／stdlib serve）は、従来どおり artifact ストアから
+  直接読むので、挙動は変わりません。一覧はすでに org スコープで、org 解決が入るまでは単一の default org に
+  解決されます。
 
 #### 8 マルチテナント（org モデル、解決、強制、org ごとのストレージ）
 
 シングルテナント backend の上に、実マルチテナントを載せました。org モデルは **config で宣言**するので、
-app-agnostic を保ちます。
+モデルは app-agnostic を保ちます。
 
 ```yaml
 orgs:
@@ -279,55 +283,42 @@ orgs:
     apps: [other]
 ```
 
-どの org にも挙げられていない login や app は単一の `default` org に入るので、`orgs:` ブロックが無い config は
-シングルテナントのままで、出荷済みの挙動は変わりません。
+どの org にも挙げられていない login や app は、単一の `default` org に入ります。したがって、`orgs:` ブロックが
+無い config はシングルテナントのままで、出荷済みの挙動は変わりません。
 
-- **org 解決（8b）**: OAuth ログイン時にユーザを config の org に割り当て、user 行に保存します。以後のリクエストは
-  その行から actor の org を解決します（`ServeState.org_of`）。org は、明示の `members` 列挙か、それが無ければ
-  ユーザの **GitHub org メンバーシップ**から決まります（`org_for_identity`）。OAuth フローは `read:org` を要求して
-  `/user/orgs` を読み、`githubOrgs` エントリが GitHub org を bajutsu org に対応づけます。run 一覧、run レコード、
-  監査エントリは解決した org の下で読み書きします。
-- **org スコープの強制（8c）**: ユーザは自 org の apps だけが見え、別 org の app での run/record/crawl 開始や保存は
-  403、別 org の scenario や run 成果物の読み取りは not-found（存在を漏らさない）になります。
-- **org ごとのストレージ（8d）**: サーバ backend は各 org の artifacts／scenarios／baselines を自分の
+- **org 解決（8b）**：OAuth ログイン時に、ユーザを config の org に割り当て、user 行に保存します。以後の
+  リクエストは、その行から actor の org を解決します（`ServeState.org_of`）。org は、明示の `members` 列挙から
+  決まります。列挙に無ければ、ユーザの **GitHub org メンバーシップ**から決まります（`org_for_identity`）。
+  OAuth フローは `read:org` を要求して `/user/orgs` を読み、`githubOrgs` エントリが GitHub org を bajutsu org に
+  対応づけます。run 一覧、run レコード、監査エントリは、解決した org の下で読み書きします。
+- **org スコープの強制（8c）**：ユーザには、自 org の apps だけが見えます。別 org の app で run、record、crawl を
+  開始したり保存したりすると、403 になります。別 org の scenario や run 成果物の読み取りは、not-found になり、
+  存在を漏らしません。
+- **org ごとのストレージ（8d）**：サーバ backend は、各 org の artifacts、scenarios、baselines を、自分の
   オブジェクトストレージ prefix（`<base><org>/`）の下に置きます。default org は base prefix のままなので、
-  シングルテナントのレイアウトは変わりません。org は job spec で運ばれ、worker は制御プレーンが配信するのと同じ
-  prefix を読み書きします。
+  シングルテナントのレイアウトは変わりません。org は job spec で運ばれ、worker は、制御プレーンが配信するのと
+  同じ prefix を読み書きします。
 
-サーバ backend の run は worker で実行されるので、それを system of record に記録するのは **worker** です。worker に
-`db` extra と `BAJUTSU_DATABASE_URL` を与えれば、完了した run はその org／actor の下に記録されます（無ければ no-op
-＝run は動くが一覧には出ません）。
+サーバ backend の run は worker で実行されるので、run を system of record に記録するのは **worker** です。
+worker に `db` extra と `BAJUTSU_DATABASE_URL` を与えれば、完了した run は、その org と actor の下に記録されます。
+与えなければ、記録は no-op です。run は動きますが、一覧には出ません。
 
 ## 検討した代替案
 
-汎用 Linux PaaS（Cloud Run / Vercel / Linux 上の Fly Machines）は最初から却下です。Simulator が
-macOS 上にしか存在しないため run を実行できず、Web UI をホスティングするとは必然的に Mac に縛られた
-ランナーをホスティングすることだからです。それ以外も、選定スタックの各レイヤに却下した対があります。
+汎用 Linux PaaS（Cloud Run / Vercel / Linux 上の Fly Machines）は、最初から却下です。Linux PaaS は run を
+実行できません。Simulator が macOS 上にしか存在せず、Web UI をホスティングするとは、必然的に Mac に縛られた
+ランナーをホスティングすることだからです。それ以外にも、選定スタックの各レイヤに却下した対があります。
 
-- **API / Web**: Django（重く同期前提）、Litestar、stdlib サーバ継続（認証/多人数に耐えない）。
-  非同期でかつ既に依存ツリーにある Pydantic を再利用できる FastAPI を採って却下しました。
-- **リバースプロキシ + TLS**: nginx + certbot（設定が多い）、Traefik。ほぼ無設定の自動 HTTPS を
-  持つ Caddy を採って却下しました。
-- **認証 / 認可**: oauth2-proxy（エッジ）、Auth0/Clerk/WorkOS（マネージド有償）、Google OAuth。
-  対象が既に GitHub を持ち org モデルが GitHub org に対応する GitHub OAuth を採って却下しました。
-- **system of record**: SQLite（多人数の並行に不可）、MySQL。JSONB を持ちマネージドが豊富な
-  PostgreSQL を採って却下しました。
-- **キュー / ジョブ分配**: 当初は Redis 7 + RQ を採用していました（ブローカー専用の代替として
-  RabbitMQ/NATS・SQS、より重いタスク基盤として Celery/Dramatiq もありました）。しかし
-  [BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model-ja.md) が、
-  これを **HTTP 越しに lease する Postgres `jobs` テーブル**へ置き換えました。ブローカー・キャッシュ・
-  タスク基盤の別プロセスは不要になり、セッションも Postgres テーブルへ移りました。
-- **成果物ストレージ**: AWS S3（egress 課金）、MinIO（自前）、GCS。S3 互換で下り無料の
-  Cloudflare R2 を採って却下しました。
-- **macOS ワーカー**: AWS EC2 Mac（24h 最小割当で高価）、Scaleway Apple silicon、自前 Mac mini。
-  クリーンな Mac のスケール可能でスケジュール可能なプールを得られる唯一の選択肢 MacStadium Orka を
-  採って却下しました。
-- **シークレット**: Vault（重い）、env ファイル（公開では不可）。クラウドのシークレット管理を
-  採って却下しました。
-- **可観測性**: OpenTelemetry collector、Datadog（有償）。Sentry + Prometheus/Grafana を基本線と
-  する案に対する代替です。
-- **IaC + CI/CD**: Pulumi、手動（不可）。リポジトリが既に Actions 上にあるため Terraform +
-  GitHub Actions を採って却下しました。
+- **API / Web**：Django（重く同期前提）、Litestar、stdlib サーバ継続（認証と多人数に耐えない）は、FastAPI に敗れました。FastAPI は非同期で、依存ツリーにすでにある Pydantic を再利用できます。
+- **リバースプロキシ + TLS**：nginx + certbot（設定が多い）と Traefik は、ほぼ無設定で自動 HTTPS を使える Caddy に敗れました。
+- **認証 / 認可**：oauth2-proxy（エッジ）、Auth0/Clerk/WorkOS（マネージド有償）、Google OAuth は、GitHub OAuth に敗れました。対象がすでに GitHub を持ち、org モデルが GitHub org に対応するためです。
+- **system of record**：SQLite（多人数の並行に不可）と MySQL は、PostgreSQL に敗れました。PostgreSQL は JSONB を持ち、マネージドが豊富です。
+- **キュー / ジョブ分配**：当初の選定は Redis 7 + RQ でした。ブローカー専用の代替として RabbitMQ/NATS と SQS があり、より重いタスク基盤として Celery/Dramatiq がありました。[BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model-ja.md) が、当初の選定を **HTTP 越しに lease する Postgres `jobs` テーブル**へ置き換えました。ブローカー、キャッシュ、タスク基盤の別プロセスは不要になり、セッションも Postgres テーブルへ移りました。
+- **成果物ストレージ**：AWS S3（egress 課金）、MinIO（自前）、GCS は、Cloudflare R2 に敗れました。R2 は S3 互換で、下りが無料です。
+- **macOS ワーカー**：AWS EC2 Mac（24h 最小割当で高価）、Scaleway Apple silicon、自前 Mac mini は、Orka に敗れました。Orka は MacStadium のサービスで、クリーンな Mac のスケール可能でスケジュール可能なプールを得られる、唯一の選択肢です。
+- **シークレット**：Vault（重い）と env ファイル（公開では不可）は、クラウドのシークレット管理に敗れました。
+- **可観測性**：OpenTelemetry collector と Datadog（有償）は、Sentry + Prometheus/Grafana を基本線とする案に対する代替です。
+- **IaC + CI/CD**：Pulumi と手動（不可）は、Terraform + GitHub Actions に敗れました。リポジトリがすでに Actions 上にあるためです。
 
 ## 進捗
 
@@ -338,13 +329,13 @@ macOS 上にしか存在しないため run を実行できず、Web UI をホ�
   （[#156](https://github.com/bajutsu-e2e/bajutsu/pull/156)、[#159](https://github.com/bajutsu-e2e/bajutsu/pull/159)）。
 
 マルチテナンシーまで含めて、それを実現するソフトウェアはすべて着地したので（#105〜#159）、この
-設計とソフトウェアの項目は**実装済み**です。残る公開サービスの**運用デプロイ**（Phase 1 の MVP と
-Phase 2 のスケール、および稼働環境のセキュリティハードニング）は、独立した項目「ホスト版 Web UI
-サービスのデプロイ」として別に追跡します。
+設計とソフトウェアの項目は**実装済み**です。公開サービスの残る**運用デプロイ**は、独立した項目
+「ホスト版 Web UI サービスのデプロイ」が別に追跡します。内容は、Phase 1 の MVP、Phase 2 のスケール、
+稼働環境のセキュリティハードニングです。
 
 ## 参考
 
 `bajutsu/serve/`、[ci](../../docs/ja/ci.md)、[architecture](../../docs/ja/architecture.md)、
 [reporting](../../docs/ja/reporting.md)、[cli](../../docs/ja/cli.md#serve)、セルフホスト版の対
 [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)、そして
-[BE-0055](../BE-0055-operational-logging/BE-0055-operational-logging-ja.md) — 上記「構造化 JSON ログ」の可観測性行を実体化する運用ログを設計します。
+[BE-0055](../BE-0055-operational-logging/BE-0055-operational-logging-ja.md)。BE-0055 は、上記「構造化 JSON ログ」の可観測性行を実体化する運用ログを設計します。
