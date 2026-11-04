@@ -29,7 +29,7 @@ Closing this gap would remove an easy "Maestro can, Bajutsu can't" objection. Ma
 device-control vocabulary, and Bajutsu already matches it for most of BE-0035's primitives.
 
 Authoring effort is not what blocks this item. The block is the absence of a deterministic actuator
-that runs headlessly. A primitive that works with a GUI window open and a manually granted
+that runs headlessly. A primitive that only works with a GUI window open and a manually granted
 permission is a fundamentally different kind of primitive from the rest of the device-control
 surface. The rest runs against a plain `simctl boot`ed device with no GUI. Recording precisely what
 is missing keeps the door open for a future headless mechanism. It also avoids forcing an adoption

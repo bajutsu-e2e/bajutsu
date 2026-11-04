@@ -28,8 +28,8 @@ author or reviewer action. It covers two cases:
 The roadmap already groups every item under one of 23 topics
 ([`scripts/build_roadmap_index.py`](../../scripts/build_roadmap_index.py)'s `TOPICS`
 tuple — e.g. "Backend expansion (iOS actuators)", "Integration & automation",
-"Security hardening"). The index pages render items grouped by topic. But the grouping becomes
-visible when someone opens the item file and reads its metadata block, or after the next index
+"Security hardening"). The index pages render items grouped by topic. But the grouping only becomes
+visible once someone opens the item file and reads its metadata block, or after the next index
 regeneration. The GitHub PR list is where reviewers triage which items to look at. There, a PR
 carries no topic signal beyond its title.
 
