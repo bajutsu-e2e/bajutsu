@@ -16,13 +16,21 @@
 
 ## はじめに
 
-idb に次ぐ 2 つ目の actuator です。安定度順ラダーの上位として登録できるようにします（抽象は既に維持済み）。
+idb に次ぐ 2 つ目の actuator として、XCUITest を追加します。抽象はすでに維持されているので、レジストリは XCUITest を安定度順ラダーの最上位に置けます。
 
 ## 動機
 
-現状、iOS の actuator は idb のみで、idb は **frame 中心への座標 tap** で操作します。semantic tap を持たないので、run ループは `query()` で要素を一意化し、その中心を叩きます。ヘッドレス CI や一般的なケースにはこれで十分ですが、実際の穴が残ります。idb は `semanticTap` も、ネイティブの `conditionWait` も、`multiTouch` も提供しません（`docs/drivers.md`）。pinch や rotate のような 2 本指ジェスチャは `UnsupportedAction` を上げ、それらの操作は codegen → XCUITest を要すると注記されています。つまり、idb では今日まったく実行できないジェスチャがあり、しかもすべての tap が、識別子で要素を叩くより本質的に脆い座標往復を経由しています。
+現状、iOS の actuator は idb だけです。idb は、**frame 中心への座標 tap** で操作します。idb は semantic tap を持たないので、run ループは `query()` で要素を一意にし、その中心を叩きます。ヘッドレス CI と一般的なケースにはこれで足りますが、実際の穴が残ります。
 
-アーキテクチャはこれを既に想定しています。DESIGN §3 は idb の隣に「（将来）XCUITest backend（決定的コード生成）」を描き、DESIGN §5 はまさに 2 つ目の iOS actuator を差し込めるようドライバ抽象を backend 非依存に保ち、`bajutsu/backends.py` はその意図した順序をコメントで既に宣言しています: `"ios": ("idb",),  # later: ("xcuitest", "idb")`。本提案の狙いは、このプレースホルダを現実のものにすることです。安定度ラダーで idb の**上位**に座る本物の 2 つ目の actuator として XCUITest を追加し、idb にできない semantic な操作と多指ジェスチャを供給する一方、XCUITest が動かないヘッドレス環境では idb をフォールバックとして残します。
+idb は `semanticTap` も、ネイティブの `conditionWait` も、`multiTouch` も提供しません（`docs/drivers.md`）。pinch や rotate のような 2 本指のジェスチャは、`UnsupportedAction` を上げます。これらの操作は、codegen → XCUITest を要すると注記されています。そのため、idb ではまったく実行できないジェスチャがあります。すべての tap も座標の往復を経由し、識別子で要素を叩くより本質的に脆くなります。
+
+アーキテクチャは、2 つ目の actuator をすでに想定しています。
+
+- DESIGN §3 は、idb の隣に「（将来）XCUITest backend（決定的コード生成）」を描いています。
+- DESIGN §5 は、2 つ目の iOS actuator を差し込めるよう、ドライバ抽象を backend 非依存に保っています。
+- `bajutsu/backends.py` は、意図した順序をコメントで宣言しています。`"ios": ("idb",),  # later: ("xcuitest", "idb")` です。
+
+本提案は、このプレースホルダを現実にします。安定度ラダーで idb の**上位**に座る、本物の 2 つ目の actuator として、XCUITest を追加します。XCUITest は、idb にできない semantic な操作と多指ジェスチャを供給します。XCUITest が動かないヘッドレス環境のために、idb をフォールバックとして残します。
 
 ## 詳細設計
 

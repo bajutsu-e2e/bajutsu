@@ -16,13 +16,21 @@
 
 ## Introduction
 
-A second actuator after idb. Make it registerable at the top of the stability-order ladder (the abstraction is already maintained).
+XCUITest becomes a second actuator after idb. The registry can place it at the top of the stability-order ladder, because the abstraction is already maintained.
 
 ## Motivation
 
-idb is the only iOS actuator today, and it actuates by **frame-center coordinate taps**: it has no semantic tap, so the run loop resolves a unique element via `query()` and taps its centre. That is enough for headless CI and the common case, but it leaves real gaps. idb advertises no `semanticTap`, no native `conditionWait`, and no `multiTouch` (`docs/drivers.md`): two-finger gestures such as pinch and rotate raise `UnsupportedAction`, and those operations are noted as needing codegen → XCUITest. So there are gestures a scenario simply cannot run today on idb, and every tap goes through a coordinate round-trip that is inherently more fragile than tapping an element by its identifier.
+idb is the only iOS actuator today. It actuates by **frame-center coordinate taps**. idb has no semantic tap, so the run loop resolves a unique element through `query()` and taps its center. That is enough for headless CI and the common case, but it leaves real gaps.
 
-The architecture already anticipates this. DESIGN §3 draws "(future) XCUITest backend — deterministic code generation" beside idb, DESIGN §5 keeps the driver abstraction backend-independent specifically so a second iOS actuator can slot in, and `bajutsu/backends.py` already declares the intended ordering in a comment: `"ios": ("idb",),  # later: ("xcuitest", "idb")`. The point of this proposal is to realize that placeholder — add XCUITest as a genuine second actuator that sits **above** idb in the stability ladder, supplying semantic actuation and the multi-touch gestures idb cannot, while idb remains the fallback for headless environments where XCUITest cannot run.
+idb advertises no `semanticTap`, no native `conditionWait`, and no `multiTouch` (`docs/drivers.md`). Two-finger gestures such as pinch and rotate raise `UnsupportedAction`. Those operations are noted as needing codegen → XCUITest. Some gestures therefore cannot run on idb at all. Every tap also goes through a coordinate round-trip, which is inherently more fragile than tapping an element by its identifier.
+
+The architecture already anticipates a second actuator:
+
+- DESIGN §3 draws "(future) XCUITest backend — deterministic code generation" beside idb.
+- DESIGN §5 keeps the driver abstraction backend-independent, so that a second iOS actuator can slot in.
+- `bajutsu/backends.py` declares the intended ordering in a comment: `"ios": ("idb",),  # later: ("xcuitest", "idb")`.
+
+This proposal realizes that placeholder. It adds XCUITest as a genuine second actuator that sits **above** idb in the stability ladder. XCUITest supplies the semantic actuation and the multi-touch gestures that idb cannot. idb remains the fallback for headless environments where XCUITest cannot run.
 
 ## Detailed design
 

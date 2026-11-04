@@ -15,13 +15,22 @@
 
 ## はじめに
 
-現状 actuator は単一です。証跡取得のみを別 backend に転送することで能力差を吸収します（§9 で設計済み、未配線）。
+現状、run の actuator は単一です。証跡の取得だけを別の backend に回すことで、能力の差を吸収します。この振り分けは DESIGN §9 で設計済みですが、まだ配線されていません。
 
 ## 動機
 
-単一の backend があらゆる種類の証跡を提供することはまれです。たとえば idb はネイティブのネットワーク監視を持たず（`capabilities()` は `network` を返しません）、それを必要とする取得は別の場所から来なければなりません。DESIGN §9 はこれを既に設計しています。`backend` は順序付きリストで、**actuator**（最初に利用可能な backend）が操作と解決をすべて行い、それ以外の*あらゆる* backend は、actuator に欠ける能力を供給する **read-only な証跡フォールバック**として働けます。各アーティファクトはどの provider から来たかを記録するので、manifest は各証跡の出所について正直であり続けます。
+単一の backend が、あらゆる種類の証跡を提供することはまれです。たとえば idb は、ネイティブのネットワーク監視を持ちません（`capabilities()` は `network` を返しません）。ネットワーク監視を必要とする取得は、別の場所から来なければなりません。
 
-設計は存在しますが、配線されていません。`docs/drivers.md` ははっきりこう述べています。「現在の実行経路は単一 actuator を使い、マルチ backend 証跡フォールバックはまだ配線されていない」。そのため今日は、actuator が要求された取得を生み出せない場合、たとえ別の宣言済み backend が read-only で供給できたとしても、証跡は単に skip されます。iOS が 2 つ目の actuator（XCUITest、BE-0019）を得て、プロジェクトが他プラットフォームへ向かうにつれ、この穴は広がります。ある backend が持ち別の backend が欠く能力は、まさに §9 の意図どおり、黙って落とすのではなく抽象側で吸収すべきです。本提案は既存の設計を run ループに接続します。
+DESIGN §9 は、これをすでに設計しています。
+
+- `backend` は順序付きのリストです。
+- **actuator**（最初に利用可能な backend）が、操作と解決をすべて行います。
+- それ以外の*あらゆる* backend は、actuator に欠ける能力を供給する、**read-only の証跡フォールバック**として働けます。
+- 各アーティファクトは、どの provider から来たかを記録します。そのため manifest は、各証跡の出所について正直なままです。
+
+設計は存在しますが、配線されていません。`docs/drivers.md` ははっきり述べています。「現在の実行経路は単一 actuator を使い、マルチ backend 証跡フォールバックはまだ配線されていない」。そのため現状では、actuator が要求された取得を生み出せないと、証跡は単に skip されます。別の宣言済み backend が read-only で供給できる場合でも、skip されます。
+
+iOS が 2 つ目の actuator（XCUITest、BE-0019）を得て、プロジェクトが他のプラットフォームへ向かうにつれ、この穴は広がります。ある backend が持ち、別の backend が欠く能力は、黙って落とさず、抽象の側で吸収すべきです。これは §9 の意図どおりです。本提案は、既存の設計を run ループに接続します。
 
 ## 詳細設計
 
@@ -29,11 +38,28 @@
 
 ### 現状（前提）
 
-`backends.py:select_actuator()` は順序付きの `backend` リストを展開し、**最初に利用可能な** actuator を返します。それ以外のトークンはその後捨てられ、runner は 2 つ目の backend を生成しません。`capabilities_for(actuator)` は driver を構築せずに backend の*静的な*能力集合を返します（BE-0082 の preflight 用に追加されました）。これは gap 検出器が必要とする、まさにその部品です。`Capability.NETWORK` は**ネイティブ**観測を意味します。idb はこれを表明せず（アプリ側のコレクタ `BAJUTSU_COLLECTOR` → `NetworkCollector` で通信を取得します）、Playwright は表明します（`WebNetworkCollector`）。`evidence.py:Artifact` はすでに `provider` フィールドを持ち、`runner/pool.py:device_pool()` が唯一の継ぎ目です。ここで 1 つの actuator を選び、デバイスごとのコレクタを事前起動し、`driver` + `FileSink` + `collector` を各 `Lease` に束ねます。`pipeline.py:run_all` はシナリオごとにコレクタを `clear()` し、`_write_network`（provider は `"collector"` 固定）で `network.json` を書きます。
+`backends.py:select_actuator()` は、順序付きの `backend` リストを展開し、**最初に利用可能な** actuator を返します。それ以外のトークンは捨てられるので、runner は 2 つ目の backend を生成しません。
+
+`capabilities_for(actuator)` は、driver を構築せずに backend の*静的な*能力集合を返します。BE-0082 の preflight 用に追加されました。gap 検出器が必要とする、まさにその部品です。
+
+`Capability.NETWORK` は**ネイティブ**の観測を意味します。idb はこれを表明しません。idb は、アプリ側のコレクタ（`BAJUTSU_COLLECTOR` → `NetworkCollector`）で通信を取得するからです。Playwright は表明します（`WebNetworkCollector`）。
+
+`evidence.py:Artifact` は、すでに `provider` フィールドを持ちます。`runner/pool.py:device_pool()` が、唯一の継ぎ目です。ここで 1 つの actuator を選び、デバイスごとのコレクタを事前に起動し、`driver`、`FileSink`、`collector` を各 `Lease` に束ねます。`pipeline.py:run_all` は、シナリオごとにコレクタを `clear()` します。`network.json` は `_write_network` で書き、provider は `"collector"` に固定されています。
 
 ### 1 つのリストから 2 つの役割
 
-`select_actuator` は変えません。`evidence_backends(backends, actuator, available)` を足し、リスト順で*残りの*利用可能な backend のうち、**actuator と同じプラットフォームに属するもの**、すなわち read-only な証跡 provider を返します。**適格性は「同じ被テスト対象を観測する」こと**（下の決定 1）：provider が適格なのは、actuator のプラットフォームに属する actuator へ解決する場合だけです。判定は `backends.PLATFORMS`（BE-0042 が追加し [BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md) が土台にする、プラットフォーム → actuator のレジストリ）の逆引きで行います。同じプラットフォームの backend だけが同じ稼働中アプリを観測できるので、`[ios, web]` のような跨プラットフォームのリストでは、idb actuator に対して web provider は得られません。**能力 gap の検出**：各証跡の*種別*を、それをネイティブに供給する capability へ対応づけます（今は `network → Capability.NETWORK`）。gap 集合は、その capability を actuator の静的な `capabilities_for(actuator)` が欠く種別です。**ディスパッチ**：各 gap 種別について、`capabilities_for` がそれを表明する最初の適格な証跡 backend を選びます。能力ごとに 1 つの provider を、リスト順で割り当てます（`screenshot` / `elements` は常に actuator から、`video` / `deviceLog` / `appTrace` は backend 非依存の `simctl` 取得で、リストとは直交します）。gap 種別を供給できる backend が無ければ、**理由を記録して skip** します。なだらかな劣化であって、run の失敗にはしません。
+`select_actuator` は変えません。`evidence_backends(backends, actuator, available)` を足します。このリゾルバは、リスト順で*残りの*利用可能な backend のうち、**actuator と同じプラットフォームに属するもの**を返します。これらが read-only の証跡 provider です。
+
+**適格性は「同じ被テスト対象を観測する」こと**です（下の決定 1）。provider が適格なのは、actuator のプラットフォームに属する actuator へ解決される場合だけです。判定は、`backends.PLATFORMS` の逆引きで行います。`backends.PLATFORMS` は、BE-0042 が追加し、[BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md) が土台にする、プラットフォームから actuator へのレジストリです。同じ稼働中のアプリを観測できるのは、同じプラットフォームの backend だけです。そのため、`[ios, web]` のようなプラットフォームをまたぐリストでは、idb actuator に対して web provider は得られません。
+
+**能力 gap の検出**では、各証跡の*種別*を、それをネイティブに供給する capability に対応づけます（今は `network → Capability.NETWORK`）。gap 集合は、その capability を actuator の静的な `capabilities_for(actuator)` が欠く種別です。
+
+**ディスパッチ**では、各 gap 種別について、`capabilities_for` がそれを表明する最初の適格な証跡 backend を選びます。能力ごとに 1 つの provider を、リスト順で割り当てます。ディスパッチの対象外になるものが 2 つあります。
+
+- `screenshot` と `elements` は、常に actuator から取得します。
+- `video`、`deviceLog`、`appTrace` は、backend 非依存の `simctl` による取得で、リストとは直交します。
+
+gap 種別を供給できる backend がなければ、**理由を記録して skip** します。これはなだらかな劣化であり、run の失敗にはしません。
 
 現状は各プラットフォームに実装済みの actuator が 1 つだけなので（`ios → idb`、`web → playwright`）、同一プラットフォームのフィルタは、プラットフォームが 2 つ目の actuator を得るまで（iOS と XCUITest、[BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md)）本番では provider を 1 つも解決しません。これは現在の run を何も変えない安全な no-op です。したがって最初のスライスは、同一プラットフォーム扱いの network 対応 fake で検証します（後述）。
 
@@ -43,7 +69,13 @@
 
 ### ライフサイクル（コレクタの仕組みを再利用）
 
-並列・後始末・シナリオごとのスコープを無償で得るため、`pool.py` の既存のコレクタのライフサイクルをそのまま踏襲します。`select_actuator` のあとに gap 種別を求め、gap ごとに provider を解決します。プロセスレベルの provider は、既存の `NetworkCollector` のループと並べてデバイスごとに事前起動し、「失敗時には起動済みのものを止める」後始末も同じにし、その環境で provider を起動できなければ**理由を記録して劣化**させます。lease ごとに、provider の `Collector` を**既存の `lz.collector` スロット**へ渡します。こうすれば `request` アサーション、シナリオごとの `clear()`、`network.json` の書き出しは*まったく*変更が要りません。フォールバックは既存 Protocol（`network.py:Collector`）の背後のもう 1 つの `Collector` 実装にすぎません。協調はすでに解決済みです。コレクタはバックグラウンドスレッド / イベントフックで動き、スナップショットはメインスレッドで読み、`scenario_start`（launch 後に取る monotonic 値）が共有のタイムライン原点です。`shutdown()` / `lease.release()` は、今コレクタを止めているのと同じように provider を後始末します。
+並列実行、後始末、シナリオごとのスコープを無償で得るため、`pool.py` の既存のコレクタのライフサイクルをそのまま踏襲します。
+
+`select_actuator` のあとに gap 種別を求め、gap ごとに provider を解決します。プロセスレベルの provider は、既存の `NetworkCollector` のループと並べて、デバイスごとに事前に起動します。後始末も同じで、失敗時には起動済みの provider を止めます。その環境で provider を起動できなければ、**理由を記録して劣化**させます。
+
+lease ごとに、provider の `Collector` を**既存の `lz.collector` スロット**へ渡します。こうすれば、`request` アサーション、シナリオごとの `clear()`、`network.json` の書き出しは、*まったく*変更が要りません。フォールバックは、既存の Protocol（`network.py:Collector`）の背後にある、もう 1 つの `Collector` 実装にすぎません。
+
+協調はすでに解決済みです。コレクタはバックグラウンドスレッドまたはイベントフックで動き、メインスレッドがスナップショットを読みます。`scenario_start`（launch 後に取る monotonic 値）が、共有のタイムライン原点です。`shutdown()` と `lease.release()` は、現在コレクタを止めているのと同じ方法で provider を後始末します。
 
 ### 来歴（manifest を正直に保つ）
 

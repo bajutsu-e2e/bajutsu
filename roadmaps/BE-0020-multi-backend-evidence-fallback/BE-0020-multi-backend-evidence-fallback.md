@@ -15,13 +15,22 @@
 
 ## Introduction
 
-The actuator is currently single. Absorb capability gaps by routing only evidence capture to a different backend (designed in §9, not yet wired).
+The run currently has a single actuator. Capability gaps are absorbed by routing only evidence capture to a different backend. DESIGN §9 designs this routing, but it is not yet wired.
 
 ## Motivation
 
-A single backend rarely provides every kind of evidence. idb, for instance, has no native network monitoring (`capabilities()` returns no `network`), so a capture that needs it must come from somewhere else. DESIGN §9 already designs for this: `backend` is an ordered list, the **actuator** (the first available backend) performs all actuation and resolution, and every *other* backend may serve as a **read-only evidence fallback** that supplies a capability the actuator lacks. Each artifact records which provider it came from, so the manifest stays honest about where each piece of evidence originated.
+A single backend rarely provides every kind of evidence. For example, idb has no native network monitoring: `capabilities()` returns no `network`. A capture that needs network monitoring must come from somewhere else.
 
-The design exists but is not wired. `docs/drivers.md` states it plainly: "the current execution path uses a single actuator; multi-backend evidence fallback is not yet wired up." So today, if the actuator cannot produce a requested capture, the evidence is simply skipped — even when another declared backend could have supplied it read-only. As iOS gains a second actuator (XCUITest, BE-0019) and the project moves toward other platforms, the gap widens: capabilities that one backend has and another lacks should be absorbed on the abstraction side, exactly as §9 intends, rather than silently dropped. This proposal connects the existing design to the run loop.
+DESIGN §9 already designs for this:
+
+- `backend` is an ordered list.
+- The **actuator** (the first available backend) performs all actuation and resolution.
+- Every *other* backend may serve as a **read-only evidence fallback**, which supplies a capability that the actuator lacks.
+- Each artifact records which provider it came from, so the manifest stays honest about where each piece of evidence originated.
+
+The design exists but is not wired. `docs/drivers.md` states it plainly: "the current execution path uses a single actuator; multi-backend evidence fallback is not yet wired up." Today, if the actuator cannot produce a requested capture, the evidence is simply skipped. The skip happens even when another declared backend could have supplied it read-only.
+
+The gap widens as iOS gains a second actuator (XCUITest, BE-0019) and the project moves toward other platforms. The abstraction side should absorb capabilities that one backend has and another lacks, as §9 intends, instead of silently dropping them. This proposal connects the existing design to the run loop.
 
 ## Detailed design
 
@@ -29,11 +38,28 @@ The mechanism follows DESIGN §9 directly: actuation stays with one backend; evi
 
 ### Current state (grounding)
 
-`backends.py:select_actuator()` expands the ordered `backend` list and returns the **first available** actuator; every other token is then discarded — nothing in the runner instantiates a second backend. `capabilities_for(actuator)` already returns a backend's *static* capability set without constructing a driver (added for the BE-0082 preflight) — exactly the primitive a gap-detector needs. `Capability.NETWORK` means **native** observation: idb does not advertise it (it captures traffic via the app-side collector, `BAJUTSU_COLLECTOR` → `NetworkCollector`), while Playwright does (`WebNetworkCollector`). `evidence.py:Artifact` already carries a `provider` field, and `runner/pool.py:device_pool()` is the single seam — it selects the one actuator, pre-starts per-device collectors, and bundles `driver` + `FileSink` + `collector` into each `Lease`; `pipeline.py:run_all` clears the collector per scenario and writes `network.json` via `_write_network` (provider hard-coded `"collector"`).
+`backends.py:select_actuator()` expands the ordered `backend` list and returns the **first available** actuator. It then discards every other token, so nothing in the runner instantiates a second backend.
+
+`capabilities_for(actuator)` already returns a backend's *static* capability set without constructing a driver. BE-0082 added it for the preflight. It is exactly the primitive that a gap detector needs.
+
+`Capability.NETWORK` means **native** observation. idb does not advertise it, because idb captures traffic through the app-side collector (`BAJUTSU_COLLECTOR` → `NetworkCollector`). Playwright does advertise it (`WebNetworkCollector`).
+
+`evidence.py:Artifact` already carries a `provider` field. `runner/pool.py:device_pool()` is the single seam. It selects the one actuator, pre-starts per-device collectors, and bundles `driver`, `FileSink`, and `collector` into each `Lease`. `pipeline.py:run_all` clears the collector per scenario. It writes `network.json` through `_write_network`, with the provider hard-coded as `"collector"`.
 
 ### Two roles, derived from one list
 
-Keep `select_actuator` unchanged. Add a resolver `evidence_backends(backends, actuator, available)` that returns the *remaining* available backends in list order, **filtered to those on the actuator's own platform** — the read-only evidence providers. **Eligibility = same system under test** (decision 1 below): a provider is eligible only if it resolves to an actuator on the actuator's platform, found by reverse-lookup in `backends.PLATFORMS` (the platform→actuators registry that BE-0042 added and [BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md) builds on). Only a same-platform backend observes the same running app, so a cross-platform list like `[ios, web]` yields no web provider for an idb actuator. **Capability-gap detection**: map each evidence *kind* to the capability that supplies it natively (today `network → Capability.NETWORK`); the gap set is the kinds whose capability the actuator's static `capabilities_for(actuator)` lacks. **Dispatch**: for each gap kind, pick the first eligible evidence backend whose `capabilities_for` advertises it — one provider per capability, in list order. (`screenshot` / `elements` always come from the actuator; `video` / `deviceLog` / `appTrace` are backend-independent `simctl` captures, orthogonal to the list.) If no backend supplies a gap kind, it is **skipped with a recorded reason** — graceful degradation, never a run failure.
+Keep `select_actuator` unchanged. Add a resolver `evidence_backends(backends, actuator, available)`. It returns the *remaining* available backends in list order, **filtered to those on the actuator's own platform**. These are the read-only evidence providers.
+
+**Eligibility is "same system under test"** (decision 1 below). A provider is eligible only if it resolves to an actuator on the actuator's platform. The resolver finds that platform by reverse lookup in `backends.PLATFORMS`, the platform-to-actuators registry that BE-0042 added and [BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md) builds on. Only a same-platform backend observes the same running app. A cross-platform list such as `[ios, web]` therefore yields no web provider for an idb actuator.
+
+**Capability-gap detection** maps each evidence *kind* to the capability that supplies it natively (today `network → Capability.NETWORK`). The gap set holds the kinds whose capability the actuator's static `capabilities_for(actuator)` lacks.
+
+**Dispatch** picks, for each gap kind, the first eligible evidence backend whose `capabilities_for` advertises it. That assigns one provider per capability, in list order. Two cases fall outside dispatch:
+
+- `screenshot` and `elements` always come from the actuator.
+- `video`, `deviceLog`, and `appTrace` are backend-independent `simctl` captures, orthogonal to the list.
+
+If no backend supplies a gap kind, the capture is **skipped with a recorded reason**. This is graceful degradation and never a run failure.
 
 Because each platform has only one implemented actuator today (`ios → idb`, `web → playwright`), the same-platform filter resolves to *no* provider in production until a platform gains a second actuator (iOS + XCUITest, [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md)) — a safe no-op that changes nothing for current runs. The first slice is therefore exercised with a same-platform network-capable fake (below).
 
@@ -43,7 +69,13 @@ Rather than build the fallback's full `Driver` and trust callers not to actuate,
 
 ### Lifecycle (reuse the collector machinery)
 
-Mirror the existing collector lifecycle in `pool.py` so parallelism, teardown, and per-scenario scoping come for free. After `select_actuator`, compute the gap kinds and resolve a provider per gap; pre-start a process-level provider per device alongside the existing `NetworkCollector` loop, with the same "stop the already-started ones on failure" cleanup, and **degrade with a recorded reason** if a provider cannot launch in this environment. Per lease, hand the provider's `Collector` into the **existing `lz.collector` slot** — so `request` assertions, the per-scenario `clear()`, and `network.json` writing need *zero* changes; the fallback is just another `Collector` implementation behind the existing Protocol (`network.py:Collector`). Coordination is already solved: the collector runs on a background thread / event hooks, snapshots are read on the main thread, and `scenario_start` (monotonic, taken after launch) is the shared timeline origin. `shutdown()` / `lease.release()` tear the providers down exactly as they stop collectors today.
+Mirror the existing collector lifecycle in `pool.py`, so parallelism, teardown, and per-scenario scoping come for free.
+
+After `select_actuator`, compute the gap kinds and resolve a provider per gap. Pre-start a process-level provider per device alongside the existing `NetworkCollector` loop. Use the same cleanup, which stops the already-started providers on failure. If a provider cannot launch in this environment, **degrade with a recorded reason**.
+
+Per lease, hand the provider's `Collector` into the **existing `lz.collector` slot**. The `request` assertions, the per-scenario `clear()`, and the `network.json` writing then need *zero* changes. The fallback is just another `Collector` implementation behind the existing Protocol (`network.py:Collector`).
+
+Coordination is already solved. The collector runs on a background thread or event hooks, and the main thread reads snapshots. `scenario_start` (monotonic, taken after launch) is the shared timeline origin. `shutdown()` and `lease.release()` tear the providers down exactly as they stop collectors today.
 
 ### Provenance (keep the manifest honest)
 
