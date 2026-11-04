@@ -29,7 +29,7 @@ That gap causes three problems for the author of a web scenario:
 - **Entry points that are not links cannot be tested.** A password-reset link from an email, a shared-item URL, or a page reached by typing the address has no control to tap. The scenario cannot start from that entry point.
 - **Redirects cannot be exercised.** An old URL that should redirect needs a step that loads that URL. A protected URL that should send an anonymous visitor to sign-in needs the same step.
 
-The observable outcome is a shorter scenario. A scenario that spends five to ten steps tapping to a deep page can open the page with one `navigate` step. A scenario for a redirect or an email link becomes possible to write. The web demo scenarios will include one that opens a page by URL and asserts its content.
+The observable outcome has two parts. A scenario that spends five to ten steps tapping to a deep page can open the page with one `navigate` step, and a scenario for a redirect or an email link becomes possible to write at all. The web demo scenarios will include one that opens a page by URL and asserts its content.
 
 ## Detailed design
 

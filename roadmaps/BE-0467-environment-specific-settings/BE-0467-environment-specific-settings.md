@@ -257,14 +257,12 @@ Log:
   - A web target's own `app.launch.env` is not in effect either, since its schema keeps it for Playwright code generation. A scenario's `app.launch.env` still is. The showcase `web` target therefore declares `launchEnv` ignored for `cross_platform_app_web.yaml`.
 
   `record`, `crawl`, `repl`, and `doctor` report a refused setting as a clean error. Until unit 4 renders the ignored settings in the report, a launch logs each one as a warning.
-  as a warning. Documented `run.ignoredSettings` in `docs/configuration.md` and its Japanese mirror.
 
 - [#2254](https://github.com/bajutsu-e2e/bajutsu/pull/2254) — Unit 4. Added `IgnoredSetting` (target, key, reason) and `RunResult.ignored_settings`. The run records each declared target's ignored settings once the scenario launches, a crashed attempt included. The record is judged by the same `check_settings` the preflight ran. A scenario the preflight refuses records none, since no launch dropped anything.
 
   The manifest writes the list per scenario, and the loader reads it back. The HTML report lists it in the Environment panel. JUnit carries a `bajutsu.ignoredSettings` property whose value is a JSON array. CTRF puts it in the test's `extra` as `ignoredSettings`.
 
   One point departs from the design text: the manifest key is `ignored_settings`, not `ignoredSettings`. Every per-scenario manifest field, `skipped_captures` included, is the snake_case `asdict` name the loader reads back. The launch-time warning stays for a lease with no report, such as `record` or `crawl`. Documented the report fields in `docs/reporting.md` and `docs/configuration.md`, with their Japanese mirrors.
-  `docs/configuration.md`, with their Japanese mirrors.
 
 - [#2257](https://github.com/bajutsu-e2e/bajutsu/pull/2257) — Unit 5. Added the `video`, `deviceLog`, and `appTrace` capabilities and declared them per driver. The XCUITest backend records all three through simctl. The adb and Playwright backends record `video` and `deviceLog`. The live WebDriver driver records none. `capabilities_for_run` drops all three on a real iOS device, since simctl reaches the Simulator alone.
 
@@ -275,7 +273,6 @@ Log:
   - The `FileSink` never starts a kind the route cannot record. A real-device run therefore no longer points a simctl recorder at the device.
 
   The fake driver declares none of the three, since its environment records nothing. Documented the per-route table in `docs/evidence.md` and `docs/drivers.md`, with their Japanese mirrors.
-  their Japanese mirrors.
 
 - [#2260](https://github.com/bajutsu-e2e/bajutsu/pull/2260) — Units 6–10. `bajutsu lint --config <file> --target <name>` resolves each scenario's targets the way `run` does. Per target, on the expanded scenario with lifecycle hooks folded in, it runs the BE-0082 step check, the settings check, and `check_preconditions` (`bajutsu/common/target_lint.py`). `steps_for_target` moved from the pipeline to `capability_preflight` so both share it. A step finding carries its authored line, and the `use:` line for a step a component produced.
 

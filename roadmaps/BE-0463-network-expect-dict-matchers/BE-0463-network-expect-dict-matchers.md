@@ -90,7 +90,7 @@ A matcher value is one of four forms. The matcher compares it with the field at 
 | Plain map | `user: { id: "42" }` | The JSON value is an object, and each listed key holds recursively. Unlisted keys are ignored. |
 | List | `tags: [a, b]` | The JSON value is an array of the same length, and each element holds against the matcher at the same index. |
 
-The scalar comparison is the one `event.body` uses today. `amount: "300"` matches the JSON number `300`, and booleans and null read as `true`, `false`, and `null`. A matcher scalar must be a YAML string, as in `event.body` today. An unquoted number, boolean, or null (`qty: 1`) is a load-time validation error, so authors quote it (`qty: "1"`). The rule keeps a mistyped scalar from never matching without a sign. The `$exists` operator is the one place a boolean appears.
+The scalar comparison is the one `event.body` uses today. `amount: "300"` matches the JSON number `300`, and booleans and null read as `true`, `false`, and `null`. A matcher scalar must be a YAML string, as in `event.body` today. An unquoted number, boolean, or null (`qty: 1`) is a load-time validation error, so authors quote it (`qty: "1"`). Without the rule, a mistyped scalar would simply never match, and nothing would say why. The `$exists` operator is the one place a boolean appears.
 
 The two operators are:
 
