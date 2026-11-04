@@ -15,8 +15,9 @@
 
 ## はじめに
 
-ターゲットは、テストする対象を `app` というキーの下に書きます。iOS や Android のアプリには合う名前ですが、
-web のターゲットは `app: { url: https://example.com }` と書くことになり、サイトはアプリではありません。
+ターゲットは、テストする対象を `app` というキーの下に書きます。iOS や Android のアプリには合う名前です。
+しかし web のターゲットは `app: { url: https://example.com }` と書くことになり、サイトはアプリではありません。
+
 本項目は、ターゲットの config とシナリオの前提条件で、このグループを「テストの対象」を意味する
 `subject` に改名します。`targets.site.subject.url` も `targets.app-sim.subject.id` も、どちらの種類の
 ターゲットでも正しく読めるようになります。グループの中のフィールドは、名前も意味も変わりません。
@@ -34,8 +35,8 @@ iOS と Android では `id`、`path`、`build`、`reinstall`、`launch` を持�
 種類ではなく役割を表す名前なら、プラットフォームが増えても合い続けます。
 
 出荷後に確かめられる結果は具体的です。リポジトリのターゲットとシナリオは、グループのキーとして `app:` を
-書かなくなります。`bajutsu config schema` はどのプラットフォームでも `subject` を示し、旧キーの `app` は
-置き換え先のパスを示して読み込みに失敗します。
+書かなくなります。`bajutsu config schema` は、どのプラットフォームでも `subject` を示します。旧キーの
+`app` は、置き換え先のパスを示して読み込みに失敗します。
 
 ## 詳細設計
 
@@ -48,7 +49,7 @@ iOS と Android では `id`、`path`、`build`、`reinstall`、`launch` を持�
 | `preconditions.app`（`reinstall`、`launch.env`、`launch.args`、`launch.deeplink`） | `preconditions.subject` |
 
 グループの中のフィールドは、どれも名前と意味を保ちます。`subject.id` は引き続きバンドル ID か
-パッケージ名、`subject.url` は web のターゲットが開くページ、`subject.startWhen` は run が最初の
+パッケージ名です。`subject.url` は web のターゲットが開くページ、`subject.startWhen` は run が最初の
 ステップの前に待つ条件です。
 
 ```yaml
@@ -69,17 +70,17 @@ targets:
 
 | 対応表 | 変更 |
 |---|---|
-| `bajutsu/common/scenario/load.py` の `_PRECONDITION_MOVES` | BE-0452 より前に保存した平らなキーのために、各移動先を `app` から `subject` に移します。BE-0452 より後に保存した入れ子のグループのために、`app` から `subject` への段階も加え、保存済みのプランに限って適用します。 |
-| `bajutsu/common/scenario/models/scenario/preconditions.py` の `FLAT_PRECONDITION_KEYS` | 移行のエラーが示す移動先のパスを、それぞれ `subject` に移します。これにより、ローダーの受け付けないキーをメッセージが示すことはなくなります。 |
+| `bajutsu/common/scenario/load.py` の `_PRECONDITION_MOVES` | BE-0452 より前に保存した平らなキーのために、各移動先を `app` から `subject` に移します。BE-0452 より後に保存した入れ子のグループのために、`app` から `subject` への段階も加えます。この段階は、保存済みのプランに限って適用します。 |
+| `bajutsu/common/scenario/models/scenario/preconditions.py` の `FLAT_PRECONDITION_KEYS` | 移行のエラーが示す移動先のパスを、それぞれ `subject` に移します。これで、ローダーの受け付けないキーをメッセージが示すことはなくなります。 |
 
 ### 変更が入る場所
 
 - `bajutsu/common/config/schema/platform/registry.py` のプラットフォームの registry が、`Group`、
   `GROUPS`、`PlatformSchema` でグループを `subject` と名付けます。`TargetConfig`、`PlatformDefaults`、
-  `json_schema.py` の JSON Schema の生成もこれに従います。
+  `json_schema.py` の JSON Schema の生成も、これに従います。
 - シナリオの `Preconditions` モデルは、`app` フィールドを `subject` に改名します。
-- `bajutsu/serve/batch_provider/device_farm_batch_provider.py` の 2 つの読み手は、モデルを通さずに
-  グループを生の辞書として扱います。どのモデルも検出しないため、手で追随させます。
+- `bajutsu/serve/batch_provider/device_farm_batch_provider.py` の 2 つの読み手は、グループを生の辞書として
+  扱い、モデルを通しません。どのモデルも改名を検出しないため、手で追随させます。
   - 起動時の環境変数の衝突ガードは、`preconditions["app"]["launch"]["env"]` を読みます。
   - Device Farm 向けにまとめる config は、注入する環境変数を `targets.<name>.app.launch.env` に書きます。
 - `IosApp` や `AppCommon` のような内部のクラス名は、同じ変更で追随しても、後回しにしてもかまいません。
@@ -90,10 +91,11 @@ targets:
 
 ### ほかの `runsOn` の提案との関係
 
-本項目は、対になる提案「runsOn を実行先ごとにまとめ、シナリオの runsOn を廃止する」と
-「runsOn で iOS のデバイスファミリーと、デバイスやブラウザの種類の集合を指定できるようにする」から
-独立しています。触るグループが違い、照合の規則にも触れません。前者と同じリリースで入れれば、利用者に
-とって config の破壊的変更は 1 回の移行で済みます。
+本項目は、対になる 2 つの提案から独立しています。「runsOn を実行先ごとにまとめ、シナリオの runsOn を
+廃止する」と、「runsOn で iOS のデバイスファミリーと、デバイスやブラウザの種類の集合を指定できるように
+する」です。本項目は触るグループが違い、照合の規則にも触れません。
+
+前者と同じリリースで入れれば、利用者にとって config の破壊的変更は 1 回の移行で済みます。
 
 ### 原則との整合
 
@@ -103,15 +105,15 @@ run に LLM は入らず、振る舞いも変わりません。本項目は conf
 ### 対象外
 
 - シナリオの `app:` ステップブロックと `installApp` アクション。ここでの「app」はハイブリッドアプリの
-  ネイティブ側の文脈を指し、`web:` の文脈と対になるので、名前は正しいままです。
+  ネイティブ側の文脈を指し、`web:` の文脈と対になります。名前は正しいままです。
 - `platform` のキーとその値（`ios`、`android`、`web`、`fake`）。
 - config の作成者が目にしない、内部の `Effective` のフィールド名。
 
 ### 作業分解
 
-1. **スキーマ。** registry、`TargetConfig`、`PlatformDefaults`、シナリオの `Preconditions`、JSON Schema の出力で
-   グループを改名します。旧キーの `app` は新しいパスを示して失敗させ、保存済みのシナリオのプランでは
-   移します。
+1. **スキーマ。** registry、`TargetConfig`、`PlatformDefaults`、シナリオの `Preconditions`、
+   JSON Schema の出力でグループを改名します。旧キーの `app` は新しいパスを示して失敗させ、
+   保存済みのシナリオのプランでは移します。
 2. **config とシナリオ。** `demos/` の config、デモのシナリオ、テストのフィクスチャで `app` を
    `subject` に書き換えます。
 3. **ドキュメント。** 上記の日英ドキュメントを更新し、用語集に項目を加えます。
@@ -133,9 +135,11 @@ run に LLM は入らず、振る舞いも変わりません。本項目は conf
 
 `subject` にも、`testTarget` を退けた理由が弱い形で当てはまります。シナリオの `email.match` は、
 メールの件名を表す `subject` と `subjectMatches` をすでに受け取ります。そのため 1 つのシナリオのファイルに
-`preconditions.subject` と `email.match.subject` が並びえます。この衝突は受け入れます。
-2 つの用法は互いに無関係なブロックにあり、同じパスを共有しません。一方 `targets.site.testTarget` では、
-1 つのパスの中で同じ語が繰り返されます。用語集の `subject` の項目では、両方の意味を示します。
+`preconditions.subject` と `email.match.subject` が並びえます。
+
+この衝突は受け入れます。2 つの用法は互いに無関係なブロックにあり、同じパスを共有しません。
+一方 `targets.site.testTarget` では、1 つのパスの中で同じ語が繰り返されます。用語集の `subject` の項目では、
+両方の意味を示します。
 
 ## 進捗
 
@@ -149,11 +153,12 @@ run に LLM は入らず、振る舞いも変わりません。本項目は conf
 
 ログ：
 
-- [#2262](https://github.com/bajutsu-e2e/bajutsu/pull/2262) — 単位 1-3。本項目全体を実装しました。古い
-  `app` キーは、ターゲット、テンプレート、`defaults.platforms`、シナリオの `preconditions` のどこに
-  書いても読み込みに失敗し、`subject` を示します。設計に挙がっていなかった 2 か所も合わせて改めました。
-  テンプレート自身のキー検査と、テンプレートのパス付け替えの対象である `subject.path` です。実行時の
-  エラーメッセージのうち `app.url`、`app.id`、`app.path` を示していたものは、`subject` のパスを示します。
+- [#2262](https://github.com/bajutsu-e2e/bajutsu/pull/2262) ：単位 1-3。本項目全体を実装しました。
+  古い `app` キーは、ターゲット、テンプレート、`defaults.platforms`、シナリオの `preconditions` の
+  どこに書いても読み込みに失敗し、`subject` を示します。設計に挙がっていなかった 2 か所も、合わせて
+  改めました。テンプレート自身のキー検査と、テンプレートのパス付け替えの対象である `subject.path` です。
+  実行時のエラーメッセージのうち `app.url`、`app.id`、`app.path` を示していたものは、`subject` のパスを
+  示します。
 
 ## 参考
 

@@ -17,40 +17,48 @@
 
 A target's `runsOn` limits where the target can run. This item groups that limit by destination:
 `runsOn.ios`, `runsOn.android`, and `runsOn.browser`. The browser block already names its
-destination; the iOS and Android fields sit bare beside it today. The item also removes
-`preconditions.runsOn` from the scenario, because where a run can happen belongs to the target. A
-scenario's device state (`locale`, `seedPhotos`) moves to `preconditions.device.ios`. No field that
-moves changes meaning: every condition a target declares matches devices exactly as it does today,
-from its new path. A scenario's own conditions have no new path; the target a scenario names
+destination, while the iOS and Android fields sit bare beside it today.
+
+The item also removes `preconditions.runsOn` from the scenario, because where a run can happen
+belongs to the target. A scenario's device state (`locale`, `seedPhotos`) moves to
+`preconditions.device.ios`.
+
+No field that moves changes meaning. Every condition a target declares matches devices as it does
+today, from its new path. A scenario's own conditions have no new path. The target a scenario names
 declares them instead.
 
 ## Motivation
 
 The shape of `runsOn` is inconsistent. `runsOn.browser` names a browser explicitly, while
 `runsOn.model` implies a mobile device without saying which platform. A reader of `runsOn.os: "18"`
-must look at the target's `platform` to learn that the range means iOS. The gap grows with every
-field a platform adds, and the companion proposal *Let runsOn name an iOS device family and a set of device or browser kinds* adds two. Grouping by destination makes every field say what
-it limits: `runsOn.ios.os` reads as an iOS version, and `runsOn.browser.engine` as a browser.
+must look at the target's `platform` to learn that the range means iOS.
+
+The gap grows with every field a platform adds. The companion proposal *Let runsOn name an iOS
+device family and a set of device or browser kinds* adds two. Grouping by destination makes every
+field say what it limits. `runsOn.ios.os` reads as an iOS version, and `runsOn.browser.engine` as a
+browser.
 
 A scenario's `preconditions.runsOn` mixes two concerns. Where a run can happen is a property of the
 target, yet a scenario may override it field by field. The scenarios that use the block in this
-repository set no condition at all. Four demo scenarios set `locale` or `seedPhotos`, which are
-device state rather than a limit on where a run happens. An override also needs a cross-layer rule
-each time the target gains two fields that exclude each other, because a scenario's block folds in
-as flat conditions after the target's own validation. Removing the scenario's block leaves one
-place that says "where", and gives device state a block named for it.
+repository set no condition at all. Four demo scenarios set `locale` or `seedPhotos`. Both fields
+are device state rather than a limit on where a run happens.
 
-The outcome a reader can check after this ships is concrete. Every `runsOn` field in a config sits
-under the key of its destination, so `bajutsu config schema` shows each platform's limits in one
-block. No scenario in the repository carries `runsOn`, and an old spelling fails the load with the
-path that replaces it.
+An override also needs a cross-layer rule each time the target gains two fields that exclude each
+other. The reason is that a scenario's block folds in as flat conditions after the target's own
+validation. Removing the scenario's block leaves one place that says "where", and gives device
+state a block named for it.
+
+A reader can check the outcome after this ships. Every `runsOn` field in a config sits under the
+key of its destination. `bajutsu config schema` then shows each platform's limits in one block.
+No scenario in the repository carries `runsOn`. An old spelling fails the load with the path that
+replaces it.
 
 ## Detailed design
 
 ### The shape of `runsOn`
 
 Each target writes at most one destination block. Today the iOS, Android, and web platforms each
-allow exactly one destination, and `fake` allows none.
+allow one destination, and `fake` allows none.
 
 | Platform | Block | Fields |
 |---|---|---|
@@ -59,27 +67,33 @@ allow exactly one destination, and `fake` allows none.
 | web | `runsOn.browser` | `engine`, `version`, `emulate` |
 | fake | none | none |
 
-`platform` and `runsOn` say different things. `platform` names the kind of app under test, which
-decides how the app is given (`app.id` or `app.url`) and which driver runs it. `runsOn` limits
-where that app can run. The two coincide for every platform today, but they need not. A web app
-that runs in mobile Safari on an iOS Simulator has `platform: web` and an iOS destination, and a
-Flutter app would run on both iOS and Android. The loader therefore checks that the pair is an
-allowed one, not that the two names are equal. The three rows above that name a block are the
-allowed pairs; `fake` has no destination, so any destination key fails for a `fake` target. A
-`platform: ios` target with `runsOn.browser`, for example, fails and names the destinations that
-`ios` allows. A later proposal can widen a platform's destinations without reshaping `runsOn`. Team
-defaults stay under `defaults.platforms.<platform>.runsOn`, where BE-0452 put them, and each one
-now holds that platform's destination block.
+`platform` and `runsOn` say different things. `platform` names the kind of app under test. It
+decides how the config names the app (`app.id` or `app.url`) and which driver runs the app.
+`runsOn` limits where that app can run.
+
+The two coincide for every platform today, but they need not. A web app that runs in mobile Safari
+on an iOS Simulator has `platform: web` and an iOS destination. A Flutter app would run on both iOS
+and Android. The loader checks that the pair is an allowed one. It does not check that the two names are equal.
+
+The three rows above that name a block are the allowed pairs. `fake` has no destination, so any
+destination key fails for a `fake` target. A `platform: ios` target with `runsOn.browser` fails
+too, and the error names the destinations that `ios` allows. A later proposal can widen a
+platform's destinations without reshaping `runsOn`.
+
+Team defaults stay under `defaults.platforms.<platform>.runsOn`, where BE-0452 put them. Each
+default now holds that platform's destination block.
 
 [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure.md) rejected the
 platform name as a key at the target level. That alternative nested the same word twice, as in
-`targets.web.web:`, and its key stood in for `platform`. The key here sits one level down, inside
-`runsOn`, and names where the run happens, as `runsOn.browser` already does. It does not stand in
-for `platform`: the platform still decides the shape of `app` and `driver`.
+`targets.web.web:`, and its key stood in for `platform`.
+
+The key here sits one level down, inside `runsOn`. The key names where the run happens, as
+`runsOn.browser` already does. The key does not stand
+in for `platform`: the platform still decides the shape of `app` and `driver`.
 
 `locale` and `seedPhotos` move with the iOS fields for now. They are device state, not a limit on
 where a run happens. A separate proposal decides whether a target's device state leaves `runsOn`
-altogether; this item moves the scenario's device state alone.
+altogether. This item moves the scenario's device state alone.
 
 ### A scenario no longer declares `runsOn`
 
@@ -153,19 +167,19 @@ preconditions:
 - The scenario schema drops `preconditions.runsOn` and gains `preconditions.device.ios`.
 - `bajutsu config schema` emits the destination blocks.
 - [Configuration](../../docs/configuration.md#device-conditions-runson) and its `docs/ja/` mirror
-  take the new shape, the migration table, and the examples. [CLI](../../docs/cli.md) drops the
-  scenario's `runsOn` section, and [scenarios](../../docs/scenarios.md) drops the
-  `preconditions.runsOn` group from the scenario schema; both have `docs/ja/` mirrors that change
-  with them. [Architecture](../../docs/architecture.md) updates the `common/config/` row.
+  take the new shape, the migration table, and the examples.
+- [CLI](../../docs/cli.md) drops the scenario's `runsOn` section. [Scenarios](../../docs/scenarios.md)
+  drops the `preconditions.runsOn` group from the scenario schema. Both have `docs/ja/` mirrors that
+  change with them. [Architecture](../../docs/architecture.md) updates the `common/config/` row.
 - [run-loop](../../docs/run-loop.md) and `demos/showcase/SPEC.md` name
-  `preconditions.runsOn.ios.locale` or `seedPhotos` in prose and take the new path, as do
+  `preconditions.runsOn.ios.locale` or `seedPhotos` in prose, and take the new path. So do
   `docs/ja/run-loop.md`, `demos/showcase/SPEC.ja.md`, and
   `docs/specs/ios-home-screen-widget-feasibility.md`.
 
 ### Prime-directive compliance
 
 No LLM enters a run, and no condition changes how it matches. The item moves fields to new paths
-and removes an override, so every difference stays in config, now in one place per target.
+and removes an override. Every difference therefore stays in config, now in one place per target.
 
 ### Out of scope
 
@@ -179,17 +193,18 @@ and removes an override, so every difference stays in config, now in one place p
 
 ### Work breakdown
 
-1. **Destination blocks.** Wrap each platform's `runsOn` model in `ios`, `android`, or `browser`,
-   check that `platform` allows the key, take per-platform team defaults, move `emulate` under
-   `browser`, and fail each old key with its new path. Move the device-state and driving-mode skip
-   list of `unpack_conditions` (`bajutsu/common/devices/runs.py`) down a level with the fields.
-   Its Device Farm caller `_check_no_conditions`
-   (`bajutsu/serve/batch_provider/device_farm_batch_provider.py`) reads a raw `runsOn` block, so it
-   moves too. Rewrite the `demos/` configs and the test fixtures. Extend the JSON Schema output.
+1. **Destination blocks.** Wrap each platform's `runsOn` model in `ios`, `android`, or `browser`.
+   Check that `platform` allows the key, take per-platform team defaults, and move `emulate` under
+   `browser`. Fail each old key with its new path.
+   Move the device-state and driving-mode skip list of `unpack_conditions`
+   (`bajutsu/common/devices/runs.py`) down a level with the fields. Its Device Farm caller
+   `_check_no_conditions` (`bajutsu/serve/batch_provider/device_farm_batch_provider.py`) reads a raw
+   `runsOn` block, so it moves too. Rewrite the `demos/` configs and the test fixtures, and extend
+   the JSON Schema output.
 2. **Scenario block.** Remove `preconditions.runsOn`, add `preconditions.device.ios` for `locale`
    and `seedPhotos`, and fail the old block with the replacement for each field. Drop the scenario
-   merge from `effective_conditions` and the scenario branch of `_check_no_conditions`, and rewrite
-   the four demo scenarios that set device state.
+   merge from `effective_conditions` and the scenario branch of `_check_no_conditions`. Rewrite the
+   four demo scenarios that set device state.
 3. **Docs.** Update the bilingual docs and the prose pages named above with the new shape, the
    migration table, and the examples.
 
@@ -203,7 +218,7 @@ block's replace semantics.
 | Keep `runsOn` flat | `runsOn.model` implies a mobile device without naming its platform, while `runsOn.browser` names its destination. The shape grows less consistent with each new field. |
 | Key the web block `runsOn.web` | It names the platform rather than what runs the page. `runsOn.browser` already names the destination, and the iOS and Android keys follow it. |
 | Keep the scenario's `runsOn` and add cross-layer rules | Where a run can happen belongs to the target. The override needs a rule for each pair of exclusive fields, and the block's real uses in this repository were device state. |
-| Drop `platform` and infer it from the `runsOn` key | `platform` names the app under test and `runsOn` its destination, which can differ, as a web app in mobile Safari shows. Inferring would also make `runsOn` mandatory with exactly one key, an empty block just to say "any iOS device", and a key for the fake platform. |
+| Drop `platform` and infer it from the `runsOn` key | `platform` names the app under test and `runsOn` its destination, which can differ, as a web app in mobile Safari shows. Inferring would also make `runsOn` mandatory with exactly one key, an empty block merely to say "any iOS device", and a key for the fake platform. |
 | Accept the old spelling for a grace period | Two spellings would coexist in the loader, the JSON Schema, and the docs. A failing load that names the new key moves a config in one edit. |
 | Move the target's device state out of `runsOn` in the same item | The right home for device state is a separate decision, and folding it in would make this breaking change larger. The scenario's device state moves now because removing the scenario's block leaves it no place. |
 
@@ -222,13 +237,13 @@ block's replace semantics.
 - [#2235](https://github.com/bajutsu-e2e/bajutsu/pull/2235) (Units 1–3) — the whole item lands in one change.
   - Each platform's `runsOn` model is now a group with one field per allowed destination, built on a
     shared `RunsOnGroup` base. Its before-validator names the destination a flat key moved to, or
-    lists the destinations the platform allows, so the allowed-pair rule needs no platform table of
-    its own. `defaults.platforms.<platform>.runsOn` runs the same check.
+    lists the destinations the platform allows. The allowed-pair rule therefore needs no platform
+    table of its own. `defaults.platforms.<platform>.runsOn` runs the same check.
   - The internal condition keys (`model`, `os`, `avd`, `apiLevel`, `browser.engine`,
     `browser.version`) stay as they were, so run coordinates, labels, and flakiness keys are
     unchanged. Messages print the `runsOn` path through a new `condition_path` helper.
   - `preconditions.device.ios` replaces the scenario's `runsOn`. `effective_conditions` no longer
-    merges a scenario, and `runs_on_problems`, `scenario_conditions`, and `scenario_runs_on_schema`
+    merges a scenario. `runs_on_problems`, `scenario_conditions`, and `scenario_runs_on_schema`
     are gone with it. A stored run's `preconditions.runsOn` keeps its iOS device state under
     `device.ios` and drops its conditions on load.
   - Deviation: a `device.ios` block in a scenario that drives no iOS target has no effect, as a

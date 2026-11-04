@@ -20,7 +20,7 @@ A target in `bajutsu.config.yaml` groups its settings by purpose under eleven ke
 keys, `run`, holds six fields that share no purpose. Two of the six, `systemAlertHandling` and
 `tipKitHandling`, clear an interruption that surfaces at an unpredictable point in a run. A third
 key, `hooks.interrupts`, already exists for that purpose. A reader who wants to know how a target
-handles interruptions therefore has to read two groups, written in two different forms.
+handles interruptions has to read two groups, written in two different forms.
 
 This item removes `run` and gives each of its fields the group whose purpose it serves:
 
@@ -29,11 +29,16 @@ This item removes `run` and gives each of its fields the group whose purpose it 
 - `erase` becomes the strongest value of `app.reinstall`: `overwrite`, `clean`, or `erase`.
 - `network`, `visualCompare`, and `secrets` move into `evidence`.
 
-The item also settles three smaller points in the same file. A target-level `notify` stops
-overriding the top-level list, so the top-level list alone says where results go. The documented
-meaning of `services` widens to cover the mailbox it already holds. And the loader accepts top-level
-keys that start with `x-`, so a file can hold YAML anchors that targets share. Like BE-0452, the
-change drops backward compatibility: an old key fails to load and names its new location.
+The item also settles three smaller points in the same file:
+
+- A target-level `notify` stops overriding the top-level list, so the top-level list alone says where
+  results go.
+- The documented meaning of `services` widens to cover the mailbox it already holds.
+- The loader accepts top-level keys that start with `x-`, so a file can hold YAML anchors that
+  targets share.
+
+Like BE-0452, the change drops backward compatibility. An old key fails to load and names its new
+location.
 
 ## Motivation
 
@@ -49,35 +54,39 @@ The `run` group (`bajutsu/common/config/schema/run_policy.py`) collects six fiel
 BE-0452 regrouped the flat target keys by purpose, and `run` is the one group that kept a mixed
 list. The mixture costs readers in two places.
 
-First, interruption handling is split across two groups. `hooks.interrupts` lists entries that match
-a screen in the app's own accessibility tree and run steps to clear it, such as the Android
-"Application Not Responding" dialog the showcase dismisses. `run.systemAlertHandling` answers
-operating-system (OS) prompts, such as the notification permission request, by naming the prompt
-and the choice. `run.tipKitHandling` turns on a built-in guard for Apple's TipKit popovers. At
-runtime the three already travel together in `RunDefaults`
+First, interruption handling is split across two groups:
+
+- `hooks.interrupts` lists entries that match a screen in the app's own accessibility tree and run
+  steps to clear it, such as the Android "Application Not Responding" dialog the showcase dismisses.
+- `run.systemAlertHandling` answers operating-system (OS) prompts, such as the notification
+  permission request, by naming the prompt and the choice.
+- `run.tipKitHandling` turns on a built-in guard for Apple's TipKit popovers.
+
+At runtime the three already travel together in `RunDefaults`
 (`bajutsu/common/config/effective/run_defaults.py`). Only the config file keeps them apart. A
-reviewer who checks "what does this target dismiss on its own?" must read `hooks` and `run`, and
-must know that the two forms mean the same kind of thing.
+reviewer who asks "what does this target dismiss on its own?" must read `hooks` and `run`. The
+reviewer must also know that the two forms mean the same kind of thing.
 
-Second, a field outside its purpose creates a dependency across groups. `runsOn.seedPhotos` seeds
-the iOS photo library on the erase path alone, so the loader checks that an effective `run.erase`
-exists before any device work. Meanwhile the Android lifecycle already reads `erase` and
-`reinstall: clean` as one decision about what to wipe, and acts on them identically
-(`bajutsu/common/platform_lifecycle/environments/android/android_environment.py`). The schema
-spreads that one decision over `app.reinstall` and `run.erase`.
+Second, a field outside its purpose creates a dependency across groups. `runsOn.seedPhotos` seeds the
+iOS photo library on the erase path alone, so the loader checks that an effective `run.erase` exists
+before any device work. Meanwhile the Android lifecycle already reads `erase` and `reinstall: clean`
+as one decision about what to wipe, and acts on both identically
+(`bajutsu/common/platform_lifecycle/environments/android/android_environment.py`). The schema spreads
+that one decision over `app.reinstall` and `run.erase`.
 
-Two smaller inconsistencies sit in the same file. `notify` scopes a webhook to some targets in two
-ways: an endpoint's own `targets:` filter, and a target-level `notify` that replaces the top-level
-list. Both answer "which results go where", and neither tells the reader the other exists. And the
-`Services` docstring says `services` holds "the servers a run brings up", yet `services.mailbox` is
-an external inbox that the run polls and never starts.
+Two smaller inconsistencies sit in the same file. First, `notify` scopes a webhook to some targets in
+two ways: an endpoint's own `targets:` filter, and a target-level `notify` that replaces the top-level
+list. Both answer "which results go where", and neither tells the reader the other exists. Second,
+the `Services` docstring says `services` holds "the servers a run brings up", yet `services.mailbox`
+is an external inbox that the run polls and never starts.
 
 Finally, sibling targets repeat whole blocks. `demos/showcase/showcase.config.yaml` writes the same
 `driver.runner.testRunner` path six times and the same `app.launch.env` fourteen times.
-`defaults.platforms.<platform>` already removes most of that repetition, but the file does not use
-it. Variants of one app, such as `showcase-swiftui-noax`, repeat most of the `app` and `driver` blocks of the target they vary.
-YAML anchors would let them share the rest, yet the loader rejects any top-level key outside the
-schema. A file has nowhere to park the anchor.
+`defaults.platforms.<platform>` already removes most of that repetition, but the file does not use it.
+
+Variants of one app, such as `showcase-swiftui-noax`, repeat most of the `app` and `driver` blocks of
+the target they vary. YAML anchors would let the variants share the rest. The loader, however,
+rejects any top-level key outside the schema, so a file has nowhere to park the anchor.
 
 Once this item ships, a reader can check three outcomes:
 
@@ -91,8 +100,8 @@ Once this item ships, a reader can check three outcomes:
 
 ### Three kinds of interrupt entry
 
-An entry of `hooks.interrupts` takes one of three forms. The form is decided by the key the entry
-writes, so a reader never infers it from a value's type.
+An entry of `hooks.interrupts` takes one of three forms. The key the entry writes decides the form,
+so a reader never infers the form from a value's type.
 
 ```yaml
 hooks:
@@ -114,36 +123,38 @@ hooks:
 | System alert | `systemAlert`, `choice` | `pollInterval`, `frozenScreenTimeout` | `run.systemAlertHandling` |
 | TipKit | `tipKit` | none | `run.tipKitHandling` |
 
-`systemAlert` takes the `SystemAlertPrompt` names `systemAlertHandling.rules` already uses: `notifications`, `tracking`,
-`paste`, `savePassword`, and `localNetwork`. `choice` takes `grant`, `deny`, or a new value,
-`leave`. `leave` tells the guard to answer nothing for that prompt. The `handleSystemAlert`
-step shares the same `choice` vocabulary and rejects `leave` at load, since a step that taps no
-button has no meaning. `leave` replaces
-`systemAlertHandling: false`, which a scenario such as `paste_system_alert.yaml` writes today to
-prove that its own `handleSystemAlert` step does the work. `tipKit` takes `dismiss` or
-`leave`. A scenario writes `- tipKit: leave` to turn off a target's TipKit entry, since a tip is
-sometimes the subject of the scenario's own assertion.
+`systemAlert` takes the `SystemAlertPrompt` names that `systemAlertHandling.rules` already uses:
+`notifications`, `tracking`, `paste`, `savePassword`, and `localNetwork`. `choice` takes `grant`,
+`deny`, or a new value, `leave`. `leave` tells the guard to answer nothing for that prompt.
 
-An entry that mixes keys from two forms fails at load, and the error names both forms. The
-existing rules for an entry still hold: a target-level entry may not set `target`, and its steps may
-not use `group` or `setMocks`.
+The `handleSystemAlert` step shares the same `choice` vocabulary and rejects `leave` at load, since a
+step that taps no button has no meaning. `leave` replaces `systemAlertHandling: false`. A scenario
+such as `paste_system_alert.yaml` writes `false` today to prove that its own `handleSystemAlert` step
+does the work.
+
+`tipKit` takes `dismiss` or `leave`. A scenario writes `- tipKit: leave` to turn off a target's
+TipKit entry, since a tip is sometimes the subject of the scenario's own assertion.
+
+An entry that mixes keys from two forms fails at load, and the error names both forms. The existing
+rules for an entry still hold: a target-level entry may not set `target`, and its steps may not use
+`group` or `setMocks`.
 
 ### Tuning values on an entry
 
 The guard has two tuning values today. Each one moves onto the entry it serves.
 
 - `frozenScreenTimeout` arms only when a scenario declares an in-app prompt such as `savePassword`.
-  It is therefore accepted on a `systemAlert` entry whose prompt is answered in the app's own tree,
-  and rejected on any other entry. The value describes the app, such as an unlabelled loading screen
-  that outlasts the default. A scenario entry for the same prompt that omits the value therefore
-  inherits it from the target's entry.
+  The loader accepts it on a `systemAlert` entry whose prompt is answered in the app's own tree, and
+  rejects it on any other entry. The value describes the app, such as an unlabelled loading screen
+  that outlasts the default. A scenario entry for the same prompt that omits the value inherits it
+  from the target's entry.
 - `pollInterval` sets how often the guard checks SpringBoard while a wait is pending. Each
   scenario's guard has one poll, so the value resolves layer by layer, in today's order: the
   scenario, then `--alert-poll-interval`, then the target. The first layer that sets a value wins,
   so a scenario can still widen the interval above the target's. Within one layer, two entries may
-  set different values; the layer then takes the smallest. A shorter interval satisfies every entry
-  that asked for a longer one, so the smallest value never weakens another entry's request. The
-  built-in one second applies when no layer sets one.
+  set different values, and the layer then takes the smallest. A shorter interval satisfies every
+  entry that asked for a longer one, so the smallest value never weakens another entry's request.
+  The built-in one second applies when no layer sets a value.
 
 ### Layering between target, scenario, and command line
 
@@ -156,12 +167,15 @@ the two keys this item merges:
 | System alert | Per prompt: a scenario entry replaces the target entry's `choice` for the same prompt and inherits an omitted `frozenScreenTimeout` from it; `pollInterval` resolves by layer instead, as *Tuning values on an entry* describes; other prompts from both apply (BE-0401, BE-0406) |
 | TipKit | The scenario's entry (`dismiss` or `leave`), else the target's; absent from both means off |
 
-A scenario entry with `choice: leave` replaces the target's answer for that prompt, which is how a
-scenario turns off one inherited answer. A scenario that today writes `systemAlertHandling: false`
-to handle one prompt itself, such as `push.yaml`, writes `- systemAlert: notifications` with
-`choice: leave` instead. Unlike `false`, the entry names the prompt it leaves. A prompt the target
-adds later therefore still applies to that scenario. Two entries for the same prompt within one layer fail at
-load, as two `rules` for one prompt fail today.
+A scenario entry with `choice: leave` replaces the target's answer for that prompt. That is how a
+scenario turns off one inherited answer.
+
+A scenario such as `push.yaml` writes `systemAlertHandling: false` today to handle one prompt itself.
+It writes `- systemAlert: notifications` with `choice: leave` instead. Unlike `false`, the entry names
+the prompt it leaves, so a prompt the target adds later still applies to that scenario.
+
+Two entries for the same prompt within one layer fail at load, as two `rules` for one prompt fail
+today.
 
 The command-line flags keep their names and their place in the precedence.
 `--no-system-alert-handling` turns the guard off for every scenario. `--system-alert-handling` turns
@@ -186,12 +200,16 @@ run already starts in a fresh browser context. A scenario sets the same value th
 today.
 
 `--erase` makes the effective value `erase`. `--no-erase` lowers an effective `erase` to `clean`
-and leaves `overwrite` and `clean` alone. The ladder changes one behavior on purpose. Today `erase`
-and `reinstall` are independent, so a target with `run.erase: true` and `app.reinstall: overwrite`
-under `--no-erase` keeps the app's data. After this item, such a target can state `erase` alone,
-and `--no-erase` uninstalls the app. A scenario that wants to keep the data writes
-`preconditions.app.reinstall: overwrite` instead of relying on the flag. `runsOn.seedPhotos` now requires an effective
-`app.reinstall: erase`, and its error message names that key.
+and leaves `overwrite` and `clean` alone.
+
+The ladder changes one behavior on purpose. Today `erase` and `reinstall` are independent. A target
+with `run.erase: true` and `app.reinstall: overwrite` keeps the app's data under `--no-erase`. After
+this item, such a target can state `erase` alone, and `--no-erase` uninstalls the app. A scenario
+that wants to keep the data writes `preconditions.app.reinstall: overwrite` instead of relying on the
+flag.
+
+`runsOn.seedPhotos` now requires an effective `app.reinstall: erase`, and its error message names
+that key.
 
 ### Evidence gains three fields
 
@@ -219,23 +237,24 @@ drops `run` from both.
 | `preconditions.run.tipKitHandling: false` | `- tipKit: leave` in the scenario's own `interrupts` |
 | `preconditions.run.inheritSetup` | `preconditions.inheritSetup` |
 
-`inheritSetup` decides whether the targets' `hooks.setup` runs before this scenario. The flag
+`inheritSetup` decides whether the targets' `hooks.setup` runs before the scenario. The flag
 concerns the scenario's preconditions rather than a run policy, so it moves up one level.
 
 ### Notification scope
 
 A target-level `notify` goes away. The top-level `notify` list alone says where results go, and an
-endpoint's `targets:` filter limits it to some targets. A team that sent one target's results to
-its own channel writes that channel at the top level with `targets: [<name>]`. Excluding one target
-from a team-wide endpoint now means listing the other targets on that endpoint. The configs in this
-repository need no such exclusion today.
+endpoint's `targets:` filter limits an endpoint to some targets. A team that sent one target's results
+to its own channel writes that channel at the top level with `targets: [<name>]`.
+
+Excluding one target from a team-wide endpoint now means listing the other targets on that endpoint.
+The configs in this repository need no such exclusion today.
 
 ### The meaning of services
 
 The `Services` docstring and `docs/configuration.md` describe `services` as "the services a run
 depends on: the ones it starts and the ones it reaches". The keys stay where they are. The stale
-comment in `bajutsu/common/config/effective/effective.py` that still names `targets.<name>.mailbox`
-names `services.mailbox`.
+comment in `bajutsu/common/config/effective/effective.py` still names `targets.<name>.mailbox`, and
+it changes to name `services.mailbox`.
 
 ### Sharing values between targets
 
@@ -260,10 +279,10 @@ targets:
       idNamespaces: []
 ```
 
-YAML's `<<` merges one level deep. The anchor therefore sits at the level of the block that
-differs, here `app`, and not at the level of the whole target. `docs/configuration.md` states that
-limit next to the example. The `x-` prefix follows the extension-field convention of Docker
-Compose files, so a reader may already know it.
+YAML's `<<` merges one level deep. The anchor therefore sits at the level of the block that differs
+(here `app`), not at the level of the whole target. `docs/configuration.md` states that limit next to
+the example. The `x-` prefix follows the extension-field convention of Docker Compose files, so a
+reader may already know it.
 
 ### Where each old key goes
 
@@ -280,14 +299,14 @@ Compose files, so a reader may already know it.
 | `targets.<name>.notify` | top-level `notify` with `targets: [<name>]` |
 | scenario fields | see *A scenario's preconditions* |
 
-`TARGET_KEYS` drops `run` and, with unit 5, `notify`; `DEFAULTS_KEYS` drops `run`. A target
-accepts nine keys as a result. `PlatformDefaults` and
-the platform registry drop their `run` group, since iOS's `tipKitHandling` was its only field. The
-resolved `Effective` keeps `run_defaults` as an internal grouping, filled from the new locations.
+`TARGET_KEYS` drops `run` and, with unit 5, `notify`. `DEFAULTS_KEYS` drops `run`. A target accepts
+nine keys as a result. `PlatformDefaults` and the platform registry drop their `run` group, since
+iOS's `tipKitHandling` was its only field. The resolved `Effective` keeps `run_defaults` as an
+internal grouping, filled from the new locations.
 
 ### Prime-directive compliance
 
-- **AI never judges.** The change moves declarations; the guard's matching stays deterministic and
+- **AI never judges.** The change moves declarations. The guard's matching stays deterministic and
   model-free.
 - **Determinism first.** A system-alert entry still names the prompt it expects. An alert no entry
   identifies is still left alone rather than answered by a guessed button (BE-0406).
@@ -298,9 +317,10 @@ resolved `Effective` keeps `run_defaults` as an internal grouping, filled from t
 - **Writing both id spellings in a selector**, such as `id: [stable.row.1, stable_row_1]`. The
   dotted and underscore forms are a selector decision, not a config-structure one. BE-0221 chose the
   explicit candidate list over a driver-side rewrite, because a rewrite could conflate distinct ids
-  such as `a.b` and `a-b`. The gap that matters is verification: a scenario no Views target runs
-  carries underscore candidates nobody checks. A separate GitHub issue ([#2233](https://github.com/bajutsu-e2e/bajutsu/issues/2233)) tracks running `device.yaml`
-  on the Views lane and deleting the candidates no lane resolves.
+  such as `a.b` and `a-b`. The gap that matters is verification: a scenario that no Views target runs
+  carries underscore candidates that nobody checks. A separate GitHub issue
+  ([#2233](https://github.com/bajutsu-e2e/bajutsu/issues/2233)) tracks running `device.yaml` on the
+  Views lane and deleting the candidates that no lane resolves.
 - **An `extends:` key** for one target to inherit another; see *Alternatives considered*.
 - **Reading the old keys**, and a migration command.
 - **Renaming the command-line flags.**
@@ -312,8 +332,9 @@ resolved `Effective` keeps `run_defaults` as an internal grouping, filled from t
    `run_defaults` and the alert guard's config, keeping each flag's place in the precedence. Tests
    cover each form, each layering rule, the inheritance of an omitted tuning value, and the
    smallest value within one layer.
-2. **Reinstall ladder.** Add `erase` to `Reinstall` and to the scenario's own `PreconditionsApp.reinstall` literal, map `--erase` and `--no-erase`, move the
-   `seedPhotos` check, and update the iOS and Android lifecycles to read the one value.
+2. **Reinstall ladder.** Add `erase` to `Reinstall` and to the scenario's own
+   `PreconditionsApp.reinstall` literal. Map `--erase` and `--no-erase`, move the `seedPhotos` check,
+   and update the iOS and Android lifecycles to read the one value.
 3. **Evidence fields.** Add the three fields to `Evidence` and move the union and no-null paths in
    `_merge.py`.
 4. **Remove `run`.** Drop `RunPolicy`, `run_model`, the registry's `run` group, `PreconditionsRun`,
@@ -340,12 +361,12 @@ resolved `Effective` keeps `run_defaults` as an internal grouping, filled from t
 - **Keep the tuning values in one guard-wide block.** A `hooks.systemAlertGuard: { pollInterval,
   frozenScreenTimeout }` block would mirror the runtime, where both values are guard-wide. It would
   also bring back a second place to read. `frozenScreenTimeout` already serves one kind of prompt,
-  and the layer-then-smallest rule gives `pollInterval` one meaning, so the values sit on the
+  and the layer-then-smallest rule gives `pollInterval` one meaning. The values therefore sit on the
   entries.
 - **Add a whole-guard switch for one scenario.** A `- systemAlert: all` entry with `choice: leave`
   would keep the full power of today's `systemAlertHandling: false`. It would also add a special
   prompt name, and an entry that silences prompts the scenario never names. Leaving each prompt by
-  name keeps every answer a scenario turns off visible in the file, and the run-wide
+  name keeps every answer that a scenario turns off visible in the file. The run-wide
   `--no-system-alert-handling` remains for a whole run.
 - **Move `erase` into `runsOn`.** `erase` is device state, like `locale` and `seedPhotos`. But the
   scenario's `preconditions.runsOn` is keyed by platform, so a multi-platform scenario would repeat
@@ -356,12 +377,12 @@ resolved `Effective` keeps `run_defaults` as an internal grouping, filled from t
   exists because of masking, though, and `evidence.redact` already holds the masking rules beside
   it.
 - **Keep a target-level `notify` and drop the endpoint filter.** This would layer `notify` like the
-  other groups, with `defaults.notify` and a target override. The full set of sinks would then be
-  spread across every target. A team reads one list to answer "who hears about failures".
-- **Add an `extends:` key.** A target could inherit another target with a deep merge. This would
-  reach nested fields that YAML's one-level merge cannot. It would also add a tenth key back,
-  plus rules for cycles and chains. Should the showcase's variants still repeat nested blocks once
-  anchors are in use, this alternative becomes worth revisiting.
+  other groups, with `defaults.notify` and a target override. The full set of sinks would then spread
+  across every target. A team reads one list to answer "who hears about failures".
+- **Add an `extends:` key.** A target could inherit another target with a deep merge. The merge would
+  reach nested fields that YAML's one-level merge cannot. It would also add a tenth key back, plus
+  rules for cycles and chains. This alternative becomes worth revisiting if the showcase's variants
+  still repeat nested blocks once anchors are in use.
 
 ## Progress
 

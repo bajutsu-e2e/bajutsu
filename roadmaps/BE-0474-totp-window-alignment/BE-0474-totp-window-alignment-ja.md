@@ -30,14 +30,16 @@
 この時間は短くても、ゼロではありません。
 `totp` ステップが窓の最後の数秒に当たった実行は、期限切れとして拒否されるコードを送ります。
 同じシナリオを次に試すと、窓の別の位置から始まるため、通ることが多くなります。
-したがってこの失敗は断続的に起き、好きなときに再現することはできません。
+したがってこの失敗は断続的に起き、好きなときに再現できません。
 
 現在あるステップでは、シナリオの作者がこれを直せません。
 `sleep` ステップは固定秒数だけ止まり、上限は 30 秒で、長さを時計に応じて変えられません。
 窓の境界は実行のたびに動くため、固定の待ち時間では境界に合わせられません。
 
 検証できる成果は次のとおりです。
-コード入力の前に `totp: { …, minRemaining: 10 }` を置いたシナリオを、窓のどの位置から始めて実行しても、コードは 10 秒以上の有効期間を残して生成され、アプリへ届けるステップの時間をまかなえます。
+コード入力の前に `totp: { …, minRemaining: 10 }` を置いたシナリオを考えます。
+窓のどの位置から実行を始めても、コードは 10 秒以上の有効期間を残して生成されます。
+10 秒あれば、アプリへ届けるステップの時間をまかなえます。
 窓の端で失敗していたサインインが、最初の試行で通ります。
 ステップの待機には上限もあり、1 つの窓と 1 スライスを足した長さを超えません。
 
@@ -94,7 +96,7 @@ if remaining < minRemaining: 次の窓が始まるまで待つ
 そのため、Network Time Protocol（NTP）の補正で壁時計が動いても、待機は 1 つの窓と 1 スライスを超えません。
 
 ただし、壁時計が大きく動くと、待機のあとでも残り時間が `minRemaining` に届かないことがあります。
-壁時計が巻き戻ると、壁時計が `target` に達する前に単調時計の期限が来ます。
+壁時計が巻き戻ると、壁時計が `target` に達するより先に、単調時計の期限が来ます。
 壁時計が進むと、後の窓の終わり際に入ることがあります。
 そこで待機関数は、待機のあとに、壁時計が進んだ量と単調時計が進んだ量を比べます。
 両者の差が 1 スライスを超えていれば、壁時計が動いたと判断します。
@@ -124,8 +126,8 @@ manifest がこの欄を記録し、HTML レポートがステップの上に表
 - `wall` は `Callable[[], float]` で、デフォルト値は `time.time` です。テストは偽物を注入するため、実時間で 30 秒待たずに境界の計算を検証できます。`RealClock.now()` は単調時計であり（[`real_clock.py`](../../bajutsu/common/orchestrator/types/real_clock.py)）、窓の位相を与えられません。`Clock` が受け持つのはスリープだけです。
 - ハンドラは変更せず、待機のあとに `time.time()` からコードを計算します。
 
-[`actions/_registry.py`](../../bajutsu/common/orchestrator/actions/_registry.py) の `_step_label` が、ラベルに条件を表示します。ライブログで、見えている停止の理由が分かるようにするためです。
-ステップに `name` があれば、`sleep` の分岐と同じく、条件をその名前のあとに続けます。
+[`actions/_registry.py`](../../bajutsu/common/orchestrator/actions/_registry.py) の `_step_label` が、ラベルに条件を表示します。ライブログで、見えている停止の理由を読み取れるようにするためです。
+ステップに `name` があれば、`sleep` の分岐と同じく、その名前のあとに条件を続けます。
 名前のないステップは `totp (≥10s left)`、名前のあるステップは `Sign in code (totp ≥10s left)` と表示します。
 
 ### 基本原則との関係
@@ -137,7 +139,7 @@ manifest がこの欄を記録し、HTML レポートがステップの上に表
 ### 互換性
 
 デフォルトは「待たない」なので、既存のシナリオの動作もタイミングも変わりません。
-フィールドは省略可能であり、設定しないシナリオは従来と同一にダンプされます。
+フィールドは省略可能です。設定しないシナリオは、従来と同一にダンプされます。
 証跡のスナップショット（`redact_totp_secrets`）がマスクするのは `secret` だけで、影響を受けません。
 コード生成は `totp` にすでに `// TODO` を出しており（[`codegen/xcuitest.py:365`](../../bajutsu/codegen/xcuitest.py)）、変更は要りません。
 
@@ -149,11 +151,11 @@ manifest がこの欄を記録し、HTML レポートがステップの上に表
 
 ### 作業分解
 
-1. **モデルと検証。** `Totp` に `min_remaining`（別名 `minRemaining`）を足します。範囲の検査と分かりやすいエラーメッセージを付け、モデルから JSON スキーマを生成している場合はそれも更新します。
+1. **モデルと検証。** `Totp` に `min_remaining`（別名 `minRemaining`）を足します。範囲の検査と明確なエラーメッセージを付けます。モデルから JSON スキーマを生成している場合は、スキーマも更新します。
 2. **待機関数。** `_do_sleep` の隣に `_wait_for_totp_window` を足します。壁時計は差し替えられるようにします。テストでは、`minRemaining: 30`、起床の遅れ、待機中に壁時計が巻き戻る場合と進む場合、中断を扱います。壁時計が動いた 2 つの場合は、待機が上限の内側で終わり、警告が出ることを確かめます。`minRemaining: 30` と起床の遅れでは警告が出ないことを確かめます。中断では `RunCancelled` が送出されることを確かめます。
 3. **ループへの接続とラベル。** `_run_step_body` からハンドラの前に待機を呼び、`actions/_registry.py` の `_step_label` を拡張します。
-4. **ステップ結果の警告。** `StepOutcome.warnings` と、`_run_step_body` の出力引数 `warnings` を足し、ステップの実行側でリストを結果に写します。manifest に記録し、`bajutsu/common/report/manifest.py` の `SCHEMA_VERSION`（現在は 15）を上げます。古い実行のステップに `warnings` がなければ、その実行がこの欄より前のものだという注記を添えます。HTML レポートで表示します。警告のある成功したステップが、`ok` を真のまま保ち、`reason` が空であることをテストで確かめます。
-5. **ドキュメント。** [`docs/scenarios.md`](../../docs/scenarios.md)、[`docs/dsl-grammar.md`](../../docs/dsl-grammar.md)、`docs/ja/` の対応する文書を更新し、`totp` ステップを説明している [`docs/architecture.md`](../../docs/architecture.md) の箇所に短い補足を足します。
+4. **ステップ結果の警告。** `StepOutcome.warnings` と、`_run_step_body` の出力引数 `warnings` を足し、ステップの実行側でリストを結果に写します。manifest に記録し、`bajutsu/common/report/manifest.py` の `SCHEMA_VERSION`（現在は 15）を上げます。古い実行のステップに `warnings` がなければ、その実行がこの欄より前のものだという注記を添えます。HTML レポートにも表示します。警告のある成功したステップが、`ok` を真のまま保ち、`reason` が空であることをテストで確かめます。
+5. **ドキュメント。** [`docs/scenarios.md`](../../docs/scenarios.md)、[`docs/dsl-grammar.md`](../../docs/dsl-grammar.md)、`docs/ja/` の対応する文書を更新します。さらに、`totp` ステップを説明している [`docs/architecture.md`](../../docs/architecture.md) の箇所に、短い補足を足します。
 
 ## 検討した代替案
 
@@ -181,7 +183,7 @@ manifest がこの欄を記録し、HTML レポートがステップの上に表
 ログ：
 
 - 提案済み。実装はまだありません。
-- [#2245](https://github.com/bajutsu-e2e/bajutsu/pull/2245)：すべての単位を1つの変更で実装しました。`totp` ステップに strict な `minRemaining` を加え、run ループが handler の前に次のウィンドウまで待つようにしました。待機中に壁時計が飛んだときは、判定に影響しない新しいフィールド `StepOutcome.warnings` に記録します。manifest（`schemaVersion` 16）と HTML レポートもこのフィールドを扱います。ドキュメントは、作業分解が挙げたページに加えて `docs/reporting.md` も更新しました。
+- [#2245](https://github.com/bajutsu-e2e/bajutsu/pull/2245)：すべての単位を1つの変更で実装しました。`totp` ステップに strict な `minRemaining` を加え、実行ループがハンドラの前に次の窓まで待つようにしました。待機中に壁時計が動いたときは、証跡専用の新しい欄 `StepOutcome.warnings` に記録します。manifest（`schemaVersion` 16）と HTML レポートも、この欄を扱います。ドキュメントは、作業分解が挙げたページに加えて `docs/reporting.md` も更新しました。
 
 ## 参考
 

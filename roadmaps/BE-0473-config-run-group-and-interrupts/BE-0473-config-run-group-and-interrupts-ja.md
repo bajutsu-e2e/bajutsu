@@ -29,11 +29,13 @@
 - `erase` は、`app.reinstall` のもっとも強い値になります。値は `overwrite`、`clean`、`erase` の3段階です。
 - `network`、`visualCompare`、`secrets` は `evidence` へ移ります。
 
-同じファイルにある小さな論点も3つ片付けます。target 内の `notify` はトップレベルの一覧を上書きしなくなり、
-結果の送り先はトップレベルの一覧だけで決まります。`services` の説明は、すでに含んでいる受信箱まで
-覆うように広げます。さらに、ローダーは `x-` で始まるトップレベルのキーを受け付けるようにし、target 間で
-共有する YAML のアンカーを置けるようにします。BE-0452 と同じく、後方互換性は意図して捨てます。古いキーは
-読み込みで失敗し、新しい置き場所をエラーで示します。
+同じファイルにある小さな論点も3つ片付けます。
+
+1つ目は、target 内の `notify` がトップレベルの一覧を上書きしなくなることです。結果の送り先は、トップレベルの一覧だけで決まります。
+2つ目は、`services` の説明を、すでに含んでいる受信箱まで覆うように広げることです。
+3つ目は、ローダーが `x-` で始まるトップレベルのキーを受け付けることです。target 間で共有する YAML のアンカーを置けるようになります。
+
+BE-0452 と同じく、後方互換性は意図して捨てます。古いキーは読み込みで失敗し、新しい置き場所をエラーで示します。
 
 ## 動機
 
@@ -49,34 +51,38 @@
 BE-0452 は target のフラットなキーを用途別に組み直しましたが、`run` だけは用途の混ざった一覧のまま
 残りました。混在は、読み手に2つの負担を生んでいます。
 
-1つ目の負担は、割り込みの処理が2つのグループに分かれていることです。`hooks.interrupts` には、アプリ自身の
-アクセシビリティツリーにある画面を条件で捉え、ステップで片付けるエントリを並べます。showcase が閉じている
-Android の「アプリが応答しません」ダイアログが、その例です。`run.systemAlertHandling` は、通知の許可の
-ような OS のプロンプトに、プロンプトの名前と選択で答えます。`run.tipKitHandling`
-は、Apple の TipKit が出すポップオーバーを閉じる組み込みのガードを有効にします。実行時には、この3つは
-すでに `RunDefaults`（`bajutsu/common/config/effective/run_defaults.py`）で一緒に運ばれています。
+1つ目の負担は、割り込みの処理が2つのグループに分かれていることです。
+
+- `hooks.interrupts` には、アプリ自身のアクセシビリティツリーにある画面を条件で捉え、ステップで片付けるエントリを並べます。showcase が閉じている Android の「アプリが応答しません」ダイアログが、その例です。
+- `run.systemAlertHandling` は、通知の許可のような OS のプロンプトに、プロンプトの名前と選択で答えます。
+- `run.tipKitHandling` は、Apple の TipKit が出すポップオーバーを閉じる組み込みのガードを有効にします。
+
+実行時には、この3つはすでに `RunDefaults`（`bajutsu/common/config/effective/run_defaults.py`）で一緒に運ばれています。
 分かれているのは設定ファイルの上だけです。「この target は何を自動で閉じるのか」を確かめるレビュー担当者は、
-`hooks` と `run` の両方を読み、2つの書き方が同じ種類のものを指すと知っている必要があります。
+`hooks` と `run` の両方を読まなければなりません。さらに、2つの書き方が同じ種類のものを指すと知っている必要があります。
 
 2つ目の負担は、用途の外に置かれたフィールドがグループをまたぐ依存を生むことです。`runsOn.seedPhotos` は、
 端末を消去する経路でだけ iOS の写真ライブラリに画像を入れます。そのため、ローダーは端末を触る前に、
-有効な `run.erase` があるかを確かめます。一方、Android のライフサイクルは、`erase` と
-`reinstall: clean` をすでに何を消すかという1つの判断として読み、同じ処理をしています
-（`bajutsu/common/platform_lifecycle/environments/android/android_environment.py`）。スキーマは、その1つの
-判断を `app.reinstall` と `run.erase` に分けて置いています。
+有効な `run.erase` があるかを確かめます。
 
-同じファイルには、小さな不整合も2つあります。`notify` は、Webhook を一部の target に絞る方法を2通り
-持っています。送信先ごとの `targets:` による絞り込みと、トップレベルの一覧を置き換える target 内の `notify`
-です。どちらも「どの結果をどこへ送るか」に答えますが、もう一方の存在を読み手に知らせません。また、
-`Services` の docstring は `services` を「実行が立ち上げるサーバ」と説明しています。しかし
-`services.mailbox` は、実行が問い合わせるだけで起動はしない外部の受信箱です。
+一方、Android のライフサイクルは、`erase` と `reinstall: clean` を、何を消すかという1つの判断として読みます。
+2つに対して同じ処理もします（`bajutsu/common/platform_lifecycle/environments/android/android_environment.py`）。
+スキーマは、その1つの判断を `app.reinstall` と `run.erase` に分けて置いています。
+
+同じファイルには、小さな不整合も2つあります。1つ目は `notify` です。`notify` は、Webhook を一部の target に絞る方法を
+2通り持っています。送信先ごとの `targets:` による絞り込みと、トップレベルの一覧を置き換える target 内の `notify` です。
+どちらも「どの結果をどこへ送るか」に答えますが、もう一方の存在を読み手に知らせません。
+
+2つ目は `services` です。`Services` の docstring は `services` を「実行が立ち上げるサーバ」と説明しています。
+しかし `services.mailbox` は、実行が問い合わせるだけで起動はしない外部の受信箱です。
 
 最後に、兄弟の target がブロックをまるごと繰り返しています。`demos/showcase/showcase.config.yaml` は、
 `driver.runner.testRunner` の同じパスを6回書いています。同じ `app.launch.env` は14回です。
 `defaults.platforms.<platform>` を使えば繰り返しの大半は消せますが、このファイルは使っていません。
-`showcase-swiftui-noax` のような同じアプリの変種は、元の target の `app` と `driver` のブロックの大半を繰り返しています。YAML のアンカーを
-使えば残りを共有できますが、ローダーはスキーマにないトップレベルのキーをすべて弾きます。アンカーを置く場所が
-ファイルの中にありません。
+
+`showcase-swiftui-noax` のような同じアプリの変種は、元の target の `app` と `driver` のブロックの大半を繰り返しています。
+YAML のアンカーを使えば残りを共有できます。しかしローダーは、スキーマにないトップレベルのキーをすべて弾きます。
+アンカーを置く場所が、ファイルの中にありません。
 
 この項目が入ると、読み手は次の3つの結果を確かめられます。
 
@@ -116,9 +122,13 @@ hooks:
 `systemAlert` は、`systemAlertHandling.rules` がすでに使っている `SystemAlertPrompt` の名前を受け付けます。名前は
 `notifications`、`tracking`、`paste`、`savePassword`、`localNetwork` の5つです。`choice` は `grant`、
 `deny`、新しい値の `leave` のどれかをとります。`leave` は、そのプロンプトには何も答えないようガードに
-伝えます。能動的な `handleSystemAlert` ステップも同じ `choice` の語彙を共有しますが、`leave` は読み込みで
-弾きます。ボタンを押さないステップには意味がないからです。いま `paste_system_alert.yaml` のようなシナリオは `systemAlertHandling: false` と書き、
-自身の `handleSystemAlert` ステップが処理することを示しています。`leave` はこの書き方を置き換えます。
+伝えます。
+
+能動的な `handleSystemAlert` ステップも同じ `choice` の語彙を共有しますが、`leave` は読み込みで弾きます。
+ボタンを押さないステップには意味がないからです。`leave` は `systemAlertHandling: false` の書き方を置き換えます。
+いま `paste_system_alert.yaml` のようなシナリオは、自身の `handleSystemAlert` ステップが処理することを示すために、
+`false` と書いています。
+
 `tipKit` は `dismiss` か `leave` をとります。ヒントそのものをシナリオがアサーションで確かめる場合も
 あるので、シナリオは `- tipKit: leave` と書いて target の TipKit エントリを止められます。
 
@@ -154,11 +164,14 @@ hooks:
 | TipKit | シナリオのエントリ（`dismiss` か `leave`）を使い、なければ target のエントリを使います。どちらにもなければ無効です |
 
 シナリオが `choice: leave` のエントリを書くと、そのプロンプトの target の答えを置き換えます。
-シナリオは、この方法で継承した答えを1つずつ止められます。`push.yaml` のように、1つのプロンプトを自分で
-処理するために `systemAlertHandling: false` と書いているシナリオは、代わりに
-`- systemAlert: notifications` と `choice: leave` を書きます。`false` と違って、このエントリは止める
-プロンプトを名前で示します。そのため、target が後から加えたプロンプトは、そのシナリオにも適用されます。同じ層に同じプロンプトのエントリが2つあれば、
-読み込みで失敗します。いま同じプロンプトの `rules` が2つあると失敗するのと同じ扱いです。
+シナリオは、この方法で継承した答えを1つずつ止められます。
+
+`push.yaml` のように、1つのプロンプトを自分で処理するために `systemAlertHandling: false` と書いているシナリオは、
+代わりに `- systemAlert: notifications` と `choice: leave` を書きます。`false` と違って、このエントリは止める
+プロンプトを名前で示します。そのため、target が後から加えたプロンプトは、そのシナリオにも適用されます。
+
+同じ層に同じプロンプトのエントリが2つあれば、読み込みで失敗します。いま同じプロンプトの `rules` が2つあると
+失敗するのと同じ扱いです。
 
 コマンドラインのフラグは、名前も優先順位の中の位置も変えません。`--no-system-alert-handling` は、
 すべてのシナリオでガードを止めます。`--system-alert-handling` は、ガードを有効に戻します。
@@ -182,12 +195,14 @@ web には `reinstall` を置きません。シナリオは `preconditions.app.r
 target では、いまの `run.erase` と同じく、この値は効果を持ちません。
 
 `--erase` は、有効な値を `erase` にします。`--no-erase` は、有効な値が `erase` なら `clean` に下げ、
-`overwrite` と `clean` はそのままにします。この段階化は、挙動を1つ意図して変えます。いまの `erase` と
-`reinstall` は独立しているので、`run.erase: true` と `app.reinstall: overwrite` を持つ target に
-`--no-erase` を付けると、アプリのデータが残ります。この項目のあとは、そのような target は `erase` だけを
-書くことになり、`--no-erase` はアプリをアンインストールします。データを残したいシナリオは、フラグに頼らず
-`preconditions.app.reinstall: overwrite` を書きます。`runsOn.seedPhotos` は有効な `app.reinstall: erase` を
-求めるようになり、エラーの文面もこのキーを示します。
+`overwrite` と `clean` はそのままにします。
+
+この段階化は、挙動を1つ意図して変えます。いまの `erase` と `reinstall` は独立しています。
+`run.erase: true` と `app.reinstall: overwrite` を持つ target に `--no-erase` を付けると、アプリのデータが残ります。
+この項目のあとは、そのような target は `erase` だけを書くことになり、`--no-erase` はアプリをアンインストールします。
+データを残したいシナリオは、フラグに頼らず `preconditions.app.reinstall: overwrite` を書きます。
+
+`runsOn.seedPhotos` は有効な `app.reinstall: erase` を求めるようになり、エラーの文面もこのキーを示します。
 
 ### evidence に加わる3つのフィールド
 
@@ -215,16 +230,17 @@ target の `run` とともに、`preconditions.run` もなくなります。
 | `preconditions.run.tipKitHandling: false` | シナリオ自身の `interrupts` の `- tipKit: leave` |
 | `preconditions.run.inheritSetup` | `preconditions.inheritSetup` |
 
-`inheritSetup` は、このシナリオの前に target の `hooks.setup` を実行するかを決めます。このフラグは実行の
+`inheritSetup` は、シナリオの前に target の `hooks.setup` を実行するかを決めます。このフラグは実行の
 方針ではなくシナリオの前提条件に関わるので、1つうえの階層へ移します。
 
 ### 通知の範囲
 
 target 内の `notify` はなくなります。結果の送り先はトップレベルの `notify` の一覧だけで決まり、送信先ごとの
 `targets:` で一部の target に絞ります。ある target の結果を専用のチャンネルへ送っていたチームは、その
-チャンネルをトップレベルに書き、`targets: [<name>]` を添えます。チーム全体の送信先から1つの target だけを
-外すには、その送信先に他の target を列挙する必要があります。このリポジトリの設定には、いまそのような除外は
-ありません。
+チャンネルをトップレベルに書き、`targets: [<name>]` を添えます。
+
+チーム全体の送信先から1つの target だけを外すには、その送信先に他の target を列挙する必要があります。
+このリポジトリの設定には、いまそのような除外はありません。
 
 ### services の意味
 
@@ -295,8 +311,8 @@ iOS の `tipKitHandling` だけだったからです。解決後の `Effective` 
   区切りとアンダースコア区切りの扱いは、設定ファイルの構造ではなくセレクタの設計の問題です。BE-0221 は、
   ドライバ側の書き換えではなく明示的な候補の列挙を選びました。書き換えは `a.b` と `a-b` のような別々の ID を
   混同しうるからです。実害は検証の側にあります。Views の target が実行しないシナリオにも、誰も確かめていない
-  アンダースコア版の候補が残っています。`device.yaml` を Views のレーンで実行することと、どのレーンも解決
-  しない候補を消すことは、別の GitHub Issue（[#2233](https://github.com/bajutsu-e2e/bajutsu/issues/2233)）で扱います。
+  アンダースコア版の候補が残っています。別の GitHub Issue（[#2233](https://github.com/bajutsu-e2e/bajutsu/issues/2233)）が、
+  `device.yaml` を Views のレーンで実行することと、どのレーンも解決しない候補を消すことを扱います。
 - **target が別の target を継承する `extends:` キー。** 「検討した代替案」を参照してください。
 - **古いキーの読み込みと、移行用のコマンド。**
 - **コマンドラインのフラグの改名。**
@@ -307,8 +323,8 @@ iOS の `tipKitHandling` だけだったからです。解決後の `Effective` 
    調整値を加えます。形を混ぜたエントリは弾きます。重ね方は `run_defaults` とアラートガードの設定で解決し、
    各フラグの優先順位の位置を保ちます。テストは、各形、各重ね方の規則、書かなかった調整値の継承、1つの
    層の中での最小値を確かめます。
-2. **reinstall の段階。** `Reinstall` と、シナリオ側の `PreconditionsApp.reinstall` の Literal に `erase` を加え、`--erase` と `--no-erase` を対応づけます。
-   `seedPhotos` の検査を移し、iOS と Android のライフサイクルが1つの値を読むようにします。
+2. **reinstall の段階。** `Reinstall` と、シナリオ側の `PreconditionsApp.reinstall` の Literal に `erase` を加えます。
+   `--erase` と `--no-erase` を対応づけ、`seedPhotos` の検査を移し、iOS と Android のライフサイクルが1つの値を読むようにします。
 3. **evidence のフィールド。** `Evidence` に3つのフィールドを加え、`_merge.py` の和集合と null 禁止の
    パスを移します。
 4. **`run` の削除。** `RunPolicy`、`run_model`、レジストリの `run` グループ、`PreconditionsRun`、
