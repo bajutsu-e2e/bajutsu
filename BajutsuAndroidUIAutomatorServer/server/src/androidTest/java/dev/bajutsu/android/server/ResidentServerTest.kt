@@ -4,6 +4,7 @@ import android.app.UiAutomation
 import android.graphics.Rect
 import android.os.Bundle
 import android.os.SystemClock
+import android.util.Base64
 import android.util.Log
 import android.util.Xml
 import android.view.InputDevice
@@ -120,8 +121,8 @@ class ResidentServerTest {
             // landed", when in fact nothing was injected — while one before it is a peer that simply
             // went quiet, the ordinary end of a reused connection.
             val started = Started()
-            val target = try {
-                readRequestTarget(reader, started) ?: return
+            val request = try {
+                readRequest(reader, started) ?: return
             } catch (e: SocketTimeoutException) {
                 if (started.value) {
                     Log.w(TAG, "connection went quiet mid-request; nothing was served", e)
@@ -130,6 +131,7 @@ class ResidentServerTest {
                 }
                 return
             }
+            val target = request.target
             if (target.isEmpty()) {
                 // A request line that does not parse. With one connection per request this could
                 // only be a bad client; with the connection reused it is the signature of the two
@@ -141,6 +143,7 @@ class ResidentServerTest {
             when (target.substringBefore('?')) {
                 "/source" -> respondSource(out, device, readMark, target)
                 "/act" -> respondAct(out, device, readMark, target)
+                "/type" -> respondType(out, device, readMark, target, request.body)
                 "/clock" ->
                     respond(
                         out,
@@ -159,20 +162,21 @@ class ResidentServerTest {
         var value = false
     }
 
+    /** One parsed request: the target (path plus any query) and the body, empty when there is none. */
+    private class Request(val target: String, val body: String)
+
     /**
-     * The request target (path plus any query) after the method; null at end of input, empty if the
-     * request line does not parse.
+     * The next request; null at end of input, an empty target if the request line does not parse.
      *
-     * Also drains the request body, which only became load-bearing once the connection is reused:
-     * bytes left unread would be parsed as the *next* request on it, so a desynchronized connection
-     * would answer wrong rather than fail. Every request this server serves is body-less today, and
-     * `http.client` sends `Content-Length: 0` for them, so this drains nothing in practice — it is
-     * the invariant, not a workaround.
+     * Always consumes the whole body, which became load-bearing once the connection is reused: bytes
+     * left unread would be parsed as the *next* request on it, so a desynchronized connection would
+     * answer wrong rather than fail. Only `/type` reads what it holds. Nothing here logs the body or
+     * its length, because a typed value may be a secret.
      */
-    private fun readRequestTarget(reader: BufferedReader, started: Started): String? {
+    private fun readRequest(reader: BufferedReader, started: Started): Request? {
         val requestLine = reader.readLine() ?: return null
         started.value = true
-        val target = requestLine.split(' ').getOrNull(1) ?: return ""
+        val target = requestLine.split(' ').getOrNull(1) ?: return Request("", "")
         // Drain the remaining request headers so the client sees a clean, complete exchange.
         var contentLength = 0
         while (true) {
@@ -182,17 +186,21 @@ class ResidentServerTest {
                 contentLength = line.substringAfter(':').trim().toIntOrNull() ?: 0
             }
         }
-        if (contentLength > 0) {
-            Log.w(TAG, "request carried a $contentLength-byte body; draining it to keep the stream aligned")
-            var left = contentLength
-            val buffer = CharArray(DRAIN_CHUNK)
-            while (left > 0) {
-                val read = reader.read(buffer, 0, minOf(left, buffer.size))
-                if (read < 0) break
-                left -= String(buffer, 0, read).toByteArray(StandardCharsets.UTF_8).size
+        val body = StringBuilder()
+        var left = contentLength
+        val buffer = CharArray(DRAIN_CHUNK)
+        while (left > 0) {
+            val read = reader.read(buffer, 0, minOf(left, buffer.size))
+            // A peer gone mid-body: nothing was served, and a partial text must not reach `/type`.
+            if (read < 0) {
+                Log.w(TAG, "connection ended mid-body; nothing was served")
+                return null
             }
+            val chunk = String(buffer, 0, read)
+            body.append(chunk)
+            left -= chunk.toByteArray(StandardCharsets.UTF_8).size
         }
-        return target
+        return Request(target, body.toString())
     }
 
     /** One query parameter's decoded value, or null when the target does not carry it. */
@@ -294,6 +302,102 @@ class ResidentServerTest {
         }
         respondLanded(out, device, readMark, injectedAt, paramOf(target, "tree") != "0")
     }
+
+    /**
+     * Enter text into the field holding input focus, for what `adb shell input text` cannot carry.
+     *
+     * `input` maps each character to key events through the virtual keyboard's character map, which
+     * has no key for a non-ASCII character. `ACTION_SET_TEXT` hands the field its whole new value, so
+     * no key map is involved, and it needs no IME installed or switched — a device-wide setting a test
+     * tool should not touch. The action replaces the content where typing inserts, so the new value is
+     * built here from the field's current text and selection, then the caret is put back after the
+     * inserted text. It reaches the field directly and exercises no IME; that is the accepted limit.
+     *
+     * A password field is refused rather than attempted: its accessibility text is masked or absent, so
+     * nothing here can tell what the action would overwrite. So is a field without the action. Each
+     * refusal is a non-200 the host fails the step on, and no reply ever quotes the text.
+     */
+    private fun respondType(
+        out: OutputStream,
+        device: UiDevice,
+        readMark: ReadMark,
+        target: String,
+        encoded: String,
+    ) {
+        val text = try {
+            String(Base64.decode(encoded, Base64.NO_WRAP), StandardCharsets.UTF_8)
+        } catch (e: IllegalArgumentException) {
+            Log.w(TAG, "a /type body was not base64", e)
+            return respond(out, BAD_REQUEST, TEXT, "body is not base64\n".bytes())
+        }
+        // The new value is built from this read and replaces the whole field, so a read older than the
+        // previous step's text would erase that text. The host's `since` mark predates that step, so
+        // an event newer than it proves the app has started publishing the text; idle then lets the
+        // publishing finish, and the `refresh` in `awaitInputFocus` keeps a cached node from answering.
+        device.waitForIdle()
+        sinceOf(target)?.let {
+            readMark.awaitPostdate(it, POSTDATE_BUDGET_MS)
+            device.waitForIdle()
+        }
+        val field = awaitInputFocus()
+            ?: return respond(out, STALE_STATUS, TEXT, "no field holds input focus\n".bytes())
+        val refusal = when {
+            field.isPassword -> "the focused field is a password field\n"
+            !field.isEditable -> "the focused node (${field.className}) is not editable\n"
+            AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_TEXT !in field.actionList ->
+                "the focused field does not accept ACTION_SET_TEXT\n"
+            else -> null
+        }
+        if (refusal != null) return respond(out, UNPROCESSABLE_STATUS, TEXT, refusal.bytes())
+        // An empty field can report its hint as its text; that hint must not end up in the value.
+        val current = if (field.isShowingHintText) "" else field.text?.toString().orEmpty()
+        // -1 is the platform's "no selection known", so such a field appends.
+        val anchor = field.textSelectionStart.takeIf { it in 0..current.length } ?: current.length
+        val focus = field.textSelectionEnd.takeIf { it in 0..current.length } ?: anchor
+        val from = minOf(anchor, focus)
+        val updated = current.substring(0, from) + text + current.substring(maxOf(anchor, focus))
+        val set = field.performAction(
+            AccessibilityNodeInfo.ACTION_SET_TEXT,
+            Bundle().apply {
+                putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, updated)
+            },
+        )
+        if (!set) return respond(out, INJECT_FAILED_STATUS, TEXT, "ACTION_SET_TEXT was rejected\n".bytes())
+        val caret = from + text.length
+        // The action leaves the caret at the end, so only an insertion before the end needs moving it.
+        // The text is in by now, so a refused move is logged rather than reported as a failed entry.
+        if (caret != updated.length && !setCaret(field, caret)) {
+            Log.w(TAG, "the field refused ACTION_SET_SELECTION; its caret stays at the end")
+        }
+        respond(out, "200 OK", TEXT, "typed\n".bytes())
+    }
+
+    /**
+     * The freshly read node holding input focus, once it is editable; at the deadline, whatever holds
+     * focus by then, for the caller to refuse by name.
+     *
+     * Waiting for an editable node rather than any node: a tap's focus arrives after the tap, so until
+     * then the node holding focus can be the one from before it, which is not the field being typed in.
+     */
+    private fun awaitInputFocus(): AccessibilityNodeInfo? {
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        val deadline = SystemClock.uptimeMillis() + FOCUS_BUDGET_MS
+        while (true) {
+            val node = automation.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+            node?.refresh()
+            if (node?.isEditable == true || SystemClock.uptimeMillis() >= deadline) return node
+            SystemClock.sleep(FOCUS_POLL_MS)
+        }
+    }
+
+    private fun setCaret(field: AccessibilityNodeInfo, caret: Int): Boolean =
+        field.performAction(
+            AccessibilityNodeInfo.ACTION_SET_SELECTION,
+            Bundle().apply {
+                putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, caret)
+                putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, caret)
+            },
+        )
 
     /**
      * Answer a gesture that landed: its publish confirmation, and the caught-up tree when there is one.
@@ -774,7 +878,7 @@ class ResidentServerTest {
         // now scoped to tearing while the mark decides staleness.
         const val SETTLE_DUMPS = 4
 
-        // Read so a body can be drained off a reused connection; see `readRequestTarget`.
+        // Read so a body can be taken off a reused connection; see `readRequest`.
         const val CONTENT_LENGTH_HEADER = "content-length:"
         const val DRAIN_CHUNK = 4096
 
@@ -794,6 +898,14 @@ class ResidentServerTest {
         // this one gesture to the coordinate path without latching the channel — exactly right here,
         // since nothing was injected and a coordinate retry is not a second touch.
         const val INJECT_FAILED_STATUS = "500 Internal Server Error"
+
+        // The device understood a `/type` request and will not perform it on this field. Any non-200
+        // fails the step on the host, so the distinct status only keeps the wire honest.
+        const val UNPROCESSABLE_STATUS = "422 Unprocessable Entity"
+
+        // How long `/type` waits for input focus to arrive after the tap that asked for it.
+        const val FOCUS_BUDGET_MS = 2_000L
+        const val FOCUS_POLL_MS = 20L
 
         // The element identity the host addresses a gesture by, as (query parameter, XML attribute).
         // Four fields, none of them a coordinate: the host picks the element, and this names it again

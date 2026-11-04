@@ -365,7 +365,14 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
   declaring a fixed interval between them instead of leaving the gap to a round trip's incidental
   timing; see **On-device actuation fidelity** below for its coordinate fallback. `swipe` adds a
   finite duration so it is a real drag; `type_text` is `input text` (spaces sent as its `%s`
-  escape).
+  escape) for ASCII text. A literal `%s` splits between its two characters into separate calls, because
+  `input text` has no escape for its own escape. Non-ASCII text has no key in the command's character
+  map and crashes it, so that text goes to the resident server's `POST /type` instead, as a base64
+  body. The server
+  builds the new value from the focused field's text and selection, then applies it with
+  `ACTION_SET_TEXT`, so this route exercises no input method editor (IME). On that route, a password field,
+  a field without the action, no focused field, or no resident server fails the step and names the
+  reason. ASCII text reaches a password field through `input text` as usual.
 
 ### Waiting for the tree to catch up with a pan
 

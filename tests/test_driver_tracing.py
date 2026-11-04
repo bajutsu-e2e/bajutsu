@@ -259,6 +259,28 @@ def test_adb_wraps_pass_through_once_their_trace_closes() -> None:
     assert act_wrap(request).acted is True
 
 
+def test_adb_server_text_entry_records_its_transport_call_without_the_text() -> None:
+    # A typed value may be a secret, so the trace keeps the call's name and timing alone.
+    typed: list[str] = []
+    with tracing.open_trace() as ctx:
+        driver = AdbDriver(
+            "U", run=lambda _args: _DUMP, type_on_device=lambda t, _since: typed.append(t)
+        )
+        driver.type_text("秘密")
+    assert typed == ["秘密"]
+    record = next(r for r in ctx.records if r.category == "transport" and r.name == "type")
+    assert "秘密" not in repr(record)
+
+
+def test_traced_type_passes_through_once_the_trace_has_closed() -> None:
+    # The wrapper is chosen at construction and outlives the trace that chose it.
+    from bajutsu.common.drivers.adb.adb_driver import _traced_type
+
+    typed: list[str] = []
+    _traced_type(lambda t, _since: typed.append(t))("馬", None)
+    assert typed == ["馬"]
+
+
 def test_adb_run_text_runs_normally_with_no_trace_open(monkeypatch: Any) -> None:
     monkeypatch.setattr(
         "bajutsu.common.drivers.adb.adb_driver.subprocess.run", lambda *a, **k: None

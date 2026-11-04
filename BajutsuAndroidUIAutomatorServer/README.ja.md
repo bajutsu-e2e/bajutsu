@@ -28,9 +28,11 @@ UI Automator インストルメンテーションです。実行のあいだ `Ui
   ルメンテーションが終了させられるまで応答を続けます。これが `UiAutomation` セッションを温かいまま保ち
   ます。
 - 通信は、ループバック（ポート 6790）に束ねた素の `ServerSocket` の上に手書きした HTTP/1.1 です。HTTP
-  や JSON の依存はありません。サーバは一つの経路の一つのメソッドだけに答えます。
+  や JSON の依存はありません。サーバは少数の決まった経路だけに答えます。
 - `GET /source` は `UiDevice.dumpWindowHierarchy()` の XML を返します。これは bajutsu の
   `parse_hierarchy` がすでに解析している `AccessibilityNodeInfoDumper` の形式です。
+- `POST /type` は、`adb shell input text` で入力できない文字列を、入力フォーカスを持つ欄に入力します。
+  文字列は base64 のリクエスト本文で届き、サーバは `ACTION_SET_TEXT` で設定します。
 
 ウィンドウの差異が一つあり、Python 側で揃えます。`dumpWindowHierarchy()` はすべてのウィンドウをたどる
 ので、その XML にはプラットフォームの `uiautomator dump` が対象ウィンドウに絞って除く SystemUI の
