@@ -16,111 +16,45 @@
 
 ## Introduction
 
-Bajutsu answers an operating-system prompt that the application's own accessibility tree cannot see
-over two paths. A [scenario](../../docs/glossary.md#scenario-authoring) places a `handleSystemAlert`
-step at the one point where it expects a prompt, and that step taps a named button. Separately, a
-reactive guard configured by `systemAlertHandling` clears a prompt wherever one interrupts the run,
-tapping a button the scenario's policy names.
+We propose two changes to how Bajutsu answers an operating-system prompt that the application's own accessibility tree cannot see.
 
-We propose two changes to that pair. First, the `handleSystemAlert` step gains the guard it does not
-have today: its wait moves out of the XCUITest driver and into the orchestrator, so a declared alert
-interrupting the step is answered while the step is still waiting, rather than after it has already
-failed. Second, a scenario stops naming buttons and names prompts instead. `systemAlertHandling`
-drops `labels`, the ordered list of candidate button labels, and every path that matched against it
-is re-keyed to the `rules` a scenario writes — including the in-tree dismissal, the one path that can
-clear an alert living in the application's own process. Making the motivating case declarable means
-adding iOS's save-password alert to the prompt table, which is the first entry there not owned by
-SpringBoard.
+First, the `handleSystemAlert` step gains a guard. Its wait moves out of the XCUITest driver and into the orchestrator. A declared alert that interrupts the step is then answered while the step is still waiting, not after the step has already failed.
 
-One surface cannot be re-keyed the same way, and the reason is worth stating up front. XCUITest
-resolves an alert that interrupts one of its interactions *before* it synthesizes that interaction,
-and something always answers it: a monitor that declines — the only safe response to an alert no
-rule identifies, since claiming an interruption without clearing it gets the monitor re-invoked on
-every following interaction, which BE-0399 measured looping until the runner died — hands the alert
-to XCUITest's own default handler, which taps the alert's *default* button and clears it, exactly
-what happened before that monitor existed. Nothing in this proposal can stop that tap from landing.
-What it changes is whether it happens in silence: the interruption monitor now reports the buttons
-of any alert it declined, and the step or `expect` that saw one fails, naming them, rather than the
-run continuing as if nothing had answered on the scenario's behalf.
+Second, a scenario names prompts instead of buttons. `systemAlertHandling` drops `labels`, the ordered list of candidate button labels. Every path that matched against `labels` is re-keyed to the `rules` a scenario writes. That includes the in-tree dismissal, the one path that can clear an alert living in the application's own process. Making the motivating case declarable means adding iOS's save-password alert to the prompt table. It is the first entry there that SpringBoard does not own.
 
-Compatibility is deliberately not preserved. A scenario that still writes `labels` fails to load with
-an error naming `rules` as its replacement, which is the same treatment
-[BE-0401](../BE-0401-system-alert-handling-dsl-consolidation/BE-0401-system-alert-handling-dsl-consolidation.md)
-gave the keys it removed.
+Two paths answer such a prompt today. A [scenario](../../docs/glossary.md#scenario-authoring) places a `handleSystemAlert` step at the one point where it expects a prompt, and that step taps a named button. Separately, a reactive guard configured by `systemAlertHandling` clears a prompt wherever one interrupts the run. The guard taps a button that the scenario's policy names.
+
+One surface cannot be re-keyed the same way, for a reason worth stating up front. XCUITest resolves an alert that interrupts one of its interactions *before* it synthesizes that interaction, and something always answers it. A monitor that declines hands the alert to XCUITest's own default handler. That handler taps the alert's *default* button and clears it, exactly as happened before the monitor existed. Declining is the only safe response to an alert no rule identifies. Claiming an interruption without clearing it gets the monitor re-invoked on every following interaction, and BE-0399 measured that looping until the runner died.
+
+Nothing in this proposal can stop that tap from landing. The proposal changes whether the tap happens in silence. The interruption monitor now reports the buttons of any alert it declined. The step or `expect` that saw one fails, naming those buttons, instead of the run continuing as if nothing had answered on the scenario's behalf.
+
+Compatibility is deliberately not preserved. A scenario that still writes `labels` fails to load, with an error naming `rules` as its replacement. [BE-0401](../BE-0401-system-alert-handling-dsl-consolidation/BE-0401-system-alert-handling-dsl-consolidation.md) gave the keys it removed the same treatment.
 
 ## Motivation
 
-A `handleSystemAlert` step times out when iOS's save-password alert is on screen while the step
-waits. Measured against an application that signs in and then requests notification authorization,
-the step never sees the prompt it was placed for, spends its whole `timeout` polling, and fails with
-`no system alert appeared within <timeout>s`. Nothing in the run's output names the alert that was
-actually up, so the failure reads as a missing permission prompt rather than as an interruption.
+A `handleSystemAlert` step times out when iOS's save-password alert is on screen while the step waits. We measured this against an application that signs in and then requests notification authorization. The step never sees the prompt it was placed for and spends its whole `timeout` polling. It fails with `no system alert appeared within <timeout>s`. Nothing in the run's output names the alert that was actually up, so the failure reads as a missing permission prompt, not as an interruption.
 
-The cause is that the step's wait and the guard that could clear the interruption live on opposite
-sides of a call. `XcuitestDriver.handle_system_alert` polls `springboard.alerts` to its own deadline
-inside `bajutsu/drivers/xcuitest.py`, and the reactive guard is `_AlertGuardGate` in
-`bajutsu/orchestrator/waits.py`, an orchestrator-side object driven one poll at a time by the
-`wait` step. No thread runs the guard in the background, and `_run_step_body` in
-`bajutsu/orchestrator/loop.py` passes `alert_guard` through for `kind == "wait"` alone — its own
-docstring records that other step kinds ignore it. While the driver's loop is running, therefore, no
-guard can intervene. The end-of-step guard does fire on any failed step, `handleSystemAlert`
-included, but only once the step has already spent its full timeout and failed.
+The cause is that the step's wait and the guard that could clear the interruption live on opposite sides of a call. `XcuitestDriver.handle_system_alert` polls `springboard.alerts` to its own deadline inside `bajutsu/drivers/xcuitest.py`. The reactive guard is `_AlertGuardGate` in `bajutsu/orchestrator/waits.py`, an orchestrator-side object that the `wait` step drives one poll at a time. No thread runs the guard in the background. `_run_step_body` in `bajutsu/orchestrator/loop.py` passes `alert_guard` through for `kind == "wait"` alone, and its own docstring records that other step kinds ignore it. While the driver's loop runs, no guard can intervene. The end-of-step guard does fire on any failed step, `handleSystemAlert` included, but only after the step has spent its full timeout and failed.
 
-The save-password alert in particular is invisible to the query the step polls.
-[BE-0399](../BE-0399-ios-system-alert-interruption-policy/BE-0399-ios-system-alert-interruption-policy.md)
-measured where each prompt lives: the notification authorization request is a SpringBoard alert in
-another process, whereas iOS raises the save-password alert into the *application's own* process,
-where it reaches the application's own tree as identifier-less labelled buttons — `app.alerts` for a
-web form, and an `app.sheets` sheet for the application's own fields. The runner's
-`querySystemAlertButtons` reads `springboard.alerts.buttons` and nothing else, so the save-password
-alert reads as no alert at all. The step's poll therefore finds an empty button list for as long as
-the alert holds the screen, and — because the alert is modal over the application — the permission
-request the step was placed for is never raised either.
+The query the step polls cannot see the save-password alert. [BE-0399](../BE-0399-ios-system-alert-interruption-policy/BE-0399-ios-system-alert-interruption-policy.md) measured where each prompt lives. The notification authorization request is a SpringBoard alert in another process. iOS raises the save-password alert into the *application's own* process instead. There it reaches the application's own tree as identifier-less labelled buttons: `app.alerts` for a web form, and an `app.sheets` sheet for the application's own fields. The runner's `querySystemAlertButtons` reads `springboard.alerts.buttons` and nothing else, so the save-password alert reads as no alert at all. The step's poll finds an empty button list for as long as the alert holds the screen. Because the alert is modal over the application, the permission request the step was placed for is never raised either.
 
-Scenario authors work around the gap today by placing a `wait` step, the one step kind the guard is
-wired into. `demos/showcase/scenarios/save_password_browser.yaml` carries a
-`wait: { until: { gone: { label: "Not Now" … } } }` placed for no other purpose, and its comment
-explains which wait form stays correct whichever way the operating system's timing falls. The
-workaround demands that an author predict when iOS will interrupt, and it cannot be written at all
-when the interruption's timing is genuinely unknown.
+Scenario authors work around the gap today by placing a `wait` step, the one step kind the guard is wired into. `demos/showcase/scenarios/save_password_browser.yaml` carries a `wait: { until: { gone: { label: "Not Now" … } } }` placed for no other purpose. Its comment explains which wait form stays correct whichever way the operating system's timing falls. The workaround demands that an author predict when iOS will interrupt. It cannot be written at all when the interruption's timing is genuinely unknown.
 
-The second half of the problem is what a scenario is allowed to declare. `systemAlertHandling` takes
-`rules`, which names a prompt and a choice, and `labels`, an ordered list of candidate button labels
-consulted for whatever no rule identifies. A label names a button, not a prompt, so `labels` lets the
-guard tap a button on an alert no scenario ever described. BE-0399 recorded the danger directly:
-"Cancel" and "Close" are ordinary application vocabulary that a real screen can legitimately show, so
-it gated the in-tree dismissal on a scenario having declared `labels` of its own and kept that
-dismissal off the built-in defaults. The gate treats a scenario's `labels` as a proxy for author
-intent, but a proxy is all it is: the declaration still says which button text to accept, never which
-alert is expected.
+The second half of the problem is what a scenario may declare. `systemAlertHandling` takes two keys: `rules`, which names a prompt and a choice, and `labels`, an ordered list of candidate button labels consulted for whatever no rule identifies. A label names a button, not a prompt. So `labels` lets the guard tap a button on an alert no scenario ever described.
 
-Naming the prompt instead is not merely tidier, because the in-tree dismissal is where a declaration
-does the most work. `AlertGuardConfig.dismiss_from_tree_once` and `_AlertGuardGate._dismiss_from_tree`
-both match through `pick_alert_label(self.labels, …)` over the identifier-less labelled buttons in
-the poll's own tree, and they are the only mechanism in the codebase that can clear an alert
-`springboard.alerts` cannot see. Re-keying them to `rules` is what lets a scenario say *which* alert
-it expects the guard to clear, rather than which words it is willing to see tapped.
+BE-0399 recorded the danger directly: "Cancel" and "Close" are ordinary application vocabulary that a real screen can legitimately show. It therefore gated the in-tree dismissal on a scenario having declared `labels` of its own, and kept that dismissal off the built-in defaults. The gate treats a scenario's `labels` as a proxy for author intent. A proxy is all it is: the declaration says which button text to accept, never which alert is expected.
 
-One answer path cannot simply leave an unmatched alert alone, and today it does not fail on one
-either — it grants it. XCUITest resolves an interrupting alert before it synthesizes the interaction
-it interrupted, and the runner's interruption monitor answers that resolution one way or another:
-matching a rule and tapping it, or declining and handing the alert to XCUITest's own default
-handler, which taps whichever button that alert calls its default — the same silent grant this
-document opens with, for any alert `rules` does not name. `bajutsu/orchestrator/types.py`'s
-`DEFAULT_DISMISSIVE_LABELS`, pushed as the monitor's fallback candidates today, narrows how often an
-alert reaches that grant, by answering conservatively for whatever alert happens to offer one of its
-words — but it does not close the gap. An alert offering none of them is declined exactly as before, and
-Unit 2 traces exactly why that decline is unavoidable and, since BE-0399, deliberately safe.
+Naming the prompt instead is more than tidier, because the in-tree dismissal is where a declaration does the most work. `AlertGuardConfig.dismiss_from_tree_once` and `_AlertGuardGate._dismiss_from_tree` both match through `pick_alert_label(self.labels, …)` over the identifier-less labelled buttons in the poll's own tree. They are the only mechanism in the codebase that can clear an alert `springboard.alerts` cannot see. Re-keying them to `rules` lets a scenario say *which* alert it expects the guard to clear, not which words it is willing to see tapped.
 
-A later reader can tell whether this proposal arrived by running a showcase scenario that places a
-`handleSystemAlert` step for the notification prompt while the save-password alert holds the screen.
-That scenario fails today with the timeout quoted above, and passes afterwards with no `wait` step
-placed to cover the interruption. The migrated demos are the second observable difference: both answer the
-save prompt with a `savePassword` rule in place of `labels: ["Not Now"]`, and
-`save_password_browser.yaml` drops the `gone` wait it carries as a workaround. The third is a
-scenario that runs an ordinary `tap` while an alert no `rules` entry names interrupts it: today that
-step passes (or fails for an unrelated reason the alert's own default answer happened to cause), and
-after this proposal it fails by name, with the alert's buttons in the report.
+One answer path cannot simply leave an unmatched alert alone, and today it does not fail on one either: it grants it. XCUITest resolves an interrupting alert before it synthesizes the interaction it interrupted. The runner's interruption monitor answers that resolution in one of two ways. It matches a rule and taps it. Or it declines and hands the alert to XCUITest's own default handler, which taps whichever button that alert calls its default. The second way is the same silent grant this document opens with, for any alert `rules` does not name.
+
+`DEFAULT_DISMISSIVE_LABELS` in `bajutsu/orchestrator/types.py` is pushed as the monitor's fallback candidates today. It narrows how often an alert reaches that grant, by answering conservatively for any alert that offers one of its words. It does not close the gap. An alert offering none of those words is declined exactly as before. Unit 2 traces why that decline is unavoidable and, since BE-0399, deliberately safe.
+
+A later reader can tell whether this proposal arrived from three observable differences:
+
+- A showcase scenario places a `handleSystemAlert` step for the notification prompt while the save-password alert holds the screen. It fails today with the timeout quoted above. Afterwards it passes, with no `wait` step placed to cover the interruption.
+- The migrated demos answer the save prompt with a `savePassword` rule in place of `labels: ["Not Now"]`. `save_password_browser.yaml` also drops the `gone` wait it carries as a workaround.
+- A scenario runs an ordinary `tap` while an alert that no `rules` entry names interrupts it. Today that step passes, or fails for an unrelated reason the alert's own default answer happened to cause. After this proposal it fails by name, with the alert's buttons in the report.
 
 ## Detailed design
 

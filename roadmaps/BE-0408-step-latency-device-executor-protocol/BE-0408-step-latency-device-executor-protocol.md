@@ -16,138 +16,80 @@
 
 ## Introduction
 
-A performance investigation, recorded under [BE-0407](../BE-0407-step-latency-driver-internal-tuning/BE-0407-step-latency-driver-internal-tuning.md), which proposes driver-internal tuning,
-measured a real `tap` step against the 250–500 millisecond target
-Bajutsu sets for end-to-end step execution, evidence capture included. That item's
-reductions still leave iOS at roughly 0.3–0.6 seconds per step and Android at roughly 0.6–1.2
-seconds — short of the target, because every step still pays at least one host-device round trip for
-each condition it polls. Closing the remainder needs the condition itself evaluated on the device,
-not polled from the host. This item defines the protocol and selector semantics that make that
-possible: what moves to the device, what stays on the host, and how a selector resolves identically
-on both sides. It is the shared foundation two platform-specific items build on —
-[BE-0409](../BE-0409-step-latency-ios-device-executor/BE-0409-step-latency-ios-device-executor.md),
-an iOS executor inside the XCTest runner, and
-[BE-0410](../BE-0410-step-latency-android-device-executor/BE-0410-step-latency-android-device-executor.md),
-an Android executor inside the resident instrumentation server; neither platform implementation is
-in this item's scope.
+This item defines a protocol and selector semantics that move condition evaluation onto the device. They fix what moves to the device and what stays on the host. They also fix how a selector resolves identically on both sides. Two platform-specific items build on it: [BE-0409](../BE-0409-step-latency-ios-device-executor/BE-0409-step-latency-ios-device-executor.md), an iOS executor inside the XCTest runner, and [BE-0410](../BE-0410-step-latency-android-device-executor/BE-0410-step-latency-android-device-executor.md), an Android executor inside the resident instrumentation server. Neither platform implementation is in this item's scope.
+
+The need comes from a performance investigation recorded under [BE-0407](../BE-0407-step-latency-driver-internal-tuning/BE-0407-step-latency-driver-internal-tuning.md), which proposes driver-internal tuning. The investigation measured a real `tap` step. Bajutsu targets 250–500 milliseconds for end-to-end step execution, evidence capture included. BE-0407's reductions still leave iOS at roughly 0.3–0.6 seconds per step and Android at roughly 0.6–1.2 seconds. Both miss the target. Every step still pays at least one host-device round trip for each condition it polls. Closing the gap needs the condition evaluated on the device, not polled from the host.
 
 ## Motivation
 
-A `wait for` step polls the host every 50 milliseconds until its selector matches; a `wait until:
-settled` step polls similarly. Each poll is a full host-device round trip — on iOS, a fresh HTTP
-request into the XCTest runner; on Android, a request into the resident instrumentation server. No
-amount of driver-internal tuning removes this polling loop, because the condition being waited on can
-only be evaluated by reading the device, and today only the host does that reading. The same is true
-of a screen-closed `assert` (`exists`, `label`, `value`, `count`, `enabled`): evaluating it needs a
-device read the host currently owns.
+A `wait for` step polls the host every 50 milliseconds until its selector matches. A `wait until: settled` step polls similarly. Each poll is a full host-device round trip. On iOS, a poll is a fresh HTTP request into the XCTest runner. On Android, a poll is a request into the resident instrumentation server.
 
-Moving that evaluation onto the device removes the polling loop entirely — a condition-evaluating
-step becomes one round trip (send the condition, receive the result once satisfied) instead of many.
-This does not relax prime directive 1 ("AI is the author and the failure investigator, never the
-judge"): that directive says an AI must never decide pass/fail, not that the host process must be the
-one to evaluate a condition. A device-side executor that deterministically resolves a selector and
-evaluates a wait or an `assert` is exactly as deterministic as the host doing the same read today —
-the code that walks the accessibility tree does not become non-deterministic by running on-device
-instead of over HTTP. The verifiable outcome this item's protocol design should produce, once a
-platform implementation lands and exercises it: a `wait for` step's round-trip count drops from one
-per 50-millisecond poll to one per step, the same way [BE-0105](../BE-0105-xcuitest-single-snapshot-query/BE-0105-xcuitest-single-snapshot-query.md)
-collapsed a multi-round-trip element read into a single snapshot.
+Driver-internal tuning cannot remove this polling loop. Evaluating the awaited condition needs a device read, and today the host alone performs that read. A screen-closed `assert` (`exists`, `label`, `value`, `count`, `enabled`) has the same limit, because evaluating it needs the same host-owned device read.
+
+Moving that evaluation onto the device removes the polling loop entirely. A condition-evaluating step becomes one round trip instead of many: the host sends the condition and receives the result once it is satisfied.
+
+This move does not relax prime directive 1 ("AI is the author and the failure investigator, never the judge"). That directive forbids an AI from deciding pass/fail. It does not require the host process to evaluate a condition.
+
+A device-side executor resolves a selector and evaluates a wait or an `assert` deterministically. It is exactly as deterministic as the host doing the same read today. The code that walks the accessibility tree stays deterministic when it runs on-device instead of over HTTP.
+
+The verifiable outcome: once a platform implementation lands and exercises the protocol, a `wait for` step's round-trip count drops from one per 50-millisecond poll to one per step. [BE-0105](../BE-0105-xcuitest-single-snapshot-query/BE-0105-xcuitest-single-snapshot-query.md) did the same when it collapsed a multi-round-trip element read into a single snapshot.
 
 ## Detailed design
 
-**Implementation order.** This item is the second of four related items in a strict order: the
-driver-internal-tuning item ([BE-0407](../BE-0407-step-latency-driver-internal-tuning/BE-0407-step-latency-driver-internal-tuning.md)),
-then this item, then the iOS executor ([BE-0409](../BE-0409-step-latency-ios-device-executor/BE-0409-step-latency-ios-device-executor.md)),
-then the Android executor ([BE-0410](../BE-0410-step-latency-android-device-executor/BE-0410-step-latency-android-device-executor.md)).
-**Work on this item must not begin until BE-0407 is complete** — this
-item's design is meant to pick up from that item's shipped, measured baseline, and starting protocol
-design against a baseline that is still moving risks designing around numbers that change under it.
-Once this item ships, BE-0409 must not begin until this item is complete either, for the
-same reason: an executor built against a still-moving protocol design would need rework whenever the
-protocol changed under it.
+**Implementation order.** This item is the second of four related items, which proceed in a strict order:
+
+1. The driver-internal-tuning item ([BE-0407](../BE-0407-step-latency-driver-internal-tuning/BE-0407-step-latency-driver-internal-tuning.md)).
+2. This item.
+3. The iOS executor ([BE-0409](../BE-0409-step-latency-ios-device-executor/BE-0409-step-latency-ios-device-executor.md)).
+4. The Android executor ([BE-0410](../BE-0410-step-latency-android-device-executor/BE-0410-step-latency-android-device-executor.md)).
+
+**Work on this item must not begin until BE-0407 is complete.** This item's design picks up from BE-0407's shipped, measured baseline. A protocol designed against a moving baseline risks resting on numbers that change under it. For the same reason, BE-0409 must not begin until this item is complete. An executor built against a moving protocol design needs rework whenever the protocol changes.
 
 ### What moves, and what does not
 
-Python keeps three responsibilities no protocol change should move off the host:
+Python keeps three responsibilities that no protocol change should move off the host:
 
-- Expanding a scenario into the sequence of steps a device-side executor can run, since the scenario
-  format and its expansion rules stay host-owned.
-- Receiving whatever evidence the device returns — the resolved element tree, coordinates, a
-  screenshot, the timestamp a condition was satisfied at — and writing it into `manifest.json` and the
-  HTML report, unchanged from how evidence is written today.
-- Deciding pass/fail. A device-side evaluation result is an input the host re-checks against the same
-  deterministic rule the host already applies; the host, not the device, still renders the final
-  verdict.
+- Expanding a scenario into the steps a device-side executor can run. The scenario format and its expansion rules stay host-owned.
+- Receiving the evidence the device returns and writing it into `manifest.json` and the HTML report. The evidence is the resolved element tree, coordinates, a screenshot, and the timestamp a condition was satisfied at. Writing is unchanged from today.
+- Deciding pass/fail. A device-side evaluation result is an input. The host re-checks it against the same deterministic rule the host already applies, and still renders the final verdict.
 
-Selector resolution, `wait for`, `until: gone`, `until: settled`, a screen-closed `assert`
-(`exists`, `label`, `value`, `count`, `enabled`), and the four actuation kinds (`tap`, `type`,
-`swipe`, `scroll`) move to the device. An `assert` of `http`, `email`, `generate`, `visual`,
-`golden`, or `request` stays on the host — none of those reads the device under test at all.
+These move to the device:
+
+- Selector resolution.
+- `wait for`, `until: gone`, and `until: settled`.
+- A screen-closed `assert` (`exists`, `label`, `value`, `count`, `enabled`).
+- The four actuation kinds (`tap`, `type`, `swipe`, `scroll`).
+
+An `assert` of `http`, `email`, `generate`, `visual`, `golden`, or `request` stays on the host. None of those reads the device under test at all.
 
 ### Selector semantics as the shared contract
 
-`find_all` and `resolve_unique` in
-[`bajutsu/common/drivers/base/_functions.py`](../../bajutsu/common/drivers/base/_functions.py)
-are today's single definition of what a selector means: `within`, `idMatches`, `labelMatches`, the
-trait derivations, and — on Android — the derived-label fallback in
-[`drivers/adb/_functions.py`](../../bajutsu/common/drivers/adb/_functions.py). A device-side executor needs its own
-copy of this logic in Swift and Kotlin, and the two copies must resolve every selector to the same
-element the host's copy would, including failing the same way on an ambiguous match — a selector
-match is exactly the kind of deterministic judgment prime directive 1 requires, so a device-side and a
-host-side resolution disagreeing on it would be a determinism regression, not a performance one.
-[BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md)'s driver
-conformance suite is the existing tool for checking this: extending it to run the same selector
-fixtures against a device-side resolver, once one exists, is how a platform implementation proves
-equivalence rather than asserting it.
+Today, `find_all` and `resolve_unique` in [`bajutsu/common/drivers/base/_functions.py`](../../bajutsu/common/drivers/base/_functions.py) are the single definition of what a selector means. That definition covers `within`, `idMatches`, `labelMatches`, and the trait derivations. On Android, it also covers the derived-label fallback in [`drivers/adb/_functions.py`](../../bajutsu/common/drivers/adb/_functions.py).
+
+A device-side executor needs its own copy of this logic in Swift and Kotlin. Both copies must resolve every selector to the same element the host's copy would. Both must fail the same way on an ambiguous match. A selector match is the kind of deterministic judgment prime directive 1 requires. A disagreement between device-side and host-side resolution would be a determinism regression, not a performance one.
+
+The existing tool for checking this is the driver conformance suite of [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md). Once a device-side resolver exists, the suite can run the same selector fixtures against it. A platform implementation then proves equivalence rather than asserting it.
 
 ### Staged protocol rollout
 
-Each stage below is independently useful and removes one class of round trip, so a platform
-implementation can land them incrementally rather than as one large protocol change:
+Each stage below is independently useful and removes one class of round trip. A platform implementation can land the stages incrementally, not as one large protocol change:
 
-1. **`wait for` and `until: gone` move first.** A `POST /wait` request carries the selector and the
-   timeout; the device polls internally and returns once satisfied or timed out. This alone removes
-   every 50-millisecond host poll a wait step pays today.
-2. **`until: settled` moves next.** iOS receives the screen-transition signal
-   ([BE-0310](../BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness.md))
-   directly instead of the host relaying it; Android evaluates settle from its own accessibility
-   event stream, the same stream the resident server already listens to.
-3. **Screen-closed `assert` kinds move next**, evaluated against the device's own tree read rather
-   than one shipped back to the host first.
-4. **Steps bundle into one `POST /scenario` call.** Once individual step kinds resolve on-device, a
-   scenario segment can be sent as a sequence and executed without an intervening host round trip per
-   step — the point at which a step costs at most one round trip, matching this item's motivation.
+1. **`wait for` and `until: gone` move first.** A `POST /wait` request carries the selector and the timeout. The device polls internally and returns once the condition is satisfied or the wait times out. This stage alone removes every 50-millisecond host poll a wait step pays today.
+2. **`until: settled` moves next.** iOS receives the screen-transition signal ([BE-0310](../BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness.md)) directly instead of the host relaying it. Android evaluates settle from its own accessibility event stream, which the resident server already listens to.
+3. **Screen-closed `assert` kinds move next.** They are evaluated against the device's own tree read, not one shipped back to the host first.
+4. **Steps bundle into one `POST /scenario` call.** Once individual step kinds resolve on-device, a scenario segment can be sent as a sequence. It then executes without a host round trip per step. At that point a step costs at most one round trip, which matches this item's motivation.
 
 ### Not in this item's scope
 
-This item defines the protocol and the selector-semantics contract only. Building the two runtimes
-that implement it — the iOS executor inside the XCTest runner process and the Android executor inside
-the resident instrumentation server — is each its own separate, larger proposal, since each needs
-its own on-device design (event injection, accessibility tree access, screenshot capture) specific to
-its platform.
+This item defines the protocol and the selector-semantics contract alone. Two runtimes implement the protocol: the iOS executor inside the XCTest runner process and the Android executor inside the resident instrumentation server. Each is its own separate, larger proposal. Each needs an on-device design specific to its platform: event injection, accessibility tree access, and screenshot capture.
 
 ## Alternatives considered
 
-- **Build an in-app executor (inside BajutsuKit or the Android on-device SDK) instead of a
-  process-boundary one.** Rejected: an in-app executor cannot inject synthetic touch or keyboard
-  events, cannot read a frame-bearing accessibility tree, and cannot take a screenshot from inside the
-  app process — only the XCTest runner process and Android instrumentation can. It also cannot see
-  system surfaces (a permission dialog, the system keyboard, `SFSafariViewController` content) or
-  observe the app crashing, both of which need a process boundary the app itself is on the other side
-  of. An in-app SDK's role stays what it is today — an observation aid, like the screen-transition
-  signal — not an actuator.
-  App-agnosticism (prime directive 3) is a second, independent reason: an in-app executor would need
-  embedding into every application under test, and an application without that embedding would lose
-  on-device execution entirely. A process-boundary executor drives whatever app is under test, the
-  same way the existing XCTest runner and resident instrumentation server already do.
-- **Skip the protocol design and let each platform invent its own wire format.** Rejected: the two
-  platforms' selector semantics, wait kinds, and assert kinds are already unified at the `Driver`
-  protocol layer, and diverging that unification at the device-executor layer would reintroduce
-  per-platform special-casing this proposal exists to avoid.
-- **Fold this proposal into the two platform-specific executor items instead of keeping it
-  separate.** Rejected: the selector-semantics contract and the staged rollout order apply to both
-  platforms identically, and stating them once here, referenced by both platform items, avoids two
-  copies of the same design drifting apart.
+- **Build an in-app executor (inside BajutsuKit or the Android on-device SDK) instead of a process-boundary one.** Rejected, for two independent reasons.
+  - An in-app executor cannot inject synthetic touch or keyboard events, cannot read a frame-bearing accessibility tree, and cannot take a screenshot from inside the app process. Only the XCTest runner process and Android instrumentation can. An in-app executor also cannot see system surfaces (a permission dialog, the system keyboard, `SFSafariViewController` content) or observe the app crashing. Both need a process boundary that the app itself sits on the far side of. An in-app SDK's role stays what it is today, an observation aid like the screen-transition signal, not an actuator.
+  - App-agnosticism (prime directive 3) is the second reason. An in-app executor would need embedding into every application under test, and an application without that embedding would lose on-device execution entirely. A process-boundary executor drives whatever app is under test, the same way the existing XCTest runner and resident instrumentation server already do.
+- **Skip the protocol design and let each platform invent its own wire format.** Rejected: the `Driver` protocol layer already unifies the two platforms' selector semantics, wait kinds, and assert kinds. Diverging that unification at the device-executor layer would reintroduce the per-platform special-casing this proposal exists to avoid.
+- **Fold this proposal into the two platform-specific executor items instead of keeping it separate.** Rejected: the selector-semantics contract and the staged rollout order apply to both platforms identically. Stating them once here, referenced by both platform items, avoids two copies of the same design drifting apart.
 
 ## Progress
 
@@ -155,9 +97,7 @@ its platform.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-**Sequence status: BE-0407 completed** ([#1944](https://github.com/bajutsu-e2e/bajutsu/pull/1944)),
-unblocking this item (see *Implementation order* in *Detailed design*). Every box below is now
-checked.
+**Sequence status: BE-0407 completed** ([#1944](https://github.com/bajutsu-e2e/bajutsu/pull/1944)), which unblocked this item (see *Implementation order* in *Detailed design*). Every box below is now checked.
 
 - [x] Write the wire format for stage 1 (`POST /wait`) and agree it across both platform items before
   either begins implementing. Shipped as one OpenAPI 3.1 document,
@@ -193,20 +133,15 @@ checked.
 
 Log:
 
-- [#1949](https://github.com/bajutsu-e2e/bajutsu/pull/1949) — completes all five units. Shipped the
-  language-neutral selector-resolution fixtures (`tests/fixtures/be0408/`) and their replay test
-  against `find_all` / `resolve_unique` / `parse_hierarchy`; the *Porting contract for a
-  device-side resolver* section in `docs/selectors.md`; a draft shared OpenAPI 3.1 protocol
-  document (`protocol/device-executor.openapi.yaml` + `protocol/README.md`) covering stages 1–4,
-  with Android brought into the same JSON contract as iOS (org.json now, an
-  `openapi-generator`-Kotlin-models recommendation for BE-0410 to evaluate) and a `pollBudgetMs`
-  polling design in place of single-call cancellation; and its own conformance fixtures and test
-  (`tests/fixtures/be0408/protocol/`, `tests/test_be0408_protocol_fixtures.py`). Fixed the stale
-  `bajutsu/common/drivers/base.py` / `drivers/adb.py` citations throughout (packaged per-class
-  since BE-0411) and a self-contradictory checklist item. A three-round self-review pass against
-  the CI review contract found and fixed 25 issues before the gate ran, mostly in the draft
-  OpenAPI schema's own structural rigor (untyped fields accepting `null`, unenforced "exactly one
-  of" rules, an unvalidated bundle payload).
+- [#1949](https://github.com/bajutsu-e2e/bajutsu/pull/1949) completes all five units. It ships:
+  - the language-neutral selector-resolution fixtures (`tests/fixtures/be0408/`) and their replay test against `find_all` / `resolve_unique` / `parse_hierarchy`;
+  - the *Porting contract for a device-side resolver* section in `docs/selectors.md`;
+  - a draft shared OpenAPI 3.1 protocol document (`protocol/device-executor.openapi.yaml` + `protocol/README.md`) covering stages 1–4;
+  - the document's own conformance fixtures and test (`tests/fixtures/be0408/protocol/`, `tests/test_be0408_protocol_fixtures.py`).
+
+  The protocol document brings Android into the same JSON contract as iOS (org.json now, with an `openapi-generator`-Kotlin-models recommendation for BE-0410 to evaluate). It uses a `pollBudgetMs` polling design in place of single-call cancellation.
+
+  The PR also fixed the stale `bajutsu/common/drivers/base.py` / `drivers/adb.py` citations throughout (packaged per-class since BE-0411) and a self-contradictory checklist item. A three-round self-review pass against the CI review contract found and fixed 25 issues before the gate ran. Most concerned the draft OpenAPI schema's own structural rigor: untyped fields accepting `null`, unenforced "exactly one of" rules, and an unvalidated bundle payload.
 
 ## References
 
