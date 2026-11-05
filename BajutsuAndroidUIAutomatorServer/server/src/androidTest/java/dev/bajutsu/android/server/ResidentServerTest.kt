@@ -416,7 +416,8 @@ class ResidentServerTest {
             ?: return respond(out, STALE_STATUS, TEXT, "no field holds input focus\n".bytes())
         val refusal = when {
             field.isPassword -> "the focused field is a password field\n"
-            !field.isEditable -> "the focused node (${field.className}) is not editable\n"
+            !field.isEditable ->
+                "the focused node (${field.className} in ${field.packageName}) is not editable\n"
             AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_TEXT !in field.actionList ->
                 "the focused field does not accept ACTION_SET_TEXT\n"
             else -> null
@@ -458,9 +459,26 @@ class ResidentServerTest {
         while (true) {
             val node = automation.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
             node?.refresh()
-            if (node?.isEditable == true || SystemClock.uptimeMillis() >= deadline) return node
+            if (node?.isEditable == true) return node
+            focusInFocusedWindow(automation)?.let { return it }
+            if (SystemClock.uptimeMillis() >= deadline) return node
             SystemClock.sleep(FOCUS_POLL_MS)
         }
+    }
+
+    /**
+     * The editable node holding input focus in the window the platform says has input focus.
+     *
+     * `UiAutomation.findFocus` searches the *active* window, and that can differ from the focused one
+     * while the soft keyboard comes up: CI saw a `FrameLayout` answer for seconds after the keyboard
+     * had opened on the field. Only the focused window is asked, so a field left focused beneath a
+     * dialog is never typed into.
+     */
+    private fun focusInFocusedWindow(automation: UiAutomation): AccessibilityNodeInfo? {
+        val window = automation.windows.firstOrNull { it.isFocused } ?: return null
+        val node = window.root?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return null
+        node.refresh()
+        return node.takeIf { it.isEditable }
     }
 
     private fun setCaret(field: AccessibilityNodeInfo, caret: Int): Boolean =
