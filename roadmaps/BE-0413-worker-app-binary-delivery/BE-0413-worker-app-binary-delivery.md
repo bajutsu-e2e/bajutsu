@@ -92,7 +92,7 @@ Each case would defeat that isolation. The cache keeps an id as is when the id i
 
 The fetch runs on the run's own background thread, under the same heartbeat. It is the job's largest transfer. A fetch slower than the lease timeout would otherwise trip a reclaim that this worker would never notice. The worker would then run the job beside whichever worker won the re-lease.
 
-Observing that reclaim differs in time from acting on it. A flag checked once the fetch returns is what stops the run from starting. Without the flag, a fetch finishing right after the reclaim would still walk the run's own thread into installing the app and driving the device, beside the worker that won the re-lease. The run's *result* would then be discarded, too late to matter. Nothing has touched the device yet when the fetch returns, so returning at that point costs nothing.
+Observing a reclaim is not the same as acting on it in time. A flag checked once the fetch returns is what stops the run from starting. Without the flag, a fetch finishing right after the reclaim would still walk the run's own thread into installing the app and driving the device, beside the worker that won the re-lease. The run's *result* would then be discarded, too late to matter. Nothing has touched the device yet when the fetch returns, so returning at that point costs nothing.
 
 The worker hashes each part once the part lands, against the sha256 that the job named. A short body is not an error to `http.client`, so nothing else notices a truncated download. A truncated raw binary reaches no reader at all. Its corrupt tree then stays cached for every later job off that bundle.
 
