@@ -155,8 +155,8 @@ and after per-step timings are recorded on device.
 
    Fold in the other stray reads too. These are the `screen_size_from_elements(driver.query())`
    calls in [`gestures.py`](../../bajutsu/orchestrator/actions/handlers/gestures.py),
-   [`alerts.py`](../../bajutsu/alerts.py), and [`crawl.py`](../../bajutsu/crawl.py). Where a screen
-   extent can reuse an already-read tree, it does.
+   [`alerts.py`](../../bajutsu/alerts.py), and [`crawl.py`](../../bajutsu/crawl.py). Reuse the screen
+   extent from an already-read tree wherever one is available.
 
 4. **Replace per-dump startup with a resident UI Automator server (adb, the real fix).** Units 2–3
    cannot cross a floor: the ~2.4 s *per-invocation* cost of `uiautomator dump`. This unit removes

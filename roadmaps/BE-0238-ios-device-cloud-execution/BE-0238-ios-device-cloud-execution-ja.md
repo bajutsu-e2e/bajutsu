@@ -38,7 +38,7 @@ iOS は、クラウド対応に実際の新規コードが要る唯一のプラ�
   限られたシェルしか提供せず、任意のデーモンを常駐させません。
 
 AWS Device Farm も Firebase も、iOS のテストを物理デバイス上で XCTest により走らせます。Device Farm は、
-Appium の XCUITest ドライバでも走らせます。どちらも `idb` や `simctl` を記載していません。
+Appium の XCUITest ドライバでも走らせます。AWS Device Farm も Firebase も、`idb` や `simctl` を記載していません。
 
 前進の経路は、XCTest と Appium-XCUITest を話すことです。駆動の層は新しく作らず、**BE-0019 の XCUITest
 backend** を再利用します。
@@ -69,8 +69,8 @@ backend** を再利用します。
   - XCTest は、Appium の経路と同じようにはカスタマイズできません。
 - **live（遠隔デバイス、後続）。** クラウドが、予約済みの iOS デバイスに Appium / WebDriver の endpoint を
   露出する場合があります。その場合、クラウドを live の継ぎ目上の `DeviceProvider` としてモデル化します。
-  provider は、adb の serial の代わりに endpoint を渡します。endpoint は、Appium-XCUITest の経路で駆動
-  します。この経路は、foundation の継ぎ目をそのまま再利用します。
+  provider は、adb の serial の代わりに endpoint を渡します。その endpoint を、Appium-XCUITest の経路で
+  駆動します。この経路は、foundation の継ぎ目をそのまま再利用します。
 
 まとめとなる作業は、**XCUITest backend（BE-0019）を実機対応にする**ことです。今日の backend は、
 `xcodebuild` を通じて Simulator を対象にします。この項目は、target の選択を実機へ一般化します。まず
@@ -148,11 +148,10 @@ live の経路は、simctl の bring-up のフラグを何も honor しません
 
 後続は 3 つの slice に分けて着地します。いずれも WebDriver の境界で fake にします。
 
-- **slice A：セッションと最小の driver。** この slice は、次の 4 つを置きます。
+- **slice A：セッションと最小の driver。** この slice は、次の 3 つを置きます。
   - 自前の W3C クライアント（セッションの作成と削除）
   - live の driver の `query`、`tap`、`screenshot`、準備完了待ち
-  - `environment_for` のルーティング（セッションを開く）
-  - `xcodebuild` の省略
+  - `environment_for` のルーティング（セッションを開き、`xcodebuild` を飛ばす）
 
   この slice で、tap して assert する live の実行が、端から端まで通ります。
 - **slice B：入力とジェスチャ。** `swipe`、`scroll`、`type_text`、`delete_text`、`select_all`、

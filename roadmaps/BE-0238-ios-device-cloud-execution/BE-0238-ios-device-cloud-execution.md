@@ -38,7 +38,7 @@ confirmed here, so that nobody misdiagnoses it later:
   limited shell and do not host arbitrary daemons.
 
 AWS Device Farm and Firebase both run iOS tests on physical devices via XCTest. Device Farm also
-supports Appium's XCUITest driver. Neither documents `idb` or `simctl`.
+supports Appium's XCUITest driver. Neither Device Farm nor Firebase documents `idb` or `simctl`.
 
 The path forward is therefore to speak XCTest and Appium-XCUITest. The **BE-0019 XCUITest backend**
 serves as the driving layer, so no new driving layer is needed.
@@ -149,11 +149,10 @@ already skips them.
 
 The follow-on lands in three slices. Each slice is faked at the WebDriver boundary.
 
-- **Slice A: session and a minimal driver.** This slice adds four pieces:
+- **Slice A: session and a minimal driver.** This slice adds three pieces:
   - the in-house W3C client (create and delete session);
   - the live driver's `query`, `tap`, `screenshot`, and readiness wait;
-  - the `environment_for` routing that opens the session;
-  - the skip of `xcodebuild`.
+  - the `environment_for` routing that opens the session and skips `xcodebuild`.
 
   With the slice, a live run taps and asserts end to end.
 - **Slice B: input and gestures.** Map `swipe`, `scroll`, `type_text`, `delete_text`, `select_all`,

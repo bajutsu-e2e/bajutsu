@@ -155,8 +155,8 @@ Android の e2e レーン（[BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208
 
    単発の余計な読み取りも統合します。対象は、[`gestures.py`](../../bajutsu/orchestrator/actions/handlers/gestures.py)、
    [`alerts.py`](../../bajutsu/alerts.py)、[`crawl.py`](../../bajutsu/crawl.py) にある
-   `screen_size_from_elements(driver.query())` です。画面サイズを、すでに読んだツリーから再利用できる
-   ところは、再利用します。
+   `screen_size_from_elements(driver.query())` です。すでに読んだツリーがあれば、そこから画面サイズを
+   再利用します。
 
 4. **ダンプごとの起動を常駐 UI Automator サーバで置き換える（adb、本命）。** 作業単位 2〜3 が越え
    られない下限があります。`uiautomator dump` の**呼び出しごと**の約 2.4 秒です。この単位は、その
