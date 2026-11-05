@@ -15,32 +15,39 @@
 
 ## Introduction
 
-A driver for the Web (browser) platform built on **Playwright (Python)**: headless, cross-browser,
-selecting by `getByTestId` / `getByRole` and **clicking semantically** (no coordinates). Adding it
-means adding a new triple — actuator + environment manager + id convention — while the
-deterministic core stays byte-for-byte the same. This is the **highest-priority platform item**:
-Web is the recommended first platform because it runs on Linux with no Mac and no emulator, fitting
-the existing `make check` / CI gate, and it exercises the rich end of the capability model — the
-lowest-cost proof that the core is platform-neutral.
+This item adds a driver for the Web (browser) platform, built on **Playwright (Python)**. The driver runs headless and cross-browser. It selects elements by `getByTestId` and `getByRole`, and it **clicks semantically**, with no coordinates.
+
+Adding the driver adds a new triple of [actuator](../../docs/glossary.md#driver-backend-actuator-platform), environment manager, and id convention. The deterministic core stays byte-for-byte the same.
+
+This is the **highest-priority platform item**. Web is the recommended first platform for three reasons:
+
+- It runs on Linux with no Mac and no emulator.
+- It fits the existing `make check` and CI gate.
+- It exercises the rich end of the capability model.
+
+Together these make Web the lowest-cost proof that the core is platform-neutral.
 
 ## Motivation
 
-Web is the **lowest-cost place to prove the abstraction is platform-neutral**, for two reasons that
-no other platform shares at once:
+Web is the **lowest-cost place to prove the abstraction is platform-neutral**. Two reasons hold for Web together, and no other platform shares both.
 
-1. **It needs no macOS and no device emulator.** A `BrowserContext` is the whole "device", so the
-   backend runs on Linux and fits *inside* the current `make check` / CI gate ([ci](../../docs/ci.md))
-   from day one. That removes the largest source of friction — provisioning a Mac or an emulator —
-   from the first real second platform.
-2. **It exercises the rich end of the capability model.** Playwright provides `semanticTap`, native
-   `conditionWait` (auto-waiting), native `network` (request stubbing **and** observation in one
-   API), and emulated `multiTouch`. Building against it raises the ceiling of `capabilities()` and
-   proves the unmodified capability model spans from the lean coordinate backends all the way to the
-   rich semantic end.
+1. **It needs no macOS and no device emulator**.
+   A `BrowserContext` is the whole "device", so the backend runs on Linux.
+   It fits *inside* the current `make check` and CI gate ([ci](../../docs/ci.md)) from day one.
+   The first real second platform thus avoids the largest source of friction.
+   That friction is provisioning a Mac or an emulator.
+2. **It exercises the rich end of the capability model**.
+   Playwright provides `semanticTap`, native `conditionWait` (auto-waiting), and emulated `multiTouch`.
+   It also provides native `network`.
+   The native `network` capability covers request stubbing **and** observation in one API.
+   Building against Playwright raises the ceiling of `capabilities()`.
+   It also proves that the unmodified capability model spans the whole range.
+   The range runs from the lean coordinate backends to the rich semantic end.
 
-Together these make Web the **recommended Phase 1** platform and the highest-priority item on the
-multi-platform track: lowest friction, broadest reach, cheapest proof that the core is genuinely
-platform-neutral.
+These two reasons make Web the **recommended Phase 1** platform.
+Web is also the highest-priority item on the multi-platform track.
+Web has the lowest friction and the broadest reach.
+Web is also the cheapest proof that the core is genuinely platform-neutral.
 
 ## Detailed design
 
@@ -54,16 +61,15 @@ platform-neutral.
 | **Evidence providers** | screenshot = `page.screenshot`; video = context video recording; **`network` = native route interception** (first backend with it); `deviceLog` ≈ console logs / page errors |
 | **codegen target** | Playwright test (TypeScript) or `pytest-playwright` |
 
-Playwright's capabilities lead the capability gradient: it provides `semanticTap`, native
-`conditionWait` (auto-waiting), `network` (request stubbing **and** observation in one API), and
-emulated `multiTouch`. This raises the ceiling of the capability model and makes Web the lowest-cost
-place to prove the abstraction.
+Playwright's capabilities lead the capability gradient.
+It provides `semanticTap`, native `conditionWait` (auto-waiting), and emulated `multiTouch`.
+It also provides `network`, with request stubbing **and** observation in one API.
+These capabilities raise the ceiling of the capability model.
+They make Web the lowest-cost place to prove the abstraction.
 
 ### The selector mapping
 
-The YAML selector (`{ id: settings.reindex }`) is already platform-neutral; only *which app-side
-attribute the backend reads to satisfy it* differs, and that lives entirely inside the new Driver.
-On Web the `Selector` fields map as:
+The YAML selector (`{ id: settings.reindex }`) is already platform-neutral. What differs is merely the app-side attribute that the backend reads to match the selector. That attribute lives entirely inside the new Driver. On Web, the `Selector` fields map as follows.
 
 | `Selector` field | iOS | Web |
 |---|---|---|
@@ -74,8 +80,8 @@ On Web the `Selector` fields map as:
 
 ### Where it sits in the capability matrix
 
-Web **leads the gradient**: it is the first backend to provide `semanticTap`, native
-`conditionWait` (auto-wait), native `network`, and emulated `multiTouch`.
+Web **leads the gradient** as the first backend to provide four capabilities.
+The four are `semanticTap`, native `conditionWait` (auto-wait), native `network`, and emulated `multiTouch`.
 
 | Capability | idb (iOS) | adb (Android) | Playwright (Web) | fake |
 |---|:--:|:--:|:--:|:--:|
@@ -85,34 +91,38 @@ Web **leads the gradient**: it is the first backend to provide `semanticTap`, na
 | `network` (native) | — | — | ✅ | — |
 | `multiTouch` | — | — | ✅ (emulated) | ✅ |
 
-idb and Android sit at the lean end (coordinate actuation, mocked network); Playwright at the rich
-end (semantic, native network). That an unmodified capability model spans both extremes is evidence
-the abstraction holds.
+idb and Android sit at the lean end, with coordinate actuation and mocked network. Playwright sits at the rich end, with semantic actions and native network. The unmodified capability model spans both extremes, which is evidence that the abstraction holds.
 
-### Phasing — recommended Phase 1
+### Phasing: the recommended Phase 1
 
-Web is the **recommended Phase 1** platform — the first real second platform, taken up before
-Android. The rationale is decisive: Web is the only platform that needs **no macOS and no device
-emulator**, so it fits the *existing* Linux `make check` / CI gate ([ci](../../docs/ci.md)) from day one.
-Native network + video + semantic actions exercise the **rich** end of `capabilities()`. It is the
-lowest friction, broadest reach, and cheapest proof that the core is platform-neutral. Android
-([BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md)) follows in Phase 2, confirming
-the lean / coordinate path on top of an already-generalized core.
+Web is the **recommended Phase 1** platform: the first real second platform, taken up before Android.
 
-**Why Web before Android**, even though Android is the closer architectural twin of idb: Web is the
-only platform that fits inside the current Linux gate without a Mac or an emulator, so it reduces
-the risk of the question "is the core truly platform-neutral?" at the lowest possible cost. Android
-then confirms the lean/coordinate path on an already-generalized core.
+The rationale is decisive.
+Web alone needs **no macOS and no device emulator**.
+So it fits the *existing* Linux `make check` and CI gate ([ci](../../docs/ci.md)) from day one.
+Native network, video, and semantic actions exercise the **rich** end of `capabilities()`.
+Web offers the lowest friction and the broadest reach.
+Web is also the cheapest proof that the core is platform-neutral.
+
+Android ([BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md)) follows in Phase 2.
+It confirms the lean coordinate path on top of an already-generalized core.
+
+**Why Web comes before Android**.
+Android is the closer architectural twin of idb.
+Even so, Web alone fits inside the current Linux gate without a Mac or an emulator.
+Starting with Web reduces the risk in judging whether the core is truly platform-neutral.
+It does so at the lowest possible cost.
+Android then confirms the lean coordinate path on an already-generalized core.
 
 ## Alternatives considered
 
-- **A coordinate-based browser actuator (Selenium-style screenshot taps).** Rejected: Playwright
-  already offers semantic clicks, native auto-waiting, and native network interception, which fit the
-  capability model and the determinism principles directly. A coordinate path would throw away the
-  exact capabilities that make Web the rich-end proof of the abstraction.
-- **Building Android first (the closer idb twin).** Rejected for phasing: Android needs an emulator
-  (and KVM on CI), whereas Web needs neither a Mac nor an emulator and so fits the current Linux gate
-  at the lowest cost. See [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md).
+- **A coordinate-based browser actuator (Selenium-style screenshot taps).** Rejected.
+  Playwright already offers semantic clicks, native auto-waiting, and native network interception.
+  These fit the capability model and the determinism principles directly.
+  A coordinate path would discard the capabilities making Web the rich-end proof of the abstraction.
+- **Building Android first (the closer idb twin).** Rejected for phasing.
+  Android needs an emulator (and KVM on CI).
+  Web needs neither a Mac nor an emulator, so it fits the current Linux gate at the lowest cost. See [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md).
 
 ## Progress
 
