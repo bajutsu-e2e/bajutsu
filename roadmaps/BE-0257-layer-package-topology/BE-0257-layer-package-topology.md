@@ -49,8 +49,8 @@ Several tight clusters already behave as a package in every way except the direc
   These nine modules are all periphery-layer AI/agent surface per the BE-0112 contract. They are
   scattered across the flat namespace today, with no shared prefix to signal the grouping.
 
-Three name collisions exist across layers. Only knowing which import path resolves where tells the
-two modules of each pair apart:
+Three name collisions exist across layers. Telling the two modules of each pair apart today
+requires knowing which import path resolves where:
 
 - `bajutsu/mailbox.py` and `bajutsu/runner/mailbox.py`
 - `bajutsu/object_store.py` and `bajutsu/serve/server/object_store.py`

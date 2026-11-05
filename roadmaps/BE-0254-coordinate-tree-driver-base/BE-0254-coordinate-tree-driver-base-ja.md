@@ -42,7 +42,7 @@
   （`bajutsu/drivers/idb.py:229-246`、`bajutsu/drivers/adb.py:248-263`）。
 - `_is_transient_empty`、`_empty_backoff`、`_settle`、`_stable_key`、`_resolve` は、いずれも
   同一のロジックです。`AdbDriver._settle` のドキュメンテーション文字列は「idb's logic」と書いており
-  （`bajutsu/drivers/adb.py:292-311`）、重複が自ら名乗っています。
+  （`bajutsu/drivers/adb.py:292-311`）、重複の存在を自ら認めています。
 
 ロジックが重複したままだと、一時的な空ツリーの判定への修正を二度行う必要があります。たとえば、
 バックオフの上限を締め直す修正や、新しいフレーキーな挙動の判明後に `_READY_MIN` を調整する修正です。
@@ -58,7 +58,7 @@
 作業は挙動を変えない純粋な引き上げで、独立した単位に分けられます。
 
 1. **`bajutsu/drivers/` に `CoordinateTreeDriver` を導入する。** `base.py` と並ぶ独自のモジュール、
-   たとえば `coordinate_tree.py` に置きます。現在すでに同一の要素をすべて持たせます。
+   たとえば `coordinate_tree.py` に置きます。現時点で同一のものは、すべてここに持たせます。
    - 共有する 5 つのチューニング定数（`_SETTLE_POLL_S` はバックエンドごとの値のままにします）
    - `_StableKey` エイリアス
    - `query()`、`_settle`、`_stable_key`、`_is_transient_empty`、`_empty_backoff`、`_resolve`
