@@ -102,7 +102,7 @@ definition with no behavior change.
   Each takes the already-resolved `(x, y, w, h)` frame tuple, so both stay pure geometry with no
   driver-specific resolution logic attached.
 
-  Four call sites route through these two helpers: `_center` in `idb.py`, `_center` and
+  The call sites that route through these two helpers are `_center` in `idb.py`, `_center` and
   `_gesture_anchor` in `playwright.py`, and `_center_with_screen` plus the inline gesture-anchor
   computation in `adb.py`. Each driver keeps its own element-resolution step (`_resolve`,
   `resolve_unique`, `_resolve_frame_and_screen`) unchanged. Only the arithmetic on the resolved

@@ -84,8 +84,9 @@ own.
 
 - **Split `bajutsu/assertions.py` into an `assertions/` package.**
   - `assertions/network.py` holds `match_request`, `count_matching`, `request_label`,
-    `_assign_requests`, and `_request_assignment_result`. `evaluate_one` calls the last (`assertions.py:522`)
-    alongside `_assign_requests` in `evaluate_one` and builds its result from `request_label`.
+    `_assign_requests`, and `_request_assignment_result`. `evaluate_one` calls the last
+    (`assertions.py:522`) alongside `_assign_requests`, and that function builds its result from
+    `request_label`.
     The web mock router and `until: {request}` already depend on `match_request` and
     `count_matching`, so the matcher is shared. It arguably belongs next to
     `NetworkExchange` in `bajutsu/network.py`. Either placement is fine while the import graph
