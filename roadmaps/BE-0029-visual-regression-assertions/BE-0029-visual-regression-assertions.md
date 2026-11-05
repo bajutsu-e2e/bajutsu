@@ -16,30 +16,19 @@
 
 ## Introduction
 
-A new assertion type that diffs a screenshot against a baseline. Supports exclusion regions and per-device / per-locale baselines. Because it is a deterministic machine check rather than AI, it fits "pass/fail by machine assertions only".
+A new assertion type diffs a screenshot against a baseline. It supports exclusion regions and per-device / per-locale baselines. It is a deterministic machine check rather than AI, so it fits "pass/fail by machine assertions only".
 
 ## Motivation
 
-The existing assertion kinds check the *structure* of a screen — an element's value, its
-presence, the text it carries. None of them catch a purely *visual* regression: a layout that
-shifts, a color that changes, an icon that goes missing, a font that renders wrong. These are
-exactly the failures a human notices at a glance but that pass every structural check, because
-the accessibility tree is unchanged. Competitors (MagicPod, Autify) offer screenshot comparison
-for this reason, and it is a frequent ask.
+The existing assertion kinds check the *structure* of a screen: an element's value, its presence, and the text it carries. None of them catches a purely *visual* regression. A layout shifts, a color changes, an icon goes missing, or a font renders wrong. A human notices these failures at a glance, but they pass every structural check, because the accessibility tree is unchanged. Competitors (MagicPod, Autify) offer screenshot comparison for this reason, and users often ask for it.
 
-A visual check has to stay inside Bajutsu's prime directives. The risk is that "does this look
-right?" sounds like a judgement call — the kind of thing one might hand to an LLM. It is not: a
-pixel diff against a stored baseline is a deterministic machine check. The same input produces
-the same pass/fail every time, with no model in the loop. That makes visual regression a natural
-fit for the Tier-2 run/CI gate, and the reason this proposal could be accepted rather than
-shelved as "too fuzzy".
+A visual check has to stay inside Bajutsu's prime directives. The risk is that "does this look right?" sounds like a judgment call, the kind of work one might hand to an LLM. It is not. A pixel diff against a stored baseline is a deterministic machine check. The same input produces the same pass/fail every time, with no model in the loop.
+
+Visual regression fits the Tier-2 run/CI gate naturally. That fit is the reason this proposal could be accepted rather than shelved as "too fuzzy".
 
 ## Detailed design
 
-Implemented as a deterministic `visual` assertion kind in the scenario-level `expect:` block.
-A captured screenshot is diffed against a stored baseline image; exclude regions mask dynamic
-content (clock, status bar) and a `threshold` allows a tolerated diff percentage (default `0` =
-exact match). When images differ, a diff image is written alongside the run for inspection.
+We implemented a deterministic `visual` assertion kind in the scenario-level `expect:` block. A captured screenshot is diffed against a stored baseline image. Exclude regions mask dynamic content (clock, status bar). A `threshold` sets a tolerated diff percentage (default `0` = exact match). When the images differ, a diff image is written alongside the run for inspection.
 
 ```yaml
 expect:
@@ -50,18 +39,18 @@ expect:
         - { x: 0, y: 0, w: 390, h: 54 }
 ```
 
-- Schema: `ExcludeRegion` / `VisualMatch` models and the `Assertion.visual` field in
+- **Schema.** The `ExcludeRegion` / `VisualMatch` models and the `Assertion.visual` field live in
   `bajutsu/scenario/`.
-- Comparison engine: `bajutsu/visual.py` — pixel-level diff via Pillow `ImageChops.difference`,
-  exclude-region masking, threshold tolerance, diff-image output. Pillow is an optional dependency
-  (`pip install bajutsu[visual]`).
-- Evaluation: `VisualContext` (screenshot path, baselines dir, diff output dir) and `_eval_visual`
-  in `bajutsu/assertions.py`.
-- Orchestration: the screenshot is captured before expect evaluation and the `VisualContext` is
+- **Comparison engine.** `bajutsu/visual.py` does a pixel-level diff via Pillow
+  `ImageChops.difference`, with exclude-region masking, threshold tolerance, and diff-image output.
+  Pillow is an optional dependency (`pip install bajutsu[visual]`).
+- **Evaluation.** `VisualContext` (screenshot path, baselines dir, diff output dir) and
+  `_eval_visual` live in `bajutsu/assertions.py`.
+- **Orchestration.** The screenshot is captured before expect evaluation, and the `VisualContext` is
   threaded through `run_scenario` (`bajutsu/orchestrator/`, `bajutsu/runner/`).
 
-Because evaluation is a pure machine check with no AI involved, it strengthens the prime
-directives rather than straining them.
+Evaluation is a pure machine check with no AI involved, so it strengthens the prime directives
+rather than straining them.
 
 ## Alternatives considered
 
