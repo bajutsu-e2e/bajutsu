@@ -29,6 +29,7 @@ from bajutsu.common.orchestrator.types import (
     SystemAlertTap,
     UndeclaredInterruption,
     drain_actuations,
+    drain_channel_notes,
     drain_interruptions,
     prompt_title_check,
     push_interruption_policy,
@@ -1506,7 +1507,7 @@ class _StepRunner:
 
             # Evidence only, recorded whatever the verdict: `ok` and `reason` never see it, so a
             # passing step carries no failure text (BE-0474).
-            outcome.warnings = tuple(step_warnings)
+            outcome.warnings = (*step_warnings, *drain_channel_notes(active_driver))
 
             # Which button a `handleSystemAlert` step tapped and why (BE-0445), so a run under a
             # language the label table does not cover still shows what its position rule landed on.

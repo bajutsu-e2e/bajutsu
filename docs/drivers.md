@@ -331,8 +331,15 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
   `adb -s <serial> exec-out uiautomator dump /dev/tty` pays per invocation (roadmap
   [BE-0245](../roadmaps/BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server.md));
   the resident whole-screen dump is narrowed to the active window so it yields the same Elements.
-  Without the built server — or on any channel failure — it falls back to `uiautomator dump`, and
-  `BAJUTSU_ADB_RESIDENT` (`0`/`1`) pins either path. The selector mapping is
+  Without the built server — or on a channel failure the lease cannot recover from — it falls back
+  to `uiautomator dump`, and `BAJUTSU_ADB_RESIDENT` (`0`/`1`) pins either path. Every wait on the
+  device has a bound that fits inside the host's 5-second read timeout, so a screen that never goes
+  idle costs a read about 3.6 s rather than the channel. A timeout does not show that the server is
+  gone, so the lease reads again on a fresh connection and then restarts the server before it falls
+  back; a refused or closed connection falls back at once. A later non-ASCII `type` step starts a
+  lost server again, because the dump path cannot enter that text. The target's
+  `driver.residentRecovery` sets the retries and whether a restart is allowed, and the run's
+  `manifest.json` records any fallback. The selector mapping is
   `resource-id` → `identifier` (the `<package>:id/` prefix stripped to the local name, so a Compose
   `testTag` surfaced via `testTagsAsResourceId` reproduces verbatim while a native `android:id`
   drops its prefix), `text` → `label` (`content-desc` fallback), `content-desc` → `value` (the app

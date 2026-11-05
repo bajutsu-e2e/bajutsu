@@ -27,6 +27,7 @@ from .act_request import ActRequest
 from .adb_act_uncertain import AdbActUncertain
 from .adb_act_unsupported import AdbActUnsupported
 from .adb_resident_error import AdbResidentError
+from .channel_recovery import ChannelRecovery
 from .hierarchy_read import HierarchyRead
 
 RunFn = Callable[[list[str]], str]
@@ -238,6 +239,8 @@ class AdbDriver(CoordinateTreeDriver):
         fetch_clock: ClockFetch | None = None,
         act: ActFn | None = None,
         type_on_device: TypeFn | None = None,
+        channel_recovery: ChannelRecovery | None = None,
+        channel_start_failure: str | None = None,
         package: str | None = None,
         api_level: int | None = None,
         launched_at: Callable[[], tuple[float, str] | None] | None = None,
@@ -326,6 +329,26 @@ class AdbDriver(CoordinateTreeDriver):
         # later gesture then goes straight to the coordinate path, so the degrade costs one probe for
         # the lease rather than a failed round trip — and a second resolve — on every tap (BE-0234).
         self._act_unavailable = False
+        # The two read-side callables, kept so a channel the driver lost can be picked up again: the
+        # server outlives a lost connection or comes back from a restart, and a dump taken beside a
+        # live server reads an empty tree.
+        self._resident_reads = (fetch_hierarchy, fetch_clock)
+        self._channel_recovery = channel_recovery
+        # Why reads are on the dump path, None while the resident channel serves them. Set from the
+        # start when the server never came up for this lease.
+        self._channel_loss = channel_start_failure
+        # What `_act_unavailable` said before the loss set it: an older server's missing `/act` is
+        # still missing after the channel comes back.
+        self._act_unavailable_before_loss = False
+        # One revive per loss, so every later non-ASCII `type` does not pay a failed start again.
+        self._revive_tried = False
+        self._channel_notes: list[str] = (
+            [
+                f"resident server did not start ({channel_start_failure}); reading via uiautomator dump"
+            ]
+            if channel_start_failure is not None
+            else []
+        )
         # The device event mark of the most recent read (BE-0332 Unit 3): `SystemClock.uptimeMillis` of
         # the newest accessibility event the resident reader had seen. None on the dump path. Set by
         # `_read_source` on every read, before `_advance_catchup` folds that read into the barrier.
@@ -565,12 +588,14 @@ class AdbDriver(CoordinateTreeDriver):
         (`elements_with_identities`, BE-0245). A resident-channel failure degrades to the dump
         subprocess with a loud warning —
         never silently, so a slower fallback read stays visible — leaving the backend no worse off
-        than the dump-every-read path it replaces. The failure latches: the channel is disabled after
-        the first fault so the rest of the lease reads via dump without re-logging or re-paying the
-        connect timeout on every read. The fetch itself tears the resident server down on that fault
-        (`ResidentServer.start`), releasing the device's single UiAutomation session so the dump
-        fallback is a clean degrade rather than one poisoned by a wedged-but-alive server.
+        than the dump-every-read path it replaces. A fault that reaches here has already been through
+        the channel's own recovery, so it latches: reads stay on dump without re-logging or re-paying
+        the connect timeout, until the server is back up (`_rejoin_live_channel`). The fetch itself
+        tears the resident server down on that fault (`ResidentServer._read`), releasing the device's
+        single UiAutomation session so the dump fallback is a clean degrade rather than one poisoned
+        by a wedged-but-alive server.
         """
+        self._rejoin_live_channel()
         if self._fetch_hierarchy is not None:
             # Tell the resident channel which mark to wait past (BE-0332 Unit 4): the pending gesture's
             # actuation mark, so the device blocks until a read postdates it and returns that read in one
@@ -610,8 +635,14 @@ class AdbDriver(CoordinateTreeDriver):
             except AdbResidentError as exc:
                 logger.warning(
                     "resident hierarchy read failed (%s); falling back to `uiautomator dump` for "
-                    "reads and coordinate injection for gestures, for the rest of this lease",
+                    "reads and coordinate injection for gestures until the server is back",
                     exc,
+                )
+                self._channel_loss = str(exc)
+                self._revive_tried = False
+                self._channel_notes.append(
+                    f"resident channel lost ({exc}); reading via uiautomator dump, "
+                    "gestures by coordinate"
                 )
                 self._fetch_hierarchy = None
                 self._fetch_clock = None  # the clock endpoint shares the dead channel
@@ -619,6 +650,7 @@ class AdbDriver(CoordinateTreeDriver):
                 # either, so this latches the coordinate degrade here rather than leaving `_device_act`
                 # to rediscover the same dead channel — and re-warn — on every gesture for the rest of
                 # the lease (BE-0339 Unit 4).
+                self._act_unavailable_before_loss = self._act_unavailable
                 self._act_unavailable = True
                 # The read channel is gone rather than momentarily noisy, so this is the moment the
                 # state explaining it still exists (BE-0367). Hooked here, at the propagation site,
@@ -645,6 +677,41 @@ class AdbDriver(CoordinateTreeDriver):
         self._raw_reply = text
         self._parsed_root = None  # already untouched: no narrowing
         return slice_hierarchy_root(text)
+
+    def _rejoin_live_channel(self) -> None:
+        """Go back to the resident channel when the server is up again.
+
+        Another driver of a device group can have revived the server this one lost, and from then on a
+        dump here would read an empty tree beside it.
+        """
+        recovery = self._channel_recovery
+        if self._channel_loss is not None and recovery is not None and recovery.live():
+            self._restore_channel()
+
+    def _restore_channel(self) -> None:
+        self._fetch_hierarchy, self._fetch_clock = self._resident_reads
+        self._act_unavailable = self._act_unavailable_before_loss
+        self._channel_notes.append(f"resident channel back after: {self._channel_loss}")
+        self._channel_loss = None
+
+    def drain_channel_notes(self) -> list[str]:
+        """What the read channel did since the last call (`ChannelHealthReporter`)."""
+        recovery = self._channel_recovery
+        notes = recovery.drain_notes() if recovery is not None else []
+        notes += self._channel_notes
+        self._channel_notes = []
+        return notes
+
+    def channel_degraded(self) -> str | None:
+        """Why reads are off the resident channel right now (`ChannelHealthReporter`).
+
+        A server stopped through another driver of a device group counts too: this driver has not read
+        since, so it holds no loss of its own, yet its next read would find the server gone.
+        """
+        if self._channel_loss is not None:
+            return self._channel_loss
+        recovery = self._channel_recovery
+        return "resident server is stopped" if recovery and not recovery.live() else None
 
     def _record_tree(self, els: list[base.Element]) -> list[base.Element]:
         els = super()._record_tree(els)
@@ -1238,7 +1305,7 @@ class AdbDriver(CoordinateTreeDriver):
                 return True
             except AdbResidentError as exc:
                 # A blip on the *act* call specifically — distinct from `_read_source`'s own
-                # `AdbResidentError`, which does latch the read channel off for the rest of the lease
+                # `AdbResidentError`, which does latch the read channel off until the server is back
                 # (BE-0339 Unit 4), because there the failing call *is* the shared connection reads
                 # depend on too. This one is scoped to `/act`: a socket write or response glitch on
                 # this single request says nothing about whether the next read, or the next act call,
@@ -1680,12 +1747,38 @@ class AdbDriver(CoordinateTreeDriver):
         # `_run_text` bypasses `_act`, so invalidate by hand: the input may have just changed the
         # screen exactly as any other actuation would.
         self.invalidate_settled_cache()
+        can_type = adb.input_text_can_type(text)
+        if not can_type:
+            # Before the marks below, so a revived channel's clock anchors this entry.
+            self._revive_channel_for_text()
         since = self._text_mark
         self._text_mark = self._capture_mark()
-        if adb.input_text_can_type(text):
+        if can_type:
             self._run_text(adb.shell_cmd(self.serial), adb.text_script(text))
         else:
             self._type_through_server(text, since)
+
+    def _revive_channel_for_text(self) -> None:
+        """Bring a lost channel back for text only it can enter, rather than fail the step on the loss.
+
+        The dump path can read and tap, so nothing else needs the server badly enough to wait for a
+        start. A failed revive leaves the step to `_type_through_server`'s own refusal. Asks the server
+        rather than this driver's own loss, because another driver of a device group can have stopped
+        the server since this one last read.
+        """
+        recovery = self._channel_recovery
+        if recovery is None:
+            return
+        if not recovery.live() and (self._revive_tried or not self._try_revive(recovery)):
+            return
+        if self._channel_loss is not None:
+            self._restore_channel()
+
+    def _try_revive(self, recovery: ChannelRecovery) -> bool:
+        revived = recovery.revive()
+        # A server that came back can be lost again, and then it deserves another try.
+        self._revive_tried = not revived
+        return revived
 
     def _type_through_server(self, text: str, since: float | None) -> None:
         """Enter text `input text` cannot carry through the resident server, or fail the step.
