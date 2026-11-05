@@ -16,170 +16,230 @@
 
 ## Introduction
 
-A hosted `bajutsu serve` runs each job against the [target](../../docs/glossary.md#target-app-device)'s
-`appPath` — the prebuilt app binary the config names — and against the scenarios in the directory
-that same config names. Today, a job gets either one from outside what the org's serve already holds
-in exactly one way: rebinding the org's **active config**. A rebind is not a per-job
-choice: for a caller with no session — a shared-token or CI request — it replaces the **deployment's
-fallback** binding, the one record every sessionless caller reads next; it also writes the org's
-**remembered configuration**
-([BE-0393](../BE-0393-per-org-config-memory/BE-0393-per-org-config-memory.md)), which a colleague's
-next session inherits on first use.
-[BE-0413](../BE-0413-worker-app-binary-delivery/BE-0413-worker-app-binary-delivery.md) then ships that
+A hosted `bajutsu serve` runs each job against two inputs:
+
+- The `appPath` of the [target](../../docs/glossary.md#target-app-device). This is the prebuilt app
+  binary that the config names.
+- The scenarios in the directory that the same config names.
+
+Today a job gets either input from outside what the org's serve already holds in exactly one way:
+rebinding the org's **active config**. A rebind is not a per-job choice. It has two effects:
+
+- For a caller with no session, such as a shared-token or CI request, it replaces the **deployment's
+  fallback** binding. This is the one record that every sessionless caller reads next.
+- It also writes the org's **remembered configuration**
+  ([BE-0393](../BE-0393-per-org-config-memory/BE-0393-per-org-config-memory.md)). A colleague's next
+  session inherits that configuration on first use.
+
+[BE-0413](../BE-0413-worker-app-binary-delivery/BE-0413-worker-app-binary-delivery.md) then ships the
 bound tree's binary to whichever worker leases the job.
 
 This item adds **per-job artifact overrides**. A request to `run` names an already-stored `binary`
-artifact, a `scenarios` artifact, or both, each by its sha256. Every job that request dispatches resolves against the named artifacts alone. A leg the
-request does not name keeps resolving through the org's active config binding, exactly as it does
-today. The binding itself, and every other job or session running against it, stays untouched.
+artifact, a `scenarios` artifact, or both. Each is named by its sha256. Every job that the request
+dispatches resolves against the named artifacts alone.
+
+A leg that the request does not name keeps resolving through the org's active config binding, exactly
+as it does today. The binding itself stays untouched, and so does every other job or session that
+runs against it.
 
 ## Motivation
 
-Continuous integration (CI) triggers a run for a change under review, and a GitHub pull request
-commonly changes two things at once: the application code, and the scenarios that exercise it. The
-run CI wants is therefore "this build's binary, against this branch's scenarios". Today's paths
-there —
+Continuous integration (CI) triggers a run for a change under review. A GitHub pull request commonly
+changes two things at once: the application code and the scenarios that exercise it. The run that CI
+wants is "this build's binary, against this branch's scenarios".
+
+Today's paths for this run are
 [`POST /api/compose`](../BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts.md)
-and the legacy single-zip `POST /api/upload` — both rebind the org's active config before every
-dispatch. That rebind surfaces two distinct problems, not one.
+and the legacy single-zip `POST /api/upload`. Both rebind the org's active config before every
+dispatch. That rebind surfaces two distinct problems.
 
-First, every CI request is sessionless — it carries no login cookie — so every CI bind replaces the
-same **deployment fallback** binding
+**First problem: contention on the fallback binding.** Every CI request is sessionless, because it
+carries no login cookie. Every CI bind therefore replaces the same **deployment fallback** binding
 ([BE-0393](../BE-0393-per-org-config-memory/BE-0393-per-org-config-memory.md)). Two concurrent CI
-dispatches against one deployment therefore contend for that one record. `_register_and_dispatch`
-freezes a job's `cwd` and `bundle` at registration, so the loss lands in the window between a
-caller's bind and its own `run`: the other caller's bind arrives in between, and the run resolves
-against that instead, even though neither caller meant to touch the other's job.
+dispatches against one deployment contend for that one record.
 
-Second, a CI bind is not confined to the CI caller at all. The same rebind also writes the org's
-**remembered configuration** (BE-0393 unit 6), which a colleague's *next* session inherits on first
-use — so a build meant for one CI run can become the binary a human web-UI session opens against, with
-no bind of that member's own in between.
+`_register_and_dispatch` freezes a job's `cwd` and `bundle` at registration. The loss lands in the
+window between a caller's bind and its own `run`. The other caller's bind arrives in between, and the
+run resolves against that bind instead. Neither caller meant to touch the other's job.
+
+**Second problem: a CI bind leaks beyond the CI caller.** The same rebind also writes the org's
+**remembered configuration** (BE-0393 unit 6). A colleague's *next* session inherits that
+configuration on first use. A build meant for one CI run can therefore become the binary that a human
+web-UI session opens against, with no bind of that member's own in between.
 
 A third gap sits underneath both.
-[BE-0413](../BE-0413-worker-app-binary-delivery/BE-0413-worker-app-binary-delivery.md) ships a binary to
-a remote worker in one case alone: when the leased job's binding is an
-[`Upload`](../BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts.md), the
-`binding.upload is not None` check `_register_and_dispatch` — the single tail every `start_*` funnels
-through — makes before it stamps `Job.bundle`. A job dispatched off
-a Git-sourced config carries no `bundle` at all, and neither does one off a local config whose scenario
-travels as server-stored `materials`. Its remote worker writes the config and scenario text into a fresh
-workspace (`_materialize` in `bajutsu/serve/server/worker_job.py`), then has no way to place a binary
-there. The app must already sit on that worker's disk, or the config's `build:` command must fetch it —
-a shell command, ungoverned outside the sandboxing an uploaded bundle's server commands already get
+[BE-0413](../BE-0413-worker-app-binary-delivery/BE-0413-worker-app-binary-delivery.md) ships a binary
+to a remote worker in one case alone. The case applies when the leased job's binding is an
+[`Upload`](../BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts.md).
+`_register_and_dispatch` is the single tail that every `start_*` funnels through, and it makes the
+`binding.upload is not None` check before it stamps `Job.bundle`.
+
+Two kinds of job carry no `bundle` at all:
+
+- A job dispatched off a Git-sourced config.
+- A job off a local config whose scenario travels as server-stored `materials`.
+
+The remote worker of such a job writes the config and scenario text into a fresh workspace
+(`_materialize` in `bajutsu/serve/server/worker_job.py`). It then has no way to place a binary there.
+The app must already sit on that worker's disk, or the config's `build:` command must fetch it. A
+`build:` command is a shell command, ungoverned outside the sandboxing that an uploaded bundle's server
+commands already get
 ([BE-0090](../BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md)).
-A binary the control plane already holds as a content-addressed artifact has no deterministic,
+A binary that the control plane already holds as a content-addressed artifact has no deterministic,
 credential-free path onto that worker today.
 
-All three gaps trace to one design choice. Delivery is entangled with *which config is bound*, when
-the unit a caller actually wants to vary is the job. Untangling them lets a CI run and a human web UI
-session share one org without stepping on each other. It also lets a materials-based job receive a
-binary the same way an uploaded bundle's job already does.
+All three gaps trace to one design choice. Delivery is entangled with *which config is bound*, while
+the unit that a caller actually wants to vary is the job. Untangling them lets a CI run and a human
+web UI session share one org without stepping on each other. It also lets a materials-based job
+receive a binary the same way an uploaded bundle's job already does.
 
-**Verifiable outcome.** Dispatch two sessionless `run` jobs through the API at the same time against one
-deployment. Each names its own `binary` artifact sha256 and its own `scenarios` artifact sha256, both
-uploaded moments earlier. Both jobs finish, each having run its own scenarios against its own binary,
-and each run's manifest records the two sha256 values it resolved against. The deployment's fallback
-binding is unchanged — a sessionless `GET /api/config` reports the same value before and after both
-jobs return.
+**Verifiable outcome.** Dispatch two sessionless `run` jobs through the API at the same time against
+one deployment. Each job names its own `binary` artifact sha256 and its own `scenarios` artifact
+sha256, both uploaded moments earlier. Both jobs finish, and each has run its own scenarios against
+its own binary. Each run's manifest records the two sha256 values it resolved against. The
+deployment's fallback binding is unchanged: a sessionless `GET /api/config` reports the same value
+before and after both jobs return.
 
-This fails today: with no per-job path, each caller would first have to rebind that one shared
-fallback, so the second bind changes what the first caller's job resolves against instead of leaving it
-alone.
+This fails today. With no per-job path, each caller would first have to rebind that one shared
+fallback. The second bind then changes what the first caller's job resolves against, instead of
+leaving it alone.
 
 ## Detailed design
 
-The work is mutually exclusive and collectively exhaustive (MECE) across three units: naming
-standalone artifacts per job, delivering them to wherever the job runs, and the tests that pin the
-seam down.
+The work is mutually exclusive and collectively exhaustive (MECE) across three units:
+
+- naming standalone artifacts per job
+- delivering them to wherever the job runs
+- the tests that pin the seam down
 
 ### Unit 1 — Per-job artifact references that never touch the active binding
 
 [BE-0268](../BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts.md) already lets a
-`binary` artifact and a `scenarios` artifact each be uploaded and stored on its own. Each is
-content-addressed by its sha256, and `bind_artifact` writes it without binding it as anything's
-active config. This item adds per-job references to that store. `start_run` accepts two optional
-fields, `binaryArtifact` and `scenariosArtifact`. Each holds a sha256 hex digest naming an artifact
-of that kind already stored for the caller's org, and `valid_sha256` validates its shape.
+`binary` artifact and a `scenarios` artifact each be uploaded and stored on its own. The sha256 of each
+artifact addresses its content, and `bind_artifact` writes the artifact without binding it as anything's
+active config. This item adds per-job references to that store.
+
+`start_run` accepts two optional fields, `binaryArtifact` and `scenariosArtifact`. Each holds a sha256
+hex digest that names an artifact of that kind already stored for the caller's org. `valid_sha256`
+validates the shape of the digest.
+
+#### Which legs a request names
 
 A request may name either field, both, or neither. **An unnamed leg is not a gap to fill.** The job
 resolves it through the org's active config binding, byte for byte as it does today. A request that
-names nothing therefore behaves exactly as the same request does before this item lands. That
-fallback is what keeps the two fields independent. CI that rebuilds the app but not the scenarios
-names `binaryArtifact` alone, and the pull request that adds a scenario names both.
+names nothing behaves exactly as the same request did before this item landed.
 
-Naming a `scenariosArtifact` changes where the requested scenario is **resolved from**, and that is
-the part of this leg with no counterpart in the binary one. `start_run` today resolves the request's
-`scenario` against the bound source before any job exists: `scope.runnable(...)` globs the bound
-tree's scenarios directory, or, on a hosted deployment, reads the text out of the org's scenario
-store and ships it as `materials`. A scenario that lives only in the override would fail that lookup
-with the existing 400, and the pull request that adds a scenario is exactly that case — so without
-this sub-unit the leg closes nothing. When the request names a `scenariosArtifact`, the scope
-therefore resolves against **the override's own entry listing** instead. Serve can read that listing
-without a worker: `bind_artifact` already wrote the artifact into serve's content-addressed cache
-(`local_artifact_dir`). The confinement that makes the lookup safe is unchanged — the client string
-is reduced to a basename and checked by `valid_scenario_ref` against a trusted listing, so no
-client-controlled value becomes a path (BE-0051).
+That fallback keeps the two fields independent. CI that rebuilds the app but not the scenarios names
+`binaryArtifact` alone. The pull request that adds a scenario names both.
 
-Two consequences follow, and both are design, not detail. First, the resulting `Runnable` carries
-**no** `materials` for the scenario: the worker receives the whole artifact through the lease and
-places it, rather than receiving one scenario's text inline. `start_run` today derives
-`on_worker` from `bool(materials)`. That flag must come from the job's topology instead: a job
-with an override is workspace-relative even though it ships no materials. Second, this item
-**requires the `scenarios` override to be a zip** and refuses a single YAML file with a clear error.
-A zip's entries carry their own names, which is what the request's `scenario` is matched against. A
-single-file artifact carries no name at dispatch: the request fields hold a digest and nothing else,
-and compose's own single-file path only works because `POST /api/compose` takes a separate filename
-alongside the bytes.
+#### Resolving the scenario from the override
 
-The two fields also stay at the *editor* role that `POST /api/run` already requires. They do not
-rise to the *admin* role that guards the binding and artifact-upload endpoints. The reason those paths sit at admin is not that they choose a binary — it is that
-they **repoint what future runs serve**, for every caller in the org. A per-job override chooses for
-one job and writes no shared record, which is the property this whole item is built on. Gating the
-fields at admin would therefore charge a per-job choice the price of a shared-state change, and it
-would put the override out of reach of the same CI caller the Motivation is about.
+Naming a `scenariosArtifact` changes where the requested scenario is **resolved from**. The binary leg
+has no counterpart to this change.
 
-The dispatch-side gate cannot reuse `artifact_exists` as it
-stands: that helper deliberately reads a store error as "not confirmed present" and returns the same
-`200 {"exists": false}` a real miss returns, so a gate built on it unchanged would read a transient
-error as a confirmed miss and return exactly the 400 this item forbids. This item therefore extracts
-the three-state probe (present / confirmed absent / unconfirmed) behind
-`artifact_exists`, leaving `artifact_exists` as the thin `GET /api/artifacts/exists` handler that
-narrows it back to today's two states. The dispatch gate reads that three-state result for each named
-leg: a confirmed absent fails the
-request with 400 before any job is registered — never a job that fails later, opaquely, once a worker
-tries to fetch it — while an unconfirmed check returns a retryable 503 instead, never a 400 asserting
-the artifact was never uploaded. `GET /api/artifacts/exists` itself keeps its current two-state
-contract — `200 {"exists": false}` for both a confirmed miss and an unconfirmed check — since its
-existing dedup callers are safe reading either as "upload it again"; no client behavior changes there.
+Today `start_run` resolves the request's `scenario` against the bound source before any job exists.
+`scope.runnable(...)` globs the bound tree's scenarios directory. On a hosted deployment, it reads the
+text out of the org's scenario store and ships it as `materials`. A scenario that lives only in the
+override would fail that lookup with the existing 400. The pull request that adds a scenario is
+exactly that case, so without this sub-unit the leg closes nothing.
 
-The references travel as new `Job` fields, independent of `Job.bundle`. `Job.bundle` stays exactly what
-BE-0413 built: the tree an `Upload` binding resolves to. Nothing here changes `state.binding_for`,
-`bind_upload_config`, or `remember_org_config_source`. Two jobs naming different artifacts never contend
-for the same record, and neither does one job naming an artifact while the org's bound config stays what
-it was.
+When the request names a `scenariosArtifact`, the scope resolves against **the override's own entry
+listing** instead. Serve can read that listing without a worker, because `bind_artifact` already wrote
+the artifact into serve's content-addressed cache (`local_artifact_dir`).
 
-An artifact's storage key is a pure function of the deployment's object-store prefix, the org, the
-artifact kind, and the sha256 (`artifact_store_key`, under the org's `uploads/<kind>/` prefix in
-`bajutsu/serve/upload_artifacts.py`). This item treats that key scheme as a stable contract, not an
-implementation detail. Take a CI runner with its own bucket access as an example: knowing the
-deployment's prefix, its own org, the kind segment, and the sha256 it computed — all four, not
-the digest alone — it can write the artifact's bytes directly to that key, skipping
-`POST /api/artifacts/binary` entirely. The dispatch API needs the resulting sha256 alone, never the
-transport that put the bytes there. `GET /api/artifacts/exists` still answers whether a given sha256 is
-already stored, whichever path wrote it. A caller with its own credentials and all four inputs gets the
-same upload-skip it would through the API.
+The confinement that makes the lookup safe is unchanged. The client string is reduced to a basename
+and checked by `valid_scenario_ref` against a trusted listing. No client-controlled value becomes a
+path (BE-0051).
 
-One prerequisite this item does not supply: a credential a continuous-integration job can present.
-Writing the bytes has an answer that needs no serve credential at all — the direct-to-key write
-above. Naming the sha256 at dispatch does not: `POST /api/run` requires the *editor* role and
-`POST /api/artifacts/binary` the *admin* role, and on a deployment with GitHub OAuth configured the
-shared token narrows to worker traffic alone, so a raw bearer token reaches neither
-(`docs/self-hosting.md`). Such a deployment has no machine identity to offer a CI job today. This
-item assumes whatever credential the deployment already trusts for `POST /api/run` — the shared
-token on a token-authenticated deployment — and adds two fields to that request. Giving a CI job an
-identity of its own on an OAuth deployment is a separate decision about authentication, with its own
-threat model, and belongs in its own item rather than riding in on a delivery mechanism.
+Two consequences follow. Both are design, not detail.
+
+- The resulting `Runnable` carries **no** `materials` for the scenario. The worker receives the whole
+  artifact through the lease and places it, instead of receiving one scenario's text inline.
+  `start_run` today derives `on_worker` from `bool(materials)`. The flag must come from the job's
+  topology instead: a job with an override is workspace-relative even though it ships no materials.
+- This item **requires the `scenarios` override to be a zip**. It refuses a single YAML file with a
+  clear error. A zip's entries carry their own names, and the request's `scenario` is matched against
+  those names. A single-file artifact carries no name at dispatch. The request fields hold a digest
+  and nothing else. Compose's own single-file path works only because `POST /api/compose` takes a
+  separate filename alongside the bytes.
+
+#### The role that gates the fields
+
+The two fields stay at the *editor* role that `POST /api/run` already requires. They do not rise to the
+*admin* role that guards the binding and artifact-upload endpoints.
+
+Those endpoints sit at admin for a reason other than choosing a binary. They **repoint what future runs
+serve**, for every caller in the org. A per-job override chooses for one job and writes no shared
+record, which is the property this whole item is built on. Gating the fields at admin would charge a
+per-job choice the price of a shared-state change. It would also put the override out of reach of the
+CI caller that the Motivation is about.
+
+#### The dispatch-side existence gate
+
+The dispatch-side gate cannot reuse `artifact_exists` as it stands. That helper deliberately reads a
+store error as "not confirmed present". It then returns the same `200 {"exists": false}` that a real
+miss returns. A gate built on it unchanged would read a transient error as a confirmed miss and return
+exactly the 400 that this item forbids.
+
+This item extracts the three-state probe (present, confirmed absent, unconfirmed) behind
+`artifact_exists`. `artifact_exists` remains the thin `GET /api/artifacts/exists` handler, and it
+narrows the probe back to today's two states.
+
+The dispatch gate reads the three-state result for each named leg:
+
+- A confirmed absence fails the request with 400 before any job is registered. A job never fails
+  later and opaquely, once a worker tries to fetch the artifact.
+- An unconfirmed check returns a retryable 503. It never returns a 400 that asserts the artifact was
+  never uploaded.
+
+`GET /api/artifacts/exists` itself keeps its current two-state contract. It returns
+`200 {"exists": false}` for both a confirmed miss and an unconfirmed check. Its existing dedup callers
+are safe reading either as "upload it again", so no client behavior changes there.
+
+#### Independence from the active binding
+
+The references travel as new `Job` fields, independent of `Job.bundle`. `Job.bundle` stays exactly
+what BE-0413 built: the tree that an `Upload` binding resolves to. Nothing here changes
+`state.binding_for`, `bind_upload_config`, or `remember_org_config_source`.
+
+Two jobs that name different artifacts never contend for the same record. Neither does one job that
+names an artifact while the org's bound config stays what it was.
+
+#### The storage key as a stable contract
+
+An artifact's storage key is a pure function of four inputs: the deployment's object-store prefix, the
+org, the artifact kind, and the sha256. `artifact_store_key` computes it, under the org's
+`uploads/<kind>/` prefix in `bajutsu/serve/upload_artifacts.py`. This item treats that key scheme as a
+stable contract, not an implementation detail.
+
+Take a CI runner with its own bucket access as an example. It knows the deployment's prefix, its own
+org, the kind segment, and the sha256 it computed. All four are needed, not the digest alone. With
+them, the runner can write the artifact's bytes directly to that key and skip
+`POST /api/artifacts/binary` entirely.
+
+The dispatch API needs the resulting sha256 alone, never the transport that put the bytes there.
+`GET /api/artifacts/exists` still answers whether a given sha256 is already stored, whichever path
+wrote it. A caller with its own credentials and all four inputs gets the same upload-skip as it would
+through the API.
+
+#### A prerequisite this item does not supply
+
+This item does not supply a credential that a CI job can present. Writing the bytes has an answer that
+needs no serve credential at all: the direct-to-key write above. Naming the sha256 at dispatch does
+not have such an answer.
+
+- `POST /api/run` requires the *editor* role.
+- `POST /api/artifacts/binary` requires the *admin* role.
+- On a deployment with GitHub OAuth configured, the shared token narrows to worker traffic alone, so a
+  raw bearer token reaches neither endpoint (`docs/self-hosting.md`).
+
+Such a deployment has no machine identity to offer a CI job today. This item assumes whatever
+credential the deployment already trusts for `POST /api/run`, which is the shared token on a
+token-authenticated deployment. It adds two fields to that request.
+
+Giving a CI job an identity of its own on an OAuth deployment is a separate decision about
+authentication, with its own threat model. It belongs in its own item and should not ride in on a
+delivery mechanism.
 
 ### Unit 2 — Deliver the overrides to wherever the job runs
 
@@ -190,69 +250,96 @@ A job reaches one of two dispatch topologies, and an override leg lands differen
 | `run` on a hosted deployment (BE-0106's `DbQueueExecutor`) | placed at the job's own target `appPath`, inside a job-scoped workspace | placed into that target's scenarios directory, in the same workspace |
 | `run` on a single-process `serve` (`LocalExecutor`) | refused | refused |
 
-The hosted worker topology is the one this item exists to serve, and the rest of this unit describes
-it before returning to the refusal. The cloud-batch fan-out `run-set` is a deliberate non-goal, for
-a reason this unit gives once the worker path is set out.
+The hosted worker topology is the one that this item exists to serve. The rest of this unit describes
+it before returning to the refusal. The cloud-batch fan-out `run-set` is a deliberate non-goal, for a
+reason that this unit gives once the worker path is set out.
+
+#### Signing and fetching
 
 At lease, `worker_lease` signs a presigned GET for each named override, the same way it already signs
-`bundle_urls` (BE-0413) and `baseline_urls` (BE-0160). The lease returns them as two more keys,
-`binary_url` and `scenarios_url`. Each sha256 the job carries is re-validated as a full hex digest
-before it becomes a
-storage key, and that key stays scoped to the leased job's own org — never a value the worker
-supplies. When a job carries an override and the lease signs no
-url for it — no object store configured — the worker fails the job immediately, the same
-posture BE-0413 already takes when a bundle's lease signs no url (`bajutsu/serve/cli/worker.py`: "job
-needs bundle …, but the lease signed no url for it"): say it here rather than failing opaquely at
-install time. The worker downloads and hashes each before use, reusing BE-0413's
-streamed-download-and-verify path.
+`bundle_urls` (BE-0413) and `baseline_urls` (BE-0160). The lease returns the signed urls as two more
+keys, `binary_url` and `scenarios_url`.
 
-The binary then goes where a composed `binary` leg already goes: the worker resolves `appPath` from
-the job's own config — for the one target the job
-names, not every target the config declares, since `materialize_composition`'s placement loop
+Each sha256 that the job carries is re-validated as a full hex digest before it becomes a storage key.
+That key stays scoped to the leased job's own org and is never a value that the worker supplies.
+
+Suppose a job carries an override and the lease signs no url for it, because no object store is
+configured. The worker then fails the job immediately. BE-0413 already takes the same posture when a
+bundle's lease signs no url (`bajutsu/serve/cli/worker.py`: "job needs bundle …, but the lease signed
+no url for it"). The failure is stated up front rather than surfacing opaquely at install time.
+
+The worker downloads and hashes each artifact before use. It reuses BE-0413's streamed
+download-and-verify path.
+
+#### Placing the binary
+
+The binary goes where a composed `binary` leg already goes. The worker resolves `appPath` from the
+job's own config. It resolves it for the one target that the job names, not for every target that the
+config declares. The reason is that the placement loop of `materialize_composition`
 (`_place_scenarios_and_binaries_and_check_coherence`) writes one binary at *every* non-web target's
-`appPath`. That resolution is platform-general, so an Android target's `appPath` is covered exactly
-like an iOS target's, not iOS alone. The bytes go through `_place_binary`'s unzip-or-copy branch, under the same
-BE-0051 path confinement `validate_bundle_config` gives a composed tree. The write overwrites whatever
-an `Upload`'s tree, or a Git checkout, would otherwise have placed there. And it is the first delivery
-path a materials-based job — one with no `bundle` at all — has ever had for a binary it does not
-already carry on disk.
+`appPath`.
 
-The scenarios artifact lands in the directory that target's config names, and this item **replaces**
-that directory's contents rather than merging into them. Replacement needs its own step, which is
-worth stating plainly because a reader may expect it to come for free. It does not.
+The resolution is platform-general. An Android target's `appPath` is covered exactly like an iOS
+target's.
+
+The bytes go through the unzip-or-copy branch of `_place_binary`. They go under the same BE-0051 path
+confinement that `validate_bundle_config` gives a composed tree. The write overwrites whatever an
+`Upload`'s tree, or a Git checkout, would otherwise have placed there. It is also the first delivery
+path that a materials-based job (one with no `bundle` at all) has ever had for a binary that it does
+not already carry on disk.
+
+#### Placing the scenarios
+
+The scenarios artifact lands in the directory that the target's config names. This item **replaces**
+that directory's contents instead of merging into them.
+
+Replacement needs its own step. A reader may expect it to come for free, but it does not.
 `extract_bundle` writes a zip's entries into a destination and deletes nothing.
-`materialize_composition` ends up with a replaced tree because it extracts into a freshly
-created empty directory. On the worker the destination already holds whatever the bound tree put
-there. The worker therefore removes the target's scenarios directory and recreates it empty before
-extracting, under the same BE-0051 confinement every other placement gets.
+`materialize_composition` ends up with a replaced tree only because it extracts into a freshly created
+empty directory. On the worker, the destination already holds whatever the bound tree put there. The
+worker therefore removes the target's scenarios directory and recreates it empty before extracting. It
+does so under the same BE-0051 confinement that every other placement gets.
 
 Replacement is what makes the run match the branch that asked for it. A merge would leave a scenario
-the branch deleted still sitting in the directory. A fan-out over every scenario in the target's
-directory would then run it, and the run would correspond to no commit. The deletion is safe to
-state this bluntly because the directory being emptied is inside the job's own workspace, never the
-bound tree: the workspace key below gives an overridden job a tree of its own.
+that the branch deleted still sitting in the directory. A fan-out over every scenario in the target's
+directory would then run it, and the run would correspond to no commit.
 
-That covers the app under test, and on iOS the app is not the only product a run installs: XCUITest
-also needs a runner. The override does not carry one, and for the common case it does not need to.
-The runner is app-agnostic — one built `.xctestrun` and its products drive whatever app a run
-targets ([BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md)) — so it does not change when a build changes, and a Simulator target that names
-no `xcuitest.testRunner` resolves to the runner shipped inside the Bajutsu wheel ([BE-0292](../BE-0292-xcuitest-bundled-runner/BE-0292-xcuitest-bundled-runner.md)). A
-worker that installed the wheel already holds it, so nothing about the runner travels per job. A
-target that does pin `xcuitest.testRunner` has that path rebased against its own config's directory,
-confined by BE-0051, which is how an uploaded bundle carries its own runner inside the tree BE-0413
-already delivers.
+The deletion is safe to state this bluntly. The directory being emptied is inside the job's own
+workspace, never the bound tree. The workspace key below gives an overridden job a tree of its own.
 
-One case stays open, and this item does not close it: a real-device target
-(`xcuitest.deviceType: device`) must pin a signed runner Bajutsu cannot ship ([BE-0288](../BE-0288-ios-device-signing-batch-build/BE-0288-ios-device-signing-batch-build.md)), so a
-materials-based job against a real device still has no delivery path for that runner — the same gap
-this item closes for the app binary. The runner belongs to the deployment rather than to the build,
-so a per-job override is the wrong shape for it; delivering a signed runner is its own problem, left
-to an item that can size it.
+#### The XCUITest runner
 
-The worker's workspace outlives the job — `work` is one directory for the worker's whole lifetime — so
-placing an override and leaving today's workspace key unchanged would let it contaminate
-the next job leased on that worker: one with no override, or one off the same bundle, would start
-against it with nothing announcing it. The overrides therefore participate in the workspace key itself:
+The app under test is covered. On iOS, however, the app is not the only product that a run installs.
+XCUITest also needs a runner. The override does not carry one, and for the common case it does not
+need to.
+
+- The runner is app-agnostic. One built `.xctestrun` and its products drive whatever app a run targets
+  ([BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md)). The runner does not change when
+  a build changes.
+- A Simulator target that names no `xcuitest.testRunner` resolves to the runner shipped inside the
+  Bajutsu wheel
+  ([BE-0292](../BE-0292-xcuitest-bundled-runner/BE-0292-xcuitest-bundled-runner.md)). A worker that
+  installed the wheel already holds it, so nothing about the runner travels per job.
+- A target that does pin `xcuitest.testRunner` has that path rebased against its own config's
+  directory, confined by BE-0051. This is how an uploaded bundle carries its own runner inside the tree
+  that BE-0413 already delivers.
+
+One case stays open, and this item does not close it. A real-device target (`xcuitest.deviceType:
+device`) must pin a signed runner that Bajutsu cannot ship
+([BE-0288](../BE-0288-ios-device-signing-batch-build/BE-0288-ios-device-signing-batch-build.md)). A
+materials-based job against a real device therefore still has no delivery path for that runner. This is
+the same gap that this item closes for the app binary.
+
+The runner belongs to the deployment rather than to the build, so a per-job override is the wrong shape
+for it. Delivering a signed runner is its own problem, left to an item that can size it.
+
+#### The workspace key
+
+The worker's workspace outlives the job. `work` is one directory for the worker's whole lifetime.
+Placing an override while leaving today's workspace key unchanged would let the override contaminate
+the next job leased on that worker. A job with no override, or one off the same bundle, would start
+against the leftover with nothing announcing it. The overrides therefore participate in the workspace
+key itself:
 
 | Job | Workspace |
 |---|---|
@@ -261,69 +348,88 @@ against it with nothing announcing it. The overrides therefore participate in th
 | materials-based job, one or both overrides | a directory keyed by `(materials identity, override identity)`, instead of the worker's shared working directory |
 | materials-based job, no override | the worker's shared working directory — exactly today, unchanged |
 
-The **override identity** in that key is a digest over the named legs, built the way
-`_composition_id` already builds a compose cache key: the shas joined in a fixed kind order, with an
-absent leg joining as an empty segment. No real 64-character digest can collide with that empty
-segment. The **materials identity** beside it is a digest over what a materials-based job already
-carries in its own spec — its config text and its scenario text — which is what keeps two such jobs
-apart when their configs name different `appPath`s.
+The **override identity** in that key is a digest over the named legs. It is built the way
+`_composition_id` already builds a compose cache key: the shas are joined in a fixed kind order, and
+an absent leg joins as an empty segment. No real 64-character digest can collide with that empty
+segment.
+
+The **materials identity** beside it is a digest over what a materials-based job already carries in its
+own spec: its config text and its scenario text. It keeps two such jobs apart when their configs name
+different `appPath`s.
 
 Keying the job's tree this way must not cost the bundle a second download, and stated carelessly it
-would. `_bundle_workspace` keys the bundle tree by bundle id today precisely "so a second job off
-the same bundle reuses it and fetches nothing", and folding the override into *that* key would make
-every new build a fresh key — a full re-fetch and re-extract of the bundle zip on the exact workload
-this item exists to speed up. The two keys therefore stay separate. The bundle cache keeps its
-bundle-id key and is still fetched once. The job's tree is a per-override directory built **from**
-that cached bundle, so an override costs a local copy rather than a network round trip. The disk
-cost it does inherit is BE-0413's, which `docs/self-hosting.md` already tells an operator to manage
-by pruning the bundle cache.
+would. `_bundle_workspace` keys the bundle tree by bundle id today, precisely "so a second job off the
+same bundle reuses it and fetches nothing". Folding the override into *that* key would make every new
+build a fresh key. The result is a full re-fetch and re-extract of the bundle zip, on the exact
+workload that this item exists to speed up.
 
-A job that names no override keeps today's key exactly, so nothing about existing behavior changes;
-only a job carrying an override gets a tree of its own. That makes the placement job-scoped by
-construction, and it is what lets the scenarios step above empty a directory without ever touching
-the bound tree. This follows
-BE-0413's own principle that an artifact's identity is a digest of its contents, so two different
-binaries are two different trees.
+The two keys therefore stay separate. The bundle cache keeps its bundle-id key and is still fetched
+once. The job's tree is a per-override directory built **from** that cached bundle, so an override
+costs a local copy rather than a network round trip. The disk cost that it inherits is BE-0413's.
+`docs/self-hosting.md` already tells an operator to manage that cost by pruning the bundle cache.
 
-A local, single-process `serve` is a different topology: it runs the job itself, in the operator's own
-project directory — `_register_and_dispatch` freezes `job.cwd` from the binding in every topology, so
-the discriminator is not the binding kind but the executor (`LocalExecutor`, versus BE-0106's
-`DbQueueExecutor` on a hosted deployment). This item therefore **refuses** both override fields on a
-`LocalExecutor` deployment with a clear error, instead of overwriting the operator's build
-output at `appPath` or the scenarios they are editing. Serve owns no workspace to isolate the
-placement into, so the contamination the
-workspace key solves on the worker has no local answer, and mutating an operator's project directory
-unannounced is the side effect directive 2 rules out. An operator on a single-process `serve` already
-has direct filesystem access and can point `appPath` wherever they want without these fields. This keeps
-the item scoped to the topology whose problem it exists to solve — the hosted split, where a worker
-runs the job and serve owns the workspace.
+A job that names no override keeps today's key exactly, so nothing about existing behavior changes.
+Only a job that carries an override gets a tree of its own. That makes the placement job-scoped by
+construction. It also lets the scenarios step above empty a directory without ever touching the bound
+tree. The design follows BE-0413's own principle that an artifact's identity is a digest of its
+contents, so two different binaries are two different trees.
 
-The cloud-batch fan-out `run-set` carries neither override, and the reason is not that the legs are
-hard to deliver there. **On the split topology this item targets, `run-set` does not run at all
-today.** The Device Farm package is built from `state.devicefarm_package_root`, which `serve()` sets
-at startup; the worker builds its own `ServeState` without that field, so a cloud-batch job leased
-from the database queue falls back to an ephemeral workspace holding only a config and a scenario.
-Device Farm's `APPIUM_PYTHON_TEST_PACKAGE` validation then rejects it, because the package root must
-carry Bajutsu's own `tests/` and `pyproject.toml`. The same field is `None` on a Bajutsu installed
-from a wheel rather than a checkout. `bajutsu/serve/jobs.py` states this limitation in the batch
-dispatcher's own docstring.
+#### The single-process topology
 
-Designing an override branch onto a path that does not execute would be designing against nothing,
-and the two prerequisites that path is missing are already named in that docstring: the package root
-wired into the worker's state, and **a host-portable app artifact path**. This item supplies the
-second. A `binary` artifact addressed by sha256, fetched through a signed url and verified on the
-worker, is exactly the host-portable path a worker-side `run-set` would need, and it exists here
-whether or not `run-set` ever uses it. Extending the overrides to `run-set` therefore belongs to the
-item that wires the package root, which can build on this one rather than duplicate it.
+A local, single-process `serve` is a different topology. It runs the job itself, in the operator's own
+project directory. `_register_and_dispatch` freezes `job.cwd` from the binding in every topology, so the
+discriminator is not the binding kind. The discriminator is the executor: `LocalExecutor`, versus
+BE-0106's `DbQueueExecutor` on a hosted deployment.
 
-A 404/410 on a fetch ends the job the way BE-0413 treats a bundle that is not there (`bundle
-unavailable`). A hash mismatch is different: BE-0413 classifies it as transient, so the lease lapses
-and another attempt can succeed, rather than one truncated download ending the job for good. Either
-way, a run never starts against the wrong binary or the wrong scenarios. Nor does it fall back,
-unannounced, to whatever the binding would otherwise have resolved to. The run's manifest records each
-overridden sha256 as
-provenance, alongside BE-0073's existing bundle provenance, so which artifacts a job actually installed
-stays answerable after the fact.
+This item **refuses** both override fields on a `LocalExecutor` deployment with a clear error. The
+alternative would overwrite the operator's build output at `appPath` or the scenarios that the operator
+is editing. Serve owns no workspace to isolate the placement into. The contamination that the workspace
+key solves on the worker therefore has no local answer. Mutating an operator's project directory
+unannounced is the side effect that prime directive 2 rules out.
+
+An operator on a single-process `serve` already has direct filesystem access. The operator can point
+`appPath` wherever they want without these fields. The refusal keeps the item scoped to the topology
+whose problem it exists to solve: the hosted split, where a worker runs the job and serve owns the
+workspace.
+
+#### The cloud-batch fan-out
+
+The cloud-batch fan-out `run-set` carries neither override. The reason is not that the legs are hard to
+deliver there. **On the split topology that this item targets, `run-set` does not run at all today.**
+
+- The Device Farm package is built from `state.devicefarm_package_root`, which `serve()` sets at
+  startup.
+- The worker builds its own `ServeState` without that field. A cloud-batch job leased from the
+  database queue therefore falls back to an ephemeral workspace holding only a config and a scenario.
+- Device Farm's `APPIUM_PYTHON_TEST_PACKAGE` validation then rejects the job. The package root must
+  carry Bajutsu's own `tests/` and `pyproject.toml`.
+- The same field is `None` on a Bajutsu installed from a wheel rather than a checkout.
+
+`bajutsu/serve/jobs.py` states this limitation in the batch dispatcher's own docstring.
+
+Designing an override branch onto a path that does not execute would be designing against nothing. The
+same docstring already names the two prerequisites that the path is missing:
+
+- the package root wired into the worker's state
+- **a host-portable app artifact path**
+
+This item supplies the second. A `binary` artifact is addressed by sha256, fetched through a signed
+url, and verified on the worker. It is exactly the host-portable path that a worker-side `run-set`
+would need, and it exists here whether or not `run-set` ever uses it. Extending the overrides to
+`run-set` belongs to the item that wires the package root. That item can build on this one instead of
+duplicating it.
+
+#### Failure and provenance
+
+A 404 or 410 on a fetch ends the job the way BE-0413 treats a bundle that is not there (`bundle
+unavailable`). A hash mismatch is different. BE-0413 classifies it as transient, so the lease lapses and
+another attempt can succeed. One truncated download does not end the job for good.
+
+Either way, a run never starts against the wrong binary or the wrong scenarios. Nor does it fall back,
+unannounced, to whatever the binding would otherwise have resolved to.
+
+The run's manifest records each overridden sha256 as provenance, alongside BE-0073's existing bundle
+provenance. Which artifacts a job actually installed stays answerable after the fact.
 
 ### Unit 3 — Tests and documentation
 
