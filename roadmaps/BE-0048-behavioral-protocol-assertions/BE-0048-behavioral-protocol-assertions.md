@@ -40,7 +40,7 @@ Bajutsu is unusually well placed here. It already observes the app's own traffic
 over that captured data, which matches little beyond method / URL / status.
 
 Deepening that surface is the project's clearest moat. Maestro positions itself explicitly as
-"UI-layer automation, not code instrumentation". It structurally cannot assert on an analytics
+"UI-layer automation, not code instrumentation", so it structurally cannot assert on an analytics
 payload or a response body's shape without abandoning its founding premise. Extending the
 network-truth assertions reframes E2E from "drive the screen and look" to "verify the app's
 observable contract". A no-instrumentation competitor cannot copy that differentiation.
@@ -95,7 +95,7 @@ expect:
 * **Shell out to an external contract-testing tool around the run.** Rejected. It moves the
   assertion out of the scenario YAML, the shared hub, so the executed contract is no longer visible
   in the file or the report. It also couples the test to the CI host.
-* **Keep the status-code-level `request` assertion alone (status quo).** This is acceptable for
+* **Keep only the status-code-level `request` assertion (status quo).** This is acceptable for
   smoke coverage but leaves the deepest differentiation on the table. The network data is already
   captured, so the marginal cost of asserting over it is low.
 

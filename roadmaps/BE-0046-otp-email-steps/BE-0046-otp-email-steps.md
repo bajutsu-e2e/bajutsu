@@ -112,7 +112,7 @@ apps:
 ```
 
 Defaults match the common "array of messages with `to` / `subject` / `body` / `receivedAt`" shape.
-A conforming API therefore needs no `messages` / `fields` mapping at all. The mapping exists merely
+A conforming API therefore needs no `messages` / `fields` mapping at all. The mapping exists only
 to absorb a differently-named response without a code change.
 
 **Step contract.**
@@ -175,8 +175,8 @@ exception, exactly as `http` is tested.
 - **A provider-specific mailbox client (Mailosaur / MailSlurp SDK).** This is the quickest to wire
   for one provider, but it binds the tool to that vendor's SDK and API, and a second provider means
   a second client. Rejected in favour of the generic HTTP surface with configurable field paths. That
-  surface reads any provider's JSON inbox with no added dependency. A provider that offers a
-  non-HTTP API alone can still be fronted by a tiny bridge.
+  surface reads any provider's JSON inbox with no added dependency. A provider that offers only a
+  non-HTTP API can still be fronted by a tiny bridge.
 - **Poll a raw IMAP mailbox.** This works against a real inbox without a test-mail provider. It
   pulls in an IMAP client and credential handling, and parsing MIME for the body is its own surface.
   Deferred: the HTTP mailbox covers the test-provider case that the motivating 2FA flows use. An

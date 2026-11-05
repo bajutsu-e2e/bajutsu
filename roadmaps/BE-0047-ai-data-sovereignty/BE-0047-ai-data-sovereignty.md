@@ -83,7 +83,7 @@ defaults:
 ```
 
 - **Keys never live in config.** `keyEnv` names an environment variable, and the value is read from the
-  environment at call time. A secret never lands in the repo or in an
+  environment at call time, so a secret never lands in the repo or in an
   uploaded bundle (CLAUDE.md). `baseUrl` points the Anthropic SDK at a self-hosted gateway / proxy
   (`Anthropic(base_url=…, api_key=os.environ[keyEnv])`). Bedrock keeps the AWS credential chain.
 - **Config first, env fallback.** `provider()` / `make_client()` / `resolve_model()` form the single
@@ -147,10 +147,10 @@ already injectable (`make_client(client=…)`). No test puts an LLM on the `run`
   the exact vendor-cloud and data-egress concern that differentiates Bajutsu. It also blurs the
   bring-your-own-key promise. Convenience here would cost the very thing being sold.
 * **Leave it implicit (status quo).** Rejected as insufficient. The guarantee is not legible to a
-  prospective adopter. The redaction-on-AI-input part is genuinely not guaranteed today. "Your
+  prospective adopter, and the redaction-on-AI-input part is genuinely not guaranteed today, so "Your
   data stays yours" is not yet something the tool can promise in writing.
-* **A full local/offline model option bundled with the tool.** Out of scope here. The provider
-  abstraction makes pointing at a self-hosted endpoint possible. Shipping and supporting a
+* **A full local/offline model option bundled with the tool.** Out of scope here: the provider
+  abstraction makes pointing at a self-hosted endpoint possible, but shipping and supporting a
   bundled model is a separate, much larger commitment.
 
 ## Progress

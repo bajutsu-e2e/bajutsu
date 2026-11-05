@@ -66,7 +66,7 @@ retry of failed tests" line, so the distinction must be explicit. That item is r
 retry-to-pass *hides* flakiness. This audit does the **opposite**: repeated runs are a *diagnostic
 to detect and report* non-determinism. A divergent result is a finding to fix, not a retry that
 turns red into green. The audit never changes a verdict and never feeds the run/CI gate. It
-strengthens determinism-first rather than straining it.
+therefore strengthens determinism-first rather than straining it.
 
 ## Detailed design
 
@@ -84,7 +84,7 @@ observational.
   `wait` steps missing a `timeout` or gated on an over-broad condition. It also flags raw-coordinate
   gestures that a stable `id` could replace. The output is a per-scenario determinism score,
   parallel to `doctor`'s id-coverage score (`bajutsu/doctor.py`).
-- **Run provenance & version stamping (longitudinal prerequisite).** Each run is stamped in
+- **Run provenance & version stamping (longitudinal prerequisite).** Each run would be stamped in
   `manifest.json` and in the serve run record
   ([BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) 7c-4). The stamp
   carries:

@@ -25,7 +25,7 @@ and has no effect on pass/fail.
 ## Motivation
 
 Teams routinely ask "what do our E2E tests actually cover?", and UI E2E tools rarely answer it.
-Maestro has no coverage notion at all. Bajutsu already holds the raw material:
+Maestro has no coverage notion at all. Bajutsu, however, already holds the raw material:
 
 - Every run captures element trees, screenshots, and `network.json`.
 - Scenarios statically declare the selectors they touch. With the behavioral-assertions sibling
