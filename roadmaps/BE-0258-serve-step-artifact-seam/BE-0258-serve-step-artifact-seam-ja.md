@@ -46,7 +46,7 @@
   スクリーンショットを `state.runs_dir / "_capture"` へ書き込みます。`bajutsu/serve/handler.py:605-611`
   が、後でこれを読み戻します。
 
-このうち 2 つの読み取りは、ホスト型 `server` backend（`bajutsu/serve/server/app.py`）から到達できます。
+ホスト型 `server` backend（`bajutsu/serve/server/app.py`）は、このうち 2 つの読み取りに最も直接に到達します。
 
 - `read_scenario`（`reads.py:265-286`。内部で `_step_artifacts` を呼びます）は、`app.py:222-240` で
   `/api/scenario` に配線されています。

@@ -46,7 +46,7 @@ filesystem:
   capture session under `state.runs_dir / "_capture"`. A later read in
   `bajutsu/serve/handler.py:605-611` reads it back.
 
-Two of these reads are reachable from the hosted `server` backend (`bajutsu/serve/server/app.py`):
+The hosted `server` backend (`bajutsu/serve/server/app.py`) reaches two of these reads most directly:
 
 - `read_scenario` (`reads.py:265-286`, which calls `_step_artifacts`) is wired to `/api/scenario` at
   `app.py:222-240`.
