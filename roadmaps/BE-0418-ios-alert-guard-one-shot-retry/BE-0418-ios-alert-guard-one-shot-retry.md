@@ -16,59 +16,74 @@
 
 ## Introduction
 
-`systemAlertHandling`'s guard answers a blocking system alert through two different mechanisms. Which
-one runs depends on where in a step a scenario meets the alert. A `wait` step drives
-`_AlertGuardGate`, which polls the screen on every tick. It can clear a whole sequence of alerts
-across however many polls the wait allows. An ordinary action step — a `tap`, for instance — carries
-no such polling loop. Once it fails, `AlertGuardConfig.__call__` gets one attempt to clear whatever
-blocks the screen. The step then retries once, and the run moves on.
+The guard behind `systemAlertHandling` answers a blocking system alert through one of two
+mechanisms. Which one runs depends on where in a step the scenario meets the alert.
 
-We propose letting that one attempt clear more than one alert, and retry a tap that misses on its
-first try. Today it does neither. It resolves at most one alert per call. On the one path that can
-clear an alert an application raises inside its own process, it gives up the moment a tap comes back
-`ElementNotTappable` — the same "not yet reachable" condition `_AlertGuardGate` has carried a bounded
-retry for since a real device first measured it. The result: a step fails with no alert-related note
-in its reason, precisely when two prompts land close together or a tap catches an alert still
-mid-animation. Both are common on iOS, and the polling guard already handles both.
+- A `wait` step drives `_AlertGuardGate`, which polls the screen on every tick. It can clear a whole
+  sequence of alerts across however many polls the wait allows.
+- An ordinary action step, such as a `tap`, carries no polling loop. Once the step fails,
+  `AlertGuardConfig.__call__` gets one attempt to clear whatever blocks the screen. The step then
+  retries once, and the run moves on.
+
+We propose that this one attempt clear more than one alert and retry a tap that misses on its first
+try. Today it does neither. It resolves at most one alert per call.
+
+One path can clear an alert that an application raises inside its own process. On that path, the
+attempt gives up the moment a tap comes back `ElementNotTappable`. That is the same "not yet
+reachable" condition for which `_AlertGuardGate` has carried a bounded retry since a real device
+first measured it.
+
+The result is a step that fails with no alert-related note in its reason. It happens when two prompts
+land close together, or when a tap catches an alert still mid-animation. Both cases are common on
+iOS, and the polling guard already handles both.
 
 ## Motivation
 
-A scenario's `tap` step can fail intermittently against an in-app-process alert — iOS's Save Password
-prompt, notably. Its failure reason names nothing about the alert, just the target element the step
-could not reach. The same scenario, run again, passes. Investigating one such run turned up two
-concrete mechanisms in `AlertGuardConfig`
+A scenario's `tap` step can fail intermittently against an in-app-process alert, notably iOS's Save
+Password prompt. The failure reason names the target element the step could not reach and says
+nothing about the alert. The same scenario passes when run again.
+
+Investigating one such run turned up two concrete mechanisms in `AlertGuardConfig`
 ([bajutsu/common/orchestrator/types/alert_guard_config.py](../../bajutsu/common/orchestrator/types/alert_guard_config.py)),
-the reactive guard's per-scenario configuration. Both trace to the same design choice: its `__call__`
+the reactive guard's per-scenario configuration. Both trace to one design choice: its `__call__`
 method runs a single dismiss attempt, not a loop.
 
-The first mechanism is a stacked-alert gap. iOS commonly queues more than one prompt after a single
-user action — a notification-authorization request queued behind, or ahead of, a save-password
-prompt the same sign-in raises. `__call__` (lines 172–191) reads `probe_native` and returns the
-moment that probe reports `"dismissed"`, the SpringBoard-owned prompt cleared. It never checks
-whether the application's own process still has the save-password sheet up underneath. The caller
-sees a cleared alert and retries the step once. That retry fails again against the sheet `__call__`
-never looked at, with no note explaining why.
+**The stacked-alert gap.** iOS commonly queues more than one prompt after a single user action. A
+notification-authorization request can queue behind, or ahead of, the save-password prompt that the
+same sign-in raises.
 
-The second mechanism is a landing-race gap, and it affects even a single alert.
-`dismiss_from_tree_once` (lines 127–170), the one-shot counterpart to the mid-wait
-`_AlertGuardGate._dismiss_from_tree`, taps the alert's button. It treats `ElementNotTappable` as a
-reason to walk away: return `None`, set no note, retry nothing. The mid-wait path treats the same
-exception differently. Its own docstring records a scrim that still covers a sheet's button while the
-sheet's presentation animation finishes, and it carries a bounded retry (`_TREE_RETAP_DELAY`,
-`_TREE_DISMISS_MAX_TAPS`) for that case, in
+`__call__` (lines 172–191) reads `probe_native` and returns the moment that probe reports
+`"dismissed"`, meaning the SpringBoard-owned prompt cleared. It never checks whether the
+application's own process still has the save-password sheet up underneath. The caller sees a cleared
+alert and retries the step once. The retry fails again against the sheet that `__call__` never looked
+at, with no note to explain why.
+
+**The landing-race gap.** This gap affects even a single alert. `dismiss_from_tree_once` (lines
+127–170) is the one-shot counterpart to the mid-wait `_AlertGuardGate._dismiss_from_tree`. It taps
+the alert's button. It treats `ElementNotTappable` as a reason to walk away: it returns `None`, sets
+no note, and retries nothing.
+
+The mid-wait path treats the same exception differently. Its docstring records a scrim that still
+covers a sheet's button while the sheet's presentation animation finishes. It carries a bounded retry
+(`_TREE_RETAP_DELAY`, `_TREE_DISMISS_MAX_TAPS`) for that case, in
 [`_alert_guard_gate.py`](../../bajutsu/common/orchestrator/waits/_alert_guard_gate.py) (lines
-329–343). An alert that has *just* stopped being blocked by another one — the stacked case above,
-resolved one layer at a time — sits in that same window: its own entrance animation is often still
-running the instant this one-shot path gets its single try.
+329–343).
 
-Both gaps trace to one cause, and call for one fix. `__call__` decides once whether anything blocks
-the screen, then stops, rather than looping until the screen actually clears or a small bound is hit.
-`_AlertGuardGate` already loops, because a `wait` step's own poll cycle drives it once per poll.
-`AlertGuardConfig.__call__` gets no such cycle; it has to loop on its own. A later reader can tell
-this landed by reproducing the motivating case. That case is two alerts raised close together after
-an ordinary action step, with no `wait` step placed to cover the interruption. That scenario should
-then pass reliably. A step that still fails should name, in its own reason, any alert the guard could
-not clear — not a bare "element not found" that says nothing about a prompt on screen at all.
+An alert that has *just* stopped being blocked by another one sits in that same window. The stacked
+case above resolves one layer at a time, so the entrance animation of the next alert is often still
+running the instant the one-shot path gets its single try.
+
+**One cause, one fix.** `__call__` decides once whether anything blocks the screen, then stops. It
+does not loop until the screen clears or a small bound is hit. `_AlertGuardGate` already loops,
+because the poll cycle of a `wait` step drives it once per poll. `AlertGuardConfig.__call__` gets no
+such cycle, so it has to loop on its own.
+
+A later reader can tell that this change landed by reproducing the motivating case. The case is two
+alerts raised close together after an ordinary action step, with no `wait` step placed to cover the
+interruption. That scenario should then pass reliably.
+
+A step that still fails should name, in its own reason, any alert the guard could not clear. The
+reason should not be a bare "element not found" that says nothing about a prompt on screen.
 
 ## Detailed design
 
@@ -76,94 +91,118 @@ not clear — not a bare "element not found" that says nothing about a prompt on
 
 `__call__` changes from a single `probe_native` / `dismiss_from_tree_once` pair to a bounded loop
 over that same pair. A new constant, `_GUARD_CALL_MAX_ROUNDS` (proposed: 3), caps the loop. The value
-matches the order of `_TREE_DISMISS_MAX_TAPS`, the mid-wait path's own tap ceiling. Each round takes
+matches the order of `_TREE_DISMISS_MAX_TAPS`, the tap ceiling of the mid-wait path. Each round takes
 one of four actions.
 
-1. Calls `probe_native`. A `"dismissed"` result records the event and starts the next round, rather
-   than returning right away. A SpringBoard-owned alert stacked in front of an in-tree one no longer
-   ends the call before the second alert is even read.
-2. On `"absent"`, calls the revised `dismiss_from_tree_once` (Unit 2). A returned `AlertEvent`
+1. Call `probe_native`. A `"dismissed"` result records the event and starts the next round. It no
+   longer returns right away. A SpringBoard-owned alert stacked in front of an in-tree one therefore
+   no longer ends the call before the second alert is read.
+2. On `"absent"`, call the revised `dismiss_from_tree_once` (Unit 2). A returned `AlertEvent`
    records the event and starts the next round, the same as a native dismissal.
 3. Still on `"absent"`, a `"not_tappable"` result (Unit 2) starts the next round without recording a
-   dismissal — the same retry a scrim mid-animation gets in the mid-wait path.
-4. Any other outcome — `"unhandled"`, `"reserved"`, `"incapable"`, or an `"absent"` state
-   `dismiss_from_tree_once` can no longer match — ends the loop. Nothing further here can act on what
+   dismissal. A scrim mid-animation gets the same retry in the mid-wait path.
+4. Any other outcome ends the loop: `"unhandled"`, `"reserved"`, `"incapable"`, or an `"absent"`
+   state that `dismiss_from_tree_once` can no longer match. Nothing further here can act on what
    remains, as today.
 
 Every round that records a dismissal or a `"not_tappable"` result runs the existing
 `settle_after_alert_dismiss`
-([`_functions.py:687`](../../bajutsu/common/orchestrator/waits/_functions.py)) before the loop reads
-the screen again *or returns*. The round that exhausts `_GUARD_CALL_MAX_ROUNDS` is included, since
-that round has no next round to settle before. Unit 3 removes the caller's own settle on the strength
-of this guarantee holding on every exit. This is otherwise unchanged from how the settle already runs
-once today: a prompt tapped a moment ago has not necessarily vanished yet. A round that reads a
-tree still mid-animation risks matching nothing at all.
+([`_functions.py:687`](../../bajutsu/common/orchestrator/waits/_functions.py)). It runs before the
+loop reads the screen again *or returns*. The round that exhausts `_GUARD_CALL_MAX_ROUNDS` is
+included, because that round has no next round to settle before. Unit 3 removes the caller's own
+settle on the strength of this guarantee holding on every exit.
 
-`blocked_note` keeps its existing meaning for what a probe saw and could not clear. It gains one
-case that meaning does not cover today: a loop that exhausts `_GUARD_CALL_MAX_ROUNDS` on a
+The settle itself is unchanged from how it already runs once today. A prompt tapped a moment ago has
+not necessarily vanished yet, and a round that reads a tree still mid-animation risks matching
+nothing at all.
+
+`blocked_note` keeps its existing meaning for what a probe saw and could not clear. It gains one case
+that the meaning does not cover today. A loop that exhausts `_GUARD_CALL_MAX_ROUNDS` on a
 `"not_tappable"` result sets `blocked_note = uncleared_prompt_note(label)`
-([`types/_functions.py:51`](../../bajutsu/common/orchestrator/types/_functions.py)). This names the
-label Unit 2's return carries, the same note `_alert_guard_gate.py` writes when it gives up on a
-showing. Without it, the native probe reports `"absent"` for an in-app-process sheet the SpringBoard
-query cannot see. The existing `state == "unhandled"` condition then leaves the note empty, and the
-motivating case — the one this proposal exists for — still reads as a bare missing element. A step
-that still fails once the loop hits its bound now names that leftover alert in its own reason, from
-whichever of the two origins (an unhandled native alert, or an obstructed in-tree one) produced it.
+([`types/_functions.py:51`](../../bajutsu/common/orchestrator/types/_functions.py)). The note names
+the label that the return of Unit 2 carries. It is the same note that `_alert_guard_gate.py` writes
+when it gives up on a showing.
+
+Without this case, the native probe reports `"absent"` for an in-app-process sheet that the
+SpringBoard query cannot see. The existing `state == "unhandled"` condition then leaves the note
+empty. The motivating case, which this proposal exists for, would still read as a bare missing
+element.
+
+With the new case, a step that still fails once the loop hits its bound names the leftover alert in
+its own reason. That holds for either origin: an unhandled native alert or an obstructed in-tree one.
 
 ### Unit 2 — give the in-tree tap the same landing-race retry the mid-wait path already has
 
 `dismiss_from_tree_once` stops folding `ElementNotTappable` in with `ElementNotFound` and
-`AmbiguousSelector`, which one `except` clause answers with `None` today
-([`alert_guard_config.py:165`](../../bajutsu/common/orchestrator/types/alert_guard_config.py)). It
-gets its own branch. The return widens from `AlertEvent | None` to a shape that keeps three outcomes
-distinguishable. A dismissal is still an `AlertEvent`. Visible but not yet reachable becomes a
-`"not_tappable"` sentinel, paired with the label the method already resolved via `match_alert_rule`
-before attempting the tap — no extra lookup. Nothing to do stays `None`: the prompt closed itself, or
-the match turned ambiguous. The other two exceptions keep returning `None` and keep ending the loop.
-Retrying a prompt that closed itself, or a label that resolved ambiguously, would spend the whole
+`AmbiguousSelector`. Today one `except` clause answers all three with `None`
+([`alert_guard_config.py:165`](../../bajutsu/common/orchestrator/types/alert_guard_config.py)).
+`ElementNotTappable` gets its own branch.
+
+The return widens from `AlertEvent | None` to a shape that keeps three outcomes distinguishable.
+
+- A dismissal is still an `AlertEvent`.
+- Visible but not yet reachable becomes a `"not_tappable"` sentinel. It is paired with the label that
+  the method already resolved via `match_alert_rule` before attempting the tap, so no extra lookup is
+  needed.
+- Nothing to do stays `None`: the prompt closed itself, or the match turned ambiguous.
+
+The other two exceptions keep returning `None` and keep ending the loop. Retrying a prompt that
+closed itself, or a label that resolved ambiguously, would spend the whole
 `_GUARD_CALL_MAX_ROUNDS` budget on a tap that will never land.
 
-This mirrors `_alert_guard_gate.py`'s own retry for the same exception, without copying its full
-state machine (`_TREE_RETAP_DELAY`, `_TREE_DISMISS_MAX_TAPS`, `_tree_signature`). The mid-wait path
-needs that machinery because a `wait` step's poll cadence can call it repeatedly against one alert.
-Across those repeated polls, it has to tell a lingering fade apart from a tap the application never
-acted on. `dismiss_from_tree_once` runs once per failed step. A short, round-bounded retry serves the
-same purpose there, without carrying state across separate calls.
+This design mirrors the retry of `_alert_guard_gate.py` for the same exception. It does not copy the
+full state machine (`_TREE_RETAP_DELAY`, `_TREE_DISMISS_MAX_TAPS`, `_tree_signature`). The mid-wait
+path needs that machinery because the poll cadence of a `wait` step can call it repeatedly against
+one alert. Across those polls, it has to tell a lingering fade apart from a tap that the application
+never acted on.
+
+`dismiss_from_tree_once` runs once per failed step. A short, round-bounded retry serves the same
+purpose there, without carrying state across separate calls.
 
 ### Unit 3 — change `__call__`'s contract to report every alert it clears
 
-`__call__`'s signature changes from `(driver: base.Driver) -> AlertEvent | None` to
-`(driver: base.Driver, alerts: list[AlertEvent]) -> bool`. This matches `_AlertGuardGate`'s existing
-pattern: append directly to a caller-supplied list, rather than return one event. A single
-`AlertEvent | None` return can no longer represent what a multi-round call clears. A caller reading
-the last event alone would under-report every alert the earlier rounds dismissed.
-[BE-0406](../BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts.md)'s Unit
-2a raised the same under-reporting risk for a different call site.
+The signature of `__call__` changes from `(driver: base.Driver) -> AlertEvent | None` to
+`(driver: base.Driver, alerts: list[AlertEvent]) -> bool`. This matches the existing pattern of
+`_AlertGuardGate`: append directly to a caller-supplied list, rather than return one event.
 
-Both call sites move to the new contract, and their note-appending changes alongside the return
-type, not only the retry check. Today, `event is not None` and a non-empty `blocked_note` are
-mutually exclusive: `__call__` clears the note on `"dismissed"`. So `if event is None and note …`
-already works as the gate for both, as things stand. A multi-round call breaks that exclusivity.
-Round 1 can dismiss the SpringBoard-owned prompt while round 2 leaves a second one unhandled, so
-`cleared` is `True` and `blocked_note` is still non-empty. Both sites gate the note on the note
-alone from here on, not on `cleared`. The stacked case then still names what remained, even though
-the call cleared something. `cleared` alone decides whether the retry runs.
+A single `AlertEvent | None` return can no longer represent what a multi-round call clears. A caller
+that reads the last event alone would under-report every alert the earlier rounds dismissed.
+[BE-0406](../BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts.md)
+raised the same under-reporting risk for a different call site, in its Unit 2a.
 
-- [`_step_runner.py:653–695`](../../bajutsu/common/orchestrator/loop/_step_runner.py) — the
-  end-of-step retry. `event = self.cfg.alert_guard(active_driver)` becomes a call that appends
-  directly into `outcome.alerts`; the `if event is not None` branch that follows becomes `if
-  cleared`. The note branch beside it does *not* become `if not cleared`: `if event is None and
-  note` becomes `if note and note not in reason`, gating on the note alone, per the paragraph
-  above. `settle_after_alert_dismiss` no longer runs here: Unit 1 already settles after every round
-  that dismissed or found something not yet tappable, the last one included.
-- [`_functions.py:752–769`](../../bajutsu/common/orchestrator/loop/_functions.py) — the `expect`
-  retry. The guard's own result there is `expect_alerts.append(event)`
-  ([`loop/_functions.py:760`](../../bajutsu/common/orchestrator/loop/_functions.py)); that becomes
-  appending directly, not the `expect_alerts.extend(...)` at line 750, which is
-  `drain_interruptions`' result and stays unchanged. `if event is None and
-  alert_guard.blocked_note` changes the same way, to `if note and note not in reason`.
+Both call sites move to the new contract. Their note-appending changes along with the return type,
+not only the retry check.
 
-Neither call site's own retry count changes. A step or an `expect` still gets one retry after the
+Today, `event is not None` and a non-empty `blocked_note` are mutually exclusive, because `__call__`
+clears the note on `"dismissed"`. So `if event is None and note …` already works as the gate for
+both. A multi-round call breaks that exclusivity. Round 1 can dismiss the SpringBoard-owned prompt
+while round 2 leaves a second one unhandled. Then `cleared` is `True` and `blocked_note` is still
+non-empty.
+
+From here on, both sites gate the note on the note alone, not on `cleared`. The stacked case then
+still names what remained, even though the call cleared something. `cleared` alone decides whether
+the retry runs.
+
+- [`_step_runner.py:653–695`](../../bajutsu/common/orchestrator/loop/_step_runner.py) is the
+  end-of-step retry.
+  - `event = self.cfg.alert_guard(active_driver)` becomes a call that appends directly into
+    `outcome.alerts`.
+  - The `if event is not None` branch that follows becomes `if cleared`.
+  - The note branch beside it does *not* become `if not cleared`. `if event is None and note`
+    becomes `if note and note not in reason`, which gates on the note alone.
+  - `settle_after_alert_dismiss` no longer runs here. Unit 1 already settles after every round that
+    dismissed or found something not yet tappable, the last one included.
+- [`_functions.py:752–769`](../../bajutsu/common/orchestrator/loop/_functions.py) is the `expect`
+  retry.
+  - The result of the guard there is `expect_alerts.append(event)`
+    ([`loop/_functions.py:760`](../../bajutsu/common/orchestrator/loop/_functions.py)). That
+    becomes appending directly.
+  - The `expect_alerts.extend(...)` at line 750 stays unchanged, because it carries the result of
+    `drain_interruptions`.
+  - `if event is None and alert_guard.blocked_note` changes the same way, to
+    `if note and note not in reason`.
+
+Neither call site changes its own retry count. A step or an `expect` still gets one retry after the
 guard runs, as today. What changes is how much the guard itself clears within that one call, before
 the retry it earns.
 
@@ -172,56 +211,60 @@ the retry it earns.
 New `FakeDriver`-backed tests join the existing one-shot coverage in
 [`tests/orchestrator/test_native_alert_guard.py`](../../tests/orchestrator/test_native_alert_guard.py).
 
-- A stacked-alert case: a native-only prompt sits in front of an in-tree-only one. Both events land in
-  the caller's `alerts` list from a single `__call__`. The step's retry then succeeds against the
-  now-clear screen.
-- A stacked case where the second alert stays unhandled: the native probe dismisses the first alert,
-  then reports `"unhandled"` on a second. `cleared` is `True`, but `blocked_note` is still set, and
-  the note reaches the eventual failure reason even though the call cleared something.
-- A landing-race case: `dismiss_from_tree_once` reports `"not_tappable"` on its first attempt within a
-  round, then dismisses on a later round. The alert still clears. The loop stays within its
-  `_GUARD_CALL_MAX_ROUNDS` bound.
-- A permanently obstructed case: every round's tap keeps reporting `"not_tappable"`. The loop stops at
-  `_GUARD_CALL_MAX_ROUNDS`. The step fails, and the failure reason names the alert via
+- **A stacked-alert case.** A native-only prompt sits in front of an in-tree-only one. Both events
+  land in the caller's `alerts` list from a single `__call__`. The retry of the step then succeeds
+  against the now-clear screen.
+- **A stacked case where the second alert stays unhandled.** The native probe dismisses the first
+  alert, then reports `"unhandled"` on a second. `cleared` is `True`, but `blocked_note` is still
+  set. The note reaches the eventual failure reason even though the call cleared something.
+- **A landing-race case.** `dismiss_from_tree_once` reports `"not_tappable"` on its first attempt
+  within a round, then dismisses on a later round. The alert still clears, and the loop stays within
+  its `_GUARD_CALL_MAX_ROUNDS` bound.
+- **A permanently obstructed case.** Every round's tap keeps reporting `"not_tappable"`. The loop
+  stops at `_GUARD_CALL_MAX_ROUNDS`. The step fails, and the failure reason names the alert via
   `uncleared_prompt_note(label)`, rather than reading as a bare missing element.
-- A settle-on-exhaustion case: three stacked prompts each dismiss, and the loop exhausts
+- **A settle-on-exhaustion case.** Three stacked prompts each dismiss, and the loop exhausts
   `_GUARD_CALL_MAX_ROUNDS` right after the last one. `settle_after_alert_dismiss` still ran before
-  `__call__` returned, so the retry that follows reads a settled tree, not one still mid-animation.
-- A regression guard for today's single-alert, single-round behavior: a scenario with one in-tree
-  alert that dismisses on the first attempt still clears in one round. The loop adds no extra latency
-  to that common case.
+  `__call__` returned. The retry that follows reads a settled tree, not one still mid-animation.
+- **A regression guard for today's single-alert, single-round behavior.** A scenario with one
+  in-tree alert that dismisses on the first attempt still clears in one round. The loop adds no extra
+  latency to that common case.
 
 ### Unit 5 — documentation
 
 [`docs/architecture.md`](../../docs/architecture.md) covers `systemAlertHandling` around lines
-705–787. It, and its [`docs/ja/`](../../docs/ja/architecture.md) mirror, gain a short account of the
-end-of-step and `expect` guard clearing more than one alert per call. That account sits alongside the
-mid-wait guard's own account of the same behavior.
+705–787. That page and its [`docs/ja/`](../../docs/ja/architecture.md) mirror gain a short account of
+the end-of-step and `expect` guard clearing more than one alert per call. The account sits alongside
+the account the mid-wait guard already has of the same behavior.
 
 ### Out of scope
 
-Two cases stay unresolved after this proposal, by design rather than by omission. An alert no
-`systemAlertHandling` rule identifies still ends the loop at its `"unhandled"` outcome, unchanged,
-with nothing tapped.
-[BE-0402](../BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md)
-removed the AI-vision fallback that used to guess an answer for an undeclared alert. Guessing a tap on
-a screen a scenario never described was itself the risk, not the fix. Nothing here reopens that
-question. Likewise, an in-tree alert whose button never becomes tappable within
-`_GUARD_CALL_MAX_ROUNDS` still fails the step, unresolved.
+Two cases stay unresolved after this proposal, by design rather than by omission.
 
-What this proposal changes for both cases is only the diagnosis. The failure names the alert
-`blocked_note` recorded, instead of reading as a bare missing element. Actually clearing either case —
-answering an alert no rule names, or retrying past a permanently obstructed screen — is a different,
-larger proposal. It would need to revisit BE-0402's own reasoning first.
+- An alert that no `systemAlertHandling` rule identifies still ends the loop at its `"unhandled"`
+  outcome, with nothing tapped. This is unchanged.
+  [BE-0402](../BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md)
+  removed the AI-vision fallback that used to guess an answer for an undeclared alert. Guessing a tap
+  on a screen that a scenario never described was itself the risk, not the fix. Nothing here reopens
+  that question.
+- An in-tree alert whose button never becomes tappable within `_GUARD_CALL_MAX_ROUNDS` still fails
+  the step, unresolved.
+
+For both cases, this proposal changes the diagnosis and nothing else. The failure names the alert
+that `blocked_note` recorded, instead of reading as a bare missing element.
+
+Actually clearing either case is a different, larger proposal. Examples are answering an alert that
+no rule names, and retrying past a permanently obstructed screen. That proposal would need to revisit
+the reasoning of BE-0402 first.
 
 ## Alternatives considered
 
 | Option | Outline | Why not adopted |
 |---|---|---|
-| Narrow `_AlertGuardGate`'s `_tree_signature` comparison to the candidate button set alone | Address a suspected false-positive "the tap landed" verdict in the *mid-wait* retry, by comparing fewer elements between polls | Investigated first, and rejected once checked against `test_dismiss_from_tree_does_not_retry_when_the_tap_moved_the_screen`. That test's own scenario — a sheet closing to reveal an application button carrying the same label — needs the wider comparison so it does not re-tap the revealed application button. Narrowing it would fix a suspected flaw at the cost of that safety property. It also targets the wrong call site: the reported failures trace to the one-shot end-of-step path, not the mid-wait one |
-| Debounce the mid-wait signature check (require the difference to persist across two polls before declining a retry) | A smaller, mid-wait-only refinement of the same idea | Same call-site mismatch as above. The reported failures happen after an ordinary action step, where `_AlertGuardGate` never runs at all |
-| Give `dismiss_from_tree_once` its own full retry state machine, matching `_alert_guard_gate.py`'s `_TREE_RETAP_DELAY` / `_TREE_DISMISS_MAX_TAPS` / `_tree_signature` | Copy the mid-wait path's state machine into the one-shot path | That state machine exists to compare taps across many polls spread over a `wait` step's whole timeout. A one-shot call carries no such history between invocations, so a short, round-bounded retry inside the single call serves the same purpose without the extra state or its own edge cases |
-| Document the workaround: tell scenario authors to place a `wait` step before an action likely to meet a stacked or slow-animating alert | No code change; rely on the author predicting the interruption | [BE-0406](../BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts.md) records the same workaround for a related gap, and the same objection to it. It asks an author to predict operating-system timing that is not always predictable, and it cannot be written when that timing is genuinely unknown |
+| Narrow the `_tree_signature` comparison of `_AlertGuardGate` to the candidate button set alone | Address a suspected false-positive "the tap landed" verdict in the *mid-wait* retry, by comparing fewer elements between polls | We investigated it first and rejected it after checking it against `test_dismiss_from_tree_does_not_retry_when_the_tap_moved_the_screen`. The scenario of that test is a sheet that closes to reveal an application button with the same label. It needs the wider comparison, so that the guard does not re-tap the revealed application button. Narrowing the comparison would fix a suspected flaw at the cost of that safety property. It also targets the wrong call site: the reported failures trace to the one-shot end-of-step path, not the mid-wait one |
+| Debounce the mid-wait signature check (require the difference to persist across two polls before declining a retry) | A smaller, mid-wait-only refinement of the same idea | The call site is wrong here as well. The reported failures happen after an ordinary action step, where `_AlertGuardGate` never runs at all |
+| Give `dismiss_from_tree_once` its own full retry state machine, matching `_TREE_RETAP_DELAY` / `_TREE_DISMISS_MAX_TAPS` / `_tree_signature` in `_alert_guard_gate.py` | Copy the state machine of the mid-wait path into the one-shot path | That state machine exists to compare taps across many polls spread over the whole timeout of a `wait` step. A one-shot call carries no such history between invocations. A short, round-bounded retry inside the single call serves the same purpose without the extra state or its own edge cases |
+| Document the workaround: tell scenario authors to place a `wait` step before an action likely to meet a stacked or slow-animating alert | No code change; rely on the author predicting the interruption | [BE-0406](../BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts.md) records the same workaround for a related gap, and the same objection to it. The workaround asks an author to predict operating-system timing that is not always predictable. It cannot be written when that timing is genuinely unknown |
 
 ## Progress
 
