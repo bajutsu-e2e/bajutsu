@@ -137,10 +137,10 @@ The example is otherwise unchanged: real ids, a real per-step flow from each of 
 - Every name must already exist in the loaded config. The check works the same way that `--target` is checked today.
 - Repeating the same name twice in `targets` is rejected at load time rather than silently deduplicated.
 
-`Step` gains `target: str | None = None`. The field joins the fixed tuple of orthogonal step modifiers, which today is `("capture", "extract", "name", "from_")`. See [`bajutsu/common/scenario/models/steps/_shared.py:8`](../../bajutsu/common/scenario/models/steps/_shared.py). Those modifiers are exempted from `Step`'s "precisely one action" rule
+`Step` gains `target: str | None = None`. The field joins the fixed tuple of orthogonal step modifiers, which today is `("capture", "extract", "name", "from_")`. See [`bajutsu/common/scenario/models/steps/_shared.py:8`](../../bajutsu/common/scenario/models/steps/_shared.py). Those modifiers are exempted from `Step`'s "exactly one action" rule
 ([`bajutsu/common/scenario/models/steps/step.py:136-139`](../../bajutsu/common/scenario/models/steps/step.py)), and `target` needs the same exemption.
 
-The new rule needs a validator of its own. `_precisely_one`
+The new rule needs a validator of its own. `_exactly_one`
 ([`bajutsu/common/scenario/models/_base.py:40`](../../bajutsu/common/scenario/models/_base.py)) runs from inside `Step`'s own `model_validator` and has no access to the enclosing scenario. The new validator is checked once at the `Scenario` level. It enforces the new field's meaning against `scenario.targets`:
 
 - With zero or one entries, `target` must be omitted or must name that one entry. Today's single-target scenario thus needs no change and behaves precisely as it does now.
@@ -218,7 +218,7 @@ Without this check, the outcome would be bad either way once such a file lands i
 - If `name` is not one of the file's own declared targets, the mismatch check refuses the file. That rejection fails every other scenario in the same batch alongside it.
 - If `name` does happen to be one of its declared targets, the membership check lets the file through. The batch then launches, unnoticed, every other target the file declares too, well beyond the single target that the invocation named.
 
-With the discovery-time rejection in place, a self-declaring scenario can ever run purely through an explicit `--scenario <file>`. Neither bad outcome depends on where in the tree the file happens to sit. Keeping self-declaring scenarios in a directory of their own stays good practice for a reader mapping the tree, but this item no longer relies on it for correctness.
+With the discovery-time rejection in place, a self-declaring scenario can only ever run through an explicit `--scenario <file>`. Neither bad outcome depends on where in the tree the file happens to sit. Keeping self-declaring scenarios in a directory of their own stays good practice for a reader mapping the tree, but this item no longer relies on it for correctness.
 
 This item leaves the web backend's cross-engine matrix (`--browsers`, [`bajutsu/run/cli.py:264-307`](../../bajutsu/run/cli.py)) and `--headed` / `--browser` untouched. They keep applying to a run's single web-platform target precisely as today. A self-declaring scenario that names more than one web-platform target refuses them outright rather than guessing which target they mean. Extending the matrix axis to a multi-target run is a follow-up that this item does not cover.
 
@@ -305,7 +305,7 @@ Teardown brackets the whole set the same way one launch already brackets one sce
 - A launch that fails partway through the list tears down every driver that did start before propagating the failure. This mirrors `launch_driver`'s own guard around a readiness failure after `env.start`. See [`bajutsu/common/runner/launch.py:100-108`](../../bajutsu/common/runner/launch.py).
 - The run's own end tears down every driver the same way `_run_on_lease`'s `finally: lz.release()` ([`bajutsu/common/runner/pipeline.py:955-956`](../../bajutsu/common/runner/pipeline.py)) already tears down its one lease today. It calls that same release once per declared target's lease.
 
-### Routing a step to its driver, and sharing `${vars.*}` across every one of them
+### Routing a step to its driver, and sharing `${vars.*}` across all of them
 
 `run_scenario`'s existing flat keyword parameters are, read together, everything the pipeline binds from one target's one lease today (per the previous section's enumeration):
 
@@ -393,9 +393,10 @@ One question stays genuinely open. `gc_with_screen` ([`bajutsu/common/runner/pip
    - Resolve one already-rebased `Effective` per declared target name into a local map in
      `_run_one_impl`. Never store the map on the shared `_ScenarioRunner`.
    - Acquire every pool a scenario needs in a fixed, deterministic order (the declared platform name,
-     sorted). Do not issue one blocking `pool.lease()` per target in arbitrary order.
-   - Release anything already held if a later pool in the sequence times out. This is the standard
-     lock-ordering discipline, so no two workers can hold each other's next pool and deadlock.
+     sorted). Do not issue one blocking `pool.lease()` per target in arbitrary order. This is the
+     standard lock-ordering discipline, so no two workers can hold each other's next pool and
+     deadlock.
+   - Release anything already held if a later pool in the sequence times out.
    - Call `launch_driver` once per name and collect the results into a local `dict[str, base.Driver]`,
      all before the first step. Pass the scenario's own unchanged `preconditions`/`permissions` to
      every call.

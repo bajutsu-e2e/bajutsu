@@ -35,7 +35,7 @@ follow-up, on three fronts.
 
 Using the v1 shell surfaced two gaps.
 
-The first gap concerns targets. An element with no `id`, merely a `label`, was unreachable from `repl`,
+An element with no `id`, only a `label`, was unreachable from `repl`,
 even though `tree` already prints its `label` in full. The operator could read the row but had no
 command that would act on it. Two elements sharing one `id` or `label` (a duplicated row, a repeated
 list item) were equally unreachable. `tap` would report `AmbiguousSelector` and stop, with no way to
@@ -58,7 +58,7 @@ grammar well past what a shortcut should carry. A scenario author already has a 
 precisely this: the `Selector` YAML a step authors against. Reusing it as a REPL escape hatch closes
 the gap with no new vocabulary to design or learn.
 
-The second gap concerns output. The plain prompt loop forces an operator to scroll the terminal's own
+Separately, the plain prompt loop forces an operator to scroll the terminal's own
 history to read back a long `tree` or to find an earlier `tap`'s result. The shell has no memory of
 what it printed and no way to search it. An operator debugging a flaky selector often wants precisely
 that: type a few commands, then scroll back and grep the transcript for the one line that explains
