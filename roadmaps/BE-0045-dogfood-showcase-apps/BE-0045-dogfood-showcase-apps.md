@@ -81,7 +81,7 @@ The fixture gives the driver a regression net, free, as a byproduct of the fixtu
 **4. A stable base for practising future features**.
 Per-app differences live entirely in config ([DESIGN §8](../../DESIGN.md)).
 The showcase is thus the natural target for trying new capabilities, without inventing a throwaway app each time.
-Several capabilities then have a ready, representative subject:
+All of these then have a ready, representative subject:
 
 - visual-regression baselines ([BE-0029](../BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions.md))
 - data-driven runs
