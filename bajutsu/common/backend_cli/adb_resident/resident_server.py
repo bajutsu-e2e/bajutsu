@@ -233,6 +233,10 @@ class ResidentServer:
 
     def _revive(self) -> bool:
         """Start a stopped server again for a caller that cannot do without it; False if it cannot."""
+        if self._host_port is not None:
+            # Already up. A second launch would overwrite `_proc` and `_host_port` and leak the running
+            # instrumentation, which still holds the device's single UiAutomation session.
+            return True
         if not self._restart:
             return False
         try:

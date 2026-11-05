@@ -59,7 +59,7 @@ Three more facts made one timeout expensive:
   `ERROR: could not get idle state`. In our run, the driver spent 66 seconds on those failures and
   returned an empty tree.
 
-Keep-alive reuse was a third suspect, and we ruled it out. `_channel` retires a connection on any
+Keep-alive reuse was another suspect, and we ruled it out. `_channel` retires a connection on any
 exception, and a test now pins that behavior.
 
 After this change, a run on a never-idle screen stays on the resident channel, and each read

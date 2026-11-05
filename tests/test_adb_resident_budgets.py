@@ -22,14 +22,15 @@ _SOURCE = _SERVER.read_text(encoding="utf-8")
 _CODE = re.sub(r"/\*.*?\*/|//[^\n]*", "", _SOURCE, flags=re.DOTALL)
 
 
-def _millis(name: str) -> float:
+def _seconds(name: str) -> float:
+    """One of the server's `..._MS` constants, read from its source and converted to seconds."""
     match = re.search(rf"const val {name} = ([\d_]+)L\b", _CODE)
     assert match is not None, f"{name} not found in the server source"
     return int(match.group(1).replace("_", "")) / 1000
 
 
 def test_the_server_default_budget_is_the_one_the_host_sends() -> None:
-    assert _millis("DEFAULT_WAIT_BUDGET_MS") == budgets.WAIT_BUDGET_MS / 1000
+    assert _seconds("DEFAULT_WAIT_BUDGET_MS") == budgets.WAIT_BUDGET_MS / 1000
 
 
 def test_a_read_leaves_room_inside_the_host_timeout_for_its_last_dump() -> None:
@@ -41,21 +42,23 @@ def test_a_read_leaves_room_inside_the_host_timeout_for_its_last_dump() -> None:
 
 def test_one_wait_cannot_spend_the_budget_the_read_mark_needs() -> None:
     # The first idle wait runs ahead of the mark wait, so both have to fit for the mark to get its due.
-    assert _millis("IDLE_WAIT_MS") + _millis("POSTDATE_BUDGET_MS") <= budgets.WAIT_BUDGET_MS / 1000
+    assert (
+        _seconds("IDLE_WAIT_MS") + _seconds("POSTDATE_BUDGET_MS") <= budgets.WAIT_BUDGET_MS / 1000
+    )
 
 
 def test_act_fits_inside_its_timeout_with_every_stage_at_its_ceiling() -> None:
     # `act()` adds a press-and-hold's own duration to the timeout, so the hold stays out of this sum.
     waits = (
         budgets.WAIT_BUDGET_MS / 1000
-        + _millis("ACT_PUBLISH_BUDGET_MS")
-        + _millis("ACT_TREE_BUDGET_MS")
+        + _seconds("ACT_PUBLISH_BUDGET_MS")
+        + _seconds("ACT_TREE_BUDGET_MS")
     )
     assert waits <= budgets.ACTION_TIMEOUT_S - 1.0
 
 
 def test_type_fits_inside_its_timeout_with_every_stage_at_its_ceiling() -> None:
-    waits = budgets.WAIT_BUDGET_MS / 1000 + _millis("FOCUS_BUDGET_MS")
+    waits = budgets.WAIT_BUDGET_MS / 1000 + _seconds("FOCUS_BUDGET_MS")
     assert waits <= budgets.ACTION_TIMEOUT_S - 1.0
 
 
@@ -64,7 +67,8 @@ def test_no_idle_wait_escapes_the_budget() -> None:
     # right after that class has set the bound.
     assert len(re.findall(r"device\.waitForIdle\(\)", _CODE)) == 1
     budget_class = _CODE[_CODE.index("private class WaitBudget") :]
-    assert "device.waitForIdle()" in budget_class[: budget_class.index("fun capDumpWaits")]
+    await_idle = budget_class[budget_class.index("fun awaitIdle()") :]
+    assert "device.waitForIdle()" in await_idle[: await_idle.index("fun ", 1)]
 
 
 def test_every_dump_runs_under_a_bound_of_its_own() -> None:

@@ -194,6 +194,16 @@ def test_revive_starts_a_stopped_server_again(tmp_path: Path) -> None:
     assert channel.recovery.live()
 
 
+def test_revive_leaves_a_running_server_alone(tmp_path: Path) -> None:
+    # A second launch would lose track of the running instrumentation, which holds the session.
+    lease = _Lease(tmp_path, [])
+    channel = lease.server.start()
+    assert channel.recovery is not None
+    assert channel.recovery.revive()
+    assert lease.spawns == 1
+    assert channel.recovery.drain_notes() == []
+
+
 def test_revive_honors_a_lease_that_may_not_restart(tmp_path: Path) -> None:
     lease = _Lease(tmp_path, [], restart=False)
     channel = lease.server.start()
