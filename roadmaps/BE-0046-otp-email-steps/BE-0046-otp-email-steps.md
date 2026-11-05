@@ -70,8 +70,8 @@ Mapping and contract:
   no fixed sleep and no infinite poll. A timeout is a step failure.
 
 Secrets (TOTP seeds, mailbox credentials, and API base URLs) are referenced as `${secrets.X}` and
-declared in config. The scenario file therefore stores tokens, never values, and evidence masks the
-values automatically. Endpoint configuration shared across scenarios lives in `targets.<name>`.
+declared in config. The scenario file therefore stores tokens, never values, and they are auto-masked
+in evidence. Endpoint configuration shared across scenarios lives in `targets.<name>`.
 
 Prime directives preserved:
 
@@ -129,7 +129,7 @@ to absorb a differently-named response without a code change.
   rejected at load time, like an empty selector.
 - **`extract`** pulls the value from the matched message's body into `${vars.<var>}`. `bodyMatches`
   is a regex whose **first capturing group** (or whole match, if none) is the value. The value lives
-  merely in runtime `vars.*`. The recorded scenario keeps the `${vars.*}` token, like `totp` / `http`
+  in runtime `vars.*` alone. The recorded scenario keeps the `${vars.*}` token, like `totp` / `http`
   `saveBody`, so the value never enters the manifest or the report.
 - **`timeout`** (mandatory, in seconds) bounds the poll. It follows the same condition-wait rule as
   every other wait: no fixed sleep and no infinite poll.
