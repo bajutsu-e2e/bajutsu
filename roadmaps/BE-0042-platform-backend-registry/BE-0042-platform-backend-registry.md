@@ -15,15 +15,40 @@
 
 ## Introduction
 
-The first slice of the multi-platform direction ([BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md)) has already landed: backend selection keys off a **platform registry** rather than a single hard-coded iOS actuator. `--backend` and the config `backend:` field now accept a **platform token** (`ios` / `android` / `web` / `fake`) as well as a bare actuator name (e.g. `idb`). A platform expands to its actuators in stability order, and the chosen actuator is the first one that is **implemented and available** in this environment. This is the selector-side groundwork that lets a real second platform slot in without touching scenarios, config schema, or the deterministic core.
+The first slice of the multi-platform direction ([BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md)) has already landed.
+Backend selection now keys off a **platform registry**, not a single hard-coded iOS [actuator](../../docs/glossary.md#driver-backend-actuator-platform).
+
+`--backend` and the config `backend:` field accept two kinds of token:
+
+- a **platform token** (`ios` / `android` / `web` / `fake`)
+- a bare actuator name (for example `idb`)
+
+A platform expands to its actuators in stability order.
+The chosen actuator is the first one that is **implemented and available** in this environment.
+
+This is the selector-side groundwork for a real second platform.
+The platform can then slot in without touching scenarios, the config schema, or the deterministic core.
 
 ## Motivation
 
-Going multi-platform means adding a per-platform triple — actuator + environment manager + stable-id convention — behind the existing `Driver` seam, while the deterministic spine stays unchanged ([BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md)). Before any of that, backend *selection* had to stop assuming "iOS = idb": it needed to (1) name platforms as first-class tokens, (2) map a platform to an ordered list of candidate actuators (so a richer iOS actuator like XCUITest can later be preferred over `idb` without a config change — see [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md)), and (3) report a *clear* "not implemented yet" for a recognized-but-unbuilt platform instead of a generic failure. Landing this slice first keeps later per-platform work additive.
+Going multi-platform means adding a per-platform triple behind the existing `Driver` seam.
+The triple is an actuator, an environment manager, and a stable-id convention.
+The deterministic spine stays unchanged ([BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md)).
+
+Before any of that, backend *selection* had to stop assuming "iOS = idb".
+It needed to do three things:
+
+1. Name platforms as first-class tokens.
+2. Map a platform to an ordered list of candidate actuators.
+   A richer iOS actuator such as XCUITest can then be preferred over `idb` later without a config change (see [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md)).
+3. Report a *clear* "not implemented yet" for a recognized-but-unbuilt platform, instead of a generic failure.
+
+Landing this slice first keeps later per-platform work additive.
 
 ## Detailed design
 
-Implemented in [`bajutsu/backends.py`](../../bajutsu/backends.py). See also [drivers → backend selection](../../docs/drivers.md#backend-selection-and-the-actuator).
+The implementation lives in [`bajutsu/backends.py`](../../bajutsu/backends.py).
+See also [drivers → backend selection](../../docs/drivers.md#backend-selection-and-the-actuator).
 
 A platform registry maps each platform token to its actuators, most-stable-first:
 
@@ -36,12 +61,23 @@ PLATFORMS = {
 }
 ```
 
-- **Expansion.** A platform token expands to its actuators; a bare actuator stands for itself. `--backend ios` (or `backend: [ios]`) resolves to `idb` today, and will pick up a richer iOS actuator when one lands — without the scenario or config changing.
-- **Selection.** `select_actuator` walks the expanded list and returns the **first implemented and available** actuator. Availability is "implemented **and** its executable is on `PATH`" (`fake` is always available and needs no executable). Today `IMPLEMENTED = {idb, fake}`.
-- **Clear errors for planned platforms.** Requesting `android` / `web` — recognized in the registry but with no driver yet — raises a `"not implemented yet"` error that points at the Platform support roadmap, distinct from "no available actuator among …". Constructing such a driver via `make_driver` likewise raises `NotImplementedError` rather than a generic failure.
-- **Forward-compatible.** Genuinely unknown tokens are skipped rather than failing, so an older build can run a config that lists a future backend (it falls through to a backend it does understand).
+- **Expansion.** A platform token expands to its actuators, and a bare actuator stands for itself.
+  `--backend ios` (or `backend: [ios]`) resolves to `idb` today.
+  It will pick up a richer iOS actuator when one lands, with no change to the scenario or config.
+- **Selection.** `select_actuator` walks the expanded list and returns the **first implemented and available** actuator.
+  Availability means "implemented **and** its executable is on `PATH`".
+  `fake` is always available and needs no executable.
+  Today `IMPLEMENTED = {idb, fake}`.
+- **Clear errors for planned platforms.** The registry recognizes `android` and `web`, but they have no driver yet.
+  Requesting either raises a `"not implemented yet"` error that points at the Platform support roadmap.
+  This error is distinct from "no available actuator among …".
+  Constructing such a driver via `make_driver` likewise raises `NotImplementedError`, not a generic failure.
+- **Forward-compatible.** Genuinely unknown tokens are skipped, not failed.
+  An older build can therefore run a config that lists a future backend.
+  The config falls through to a backend that the older build understands.
 
-The matching configuration shape is a **`platform` discriminator** on `apps.<name>` plus per-platform target fields, with the deterministic resolution order (`defaults < app < scenario`) unchanged:
+The matching configuration shape is a **`platform` discriminator** on `apps.<name>`, plus per-platform target fields.
+The deterministic resolution order (`defaults < app < scenario`) is unchanged:
 
 ```yaml
 defaults:
@@ -62,14 +98,30 @@ apps:
     baseUrl:  https://app.example.test     # bundleId's peer
 ```
 
-`platform` selects which **environment manager** and **backend registry** are in play; the rest of the schema (namespaces, redact, setup, capture) stays shared.
+`platform` selects which **environment manager** and **backend registry** are in play.
+The rest of the schema (namespaces, redact, setup, capture) stays shared.
 
-**What is done vs. what remains.** Landed: the platform registry, platform-token expansion, implemented-and-available selection, and the clear planned-but-absent errors (`idb` / `fake` are the only implemented actuators today). What remains for a real second platform is the **rest of the triple** — a per-platform **environment manager** (a `simctl` peer) and the **actuator driver** (`adb` for [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md), `playwright` for [BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)) — plus the explicit `platform` config field described above.
+**What is done and what remains**.
+Landed: the platform registry, platform-token expansion, implemented-and-available selection, and the clear planned-but-absent errors.
+`idb` and `fake` are the only implemented actuators today.
+
+A real second platform still needs the **rest of the triple**:
+
+- a per-platform **environment manager** (a `simctl` peer)
+- the **actuator driver**: `adb` for [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md), and `playwright` for [BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)
+
+It also needs the explicit `platform` config field described above.
 
 ## Alternatives considered
 
-- **A single `backend` string that names only an actuator** (the pre-existing shape). Rejected because it cannot express "prefer XCUITest, fall back to idb" or "this is the Web platform" without leaking actuator choices into every config and scenario.
-- **Failing hard on any unrecognized token.** Rejected for forward-compatibility: a config authored for a future build should still run on an older one by falling through to a backend it understands.
+- **A single `backend` string that names only an actuator** (the pre-existing shape).
+  Rejected.
+  The string cannot express "prefer XCUITest, fall back to idb" or "this is the Web platform".
+  Expressing either would leak actuator choices into every config and scenario.
+- **Failing hard on any unrecognized token.**
+  Rejected for forward-compatibility.
+  A config authored for a future build should still run on an older one.
+  It does so by falling through to a backend that the older build understands.
 
 ## Progress
 
