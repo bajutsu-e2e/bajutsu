@@ -23,3 +23,7 @@ class AndroidConfig:
     # default: the walk answering it runs over every node on every read and reports nothing for an
     # app that opted no view in (BE-0407 unit 18).
     native_z: bool = False
+    # What a timed-out resident read tries before falling back to `uiautomator dump`: how many times
+    # to read again on a fresh connection, and whether to restart the server after that.
+    resident_read_retries: int = 1
+    resident_restart: bool = True

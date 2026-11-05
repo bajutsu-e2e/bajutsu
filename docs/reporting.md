@@ -149,11 +149,19 @@ means the same thing after the run that produced it exits
   a language the label table does not cover still shows what was tapped and why
   ([BE-0445](../roadmaps/BE-0445-system-alert-locale-agnostic-answer/BE-0445-system-alert-locale-agnostic-answer.md)).
   Absent on every other action, and on every run recorded before `schemaVersion` 12.
-- `steps[].warnings`: non-fatal notes about how the step ran, shown on the step's report row. Today
-  the only source is a `totp` step whose `minRemaining` window wait saw the wall clock jump
-  ([BE-0474](../roadmaps/BE-0474-totp-window-alignment/BE-0474-totp-window-alignment.md)). A warning
+- `steps[].warnings`: non-fatal notes about how the step ran, shown on the step's report row. Two
+  sources write them today: a `totp` step whose `minRemaining` window wait saw the wall clock jump
+  ([BE-0474](../roadmaps/BE-0474-totp-window-alignment/BE-0474-totp-window-alignment.md)), and the
+  Android backend's read channel when it recovers, falls back, or returns during the step. A warning
   never changes `ok` or `reason`. Empty on a step that has none, and absent on every run recorded
   before `schemaVersion` 16, which a reader treats as no warnings.
+- `channel_degraded`: why the Android backend's reads were on the `uiautomator dump` path when the
+  scenario ended, so a run that passed on that fallback can be found. It never changes `ok`. Empty
+  while the channel is healthy and on every other backend, and absent on every run recorded before
+  `schemaVersion` 18, which a reader treats as healthy.
+- `channel_notes`: what the same read channel did after the scenario's last step, the notes no step
+  was left to carry in its `warnings`. Empty when nothing happened, and absent on every run recorded
+  before `schemaVersion` 18.
 - `ignored_settings`: each setting the scenario put in effect that a target's route could not apply
   and the target declared under `runsOn.ignoredSettings`, as `{target, key, reason}`
   ([BE-0467](../roadmaps/BE-0467-environment-specific-settings/BE-0467-environment-specific-settings.md),
@@ -172,7 +180,7 @@ means the same thing after the run that produced it exits
   `configSource` (`{ host, owner, repo, ref, sha }`, the exact commit a branch-based run executed).
   It groups accumulated runs by identity, so a verdict that flips while the fingerprint is
   unchanged is **true flakiness** rather than an edited scenario. Pure metadata — it never enters
-  `ok`. (`schemaVersion` is `3` or higher once this block can appear — it is `17` today.)
+  `ok`. (`schemaVersion` is `3` or higher once this block can appear — it is `18` today.)
 - `target` (top, optional): the target the run ran, so "the Android target passes while the iOS
   target fails" is computable from stored data ([BE-0404](../roadmaps/BE-0404-collapse-project-layer/BE-0404-collapse-project-layer.md)).
   One run resolves one target, so it sits beside `backend` rather than on each scenario. `serve`

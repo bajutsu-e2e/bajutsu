@@ -115,7 +115,10 @@ def _run_backend(results: list[RunResult]) -> str:
 # v17 (BE-0467): a scenario carries "ignored_settings" — each setting a target's route could not
 #   apply and the target declared under `runsOn.ignoredSettings`, with its reason. Absent on an older
 #   run, which a reader treats as none ignored.
-SCHEMA_VERSION = 17
+# v18: a scenario carries "channel_degraded" — why the read channel had fallen back when the scenario
+#   ended, empty when healthy — and "channel_notes", what it did after the last step drained. A step's
+#   own such notes join its "warnings". Absent on an older run, which a reader treats as healthy.
+SCHEMA_VERSION = 18
 
 # How the run matrix heads the column of a run no condition formed: a scenario without conditions,
 # run in an invocation where other scenarios' conditions formed runs.

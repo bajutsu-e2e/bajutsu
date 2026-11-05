@@ -107,9 +107,9 @@ def test_round_trip_through_manifest_is_lossless() -> None:
 
 def test_manifest_carries_schema_version_and_source_name() -> None:
     data = manifest_dict("r1", [_result()], source_name="smoke.yaml")
-    # bumped for a scenario's ignored settings (v17, BE-0467), after a step's non-fatal warnings
-    # (v16, BE-0474)
-    assert data["schemaVersion"] == 17
+    # bumped for a scenario's read-channel record (v18), after its ignored settings (v17, BE-0467)
+    # and a step's non-fatal warnings (v16, BE-0474)
+    assert data["schemaVersion"] == 18
     assert data["sourceName"] == "smoke.yaml"
 
 

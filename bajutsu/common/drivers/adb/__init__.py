@@ -50,6 +50,8 @@ from .adb_act_unsupported import AdbActUnsupported
 from .adb_driver import _UNIT as _UNIT
 from .adb_driver import ActFn, AdbDriver, ClockFetch, HierarchyFetch, RunFn, TypeFn
 from .adb_resident_error import AdbResidentError
+from .adb_resident_timeout import AdbResidentTimeout
+from .channel_recovery import ChannelRecovery
 from .hierarchy_read import HierarchyRead
 
 __all__ = [
@@ -60,6 +62,8 @@ __all__ = [
     "AdbActUnsupported",
     "AdbDriver",
     "AdbResidentError",
+    "AdbResidentTimeout",
+    "ChannelRecovery",
     "ClockFetch",
     "HierarchyFetch",
     "HierarchyRead",

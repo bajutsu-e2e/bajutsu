@@ -918,6 +918,26 @@ def test_android_native_z_flows_into_the_sub_config() -> None:
     assert resolve(cfg, "s").platform_config == AndroidConfig(package="com.x.app", native_z=True)
 
 
+def test_android_resident_recovery_flows_into_the_sub_config() -> None:
+    cfg = load_config(
+        "targets:\n"
+        "  s:\n"
+        "    platform: android\n"
+        "    subject: {id: com.x.app}\n"
+        "    driver: {residentRecovery: {readRetries: 3, restart: false}}\n"
+    )
+    assert resolve(cfg, "s").platform_config == AndroidConfig(
+        package="com.x.app", resident_read_retries=3, resident_restart=False
+    )
+
+
+def test_android_resident_recovery_is_on_by_default() -> None:
+    cfg = load_config("targets:\n  s:\n    platform: android\n    subject: {id: com.x.app}\n")
+    assert resolve(cfg, "s").platform_config == AndroidConfig(package="com.x.app")
+    assert AndroidConfig().resident_read_retries == 1
+    assert AndroidConfig().resident_restart is True
+
+
 def test_android_native_z_defaults_off() -> None:
     # Off unless asked for: the walk reports nothing at all for an app that opted no view in, which
     # is every app but the ones BE-0355 was built for.

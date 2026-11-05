@@ -8,8 +8,16 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
+from bajutsu.common import stall_diagnostics
 from bajutsu.common.backend_cli import adb
-from bajutsu.common.drivers.adb import ActOutcome, ActRequest, AdbResidentError, HierarchyRead
+from bajutsu.common.drivers.adb import (
+    ActOutcome,
+    ActRequest,
+    AdbResidentError,
+    AdbResidentTimeout,
+    ChannelRecovery,
+    HierarchyRead,
+)
 
 from ._functions import (
     _apk_digest,
@@ -33,6 +41,9 @@ Spawn = Callable[[list[str]], _Process]
 Fetch = Callable[[int, float | None], HierarchyRead]
 ClockProbe = Callable[[int], float | None]
 ActProbe = Callable[[int, ActRequest], ActOutcome]
+
+# How many times a lease restarts its server without a read answering first try in between.
+_MAX_RESTARTS_IN_A_ROW = 2
 TypeProbe = Callable[[int, str, float | None], None]
 
 
@@ -64,6 +75,8 @@ class ResidentServer:
         test_apk: Path = _TEST_APK,
         installed: dict[str, tuple[str, str]] | None = None,
         native_z: bool = False,
+        read_retries: int = 1,
+        restart: bool = True,
     ) -> None:
         self._serial = adb.checked_serial(serial)
         self._run = run
@@ -107,8 +120,140 @@ class ResidentServer:
         self._installed = installed
         self._proc: _Process | None = None
         self._host_port: int | None = None
+        # What a timed-out read tries before it gives the channel up (`driver.residentRecovery`).
+        self._read_retries = read_retries
+        self._restart = restart
+        # Restarts since a read last answered on its first try.
+        self._restarts_in_a_row = 0
+        # What the channel recovered from, waiting for the driver to carry it to the step's evidence.
+        self._notes: list[str] = []
 
     def start(self) -> ResidentChannel:
+        self._launch()
+
+        def clock() -> float | None:
+            # The device-clock probe the driver takes before each gesture (BE-0332 Unit 3). Already
+            # non-raising (None on any fault), so unlike `fetch` it never tears the channel down: a
+            # missing mark only drops the barrier back to its wall-clock budget for that one gesture,
+            # and a genuine channel death still surfaces through the next `fetch`.
+            return None if self._host_port is None else self._clock(self._host_port)
+
+        def act_on_device(request: ActRequest) -> ActOutcome:
+            # Unlike `fetch`, a fault here does not tear the channel down. The reads are still good —
+            # an older server answers 404 for this path alone — and the driver's own degrade puts the
+            # gesture back on the coordinate actuators. Killing a working read channel over a missing
+            # actuation endpoint would trade a small regression for a large one.
+            return self._act(self._port(), request)
+
+        def type_on_device(text: str, since: float | None) -> None:
+            # Like `act_on_device`, a fault here leaves the read channel up: it says nothing about
+            # the reads, and the driver fails this one step on it.
+            self._type_text(self._port(), text, since)
+
+        return ResidentChannel(
+            self._read,
+            clock,
+            act_on_device,
+            type_on_device,
+            ChannelRecovery(
+                live=lambda: self._host_port is not None,
+                revive=self._revive,
+                drain_notes=self._drain_notes,
+            ),
+        )
+
+    def _port(self) -> int:
+        """The forwarded port, read per call because a restart moves it."""
+        if self._host_port is None:
+            raise AdbResidentError("resident server is stopped")
+        return self._host_port
+
+    def _read(self, since: float | None) -> HierarchyRead:
+        read = self._read_with_recovery(since)
+        # The device's reply travels on as `text`, untouched; what the driver parses is the tree
+        # narrowing already built from it. `narrowed` is what tells a `rawTree` capture the two differ
+        # — an active-window dump with no system decor to strip would otherwise have it write two
+        # copies of the same body.
+        root, narrowed = narrowed_root(read.text)
+        return HierarchyRead(
+            read.text, read.mark, native_z=read.native_z, root=root, narrowed=narrowed
+        )
+
+    def _read_with_recovery(self, since: float | None) -> HierarchyRead:
+        """One read, surviving a timeout where it can.
+
+        Only a timeout earns another try: the server may still be working, while a refused or closed
+        connection shows it cannot answer. A retry on a fresh connection queues behind the request it
+        replaces, since the server serves one connection at a time and only notices the abandoned
+        reply when it writes it; the device's wait budget is what makes that queue short. A server
+        wedged past that is restarted, which takes the device's single UiAutomation session with it.
+
+        Every way out that raises stops the server first. A read fault is usually a wedged-but-alive
+        instrumentation, and it still holds that session. A fallback dump connects its own (BE-0245: the
+        dump path "spins up a fresh instrumentation, connects a UiAutomation"), so while the resident
+        server lives the dump reads an empty tree for the rest of the lease. Tearing it down makes the
+        fallback a clean degrade rather than one poisoned by the very server it replaces. stop() is
+        idempotent, so the environment's own end-of-lease stop() stays a safe no-op.
+        """
+        timeout: AdbResidentTimeout | None = None
+        try:
+            for attempt in range(self._read_retries + 1):
+                try:
+                    read = self._fetch(self._port(), since)
+                except AdbResidentTimeout as exc:
+                    timeout = exc
+                    logger.warning("resident read attempt %d: %s", attempt + 1, exc)
+                else:
+                    if timeout is None:
+                        self._restarts_in_a_row = 0
+                    else:
+                        self._notes.append(f"resident read recovered on a retry after: {timeout}")
+                    return read
+            if self._restart and self._restarts_in_a_row < _MAX_RESTARTS_IN_A_ROW:
+                # Counted because a restarted server answers its first read: without a bound, one that
+                # wedges again on the next read would cost every read a restart and never fall back.
+                self._restarts_in_a_row += 1
+                # Before the stop, while the wedged server's state still exists (BE-0367). Its own
+                # trigger, so routine recoveries cannot spend the budget a lost channel captures from.
+                stall_diagnostics.capture(
+                    "resident-restart", stall_diagnostics.device_probes(self._serial)
+                )
+                # An error from here on falls to the `except` below: it stops the server and raises.
+                self.stop()
+                self._launch()
+                read = self._fetch(self._port(), since)
+                self._notes.append(f"resident server restarted after: {timeout}")
+                return read
+        except AdbResidentError:
+            self.stop()
+            raise
+        self.stop()
+        assert timeout is not None  # the loop returns unless every attempt timed out
+        raise timeout
+
+    def _revive(self) -> bool:
+        """Start a stopped server again for a caller that cannot do without it; False if it cannot."""
+        if self._host_port is not None:
+            # Already up. A second launch would overwrite `_proc` and `_host_port` and leak the running
+            # instrumentation, which still holds the device's single UiAutomation session.
+            return True
+        if not self._restart:
+            return False
+        try:
+            self._launch()
+        except AdbResidentError as exc:
+            logger.warning("resident server did not come back: %s", exc)
+            self._notes.append(f"resident server did not come back: {exc}")
+            return False
+        self._notes.append("resident server restarted for text only it can enter")
+        return True
+
+    def _drain_notes(self) -> list[str]:
+        notes, self._notes = self._notes, []
+        return notes
+
+    def _launch(self) -> None:
+        """Bring the server up on a newly forwarded port, or raise with nothing left running."""
         if not self._server_apk.exists() or not self._test_apk.exists():
             raise AdbResidentError(
                 f"resident server APKs not built ({self._server_apk}); run "
@@ -121,59 +266,11 @@ class ResidentServer:
         except (subprocess.CalledProcessError, OSError, AdbResidentError) as exc:
             # AdbResidentError included so an unparseable forward port (raised by _parse_forward_port
             # on the line above) still tears down the already-spawned instrumentation and forward
-            # rather than leaking them — start() is the only place that can clean up, since the caller
-            # never sees the ResidentServer when start() raises.
+            # rather than leaking them — this is the only place that can clean up, since a caller of
+            # start() never sees the ResidentServer when it raises.
             self.stop()
             raise AdbResidentError(f"could not start the resident server: {exc}") from exc
         self._await_ready()
-        # Capture the port (not self._host_port, which stop() clears): after stop() the fetch raises
-        # AdbResidentError, which the driver latches into its dump fallback — a clean degrade.
-        port = self._host_port
-
-        def fetch(since: float | None) -> HierarchyRead:
-            try:
-                read = self._fetch(port, since)
-                # The device's reply travels on as `text`, untouched; what the driver parses is the
-                # tree narrowing already built from it. `narrowed` is what tells a `rawTree` capture
-                # the two differ — an active-window dump with no system decor to strip would otherwise
-                # have it write two copies of the same body.
-                root, narrowed = narrowed_root(read.text)
-                return HierarchyRead(
-                    read.text, read.mark, native_z=read.native_z, root=root, narrowed=narrowed
-                )
-            except AdbResidentError:
-                # Stop the resident server before the driver degrades to `uiautomator dump`. A read
-                # fault is usually a wedged-but-alive instrumentation — a read that outran the socket
-                # timeout, not a dead process — and it still holds the device's single UiAutomation
-                # session. A fallback dump connects its own (BE-0245: the dump path "spins up a fresh
-                # instrumentation, connects a UiAutomation"), so while the resident server lives the
-                # dump reads an empty tree for the rest of the lease, breaking every later read.
-                # Tearing it down here releases that session, making the fallback a clean degrade
-                # rather than one poisoned by the very server it replaces. stop() is idempotent, so
-                # the environment's own end-of-lease stop() stays a safe no-op.
-                self.stop()
-                raise
-
-        def clock() -> float | None:
-            # The device-clock probe the driver takes before each gesture (BE-0332 Unit 3). Already
-            # non-raising (None on any fault), so unlike `fetch` it never tears the channel down: a
-            # missing mark only drops the barrier back to its wall-clock budget for that one gesture,
-            # and a genuine channel death still surfaces through the next `fetch`.
-            return self._clock(port)
-
-        def act_on_device(request: ActRequest) -> ActOutcome:
-            # Unlike `fetch`, a fault here does not tear the channel down. The reads are still good —
-            # an older server answers 404 for this path alone — and the driver's own degrade puts the
-            # gesture back on the coordinate actuators. Killing a working read channel over a missing
-            # actuation endpoint would trade a small regression for a large one.
-            return self._act(port, request)
-
-        def type_on_device(text: str, since: float | None) -> None:
-            # Like `act_on_device`, a fault here leaves the read channel up: it says nothing about
-            # the reads, and the driver fails this one step on it.
-            self._type_text(port, text, since)
-
-        return ResidentChannel(fetch, clock, act_on_device, type_on_device)
 
     def _install_apks(self) -> None:
         """Put this run's resident-server pair on the device, unless it is already the pair there.

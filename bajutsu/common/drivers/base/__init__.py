@@ -55,6 +55,7 @@ from .backend_crash_error import BackendCrashError
 from .backend_lifecycle import BackendLifecycle
 from .background_screenshot_provider import BackgroundScreenshotProvider
 from .capability import Capability
+from .channel_health_reporter import ChannelHealthReporter
 from .drained_interruptions import DrainedInterruptions
 from .driver import Driver
 from .element import Element
@@ -104,6 +105,7 @@ __all__ = [
     "BackendLifecycle",
     "BackgroundScreenshotProvider",
     "Capability",
+    "ChannelHealthReporter",
     "DrainedInterruptions",
     "Driver",
     "Element",

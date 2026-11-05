@@ -58,7 +58,9 @@ from bajutsu.common.orchestrator.types import (
     UndeclaredInterruption,
     WallClock,
     _no_network,
+    channel_degraded,
     drain_actuations,
+    drain_channel_notes,
     drain_interruptions,
     scenario_slug,
     undeclared_interruption_note,
@@ -932,6 +934,8 @@ def run_scenario(  # noqa: C901, PLR0912, PLR0915
     extra_runtimes = {
         name: rt for name, rt in (target_runtimes or {}).items() if name != primary_target
     }
+    # Every driver whose read channel this scenario's record has to speak for.
+    channel_drivers = [driver, *(rt.driver for rt in extra_runtimes.values())]
     # Once a second target exists, the primary's own scenario-wide recording nests under its own
     # name too, the same way every other declared target's already does — rather than staying bare
     # at `sid`, alongside `manifest.json` and the rest of the run-level files. `primary_target`
@@ -1241,6 +1245,8 @@ def run_scenario(  # noqa: C901, PLR0912, PLR0915
         expect_alerts=expect_alerts,
         expect_actuations=expect_actuations,
         dropped_expect_actuations=expect_dropped_actuations,
+        channel_notes=[note for d in channel_drivers for note in drain_channel_notes(d)],
+        channel_degraded="; ".join(filter(None, map(channel_degraded, channel_drivers))),
         before_outcomes=before_outcomes,
         after_outcomes=after_outcomes,
         after_verdict=after_verdict,
