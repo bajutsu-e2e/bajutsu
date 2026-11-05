@@ -42,7 +42,7 @@ Each scenario carries an optional `tags` list (`Scenario` in `bajutsu/scenario/`
 
 Filtering is pure metadata selection. It preserves declaration order and never mutates a scenario. When the filters select nothing, the CLI exits cleanly with a clear message rather than running an empty suite.
 
-Selection happens entirely before the deterministic run loop. It has no effect on how the chosen scenarios execute or on their pass/fail. Tags carry no semantics beyond selection.
+Selection happens entirely before the deterministic run loop, so it has no effect on how the chosen scenarios execute or on their pass/fail. Tags carry no semantics beyond selection.
 
 ## Alternatives considered
 

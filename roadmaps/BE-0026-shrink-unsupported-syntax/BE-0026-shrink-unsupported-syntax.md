@@ -24,9 +24,7 @@ instead of failing. The output stays reviewable and never breaks the build. That
 safety net, but each `// TODO` is a line a human must port by hand. A flow with several of them is
 effectively not generated at all.
 
-The more of the scenario grammar that maps structurally, the more of a passing scenario carries over
-into a team's own Xcode CI. That is the whole point of codegen. Today the residual gaps are of two
-kinds:
+The more of the scenario grammar that maps structurally, the more of a passing scenario carries over intact into a team's own Xcode CI. That is the whole point of codegen. Today the residual gaps include two kinds:
 
 - **Unknown selector forms.** A [selector](../../docs/glossary.md#scenario-authoring) that reaches
   `_element`'s fallback emits `el("UNSUPPORTED_SELECTOR")`.
@@ -41,18 +39,16 @@ This is an umbrella proposal. It shrinks the fallback set incrementally, mapping
 time. Each mapping stays purely structural, with no AI and no change to the run/CI gate. The
 candidates, in rough order of value, are as follows.
 
-- **Selectors.** `_element` already handles `id` / `label` / `idMatches` / `labelMatches`. We add
-  the compound forms a selector can carry: `traits`, `value`, `within` (scope to a container
+- **Selectors.** `_element` already handles `id` / `label` / `idMatches` / `labelMatches`. Add the compound forms a selector can carry: `traits`, `value`, `within` (scope to a container
   subtree), and `index` (the k-th match). These compose `NSPredicate`s and `XCUIElementQuery`
   instead of falling through to `el("UNSUPPORTED_SELECTOR")`. `within` maps to a nested query over
   `descendants(matching:)`, and `index` maps to `element(boundBy:)`.
 - **Device-control steps.** `setLocation` and `push` have no app-level XCUITest API equivalent,
   and neither do any primitives from
   [BE-0035](../BE-0035-device-control-primitives/BE-0035-device-control-primitives.md). They drive
-  the simulator through `simctl`. For these steps the honest mapping is a labeled
-  `// TODO` that names the `simctl` command a reviewer would run, in place of a bare "unsupported
+  the simulator through `simctl`. For these steps the honest mapping is a clearly-labeled `// TODO` that names the `simctl` command a reviewer would run, in place of a bare "unsupported
   step". They are documented as out of scope and never dropped silently.
-- **Waits and assertions.** We map the `request` assertion and the `until: { request: ... }` wait
+- **Waits and assertions.** Map the `request` assertion and the `until: { request: ... }` wait
   only where a structural equivalent exists. Network observation generally has no XCUITest
   counterpart, so these stay explicit `// TODO`s as well.
 

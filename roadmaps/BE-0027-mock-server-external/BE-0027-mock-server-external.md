@@ -37,11 +37,10 @@ The open question for this item is no longer "how do we build the external serve
 To be specified if this proposal is taken up. The schema (`config.py` `MockServer`:
 `cmd` / `port` / `stubs`) is the only part that exists today, and it has no runtime effect.
 
-This item is **deferred**, so the design is intentionally not fleshed out. If we took it up, the
-design would have to clear the bar that the in-protocol `mocks` already meet:
+This item is **deferred**, so the design is intentionally not fleshed out. Were it taken up, the design would have to clear the bar that the in-protocol `mocks` already meet:
 
 - **Determinism.** The external server would have to reach a known-ready state before the scenario
-  starts, and we would verify its teardown afterward. We would use no fixed `sleep`. A
+  starts, and its teardown would have to be verified afterward. It would use no fixed `sleep`. A
   readiness or health condition does the waiting, consistent with "condition waits only". A process
   that is sometimes not yet listening when the app first calls it would reintroduce exactly the
   flakiness the project forbids.
@@ -50,11 +49,8 @@ design would have to clear the bar that the in-protocol `mocks` already meet:
 - **LLM-free gate.** A mock server is a deterministic process, so it does not touch the prime
   directive that no LLM enters the run/CI gate.
 
-We would take the item up **only** if a concrete need appears that in-protocol `mocks` cannot cover.
-One example is a backend whose behavior is too stateful or protocol-heavy to express as declarative
-stubs: a real gRPC or WebSocket server, or a stateful session the app drives across many requests.
-The need must also be one where reusing an existing mock-server implementation is genuinely simpler
-than extending the in-protocol stub language. Absent that need, the schema stays as a documented,
+It would be **taken up** only if a concrete need appears that in-protocol `mocks` cannot cover.
+One example is a backend whose behavior is too stateful or protocol-heavy to express as declarative stubs, where reusing an existing mock-server implementation is genuinely simpler than extending the in-protocol stub language: a real gRPC or WebSocket server, or a stateful session the app drives across many requests. Absent that need, the schema stays as a documented,
 unwired placeholder.
 
 ## Alternatives considered

@@ -28,13 +28,13 @@ Authors need a way to feed a secret into a step at run time. The value must neve
 
 Config declares secret variable names under `secrets:`, a list of environment-variable names (`bajutsu/config.py`). At the start of a run, the CLI resolves each declared name `X` from the process environment into a binding `secrets.X → <value>` (`bajutsu/cli.py`). The scenario file only ever holds the token `${secrets.X}`, never the value.
 
-Unlike `${params.*}` / `${row.*}`, which are expanded at load time, the run loop resolves `${secrets.X}` at action time. `_interp_step` (`bajutsu/orchestrator/`) makes a copy of the step with the secret bindings substituted just before the action executes. Only the live driver sees the real value. The original step is kept for the manifest and report, which therefore record the token. A fast substring/token check skips the copy for steps that contain no tokens.
+Unlike `${params.*}` / `${row.*}`, which are expanded at load time, the run loop resolves `${secrets.X}` at action time. `_interp_step` (`bajutsu/orchestrator/`) makes a copy of the step with the secret bindings substituted just before the action executes, so only the live driver sees the real value. The original step is kept for the manifest and report, which therefore record the token. A fast substring/token check skips the copy for steps that contain no tokens.
 
-Masking reuses and extends the existing `redact` machinery (`bajutsu/redaction.py`). A `Redactor` built with the literal secret values (`values=secret_values`) masks those values wherever they appear, replacing each with `[REDACTED]`. It covers free text (device log, app trace), the element tree, and network exchanges. Longest values are masked first, so a value that is a substring of another cannot leak a partial. This is value-based masking. It catches a secret that the app echoes back into a log or response, which key-name redaction alone would miss.
+Masking reuses and extends the existing `redact` machinery (`bajutsu/redaction.py`). A `Redactor` built with the literal secret values (`values=secret_values`) masks those values wherever they appear, replacing each with `[REDACTED]`. It covers free text (device log, app trace), the element tree, and network exchanges. Longest values are masked first, so a value that is a substring of another cannot leak a partial. This is value-based masking, so it catches a secret that the app echoes back into a log or response, which key-name redaction alone would miss.
 
 As a final safety net, `_scrub_secret_values` (`bajutsu/runner/`) runs after the report is written. It passes every literal secret value over the run-level artifacts (`manifest.json`, `junit.xml`, `report.html`, `scenario.yaml`). That catches any secret that reached result text, such as an assertion's expected/actual.
 
-Images (screenshots/video) cannot be text-masked and are left as-is. Avoiding a capture of a secret rendered on screen is the author's responsibility.
+Images (screenshots/video) cannot be text-masked and are left as-is, so a secret rendered on screen is the author's responsibility to avoid capturing.
 
 Throughout, no LLM is involved. Resolution and masking are deterministic, so secrets never change the run/CI verdict.
 
