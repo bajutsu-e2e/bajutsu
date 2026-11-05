@@ -79,7 +79,7 @@ The one change is that the signal is now true.
 
 **Unit 3 — Retire the lane override and correct the prose it rested on.** [`ios-e2e.yml`](../../.github/workflows/ios-e2e.yml) drops `BAJUTSU_VIDEO_START_TIMEOUT: "20"`. A 0.15-second signal leaves the 5-second compiled default three decimal orders of headroom. The variable and `_video_start_timeout()` stay, because Android's two confirmations still read them.
 
-Two documents rested on claims that this item corrects, in both languages:
+Two documents rested on claims that this item corrects. Each correction lands in both languages:
 
 - [`docs/evidence.md`](../../docs/evidence.md) described iOS's proxy as "the output file's first written byte" and as the *stronger* of the two backends' signals, which inverts the truth. It also asserted that raising the ceiling "costs nothing on the healthy path".
 - [`docs/ci.md`](../../docs/ci.md) rested the per-trigger capture budget on the video warning firing every scenario.
