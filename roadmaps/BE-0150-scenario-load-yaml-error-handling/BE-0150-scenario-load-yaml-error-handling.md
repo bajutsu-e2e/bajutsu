@@ -17,28 +17,34 @@
 ## Introduction
 
 `bajutsu trace --explain <scenario>` and `bajutsu audit <scenario>` both load a scenario through the
-shared `load_expanded_scenarios` helper (`bajutsu/cli/_shared.py`) and wrap the call in
-`except (OSError, ValueError)` to turn a bad input into a clean `exit 2` with an actionable message.
-That guard is incomplete: a **YAML syntax error** raises `yaml.YAMLError` (e.g. `ParserError` /
-`ScannerError`), which is **not** a subclass of `ValueError`, so it escapes the guard and surfaces as
-an uncaught Python traceback with `exit 1`. This item makes a malformed scenario file fail the same
-clean way a structurally-invalid one already does.
+shared `load_expanded_scenarios` helper (`bajutsu/cli/_shared.py`). Each wraps the call in
+`except (OSError, ValueError)`, which turns a bad input into a clean `exit 2` with an actionable
+message.
+
+That guard is incomplete. A **YAML syntax error** raises `yaml.YAMLError` (e.g. `ParserError` /
+`ScannerError`), which is **not** a subclass of `ValueError`. The error escapes the guard and
+surfaces as an uncaught Python traceback with `exit 1`. This item makes a malformed scenario file
+fail the same clean way a structurally-invalid one already does.
 
 ## Motivation
 
-The two commands document a contract — "a missing / unreadable input or an invalid scenario exits 2
-with a message" — and their sibling code paths honor it: a structurally-invalid scenario (valid YAML
-whose content fails schema validation) raises a pydantic `ValidationError`, which *is* a `ValueError`
-subclass, so it is caught and rendered as `failed to load scenario: …` with `exit 2`. But the most
-common authoring mistake — a typo that makes the file not parse as YAML at all (an unclosed brace, a
-bad indent) — takes a different, worse path: the raw `yaml` exception propagates, the user sees a
-stack trace instead of a one-line message, and the exit code is `1` rather than the documented `2`.
+The two commands document a contract: a missing or unreadable input, or an invalid scenario, exits 2
+with a message. Their sibling code paths honor it. A structurally-invalid scenario is valid YAML
+whose content fails schema validation. It raises a pydantic `ValidationError`, which *is* a
+`ValueError` subclass. The guard catches it and renders `failed to load scenario: …` with `exit 2`.
 
-This is a small correctness gap with user-facing impact: the tool should give a deterministic,
-readable error for the input a human is most likely to get wrong, not a traceback. It was found while
-writing the CLI-layer tests for [BE-0117](../BE-0117-coverage-floor-ratchet/BE-0117-coverage-floor-ratchet.md);
-that item's tests deliberately use the reachable `ValueError` branch and left this gap for a focused
-fix, since closing it changes behavior (a new exception is caught) rather than only adding tests.
+But the most common authoring mistake takes a different, worse path. That mistake is a typo that
+makes the file not parse as YAML at all, such as an unclosed brace or a bad indent. The raw `yaml`
+exception propagates. The user sees a stack trace instead of a one-line message, and the exit code
+is `1` rather than the documented `2`.
+
+This is a small correctness gap with user-facing impact. For the input a human is most likely to get
+wrong, the tool should give a deterministic, readable error, not a traceback.
+
+The gap was found while writing the CLI-layer tests for
+[BE-0117](../BE-0117-coverage-floor-ratchet/BE-0117-coverage-floor-ratchet.md). Those tests
+deliberately use the reachable `ValueError` branch and leave this gap for a focused fix. Closing the
+gap changes behavior (a new exception is caught) rather than merely adding tests.
 
 ## Detailed design
 
@@ -47,36 +53,37 @@ The work is mutually exclusive and collectively exhaustive across the loader and
 - **Decide where the boundary lives.** `load_expanded_scenarios` documents `Raises: OSError` /
   `ValueError` ("the file parses but its content is invalid"). A YAML *syntax* error means the file
   does **not** parse, so it is arguably outside today's documented contract. Two coherent options
-  (pick one, apply consistently):
+  exist. Pick one and apply it consistently.
   1. **Normalize at the loader.** Wrap the `load_scenario_file(path.read_text(...))` parse in
-     `load_expanded_scenarios` so a `yaml.YAMLError` is re-raised as a `ValueError` (chained with
-     `from e`). This honors the helper's existing documented `ValueError` contract, and **every**
-     caller (both `trace --explain` and `audit`, plus any future one) gets the clean behavior for
-     free. Update the docstring to say invalid-or-unparseable content raises `ValueError`.
+     `load_expanded_scenarios`. A `yaml.YAMLError` is re-raised as a `ValueError`, chained with
+     `from e`. This honors the helper's existing documented `ValueError` contract. **Every** caller
+     gets the clean behavior for free: both `trace --explain` and `audit`, plus any future one.
+     Update the docstring to say that invalid or unparseable content raises `ValueError`.
   2. **Broaden at each caller.** Change the two `except (OSError, ValueError)` clauses to also catch
-     `yaml.YAMLError`. Localized, but leaks a `yaml` import into the command modules and must be
-     repeated at every future call site.
+     `yaml.YAMLError`. This is localized, but it leaks a `yaml` import into the command modules. It
+     must also be repeated at every future call site.
 
-  Option 1 is preferred (one place, matches the documented contract, no per-caller repetition).
-- **Implement the chosen fix** in `bajutsu/cli/_shared.py` (option 1) — the parse is the only place a
-  `yaml.YAMLError` originates. The error text must remain actionable (name the file and the parse
-  problem).
+  Option 1 is preferred: one place, a match with the documented contract, and no per-caller
+  repetition.
+- **Implement the chosen fix** in `bajutsu/cli/_shared.py` (option 1). The parse is the only place a
+  `yaml.YAMLError` originates. The error text must remain actionable: it names the file and the
+  parse problem.
 - **Add regression tests** for both entry points with a genuinely malformed YAML scenario (e.g. an
-  unclosed flow mapping): assert `exit 2` and a `failed to load scenario` message, not a traceback.
-  Keep the existing `ValueError` (structurally-invalid) tests — both branches must stay covered.
-- **Confirm no caller regressed.** `run` uses its own loader (not `load_expanded_scenarios`), so it
-  is out of scope; verify that the `trace` / `audit` happy paths and their other error branches are
+  unclosed flow mapping). Assert `exit 2` and a `failed to load scenario` message, not a traceback.
+  Keep the existing `ValueError` (structurally-invalid) tests, so both branches stay covered.
+- **Confirm no caller regressed.** `run` uses its own loader, not `load_expanded_scenarios`, so it is
+  out of scope. Verify that the `trace` / `audit` happy paths and their other error branches are
   unchanged, and that the gate stays green.
 
 ## Alternatives considered
 
-- **Leave it as is.** Rejected: the documented contract says these inputs exit 2 with a message; a
+- **Leave it as is.** Rejected: the documented contract says these inputs exit 2 with a message. A
   traceback on the single most common authoring typo is a real, if small, correctness bug.
-- **Catch a broad `Exception` at the callers.** Rejected: that would also swallow unrelated bugs
-  (programming errors) behind a "failed to load scenario" message, hiding real failures — the
+- **Catch a broad `Exception` at the callers.** Rejected: a broad catch would also swallow unrelated
+  bugs (programming errors) behind a "failed to load scenario" message. Hiding real failures is the
   opposite of the project's fail-loud stance. The fix must catch exactly the parse-error family.
-- **Validate YAML separately before loading.** Rejected as redundant: the loader already parses once;
-  a second pre-parse is wasted work and a second source of truth. Normalizing the exception from the
+- **Validate YAML separately before loading.** Rejected as redundant: the loader already parses once.
+  A second pre-parse is wasted work and a second source of truth. Normalizing the exception from the
   single existing parse is simpler.
 
 ## Progress

@@ -15,55 +15,60 @@
 
 ## Introduction
 
-Surface `doctor` — the pre-run runnability gate and the screen convention score — in the `serve`
-Web UI, so a user can answer "is my environment ready, and is my app addressable?" in the browser
-*before* a run fails for a confusing reason. The checks are deterministic and AI-free by
+Surface `doctor` in the `serve` Web UI. `doctor` is the pre-run runnability gate plus the screen
+convention score. A user then answers "is my environment ready, and is my app addressable?" in the
+browser *before* a run fails for a confusing reason. The checks are deterministic and AI-free by
 construction; the UI only shells out to the existing command.
 
 ## Motivation
 
-The first thing that decides whether a run succeeds is the setup: the right CLIs installed, a
-Simulator booted, and an app whose screens carry enough accessibility ids to be addressable.
-Bajutsu already answers both halves on the CLI — `preflight.runnability` checks the environment
-(Xcode's `xcrun`, the backend's CLIs, a booted Simulator) and `doctor.score` grades a screen's
-convention readiness (id coverage, namespace conformance, duplicate ids) into Ready / Partial /
-Blocked (`bajutsu/preflight.py`, `bajutsu/doctor.py`). But the Web UI exposes none of it. It lists
-simulators (`GET /api/simulators`), yet a user can still pick a target, press Run, and get a
-confusing failure that a one-line "Blocked: no booted Simulator" or "Partial: 3 controls on this
-screen have no id" would have pre-empted. The browser is where a new user starts, so it is exactly
-where this diagnose-before-you-run surface belongs.
+The setup decides first whether a run succeeds. A run needs the right CLIs, a booted Simulator, and
+screens that carry enough accessibility ids to be addressable.
+
+Bajutsu already answers both halves on the CLI (`bajutsu/preflight.py`, `bajutsu/doctor.py`):
+
+- `preflight.runnability` checks the environment: Xcode's `xcrun`, the backend's CLIs, and a booted
+  Simulator.
+- `doctor.score` grades a screen's convention readiness into Ready, Partial, or Blocked. The inputs
+  are id coverage, namespace conformance, and duplicate ids.
+
+The Web UI exposes none of it. It lists simulators (`GET /api/simulators`), yet a user can still pick
+a target, press Run, and get a confusing failure. A one-line "Blocked: no booted Simulator" or
+"Partial: 3 controls on this screen have no id" would have pre-empted that failure. The browser is
+where a new user starts, so it is exactly where this diagnose-before-you-run surface belongs.
 
 ## Detailed design
 
 Tier-1, read-only; the UI only shells out to the existing checks.
 
-- **A readiness panel** reachable on its own and surfaced as a pre-run check in the Record and
-  Replay forms. It posts to `POST /api/doctor` (`{target, udid?, backend?}`), which runs the check
-  as a serve job (reusing the existing job / stream machinery) and returns two parts: the
-  **runnability** result (each required CLI present? a Simulator booted?) with the existing remedy
-  strings, and the **convention score** (Ready / Partial / Blocked) with the per-namespace id gaps
-  `doctor.score` already computes.
-- **Deterministic and read-only.** `doctor.score` is "AI is not involved" by construction and
-  `preflight` is environment inspection; nothing here computes a verdict or touches a run.
+- **A readiness panel**, reachable on its own and surfaced as a pre-run check in the Record and
+  Replay forms. It posts to `POST /api/doctor` (`{target, udid?, backend?}`). The endpoint runs the
+  check as a serve job, reusing the existing job and stream machinery. It returns two parts:
+  - the **runnability** result (each required CLI present? a Simulator booted?), with the existing
+    remedy strings
+  - the **convention score** (Ready / Partial / Blocked), with the per-namespace id gaps
+    `doctor.score` already computes
+- **Deterministic and read-only.** `doctor.score` is "AI is not involved" by construction, and
+  `preflight` is environment inspection. The panel computes no verdict and touches no run.
 - **Platform-aware**, like the rest of the UI. The runnability half is iOS-specific (a booted
-  Simulator), so for a web target the panel shows the browser / runtime checks the Playwright
-  backend needs and hides the simulator controls (the UI already branches on the selected backend).
+  Simulator). For a web target, the panel shows the browser and runtime checks the
+  Playwright backend needs, and hides the simulator controls. The UI already branches on the selected
+  backend.
 - **App-agnostic.** The id namespaces and the backend come from config (`targets.<name>`), so the
   score's denominator is *declared*, never hard-coded.
 
 ## Alternatives considered
 
-* **Leave doctor CLI-only.** Rejected: the people most helped by a readiness check — new users
-  setting up — are the least likely to run a CLI diagnostic first; the browser is their entry point.
-* **Show only the runnability gate, not the convention score.** Rejected as half the value: "my
+* **Leave doctor CLI-only.** Rejected: the people a readiness check helps most are new users setting
+  up, and they are the least likely to run a CLI diagnostic first. The browser is their entry point.
+* **Show the runnability gate alone, not the convention score.** Rejected as half the value. "My
   environment is fine but my app isn't addressable" is the more common and more confusing failure,
   and the score already exists.
 * **Fold this into [BE-0024](../BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md)
-  instead of a new item.** BE-0024 was a placeholder that absorbed small, CLI-side doctor /
-  onboarding improvements; that catch-all practice has since ended, and the item now stands
+  instead of a new item.** BE-0024 was a placeholder that absorbed small, CLI-side doctor and
+  onboarding improvements. That catch-all practice has since ended, and the item now stands
   Implemented. A Web UI surface for doctor is a distinct, sizeable surface that was never in scope
-  for that catch-all, so it stands as its own item and references BE-0024 rather than living inside
-  it.
+  for the catch-all. It stands as its own item and references BE-0024 rather than living inside it.
 
 ## Progress
 
