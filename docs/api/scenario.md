@@ -1,6 +1,6 @@
 # Scenario schema
 
-The scenario model (steps, assertions, preconditions) and the loaders that parse a `*.yaml`,
-expand its component / data references, and serialize it back.
+This page covers the scenario model (steps, assertions, preconditions). It also covers the loaders that parse a `*.yaml`,
+expand its component and data references, and serialize the scenario back.
 
 ::: bajutsu.common.scenario
