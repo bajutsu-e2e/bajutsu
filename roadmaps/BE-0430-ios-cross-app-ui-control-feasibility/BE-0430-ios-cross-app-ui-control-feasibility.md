@@ -15,10 +15,10 @@
 
 ## Introduction
 
-This item lets a [scenario](../../docs/glossary.md#scenario-authoring) launch an app by bundle id that
-the test target never started. The scenario then drives that app's own UI, the same way it already
-drives the test target. Driving means reading the accessibility tree, tapping, typing, and asserting.
-The scenario is written in the YAML (YAML Ain't Markup Language) scenario language.
+This item lets a [scenario](../../docs/glossary.md#scenario-authoring), written in the YAML (YAML
+Ain't Markup Language) scenario language, launch an app by bundle id that the test target never
+started. The scenario then drives that app's own UI, the same way it already drives the test target.
+Driving means reading the accessibility tree, tapping, typing, and asserting.
 
 A new step, sketched below as `app: { bundleId, steps }`, makes this possible. The step follows the
 shape that [BE-0037](../BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support.md) already

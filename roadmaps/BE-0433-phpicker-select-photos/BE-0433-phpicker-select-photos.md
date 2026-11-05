@@ -182,8 +182,8 @@ list[int]`, `timeout: float`). It validates its shape the same way `HandleSystem
 (`@model_validator(mode="after")`): `indices` must be non-empty, non-negative, and duplicate-free.
 
 The action needs no `sel` field. A cell carries no author-assignable identifier for a scenario to
-name. It has only its ordinal grid position. `handleSystemAlert` addresses a SpringBoard button, which
-it cannot label either, the same way.
+name. It has only its ordinal grid position. `handleSystemAlert` addresses a SpringBoard button it
+cannot label either in the same way.
 
 Every cell in the grid shares one identifier, `PXGGridLayout-Info`. The measurement showed that the
 identifier is not a per-cell value. The *existing*, already-general `index` field on `Selector`
@@ -305,7 +305,7 @@ section's existing ones.
   picker cell. That requirement is what makes this a dedicated action, not a scenario-authored
   composition of existing steps.
 - **Treat the picker like SpringBoard or SafariViewService: a second `XCUIApplication` handle, a
-  separate query endpoint, a separate handle store.** Measurement shows this is unnecessary. No
+  separate query endpoint, a separate handle store.** Measurement shows that the separate-process machinery is unnecessary. No
   separate process ever appears in `launchctl list` while the picker is presented, and the app's own
   `/elements` already reports every cell. Building the separate-process machinery anyway would add a
   second `SnapshotStore`, handle-collision avoidance, and a bundle identifier to discover. All of it
@@ -320,7 +320,8 @@ section's existing ones.
   contains.** The library ships non-empty by default (sample images). That content is not this
   project's fixture, is not guaranteed stable across Xcode and Simulator runtime versions, and is not
   under version control. An `indices` reference to it would not be reproducible across machines or CI
-  runs. This violates determinism (prime directive 2) outright, beyond merely being inconvenient.
+  runs. That irreproducibility violates determinism (prime directive 2) outright, beyond merely
+  being inconvenient.
 - **UIKit showcase parity in the same item.** Deferred, not rejected. The SwiftUI screen suffices to
   exercise and document every unit above. `PHPickerViewController` is a UIKit type either way, so a
   UIKit-hosted equivalent adds no new driver-side coverage. It would add only a second fixture screen

@@ -327,8 +327,8 @@ need to.
 One case stays open, and this item does not close it. A real-device target (`xcuitest.deviceType:
 device`) must pin a signed runner that Bajutsu cannot ship
 ([BE-0288](../BE-0288-ios-device-signing-batch-build/BE-0288-ios-device-signing-batch-build.md)). A
-materials-based job against a real device therefore still has no delivery path for that runner. This is
-the same gap that this item closes for the app binary.
+materials-based job against a real device therefore still has no delivery path for that runner. That gap is
+the one this item closes for the app binary.
 
 The runner belongs to the deployment rather than to the build, so a per-job override is the wrong shape
 for it. Delivering a signed runner is its own problem, left to an item that can size it.
