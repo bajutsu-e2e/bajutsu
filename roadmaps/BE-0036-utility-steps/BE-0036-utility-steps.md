@@ -16,7 +16,7 @@
 
 ## Introduction
 
-The `http` step issues an HTTP request from the runner and saves the response body into the `vars.*` namespace. A scenario uses it for test-data setup, for webhook triggers, or to fetch a value that a later step needs. The item was first scoped alongside the one-time password (OTP) / two-factor authentication (2FA) and email side-channel steps. Those steps moved to a separate proposal (see [References](#references)).
+The `http` step issues an HTTP request from the runner and saves the response body into the `vars.*` namespace. The purposes are test-data setup, webhook triggers, and fetching a value that a later step needs. The item was first scoped alongside the one-time password (OTP) / two-factor authentication (2FA) and email side-channel steps. Those steps moved to a separate proposal (see [References](#references)).
 
 ## Motivation
 
@@ -42,7 +42,7 @@ Prime directives preserved:
 
 - **No LLM on the run path.** The `http` step is a deterministic request, and a machine rule captures its result (status check, body capture). The pass/fail judgment still comes from machine-checkable assertions alone, so the run/CI gate stays AI-free.
 - **Determinism.** The request is immediate. A failed request or a status mismatch surfaces as a clean step failure, never as a silent wrong value.
-- **App-agnostic.** The step and its wiring are identical across apps. Only the endpoints and secrets (config / `${secrets.*}`) differ. A scenario references secrets such as API base URLs and tokens as `${secrets.X}`, and evidence masks them automatically. The scenario therefore stores tokens, never values.
+- **App-agnostic.** The step and its wiring are identical across apps. Only the endpoints and secrets (config / `${secrets.*}`) differ. Secrets such as API base URLs and tokens are referenced as `${secrets.X}` and auto-masked in evidence, so the scenario stores tokens, never values.
 - **Codegen.** The `http` step runs in the bajutsu runner, not in the app, and has no XCUITest equivalent. Codegen therefore emits a labeled `// TODO` (per [BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md)).
 
 ## Alternatives considered
