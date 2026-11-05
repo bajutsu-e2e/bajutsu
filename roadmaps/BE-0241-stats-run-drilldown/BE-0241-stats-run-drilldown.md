@@ -37,7 +37,8 @@ reaches the existing per-run report (BE-0068).
   stored manifest.
 - **The run-history list already exists.** `loadHistory()` in `bajutsu/templates/serve.panels.js`
   populates `bajutsu/templates/serve.html.j2#panel-history`, and each row already opens its report
-  on click. Showing a concrete scenario needs nothing built from scratch. Two gaps remain:
+  on click.
+- **Showing a concrete scenario needs nothing built from scratch.** Two gaps remain:
   1. The Stats aggregator discards the run ids behind a scenario, step, or assertion hotspot once it
      has tallied them.
   2. The history list has no filter, so there is nothing to jump to even when the ids are known.

@@ -161,8 +161,8 @@ Content addressing makes a repeat upload of an identical bundle a no-op at both 
 
 This holds whether the repeat comes as a second `POST /api/upload` or as `activate_project`'s fallback.
 
-The object-store write is synchronous and blocking. It goes *before* the bind, not after, for this
-reason: `bind_upload_config` never calls `state.bind_upload(upload)` until the write succeeds.
+The object-store write is synchronous and blocking. It goes *before* the bind, not after:
+`bind_upload_config` never calls `state.bind_upload(upload)` until the write succeeds.
 
 The write can fail: a network error, an unreachable bucket, or a permission denial. Then the function
 removes the freshly extracted local directory and returns an error. Its existing validation-failure

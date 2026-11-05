@@ -80,8 +80,8 @@ CAPABILITIES = frozenset({QUERY, ELEMENTS, SCREENSHOT, SEMANTIC_TAP, CONDITION_W
 ```
 
 XCUITest's set is a strict superset of idb's. XCUITest backs every device-control operation that idb
-backs: `setLocation` / `clipboard` / `push` / `clearKeychain` / `appLifecycle` / `statusBar`. It
-shares the same `simctl`-driven Simulator lifecycle (BE-0128 / BE-0212). So no construct exists that
+backs: `setLocation` / `clipboard` / `push` / `clearKeychain` / `appLifecycle` / `statusBar`. XCUITest
+shares the same `simctl`-driven Simulator lifecycle (BE-0128 / BE-0212), so no construct exists that
 idb supports and XCUITest does not. No scenario *needs* idb specifically.
 
 What idb has going for it is cost, not capability:
@@ -128,8 +128,8 @@ escalates to the next, richer candidate only when the cheaper one fails the chec
 
 For iOS, the cost order is `("idb", "xcuitest")`. That is the reverse of BE-0019's existing
 capability-first stability order `("xcuitest", "idb")`. The two orderings answer different questions:
-which actuator is most capable, and which is cheapest to run. A future platform with more than two
-actuators need not give exact reverses. The cost order should therefore be its own explicit ordering.
+which actuator is most capable, and which is cheapest to run. On a future platform with more than two
+actuators, the two orderings need not be exact reverses of each other. The cost order should therefore be its own explicit ordering.
 It sits next to `PLATFORMS`, for example as a parallel `COST_ORDER` table. It is not an implicit
 `reversed()` of the stability ladder.
 

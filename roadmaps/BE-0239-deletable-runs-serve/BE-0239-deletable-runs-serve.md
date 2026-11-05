@@ -97,8 +97,8 @@ The work breaks into six fairly independent units.
      the run's bytes (see *Alternatives considered*).
 3. **A retention window and a purge sweep.**
    - A soft-deleted run becomes eligible for permanent purge after a configurable retention period.
-     The default is for example 30 days, set by a `serve` config knob alongside the other hosting
-     settings.
+     The default is 30 days, for example. A `serve` config knob alongside the other hosting settings
+     sets it.
    - `serve` has no periodic-job runner today, and this item introduces no new daemon. Purge runs as
      a **lazy sweep**, checked opportunistically on the next `list_runs` or `login` call. It follows
      the precedent of `SqlSessionStore`'s expiry-on-read check in

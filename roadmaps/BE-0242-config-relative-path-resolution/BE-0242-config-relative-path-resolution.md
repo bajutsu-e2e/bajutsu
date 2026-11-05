@@ -32,8 +32,8 @@ config is not trusted.
 ## Motivation
 
 `_load_effective_with_source` (`bajutsu/cli/_shared.py:174-235`) already rebases a config's path
-fields against a stable root instead of the caller's cwd. It does so when the config comes from
-a Git source alone: it calls `eff.rebased(root)` with `root` set to the materialized checkout (BE-0063).
+fields against a stable root instead of the caller's cwd. It does so purely for a config that comes
+from a Git source: it calls `eff.rebased(root)` with `root` set to the materialized checkout (BE-0063).
 When the config is local (`spec is None`), the function short-circuits and returns `eff` untouched
 (`_shared.py:229-230`). The YAML's relative paths then stay interpreted against whatever directory
 `bajutsu` happened to be invoked from.
