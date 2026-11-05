@@ -16,8 +16,6 @@ class ChannelHealthReporter(Protocol):
 
     def drain_channel_notes(self) -> list[str]:
         """What happened to the channel since the last call, oldest first."""
-        ...
 
     def channel_degraded(self) -> str | None:
         """Why the channel is degraded right now, or None while it is healthy."""
-        ...

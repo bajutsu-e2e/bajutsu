@@ -33,8 +33,12 @@ _READ = HierarchyRead(_TREE, 1.0)
 
 
 class _Proc:
-    def terminate(self) -> None: ...
-    def kill(self) -> None: ...
+    def terminate(self) -> None:
+        pass
+
+    def kill(self) -> None:
+        pass
+
     def poll(self) -> int | None:
         return 0
 
@@ -533,7 +537,8 @@ def test_a_press_and_hold_extends_the_timeout_by_its_own_duration(
         def request(self, *_args: object, **_kwargs: object) -> None:
             raise OSError("nothing sent")
 
-        def close(self) -> None: ...
+        def close(self) -> None:
+            pass
 
     monkeypatch.setattr("http.client.HTTPConnection", _Conn)
     request = ActRequest(
