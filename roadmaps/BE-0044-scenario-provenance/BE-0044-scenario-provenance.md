@@ -25,7 +25,7 @@ The scenario's original goal stays at the scenario level.
 `run` (Tier 2) ignores the field entirely.
 
 The field is plain, reviewable YAML that survives the `load ↔ dump` round-trip.
-So `update` (M4 minimal-diff proposals) and re-recording never silently drop it.
+Thus `update` (M4 minimal-diff proposals) and re-recording never silently drop it.
 
 ## Motivation
 
@@ -47,7 +47,7 @@ Four reasons explain why provenance matters, and why it is a structured field ra
    It is the core check that keeps `record` from quietly producing a scenario that does not match the intent.
 2. **`update` needs an anchor.**
    M4 self-healing proposes a **minimal diff** when the UI changes ([DESIGN §6.5](../../DESIGN.md), `triage.py`).
-   Re-deriving only the broken step helps when the intent that the step served is known.
+   Knowing which intent a step served helps when re-deriving only the broken step.
    Provenance is the natural anchor for "re-author *this* intent", instead of re-recording the whole scenario.
 3. **Comments do not survive the round-trip.**
    The DESIGN-era idea of a `# from:` comment is technically blocked today.
@@ -68,7 +68,7 @@ Four reasons explain why provenance matters, and why it is a structured field ra
 It holds the natural-language phrase that the construct was normalized from.
 
 The field is a *modifier* alongside `name` and `capture`, and never an action.
-So it does not disturb the "exactly one action" and "exactly one assertion kind" validators (`_STEP_ACTIONS` and `_ASSERTION_KINDS` in `scenario.py`).
+Thus it does not disturb the "exactly one action" and "exactly one assertion kind" validators (`_STEP_ACTIONS` and `_ASSERTION_KINDS` in `scenario.py`).
 It attaches at four levels:
 
 | Level | Model (`scenario.py`) | Meaning |
@@ -100,7 +100,7 @@ It attaches at four levels:
   When one utterance produces several steps, those steps carry the **same** `from:` string.
   The report (and `trace`) collapse a run of equal `from:` values into one labeled group.
   No span or range syntax is introduced.
-  This keeps the round-trip trivial and the field independently editable per step.
+  Omitting span syntax keeps the round-trip trivial and the field independently editable per step.
 - **Round-trip.**
   `from:` is dumped by alias and pruned when unset (`_prune` drops `None`).
   A hand-written scenario with no provenance stays clean.
@@ -128,7 +128,7 @@ The `Agent` already proposes one action per turn, and the provenance is the natu
   The orchestrator does not read the field, so determinism and the no-AI-in-the-gate rule are preserved by construction.
 - **`lint`:** validates the field type.
   It can also surface an **advisory** provenance-coverage figure: how many steps in a recorded scenario carry `from:`.
-  This mirrors `doctor`'s advisory style, and it never fails a run, because a hand-authored scenario legitimately has none.
+  The figure mirrors `doctor`'s advisory style, and it never fails a run, because a hand-authored scenario legitimately has none.
 - **`trace` / `report.html`:** show each step's `from:` inline ("why this step is here"), and label emergent groups.
   The timeline becomes a natural-language ↔ action map.
   This is the user-visible payoff, and it can land after the schema.
@@ -139,7 +139,7 @@ The `Agent` already proposes one action per turn, and the provenance is the natu
   Rejected as the storage form.
   The current dumper (`model_dump` → `safe_dump`) strips comments, so every `record` or `update` write would erase them.
   Preserving comments would require replacing the serializer with a comment-aware one (e.g. `ruamel.yaml`) across the whole load/dump path.
-  That is a large, invasive change, and it gives strictly worse round-trip guarantees than a model field.
+  Replacing the serializer is a large, invasive change, and it gives strictly worse round-trip guarantees than a model field.
 - **A sidecar provenance file** (`<scenario>.provenance.yaml`, keyed by step id).
   It keeps the scenario byte-clean.
   But it introduces a second file to keep in sync with every hand-edit, and a drift risk.

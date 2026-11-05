@@ -25,7 +25,7 @@ The suite is the practice ground where three commands are exercised against one 
 
 The suite ships **the same app written twice**, once in UIKit and once in SwiftUI.
 **Each version comes in two accessibility variants**, with identifiers on and off.
-Two codebases therefore yield four installable products.
+Two codebases thus yield four installable products.
 
 The full screen-by-screen contract lives in [`demos/showcase/SPEC.md`](../../demos/showcase/SPEC.md) ([ja](../../demos/showcase/SPEC.ja.md)).
 This item records the rationale and the scope.
@@ -75,12 +75,12 @@ No single-variant fixture can give this demo.
 **3. The toolkit axis catches element-tree differences early**.
 idb's element-tree normalization is a known risk area, especially for SwiftUI standard controls ([DESIGN §11](../../DESIGN.md); [BE-0006](../BE-0006-idb-element-tree-normalization/BE-0006-idb-element-tree-normalization.md)).
 The UIKit twin exposes the *same* identifier contract as the SwiftUI twin.
-So we can run the *same* scenario set across both, and surface where the a11y trees of the two toolkits diverge.
-This gives the driver a regression net, free, as a byproduct of the fixture existing.
+We can then run the *same* scenario set across both, and surface where the a11y trees of the two toolkits diverge.
+The fixture gives the driver a regression net, free, as a byproduct of the fixture existing.
 
 **4. A stable base for practising future features**.
 Per-app differences live entirely in config ([DESIGN §8](../../DESIGN.md)).
-So the showcase is the natural target for trying new capabilities, without inventing a throwaway app each time.
+The showcase is thus the natural target for trying new capabilities, without inventing a throwaway app each time.
 Several capabilities then have a ready, representative subject:
 
 - visual-regression baselines ([BE-0029](../BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions.md))
@@ -112,7 +112,7 @@ The shape is as follows.
   - a `Makefile`
 - **One identifier contract, four products.**
   The two `-a11y` apps expose byte-for-byte identical identifiers, launch hooks, and deeplinks.
-  So `scenarios/*.yaml` runs unchanged against either toolkit.
+  Thus `scenarios/*.yaml` runs unchanged against either toolkit.
 
   The `accessibilityID(...)` helper is the *only* place where identifiers enter the tree.
   It is a `View` extension in SwiftUI and a `UIAccessibilityIdentification` extension in UIKit.
@@ -123,7 +123,7 @@ The shape is as follows.
   There they serve as the canonical fixture for the run's vision alert guard and `dismissAlerts`.
   The showcase's own [`permission.yaml`](../../demos/showcase/scenarios/permission.yaml) scenario covers them.
 - **Networking** reuses the `sample` app's BajutsuKit integration unchanged.
-  So `network` evidence and `mocks` work with no app-side change ([DESIGN §3.2](../../DESIGN.md)).
+  Thus `network` evidence and `mocks` work with no app-side change ([DESIGN §3.2](../../DESIGN.md)).
 
 ### Scope and phasing
 

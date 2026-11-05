@@ -29,7 +29,7 @@ Together these make Web the lowest-cost proof that the core is platform-neutral.
 
 ## Motivation
 
-Web is the **lowest-cost place to prove the abstraction is platform-neutral**. Two reasons hold for Web together, and no other platform shares both.
+Web is the **lowest-cost place to prove the abstraction is platform-neutral**. Two reasons apply to Web at once, and no other platform shares both.
 
 1. **It needs no macOS and no device emulator**.
    A `BrowserContext` is the whole "device", so the backend runs on Linux.
@@ -99,7 +99,7 @@ Web is the **recommended Phase 1** platform: the first real second platform, tak
 
 The rationale is decisive.
 Web alone needs **no macOS and no device emulator**.
-So it fits the *existing* Linux `make check` and CI gate ([ci](../../docs/ci.md)) from day one.
+Web thus fits the *existing* Linux `make check` and CI gate ([ci](../../docs/ci.md)) from day one.
 Native network, video, and semantic actions exercise the **rich** end of `capabilities()`.
 Web offers the lowest friction and the broadest reach.
 Web is also the cheapest proof that the core is platform-neutral.

@@ -73,7 +73,7 @@ PLATFORMS = {
   This error is distinct from "no available actuator among …".
   Constructing such a driver via `make_driver` likewise raises `NotImplementedError`, not a generic failure.
 - **Forward-compatible.** Genuinely unknown tokens are skipped, not failed.
-  An older build can therefore run a config that lists a future backend.
+  An older build can then run a config that lists a future backend.
   The config falls through to a backend that the older build understands.
 
 The matching configuration shape is a **`platform` discriminator** on `apps.<name>`, plus per-platform target fields.

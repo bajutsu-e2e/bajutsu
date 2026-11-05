@@ -94,15 +94,15 @@ Mechanisms 2 and 4 are reinforcement.
 ## Alternatives considered
 
 - **`merge=union` on the index tables.**
-  This is the cheapest option.
+  `merge=union` is the cheapest option.
   But union concatenates both sides' lines, which produces duplicate or misordered rows and silently broken tables.
-  That is wrong for a structured, sorted index, and generation is the correct fix.
+  Union is wrong for a structured, sorted index, and generation is the correct fix.
 - **Drop the committed index entirely (build-only artifact).**
-  This loses GitHub's rendered, browseable roadmap.
+  Dropping the index loses GitHub's rendered, browseable roadmap.
   Generating *and committing* the index (with a CI freshness check) keeps the browseable file.
   It also removes the hand-edit conflict.
 - **Do nothing and rely on manual rebasing.**
-  This is the status quo.
+  Manual rebasing is the status quo.
   The history shows that it does not scale to the number of concurrent sessions.
 
 ## Progress
