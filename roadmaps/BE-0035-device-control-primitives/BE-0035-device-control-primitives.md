@@ -46,7 +46,7 @@ Mapping to the backend:
 - **`background`** presses Home to send the app to the background (`simctl ui home`, through the injected device control's `home()`). It takes no fields, because it is the backgrounding action alone. Resuming the app, and a bounded backgrounded interval, are future work in the split-out proposal.
 - **`overrideStatusBar`** overrides only the fields the step provides: `time`, `batteryLevel`, `batteryState`, `cellularBars`, and `wifiBars`. It maps to `simctl status_bar override`. Any field left out keeps its live value.
 - **`clearStatusBar`** removes any override (`simctl status_bar clear`) and restores the live bar.
-- Like `setLocation` / `push`, these steps need a per-device control channel, so they are **unavailable on the fake driver and in parallel runs**. They fail cleanly there instead of crashing, which is the contract already documented for device-control steps.
+- Like `setLocation` / `push`, these steps need a per-device control channel, so they are **unavailable on the fake driver and in parallel runs**. They fail cleanly there instead of crashing. This is the same contract already documented for device-control steps.
 
 Prime directives preserved:
 

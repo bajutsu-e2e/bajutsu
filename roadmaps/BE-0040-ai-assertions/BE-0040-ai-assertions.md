@@ -21,7 +21,7 @@ AI evaluates a natural-language expectation against the current screen state. Th
 
 MagicPod offers AI assertions. You write an expectation in natural language ("the cart shows two items", "an error banner is visible"), and a model judges whether the current screen satisfies it. The appeal is authoring speed: you describe intent instead of hunting for the exact identifier and value to assert on. For some screens, especially visual or content-heavy ones, a deterministic assertion is genuinely awkward to write by hand. The motivation is to capture that authoring convenience.
 
-The difficulty is the reason this item is deferred. The obvious implementation puts a non-deterministic model in the place where the verdict is decided.
+The difficulty, and the reason this item is deferred, is that the obvious implementation puts a non-deterministic model in the place where the verdict is decided.
 
 ## Detailed design
 
@@ -33,7 +33,7 @@ This is a proposal at design altitude. The tension with prime directive #1 is th
 
 The human reviews that proposed assertion as a diff, exactly like any other AI-authored step (DESIGN §3.1, §6.5: "AI output is always a proposed diff"). What is committed, and what `run` evaluates, is the lowered, machine-checkable assertion, never the natural-language sentence and never a live model call. The natural-language text can be kept as a provenance comment (`# from:`) for readability.
 
-Lowering may not be possible for a given expectation, when the screen genuinely cannot be pinned to an identifier, trait, or value. In that case there is no deterministic assertion to commit, and the right answer is to surface that to the author, not to fall back to a live LLM judgement. The feature, if taken up, is an authoring assist and not a new kind of runtime check.
+Lowering may not be possible for a given expectation, when the screen genuinely cannot be pinned to an identifier, trait, or value. In that case there is no deterministic assertion to commit, and the right answer is to surface that to the author, not to fall back to a live LLM judgement. The feature, if taken up, is therefore an authoring assist and not a new kind of runtime check.
 
 ## Alternatives considered
 

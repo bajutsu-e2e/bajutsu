@@ -37,7 +37,7 @@ The contrast with MagicPod and Autify is the whole point. They optimize for neve
 ## Alternatives considered
 
 * **Implicit in-run selector correction (the MagicPod/Autify approach).** Rejected. It removes the human from the loop, and it can relax a test's target without review, which undermines the deterministic gate.
-* **Auto-apply the proposed fix after the run.** Auto-applying after the run is less dangerous than in-run correction. It still writes to the committed scenario without a reviewer, so a wrong or laxer fix could land unnoticed. The opt-in `--write` keeps the human as the gate.
+* **Auto-apply the proposed fix after the run.** Auto-applying after the run is less dangerous than in-run correction, but it still writes to the committed scenario without a reviewer, so a wrong or laxer fix could land unnoticed. The opt-in `--write` keeps the human as the gate.
 * **No self-healing at all.** This is safe, but it throws away the genuine value of the competitors' feature: a concrete minimal fix for cosmetic breakage. Propose + opt-in apply keeps that value and refuses the cost of silent drift.
 
 ## Progress
