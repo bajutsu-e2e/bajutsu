@@ -14,57 +14,60 @@
 
 ## Introduction
 
-Only the config schema exists. It has been superseded by declarative in-protocol `mocks` (implemented), so whether an external-server approach is really needed is open.
+Only the config schema exists. Declarative in-protocol `mocks` (implemented) have superseded it, so whether an external-server approach has any use is open.
 
 ## Motivation
 
-A deterministic E2E run needs the network under control: the same request must get the same
+A deterministic E2E run needs the network under control. The same request must get the same
 response every time, or pass/fail stops being reproducible. The config already carries a
-`mockServer` schema (`cmd` / `port` / `stubs`) for one way to do that — start an external mock
-server process beside the run and point the app at it. The idea was that an app could be made to
-hit `localhost:<port>` instead of its real backend, with the server replaying canned responses.
+`mockServer` schema (`cmd` / `port` / `stubs`) for one way to do that. It starts an external mock
+server process beside the run and points the app at it. The idea was that the app would hit
+`localhost:<port>` instead of its real backend, and the server would replay canned responses.
 
-Since then, the same need has been met a different way. Scenario-level `mocks` — declarative,
-in-protocol stubs intercepted inside Bajutsu's own network path — are implemented and validated
-on-device. They give offline, deterministic responses without a second process to launch, health-
-check, and tear down. That makes the open question for this item not "how do we build the external
-server?" but "is it needed at all?", which is why it is **deferred** rather than scheduled.
+Since then, a different mechanism has met the same need. Scenario-level `mocks` are declarative,
+in-protocol stubs intercepted inside Bajutsu's own network path. They are implemented and validated
+on-device. They give offline, deterministic responses without a second process to launch,
+health-check, and tear down.
+
+The open question for this item is no longer "how do we build the external server?" but
+"do we need it at all?". That question is why the item is **deferred** rather than scheduled.
 
 ## Detailed design
 
 To be specified if this proposal is taken up. The schema (`config.py` `MockServer`:
-`cmd` / `port` / `stubs`) is the only part that exists today; it has no runtime effect.
+`cmd` / `port` / `stubs`) is the only part that exists today, and it has no runtime effect.
 
-This item is **deferred**, so the design is intentionally not fleshed out. Were it taken up, it
-would have to clear the bar the in-protocol `mocks` already meet:
+This item is **deferred**, so the design is intentionally not fleshed out. If we took it up, the
+design would have to clear the bar that the in-protocol `mocks` already meet:
 
-- **Determinism.** The external server would have to be brought up to a known-ready state before
-  the scenario starts and verified torn down after, with no fixed `sleep` — a readiness/health
-  condition, consistent with "condition waits only". A process that is sometimes not yet listening
-  when the app first calls it would reintroduce exactly the flakiness the project forbids.
-- **App-agnostic config.** It would stay where it is — `apps.<name>.mockServer` — so per-app mock
-  wiring lives in config and the runner stays unchanged across apps.
+- **Determinism.** The external server would have to reach a known-ready state before the scenario
+  starts, and we would verify its teardown afterward. We would use no fixed `sleep`. A
+  readiness or health condition does the waiting, consistent with "condition waits only". A process
+  that is sometimes not yet listening when the app first calls it would reintroduce exactly the
+  flakiness the project forbids.
+- **App-agnostic config.** The config would stay where it is, at `apps.<name>.mockServer`. Per-app
+  mock wiring then lives in config, and the runner stays unchanged across apps.
 - **LLM-free gate.** A mock server is a deterministic process, so it does not touch the prime
   directive that no LLM enters the run/CI gate.
 
-It would be **taken up** only if a concrete need appears that in-protocol `mocks` cannot cover —
-for example a backend whose behavior is too stateful or protocol-heavy to express as declarative
-stubs (a real gRPC or WebSocket server, a stateful session the app drives across many requests),
-where reusing an existing mock-server implementation is genuinely simpler than extending the
-in-protocol stub language. Absent that need, the schema stays as a documented, unwired
-placeholder.
+We would take the item up **only** if a concrete need appears that in-protocol `mocks` cannot cover.
+One example is a backend whose behavior is too stateful or protocol-heavy to express as declarative
+stubs: a real gRPC or WebSocket server, or a stateful session the app drives across many requests.
+The need must also be one where reusing an existing mock-server implementation is genuinely simpler
+than extending the in-protocol stub language. Absent that need, the schema stays as a documented,
+unwired placeholder.
 
 ## Alternatives considered
 
-**Implement the external server now.** Rejected for this round: it adds a process to manage
-(launch, readiness, teardown) and a second source of network behavior, for a need that the
-implemented in-protocol `mocks` already cover. Building it speculatively would be carrying
-complexity with no driving use case.
+**Implement the external server now.** Rejected for this round. It adds a process to manage
+(launch, readiness, teardown) and a second source of network behavior. The implemented in-protocol
+`mocks` already cover the need. Building the server speculatively would carry complexity with no
+driving use case.
 
 **Remove the `mockServer` schema entirely.** Considered, but kept. The schema documents a real
-design alternative and costs nothing while unwired; deleting it would discard the option and force
-a future taker to rediscover the shape. Keeping it deferred — with `architecture.md` flagging it
-as "schema only, not wired" — is the honest middle ground.
+design alternative and costs nothing while unwired. Deleting it would discard the option and force
+a future taker to rediscover its shape. The honest middle ground is to keep the item deferred, with
+`architecture.md` flagging the schema as "schema only, not wired".
 
 ## Progress
 
