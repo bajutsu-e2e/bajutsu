@@ -222,7 +222,7 @@ org の名指しは、**選ぶだけで、権限を与えません**。リクエ
 
 したがって、パイプラインの3つ組は、その姉妹提案が binary を有効化するのと同じ方法で有効化します。**dispatch 時に名指す、ジョブ単位のアーティファクト参照**であり、run のためにマテリアライズされ、何もバインドしません。
 
-`materialize_composition` は、`state.bind_upload` や `remember_org_config_source` とは独立に、3つ組を content-addressed なツリーへ組み立てます。そのため、ジョブ単位の3つ組に、新しい compose の仕組みもバインディングのスロットも要りません。これは、機械セッションが上記のセッションなしの `binding_for` の経路を保てる理由でもあります。
+`materialize_composition` は、`state.bind_upload` や `remember_org_config_source` とは独立に、3つ組を content-addressed なツリーへ組み立てます。そのため、ジョブ単位の3つ組に、新しい compose の仕組みもバインディングのスロットも要りません。これは、機械セッションが後述のセッションなしの `binding_for` の経路を保てる理由でもあります。
 
 本項目は、そのフィールドを規定しません。姉妹提案が `binaryArtifact` の上書きを、binary のレッグから3つ組へ広げることに依存します。この拡張こそ、姉妹提案の「検討した代替案」が却下しているものです。その根拠は、CI が binary だけを変えて config とシナリオは固定するという前提です。本項目の動機となるケースは、その前提を満たしません。
 

@@ -281,7 +281,7 @@ flag-overridable precedence that `systemAlertHandling` established
 
 ## Alternatives considered
 
-- **Route the banner through `interrupts`.** Rejected on the premise that BE-0315's motivation
+- **Route the banner through `interrupts`.** Rejected on the same premise that BE-0315's motivation
   established for a system alert. A process outside the application under test draws the banner. The
   condition of `interrupts` is evaluated against the application's own tree alone, so it has nothing
   to check against.

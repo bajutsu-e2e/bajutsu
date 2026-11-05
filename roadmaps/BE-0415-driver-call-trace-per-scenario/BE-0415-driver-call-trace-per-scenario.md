@@ -239,8 +239,8 @@ by BE-0407 itself:
    - In its `finally`, `run_one` flushes the accumulated records to `f"{sid}/driver_trace.json"`.
      The write goes through `self._artifacts()`
      ([`RunArtifactWriter.write_json`](../../bajutsu/common/evidence/sink.py)).
-   - That call is the run's single write boundary (BE-0331). Secret-scrubbing runs over the
-     file for free. No record carries scenario-authored text today.
+   - That call is the run's single write boundary (BE-0331), so secret-scrubbing runs over the
+     file for free, even though no record carries scenario-authored text today.
    - `_StepRunner._run_one` pushes and pops the current step's key onto the same thread-local
      context. The file is
      [`bajutsu/common/orchestrator/loop/_step_runner.py`](../../bajutsu/common/orchestrator/loop/_step_runner.py).
