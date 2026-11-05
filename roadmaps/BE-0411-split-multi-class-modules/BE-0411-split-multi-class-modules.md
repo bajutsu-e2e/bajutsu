@@ -15,228 +15,130 @@
 
 ## Introduction
 
-86 files under `bajutsu/` define more than one top-level class in the same module. Together they
-hold 459 classes. This item splits each of those 86 files into a package directory. Each class
-moves to its own module inside that directory. The package's `__init__.py` re-exports every public
-name, so every existing import path keeps resolving unchanged. A matching test file splits the same
-way when one exists. The change is a physical reorganization: no class gains, loses, or changes a
-responsibility, and no test asserts anything new. The one piece of new prose it does require is a
-one-line module docstring per new file, where an existing lint rule demands one (Detailed design,
-*Three existing mechanisms*).
+86 files under `bajutsu/` define more than one top-level class in the same module. Together they hold 459 classes. This item splits each of those 86 files into a package directory. Each class moves to its own module inside that directory. The package's `__init__.py` re-exports every public name. Every existing import path then keeps resolving unchanged. A matching test file splits the same way when one exists.
+
+The change is a physical reorganization. No class gains, loses, or changes a responsibility, and no test asserts anything new. The one piece of new prose it requires is a one-line module docstring per new file. An existing lint rule demands the docstring (Detailed design, *Three existing mechanisms*).
 
 ## Motivation
 
-Two files show the scale of the problem. `bajutsu/common/scenario/models/actions.py` packs 40
-classes into 645 lines. `bajutsu/common/drivers/base.py` packs 23 classes into 1044 lines. Most of
-the other 84 files follow the same pattern at a smaller scale. A reader who wants one class cannot
-reach it from an editor's file tree. The tree indexes by filename, and the target class shares its
-filename with dozens of others. The reader instead opens the file and searches inside it, or greps
-for a line number first.
+Two files show the scale of the problem. `bajutsu/common/scenario/models/actions.py` packs 40 classes into 645 lines. `bajutsu/common/drivers/base.py` packs 23 classes into 1044 lines. Most of the other 84 files follow the same pattern at a smaller scale.
 
-An AI agent editing one class pays that cost a second way. Reaching the target class still means
-loading the whole file. An edit to one class carries the unrelated other 39 classes along in
-context. A file grows as new classes get added to it, so this cost compounds: the next class added
-to `actions.py` makes the file larger for every reader and every edit after it, not merely for the
-one adding it.
+A reader who wants one class cannot reach it from an editor's file tree. The tree indexes by filename, and the target class shares its filename with dozens of others. The reader instead opens the file and searches inside it, or greps for a line number first.
 
-Splitting to one class per file removes both costs at once. A filename search or a file-tree click
-reaches a class directly. An edit to one class loads that class's file alone. A reader can check
-that this landed without reading anything else. `LongPress` sits somewhere inside `actions.py`
-today. After the split, opening it resolves straight to `actions/long_press.py` from the file
-tree. It needs no intermediate search.
+An AI agent editing one class pays that cost a second way. Reaching the target class still means loading the whole file. An edit to one class carries the other 39 unrelated classes along in context. A file grows as new classes get added to it, so this cost compounds. The next class added to `actions.py` makes the file larger for every later reader and every later edit.
+
+Splitting to one class per file removes both costs at once. A filename search or a file-tree click reaches a class directly. An edit to one class loads that class's file alone.
+
+A reader can check that this landed without reading anything else. `LongPress` sits somewhere inside `actions.py` today. After the split, opening it resolves straight to `actions/long_press.py` from the file tree, with no intermediate search.
 
 ## Detailed design
 
 ### Split rule
 
-The split replaces each of the 86 files that define two or more top-level classes with a package
-directory of the same name. Six rules apply.
+The split replaces each of the 86 files that define two or more top-level classes with a package directory of the same name. Six rules apply.
 
-1. **One file per class.** `foo.py` becomes `foo/`. The package's `__init__.py` carries the
-   original module's docstring, then imports and re-exports every public class in the original
-   declaration order, declaring every re-exported name in an `__all__`. The `__all__` is written
-   whether or not the original file had one: `F` is in ruff's `select` (`pyproject.toml`) with no
-   `__init__.py` per-file-ignore, so an import that exists only to re-export raises `F401` and
-   fails `make lint` otherwise. Each class moves to `snake_case(ClassName).py`. A private class
-   such as `_Model` moves to `_model.py`, keeping its leading underscore in the filename. The rule
-   applies the same way to every kind of `class`: a Pydantic model, a `TypedDict`, a `Protocol`, an
-   `Exception`, or a plain `dataclass`.
-2. **Top-level functions stay together, in one file.** This item's scope is classes, not
-   functions. A file's top-level functions move as a group into `_functions.py` inside the new
-   package. They do not scatter into `__init__.py`, and they do not split one function per file.
-   62 of the 86 files define at least one top-level function alongside their classes.
-   `bajutsu/common/backend_cli/adb.py` alone defines 66. Without this rule, those functions would
-   crowd back into `__init__.py` and undo the size reduction for the files carrying the most code.
-   `__init__.py` re-exports a public function from `_functions.py` the same way it re-exports a
-   class.
-3. **Explicit intra-package imports.** A class that subclasses or references another class from the
-   same original file now imports it explicitly, with a relative import
-   (`from ._model import _Model`). The two classes no longer share a module scope.
-4. **Module-level code with no single owner moves to `__init__.py`; code with one owner stays in
-   that owner's file.** Code genuinely used by more than one split-off class has nowhere else to
-   go. One example is
-   [`serve/server/models.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/bajutsu/serve/server/models.py)'s
-   `_JSON`, a SQLAlchemy column-type variant that six different ORM model classes pass to
-   `mapped_column`.
+1. **One file per class.** `foo.py` becomes `foo/`. The package's `__init__.py` carries the original module's docstring. It then imports and re-exports every public class in the original declaration order, and it declares every re-exported name in an `__all__`. The `__all__` is written even when the original file had none. `F` is in ruff's `select` (`pyproject.toml`) with no `__init__.py` per-file-ignore. Without the `__all__`, an import that exists to re-export alone raises `F401` and fails `make lint`.
 
-   Code tied to exactly one class or function stays in that owner's own file, even at module
-   level. Moving it breaks the reference in one case, or, when a moved function rebinds it with
-   `global`, stops updating it without an error: `global` cannot reach a name in another module.
-   [`assertions.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/bajutsu/common/scenario/models/assertions.py)'s
-   `_ASSERTION_KINDS` is the first shape: `Assertion.model_fields` derives it and
-   `Assertion._one_kind` is its sole reader, so it stays with `Assertion`. `drivers/playwright.py`'s
-   `_PW_ERRORS` is the second: `_playwright_error_types` rebinds it with `global` to memoize an
-   optional import, so the memo stays wherever rule 2 sends that function — `_functions.py`.
-5. **A new circular import gets the existing lazy-import treatment.**
-   `bajutsu/common/config/schema.py`'s `Config` model already imports `bajutsu.common.config.resolve`
-   inside a method body, not at module load, to avoid a cycle. The split resolves any circular
-   import it newly introduces the same way.
-6. **An entry-point guard moves to `__main__.py`.** `python -m <package>` runs `__main__.py`, never
-   `__init__.py`. A guard left in the package body loses its entry point, and nothing raises. `bajutsu/common/provisioning/provision.py` is the one file of the 86 with an
-   `if __name__ == "__main__":` block. Both `scripts/install.sh` and the web-e2e workflow invoke it
-   that way.
+   Each class moves to `snake_case(ClassName).py`. A private class such as `_Model` moves to `_model.py`, keeping its leading underscore in the filename. The rule applies the same way to every kind of `class`: a Pydantic model, a `TypedDict`, a `Protocol`, an `Exception`, or a plain `dataclass`.
+2. **Top-level functions stay together, in one file.** This item's scope is classes, not functions. A file's top-level functions move as a group into `_functions.py` inside the new package. They do not scatter into `__init__.py`, and they do not split one function per file.
+
+   62 of the 86 files define at least one top-level function alongside their classes. `bajutsu/common/backend_cli/adb.py` alone defines 66. Without this rule, those functions would crowd back into `__init__.py`. That would undo the size reduction for the files carrying the most code. `__init__.py` re-exports a public function from `_functions.py` the same way it re-exports a class.
+3. **Explicit intra-package imports.** A class that subclasses or references another class from the same original file now imports that class explicitly. The import is relative (`from ._model import _Model`). The two classes no longer share a module scope.
+4. **Module-level code with no single owner moves to `__init__.py`; code with one owner stays in that owner's file.** Code that more than one split-off class uses has nowhere else to go. One example is [`serve/server/models.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/bajutsu/serve/server/models.py)'s `_JSON`, a SQLAlchemy column-type variant that six different ORM model classes pass to `mapped_column`.
+
+   Code tied to exactly one class or function stays in that owner's own file, even at module level. Moving the code breaks the reference in one case. In the other case, a moved function rebinds the name with `global`. The name then stops updating without an error, because `global` cannot reach a name in another module.
+
+   [`assertions.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/bajutsu/common/scenario/models/assertions.py)'s `_ASSERTION_KINDS` is the first shape. `Assertion.model_fields` derives it, and `Assertion._one_kind` is its sole reader. It stays with `Assertion`. `drivers/playwright.py`'s `_PW_ERRORS` is the second shape. `_playwright_error_types` rebinds it with `global` to memoize an optional import. The memo stays wherever rule 2 sends that function, which is `_functions.py`.
+5. **A new circular import gets the existing lazy-import treatment.** The `Config` model in `bajutsu/common/config/schema.py` already imports `bajutsu.common.config.resolve` inside a method body, not at module load, to avoid a cycle. The split resolves any new circular import the same way.
+6. **An entry-point guard moves to `__main__.py`.** `python -m <package>` runs `__main__.py`, never `__init__.py`. A guard left in the package body loses its entry point, and nothing raises. `bajutsu/common/provisioning/provision.py` is the one file of the 86 with an `if __name__ == "__main__":` block. Both `scripts/install.sh` and the web-e2e workflow invoke it that way.
 
 ### Implementation: a parsing script, not manual edits
 
-A Python script applies rules 1–3 and 5–6 mechanically, run once per batch against that batch's file
-list — not an editor, human or AI, splitting each file by hand. An AI agent reading and rewriting
-459 classes one at a time would spend tokens roughly in proportion to that count; a script pays a
-fixed authoring cost once and then runs at no further token cost per batch. It parses each target
-file with
-[`libcst`](https://github.com/Instagram/LibCST) rather than the standard-library `ast`, since `ast`
-drops comments, and many classes in these files carry a leading comment explaining a design choice
-that the split must not lose. The script extracts each top-level `class` or `def` node together
-with its leading comment block and writes it, byte-for-byte, to the file rule 1 or rule 2 names. It
-scans each extracted class's body for references to sibling top-level names and emits the relative
-import rule 3 needs. It writes `__init__.py` from the same parse: the original module docstring,
-one import per class or function, and the `__all__` list. `libcst` becomes a dev-only dependency
-for this one script, not a runtime one.
+A Python script applies rules 1–3 and 5–6 mechanically. It runs once per batch against that batch's file list. An editor, human or AI, does not split each file by hand.
 
-The script does not decide rule 4's two-case split — whether a piece of module-level code has a
-single owner or none — since that call needs the same judgment this design applied to
-`_ASSERTION_KINDS` and `_PW_ERRORS`. That judgment, and authoring each new module's `D100`
-docstring, are the two things each batch still does by hand, working from the rules and examples
-above.
+An AI agent that read and rewrote 459 classes one at a time would spend tokens roughly in proportion to that count. A script pays a fixed authoring cost once, then runs at no further token cost per batch.
 
-The script earns trust the same way any other piece of this codebase does: with its own test
-suite (`tests/test_split_modules.py` or similar), covering each rule above against small fixture
-modules — a class with a leading comment, a class referencing a sibling, a file with `__all__` and
-one without, a function `global`-rebinding a module-level name. That suite passes before the
-script runs against a single real file. Running it against real files, batch by batch, is what
-the batch entries in *Progress* below track.
+The script parses each target file with [`libcst`](https://github.com/Instagram/LibCST) rather than the standard-library `ast`. The `ast` module drops comments. Many classes in these files carry a leading comment that explains a design choice, and the split must not lose it.
+
+The script then works in four steps:
+
+1. It extracts each top-level `class` or `def` node together with its leading comment block.
+2. It writes the node, byte-for-byte, to the file that rule 1 or rule 2 names.
+3. It scans each extracted class's body for references to sibling top-level names, and emits the relative import that rule 3 needs.
+4. It writes `__init__.py` from the same parse: the original module docstring, one import per class or function, and the `__all__` list.
+
+`libcst` becomes a dev-only dependency for this one script, not a runtime one.
+
+The script does not decide rule 4's two-case split, which asks whether a piece of module-level code has a single owner or none. That call needs the same judgment that this design applied to `_ASSERTION_KINDS` and `_PW_ERRORS`. Each batch still does two things by hand, working from the rules and examples above: that judgment, and authoring each new module's `D100` docstring.
+
+The script earns trust the same way any other piece of this codebase does: with its own test suite (`tests/test_split_modules.py` or similar). The suite covers each rule above against small fixture modules:
+
+- a class with a leading comment
+- a class referencing a sibling
+- a file with `__all__` and one without
+- a function `global`-rebinding a module-level name
+
+That suite passes before the script runs against a single real file. Running the script against real files, batch by batch, is what the batch entries in *Progress* below track.
 
 ### Test-side split
 
-Take a test file with a matching source file — for example `tests/scenario/test_models_actions.py`
-for `bajutsu/common/scenario/models/actions.py`. It splits into one test module per class, the same
-way the source does. The resulting test directory gets an empty `__init__.py`. `pyproject.toml`'s
-`[tool.pytest.ini_options]` sets no `--import-mode`, so pytest's default `prepend` mode needs every
-test module's filename to be unique across the whole suite. The empty `__init__.py` turns the new
-directory into a package and heads off that constraint. Eight class names repeat across the 85
-files. `DeviceError` and `Env` both name a class in `bajutsu/common/backend_cli/adb.py` and in
-`bajutsu/common/backend_cli/simctl.py`, for one. Without the package boundary, two of their split
-test files would collide on the same `test_device_error.py` name. A source file with no dedicated
-unit-test file — covered by an integration test alone — gets no new test file. The scope here is
-splitting what exists, not adding coverage that does not.
+Take a test file with a matching source file. One example is `tests/scenario/test_models_actions.py` for `bajutsu/common/scenario/models/actions.py`. The test file splits into one test module per class, the same way the source does. The resulting test directory gets an empty `__init__.py`.
 
-A test that patches by module path gets re-pointed in the same commit as its source file.
-`tests/` calls `monkeypatch.setattr("bajutsu.<module>.<name>", ...)` in about a hundred places.
-Patching a name that `__init__.py` merely re-exports rebinds the re-export, not the binding the
-caller resolves. That break stays quiet in some cases and raises in others.
+The empty `__init__.py` heads off a constraint. `pyproject.toml`'s `[tool.pytest.ini_options]` sets no `--import-mode`, so pytest's default `prepend` mode needs every test module's filename to be unique across the whole suite. The empty `__init__.py` turns the new directory into a package.
 
-`bajutsu.run.notify._RETRY_DELAY` (four call sites, batch 2) is a quiet case. `_deliver` moves to
-`_functions.py` with its own binding under rule 2. The patch stops applying, and the retry test
-sleeps for real instead of exercising the patched value.
-`bajutsu.common.drivers.playwright._PW_ERRORS` and `bajutsu.common.drivers.xcuitest.XcuitestDriver`
-(batch 7) fail the same quiet way.
+Eight class names repeat across the 85 files. `DeviceError` and `Env` are one case. Each names a class in both `bajutsu/common/backend_cli/adb.py` and `bajutsu/common/backend_cli/simctl.py`. Without the package boundary, two of their split test files would collide on the same `test_device_error.py` name.
 
-`bajutsu.common.drivers.base.time.sleep` and `.time.monotonic` (ten call sites, batch 7) raise
-`AttributeError` instead, once `base/__init__.py` no longer imports `time` itself.
+A source file with no dedicated unit-test file gets no new test file. An integration test alone covers such a file. The scope here is splitting what exists, not adding coverage that does not exist.
+
+A test that patches by module path gets re-pointed in the same commit as its source file. `tests/` calls `monkeypatch.setattr("bajutsu.<module>.<name>", ...)` in about a hundred places. Patching a name that `__init__.py` merely re-exports rebinds the re-export. The caller resolves a different binding. That break stays quiet in some cases and raises in others.
+
+Quiet cases:
+
+- `bajutsu.run.notify._RETRY_DELAY` (four call sites, batch 2). `_deliver` moves to `_functions.py` with its own binding under rule 2. The patch stops applying. The retry test then sleeps for real instead of exercising the patched value.
+- `bajutsu.common.drivers.playwright._PW_ERRORS` and `bajutsu.common.drivers.xcuitest.XcuitestDriver` (batch 7). They fail the same quiet way.
+
+A raising case:
+
+- `bajutsu.common.drivers.base.time.sleep` and `.time.monotonic` (ten call sites, batch 7). They raise `AttributeError` once `base/__init__.py` no longer imports `time` itself.
 
 ### Five existing mechanisms keyed on today's file paths
 
-`coverage-floors.json` records a per-file coverage floor keyed by path
-([BE-0385](../BE-0385-coverage-floor-continuous-ratchet/BE-0385-coverage-floor-continuous-ratchet.md)).
-A path the split creates has no floor recorded yet. `scripts/coverage_floors.py` treats that gap as
-informational rather than an error, so it stays harmless while the split is in progress. Running
-`make coverage-floors` once, after the last batch lands, regenerates the whole snapshot with the
-new paths.
+**Coverage floors.** `coverage-floors.json` records a per-file coverage floor keyed by path ([BE-0385](../BE-0385-coverage-floor-continuous-ratchet/BE-0385-coverage-floor-continuous-ratchet.md)). A path that the split creates has no floor recorded yet. `scripts/coverage_floors.py` treats that gap as informational, not as an error. The gap stays harmless while the split is in progress. Running `make coverage-floors` once, after the last batch lands, regenerates the whole snapshot with the new paths.
 
-The `Makefile`'s `DOCSTRING_PATHS` variable lists the modules `lint-docstrings` checks under the
-BE-0065 Google-style docstring migration. 26 of today's 85 multi-class files appear in it by their
-exact `.py` path. `bajutsu/common/drivers/base.py` and `bajutsu/analysis/audit.py` are two
-examples. Another 15 files are already covered by a directory entry instead of a file entry.
-Splitting a file listed by its exact path stops `lint-docstrings` from
-checking it. The drop is silent, not loud. `ruff` exits 0 on a path that
-is not there. A stale entry stops enforcing docstrings on that surface,
-and says nothing. The implementation adds an existence guard to
-the `lint-docstrings` recipe. The guard turns that silent drop into a
-hard stop. A directory entry needs no change to the entry itself.
+**Docstring lint.** The `Makefile`'s `DOCSTRING_PATHS` variable lists the modules that `lint-docstrings` checks under the BE-0065 Google-style docstring migration. 26 of today's 85 multi-class files appear in it by their exact `.py` path. `bajutsu/common/drivers/base.py` and `bajutsu/analysis/audit.py` are two examples. Another 15 files are already covered by a directory entry instead of a file entry.
 
-A directory entry carries a consequence the file entries do not, though. `lint-docstrings` selects
-the whole `D` family minus `D102`/`D105`/`D107`, which leaves `D100` (missing docstring in a public
-module) active. It applies to every module the split creates under any of the 41 covered files —
-both the 26 renamed from a file entry and the 15 already covered by a directory entry.
-`bajutsu/common/scenario` already covers `models/actions.py`, so each of its 40 new per-class
-modules needs its own module docstring written, not merely carried over. Across all 41 covered
-files, that totals 275 new module docstrings to author. That is real prose, not a mechanical
-carry-over, and a cost the Introduction's framing does not fully capture on its own.
-`bajutsu/common/scenario` and `bajutsu/common/drivers/` (batches 11 and 7) hold the largest share
-of it. `actions.py` and `base.py` are the two files with the most classes to begin with.
+Splitting a file listed by its exact path stops `lint-docstrings` from checking the file. The drop is silent, not loud, because `ruff` exits 0 on a path that is not there. A stale entry stops enforcing docstrings on that surface and says nothing. The implementation adds an existence guard to the `lint-docstrings` recipe. The guard turns that silent drop into a hard stop. A directory entry needs no change to the entry itself.
 
-[`docs/architecture.md`](../../docs/architecture.md)'s module-list table names 15 of the 85 files
-by their exact `.py` path too:
+A directory entry carries a consequence that the file entries do not. `lint-docstrings` selects the whole `D` family minus `D102`/`D105`/`D107`, which leaves `D100` (missing docstring in a public module) active. `D100` applies to every module the split creates under any of the 41 covered files. That count covers both the 26 renamed from a file entry and the 15 already covered by a directory entry.
+
+`bajutsu/common/scenario` already covers `models/actions.py`. Each of its 40 new per-class modules therefore needs its own module docstring written, not merely carried over. Across all 41 covered files, that totals 275 new module docstrings to author. That is real prose, not a mechanical carry-over. The Introduction's framing does not fully capture the cost on its own. `bajutsu/common/scenario` and `bajutsu/common/drivers/` (batches 11 and 7) hold the largest share of it. `actions.py` and `base.py` are the two files with the most classes to begin with.
+
+**The module-list table.** [`docs/architecture.md`](../../docs/architecture.md)'s module-list table names 15 of the 85 files by their exact `.py` path too:
 
 - every file under `bajutsu/common/drivers/`
 - `config_source.py`, `doctor.py`, `handoff.py`
 - `provisioning/provision.py`, `provisioning/requirements.py`
 - `run/notify.py`
 
-`scripts/lint_module_map.py` runs as `make lint-module-map`, part of `make check`. It fails when a
-table entry names a path absent from the tree, so splitting one of these files without renaming
-its table entry breaks the gate. The same check also descends one level into `bajutsu/common/`,
-looking for an undocumented subpackage. `config_source.py`, `doctor.py`, and `handoff.py` sit
-directly under `common/`. Splitting one of them turns its new package directory into an
-undocumented subpackage, unless the table entry moves to the new directory path in the same
-commit. Renaming the entry's path cell satisfies both checks at once.
+`scripts/lint_module_map.py` runs as `make lint-module-map`, part of `make check`. It fails when a table entry names a path absent from the tree. Splitting one of these files without renaming its table entry therefore breaks the gate.
 
-[`scripts/e2e_changes.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/scripts/e2e_changes.py)
-decides which on-device CI lanes a change triggers. It names about thirty
-modules by their exact `.py` path. The names appear in three places: the
-per-lane patterns, the shared run filter, and the periphery exclusions.
-Splitting one without updating its entry reproduces what the script's own
-comment records from
-[BE-0252](../BE-0252-config-package-split/BE-0252-config-package-split.md).
-Every file under the new package stops matching. The lane's `changes` job
-then reports nothing relevant. The required aggregator goes green without
-running a thing. The script's own tests catch a stale plain path. They do
-not catch a stale regular expression, so each batch checks both.
+The same check also descends one level into `bajutsu/common/`, looking for an undocumented subpackage. `config_source.py`, `doctor.py`, and `handoff.py` sit directly under `common/`. Splitting one of them turns its new package directory into an undocumented subpackage. The table entry must move to the new directory path in the same commit. Renaming the entry's path cell satisfies both checks at once.
 
-`pyproject.toml`'s `[tool.importlinter]` contracts name `bajutsu.common.drivers.base` as a
-`source_modules` or `forbidden_modules` entry in three contracts. Two more modules this split
-touches join it there: `bajutsu.common.drivers.actuation` and `bajutsu.common.doctor`. These
-contracts guard the deterministic core's independence from the periphery.
+**The on-device lane selector.** [`scripts/e2e_changes.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/scripts/e2e_changes.py) decides which on-device CI lanes a change triggers. It names about thirty modules by their exact `.py` path. The names appear in three places: the per-lane patterns, the shared run filter, and the periphery exclusions.
 
-Those entries need no change. import-linter resolves a named module to itself plus every
-descendant, so a plain module turning into a package stays covered — the same subtree semantics
-the artifact-sink contract's own comment in `pyproject.toml` already relies on.
+Splitting one module without updating its entry reproduces what the script's own comment records from [BE-0252](../BE-0252-config-package-split/BE-0252-config-package-split.md). Every file under the new package stops matching. The lane's `changes` job then reports nothing relevant. The required aggregator goes green without running a thing. The script's own tests catch a stale plain path but not a stale regular expression, so each batch checks both.
 
-One entry names an exact edge rather than a subtree, and that one does break. The contract that
-keeps the scenario schema and `Driver` Protocol a portable inner layer has an `ignore_imports`
-entry covering a single edge: `bajutsu.common.drivers.base -> bajutsu.common.evidence.network`.
-That edge is a `TYPE_CHECKING`-guarded reference to `Collector`, made for
-the `network_collector` signature. The signature belongs to
-`EvidenceProvider`, not to `Driver`. Batch 7 gives that Protocol its own
-file, so the real edge becomes
-`bajutsu.common.drivers.base.evidence_provider -> bajutsu.common.evidence.network`.
-The recorded string no longer matches it. `unmatched_ignore_imports_alerting`
-defaults to `error`, so `make lint-imports` fails on the stale entry. Batch 7's commit updates it
-to the new module path.
+**Import-linter contracts.** `pyproject.toml`'s `[tool.importlinter]` contracts name `bajutsu.common.drivers.base` as a `source_modules` or `forbidden_modules` entry in three contracts. Two more modules that this split touches join it there: `bajutsu.common.drivers.actuation` and `bajutsu.common.doctor`. These contracts guard the deterministic core's independence from the periphery.
+
+Those entries need no change. import-linter resolves a named module to itself plus every descendant. A plain module that turns into a package stays covered. The artifact-sink contract's own comment in `pyproject.toml` already relies on the same subtree semantics.
+
+One entry names an exact edge, not a subtree, and that entry does break. The contract that keeps the scenario schema and `Driver` Protocol a portable inner layer has an `ignore_imports` entry covering a single edge: `bajutsu.common.drivers.base -> bajutsu.common.evidence.network`. That edge is a `TYPE_CHECKING`-guarded reference to `Collector`. It serves the `network_collector` signature, which belongs to `EvidenceProvider`, not to `Driver`.
+
+Batch 7 gives that Protocol its own file, so the real edge becomes `bajutsu.common.drivers.base.evidence_provider -> bajutsu.common.evidence.network`. The recorded string no longer matches it. `unmatched_ignore_imports_alerting` defaults to `error`. `make lint-imports` therefore fails on the stale entry, and batch 7's commit updates the entry to the new module path.
 
 ### Work breakdown
 
-The 86 files group into 14 batches along their existing directory boundaries. Each batch is one
-commit on a single PR.
+The 86 files group into 14 batches along their existing directory boundaries. Each batch is one commit on a single PR.
 
 | # | Batch | Files |
 |---|---|---|
@@ -255,11 +157,12 @@ commit on a single PR.
 | 13 | `bajutsu/serve/` (top level) | `artifacts.py`, `baselines.py`, `batch_provider.py`, `executor.py`, `logbus.py`, `oplog.py`, `provider_store.py`, `routes.py`, `scenarios.py`, `secrets.py`, `sessions.py`, `state.py`, `themes.py`, `uploads.py` |
 | 14 | `bajutsu/serve/operations/` + `bajutsu/serve/server/` | `operations/coverage.py`, `server/db.py`, `server/executor.py`, `server/logbus.py`, `server/models.py`, `server/oauth.py`, `server/scenarios.py`, `server/sessions.py` |
 
-Each batch's commit updates the `DOCSTRING_PATHS` entries and the `docs/architecture.md` table rows
-for the files it touches, wherever that batch contains a file listed there by its `.py` path, and
-writes the module docstring `D100` requires into every new module under a `DOCSTRING_PATHS`-covered
-file. Batch 7's commit also updates the `ignore_imports` entry in `pyproject.toml`.
-`make coverage-floors` and the final `make check` each run once, after every batch lands.
+Each batch's commit does two things:
+
+- It updates the `DOCSTRING_PATHS` entries and the `docs/architecture.md` table rows for the files it touches, wherever the batch contains a file listed there by its `.py` path.
+- It writes the module docstring that `D100` requires into every new module under a `DOCSTRING_PATHS`-covered file.
+
+Batch 7's commit also updates the `ignore_imports` entry in `pyproject.toml`. `make coverage-floors` and the final `make check` each run once, after every batch lands.
 
 ## Alternatives considered
 
