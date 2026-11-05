@@ -15,40 +15,52 @@
 
 ## Introduction
 
-This item adds an `eval` step that transforms a value a scenario already holds in a variable. The step
-takes a source string and an ordered list of operations, such as `split`, `filter`, `sort`, `pick`,
-and `join`. It stores the result under `${vars.*}`. Operations come from a fixed vocabulary. Inside a
-pipeline a value is either a string or a list, and the loader checks that the types line up before
-the run starts. A result that is a list is stored as compact JSON array text. When any input traces
-back to `${secrets.*}`, the result joins the set of values that the artifact redactor masks, so a
-derived value never reaches a report in plain text.
+This item adds an `eval` step that transforms a value a scenario already holds in a variable. The
+step takes a source string and an ordered list of operations, such as `split`, `filter`, `sort`,
+`pick`, and `join`. It stores the result under `${vars.*}`.
+
+Operations come from a fixed vocabulary. Inside a pipeline, a value is either a string or a list.
+The loader checks that the types line up before the run starts. The step stores a list result as
+compact JSON array text.
+
+When any input traces back to `${secrets.*}`, the result joins the set of values that the artifact
+redactor masks. A derived value therefore never reaches a report in plain text.
 
 ## Motivation
 
-A scenario captures runtime values in four ways today. The `extract` modifier reads an element's
-`value`, `label`, or `identifier`. The `http` step stores a response body or one JSON field. The
-`email` step extracts a code with a regular expression. The `generate` step computes a random or
-datetime value. Every one of them stores the value as it arrived. No step changes a stored value.
+A scenario captures runtime values in four ways today.
 
-The values a target shows are often not the values a later step needs. A cart screen shows one label,
-`Apple, banana ,Cherry`, and the scenario must assert the sorted, trimmed items or type the second
-item into a search box. A banner reads `Order #A-1042 confirmed`, and the next screen wants only
-`A-1042`. A test needs a password built from two parts. Today the author has three options. The author
-can assert against the whole string and accept a brittle comparison. The author can move the logic
-into an external script, which hides the flow from the scenario file. Or the author can give up the
-check.
+- The `extract` modifier reads an element's `value`, `label`, or `identifier`.
+- The `http` step stores a response body or one JSON field.
+- The `email` step extracts a code with a regular expression.
+- The `generate` step computes a random or datetime value.
+
+Every one of them stores the value as it arrived. No step changes a stored value.
+
+The values a target shows are often not the values a later step needs. A cart screen shows one
+label, `Apple, banana ,Cherry`. The scenario must assert the sorted, trimmed items, or type the
+second item into a search box. A banner reads `Order #A-1042 confirmed`, and the next screen wants
+`A-1042` alone. A test needs a password built from two parts.
+
+Today the author has three options.
+
+- Assert against the whole string and accept a brittle comparison.
+- Move the logic into an external script, which hides the flow from the scenario file.
+- Give up the check.
 
 When this item ships, a scenario holds that logic in one `eval` step. The scenario file then shows
-every step from capture to use, and the run report records the produced value. The observable change
-is that a scenario which splits a captured label and asserts one element needs no helper script and no
-`http` round trip to a scratch service.
+every step from capture to use, and the run report records the produced value. A reader can check
+the change directly: a scenario that splits a captured label and asserts one element needs no
+helper script and no `http` round trip to a scratch service.
 
 ## Detailed design
 
-The step name `eval` could suggest that the step runs arbitrary code. It does not. `eval` runs a fixed
-vocabulary of operations over strings and lists, and a scenario cannot add an operation. The shape
-follows `generate` ([BE-0377](../BE-0377-dynamic-value-generation/BE-0377-dynamic-value-generation.md)):
-one step, one `into: { var }` target, and a value stored under `vars.<name>`.
+The step name `eval` could suggest that the step runs arbitrary code. It does not. `eval` runs a
+fixed vocabulary of operations over strings and lists, and a scenario cannot add an operation.
+
+The shape follows `generate`
+([BE-0377](../BE-0377-dynamic-value-generation/BE-0377-dynamic-value-generation.md)): one step, one
+`into: { var }` target, and a value stored under `vars.<name>`.
 
 ### Authoring surface
 
@@ -78,34 +90,37 @@ one step, one `into: { var }` target, and a value stored under `vars.<name>`.
 
 Fields:
 
-- **`from`** is a string and is required. It uses the same `${...}` interpolation as every other
-  step field. Joining two variables needs no operation, because `from: "${vars.a}-${vars.b}"`
-  already builds the joined string.
+- **`from`** is a required string. It uses the same `${...}` interpolation as every other step
+  field. Joining two variables needs no operation, because `from: "${vars.a}-${vars.b}"` already
+  builds the joined string.
 - **`ops`** is a non-empty list. Each entry runs on the result of the previous entry. An operation
-  without arguments is written as a bare string (`trim`, `json`, `count`, `unique`, `reverse`, `sort`).
-  Every other operation is a mapping with one key.
+  without arguments is a bare string (`trim`, `json`, `count`, `unique`, `reverse`, `sort`). Every
+  other operation is a mapping with one key.
 - **`into`** is `{ var: <name> }`, the same `VarTarget` that `generate` and `totp` use
   (`bajutsu/common/scenario/models/actions/var_target.py`). Writing a name that already holds a
   value replaces it, as `extract` and `generate` do.
-- **`into: { vars: [<name>, ...] }`** is the other form. It spreads a list result over the
-  named variables in order. The first element goes into the first name, and so on. The loader accepts
-  `vars` when the pipeline ends with a list, and refuses an empty or repeated name. A list longer than
-  `vars` leaves its extra elements unassigned. A shorter list stops the step: a variable left unset
-  would surface later as an unrelated mismatch. We added this form during implementation. Without
-  it, a scenario that splits one label into three values needs three `eval` steps.
+- **`into: { vars: [<name>, ...] }`** is the other form. It spreads a list result over the named
+  variables in order: the first element goes into the first name, and so on.
+  - The loader accepts `vars` when the pipeline ends with a list. It refuses an empty or repeated
+    name.
+  - A list longer than `vars` leaves its extra elements unassigned.
+  - A shorter list stops the step, because a variable left unset would surface later as an
+    unrelated mismatch.
+  - We added this form during implementation. Without it, a scenario that splits one label into
+    three values needs three `eval` steps.
 
 ### Values and types
 
-A pipeline value is a string or a list of strings. `from` starts the pipeline as a string. The final
-value is stored as follows:
+A pipeline value is a string or a list of strings. `from` starts the pipeline as a string. The step
+stores the final value as follows:
 
-- A string is stored as is.
-- A list is stored as compact JSON array text, such as `["a","b"]`. The renderer is `json_text`
-  (`bajutsu/common/assertions/dict_match.py`), the same one `extractBody` uses, so a stored list
-  reads like a captured JSON body and keeps non-ASCII text unescaped.
+- A string goes in as is.
+- A list goes in as compact JSON array text, such as `["a","b"]`. The renderer is `json_text`
+  (`bajutsu/common/assertions/dict_match.py`), the same one `extractBody` uses. A stored list
+  therefore reads like a captured JSON body and keeps non-ASCII text unescaped.
 
-A later `eval` turns that text back into a list with the `json` operation. The explicit step avoids a
-guess: a string that merely looks like JSON stays a string until the author says otherwise.
+A later `eval` turns that text back into a list with the `json` operation. The explicit step avoids
+a guess: a string that merely looks like JSON stays a string until the author says otherwise.
 
 ### Operations
 
@@ -133,13 +148,20 @@ with a regular expression that absorbs the whitespace, as the first example does
 
 The loader walks each `ops` list and tracks the type flow from `from` (a string) to the end. An
 operation applied to the wrong type, such as `join` after `regex`, is a scenario load error that
-names the step and the operation. The loader also rejects an empty `ops`, an empty `split`
-separator, a `filter` with zero or several predicates, a negative or non-integer index, and a `sort`
-`order` other than `asc` or `desc`. A
-regular expression is compiled at load time when its text holds no `${...}` token.
+names the step and the operation.
 
-Operation arguments accept `${vars.*}` and `${secrets.*}` tokens, as other step fields do. An argument
-that holds a token cannot be checked at load time, so the run re-runs the same checks on the
+The loader also rejects the following:
+
+- an empty `ops`
+- an empty `split` separator
+- a `filter` with zero or several predicates
+- a negative or non-integer index
+- a `sort` `order` other than `asc` or `desc`
+
+The loader compiles a regular expression at load time when its text holds no `${...}` token.
+
+Operation arguments accept `${vars.*}` and `${secrets.*}` tokens, as other step fields do. The loader
+cannot check an argument that holds a token. The run therefore re-runs the same checks on the
 substituted step and fails the step with the same message.
 
 The step fails at run time, with no fallback value, in these cases:
@@ -152,46 +174,46 @@ The step fails at run time, with no fallback value, in these cases:
 - an input or result string over 1,048,576 characters, or an input or result list over 10,000
   elements (checking the result stops `replace` or `join` from growing a value past the cap)
 
-A failure message names the step, the operation's position, and the operation. It never quotes a value,
-because the value may derive from a secret. An empty list is a valid result, so a scenario that
+A failure message names the step, the operation's position, and the operation. It never quotes a
+value, because the value may derive from a secret. An empty list is a valid result. A scenario that
 expects at least one element asserts that with `count` and an `assert` step.
 
 ### Secret handling
 
 The run records evidence through a redactor that masks known secret values
-(`Redactor`, `bajutsu/common/evidence/redaction.py`). Today that set is fixed when the run starts.
-An `eval` result derived from a secret is a new secret value, and masking only the original would
-leave the derived text in plain view. The design adds this rule: **a result is secret when any of its
-inputs is secret.**
+(`Redactor`, `bajutsu/common/evidence/redaction.py`). Today the run fixes that set at start. An
+`eval` result derived from a secret is a new secret value, and masking the original alone would
+leave the derived text in plain view. The design adds this rule: **a result is secret when any of
+its inputs is secret.**
 
-- An input is secret when `from` or an argument holds a `${secrets.*}` token. It is also secret when
-  it holds a `${vars.<n>}` token and the run has marked variable `<n>` secret.
-- When the result is secret, the step runner adds the result to the run's secret set, including every
-  encoding variant the redactor already derives
-  ([BE-0153](../BE-0153-encode-aware-secret-redaction/BE-0153-encode-aware-secret-redaction.md)), and
-  marks `into.var` secret. A non-secret result clears the mark on `into.var`, because the variable now
-  holds a different value.
-- The registration happens before the runner records the step, so the step's own report row and trace
-  already show the masked text.
+- An input is secret when `from` or an argument holds a `${secrets.*}` token. An input is also
+  secret when it holds a `${vars.<n>}` token and the run has marked variable `<n>` secret.
+- When the result is secret, the step runner adds the result to the run's secret set, including
+  every encoding variant the redactor already derives
+  ([BE-0153](../BE-0153-encode-aware-secret-redaction/BE-0153-encode-aware-secret-redaction.md)).
+  The runner also marks `into.var` secret. A non-secret result clears the mark on `into.var`,
+  because the variable now holds a different value.
+- The registration happens before the runner records the step, so the step's own report row and
+  trace already show the masked text.
 - A result registers however short it is. A one-character secret result then masks that character
   everywhere in later evidence, which can make an artifact hard to read. We accept that cost over a
   length floor that would let a fragment of a secret through.
 - `count` is the one exception. Its result is an element count, so it carries no character of the
   input. Registering it would mask a bare digit throughout every later artifact. This item
-  recommends `count` for asserting a list's length, so that case is the common one, not an edge. A
-  `count` result is never secret, and `into.var` loses the mark.
+  recommends `count` for asserting a list's length, so that case is common, not an edge. A `count`
+  result is never secret, and `into.var` loses the mark.
 
 ### Core-layer changes
 
 The secret set is a plain `list[str]` passed to several `Redactor` instances at run start
 (`bajutsu/common/runner/pipeline.py`, `bajutsu/common/runner/pool.py`). A `Redactor` builds its
 search terms once, in `__init__`. One of those instances, `result_redactor`, lives on the frozen
-scenario runner. With `workers > 1` a `ThreadPoolExecutor` shares that runner across workers. The
+scenario runner. With `workers > 1`, a `ThreadPoolExecutor` shares that runner across workers. The
 sharing is safe because the runner holds no per-scenario mutable state, and the design keeps that
 property.
 
-A derived secret is therefore scenario-scoped. A run-wide mutable set would let one scenario's
-derived value mask matching text in another scenario's evidence. A per-scenario set that the shared
+A derived secret thus has scenario scope. A run-wide mutable set would let one scenario's derived
+value mask matching text in another scenario's evidence. A per-scenario set that the shared
 `result_redactor` never sees would leave the value unmasked in `<sid>/result.json` and the manifest.
 The change avoids both:
 
@@ -199,9 +221,9 @@ The change avoids both:
    values plus `extra`. The shared instances stay immutable.
 2. The per-scenario run state gains `derived_secrets` (the raw values) and `secret_vars` (the
    variable names marked secret), beside `bindings`. One worker thread owns that state, so it needs
-   no lock. The step runner (`bajutsu/common/orchestrator/loop/_step_runner.py`) computes the
-   secret status of an `eval` step from the step as written, before substitution, because the
-   handler only sees substituted text.
+   no lock. The step runner (`bajutsu/common/orchestrator/loop/_step_runner.py`) computes the secret
+   status of an `eval` step from the step as written, before substitution, because the handler sees
+   substituted text alone.
 3. Every writer of a scenario's evidence redacts with `redactor.with_values(derived_secrets)`. That
    covers the trace, the network log, `<sid>/result.json`, and the scenario's entry in
    `manifest.json`. The scenario result carries `derived_secrets` in memory for the manifest writer
@@ -212,24 +234,27 @@ Masking starts at the `eval` step. An artifact written earlier in the run is not
 ### Reporting
 
 The step runner copies the produced value into the step outcome, as it does for `generate`
-(`outcome.generated`, `_step_runner.py`). A failed pipeline leaves the variable unset. The `generated`
-field already exists in the manifest (schema v8), so this item adds no manifest version. A secret
-result appears masked there, through the redactor.
+(`outcome.generated`, `_step_runner.py`). A failed pipeline leaves the variable unset. The
+`generated` field already exists in the manifest (schema v8), so this item adds no manifest
+version. A secret result appears masked there, through the redactor.
 
 ### Codegen, REPL, and documentation surfaces
 
-`eval` runs in the Bajutsu runner and has no XCUITest, Playwright, or UI Automator equivalent. Each
+`eval` runs in the Bajutsu runner and has no XCUITest, Playwright, or UI Automator counterpart. Each
 code generator emits a labeled `// TODO` for the step, as it does for `generate`, `http`, and `totp`
-([BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md)). The REPL
-session prints the stored value after an `eval`, as it does after `generate`
-(`bajutsu/repl/session.py`), and passes it through the redactor first. `eval` never reaches the app, so
-it stays out of `OBSERVES_APP` in `bajutsu/common/orchestrator/loop/app_crash_latches.py`. That set
-lists the step kinds whose success proves the app answered, and a kind added later proves nothing by
-default. The set needs no edit.
+([BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md)).
+
+The REPL session prints the stored value after an `eval`, as it does after `generate`
+(`bajutsu/repl/session.py`), and passes the value through the redactor first.
+
+`eval` never reaches the app, so it stays out of `OBSERVES_APP` in
+`bajutsu/common/orchestrator/loop/app_crash_latches.py`. That set lists the step kinds whose success
+proves the app answered, and a kind added later proves nothing by default. The set needs no edit.
 
 ### Decisions made during implementation
 
-The implementation settled the points below. The design left each open or stated it against an older tree.
+The implementation settled the points below. The design left each open or stated it against an
+older tree.
 
 | Point | Decision |
 |---|---|
@@ -249,15 +274,15 @@ The implementation settled the points below. The design left each open or stated
 ### Out of scope
 
 - **Mapping a sub-pipeline over list elements** (an `each` operation). The fixed vocabulary stays
-  flat, which keeps the type flow easy to check. Add it when a scenario needs a per-element operation
-  that a regular expression cannot express.
+  flat, which keeps the type flow easy to check. Add it when a scenario needs a per-element
+  operation that a regular expression cannot express.
 - **Arithmetic** (`add`, `sub`, `mul`). It forces a decision on decimal rounding and number
   formatting. A separate item can add it to the same `ops` list.
-- **Iterating over a stored list.** `forEach` walks UI elements only. A `forEach` over a list variable
-  is a separate item that builds on this one.
+- **Iterating over a stored list.** `forEach` walks UI elements alone. A `forEach` over a list
+  variable is a separate item that builds on this one.
 - **Masking secrets retroactively.** Evidence written before the `eval` step stays as written.
-- **Derived values from `extract`, `http`, or `email`.** The run treats a value read from the target
-  as non-secret, as it does today.
+- **Derived values from `extract`, `http`, or `email`.** The run treats a value read from the
+  target as non-secret, as it does today.
 
 ### Work breakdown (MECE)
 
@@ -288,20 +313,19 @@ The implementation settled the points below. The design left each open or stated
 
 ### Open points for review
 
-- **Regular-expression cost.** Python's `re` module has no match timeout, and a pattern with nested
+- **Regular-expression cost.** Python's `re` module has no match timeout. A pattern with nested
   repetition can run for a long time on a long input. The caps above bound the size of every value,
-  but not the time a match takes. The options are to accept the risk for author-written patterns or to add a deadline in the
-  evaluator.
+  but not the time a match takes. The options are to accept the risk for author-written patterns,
+  or to add a deadline in the evaluator.
 - **Cap values.** The 1,048,576-character and 10,000-element caps are starting points. Confirm them
   against the largest label or body a real scenario captures.
-- **Reuse of `generated`.** The manifest field is named for `generate`. Reusing it avoids a manifest
-  version bump. Renaming it would give both steps an accurate name at the cost of a bump.
+- **Reuse of `generated`.** The manifest field is named for `generate`. Reusing it avoids a
+  manifest version bump. Renaming it would give both steps an accurate name at the cost of a bump.
 - **Short secret results.** A one-character result derived from a secret masks that character in
-  all later evidence of its scenario (`count` is exempt, as above). If
-  reports turn out to be unreadable in practice, the step could add a warning when a secret result
-  falls below a length.
-- **Step name.** We chose `eval` for its brevity. The Detailed design opens with a note that the step
-  runs no code. Revisit the name if reviewers read it as arbitrary evaluation.
+  all later evidence of its scenario (`count` is exempt, as above). If reports turn out to be
+  unreadable in practice, the step could add a warning when a secret result falls below a length.
+- **Step name.** We chose `eval` for its brevity. The Detailed design opens with a note that the
+  step runs no code. Revisit the name if reviewers read it as arbitrary evaluation.
 
 ## Progress
 
@@ -320,10 +344,12 @@ The implementation settled the points below. The design left each open or stated
 Log:
 
 - Proposed; no implementation yet.
-- [#2240](https://github.com/bajutsu-e2e/bajutsu/pull/2240): Implemented every unit in one change. The change covers the `eval` model and its load-time type
-  flow, the evaluator and its caps, and the handler. It also covers scenario-scoped masking of derived
-  secrets, the REPL and codegen surfaces, and the documentation. Added `into: { vars: [...] }`, which spreads a list result over
-  named variables. Recorded the decisions above.
+- [#2240](https://github.com/bajutsu-e2e/bajutsu/pull/2240): Implemented every unit in one change.
+  - The change covers the `eval` model and its load-time type flow, the evaluator and its caps, and
+    the handler. It also covers scenario-scoped masking of derived secrets, the REPL and codegen
+    surfaces, and the documentation.
+  - Added `into: { vars: [...] }`, which spreads a list result over named variables.
+  - Recorded the decisions above.
 
 ## References
 
