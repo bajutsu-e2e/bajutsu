@@ -16,33 +16,40 @@
 
 ## Introduction
 
-A hosted `bajutsu serve` authenticates two kinds of caller today. A human signs in through GitHub
-OAuth (Open Authorization) and gets an identity, which the role gate then checks per endpoint
-([BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac.md)). A worker presents the
-shared token ([BE-0051](../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md))
-and gets no identity at all.
+A hosted `bajutsu serve` authenticates two kinds of caller today.
 
-A continuous-integration (CI) job is neither. It cannot complete a browser sign-in, and on a
-deployment with OAuth configured the shared token no longer reaches any endpoint outside worker
-traffic. This item gives such a job an identity of its own: it presents the OpenID Connect (OIDC)
-token GitHub Actions issues to a workflow once, to a dedicated exchange endpoint. serve verifies
-that token there and mints a short-lived machine session in its place, and the repository named in
-the token's claims decides which org that session acts as. Access is scoped to what a machine
-needs — never to a human role.
+- A human signs in through GitHub OAuth (Open Authorization) and gets an identity. The role gate
+  then checks that identity per endpoint
+  ([BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac.md)).
+- A worker presents the shared token
+  ([BE-0051](../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)) and
+  gets no identity at all.
+
+A continuous-integration (CI) job is neither. It cannot complete a browser sign-in. On a deployment
+with OAuth configured, the shared token no longer reaches any endpoint outside worker traffic.
+
+This item gives such a job an identity of its own. The job presents the OpenID Connect (OIDC) token
+that GitHub Actions issues to a workflow. It presents the token once, to a dedicated exchange
+endpoint. Serve verifies the token there and mints a short-lived machine session in its place. The
+repository named in the token's claims decides which org that session acts as. Access is scoped to
+what a machine needs, and never to a human role.
 
 ## Motivation
 
-BE-0313 replaced serve's login allowlist with GitHub's own organization and Team membership, and
-narrowed the shared token to worker traffic in the same change. That was the right move for people:
-an identity the role gate can check beats a secret that grants everything. It left machines with no
-replacement, and `docs/self-hosting.md` records the consequence plainly — a deployment that scripted
-non-worker endpoints with the token loses that path once OAuth is on.
+BE-0313 replaced serve's login allowlist with GitHub's own organization and Team membership. In the
+same change, it narrowed the shared token to worker traffic. That was the right move for people:
+an identity that the role gate can check beats a secret that grants everything. But it left machines
+with no replacement. `docs/self-hosting.md` records the consequence plainly: a deployment that
+scripted non-worker endpoints with the token loses that path once OAuth is on.
 
 The hole is visible in the request gate. `_gate` in `bajutsu/serve/handler.py` authenticates a
-request, then splits on whether it carries an identity. An OAuth session has one, so
-`forbidden_for_role` checks it. A bearer-token request has none, and its own comment says what
-follows: it "stays full-access (the operator credential)". Serve therefore knows exactly two
-shapes, and a CI job fits neither.
+request, then splits on whether the request carries an identity.
+
+- An OAuth session has an identity, so `forbidden_for_role` checks it.
+- A bearer-token request has none. Its own comment says what follows: it "stays full-access (the
+  operator credential)".
+
+Serve therefore knows exactly two shapes, and a CI job fits neither.
 
 | Caller | Credential | Identity | Access |
 |---|---|---|---|
@@ -50,210 +57,272 @@ shapes, and a CI job fits neither.
 | Worker | shared token | none | full, on worker routes |
 | CI job | *(none available)* | — | — |
 
-Handing CI the shared token where it still works does not close that hole either, for two reasons
-beyond the OAuth case. A shared secret cannot say *which* pipeline acted, so an audit trail records
-"the token" and stops there. And it is identity-less, so it arrives with full access — a credential
-in every pipeline that can rebind an org's configuration or read a config body with embedded
-secrets.
+Handing CI the shared token where it still works does not close that hole either. Beyond the OAuth
+case, there are two reasons:
 
-Concretely, five endpoints a CI pipeline has reason to call are closed to it: `POST
-/api/artifacts/binary` and `GET /api/artifacts/exists` require admin, `POST /api/run` requires
-editor. The job-scoped binary artifact override proposal, a sibling of this item, wants exactly that
-sequence — upload a build, then dispatch a run naming it — and can only assume a credential an OAuth
-deployment has none of. A pipeline publishing a configuration or scenario tree alongside its build
-needs two more admin-tier routes, `POST /api/artifacts/config` and `POST /api/artifacts/scenarios`,
-so the allowlist below covers all three artifact kinds, not the binary alone. That pipeline is the
-consumer of what it publishes, not a courier staging bytes for a human to compose afterwards: it
-runs a named scenario against the very triple it just uploaded. Unit 3 says how the triple becomes
-effective without the org-wide rebind `POST /api/compose` performs.
+- A shared secret cannot say *which* pipeline acted. An audit trail records "the token" and stops
+  there.
+- The token is identity-less, so it arrives with full access. Every pipeline would hold a credential
+  that can rebind an org's configuration or read a config body with embedded secrets.
 
-**Verifiable outcome.** A GitHub Actions workflow with `permissions: id-token: write` and **no
-repository secret** dispatches a run against an OAuth-configured deployment, and the run lands in
-the org the workflow's repository belongs to. A workflow in a repository the org does not list is
-refused with 403. And the run's audit record names that repository, rather than recording only that
+Concretely, five endpoints that a CI pipeline has reason to call are closed to it.
+
+- `POST /api/artifacts/binary` and `GET /api/artifacts/exists` require admin.
+- `POST /api/run` requires editor.
+
+The job-scoped binary artifact override proposal is a sibling of this item. It wants exactly that
+sequence: upload a build, then dispatch a run naming it. It can only assume a credential that an
+OAuth deployment does not have.
+
+A pipeline may also publish a configuration or scenario tree alongside its build. That needs two more
+admin-tier routes, `POST /api/artifacts/config` and `POST /api/artifacts/scenarios`. The allowlist
+below therefore covers all three artifact kinds, not the binary alone.
+
+That pipeline is the consumer of what it publishes. It is not a courier that stages bytes for a human
+to compose afterwards. It runs a named scenario against the very triple it just uploaded. Unit 3 says
+how the triple becomes effective without the org-wide rebind that `POST /api/compose` performs.
+
+**Verifiable outcome.** A GitHub Actions workflow has `permissions: id-token: write` and **no
+repository secret**. It dispatches a run against an OAuth-configured deployment, and the run lands in
+the org that the workflow's repository belongs to. A workflow in a repository that the org does not
+list is refused with 403. The run's audit record names that repository, instead of recording only that
 a token was presented.
 
 ## Detailed design
 
-The work is mutually exclusive and collectively exhaustive (MECE) across four units: verifying the
-token, mapping its claims to an org, deciding what a machine may do, and the tests plus
-documentation.
+The work is mutually exclusive and collectively exhaustive (MECE) across four units:
+
+- Verifying the token.
+- Mapping its claims to an org.
+- Deciding what a machine may do.
+- The tests plus documentation.
 
 ### Unit 1 — Exchange the token once for a machine session
 
 The pipeline this item targets calls three endpoints in sequence: `GET /api/artifacts/exists`, then
-`POST /api/artifacts/binary`, then `POST /api/run`. Verifying an OIDC token on every request, and
-refusing a `jti` already seen, would refuse that sequence at its second call — the token's `jti` is
-already spent by the first, so a per-request scheme with single-use replay cannot serve this
-pipeline. Serve instead verifies the token exactly once, at a dedicated exchange endpoint, `POST
-/api/oidc/exchange`, and mints a short-lived **machine session** that every later call presents
-instead. Every check below still runs in full, just once, at the exchange rather than on every
-request.
+`POST /api/artifacts/binary`, then `POST /api/run`.
+
+Suppose serve verified an OIDC token on every request and refused a `jti` it had already seen. That
+scheme would refuse the sequence at its second call, because the first call already spent the
+token's `jti`. A per-request scheme with single-use replay cannot serve this pipeline.
+
+Serve instead verifies the token once, at a dedicated exchange endpoint, `POST /api/oidc/exchange`.
+The endpoint mints a short-lived **machine session**, and every later call presents that session
+instead. Every check below still runs in full. It runs once, at the exchange, not on every request.
 
 GitHub Actions issues a signed JSON Web Token (JWT) to any workflow job that declares
-`permissions: id-token: write`, requested from `$ACTIONS_ID_TOKEN_REQUEST_URL` with
-`$ACTIONS_ID_TOKEN_REQUEST_TOKEN` — both available once the job declares that permission, with no
-GitHub App, OAuth app, or identity-provider registration involved on GitHub's side. The job sends the
-result to the exchange endpoint as a bearer token, and serve verifies the signature there before
-trusting any claim:
+`permissions: id-token: write`. The job requests the token from `$ACTIONS_ID_TOKEN_REQUEST_URL` with
+`$ACTIONS_ID_TOKEN_REQUEST_TOKEN`. Both variables are available once the job declares that
+permission. No GitHub App, OAuth app, or identity-provider registration is involved on GitHub's
+side.
 
-- **Issuer.** `iss` must equal the configured issuer, `https://token.actions.githubusercontent.com`
-  for GitHub-hosted Actions.
-- **Signature.** RS256 against the issuer's JSON Web Key Set (JWKS), discovered from
-  `/.well-known/openid-configuration` and cached with a time-to-live so an exchange does not fetch
-  keys. The verifier passes an explicit algorithms allowlist of RS256, refusing a token whose header
-  names a different one — the classic `alg: none` / HS256-confusion forgery. A JWKS entry matches
-  only when its key type is RSA and its advertised algorithm agrees. A missing `kid` triggers a
-  refresh capped by a refresh-interval floor (or a negative cache of missing ids), so a stream of
-  random `kid`s costs one outbound fetch per interval, not one per call — an exposure now confined
-  to the exchange endpoint alone (Unit 3). The fetch carries a timeout, since the gate runs
-  synchronously in the stdlib backend, and a key set that cannot be fetched, with an expired cache,
-  refuses the exchange rather than trusting a stale one; a signature that still fails to verify fails
-  closed too.
-- **Audience.** `aud` must equal a value the **deployment** configures — the one check an operator
-  must not skip. The workflow chooses its own audience (`core.getIDToken(audience)` takes it as an
-  argument), so a deployment that accepts any `aud` accepts a token minted for an unrelated service.
-  A deployment with no expected `aud` configured disables the OIDC caller shape entirely: an exchange
-  presenting an OIDC token is refused outright, never falling back to accepting any audience — fail
-  closed, not operator discipline.
-- **Lifetime.** `exp`, `nbf`, and `iat`, with a small skew allowance, matching the 60-second
-  backdating `bajutsu/common/github/app.py` already applies when it signs an App JWT. A token
-  carrying no `iat` is refused outright: the serve-side age ceiling below has nothing to measure
-  from — the same fail-closed rule as a missing `jti`.
+The job sends the result to the exchange endpoint as a bearer token. Serve verifies the signature
+there before it trusts any claim:
+
+- **Issuer.** `iss` must equal the configured issuer. For GitHub-hosted Actions, that is
+  `https://token.actions.githubusercontent.com`.
+- **Signature.** The signature is RS256 against the issuer's JSON Web Key Set (JWKS).
+  - Serve discovers the JWKS from `/.well-known/openid-configuration` and caches it with a
+    time-to-live, so an exchange does not fetch keys.
+  - The verifier passes an explicit algorithms allowlist of RS256. It refuses a token whose header
+    names a different algorithm. That blocks the classic `alg: none` and HS256-confusion forgery.
+  - A JWKS entry matches only when its key type is RSA and its advertised algorithm agrees.
+  - A missing `kid` triggers a refresh. A refresh-interval floor caps the refresh (or a negative
+    cache of missing ids does). A stream of random `kid`s then costs one outbound fetch per
+    interval, not one per call. The exposure is now confined to the exchange endpoint alone
+    (Unit 3).
+  - The fetch carries a timeout, since the gate runs synchronously in the stdlib backend.
+  - A key set that cannot be fetched, combined with an expired cache, refuses the exchange. Serve
+    does not trust a stale key set. A signature that still fails to verify fails closed too.
+- **Audience.** `aud` must equal a value that the **deployment** configures. It is the one check an
+  operator must not skip.
+  - The workflow chooses its own audience (`core.getIDToken(audience)` takes it as an argument). A
+    deployment that accepts any `aud` therefore accepts a token minted for an unrelated service.
+  - A deployment with no expected `aud` configured disables the OIDC caller shape entirely. An
+    exchange presenting an OIDC token is refused outright. It never falls back to accepting any
+    audience. The design fails closed, and does not rely on operator discipline.
+- **Lifetime.** Serve checks `exp`, `nbf`, and `iat` with a small skew allowance. The allowance
+  matches the 60-second backdating that `bajutsu/common/github/app.py` already applies when it signs
+  an App JWT. A token carrying no `iat` is refused outright, because the serve-side age ceiling below
+  has nothing to measure from. It is the same fail-closed rule as a missing `jti`.
 - **Replay.** GitHub documents no numeric token lifetime, so a captured token is replayable for its
-  whole window. Serve spends each token's `jti` (documented as a unique identifier) in a replay cache
-  bounded by that token's `exp`, and refuses a token past a serve-side age ceiling independent of
-  `exp`; a token carrying no `jti` is refused outright, the same fail-closed rule Unit 2 applies to a
-  missing `environment` claim. The cache lives in the shared system of record — the `Repository`
-  seam — the same database the encrypted per-org secret store writes to through its own
-  `SecretStore` seam — because `docs/self-hosting.md` documents the hosted control plane as multiple
-  replicas sharing that store. A per-process cache would fall to a replay against a second replica,
-  leaving the age ceiling as the only real bound. It costs one write per job, since an exchange
-  happens once per job rather than once per call.
+  whole window.
+  - Serve spends each token's `jti` (documented as a unique identifier) in a replay cache. The
+    token's `exp` bounds the cache entry.
+  - Serve also refuses a token past a serve-side age ceiling, independent of `exp`.
+  - A token carrying no `jti` is refused outright. Unit 2 applies the same fail-closed rule to a
+    missing `environment` claim.
+  - The cache lives in the shared system of record, the `Repository` seam. That is the same database
+    that the encrypted per-org secret store writes to through its own `SecretStore` seam.
+    `docs/self-hosting.md` documents the hosted control plane as multiple replicas sharing that
+    store.
+  - A per-process cache would fall to a replay against a second replica. The age ceiling would then
+    be the only real bound.
+  - The cache costs one write per job, since an exchange happens once per job rather than once per
+    call.
 
 Verification uses [`joserfc`](https://jose.authlib.org/), a maintained JOSE (JavaScript Object
-Signing and Encryption) implementation, declared directly in the `oauth` extra: `authlib` began
-depending on it only in 1.7.0, so the extra's `authlib>=1.3` floor does not guarantee it, and today's
-lock has it only because that lock pins 1.7.2. The verification itself — the JWKS fetch, its cache,
-and the checks above — lives in its own module, imported lazily once OIDC is configured, so
-`bajutsu/serve/gate.py` keeps only the machine-session policy decision (Unit 3): `bajutsu/serve/__init__.py`
-imports `gate` unconditionally, and `joserfc` ships only with the `oauth` extra, so a module-level
-import there would break `import bajutsu.serve` on every base install. Unit 4 adds `joserfc` to
-`tests/serve/test_import_guard.py`'s `FORBIDDEN` set, which lists `authlib` today but not `joserfc`.
+Signing and Encryption) implementation. The `oauth` extra declares it directly. `authlib` began
+depending on `joserfc` only in 1.7.0, so the extra's `authlib>=1.3` floor does not guarantee it.
+Today's lock has it only because that lock pins 1.7.2.
+
+The verification itself lives in its own module, imported lazily once OIDC is configured. It covers
+the JWKS fetch, its cache, and the checks above. `bajutsu/serve/gate.py` keeps only the
+machine-session policy decision (Unit 3). The reason is that `bajutsu/serve/__init__.py` imports
+`gate` unconditionally, and `joserfc` ships only with the `oauth` extra. A module-level import in
+`gate.py` would break `import bajutsu.serve` on every base install. Unit 4 adds `joserfc` to the
+`FORBIDDEN` set of `tests/serve/test_import_guard.py`, which lists `authlib` today but not
+`joserfc`.
 
 **The session store gains what this design needs, and refuses what it cannot enforce.**
-`SessionStore.issue()` takes no expiry argument today — time-to-live is store-level
-(`BAJUTSU_SESSION_TTL`, seven days) — a token's own `exp` cannot be expressed by that. So Unit 1 adds
-a per-session expiry to the Protocol and all three implementations (`in_memory_session_store.py`,
-`server/sessions/sql_session_store.py`, `server/sessions/redis_session_store.py`), plus two record
-columns beside `id` / `identity` / `expires_at` — the resolved **org** and **principal kind**, what
-Unit 3 reads per request. `InMemorySessionStore` enforces no expiry at all (`return sid in
-self._sessions`), so **the exchange is refused outright on a store that cannot enforce one** — the
-same fail-closed posture as an unconfigured `aud` — narrowing the OIDC caller shape to
-OAuth-configured, database-backed deployments. The minted session's lifetime also never exceeds the
-token's own `exp`: the exchange only improves on reusing the token if the credential it mints is
-shorter-lived.
+`SessionStore.issue()` takes no expiry argument today. Time-to-live is store-level
+(`BAJUTSU_SESSION_TTL`, seven days), and that cannot express a token's own `exp`.
 
-The `sessions` columns above and the `jti` replay cache are both schema changes, and ship with an
-Alembic revision under `bajutsu/serve/server/migrations/versions/` the way every prior addition
-did — the replay cache included, since it reads as a cache but is a table like any other. Without
-it an existing deployment upgrades to code selecting columns its `sessions` table lacks and writing
-rows to a table that does not exist, failing at the exchange on exactly the database-backed
-deployments this design narrows itself to.
+Unit 1 therefore adds a per-session expiry to the Protocol and to all three implementations:
 
-**What the exchange buys, and what it does not.** Both are bearer credentials over TLS, so resistance
-to a captured one is roughly unchanged — the honest difference is lifetime, which is why the cap
-above matters. Four things do change: the session can be **revoked** (Unit 3's identity for it makes
-that possible) where serve cannot revoke a GitHub-issued token; JWT verification and the JWKS fetch
-leave the per-request path, reachable pre-authentication on one endpoint rather than every request;
-single-use `jti` becomes possible at all, turning a stolen token from a silent success into a
-**visible failure** — the attacker's exchange spends the `jti`, so the legitimate job's then fails
-loudly; and the minted session is worthless to any other service, unlike a token whose `aud` another
-might also accept. The cost is one more endpoint, a session lifetime to get right, and a second
-credential in the pipeline. After the exchange, a machine request carries no JWT — it takes the
-same session lookup every human request already takes, against a session minted by the same
-`state.auth.issue_session()` that mints a human's on the OAuth callback. What OAuth disables is
-`authz.login()`, the token sign-in; the exchange takes its place for a machine.
+- `in_memory_session_store.py`
+- `server/sessions/sql_session_store.py`
+- `server/sessions/redis_session_store.py`
+
+Unit 1 also adds two record columns beside `id` / `identity` / `expires_at`: the resolved **org** and
+the **principal kind**. Unit 3 reads both per request.
+
+`InMemorySessionStore` enforces no expiry at all (`return sid in self._sessions`). **The exchange is
+refused outright on a store that cannot enforce an expiry.** This is the same fail-closed posture as
+an unconfigured `aud`. It narrows the OIDC caller shape to OAuth-configured, database-backed
+deployments.
+
+The minted session's lifetime also never exceeds the token's own `exp`. The exchange improves on
+reusing the token only if the credential it mints is shorter-lived.
+
+The `sessions` columns above and the `jti` replay cache are both schema changes. They ship with an
+Alembic revision under `bajutsu/serve/server/migrations/versions/`, the way every prior addition did.
+The replay cache needs the revision too. It reads as a cache, but it is a table like any other.
+
+Without the revision, an existing deployment upgrades to code that selects columns its `sessions`
+table lacks. The code also writes rows to a table that does not exist. The exchange then fails on
+exactly the database-backed deployments that this design narrows itself to.
+
+**What the exchange buys, and what it does not.** Both the token and the session are bearer
+credentials over TLS, so resistance to a captured credential is roughly unchanged. The honest
+difference is lifetime, which is why the cap above matters. Four things do change:
+
+- The session can be **revoked**. Unit 3's identity for it makes that possible. Serve cannot revoke
+  a GitHub-issued token.
+- JWT verification and the JWKS fetch leave the per-request path. They stay reachable
+  pre-authentication on one endpoint rather than on every request.
+- A single-use `jti` becomes possible at all. A stolen token turns from a silent success into a
+  **visible failure**. The attacker's exchange spends the `jti`, so the legitimate job's exchange
+  then fails loudly.
+- The minted session is worthless to any other service. A token whose `aud` another service might
+  also accept lacks that property.
+
+The cost is one more endpoint, a session lifetime to get right, and a second credential in the
+pipeline.
+
+After the exchange, a machine request carries no JWT. It takes the same session lookup that every
+human request already takes. The session comes from the same `state.auth.issue_session()` that mints
+a human's session on the OAuth callback. What OAuth disables is `authz.login()`, the token sign-in.
+The exchange takes its place for a machine.
 
 ### Unit 2 — Map the claims to an org, on the claims themselves
 
 `OrgConfig` (`bajutsu/serve/orgs.py`) already declares who belongs to an org: `members`,
-`githubOrgs`, `githubTeams`, `editorTeams`, and the `targets` it owns. This item adds
-`allowedRepositories`, each entry an `"<owner>/<repo>"` string (optionally an object narrowing that
-entry further — see below). **The exchange request names the org it
-wants, always.** The exchange succeeds when that org's `allowedRepositories` lists the token's
-repository, and is refused when it does not. That is the whole rule.
+`githubOrgs`, `githubTeams`, `editorTeams`, and the `targets` it owns.
 
-Naming the org **selects, it never grants**: the request says which org to check the claim against,
-and the check is what admits it. That keeps `worker_lease`'s rule — the org from a validated source,
-never from the caller's word — one level up.
+This item adds `allowedRepositories`. Each entry is an `"<owner>/<repo>"` string. An entry can also
+be an object that narrows the entry further (see below).
 
-Requiring the name is what lets one repository serve several orgs, a real shape: a shared pipeline
-repository testing apps owned by different teams. Inferring the org would have to forbid that, or
-pick a winner among the orgs listing the repository. A human resolves such an ambiguity afterwards,
-through the header's org selector backed by `eligible_orgs`, because a person can see where they
-landed and switch; a pipeline sees nothing, so the same after-the-fact choice would drop it into one
-of several tenants silently. Naming the org in the workflow states the target where it is already
-written down, and leaves one membership test. The machine session records it, so it is settled at
-the exchange rather than re-derived per request.
+**The exchange request names the org it wants, always.** The exchange succeeds when that org's
+`allowedRepositories` lists the token's repository. It is refused when the list does not. That is
+the whole rule.
 
-**`allowedRepositories` keeps `"<owner>/<repo>"` names — a consciously accepted trade-off, not a
-passing caveat.** `repository` is a *mutable* name, and name recycling is precisely why GitHub
-introduced immutable subjects: a deleted, renamed, or transferred repository frees its name, and
-whoever claims it next can mint tokens matching the listed entry. This item keeps the named form,
-with an operator duty to update or remove an entry the moment its repository changes — the entry
-admits the name, not the repository.
+Naming the org **selects and never grants**. The request says which org to check the claim against,
+and the check is what admits it. That keeps the rule of `worker_lease` one level up: the org comes
+from a validated source, never from the caller's word.
 
-**Configuration binds at exchange time only.** Under a per-request design, removing an entry — or
-tightening an `environment` / `ref` bound — took effect on the next call. With a one-time exchange,
-an outstanding machine session keeps acting as that org, under the old bound, until it expires: the
-real blast radius of the name-recycling exposure above. The operator duty is therefore not only to
-remove or update the entry, but to also revoke outstanding machine sessions for it, using the
-identity Unit 3 gives each one (`repo:<owner>/<repo>`).
+Requiring the name lets one repository serve several orgs, a real shape. One example is a shared
+pipeline repository that tests apps owned by different teams. Inferring the org would have to forbid
+that shape, or pick a winner among the orgs that list the repository.
+
+- A human resolves such an ambiguity afterwards, through the header's org selector backed by
+  `eligible_orgs`. A person can see where they landed and switch.
+- A pipeline sees nothing. The same after-the-fact choice would drop it silently into one of several
+  tenants.
+
+Naming the org in the workflow states the target where it is already written down, and leaves one
+membership test. The machine session records the org. The org is therefore settled at the exchange,
+not re-derived per request.
+
+**`allowedRepositories` keeps `"<owner>/<repo>"` names. This is a consciously accepted trade-off,
+not a passing caveat.** `repository` is a *mutable* name, and name recycling is precisely why GitHub
+introduced immutable subjects. A deleted, renamed, or transferred repository frees its name. Whoever
+claims the name next can mint tokens that match the listed entry.
+
+This item keeps the named form. The operator carries a duty: update or remove an entry the moment its
+repository changes. The entry admits the name, not the repository.
+
+**Configuration binds at exchange time only.** Under a per-request design, removing an entry took
+effect on the next call. So did tightening an `environment` / `ref` bound. With a one-time exchange,
+an outstanding machine session keeps acting as that org, under the old bound, until the session
+expires. That is the real blast radius of the name-recycling exposure above.
+
+The operator duty is therefore not only to remove or update the entry. The operator must also revoke
+the outstanding machine sessions for it. The identity that Unit 3 gives each session
+(`repo:<owner>/<repo>`) makes that possible.
 
 **Match the discrete claims, never a parse of `sub`.** The token carries `repository` and
 `repository_owner`, plus `repository_id` and `repository_owner_id`. Authorization compares
 `repository` by exact equality. Two facts make reading `sub` the wrong choice:
 
-- **The `sub` format has already changed for new repositories.** A repository created after 15 July
-  2026 gets an immutable subject embedding numeric ids
-  (`repo:octo-org@123456/octo-repo@456789:ref:refs/heads/main`); GitHub also moves renames and
-  transfers after that date to the immutable format, so a listed repository can change format with
-  nobody opting in. Older repositories keep the previous shape unless they opt in, and immutable
-  subjects are unavailable on GitHub Enterprise Server — a deployment parsing `sub` would have to
-  handle every shape and end up mis-parsing one.
-- **`sub` is customizable.** A repository can redefine which claims compose the subject through an
-  `include_claim_keys` array; an organization can only template it, leaving a repository already
-  using OIDC unaffected unless that repository opts in. Authority sits with the repository, not the
-  organization, so what `sub` contains is not serve's to assume.
+- **The `sub` format has already changed for new repositories.**
+  - A repository created after 15 July 2026 gets an immutable subject that embeds numeric ids
+    (`repo:octo-org@123456/octo-repo@456789:ref:refs/heads/main`).
+  - GitHub also moves renames and transfers after that date to the immutable format. A listed
+    repository can therefore change format with nobody opting in.
+  - Older repositories keep the previous shape unless they opt in.
+  - Immutable subjects are unavailable on GitHub Enterprise Server.
+  - A deployment that parsed `sub` would have to handle every shape, and would end up mis-parsing
+    one.
+- **`sub` is customizable.**
+  - A repository can redefine which claims compose the subject, through an `include_claim_keys`
+    array.
+  - An organization can only template the subject. A repository already using OIDC stays unaffected
+    unless that repository opts in.
+  - Authority sits with the repository, not the organization. What `sub` contains is therefore not
+    serve's to assume.
 
-Exact equality also rules out a prefix match, which is the classic failure here: `repo:acme/app`
-prefix-matches `repo:acme/app-evil`, so a substring test would admit a repository the operator never
-listed.
+Exact equality also rules out a prefix match, which is the classic failure here. `repo:acme/app`
+prefix-matches `repo:acme/app-evil`. A substring test would therefore admit a repository that the
+operator never listed.
 
 **The repository is not the whole trust boundary.** Anyone who can merge a workflow change to a
-listed repository can mint a token from it, so `allowedRepositories` alone means "whoever can write
-that repository's workflows may dispatch as this org". A deployment needing a tighter bound narrows
-further on claims the token already carries: `environment` (a GitHub Environment can require
-reviewers before a job runs), `ref`, or `job_workflow_ref` — set **per entry**, not for the org as a
-whole. An `allowedRepositories` entry is either the plain `"<owner>/<repo>"` string or an object
-carrying that same name plus its own `environment` / `ref` / `job_workflow_ref` bound, so one org can
-list a repository that runs under a GitHub Environment next to one that does not, with no second org
-needed just to hold the unbounded entry. `environment` is a *conditional* claim, emitted only when
-the job references one, so a configured bound must refuse a token whose claim is absent, the same as
-one whose value differs — otherwise a job declaring no environment escapes the narrowing entirely.
+listed repository can mint a token from it. `allowedRepositories` alone therefore means "whoever can
+write that repository's workflows may dispatch as this org".
 
-One hazard belongs in the documentation rather than the code: a pull request from a fork does not
-receive `id-token: write` by default, but a `pull_request_target` workflow runs in the base
-repository's context and can, as does a repository setting that sends write tokens to fork pull
-requests. A deployment listing such a repository should narrow by `environment`, so a token can never
-be minted from a run an outside contributor influenced.
+A deployment that needs a tighter bound narrows further on claims the token already carries:
+`environment` (a GitHub Environment can require reviewers before a job runs), `ref`, or
+`job_workflow_ref`. The bound is set **per entry**, not for the org as a whole.
+
+- An `allowedRepositories` entry is either the plain `"<owner>/<repo>"` string, or an object. The
+  object carries that same name plus its own `environment` / `ref` / `job_workflow_ref` bound.
+- One org can therefore list a repository that runs under a GitHub Environment next to one that does
+  not. No second org is needed just to hold the unbounded entry.
+- `environment` is a *conditional* claim, emitted only when the job references one. A configured
+  bound must refuse a token whose claim is absent, the same as one whose value differs. Otherwise a
+  job declaring no environment escapes the narrowing entirely.
+
+One hazard belongs in the documentation rather than the code. A pull request from a fork does not
+receive `id-token: write` by default. But a `pull_request_target` workflow runs in the base
+repository's context and can receive it. So can a run under a repository setting that sends write
+tokens to fork pull requests. A deployment that lists such a repository should narrow by
+`environment`. A token can then never be minted from a run that an outside contributor influenced.
 
 ### Unit 3 — A machine principal, not a human role
 
-The machine session the exchange mints is a **third caller shape**, beside the OAuth session and the
-shared token. It carries an identity, like a session, and it is not a person, so no viewer / editor /
-admin rank describes it. What it may do is an explicit allowlist of endpoints:
+The machine session that the exchange mints is a **third caller shape**, beside the OAuth session and
+the shared token. It carries an identity, like a session. It is not a person, so no viewer / editor
+/ admin rank describes it. What it may do is an explicit allowlist of endpoints:
 
 | Allowed | Refused |
 |---|---|
@@ -263,123 +332,157 @@ admin rank describes it. What it may do is an explicit allowlist of endpoints:
 | | `/api/orgs*` (who may sign in and write) |
 
 **Publishing an artifact is half of what a pipeline needs, and `POST /api/compose` is not the other
-half.** A real pipeline uploads a config and a scenario tree alongside its build and then runs a
-named scenario against all three, so the three upload routes above leave it holding bytes it has no
-allowed call to make effective — `bind_artifact` binds nothing on its own. `POST /api/compose` is
-nevertheless the wrong way to close that: it binds the org's **active** configuration and writes the
-org's remembered one through `remember_org_config_source`, so a member's next session inherits
-whatever the last pipeline composed, and concurrent jobs of one repository contend for a single
-binding rather than each running what it asked for. Both are the reasons the sibling job-scoped
-binary override gives for refusing a rebind before every dispatch, and they apply to a triple
-exactly as they apply to a binary.
+half.** A real pipeline uploads a config and a scenario tree alongside its build. It then runs a
+named scenario against all three. The three upload routes above leave the pipeline holding bytes
+with no allowed call to make them effective, because `bind_artifact` binds nothing on its own.
+
+`POST /api/compose` is nevertheless the wrong way to close that gap. It binds the org's **active**
+configuration. It also writes the org's remembered configuration through
+`remember_org_config_source`. Two problems follow:
+
+- A member's next session inherits whatever the last pipeline composed.
+- Concurrent jobs of one repository contend for a single binding. Each job does not run what it
+  asked for.
+
+The sibling job-scoped binary override gives both as its reasons for refusing a rebind before every
+dispatch. They apply to a triple exactly as they apply to a binary.
 
 The pipeline's triple therefore becomes effective the way that sibling makes a binary effective: as
-a **per-job artifact reference named at dispatch**, materialized for the run and binding nothing.
-`materialize_composition` already assembles a triple into a content-addressed tree independently of
-`state.bind_upload` and `remember_org_config_source`, so a per-job triple needs no new composition
-machinery and no binding slot — which is what lets a machine session keep the sessionless
-`binding_for` path above. This item does not specify that field; it depends on the sibling widening
-its `binaryArtifact` override from the binary leg to the triple. That widening is the one this item
-contradicts in the sibling's Alternatives, which rejects it on the premise that CI holds config and
-scenarios fixed while varying only the binary — a premise this item's motivating case does not meet.
+a **per-job artifact reference named at dispatch**. The run materializes the reference, and the
+reference binds nothing.
 
-`POST /api/oidc/exchange` itself sits outside this allowlist: it is the entry point, so it requires
-no prior serve credential — only a verifiable OIDC token. Nobody should read the table above as
-gating the way in; it governs what an already-minted machine session may do, not how a token
-becomes one. Reaching it at all needs a separate change: `gate.is_open`'s POST arm
-(`bajutsu/serve/gate.py`) is exactly `path == _LOGIN_PATH` today, so an unauthenticated request to
-any other path returns 401 before any verification runs. Unit 3 adds `/api/oidc/exchange` to that
-arm, enabled only once OIDC is configured, so the route stays closed on a deployment with no
-expected `aud` — the same fail-closed rule as above.
+`materialize_composition` already assembles a triple into a content-addressed tree. It works
+independently of `state.bind_upload` and `remember_org_config_source`. A per-job triple therefore
+needs no new composition machinery and no binding slot. That is what lets a machine session keep the
+sessionless `binding_for` path described below.
+
+This item does not specify that field. It depends on the sibling widening its `binaryArtifact`
+override from the binary leg to the triple. The sibling's Alternatives reject that widening. They
+rest on the premise that CI holds config and scenarios fixed while varying only the binary. This
+item's motivating case does not meet that premise.
+
+`POST /api/oidc/exchange` itself sits outside this allowlist. It is the entry point, so it requires
+no prior serve credential, only a verifiable OIDC token. Nobody should read the table above as
+gating the way in. The table governs what an already-minted machine session may do, not how a token
+becomes one.
+
+Reaching the endpoint at all needs a separate change. The POST arm of `gate.is_open`
+(`bajutsu/serve/gate.py`) is exactly `path == _LOGIN_PATH` today. An unauthenticated request to any
+other path therefore returns 401 before any verification runs. Unit 3 adds `/api/oidc/exchange` to
+that arm. The addition is enabled only once OIDC is configured, so the route stays closed on a
+deployment with no expected `aud`. It is the same fail-closed rule as above.
 
 **The identity it carries.** A machine session must carry a non-`None` identity to be revocable at
-all — `revoke_identities` revokes by identity string, and its docstring says a session carrying none
-is never touched. Give it a reserved form no GitHub login can collide with: a login cannot contain
-`/`, so `repo:<owner>/<repo>` (not a `users.id` — see the audit entry below). `revoke_identities`'s
-only caller today is org retirement; Unit 3 owns exposing a revocation path so an operator can revoke
-a repository's outstanding machine sessions without retiring its org. That granularity is per
-repository, not per job — every session a repository mints shares one identity, so a revocation ends
-its concurrent pipelines too, and that shared identity is exactly what Unit 2's operator duty relies
-on. Org retirement itself needs widening for the same reason: `delete_org` revokes the roster
-`list_org_user_ids` returns, which reads the `users` table, and a machine has no row there — so
-retiring an org must also revoke the machine sessions bound to it, or they keep acting as the
-retired tenant until they expire, the exact leak BE-0375 added that revocation to close.
+all. `revoke_identities` revokes by identity string, and its docstring says a session carrying none
+is never touched.
 
-Run reads are **org**-scoped, not per-actor: the read paths take an `org_id` and never filter on
-`created_by`, the nullable foreign key to `users.id` that already exists on `runs`
+Give the session a reserved form that no GitHub login can collide with. A login cannot contain `/`,
+so the form is `repo:<owner>/<repo>`. It is not a `users.id` (see the audit entry below).
+
+- The only caller of `revoke_identities` today is org retirement. Unit 3 owns exposing a revocation
+  path, so an operator can revoke a repository's outstanding machine sessions without retiring its
+  org.
+- The granularity is per repository, not per job. Every session that a repository mints shares one
+  identity. A revocation therefore ends the repository's concurrent pipelines too. Unit 2's operator
+  duty relies on exactly that shared identity.
+- Org retirement itself needs widening for the same reason. `delete_org` revokes the roster that
+  `list_org_user_ids` returns, which reads the `users` table. A machine has no row there.
+- Retiring an org must therefore also revoke the machine sessions bound to it. Otherwise they keep
+  acting as the retired tenant until they expire, the exact leak that BE-0375 added that revocation
+  to close.
+
+Run reads are **org**-scoped, not per-actor. The read paths take an `org_id` and never filter on
+`created_by`. That column is the nullable foreign key to `users.id` that already exists on `runs`
 (`bajutsu/serve/server/models/run.py`). A machine reads its org's runs, including ones it did not
-start. `bajutsu/serve/jobs.py` already writes `created_by` only when the actor is a user that
-exists — its own comment notes that a token / CI run has no actor. A machine-dispatched run
-therefore leaves the column null for free, the second foreign key a synthetic `users` row would
-otherwise need to satisfy. Per-run attribution beyond that would be its own separate change.
+start.
 
-The allowlist is what makes this safe to hand to a pipeline: four of the endpoints it opens are
-admin today, and granting a machine the admin *rank* would come with config rebinding and secret
-reads attached. Naming endpoints instead keeps the machine's reach to publishing an artifact and
-starting a run — the whole of what a pipeline needs — while `required_role` keeps deciding what a
-human needs; this allowlist governs a machine principal and nothing else, so neither gate widens the
+`bajutsu/serve/jobs.py` already writes `created_by` only when the actor is a user that exists. Its
+own comment notes that a token or CI run has no actor. A machine-dispatched run therefore leaves the
+column null for free. A synthetic `users` row would otherwise need to satisfy that second foreign
+key. Per-run attribution beyond that would be its own separate change.
+
+The allowlist is what makes this safe to hand to a pipeline. Four of the endpoints it opens are admin
+today. Granting a machine the admin *rank* would come with config rebinding and secret reads
+attached. Naming endpoints instead keeps the machine's reach to publishing an artifact and starting
+a run, which is the whole of what a pipeline needs. Meanwhile `required_role` keeps deciding what a
+human needs. This allowlist governs a machine principal and nothing else, so neither gate widens the
 other.
 
 The allowlist applies to a machine principal unconditionally, with or without a database wired.
 `forbidden_for_role` returns *allowed* when `state.repository is None` ("DB-less = full access",
 `bajutsu/serve/authz.py`). An allowlist conditioned on the database the same way would inherit that
-fail-open. No machine principal can exist on a database-less deployment in the first place — Unit
-1's exchange refuses one — so this is belt-and-braces, not a live path.
+fail-open behavior. No machine principal can exist on a database-less deployment in the first place,
+because Unit 1's exchange refuses one. The unconditional rule is therefore belt-and-braces, not a
+live path.
 
-The shared policy both backends enforce lives in `bajutsu/serve/gate.py` (BE-0253), not in `_gate`
-in `handler.py` alone, so the stdlib handler and the FastAPI app cannot diverge on security posture —
-its own docstring calls the prior duplication "a latent path to a security-relevant divergence with
-nothing checking for it", and `bajutsu/serve/server/app.py` mirrors `handler.py` line for line. Unit
-3's machine-session allowlist lands in `gate.py` alongside the human role gate, so both backends get
-the machine principal from one place; Unit 1's token verification stays in its own lazily-imported
-module (above), reached only by the exchange endpoint. The machine session is authenticated exactly
-like a human one — a valid session cookie, and `gate.is_authorized` already returns True for any of
-those — so the new branch sits beside `forbidden_for_role`, keyed on the principal kind the session
-record now carries (Unit 1): `forbidden_for_role` must not run for a machine principal, since an
-unknown user defaults to viewer and viewer refuses `POST /api/run`; the endpoint allowlist decides
-instead, and the principal kind is what keeps a human session from ever reaching it.
+The shared policy that both backends enforce lives in `bajutsu/serve/gate.py` (BE-0253), not in
+`_gate` in `handler.py` alone. That placement keeps the stdlib handler and the FastAPI app from
+diverging on security posture. The docstring of `gate.py` calls the prior duplication "a latent path
+to a security-relevant divergence with nothing checking for it". `bajutsu/serve/server/app.py`
+mirrors `handler.py` line for line.
 
-**The org travels with the machine session, not through `org_of`.** Today every `start_*` endpoint,
-plus `bind_artifact` / `artifact_exists` (`bajutsu/serve/operations/upload.py`) and the run-read call
-sites in `bajutsu/serve/operations/reads.py` — every endpoint the allowlist opens — resolve the org
-through `state.org_of(actor)`, which reads the actor's *persisted user row*. A machine has no row, so
-`org_of` would answer `default` for every one of those calls whatever `allowedRepositories` says: a
-cross-tenant hole on the very routes the allowlist opens first. (`Repository.get_run(run_id)`
-compounds it — `session.get(Run, run_id)` with no `org_id` — so a per-run read built on it carries no
-tenant boundary of its own.) Every allowlisted operation instead reads the org from the machine
-session, resolved once at exchange (Unit 1). A machine session also resolves its configuration by
-calling `binding_for` with no session, never taking a per-session binding slot: that is the
-sessionless path `binding_for` already documents for a CI request, which reads the deployment's
-fallback and restores nothing. BE-0393 unit 2 sized the slot map for members
-(`MAX_SESSION_BINDINGS`, "thousands of concurrent members"), and its restore is a Git or bundle
-fetch paid once per session, so one session per job would both pay that fetch per job and evict
-members' slots.
+Unit 3's machine-session allowlist lands in `gate.py` alongside the human role gate. Both backends
+then get the machine principal from one place. Unit 1's token verification stays in its own
+lazily-imported module (above), and only the exchange endpoint reaches it.
 
-Minting a synthetic `users` row to carry that org instead brings its own cost: it would carry a role
-column too, reopening the viewer-default fork above, and the machine would show up in the roster
-`/api/orgs` discloses.
+The machine session is authenticated exactly like a human one: a valid session cookie. `gate.is_authorized`
+already returns True for any such cookie. The new branch sits beside `forbidden_for_role`, keyed on
+the principal kind that the session record now carries (Unit 1).
+
+- `forbidden_for_role` must not run for a machine principal. An unknown user defaults to viewer, and
+  viewer refuses `POST /api/run`.
+- The endpoint allowlist decides instead.
+- The principal kind is what keeps a human session from ever reaching the allowlist.
+
+**The org travels with the machine session, not through `org_of`.** Today every `start_*` endpoint
+resolves the org through `state.org_of(actor)`, which reads the actor's *persisted user row*. So do
+`bind_artifact` / `artifact_exists` (`bajutsu/serve/operations/upload.py`) and the run-read call
+sites in `bajutsu/serve/operations/reads.py`. Together they are every endpoint the allowlist opens.
+
+A machine has no row, so `org_of` would answer `default` for every one of those calls, whatever
+`allowedRepositories` says. That is a cross-tenant hole on the very routes the allowlist opens first.
+`Repository.get_run(run_id)` compounds it: it calls `session.get(Run, run_id)` with no `org_id`, so
+a per-run read built on it carries no tenant boundary of its own.
+
+Every allowlisted operation instead reads the org from the machine session, resolved once at the
+exchange (Unit 1).
+
+A machine session also resolves its configuration by calling `binding_for` with no session. It never
+takes a per-session binding slot. That is the sessionless path that `binding_for` already documents
+for a CI request. The path reads the deployment's fallback and restores nothing.
+
+BE-0393 unit 2 sized the slot map for members (`MAX_SESSION_BINDINGS`, "thousands of concurrent
+members"). Its restore is a Git or bundle fetch, paid once per session. One session per job would pay
+that fetch per job and would evict members' slots.
+
+Minting a synthetic `users` row to carry the org instead brings its own cost. The row would carry a
+role column too, which reopens the viewer-default fork above. The machine would also show up in the
+roster that `/api/orgs` discloses.
 
 For the same reason, the audit record does not gain the repository as an *actor*. `actor_id` is a
-nullable foreign key to `users.id` (`bajutsu/serve/server/models/audit_log.py`), and minting a
-synthetic row to meet that constraint carries the cost described above. Unlike `created_by`, which
-`jobs.py` already guards on the actor having a user row, `_record_audit` passes its actor straight
-through to `actor_id`, so Unit 3 changes that seam to write null for a machine principal rather than
-a login with no `users` row behind it — keeping the entry itself, since `_record_audit` returns
-early on a falsy actor (`bajutsu/serve/authz.py:408`) and simply passing none would drop the row
-instead of nulling the column; the repository goes into the audit entry's own detail payload
-instead. That answers "which pipeline started this run" without a fake user row.
+nullable foreign key to `users.id` (`bajutsu/serve/server/models/audit_log.py`). Minting a synthetic
+row to meet that constraint carries the cost described above.
+
+`created_by` differs here. `jobs.py` already guards `created_by` on the actor having a user row.
+`_record_audit` instead passes its actor straight through to `actor_id`. Unit 3 changes that seam to
+write null for a machine principal, in place of a login with no `users` row behind it.
+
+The entry itself must stay. `_record_audit` returns early on a falsy actor
+(`bajutsu/serve/authz.py:408`), so simply passing none would drop the row instead of nulling the
+column. The repository goes into the audit entry's own detail payload instead. That answers "which
+pipeline started this run" without a fake user row.
 
 ### Unit 4 — Tests and documentation
 
-The exchange endpoint's verification is covered with no network and no Simulator, by injecting the
-JWKS and a locally signed token:
+The tests cover the exchange endpoint's verification with no network and no Simulator. They inject
+the JWKS and a locally signed token:
 
 - A token signed by the configured key, with the configured `aud` and a listed repository, is
   exchanged for a machine session that acts as that repository's org.
 - A token whose `aud` is anything else is refused at the exchange, including one otherwise valid for
   a listed repository.
-- A token from an unlisted repository is refused with 403, and a token whose `repository` merely
-  shares a prefix with a listed entry is refused too.
+- A token from an unlisted repository is refused with 403. A token whose `repository` merely shares a
+  prefix with a listed entry is refused too.
 - A repository listed under two orgs exchanges into whichever of them the request names, so one
   shared pipeline repository can serve both.
 - A request naming an org whose `allowedRepositories` does not list the token's repository is
@@ -387,75 +490,84 @@ JWKS and a locally signed token:
 - An exchange request naming no org is refused, rather than inferring one.
 - A token in the immutable-subject format authorizes on its `repository` claim, so the two `sub`
   shapes behave identically.
-- An expired token, a token with a `kid` still absent from the JWKS after the bounded refresh, a
-  token with a broken signature, and an unreachable JWKS with an expired cache are each refused
-  rather than trusting a stale key set.
-- A token whose header names `none`, and one naming HS256 signed with the RSA public key bytes, are
-  both refused — the algorithm comes from configuration, never from the token.
-- A token exchanged twice is accepted once; single-use holds across replicas, so a second replica
-  refuses the same `jti` the first replica already consumed, not merely a token re-presented to the
-  same one. A token older than the serve-side maximum age is refused even while its own `exp` is
-  still in the future. A token carrying no `jti` is refused outright rather than skipping the cache.
-  A token carrying no `iat` is refused outright too, rather than exchanging with no origin for the
-  age ceiling to measure from.
-- A deployment that configures no expected `aud` refuses an otherwise valid OIDC token at the
-  exchange, rather than accepting whichever audience it carries — so does one whose session store
-  cannot enforce a per-session expiry, `InMemorySessionStore` included. The minted machine session's
-  lifetime never exceeds the presented token's own `exp`.
+- Each of the following is refused, instead of trusting a stale key set:
+  - an expired token;
+  - a token with a `kid` still absent from the JWKS after the bounded refresh;
+  - a token with a broken signature;
+  - an unreachable JWKS with an expired cache.
+- A token whose header names `none` is refused. So is one naming HS256 signed with the RSA public key
+  bytes. The algorithm comes from configuration, never from the token.
+- Replay protection holds in four ways:
+  - A token exchanged twice is accepted once. Single-use holds across replicas: a second replica
+    refuses the same `jti` that the first replica already consumed. A token merely re-presented to
+    the same replica is not the only case.
+  - A token older than the serve-side maximum age is refused even while its own `exp` is still in
+    the future.
+  - A token carrying no `jti` is refused outright, rather than skipping the cache.
+  - A token carrying no `iat` is refused outright too, rather than exchanging with no origin for the
+    age ceiling to measure from.
+- Two kinds of deployment refuse an otherwise valid OIDC token at the exchange:
+  - A deployment that configures no expected `aud`. It does not accept whichever audience the token
+    carries.
+  - A deployment whose session store cannot enforce a per-session expiry, `InMemorySessionStore`
+    included.
+
+  The minted machine session's lifetime never exceeds the presented token's own `exp`.
 - `import bajutsu.serve` pulls in no `joserfc`, the same way it already pulls in none of the other
-  server-only dependencies the import guard's `FORBIDDEN` set lists.
-- A machine session reaches every endpoint on the allowlist and is refused on `POST /api/config`,
-  `POST /api/compose`, `GET /api/config/content`, and the operator-secret endpoints. A refused
-  `POST /api/compose` leaves the org's active binding and its remembered configuration untouched,
-  so a member's next session inherits nothing from a pipeline. That holds the
-  same way with no database wired. `POST /api/oidc/exchange` itself needs no prior session or token
-  to be reached — only a verifiable OIDC token.
+  server-only dependencies that the import guard's `FORBIDDEN` set lists.
+- A machine session reaches every endpoint on the allowlist. It is refused on `POST /api/config`,
+  `POST /api/compose`, `GET /api/config/content`, and the operator-secret endpoints.
+  - A refused `POST /api/compose` leaves the org's active binding and its remembered configuration
+    untouched. A member's next session inherits nothing from a pipeline.
+  - That holds the same way with no database wired.
+  - `POST /api/oidc/exchange` itself needs no prior session or token to be reached, only a
+    verifiable OIDC token.
 - Both backends (`handler.py` and `server/app.py`) enforce the machine session identically, since
   both go through `gate.py`.
-- A deployment configuring an `environment`, `ref`, or `job_workflow_ref` bound refuses an otherwise
-  valid token whose corresponding claim differs. For `environment` alone, it also refuses one
-  whose claim is absent.
-- An org listing one repository under an `environment` bound and another with none exchanges both:
-  a bound applies to its own entry only, never to the org as a whole.
+- A deployment that configures an `environment`, `ref`, or `job_workflow_ref` bound refuses an
+  otherwise valid token whose corresponding claim differs. For `environment` alone, the deployment
+  also refuses a token whose claim is absent.
+- An org listing one repository under an `environment` bound and another with none exchanges both. A
+  bound applies to its own entry only, never to the org as a whole.
 - A machine's artifact upload (`bind_artifact`) and its exists-probe (`artifact_exists`) resolve the
-  org its repository is listed under, not `default`, on a multi-org deployment — and so does a
+  org that its repository is listed under, not `default`, on a multi-org deployment. So do a
   machine-dispatched run and a run read.
-- The audit record for a machine-dispatched run names the repository in its detail payload, with
-  `actor_id` written as null rather than a login no `users` row backs — on an artifact upload as
+- The audit record for a machine-dispatched run names the repository in its detail payload. It writes
+  `actor_id` as null, not a login that no `users` row backs. That holds for an artifact upload as
   well as a run, since `bind_artifact` audits too.
 - Retiring an org revokes its outstanding machine sessions, not only the sessions of the members
-  `list_org_user_ids` returns.
+  that `list_org_user_ids` returns.
 
 `docs/self-hosting.md` and its Japanese mirror gain a section covering:
 
 - the workflow permission and the two environment variables;
 - the `aud` an operator must configure, and that omitting it disables the OIDC caller shape
   entirely;
-- the exchange endpoint, the machine session it mints, and that the session's time-to-live is
-  capped by the presented token's own `exp`;
-- the `allowedRepositories` shape, that the exchange request names the org to check against, and the
-  operator duty to update an entry — and revoke outstanding machine sessions for it — when its
+- the exchange endpoint, the machine session it mints, and that the presented token's own `exp`
+  caps the session's time-to-live;
+- the `allowedRepositories` shape, and that the exchange request names the org to check against;
+- the operator duty to update an entry, and to revoke outstanding machine sessions for it, when its
   repository is renamed, transferred, or deleted, or when a narrowing tightens;
 - the optional `environment` / `ref` / `job_workflow_ref` narrowing, including an `environment`
   bound refusing an absent claim the same as a differing one;
 - the `pull_request_target` and fork-pull-request write-token hazards;
 - that every later call in the pipeline presents the minted session, never the OIDC token itself.
 
-A worked workflow snippet belongs there too: the GitHub-side setup is two lines, and the rest is
+A worked workflow snippet belongs there too. The GitHub-side setup is two lines, and the rest is
 serve configuration.
 
 ## Alternatives considered
 
 | Alternative | Why we did not take it |
 |---|---|
-| Verify the OIDC token on every request instead of exchanging it once | The target pipeline calls several endpoints in sequence, so a single-use `jti` would refuse every call after the first; dropping single-use to allow reuse leaves only an age ceiling. Per-request verification also keeps the JWKS fetch and JWT parsing reachable pre-authentication on every route rather than one, and cannot revoke a credential serve did not mint. |
-| Issue a long-lived per-org CI token from the settings panel | Simpler, and it reintroduces the secret this item exists to avoid: a token to store in every pipeline, to rotate by hand, and to leak from a log. It also cannot say which repository acted — the identity gap is the point, not just the storage. |
-| Reuse the shared token for CI, reopening what BE-0313 narrowed | Reverses a deliberate decision. The shared token is identity-less and full-access, so restoring it for non-worker endpoints hands every pipeline the ability to rebind a config and read secrets. |
-| Give a CI identity the admin role | Four of the five endpoints CI needs are admin today, so the rank looks like a fit. It carries config rebinding, `GET /api/config/content`, and the operator-secret endpoints with it — none of which a pipeline needs, all of which it would then hold. |
-| Authorize on the `sub` claim | The format has already changed for new repositories under an immutable-id rollout, and it is customizable per repository. Its shape is not serve's to assume. A prefix match on it also admits a repository whose name merely extends a listed one. The discrete claims say the same thing without either problem. |
-| Authorize on the immutable numeric claims (`repository_id` / `repository_owner_id`) instead of `repository` | Those claims are immutable and unaffected by subject customization, closing the name-recycling exposure outright. The cost: a configuration nobody can read or write from the repository name alone. Adding an entry needs a lookup, and auditing config gives no hint which repository an entry means. The named form stays for that legibility, with the operator duty above as its price. |
-| Use a GitHub App installation token instead of OIDC | Bajutsu already signs App JWTs for the private-repo config source (BE-0224), so the machinery is familiar. It needs an App registered and a private key distributed to the deployment, and the resulting token authenticates the App rather than the pipeline — back to a shared secret with a coarser identity. |
-| Accept OIDC from any issuer out of the gate | GitLab, Buildkite, and CircleCI all issue OIDC tokens, and per-org issuer configuration would generalize this. The claim names differ per provider, so a general mapping is a larger design than the case in hand; scoping to GitHub Actions first leaves the issuer configurable and defers the mapping. |
+| Verify the OIDC token on every request instead of exchanging it once | The target pipeline calls several endpoints in sequence, so a single-use `jti` would refuse every call after the first. Dropping single-use to allow reuse leaves an age ceiling as the only bound. Per-request verification also keeps the JWKS fetch and JWT parsing reachable pre-authentication on every route, not one. And it cannot revoke a credential that serve did not mint. |
+| Issue a long-lived per-org CI token from the settings panel | It is simpler, but it reintroduces the secret this item exists to avoid. Every pipeline would store a token, rotate it by hand, and risk leaking it from a log. The token also cannot say which repository acted. The identity gap is the point, not just the storage. |
+| Reuse the shared token for CI, reopening what BE-0313 narrowed | It reverses a deliberate decision. The shared token is identity-less and full-access. Restoring it for non-worker endpoints hands every pipeline the ability to rebind a config and read secrets. |
+| Give a CI identity the admin role | Four of the five endpoints CI needs are admin today, so the rank looks like a fit. But it carries config rebinding, `GET /api/config/content`, and the operator-secret endpoints with it. A pipeline needs none of those, and it would then hold all of them. |
+| Authorize on the `sub` claim | The format has already changed for new repositories under an immutable-id rollout, and each repository can customize it. Its shape is not serve's to assume. A prefix match on it also admits a repository whose name merely extends a listed one. The discrete claims say the same thing without either problem. |
+| Authorize on the immutable numeric claims (`repository_id` / `repository_owner_id`) instead of `repository` | Those claims are immutable and unaffected by subject customization, which closes the name-recycling exposure outright. The cost is a configuration that nobody can read or write from the repository name alone. Adding an entry needs a lookup, and auditing the config gives no hint which repository an entry means. The named form stays for that legibility, with the operator duty above as its price. |
+| Use a GitHub App installation token instead of OIDC | Bajutsu already signs App JWTs for the private-repo config source (BE-0224), so the machinery is familiar. But the approach needs an App registered and a private key distributed to the deployment. The resulting token authenticates the App rather than the pipeline. That is a return to a shared secret with a coarser identity. |
+| Accept OIDC from any issuer out of the gate | GitLab, Buildkite, and CircleCI all issue OIDC tokens, and per-org issuer configuration would generalize this item. The claim names differ per provider, so a general mapping is a larger design than the case in hand. Scoping to GitHub Actions first leaves the issuer configurable and defers the mapping. |
 
 ## Progress
 
