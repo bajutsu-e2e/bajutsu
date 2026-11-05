@@ -460,7 +460,7 @@ missing, not a first capture.
 way `relaunch=lz.relaunch` already is ([`pipeline.py:898`](../../bajutsu/common/runner/pipeline.py)).
 `run_scenario` seeds the scenario-scoped latch object (Unit 7, below) with a third field.
 
-The field is seeded once, when `run_scenario` creates that object. It never seeded on each
+The field is seeded once, when `run_scenario` creates that object. It is never seeded on each
 phase's freshly built `StepLoopState`. A `StepLoopState` only *shares* the object through the
 closure, the same way the other two latches already do. A success in one phase stays
 cleared into the next.
@@ -854,7 +854,7 @@ It re-reads until the *newest* entry meets both conditions:
 
 - It reports `CRASH` or `CRASH_NATIVE`.
 - Its own `timestamp=` field is at or after this launch. That field is `ApplicationExitInfo`'s
-  wall-clock rendering in the *device's* own timezone. It never an epoch and carries no offset.
+  wall-clock rendering in the *device's* own timezone. It is never an epoch and carries no offset.
 
 The comparison is made against the rendering half of `launched_at()`. That half is the tuple's
 second element. It is the `'%Y-%m-%d %H:%M:%S'` device-clock rendering recorded alongside the epoch at
@@ -905,7 +905,7 @@ It is called from the same two closures that already call `invalidate_settled_ca
   ([`android_environment.py:339-351`](../../bajutsu/common/platform_lifecycle/environments/android/android_environment.py))
 - `crawl_reset()`'s `reset()`, right after its own `e.launch(...)`
 
-It never called from inside `AdbDriver`'s own actuators.
+It is never called from inside `AdbDriver`'s own actuators.
 
 Once the latch is set (and not yet cleared), a later call skips the bounded poll. It reads the
 exit-info history exactly once, and answers at once whether or not that single read finds a
@@ -1155,7 +1155,7 @@ evidence *copy* to disk stays outside it, for the same reason that BE-0421's own
 `_step_runner`'s sink
 ([`bajutsu/common/orchestrator/loop/_loop_config.py`](../../bajutsu/common/orchestrator/loop/_loop_config.py))
 is an `EvidenceSink`. Its whole surface is `capture`, `wait_diagnostic`, and the interval start/finish
-pair, with no arbitrary named write. It also scoped to the running scenario. The crash evidence
+pair, with no arbitrary named write. It is also scoped to the running scenario. The crash evidence
 needs the run-scoped `RunArtifactWriter` and the `sid` that `pipeline.py` already holds.
 
 `Lease` ([`bajutsu/common/runner/types.py`](../../bajutsu/common/runner/types.py)) gains two matching
