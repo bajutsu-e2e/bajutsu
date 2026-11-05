@@ -19,7 +19,7 @@
 Reading the screen on the Android adb backend is an order of magnitude slower than on iOS. The whole
 gap is a per-invocation startup cost. Every `AdbDriver.query()` shells out to
 `adb exec-out uiautomator dump`. Each call spins up a fresh instrumentation, connects a `UiAutomation`
-session, waits for idle, dumps, and tears the session down. That costs ≈ 2.4 s each time, against
+session, waits for idle, dumps, and tears the session down. Each call costs ≈ 2.4 s, against
 ≈ 0.1–0.3 s for the same read on idb.
 
 This item removes the startup cost. It keeps a **resident UI Automator instrumentation** alive for
@@ -37,7 +37,7 @@ still fail fast, and no LLM enters the `run` path.
 ## Motivation
 
 [BE-0234](../BE-0234-adb-run-performance/BE-0234-adb-run-performance.md) pinned the Android run's
-slowness to the screen read. It shipped two low-risk reductions and a retune of the adb `_settle`:
+slowness to the screen read. It shipped a retune of the adb `_settle`, plus two low-risk reductions:
 
 - making the runner's end-of-step read lazy
 - reusing the previous step's tree as the next step's `before`
@@ -50,7 +50,7 @@ where each necessary read still costs ≈ 2.4 s keeps Android authoring heavy, e
 reductions.
 
 A resident session pays the startup cost **once** for the whole run. It then answers each later read
-over an already-open channel. That closes the 10–20× gap with iOS. The expected result is a read
+over an already-open channel. The resident session closes the 10–20× gap with iOS. The expected result is a read
 that drops from ≈ 2.4 s to ≈ 0.1–0.3 s. The cost is real (a packaged instrumentation and its
 lifecycle), so the change is its own item rather than a knob. The payoff is that the Android read
 becomes as cheap as the iOS read.
@@ -109,7 +109,7 @@ resident server cannot start is never left worse off than today.
    read drops to ≈ 0.1–0.3 s. Extend the Android e2e lane
    ([BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md)) so it exercises
    both the resident path and the dump fallback. A hard CI *timing* gate stays out of scope, because
-   wall-clock is environment-dependent and would be flaky. This is consistent with BE-0234.
+   wall-clock is environment-dependent and would be flaky. That choice is consistent with BE-0234.
 
 ## Alternatives considered
 
@@ -220,7 +220,7 @@ Log:
   waited it out, so the fast read caught the pre-update value. Its budget is the lane's existing
   wait floor (`BAJUTSU_MIN_WAIT_TIMEOUT`), so it is a single read (today's behavior) off the Android
   lane and re-reads only the UI tree, ending the moment nothing a tree re-read could fix is still
-  failing. This completes the item.
+  failing. With that, the item is complete.
 - The wall-clock settle above closes one of two ways a tap after a scroll reaches a stale coordinate,
   not both. A wall-clock deadline catches a tree the reads show *moving*, because two consecutive reads
   then disagree and the poll continues. A tree that has not published the gesture at all shows nothing

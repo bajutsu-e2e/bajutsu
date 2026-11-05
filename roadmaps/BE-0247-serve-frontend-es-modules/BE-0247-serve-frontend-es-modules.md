@@ -18,8 +18,8 @@
 
 BE-0202 split the once-monolithic `bajutsu/templates/serve.js` into five section files:
 `serve.core.js`, `serve.panels.js`, `serve.crawl.js`, `serve.metrics.js`, and `serve.author.js`. The
-five total roughly 3,200 lines, so each reads and diffs as its own file. `bajutsu/serve/handler.py`
-concatenates them in a fixed order (`_JS_ASSETS`, `handler.py:657-663`) and inlines the result into
+five total roughly 3,200 lines. The split lets each section read and diff as its own file.
+`bajutsu/serve/handler.py` concatenates them in a fixed order (`_JS_ASSETS`, `handler.py:657-663`) and inlines the result into
 one `<script>` tag. The five files still share a single global JavaScript scope with no module
 system, the same as when they were one file.
 
@@ -53,7 +53,7 @@ The project's own ESLint guardrail (BE-0129, `eslint.config.mjs`) documents the 
 tooling side. `no-undef` is deliberately off there, for two reasons.
 
 - The *primary* reason: enabling the rule would need the full set of browser and ES globals declared
-  (the `globals` npm package). That would pull a Node toolchain into this Python repo.
+  (the `globals` npm package). Declaring them would pull a Node toolchain into this Python repo.
 - The *secondary* reason, which the comment adds: the rule "also can't see the cross-file globals the
   section files share, so it would misfire anyway."
 
@@ -70,7 +70,7 @@ item removes, and the fragility grows as more panels are added to the UI.
 
    The one real change on the server side is delivery. `import` specifiers resolve against a URL, so
    the five files can no longer be concatenated into one inlined `<script>` the way `_JS_ASSETS` does
-   today. Instead, `bajutsu/serve/handler.py` serves each section at its own path. That means a
+   today. Instead, `bajutsu/serve/handler.py` serves each section at its own path. This takes a
    handful of static `GET` routes reading the same `bajutsu/templates/serve.*.js` files, mirroring how
    `serve.html.j2` already names them. It is not a new asset pipeline. The page loads the entry module
    via `<script type="module" src="...">`. Five small requests instead of one inlined blob cost
@@ -111,7 +111,7 @@ only how the frontend code is organized and loaded.
 
 ## Alternatives considered
 
-- **A bundler (Webpack, esbuild, Rollup, …).** Rejected for the reason BE-0202 gave. This is a Python
+- **A bundler (Webpack, esbuild, Rollup, …).** Rejected for the reason BE-0202 gave. The project is a Python
   repo, and the UI's value is its zero-toolchain simplicity. Native ES modules get the same
   explicit-dependency benefit. They introduce no build step, no `node_modules` tree, and no
   compiled-output artifact to keep in sync with source.

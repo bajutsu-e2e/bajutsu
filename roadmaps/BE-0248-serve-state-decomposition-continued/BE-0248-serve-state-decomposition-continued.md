@@ -63,7 +63,7 @@ self-contained field-and-method cluster and give it a boundary. Two such cluster
 
    The persistence half, `_persist_provider_settings` (`bajutsu/serve/operations/config.py:631`),
    already lives outside `state.py`. It reaches back in, takes both locks, and reads and writes
-   `provider_settings` directly. That is possible today only because it imports `ServeState`'s
+   `provider_settings` directly. The function can do so today only because it imports `ServeState`'s
    internals. A named manager gives this cross-module caller a narrow surface to call, so the caller
    no longer reaches around the dataclass.
 
@@ -106,8 +106,8 @@ BE-0198 set, plus the supporting steps that follow.
     caller can never alias the live entry.
   - Every write stores a fresh copy rather than the caller's own instance.
 
-  This is the invariant that matters most here, as atomic id assignment under one lock mattered most
-  for `JobRegistry`. The new type's boundary must preserve it, not just a copy of the method bodies.
+  Copy-on-read and copy-on-write form the invariant that matters most here, as atomic id
+  assignment under one lock mattered most for `JobRegistry`. The new type's boundary must preserve it, not just a copy of the method bodies.
 
   `operations/config.py`'s `_persist_provider_settings` is the one caller today that reaches into
   `ServeState` to take both locks directly. It becomes a caller of the manager's public surface

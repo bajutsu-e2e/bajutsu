@@ -100,7 +100,7 @@ Four places across three files copy that line by hand:
 - `crawl_guide.py:186`: "You only choose what to TRY. You never decide pass/fail and never judge results."
 - `crawl_tabs.py:131`: "You only report where the tabs are. You never decide pass/fail."
 
-Each copy is worded slightly differently. That is the drift risk of hand-copying a boundary
+Each copy is worded slightly differently. That drift is the risk of hand-copying a boundary
 statement, and the statement exists to keep the AI paths honest about prime directive 1.
 
 Separately, five places reimplement the renderer that turns an element-tree UI snapshot into
@@ -144,7 +144,7 @@ work splits into six independent units, MECE by the surface each touches:
    resolution (`resolve_model`, `resolve_effort`, `resolve_language`, `language_instruction`, the
    `AiConfig` re-export) to a name that does not imply a single vendor. Examples are `ai_config.py`,
    or folding it directly into the `bajutsu/ai/` package alongside `registry.py` and `claude_code.py`.
-   The implementer picks whichever reads better once the import graph is in front of them. The
+   The implementer picks whichever reads better with the import graph in view. The
    Anthropic-SDK-specific code stays behind in a module that keeps the vendor name, because that part
    of the split is accurate. That code is the client construction such as `make_client`, and the `ant`
    command-line interface (CLI) subprocess path.

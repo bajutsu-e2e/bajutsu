@@ -48,7 +48,7 @@ BE-0198 の `JobRegistry` 切り出しが示したのは、必要なのは書き
    「このリクエストは認証済みか、誰としてか」という1つの問いに答えます。`ServeState` の他の部分とは、
    状態を共有しません。
 
-   認可層（`bajutsu/serve/authz.py`）は、ロールベースアクセス制御（RBAC）のために、
+   認可層（`bajutsu/serve/authz.py`）は、RBAC（Role-Based Access Control）のために、
    `oauth_allowed_users`、`oauth_admins`、`oauth_viewers` を読み取ります。これらのフィールドは、認証の
    まとまりと行動をともにします。サーバー構築時に `token` や `oauth` と並んで設定され、以後変化しないためです。
 2. **プロバイダー設定。** このクラスターの構成要素は次のとおりです。

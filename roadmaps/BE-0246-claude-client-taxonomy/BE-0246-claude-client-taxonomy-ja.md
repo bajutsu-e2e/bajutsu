@@ -47,16 +47,21 @@ registry 側のチェックの大半は重複ではなく委譲なので、3 層
 **`anthropic_client.py` という名前は実態と合っていません。** ベンダー名を冠していますが、このモジュールが
 持っているのは、`claude-code` を含むすべてのバックエンドが使う、プロバイダ非依存の設定解決です。
 
-`resolve_model`（236 行目）、`resolve_effort`（254 行目）、`resolve_language`（273 行目）、
-`language_instruction`（291 行目）、そして `AiConfig` の再エクスポート（42 行目）です。
+具体的には、次のとおりです。
+
+- `resolve_model`（236 行目）
+- `resolve_effort`（254 行目）
+- `resolve_language`（273 行目）
+- `language_instruction`（291 行目）
+- `AiConfig` の再エクスポート（42 行目）
 
 `ai/claude_code.py:38` と `ai/registry.py:22` は、どちらもこのモジュールから import しています。
-つまり、あらゆるプロバイダと話すために存在するモジュールが、特定 1 社のソフトウェア開発キット（SDK）の名前を
+つまり、あらゆるプロバイダと話すために存在するモジュールが、特定 1 社の SDK（Software Development Kit）の名前を
 冠しています。「モデル・effort・言語の解決はどこにあるか」を import 文から追うコントリビュータには、
 `anthropic_client` という名前のファイルを覗く理由がありません。
 
 **`agent.py` と `agents.py` は、単数形と複数形の見分けにくさという罠です。** `agent.py` は `Agent` /
-`EnrichmentAgent` のプロトコルと、データ転送オブジェクト（DTO）の `Observation`、`Proposal` を持ちます。
+`EnrichmentAgent` のプロトコルと、DTO（Data Transfer Object）の `Observation`、`Proposal` を持ちます。
 `agents.py` は 44 行のファクトリ（`make_agent`、`make_enrichment_agent`）です。名前の違いは 1 文字だけです。
 どのファイル一覧でも隣り合って並ぶので、両方を開くまで区別がつきません。
 
@@ -66,7 +71,7 @@ registry 側のチェックの大半は重複ではなく委譲なので、3 層
 `ClaudeAgent`（`bajutsu/claude_agent.py:632`）、`ClaudeTriageAgent` と `ClaudeCrossRunTriageAgent`
 （`bajutsu/claude_triage.py:253` と `:473`）、`ClaudeEnrichmentAgent`（`bajutsu/claude_enrich_agent.py:190`）、
 `ClaudeActionProposer`（`bajutsu/crawl_guide.py:360`）、`ClaudeTabLocator`（`bajutsu/crawl_tabs.py:192`）、
-`ClaudeAlertLocator`（`bajutsu/alerts.py:178`）です。
+`ClaudeAlertLocator`（`bajutsu/alerts.py:178`）の 7 つです。
 
 ```python
 def _ensure_backend(self) -> AiBackend:
@@ -102,7 +107,7 @@ def _ensure_backend(self) -> AiBackend:
 
 `claude_agent.py:416` のインライン実装、`claude_enrich_agent.py:132` の `_render_elements`、
 `claude_triage.py:159` の `_render` と `:391` の `_render_evidence`、`crawl_guide.py:251` の
-`_render_elements` です。
+`_render_elements` の 5 か所です。
 
 フィールドの順序、クォートの有無、どの属性を省くかが、それぞれ異なります。このような共有フラグメントを
 一箇所にまとめる前例は、コードベースにすでにあります。`claude_agent.py:173` の `_TARGET_PROPS`
@@ -131,7 +136,7 @@ import しています。
 ## 詳細設計
 
 作業全体を通して、挙動は変わりません。作業はリネーム、1 件の統合、重複したコードの共有の置き場への
-引き上げだけです。CLI の挙動、シナリオのスキーマ、`run` / CI の結果には影響しません。作業は、対象とする
+引き上げだけです。CLI（Command Line Interface）の挙動、シナリオのスキーマ、`run` / CI の結果には影響しません。作業は、対象とする
 サーフェスごとに MECE な 6 つの単位に分かれます。
 
 1. **`anthropic_client.py` を、実際の中身に合う名前へリネームします。** プロバイダ非依存の設定解決
@@ -140,7 +145,7 @@ import しています。
    `bajutsu/ai/` パッケージの内側に `registry.py` や `claude_code.py` と並べて畳み込みます。どちらにするかは、
    実装者が import のグラフを見たうえで、読みやすいほうを選びます。Anthropic の SDK に固有な部分は、
    ベンダー名を冠したモジュールに残します。この部分の分割は実態と合っているからです。該当するのは、
-   `make_client` のようなクライアント生成と、`ant` コマンドラインインターフェース（CLI）の
+   `make_client` のようなクライアント生成と、`ant` CLI の
    サブプロセス呼び出しです。
 2. **2 組の `credential_gap` / プロバイダ解決を、`bajutsu/ai/` 内の 1 つの解決処理へ統合します。**
    `anthropic_client.provider` と `ai/registry._provider_name` / `resolved_provider` を、単一の
@@ -165,8 +170,8 @@ import しています。
    import の見通しがよいほうを選びます。
 5. **`bajutsu/ai/prompts.py` を新設します。** system プロンプトの間で手作業でコピーされている共有の
    指示フラグメントを、ここに集約します。
-   共有の言い回しをまとめた `ADDRESSING_RULES` のような定数と、プライムディレクティブの境界線用の
-   `NEVER_JUDGE_BOUNDARY` という定数です。
+   具体的には、共有の言い回しをまとめた `ADDRESSING_RULES` のような定数と、プライムディレクティブの
+   境界線用の定数 `NEVER_JUDGE_BOUNDARY` を置きます。
 
    8 つの system プロンプトは、それぞれこれらの定数を組み込み、再入力しません。あわせて
    `render_elements(elements, *, compact)` を 1 つ追加し、現在 5 か所の呼び出し元（`claude_agent.py`、
@@ -183,14 +188,17 @@ import しています。
    します。調べた結果、自分のモジュールの外に呼び出し元がないとわかったヘルパーは、private のまま残し、
    移動の対象から外します。
 
-それぞれの単位は独立に出荷でき、独立にテストできます。対象となる各クラスの既存テストが、リネームや
-引き上げが挙動を変えていないことを確かめる回帰ネットになります。
+それぞれの単位は独立に出荷でき、独立にテストできます。ここでの変更は、クラスの振る舞いではなく、
+コードの置き場と名前だけです。そのため、対象となる各クラスの既存テストが、リネームや引き上げが挙動を
+変えていないことを確かめる回帰ネットになります。
 
-`tests/test_claude_agent.py`、`tests/test_claude_triage.py`、`tests/test_claude_enrich_agent.py`、
-`tests/test_crawl_guide.py`、`tests/test_crawl_tabs.py`、`tests/test_alerts.py`、`tests/test_record.py`
-です。
-
-ここでの変更は、クラスの振る舞いではなく、コードの置き場と名前だけだからです。
+- `tests/test_claude_agent.py`
+- `tests/test_claude_triage.py`
+- `tests/test_claude_enrich_agent.py`
+- `tests/test_crawl_guide.py`
+- `tests/test_crawl_tabs.py`
+- `tests/test_alerts.py`
+- `tests/test_record.py`
 
 ## 検討した代替案
 
