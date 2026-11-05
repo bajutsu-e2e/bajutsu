@@ -15,20 +15,24 @@
 
 ## Introduction
 
-Six `Claude*` classes across the AI authoring/investigation paths each carry a private
-`_ensure_client` method with the same three lines: return the injected client if one exists,
-otherwise build one and cache it. This item hoists that shared logic into the one place these
-classes already import from, so a behavior change to client construction or caching needs one
-edit instead of six.
+Six `Claude*` classes across the AI authoring and investigation paths each carry a private
+`_ensure_client` method with the same three lines. The method returns the injected client if one
+exists, and otherwise builds a client and caches it. This item hoists that shared logic into the
+module these classes already import from. A behavior change to client construction or caching then
+needs one edit instead of six.
 
 ## Motivation
 
-`_ensure_client` is byte-identical in six places: `bajutsu/claude_agent.py:331`
-(`ClaudeAgent`), `bajutsu/claude_triage.py:216` (`ClaudeTriageAgent`),
-`bajutsu/claude_enrich_agent.py:187` (`ClaudeEnrichmentAgent`), `bajutsu/alerts.py:182`
-(`ClaudeAlertLocator`), `bajutsu/crawl_guide.py:352` (`ClaudeActionProposer`), and
-`bajutsu/crawl_tabs.py:183` (`ClaudeTabLocator`) — twice the three call sites the initial
-codebase-analysis report counted:
+`_ensure_client` is byte-identical in six places:
+
+- `bajutsu/claude_agent.py:331` (`ClaudeAgent`)
+- `bajutsu/claude_triage.py:216` (`ClaudeTriageAgent`)
+- `bajutsu/claude_enrich_agent.py:187` (`ClaudeEnrichmentAgent`)
+- `bajutsu/alerts.py:182` (`ClaudeAlertLocator`)
+- `bajutsu/crawl_guide.py:352` (`ClaudeActionProposer`)
+- `bajutsu/crawl_tabs.py:183` (`ClaudeTabLocator`)
+
+That is twice the three call sites the initial codebase-analysis report counted.
 
 ```python
 def _ensure_client(self) -> Any:
@@ -37,71 +41,78 @@ def _ensure_client(self) -> Any:
     return self._client
 ```
 
-All six already import `make_client` from `bajutsu/anthropic_client.py:72`, which itself
-short-circuits on an injected `client` (`if client is not None: return client`). So
-`_ensure_client` only adds one thing `make_client` doesn't already do: memoizing the
-constructed client on `self._client` so a class doesn't reopen an SDK client (and reread the
-API key env var) on every call. Each of the six `__init__` methods also repeats the same
-`self._client = client; self._ai = ai` assignment that `_ensure_client` closes over. Because
-nothing ties these six copies together, a future change to client construction or caching
-(a new provider, a different memoization key, added logging) requires a contributor to find
-and edit all six by hand — and a seventh AI class added later will most likely copy the
-pattern by hand again rather than notice a shared home for it. The fix stays entirely within
-the AI authoring/investigation paths (`record`, `enrich`, `triage`, alert dismissal, crawl):
-none of the six classes is reachable from the deterministic `run`/CI gate.
+All six classes already import `make_client` from `bajutsu/anthropic_client.py:72`. `make_client`
+itself short-circuits on an injected `client` (`if client is not None: return client`). So
+`_ensure_client` adds one thing that `make_client` does not already do: it memoizes the
+constructed client on `self._client`. Without the memo, a class would reopen an SDK client, and
+reread the API key environment variable, on every call.
+
+Each of the six `__init__` methods also repeats the same `self._client = client; self._ai = ai`
+assignment that `_ensure_client` closes over.
+
+Nothing ties the six copies together. A future change to client construction or caching (a new
+provider, a different memoization key, added logging) forces a contributor to find and edit all
+six by hand. A seventh AI class added later will most likely copy the pattern again, because
+nothing points to a shared home for it.
+
+The fix stays entirely within the AI authoring and investigation paths (`record`, `enrich`,
+`triage`, alert dismissal, crawl). None of the six classes is reachable from the deterministic
+`run` / CI gate.
 
 ## Detailed design
 
-The refactor is behavior-preserving: every one of the six classes keeps its current
-constructor signature (`client`, `model`, `ai`, `redactor`, and per-class extras like
-`max_tokens`) and the same lazy-build-then-cache semantics for `_client`. The duplication is
-removed by giving the six classes a shared implementation to call instead of six private
-copies:
+The refactor preserves behavior. Each of the six classes keeps its current constructor signature
+(`client`, `model`, `ai`, `redactor`, and per-class extras such as `max_tokens`). Each keeps the same
+lazy-build-then-cache semantics for `_client`. The duplication goes away because the six classes
+call one shared implementation instead of six private copies:
 
-- **Hoist the caching wrapper next to `make_client`.** Add one function or small mixin —
-  living in `bajutsu/anthropic_client.py` beside `make_client`, since that is already the
-  single place these classes import their client-construction logic from — that takes
-  `(client, ai)` and returns the same three-line memoized-build result `_ensure_client`
-  currently computes. A plain function (e.g. taking `self` or a `(client, ai)` pair and
-  returning the value to assign) avoids introducing a new base class into six otherwise
-  unrelated `Protocol` implementations; a mixin is the alternative if the six classes'
-  constructors turn out easier to share too (see *Alternatives considered*).
-- **Replace each of the six `_ensure_client` methods with a call to the shared
-  implementation.** Each class keeps its own `self._client` attribute (so the memoization
-  stays per-instance) but delegates the "build if absent" decision to the shared function.
-  This is a mechanical, one-line-body change per class — the six call sites
-  (`next_action`/`plan` in `claude_agent.py`, `triage` in `claude_triage.py`,
-  `propose_assertions` in `claude_enrich_agent.py`, `locate` in `alerts.py`, `propose` in
-  `crawl_guide.py`, `locate` in `crawl_tabs.py`) are unaffected since they still call
-  `self._ensure_client()` (or keep that name as a thin one-line wrapper, whichever reads
-  better at each site).
-- **Cover the shared implementation with its own unit test** (client-injection short-circuit,
-  and build-once-then-reuse caching), then rely on each class's existing tests
-  (`tests/test_claude_agent.py`, `tests/test_claude_triage.py`, `tests/test_alerts.py`,
-  `tests/test_crawl_tabs.py`, and the `claude_enrich_agent.py` / `crawl_guide.py` coverage)
-  to confirm no call site's behavior changed.
+- **Hoist the caching wrapper next to `make_client`.** Add one function or small mixin in
+  `bajutsu/anthropic_client.py`, beside `make_client`. That module is already the single place these
+  classes import their client-construction logic from. The new code takes `(client, ai)` and returns
+  the same three-line memoized-build result that `_ensure_client` computes today. A plain function
+  (for example, one taking `self` or a `(client, ai)` pair and returning the value to assign)
+  avoids adding a base class to six otherwise unrelated `Protocol` implementations. A mixin is the
+  alternative if the constructors of the six classes turn out easier to share too (see
+  *Alternatives considered*).
+- **Replace each of the six `_ensure_client` methods with a call to the shared implementation.**
+  Each class keeps its own `self._client` attribute, so the memoization stays per-instance. The
+  class delegates the "build if absent" decision to the shared function. The change is mechanical:
+  one line of body per class. The six call sites are unaffected:
+  - `next_action` and `plan` in `claude_agent.py`
+  - `triage` in `claude_triage.py`
+  - `propose_assertions` in `claude_enrich_agent.py`
+  - `locate` in `alerts.py`
+  - `propose` in `crawl_guide.py`
+  - `locate` in `crawl_tabs.py`
+
+  They still call `self._ensure_client()`, or the method stays as a thin one-line wrapper,
+  whichever reads better at each site.
+- **Cover the shared implementation with its own unit test.** The test checks the client-injection
+  short-circuit and the build-once-then-reuse caching. Each class's existing tests then confirm that
+  no call site's behavior changed: `tests/test_claude_agent.py`, `tests/test_claude_triage.py`,
+  `tests/test_alerts.py`, `tests/test_crawl_tabs.py`, and the `claude_enrich_agent.py` and
+  `crawl_guide.py` coverage.
 
 ## Alternatives considered
 
-- **Leave the six copies as they are.** Rejected: it is exactly the duplication this item
-  exists to remove, and the fact that the report's initial count (three) already undercounted
-  the real total (six) shows the copies are easy to lose track of as new AI classes are
-  added.
-- **Introduce a shared base class that all six `Claude*` classes inherit from**, hoisting not
-  just `_ensure_client` but the repeated `__init__` assignments (`self._client`, `self._ai`,
-  `self._redactor`, `self._model` via `resolve_model`) too. Considered as a larger version of
-  this fix. Deferred for this item's scope: the six classes implement different `Protocol`s
+- **Leave the six copies as they are.** Rejected, because it keeps exactly the duplication this item
+  exists to remove. The report's initial count (three) already undercounted the real total (six),
+  which shows that the copies are easy to lose track of as new AI classes are added.
+- **Introduce a shared base class that all six `Claude*` classes inherit from.** The base class
+  would hoist not just `_ensure_client` but the repeated `__init__` assignments (`self._client`,
+  `self._ai`, `self._redactor`, and `self._model` via `resolve_model`) too. This is a larger version
+  of the fix. It is deferred for this item's scope. The six classes implement different `Protocol`s
   (`TriageAgent`, `EnrichmentAgent`, `AlertLocator`, `ActionProposer`, `TabLocator`, and the
-  action-proposing agent behind `ClaudeAgent`) with different constructor extras (`max_tokens`,
-  `max_actions`, presence/absence of `redactor`), so a base class either grows optional
-  parameters to cover every subclass's needs or only partially deduplicates — a plain shared
-  function composes more cleanly with structurally unrelated `Protocol` implementations
-  without forcing an inheritance relationship between them.
-- **Leave `_ensure_client` duplicated but add a lint rule (e.g. a custom `ruff` check or a
-  grep-based test) that fails when a new byte-identical copy appears.** Rejected as the
-  primary fix, for the same reason as the analogous alternative on the flag-mirror item: a
-  check catches new duplication after the fact but does not remove the six existing copies or
-  the need to keep them in sync by hand.
+  action-proposing agent behind `ClaudeAgent`). Their constructor extras differ too (`max_tokens`,
+  `max_actions`, and the presence or absence of `redactor`). A base class would either grow optional
+  parameters to cover every subclass or deduplicate only part of the code. A plain shared function
+  composes more cleanly with structurally unrelated `Protocol` implementations, and it forces no
+  inheritance relationship between them.
+- **Leave `_ensure_client` duplicated, and add a lint rule that fails when a new byte-identical copy
+  appears.** The rule could be a custom `ruff` check or a grep-based test. Rejected as the primary
+  fix, for the same reason as the analogous alternative on the flag-mirror item. A check catches new
+  duplication after the fact. It neither removes the six existing copies nor ends the need to keep
+  them in sync by hand.
 
 ## Progress
 
