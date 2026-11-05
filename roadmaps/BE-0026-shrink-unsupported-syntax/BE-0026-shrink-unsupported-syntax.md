@@ -24,8 +24,8 @@ instead of failing. The output stays reviewable and never breaks the build. That
 safety net, but each `// TODO` is a line a human must port by hand. A flow with several of them is
 effectively not generated at all.
 
-A passing scenario carries over intact into a team's own Xcode CI in proportion to how much of the
-scenario grammar maps structurally. That is the whole point of codegen. Today the residual gaps are of two
+The more of the scenario grammar that maps structurally, the more of a passing scenario carries over
+into a team's own Xcode CI. That is the whole point of codegen. Today the residual gaps are of two
 kinds:
 
 - **Unknown selector forms.** A [selector](../../docs/glossary.md#scenario-authoring) that reaches
@@ -53,7 +53,7 @@ candidates, in rough order of value, are as follows.
   `// TODO` that names the `simctl` command a reviewer would run, in place of a bare "unsupported
   step". They are documented as out of scope and never dropped silently.
 - **Waits and assertions.** We map the `request` assertion and the `until: { request: ... }` wait
-  where a structural equivalent exists. Network observation generally has no XCUITest
+  only where a structural equivalent exists. Network observation generally has no XCUITest
   counterpart, so these stay explicit `// TODO`s as well.
 
 The governing rule is unchanged and load-bearing: **a construct moves out of the fallback set

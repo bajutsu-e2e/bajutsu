@@ -31,7 +31,7 @@ Without a selection mechanism, the only options are "run this one file" or "run 
 
 ## Detailed design
 
-Each scenario carries an optional `tags` list (`Scenario` in `bajutsu/scenario/`). The tags are free-form labels such as `smoke` or `checkout`. The CLI exposes `--tag` and `--exclude`, each a comma-separated list. They apply after the CLI has loaded and expanded the full set of scenarios, so selection sees every data-driven and component-expanded scenario.
+Each scenario carries an optional `tags` list (`Scenario` in `bajutsu/scenario/`). The tags are free-form labels such as `smoke` or `checkout`. The CLI exposes `--tag` and `--exclude`, each a comma-separated list. They apply after the full set of scenarios has been loaded and expanded, so selection sees every data-driven and component-expanded scenario.
 
 `select_scenarios` keeps a scenario when both conditions hold:
 

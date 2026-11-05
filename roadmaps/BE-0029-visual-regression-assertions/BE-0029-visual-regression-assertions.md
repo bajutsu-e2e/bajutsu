@@ -20,7 +20,7 @@ A new assertion type diffs a screenshot against a baseline. It supports exclusio
 
 ## Motivation
 
-The existing assertion kinds check the *structure* of a screen: an element's value, its presence, and the text it carries. None of them catches a purely *visual* regression. A layout shifts, a color changes, an icon goes missing, or a font renders wrong. A human notices these failures at a glance, but they pass every structural check, because the accessibility tree is unchanged. Competitors (MagicPod, Autify) offer screenshot comparison for this reason, and users often ask for it.
+The existing assertion kinds check the *structure* of a screen: an element's value, its presence, and the text it carries. None of them catches a purely *visual* regression: a layout that shifts, a color that changes, an icon that goes missing, or a font that renders wrong. A human notices these failures at a glance, but they pass every structural check, because the accessibility tree is unchanged. Competitors (MagicPod, Autify) offer screenshot comparison for this reason, and users often ask for it.
 
 A visual check has to stay inside Bajutsu's prime directives. The risk is that "does this look right?" sounds like a judgment call, the kind of work one might hand to an LLM. It is not. A pixel diff against a stored baseline is a deterministic machine check. The same input produces the same pass/fail every time, with no model in the loop.
 
