@@ -57,7 +57,7 @@ under an optional extra (e.g. `bajutsu[aws]`) or as CI glue in `.github/`. It is
 
 1. **Package.** Bundle the Bajutsu source or wheel, the target config, and the scenarios into a
    Device Farm test package.
-2. **Test spec.** Write a spec YAML with three jobs:
+2. **Test spec.** Write a spec YAML that does three things:
    - Its phases install dependencies (`devicefarm-cli use python …`, `pip install`).
    - The `test` phase runs `bajutsu run --backend adb <scenarios>`.
    - The `post_test` phase copies `runs/` into `$DEVICEFARM_LOG_DIR` for artifact retrieval.
